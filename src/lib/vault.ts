@@ -57,7 +57,7 @@ export async function deriveWrapKeyFromPin(
   const enc = new TextEncoder()
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    enc.encode(password),
+    enc.encode(password) as BufferSource,
     'PBKDF2',
     false,
     ['deriveKey']
@@ -65,7 +65,7 @@ export async function deriveWrapKeyFromPin(
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt,
+      salt: salt as BufferSource,
       iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
@@ -86,9 +86,9 @@ export async function wrapPrivateJwkWithPin(
   const enc = new TextEncoder()
   const plain = enc.encode(privateJwkString)
   const cipherBuf = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     wrapKey,
-    plain
+    plain as BufferSource
   )
   return {
     saltB64: uint8ToBase64(salt),
@@ -106,9 +106,9 @@ export async function unwrapPrivateJwkWithPin(
   const ciphertext = base64ToUint8(blob.ciphertextB64)
   const wrapKey = await deriveWrapKeyFromPin(pin, salt)
   const out = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     wrapKey,
-    ciphertext
+    ciphertext as BufferSource
   )
   return new TextDecoder().decode(out)
 }

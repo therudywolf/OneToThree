@@ -1,0 +1,1 @@
+-- Optional seed data (empty). Use `supabase db reset` to apply migrations + this file.

@@ -28,7 +28,8 @@ export function ChatSidebar({ userId }: { userId: string }) {
 
     const rows: ChatRow[] = []
     for (const row of data) {
-      const c = row.chats as { id: string; is_group: boolean } | null
+      const rel = row.chats as ChatRow | ChatRow[] | null
+      const c = Array.isArray(rel) ? rel[0] : rel
       if (c?.id) {
         rows.push({ id: c.id, is_group: c.is_group })
       }

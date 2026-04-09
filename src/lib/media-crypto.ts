@@ -38,9 +38,9 @@ export async function encryptBlob(
   crypto.getRandomValues(iv)
 
   const cipher = await getSubtle().encrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     sharedKey,
-    plain
+    plain as BufferSource
   )
 
   return {
@@ -57,7 +57,7 @@ export async function decryptBlob(
 ): Promise<Blob> {
   const iv = base64ToUint8(ivBase64)
   const plain = await getSubtle().decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     sharedKey,
     encryptedBuffer
   )

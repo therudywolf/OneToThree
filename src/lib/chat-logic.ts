@@ -61,9 +61,9 @@ async function encryptAesGcmBytes(
   crypto.getRandomValues(iv)
 
   const cipherBuffer = await getSubtle().encrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     aesKey,
-    plaintext
+    plaintext as BufferSource
   )
 
   return {
@@ -80,9 +80,9 @@ async function decryptAesGcmBytes(
   const ciphertext = base64ToUint8(ciphertextB64)
   const iv = base64ToUint8(ivB64)
   const buf = await getSubtle().decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     aesKey,
-    ciphertext
+    ciphertext as BufferSource
   )
   return new Uint8Array(buf)
 }
@@ -158,7 +158,7 @@ export async function unwrapGroupKeyFromStoredPayload(
 
   return getSubtle().importKey(
     'raw',
-    raw,
+    raw as BufferSource,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']

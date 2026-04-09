@@ -75,8 +75,8 @@ flowchart LR
 ### 1. Репозиторий и окружение
 
 ```bash
-git clone https://github.com/therudywolf/forest-messenger.git
-cd forest-messenger
+git clone https://github.com/therudywolf/ForestMessenger.git
+cd ForestMessenger
 npm install
 npm run setup
 ```
@@ -155,6 +155,19 @@ supabase functions deploy push-notifier
 
 - Push-логика в **`public/push-handler.js`**, подключается через **`next.config.js`** → `workboxOptions.importScripts`. Файл **`public/sw.js`** генерируется **next-pwa** при сборке — его не правь руками.
 - Брендинг: **`public/wolf-logo.png`**, **`icon-192.png`**, **`icon-512.png`** (можно заменить на свои ассеты).
+
+---
+
+## 🔧 Имя репозитория (исправление опечатки Messanger → Messenger)
+
+Если у тебя старый клон или папка с опечаткой **Messanger**:
+
+1. На **GitHub**: *Settings → General → Repository name* — переименуй в **`ForestMessenger`** (URL репозитория обновится; старые ссылки часто редиректят).
+2. **Локально:** закрой Cursor/IDE, переименуй папку `ForestMessanger` → **`ForestMessenger`**, снова открой проект.
+3. **Remote:**  
+   `git remote set-url origin https://github.com/therudywolf/ForestMessenger.git`
+
+Имя npm-пакета в **`package.json`** — `forest-messenger` (kebab-case); это нормально и не обязано совпадать с именем папки.
 
 ---
 

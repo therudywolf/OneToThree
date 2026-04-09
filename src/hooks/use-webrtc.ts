@@ -76,7 +76,7 @@ export function useWebRTC(userId: string | null) {
       const state = useCallStore.getState()
 
       if (state.isCalling && state.localStream) {
-        call.answer(state.localStream, { metadata: { isVideo: meta?.isVideo } })
+        call.answer(state.localStream)
         wireOutgoingCall(call)
         return
       }
@@ -120,7 +120,7 @@ export function useWebRTC(userId: string | null) {
     setIsCalling(true)
     setIncomingCall(null)
 
-    inc.call.answer(stream, { metadata: { isVideo: wantVideo } })
+    inc.call.answer(stream)
     wireOutgoingCall(inc.call)
   }, [
     setIncomingCall,
@@ -134,7 +134,7 @@ export function useWebRTC(userId: string | null) {
       const peer = peerRef.current
       if (!peer || !peerReady) return
 
-      const ids = [...new Set(recipientIds)].filter(Boolean)
+      const ids = Array.from(new Set(recipientIds)).filter(Boolean)
       if (ids.length === 0) return
 
       const stream = await navigator.mediaDevices.getUserMedia({

@@ -1,12 +1,12 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import type { ButtonHTMLAttributes } from 'react'
+import type { HTMLMotionProps } from 'framer-motion'
 
 type Props = {
   children: React.ReactNode
   className?: string
-} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className'>
+} & Omit<HTMLMotionProps<'button'>, 'children' | 'className'>
 
 export function TerminalGlitchButton({
   children,

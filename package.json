@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "docker:dev": "docker-compose up --build",
-    "setup": "node scripts/setup.js"
+    "setup": "node scripts/setup.js",
+    "env:local": "node scripts/write-env-local.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

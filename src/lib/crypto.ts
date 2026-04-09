@@ -142,9 +142,9 @@ export async function encryptMessage(
 
   const encoded = new TextEncoder().encode(plaintext)
   const cipherBuffer = await getSubtle().encrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     sharedKey,
-    encoded
+    encoded as BufferSource
   )
 
   return {
@@ -165,9 +165,9 @@ export async function decryptMessage(
   const iv = base64ToUint8(ivBase64)
 
   const plainBuffer = await getSubtle().decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     sharedKey,
-    ciphertext
+    ciphertext as BufferSource
   )
 
   return new TextDecoder().decode(plainBuffer)

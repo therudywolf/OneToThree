@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ChatApp } from '@/components/chat/chat-app'
@@ -15,6 +16,8 @@ export default async function Home() {
   }
 
   return (
-    <ChatApp userId={user.id} email={user.email ?? ''} />
+    <Suspense fallback={<div className="min-h-screen bg-black" aria-hidden />}>
+      <ChatApp userId={user.id} email={user.email ?? ''} />
+    </Suspense>
   )
 }

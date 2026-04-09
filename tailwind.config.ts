@@ -28,6 +28,21 @@ const config: Config = {
       borderRadius: {
         none: '0',
       },
+      keyframes: {
+        'neon-pulse': {
+          '0%, 100%': {
+            boxShadow:
+              'inset 0 0 0 1px rgba(0,255,255,0.35), 0 0 8px rgba(0,255,255,0.25)',
+          },
+          '50%': {
+            boxShadow:
+              'inset 0 0 0 1px rgba(255,0,0,0.45), 0 0 16px rgba(0,255,255,0.55)',
+          },
+        },
+      },
+      animation: {
+        'neon-pulse': 'neon-pulse 2.2s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

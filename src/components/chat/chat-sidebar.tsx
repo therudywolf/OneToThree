@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useChatStore } from '@/store/chatStore'
+import { NotificationToggle } from '@/components/notification-toggle'
 
 type ChatRow = { id: string; is_group: boolean }
 
@@ -73,6 +74,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
 
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r border-neon-cyan/40 bg-black">
+      <NotificationToggle userId={userId} />
       <div className="border-b border-neon-cyan/40 p-3 text-[10px] uppercase tracking-[0.3em] text-neon-cyan">
         :: CHANNELS
       </div>

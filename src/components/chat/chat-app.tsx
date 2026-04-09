@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { readVaultBlob } from '@/lib/vault'
 import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
@@ -26,7 +27,9 @@ export function ChatApp({
   userId: string
   email: string
 }) {
+  const searchParams = useSearchParams()
   const setUserId = useChatStore((s) => s.setUserId)
+  const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const activeChatId = useChatStore((s) => s.activeChatId)
   const [vaultMode, setVaultMode] = useState<'unlock' | 'setup' | null>(null)
@@ -44,6 +47,11 @@ export function ChatApp({
   useEffect(() => {
     setUserId(userId)
   }, [userId, setUserId])
+
+  useEffect(() => {
+    const chat = searchParams.get('chat')
+    if (chat) setActiveChatId(chat)
+  }, [searchParams, setActiveChatId])
 
   useEffect(() => {
     setVaultMode(readVaultBlob(userId) ? 'unlock' : 'setup')

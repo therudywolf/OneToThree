@@ -50,6 +50,10 @@ body {
   box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.85);
 }
 
+.crt-terminal-vignette {
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.9);
+}
+
 @layer components {
   .terminal-panel {
     @apply rounded-none border border-neon-cyan bg-void p-6 shadow-[0_0_12px_rgba(0,255,255,0.15)];

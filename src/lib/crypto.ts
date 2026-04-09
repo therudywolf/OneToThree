@@ -84,6 +84,36 @@ export async function exportPrivateKey(key: CryptoKey): Promise<string> {
   return JSON.stringify(jwk)
 }
 
+function namedCurveFromJwk(jwk: JsonWebKey): EcdhCurve {
+  return jwk.crv === 'P-384' ? 'P-384' : 'P-256'
+}
+
+/** Import a stored ECDH public JWK (e.g. from `users.public_key_jwk`). */
+export async function importEcdhPublicKey(jwkString: string): Promise<CryptoKey> {
+  const jwk = JSON.parse(jwkString) as JsonWebKey
+  const namedCurve = namedCurveFromJwk(jwk)
+  return getSubtle().importKey(
+    'jwk',
+    jwk,
+    { name: 'ECDH', namedCurve },
+    true,
+    []
+  )
+}
+
+/** Import a stored ECDH private JWK (from vault unwrap). */
+export async function importEcdhPrivateKey(jwkString: string): Promise<CryptoKey> {
+  const jwk = JSON.parse(jwkString) as JsonWebKey
+  const namedCurve = namedCurveFromJwk(jwk)
+  return getSubtle().importKey(
+    'jwk',
+    jwk,
+    { name: 'ECDH', namedCurve },
+    true,
+    ['deriveKey', 'deriveBits']
+  )
+}
+
 /**
  * Derive a 256-bit AES-GCM key from ECDH (your private key + peer public key).
  */

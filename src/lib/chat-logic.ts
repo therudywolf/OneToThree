@@ -3,7 +3,12 @@
  * Wraps a random AES-GCM group key for each member using ECDH + per-run ephemeral sender keys.
  */
 
-import { deriveSharedSecret, exportPublicKey, generateKeyPair } from './crypto'
+import {
+  deriveSharedSecret,
+  exportPublicKey,
+  generateKeyPair,
+  importEcdhPublicKey,
+} from './crypto'
 
 const AES_GCM_IV_LENGTH = 12
 
@@ -20,6 +25,15 @@ function uint8ToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(bytes[i])
   }
   return btoa(binary)
+}
+
+function base64ToUint8(b64: string): Uint8Array {
+  const binary = atob(b64)
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i)
+  }
+  return out
 }
 
 export type GroupKeyRecipientPayload = {
@@ -39,21 +53,6 @@ export type PreparedGroupKeyRow = {
   encryptedGroupKeyBase64: string
 }
 
-async function importEcdhPublicKey(jwkString: string): Promise<CryptoKey> {
-  const jwk = JSON.parse(jwkString) as JsonWebKey
-  const crv = jwk.crv
-  const namedCurve =
-    crv === 'P-384' ? 'P-384' : 'P-256'
-
-  return getSubtle().importKey(
-    'jwk',
-    jwk,
-    { name: 'ECDH', namedCurve },
-    true,
-    []
-  )
-}
-
 async function encryptAesGcmBytes(
   aesKey: CryptoKey,
   plaintext: Uint8Array
@@ -71,6 +70,21 @@ async function encryptAesGcmBytes(
     ciphertext: uint8ToBase64(new Uint8Array(cipherBuffer)),
     iv: uint8ToBase64(iv),
   }
+}
+
+async function decryptAesGcmBytes(
+  aesKey: CryptoKey,
+  ciphertextB64: string,
+  ivB64: string
+): Promise<Uint8Array> {
+  const ciphertext = base64ToUint8(ciphertextB64)
+  const iv = base64ToUint8(ivB64)
+  const buf = await getSubtle().decrypt(
+    { name: 'AES-GCM', iv },
+    aesKey,
+    ciphertext
+  )
+  return new Uint8Array(buf)
 }
 
 function payloadToStoredBase64(payload: GroupKeyRecipientPayload): string {
@@ -124,4 +138,29 @@ export async function prepareGroupChatKeys(
   }
 
   return rows
+}
+
+/**
+ * Unwrap the AES-GCM group key stored in `chat_members.encrypted_group_key` for this member.
+ */
+export async function unwrapGroupKeyFromStoredPayload(
+  memberPrivateKey: CryptoKey,
+  encryptedGroupKeyBase64: string
+): Promise<CryptoKey> {
+  const jsonBytes = base64ToUint8(encryptedGroupKeyBase64)
+  const json = JSON.parse(
+    new TextDecoder().decode(jsonBytes)
+  ) as GroupKeyRecipientPayload
+
+  const ephemeralPub = await importEcdhPublicKey(json.ephemeralPublicKeyJwk)
+  const wrapKey = await deriveSharedSecret(memberPrivateKey, ephemeralPub)
+  const raw = await decryptAesGcmBytes(wrapKey, json.ciphertext, json.iv)
+
+  return getSubtle().importKey(
+    'raw',
+    raw,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  )
 }

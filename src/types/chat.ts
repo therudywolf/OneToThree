@@ -4,6 +4,9 @@ export type DecryptedMessage = {
   sender_id: string
   plaintext: string
   created_at: string
+  media_path?: string | null
+  media_type?: 'audio' | 'video' | null
+  media_iv?: string | null
 }
 
 export type ChatRow = {

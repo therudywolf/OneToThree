@@ -7,9 +7,11 @@ import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
 import { useLoadChatMessages } from '@/hooks/use-load-chat-messages'
 import { useChatRealtime } from '@/hooks/use-chat-realtime'
 import { useSendMessage } from '@/hooks/use-send-message'
+import { useChatAesKey } from '@/hooks/use-chat-aes-key'
 import { VaultModal } from '@/components/chat/vault-modal'
 import { ChatSidebar } from '@/components/chat/chat-sidebar'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
+import { ChatMediaControls } from '@/components/chat/chat-media-controls'
 import { ChatInput } from '@/components/chat/chat-input'
 import { LogoutButton } from '@/components/logout-button'
 
@@ -34,6 +36,7 @@ export function ChatApp({
   }, [userId])
 
   const { cryptoCtx, ctxError } = useChatCryptoContext()
+  const sharedKey = useChatAesKey(cryptoCtx)
   useLoadChatMessages(cryptoCtx)
   useChatRealtime(cryptoCtx)
   const { sendText } = useSendMessage(cryptoCtx)
@@ -60,7 +63,11 @@ export function ChatApp({
               [!] {ctxError}
             </div>
           ) : null}
-          <ChatTerminal userId={userId} />
+          <ChatTerminal userId={userId} sharedKey={sharedKey} />
+          <ChatMediaControls
+            cryptoCtx={cryptoCtx}
+            disabled={!activeChatId || !!ctxError}
+          />
           <ChatInput
             sendText={sendText}
             disabled={!activeChatId || !!ctxError}

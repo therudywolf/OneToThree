@@ -90,3 +90,15 @@ export async function decryptInboundText(
   const sk = await deriveSharedSecret(privateKey, peerPub)
   return decryptMessage(sk, encrypted_content, iv)
 }
+
+/** Same AES-GCM key used for text and binary payloads in a chat. */
+export async function getAesKeyForChat(
+  privateKey: CryptoKey,
+  ctx: ChatCryptoContext
+): Promise<CryptoKey> {
+  if (ctx.mode === 'group') {
+    return ctx.groupKey
+  }
+  const peerPub = await importEcdhPublicKey(ctx.peerPublicKeyJwk)
+  return deriveSharedSecret(privateKey, peerPub)
+}

@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { decryptInboundText, type ChatCryptoContext } from '@/lib/chat-crypto'
+import type { ChatCryptoContext } from '@/lib/chat-crypto'
+import { rowToDecryptedMessage, type DbMessageRow } from '@/lib/message-row'
 import { useChatStore } from '@/store/chatStore'
 
 /**
@@ -30,28 +31,14 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
           filter: `chat_id=eq.${activeChatId}`,
         },
         async (payload) => {
-          const row = payload.new as {
-            id: string
-            chat_id: string
-            sender_id: string
-            encrypted_content: string
-            iv: string
-            created_at: string
-          }
+          const row = payload.new as DbMessageRow
           try {
-            const plaintext = await decryptInboundText(
+            const dm = await rowToDecryptedMessage(
+              row,
               unwrappedPrivateKey,
-              cryptoCtx,
-              row.encrypted_content,
-              row.iv
+              cryptoCtx
             )
-            appendMessage({
-              id: row.id,
-              chat_id: row.chat_id,
-              sender_id: row.sender_id,
-              plaintext,
-              created_at: row.created_at,
-            })
+            if (dm) appendMessage(dm)
           } catch {
             /* ignore */
           }

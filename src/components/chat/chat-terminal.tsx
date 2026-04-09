@@ -2,8 +2,21 @@
 
 import { useEffect, useRef } from 'react'
 import { useChatStore } from '@/store/chatStore'
+import type { DecryptedMessage } from '@/types/chat'
+import { SecureAudioPlayer } from '@/components/chat/secure-audio-player'
+import { SecureVideoCircle } from '@/components/chat/secure-video-circle'
 
-export function ChatTerminal({ userId }: { userId: string }) {
+function mediaMime(m: DecryptedMessage): string {
+  return m.media_type === 'audio' ? 'audio/webm' : 'video/webm'
+}
+
+export function ChatTerminal({
+  userId,
+  sharedKey,
+}: {
+  userId: string
+  sharedKey: CryptoKey | null
+}) {
   const messages = useChatStore((s) => s.messages)
   const activeChatId = useChatStore((s) => s.activeChatId)
   const ref = useRef<HTMLDivElement>(null)
@@ -40,7 +53,26 @@ export function ChatTerminal({ userId }: { userId: string }) {
                 {new Date(m.created_at).toLocaleString()}
               </span>
             </div>
-            <div className="whitespace-pre-wrap break-words">{m.plaintext}</div>
+            {m.plaintext ? (
+              <div className="whitespace-pre-wrap break-words">{m.plaintext}</div>
+            ) : null}
+            {m.media_path && m.media_iv && m.media_type ? (
+              m.media_type === 'audio' ? (
+                <SecureAudioPlayer
+                  mediaPath={m.media_path}
+                  mediaIv={m.media_iv}
+                  mimeType={mediaMime(m)}
+                  sharedKey={sharedKey}
+                />
+              ) : (
+                <SecureVideoCircle
+                  mediaPath={m.media_path}
+                  mediaIv={m.media_iv}
+                  mimeType={mediaMime(m)}
+                  sharedKey={sharedKey}
+                />
+              )
+            ) : null}
           </div>
         ))}
       </div>

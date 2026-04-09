@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { decryptInboundText, type ChatCryptoContext } from '@/lib/chat-crypto'
+import type { ChatCryptoContext } from '@/lib/chat-crypto'
+import { rowToDecryptedMessage, type DbMessageRow } from '@/lib/message-row'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
 
@@ -32,24 +33,13 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
       if (error || cancelled || !rows) return
 
       const decrypted: DecryptedMessage[] = []
-      for (const row of rows) {
-        try {
-          const plaintext = await decryptInboundText(
-            unwrappedPrivateKey,
-            cryptoCtx,
-            row.encrypted_content,
-            row.iv
-          )
-          decrypted.push({
-            id: row.id,
-            chat_id: row.chat_id,
-            sender_id: row.sender_id,
-            plaintext,
-            created_at: row.created_at,
-          })
-        } catch {
-          /* skip */
-        }
+      for (const row of rows as DbMessageRow[]) {
+        const dm = await rowToDecryptedMessage(
+          row,
+          unwrappedPrivateKey,
+          cryptoCtx
+        )
+        if (dm) decrypted.push(dm)
       }
       if (!cancelled) setMessages(decrypted)
     })()

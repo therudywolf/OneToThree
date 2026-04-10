@@ -20,7 +20,9 @@ export default function JoinPackPage() {
   useEffect(() => {
     if (loading) return
     if (!user) {
-      router.replace('/login')
+      router.replace(
+        `/login?code=${encodeURIComponent(code.trim())}`
+      )
       return
     }
     if (!code.trim()) {

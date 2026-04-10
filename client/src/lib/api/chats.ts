@@ -23,6 +23,7 @@ export type ChatDetailMember = {
   user_id: string
   username: string
   ecdh_public_key_jwk: string | null
+  avatar_key?: string | null
   encrypted_group_key: string | null
   role: ChatMemberRole
 }

@@ -30,6 +30,7 @@ export type UserLookupRow = {
   id: string
   username: string
   ecdh_public_key_jwk: string | null
+  avatar_key?: string | null
 }
 
 export async function lookupUsers(userIds: string[]): Promise<UserLookupRow[]> {

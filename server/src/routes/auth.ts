@@ -91,7 +91,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (user) {
       const [totpRow] = await db
-        .select({ isTotpEnabled: users.isTotpEnabled })
+        .select({
+          isTotpEnabled: users.isTotpEnabled,
+          avatarKey: users.avatarKey,
+        })
         .from(users)
         .where(eq(users.id, user.id))
         .limit(1)
@@ -104,6 +107,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           role: user.role,
           totp_enabled: totpRow?.isTotpEnabled ?? false,
           device_id: sess?.device_id ?? null,
+          avatar_key: totpRow?.avatarKey ?? null,
         },
       })
     }

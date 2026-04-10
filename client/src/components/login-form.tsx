@@ -35,7 +35,18 @@ export function LoginForm() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      router.replace('/')
+      if (typeof window === 'undefined') {
+        router.replace('/')
+        return
+      }
+      const code = new URLSearchParams(window.location.search)
+        .get('code')
+        ?.trim()
+      if (code) {
+        router.replace(`/join/${encodeURIComponent(code)}`)
+      } else {
+        router.replace('/')
+      }
     }
   }, [authLoading, user, router])
 

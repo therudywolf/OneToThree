@@ -138,6 +138,18 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'join.failed': 'Could not join',
   'join.back': 'Back to app',
 
+  'settings.avatarTitle': ':: MARK :: AVATAR',
+  'settings.avatarChoose': '[ SELECT_IMAGE ]',
+  'settings.avatarBusy': '… SIGNING / UPLOAD …',
+  'settings.avatarVaultPin': 'Vault PIN (sign upload)',
+  'settings.avatarPinHint': 'Enter your vault PIN (min 8 chars) to sign the upload.',
+  'settings.avatarInvalidType': 'Choose an image file.',
+  'settings.avatarUploadFailed': 'Avatar upload failed.',
+  'group.mediaArchiveTab': 'МЕДИА-АРХИВ / MEDIA ARCHIVE',
+  'group.mediaArchiveTitle': 'Voice · audio · video in this pack',
+  'group.mediaArchiveLoading': 'Loading archive…',
+  'group.mediaArchiveEmpty': 'No media packets in this channel yet.',
+
   'settings.discoverable': 'Discoverable',
   'settings.discoverableHint':
     'Lets others find you by username. To find someone else, they must enable this too.',

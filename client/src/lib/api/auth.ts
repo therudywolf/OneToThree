@@ -161,6 +161,7 @@ export async function fetchMe(): Promise<{
     role?: 'user' | 'admin'
     totp_enabled?: boolean
     device_id?: string | null
+    avatar_key?: string | null
   }
 }> {
   const res = await fetch(`${API_URL}/auth/me`, {
@@ -175,6 +176,7 @@ export async function fetchMe(): Promise<{
       role?: 'user' | 'admin'
       totp_enabled?: boolean
       device_id?: string | null
+      avatar_key?: string | null
     }
     error?: string
   }
@@ -205,6 +207,8 @@ export async function fetchMe(): Promise<{
           : false,
       device_id:
         typeof data.user.device_id === 'string' ? data.user.device_id : null,
+      avatar_key:
+        typeof data.user.avatar_key === 'string' ? data.user.avatar_key : null,
     },
   }
 }

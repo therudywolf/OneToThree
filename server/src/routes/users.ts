@@ -1,9 +1,20 @@
+import { createHash, randomUUID } from 'node:crypto'
+import multipart from '@fastify/multipart'
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { devices, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
+import { issueAvatarNonce, takeAvatarNonce } from '../lib/avatar-nonce.js'
+import { verifyNonceSignatureEcdsaP256 } from '../lib/ecdsa-verify.js'
+import {
+  createS3Client,
+  deleteObjectIfExists,
+  ensureBucketExists,
+  getAvatarsBucketName,
+  putObjectBuffer,
+} from '../lib/s3.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import { sendToUser } from '../ws/registry.js'
@@ -29,7 +40,98 @@ const lookupBodySchema = z.object({
   user_ids: z.array(uuidSchema).min(1).max(64),
 })
 
+const AVATAR_SIGN_PREFIX = 'avatar:v1:'
+
+function sha256Hex(buf: Buffer): string {
+  return createHash('sha256').update(buf).digest('hex')
+}
+
 export const userRoutes: FastifyPluginAsync = async (app) => {
+  await app.register(multipart, {
+    limits: { fileSize: 2 * 1024 * 1024 },
+  })
+
+  const s3 = createS3Client()
+
+  app.get('/me/avatar-challenge', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const nonce = issueAvatarNonce(user.id)
+    return reply.send({ nonce })
+  })
+
+  app.post('/me/avatar', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const nonce = String(request.headers['x-nonce'] ?? '')
+      .split(',')[0]
+      ?.trim()
+    const signature = String(request.headers['x-signature'] ?? '').trim()
+    if (!nonce || !signature) {
+      return reply.status(400).send({ error: 'MISSING_SIGNATURE_HEADERS' })
+    }
+
+    const [row] = await db
+      .select({
+        publicKeyJwk: users.publicKeyJwk,
+        avatarKey: users.avatarKey,
+      })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+    if (!row?.publicKeyJwk) {
+      return reply.status(400).send({ error: 'NO_SIGNING_KEY' })
+    }
+
+    const data = await request.file()
+    if (!data) {
+      return reply.status(400).send({ error: 'NO_FILE' })
+    }
+
+    const buffer = await data.toBuffer()
+    if (buffer.length === 0 || buffer.length > 1.5 * 1024 * 1024) {
+      return reply.status(400).send({ error: 'INVALID_IMAGE' })
+    }
+
+    if (!takeAvatarNonce(user.id, nonce)) {
+      return reply.status(401).send({ error: 'INVALID_NONCE' })
+    }
+
+    const digest = sha256Hex(buffer)
+    const message = `${AVATAR_SIGN_PREFIX}${nonce}:${digest}`
+    if (!verifyNonceSignatureEcdsaP256(message, signature, row.publicKeyJwk)) {
+      return reply.status(401).send({ error: 'INVALID_SIGNATURE' })
+    }
+
+    const bucket = getAvatarsBucketName()
+    await ensureBucketExists(s3, bucket)
+
+    const key = `avatars/${user.id}/${randomUUID()}.jpg`
+    await putObjectBuffer({
+      client: s3,
+      bucket,
+      key,
+      body: buffer,
+      contentType: 'image/jpeg',
+    })
+
+    if (row.avatarKey && row.avatarKey !== key) {
+      await deleteObjectIfExists({
+        client: s3,
+        bucket,
+        key: row.avatarKey,
+      })
+    }
+
+    await db
+      .update(users)
+      .set({ avatarKey: key })
+      .where(eq(users.id, user.id))
+
+    return reply.send({ ok: true, avatar_key: key })
+  })
+
   app.get('/me/settings', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -170,6 +272,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         id: users.id,
         username: users.username,
         ecdhPublicKeyJwk: users.ecdhPublicKeyJwk,
+        avatarKey: users.avatarKey,
       })
       .from(users)
       .where(inArray(users.id, unique))
@@ -183,6 +286,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         id: u.id,
         username: u.username,
         ecdh_public_key_jwk: u.ecdhPublicKeyJwk,
+        avatar_key: u.avatarKey,
       })),
     })
   })

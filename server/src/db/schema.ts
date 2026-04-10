@@ -43,6 +43,8 @@ export const users = pgTable('users', {
   vaultBlob: text('vault_blob'),
   vaultVersion: integer('vault_version').notNull().default(0),
   vaultUpdatedAt: timestamp('vault_updated_at', { withTimezone: true }),
+  /** MinIO object key under avatar bucket (e.g. avatars/{userId}/file.jpg). */
+  avatarKey: text('avatar_key'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

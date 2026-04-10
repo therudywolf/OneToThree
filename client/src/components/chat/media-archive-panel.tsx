@@ -83,6 +83,7 @@ export function MediaArchivePanel({
                 <MediaBubble
                   message={{
                     id: r.id,
+                    plaintext: null,
                     media_path: r.media_path,
                     media_iv: r.media_iv,
                     media_type:

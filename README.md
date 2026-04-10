@@ -50,7 +50,7 @@ Deep references: **[API.md](./API.md)** · **[ARCHITECTURE.md](./ARCHITECTURE.md
 4. **Warden (admin)** — Role-gated `/admin` + `/api/admin/*`; **host-level** moderation (reports, visibility). Does **not** decrypt E2EE message bodies.
 5. **Transport** — `fm_session` HTTP-only cookie; **CORS** locked to explicit origins in production; **`TRUST_PROXY=1`** behind Caddy so **`request.ip`** reflects the real client.
 
-Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error": "INTERNAL_ERROR" }`** — no stack traces to clients.
+Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error": "INTERNAL_SERVER_ERROR" }`** — no stack traces to clients.
 
 ---
 
@@ -60,7 +60,7 @@ Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error":
 
 - **Docker** + **Compose v2** (`docker compose`) on the host (Linux VPS, or **WSL2** / macOS for `./setup.sh`).
 - **TLS PEMs**: `./certs/cert.pem` and `./certs/key.pem` (mounted read-only into Caddy — see `Caddyfile`).
-- **`.env.prod`** at repo root (copy from **`env.prod.example`** and replace every secret).
+- **`.env.prod`** at repo root (copy from **`env.prod.example`** or **`.env.prod.example`** and replace every secret).
 
 ### Single claw
 

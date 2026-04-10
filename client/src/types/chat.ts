@@ -6,7 +6,7 @@ export type DecryptedMessage = {
   created_at: string
   reply_to_id?: string | null
   media_path?: string | null
-  media_type?: 'audio' | 'video' | 'image' | null
+  media_type?: 'audio' | 'video' | 'image' | 'file' | null
   media_iv?: string | null
   /** Direct E2E: set when peer has read (server `read_at`). */
   read_at?: string | null

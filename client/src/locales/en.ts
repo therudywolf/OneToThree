@@ -12,8 +12,17 @@ const en = {
   'common.toggleLanguageAria': 'Toggle language',
 
   'errors.boundaryGeneric': 'Signal lost. Try again.',
+  'errors.signalLost': 'SIGNAL LOST',
   'errors.retrySession': 'Reload',
   'errors.generic': 'Error',
+
+  'attach.pickAria': 'Attach file',
+  'attach.transmit': '[ TX ]',
+  'attach.clear': '[ CLEAR ]',
+  'attach.removeAria': 'Remove from queue',
+
+  'media.loading': '…',
+  'media.download': 'DOWNLOAD',
 
   'login.usernameRequired': 'Username is required.',
   'login.passwordRequired': 'Passphrase is required.',

@@ -106,7 +106,8 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
           media_type:
             m.media_type === 'audio' ||
             m.media_type === 'video' ||
-            m.media_type === 'image'
+            m.media_type === 'image' ||
+            m.media_type === 'file'
               ? m.media_type
               : null,
           media_iv: m.media_iv,

@@ -2,14 +2,27 @@
 
 import { useCallback } from 'react'
 import {
+  encryptOutboundText,
   getAesKeyForChat,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
-import { encryptBinary } from '@/lib/crypto'
+import {
+  arrayBufferToBase64,
+  encryptBinary,
+  generateAesGcm256Key,
+} from '@/lib/crypto'
+import type { AttachmentEnvelopeV1 } from '@/lib/attachment-envelope'
 import { postUploadUrl } from '@/lib/api/storage'
 import { getFmSocket } from '@/lib/api/socket'
 import { isMediaTooLarge, MEDIA_TOO_LARGE_CODE } from '@/lib/media-limits'
 import { useChatStore } from '@/store/chatStore'
+
+function getSubtle(): SubtleCrypto {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('NO_SUBTLE')
+  }
+  return globalThis.crypto.subtle
+}
 
 async function putWithRetry(
   uploadUrl: string,
@@ -34,7 +47,32 @@ async function putWithRetry(
     }
     await new Promise((r) => setTimeout(r, 350 * attempt))
   }
-  throw (lastErr instanceof Error ? lastErr : new Error('MINIO_PUT_FAILED'))
+  throw lastErr instanceof Error ? lastErr : new Error('MINIO_PUT_FAILED')
+}
+
+function extFromMimeAndName(
+  mediaType: 'audio' | 'video' | 'image' | 'file',
+  fileType: string,
+  fileName: string
+): string {
+  const ft = fileType.toLowerCase()
+  if (ft.includes('png')) return 'png'
+  if (ft.includes('gif')) return 'gif'
+  if (ft.includes('webp')) return 'webp'
+  if (ft.includes('jpeg') || ft.includes('jpg')) return 'jpg'
+  if (ft.includes('mp4')) return 'mp4'
+  if (ft.includes('quicktime')) return 'mov'
+  if (ft.includes('mpeg') || ft.includes('mp3')) return 'mp3'
+  if (ft.includes('ogg')) return 'ogg'
+  if (ft.includes('wav')) return 'wav'
+  if (ft.includes('pdf')) return 'pdf'
+  if (ft.includes('zip')) return 'zip'
+  if (mediaType === 'audio') return 'webm'
+  if (mediaType === 'video') return 'webm'
+  if (mediaType === 'image') return 'jpg'
+  const base = fileName.split(/[/\\]/).pop() ?? fileName
+  const m = base.match(/(\.[a-zA-Z0-9]{1,12})$/)
+  return m ? m[1].replace('.', '').toLowerCase() : 'bin'
 }
 
 export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
@@ -45,67 +83,97 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
   const sendMedia = useCallback(
     async (
       blob: Blob,
-      mediaType: 'audio' | 'video' | 'image',
+      mediaType: 'audio' | 'video' | 'image' | 'file',
       _caption?: string,
       options?: { fileName?: string; fileType?: string }
     ) => {
       if (!activeChatId || !userId || !unwrappedPrivateKey || !cryptoCtx) {
         return
       }
-      // Guard before any ArrayBuffer allocation to avoid browser OOM.
       if (isMediaTooLarge(blob.size)) {
         throw new Error(MEDIA_TOO_LARGE_CODE)
       }
 
       const aesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
+      const fileKey = await generateAesGcm256Key()
       const plain = await blob.arrayBuffer()
-      const { cipher, ivBase64 } = await encryptBinary(aesKey, plain)
+      const fileIv = new Uint8Array(12)
+      crypto.getRandomValues(fileIv)
+      const cipher = await getSubtle().encrypt(
+        { name: 'AES-GCM', iv: fileIv as BufferSource },
+        fileKey,
+        plain as BufferSource
+      )
+      const rawKey = await getSubtle().exportKey('raw', fileKey)
+      const { cipher: wrapCipher, ivBase64: wrapIv } = await encryptBinary(
+        aesKey,
+        rawKey as ArrayBuffer
+      )
 
       const inferredType =
         mediaType === 'audio'
           ? 'audio/webm'
           : mediaType === 'video'
             ? 'video/webm'
-            : 'image/jpeg'
+            : mediaType === 'image'
+              ? 'image/jpeg'
+              : 'application/octet-stream'
       const fileType = options?.fileType?.trim() || inferredType
-      const ext =
-        fileType.includes('png')
-          ? 'png'
-          : fileType.includes('gif')
-            ? 'gif'
-            : fileType.includes('webp')
-              ? 'webp'
-              : fileType.includes('jpeg') || fileType.includes('jpg')
-                ? 'jpg'
-                : fileType.includes('mp4')
-                  ? 'mp4'
-                  : fileType.includes('mpeg')
-                    ? 'mp3'
-                    : 'webm'
+      const ext = extFromMimeAndName(
+        mediaType,
+        fileType,
+        options?.fileName ?? 'unnamed.bin'
+      )
       const defaultName =
         mediaType === 'audio'
           ? `voice-${Date.now()}.${ext}`
           : mediaType === 'video'
             ? `video-${Date.now()}.${ext}`
-            : `image-${Date.now()}.${ext}`
+            : mediaType === 'image'
+              ? `image-${Date.now()}.${ext}`
+              : `file-${Date.now()}.${ext}`
       const fileName = options?.fileName?.trim() || defaultName
+      const uploadName = fileName.includes('.') ? fileName : `${fileName}.${ext}`
+
+      const envelope: AttachmentEnvelopeV1 = {
+        p13: 'attachment',
+        v: 1,
+        fileName: uploadName,
+        fileSize: blob.size,
+        mimeType: fileType,
+        wrapIv,
+        wrapCt: arrayBufferToBase64(wrapCipher),
+      }
+
+      const { encrypted_content, iv } = await encryptOutboundText(
+        unwrappedPrivateKey,
+        JSON.stringify(envelope),
+        cryptoCtx
+      )
 
       const { uploadUrl, filePath } = await postUploadUrl({
         chatId: activeChatId,
-        fileName,
+        fileName: uploadName,
         fileType,
       })
 
       await putWithRetry(uploadUrl, fileType, cipher)
 
+      const ivB64 = arrayBufferToBase64(
+        fileIv.buffer.slice(
+          fileIv.byteOffset,
+          fileIv.byteOffset + fileIv.byteLength
+        )
+      )
+
       getFmSocket().send({
         type: 'chat_message',
         chat_id: activeChatId,
-        content: null,
-        iv: null,
+        content: encrypted_content,
+        iv,
         media_path: filePath,
         media_type: mediaType,
-        media_iv: ivBase64,
+        media_iv: ivB64,
       })
     },
     [activeChatId, userId, unwrappedPrivateKey, cryptoCtx]

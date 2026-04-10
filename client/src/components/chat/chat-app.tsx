@@ -12,6 +12,7 @@ import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
 import { useCryptoVault } from '@/hooks/use-crypto-vault'
 import { useSendMessage } from '@/hooks/use-send-message'
+import { useSendMediaMessage } from '@/hooks/use-send-media-message'
 import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
 import {
@@ -30,7 +31,6 @@ import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
 import { ChatMediaControls } from '@/components/chat/chat-media-controls'
-import { ChatInput } from '@/components/chat/chat-input'
 import { LogoutButton } from '@/components/logout-button'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
@@ -229,6 +229,7 @@ export function ChatApp({
   const sharedKey = useChatAesKey(cryptoCtx)
   useMessages(cryptoCtx)
   const { sendText } = useSendMessage(cryptoCtx)
+  const { sendMedia } = useSendMediaMessage(cryptoCtx)
   useGroupKeyDistribution(cryptoCtx, reload)
 
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
@@ -430,18 +431,18 @@ export function ChatApp({
         />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {ctxError ? (
-            <div className="shrink-0 border-b border-neon-red px-3 py-1 font-mono text-xs text-neon-red">
-              [!] {ctxError}
+            <div className="shrink-0 border-b border-zinc-800 px-3 py-1 font-mono text-xs text-zinc-500">
+              SIGNAL LOST
             </div>
           ) : null}
           {mediaAccessError ? (
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neon-red px-3 py-1 font-mono text-[11px] leading-snug text-neon-red">
-              <span>[!] {mediaAccessError}</span>
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-3 py-1 font-mono text-[11px] leading-snug text-zinc-500">
+              <span>ERROR</span>
               <button
                 type="button"
                 onClick={clearMediaAccessError}
-                className="shrink-0 font-mono text-[10px] text-red-800 hover:text-neon-red"
-                aria-label="Dismiss media error"
+                className="shrink-0 font-mono text-[10px] text-zinc-600 hover:text-zinc-400"
+                aria-label="Dismiss"
               >
                 [X]
               </button>
@@ -456,6 +457,10 @@ export function ChatApp({
             senderRoles={memberRoleByUser}
             myAvatarKey={user?.avatar_key ?? null}
             peerAvatarKey={peerAvatarKey}
+            cryptoCtx={cryptoCtx}
+            sendText={sendText}
+            sendMedia={sendMedia}
+            composeDisabled={!activeChatId || !!ctxError}
           />
           {scratchers.length > 0 ? (
             <div className="shrink-0 border-b border-neon-cyan/25 bg-black px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90">
@@ -465,10 +470,7 @@ export function ChatApp({
           ) : null}
           <ChatMediaControls
             cryptoCtx={cryptoCtx}
-            disabled={!activeChatId || !!ctxError}
-          />
-          <ChatInput
-            sendText={sendText}
+            sendMedia={sendMedia}
             disabled={!activeChatId || !!ctxError}
           />
         </div>

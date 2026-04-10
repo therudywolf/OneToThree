@@ -16,7 +16,7 @@ export function registerGlobalErrorHandler(app: FastifyInstance): void {
     if (statusCode >= 500) {
       reply.status(statusCode).send(
         isProd
-          ? { error: 'INTERNAL_ERROR' }
+          ? { error: 'INTERNAL_SERVER_ERROR' }
           : { error: error.message, stack: error.stack }
       )
       return

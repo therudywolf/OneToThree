@@ -12,8 +12,17 @@ const ru = {
   'common.toggleLanguageAria': 'Переключить язык',
 
   'errors.boundaryGeneric': 'Сигнал потерян. Повторите попытку.',
+  'errors.signalLost': 'СИГНАЛ ПОТЕРЯН',
   'errors.retrySession': 'Перезагрузить',
   'errors.generic': 'Ошибка',
+
+  'attach.pickAria': 'Прикрепить файл',
+  'attach.transmit': '[ TX ]',
+  'attach.clear': '[ СБРОС ]',
+  'attach.removeAria': 'Убрать из очереди',
+
+  'media.loading': '…',
+  'media.download': 'СКАЧАТЬ',
 
   'login.usernameRequired': 'Требуется имя пользователя.',
   'login.passwordRequired': 'Требуется парольная фраза.',

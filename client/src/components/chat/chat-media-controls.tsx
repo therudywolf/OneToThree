@@ -1,18 +1,24 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { useMediaRecorder } from '@/hooks/use-media-recorder'
-import { useSendMediaMessage } from '@/hooks/use-send-media-message'
 import {
   isMediaTooLarge,
   MAX_FILE_SIZE_LABEL,
-  MEDIA_ACCESS_ERROR_MESSAGE,
   MEDIA_TOO_LARGE_CODE,
 } from '@/lib/media-limits'
 
+type SendMediaFn = (
+  blob: Blob,
+  mediaType: 'audio' | 'video' | 'image' | 'file',
+  caption?: string,
+  options?: { fileName?: string; fileType?: string }
+) => Promise<void>
+
 type Props = {
   cryptoCtx: ChatCryptoContext | null
+  sendMedia: SendMediaFn
   disabled?: boolean
 }
 
@@ -72,8 +78,7 @@ function useAudioAnalyser(isRecording: boolean) {
   return { level, connectStream, disconnect }
 }
 
-export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
-  const { sendMedia } = useSendMediaMessage(cryptoCtx)
+export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
   const {
     isRecording,
     error,
@@ -94,26 +99,13 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
   const [cancelled, setCancelled] = useState(false)
   const startXRef = useRef(0)
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const [uiError, setUiError] = useState<string | null>(null)
-  const renderedError =
-    uiError ??
-    (error === MEDIA_TOO_LARGE_CODE
-      ? `[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`
-      : error === MEDIA_ACCESS_ERROR_MESSAGE
-        ? `[ ERROR ] ${MEDIA_ACCESS_ERROR_MESSAGE}`
-        : error
-          ? `[!] ${error}`
-          : null)
+  const [banner, setBanner] = useState(false)
 
   useEffect(() => {
-    if (!renderedError) return
-    const id = window.setTimeout(() => {
-      setUiError(null)
-      clearError()
-    }, 5000)
+    if (!banner) return
+    const id = window.setTimeout(() => setBanner(false), 4000)
     return () => window.clearTimeout(id)
-  }, [clearError, renderedError])
+  }, [banner])
 
   useEffect(() => {
     if (!isRecording) {
@@ -147,67 +139,32 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
       const r = await stopCapture()
       if (!r || !cryptoCtx || !sendIt) return
       try {
-        await sendMedia(r.blob, currentMode === 'voice' ? 'audio' : 'video')
-      } catch (e) {
-        if (
-          e instanceof Error &&
-          e.message.includes(MEDIA_TOO_LARGE_CODE)
-        ) {
-          setUiError(`[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`)
-        } else {
-          setUiError('[ ERROR ] MEDIA_SEND_FAILED')
+        if (isMediaTooLarge(r.blob.size)) {
+          setBanner(true)
+          return
         }
+        await sendMedia(r.blob, currentMode === 'voice' ? 'audio' : 'video')
+      } catch {
+        setBanner(true)
       }
     } finally {
       busyRef.current = false
     }
   }
 
-  async function handleAttachmentPick(ev: ChangeEvent<HTMLInputElement>) {
-    const file = ev.target.files?.[0]
-    ev.target.value = ''
-    if (!file || disabled || !cryptoCtx) return
-    // Hard stop before any reader/arrayBuffer allocation.
-    if (isMediaTooLarge(file.size)) {
-      setUiError(`[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`)
-      return
-    }
-    const mediaType =
-      file.type.startsWith('image/')
-        ? 'image'
-        : file.type.startsWith('video/')
-          ? 'video'
-          : file.type.startsWith('audio/')
-            ? 'audio'
-            : null
-    if (!mediaType) {
-      setUiError('[ ERROR ] MEDIA_TYPE_UNSUPPORTED')
-      return
-    }
-    try {
-      await sendMedia(file, mediaType, undefined, {
-        fileName: file.name,
-        fileType: file.type || undefined,
-      })
-    } catch (e) {
-      if (e instanceof Error && e.message.includes(MEDIA_TOO_LARGE_CODE)) {
-        setUiError(`[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`)
-      } else {
-        setUiError('[ ERROR ] MEDIA_SEND_FAILED')
-      }
-    }
-  }
-
   const fmtElapsed = `${String(Math.floor(elapsed / 60000)).padStart(2, '0')}:${String(Math.floor((elapsed / 1000) % 60)).padStart(2, '0')}`
+
+  const showRecorderError =
+    error &&
+    error !== MEDIA_TOO_LARGE_CODE &&
+    error.length > 0
 
   return (
     <div className="shrink-0 border-t border-neon-cyan/30 bg-black px-2 py-2">
       {isRecording && mode ? (
         <div className="mb-2 space-y-2">
           <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-widest">
-            <span className="animate-pulse text-neon-red">
-              REC :: {mode}
-            </span>
+            <span className="animate-pulse text-neon-red">REC :: {mode}</span>
             <span className="tabular-nums text-red-800">{fmtElapsed}</span>
             {cancelled ? (
               <span className="text-neon-cyan">SLIDE_RELEASE_TO_CANCEL</span>
@@ -216,7 +173,13 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
           {mode === 'voice' ? (
             <div className="flex h-6 items-end gap-[2px]">
               {Array.from({ length: 24 }, (_, i) => {
-                const h = Math.max(4, Math.min(24, level * 120 + Math.sin(i * 0.8 + elapsed * 0.01) * 4))
+                const h = Math.max(
+                  4,
+                  Math.min(
+                    24,
+                    level * 120 + Math.sin(i * 0.8 + elapsed * 0.01) * 4
+                  )
+                )
                 return (
                   <div
                     key={i}
@@ -242,49 +205,27 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
       ) : null}
       {!isRecording ? (
         <div className="mb-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
-          <span>:: MEDIA</span>
+          <span>:: CAPTURE</span>
         </div>
       ) : null}
-      {renderedError ? (
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <p className="font-mono text-[10px] text-neon-red">{renderedError}</p>
-          <button
-            type="button"
-            onClick={() => {
-              setUiError(null)
-              clearError()
-            }}
-            className="font-mono text-[10px] text-red-800 hover:text-neon-red"
-            aria-label="Dismiss media error"
-          >
-            [X]
-          </button>
-        </div>
+      {banner ? (
+        <p className="mb-1 font-mono text-[10px] text-zinc-500">ERROR</p>
+      ) : null}
+      {showRecorderError ? (
+        <p className="mb-1 font-mono text-[10px] text-zinc-500">SIGNAL LOST</p>
+      ) : null}
+      {error === MEDIA_TOO_LARGE_CODE ? (
+        <p className="mb-1 font-mono text-[10px] text-zinc-500">ERROR</p>
       ) : null}
       {!isRecording ? (
         <p className="mb-1 font-mono text-[10px] text-red-800">
           :: MAX_MEDIA_SIZE {MAX_FILE_SIZE_LABEL}
         </p>
       ) : null}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*,video/*,audio/*"
-        className="hidden"
-        onChange={(ev) => void handleAttachmentPick(ev)}
-      />
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           disabled={disabled || !cryptoCtx || isRecording}
-          onClick={() => fileInputRef.current?.click()}
-          className="rounded-none border border-neon-cyan/60 bg-black px-3 py-2 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
-        >
-          [ ATTACH ]
-        </button>
-        <button
-          type="button"
-          disabled={disabled || !cryptoCtx}
           onPointerDown={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.currentTarget.setPointerCapture(e.pointerId)
@@ -293,7 +234,9 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
             modeRef.current = 'voice'
             setMode('voice')
             void startVoiceCapture().then(() => {
-              const mr = (window as unknown as { __p13_last_stream?: MediaStream }).__p13_last_stream
+              const mr = (
+                window as unknown as { __p13_last_stream?: MediaStream }
+              ).__p13_last_stream
               if (mr) connectStream(mr)
             })
           }}
@@ -329,6 +272,15 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
         >
           {isRecording && mode === 'video' ? '[ ● REC ]' : '[ HOLD :: CIRCLE ]'}
         </button>
+        {showRecorderError ? (
+          <button
+            type="button"
+            onClick={() => clearError()}
+            className="font-mono text-[10px] text-zinc-600 hover:text-zinc-400"
+          >
+            [X]
+          </button>
+        ) : null}
       </div>
     </div>
   )

@@ -13,6 +13,7 @@ ForestMessenger/
 ├── docker-compose.yml          # Dev-oriented compose (optional local lane)
 ├── Caddyfile                   # TLS + reverse proxy to web / api / MinIO hostnames
 ├── env.prod.example            # Template → copy to `.env.prod` (secrets)
+├── .env.prod.example           # Same contract as env.prod.example (docs / CI)
 ├── MANIFEST.md                 # This file
 ├── certs/                      # Host-mounted PEMs (not committed)
 │   ├── cert.pem                # TLS certificate
@@ -41,7 +42,7 @@ ForestMessenger/
 - **`next.config.js`:** `compiler.removeConsole` in production (keeps `warn` / `error` for non-shipped diagnostics; `log` / `debug` / `info` removed at build).
 - **`SilenceConsole`:** mounted from `client/src/app/layout.tsx` — runtime no-op for `console.log` / `debug` / `info` in production.
 - **Error boundary:** generic localized copy only (`errors.boundaryGeneric` / `errors.retrySession`); no stack traces or raw `Error.message` in the UI.
-- **Fastify `setErrorHandler`:** full error logged server-side; clients receive **`{ "error": "INTERNAL_ERROR" }`** for **5xx** in production (see `server/src/lib/error-handler.ts`).
+- **Fastify `setErrorHandler`:** full error logged server-side; clients receive **`{ "error": "INTERNAL_SERVER_ERROR" }`** for **5xx** in production (see `server/src/lib/error-handler.ts`).
 
 ---
 
@@ -87,6 +88,30 @@ Use this as a mental checklist; fix blockers before pointing users at the host.
 | Caddy → **web** (Next) and **api** (Fastify) upstreams | Mis-typed `Caddyfile` host blocks → 502 |
 | **WebSocket** upgrade through Caddy to API signaling | Proxy must pass `Upgrade` / `Connection`; timeouts too low → dropped signaling |
 | **WebRTC** (STUN + signaling) | Firewall/NAT symmetric issues are outside the repo; STUN must be reachable |
+
+---
+
+## Single Claw file verification (Cursor-checked)
+
+| Artifact | Role |
+|----------|------|
+| `setup.sh` | Automator — Compose up with env + cert warnings |
+| `docker-compose.prod.yml` | Orchestrator — services, volumes, health |
+| `Caddyfile` | Shield — TLS + reverse proxy |
+| `env.prod.example` / `.env.prod.example` | Template — copy to `.env.prod` |
+| `client/Dockerfile` | Web blueprint |
+| `server/Dockerfile` | API blueprint |
+
+---
+
+## Alpha checklist (RU) — после деплоя
+
+1. **DNS:** `onetothree.ru`, `api.onetothree.ru`, `s3.onetothree.ru` → **A** на **5.187.0.150** (проверить с внешней машины).
+2. **Сертификаты:** `certs/cert.pem` и `certs/key.pem` на сервере в каталоге репозитория.
+3. **Окружение:** из шаблона (`.env.prod.example` или `env.prod.example`) → **`.env.prod`**, заполнить JWT, пароли БД/MinIO, `CORS_ORIGIN`, `NEXT_PUBLIC_*`.
+4. **Запуск:** `chmod +x setup.sh && ./setup.sh`.
+5. **Warden:** первый админ — по README (SQL в контейнере БД).
+6. **Silence check:** в браузере нет «отладочных» панелей и технических кодов в UI при сбоях — только суровый Noir (`SIGNAL LOST` / `ERROR`). Технические детали — **`docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f api`**.
 
 ---
 

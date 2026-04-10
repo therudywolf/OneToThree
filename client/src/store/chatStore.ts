@@ -9,6 +9,7 @@ type ChatState = {
   setActiveChatId: (id: string | null) => void
   setMessages: (messages: DecryptedMessage[]) => void
   appendMessage: (m: DecryptedMessage) => void
+  removeMessage: (id: string) => void
   setUnwrappedPrivateKey: (k: CryptoKey | null) => void
   setUserId: (id: string | null) => void
   reset: () => void
@@ -33,6 +34,10 @@ export const useChatStore = create<ChatState>((set) => ({
         ),
       }
     }),
+  removeMessage: (id) =>
+    set((s) => ({
+      messages: s.messages.filter((m) => m.id !== id),
+    })),
   setUnwrappedPrivateKey: (k) => set({ unwrappedPrivateKey: k }),
   setUserId: (id) => set({ userId: id }),
   reset: () =>

@@ -12,6 +12,7 @@ import type { DecryptedMessage } from '@/types/chat'
 export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const appendMessage = useChatStore((s) => s.appendMessage)
+  const removeMessage = useChatStore((s) => s.removeMessage)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
 
   useEffect(() => {
@@ -21,6 +22,10 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
 
     const socket = getFmSocket()
     const off = socket.subscribe((msg) => {
+      if (msg.type === 'message_deleted') {
+        if (msg.chat_id === activeChatId) removeMessage(msg.message_id)
+        return
+      }
       if (msg.type !== 'chat_message') return
       const m = msg.message
       if (m.chat_id !== activeChatId) return
@@ -58,5 +63,5 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
     })
 
     return off
-  }, [activeChatId, cryptoCtx, unwrappedPrivateKey, appendMessage])
+  }, [activeChatId, cryptoCtx, unwrappedPrivateKey, appendMessage, removeMessage])
 }

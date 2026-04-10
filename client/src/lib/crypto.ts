@@ -225,6 +225,10 @@ export async function decryptBinary(
 
 /* —— ECDSA P-256 (challenge–response auth; distinct from ECDH above) —— */
 
+/**
+ * Generate an ECDSA P-256 key pair for challenge-response authentication.
+ * The private key signs server-issued nonces; the public JWK is stored server-side.
+ */
 export async function generateEcdsaP256KeyPair(): Promise<CryptoKeyPair> {
   return getSubtle().generateKey(
     { name: 'ECDSA', namedCurve: 'P-256' },
@@ -233,16 +237,19 @@ export async function generateEcdsaP256KeyPair(): Promise<CryptoKeyPair> {
   )
 }
 
+/** Export ECDSA private key as JWK text for encrypted vault storage. */
 export async function exportEcdsaPrivateKeyJwk(key: CryptoKey): Promise<string> {
   const jwk = await getSubtle().exportKey('jwk', key)
   return JSON.stringify(jwk)
 }
 
+/** Export ECDSA public key as JWK text for server registration. */
 export async function exportEcdsaPublicKeyJwk(key: CryptoKey): Promise<string> {
   const jwk = await getSubtle().exportKey('jwk', key)
   return JSON.stringify(jwk)
 }
 
+/** Import an ECDSA private JWK for signing (non-extractable after import). */
 export async function importEcdsaPrivateKeyForSign(
   jwkString: string
 ): Promise<CryptoKey> {

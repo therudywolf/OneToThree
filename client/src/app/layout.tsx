@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/auth/auth-provider'
+import { ErrorBoundary } from '@/components/error-boundary'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -15,6 +16,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: '#000000',
   colorScheme: 'dark',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({
@@ -24,13 +29,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="bg-void">
-      <body className="relative min-h-screen bg-void">
-        <AuthProvider>
-          <div className="crt-overlay" aria-hidden />
-          <div className="crt-vignette relative z-10 min-h-screen">
-            {children}
-          </div>
-        </AuthProvider>
+      <body className="relative min-h-dvh bg-void">
+        <ErrorBoundary>
+          <AuthProvider>
+            <div className="crt-overlay" aria-hidden />
+            <div className="crt-vignette relative z-10 min-h-dvh">
+              {children}
+            </div>
+          </AuthProvider>
+        </ErrorBoundary>
       </body>
     </html>
   )

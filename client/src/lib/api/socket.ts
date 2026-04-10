@@ -37,6 +37,7 @@ export type WsInboundMessage =
     }
   | { type: 'webrtc_signal'; fromUserId: string; signalData: unknown }
   | { type: 'chats_updated' }
+  | { type: 'message_deleted'; message_id: string; chat_id: string }
   | { type: 'error'; error: string }
 
 class FmSocketClient {

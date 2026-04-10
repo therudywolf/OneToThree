@@ -18,7 +18,8 @@
     "db:push": "drizzle-kit push --config drizzle.config.ts",
     "db:push:docker": "node --env-file=docker.db.env ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config drizzle.config.ts",
-    "typecheck": "npm run typecheck -w project-13-client && npm run typecheck -w project-13-server"
+    "typecheck": "npm run typecheck -w project-13-client && npm run typecheck -w project-13-server",
+    "backup": "npx tsx scripts/backup.ts"
   },
   "devDependencies": {
     "dotenv": "^16.6.1",

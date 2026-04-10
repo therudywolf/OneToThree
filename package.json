@@ -19,6 +19,7 @@
     "test:e2e": "npm run test:e2e -w project-13-client",
     "test:all": "npm run typecheck && npm run lint && npm run test:server && npm run test:unit:client && npm run test:e2e",
     "docker:up": "docker compose up --build",
+    "docker:up:d": "docker compose up --build -d",
     "docker:down": "docker compose down",
     "db:generate": "node ./node_modules/drizzle-kit/bin.cjs generate --config drizzle.config.ts",
     "db:push": "node ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",

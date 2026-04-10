@@ -23,7 +23,7 @@ export async function fetchChatsList(): Promise<ApiChatRow[]> {
 }
 
 export async function createDirectE2EChat(
-  myUserId: string,
+  _myUserId: string,
   peerUserId: string
 ): Promise<ApiChatRow> {
   const res = await fetch(`${API_URL}/chats`, {
@@ -32,7 +32,7 @@ export async function createDirectE2EChat(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       type: 'direct_e2e',
-      member_ids: [myUserId, peerUserId],
+      member_ids: [peerUserId],
     }),
   })
   const data = (await res.json().catch(() => ({}))) as {

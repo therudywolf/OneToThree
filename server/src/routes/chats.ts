@@ -22,7 +22,10 @@ const createChatSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.type === 'direct_e2e') {
-      if (!data.member_ids || data.member_ids.length !== 2) {
+      if (
+        !data.member_ids ||
+        (data.member_ids.length !== 1 && data.member_ids.length !== 2)
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: 'DIRECT_REQUIRES_TWO_MEMBERS',
@@ -237,9 +240,39 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const memberSet = new Set(member_ids)
-    memberSet.add(user.id)
-    const uniqueIds = [...memberSet]
+    let uniqueIds: string[]
+    if (type === 'direct_e2e') {
+      if (member_ids.length === 1) {
+        const peer = member_ids[0]
+        if (!peer || peer === user.id) {
+          return reply
+            .status(400)
+            .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
+        }
+        uniqueIds = [user.id, peer]
+      } else if (member_ids.length === 2) {
+        if (!member_ids.includes(user.id)) {
+          return reply
+            .status(400)
+            .send({ error: 'DIRECT_REQUIRES_AUTH_MEMBER' })
+        }
+        const peer = member_ids.find((id) => id !== user.id)
+        if (!peer) {
+          return reply
+            .status(400)
+            .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
+        }
+        uniqueIds = [user.id, peer]
+      } else {
+        return reply
+          .status(400)
+          .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
+      }
+    } else {
+      const memberSet = new Set(member_ids)
+      memberSet.add(user.id)
+      uniqueIds = [...memberSet]
+    }
 
     if (type === 'direct_e2e' && uniqueIds.length !== 2) {
       return reply

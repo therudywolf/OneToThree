@@ -55,7 +55,7 @@ const en = {
     'The server stores only public keys and encrypted message blobs. It cannot read messages or decrypt media.',
   'guide.discoverability.title': 'Discoverability',
   'guide.discoverability.body':
-    'By default your account is hidden. Enable Discoverable in Settings to be found by username.',
+    'You can hide from username search in Settings (Discoverable). Others need it on to be found by name; invite links always work.',
   'guide.backup.title': 'Back up your vault',
   'guide.backup.body':
     'Use Settings -> Export Vault to save an encrypted backup. Import it on a new device to restore access.',
@@ -68,8 +68,40 @@ const en = {
   'sidebar.cannotOpenSelf': 'You cannot open a direct chat with yourself',
   'sidebar.createFailed': 'Failed to create chat',
 
+  'group.dialogAria': 'Create encrypted group',
+  'group.title': '[ NEW_GROUP_E2E ]',
+  'group.hintEcdh':
+    'Each member must have ECDH published (unlock vault once so keys sync to the server).',
+  'group.channelName': '> CHANNEL_NAME',
+  'group.optional': 'optional',
+  'group.searchLabel': '> RADAR_SEARCH',
+  'group.searchPlaceholder': 'username, UUID, or pasted invite link',
+  'group.scanning': 'SCAN…',
+  'group.noHits':
+    'NO_HITS — user must be discoverable in Settings, or search by exact UUID / invite.',
+  'group.noEcdhBadge': 'NO_ECDH',
+  'group.selectedLabel': ':: selected',
+  'group.selectHint': 'Pick at least one user from the list above.',
+  'group.create': 'CREATE',
+  'group.creating': '…',
+  'group.cancel': 'CANCEL',
+  'group.noVault': 'Session vault is locked — unlock the vault first.',
+  'group.noSession': 'No user id in session — reload the page.',
+  'group.needMember': 'Add at least one other member.',
+  'group.missingEcdh':
+    'User «{name}» has no ECDH on the server — they must unlock vault once.',
+  'group.lookupFailed': 'Could not load user profiles from the server.',
+  'group.unknownUser': 'One of the users does not exist on the server.',
+  'group.createFailed': 'Group creation failed.',
+  'group.timeout': 'Request timed out — try again or check the network.',
+  'group.serverInvalid': 'Invalid request to server.',
+  'group.serverDuplicate': 'Duplicate member in request.',
+  'group.creatorMissing': 'Creator must be included in the member list.',
+
   'settings.discoverable': 'Discoverable',
-  'settings.discoverableHint': 'Visible in public user search',
+  'settings.discoverableHint':
+    'Lets others find you by username. To find someone else, they must enable this too.',
+  'settings.loadFailed': 'Could not load settings (check login / network)',
   'settings.vaultBackup': 'Vault backup',
   'settings.languageHint': 'Choose interface language',
   'settings.noLocalVault': 'No local vault',

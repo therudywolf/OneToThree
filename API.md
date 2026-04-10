@@ -20,7 +20,7 @@ All endpoints are prefixed with `/api`. Authentication is via `fm_session` cooki
 |--------|------|------|-------------|
 | `GET` | `/users/me/settings` | Yes | Get `{ is_discoverable }`. |
 | `PATCH` | `/users/me` | Yes | Update ECDH public key and/or discoverability. Body: `{ ecdh_public_key_jwk?, is_discoverable? }`. |
-| `GET` | `/users/search?q=` | No | Search discoverable users by username. |
+| `GET` | `/users/search?q=` | No | Search discoverable users by username substring. If `q` is a UUID, returns that user by id (so invite IDs work even when the account is not discoverable). |
 | `POST` | `/users/lookup` | Yes | Bulk lookup by IDs. Body: `{ user_ids: string[] }`. |
 
 ## Chats
@@ -29,7 +29,7 @@ All endpoints are prefixed with `/api`. Authentication is via `fm_session` cooki
 |--------|------|------|-------------|
 | `GET` | `/chats` | Yes | List user's chats with encrypted group keys. |
 | `GET` | `/chats/:chatId` | Yes | Get chat details + members + ECDH public keys. |
-| `POST` | `/chats` | Yes | Create chat (direct_e2e, group_e2e, public_open). |
+| `POST` | `/chats` | Yes | Create chat (direct_e2e, group_e2e, public_open). For `direct_e2e`, `member_ids` may be a single peer UUID (session user is added by the server) or two UUIDs including the caller. |
 | `POST` | `/chats/:chatId/leave` | Yes | Leave a group chat. Auto-deletes orphaned chats. |
 | `DELETE` | `/chats/:chatId` | Yes | Delete chat + all messages (member only). |
 

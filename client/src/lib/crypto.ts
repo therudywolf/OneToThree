@@ -247,6 +247,40 @@ export async function decryptBinary(
   )
 }
 
+/** Base64 (standard) for arbitrary binary (e.g. attachment key wrap). */
+export function arrayBufferToBase64(buf: ArrayBuffer): string {
+  return uint8ToBase64(new Uint8Array(buf))
+}
+
+export function base64ToArrayBuffer(b64: string): ArrayBuffer {
+  const u = base64ToUint8(b64)
+  const out = new ArrayBuffer(u.length)
+  new Uint8Array(out).set(u)
+  return out
+}
+
+/** Random AES-256-GCM key for per-file ciphertext (export raw for wrapping). */
+export async function generateAesGcm256Key(): Promise<CryptoKey> {
+  return getSubtle().generateKey(
+    { name: 'AES-GCM', length: AES_GCM_KEY_LENGTH },
+    true,
+    ['encrypt', 'decrypt']
+  )
+}
+
+export async function importAesGcm256RawKey(
+  raw: ArrayBuffer,
+  usages: KeyUsage[] = ['decrypt']
+): Promise<CryptoKey> {
+  return getSubtle().importKey(
+    'raw',
+    raw,
+    { name: 'AES-GCM', length: AES_GCM_KEY_LENGTH },
+    false,
+    usages
+  )
+}
+
 /* —— ECDSA P-256 (challenge–response auth; distinct from ECDH above) —— */
 
 /**

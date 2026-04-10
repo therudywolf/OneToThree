@@ -1,9 +1,12 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Check, CheckCheck, Crown, Star } from 'lucide-react'
+import { Check, CheckCheck, Crown, Paperclip, Star, X } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { MediaMessage } from '@/components/chat/media-message'
+import { ChatInput } from '@/components/chat/chat-input'
+import { parseAttachmentEnvelope } from '@/lib/attachment-envelope'
+import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { deleteMessage } from '@/lib/api/chats'
 import {
   deleteCachedMessage,
@@ -13,6 +16,8 @@ import { lookupUsers } from '@/lib/api/users'
 import { UserAvatar } from '@/components/user-avatar'
 import type { ApiChatRow, ChatMemberRole } from '@/lib/api/chats'
 import { useReadReceipts } from '@/hooks/use-read-receipts'
+import { useTranslation } from '@/hooks/use-translation'
+import { isMediaTooLarge } from '@/lib/media-limits'
 import type { DecryptedMessage } from '@/types/chat'
 
 const OLDER_PAGE_SIZE = 25
@@ -20,6 +25,37 @@ const OLDER_RAM_CAP = 200
 
 function shortId(id: string) {
   return `${id.slice(0, 8)}…`
+}
+
+type PendingAttach = {
+  id: string
+  file: File
+  kind: 'image' | 'video' | 'audio' | 'file'
+  previewUrl: string | null
+  audioTitle?: string
+  audioDurationSec?: number
+}
+
+function inferAttachmentKind(file: File): PendingAttach['kind'] {
+  if (file.type.startsWith('image/')) return 'image'
+  if (file.type.startsWith('video/')) return 'video'
+  if (file.type.startsWith('audio/')) return 'audio'
+  return 'file'
+}
+
+function readAudioMeta(url: string): Promise<{ duration: number }> {
+  return new Promise((resolve) => {
+    const a = document.createElement('audio')
+    a.preload = 'metadata'
+    a.src = url
+    const done = (duration: number) => {
+      a.src = ''
+      resolve({ duration })
+    }
+    a.onloadedmetadata = () =>
+      done(Number.isFinite(a.duration) ? a.duration : 0)
+    a.onerror = () => done(0)
+  })
 }
 
 export function ChatTerminal({
@@ -31,6 +67,10 @@ export function ChatTerminal({
   senderRoles = {},
   myAvatarKey = null,
   peerAvatarKey = null,
+  cryptoCtx,
+  sendText,
+  sendMedia,
+  composeDisabled = false,
 }: {
   userId: string
   sharedKey: CryptoKey | null
@@ -42,7 +82,17 @@ export function ChatTerminal({
   senderRoles?: Record<string, ChatMemberRole>
   myAvatarKey?: string | null
   peerAvatarKey?: string | null
+  cryptoCtx: ChatCryptoContext | null
+  sendText: (t: string, replyToId?: string | null) => Promise<void>
+  sendMedia: (
+    blob: Blob,
+    mediaType: 'audio' | 'video' | 'image' | 'file',
+    caption?: string,
+    options?: { fileName?: string; fileType?: string }
+  ) => Promise<void>
+  composeDisabled?: boolean
 }) {
+  const { t } = useTranslation()
   const messages = useChatStore((s) => s.messages)
   const readAtOverrides = useChatStore((s) => s.readAtOverrides)
   const removeMessage = useChatStore((s) => s.removeMessage)
@@ -63,6 +113,10 @@ export function ChatTerminal({
     y: number
     isMine: boolean
   } | null>(null)
+  const filePickerRef = useRef<HTMLInputElement>(null)
+  const [pendingAttach, setPendingAttach] = useState<PendingAttach[]>([])
+  const [attachBusy, setAttachBusy] = useState(false)
+  const [attachBanner, setAttachBanner] = useState(false)
 
   const isGroup = activeChat?.is_group ?? false
 
@@ -125,6 +179,13 @@ export function ChatTerminal({
     setOlderMessages([])
     setHasMoreOlder(true)
     setLoadingOlder(false)
+    setAttachBanner(false)
+    setPendingAttach((prev) => {
+      for (const p of prev) {
+        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl)
+      }
+      return []
+    })
   }, [activeChatId])
 
   useEffect(() => {
@@ -149,6 +210,78 @@ export function ChatTerminal({
     if (senderId === userId) return myAvatarKey ?? null
     if (!isGroup) return peerAvatarKey ?? null
     return senderMeta[senderId]?.avatar_key
+  }
+
+  function replySnippet(msg: DecryptedMessage): string {
+    const env = parseAttachmentEnvelope(msg.plaintext)
+    if (env) return env.fileName.length > 48 ? `${env.fileName.slice(0, 48)}…` : env.fileName
+    if (msg.plaintext && msg.plaintext !== '[DECRYPT_FAIL]') {
+      return msg.plaintext.length > 60 ? `${msg.plaintext.slice(0, 60)}…` : msg.plaintext
+    }
+    if (msg.media_path) return '[MEDIA]'
+    return '—'
+  }
+
+  async function onAttachFilesSelected(list: FileList | null) {
+    if (!list?.length || composeDisabled || !cryptoCtx) return
+    const next: PendingAttach[] = []
+    for (let i = 0; i < list.length; i++) {
+      const file = list[i]!
+      if (isMediaTooLarge(file.size)) {
+        setAttachBanner(true)
+        continue
+      }
+      const kind = inferAttachmentKind(file)
+      let previewUrl: string | null = null
+      let audioTitle: string | undefined
+      let audioDurationSec: number | undefined
+      if (kind === 'image' || kind === 'video' || kind === 'audio') {
+        previewUrl = URL.createObjectURL(file)
+      }
+      if (kind === 'audio' && previewUrl) {
+        const { duration } = await readAudioMeta(previewUrl)
+        audioDurationSec = duration
+        audioTitle = file.name.replace(/\.[^/.]+$/, '') || file.name
+      }
+      next.push({
+        id: `${Date.now()}-${i}-${file.name}`,
+        file,
+        kind,
+        previewUrl,
+        audioTitle,
+        audioDurationSec,
+      })
+    }
+    if (next.length) setPendingAttach((p) => [...p, ...next])
+  }
+
+  function removePending(id: string) {
+    setPendingAttach((prev) => {
+      const row = prev.find((x) => x.id === id)
+      if (row?.previewUrl) URL.revokeObjectURL(row.previewUrl)
+      return prev.filter((x) => x.id !== id)
+    })
+  }
+
+  async function transmitPending() {
+    if (!pendingAttach.length || attachBusy || composeDisabled || !cryptoCtx) return
+    setAttachBusy(true)
+    setAttachBanner(false)
+    try {
+      const batch = [...pendingAttach]
+      for (const p of batch) {
+        await sendMedia(p.file, p.kind, undefined, {
+          fileName: p.file.name,
+          fileType: p.file.type || undefined,
+        })
+        if (p.previewUrl) URL.revokeObjectURL(p.previewUrl)
+      }
+      setPendingAttach([])
+    } catch {
+      setAttachBanner(true)
+    } finally {
+      setAttachBusy(false)
+    }
   }
 
   function roleGlyph(senderId: string) {
@@ -225,7 +358,7 @@ export function ChatTerminal({
   }
 
   return (
-    <div className="crt-terminal-vignette relative min-h-0 flex-1 overflow-hidden bg-black">
+    <div className="crt-terminal-vignette relative flex min-h-0 flex-1 flex-col overflow-hidden bg-black">
       {ctxMenu ? (
         <div
           className="fixed z-50 border border-neon-red bg-black shadow-lg"
@@ -279,7 +412,7 @@ export function ChatTerminal({
       ) : null}
       <div
         ref={ref}
-        className="h-full overflow-y-auto px-4 py-3 font-mono text-sm text-neon-red"
+        className="min-h-0 flex-1 overflow-y-auto px-4 py-3 font-mono text-sm text-neon-red"
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
         {renderMessages.length === 0 ? (
@@ -355,10 +488,7 @@ export function ChatTerminal({
                       <span className="text-red-800">
                         ↳ {labelForSender(replyMsg.sender_id)}:
                       </span>{' '}
-                      {replyMsg.plaintext
-                        ? replyMsg.plaintext.slice(0, 60) +
-                          (replyMsg.plaintext.length > 60 ? '…' : '')
-                        : '[MEDIA]'}
+                      {replySnippet(replyMsg)}
                     </div>
                   ) : m.reply_to_id ? (
                     <div className="mb-1 text-[10px] text-red-900">
@@ -368,7 +498,7 @@ export function ChatTerminal({
                   <div className="mb-1 text-[9px] text-red-800/90">
                     {new Date(m.created_at).toLocaleString()}
                   </div>
-                  {m.plaintext ? (
+                  {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
                     <div className="whitespace-pre-wrap break-words">{m.plaintext}</div>
                   ) : null}
                   {m.media_path && m.media_iv && m.media_type ? (
@@ -392,6 +522,117 @@ export function ChatTerminal({
           )
         })}
         <div ref={bottomRef} className="h-px w-full shrink-0" aria-hidden />
+      </div>
+
+      <div className="shrink-0 border-t border-neon-cyan/25 bg-black px-2 py-2">
+        <input
+          ref={filePickerRef}
+          type="file"
+          multiple
+          className="hidden"
+          aria-label={t('attach.pickAria')}
+          onChange={(ev) => {
+            void onAttachFilesSelected(ev.target.files)
+            ev.target.value = ''
+          }}
+        />
+        {attachBanner ? (
+          <p className="mb-2 font-mono text-[10px] text-zinc-500">{t('errors.generic')}</p>
+        ) : null}
+        {pendingAttach.length > 0 ? (
+          <div className="mb-2 space-y-2">
+            <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+              {pendingAttach.map((p) => (
+                <div
+                  key={p.id}
+                  className="relative flex min-h-[4rem] min-w-[4rem] max-w-[10rem] items-center justify-center border border-neon-cyan/30 bg-black/80 p-1"
+                >
+                  {p.kind === 'image' && p.previewUrl ? (
+                    <img
+                      src={p.previewUrl}
+                      alt=""
+                      className="max-h-20 max-w-full object-contain"
+                    />
+                  ) : null}
+                  {p.kind === 'video' && p.previewUrl ? (
+                    <video
+                      src={p.previewUrl}
+                      className="max-h-20 max-w-full object-cover"
+                      muted
+                      playsInline
+                    />
+                  ) : null}
+                  {p.kind === 'audio' ? (
+                    <div className="px-1 font-mono text-[9px] text-zinc-400">
+                      <div className="truncate">{p.audioTitle ?? p.file.name}</div>
+                      {p.audioDurationSec != null && p.audioDurationSec > 0 ? (
+                        <div className="tabular-nums text-zinc-600">
+                          {Math.floor(p.audioDurationSec / 60)}:
+                          {String(Math.floor(p.audioDurationSec % 60)).padStart(2, '0')}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {p.kind === 'file' ? (
+                    <div className="px-1 font-mono text-[9px] text-zinc-400">
+                      <div className="break-all">{p.file.name}</div>
+                      <div className="text-zinc-600">
+                        {(p.file.size / 1024).toFixed(1)} KB
+                      </div>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => removePending(p.id)}
+                    className="absolute right-0 top-0 p-0.5 text-zinc-600 hover:text-neon-red"
+                    aria-label={t('attach.removeAria')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={attachBusy || composeDisabled}
+                onClick={() => void transmitPending()}
+                className="rounded-none border border-neon-cyan bg-black px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+              >
+                {t('attach.transmit')}
+              </button>
+              <button
+                type="button"
+                disabled={attachBusy}
+                onClick={() =>
+                  setPendingAttach((prev) => {
+                    for (const x of prev) {
+                      if (x.previewUrl) URL.revokeObjectURL(x.previewUrl)
+                    }
+                    return []
+                  })
+                }
+                className="rounded-none border border-red-900/60 bg-black px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-red-900 hover:border-neon-red hover:text-neon-red disabled:opacity-40"
+              >
+                {t('attach.clear')}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        <div className="flex items-stretch gap-2">
+          <button
+            type="button"
+            disabled={composeDisabled || !cryptoCtx}
+            onClick={() => filePickerRef.current?.click()}
+            className="flex shrink-0 items-center justify-center rounded-none border border-neon-cyan/60 bg-black px-2 text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+            aria-label={t('attach.pickAria')}
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+          <div className="min-w-0 flex-1">
+            <ChatInput sendText={sendText} disabled={composeDisabled} />
+          </div>
+        </div>
       </div>
     </div>
   )

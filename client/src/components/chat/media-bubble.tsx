@@ -1,13 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { decryptBinary } from '@/lib/crypto'
-import { getDownloadUrl } from '@/lib/api/storage'
 import {
-  getCachedMedia,
-  setCachedMedia,
-} from '@/lib/media-cache'
+  base64ToArrayBuffer,
+  decryptBinary,
+  importAesGcm256RawKey,
+} from '@/lib/crypto'
+import { getDownloadUrl } from '@/lib/api/storage'
+import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { useTranslation } from '@/hooks/use-translation'
+import { parseAttachmentEnvelope } from '@/lib/attachment-envelope'
 import type { DecryptedMessage } from '@/types/chat'
 
 function mimeFromPathAndType(
@@ -21,6 +23,7 @@ function mimeFromPathAndType(
   if (p.endsWith('.png')) return 'image/png'
   if (p.endsWith('.jpg') || p.endsWith('.jpeg')) return 'image/jpeg'
   if (p.endsWith('.gif')) return 'image/gif'
+  if (p.endsWith('.mp4')) return 'video/mp4'
   if (mediaType === 'audio') return 'audio/webm'
   if (mediaType === 'video') return 'video/webm'
   if (mediaType === 'image') return 'image/jpeg'
@@ -34,7 +37,6 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
-/** Deterministic bar heights for brutalist “waveform”. */
 function barHeightsFromId(id: string, n: number): number[] {
   let h = 0
   for (let i = 0; i < id.length; i++) {
@@ -48,11 +50,18 @@ function barHeightsFromId(id: string, n: number): number[] {
   return out
 }
 
+function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 type Props = {
   message: Pick<
     DecryptedMessage,
-    'media_path' | 'media_iv' | 'media_type'
-  > & { id: string }
+    'id' | 'media_path' | 'media_iv' | 'media_type'
+  > & { plaintext?: string | null }
   sharedKey: CryptoKey | null
 }
 
@@ -62,9 +71,19 @@ export function MediaBubble({ message, sharedKey }: Props) {
   const mediaIv = message.media_iv
   const mediaType = message.media_type
 
+  const envelope = useMemo(
+    () => parseAttachmentEnvelope(message.plaintext),
+    [message.plaintext]
+  )
+
+  const effectiveMime = useMemo(() => {
+    if (envelope?.mimeType) return envelope.mimeType
+    return mimeFromPathAndType(mediaPath ?? '', mediaType)
+  }, [envelope, mediaPath, mediaType])
+
   const blobUrlRef = useRef<string | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
-  const [loadErr, setLoadErr] = useState<string | null>(null)
+  const [loadErr, setLoadErr] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -94,7 +113,7 @@ export function MediaBubble({ message, sharedKey }: Props) {
 
   const decrypt = useCallback(async () => {
     if (!mediaPath || !mediaIv || !sharedKey) return
-    setLoadErr(null)
+    setLoadErr(false)
     setObjectUrl(null)
     try {
       const cached = await getCachedMedia(message.id)
@@ -108,26 +127,43 @@ export function MediaBubble({ message, sharedKey }: Props) {
       const downloadUrl = await getDownloadUrl(mediaPath)
       const res = await fetch(downloadUrl)
       if (res.status === 404 || res.status === 410) {
-        throw new Error('FILE_EXPIRED')
+        setLoadErr(true)
+        return
       }
-      if (!res.ok) throw new Error('FETCH_MEDIA_FAILED')
+      if (!res.ok) {
+        setLoadErr(true)
+        return
+      }
       const cipher = await res.arrayBuffer()
-      const plain = await decryptBinary(sharedKey, cipher, mediaIv)
-      const mime = mimeFromPathAndType(mediaPath, mediaType)
+      let plain: ArrayBuffer
+
+      if (envelope) {
+        const wrapPlain = await decryptBinary(
+          sharedKey,
+          base64ToArrayBuffer(envelope.wrapCt),
+          envelope.wrapIv
+        )
+        const fileKey = await importAesGcm256RawKey(wrapPlain, ['decrypt'])
+        const fileIv = new Uint8Array(base64ToArrayBuffer(mediaIv))
+        plain = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: fileIv as BufferSource },
+          fileKey,
+          cipher as BufferSource
+        )
+      } else {
+        plain = await decryptBinary(sharedKey, cipher, mediaIv)
+      }
+
+      const mime = envelope?.mimeType ?? mimeFromPathAndType(mediaPath, mediaType)
       const blob = new Blob([plain], { type: mime })
       await setCachedMedia(message.id, blob, mime)
       const url = URL.createObjectURL(blob)
       blobUrlRef.current = url
       setObjectUrl(url)
-    } catch (e) {
-      const code = e instanceof Error ? e.message : 'MEDIA_LOAD_FAIL'
-      if (code === 'FILE_EXPIRED') {
-        setLoadErr(t('media.fileExpiredServer'))
-      } else {
-        setLoadErr(code)
-      }
+    } catch {
+      setLoadErr(true)
     }
-  }, [mediaPath, mediaIv, sharedKey, mediaType, message.id, t])
+  }, [mediaPath, mediaIv, sharedKey, mediaType, message.id, envelope])
 
   useEffect(() => {
     if (!visible || !mediaPath || !mediaIv || !sharedKey) return
@@ -145,16 +181,16 @@ export function MediaBubble({ message, sharedKey }: Props) {
 
   if (!sharedKey) {
     return (
-      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-red-800">
-        NO_SESSION_KEY
+      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-zinc-500">
+        {t('errors.signalLost')}
       </div>
     )
   }
 
   if (loadErr) {
     return (
-      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-neon-red">
-        [!] {loadErr}
+      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-zinc-500">
+        {t('errors.signalLost')}
       </div>
     )
   }
@@ -163,16 +199,27 @@ export function MediaBubble({ message, sharedKey }: Props) {
     return (
       <div
         ref={sentinelRef}
-        className="mt-2 animate-pulse font-mono text-[10px] text-red-800"
+        className="mt-2 animate-pulse font-mono text-[10px] text-zinc-600"
       >
-        DECRYPTING_MEDIA…
+        {t('media.loading')}
       </div>
     )
   }
 
-  const mime = mimeFromPathAndType(mediaPath, mediaType)
+  const isImage =
+    mediaType === 'image' || effectiveMime.startsWith('image/')
+  const isAudio =
+    mediaType === 'audio' || effectiveMime.startsWith('audio/')
+  const isVideo =
+    mediaType === 'video' || effectiveMime.startsWith('video/')
+  const isFile =
+    mediaType === 'file' ||
+    (!isImage && !isAudio && !isVideo)
 
-  if (mediaType === 'image' || mime.startsWith('image/')) {
+  const displayName = envelope?.fileName ?? mediaPath.split('/').pop() ?? 'FILE'
+  const displaySize = envelope?.fileSize
+
+  if (isImage) {
     return (
       <img
         src={objectUrl}
@@ -182,7 +229,7 @@ export function MediaBubble({ message, sharedKey }: Props) {
     )
   }
 
-  if (mediaType === 'audio' || mime.startsWith('audio/')) {
+  if (isAudio) {
     return (
       <div className="mt-2 max-w-md rounded-none border border-neon-cyan bg-black p-2">
         <audio
@@ -247,37 +294,85 @@ export function MediaBubble({ message, sharedKey }: Props) {
     )
   }
 
-  return (
-    <div className="mt-2 max-w-xs border border-neon-cyan/40">
-      <div className="mx-auto aspect-square w-full max-w-[240px] overflow-hidden rounded-full border-2 border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.12)]">
+  if (isVideo) {
+    const circleStyle =
+      effectiveMime === 'video/webm' &&
+      (displayName.toLowerCase().includes('video-') ||
+        displayName.toLowerCase().endsWith('.webm'))
+
+    if (circleStyle) {
+      return (
+        <div className="mt-2 max-w-xs border border-neon-cyan/40">
+          <div className="mx-auto aspect-square w-full max-w-[240px] overflow-hidden rounded-full border-2 border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.12)]">
+            <video
+              ref={videoRef}
+              src={objectUrl}
+              className="h-full w-full object-cover"
+              playsInline
+              muted
+              autoPlay
+              loop
+              preload="metadata"
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+            />
+          </div>
+          <div className="flex items-center gap-2 border-t border-neon-cyan/30 p-2">
+            <button
+              type="button"
+              onClick={() => {
+                const el = videoRef.current
+                if (!el) return
+                el.muted = false
+                if (playing) el.pause()
+                else void el.play()
+              }}
+              className="rounded-none border border-neon-red bg-black px-3 py-1 font-mono text-[10px] uppercase text-neon-red hover:border-neon-cyan hover:text-neon-cyan"
+            >
+              {playing ? '||' : '> UNMUTE'}
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="mt-2 max-w-md border border-neon-cyan/40 bg-black">
         <video
           ref={videoRef}
           src={objectUrl}
-          className="h-full w-full object-cover"
+          className="aspect-video w-full bg-black object-contain"
           playsInline
-          muted
-          autoPlay
-          loop
+          controls
           preload="metadata"
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
         />
       </div>
-      <div className="flex items-center gap-2 border-t border-neon-cyan/30 p-2">
-        <button
-          type="button"
-          onClick={() => {
-            const el = videoRef.current
-            if (!el) return
-            el.muted = false
-            if (playing) el.pause()
-            else void el.play()
-          }}
-          className="rounded-none border border-neon-red bg-black px-3 py-1 font-mono text-[10px] uppercase text-neon-red hover:border-neon-cyan hover:text-neon-cyan"
-        >
-          {playing ? '||' : '> UNMUTE'}
-        </button>
+    )
+  }
+
+  /* Generic file */
+  return (
+    <div className="mt-2 max-w-sm border-2 border-zinc-700 bg-zinc-950/80 p-3 font-mono">
+      <div className="mb-2 text-[10px] uppercase tracking-[0.4em] text-zinc-500">
+        :: file
       </div>
+      <p className="mb-1 break-all text-xs text-zinc-300">{displayName}</p>
+      {displaySize != null ? (
+        <p className="mb-3 text-[10px] text-zinc-600">
+          {formatFileSize(displaySize)}
+        </p>
+      ) : (
+        <p className="mb-3 text-[10px] text-zinc-600">—</p>
+      )}
+      <a
+        href={objectUrl}
+        download={displayName}
+        className="inline-block w-full border border-neon-cyan/60 bg-black py-2 text-center text-[10px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
+      >
+        {t('media.download')}
+      </a>
     </div>
   )
 }

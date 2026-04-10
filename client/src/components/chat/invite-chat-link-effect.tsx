@@ -18,11 +18,12 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
   const [banner, setBanner] = useState<string | null>(null)
 
   useEffect(() => {
-    const inviteRaw = searchParams.get('invite')?.trim()
-    const invite = inviteRaw ? normalizePeerInput(inviteRaw) : ''
-    if (!invite) return
-
-    const peer = canonicalUserId(invite)
+    const rawInvite = searchParams.get('invite')?.trim()
+    if (!rawInvite) return
+    // Extract UUID from raw query or pasted invite URL, then canonicalize before any API call.
+    const extracted = normalizePeerInput(rawInvite)
+    if (!extracted) return
+    const peer = canonicalUserId(extracted)
     const self = canonicalUserId(userId)
     if (peer === self) return
 

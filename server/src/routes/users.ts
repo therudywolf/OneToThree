@@ -100,6 +100,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
     const q = parsed.data.q.trim()
 
+    // Exact UUID: always resolve by id (ignore is_discoverable — nickname search below enforces it).
     const uuidQuery = uuidSchema.safeParse(q)
     if (uuidQuery.success) {
       const id = uuidQuery.data
@@ -137,6 +138,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send(rows)
   })
 
+  /**
+   * Resolve users by explicit ids (e.g. invite links, E2E preflight).
+   * Never filter by is_discoverable — hidden users must still be reachable by known UUID.
+   */
   app.post('/lookup', async (request, reply) => {
     const auth = await getAuthUser(request)
     if (!auth) {

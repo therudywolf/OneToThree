@@ -19,6 +19,7 @@ export type AuthUser = {
   username: string
   is_discoverable?: boolean
   role?: 'user' | 'admin'
+  totp_enabled?: boolean
 }
 
 type AuthContextValue = {

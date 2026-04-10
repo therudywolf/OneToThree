@@ -59,9 +59,13 @@ export type VerifyChallengePayload = {
   public_key_jwk?: string
 }
 
+export type VerifyChallengeResult =
+  | { kind: 'session'; user: { id: string; username: string } }
+  | { kind: '2fa_pending'; pendingToken: string; userId: string }
+
 export async function verifyChallenge(
   payload: VerifyChallengePayload
-): Promise<{ user: { id: string; username: string } }> {
+): Promise<VerifyChallengeResult> {
   const res = await fetch(`${API_URL}/auth/verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -77,13 +81,59 @@ export async function verifyChallenge(
   })
   const data = (await res.json().catch(() => ({}))) as {
     user?: { id: string; username: string }
+    requires2FA?: boolean
+    pendingToken?: string
+    userId?: string
     error?: string
   }
   if (!res.ok) {
     throw new Error(data.error ?? 'VERIFY_FAILED')
   }
+  if (
+    data.requires2FA === true &&
+    data.pendingToken &&
+    data.userId
+  ) {
+    return {
+      kind: '2fa_pending',
+      pendingToken: data.pendingToken,
+      userId: canonicalUserId(data.userId),
+    }
+  }
+  if (data.user?.id && data.user.username) {
+    return {
+      kind: 'session',
+      user: {
+        id: canonicalUserId(data.user.id),
+        username: data.user.username,
+      },
+    }
+  }
+  throw new Error('INVALID_VERIFY_RESPONSE')
+}
+
+export async function complete2faLogin(
+  pendingToken: string,
+  code: string
+): Promise<{ user: { id: string; username: string } }> {
+  const res = await fetch(`${API_URL}/auth/login/2fa`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      pending_token: pendingToken,
+      code: code.trim(),
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    user?: { id: string; username: string }
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'TOTP_VERIFY_FAILED')
+  }
   if (!data.user?.id || !data.user.username) {
-    throw new Error('INVALID_VERIFY_RESPONSE')
+    throw new Error('INVALID_2FA_RESPONSE')
   }
   return {
     user: {
@@ -99,6 +149,7 @@ export async function fetchMe(): Promise<{
     username: string
     is_discoverable?: boolean
     role?: 'user' | 'admin'
+    totp_enabled?: boolean
   }
 }> {
   const res = await fetch(`${API_URL}/auth/me`, {
@@ -111,6 +162,7 @@ export async function fetchMe(): Promise<{
       username: string
       is_discoverable?: boolean
       role?: 'user' | 'admin'
+      totp_enabled?: boolean
     }
     error?: string
   }
@@ -135,6 +187,10 @@ export async function fetchMe(): Promise<{
           ? data.user.is_discoverable
           : false,
       role: data.user.role === 'admin' ? 'admin' : 'user',
+      totp_enabled:
+        typeof data.user.totp_enabled === 'boolean'
+          ? data.user.totp_enabled
+          : false,
     },
   }
 }

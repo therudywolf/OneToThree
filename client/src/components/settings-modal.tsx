@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { API_URL } from '@/lib/api/auth'
+import { API_URL, fetchMe } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
 import { readVaultBlob, vaultStorageKey } from '@/lib/vault'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
@@ -18,12 +18,20 @@ function readDiscoverableFromPayload(v: unknown): boolean {
 
 export function SettingsModal({ userId, username, onClose }: Props) {
   const { locale, setLocale, t } = useTranslation()
-  const { updateUser } = useAuth()
+  const { user, updateUser, refresh } = useAuth()
   /** `null` until GET /users/me/settings succeeds — never assume true (shadow default). */
   const [discoverable, setDiscoverable] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [totpSetup, setTotpSetup] = useState<{
+    qr_data_url: string
+    secret: string
+  } | null>(null)
+  const [totpEnableCode, setTotpEnableCode] = useState('')
+  const [totpDisableCode, setTotpDisableCode] = useState('')
+  const [totpBusy, setTotpBusy] = useState(false)
+  const [totpDisableOpen, setTotpDisableOpen] = useState(false)
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -50,6 +58,112 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   useEffect(() => {
     void loadSettingsFromApi()
   }, [loadSettingsFromApi, userId])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { user: u } = await fetchMe()
+        updateUser({ totp_enabled: u.totp_enabled })
+      } catch {
+        /* ignore */
+      }
+    })()
+  }, [userId, updateUser])
+
+  async function startTotpSetup() {
+    setTotpBusy(true)
+    setError(null)
+    try {
+      const r = await fetch(`${API_URL}/auth/2fa/setup`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const d = (await r.json().catch(() => ({}))) as {
+        qr_data_url?: string
+        secret?: string
+        error?: string
+      }
+      if (!r.ok) {
+        throw new Error(d.error ?? 'SETUP_FAILED')
+      }
+      if (!d.qr_data_url || !d.secret) {
+        throw new Error('INVALID_SETUP_RESPONSE')
+      }
+      setTotpSetup({ qr_data_url: d.qr_data_url, secret: d.secret })
+      setTotpEnableCode('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setTotpBusy(false)
+    }
+  }
+
+  async function confirmTotpSetup() {
+    const digits = totpEnableCode.replace(/\D/g, '').slice(0, 6)
+    if (digits.length !== 6) {
+      setError(t('login.totpSixDigits'))
+      return
+    }
+    setTotpBusy(true)
+    setError(null)
+    try {
+      const r = await fetch(`${API_URL}/auth/2fa/verify-setup`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: digits }),
+      })
+      const d = (await r.json().catch(() => ({}))) as {
+        totp_enabled?: boolean
+        error?: string
+      }
+      if (!r.ok) {
+        throw new Error(d.error ?? 'VERIFY_SETUP_FAILED')
+      }
+      setTotpSetup(null)
+      setTotpEnableCode('')
+      updateUser({ totp_enabled: true })
+      await refresh()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setTotpBusy(false)
+    }
+  }
+
+  async function disableTotp() {
+    const digits = totpDisableCode.replace(/\D/g, '').slice(0, 6)
+    if (digits.length !== 6) {
+      setError(t('login.totpSixDigits'))
+      return
+    }
+    setTotpBusy(true)
+    setError(null)
+    try {
+      const r = await fetch(`${API_URL}/auth/2fa/disable`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: digits }),
+      })
+      const d = (await r.json().catch(() => ({}))) as { error?: string }
+      if (!r.ok) {
+        throw new Error(d.error ?? 'DISABLE_FAILED')
+      }
+      setTotpDisableOpen(false)
+      setTotpDisableCode('')
+      updateUser({ totp_enabled: false })
+      await refresh()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setTotpBusy(false)
+    }
+  }
 
   async function toggleDiscoverable() {
     if (discoverable === null || busy) return
@@ -159,7 +273,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       aria-modal="true"
       aria-label={t('common.settings')}
     >
-      <div className="terminal-panel w-full max-w-md space-y-5">
+      <div
+        className={`terminal-panel w-full space-y-5 ${
+          totpSetup ? 'max-w-lg' : 'max-w-md'
+        }`}
+      >
         <header className="flex items-center justify-between border-b border-neon-red/40 pb-3">
           <p className="text-xs uppercase tracking-[0.35em] text-neon-cyan">
             [ SETTINGS ] :: {username}
@@ -221,6 +339,149 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             >
               {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
             </button>
+          </div>
+
+          <div className="border-t border-neon-cyan/30 pt-3">
+            <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">
+              {t('settings.totpSection')}
+            </p>
+            <p className="mb-3 text-[9px] text-red-800">{t('settings.totpHint')}</p>
+            {user?.totp_enabled === true ? (
+              <div className="space-y-2">
+                <p className="font-mono text-[10px] uppercase tracking-wider text-neon-cyan">
+                  :: {t('settings.totpActive')}
+                </p>
+                {!totpDisableOpen ? (
+                  <button
+                    type="button"
+                    disabled={totpBusy}
+                    onClick={() => {
+                      setTotpDisableOpen(true)
+                      setTotpDisableCode('')
+                      setError(null)
+                    }}
+                    className="w-full border border-neon-red/70 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                  >
+                    [ {t('settings.totpDisable')} ]
+                  </button>
+                ) : (
+                  <div className="space-y-2 border border-neon-red/40 p-2">
+                    <p className="text-[9px] text-red-800">
+                      {t('settings.totpDisableWarn')}
+                    </p>
+                    <label className="terminal-label" htmlFor="totp-disable-code">
+                      {t('settings.totpDisableCode')}
+                    </label>
+                    <input
+                      id="totp-disable-code"
+                      className="terminal-input"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={totpDisableCode}
+                      onChange={(e) =>
+                        setTotpDisableCode(
+                          e.target.value.replace(/\D/g, '').slice(0, 6)
+                        )
+                      }
+                      placeholder="000000"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={totpBusy}
+                        onClick={() => void disableTotp()}
+                        className="flex-1 border border-neon-red bg-black py-1 font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                      >
+                        [ CONFIRM ]
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTotpDisableOpen(false)
+                          setTotpDisableCode('')
+                        }}
+                        className="flex-1 border border-neon-cyan/40 py-1 font-mono text-[10px] text-neon-cyan"
+                      >
+                        [ CANCEL ]
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="font-mono text-[10px] uppercase tracking-wider text-red-800">
+                  :: {t('settings.totpInactive')}
+                </p>
+                {!totpSetup ? (
+                  <button
+                    type="button"
+                    disabled={totpBusy}
+                    onClick={() => void startTotpSetup()}
+                    className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+                  >
+                    [ {t('settings.totpSetup')} ]
+                  </button>
+                ) : (
+                  <div className="space-y-3 border border-neon-cyan/30 p-3">
+                    <p className="text-[9px] text-neon-cyan/90">
+                      {t('settings.totpScanQr')}
+                    </p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={totpSetup.qr_data_url}
+                      alt=""
+                      className="mx-auto border border-neon-cyan/40 bg-white p-1"
+                      width={192}
+                      height={192}
+                    />
+                    <p className="text-[9px] text-red-800">
+                      {t('settings.totpSecretManual')}
+                    </p>
+                    <p className="break-all font-mono text-[9px] text-neon-cyan/80">
+                      {totpSetup.secret}
+                    </p>
+                    <label className="terminal-label" htmlFor="totp-enable-code">
+                      {t('settings.totpEnableCode')}
+                    </label>
+                    <input
+                      id="totp-enable-code"
+                      className="terminal-input"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={totpEnableCode}
+                      onChange={(e) =>
+                        setTotpEnableCode(
+                          e.target.value.replace(/\D/g, '').slice(0, 6)
+                        )
+                      }
+                      placeholder="000000"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={totpBusy}
+                        onClick={() => void confirmTotpSetup()}
+                        className="border border-neon-cyan px-3 py-1 font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+                      >
+                        [ {t('settings.totpConfirm')} ]
+                      </button>
+                      <button
+                        type="button"
+                        disabled={totpBusy}
+                        onClick={() => {
+                          setTotpSetup(null)
+                          setTotpEnableCode('')
+                        }}
+                        className="border border-red-900 px-3 py-1 font-mono text-[10px] uppercase text-red-800 hover:text-neon-red"
+                      >
+                        [ {t('settings.totpCancelSetup')} ]
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-between border-t border-neon-cyan/30 pt-3">

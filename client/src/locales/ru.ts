@@ -47,6 +47,15 @@ const ru = {
   'login.authLoading': 'Проверка сессии...',
   'login.newDevice': 'Новое устройство',
   'login.existingVault': 'Существующий vault',
+  'login.totpTitle': 'ВТОРОЙ_КОНТУР',
+  'login.totpSubtitle': 'TOTP · СОВМЕСТИМОСТЬ С GOOGLE AUTHENTICATOR',
+  'login.totpCodeLabel': 'Код из 6 цифр',
+  'login.totpSubmit': 'ПОДТВЕРДИТЬ',
+  'login.totpBack': 'Назад ко входу',
+  'login.totpInvalid': 'Неверный или просроченный одноразовый код.',
+  'login.totpPendingInvalid': 'Шаг сессии истёк. Войдите снова.',
+  'login.totpVerifyFailed': 'Ошибка двухфакторной проверки.',
+  'login.totpSixDigits': 'Введите ровно 6 цифр.',
   'login.tosRegisterTitle': '[ RU ] Пользовательское соглашение',
   'login.tosRegisterBody': `Приватность и Шифрование: Сервис предоставляет сквозное (End-to-End) шифрование. Мы физически не имеем доступа к вашим сообщениям и ключам. Потеря пароля от Сейфа означает безвозвратную потерю доступа к переписке.
 
@@ -132,6 +141,22 @@ const ru = {
   'settings.purgeHint':
     'Очищает localStorage, sessionStorage и IndexedDB сообщений — для отладки битого локального состояния.',
   'settings.purgeLocalCache': 'ОЧИСТИТЬ ЛОКАЛЬНЫЙ КЭШ',
+  'settings.totpSection': 'Безопасность / 2FA',
+  'settings.totpHint':
+    'Одноразовые коды по времени (RFC 6238). Отсканируйте QR в приложении-аутентификаторе.',
+  'settings.totpActive': '2FA включена',
+  'settings.totpInactive': '2FA выключена',
+  'settings.totpSetup': 'НАСТРОИТЬ_2FA',
+  'settings.totpScanQr':
+    'Отсканируйте QR в приложении, затем введите код для подтверждения.',
+  'settings.totpSecretManual': 'Секрет вручную (base32)',
+  'settings.totpEnableCode': 'Код подтверждения',
+  'settings.totpConfirm': 'ПОДТВЕРДИТЬ И ВКЛЮЧИТЬ',
+  'settings.totpCancelSetup': 'Отменить настройку',
+  'settings.totpDisable': 'ОТКЛЮЧИТЬ_2FA',
+  'settings.totpDisableWarn':
+    'Отключение 2FA ослабляет аккаунт. Нужен действующий код из приложения.',
+  'settings.totpDisableCode': 'Текущий код из приложения',
 } as const
 
 export default ru

@@ -29,6 +29,9 @@ export const users = pgTable('users', {
   isDiscoverable: boolean('is_discoverable').notNull().default(false),
   role: userRoleEnum('role').notNull().default('user'),
   isBanned: boolean('is_banned').notNull().default(false),
+  /** Base32 TOTP secret; set during setup, cleared on disable. */
+  totpSecret: text('totp_secret'),
+  isTotpEnabled: boolean('is_totp_enabled').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

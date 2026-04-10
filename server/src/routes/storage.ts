@@ -4,7 +4,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers } from '../db/schema.js'
-import { getAuthUser } from '../lib/auth-user.js'
+import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import {
   createS3Client,
   ensureBucketExists,
@@ -41,9 +41,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
   app.post('/upload-url', async (request, reply) => {
     await ensureBucketOnce()
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
 
     const parsed = uploadBodySchema.safeParse(request.body)
     if (!parsed.success) {
@@ -83,9 +81,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
   app.get('/download-url', async (request, reply) => {
     await ensureBucketOnce()
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
 
     const q = z
       .object({ filePath: z.string().min(1).max(2048) })

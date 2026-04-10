@@ -94,14 +94,24 @@ export async function verifyChallenge(
 }
 
 export async function fetchMe(): Promise<{
-  user: { id: string; username: string; is_discoverable?: boolean }
+  user: {
+    id: string
+    username: string
+    is_discoverable?: boolean
+    role?: 'user' | 'admin'
+  }
 }> {
   const res = await fetch(`${API_URL}/auth/me`, {
     method: 'GET',
     credentials: 'include',
   })
   const data = (await res.json().catch(() => ({}))) as {
-    user?: { id: string; username: string; is_discoverable?: boolean }
+    user?: {
+      id: string
+      username: string
+      is_discoverable?: boolean
+      role?: 'user' | 'admin'
+    }
     error?: string
   }
   if (!res.ok) {
@@ -124,6 +134,7 @@ export async function fetchMe(): Promise<{
         typeof data.user.is_discoverable === 'boolean'
           ? data.user.is_discoverable
           : false,
+      role: data.user.role === 'admin' ? 'admin' : 'user',
     },
   }
 }

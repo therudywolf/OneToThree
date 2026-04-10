@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { pushSubscriptions } from '../db/schema.js'
-import { getAuthUser } from '../lib/auth-user.js'
+import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 
 const subscribeBodySchema = z.object({
   endpoint: z.string().min(1).max(4096),
@@ -20,9 +20,7 @@ const unsubscribeBodySchema = z.object({
 export const pushRoutes: FastifyPluginAsync = async (app) => {
   app.post('/subscribe', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
 
     const parsed = subscribeBodySchema.safeParse(request.body)
     if (!parsed.success) {
@@ -52,9 +50,7 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete('/unsubscribe', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
 
     const parsed = unsubscribeBodySchema.safeParse(request.body)
     if (!parsed.success) {

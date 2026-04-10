@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, messages } from '../db/schema.js'
-import { getAuthUser } from '../lib/auth-user.js'
+import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { broadcastToUsers } from '../ws/registry.js'
 
 const deleteMessageSchema = z.object({
@@ -13,9 +13,7 @@ const deleteMessageSchema = z.object({
 export const messagesRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:chatId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
     const { chatId } = request.params as { chatId: string }
 
     const memberOk = await db
@@ -68,7 +66,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete('/:messageId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    if (!assertAuthed(reply, user)) return
     const { messageId } = request.params as { messageId: string }
 
     const parsed = deleteMessageSchema.safeParse(request.body ?? {})

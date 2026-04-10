@@ -8,8 +8,10 @@ import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../app.js'
 
+/** Valid nickname: 3–20 chars, [a-zA-Z0-9_.-] only */
 function uniqueUser(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  const core = `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  return core.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 20).padEnd(3, 'x')
 }
 
 function signNonceDerB64(nonce: string, privateKey: KeyObject) {
@@ -38,6 +40,22 @@ describe('auth routes', () => {
       .expect(200)
     expect(res.body.nonce).toBeTruthy()
     expect(String(res.body.nonce)).toHaveLength(36)
+  })
+
+  it('POST /challenge rejects invalid nickname format', async () => {
+    const res = await request(app.server)
+      .post('/api/auth/challenge')
+      .send({ username: 'ab' })
+      .expect(400)
+    expect(res.body.error).toBe('INVALID_USERNAME_FORMAT')
+  })
+
+  it('POST /challenge rejects reserved nickname', async () => {
+    const res = await request(app.server)
+      .post('/api/auth/challenge')
+      .send({ username: 'admin' })
+      .expect(400)
+    expect(res.body.error).toBe('USERNAME_RESERVED')
   })
 
   it('POST /verify with valid ECDSA signature sets session cookie', async () => {

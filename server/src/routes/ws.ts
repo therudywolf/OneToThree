@@ -38,15 +38,18 @@ async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> 
         id: users.id,
         username: users.username,
         isDiscoverable: users.isDiscoverable,
+        isBanned: users.isBanned,
+        role: users.role,
       })
       .from(users)
       .where(eq(users.id, id))
       .limit(1)
-    if (!row) return null
+    if (!row || row.isBanned) return null
     return {
       id: normalizeUuid(row.id),
       username: row.username,
       is_discoverable: row.isDiscoverable,
+      role: row.role === 'admin' ? 'admin' : 'user',
     }
   } catch {
     return null

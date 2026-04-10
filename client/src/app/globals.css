@@ -17,6 +17,17 @@ body {
   text-shadow: 0 0 1px rgba(255, 0, 0, 0.35);
 }
 
+/* iOS Safari: avoid auto-zoom on focus for inputs (Phase 25) */
+input,
+textarea {
+  font-size: 16px !important;
+}
+
+/** Main chat column: keep composer above home indicator on notched phones */
+.chat-safe-shell {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* CRT scanline overlay — fixed, non-interactive */
 .crt-overlay {
   pointer-events: none;

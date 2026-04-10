@@ -16,6 +16,10 @@ export const chatTypeEnum = pgEnum('chat_type', [
   'public_open',
 ])
 
+export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
+
+export const reportStatusEnum = pgEnum('report_status', ['open', 'closed'])
+
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: text('username').notNull().unique(),
@@ -23,6 +27,23 @@ export const users = pgTable('users', {
   /** ECDH public JWK for E2E messaging (optional until client uploads). */
   ecdhPublicKeyJwk: text('ecdh_public_key_jwk'),
   isDiscoverable: boolean('is_discoverable').notNull().default(false),
+  role: userRoleEnum('role').notNull().default('user'),
+  isBanned: boolean('is_banned').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+})
+
+export const reports = pgTable('reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  reporterId: uuid('reporter_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  reportedId: uuid('reported_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  reason: text('reason').notNull(),
+  status: reportStatusEnum('status').notNull().default('open'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

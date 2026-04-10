@@ -37,6 +37,9 @@ const ru = {
   'login.publicKeyConflict':
     'Этот логин уже зарегистрирован на сервере с другим ключом. Войдите с тем же vault, выберите другое имя или сбросьте БД на сервере и локальные данные сайта.',
   'login.usernameTaken': 'Этот логин уже занят.',
+  'login.invalidUsernameFormat':
+    'Логин: 3–20 символов, только латиница, цифры, точка, подчёркивание или дефис (без пробелов и эмодзи).',
+  'login.usernameReserved': 'Этот логин зарезервирован. Выберите другой.',
   'login.invalidBody': 'Неверный запрос.',
   'login.handleLabel': 'Логин',
   'login.vaultPassphraseLabel': 'Парольная фраза vault',

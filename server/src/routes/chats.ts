@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, chats, messages, users } from '../db/schema.js'
-import { getAuthUser } from '../lib/auth-user.js'
+import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { broadcastToUsers } from '../ws/registry.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
@@ -96,9 +96,7 @@ async function findExistingDirectE2EBetween(
 export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
 
     const rows = await db
       .select({
@@ -166,9 +164,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/:chatId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
     const { chatId } = request.params as { chatId: string }
 
     const memberOk = await db
@@ -220,9 +216,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
 
     const parsed = createChatSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -411,7 +405,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/:chatId/leave', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    if (!assertAuthed(reply, user)) return
     const { chatId } = request.params as { chatId: string }
 
     const deleted = await db
@@ -445,7 +439,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete('/:chatId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    if (!assertAuthed(reply, user)) return
     const { chatId } = request.params as { chatId: string }
 
     const memberOk = await db

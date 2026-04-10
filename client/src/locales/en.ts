@@ -33,6 +33,9 @@ const en = {
   'login.publicKeyConflict':
     'This handle is already registered on the server with a different key. Use Login with your original vault, pick another handle, or reset the server DB and local site data.',
   'login.usernameTaken': 'That handle is already taken.',
+  'login.invalidUsernameFormat':
+    'Handle must be 3–20 characters: English letters, digits, dot, underscore, or hyphen only (no spaces or emoji).',
+  'login.usernameReserved': 'That handle is reserved. Choose another.',
   'login.invalidBody': 'Invalid request.',
   'login.handleLabel': 'Handle',
   'login.vaultPassphraseLabel': 'Vault passphrase',

@@ -17,6 +17,12 @@ export const chatTypeEnum = pgEnum('chat_type', [
   'public_open',
 ])
 
+export const chatMemberRoleEnum = pgEnum('chat_member_role', [
+  'owner',
+  'admin',
+  'member',
+])
+
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
 
 export const reportStatusEnum = pgEnum('report_status', ['open', 'closed'])
@@ -86,11 +92,19 @@ export const reports = pgTable('reports', {
     .defaultNow(),
 })
 
-export const chats = pgTable('chats', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name'),
-  type: chatTypeEnum('type').notNull(),
-})
+export const chats = pgTable(
+  'chats',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name'),
+    type: chatTypeEnum('type').notNull(),
+    /** Random slug for group invite links; unique when set. */
+    inviteCode: text('invite_code'),
+  },
+  (t) => ({
+    inviteCodeUnique: uniqueIndex('chats_invite_code_unique').on(t.inviteCode),
+  })
+)
 
 export const chatMembers = pgTable(
   'chat_members',
@@ -102,6 +116,7 @@ export const chatMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     encryptedGroupKey: text('encrypted_group_key'),
+    role: chatMemberRoleEnum('role').notNull().default('member'),
     joinedAt: timestamp('joined_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

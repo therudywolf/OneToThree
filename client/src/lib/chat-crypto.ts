@@ -17,6 +17,7 @@ type ChatDetailResponse = {
     user_id: string
     ecdh_public_key_jwk: string | null
     encrypted_group_key: string | null
+    role?: 'owner' | 'admin' | 'member'
   }>
 }
 

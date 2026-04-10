@@ -1,6 +1,8 @@
 import { API_URL } from './auth'
 import { canonicalUserId } from '@/lib/user-id'
 
+export type ChatMemberRole = 'owner' | 'admin' | 'member'
+
 export type ApiChatRow = {
   id: string
   name: string | null
@@ -11,6 +13,30 @@ export type ApiChatRow = {
   encrypted_group_key?: string | null
   /** ISO timestamp of the newest message in this chat, if any. */
   last_message_at?: string | null
+  /** Group / public: server-side pack role. */
+  my_role?: ChatMemberRole
+  /** Group: invite slug when you may manage links. */
+  invite_code?: string | null
+}
+
+export type ChatDetailMember = {
+  user_id: string
+  username: string
+  ecdh_public_key_jwk: string | null
+  encrypted_group_key: string | null
+  role: ChatMemberRole
+}
+
+export type ChatDetailPayload = {
+  chat: {
+    id: string
+    name: string | null
+    type: string
+    is_group: boolean
+    invite_code: string | null
+    my_role: ChatMemberRole
+  }
+  members: ChatDetailMember[]
 }
 
 export async function fetchChatsList(): Promise<ApiChatRow[]> {
@@ -112,6 +138,116 @@ export async function deleteChat(chatId: string): Promise<void> {
   if (!r.ok) {
     const d = (await r.json().catch(() => ({}))) as { error?: string }
     throw new Error(d.error ?? 'DELETE_FAILED')
+  }
+}
+
+export async function fetchChatDetail(chatId: string): Promise<ChatDetailPayload> {
+  const res = await fetch(`${API_URL}/chats/${chatId}`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as
+    | ChatDetailPayload
+    | { error?: string }
+  if (!res.ok) {
+    throw new Error(
+      'error' in data && data.error ? data.error : 'CHAT_DETAIL_FAILED'
+    )
+  }
+  return data as ChatDetailPayload
+}
+
+export async function ensureGroupInviteCode(chatId: string): Promise<string> {
+  const res = await fetch(`${API_URL}/chats/${chatId}/invite`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    invite_code?: string
+    error?: string
+  }
+  if (!res.ok || !data.invite_code) {
+    throw new Error(data.error ?? 'INVITE_CREATE_FAILED')
+  }
+  return data.invite_code
+}
+
+export async function joinChatByInviteCode(code: string): Promise<{
+  chat_id: string
+  already_member: boolean
+}> {
+  const trimmed = code.trim()
+  const res = await fetch(
+    `${API_URL}/chats/join/${encodeURIComponent(trimmed)}`,
+    { credentials: 'include' }
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    chat_id?: string
+    already_member?: boolean
+    error?: string
+  }
+  if (!res.ok || !data.chat_id) {
+    throw new Error(data.error ?? 'JOIN_FAILED')
+  }
+  return {
+    chat_id: data.chat_id,
+    already_member: Boolean(data.already_member),
+  }
+}
+
+export async function patchChatMemberRole(
+  chatId: string,
+  targetUserId: string,
+  role: ChatMemberRole
+): Promise<void> {
+  const r = await fetch(
+    `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}/role`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    }
+  )
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'ROLE_PATCH_FAILED')
+  }
+}
+
+export async function kickChatMember(
+  chatId: string,
+  targetUserId: string
+): Promise<void> {
+  const r = await fetch(
+    `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+    }
+  )
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'KICK_FAILED')
+  }
+}
+
+export async function uploadMemberWrappedGroupKey(
+  chatId: string,
+  targetUserId: string,
+  encryptedGroupKeyBase64: string
+): Promise<void> {
+  const r = await fetch(
+    `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}/wrapped-key`,
+    {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ encrypted_group_key: encryptedGroupKeyBase64 }),
+    }
+  )
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'WRAPPED_KEY_FAILED')
   }
 }
 

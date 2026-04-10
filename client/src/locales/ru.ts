@@ -129,6 +129,19 @@ const ru = {
   'group.serverInvalid': 'Некорректный запрос к серверу.',
   'group.serverDuplicate': 'Дубликат участника в запросе.',
   'group.creatorMissing': 'Создатель должен быть в списке участников.',
+  'group.packSettings': 'СТАЯ :: НАСТРОЙКИ',
+  'group.copyInviteLink': '[ КОПИРОВАТЬ_ССЫЛКУ ]',
+  'group.inviteGenerateHint':
+    'Сгенерируйте ссылку — здесь появится адрес приглашения.',
+  'group.makeAdmin': 'АДМИН',
+  'group.demoteMember': 'УЧАСТНИК',
+  'group.transferOwner': 'ВЛАДЕЛЕЦ',
+  'group.kick': 'ВЫГНАТЬ',
+  'group.kickConfirm': 'Убрать этого участника из стаи?',
+
+  'join.working': 'Вход в зашифрованный канал…',
+  'join.failed': 'Не удалось войти',
+  'join.back': 'К приложению',
 
   'settings.discoverable': 'Обнаруживаемость',
   'settings.discoverableHint':

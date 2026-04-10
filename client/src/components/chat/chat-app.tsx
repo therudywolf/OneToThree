@@ -14,7 +14,7 @@ import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
 import { createDirectE2EChat, fetchPeerIdsForChat } from '@/lib/api/chats'
 import { lookupUsers } from '@/lib/api/users'
-import { normalizePeerInput } from '@/lib/peer-input'
+import { normalizePeerInput, normalizeUuid } from '@/lib/peer-input'
 import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { useChats } from '@/hooks/use-chats'
@@ -111,8 +111,8 @@ export function ChatApp({
   useEffect(() => {
     const inviteRaw = searchParams.get('invite')?.trim()
     const invite = inviteRaw ? normalizePeerInput(inviteRaw) : ''
-    if (!invite || invite === userId) return
-    const onceKey = `p13:invite-opened:${userId}:${invite}`
+    if (!invite || normalizeUuid(invite) === normalizeUuid(userId)) return
+    const onceKey = `p13:invite-opened:${normalizeUuid(userId)}:${invite}`
     if (sessionStorage.getItem(onceKey) === '1') return
     sessionStorage.setItem(onceKey, '1')
     void createDirectE2EChat(userId, invite)

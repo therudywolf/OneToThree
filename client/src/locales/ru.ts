@@ -105,6 +105,10 @@ const ru = {
   'settings.discoverable': 'Обнаруживаемость',
   'settings.discoverableHint':
     'Другие смогут найти вас по нику. Чтобы найти кого-то по нику, эта опция должна быть включена у него.',
+  'settings.discoverableBadgeOn': '● видны в поиске по нику',
+  'settings.discoverableBadgeOff': '○ скрыты из поиска по нику',
+  'settings.discoverableTooltipOn': 'Вас можно найти по нику (поиск)',
+  'settings.discoverableTooltipOff': 'Вас нет в поиске по нику',
   'settings.loadFailed': 'Не удалось загрузить настройки (сеть или сессия)',
   'settings.vaultBackup': 'Резервная копия vault',
   'settings.languageHint': 'Выберите язык интерфейса',

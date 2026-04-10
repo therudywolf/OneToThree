@@ -22,14 +22,19 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         credentials: 'include',
       })
       const d = (await r.json().catch(() => ({}))) as {
-        is_discoverable?: boolean
+        is_discoverable?: boolean | string
         error?: string
       }
       if (!r.ok) {
         setError(d.error ?? t('settings.loadFailed'))
         return
       }
-      setDiscoverable(!!d.is_discoverable)
+      const raw = d.is_discoverable
+      setDiscoverable(
+        raw === true ||
+          raw === 'true' ||
+          (typeof raw === 'string' && raw.toLowerCase() === 'true')
+      )
     } catch {
       setError(t('settings.loadFailed'))
     }
@@ -37,7 +42,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   useEffect(() => {
     void fetchMe()
-  }, [fetchMe])
+  }, [fetchMe, userId])
 
   async function toggleDiscoverable() {
     setBusy(true)
@@ -141,25 +146,39 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         </header>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">
                 {t('settings.discoverable')}
               </p>
               <p className="text-[9px] text-red-800">
                 {t('settings.discoverableHint')}
               </p>
+              <p
+                className={`mt-1 font-mono text-[9px] uppercase tracking-wider ${
+                  discoverable ? 'text-neon-cyan' : 'text-zinc-500'
+                }`}
+              >
+                {discoverable
+                  ? t('settings.discoverableBadgeOn')
+                  : t('settings.discoverableBadgeOff')}
+              </p>
             </div>
             <button
               type="button"
               role="switch"
               aria-checked={discoverable}
+              title={
+                discoverable
+                  ? t('settings.discoverableTooltipOn')
+                  : t('settings.discoverableTooltipOff')
+              }
               disabled={busy}
               onClick={() => void toggleDiscoverable()}
-              className={`border px-3 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              className={`shrink-0 border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors ${
                 discoverable
-                  ? 'border-neon-cyan text-neon-cyan'
-                  : 'border-red-900 text-red-800'
+                  ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
+                  : 'border-zinc-600 bg-zinc-950 text-zinc-400'
               } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
             >
               {busy ? '[ … ]' : discoverable ? '[ ON ]' : '[ OFF ]'}

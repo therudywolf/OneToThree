@@ -1,38 +1,45 @@
-# Production stack — Caddy terminates TLS; internal services on app_network.
-# Launch: ./setup.sh   (requires .env.prod + ./certs/cert.pem + key.pem)
-#
-# Migrations: db-migrate runs once after Postgres is healthy; api waits for it.
+# =============================================================================
+# Project 13 — production (high-throughput host: ~4 cores / 6GB+ RAM class)
+# :: Caddy is the ONLY service binding 80/443 — all else stays on app_network
+# :: Launch: ./setup.sh
+# :: Volume upgrade: if you used `postgres_data`, rename/migrate to `pgdata` or
+#    keep the old volume name by editing the db service volume line below.
+# =============================================================================
 
 services:
   db:
     image: postgres:alpine
     restart: always
+    cpu_shares: 512
+    cpus: '2.0'
     mem_limit: 512m
-    cpus: '1.0'
+    mem_reservation: 128m
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-forest}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
       POSTGRES_DB: ${POSTGRES_DB:-forest}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     networks:
       - app_network
     healthcheck:
       test:
         [
           'CMD-SHELL',
-          'pg_isready -U ${POSTGRES_USER:-forest} -d ${POSTGRES_DB:-forest}',
+          'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" || exit 1',
         ]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 15s
+      retries: 12
+      start_period: 20s
 
   minio:
     image: minio/minio:latest
     restart: always
+    cpu_shares: 384
+    cpus: '2.0'
     mem_limit: 512m
-    cpus: '1.0'
+    mem_reservation: 128m
     command: server /data --console-address ':9001'
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
@@ -53,6 +60,7 @@ services:
       context: .
       dockerfile: docker/db-migrate/Dockerfile
     restart: 'no'
+    cpu_shares: 256
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
     depends_on:
@@ -68,9 +76,11 @@ services:
     restart: always
     read_only: true
     tmpfs:
-      - /tmp:noexec,nosuid,nodev,size=64m
-    mem_limit: 384m
-    cpus: '0.75'
+      - /tmp:noexec,nosuid,nodev,size=128m
+    cpu_shares: 512
+    cpus: '4.0'
+    mem_limit: 1024m
+    mem_reservation: 256m
     expose:
       - '8080'
     env_file:
@@ -111,8 +121,10 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.onetothree.ru}
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
     restart: always
-    mem_limit: 768m
-    cpus: '1.25'
+    cpu_shares: 512
+    cpus: '4.0'
+    mem_limit: 1536m
+    mem_reservation: 512m
     expose:
       - '3000'
     environment:
@@ -137,14 +149,17 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: always
-    mem_limit: 128m
-    cpus: '0.25'
+    cpu_shares: 256
+    cpus: '1.0'
+    mem_limit: 256m
+    mem_reservation: 64m
     ports:
       - '80:80'
       - '443:443'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./certs:/certs:ro
+      - caddy_data:/data
     depends_on:
       web:
         condition: service_healthy
@@ -156,8 +171,12 @@ services:
       - app_network
 
 volumes:
-  postgres_data:
+  pgdata:
+    driver: local
   minio_data:
+    driver: local
+  caddy_data:
+    driver: local
 
 networks:
   app_network:

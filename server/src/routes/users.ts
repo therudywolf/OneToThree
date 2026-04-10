@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -78,13 +78,18 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
 
-    await db.update(users).set(updates).where(eq(users.id, user.id))
+    if (parsed.data.is_discoverable !== undefined) {
+      request.log.info(
+        { discoverable: parsed.data.is_discoverable, userId: user.id },
+        'Updating discoverability'
+      )
+    }
 
     const [after] = await db
-      .select({ isDiscoverable: users.isDiscoverable })
-      .from(users)
+      .update(users)
+      .set(updates)
       .where(eq(users.id, user.id))
-      .limit(1)
+      .returning({ isDiscoverable: users.isDiscoverable })
 
     return reply.send({
       ok: true,
@@ -93,6 +98,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.get('/search', async (request, reply) => {
+    const viewer = await getAuthUser(request)
+
     const parsed = searchQuerySchema.safeParse(request.query)
     if (!parsed.success) {
       return reply.status(400).send({ error: 'INVALID_QUERY' })
@@ -104,6 +111,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const uuidQuery = uuidSchema.safeParse(q)
     if (uuidQuery.success) {
       const id = uuidQuery.data
+      const whereExpr =
+        viewer != null
+          ? and(eq(users.id, id), ne(users.id, viewer.id))
+          : eq(users.id, id)
       const [row] = await db
         .select({
           id: users.id,
@@ -112,12 +123,21 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
           ecdh_public_key_jwk: users.ecdhPublicKeyJwk,
         })
         .from(users)
-        .where(eq(users.id, id))
+        .where(whereExpr)
         .limit(1)
       return reply.send(row ? [row] : [])
     }
 
     const pattern = `%${escapeIlikePattern(q)}%`
+
+    const discoverableAndPattern = and(
+      eq(users.isDiscoverable, true),
+      sql`${users.username} ILIKE ${pattern} ESCAPE '\\'`
+    )
+    const whereSearch =
+      viewer != null
+        ? and(discoverableAndPattern, ne(users.id, viewer.id))
+        : discoverableAndPattern
 
     const rows = await db
       .select({
@@ -127,12 +147,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         ecdh_public_key_jwk: users.ecdhPublicKeyJwk,
       })
       .from(users)
-      .where(
-        and(
-          eq(users.isDiscoverable, true),
-          sql`${users.username} ILIKE ${pattern} ESCAPE '\\'`
-        )
-      )
+      .where(whereSearch)
       .limit(50)
 
     return reply.send(rows)

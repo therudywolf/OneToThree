@@ -117,6 +117,10 @@ const ru = {
   'settings.importFailed': 'Не удалось импортировать',
   'settings.toggleFailed': 'Не удалось обновить настройку',
   'settings.unknown': 'Неизвестная ошибка',
+  'settings.dangerZone': 'Опасная зона',
+  'settings.purgeHint':
+    'Очищает localStorage, sessionStorage и IndexedDB сообщений — для отладки битого локального состояния.',
+  'settings.purgeLocalCache': 'ОЧИСТИТЬ ЛОКАЛЬНЫЙ КЭШ',
 } as const
 
 export default ru

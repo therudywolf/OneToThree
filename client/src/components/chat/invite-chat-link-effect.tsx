@@ -25,7 +25,18 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
     if (!extracted) return
     const peer = canonicalUserId(extracted)
     const self = canonicalUserId(userId)
-    if (peer === self) return
+    console.log('[Phase 18] invite pre-check', {
+      canonicalPeerId: peer,
+      meId: self,
+      rawInvite,
+    })
+    if (peer === self) {
+      console.error(
+        '[Phase 18] Cannot open chat with oneself — compared ids',
+        { peerIdCompared: peer, meIdCompared: self, rawInvite }
+      )
+      return
+    }
 
     const doneKey = `p13:invite-opened:v2:${self}:${peer}`
     if (sessionStorage.getItem(doneKey) === '1') return

@@ -39,7 +39,12 @@ export async function runPostLoginVaultSync(userId: string): Promise<void> {
   if (pull.ok) {
     expected = pull.data.vault_version
     const stored = readStoredVersion(userId)
-    if (stored !== null && stored < pull.data.vault_version) {
+    if (
+      process.env.NODE_ENV === 'development' &&
+      stored !== null &&
+      stored < pull.data.vault_version
+    ) {
+      // eslint-disable-next-line no-console
       console.warn(
         '[vault] Server vault is newer than last synced version — open Settings if messages fail to decrypt.'
       )
@@ -52,8 +57,11 @@ export async function runPostLoginVaultSync(userId: string): Promise<void> {
 
   const up = await syncVaultToServer({ encrypted_blob, expected_version: expected })
   if (!up.ok) {
-    if (up.status === 409) {
-      console.warn('[vault] Sync conflict (409). Another device may have updated the backup.')
+    if (up.status === 409 && process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[vault] Sync conflict (409). Another device may have updated the backup.'
+      )
     }
     return
   }

@@ -31,10 +31,7 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
     const peer = canonicalUserId(extracted)
     const self = canonicalUserId(userId)
     if (peer === self) {
-      console.warn(
-        '[Phase 18] Cannot open chat with oneself — compared ids',
-        { peerIdCompared: peer, meIdCompared: self, rawInvite }
-      )
+      setBanner('[ INVITE :: CANNOT_OPEN_WITH_SELF ]')
       return
     }
 
@@ -63,7 +60,6 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
       } catch (e) {
         if (cancelled) return
         const code = e instanceof Error ? e.message : String(e)
-        console.error('[InviteLink]', { peer, self, err: e })
         setBanner(`[ INVITE_FAILED :: ${code} ]`)
       } finally {
         inviteInflight.delete(lockKey)

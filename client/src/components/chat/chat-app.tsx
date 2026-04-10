@@ -140,9 +140,6 @@ export function ChatApp({
         window.location.href = '/login'
         return
       }
-      if (m.notice === 'vault_synced') {
-        console.info('[P29] vault backup updated on server', m)
-      }
     })
   }, [user?.device_id, logout])
 

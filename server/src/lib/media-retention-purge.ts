@@ -9,7 +9,31 @@ import {
   getBucketName,
 } from './s3.js'
 
-const BATCH = 40
+const DEFAULT_BATCH = 12
+
+function purgeBatchSize(): number {
+  const raw = process.env.MEDIA_PURGE_BATCH?.trim()
+  const n = raw ? Number.parseInt(raw, 10) : DEFAULT_BATCH
+  return Number.isFinite(n) && n > 0 && n <= 100 ? n : DEFAULT_BATCH
+}
+
+/** Skip purge outside UTC window to reduce lock contention during typical peak traffic. */
+function purgeSkippedForOffPeak(): boolean {
+  const off = process.env.MEDIA_PURGE_OFF_PEAK?.trim().toLowerCase()
+  if (off === '0' || off === 'false') return false
+  const useOffPeak =
+    off === '1' ||
+    off === 'true' ||
+    (off === undefined && process.env.NODE_ENV === 'production')
+  if (!useOffPeak) return false
+  const start = Number.parseInt(process.env.MEDIA_PURGE_UTC_START ?? '1', 10)
+  const end = Number.parseInt(process.env.MEDIA_PURGE_UTC_END ?? '6', 10)
+  const h = new Date().getUTCHours()
+  if (Number.isFinite(start) && Number.isFinite(end) && start <= end) {
+    return h < start || h >= end
+  }
+  return false
+}
 
 function retentionDays(): number {
   const raw = process.env.MEDIA_RETENTION_DAYS?.trim()
@@ -29,12 +53,21 @@ function purgeEnabled(): boolean {
  */
 export async function runMediaRetentionPurge(log: FastifyBaseLogger): Promise<{
   purged: number
+  skippedOffPeak?: boolean
 }> {
   if (!purgeEnabled()) {
     return { purged: 0 }
   }
+  if (purgeSkippedForOffPeak()) {
+    log.debug(
+      { utcHour: new Date().getUTCHours() },
+      'media retention purge skipped (off-peak window)'
+    )
+    return { purged: 0, skippedOffPeak: true }
+  }
   const days = retentionDays()
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  const batchSize = purgeBatchSize()
 
   const client = createS3Client()
   const bucket = getBucketName()
@@ -49,7 +82,7 @@ export async function runMediaRetentionPurge(log: FastifyBaseLogger): Promise<{
       })
       .from(messages)
       .where(and(isNotNull(messages.mediaPath), lt(messages.createdAt, cutoff)))
-      .limit(BATCH)
+      .limit(batchSize)
 
     if (batch.length === 0) break
 
@@ -67,6 +100,7 @@ export async function runMediaRetentionPurge(log: FastifyBaseLogger): Promise<{
         })
         .where(eq(messages.id, row.id))
       purged++
+      await new Promise((r) => setTimeout(r, 25))
     }
   }
 

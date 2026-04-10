@@ -1,13 +1,14 @@
-# Production stack: only Caddy exposes 80/443. Internal services stay on app_network.
-# Copy .env.prod from .env.example values and set secrets (JWT_SECRET, POSTGRES_PASSWORD, …).
-# TLS: put cert.pem + key.pem in ./certs/ on the host (see Caddyfile).
+# Production stack — Caddy terminates TLS; internal services on app_network.
+# Launch: ./setup.sh   (requires .env.prod + ./certs/cert.pem + key.pem)
+#
+# Migrations: db-migrate runs once after Postgres is healthy; api waits for it.
 
 services:
   db:
     image: postgres:alpine
-    restart: unless-stopped
+    restart: always
     mem_limit: 512m
-    cpus: 1.0
+    cpus: '1.0'
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-forest}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
@@ -25,13 +26,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 15s
 
   minio:
     image: minio/minio:latest
-    restart: unless-stopped
+    restart: always
     mem_limit: 512m
-    cpus: 1.0
+    cpus: '1.0'
     command: server /data --console-address ':9001'
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
@@ -45,7 +46,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 15
-      start_period: 15s
+      start_period: 20s
 
   db-migrate:
     build:
@@ -64,12 +65,12 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    restart: unless-stopped
+    restart: always
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=64m
-    mem_limit: 512m
-    cpus: 1.0
+    mem_limit: 384m
+    cpus: '0.75'
     expose:
       - '8080'
     env_file:
@@ -78,6 +79,7 @@ services:
       NODE_ENV: production
       HOME: /tmp
       PORT: '8080'
+      TRUST_PROXY: ${TRUST_PROXY:-1}
       DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
       CORS_ORIGIN: ${CORS_ORIGIN:-https://onetothree.ru}
       MINIO_ENDPOINT: http://minio:9000
@@ -98,8 +100,8 @@ services:
         ]
       interval: 10s
       timeout: 5s
-      retries: 8
-      start_period: 40s
+      retries: 10
+      start_period: 45s
 
   web:
     build:
@@ -108,9 +110,9 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.onetothree.ru}
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
-    restart: unless-stopped
-    mem_limit: 2g
-    cpus: 2.0
+    restart: always
+    mem_limit: 768m
+    cpus: '1.25'
     expose:
       - '3000'
     environment:
@@ -121,10 +123,22 @@ services:
         condition: service_healthy
     networks:
       - app_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "node -e \"fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok||r.status===307||r.status===308?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 8s
+      retries: 8
+      start_period: 90s
 
   caddy:
     image: caddy:2-alpine
-    restart: unless-stopped
+    restart: always
+    mem_limit: 128m
+    cpus: '0.25'
     ports:
       - '80:80'
       - '443:443'
@@ -132,9 +146,12 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./certs:/certs:ro
     depends_on:
-      - web
-      - api
-      - minio
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     networks:
       - app_network
 

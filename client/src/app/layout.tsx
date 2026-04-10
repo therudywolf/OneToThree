@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next'
+import { AuthProvider } from '@/components/auth/auth-provider'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -24,8 +25,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-void">
       <body className="relative min-h-screen bg-void">
-        <div className="crt-overlay" aria-hidden />
-        <div className="crt-vignette relative z-10 min-h-screen">{children}</div>
+        <AuthProvider>
+          <div className="crt-overlay" aria-hidden />
+          <div className="crt-vignette relative z-10 min-h-screen">
+            {children}
+          </div>
+        </AuthProvider>
       </body>
     </html>
   )

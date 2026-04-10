@@ -14,6 +14,29 @@ export function vaultStorageKey(userId: string): string {
   return `forest:vault:${userId}`
 }
 
+/** Vault blob keyed by login handle (before / without stable user id). */
+export function vaultLoginStorageKey(username: string): string {
+  return `forest:vault:login:${username.trim()}`
+}
+
+export function readVaultBlobByLoginUsername(username: string): VaultBlob | null {
+  if (typeof window === 'undefined') return null
+  const raw = localStorage.getItem(vaultLoginStorageKey(username))
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as VaultBlob
+  } catch {
+    return null
+  }
+}
+
+export function persistVaultBlobByLoginUsername(
+  username: string,
+  blob: VaultBlob
+): void {
+  localStorage.setItem(vaultLoginStorageKey(username), JSON.stringify(blob))
+}
+
 export function readVaultBlob(userId: string): VaultBlob | null {
   if (typeof window === 'undefined') return null
   const raw = localStorage.getItem(vaultStorageKey(userId))
@@ -31,6 +54,19 @@ export function persistVaultBlob(userId: string, blob: VaultBlob): void {
 
 export function clearVaultBlob(userId: string): void {
   localStorage.removeItem(vaultStorageKey(userId))
+}
+
+export function clearVaultBlobByLoginUsername(username: string): void {
+  localStorage.removeItem(vaultLoginStorageKey(username))
+}
+
+/** After login, mirror the same encrypted blob under the server user id. */
+export function mirrorVaultLoginToUserId(username: string, userId: string): void {
+  if (typeof window === 'undefined') return
+  const blob = readVaultBlobByLoginUsername(username)
+  if (blob) {
+    persistVaultBlob(userId, blob)
+  }
 }
 
 function uint8ToBase64(bytes: Uint8Array): string {

@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { readVaultBlob } from '@/lib/vault'
+import { useAuth } from '@/components/auth/auth-provider'
+import {
+  mirrorVaultLoginToUserId,
+  persistVaultBlob,
+  readVaultBlob,
+  readVaultBlobByLoginUsername,
+} from '@/lib/vault'
 import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
 import { useLoadChatMessages } from '@/hooks/use-load-chat-messages'
@@ -10,6 +16,7 @@ import { useChatRealtime } from '@/hooks/use-chat-realtime'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
 import { fetchPeerIdsForChat, useWebRTC } from '@/hooks/use-webrtc'
+import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { VaultModal } from '@/components/chat/vault-modal'
 import { ChatSidebar } from '@/components/chat/chat-sidebar'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
@@ -22,17 +29,20 @@ import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 
 export function ChatApp({
   userId,
-  email,
+  username,
 }: {
   userId: string
-  email: string
+  username: string
 }) {
+  const { user } = useAuth()
   const searchParams = useSearchParams()
   const setUserId = useChatStore((s) => s.setUserId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const activeChatId = useChatStore((s) => s.activeChatId)
-  const [vaultMode, setVaultMode] = useState<'unlock' | 'setup' | null>(null)
+  const [vaultState, setVaultState] = useState<'loading' | 'ok' | 'missing'>(
+    'loading'
+  )
 
   const {
     peerReady,
@@ -54,8 +64,20 @@ export function ChatApp({
   }, [searchParams, setActiveChatId])
 
   useEffect(() => {
-    setVaultMode(readVaultBlob(userId) ? 'unlock' : 'setup')
-  }, [userId])
+    if (readVaultBlob(userId)) {
+      setVaultState('ok')
+      return
+    }
+    const handle = user?.username ?? username
+    const byLogin = readVaultBlobByLoginUsername(handle)
+    if (byLogin) {
+      mirrorVaultLoginToUserId(handle, userId)
+      persistVaultBlob(userId, byLogin)
+      setVaultState('ok')
+      return
+    }
+    setVaultState('missing')
+  }, [userId, user?.username, username])
 
   const { cryptoCtx, ctxError } = useChatCryptoContext()
   const sharedKey = useChatAesKey(cryptoCtx)
@@ -77,12 +99,21 @@ export function ChatApp({
     await initiateCall(peers, true)
   }
 
-  if (vaultMode === null) {
+  if (vaultState === 'loading') {
     return <div className="min-h-screen bg-black" aria-hidden />
   }
 
+  if (vaultState === 'missing') {
+    return <NoLocalVault />
+  }
+
   if (!unwrappedPrivateKey) {
-    return <VaultModal userId={userId} email={email} mode={vaultMode} />
+    return (
+      <VaultModal
+        userId={userId}
+        displayHandle={user?.username ?? username}
+      />
+    )
   }
 
   return (

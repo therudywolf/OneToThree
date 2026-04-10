@@ -66,8 +66,9 @@ services:
     environment:
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
+      # NEXT_PUBLIC_* optional: set in client/.env.local (mounted at /app/.env.local).
+      # Do not pass empty ${NEXT_PUBLIC_VAPID_PUBLIC_KEY} here — it overrides .env.local in the container.
       NEXT_PUBLIC_API_URL: http://localhost:8080
-      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
     volumes:
       - ./client:/app
       - web_node_modules:/app/node_modules

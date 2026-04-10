@@ -12,6 +12,7 @@
     "docker:down": "docker compose down",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:push": "drizzle-kit push --config drizzle.config.ts",
+    "db:push:docker": "node --env-file=docker.db.env ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config drizzle.config.ts"
   },
   "devDependencies": {

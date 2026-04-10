@@ -12,12 +12,7 @@ import { lookupUsers, searchUsers } from '@/lib/api/users'
 import { useTranslation } from '@/hooks/use-translation'
 import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value
-  )
-}
+import { isUuid, normalizePeerInput } from '@/lib/peer-input'
 
 export function ChatSidebar({ userId }: { userId: string }) {
   const { t } = useTranslation()
@@ -42,7 +37,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
   }
 
   async function openDirect() {
-    const raw = peerInput.trim()
+    const raw = normalizePeerInput(peerInput)
     if (!raw) return
     setCreating(true)
     setCreateErr(null)
@@ -50,13 +45,17 @@ export function ChatSidebar({ userId }: { userId: string }) {
       let pid = raw
       if (!isUuid(raw)) {
         const candidates = await searchUsers(raw)
+        const lower = raw.toLowerCase()
         const exact = candidates.find(
-          (u) => u.username.toLowerCase() === raw.toLowerCase()
+          (u) => u.username.toLowerCase() === lower
         )
-        if (!exact) {
+        const picked =
+          exact ??
+          (candidates.length === 1 ? candidates[0] : undefined)
+        if (!picked) {
           throw new Error('USER_NOT_FOUND_OR_HIDDEN')
         }
-        pid = exact.id
+        pid = picked.id
       }
       if (pid === userId) {
         throw new Error('CANNOT_OPEN_DIRECT_WITH_SELF')

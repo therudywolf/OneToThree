@@ -16,18 +16,24 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [saved, setSaved] = useState(false)
 
   const fetchMe = useCallback(async () => {
+    setError(null)
     try {
       const r = await fetch(`${API_URL}/users/me/settings`, {
         credentials: 'include',
       })
-      if (r.ok) {
-        const d = (await r.json()) as { is_discoverable?: boolean }
-        setDiscoverable(!!d.is_discoverable)
+      const d = (await r.json().catch(() => ({}))) as {
+        is_discoverable?: boolean
+        error?: string
       }
+      if (!r.ok) {
+        setError(d.error ?? t('settings.loadFailed'))
+        return
+      }
+      setDiscoverable(!!d.is_discoverable)
     } catch {
-      /* ignore initial load */
+      setError(t('settings.loadFailed'))
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void fetchMe()
@@ -44,11 +50,19 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_discoverable: newVal }),
       })
+      const d = (await r.json().catch(() => ({}))) as {
+        ok?: boolean
+        is_discoverable?: boolean
+        error?: string
+      }
       if (!r.ok) {
-        const d = (await r.json().catch(() => ({}))) as { error?: string }
         throw new Error(d.error ?? t('settings.toggleFailed'))
       }
-      setDiscoverable(newVal)
+      if (typeof d.is_discoverable === 'boolean') {
+        setDiscoverable(d.is_discoverable)
+      } else {
+        setDiscoverable(newVal)
+      }
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (e) {
@@ -138,15 +152,17 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </div>
             <button
               type="button"
+              role="switch"
+              aria-checked={discoverable}
               disabled={busy}
               onClick={() => void toggleDiscoverable()}
               className={`border px-3 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors ${
                 discoverable
                   ? 'border-neon-cyan text-neon-cyan'
                   : 'border-red-900 text-red-800'
-              } hover:border-neon-red hover:text-neon-red disabled:opacity-40`}
+              } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
             >
-              {discoverable ? '[ ON ]' : '[ OFF ]'}
+              {busy ? '[ … ]' : discoverable ? '[ ON ]' : '[ OFF ]'}
             </button>
           </div>
 

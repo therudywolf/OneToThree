@@ -1,9 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { searchUsers, type SearchUserRow } from '@/lib/api/users'
+import { normalizePeerInput } from '@/lib/peer-input'
 import { useCreateGroup } from '@/hooks/use-create-group'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
+import { useTranslation } from '@/hooks/use-translation'
+import type { TranslationKey } from '@/hooks/use-translation'
 
 type Props = {
   userId: string
@@ -11,30 +14,70 @@ type Props = {
   onCreated: (chatId: string) => void
 }
 
+function mapGroupError(raw: string, t: (k: TranslationKey) => string): string {
+  if (raw.startsWith('MISSING_ECDH:')) {
+    const name = raw.slice('MISSING_ECDH:'.length).trim() || '?'
+    return t('group.missingEcdh').replace('{name}', name)
+  }
+  const direct: Record<string, TranslationKey> = {
+    NO_VAULT: 'group.noVault',
+    NO_SESSION_USER: 'group.noSession',
+    NEED_AT_LEAST_ONE_OTHER_MEMBER: 'group.needMember',
+    CREATE_GROUP_FAILED: 'group.createFailed',
+    REQUEST_TIMEOUT: 'group.timeout',
+    LOOKUP_FAILED: 'group.lookupFailed',
+    GROUP_CREATE_FAILED: 'group.createFailed',
+    UNKNOWN_USER: 'group.unknownUser',
+    UNKNOWN_MEMBER: 'group.unknownUser',
+    INVALID_BODY: 'group.serverInvalid',
+    DUPLICATE_MEMBER: 'group.serverDuplicate',
+    CREATOR_NOT_IN_MEMBERS: 'group.creatorMissing',
+    GROUP_REQUIRES_MEMBERS: 'group.needMember',
+    CREATE_FAILED: 'group.createFailed',
+  }
+  const key = direct[raw]
+  if (key) return t(key)
+  return raw
+}
+
 export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
-  const { createGroup, busy, error, clearError } = useCreateGroup()
+  const { t } = useTranslation()
+  const { createGroup, busy, error, clearError, reset } = useCreateGroup(userId)
   const [name, setName] = useState('')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchUserRow[]>([])
   const [searching, setSearching] = useState(false)
   const [selected, setSelected] = useState<SearchUserRow[]>([])
 
-  const runSearch = useCallback(async (q: string) => {
-    const t = q.trim()
-    if (t.length < 1) {
-      setResults([])
-      return
-    }
-    setSearching(true)
-    try {
-      const rows = await searchUsers(t)
-      setResults(rows.filter((r) => r.id !== userId))
-    } catch {
-      setResults([])
-    } finally {
-      setSearching(false)
-    }
-  }, [userId])
+  const displayError = useMemo(
+    () => (error ? mapGroupError(error, t) : null),
+    [error, t]
+  )
+
+  useEffect(() => {
+    reset()
+    return () => reset()
+  }, [reset])
+
+  const runSearch = useCallback(
+    async (q: string) => {
+      const tq = normalizePeerInput(q.trim()) || q.trim()
+      if (tq.length < 1) {
+        setResults([])
+        return
+      }
+      setSearching(true)
+      try {
+        const rows = await searchUsers(tq)
+        setResults(rows.filter((r) => r.id !== userId))
+      } catch {
+        setResults([])
+      } finally {
+        setSearching(false)
+      }
+    },
+    [userId]
+  )
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -64,25 +107,27 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
       onCreated(chat.id)
       onClose()
     } catch {
-      /* error state in hook */
+      /* message via hook `error` */
     }
   }
+
+  const canSubmit = selected.length > 0 && !busy
 
   return (
     <div
       className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 px-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Create group"
+      aria-label={t('group.dialogAria')}
     >
       <div className="terminal-panel w-full max-w-lg space-y-4 border border-neon-cyan/40 p-4">
         <header className="flex items-start justify-between gap-2 border-b border-neon-red/30 pb-2">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-neon-cyan">
-              [ NEW_GROUP_E2E ]
+              {t('group.title')}
             </p>
             <p className="mt-1 font-mono text-[10px] text-red-800">
-              Members need ECDH published (vault unlock sync).
+              {t('group.hintEcdh')}
             </p>
           </div>
           <button
@@ -97,39 +142,41 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
         <form onSubmit={(ev) => void handleSubmit(ev)} className="space-y-3">
           <div>
             <label className="terminal-label" htmlFor="grp-name">
-              &gt; CHANNEL_NAME
+              {t('group.channelName')}
             </label>
             <input
               id="grp-name"
               className="terminal-input text-xs"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="optional"
+              placeholder={t('group.optional')}
               autoComplete="off"
             />
           </div>
 
           <div>
             <label className="terminal-label" htmlFor="grp-radar">
-              &gt; RADAR_SEARCH
+              {t('group.searchLabel')}
             </label>
             <input
               id="grp-radar"
               className="terminal-input text-xs"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="username fragment"
+              placeholder={t('group.searchPlaceholder')}
               autoComplete="off"
             />
             {searching ? (
-              <p className="mt-1 font-mono text-[10px] text-red-800">SCAN…</p>
+              <p className="mt-1 font-mono text-[10px] text-red-800">
+                {t('group.scanning')}
+              </p>
             ) : null}
           </div>
 
           <div className="max-h-32 overflow-y-auto border border-neon-cyan/20">
             {results.length === 0 ? (
               <p className="p-2 font-mono text-[10px] text-red-800">
-                NO_HITS / DISCOVERABLE_ONLY
+                {t('group.noHits')}
               </p>
             ) : (
               results.map((r) => (
@@ -145,7 +192,9 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
                 >
                   <span>{r.username}</span>
                   {!r.ecdh_public_key_jwk ? (
-                    <span className="text-[10px] text-red-600">NO_ECDH</span>
+                    <span className="text-[10px] text-red-600">
+                      {t('group.noEcdhBadge')}
+                    </span>
                   ) : (
                     <span className="text-[10px] text-red-800">OK</span>
                   )}
@@ -155,30 +204,39 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </div>
 
           <div>
-            <p className="terminal-label">:: selected</p>
+            <p className="terminal-label">{t('group.selectedLabel')}</p>
             <p className="font-mono text-[10px] text-neon-cyan">
               {selected.length === 0
                 ? '—'
                 : selected.map((s) => s.username).join(', ')}
             </p>
+            {selected.length === 0 ? (
+              <p className="mt-1 font-mono text-[9px] text-red-800">
+                {t('group.selectHint')}
+              </p>
+            ) : null}
           </div>
 
-          {error ? (
+          {displayError ? (
             <p className="border border-neon-red px-2 py-1 font-mono text-xs text-neon-red">
-              [!] {error}
+              [!] {displayError}
             </p>
           ) : null}
 
           <div className="flex flex-wrap gap-2 pt-1">
-            <TerminalGlitchButton type="submit" disabled={busy || selected.length === 0}>
-              [ CREATE ]
+            <TerminalGlitchButton
+              type="submit"
+              disabled={!canSubmit}
+              aria-busy={busy}
+            >
+              {busy ? `[ ${t('group.creating')} ]` : `[ ${t('group.create')} ]`}
             </TerminalGlitchButton>
             <button
               type="button"
               onClick={onClose}
               className="rounded-none border border-neon-red bg-black px-4 py-2 font-mono text-xs uppercase text-neon-red hover:border-neon-cyan hover:text-neon-cyan"
             >
-              [ CANCEL ]
+              [ {t('group.cancel')} ]
             </button>
           </div>
         </form>

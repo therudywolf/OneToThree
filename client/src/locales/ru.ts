@@ -59,7 +59,7 @@ const ru = {
     'Сервер хранит только публичные ключи и зашифрованные сообщения. Он не может читать сообщения или расшифровывать медиа.',
   'guide.discoverability.title': 'Обнаруживаемость',
   'guide.discoverability.body':
-    'По умолчанию аккаунт скрыт. Включите Discoverable в настройках, чтобы вас находили по имени.',
+    'Можно скрыться из поиска по нику в настройках (Обнаруживаемость). Чтобы искать других по имени, у них тоже должна быть включена опция; ссылки-приглашения работают всегда.',
   'guide.backup.title': 'Резервная копия vault',
   'guide.backup.body':
     'Используйте Settings -> Export Vault, чтобы сохранить зашифрованную копию. На новом устройстве импортируйте ее для восстановления доступа.',
@@ -72,8 +72,40 @@ const ru = {
   'sidebar.cannotOpenSelf': 'Нельзя открыть личный чат с самим собой',
   'sidebar.createFailed': 'Не удалось создать чат',
 
+  'group.dialogAria': 'Создать зашифрованную группу',
+  'group.title': '[ NEW_GROUP_E2E ]',
+  'group.hintEcdh':
+    'У каждого участника должен быть опубликован ECDH (один раз разблокируйте vault — ключи уйдут на сервер).',
+  'group.channelName': '> CHANNEL_NAME',
+  'group.optional': 'необязательно',
+  'group.searchLabel': '> RADAR_SEARCH',
+  'group.searchPlaceholder': 'ник, UUID или вставленная ссылка-приглашение',
+  'group.scanning': 'СКАН…',
+  'group.noHits':
+    'НЕТ СОВПАДЕНИЙ — пользователь должен быть «обнаруживаем» в настройках, либо ищите по UUID / ссылке.',
+  'group.noEcdhBadge': 'НЕТ_ECDH',
+  'group.selectedLabel': ':: выбрано',
+  'group.selectHint': 'Выберите хотя бы одного пользователя в списке выше.',
+  'group.create': 'СОЗДАТЬ',
+  'group.creating': '…',
+  'group.cancel': 'ОТМЕНА',
+  'group.noVault': 'Vault заблокирован — сначала разблокируйте vault.',
+  'group.noSession': 'Нет id пользователя в сессии — перезагрузите страницу.',
+  'group.needMember': 'Добавьте хотя бы одного другого участника.',
+  'group.missingEcdh':
+    'У пользователя «{name}» нет ECDH на сервере — ему нужно один раз разблокировать vault.',
+  'group.lookupFailed': 'Не удалось загрузить профили с сервера.',
+  'group.unknownUser': 'Один из пользователей не существует на сервере.',
+  'group.createFailed': 'Не удалось создать группу.',
+  'group.timeout': 'Таймаут запроса — повторите или проверьте сеть.',
+  'group.serverInvalid': 'Некорректный запрос к серверу.',
+  'group.serverDuplicate': 'Дубликат участника в запросе.',
+  'group.creatorMissing': 'Создатель должен быть в списке участников.',
+
   'settings.discoverable': 'Обнаруживаемость',
-  'settings.discoverableHint': 'Виден в публичном поиске пользователей',
+  'settings.discoverableHint':
+    'Другие смогут найти вас по нику. Чтобы найти кого-то по нику, эта опция должна быть включена у него.',
+  'settings.loadFailed': 'Не удалось загрузить настройки (сеть или сессия)',
   'settings.vaultBackup': 'Резервная копия vault',
   'settings.languageHint': 'Выберите язык интерфейса',
   'settings.noLocalVault': 'Локальный vault не найден',

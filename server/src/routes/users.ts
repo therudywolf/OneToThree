@@ -14,9 +14,13 @@ function escapeIlikePattern(fragment: string): string {
   return fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
+const UUID_QUERY_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 const patchMeSchema = z.object({
   ecdh_public_key_jwk: z.string().min(8).optional(),
-  is_discoverable: z.boolean().optional(),
+  /** Coerce strings from odd proxies / clients (e.g. "true") */
+  is_discoverable: z.coerce.boolean().optional(),
 })
 
 const lookupBodySchema = z.object({
@@ -70,7 +74,16 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
     await db.update(users).set(updates).where(eq(users.id, user.id))
 
-    return reply.send({ ok: true })
+    const [after] = await db
+      .select({ isDiscoverable: users.isDiscoverable })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+
+    return reply.send({
+      ok: true,
+      is_discoverable: after?.isDiscoverable ?? false,
+    })
   })
 
   app.get('/search', async (request, reply) => {
@@ -80,6 +93,21 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const q = parsed.data.q.trim()
+
+    if (UUID_QUERY_RE.test(q)) {
+      const [row] = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          public_key_jwk: users.publicKeyJwk,
+          ecdh_public_key_jwk: users.ecdhPublicKeyJwk,
+        })
+        .from(users)
+        .where(eq(users.id, q))
+        .limit(1)
+      return reply.send(row ? [row] : [])
+    }
+
     const pattern = `%${escapeIlikePattern(q)}%`
 
     const rows = await db

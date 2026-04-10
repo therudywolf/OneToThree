@@ -22,7 +22,7 @@ export const users = pgTable('users', {
   publicKeyJwk: text('public_key_jwk').notNull(),
   /** ECDH public JWK for E2E messaging (optional until client uploads). */
   ecdhPublicKeyJwk: text('ecdh_public_key_jwk'),
-  isDiscoverable: boolean('is_discoverable').notNull().default(false),
+  isDiscoverable: boolean('is_discoverable').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

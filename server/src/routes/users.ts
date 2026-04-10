@@ -1,10 +1,12 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { users } from '../db/schema.js'
-import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { devices, users } from '../db/schema.js'
+import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
+import { normalizeUuid } from '../lib/uuid.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
+import { sendToUser } from '../ws/registry.js'
 
 const searchQuerySchema = z.object({
   q: z.string().min(1).max(128),
@@ -183,5 +185,75 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         ecdh_public_key_jwk: u.ecdhPublicKeyJwk,
       })),
     })
+  })
+
+  app.get('/me/devices', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const sess = await verifySessionJwt(request)
+    const currentDeviceId = sess?.device_id
+      ? normalizeUuid(sess.device_id)
+      : null
+
+    const rows = await db
+      .select({
+        id: devices.id,
+        deviceName: devices.deviceName,
+        lastActive: devices.lastActive,
+        userAgent: devices.userAgent,
+        ipAddress: devices.ipAddress,
+        revokedAt: devices.revokedAt,
+      })
+      .from(devices)
+      .where(eq(devices.userId, user.id))
+      .orderBy(desc(devices.lastActive))
+
+    return reply.send({
+      current_device_id: currentDeviceId,
+      devices: rows.map((r) => ({
+        id: normalizeUuid(r.id),
+        device_name: r.deviceName,
+        last_active: r.lastActive.toISOString(),
+        user_agent: r.userAgent,
+        ip_address: r.ipAddress,
+        revoked: r.revokedAt != null,
+        is_current:
+          currentDeviceId !== null &&
+          normalizeUuid(r.id) === currentDeviceId,
+      })),
+    })
+  })
+
+  app.delete('/me/devices/:deviceId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z
+      .object({ deviceId: uuidSchema })
+      .safeParse(request.params)
+    if (!params.success) {
+      return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    }
+
+    const deviceId = normalizeUuid(params.data.deviceId)
+
+    const [updated] = await db
+      .update(devices)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+      .returning({ id: devices.id })
+
+    if (!updated) {
+      return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
+    }
+
+    sendToUser(user.id, {
+      type: 'server_notice',
+      notice: 'device_revoked',
+      device_id: deviceId,
+    })
+
+    return reply.send({ ok: true })
   })
 }

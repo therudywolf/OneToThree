@@ -13,7 +13,12 @@ import {
   getPending,
   setChallenge,
 } from '../lib/challenge-store.js'
-import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import {
+  assertAuthed,
+  getAuthUser,
+  verifySessionJwt,
+} from '../lib/auth-user.js'
+import { upsertDeviceForSession } from '../lib/device-session.js'
 import {
   safeEqualNonce,
   safeEqualUtf8,
@@ -68,11 +73,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get('/ws-ticket', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+    const sess = await verifySessionJwt(request)
     const ticket = await reply.jwtSign(
       {
         sub: normalizeUuid(user.id),
         username: user.username,
         scope: 'ws',
+        ...(sess?.device_id ? { device_id: sess.device_id } : {}),
       },
       { expiresIn: 120 }
     )
@@ -88,6 +95,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         .from(users)
         .where(eq(users.id, user.id))
         .limit(1)
+      const sess = await verifySessionJwt(request)
       return reply.send({
         user: {
           id: user.id,
@@ -95,6 +103,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           is_discoverable: user.is_discoverable,
           role: user.role,
           totp_enabled: totpRow?.isTotpEnabled ?? false,
+          device_id: sess?.device_id ?? null,
         },
       })
     }
@@ -278,8 +287,19 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const canonicalId = normalizeUuid(row.id)
+    const dev = await upsertDeviceForSession(request, canonicalId)
+    if (!dev.ok) {
+      if (dev.error === 'DEVICE_REVOKED') {
+        return reply.status(403).send({ error: 'DEVICE_REVOKED' })
+      }
+      return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
+    }
     const token = await reply.jwtSign(
-      { sub: canonicalId, username: row.username },
+      {
+        sub: canonicalId,
+        username: row.username,
+        device_id: dev.deviceId,
+      },
       { expiresIn: SESSION_MAX_AGE_S }
     )
     reply.setCookie(SESSION_COOKIE, token, sessionCookieBase())
@@ -426,8 +446,19 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           })
         }
 
+        const dev = await upsertDeviceForSession(request, canonicalId)
+        if (!dev.ok) {
+          if (dev.error === 'DEVICE_REVOKED') {
+            return reply.status(403).send({ error: 'DEVICE_REVOKED' })
+          }
+          return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
+        }
         const token = await reply.jwtSign(
-          { sub: canonicalId, username },
+          {
+            sub: canonicalId,
+            username,
+            device_id: dev.deviceId,
+          },
           { expiresIn: SESSION_MAX_AGE_S }
         )
 

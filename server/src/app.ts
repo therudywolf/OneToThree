@@ -11,6 +11,7 @@ import { pushRoutes } from './routes/push.js'
 import { userRoutes } from './routes/users.js'
 import { storageRoutes } from './routes/storage.js'
 import { adminRoutes } from './routes/admin.js'
+import { vaultRoutes } from './routes/vault.js'
 import { wsRoutes } from './routes/ws.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 
@@ -71,6 +72,7 @@ export async function buildApp() {
   await app.register(storageRoutes, { prefix: '/api/storage' })
   await app.register(pushRoutes, { prefix: '/api/push' })
   await app.register(adminRoutes, { prefix: '/api/admin' })
+  await app.register(vaultRoutes, { prefix: '/api/vault' })
   await app.register(wsRoutes, { prefix: '/api' })
 
   app.get('/health', async () => ({ ok: true }))

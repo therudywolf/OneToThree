@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/components/auth/auth-provider'
 import { cryptoLogin, finalizeLoginWithTotp } from '@/lib/auth/crypto-login'
+import { ensureClientDeviceId } from '@/lib/api/auth'
+import { parseNickname } from '@/lib/nickname'
+import {
+  persistVaultBlobByLoginUsername,
+  type VaultBlob,
+} from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 
@@ -20,7 +26,12 @@ export function LoginForm() {
   const [totpCode, setTotpCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [vaultImportOk, setVaultImportOk] = useState(false)
   const submitLock = useRef(false)
+
+  useEffect(() => {
+    ensureClientDeviceId()
+  }, [])
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -55,8 +66,47 @@ export function LoginForm() {
       TOTP_INVALID: t('login.totpInvalid'),
       INVALID_PENDING_TOKEN: t('login.totpPendingInvalid'),
       TOTP_VERIFY_FAILED: t('login.totpVerifyFailed'),
+      CLIENT_DEVICE_ID_REQUIRED: t('login.clientDeviceRequired'),
+      DEVICE_REVOKED: t('login.deviceRevoked'),
     }
     return m[code] ?? code.replace(/_/g, ' ')
+  }
+
+  function handlePreLoginVaultImport() {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,.key,application/json'
+    input.onchange = async () => {
+      const file = input.files?.[0]
+      if (!file) return
+      setError(null)
+      setVaultImportOk(false)
+      try {
+        const text = await file.text()
+        const data = JSON.parse(text) as {
+          userId?: string
+          vault?: VaultBlob
+        }
+        const nick = parseNickname(username.trim())
+        if (!nick.ok) {
+          setError(t('login.invalidUsernameFormat'))
+          return
+        }
+        if (
+          !data.vault?.saltB64 ||
+          !data.vault?.ivB64 ||
+          !data.vault?.ciphertextB64
+        ) {
+          setError(t('settings.invalidVaultFile'))
+          return
+        }
+        persistVaultBlobByLoginUsername(nick.value, data.vault)
+        setVaultImportOk(true)
+      } catch {
+        setError(t('settings.importFailed'))
+      }
+    }
+    input.click()
   }
 
   function resetTotpStep() {
@@ -298,6 +348,26 @@ export function LoginForm() {
             : `:: ${t('login.existingVault')}`}
         </button>
       </div>
+
+      {mode === 'login' ? (
+        <div className="border-t border-zinc-800 pt-4">
+          <p className="mb-2 text-[9px] uppercase tracking-widest text-zinc-500">
+            {t('login.vaultRecoveryTitle')}
+          </p>
+          <button
+            type="button"
+            onClick={handlePreLoginVaultImport}
+            className="w-full border border-zinc-700 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan"
+          >
+            [ {t('login.vaultRecoveryImport')} ]
+          </button>
+          {vaultImportOk ? (
+            <p className="mt-2 font-mono text-[10px] text-neon-cyan">
+              :: {t('login.vaultRecoveryOk')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </motion.form>
   )
 }

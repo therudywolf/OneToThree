@@ -56,6 +56,14 @@ const ru = {
   'login.totpPendingInvalid': 'Шаг сессии истёк. Войдите снова.',
   'login.totpVerifyFailed': 'Ошибка двухфакторной проверки.',
   'login.totpSixDigits': 'Введите ровно 6 цифр.',
+  'login.clientDeviceRequired':
+    'Браузер должен отправить идентификатор устройства. Обновите страницу.',
+  'login.deviceRevoked':
+    'Это устройство отозвано. Войдите с другого или импортируйте vault.',
+  'login.vaultRecoveryTitle': 'Восстановление vault (до входа)',
+  'login.vaultRecoveryImport': 'ИМПОРТ_ФАЙЛА_VAULT',
+  'login.vaultRecoveryOk':
+    'Зашифрованный vault сохранён для этого ника. Можно войти с парольной фразой.',
   'login.tosRegisterTitle': '[ RU ] Пользовательское соглашение',
   'login.tosRegisterBody': `Приватность и Шифрование: Сервис предоставляет сквозное (End-to-End) шифрование. Мы физически не имеем доступа к вашим сообщениям и ключам. Потеря пароля от Сейфа означает безвозвратную потерю доступа к переписке.
 
@@ -131,6 +139,28 @@ const ru = {
   'settings.discoverableTooltipOff': 'Вас нет в поиске по нику',
   'settings.loadFailed': 'Не удалось загрузить настройки (сеть или сессия)',
   'settings.vaultBackup': 'Резервная копия vault',
+  'settings.vaultBackupHint':
+    'JSON или физический ключ .key — только шифротекст; пароль не уходит с устройства.',
+  'settings.vaultExportJson': 'ЭКСПОРТ_JSON',
+  'settings.vaultExportKey': 'СКАЧАТЬ_ФИЗ_КЛЮЧ',
+  'settings.vaultImport': 'ИМПОРТ',
+  'settings.tabDevices': 'УСТРОЙСТВА',
+  'settings.devicesSectionTitle': 'УСТРОЙСТВА / DEVICES',
+  'settings.devicesHint':
+    'Сессии привязаны к профилю браузера. Отзыв инвалидирует JWT этого устройства.',
+  'settings.devicesCurrent': 'ТЕКУЩЕЕ',
+  'settings.devicesRevoked': 'ОТОЗВАНО',
+  'settings.devicesRevoke': 'ОТОЗВАТЬ',
+  'settings.devicesRevokeConfirm':
+    'Отозвать это устройство? Сессия сбросится при следующем запросе.',
+  'settings.recoveryMnemonicTitle': 'Фраза восстановления BIP39 (12 слов)',
+  'settings.recoveryMnemonicHint':
+    'Только офлайн. Не передавайте. Не заменяет пароль vault для входа.',
+  'settings.recoveryMnemonicGenerate': 'СГЕНЕРИРОВАТЬ',
+  'settings.recoveryMnemonicWarn':
+    'Запишите слова на бумаге. Закройте экран после сохранения.',
+  'settings.recoveryMnemonicAck': 'Я записал фразу офлайн',
+  'settings.recoveryMnemonicDone': 'ОЧИСТИТЬ',
   'settings.languageHint': 'Выберите язык интерфейса',
   'settings.noLocalVault': 'Локальный vault не найден',
   'settings.invalidVaultFile': 'Некорректный файл vault',

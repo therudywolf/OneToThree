@@ -1,3 +1,7 @@
+import {
+  authDeviceHeaders,
+  getOrCreateClientDeviceId,
+} from '@/lib/client-device'
 import { canonicalUserId } from '@/lib/user-id'
 
 /**
@@ -68,7 +72,10 @@ export async function verifyChallenge(
 ): Promise<VerifyChallengeResult> {
   const res = await fetch(`${API_URL}/auth/verify`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...authDeviceHeaders(),
+    },
     credentials: 'include',
     body: JSON.stringify({
       username: payload.username.trim(),
@@ -118,7 +125,10 @@ export async function complete2faLogin(
 ): Promise<{ user: { id: string; username: string } }> {
   const res = await fetch(`${API_URL}/auth/login/2fa`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...authDeviceHeaders(),
+    },
     credentials: 'include',
     body: JSON.stringify({
       pending_token: pendingToken,
@@ -150,6 +160,7 @@ export async function fetchMe(): Promise<{
     is_discoverable?: boolean
     role?: 'user' | 'admin'
     totp_enabled?: boolean
+    device_id?: string | null
   }
 }> {
   const res = await fetch(`${API_URL}/auth/me`, {
@@ -163,6 +174,7 @@ export async function fetchMe(): Promise<{
       is_discoverable?: boolean
       role?: 'user' | 'admin'
       totp_enabled?: boolean
+      device_id?: string | null
     }
     error?: string
   }
@@ -191,8 +203,15 @@ export async function fetchMe(): Promise<{
         typeof data.user.totp_enabled === 'boolean'
           ? data.user.totp_enabled
           : false,
+      device_id:
+        typeof data.user.device_id === 'string' ? data.user.device_id : null,
     },
   }
+}
+
+/** Ensure device id exists before auth (call early on login page). */
+export function ensureClientDeviceId(): void {
+  getOrCreateClientDeviceId()
 }
 
 export async function logoutApi(): Promise<void> {

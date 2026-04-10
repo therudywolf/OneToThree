@@ -76,6 +76,14 @@ export type WsInboundMessage =
       user_id: string
       username: string
     }
+  | {
+      type: 'server_notice'
+      notice: 'vault_synced' | 'device_revoked' | string
+      vault_version?: number
+      from_device_id?: string | null
+      device_id?: string
+      at?: string
+    }
   | { type: 'error'; error: string }
 
 class FmSocketClient {

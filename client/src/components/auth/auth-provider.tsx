@@ -20,6 +20,8 @@ export type AuthUser = {
   is_discoverable?: boolean
   role?: 'user' | 'admin'
   totp_enabled?: boolean
+  /** Session-bound device row id (JWT), when present. */
+  device_id?: string | null
 }
 
 type AuthContextValue = {
@@ -52,7 +54,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { user: u } = await fetchMe()
       if (myId !== refreshGeneration.current) return
-      setUser(u)
+      setUser({
+        ...u,
+        device_id: u.device_id ?? null,
+      })
     } catch (e) {
       if (myId !== refreshGeneration.current) return
       if (e instanceof AuthHttpError) {

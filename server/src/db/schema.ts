@@ -1,6 +1,7 @@
 import {
   boolean,
   index,
+  integer,
   pgEnum,
   pgTable,
   primaryKey,
@@ -32,10 +33,43 @@ export const users = pgTable('users', {
   /** Base32 TOTP secret; set during setup, cleared on disable. */
   totpSecret: text('totp_secret'),
   isTotpEnabled: boolean('is_totp_enabled').notNull().default(false),
+  /** Opaque encrypted vault JSON (client-only passphrase); server never decrypts. */
+  vaultBlob: text('vault_blob'),
+  vaultVersion: integer('vault_version').notNull().default(0),
+  vaultUpdatedAt: timestamp('vault_updated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
 })
+
+export const devices = pgTable(
+  'devices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Stable id from client localStorage (per browser profile). */
+    clientDeviceKey: text('client_device_key').notNull(),
+    deviceName: text('device_name').notNull(),
+    lastActive: timestamp('last_active', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    userAgent: text('user_agent'),
+    ipAddress: text('ip_address'),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    userClientUnique: uniqueIndex('devices_user_client_key_idx').on(
+      t.userId,
+      t.clientDeviceKey
+    ),
+    userIdx: index('devices_user_id_idx').on(t.userId),
+  })
+)
 
 export const reports = pgTable('reports', {
   id: uuid('id').primaryKey().defaultRandom(),

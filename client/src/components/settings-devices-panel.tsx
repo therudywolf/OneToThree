@@ -1,0 +1,127 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import {
+  fetchDevices,
+  revokeDevice,
+  type DeviceRow,
+} from '@/lib/api/devices'
+import { useAuth } from '@/components/auth/auth-provider'
+import { useTranslation } from '@/hooks/use-translation'
+
+type Props = { userId: string; active: boolean }
+
+export function SettingsDevicesPanel({ userId, active }: Props) {
+  const { t } = useTranslation()
+  const { user, refresh, logout } = useAuth()
+  const [devices, setDevices] = useState<DeviceRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const d = await fetchDevices()
+      setDevices(d.devices)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setLoading(false)
+    }
+  }, [t])
+
+  useEffect(() => {
+    if (active) void load()
+  }, [active, userId, load])
+
+  async function onRevoke(d: DeviceRow) {
+    if (d.revoked) return
+    if (!window.confirm(`${t('settings.devicesRevokeConfirm')} (${d.device_name})`)) {
+      return
+    }
+    setBusyId(d.id)
+    setError(null)
+    try {
+      await revokeDevice(d.id)
+      await load()
+      await refresh()
+      if (d.is_current) {
+        await logout()
+        window.location.href = '/login'
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-4 border-t border-neon-cyan/30 pt-3">
+      <div>
+        <p className="text-xs uppercase tracking-[0.25em] text-neon-cyan">
+          {t('settings.devicesSectionTitle')}
+        </p>
+        <p className="mt-1 text-[9px] text-red-800">{t('settings.devicesHint')}</p>
+      </div>
+
+      {loading ? (
+        <p className="font-mono text-[10px] text-zinc-500">:: LOADING…</p>
+      ) : null}
+      {error ? (
+        <p className="border border-neon-red px-2 py-1 font-mono text-[10px] text-neon-red">
+          [!] {error}
+        </p>
+      ) : null}
+
+      <ul className="max-h-64 space-y-2 overflow-y-auto border border-neon-cyan/20 p-2">
+        {devices.map((d) => (
+          <li
+            key={d.id}
+            className="border border-zinc-800 bg-black/80 px-2 py-2 font-mono text-[10px] text-zinc-300"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-neon-cyan">
+                  {d.device_name}
+                  {d.is_current ? (
+                    <span className="ml-2 border border-neon-cyan px-1 text-[9px] uppercase text-neon-cyan">
+                      {t('settings.devicesCurrent')}
+                    </span>
+                  ) : null}
+                  {d.revoked ? (
+                    <span className="ml-2 text-red-700">
+                      {t('settings.devicesRevoked')}
+                    </span>
+                  ) : null}
+                </p>
+                <p className="truncate text-[9px] text-zinc-600">
+                  {d.last_active} · {d.ip_address ?? '—'}
+                </p>
+              </div>
+              {!d.revoked ? (
+                <button
+                  type="button"
+                  disabled={busyId === d.id}
+                  onClick={() => void onRevoke(d)}
+                  className="shrink-0 border border-neon-red/70 px-2 py-1 text-[9px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                >
+                  {busyId === d.id ? '…' : t('settings.devicesRevoke')}
+                </button>
+              ) : null}
+            </div>
+          </li>
+        ))}
+        {!loading && devices.length === 0 ? (
+          <li className="text-[10px] text-zinc-600">:: NO_ROWS</li>
+        ) : null}
+      </ul>
+      <p className="text-[9px] text-zinc-600">
+        device_id:{' '}
+        <span className="text-neon-cyan/80">{user?.device_id ?? '—'}</span>
+      </p>
+    </div>
+  )
+}

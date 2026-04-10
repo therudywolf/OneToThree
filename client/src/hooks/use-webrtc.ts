@@ -35,8 +35,14 @@ function isSignalPayload(x: unknown): x is SignalPayload {
 export function useWebRTC(userId: string | null) {
   const [peerReady, setPeerReady] = useState(false)
   const [mediaAccessError, setMediaAccessError] = useState<string | null>(null)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
   const pcsRef = useRef(new Map<string, RTCPeerConnection>())
   const pendingIceRef = useRef<Record<string, RTCIceCandidateInit[]>>({})
+  /** Camera track swapped out while getDisplayMedia is active (same object restored on revert). */
+  const originalVideoTrackRef = useRef<MediaStreamTrack | null>(null)
+  /** Active screen-capture track (stop on revert; onended → revert). */
+  const screenVideoTrackRef = useRef<MediaStreamTrack | null>(null)
+  const revertToCameraRef = useRef<() => void>(() => {})
 
   const setIncomingCall = useCallStore((s) => s.setIncomingCall)
   const resetCallStore = useCallStore((s) => s.reset)
@@ -87,14 +93,59 @@ export function useWebRTC(userId: string | null) {
     }
   }, [resetCallStore])
 
+  const revertToCamera = useCallback(() => {
+    const orig = originalVideoTrackRef.current
+    const screen = screenVideoTrackRef.current
+    const local = useCallStore.getState().localStream
+
+    if (screen) {
+      screen.onended = null
+    }
+
+    if (orig && local) {
+      for (const [, pc] of pcsRef.current) {
+        const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
+        if (sender) {
+          void sender.replaceTrack(orig)
+        }
+      }
+      const currentVid = local.getVideoTracks()[0]
+      if (currentVid && currentVid !== orig) {
+        local.removeTrack(currentVid)
+        currentVid.stop()
+      }
+      if (!local.getVideoTracks().includes(orig)) {
+        local.addTrack(orig)
+      }
+      setLocalStream(local)
+    } else if (screen && local) {
+      const currentVid = local.getVideoTracks()[0]
+      if (currentVid) {
+        local.removeTrack(currentVid)
+        currentVid.stop()
+      }
+      setLocalStream(local)
+    }
+
+    screen?.stop()
+    originalVideoTrackRef.current = null
+    screenVideoTrackRef.current = null
+    setIsScreenSharing(false)
+  }, [setLocalStream])
+
+  useEffect(() => {
+    revertToCameraRef.current = revertToCamera
+  }, [revertToCamera])
+
   const endCall = useCallback(() => {
     setMediaAccessError(null)
+    revertToCamera()
     for (const id of Array.from(pcsRef.current.keys())) {
       cleanupPeer(id)
     }
     stopStreamTracks(useCallStore.getState().localStream)
     resetCallStore()
-  }, [cleanupPeer, resetCallStore])
+  }, [cleanupPeer, resetCallStore, revertToCamera])
 
   useEffect(() => {
     if (!userId) return
@@ -350,6 +401,70 @@ export function useWebRTC(userId: string | null) {
     })
   }, [])
 
+  const toggleScreenShare = useCallback(async () => {
+    if (screenVideoTrackRef.current) {
+      revertToCamera()
+      return
+    }
+
+    const local = useCallStore.getState().localStream
+    if (!local || pcsRef.current.size === 0) return
+
+    const camTrack = local.getVideoTracks()[0]
+    if (!camTrack) return
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices?.getDisplayMedia
+    ) {
+      return
+    }
+
+    let screenStream: MediaStream
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      })
+    } catch {
+      return
+    }
+
+    const screenTrack = screenStream.getVideoTracks()[0]
+    if (!screenTrack) {
+      screenStream.getTracks().forEach((t) => t.stop())
+      return
+    }
+
+    if (
+      pcsRef.current.size === 0 ||
+      !useCallStore.getState().isCalling ||
+      useCallStore.getState().localStream !== local
+    ) {
+      screenTrack.stop()
+      return
+    }
+
+    originalVideoTrackRef.current = camTrack
+    screenVideoTrackRef.current = screenTrack
+
+    for (const [, pc] of pcsRef.current) {
+      const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
+      if (sender) {
+        void sender.replaceTrack(screenTrack)
+      }
+    }
+
+    local.removeTrack(camTrack)
+    local.addTrack(screenTrack)
+    setLocalStream(local)
+    setIsScreenSharing(true)
+
+    screenTrack.onended = () => {
+      revertToCameraRef.current()
+    }
+  }, [revertToCamera, setLocalStream])
+
   const clearMediaAccessError = useCallback(() => {
     setMediaAccessError(null)
   }, [])
@@ -364,5 +479,7 @@ export function useWebRTC(userId: string | null) {
     endCall,
     toggleMuteMic,
     toggleCamera,
+    isScreenSharing,
+    toggleScreenShare,
   }
 }

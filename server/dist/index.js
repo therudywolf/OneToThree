@@ -1,9 +1,7 @@
-import Fastify from 'fastify';
-import websocket from '@fastify/websocket';
+import 'dotenv/config';
+import { buildApp } from './app.js';
 async function main() {
-    const app = Fastify({ logger: true });
-    await app.register(websocket);
-    app.get('/health', async () => ({ ok: true }));
+    const app = await buildApp();
     const port = Number(process.env.PORT) || 8080;
     await app.listen({ port, host: '0.0.0.0' });
 }

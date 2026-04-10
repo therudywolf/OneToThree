@@ -1,7 +1,10 @@
 {
   "name": "project-13-monorepo",
   "private": true,
-  "workspaces": ["client", "server"],
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "scripts": {
     "setup": "node scripts/bootstrap.js",
     "dev": "npm run dev -w client",

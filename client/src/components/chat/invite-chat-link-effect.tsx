@@ -31,7 +31,7 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
       rawInvite,
     })
     if (peer === self) {
-      console.error(
+      console.warn(
         '[Phase 18] Cannot open chat with oneself — compared ids',
         { peerIdCompared: peer, meIdCompared: self, rawInvite }
       )

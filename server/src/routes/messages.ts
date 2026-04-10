@@ -12,7 +12,7 @@ const deleteMessageSchema = z.object({
 
 export const messagesRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:chatId', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
@@ -67,7 +67,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.delete('/:messageId', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
     const { messageId } = request.params as { messageId: string }
 

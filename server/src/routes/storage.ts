@@ -40,7 +40,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/upload-url', async (request, reply) => {
     await ensureBucketOnce()
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
@@ -82,7 +82,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/download-url', async (request, reply) => {
     await ensureBucketOnce()
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }

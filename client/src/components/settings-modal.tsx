@@ -10,20 +10,17 @@ import { useTranslation } from '@/hooks/use-translation'
 
 type Props = { userId: string; username: string; onClose: () => void }
 
-function parseDiscoverable(
-  raw: boolean | string | undefined
-): boolean | null {
-  if (raw === true || raw === 'true') return true
-  if (raw === false || raw === 'false') return false
-  if (typeof raw === 'string' && raw.toLowerCase() === 'true') return true
-  if (typeof raw === 'string' && raw.toLowerCase() === 'false') return false
-  return null
+/** Server JSON must be boolean — no client-side default to visible. */
+function readDiscoverableFromPayload(v: unknown): boolean {
+  if (typeof v === 'boolean') return v
+  return false
 }
 
 export function SettingsModal({ userId, username, onClose }: Props) {
   const { locale, setLocale, t } = useTranslation()
   const { updateUser } = useAuth()
-  const [discoverable, setDiscoverable] = useState(false)
+  /** `null` until GET /users/me/settings succeeds — never assume true (shadow default). */
+  const [discoverable, setDiscoverable] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -35,23 +32,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         credentials: 'include',
       })
       const d = (await r.json().catch(() => ({}))) as {
-        is_discoverable?: boolean | string
+        is_discoverable?: unknown
         error?: string
       }
       if (!r.ok) {
         setError(d.error ?? t('settings.loadFailed'))
         return
       }
-      const raw = d.is_discoverable
-      const parsed =
-        raw === true ||
-        raw === 'true' ||
-        (typeof raw === 'string' && raw.toLowerCase() === 'true')
-      setDiscoverable(parsed)
-      updateUser({ is_discoverable: parsed })
-      console.log('[Phase 18] GET /users/me/settings', {
-        is_discoverable: parsed,
-      })
+      const value = readDiscoverableFromPayload(d.is_discoverable)
+      setDiscoverable(value)
+      updateUser({ is_discoverable: value })
     } catch {
       setError(t('settings.loadFailed'))
     }
@@ -62,56 +52,30 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   }, [loadSettingsFromApi, userId])
 
   async function toggleDiscoverable() {
+    if (discoverable === null || busy) return
     setBusy(true)
     setError(null)
     try {
-      const newVal = !discoverable
+      const nextRequest = !discoverable
       const r = await fetch(`${API_URL}/users/me`, {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_discoverable: newVal }),
+        body: JSON.stringify({ is_discoverable: nextRequest }),
       })
       const d = (await r.json().catch(() => ({}))) as {
         ok?: boolean
-        is_discoverable?: boolean | string
+        is_discoverable?: unknown
         error?: string
       }
       if (!r.ok) {
         throw new Error(d.error ?? t('settings.toggleFailed'))
       }
-      const fromServer = parseDiscoverable(d.is_discoverable)
-      const next = fromServer ?? newVal
-      setDiscoverable(next)
-      updateUser({ is_discoverable: next })
-      console.log('[Phase 18] PATCH /users/me discoverability', {
-        raw: d.is_discoverable,
-        applied: next,
-      })
-
-      const r2 = await fetch(`${API_URL}/users/me/settings`, {
-        credentials: 'include',
-      })
-      const d2 = (await r2.json().catch(() => ({}))) as {
-        is_discoverable?: boolean | string
-        error?: string
+      if (typeof d.is_discoverable !== 'boolean') {
+        throw new Error(t('settings.toggleFailed'))
       }
-      if (r2.ok) {
-        const confirmed = parseDiscoverable(d2.is_discoverable)
-        if (confirmed !== null) {
-          setDiscoverable(confirmed)
-          updateUser({ is_discoverable: confirmed })
-          console.log('[Phase 18] GET /users/me/settings after PATCH', {
-            applied: confirmed,
-          })
-        }
-      } else {
-        console.error('[Phase 18] confirm GET /users/me/settings failed', {
-          status: r2.status,
-          error: d2.error,
-        })
-      }
-
+      setDiscoverable(d.is_discoverable)
+      updateUser({ is_discoverable: d.is_discoverable })
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (e) {
@@ -185,6 +149,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     input.click()
   }
 
+  const settingsReady = discoverable !== null
+  const discoverableOn = discoverable === true
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 px-4"
@@ -217,32 +184,42 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               </p>
               <p
                 className={`mt-1 font-mono text-[9px] uppercase tracking-wider ${
-                  discoverable ? 'text-neon-cyan' : 'text-zinc-500'
+                  !settingsReady
+                    ? 'text-zinc-600'
+                    : discoverableOn
+                      ? 'text-neon-cyan'
+                      : 'text-zinc-500'
                 }`}
               >
-                {discoverable
-                  ? t('settings.discoverableBadgeOn')
-                  : t('settings.discoverableBadgeOff')}
+                {!settingsReady
+                  ? ':: …'
+                  : discoverableOn
+                    ? t('settings.discoverableBadgeOn')
+                    : t('settings.discoverableBadgeOff')}
               </p>
             </div>
             <button
               type="button"
               role="switch"
-              aria-checked={discoverable}
+              aria-checked={discoverableOn}
               title={
-                discoverable
-                  ? t('settings.discoverableTooltipOn')
-                  : t('settings.discoverableTooltipOff')
+                !settingsReady
+                  ? '…'
+                  : discoverableOn
+                    ? t('settings.discoverableTooltipOn')
+                    : t('settings.discoverableTooltipOff')
               }
-              disabled={busy}
+              disabled={busy || !settingsReady}
               onClick={() => void toggleDiscoverable()}
               className={`shrink-0 border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors ${
-                discoverable
-                  ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
-                  : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+                !settingsReady
+                  ? 'border-zinc-700 bg-zinc-950 text-zinc-600'
+                  : discoverableOn
+                    ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
+                    : 'border-zinc-600 bg-zinc-950 text-zinc-400'
               } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
             >
-              {busy ? '[ … ]' : discoverable ? '[ ON ]' : '[ OFF ]'}
+              {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
             </button>
           </div>
 

@@ -33,7 +33,7 @@ test.describe('settings / i18n & discoverability', () => {
     await settings.open()
 
     const toggle = settings.discoverabilitySwitch()
-    await expect(toggle).toHaveAttribute('aria-checked', 'true')
+    await expect(toggle).toHaveAttribute('aria-checked', 'false')
 
     const patchWait = page.waitForResponse(
       (res) =>
@@ -49,9 +49,9 @@ test.describe('settings / i18n & discoverability', () => {
       is_discoverable?: boolean
     }
     expect(patchJson.ok).toBe(true)
-    expect(patchJson.is_discoverable).toBe(false)
+    expect(patchJson.is_discoverable).toBe(true)
 
-    await expect(toggle).toHaveAttribute('aria-checked', 'false')
+    await expect(toggle).toHaveAttribute('aria-checked', 'true')
 
     await settings.close()
     await expect(
@@ -61,7 +61,7 @@ test.describe('settings / i18n & discoverability', () => {
     await settings.open()
     await expect(settings.discoverabilitySwitch()).toHaveAttribute(
       'aria-checked',
-      'false'
+      'true'
     )
   })
 })

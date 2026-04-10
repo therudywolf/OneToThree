@@ -15,18 +15,9 @@ function escapeIlikePattern(fragment: string): string {
   return fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
-const booleanish = z.preprocess(
-  (v) => {
-    if (v === true || v === 'true' || v === 1 || v === '1') return true
-    if (v === false || v === 'false' || v === 0 || v === '0') return false
-    return v
-  },
-  z.boolean()
-)
-
 const patchMeSchema = z.object({
   ecdh_public_key_jwk: z.string().min(8).optional(),
-  is_discoverable: booleanish.optional(),
+  is_discoverable: z.coerce.boolean().optional(),
 })
 
 const lookupBodySchema = z.object({
@@ -35,7 +26,7 @@ const lookupBodySchema = z.object({
 
 export const userRoutes: FastifyPluginAsync = async (app) => {
   app.get('/me/settings', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
     const [row] = await db
       .select({ isDiscoverable: users.isDiscoverable })
@@ -46,7 +37,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.patch('/me', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
@@ -98,7 +89,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.get('/search', async (request, reply) => {
-    const viewer = await getAuthUser(request)
+    const viewer = await getAuthUser(request, reply)
 
     const parsed = searchQuerySchema.safeParse(request.query)
     if (!parsed.success) {
@@ -158,7 +149,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
    * Never filter by is_discoverable — hidden users must still be reachable by known UUID.
    */
   app.post('/lookup', async (request, reply) => {
-    const auth = await getAuthUser(request)
+    const auth = await getAuthUser(request, reply)
     if (!auth) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }

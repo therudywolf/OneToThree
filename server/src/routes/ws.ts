@@ -4,8 +4,9 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { WebSocket } from 'ws'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, messages } from '../db/schema.js'
+import { chatMembers, messages, users } from '../db/schema.js'
 import { getAuthUser, type AuthUser } from '../lib/auth-user.js'
+import { normalizeUuid } from '../lib/uuid.js'
 import { sendPushToUser } from '../lib/push.js'
 import {
   broadcastToUsers,
@@ -31,7 +32,22 @@ async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> 
       scope?: string
     }>(ticket)
     if (p.scope !== 'ws' || !p.sub || !p.username) return null
-    return { id: p.sub, username: p.username }
+    const id = normalizeUuid(p.sub)
+    const [row] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        isDiscoverable: users.isDiscoverable,
+      })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1)
+    if (!row) return null
+    return {
+      id: normalizeUuid(row.id),
+      username: row.username,
+      is_discoverable: row.isDiscoverable,
+    }
   } catch {
     return null
   }

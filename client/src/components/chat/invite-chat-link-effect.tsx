@@ -9,6 +9,12 @@ import { canonicalUserId } from '@/lib/user-id'
 import { useChatStore } from '@/store/chatStore'
 
 /**
+ * Dedupe concurrent invite handling (React Strict Mode double-mount + effect re-runs).
+ * Module scope: remount clears in-flight Set via cleanup so the "real" effect can POST once.
+ */
+const inviteInflight = new Set<string>()
+
+/**
  * Runs only when mounted (vault unlocked + private key available).
  * Preflights lookup, then creates direct E2E chat — avoids POST before ECDH/keys exist.
  */
@@ -20,16 +26,10 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
   useEffect(() => {
     const rawInvite = searchParams.get('invite')?.trim()
     if (!rawInvite) return
-    // Extract UUID from raw query or pasted invite URL, then canonicalize before any API call.
     const extracted = normalizePeerInput(rawInvite)
     if (!extracted) return
     const peer = canonicalUserId(extracted)
     const self = canonicalUserId(userId)
-    console.log('[Phase 18] invite pre-check', {
-      canonicalPeerId: peer,
-      meId: self,
-      rawInvite,
-    })
     if (peer === self) {
       console.warn(
         '[Phase 18] Cannot open chat with oneself — compared ids',
@@ -40,6 +40,10 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
 
     const doneKey = `p13:invite-opened:v2:${self}:${peer}`
     if (sessionStorage.getItem(doneKey) === '1') return
+
+    const lockKey = `${self}::${peer}`
+    if (inviteInflight.has(lockKey)) return
+    inviteInflight.add(lockKey)
 
     let cancelled = false
     void (async () => {
@@ -58,17 +62,17 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
         setActiveChatId(chat.id)
       } catch (e) {
         if (cancelled) return
+        const code = e instanceof Error ? e.message : String(e)
         console.error('[InviteLink]', { peer, self, err: e })
-        setBanner('[ INVITE_FAILED :: CHECK_VAULT_OR_NETWORK ]')
-        console.error(
-          '[ INVITE_FAILED :: CHECK_VAULT_OR_NETWORK ]',
-          e instanceof Error ? e.message : String(e)
-        )
+        setBanner(`[ INVITE_FAILED :: ${code} ]`)
+      } finally {
+        inviteInflight.delete(lockKey)
       }
     })()
 
     return () => {
       cancelled = true
+      inviteInflight.delete(lockKey)
     }
   }, [searchParams, userId, setActiveChatId])
 

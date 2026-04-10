@@ -7,6 +7,7 @@ import { useSendMediaMessage } from '@/hooks/use-send-media-message'
 import {
   isMediaTooLarge,
   MAX_FILE_SIZE_LABEL,
+  MEDIA_ACCESS_ERROR_MESSAGE,
   MEDIA_TOO_LARGE_CODE,
 } from '@/lib/media-limits'
 
@@ -99,9 +100,11 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
     uiError ??
     (error === MEDIA_TOO_LARGE_CODE
       ? `[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`
-      : error
-        ? `[!] ${error}`
-        : null)
+      : error === MEDIA_ACCESS_ERROR_MESSAGE
+        ? `[ ERROR ] ${MEDIA_ACCESS_ERROR_MESSAGE}`
+        : error
+          ? `[!] ${error}`
+          : null)
 
   useEffect(() => {
     if (!renderedError) return

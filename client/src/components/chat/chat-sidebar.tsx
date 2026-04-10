@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useEffect } from 'react'
-import { ShieldCheck } from 'lucide-react'
+import { Pin, ShieldCheck } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { NotificationToggle } from '@/components/notification-toggle'
 import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
@@ -14,6 +14,43 @@ import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { isUuid, normalizePeerInput } from '@/lib/peer-input'
 import { canonicalUserId } from '@/lib/user-id'
+import type { ApiChatRow } from '@/lib/api/chats'
+
+const PINNED_CHATS_KEY = 'fm_pinned_chats'
+
+function loadPinnedIds(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(PINNED_CHATS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((x): x is string => typeof x === 'string')
+  } catch {
+    return []
+  }
+}
+
+function chatActivityTs(c: ApiChatRow): number {
+  const t = c.last_message_at
+  if (!t) return 0
+  const n = new Date(t).getTime()
+  return Number.isFinite(n) ? n : 0
+}
+
+function sortChatsByLatest(a: ApiChatRow, b: ApiChatRow): number {
+  return chatActivityTs(b) - chatActivityTs(a)
+}
+
+function orderedSidebarChats(
+  chats: ApiChatRow[],
+  pinnedOrder: string[]
+): ApiChatRow[] {
+  const pinnedSet = new Set(pinnedOrder)
+  const pinned = chats.filter((c) => pinnedSet.has(c.id)).sort(sortChatsByLatest)
+  const unpinned = chats.filter((c) => !pinnedSet.has(c.id)).sort(sortChatsByLatest)
+  return [...pinned, ...unpinned]
+}
 
 export function ChatSidebar({ userId }: { userId: string }) {
   const { t } = useTranslation()
@@ -26,6 +63,23 @@ export function ChatSidebar({ userId }: { userId: string }) {
   const [groupModalOpen, setGroupModalOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [trustedPeerIds, setTrustedPeerIds] = useState<Set<string>>(new Set())
+  const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinnedIds)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PINNED_CHATS_KEY, JSON.stringify(pinnedIds))
+    } catch {
+      /* ignore quota */
+    }
+  }, [pinnedIds])
+
+  const sidebarChats = orderedSidebarChats(chats, pinnedIds)
+
+  function togglePin(chatId: string) {
+    setPinnedIds((prev) =>
+      prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId]
+    )
+  }
 
   function mapSidebarError(code: string): string {
     const m: Record<string, string> = {
@@ -128,29 +182,54 @@ export function ChatSidebar({ userId }: { userId: string }) {
             NO_ACTIVE_ROUTES
           </p>
         ) : null}
-        {chats.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            aria-label={`${t('common.openChatAria')} ${c.name?.trim() || c.id}`}
-            onClick={() => setActiveChatId(c.id)}
-            className={`w-full rounded-none border-b border-neon-cyan/20 px-3 py-2 text-left font-mono text-xs transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
-              activeChatId === c.id
-                ? 'bg-neon-cyan/15 text-neon-cyan'
-                : 'text-neon-red'
-            }`}
-          >
-            <span className="inline-flex min-w-0 items-center gap-1">
-              {!c.is_group && trustedPeerIds.has(c.member_ids.find((id) => id !== userId) ?? '') ? (
-                <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
-              ) : null}
-              <span>
-                {c.is_group ? '[GRP]' : '[DIR]'}{' '}
-                {c.name?.trim() || `${c.id.slice(0, 8)}…`}
-              </span>
-            </span>
-          </button>
-        ))}
+        {sidebarChats.map((c) => {
+          const isPinned = pinnedIds.includes(c.id)
+          return (
+            <div
+              key={c.id}
+              className={`flex w-full items-stretch border-b border-neon-cyan/20 ${
+                activeChatId === c.id ? 'bg-neon-cyan/15' : ''
+              } ${isPinned ? 'border-l-2 border-l-neon-cyan/40' : ''}`}
+            >
+              <button
+                type="button"
+                className={`min-w-0 flex-1 px-3 py-2 text-left font-mono text-xs transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
+                  activeChatId === c.id ? 'text-neon-cyan' : 'text-neon-red'
+                }`}
+                aria-label={`${t('common.openChatAria')} ${c.name?.trim() || c.id}`}
+                onClick={() => setActiveChatId(c.id)}
+              >
+                <span className="inline-flex min-w-0 items-center gap-1">
+                  {!c.is_group &&
+                  trustedPeerIds.has(
+                    c.member_ids.find((id) => id !== userId) ?? ''
+                  ) ? (
+                    <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
+                  ) : null}
+                  <span>
+                    {c.is_group ? '[GRP]' : '[DIR]'}{' '}
+                    {c.name?.trim() || `${c.id.slice(0, 8)}…`}
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                title={isPinned ? 'Unpin' : 'Pin'}
+                aria-label={isPinned ? 'Unpin chat' : 'Pin chat'}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  togglePin(c.id)
+                }}
+                className="shrink-0 border-l border-neon-cyan/20 px-2 text-neon-cyan/70 hover:bg-neon-cyan/10 hover:text-neon-cyan"
+              >
+                <Pin
+                  className={`h-3.5 w-3.5 ${isPinned ? 'text-neon-cyan' : 'text-neon-cyan/40'}`}
+                  aria-hidden
+                />
+              </button>
+            </div>
+          )
+        })}
       </nav>
       {activeChatId ? (
         <div className="flex gap-1 border-t border-neon-cyan/40 px-2 pt-2">

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
+import { MEDIA_ACCESS_ERROR_MESSAGE } from '@/lib/media-limits'
 import { useCallStore } from '@/store/callStore'
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -32,6 +33,7 @@ function isSignalPayload(x: unknown): x is SignalPayload {
 
 export function useWebRTC(userId: string | null) {
   const [peerReady, setPeerReady] = useState(false)
+  const [mediaAccessError, setMediaAccessError] = useState<string | null>(null)
   const pcsRef = useRef(new Map<string, RTCPeerConnection>())
   const pendingIceRef = useRef<Record<string, RTCIceCandidateInit[]>>({})
 
@@ -71,7 +73,21 @@ export function useWebRTC(userId: string | null) {
     [removePeerConnection, removeRemoteStream]
   )
 
+  const maybeResetCallIfNoPeers = useCallback(() => {
+    if (pcsRef.current.size > 0) return
+    const state = useCallStore.getState()
+    if (
+      state.isCalling ||
+      state.incomingCall != null ||
+      state.localStream != null
+    ) {
+      stopStreamTracks(state.localStream)
+      resetCallStore()
+    }
+  }, [resetCallStore])
+
   const endCall = useCallback(() => {
+    setMediaAccessError(null)
     for (const id of Array.from(pcsRef.current.keys())) {
       cleanupPeer(id)
     }
@@ -94,14 +110,10 @@ export function useWebRTC(userId: string | null) {
       }
       if (msg.type === 'call_leave') {
         cleanupPeer(msg.from_user_id)
-        const remaining = pcsRef.current.size
-        if (remaining === 0 && useCallStore.getState().isCalling) {
-          stopStreamTracks(useCallStore.getState().localStream)
-          resetCallStore()
-        }
+        maybeResetCallIfNoPeers()
       }
     })
-  }, [userId, setIncomingCall, cleanupPeer, resetCallStore])
+  }, [userId, setIncomingCall, cleanupPeer, maybeResetCallIfNoPeers])
 
   useEffect(() => {
     if (!userId) {
@@ -120,6 +132,15 @@ export function useWebRTC(userId: string | null) {
 
   const attachPeerHandlers = useCallback(
     (peerId: string, pc: RTCPeerConnection) => {
+      pc.oniceconnectionstatechange = () => {
+        const st = pc.iceConnectionState
+        if (st !== 'disconnected' && st !== 'failed' && st !== 'closed') {
+          return
+        }
+        if (!pcsRef.current.has(peerId)) return
+        cleanupPeer(peerId)
+        maybeResetCallIfNoPeers()
+      }
       pc.ontrack = (ev) => {
         if (ev.streams[0]) {
           setRemoteStream(peerId, ev.streams[0])
@@ -135,7 +156,7 @@ export function useWebRTC(userId: string | null) {
         })
       }
     },
-    [setRemoteStream]
+    [setRemoteStream, cleanupPeer, maybeResetCallIfNoPeers]
   )
 
   useEffect(() => {
@@ -210,10 +231,21 @@ export function useWebRTC(userId: string | null) {
     const inc = useCallStore.getState().incomingCall
     if (!inc) return
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: !!inc.isVideo,
-    })
+    let stream: MediaStream | null = null
+    try {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('NO_MEDIA_API')
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: !!inc.isVideo,
+      })
+    } catch {
+      setMediaAccessError(MEDIA_ACCESS_ERROR_MESSAGE)
+      setIncomingCall(null)
+      return
+    }
+
     setLocalStream(stream)
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
     pcsRef.current.set(inc.peerId, pc)
@@ -249,10 +281,20 @@ export function useWebRTC(userId: string | null) {
 
   const initiateCall = useCallback(
     async (recipientIds: string[], isVideo: boolean) => {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: isVideo,
-      })
+      let stream: MediaStream
+      try {
+        if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error('NO_MEDIA_API')
+        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: isVideo,
+        })
+      } catch {
+        setMediaAccessError(MEDIA_ACCESS_ERROR_MESSAGE)
+        return
+      }
+
       setLocalStream(stream)
       setIsCalling(true)
 
@@ -278,6 +320,11 @@ export function useWebRTC(userId: string | null) {
           cleanupPeer(peerId)
         }
       }
+
+      if (pcsRef.current.size === 0) {
+        stopStreamTracks(stream)
+        resetCallStore()
+      }
     },
     [
       userId,
@@ -286,6 +333,7 @@ export function useWebRTC(userId: string | null) {
       addPeerConnection,
       attachPeerHandlers,
       cleanupPeer,
+      resetCallStore,
     ]
   )
 
@@ -303,8 +351,14 @@ export function useWebRTC(userId: string | null) {
     })
   }, [])
 
+  const clearMediaAccessError = useCallback(() => {
+    setMediaAccessError(null)
+  }, [])
+
   return {
     peerReady,
+    mediaAccessError,
+    clearMediaAccessError,
     initiateCall,
     acceptIncomingCall,
     rejectIncomingCall,

@@ -90,6 +90,8 @@ export function ChatApp({
 
   const {
     peerReady,
+    mediaAccessError,
+    clearMediaAccessError,
     initiateCall,
     acceptIncomingCall,
     rejectIncomingCall,
@@ -275,7 +277,26 @@ export function ChatApp({
               [!] {ctxError}
             </div>
           ) : null}
-          <ChatTerminal userId={userId} sharedKey={sharedKey} />
+          {mediaAccessError ? (
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neon-red px-3 py-1 font-mono text-[11px] leading-snug text-neon-red">
+              <span>[!] {mediaAccessError}</span>
+              <button
+                type="button"
+                onClick={clearMediaAccessError}
+                className="shrink-0 font-mono text-[10px] text-red-800 hover:text-neon-red"
+                aria-label="Dismiss media error"
+              >
+                [X]
+              </button>
+            </div>
+          ) : null}
+          <ChatTerminal
+            userId={userId}
+            sharedKey={sharedKey}
+            currentUsername={user?.username ?? username}
+            activeChat={chats.find((c) => c.id === activeChatId) ?? null}
+            directPeerUsername={peerIdentity?.username ?? null}
+          />
           <ChatMediaControls
             cryptoCtx={cryptoCtx}
             disabled={!activeChatId || !!ctxError}

@@ -9,6 +9,8 @@ export type ApiChatRow = {
   member_ids: string[]
   /** Present for group_e2e: wrapped group key for the current user. */
   encrypted_group_key?: string | null
+  /** ISO timestamp of the newest message in this chat, if any. */
+  last_message_at?: string | null
 }
 
 export async function fetchChatsList(): Promise<ApiChatRow[]> {

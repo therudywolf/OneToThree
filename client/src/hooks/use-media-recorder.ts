@@ -1,7 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { isMediaTooLarge, MEDIA_TOO_LARGE_CODE } from '@/lib/media-limits'
+import {
+  isMediaTooLarge,
+  MEDIA_ACCESS_ERROR_MESSAGE,
+  MEDIA_TOO_LARGE_CODE,
+} from '@/lib/media-limits'
 
 export type CaptureResult = {
   blob: Blob
@@ -49,6 +53,10 @@ export function useMediaRecorder() {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       chunksRef.current = []
       setError(null)
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        setError(MEDIA_ACCESS_ERROR_MESSAGE)
+        return
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
       kindRef.current = 'audio'
@@ -61,7 +69,7 @@ export function useMediaRecorder() {
       rec.start()
       setIsRecording(true)
     } catch {
-      setError('MIC_DENIED')
+      setError(MEDIA_ACCESS_ERROR_MESSAGE)
     }
   }, [])
 
@@ -70,6 +78,10 @@ export function useMediaRecorder() {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       chunksRef.current = []
       setError(null)
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        setError(MEDIA_ACCESS_ERROR_MESSAGE)
+        return
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
         video: {
@@ -90,7 +102,7 @@ export function useMediaRecorder() {
       rec.start()
       setIsRecording(true)
     } catch {
-      setError('CAM_DENIED')
+      setError(MEDIA_ACCESS_ERROR_MESSAGE)
     }
   }, [])
 

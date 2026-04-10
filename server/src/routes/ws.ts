@@ -5,7 +5,11 @@ import type { WebSocket } from 'ws'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, messages, users } from '../db/schema.js'
-import { getAuthUser, type AuthUser } from '../lib/auth-user.js'
+import {
+  getAuthUser,
+  isUserDeviceSessionValid,
+  type AuthUser,
+} from '../lib/auth-user.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { sendPushToUser } from '../lib/push.js'
 import {
@@ -30,9 +34,11 @@ async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> 
       sub: string
       username: string
       scope?: string
+      device_id?: string
     }>(ticket)
     if (p.scope !== 'ws' || !p.sub || !p.username) return null
     const id = normalizeUuid(p.sub)
+    if (!(await isUserDeviceSessionValid(id, p.device_id))) return null
     const [row] = await db
       .select({
         id: users.id,

@@ -1,7 +1,7 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { db } from '../db/index.js'
-import { users } from '../db/schema.js'
+import { devices, users } from '../db/schema.js'
 import { clearFmSessionCookie, SESSION_COOKIE } from './session-cookie.js'
 import { normalizeUuid } from './uuid.js'
 
@@ -13,30 +13,83 @@ export type AuthUser = {
   role: 'user' | 'admin'
 }
 
+export type SessionJwtPayload = {
+  sub: string
+  username: string
+  device_id?: string
+}
+
+/**
+ * Verifies `fm_session` JWT. Does not load the user row — use for ws tickets / decoding only.
+ */
+export async function verifySessionJwt(
+  request: FastifyRequest,
+  token?: string
+): Promise<SessionJwtPayload | null> {
+  const t = token ?? request.cookies[SESSION_COOKIE]
+  if (!t) return null
+  try {
+    return await request.server.jwt.verify<SessionJwtPayload>(t)
+  } catch {
+    return null
+  }
+}
+
+export async function assertDeviceActiveForUser(
+  userId: string,
+  deviceId: string
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: devices.id })
+    .from(devices)
+    .where(
+      and(
+        eq(devices.id, normalizeUuid(deviceId)),
+        eq(devices.userId, normalizeUuid(userId)),
+        isNull(devices.revokedAt)
+      )
+    )
+    .limit(1)
+  return Boolean(row)
+}
+
+/** Legacy JWTs omit `device_id`; those sessions remain valid until expiry. */
+export async function isUserDeviceSessionValid(
+  userId: string,
+  deviceId: string | undefined
+): Promise<boolean> {
+  if (!deviceId) return true
+  return assertDeviceActiveForUser(userId, deviceId)
+}
+
 /**
  * Resolves the session cookie to a user row. Cryptographically valid JWTs whose `sub`
  * no longer exists in `users` (DB wipe, deleted account) are treated as unauthenticated;
  * pass `reply` to clear the ghost cookie on HTTP routes.
  *
  * Banned users: clears session cookie and sends `{ error: 'BANNED_USER' }` when `reply` is set.
+ * Revoked device: clears cookie and sends `{ error: 'DEVICE_REVOKED' }`.
  */
 export async function getAuthUser(
   request: FastifyRequest,
   reply?: FastifyReply
 ): Promise<AuthUser | null> {
-  const token = request.cookies[SESSION_COOKIE]
-  if (!token) return null
-  let p: { sub: string; username: string }
-  try {
-    p = await request.server.jwt.verify<{ sub: string; username: string }>(
-      token
-    )
-  } catch {
-    return null
-  }
-  if (!p.sub || !p.username) return null
+  const p = await verifySessionJwt(request)
+  if (!p?.sub || !p.username) return null
 
   const id = normalizeUuid(p.sub)
+
+  if (p.device_id) {
+    const ok = await assertDeviceActiveForUser(id, p.device_id)
+    if (!ok) {
+      if (reply) {
+        clearFmSessionCookie(reply)
+        void reply.status(401).send({ error: 'DEVICE_REVOKED' })
+      }
+      return null
+    }
+  }
+
   const [row] = await db
     .select({
       id: users.id,

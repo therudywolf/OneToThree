@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
+import { getFmSocket } from '@/lib/api/socket'
+import { runPostLoginVaultSync } from '@/lib/vault-sync'
 import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
 import { useCryptoVault } from '@/hooks/use-crypto-vault'
@@ -68,7 +70,7 @@ export function ChatApp({
   userId: string
   username: string
 }) {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
   const searchParams = useSearchParams()
   const setUserId = useChatStore((s) => s.setUserId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
@@ -99,11 +101,38 @@ export function ChatApp({
     endCall,
     toggleMuteMic,
     toggleCamera,
+    isScreenSharing,
+    toggleScreenShare,
   } = useWebRTC(userId)
 
   useLayoutEffect(() => {
     setUserId(userId)
   }, [userId, setUserId])
+
+  useEffect(() => {
+    if (!unwrappedPrivateKey || !userId) return
+    void runPostLoginVaultSync(userId)
+  }, [userId, unwrappedPrivateKey])
+
+  useEffect(() => {
+    const socket = getFmSocket()
+    return socket.subscribe((m) => {
+      if (m.type !== 'server_notice') return
+      if (
+        m.notice === 'device_revoked' &&
+        m.device_id &&
+        user?.device_id &&
+        m.device_id === user.device_id
+      ) {
+        void logout()
+        window.location.href = '/login'
+        return
+      }
+      if (m.notice === 'vault_synced') {
+        console.info('[P29] vault backup updated on server', m)
+      }
+    })
+  }, [user?.device_id, logout])
 
   useEffect(() => {
     const chat = searchParams.get('chat')
@@ -203,6 +232,8 @@ export function ChatApp({
         onEndCall={endCall}
         onToggleMute={toggleMuteMic}
         onToggleCamera={toggleCamera}
+        isScreenSharing={isScreenSharing}
+        onToggleScreenShare={toggleScreenShare}
       />
 
       {showGuide ? (

@@ -52,6 +52,13 @@ const en = {
   'login.totpPendingInvalid': 'Session step expired. Sign in again.',
   'login.totpVerifyFailed': 'Two-factor verification failed.',
   'login.totpSixDigits': 'Enter exactly 6 digits.',
+  'login.clientDeviceRequired':
+    'This browser must send a device id. Reload the page and try again.',
+  'login.deviceRevoked': 'This device was revoked. Sign in from an allowed device or import your vault.',
+  'login.vaultRecoveryTitle': 'Vault recovery (before login)',
+  'login.vaultRecoveryImport': 'IMPORT_VAULT_FILE',
+  'login.vaultRecoveryOk':
+    'Encrypted vault stored for this handle. You can sign in with your passphrase.',
   'login.tosRegisterTitle': '[ EN ] Terms of Service',
   'login.tosRegisterBody': `Privacy & Encryption: This service provides End-to-End encryption. We physically cannot access your messages or keys. Losing your Vault passphrase means permanent loss of your chat history.
 
@@ -127,6 +134,28 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.discoverableTooltipOff': 'You are not listed in nickname search',
   'settings.loadFailed': 'Could not load settings (check login / network)',
   'settings.vaultBackup': 'Vault backup',
+  'settings.vaultBackupHint':
+    'JSON export or .key “physical key”; ciphertext only — passphrase stays offline.',
+  'settings.vaultExportJson': 'EXPORT_JSON',
+  'settings.vaultExportKey': 'DOWNLOAD_PHYSICAL_KEY',
+  'settings.vaultImport': 'IMPORT',
+  'settings.tabDevices': 'DEVICES',
+  'settings.devicesSectionTitle': 'УСТРОЙСТВА / DEVICES',
+  'settings.devicesHint':
+    'Sessions bound to this browser profile. Revoke to invalidate that session JWT.',
+  'settings.devicesCurrent': 'CURRENT',
+  'settings.devicesRevoked': 'REVOKED',
+  'settings.devicesRevoke': 'REVOKE',
+  'settings.devicesRevokeConfirm':
+    'Revoke this device? It will be signed out on the next request.',
+  'settings.recoveryMnemonicTitle': 'BIP39 recovery phrase (12 words)',
+  'settings.recoveryMnemonicHint':
+    'Offline backup only. Never share. Does not replace your vault passphrase for login.',
+  'settings.recoveryMnemonicGenerate': 'GENERATE_PHRASE',
+  'settings.recoveryMnemonicWarn':
+    'Write these words on paper and store offline. Clear screen when done.',
+  'settings.recoveryMnemonicAck': 'I wrote the phrase offline',
+  'settings.recoveryMnemonicDone': 'CLEAR',
   'settings.languageHint': 'Choose interface language',
   'settings.noLocalVault': 'No local vault',
   'settings.invalidVaultFile': 'Invalid vault file',

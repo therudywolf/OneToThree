@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Mic, MicOff, PhoneOff, Video, VideoOff } from 'lucide-react'
+import { Mic, MicOff, Monitor, PhoneOff, Video, VideoOff } from 'lucide-react'
 import { applyPreferredAudioOutput } from '@/lib/media-devices'
 import { useCallStore } from '@/store/callStore'
 
@@ -9,6 +9,8 @@ type Props = {
   onEndCall: () => void
   onToggleMute: () => void
   onToggleCamera: () => void
+  isScreenSharing: boolean
+  onToggleScreenShare: () => void
 }
 
 function formatDuration(ms: number): string {
@@ -98,6 +100,8 @@ export function ActiveCallOverlay({
   onEndCall,
   onToggleMute,
   onToggleCamera,
+  isScreenSharing,
+  onToggleScreenShare,
 }: Props) {
   const isCalling = useCallStore((s) => s.isCalling)
   const localStream = useCallStore((s) => s.localStream)
@@ -131,6 +135,7 @@ export function ActiveCallOverlay({
 
   const audioMuted =
     localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
+  const hasCameraTrack = (localStream?.getVideoTracks().length ?? 0) > 0
   const videoOff =
     localStream?.getVideoTracks().length === 0
       ? true
@@ -143,6 +148,11 @@ export function ActiveCallOverlay({
 
   function handleCam() {
     onToggleCamera()
+    setTick((x) => x + 1)
+  }
+
+  function handleScreenShare() {
+    void onToggleScreenShare()
     setTick((x) => x + 1)
   }
 
@@ -206,6 +216,26 @@ export function ActiveCallOverlay({
           ) : (
             <Video className="h-5 w-5" strokeWidth={1.5} />
           )}
+        </button>
+        <button
+          type="button"
+          onClick={handleScreenShare}
+          disabled={!hasCameraTrack}
+          title={
+            !hasCameraTrack
+              ? 'Screen share requires a video track'
+              : isScreenSharing
+                ? 'Stop sharing'
+                : 'Share screen'
+          }
+          className={`rounded-none border bg-black p-3 disabled:cursor-not-allowed disabled:opacity-30 ${
+            isScreenSharing
+              ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)] hover:bg-neon-cyan/10'
+              : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
+          }`}
+          aria-label={isScreenSharing ? 'Stop screen share' : 'Share screen'}
+        >
+          <Monitor className="h-5 w-5" strokeWidth={1.5} />
         </button>
         <button
           type="button"

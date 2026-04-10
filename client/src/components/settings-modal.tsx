@@ -5,7 +5,9 @@ import { API_URL, fetchMe } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
 import { readVaultBlob, vaultStorageKey } from '@/lib/vault'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
+import { SettingsDevicesPanel } from '@/components/settings-devices-panel'
 import { SettingsMediaPanel } from '@/components/settings-media-panel'
+import { SettingsRecoveryMnemonic } from '@/components/settings-recovery-mnemonic'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 
@@ -33,7 +35,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableCode, setTotpDisableCode] = useState('')
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'main' | 'media'>('main')
+  const [settingsTab, setSettingsTab] = useState<'main' | 'media' | 'devices'>(
+    'main'
+  )
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -238,10 +242,30 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     URL.revokeObjectURL(url)
   }
 
+  function exportPhysicalKey() {
+    const blob = readVaultBlob(userId)
+    if (!blob) {
+      setError(t('settings.noLocalVault'))
+      return
+    }
+    const payload = JSON.stringify(
+      { userId, username, vault: blob, exported_at: new Date().toISOString() },
+      null,
+      2
+    )
+    const file = new Blob([payload], { type: 'application/json' })
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `p13-vault-${username}-${Date.now()}.key`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function importVault() {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.json'
+    input.accept = '.json,.key,application/json'
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
@@ -277,7 +301,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     >
       <div
         className={`terminal-panel w-full space-y-5 ${
-          totpSetup ? 'max-w-lg' : settingsTab === 'media' ? 'max-w-2xl' : 'max-w-md'
+          totpSetup
+            ? 'max-w-lg'
+            : settingsTab === 'media' || settingsTab === 'devices'
+              ? 'max-w-2xl'
+              : 'max-w-md'
         }`}
       >
         <header className="flex items-center justify-between border-b border-neon-red/40 pb-3">
@@ -316,11 +344,27 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           >
             [ {t('settings.tabMedia')} ]
           </button>
+          <button
+            type="button"
+            onClick={() => setSettingsTab('devices')}
+            className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              settingsTab === 'devices'
+                ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
+            }`}
+          >
+            [ {t('settings.tabDevices')} ]
+          </button>
         </div>
 
         {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
+        {settingsTab === 'devices' ? (
+          <SettingsDevicesPanel userId={userId} active />
+        ) : null}
 
-        <div className={`space-y-3 ${settingsTab === 'media' ? 'hidden' : ''}`}>
+        <div
+          className={`space-y-3 ${settingsTab !== 'main' ? 'hidden' : ''}`}
+        >
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">
@@ -535,21 +579,32 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <p className="mb-2 text-xs uppercase tracking-widest text-neon-cyan">
               {t('settings.vaultBackup')}
             </p>
-            <div className="flex gap-2">
+            <p className="mb-2 text-[9px] text-zinc-500">{t('settings.vaultBackupHint')}</p>
+            <div className="flex flex-wrap gap-2">
               <TerminalGlitchButton
                 type="button"
                 onClick={exportVault}
                 className="flex-1 !px-2 !py-1.5 !text-[10px]"
               >
-                [ EXPORT ]
+                [ {t('settings.vaultExportJson')} ]
+              </TerminalGlitchButton>
+              <TerminalGlitchButton
+                type="button"
+                onClick={exportPhysicalKey}
+                className="flex-1 !px-2 !py-1.5 !text-[10px]"
+              >
+                [ {t('settings.vaultExportKey')} ]
               </TerminalGlitchButton>
               <TerminalGlitchButton
                 type="button"
                 onClick={importVault}
                 className="flex-1 !px-2 !py-1.5 !text-[10px]"
               >
-                [ IMPORT ]
+                [ {t('settings.vaultImport')} ]
               </TerminalGlitchButton>
+            </div>
+            <div className="mt-4">
+              <SettingsRecoveryMnemonic />
             </div>
           </div>
 

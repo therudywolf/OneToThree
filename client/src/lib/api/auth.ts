@@ -2,11 +2,18 @@
  * Browser calls to the Fastify API (cross-origin; session cookie is host-scoped to API origin).
  */
 
+/**
+ * Same-origin `/api` (Next rewrites → Fastify) so `fm_session` is set on the page origin.
+ * Set `NEXT_PUBLIC_API_URL=http://localhost:8080` only if you intentionally bypass the proxy.
+ */
 function normalizeApiRoot(): string {
   const raw =
-    (typeof process !== 'undefined' &&
-      process.env.NEXT_PUBLIC_API_URL?.trim()) ||
-    'http://localhost:8080'
+    typeof process !== 'undefined'
+      ? process.env.NEXT_PUBLIC_API_URL?.trim()
+      : undefined
+  if (!raw || raw === 'same-origin') {
+    return '/api'
+  }
   const base = raw.replace(/\/$/, '')
   return `${base}/api`
 }

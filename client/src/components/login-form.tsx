@@ -64,7 +64,6 @@ export function LoginForm() {
         return
       }
       await refresh()
-      router.push('/')
       router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'UNKNOWN_ERROR')

@@ -142,6 +142,12 @@ Also clear **browser** storage for `http://localhost:3000` (DevTools → Applica
 
 The client runs **`next dev --webpack`** (see `client/package.json`). The small **Next.js** indicator in the corner during development is turned off with **`devIndicators: false`** in `client/next.config.js` — it is not a separate “Turbopack mode” toggle for this project.
 
+### Same-origin API (session cookie + middleware)
+
+The browser must call **`/api/*` on the same host as the Next app** (e.g. `http://localhost:3000/api/...`) so the **`fm_session`** cookie is scoped to **:3000**. `next.config.js` **rewrites** `/api/:path*` to Fastify (`API_INTERNAL_URL` in Docker: `http://api:8080`; locally defaults to `http://127.0.0.1:8080`). **`NEXT_PUBLIC_API_URL` should be empty** (or unset) in `client/.env.local` for this mode.
+
+WebSockets still connect **directly** to Fastify on **port 8080** (see `NEXT_PUBLIC_WS_ORIGIN` if you need to override).
+
 ## Security model (short)
 
 1. **Authentication:** The server issues a short-lived challenge; the client signs it with an **ECDSA P-256** private key held in the user vault. The server stores only the **public** JWK.
@@ -229,6 +235,10 @@ npx tsx scripts/backup.ts
 
 Dumps the Postgres database and MinIO data from running Docker containers into a timestamped `.tar.gz` archive under `backups/`.
 
+## API access file log (optional)
+
+Set **`API_FILE_LOG=1`** on the **api** service (and optionally **`API_LOG_DIR`**). The server appends one line per response to **`logs/api-access-<YYYY-MM-DDTHH>utc.log`** (UTC hour rotation). The `logs/` directory is gitignored.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -237,6 +247,7 @@ Dumps the Postgres database and MinIO data from running Docker containers into a
 | `relation "users" does not exist` | With Compose, **`db-migrate`** should run before **api**. Check logs for `db-migrate` errors; then `docker compose run --rm db-migrate` or `npm run db:push:docker` (host → Postgres on **localhost:5432**). For a non-Docker Postgres, use `npm run db:push`. |
 | `npm ci` fails in Docker for **api** | Ensure **`server/package-lock.json`** is present and committed (Docker build context is `./server`). |
 | Login fails with **PUBLIC_KEY_CONFLICT** / odd auth after DB reset | Clear **browser** site data for localhost (vault still has old keys) or use **Login** with the vault that matches the server; see **Reset Postgres data and browser vault** above. |
+| Logged in but **stay on `/login`** or bounce back | Session cookie must be on **:3000**: use **empty** `NEXT_PUBLIC_API_URL` and **Next rewrites** (see **Same-origin API**). Old setups pointed the client at `:8080` — that breaks `src/proxy.ts` middleware. Re-run **`npm run setup`** or clear `NEXT_PUBLIC_API_URL` in `client/.env.local`. |
 | Small **Next** icon in the corner (dev) | Disabled via `devIndicators: false` in `client/next.config.js`; rebuild/restart `web` if you still see it. |
 | CORS errors on media upload | MinIO does not support `PutBucketCors`; the API silently ignores this. If using a proxy, ensure `Access-Control-Allow-Origin` headers pass through. |
 | `PutBucketCors … NotImplemented` in API logs | Harmless — MinIO limitation. The warning is silently suppressed. |

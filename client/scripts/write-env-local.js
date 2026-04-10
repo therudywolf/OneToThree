@@ -13,7 +13,8 @@ const webpush = require('web-push')
 const ROOT = path.join(__dirname, '..')
 const ENV_PATH = path.join(ROOT, '.env.local')
 
-const DEFAULT_API = 'http://localhost:8080'
+/** Empty = same-origin `/api` (Next rewrites to Fastify). */
+const DEFAULT_API = ''
 const DEFAULT_DEV_ID = '00000000-0000-4000-8000-000000000001'
 const DEFAULT_SITE_URL = 'http://localhost:3000'
 const DEFAULT_VAPID_SUBJECT = 'mailto:you@example.com'
@@ -47,7 +48,12 @@ function main() {
   const webhook =
     prev.WEBHOOK_SECRET || crypto.randomBytes(32).toString('hex')
 
-  const apiUrl = prev.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL || DEFAULT_API
+  const apiUrl =
+    prev.NEXT_PUBLIC_API_URL !== undefined
+      ? prev.NEXT_PUBLIC_API_URL
+      : process.env.NEXT_PUBLIC_API_URL !== undefined
+        ? process.env.NEXT_PUBLIC_API_URL
+        : DEFAULT_API
   const devId =
     prev.NEXT_PUBLIC_DEV_USER_ID ||
     process.env.NEXT_PUBLIC_DEV_USER_ID ||

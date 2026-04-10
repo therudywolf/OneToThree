@@ -44,6 +44,20 @@ services:
       retries: 15
       start_period: 15s
 
+  # One-shot: apply Drizzle schema before API starts (replaces manual `npm run db:push`).
+  db-migrate:
+    build:
+      context: .
+      dockerfile: docker/db-migrate/Dockerfile
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://forest:forest@db:5432/forest
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app
+
   api:
     build:
       context: ./server
@@ -77,6 +91,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
     networks:
       - app
     healthcheck:

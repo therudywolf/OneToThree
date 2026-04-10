@@ -47,16 +47,18 @@ npm run setup
 
 `npm run setup` copies `server/.env.example` → `server/.env` and `client/.env.local.example` → `client/.env.local`, then generates **JWT** and **webhook** secrets, a **VAPID** key pair, and (if needed) strong **MinIO** credentials. Edit `DATABASE_URL` if your Postgres URL differs.
 
-Bring up infrastructure:
+Bring up the full stack (Postgres, MinIO, schema push, API, Next.js dev) in one step:
 
 ```bash
-npm run docker:up
+docker compose up --build
 ```
 
-Apply the database schema:
+(`npm run docker:up` runs the same command.) The **`db-migrate`** service applies the Drizzle schema before the API starts, so you do not need a separate `npm run db:push` for Docker.
+
+For **local** development without Docker (or to refresh the DB after changing `server/src/db/schema.ts` against a running Postgres), use `npm run db:push` as before. After editing the schema and using Compose, you can re-apply with:
 
 ```bash
-npm run db:push
+docker compose run --rm db-migrate
 ```
 
 - **Web UI:** [http://localhost:3000](http://localhost:3000)  

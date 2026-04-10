@@ -24,6 +24,7 @@ import { canonicalUserId } from '@/lib/user-id'
 import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { useChats } from '@/hooks/use-chats'
+import { usePresenceSync } from '@/hooks/use-presence-sync'
 import { useGroupKeyDistribution } from '@/hooks/use-group-key-distribution'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
@@ -95,6 +96,7 @@ export function ChatApp({
   })
   const vaultState = useCryptoVault(userId, user?.username ?? username)
   const { chats, reload } = useChats(userId)
+  usePresenceSync(userId, chats)
   const [memberRoleByUser, setMemberRoleByUser] = useState<
     Record<string, ChatMemberRole>
   >({})
@@ -233,6 +235,34 @@ export function ChatApp({
   useGroupKeyDistribution(cryptoCtx, reload)
 
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
+  const typingUsers = useChatStore((s) => s.typingUsers)
+  const peerPresence = useChatStore((s) => s.peerPresence)
+
+  const directPeerIdForPresence =
+    activeRow && !activeRow.is_group
+      ? activeRow.member_ids.find(
+          (id) => canonicalUserId(id) !== canonicalUserId(userId)
+        ) ?? null
+      : null
+  const peerPresenceRow = directPeerIdForPresence
+    ? peerPresence[directPeerIdForPresence]
+    : undefined
+
+  const scratchers = activeChatId
+    ? Object.values(typingUsers[activeChatId] ?? {})
+    : []
+
+  function formatLastSeen(iso: string | null | undefined): string {
+    if (!iso) return '—'
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return '—'
+    return d.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
 
   useEffect(() => {
     if (!activeChatId || !activeRow?.is_group) {
@@ -338,16 +368,35 @@ export function ChatApp({
             PROJECT_13 :: E2E :: @{user?.username ?? username}
           </span>
           {peerIdentity ? (
-            <button
-              type="button"
-              onClick={() => setIdentityOpen(true)}
-              className="inline-flex min-w-[120px] items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-1 text-[10px] tracking-[0.2em] text-neon-cyan hover:border-neon-red hover:text-neon-red"
-            >
-              {peerIdentity.verified ? (
-                <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIdentityOpen(true)}
+                className="inline-flex min-w-[120px] items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-1 text-[10px] tracking-[0.2em] text-neon-cyan hover:border-neon-red hover:text-neon-red"
+              >
+                {peerIdentity.verified ? (
+                  <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
+                ) : null}
+                <span className="truncate">{peerIdentity.username}</span>
+              </button>
+              {peerPresenceRow ? (
+                <span className="inline-flex items-center gap-1.5 font-mono text-[9px] normal-case tracking-normal text-neon-cyan/75">
+                  {peerPresenceRow.online ? (
+                    <>
+                      <span
+                        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.85)]"
+                        title="Online"
+                      />
+                      <span>online</span>
+                    </>
+                  ) : (
+                    <span className="text-red-900/90">
+                      Last seen: {formatLastSeen(peerPresenceRow.last_seen_at)}
+                    </span>
+                  )}
+                </span>
               ) : null}
-              <span className="truncate">{peerIdentity.username}</span>
-            </button>
+            </div>
           ) : null}
           <CallHeaderButtons
             disabled={!activeChatId || !!ctxError}
@@ -411,6 +460,12 @@ export function ChatApp({
             myAvatarKey={user?.avatar_key ?? null}
             peerAvatarKey={peerAvatarKey}
           />
+          {scratchers.length > 0 ? (
+            <div className="shrink-0 border-b border-neon-cyan/25 bg-black px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90">
+              [ @{scratchers[0].username} IS SCRATCHING
+              <span className="animate-pulse">...</span> ]
+            </div>
+          ) : null}
           <ChatMediaControls
             cryptoCtx={cryptoCtx}
             disabled={!activeChatId || !!ctxError}

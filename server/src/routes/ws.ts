@@ -11,7 +11,14 @@ import {
   type AuthUser,
 } from '../lib/auth-user.js'
 import { normalizeUuid } from '../lib/uuid.js'
+import { markMessageReadByReader } from '../lib/mark-message-read.js'
 import { sendPushToUser } from '../lib/push.js'
+import {
+  broadcastOnlineStatusChange,
+  getRelatedUserIds,
+  touchLastSeen,
+  touchLastSeenPing,
+} from '../lib/presence.js'
 import {
   broadcastToUsers,
   hasActiveSocket,
@@ -108,6 +115,10 @@ const typingStopSchema = z.object({
   user_id: z.string().uuid().optional(),
 })
 
+const presencePingSchema = z.object({
+  type: z.literal('presence_ping'),
+})
+
 /** Converts websocket payload variants into UTF-8 text for JSON parsing. */
 function bufferToString(raw: unknown): string {
   if (typeof raw === 'string') return raw
@@ -193,6 +204,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               mediaPath: messages.mediaPath,
               mediaType: messages.mediaType,
               mediaIv: messages.mediaIv,
+              readAt: messages.readAt,
               createdAt: messages.createdAt,
             })
 
@@ -210,6 +222,12 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             row.createdAt instanceof Date
               ? row.createdAt.toISOString()
               : String(row.createdAt)
+          const readAt =
+            row.readAt == null
+              ? null
+              : row.readAt instanceof Date
+                ? row.readAt.toISOString()
+                : String(row.readAt)
 
           broadcastToUsers(ids, {
             type: 'chat_message',
@@ -223,6 +241,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               media_path: row.mediaPath,
               media_type: row.mediaType,
               media_iv: row.mediaIv,
+              read_at: readAt,
               created_at: createdAt,
             },
           })
@@ -299,15 +318,13 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (readParsed.success) {
           const { chat_id, message_id } = readParsed.data
           if (!(await isMemberOfChat(chat_id, user.id))) return
-          const otherIds = (await getChatMemberIds(chat_id)).filter(
-            (id) => id !== user.id
-          )
-          broadcastToUsers(otherIds, {
-            type: 'message_read',
-            chat_id,
-            message_id,
-            reader_id: user.id,
-          })
+          void markMessageReadByReader(user.id, message_id, chat_id)
+          return
+        }
+
+        const pingParsed = presencePingSchema.safeParse(json)
+        if (pingParsed.success) {
+          void touchLastSeenPing(user.id)
           return
         }
 
@@ -355,14 +372,34 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       handleMessage(raw, authed)
     })
 
-    void resolveWsUser(request).then((user) => {
+    void resolveWsUser(request).then(async (user) => {
       if (!user) {
         request.log.warn({ correlationId }, 'ws: unauthorized upgrade')
         ws.close(1008, 'unauthorized')
         return
       }
       authed = user
-      registerUserSocket(user.id, ws)
+      const wasOnline = hasActiveSocket(user.id)
+      const lastSeenIso = await touchLastSeen(user.id)
+      const related = await getRelatedUserIds(user.id)
+      registerUserSocket(user.id, ws, (uid) => {
+        void (async () => {
+          const iso = await touchLastSeen(uid)
+          const peers = await getRelatedUserIds(uid)
+          broadcastOnlineStatusChange(peers, {
+            user_id: uid,
+            online: false,
+            last_seen_at: iso,
+          })
+        })()
+      })
+      if (!wasOnline) {
+        broadcastOnlineStatusChange(related, {
+          user_id: user.id,
+          online: true,
+          last_seen_at: lastSeenIso,
+        })
+      }
       request.log.info({ correlationId, userId: user.id }, 'ws: connected')
       for (const raw of pending) {
         handleMessage(raw, user)

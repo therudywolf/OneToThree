@@ -45,6 +45,8 @@ export const users = pgTable('users', {
   vaultUpdatedAt: timestamp('vault_updated_at', { withTimezone: true }),
   /** MinIO object key under avatar bucket (e.g. avatars/{userId}/file.jpg). */
   avatarKey: text('avatar_key'),
+  /** Updated on WS connect, heartbeat, and disconnect (presence / last seen). */
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -144,6 +146,8 @@ export const messages = pgTable(
     mediaPath: text('media_path'),
     mediaType: text('media_type'),
     mediaIv: text('media_iv'),
+    /** Direct E2E: set when the peer reads (first read wins). Null in group chats. */
+    readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

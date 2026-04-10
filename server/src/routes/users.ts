@@ -15,9 +15,10 @@ import {
   getAvatarsBucketName,
   putObjectBuffer,
 } from '../lib/s3.js'
+import { getRelatedUserIds } from '../lib/presence.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
-import { sendToUser } from '../ws/registry.js'
+import { hasActiveSocket, sendToUser } from '../ws/registry.js'
 
 const searchQuerySchema = z.object({
   q: z.string().min(1).max(128),
@@ -37,6 +38,10 @@ const patchMeSchema = z
   .strict()
 
 const lookupBodySchema = z.object({
+  user_ids: z.array(uuidSchema).min(1).max(64),
+})
+
+const presenceBodySchema = z.object({
   user_ids: z.array(uuidSchema).min(1).max(64),
 })
 
@@ -256,6 +261,49 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
    * Resolve users by explicit ids (e.g. invite links, E2E preflight).
    * Never filter by is_discoverable — hidden users must still be reachable by known UUID.
    */
+  /**
+   * Batch presence for mutual chat partners (and self). Omits unrelated ids.
+   */
+  app.post('/presence', async (request, reply) => {
+    const auth = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, auth)) return
+
+    const parsed = presenceBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const related = new Set(await getRelatedUserIds(auth.id))
+    related.add(auth.id)
+    const requested = [...new Set(parsed.data.user_ids)].filter((id) =>
+      related.has(id)
+    )
+    if (requested.length === 0) {
+      return reply.send({ users: [] })
+    }
+
+    const rows = await db
+      .select({
+        id: users.id,
+        lastSeenAt: users.lastSeenAt,
+      })
+      .from(users)
+      .where(inArray(users.id, requested))
+
+    return reply.send({
+      users: rows.map((u) => ({
+        id: u.id,
+        last_seen_at:
+          u.lastSeenAt == null
+            ? null
+            : u.lastSeenAt instanceof Date
+              ? u.lastSeenAt.toISOString()
+              : String(u.lastSeenAt),
+        online: hasActiveSocket(u.id),
+      })),
+    })
+  })
+
   app.post('/lookup', async (request, reply) => {
     const auth = await getAuthUser(request, reply)
     if (!assertAuthed(reply, auth)) return

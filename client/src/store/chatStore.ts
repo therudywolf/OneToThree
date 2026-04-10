@@ -32,6 +32,20 @@ type ChatState = {
   clearTypingUser: (chatId: string, userId: string) => void
   clearTypingUserEverywhere: (userId: string) => void
   pruneTypingUsers: (nowMs?: number) => void
+  peerPresence: Record<
+    string,
+    { online: boolean; last_seen_at: string | null }
+  >
+  setPeerPresence: (
+    userId: string,
+    partial: { online: boolean; last_seen_at: string | null }
+  ) => void
+  mergePeerPresenceBatch: (
+    rows: { id: string; online: boolean; last_seen_at: string | null }[]
+  ) => void
+  /** Merged into message rows (covers `olderMessages` not held in `messages`). */
+  readAtOverrides: Record<string, string>
+  updateMessageReadAt: (messageId: string, readAt: string) => void
   reset: () => void
 }
 
@@ -42,7 +56,8 @@ export const useChatStore = create<ChatState>((set) => ({
   userId: null,
   replyTo: null,
   typingUsers: {},
-  setActiveChatId: (id) => set({ activeChatId: id, replyTo: null }),
+  peerPresence: {},
+  setActiveChatId: (id) => set({ activeChatId: id, replyTo: null, readAtOverrides: {} }),
   setMessages: (messages) =>
     set({
       messages: trimToRamWindow(sortByCreatedAt(messages)),
@@ -107,6 +122,35 @@ export const useChatStore = create<ChatState>((set) => ({
       }
       return { typingUsers }
     }),
+  setPeerPresence: (userId, partial) =>
+    set((s) => ({
+      peerPresence: {
+        ...s.peerPresence,
+        [userId]: {
+          online: partial.online,
+          last_seen_at: partial.last_seen_at,
+        },
+      },
+    })),
+  mergePeerPresenceBatch: (rows) =>
+    set((s) => {
+      const peerPresence = { ...s.peerPresence }
+      for (const r of rows) {
+        peerPresence[r.id] = {
+          online: r.online,
+          last_seen_at: r.last_seen_at,
+        }
+      }
+      return { peerPresence }
+    }),
+  readAtOverrides: {},
+  updateMessageReadAt: (messageId, readAt) =>
+    set((s) => ({
+      readAtOverrides: { ...s.readAtOverrides, [messageId]: readAt },
+      messages: s.messages.map((m) =>
+        m.id === messageId ? { ...m, read_at: readAt } : m
+      ),
+    })),
   reset: () =>
     set({
       activeChatId: null,
@@ -115,5 +159,7 @@ export const useChatStore = create<ChatState>((set) => ({
       userId: null,
       replyTo: null,
       typingUsers: {},
+      peerPresence: {},
+      readAtOverrides: {},
     }),
 }))

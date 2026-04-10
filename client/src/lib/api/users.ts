@@ -33,6 +33,35 @@ export type UserLookupRow = {
   avatar_key?: string | null
 }
 
+export type PresenceRow = {
+  id: string
+  online: boolean
+  last_seen_at: string | null
+}
+
+export async function fetchUserPresence(
+  userIds: string[]
+): Promise<PresenceRow[]> {
+  const unique = Array.from(
+    new Set(userIds.map((id) => canonicalUserId(id)))
+  )
+  if (unique.length === 0) return []
+  const res = await fetch(`${API_URL}/users/presence`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_ids: unique }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    users?: PresenceRow[]
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'PRESENCE_FAILED')
+  }
+  return data.users ?? []
+}
+
 export async function lookupUsers(userIds: string[]): Promise<UserLookupRow[]> {
   const unique = Array.from(
     new Set(userIds.map((id) => canonicalUserId(id)))

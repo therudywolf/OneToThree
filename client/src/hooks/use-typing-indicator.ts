@@ -5,12 +5,12 @@ import { getFmSocket } from '@/lib/api/socket'
 import { useChatStore } from '@/store/chatStore'
 
 const START_THROTTLE_MS = 1000
-const STOP_DEBOUNCE_MS = 2000
+const STOP_DEBOUNCE_MS = 3000
 
 /**
  * Outbound typing presence engine.
  * - `typing_start` throttled to at most once/second
- * - `typing_stop` debounced to 2s inactivity
+ * - `typing_stop` debounced to 3s inactivity
  */
 export function useTypingIndicator() {
   const activeChatId = useChatStore((s) => s.activeChatId)

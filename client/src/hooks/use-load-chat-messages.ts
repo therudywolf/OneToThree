@@ -23,6 +23,7 @@ type ApiMessageRow = {
   media_path?: string | null
   media_type?: string | null
   media_iv?: string | null
+  read_at?: string | null
   created_at: string
 }
 
@@ -86,6 +87,7 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
           reply_to_id: m.reply_to_id ?? null,
           plaintext,
           created_at: m.created_at,
+          read_at: m.read_at ?? null,
           media_path: m.media_path,
           media_type:
             m.media_type === 'audio' ||

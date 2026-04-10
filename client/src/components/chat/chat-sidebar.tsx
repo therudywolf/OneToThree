@@ -66,6 +66,7 @@ export function ChatSidebar({
   const { t } = useTranslation()
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
+  const peerPresence = useChatStore((s) => s.peerPresence)
   const { chats, reload } = useChats(userId)
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)
@@ -231,6 +232,7 @@ export function ChatSidebar({
           const peerId = !c.is_group
             ? c.member_ids.find((id) => id !== userId)
             : null
+          const pres = peerId ? peerPresence[peerId] : undefined
           const peerName =
             peerId && c.name?.trim()
               ? c.name.trim()
@@ -271,9 +273,35 @@ export function ChatSidebar({
                   ) ? (
                     <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
                   ) : null}
-                  <span>
-                    {c.is_group ? '[GRP]' : '[DIR]'}{' '}
-                    {c.name?.trim() || `${c.id.slice(0, 8)}…`}
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="inline-flex items-center gap-1.5">
+                      {pres?.online ? (
+                        <span
+                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]"
+                          title="Online"
+                        />
+                      ) : null}
+                      <span className="truncate">
+                        {c.is_group ? '[GRP]' : '[DIR]'}{' '}
+                        {c.name?.trim() || `${c.id.slice(0, 8)}…`}
+                      </span>
+                    </span>
+                    {pres && !pres.online ? (
+                      <span className="text-[8px] normal-case tracking-normal text-red-900/90">
+                        Last seen:{' '}
+                        {pres.last_seen_at
+                          ? new Date(pres.last_seen_at).toLocaleString(
+                              undefined,
+                              {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              }
+                            )
+                          : '—'}
+                      </span>
+                    ) : null}
                   </span>
                 </span>
               </button>

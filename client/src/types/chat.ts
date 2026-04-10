@@ -8,6 +8,8 @@ export type DecryptedMessage = {
   media_path?: string | null
   media_type?: 'audio' | 'video' | 'image' | null
   media_iv?: string | null
+  /** Direct E2E: set when peer has read (server `read_at`). */
+  read_at?: string | null
 }
 
 export type ChatRow = {

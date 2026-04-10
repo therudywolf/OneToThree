@@ -1,3 +1,5 @@
+import { canonicalUserId } from '@/lib/user-id'
+
 /**
  * Browser calls to the Fastify API (cross-origin; session cookie is host-scoped to API origin).
  */
@@ -75,7 +77,7 @@ export async function verifyChallenge(
   }
   return {
     user: {
-      id: data.user.id.trim().toLowerCase(),
+      id: canonicalUserId(data.user.id),
       username: data.user.username,
     },
   }
@@ -99,7 +101,7 @@ export async function fetchMe(): Promise<{ user: { id: string; username: string 
   return {
     user: {
       ...data.user,
-      id: data.user.id.trim().toLowerCase(),
+      id: canonicalUserId(data.user.id),
     },
   }
 }

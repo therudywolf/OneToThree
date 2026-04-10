@@ -12,9 +12,9 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
-import { createDirectE2EChat, fetchPeerIdsForChat } from '@/lib/api/chats'
+import { fetchPeerIdsForChat } from '@/lib/api/chats'
 import { lookupUsers } from '@/lib/api/users'
-import { normalizePeerInput, normalizeUuid } from '@/lib/peer-input'
+import { canonicalUserId } from '@/lib/user-id'
 import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { useChats } from '@/hooks/use-chats'
@@ -28,6 +28,7 @@ import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
 import { LocaleToggle } from '@/components/locale-toggle'
+import { InviteChatLinkEffect } from '@/components/chat/invite-chat-link-effect'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -109,20 +110,6 @@ export function ChatApp({
   }, [searchParams, setActiveChatId])
 
   useEffect(() => {
-    const inviteRaw = searchParams.get('invite')?.trim()
-    const invite = inviteRaw ? normalizePeerInput(inviteRaw) : ''
-    if (!invite || normalizeUuid(invite) === normalizeUuid(userId)) return
-    const onceKey = `p13:invite-opened:${normalizeUuid(userId)}:${invite}`
-    if (sessionStorage.getItem(onceKey) === '1') return
-    sessionStorage.setItem(onceKey, '1')
-    void createDirectE2EChat(userId, invite)
-      .then((chat) => setActiveChatId(chat.id))
-      .catch(() => {
-        /* invalid invite or hidden/unknown user */
-      })
-  }, [searchParams, setActiveChatId, userId])
-
-  useEffect(() => {
     if (!activeChatId || !userId) {
       setPeerIdentity(null)
       return
@@ -132,7 +119,9 @@ export function ChatApp({
       setPeerIdentity(null)
       return
     }
-    const peerId = active.member_ids.find((id) => id !== userId)
+    const peerId = active.member_ids.find(
+      (id) => canonicalUserId(id) !== canonicalUserId(userId)
+    )
     if (!peerId) {
       setPeerIdentity(null)
       return
@@ -204,6 +193,7 @@ export function ChatApp({
 
   return (
     <div className="flex h-dvh flex-col bg-black supports-[height:100dvh]:h-dvh">
+      <InviteChatLinkEffect userId={userId} />
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
         onReject={rejectIncomingCall}

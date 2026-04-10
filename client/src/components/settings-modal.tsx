@@ -44,6 +44,17 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     void fetchMe()
   }, [fetchMe, userId])
 
+  function parseDiscoverable(
+    raw: boolean | string | undefined
+  ): boolean | null {
+    if (raw === true || raw === 'true') return true
+    if (raw === false || raw === 'false') return false
+    if (typeof raw === 'string' && raw.toLowerCase() === 'true') return true
+    if (typeof raw === 'string' && raw.toLowerCase() === 'false')
+      return false
+    return null
+  }
+
   async function toggleDiscoverable() {
     setBusy(true)
     setError(null)
@@ -57,20 +68,18 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       })
       const d = (await r.json().catch(() => ({}))) as {
         ok?: boolean
-        is_discoverable?: boolean
+        is_discoverable?: boolean | string
         error?: string
       }
       if (!r.ok) {
         throw new Error(d.error ?? t('settings.toggleFailed'))
       }
-      if (typeof d.is_discoverable === 'boolean') {
-        setDiscoverable(d.is_discoverable)
-      } else {
-        setDiscoverable(newVal)
-      }
+      const fromServer = parseDiscoverable(d.is_discoverable)
+      setDiscoverable(fromServer ?? newVal)
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (e) {
+      console.error('[settings] PATCH /users/me is_discoverable failed', e)
       setError(e instanceof Error ? e.message : t('settings.unknown'))
     } finally {
       setBusy(false)

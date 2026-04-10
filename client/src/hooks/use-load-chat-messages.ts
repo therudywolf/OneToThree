@@ -39,15 +39,26 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
 
     let cancelled = false
     ;(async () => {
-      const cached = await getRecentCachedMessages(activeChatId, 50)
-      if (!cancelled && cached.length > 0) {
-        setMessages(cached)
+      try {
+        const cached = await getRecentCachedMessages(activeChatId, 50)
+        if (!cancelled && cached.length > 0) {
+          setMessages(cached)
+        }
+      } catch (e) {
+        console.error(
+          '[useLoadChatMessages] IndexedDB getRecentCachedMessages failed',
+          { activeChatId, err: e }
+        )
       }
 
       const res = await fetch(`${API_URL}/messages/${activeChatId}`, {
         credentials: 'include',
       })
       if (!res.ok) {
+        console.error('[useLoadChatMessages] messages fetch failed', {
+          activeChatId,
+          status: res.status,
+        })
         if (!cancelled) setMessages([])
         return
       }
@@ -90,7 +101,14 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
           (a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )
-        await cacheMessages(out)
+        try {
+          await cacheMessages(out)
+        } catch (e) {
+          console.error('[useLoadChatMessages] cacheMessages failed', {
+            activeChatId,
+            err: e,
+          })
+        }
         setMessages(out)
       }
     })()

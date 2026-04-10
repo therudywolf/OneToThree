@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, max } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -130,6 +130,27 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       memberMap.set(m.chatId, list)
     }
 
+    const lastActivityRows =
+      chatIds.length === 0
+        ? []
+        : await db
+            .select({
+              chatId: messages.chatId,
+              lastAt: max(messages.createdAt),
+            })
+            .from(messages)
+            .where(inArray(messages.chatId, chatIds))
+            .groupBy(messages.chatId)
+
+    const lastMessageAtByChat = new Map<string, string | null>()
+    for (const r of lastActivityRows) {
+      const t = r.lastAt
+      lastMessageAtByChat.set(
+        r.chatId,
+        t instanceof Date ? t.toISOString() : t != null ? String(t) : null
+      )
+    }
+
     return reply.send({
       chats: rows.map((c) => ({
         id: c.id,
@@ -138,6 +159,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         is_group: isGroupType(c.type),
         member_ids: memberMap.get(c.id) ?? [],
         encrypted_group_key: c.encryptedGroupKey,
+        last_message_at: lastMessageAtByChat.get(c.id) ?? null,
       })),
     })
   })

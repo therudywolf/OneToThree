@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { MediaMessage } from '@/components/chat/media-message'
 import { deleteMessage } from '@/lib/api/chats'
@@ -8,17 +8,30 @@ import {
   deleteCachedMessage,
   getOlderCachedMessages,
 } from '@/lib/message-cache'
+import { lookupUsers } from '@/lib/api/users'
+import type { ApiChatRow } from '@/lib/api/chats'
 import type { DecryptedMessage } from '@/types/chat'
 
 const OLDER_PAGE_SIZE = 25
 const OLDER_RAM_CAP = 200
 
+function shortId(id: string) {
+  return `${id.slice(0, 8)}…`
+}
+
 export function ChatTerminal({
   userId,
   sharedKey,
+  currentUsername,
+  activeChat,
+  directPeerUsername,
 }: {
   userId: string
   sharedKey: CryptoKey | null
+  currentUsername: string
+  activeChat: ApiChatRow | null
+  /** Resolved peer handle for direct chats; null while loading. */
+  directPeerUsername: string | null
 }) {
   const messages = useChatStore((s) => s.messages)
   const removeMessage = useChatStore((s) => s.removeMessage)
@@ -30,12 +43,58 @@ export function ChatTerminal({
   const [olderMessages, setOlderMessages] = useState<DecryptedMessage[]>([])
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
   const [loadingOlder, setLoadingOlder] = useState(false)
+  const [senderNames, setSenderNames] = useState<Record<string, string>>({})
   const [ctxMenu, setCtxMenu] = useState<{
     msg: DecryptedMessage
     x: number
     y: number
     isMine: boolean
   } | null>(null)
+
+  const isGroup = activeChat?.is_group ?? false
+
+  const renderMessages = useMemo(() => {
+    const map = new Map<string, DecryptedMessage>()
+    for (const m of [...olderMessages, ...messages]) {
+      map.set(m.id, m)
+    }
+    return [...map.values()].sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+  }, [olderMessages, messages])
+
+  const senderIdsToResolve = useMemo(() => {
+    if (!isGroup || !activeChatId) return []
+    const ids = new Set<string>()
+    for (const m of renderMessages) {
+      if (m.sender_id !== userId) ids.add(m.sender_id)
+    }
+    return [...ids]
+  }, [isGroup, activeChatId, renderMessages, userId])
+
+  useEffect(() => {
+    if (!senderIdsToResolve.length) {
+      setSenderNames({})
+      return
+    }
+    let cancelled = false
+    void lookupUsers(senderIdsToResolve)
+      .then((rows) => {
+        if (cancelled) return
+        const next: Record<string, string> = {}
+        for (const u of rows) {
+          next[u.id] = u.username
+        }
+        setSenderNames(next)
+      })
+      .catch(() => {
+        if (!cancelled) setSenderNames({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [senderIdsToResolve])
 
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight })
@@ -53,21 +112,21 @@ export function ChatTerminal({
     return () => window.removeEventListener('click', close)
   }, [])
 
-  const renderMessages = (() => {
-    const map = new Map<string, DecryptedMessage>()
-    for (const m of [...olderMessages, ...messages]) {
-      map.set(m.id, m)
-    }
-    return [...map.values()].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    )
-  })()
-
   const msgById = (id: string) => renderMessages.find((m) => m.id === id)
   const oldestLoaded = renderMessages[0] ?? null
   const typingNow = activeChatId
     ? Object.values(typingUsers[activeChatId] ?? {}).map((v) => v.username)
     : []
+
+  function labelForSender(senderId: string): string {
+    if (senderId === userId) {
+      return currentUsername.trim() || 'YOU'
+    }
+    if (!isGroup) {
+      return directPeerUsername?.trim() || shortId(senderId)
+    }
+    return senderNames[senderId]?.trim() || shortId(senderId)
+  }
 
   useEffect(() => {
     if (!activeChatId || !topSentinelRef.current || !ref.current) return
@@ -188,44 +247,67 @@ export function ChatTerminal({
         ) : null}
         {renderMessages.map((m) => {
           const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
+          const mine = m.sender_id === userId
+          const senderLabel = labelForSender(m.sender_id)
           return (
             <div
               key={m.id}
-              className="group mb-3 border-l-2 border-neon-cyan/40 pl-2"
+              className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
               onContextMenu={(e) => {
                 e.preventDefault()
                 setCtxMenu({
                   msg: m,
                   x: e.clientX,
                   y: e.clientY,
-                  isMine: m.sender_id === userId,
+                  isMine: mine,
                 })
               }}
             >
-              {replyMsg ? (
-                <div className="mb-1 border-l border-neon-cyan/30 pl-2 text-[10px] text-neon-cyan/60">
-                  <span className="text-red-800">
-                    ↳ {replyMsg.sender_id === userId ? 'YOU' : replyMsg.sender_id.slice(0, 8)}:
-                  </span>{' '}
-                  {replyMsg.plaintext
-                    ? replyMsg.plaintext.slice(0, 60) + (replyMsg.plaintext.length > 60 ? '…' : '')
-                    : '[MEDIA]'}
+              <div
+                className={`max-w-[min(100%,42rem)] min-w-0 ${
+                  mine ? 'items-end' : 'items-start'
+                } flex flex-col gap-1`}
+              >
+                <div
+                  className={`px-1 font-mono text-[10px] uppercase tracking-widest ${
+                    mine ? 'text-right text-neon-cyan/70' : 'text-left text-neon-cyan/80'
+                  }`}
+                >
+                  {senderLabel}
                 </div>
-              ) : m.reply_to_id ? (
-                <div className="mb-1 text-[10px] text-red-900">↳ [ORIGINAL_DELETED]</div>
-              ) : null}
-              <div className="text-[10px] text-neon-cyan/90">
-                [{m.sender_id === userId ? 'OUT' : 'IN'}]{' '}
-                <span className="text-red-800">
-                  {new Date(m.created_at).toLocaleString()}
-                </span>
+                <div
+                  className={`w-full rounded-none border px-3 py-2 ${
+                    mine
+                      ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                      : 'border-neon-cyan/25 bg-black/80 text-neon-red'
+                  }`}
+                >
+                  {replyMsg ? (
+                    <div className="mb-1 border-l border-neon-cyan/30 pl-2 text-[10px] text-neon-cyan/60">
+                      <span className="text-red-800">
+                        ↳ {labelForSender(replyMsg.sender_id)}:
+                      </span>{' '}
+                      {replyMsg.plaintext
+                        ? replyMsg.plaintext.slice(0, 60) +
+                          (replyMsg.plaintext.length > 60 ? '…' : '')
+                        : '[MEDIA]'}
+                    </div>
+                  ) : m.reply_to_id ? (
+                    <div className="mb-1 text-[10px] text-red-900">
+                      ↳ [ORIGINAL_DELETED]
+                    </div>
+                  ) : null}
+                  <div className="mb-1 text-[9px] text-red-800/90">
+                    {new Date(m.created_at).toLocaleString()}
+                  </div>
+                  {m.plaintext ? (
+                    <div className="whitespace-pre-wrap break-words">{m.plaintext}</div>
+                  ) : null}
+                  {m.media_path && m.media_iv && m.media_type ? (
+                    <MediaMessage message={m} sharedKey={sharedKey} />
+                  ) : null}
+                </div>
               </div>
-              {m.plaintext ? (
-                <div className="whitespace-pre-wrap break-words">{m.plaintext}</div>
-              ) : null}
-              {m.media_path && m.media_iv && m.media_type ? (
-                <MediaMessage message={m} sharedKey={sharedKey} />
-              ) : null}
             </div>
           )
         })}

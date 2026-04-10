@@ -69,7 +69,20 @@ async function applyBucketCors(
         },
       })
     )
-  } catch (err) {
+  } catch (err: unknown) {
+    const code =
+      err && typeof err === 'object' && 'Code' in err
+        ? String((err as { Code?: string }).Code)
+        : ''
+    const status =
+      err && typeof err === 'object' && '$metadata' in err
+        ? (err as { $metadata?: { httpStatusCode?: number } }).$metadata
+            ?.httpStatusCode
+        : undefined
+    // MinIO returns 501 NotImplemented for PutBucketCors — expected; configure CORS via console/mc if needed.
+    if (code === 'NotImplemented' || status === 501) {
+      return
+    }
     console.warn('[s3] PutBucketCors failed (browser uploads may require manual CORS):', err)
   }
 }

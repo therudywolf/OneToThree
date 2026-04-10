@@ -1,20 +1,71 @@
-# Build context is this directory (project root). Use `.` — not `..` — so the image sees package.json.
 services:
-  nocturne-web:
+  db:
+    image: postgres:alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: forest
+      POSTGRES_PASSWORD: forest
+      POSTGRES_DB: forest
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - app
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio_secret_change_me
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - app
+
+  api:
     build:
-      context: .
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      DATABASE_URL: postgres://forest:forest@db:5432/forest
+      JWT_SECRET: ${JWT_SECRET:-dev-change-in-production}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minio
+      MINIO_SECRET_KEY: minio_secret_change_me
+    depends_on:
+      - db
+      - minio
+    networks:
+      - app
+
+  web:
+    build:
+      context: ./client
       dockerfile: Dockerfile.dev
+    restart: unless-stopped
     ports:
       - "3000:3000"
-    volumes:
-      - .:/app
-      - nocturne_node_modules:/app/node_modules
-      - nocturne_next:/app/.next
-    env_file:
-      - .env.local
     environment:
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_DEV_USER_ID: ${NEXT_PUBLIC_DEV_USER_ID:-00000000-0000-4000-8000-000000000001}
+      NEXT_PUBLIC_DEV_EMAIL: ${NEXT_PUBLIC_DEV_EMAIL:-dev@local.test}
+    volumes:
+      - ./client:/app
+      - web_node_modules:/app/node_modules
+      - web_next:/app/.next
     working_dir: /app
     command:
       - sh
@@ -22,7 +73,17 @@ services:
       - |
         npm install
         exec npm run dev -- --hostname 0.0.0.0 --port 3000
+    depends_on:
+      - api
+    networks:
+      - app
 
 volumes:
-  nocturne_node_modules:
-  nocturne_next:
+  postgres_data:
+  minio_data:
+  web_node_modules:
+  web_next:
+
+networks:
+  app:
+    driver: bridge

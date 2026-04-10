@@ -52,6 +52,18 @@ export type WsInboundMessage =
       message_id: string
       reader_id: string
     }
+  | {
+      type: 'typing_start'
+      chat_id: string
+      user_id: string
+      username: string
+    }
+  | {
+      type: 'typing_stop'
+      chat_id: string
+      user_id: string
+      username: string
+    }
   | { type: 'error'; error: string }
 
 class FmSocketClient {

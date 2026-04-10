@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
+import { useTypingIndicator } from '@/hooks/use-typing-indicator'
 
 type Props = {
   sendText: (t: string, replyToId?: string | null) => Promise<void>
@@ -13,11 +14,13 @@ export function ChatInput({ sendText, disabled }: Props) {
   const [value, setValue] = useState('')
   const replyTo = useChatStore((s) => s.replyTo)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
+  const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!value.trim() || disabled) return
     await sendText(value, replyTo?.id ?? null)
+    onSubmitOrClear()
     setValue('')
     setReplyTo(null)
   }
@@ -46,7 +49,11 @@ export function ChatInput({ sendText, disabled }: Props) {
         <input
           className="terminal-input flex-1 text-sm"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value
+            setValue(next)
+            onDraftChanged(next)
+          }}
           disabled={disabled}
           aria-label="Message input"
           placeholder="type encrypted message"

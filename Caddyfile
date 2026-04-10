@@ -1,0 +1,17 @@
+# Project 13 — production gateway (TLS via host-mounted certs in ./certs)
+# Place cert.pem and key.pem on the server; mount ./certs:/certs:ro in Compose.
+
+onetothree.ru {
+	tls /certs/cert.pem /certs/key.pem
+	reverse_proxy web:3000
+}
+
+api.onetothree.ru {
+	tls /certs/cert.pem /certs/key.pem
+	reverse_proxy api:8080
+}
+
+s3.onetothree.ru {
+	tls /certs/cert.pem /certs/key.pem
+	reverse_proxy minio:9000
+}

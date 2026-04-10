@@ -14,7 +14,11 @@ ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
-COPY .env.local .env.production
+# Build-time public env (no committed .env.local required in CI / docker-compose.prod)
+RUN printf '%s\n' \
+  "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
+  "NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}" \
+  > .env.production
 RUN npm run build
 
 FROM node:20-alpine AS runner

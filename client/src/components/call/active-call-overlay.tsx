@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Mic, MicOff, PhoneOff, Video, VideoOff } from 'lucide-react'
+import { applyPreferredAudioOutput } from '@/lib/media-devices'
 import { useCallStore } from '@/store/callStore'
 
 type Props = {
@@ -36,26 +37,46 @@ function PeerTile({
   label: string
   muted?: boolean
 }) {
-  const ref = useRef<HTMLVideoElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const hasVideo = stream.getVideoTracks().length > 0
 
   useEffect(() => {
-    if (ref.current && hasVideo) {
-      ref.current.srcObject = stream
+    const v = videoRef.current
+    const a = audioRef.current
+    if (hasVideo && v) {
+      v.srcObject = stream
+      if (!muted) void applyPreferredAudioOutput(v)
+      if (a) {
+        a.srcObject = null
+        a.pause()
+      }
+    } else if (!hasVideo && a) {
+      a.srcObject = stream
+      void a.play().catch(() => {
+        /* autoplay policy */
+      })
+      if (!muted) void applyPreferredAudioOutput(a)
+      if (v) v.srcObject = null
     }
     return () => {
-      if (ref.current) ref.current.srcObject = null
+      if (v) v.srcObject = null
+      if (a) {
+        a.srcObject = null
+        a.pause()
+      }
     }
-  }, [stream, hasVideo])
+  }, [stream, hasVideo, muted])
 
   return (
     <div className="relative border border-neon-cyan/40 shadow-[0_0_8px_rgba(0,255,255,0.2)]">
       <p className="border-b border-neon-cyan/30 bg-black px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan">
         {label} :: {peerId.slice(0, 8)}…
       </p>
+      <audio ref={audioRef} className="hidden" playsInline />
       {hasVideo ? (
         <video
-          ref={ref}
+          ref={videoRef}
           autoPlay
           playsInline
           muted={muted}

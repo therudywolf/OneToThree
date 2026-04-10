@@ -17,6 +17,11 @@ coverage/
 !.env.local.example
 !server/.env.example
 !client/.env.local.example
+# Explicit prod filenames (also covered by .env.* — listed for clarity)
+.env.prod
+
+# TLS material & host-mounted certs (never commit keys or chains)
+certs/
 
 # Docker / local volume data (if bind-mounted as dirs)
 postgres_data/

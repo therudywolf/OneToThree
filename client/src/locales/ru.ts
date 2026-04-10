@@ -157,6 +157,24 @@ const ru = {
   'settings.totpDisableWarn':
     'Отключение 2FA ослабляет аккаунт. Нужен действующий код из приложения.',
   'settings.totpDisableCode': 'Текущий код из приложения',
+
+  'settings.tabGeneral': 'ОСНОВНОЕ',
+  'settings.tabMedia': 'СЕНСОРЫ',
+  'settings.mediaSectionTitle': 'СЕНСОРЫ / MEDIA DEVICES',
+  'settings.mediaHint':
+    'Список устройств; предпросмотр требует разрешения камеры. Вывод — через setSinkId (где поддерживается).',
+  'settings.mediaCamera': 'Камера',
+  'settings.mediaMic': 'Микрофон',
+  'settings.mediaSpeaker': 'Вывод звука',
+  'settings.mediaDefault': '— по умолчанию —',
+  'settings.mediaNoise': 'Шумоподавление и эхоподавление',
+  'settings.mediaNoiseHint':
+    'Соответствует echoCancellation и noiseSuppression в ограничениях захвата.',
+  'settings.mediaViewfinder': 'ВИДОИСКАТЕЛЬ',
+  'settings.mediaNoApi': 'MediaDevices API недоступен в этом контексте.',
+  'settings.mediaDenied':
+    'Доступ к камере или микрофону запрещён. Разрешите в браузере для предпросмотра.',
+  'settings.mediaPreviewFailed': 'Не удалось запустить поток предпросмотра.',
 } as const
 
 export default ru

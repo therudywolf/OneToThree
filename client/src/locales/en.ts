@@ -152,6 +152,23 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.totpDisableWarn':
     'Disabling 2FA weakens your account. You will need a valid code from your app.',
   'settings.totpDisableCode': 'Current authenticator code',
+
+  'settings.tabGeneral': 'MAIN',
+  'settings.tabMedia': 'SENSORS',
+  'settings.mediaSectionTitle': 'СЕНСОРЫ / MEDIA DEVICES',
+  'settings.mediaHint':
+    'Enumerate inputs; preview requires camera permission. Output routing uses setSinkId where supported.',
+  'settings.mediaCamera': 'Camera',
+  'settings.mediaMic': 'Microphone',
+  'settings.mediaSpeaker': 'Speaker output',
+  'settings.mediaDefault': '— system default —',
+  'settings.mediaNoise': 'Noise suppression & echo cancellation',
+  'settings.mediaNoiseHint': 'Maps to echoCancellation + noiseSuppression in capture constraints.',
+  'settings.mediaViewfinder': 'VIEWFINDER',
+  'settings.mediaNoApi': 'MediaDevices API unavailable in this context.',
+  'settings.mediaDenied':
+    'Camera or microphone access was denied. Allow permission in the browser to preview devices.',
+  'settings.mediaPreviewFailed': 'Could not start preview stream.',
 } as const
 
 export default en

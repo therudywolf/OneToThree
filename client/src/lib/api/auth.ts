@@ -181,11 +181,8 @@ export async function fetchMe(): Promise<{
     error?: string
   }
   if (!res.ok) {
-    if (res.status === 401) {
-      console.error(
-        '[AUTH] Session invalid — wiping local state before redirect to login [Phase 18]',
-        { status: res.status, error: data.error }
-      )
+    if (process.env.NODE_ENV !== 'production' && res.status === 401) {
+      console.warn('[auth] /me unauthorized', res.status)
     }
     throw new AuthHttpError(data.error ?? 'UNAUTHORIZED', res.status)
   }

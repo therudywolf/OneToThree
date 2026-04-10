@@ -63,10 +63,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       if (myId !== refreshGeneration.current) return
       if (e instanceof AuthHttpError) {
-        console.error('[Phase 18] refresh() auth failed; user cleared', {
-          status: e.status,
-          message: e.message,
-        })
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[auth] refresh failed', e.status)
+        }
         if (e.message === 'BANNED_USER') {
           await wipeAllClientLocalState()
         }

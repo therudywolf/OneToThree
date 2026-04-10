@@ -5,6 +5,12 @@ const nextConfig = {
   reactStrictMode: true,
   /** Hide the Next.js dev badge (often shows Webpack/Turbopack) in the corner during `next dev`. */
   devIndicators: false,
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === 'production'
+        ? { exclude: ['error', 'warn'] }
+        : false,
+  },
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '..'),
   /**

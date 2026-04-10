@@ -11,6 +11,10 @@ const ru = {
   'common.createGroupAria': 'Создать E2E группу',
   'common.toggleLanguageAria': 'Переключить язык',
 
+  'errors.boundaryGeneric': 'Сигнал потерян. Повторите попытку.',
+  'errors.retrySession': 'Перезагрузить',
+  'errors.generic': 'Ошибка',
+
   'login.usernameRequired': 'Требуется имя пользователя.',
   'login.passwordRequired': 'Требуется парольная фраза.',
   'login.pinMin8':

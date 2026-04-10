@@ -11,6 +11,10 @@ const en = {
   'common.createGroupAria': 'Create group E2E',
   'common.toggleLanguageAria': 'Toggle language',
 
+  'errors.boundaryGeneric': 'Signal lost. Try again.',
+  'errors.retrySession': 'Reload',
+  'errors.generic': 'Error',
+
   'login.usernameRequired': 'Username is required.',
   'login.passwordRequired': 'Passphrase is required.',
   'login.pinMin8': 'Passphrase must be at least 8 characters for new keys.',

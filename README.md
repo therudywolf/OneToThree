@@ -114,6 +114,34 @@ docker compose run --rm db-migrate
 | `npm run db:push:docker` | Drizzle: push via `docker.db.env` (host → containerized Postgres) |
 | `npm run db:studio` | Drizzle Studio |
 
+### Reset Postgres data and browser vault (fresh start)
+
+To wipe **server-side** accounts and start clean:
+
+```bash
+docker compose down -v
+```
+
+`-v` removes named volumes (Postgres, MinIO, anonymous Next volumes). Then bring the stack up again (`docker compose up --build`).
+
+Also clear **browser** storage for `http://localhost:3000` (DevTools → Application → **Clear site data** / IndexedDB), or old **vault** keys and cookies will still be on the device while the server DB is empty — login can fail with confusing errors.
+
+**Auth note:** `PUBLIC_KEY_CONFLICT` means this **handle** already exists on the server with a **different ECDSA key** than your local vault (e.g. you re-registered after only clearing one side). Use **Login** with the original vault, pick another handle, or reset **both** DB and local site data as above.
+
+### What belongs in Git
+
+- **Tracked:** `server/drizzle/*.sql` — **schema migration** files (not live data).
+- **Ignored:** `backups/`, `*.dump`, `postgres_data/`, `.env` — see `.gitignore`. Do not commit live database dumps or volume directories.
+
+### Language (EN / RU)
+
+- **Login:** globe button in the **top-right** toggles `en` / `ru`.
+- **In-app:** same globe in the header after login; **`[ CFG ]`** → Settings also has a language selector.
+
+### Next.js dev badge (corner)
+
+The client runs **`next dev --webpack`** (see `client/package.json`). The small **Next.js** indicator in the corner during development is turned off with **`devIndicators: false`** in `client/next.config.js` — it is not a separate “Turbopack mode” toggle for this project.
+
 ## Security model (short)
 
 1. **Authentication:** The server issues a short-lived challenge; the client signs it with an **ECDSA P-256** private key held in the user vault. The server stores only the **public** JWK.
@@ -208,6 +236,8 @@ Dumps the Postgres database and MinIO data from running Docker containers into a
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` warning during `docker compose up` | Run `npm run setup` first. The key is read from `client/.env.local`, not from Docker Compose env. |
 | `relation "users" does not exist` | With Compose, **`db-migrate`** should run before **api**. Check logs for `db-migrate` errors; then `docker compose run --rm db-migrate` or `npm run db:push:docker` (host → Postgres on **localhost:5432**). For a non-Docker Postgres, use `npm run db:push`. |
 | `npm ci` fails in Docker for **api** | Ensure **`server/package-lock.json`** is present and committed (Docker build context is `./server`). |
+| Login fails with **PUBLIC_KEY_CONFLICT** / odd auth after DB reset | Clear **browser** site data for localhost (vault still has old keys) or use **Login** with the vault that matches the server; see **Reset Postgres data and browser vault** above. |
+| Small **Next** icon in the corner (dev) | Disabled via `devIndicators: false` in `client/next.config.js`; rebuild/restart `web` if you still see it. |
 | CORS errors on media upload | MinIO does not support `PutBucketCors`; the API silently ignores this. If using a proxy, ensure `Access-Control-Allow-Origin` headers pass through. |
 | `PutBucketCors … NotImplemented` in API logs | Harmless — MinIO limitation. The warning is silently suppressed. |
 | PWA / Push not working | Web Push requires HTTPS. Use a tunnel (e.g. `ngrok`, `cloudflared`) for local testing. Ensure VAPID keys match between client and server. |

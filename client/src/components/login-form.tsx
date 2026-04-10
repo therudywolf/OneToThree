@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/components/auth/auth-provider'
@@ -17,6 +17,7 @@ export function LoginForm() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const submitLock = useRef(false)
 
   useEffect(() => {
     if (!authLoading && user) {
@@ -52,6 +53,8 @@ export function LoginForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (submitLock.current || busy) return
+    submitLock.current = true
     setError(null)
     setBusy(true)
     try {
@@ -67,6 +70,7 @@ export function LoginForm() {
       setError(err instanceof Error ? err.message : 'UNKNOWN_ERROR')
     } finally {
       setBusy(false)
+      submitLock.current = false
     }
   }
 

@@ -22,6 +22,10 @@ coverage/
 postgres_data/
 minio_data/
 
+# Local DB dumps / backup archives (never commit live data)
+backups/
+*.dump
+
 # Drizzle local cache (SQL migrations remain tracked)
 server/drizzle/meta/
 

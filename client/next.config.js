@@ -3,6 +3,8 @@ const path = require('path')
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  /** Hide the Next.js dev badge (often shows Webpack/Turbopack) in the corner during `next dev`. */
+  devIndicators: false,
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '..'),
   async headers() {

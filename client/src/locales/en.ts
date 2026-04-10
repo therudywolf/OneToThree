@@ -30,7 +30,8 @@ const en = {
   'login.nonceMismatch': 'Challenge mismatch, try again.',
   'login.signatureInvalid': 'Signature rejected by server.',
   'login.publicKeyRequired': 'Server expected a public key (registration).',
-  'login.publicKeyConflict': 'Public key does not match server record.',
+  'login.publicKeyConflict':
+    'This handle is already registered on the server with a different key. Use Login with your original vault, pick another handle, or reset the server DB and local site data.',
   'login.usernameTaken': 'That handle is already taken.',
   'login.invalidBody': 'Invalid request.',
   'login.handleLabel': 'Handle',

@@ -201,7 +201,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (e) {
-      console.error('[settings] PATCH /users/me is_discoverable failed', e)
       setError(e instanceof Error ? e.message : t('settings.unknown'))
     } finally {
       setBusy(false)
@@ -209,22 +208,21 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   }
 
   async function purgeLocalCache() {
-    console.log('[Phase 18] PURGE LOCAL CACHE — starting')
     try {
       await clearAllMediaCache()
-    } catch (e) {
-      console.error('[Phase 33] clear media cache failed', e)
+    } catch {
+      /* ignore */
     }
     try {
       await purgeLocalMessageCache()
-    } catch (e) {
-      console.error('[Phase 18] purge IndexedDB failed', e)
+    } catch {
+      /* ignore */
     }
     try {
       localStorage.clear()
       sessionStorage.clear()
-    } catch (e) {
-      console.error('[Phase 18] purge web storage failed', e)
+    } catch {
+      /* ignore */
     }
     window.location.reload()
   }

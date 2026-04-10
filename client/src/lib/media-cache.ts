@@ -5,6 +5,9 @@ import Dexie, { type Table } from 'dexie'
 /** Default cap for decrypted media blobs (1 GiB). */
 export const MEDIA_CACHE_MAX_BYTES = 1024 * 1024 * 1024
 
+/** Hard cap on row count so opening huge histories does not flood IndexedDB before byte trim runs. */
+export const MEDIA_CACHE_MAX_ENTRIES = 200
+
 export type MediaCacheRow = {
   /** `messages.id` — one row per message attachment. */
   id: string
@@ -68,10 +71,20 @@ export async function setCachedMedia(
  * Removes oldest entries until total size is under {@link MEDIA_CACHE_MAX_BYTES}.
  */
 export async function clearOldCache(
-  maxBytes: number = MEDIA_CACHE_MAX_BYTES
+  maxBytes: number = MEDIA_CACHE_MAX_BYTES,
+  maxEntries: number = MEDIA_CACHE_MAX_ENTRIES
 ): Promise<void> {
   if (typeof indexedDB === 'undefined') return
-  const rows = await db.media_cache.orderBy('timestamp').toArray()
+  let rows = await db.media_cache.orderBy('timestamp').toArray()
+
+  if (rows.length > maxEntries) {
+    const overflow = rows.length - maxEntries
+    for (let i = 0; i < overflow; i++) {
+      await db.media_cache.delete(rows[i].id)
+    }
+    rows = await db.media_cache.orderBy('timestamp').toArray()
+  }
+
   let total = rows.reduce((s, r) => s + (r.blob?.size ?? 0), 0)
   if (total <= maxBytes) return
   for (const r of rows) {

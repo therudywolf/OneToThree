@@ -14,15 +14,24 @@ import { adminRoutes } from './routes/admin.js'
 import { vaultRoutes } from './routes/vault.js'
 import { wsRoutes } from './routes/ws.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
+import { registerGlobalErrorHandler } from './lib/error-handler.js'
 
 export async function buildApp() {
+  /** Behind Caddy/nginx: trust X-Forwarded-* for real client IPs (disable with TRUST_PROXY=0). */
+  const tp = process.env.TRUST_PROXY?.trim().toLowerCase()
   const trustProxy =
-    process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true'
+    tp === '0' || tp === 'false'
+      ? false
+      : tp === '1' ||
+          tp === 'true' ||
+          process.env.NODE_ENV === 'production'
 
   const app = Fastify({
     logger: true,
     trustProxy,
   })
+
+  registerGlobalErrorHandler(app)
 
   const isProd = process.env.NODE_ENV === 'production'
   const corsOriginsRaw =

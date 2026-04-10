@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Crown, Star } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { MediaMessage } from '@/components/chat/media-message'
 import { deleteMessage } from '@/lib/api/chats'
@@ -9,7 +10,7 @@ import {
   getOlderCachedMessages,
 } from '@/lib/message-cache'
 import { lookupUsers } from '@/lib/api/users'
-import type { ApiChatRow } from '@/lib/api/chats'
+import type { ApiChatRow, ChatMemberRole } from '@/lib/api/chats'
 import type { DecryptedMessage } from '@/types/chat'
 
 const OLDER_PAGE_SIZE = 25
@@ -25,6 +26,7 @@ export function ChatTerminal({
   currentUsername,
   activeChat,
   directPeerUsername,
+  senderRoles = {},
 }: {
   userId: string
   sharedKey: CryptoKey | null
@@ -32,6 +34,8 @@ export function ChatTerminal({
   activeChat: ApiChatRow | null
   /** Resolved peer handle for direct chats; null while loading. */
   directPeerUsername: string | null
+  /** Group chats: user_id → pack role (for header badges). */
+  senderRoles?: Record<string, ChatMemberRole>
 }) {
   const messages = useChatStore((s) => s.messages)
   const removeMessage = useChatStore((s) => s.removeMessage)
@@ -126,6 +130,28 @@ export function ChatTerminal({
       return directPeerUsername?.trim() || shortId(senderId)
     }
     return senderNames[senderId]?.trim() || shortId(senderId)
+  }
+
+  function roleGlyph(senderId: string) {
+    if (!isGroup) return null
+    const r = senderRoles[senderId]
+    if (r === 'owner') {
+      return (
+        <Crown
+          className="inline h-3 w-3 shrink-0 align-middle text-neon-cyan"
+          aria-label="owner"
+        />
+      )
+    }
+    if (r === 'admin') {
+      return (
+        <Star
+          className="inline h-3 w-3 shrink-0 align-middle text-neon-cyan/90"
+          aria-label="admin"
+        />
+      )
+    }
+    return null
   }
 
   useEffect(() => {
@@ -269,11 +295,12 @@ export function ChatTerminal({
                 } flex flex-col gap-1`}
               >
                 <div
-                  className={`px-1 font-mono text-[10px] uppercase tracking-widest ${
-                    mine ? 'text-right text-neon-cyan/70' : 'text-left text-neon-cyan/80'
+                  className={`flex items-center gap-1 px-1 font-mono text-[10px] uppercase tracking-widest ${
+                    mine ? 'justify-end text-right text-neon-cyan/70' : 'justify-start text-left text-neon-cyan/80'
                   }`}
                 >
-                  {senderLabel}
+                  {roleGlyph(m.sender_id)}
+                  <span>{senderLabel}</span>
                 </div>
                 <div
                   className={`w-full rounded-none border px-3 py-2 ${

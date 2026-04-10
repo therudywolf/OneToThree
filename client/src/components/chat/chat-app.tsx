@@ -14,12 +14,17 @@ import { useCryptoVault } from '@/hooks/use-crypto-vault'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
-import { fetchPeerIdsForChat } from '@/lib/api/chats'
+import {
+  fetchChatDetail,
+  fetchPeerIdsForChat,
+  type ChatMemberRole,
+} from '@/lib/api/chats'
 import { lookupUsers } from '@/lib/api/users'
 import { canonicalUserId } from '@/lib/user-id'
 import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { useChats } from '@/hooks/use-chats'
+import { useGroupKeyDistribution } from '@/hooks/use-group-key-distribution'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
@@ -89,7 +94,11 @@ export function ChatApp({
     return !localStorage.getItem(`p13:onboarded:${userId}`)
   })
   const vaultState = useCryptoVault(userId, user?.username ?? username)
-  const { chats } = useChats(userId)
+  const { chats, reload } = useChats(userId)
+  const [memberRoleByUser, setMemberRoleByUser] = useState<
+    Record<string, ChatMemberRole>
+  >({})
+  const [groupDetailTick, setGroupDetailTick] = useState(0)
 
   const {
     peerReady,
@@ -189,6 +198,32 @@ export function ChatApp({
   const sharedKey = useChatAesKey(cryptoCtx)
   useMessages(cryptoCtx)
   const { sendText } = useSendMessage(cryptoCtx)
+  useGroupKeyDistribution(cryptoCtx, reload)
+
+  const activeRow = chats.find((c) => c.id === activeChatId) ?? null
+
+  useEffect(() => {
+    if (!activeChatId || !activeRow?.is_group) {
+      setMemberRoleByUser({})
+      return
+    }
+    let cancelled = false
+    void fetchChatDetail(activeChatId)
+      .then((d) => {
+        if (cancelled) return
+        const next: Record<string, ChatMemberRole> = {}
+        for (const m of d.members) {
+          next[m.user_id] = m.role
+        }
+        setMemberRoleByUser(next)
+      })
+      .catch(() => {
+        if (!cancelled) setMemberRoleByUser({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeChatId, activeRow?.is_group, groupDetailTick])
 
   async function handleVoiceCall() {
     if (!activeChatId) return
@@ -310,7 +345,10 @@ export function ChatApp({
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
-        <ChatSidebar userId={userId} />
+        <ChatSidebar
+          userId={userId}
+          onPackSettingsChanged={() => setGroupDetailTick((n) => n + 1)}
+        />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {ctxError ? (
             <div className="shrink-0 border-b border-neon-red px-3 py-1 font-mono text-xs text-neon-red">
@@ -334,8 +372,9 @@ export function ChatApp({
             userId={userId}
             sharedKey={sharedKey}
             currentUsername={user?.username ?? username}
-            activeChat={chats.find((c) => c.id === activeChatId) ?? null}
+            activeChat={activeRow}
             directPeerUsername={peerIdentity?.username ?? null}
+            senderRoles={memberRoleByUser}
           />
           <ChatMediaControls
             cryptoCtx={cryptoCtx}

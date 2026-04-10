@@ -124,6 +124,19 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'group.serverInvalid': 'Invalid request to server.',
   'group.serverDuplicate': 'Duplicate member in request.',
   'group.creatorMissing': 'Creator must be included in the member list.',
+  'group.packSettings': 'PACK :: SETTINGS',
+  'group.copyInviteLink': '[ COPY_INVITE_LINK ]',
+  'group.inviteGenerateHint':
+    'Generate a link to show the brutalist invite URL here.',
+  'group.makeAdmin': 'ADMIN',
+  'group.demoteMember': 'MEMBER',
+  'group.transferOwner': 'OWNER',
+  'group.kick': 'KICK',
+  'group.kickConfirm': 'Remove this member from the pack?',
+
+  'join.working': 'Joining secure channel…',
+  'join.failed': 'Could not join',
+  'join.back': 'Back to app',
 
   'settings.discoverable': 'Discoverable',
   'settings.discoverableHint':

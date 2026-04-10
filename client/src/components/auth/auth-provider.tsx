@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -33,31 +34,35 @@ export function useAuth(): AuthContextValue {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  /** Only the latest `refresh()` may update state (avoids race: initial /me after login sets cookie). */
+  const refreshGeneration = useRef(0)
 
   const refresh = useCallback(async () => {
+    const myId = ++refreshGeneration.current
     try {
       const { user: u } = await fetchMe()
+      if (myId !== refreshGeneration.current) return
       setUser(u)
     } catch {
+      if (myId !== refreshGeneration.current) return
       setUser(null)
+    } finally {
+      if (myId === refreshGeneration.current) {
+        setLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      await refresh()
-      if (!cancelled) setLoading(false)
-    })()
-    return () => {
-      cancelled = true
-    }
+    setLoading(true)
+    void refresh()
   }, [refresh])
 
   const logout = useCallback(async () => {
+    refreshGeneration.current++
     await logoutApi()
     setUser(null)
+    setLoading(false)
   }, [])
 
   const value = useMemo(

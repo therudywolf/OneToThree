@@ -1,193 +1,109 @@
-# 🐺 Forest Messenger
+# PROJECT 13 (One to Three)
 
-**Secure PWA Messenger // by [Rudy Wolf](https://rudywolf.ru)**
-
-> Numb but alive. Awoo~ 💀
->
-> Если ты это читаешь, значит, тебе нужен нормальный зашифрованный чат для своей стаи, где сервер слеп, как крот, а UI не выжигает глаза. Добро пожаловать в лес.
+**Secure self-hosted PWA messenger** · by [Rudy Wolf](https://rudywolf.ru)
 
 ![Terminal UI](https://img.shields.io/badge/UI-Cyberpunk_Terminal-000000?style=flat-square&logo=react&logoColor=00FFFF)
-![E2E](https://img.shields.io/badge/Security-E2E_Zero_Trust-FF0000?style=flat-square&logo=lock)
+![Zero Trust](https://img.shields.io/badge/Security-Zero_Trust-FF0000?style=flat-square&logo=lock&logoColor=white)
+![Self-Hosted](https://img.shields.io/badge/Deploy-Self_Hosted-4B32C3?style=flat-square&logo=docker&logoColor=white)
 
-**Forest Messenger** — параноидальный, стерильный web-мессенджер в виде терминала: сквозное шифрование (E2E) текста, аудио и видео-кружочков, звонки по WebRTC, фоновые push-уведомления. Без своего Node-бэкенда: только Supabase как BaaS и криптография на клиенте.
-
-_English:_ zero-trust E2E chat PWA — Next.js 14, Supabase, Web Crypto, PeerJS, Web Push (VAPID).
-
----
-
-## 🩸 Стек технологий
-
-| Слой | Технологии |
-|------|------------|
-| Приложение | Next.js 14 (App Router), React 18, TypeScript |
-| UI | Tailwind CSS, Framer Motion (neon / noir, CRT scanlines) |
-| Данные и auth | Supabase (PostgreSQL, Auth, Storage, Edge Functions) |
-| Realtime | Supabase Realtime (WebSockets) |
-| Крипта | Web Crypto API — AES-GCM-256, ECDH P-256, PBKDF2 |
-| Звонки | WebRTC + PeerJS |
-| PWA | `next-pwa`, Workbox, Web Push (VAPID) |
+> *Numb but alive. Awoo~*
+>
+> Если ты это читаешь, значит, тебе нужен зашифрованный канал для своей стаи, где сервер слеп, как крот, а UI не выжигает глаза. Добро пожаловать в тринадцатый сектор.
 
 ---
 
-## 🐾 Архитектура: Zero Trust
+## Vision
 
-Здесь не верят никому.
+**Project 13 (One to Three)** is a **self-hosted, zero-trust, end-to-end encrypted** progressive web app for messaging. The backend is a deliberate “dumb router”: it authenticates sessions, stores ciphertext and opaque blobs, and moves signaling — it never sees plaintext. No Supabase, no third-party chat cloud: **Postgres**, **MinIO**, **Fastify**, **your keys**.
 
-1. **Ключи:** генерируются на клиенте (ECDH). Приватный ключ шифруется паролем локального сейфа (PBKDF2 → AES-GCM), хранится в IndexedDB / localStorage; в БД — только публичные ключи.
-2. **Медиа:** `Blob` → AES-GCM в памяти → только потом загрузка в bucket Supabase.
-3. **Группы:** AES-ключ группы создаёт владелец и шифрует его отдельно для каждого участника.
+## Features
 
-Поток данных и push:
+| Layer | What you get |
+|--------|----------------|
+| **E2E text & media** | AES-GCM payloads; keys derived via **ECDH** (direct) or wrapped group keys (group chats). |
+| **Calls** | **Native WebRTC** — offers/answers/ICE over a **custom WebSocket** (no PeerJS). |
+| **Push** | **Web Push (VAPID)** implemented in **Fastify**; generic notification copy for privacy. |
+| **Storage** | **MinIO** (S3 API) — client encrypts blobs, uploads via **presigned URLs**. |
+| **Auth** | **ECDSA challenge–response** — no passwords on the server; only public keys and signatures. |
 
-```mermaid
-flowchart LR
-  subgraph client [Browser PWA]
-    UI[Forest Messenger UI]
-    SW[Service Worker]
-    Crypto[E2E crypto]
-    UI --> SW
-    UI --> Crypto
-  end
-  subgraph supa [Supabase]
-    PG[(Postgres + RLS)]
-    Auth[Auth]
-    RT[Realtime]
-    Edge[Edge: push-notifier]
-    PG --> RT
-    PG -->|DB Webhook INSERT messages| Edge
-  end
-  UI --> Auth
-  UI --> PG
-  UI --> RT
-  SW -->|push subscription JSON| PG
-  Edge -->|Web Push VAPID| SW
-```
+## Stack
 
-- Сообщения в БД — ciphertext; **RLS** открывает чат только участникам.
-- **Push:** `PushSubscription` в таблице `push_subscriptions`; при `INSERT` в `messages` — **Database Webhook** → **`push-notifier`** → VAPID; SW показывает уведомление и открывает `data.url` (в т.ч. `?chat=`).
+- **Client:** Next.js 14 (App Router), Tailwind, PWA (Workbox / next-pwa).
+- **Server:** Node.js, **Fastify**, `@fastify/websocket`, `web-push`.
+- **DB:** PostgreSQL + **Drizzle ORM**.
+- **Object storage:** MinIO.
+- **Crypto (browser):** Web Crypto — **AES-GCM-256**, **ECDH**, **ECDSA**.
 
----
+## Quick start
 
-## ⚙️ Быстрый старт (локально)
-
-**Нужно:** Node.js **≥ 18**, npm; **Docker** — опционально (удобно для единого окружения).
-
-### 1. Репозиторий и окружение
+**Requirements:** Node.js **≥ 18**, Docker (for the full stack).
 
 ```bash
-git clone https://github.com/therudywolf/ForestMessenger.git
-cd ForestMessenger
+git clone https://github.com/therudywolf/project-13.git
+cd project-13
 npm install
 npm run setup
 ```
 
-`npm run setup` генерирует пару VAPID-ключей и пишет **`.env.local`**. Альтернатива: скопировать **`.env.local.example`** → **`.env.local`** и заполнить вручную. Секреты (private VAPID, service role, webhook secret) не коммить и не класть в `NEXT_PUBLIC_*`.
+`npm run setup` copies `server/.env.example` → `server/.env` and `client/.env.local.example` → `client/.env.local`, then generates **JWT** and **webhook** secrets, a **VAPID** key pair, and (if needed) strong **MinIO** credentials. Edit `DATABASE_URL` if your Postgres URL differs.
 
-Переменные описаны в **`.env.local.example`**.
-
-### 2. Миграции Supabase
-
-В SQL Editor проекта выполни файлы из **`supabase/migrations/`** по порядку:
-
-| Файл | Смысл |
-|------|--------|
-| `00001_init.sql` | Таблицы, RLS |
-| `00002_realtime_messages.sql` | Realtime для `messages` |
-| `00003_media_messages.sql` | Медиа + storage |
-| `00004_push_subscriptions.sql` | Подписки Web Push |
-
-Или: `supabase db push` / `supabase link` — если используешь CLI.
-
-### 3. Запуск
-
-**Без Docker:**
+Bring up infrastructure:
 
 ```bash
-npm run dev
+npm run docker:up
 ```
 
-Открой **http://localhost:3000**.
-
-**С Docker (dev):**
+Apply the database schema:
 
 ```bash
-npm run docker:dev
+npm run db:push
 ```
 
-Используется **`Dockerfile.dev`** и **`docker-compose.yml`** (тома для `node_modules` и `.next`).
+- **Web UI:** [http://localhost:3000](http://localhost:3000)  
+- **API:** [http://localhost:8080](http://localhost:8080)
 
-**Прод-сборка:** корневой **`Dockerfile`** (multi-stage, `output: 'standalone'`). При сборке передай `NEXT_PUBLIC_*` через build-args или CI, как у тебя принято.
+For PWA install, push subscriptions, and media uploads from the browser, use **HTTPS** on a real domain in production (or tunnel); localhost is fine for development.
 
----
+### Workspace commands
 
-## 📡 Прод и Web Push
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | Next.js dev (client workspace) |
+| `npm run dev:server` | Fastify API with hot reload |
+| `npm run build` | Production build — client + server |
+| `npm run docker:down` | Stop Compose stack |
 
-1. Установи [Supabase CLI](https://supabase.com/docs/guides/cli), привяжи проект (`supabase link`).
+## Security model (short)
 
-2. Секреты для Edge (обход RLS в функции — **service role**; URL проекта подставляется средой Supabase):
+1. **Authentication:** The server issues a short-lived challenge; the client signs it with an **ECDSA P-256** private key held in the user vault. The server stores only the **public** JWK.
+2. **E2E messaging:** **ECDH** (NIST curves) derives shared AES keys for direct chats; **group** keys are wrapped per member and stored as opaque blobs. The server sees ciphertext and IVs only.
+3. **Media:** Files are **encrypted in the browser** before upload; MinIO holds ciphertext. Metadata in the DB references paths and IVs, not plaintext.
+
+## Repository hygiene
+
+- **Never commit** `.env`, `.env.local`, or `.env.production` with real secrets. Templates live in `*.example` files only.
+- If `.env` was ever committed, rotate all secrets and consider **`git filter-repo`** or BFG to purge history — a normal `.gitignore` commit does not remove past blobs.
+
+### After cloning (maintainers)
+
+If you use the workflow “re-index ignore rules”:
 
 ```bash
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY="твой_service_role_ключ"
-supabase secrets set VAPID_PRIVATE_KEY="твой_ключ"
-supabase secrets set VAPID_PUBLIC_KEY="твой_ключ"
-supabase secrets set VAPID_SUBJECT="mailto:твой@email.com"
-supabase secrets set SITE_URL="https://твой-домен.ru"
-supabase secrets set WEBHOOK_SECRET="рандомная_строка"
+git rm -r --cached .
+git add .
+git commit -m "chore: project 13 branding and security purge"
 ```
 
-Публичный VAPID должен совпадать с **`NEXT_PUBLIC_VAPID_PUBLIC_KEY`** в клиенте.
+Review `git status` before pushing.
 
-3. Деплой функции:
+## Drizzle note
 
-```bash
-supabase functions deploy push-notifier
-```
+`server/drizzle/meta/` is listed in `.gitignore` (local Drizzle cache). **SQL migrations** under `server/drizzle/*.sql` remain the source of truth for schema changes; regenerate with `npm run db:generate` when the schema changes.
 
-4. **Database Webhook** в Dashboard:
+## Contact
 
-   - Событие: `INSERT` в **`public.messages`**.
-   - URL: `https://<project-ref>.supabase.co/functions/v1/push-notifier` (или твой кастомный домен функций).
-   - Заголовок: **`x-webhook-secret`** = тот же `WEBHOOK_SECRET`, что в секретах.
-
-> PWA и push в проде требуют **HTTPS**. Без HTTPS Service Worker и push не заведутся в нормальном режиме.
-
-### PWA / Service Worker
-
-- Push-логика в **`public/push-handler.js`**, подключается через **`next.config.js`** → `workboxOptions.importScripts`. Файл **`public/sw.js`** генерируется **next-pwa** при сборке — его не правь руками.
-- Брендинг: **`public/wolf-logo.png`**, **`icon-192.png`**, **`icon-512.png`** (можно заменить на свои ассеты).
+[Telegram](https://t.me/rudy_wolf) · [X](https://x.com/therudywolf) · [GitHub](https://github.com/therudywolf)
 
 ---
 
-## 🔧 Имя репозитория (исправление опечатки Messanger → Messenger)
-
-Если у тебя старый клон или папка с опечаткой **Messanger**:
-
-1. На **GitHub**: *Settings → General → Repository name* — переименуй в **`ForestMessenger`** (URL репозитория обновится; старые ссылки часто редиректят).
-2. **Локально:** закрой Cursor/IDE, переименуй папку `ForestMessanger` → **`ForestMessenger`**, снова открой проект.
-3. **Remote:**  
-   `git remote set-url origin https://github.com/therudywolf/ForestMessenger.git`
-
-Имя npm-пакета в **`package.json`** — `forest-messenger` (kebab-case); это нормально и не обязано совпадать с именем папки.
-
----
-
-## 📁 Структура (кратко)
-
-- **`src/app/`** — маршруты App Router, `manifest.ts`
-- **`src/components/`** — UI (чат, звонки, уведомления)
-- **`src/lib/`** — Supabase-клиенты, крипта, push
-- **`supabase/migrations/`** — SQL
-- **`supabase/functions/push-notifier/`** — Edge Function для пушей
-- **`scripts/setup.js`** — интерактивная генерация `.env.local`
-
----
-
-## 📄 Лицензия
-
-Приватный / неопубликованный репозиторий — укажи лицензию при релизе.
-
----
-
-**Связь с автором:**
-
-[Telegram](https://t.me/rudy_wolf) | [X.com](https://x.com/therudywolf) | [GitHub](https://github.com/therudywolf)
+*Project 13 · One to Three — the server routes; the client encrypts.*

@@ -1,7 +1,7 @@
 /* Imported by Workbox service worker (next-pwa). Handles push + notification clicks. */
 self.addEventListener('push', (event) => {
   let payload = {
-    title: 'Forest Messenger',
+    title: 'Project 13',
     body: 'New message',
     icon: '/wolf-logo.png',
     data: { url: '/' },

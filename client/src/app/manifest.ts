@@ -3,9 +3,9 @@ import type { MetadataRoute } from 'next'
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
-    name: 'Forest Messenger',
-    short_name: 'Forest',
-    description: 'Zero-trust E2E terminal messenger',
+    name: 'Project 13 (One to Three)',
+    short_name: 'P13',
+    description: 'Self-hosted zero-trust E2E messenger — Project 13',
     lang: 'en',
     start_url: '/',
     scope: '/',

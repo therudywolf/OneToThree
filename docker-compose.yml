@@ -44,7 +44,7 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio_secret_change_me
-      MINIO_BUCKET: forest-media
+      MINIO_BUCKET: project13-media
       MINIO_ACCESS_KEY: minio
       MINIO_SECRET_KEY: minio_secret_change_me
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}

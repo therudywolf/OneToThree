@@ -21,7 +21,19 @@ function requireWebPush() {
   ]
   for (const c of candidates) {
     try {
-      return require(c)
+      const mod = require(c)
+      const api = mod && typeof mod === 'object' ? mod : {}
+      const gen =
+        api.generateVapidKeys ||
+        api.generateVAPIDKeys ||
+        (api.default &&
+        typeof api.default === 'object' &&
+        (api.default.generateVapidKeys || api.default.generateVAPIDKeys)
+          ? api.default.generateVapidKeys || api.default.generateVAPIDKeys
+          : null)
+      if (typeof gen === 'function') {
+        return { ...api, generateVapidKeys: gen.bind(api) }
+      }
     } catch {
       /* next */
     }

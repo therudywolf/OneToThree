@@ -236,7 +236,7 @@ function main() {
   console.log('[bootstrap] Synced docker compose vars into .env (root)')
 
   console.log('')
-  console.log('[bootstrap] Done. Next: npm run docker:up  →  npm run db:push')
+  console.log('[bootstrap] Done. Next: npm run docker:up')
   console.log('')
 }
 

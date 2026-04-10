@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/auth/auth-provider'
 import { ErrorBoundary } from '@/components/error-boundary'
+import { SilenceConsole } from '@/components/silence-console'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -41,6 +42,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-void">
       <body className="relative min-h-dvh bg-void">
+        <SilenceConsole />
         <ErrorBoundary>
           <AuthProvider>
             <div className="crt-overlay" aria-hidden />

@@ -38,7 +38,7 @@ Self-hosted. Zero-trust lane. The server routes blind; the client encrypts.
 | **Realtime** | **WebRTC** (STUN + custom WS signaling) |
 | **Edge** | **Caddy 2** (TLS termination, reverse proxy) |
 
-Deep references: **[API.md](./API.md)** · **[ARCHITECTURE.md](./ARCHITECTURE.md)** · **[SECURITY.md](./SECURITY.md)**
+Deep references: **[API.md](./API.md)** · **[ARCHITECTURE.md](./ARCHITECTURE.md)** · **[SECURITY.md](./SECURITY.md)** · **[MANIFEST.md](./MANIFEST.md)** (production file map & launch checklist)
 
 ---
 
@@ -50,7 +50,7 @@ Deep references: **[API.md](./API.md)** · **[ARCHITECTURE.md](./ARCHITECTURE.md
 4. **Warden (admin)** — Role-gated `/admin` + `/api/admin/*`; **host-level** moderation (reports, visibility). Does **not** decrypt E2EE message bodies.
 5. **Transport** — `fm_session` HTTP-only cookie; **CORS** locked to explicit origins in production; **`TRUST_PROXY=1`** behind Caddy so **`request.ip`** reflects the real client.
 
-Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error": "INTERNAL_SERVER_ERROR" }`** — no stack traces to clients.
+Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error": "INTERNAL_ERROR" }`** — no stack traces to clients.
 
 ---
 

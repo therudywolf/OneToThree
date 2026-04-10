@@ -45,21 +45,14 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
         if (!cancelled && cached.length > 0) {
           setMessages(cached)
         }
-      } catch (e) {
-        console.error(
-          '[useLoadChatMessages] IndexedDB getRecentCachedMessages failed',
-          { activeChatId, err: e }
-        )
+      } catch {
+        /* IndexedDB unavailable or corrupt — continue with network fetch */
       }
 
       const res = await fetch(`${API_URL}/messages/${activeChatId}`, {
         credentials: 'include',
       })
       if (!res.ok) {
-        console.error('[useLoadChatMessages] messages fetch failed', {
-          activeChatId,
-          status: res.status,
-        })
         if (!cancelled) setMessages([])
         return
       }
@@ -105,11 +98,8 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
         )
         try {
           await cacheMessages(out)
-        } catch (e) {
-          console.error('[useLoadChatMessages] cacheMessages failed', {
-            activeChatId,
-            err: e,
-          })
+        } catch {
+          /* cache write best-effort */
         }
         setMessages(out)
       }

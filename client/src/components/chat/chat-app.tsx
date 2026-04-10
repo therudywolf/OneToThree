@@ -8,7 +8,6 @@ import { useAuth } from '@/components/auth/auth-provider'
 import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
 import { useCryptoVault } from '@/hooks/use-crypto-vault'
-import { useTranslation } from '@/hooks/use-translation'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
@@ -68,7 +67,6 @@ export function ChatApp({
   userId: string
   username: string
 }) {
-  const { t } = useTranslation()
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const setUserId = useChatStore((s) => s.setUserId)

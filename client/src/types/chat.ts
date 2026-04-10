@@ -5,7 +5,7 @@ export type DecryptedMessage = {
   plaintext: string
   created_at: string
   media_path?: string | null
-  media_type?: 'audio' | 'video' | null
+  media_type?: 'audio' | 'video' | 'image' | null
   media_iv?: string | null
 }
 

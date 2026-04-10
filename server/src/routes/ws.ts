@@ -24,7 +24,13 @@ async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> 
     return null
   }
 }
-import { broadcastToUsers, registerUserSocket, sendToUser } from '../ws/registry.js'
+import { sendPushToUser } from '../lib/push.js'
+import {
+  broadcastToUsers,
+  hasActiveSocket,
+  registerUserSocket,
+  sendToUser,
+} from '../ws/registry.js'
 
 const chatMessageInSchema = z.object({
   type: z.literal('chat_message'),
@@ -140,6 +146,18 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               created_at: createdAt,
             },
           })
+
+          for (const memberId of new Set(ids)) {
+            if (memberId === user.id) continue
+            if (!hasActiveSocket(memberId)) {
+              void sendPushToUser(memberId, {
+                title: 'Новое сообщение',
+                body: 'Вам пришло зашифрованное сообщение',
+                url: `/?chat=${p.chat_id}`,
+                icon: '/wolf-logo.png',
+              })
+            }
+          }
           return
         }
 

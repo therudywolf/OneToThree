@@ -5,6 +5,7 @@
 
 import {
   deriveSharedSecret,
+  exportEcdhPublicJwkFromPrivateKey,
   exportPublicKey,
   generateKeyPair,
   importEcdhPublicKey,
@@ -41,6 +42,15 @@ export type GroupKeyRecipientPayload = {
   iv: string
   /** Ephemeral ECDH public key (JWK string) so the member can derive the same wrap key. */
   ephemeralPublicKeyJwk: string
+}
+
+/** Group key wrapped with ECDH(creator_private, member_ecdh_public); members unwrap with ECDH(member_private, creator_ecdh_public). */
+export type GroupKeyCreatorWrapPayload = {
+  kind: 'creator_ecdh_wrap'
+  v: 1
+  ciphertext: string
+  iv: string
+  creatorEcdhPublicKeyJwk: string
 }
 
 /**
@@ -87,7 +97,9 @@ async function decryptAesGcmBytes(
   return new Uint8Array(buf)
 }
 
-function payloadToStoredBase64(payload: GroupKeyRecipientPayload): string {
+function payloadToStoredBase64(
+  payload: GroupKeyRecipientPayload | GroupKeyCreatorWrapPayload
+): string {
   const json = JSON.stringify(payload)
   return uint8ToBase64(new TextEncoder().encode(json))
 }
@@ -141,7 +153,36 @@ export async function prepareGroupChatKeys(
 }
 
 /**
+ * Wrap `groupKey` for one member using ECDH between the creator's ECDH private key
+ * and the member's ECDH public key. Embeds the creator's ECDH public JWK for unwrap.
+ */
+export async function wrapGroupKeyForMemberWithCreatorEcdh(
+  creatorEcdhPrivateKey: CryptoKey,
+  memberEcdhPublicKeyJwk: string,
+  groupKey: CryptoKey
+): Promise<string> {
+  const creatorEcdhPublicKeyJwk =
+    await exportEcdhPublicJwkFromPrivateKey(creatorEcdhPrivateKey)
+  const memberPub = await importEcdhPublicKey(memberEcdhPublicKeyJwk)
+  const wrapKey = await deriveSharedSecret(creatorEcdhPrivateKey, memberPub)
+  const rawGroupKey = new Uint8Array(
+    await getSubtle().exportKey('raw', groupKey)
+  )
+  const { ciphertext, iv } = await encryptAesGcmBytes(wrapKey, rawGroupKey)
+
+  const payload: GroupKeyCreatorWrapPayload = {
+    kind: 'creator_ecdh_wrap',
+    v: 1,
+    ciphertext,
+    iv,
+    creatorEcdhPublicKeyJwk,
+  }
+  return payloadToStoredBase64(payload)
+}
+
+/**
  * Unwrap the AES-GCM group key stored in `chat_members.encrypted_group_key` for this member.
+ * Supports creator-KEK wraps ({@link GroupKeyCreatorWrapPayload}) and legacy ephemeral wraps.
  */
 export async function unwrapGroupKeyFromStoredPayload(
   memberPrivateKey: CryptoKey,
@@ -150,11 +191,33 @@ export async function unwrapGroupKeyFromStoredPayload(
   const jsonBytes = base64ToUint8(encryptedGroupKeyBase64)
   const json = JSON.parse(
     new TextDecoder().decode(jsonBytes)
-  ) as GroupKeyRecipientPayload
+  ) as GroupKeyCreatorWrapPayload | GroupKeyRecipientPayload
 
-  const ephemeralPub = await importEcdhPublicKey(json.ephemeralPublicKeyJwk)
+  if (
+    'kind' in json &&
+    json.kind === 'creator_ecdh_wrap' &&
+    'creatorEcdhPublicKeyJwk' in json
+  ) {
+    const creatorPub = await importEcdhPublicKey(json.creatorEcdhPublicKeyJwk)
+    const wrapKey = await deriveSharedSecret(memberPrivateKey, creatorPub)
+    const raw = await decryptAesGcmBytes(wrapKey, json.ciphertext, json.iv)
+    return getSubtle().importKey(
+      'raw',
+      raw as BufferSource,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    )
+  }
+
+  const legacy = json as GroupKeyRecipientPayload
+  if (!legacy.ephemeralPublicKeyJwk) {
+    throw new Error('UNKNOWN_GROUP_KEY_FORMAT')
+  }
+
+  const ephemeralPub = await importEcdhPublicKey(legacy.ephemeralPublicKeyJwk)
   const wrapKey = await deriveSharedSecret(memberPrivateKey, ephemeralPub)
-  const raw = await decryptAesGcmBytes(wrapKey, json.ciphertext, json.iv)
+  const raw = await decryptAesGcmBytes(wrapKey, legacy.ciphertext, legacy.iv)
 
   return getSubtle().importKey(
     'raw',

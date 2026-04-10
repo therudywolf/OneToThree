@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
@@ -12,6 +12,9 @@ function escapeIlikePattern(fragment) {
 }
 const patchMeSchema = z.object({
     ecdh_public_key_jwk: z.string().min(8),
+});
+const lookupBodySchema = z.object({
+    user_ids: z.array(z.string().uuid()).min(1).max(64),
 });
 export const userRoutes = async (app) => {
     app.patch('/me', async (request, reply) => {
@@ -51,10 +54,41 @@ export const userRoutes = async (app) => {
             id: users.id,
             username: users.username,
             public_key_jwk: users.publicKeyJwk,
+            ecdh_public_key_jwk: users.ecdhPublicKeyJwk,
         })
             .from(users)
             .where(and(eq(users.isDiscoverable, true), sql `${users.username} ILIKE ${pattern} ESCAPE '\\'`))
             .limit(50);
         return reply.send(rows);
+    });
+    app.post('/lookup', async (request, reply) => {
+        const auth = await getAuthUser(request);
+        if (!auth) {
+            return reply.status(401).send({ error: 'UNAUTHORIZED' });
+        }
+        const parsed = lookupBodySchema.safeParse(request.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'INVALID_BODY' });
+        }
+        const ids = parsed.data.user_ids;
+        const unique = [...new Set(ids)];
+        const rows = await db
+            .select({
+            id: users.id,
+            username: users.username,
+            ecdhPublicKeyJwk: users.ecdhPublicKeyJwk,
+        })
+            .from(users)
+            .where(inArray(users.id, unique));
+        if (rows.length !== unique.length) {
+            return reply.status(400).send({ error: 'UNKNOWN_USER' });
+        }
+        return reply.send({
+            users: rows.map((u) => ({
+                id: u.id,
+                username: u.username,
+                ecdh_public_key_jwk: u.ecdhPublicKeyJwk,
+            })),
+        });
     });
 };

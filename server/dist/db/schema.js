@@ -1,4 +1,4 @@
-import { boolean, pgEnum, pgTable, primaryKey, text, timestamp, uuid, } from 'drizzle-orm/pg-core';
+import { boolean, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, } from 'drizzle-orm/pg-core';
 export const chatTypeEnum = pgEnum('chat_type', [
     'direct_e2e',
     'group_e2e',
@@ -51,3 +51,17 @@ export const messages = pgTable('messages', {
         .notNull()
         .defaultNow(),
 });
+export const pushSubscriptions = pgTable('push_subscriptions', {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+        .notNull()
+        .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+        .notNull()
+        .defaultNow(),
+}, (t) => ({
+    userEndpointIdx: uniqueIndex('push_subscriptions_user_id_endpoint_idx').on(t.userId, t.endpoint),
+}));

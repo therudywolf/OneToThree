@@ -6,6 +6,8 @@ export type ApiChatRow = {
   type: string
   is_group: boolean
   member_ids: string[]
+  /** Present for group_e2e: wrapped group key for the current user. */
+  encrypted_group_key?: string | null
 }
 
 export async function fetchChatsList(): Promise<ApiChatRow[]> {
@@ -42,6 +44,33 @@ export async function createDirectE2EChat(
   }
   if (!data.chat?.id) {
     throw new Error('INVALID_CREATE_CHAT_RESPONSE')
+  }
+  return data.chat
+}
+
+export async function createGroupE2EChat(params: {
+  name?: string | null
+  members: Array<{ userId: string; encryptedGroupKey: string }>
+}): Promise<ApiChatRow> {
+  const res = await fetch(`${API_URL}/chats`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'group_e2e',
+      name: params.name?.trim() || null,
+      members: params.members,
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    chat?: ApiChatRow
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'GROUP_CREATE_FAILED')
+  }
+  if (!data.chat?.id) {
+    throw new Error('INVALID_GROUP_CREATE_RESPONSE')
   }
   return data.chat
 }

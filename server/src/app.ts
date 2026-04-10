@@ -6,7 +6,9 @@ import websocket from '@fastify/websocket'
 import { authRoutes } from './routes/auth.js'
 import { chatsRoutes } from './routes/chats.js'
 import { messagesRoutes } from './routes/messages.js'
+import { pushRoutes } from './routes/push.js'
 import { userRoutes } from './routes/users.js'
+import { storageRoutes } from './routes/storage.js'
 import { wsRoutes } from './routes/ws.js'
 
 export async function buildApp() {
@@ -39,6 +41,8 @@ export async function buildApp() {
   await app.register(userRoutes, { prefix: '/api/users' })
   await app.register(chatsRoutes, { prefix: '/api/chats' })
   await app.register(messagesRoutes, { prefix: '/api/messages' })
+  await app.register(storageRoutes, { prefix: '/api/storage' })
+  await app.register(pushRoutes, { prefix: '/api/push' })
   await app.register(wsRoutes, { prefix: '/api' })
 
   app.get('/health', async () => ({ ok: true }))

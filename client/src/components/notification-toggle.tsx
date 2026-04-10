@@ -91,7 +91,9 @@ export function NotificationToggle({ userId }: { userId: string }) {
         {enabled ? '[ disable push ]' : '[ enable push ]'}
       </button>
       {!vapidOk ? (
-        <p className="mt-1 text-[9px] text-red-800">VAPID_PUBLIC_KEY missing</p>
+        <p className="mt-1 text-[9px] text-red-800">
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY missing
+        </p>
       ) : null}
       {permission === 'denied' ? (
         <p className="mt-1 text-[9px] text-red-800">

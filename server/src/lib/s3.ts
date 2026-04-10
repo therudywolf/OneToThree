@@ -1,5 +1,6 @@
 import {
   CreateBucketCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   PutBucketCorsCommand,
@@ -31,6 +32,13 @@ export function getBucketName(): string {
     throw new Error('MINIO_BUCKET is not set')
   }
   return b
+}
+
+/** Dedicated bucket for profile avatars, or main bucket when unset. */
+export function getAvatarsBucketName(): string {
+  const a = process.env.MINIO_BUCKET_AVATARS?.trim()
+  if (a) return a
+  return getBucketName()
 }
 
 export function createS3Client(): S3Client {
@@ -139,4 +147,38 @@ export async function presignGetObject(params: {
   return getSignedUrl(params.client, cmd, {
     expiresIn: params.expiresIn ?? DEFAULT_PRESIGN_TTL_S,
   })
+}
+
+export async function putObjectBuffer(params: {
+  client: S3Client
+  bucket: string
+  key: string
+  body: Buffer
+  contentType: string
+}): Promise<void> {
+  await params.client.send(
+    new PutObjectCommand({
+      Bucket: params.bucket,
+      Key: params.key,
+      Body: params.body,
+      ContentType: params.contentType,
+    })
+  )
+}
+
+export async function deleteObjectIfExists(params: {
+  client: S3Client
+  bucket: string
+  key: string
+}): Promise<void> {
+  try {
+    await params.client.send(
+      new DeleteObjectCommand({
+        Bucket: params.bucket,
+        Key: params.key,
+      })
+    )
+  } catch {
+    /* ignore */
+  }
 }

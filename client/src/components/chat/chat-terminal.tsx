@@ -10,6 +10,7 @@ import {
   getOlderCachedMessages,
 } from '@/lib/message-cache'
 import { lookupUsers } from '@/lib/api/users'
+import { UserAvatar } from '@/components/user-avatar'
 import type { ApiChatRow, ChatMemberRole } from '@/lib/api/chats'
 import type { DecryptedMessage } from '@/types/chat'
 
@@ -27,6 +28,8 @@ export function ChatTerminal({
   activeChat,
   directPeerUsername,
   senderRoles = {},
+  myAvatarKey = null,
+  peerAvatarKey = null,
 }: {
   userId: string
   sharedKey: CryptoKey | null
@@ -36,6 +39,8 @@ export function ChatTerminal({
   directPeerUsername: string | null
   /** Group chats: user_id → pack role (for header badges). */
   senderRoles?: Record<string, ChatMemberRole>
+  myAvatarKey?: string | null
+  peerAvatarKey?: string | null
 }) {
   const messages = useChatStore((s) => s.messages)
   const removeMessage = useChatStore((s) => s.removeMessage)
@@ -47,7 +52,9 @@ export function ChatTerminal({
   const [olderMessages, setOlderMessages] = useState<DecryptedMessage[]>([])
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
   const [loadingOlder, setLoadingOlder] = useState(false)
-  const [senderNames, setSenderNames] = useState<Record<string, string>>({})
+  const [senderMeta, setSenderMeta] = useState<
+    Record<string, { username: string; avatar_key?: string | null }>
+  >({})
   const [ctxMenu, setCtxMenu] = useState<{
     msg: DecryptedMessage
     x: number
@@ -79,21 +86,22 @@ export function ChatTerminal({
 
   useEffect(() => {
     if (!senderIdsToResolve.length) {
-      setSenderNames({})
+      setSenderMeta({})
       return
     }
     let cancelled = false
     void lookupUsers(senderIdsToResolve)
       .then((rows) => {
         if (cancelled) return
-        const next: Record<string, string> = {}
+        const next: Record<string, { username: string; avatar_key?: string | null }> =
+          {}
         for (const u of rows) {
-          next[u.id] = u.username
+          next[u.id] = { username: u.username, avatar_key: u.avatar_key }
         }
-        setSenderNames(next)
+        setSenderMeta(next)
       })
       .catch(() => {
-        if (!cancelled) setSenderNames({})
+        if (!cancelled) setSenderMeta({})
       })
     return () => {
       cancelled = true
@@ -129,7 +137,13 @@ export function ChatTerminal({
     if (!isGroup) {
       return directPeerUsername?.trim() || shortId(senderId)
     }
-    return senderNames[senderId]?.trim() || shortId(senderId)
+    return senderMeta[senderId]?.username?.trim() || shortId(senderId)
+  }
+
+  function avatarKeyForSender(senderId: string): string | null | undefined {
+    if (senderId === userId) return myAvatarKey ?? null
+    if (!isGroup) return peerAvatarKey ?? null
+    return senderMeta[senderId]?.avatar_key
   }
 
   function roleGlyph(senderId: string) {
@@ -295,10 +309,27 @@ export function ChatTerminal({
                 } flex flex-col gap-1`}
               >
                 <div
-                  className={`flex items-center gap-1 px-1 font-mono text-[10px] uppercase tracking-widest ${
-                    mine ? 'justify-end text-right text-neon-cyan/70' : 'justify-start text-left text-neon-cyan/80'
+                  className={`flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-widest ${
+                    mine
+                      ? 'flex-row-reverse justify-end text-right text-neon-cyan/70'
+                      : 'justify-start text-left text-neon-cyan/80'
                   }`}
                 >
+                  {!mine ? (
+                    <UserAvatar
+                      userId={m.sender_id}
+                      username={labelForSender(m.sender_id)}
+                      avatarKey={avatarKeyForSender(m.sender_id)}
+                      size={22}
+                    />
+                  ) : (
+                    <UserAvatar
+                      userId={userId}
+                      username={currentUsername || 'YOU'}
+                      avatarKey={myAvatarKey}
+                      size={22}
+                    />
+                  )}
                   {roleGlyph(m.sender_id)}
                   <span>{senderLabel}</span>
                 </div>

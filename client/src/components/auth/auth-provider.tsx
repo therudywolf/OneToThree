@@ -22,6 +22,7 @@ export type AuthUser = {
   totp_enabled?: boolean
   /** Session-bound device row id (JWT), when present. */
   device_id?: string | null
+  avatar_key?: string | null
 }
 
 type AuthContextValue = {
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({
         ...u,
         device_id: u.device_id ?? null,
+        avatar_key: u.avatar_key ?? null,
       })
     } catch (e) {
       if (myId !== refreshGeneration.current) return

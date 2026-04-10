@@ -895,6 +895,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         userId: users.id,
         username: users.username,
         ecdhPublicKeyJwk: users.ecdhPublicKeyJwk,
+        avatarKey: users.avatarKey,
         encryptedGroupKey: chatMembers.encryptedGroupKey,
         role: chatMembers.role,
       })
@@ -920,6 +921,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         user_id: m.userId,
         username: m.username,
         ecdh_public_key_jwk: m.ecdhPublicKeyJwk,
+        avatar_key: m.avatarKey,
         encrypted_group_key: m.encryptedGroupKey,
         role: m.role,
       })),

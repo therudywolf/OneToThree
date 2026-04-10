@@ -99,6 +99,7 @@ export function ChatApp({
     Record<string, ChatMemberRole>
   >({})
   const [groupDetailTick, setGroupDetailTick] = useState(0)
+  const [peerAvatarKey, setPeerAvatarKey] = useState<string | null>(null)
 
   const {
     peerReady,
@@ -189,6 +190,37 @@ export function ChatApp({
         if (!cancelled) setPeerIdentity(null)
       }
     })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeChatId, chats, userId])
+
+  useEffect(() => {
+    if (!activeChatId || !userId) {
+      setPeerAvatarKey(null)
+      return
+    }
+    const active = chats.find((c) => c.id === activeChatId)
+    if (!active || active.is_group) {
+      setPeerAvatarKey(null)
+      return
+    }
+    const peerId = active.member_ids.find(
+      (id) => canonicalUserId(id) !== canonicalUserId(userId)
+    )
+    if (!peerId) {
+      setPeerAvatarKey(null)
+      return
+    }
+    let cancelled = false
+    void lookupUsers([peerId])
+      .then((rows) => {
+        if (cancelled) return
+        setPeerAvatarKey(rows[0]?.avatar_key ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setPeerAvatarKey(null)
+      })
     return () => {
       cancelled = true
     }
@@ -347,6 +379,7 @@ export function ChatApp({
       <div className="flex min-h-0 flex-1">
         <ChatSidebar
           userId={userId}
+          sharedKey={sharedKey}
           onPackSettingsChanged={() => setGroupDetailTick((n) => n + 1)}
         />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -375,6 +408,8 @@ export function ChatApp({
             activeChat={activeRow}
             directPeerUsername={peerIdentity?.username ?? null}
             senderRoles={memberRoleByUser}
+            myAvatarKey={user?.avatar_key ?? null}
+            peerAvatarKey={peerAvatarKey}
           />
           <ChatMediaControls
             cryptoCtx={cryptoCtx}

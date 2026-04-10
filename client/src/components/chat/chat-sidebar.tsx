@@ -9,6 +9,7 @@ import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
 import { GroupChatSettings } from '@/components/chat/group-chat-settings'
+import { UserAvatar } from '@/components/user-avatar'
 import { lookupUsers, searchUsers } from '@/lib/api/users'
 import { useTranslation } from '@/hooks/use-translation'
 import { hashPublicKeyJwk } from '@/lib/crypto'
@@ -55,9 +56,11 @@ function orderedSidebarChats(
 
 export function ChatSidebar({
   userId,
+  sharedKey,
   onPackSettingsChanged,
 }: {
   userId: string
+  sharedKey: CryptoKey | null
   onPackSettingsChanged?: () => void
 }) {
   const { t } = useTranslation()
@@ -71,6 +74,9 @@ export function ChatSidebar({
   const [busy, setBusy] = useState(false)
   const [trustedPeerIds, setTrustedPeerIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinnedIds)
+  const [peerAvatarByUserId, setPeerAvatarByUserId] = useState<
+    Record<string, string | null>
+  >({})
 
   useEffect(() => {
     try {
@@ -79,6 +85,37 @@ export function ChatSidebar({
       /* ignore quota */
     }
   }, [pinnedIds])
+
+  useEffect(() => {
+    const peerIds = Array.from(
+      new Set(
+        chats
+          .filter((c) => !c.is_group)
+          .map((c) => c.member_ids.find((id) => id !== userId))
+          .filter((id): id is string => Boolean(id))
+      )
+    )
+    if (!peerIds.length) {
+      setPeerAvatarByUserId({})
+      return
+    }
+    let cancelled = false
+    void lookupUsers(peerIds)
+      .then((rows) => {
+        if (cancelled) return
+        const next: Record<string, string | null> = {}
+        for (const r of rows) {
+          next[r.id] = r.avatar_key ?? null
+        }
+        setPeerAvatarByUserId(next)
+      })
+      .catch(() => {
+        if (!cancelled) setPeerAvatarByUserId({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chats, userId])
 
   const sidebarChats = orderedSidebarChats(chats, pinnedIds)
 
@@ -191,6 +228,15 @@ export function ChatSidebar({
         ) : null}
         {sidebarChats.map((c) => {
           const isPinned = pinnedIds.includes(c.id)
+          const peerId = !c.is_group
+            ? c.member_ids.find((id) => id !== userId)
+            : null
+          const peerName =
+            peerId && c.name?.trim()
+              ? c.name.trim()
+              : peerId
+                ? `${peerId.slice(0, 8)}…`
+                : ''
           return (
             <div
               key={c.id}
@@ -206,7 +252,19 @@ export function ChatSidebar({
                 aria-label={`${t('common.openChatAria')} ${c.name?.trim() || c.id}`}
                 onClick={() => setActiveChatId(c.id)}
               >
-                <span className="inline-flex min-w-0 items-center gap-1">
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  {peerId ? (
+                    <UserAvatar
+                      userId={peerId}
+                      username={peerName || '…'}
+                      avatarKey={peerAvatarByUserId[peerId] ?? null}
+                      size={24}
+                    />
+                  ) : c.is_group ? (
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-neon-cyan/40 font-mono text-[9px] text-neon-cyan">
+                      G
+                    </span>
+                  ) : null}
                   {!c.is_group &&
                   trustedPeerIds.has(
                     c.member_ids.find((id) => id !== userId) ?? ''
@@ -244,6 +302,7 @@ export function ChatSidebar({
             <GroupChatSettings
               chatId={activeChatId}
               userId={userId}
+              sharedKey={sharedKey}
               onChanged={() => {
                 void reload()
                 onPackSettingsChanged?.()

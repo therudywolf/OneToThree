@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -11,6 +11,63 @@ const deleteMessageSchema = z.object({
 })
 
 export const messagesRoutes: FastifyPluginAsync = async (app) => {
+  /** Voice/audio/video index for media archive (newest first). */
+  app.get('/:chatId/media', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const { chatId } = request.params as { chatId: string }
+
+    const memberOk = await db
+      .select({ one: chatMembers.userId })
+      .from(chatMembers)
+      .where(
+        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
+      )
+      .limit(1)
+    if (!memberOk.length) {
+      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+    }
+
+    const rows = await db
+      .select({
+        id: messages.id,
+        chatId: messages.chatId,
+        senderId: messages.senderId,
+        mediaPath: messages.mediaPath,
+        mediaType: messages.mediaType,
+        mediaIv: messages.mediaIv,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.chatId, chatId),
+          isNotNull(messages.mediaPath),
+          or(
+            eq(messages.mediaType, 'audio'),
+            eq(messages.mediaType, 'video')
+          )
+        )
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(300)
+
+    return reply.send({
+      messages: rows.map((m) => ({
+        id: m.id,
+        chat_id: m.chatId,
+        sender_id: m.senderId,
+        media_path: m.mediaPath,
+        media_type: m.mediaType,
+        media_iv: m.mediaIv,
+        created_at:
+          m.createdAt instanceof Date
+            ? m.createdAt.toISOString()
+            : String(m.createdAt),
+      })),
+    })
+  })
+
   app.get('/:chatId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

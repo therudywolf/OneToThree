@@ -143,6 +143,18 @@ const ru = {
   'join.failed': 'Не удалось войти',
   'join.back': 'К приложению',
 
+  'settings.avatarTitle': ':: МЕТКА :: АВАТАР',
+  'settings.avatarChoose': '[ ВЫБРАТЬ_ИЗОБРАЖЕНИЕ ]',
+  'settings.avatarBusy': '… ПОДПИСЬ / ЗАГРУЗКА …',
+  'settings.avatarVaultPin': 'PIN vault (подпись)',
+  'settings.avatarPinHint': 'Введите PIN vault (от 8 символов) для подписи загрузки.',
+  'settings.avatarInvalidType': 'Выберите файл изображения.',
+  'settings.avatarUploadFailed': 'Не удалось загрузить аватар.',
+  'group.mediaArchiveTab': 'МЕДИА-АРХИВ / MEDIA ARCHIVE',
+  'group.mediaArchiveTitle': 'Голос · аудио · видео в этой стае',
+  'group.mediaArchiveLoading': 'Загрузка архива…',
+  'group.mediaArchiveEmpty': 'В этом канале пока нет медиа.',
+
   'settings.discoverable': 'Обнаруживаемость',
   'settings.discoverableHint':
     'Другие смогут найти вас по нику. Чтобы найти кого-то по нику, эта опция должна быть включена у него.',

@@ -3,11 +3,13 @@ import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers } from '../db/schema.js'
+import { chatMembers, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { uuidSchema } from '../lib/zod-uuid.js'
 import {
   createS3Client,
   ensureBucketExists,
+  getAvatarsBucketName,
   getBucketName,
   presignGetObject,
   presignPutObject,
@@ -16,6 +18,9 @@ import {
 /** Object key: chats/{chatId}/{userId}/{uuid}{ext} */
 const CHAT_OBJECT_KEY_RE =
   /^chats\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[^/]+$/i
+
+const AVATAR_KEY_RE =
+  /^avatars\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[^/]+$/i
 
 function extensionFromFileName(fileName: string): string {
   const base = fileName.split(/[/\\]/).pop() ?? fileName
@@ -116,6 +121,41 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       client,
       bucket,
       key: filePath,
+    })
+
+    return reply.send({ downloadUrl })
+  })
+
+  app.get('/avatar-url', async (request, reply) => {
+    await ensureBucketOnce()
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const q = z
+      .object({ userId: uuidSchema })
+      .safeParse(request.query)
+    if (!q.success) {
+      return reply.status(400).send({ error: 'INVALID_QUERY' })
+    }
+
+    const [row] = await db
+      .select({ avatarKey: users.avatarKey })
+      .from(users)
+      .where(eq(users.id, q.data.userId))
+      .limit(1)
+
+    const key = row?.avatarKey?.trim()
+    if (!key || !AVATAR_KEY_RE.test(key)) {
+      return reply.status(404).send({ error: 'NO_AVATAR' })
+    }
+
+    const bucket = getAvatarsBucketName()
+    await ensureBucketExists(client, bucket)
+    const downloadUrl = await presignGetObject({
+      client,
+      bucket,
+      key,
+      expiresIn: 3600,
     })
 
     return reply.send({ downloadUrl })

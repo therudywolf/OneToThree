@@ -12,6 +12,8 @@ import {
 } from '@/lib/api/chats'
 import { canonicalUserId } from '@/lib/user-id'
 import { useTranslation } from '@/hooks/use-translation'
+import { UserAvatar } from '@/components/user-avatar'
+import { MediaArchivePanel } from '@/components/chat/media-archive-panel'
 
 function roleBadge(role: ChatMemberRole) {
   if (role === 'owner') {
@@ -36,13 +38,16 @@ function roleBadge(role: ChatMemberRole) {
 export function GroupChatSettings({
   chatId,
   userId,
+  sharedKey,
   onChanged,
 }: {
   chatId: string
   userId: string
+  sharedKey: CryptoKey | null
   onChanged: () => void
 }) {
   const { t } = useTranslation()
+  const [subTab, setSubTab] = useState<'pack' | 'archive'>('pack')
   const [detail, setDetail] = useState<{
     my_role: ChatMemberRole
     invite_code: string | null
@@ -138,11 +143,42 @@ export function GroupChatSettings({
 
   return (
     <div className="border-t border-neon-cyan/40 px-2 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
-      <div className="mb-2 text-neon-cyan/80">{t('group.packSettings')}</div>
+      <div className="mb-2 flex gap-1">
+        <button
+          type="button"
+          onClick={() => setSubTab('pack')}
+          className={`flex-1 border py-1 text-[9px] ${
+            subTab === 'pack'
+              ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+              : 'border-neon-cyan/30 text-neon-cyan/50'
+          }`}
+        >
+          {t('group.packSettings')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('archive')}
+          className={`flex-1 border py-1 text-[9px] normal-case ${
+            subTab === 'archive'
+              ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+              : 'border-neon-cyan/30 text-neon-cyan/50'
+          }`}
+        >
+          {t('group.mediaArchiveTab')}
+        </button>
+      </div>
       {err ? (
         <p className="mb-2 text-neon-red">{err}</p>
       ) : null}
-      {canManageLinks ? (
+      {subTab === 'archive' ? (
+        <div>
+          <p className="mb-2 text-[9px] normal-case tracking-normal text-neon-cyan/70">
+            {t('group.mediaArchiveTitle')}
+          </p>
+          <MediaArchivePanel chatId={chatId} sharedKey={sharedKey} />
+        </div>
+      ) : null}
+      {subTab === 'pack' && canManageLinks ? (
         <div className="mb-3 space-y-2">
           <button
             type="button"
@@ -163,6 +199,7 @@ export function GroupChatSettings({
           )}
         </div>
       ) : null}
+      {subTab === 'pack' ? (
       <div className="max-h-40 space-y-1 overflow-y-auto text-[9px] normal-case tracking-normal">
         {detail.members.map((m) => {
           const mine = canonicalUserId(m.user_id) === canonicalUserId(userId)
@@ -184,6 +221,12 @@ export function GroupChatSettings({
               className="flex flex-wrap items-center gap-1 border-b border-neon-cyan/15 py-1 text-neon-red"
             >
               <span className="inline-flex min-w-0 items-center gap-1">
+                <UserAvatar
+                  userId={m.user_id}
+                  username={m.username}
+                  avatarKey={m.avatar_key}
+                  size={20}
+                />
                 {roleBadge(m.role)}
                 <span className="truncate">{m.username}</span>
               </span>
@@ -232,6 +275,7 @@ export function GroupChatSettings({
           )
         })}
       </div>
+      ) : null}
     </div>
   )
 }

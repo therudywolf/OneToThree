@@ -223,6 +223,17 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.mediaDenied':
     'Camera or microphone access was denied. Allow permission in the browser to preview devices.',
   'settings.mediaPreviewFailed': 'Could not start preview stream.',
+
+  'settings.digitalDenTitle': 'DIGITAL DEN :: LOCAL MEDIA CACHE',
+  'settings.digitalDenHint':
+    'Stores decrypted media blobs in IndexedDB (device-only). Oldest entries evicted when usage exceeds ~1 GiB.',
+  'settings.digitalDenUsage': 'Occupied',
+  'settings.digitalDenClear': 'CLEAR LOCAL CACHE',
+  'settings.digitalDenCleared': 'Digital den cleared.',
+  'settings.digitalDenBusy': '…',
+
+  'media.fileExpiredServer':
+    'FILE EXPIRED ON SERVER — retention policy removed this object.',
 } as const
 
 export default en

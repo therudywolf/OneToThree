@@ -2,10 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { applyPreferredAudioOutput, loadMediaPrefs, saveMediaPrefs } from '@/lib/media-devices'
+import {
+  clearAllMediaCache,
+  getDigitalDenUsageBytes,
+} from '@/lib/media-cache'
 import { useTranslation } from '@/hooks/use-translation'
 
 function stopTracks(stream: MediaStream | null) {
   stream?.getTracks().forEach((t) => t.stop())
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KiB`
+  if (n < 1024 ** 3) return `${(n / (1024 * 1024)).toFixed(2)} MiB`
+  return `${(n / 1024 ** 3).toFixed(2)} GiB`
 }
 
 export function SettingsMediaPanel({ active }: { active: boolean }) {
@@ -18,6 +29,9 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   const [noiseOn, setNoiseOn] = useState(true)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const [denBytes, setDenBytes] = useState<number | null>(null)
+  const [denBusy, setDenBusy] = useState(false)
+  const [denNote, setDenNote] = useState<string | null>(null)
 
   const refreshDeviceList = useCallback(async () => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
@@ -47,6 +61,22 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
     setSpeakerId(p.speakerId ?? '')
     setNoiseOn(p.noiseSuppression)
   }, [active])
+
+  const refreshDen = useCallback(async () => {
+    try {
+      const n = await getDigitalDenUsageBytes()
+      setDenBytes(n)
+    } catch {
+      setDenBytes(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!active) return
+    void refreshDen()
+    const id = window.setInterval(() => void refreshDen(), 8000)
+    return () => window.clearInterval(id)
+  }, [active, refreshDen])
 
   const startPreview = useCallback(async () => {
     stopTracks(streamRef.current)
@@ -241,6 +271,47 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           <p className="mt-2 border border-neon-red/60 px-2 py-1 font-mono text-[10px] text-neon-red">
             [!] {previewError}
           </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-2 border border-neon-cyan/25 bg-black/60 px-3 py-3">
+        <p className="text-[10px] uppercase tracking-[0.35em] text-neon-cyan">
+          {t('settings.digitalDenTitle')}
+        </p>
+        <p className="text-[9px] leading-snug text-red-800/90">
+          {t('settings.digitalDenHint')}
+        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 border border-neon-cyan/15 px-2 py-2 font-mono text-[10px] text-neon-cyan/90">
+          <span>
+            :: {t('settings.digitalDenUsage')}:{' '}
+            {denBytes === null ? '—' : formatBytes(denBytes)}
+          </span>
+          <button
+            type="button"
+            disabled={denBusy}
+            onClick={() => {
+              setDenBusy(true)
+              setDenNote(null)
+              void (async () => {
+                try {
+                  await clearAllMediaCache()
+                  await refreshDen()
+                  setDenNote(t('settings.digitalDenCleared'))
+                  window.setTimeout(() => setDenNote(null), 2500)
+                } catch {
+                  setDenNote('ERR')
+                } finally {
+                  setDenBusy(false)
+                }
+              })()
+            }}
+            className="border border-neon-red/70 bg-black px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40"
+          >
+            [ {denBusy ? t('settings.digitalDenBusy') : t('settings.digitalDenClear')} ]
+          </button>
+        </div>
+        {denNote ? (
+          <p className="text-[9px] text-neon-cyan/80">:: {denNote}</p>
         ) : null}
       </div>
     </div>

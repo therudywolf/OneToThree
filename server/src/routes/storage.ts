@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
+import { and, eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { chatMembers, users } from '../db/schema.js'
+import { chatMembers, messages, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import {
@@ -100,21 +100,25 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_PATH' })
     }
 
-    const m = filePath.match(CHAT_OBJECT_KEY_RE)
-    if (!m) {
+    if (!CHAT_OBJECT_KEY_RE.test(filePath)) {
       return reply.status(400).send({ error: 'INVALID_PATH' })
     }
-    const chatId = m[1]
 
-    const ok = await db
-      .select({ one: chatMembers.userId })
-      .from(chatMembers)
-      .where(
-        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
+    const [claim] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .innerJoin(
+        chatMembers,
+        and(
+          eq(chatMembers.chatId, messages.chatId),
+          eq(chatMembers.userId, user.id)
+        )
       )
+      .where(eq(messages.mediaPath, filePath))
       .limit(1)
-    if (!ok.length) {
-      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+
+    if (!claim) {
+      return reply.status(410).send({ error: 'FILE_EXPIRED' })
     }
 
     const downloadUrl = await presignGetObject({

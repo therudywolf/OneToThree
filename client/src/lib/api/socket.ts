@@ -46,6 +46,7 @@ export type WsInboundMessage =
         media_type?: string | null
         media_iv?: string | null
         created_at: string
+        read_at?: string | null
       }
     }
   | { type: 'webrtc_signal'; fromUserId: string; signalData: unknown }
@@ -63,6 +64,19 @@ export type WsInboundMessage =
       chat_id: string
       message_id: string
       reader_id: string
+    }
+  | {
+      type: 'message_read_update'
+      chat_id: string
+      message_id: string
+      reader_id: string
+      read_at: string
+    }
+  | {
+      type: 'online_status_change'
+      user_id: string
+      online: boolean
+      last_seen_at: string
     }
   | {
       type: 'typing_start'

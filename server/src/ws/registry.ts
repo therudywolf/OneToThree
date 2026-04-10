@@ -2,7 +2,11 @@ import type { WebSocket } from 'ws'
 
 const userSockets = new Map<string, Set<WebSocket>>()
 
-export function registerUserSocket(userId: string, ws: WebSocket): void {
+export function registerUserSocket(
+  userId: string,
+  ws: WebSocket,
+  onLastSocketClosed?: (uid: string) => void
+): void {
   let set = userSockets.get(userId)
   if (!set) {
     set = new Set()
@@ -14,6 +18,7 @@ export function registerUserSocket(userId: string, ws: WebSocket): void {
     set!.delete(ws)
     if (set!.size === 0) {
       userSockets.delete(userId)
+      onLastSocketClosed?.(userId)
     }
     ws.off('close', cleanup)
   }

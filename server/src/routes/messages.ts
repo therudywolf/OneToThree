@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, messages } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { markMessageReadByReader } from '../lib/mark-message-read.js'
 import { broadcastToUsers } from '../ws/registry.js'
 
 const deleteMessageSchema = z.object({
@@ -11,6 +12,28 @@ const deleteMessageSchema = z.object({
 })
 
 export const messagesRoutes: FastifyPluginAsync = async (app) => {
+  /** Mark a direct message as read (REST; mirrors WebSocket `message_read`). */
+  app.post('/read/:messageId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const { messageId } = request.params as { messageId: string }
+    const result = await markMessageReadByReader(user.id, messageId)
+    if (!result.ok) {
+      const status: Record<string, number> = {
+        MESSAGE_NOT_FOUND: 404,
+        NOT_A_MEMBER: 403,
+        READ_RECEIPTS_DIRECT_ONLY: 400,
+        CANNOT_READ_OWN_MESSAGE: 400,
+        NOT_READABLE: 400,
+        CHAT_MISMATCH: 400,
+      }
+      return reply
+        .status(status[result.error] ?? 400)
+        .send({ error: result.error })
+    }
+    return reply.send({ ok: true, read_at: result.read_at })
+  })
+
   /** Voice/audio/video index for media archive (newest first). */
   app.get('/:chatId/media', async (request, reply) => {
     const user = await getAuthUser(request, reply)
@@ -95,6 +118,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         mediaPath: messages.mediaPath,
         mediaType: messages.mediaType,
         mediaIv: messages.mediaIv,
+        readAt: messages.readAt,
         createdAt: messages.createdAt,
       })
       .from(messages)
@@ -113,6 +137,12 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         media_path: m.mediaPath,
         media_type: m.mediaType,
         media_iv: m.mediaIv,
+        read_at:
+          m.readAt == null
+            ? null
+            : m.readAt instanceof Date
+              ? m.readAt.toISOString()
+              : String(m.readAt),
         created_at:
           m.createdAt instanceof Date
             ? m.createdAt.toISOString()

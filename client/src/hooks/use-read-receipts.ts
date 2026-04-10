@@ -1,36 +1,65 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { getFmSocket } from '@/lib/api/socket'
+import type { RefObject } from 'react'
+import { markMessageRead } from '@/lib/api/messages'
 import { useChatStore } from '@/store/chatStore'
 
 /**
- * Sends a `message_read` event for the last message in the active chat
- * whenever the message list changes (i.e. new messages arrive and the user
- * has the chat open). Debounced to 500ms.
+ * When peer messages scroll into view in the active chat, mark them read (REST).
+ * Uses the chat scroll container as IntersectionObserver root.
  */
-export function useReadReceipts() {
+export function useReadReceipts(
+  scrollRootRef: RefObject<HTMLDivElement | null>,
+  opts?: { enabled?: boolean }
+) {
   const activeChatId = useChatStore((s) => s.activeChatId)
-  const messages = useChatStore((s) => s.messages)
   const userId = useChatStore((s) => s.userId)
-  const lastSentRef = useRef<string | null>(null)
+  const markedRef = useRef(new Set<string>())
+  const enabled = opts?.enabled ?? true
 
   useEffect(() => {
-    if (!activeChatId || !userId || messages.length === 0) return
+    markedRef.current.clear()
+  }, [activeChatId])
 
-    const last = messages[messages.length - 1]
-    if (!last || last.sender_id === userId) return
-    if (lastSentRef.current === last.id) return
+  useEffect(() => {
+    if (!enabled || !activeChatId || !userId) return
+    const root = scrollRootRef.current
+    if (!root) return
 
-    const timer = setTimeout(() => {
-      getFmSocket().send({
-        type: 'message_read',
-        chat_id: activeChatId,
-        message_id: last.id,
-      })
-      lastSentRef.current = last.id
-    }, 500)
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue
+          const id = (e.target as HTMLElement).dataset.messageId
+          if (!id) continue
+          const msg = useChatStore.getState().messages.find((m) => m.id === id)
+          if (!msg || msg.sender_id === userId) continue
+          if (markedRef.current.has(id)) continue
+          markedRef.current.add(id)
+          void markMessageRead(id).catch(() => {
+            markedRef.current.delete(id)
+          })
+        }
+      },
+      { root, threshold: [0, 0.35, 0.55, 0.85, 1] }
+    )
 
-    return () => clearTimeout(timer)
-  }, [activeChatId, messages, userId])
+    function observeAll(): void {
+      const elRoot = scrollRootRef.current
+      if (!elRoot) return
+      for (const el of elRoot.querySelectorAll<HTMLElement>('[data-message-id]')) {
+        obs.observe(el)
+      }
+    }
+
+    observeAll()
+    const mo = new MutationObserver(() => observeAll())
+    mo.observe(root, { childList: true, subtree: true })
+
+    return () => {
+      mo.disconnect()
+      obs.disconnect()
+    }
+  }, [enabled, activeChatId, userId, scrollRootRef])
 }

@@ -20,6 +20,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
   const clearTypingUser = useChatStore((s) => s.clearTypingUser)
   const clearTypingUserEverywhere = useChatStore((s) => s.clearTypingUserEverywhere)
   const pruneTypingUsers = useChatStore((s) => s.pruneTypingUsers)
+  const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const usernameCacheRef = useRef<Record<string, string>>({})
 
@@ -66,6 +67,15 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
         void deleteCachedMessage(msg.message_id)
         return
       }
+      if (msg.type === 'message_read_update') {
+        if (msg.chat_id !== activeChatId) return
+        updateMessageReadAt(msg.message_id, msg.read_at)
+        const row = useChatStore
+          .getState()
+          .messages.find((x) => x.id === msg.message_id)
+        if (row) void cacheMessage({ ...row, read_at: msg.read_at })
+        return
+      }
       if (msg.type !== 'chat_message') return
       if (!cryptoCtx || !unwrappedPrivateKey) return
       const m = msg.message
@@ -91,6 +101,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
           reply_to_id: m.reply_to_id ?? null,
           plaintext,
           created_at: m.created_at,
+          read_at: m.read_at ?? null,
           media_path: m.media_path,
           media_type:
             m.media_type === 'audio' ||
@@ -116,6 +127,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
     removeMessage,
     setTypingUser,
     unwrappedPrivateKey,
+    updateMessageReadAt,
     userId,
   ])
 

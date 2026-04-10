@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Crown, Star } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Check, CheckCheck, Crown, Star } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { MediaMessage } from '@/components/chat/media-message'
 import { deleteMessage } from '@/lib/api/chats'
@@ -12,6 +12,7 @@ import {
 import { lookupUsers } from '@/lib/api/users'
 import { UserAvatar } from '@/components/user-avatar'
 import type { ApiChatRow, ChatMemberRole } from '@/lib/api/chats'
+import { useReadReceipts } from '@/hooks/use-read-receipts'
 import type { DecryptedMessage } from '@/types/chat'
 
 const OLDER_PAGE_SIZE = 25
@@ -43,11 +44,12 @@ export function ChatTerminal({
   peerAvatarKey?: string | null
 }) {
   const messages = useChatStore((s) => s.messages)
+  const readAtOverrides = useChatStore((s) => s.readAtOverrides)
   const removeMessage = useChatStore((s) => s.removeMessage)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useChatStore((s) => s.activeChatId)
-  const typingUsers = useChatStore((s) => s.typingUsers)
   const ref = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
   const [olderMessages, setOlderMessages] = useState<DecryptedMessage[]>([])
   const [hasMoreOlder, setHasMoreOlder] = useState(true)
@@ -64,16 +66,23 @@ export function ChatTerminal({
 
   const isGroup = activeChat?.is_group ?? false
 
+  useReadReceipts(ref, { enabled: !isGroup })
+
   const renderMessages = useMemo(() => {
     const map = new Map<string, DecryptedMessage>()
     for (const m of [...olderMessages, ...messages]) {
       map.set(m.id, m)
     }
-    return [...map.values()].sort(
-      (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    )
-  }, [olderMessages, messages])
+    return [...map.values()]
+      .sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+      .map((m) => ({
+        ...m,
+        read_at: m.read_at ?? readAtOverrides[m.id] ?? null,
+      }))
+  }, [olderMessages, messages, readAtOverrides])
 
   const senderIdsToResolve = useMemo(() => {
     if (!isGroup || !activeChatId) return []
@@ -108,9 +117,9 @@ export function ChatTerminal({
     }
   }, [senderIdsToResolve])
 
-  useEffect(() => {
-    ref.current?.scrollTo({ top: ref.current.scrollHeight })
-  }, [messages])
+  useLayoutEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages, activeChatId])
 
   useEffect(() => {
     setOlderMessages([])
@@ -126,10 +135,6 @@ export function ChatTerminal({
 
   const msgById = (id: string) => renderMessages.find((m) => m.id === id)
   const oldestLoaded = renderMessages[0] ?? null
-  const typingNow = activeChatId
-    ? Object.values(typingUsers[activeChatId] ?? {}).map((v) => v.username)
-    : []
-
   function labelForSender(senderId: string): string {
     if (senderId === userId) {
       return currentUsername.trim() || 'YOU'
@@ -207,9 +212,11 @@ export function ChatTerminal({
   if (!activeChatId) {
     return (
       <div className="crt-terminal-vignette flex flex-1 items-center justify-center bg-black font-mono text-xs text-red-800">
-        <div className="max-w-xs space-y-3 text-center">
-          <p className="text-sm text-neon-cyan/60">NO_ACTIVE_CHANNEL</p>
-          <p className="text-[10px] text-red-900">
+        <div className="max-w-xs space-y-3 border border-neon-cyan/20 px-6 py-4 text-center">
+          <p className="text-sm tracking-[0.2em] text-neon-cyan/50">
+            WAITING FOR SIGNAL
+          </p>
+          <p className="text-[10px] uppercase tracking-widest text-red-900">
             Select or create a secure channel from the sidebar
           </p>
         </div>
@@ -276,11 +283,13 @@ export function ChatTerminal({
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
         {renderMessages.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="space-y-2 text-center">
-              <p className="text-xs text-neon-cyan/40">NO_PACKETS</p>
-              <p className="text-[9px] text-red-900">
-                Encrypted channel is empty. Send the first message.
+          <div className="flex h-full min-h-[12rem] items-center justify-center">
+            <div className="space-y-2 border border-neon-cyan/20 px-6 py-4 text-center">
+              <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/50">
+                NO LOGS FOUND
+              </p>
+              <p className="text-[9px] uppercase tracking-widest text-red-900">
+                Waiting for signal — send the first packet.
               </p>
             </div>
           </div>
@@ -292,6 +301,7 @@ export function ChatTerminal({
           return (
             <div
               key={m.id}
+              data-message-id={m.id}
               className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
               onContextMenu={(e) => {
                 e.preventDefault()
@@ -364,17 +374,24 @@ export function ChatTerminal({
                   {m.media_path && m.media_iv && m.media_type ? (
                     <MediaMessage message={m} sharedKey={sharedKey} />
                   ) : null}
+                  {mine && !isGroup ? (
+                    <div
+                      className="mt-1 flex items-center justify-end gap-0.5 text-[10px]"
+                      aria-hidden
+                    >
+                      {m.read_at ? (
+                        <CheckCheck className="h-3.5 w-3.5 text-cyan-400 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]" />
+                      ) : (
+                        <Check className="h-3 w-3 text-zinc-500" />
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
           )
         })}
-        {typingNow.length > 0 ? (
-          <div className="sticky bottom-0 mt-2 border-t border-neon-cyan/20 bg-black/90 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
-            [ @{typingNow[0]} IS TYPING
-            <span className="animate-pulse">...</span> ]
-          </div>
-        ) : null}
+        <div ref={bottomRef} className="h-px w-full shrink-0" aria-hidden />
       </div>
     </div>
   )

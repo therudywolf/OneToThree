@@ -3,11 +3,11 @@ import { AuthProvider } from '@/components/auth/auth-provider'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Forest Messenger',
-  description: 'Zero-trust E2E terminal messenger',
+  title: 'Project 13 (One to Three)',
+  description: 'Self-hosted zero-trust E2E messenger',
   appleWebApp: {
     capable: true,
-    title: 'Forest Messenger',
+    title: 'Project 13',
     statusBarStyle: 'black-translucent',
   },
 }

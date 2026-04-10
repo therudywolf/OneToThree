@@ -32,9 +32,14 @@ const uploadBodySchema = z.object({
 export const storageRoutes: FastifyPluginAsync = async (app) => {
   const client = createS3Client()
   const bucket = getBucketName()
-  await ensureBucketExists(client, bucket)
+  let bucketInit: Promise<void> | null = null
+  async function ensureBucketOnce() {
+    if (!bucketInit) bucketInit = ensureBucketExists(client, bucket)
+    await bucketInit
+  }
 
   app.post('/upload-url', async (request, reply) => {
+    await ensureBucketOnce()
     const user = await getAuthUser(request)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
@@ -76,6 +81,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.get('/download-url', async (request, reply) => {
+    await ensureBucketOnce()
     const user = await getAuthUser(request)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })

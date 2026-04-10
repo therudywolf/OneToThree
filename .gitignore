@@ -42,3 +42,9 @@ yarn-error.log*
 **/public/workbox-*.js
 **/public/worker-*.js
 **/public/fallback-*.js
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+**/playwright/.cache/

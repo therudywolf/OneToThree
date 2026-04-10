@@ -14,7 +14,7 @@ import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
-import { fetchPeerIdsForChat } from '@/lib/api/chats'
+import { createDirectE2EChat, fetchPeerIdsForChat } from '@/lib/api/chats'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { VaultModal } from '@/components/chat/vault-modal'
@@ -70,6 +70,19 @@ export function ChatApp({
     const chat = searchParams.get('chat')
     if (chat) setActiveChatId(chat)
   }, [searchParams, setActiveChatId])
+
+  useEffect(() => {
+    const invite = searchParams.get('invite')?.trim()
+    if (!invite || invite === userId) return
+    const onceKey = `p13:invite-opened:${userId}:${invite}`
+    if (sessionStorage.getItem(onceKey) === '1') return
+    sessionStorage.setItem(onceKey, '1')
+    void createDirectE2EChat(userId, invite)
+      .then((chat) => setActiveChatId(chat.id))
+      .catch(() => {
+        /* invalid invite or hidden/unknown user */
+      })
+  }, [searchParams, setActiveChatId, userId])
 
   useEffect(() => {
     if (readVaultBlob(userId)) {

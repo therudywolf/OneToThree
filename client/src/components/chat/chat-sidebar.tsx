@@ -6,6 +6,13 @@ import { NotificationToggle } from '@/components/notification-toggle'
 import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
+import { searchUsers } from '@/lib/api/users'
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  )
+}
 
 export function ChatSidebar({ userId }: { userId: string }) {
   const activeChatId = useChatStore((s) => s.activeChatId)
@@ -18,11 +25,25 @@ export function ChatSidebar({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false)
 
   async function openDirect() {
-    const pid = peerInput.trim()
-    if (!pid || pid === userId) return
+    const raw = peerInput.trim()
+    if (!raw) return
     setCreating(true)
     setCreateErr(null)
     try {
+      let pid = raw
+      if (!isUuid(raw)) {
+        const candidates = await searchUsers(raw)
+        const exact = candidates.find(
+          (u) => u.username.toLowerCase() === raw.toLowerCase()
+        )
+        if (!exact) {
+          throw new Error('USER_NOT_FOUND_OR_HIDDEN')
+        }
+        pid = exact.id
+      }
+      if (pid === userId) {
+        throw new Error('CANNOT_OPEN_DIRECT_WITH_SELF')
+      }
       const chat = await createDirectE2EChat(userId, pid)
       setActiveChatId(chat.id)
       setPeerInput('')
@@ -115,6 +136,22 @@ export function ChatSidebar({ userId }: { userId: string }) {
       <div className="border-t border-neon-cyan/40 p-2">
         <button
           type="button"
+          onClick={async () => {
+            const origin = window.location.origin
+            const link = `${origin}/?invite=${encodeURIComponent(userId)}`
+            try {
+              await navigator.clipboard.writeText(link)
+              setCreateErr('INVITE_LINK_COPIED')
+            } catch {
+              setCreateErr(link)
+            }
+          }}
+          className="mb-2 w-full rounded-none border border-neon-red/70 bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-red hover:bg-neon-red/10"
+        >
+          [ COPY_MY_INVITE ]
+        </button>
+        <button
+          type="button"
           onClick={() => setGroupModalOpen(true)}
           className="mb-2 w-full rounded-none border border-neon-cyan bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
         >
@@ -128,7 +165,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
         ) : null}
         <input
           className="terminal-input mb-2 text-xs"
-          placeholder="peer user uuid"
+          placeholder="peer uuid or username"
           value={peerInput}
           onChange={(e) => setPeerInput(e.target.value)}
         />

@@ -9,6 +9,7 @@ const path = require('path')
 const crypto = require('crypto')
 
 const ROOT = path.join(__dirname, '..')
+const ROOT_ENV = path.join(ROOT, '.env')
 const SERVER_ENV_EXAMPLE = path.join(ROOT, 'server', '.env.example')
 const SERVER_ENV = path.join(ROOT, 'server', '.env')
 const CLIENT_ENV_EXAMPLE = path.join(ROOT, 'client', '.env.local.example')
@@ -130,6 +131,7 @@ function main() {
 
   let serverEnv = readFile(SERVER_ENV)
   let clientEnv = readFile(CLIENT_ENV)
+  let rootEnv = fs.existsSync(ROOT_ENV) ? readFile(ROOT_ENV) : ''
 
   const webpush = requireWebPush()
   const keys = webpush.generateVapidKeys()
@@ -202,6 +204,36 @@ function main() {
   }
 
   writeFile(CLIENT_ENV, clientEnv)
+
+  // Keep docker-compose variables in root .env synchronized with server secrets.
+  rootEnv = upsertKey(rootEnv, 'JWT_SECRET', getKey(serverEnv, 'JWT_SECRET') || jwtSecret)
+  rootEnv = upsertKey(
+    rootEnv,
+    'MINIO_ROOT_USER',
+    getKey(serverEnv, 'MINIO_ROOT_USER') || minioUser
+  )
+  rootEnv = upsertKey(
+    rootEnv,
+    'MINIO_ROOT_PASSWORD',
+    getKey(serverEnv, 'MINIO_ROOT_PASSWORD') || minioPass
+  )
+  rootEnv = upsertKey(
+    rootEnv,
+    'VAPID_PUBLIC_KEY',
+    getKey(serverEnv, 'VAPID_PUBLIC_KEY') || keys.publicKey
+  )
+  rootEnv = upsertKey(
+    rootEnv,
+    'VAPID_PRIVATE_KEY',
+    getKey(serverEnv, 'VAPID_PRIVATE_KEY') || keys.privateKey
+  )
+  rootEnv = upsertKey(
+    rootEnv,
+    'VAPID_SUBJECT',
+    getKey(serverEnv, 'VAPID_SUBJECT') || 'mailto:admin@localhost'
+  )
+  writeFile(ROOT_ENV, rootEnv)
+  console.log('[bootstrap] Synced docker compose vars into .env (root)')
 
   console.log('')
   console.log('[bootstrap] Done. Next: npm run docker:up  →  npm run db:push')

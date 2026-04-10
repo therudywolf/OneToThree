@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { users } from '../db/schema.js'
 import { getAuthUser } from '../lib/auth-user.js'
+import { normalizeUuid } from '../lib/uuid.js'
 
 const searchQuerySchema = z.object({
   q: z.string().min(1).max(128),
@@ -103,7 +104,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
           ecdh_public_key_jwk: users.ecdhPublicKeyJwk,
         })
         .from(users)
-        .where(eq(users.id, q))
+        .where(eq(users.id, normalizeUuid(q)))
         .limit(1)
       return reply.send(row ? [row] : [])
     }
@@ -140,7 +141,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const ids = parsed.data.user_ids
+    const ids = parsed.data.user_ids.map((id) => normalizeUuid(id))
     const unique = [...new Set(ids)]
     const rows = await db
       .select({

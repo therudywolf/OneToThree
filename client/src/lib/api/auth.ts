@@ -73,7 +73,12 @@ export async function verifyChallenge(
   if (!data.user?.id || !data.user.username) {
     throw new Error('INVALID_VERIFY_RESPONSE')
   }
-  return { user: data.user }
+  return {
+    user: {
+      id: data.user.id.trim().toLowerCase(),
+      username: data.user.username,
+    },
+  }
 }
 
 export async function fetchMe(): Promise<{ user: { id: string; username: string } }> {
@@ -91,7 +96,12 @@ export async function fetchMe(): Promise<{ user: { id: string; username: string 
   if (!data.user?.id) {
     throw new Error('INVALID_ME_RESPONSE')
   }
-  return { user: data.user }
+  return {
+    user: {
+      ...data.user,
+      id: data.user.id.trim().toLowerCase(),
+    },
+  }
 }
 
 export async function logoutApi(): Promise<void> {

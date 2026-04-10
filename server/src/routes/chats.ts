@@ -5,6 +5,7 @@ import { db } from '../db/index.js'
 import { chatMembers, chats, messages, users } from '../db/schema.js'
 import { getAuthUser } from '../lib/auth-user.js'
 import { broadcastToUsers } from '../ws/registry.js'
+import { normalizeUuid } from '../lib/uuid.js'
 
 const createChatSchema = z
   .object({
@@ -178,12 +179,15 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const keyByUser = new Map(
-        members.map((m) => [m.userId, m.encryptedGroupKey] as const)
+        members.map((m) => [
+          normalizeUuid(m.userId),
+          m.encryptedGroupKey,
+        ] as const)
       )
       if (keyByUser.size !== members.length) {
         return reply.status(400).send({ error: 'DUPLICATE_MEMBER' })
       }
-      if (!keyByUser.has(user.id)) {
+      if (!keyByUser.has(normalizeUuid(user.id))) {
         return reply.status(400).send({ error: 'CREATOR_NOT_IN_MEMBERS' })
       }
 
@@ -240,37 +244,39 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
+    const authId = normalizeUuid(user.id)
     let uniqueIds: string[]
     if (type === 'direct_e2e') {
-      if (member_ids.length === 1) {
-        const peer = member_ids[0]
-        if (!peer || peer === user.id) {
+      const mids = member_ids.map((id) => normalizeUuid(id))
+      if (mids.length === 1) {
+        const peer = mids[0]
+        if (!peer || peer === authId) {
           return reply
             .status(400)
             .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
         }
-        uniqueIds = [user.id, peer]
-      } else if (member_ids.length === 2) {
-        if (!member_ids.includes(user.id)) {
+        uniqueIds = [authId, peer]
+      } else if (mids.length === 2) {
+        if (!mids.includes(authId)) {
           return reply
             .status(400)
             .send({ error: 'DIRECT_REQUIRES_AUTH_MEMBER' })
         }
-        const peer = member_ids.find((id) => id !== user.id)
+        const peer = mids.find((id) => id !== authId)
         if (!peer) {
           return reply
             .status(400)
             .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
         }
-        uniqueIds = [user.id, peer]
+        uniqueIds = [authId, peer]
       } else {
         return reply
           .status(400)
           .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
       }
     } else {
-      const memberSet = new Set(member_ids)
-      memberSet.add(user.id)
+      const memberSet = new Set(member_ids.map((id) => normalizeUuid(id)))
+      memberSet.add(authId)
       uniqueIds = [...memberSet]
     }
 

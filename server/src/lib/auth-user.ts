@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify'
 import { SESSION_COOKIE } from './session-cookie.js'
+import { normalizeUuid } from './uuid.js'
 
 export type AuthUser = { id: string; username: string }
 
@@ -13,7 +14,7 @@ export async function getAuthUser(
       token
     )
     if (!p.sub || !p.username) return null
-    return { id: p.sub, username: p.username }
+    return { id: normalizeUuid(p.sub), username: p.username }
   } catch {
     return null
   }

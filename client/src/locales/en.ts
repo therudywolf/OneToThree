@@ -101,6 +101,10 @@ const en = {
   'settings.discoverable': 'Discoverable',
   'settings.discoverableHint':
     'Lets others find you by username. To find someone else, they must enable this too.',
+  'settings.discoverableBadgeOn': '● visible in username search',
+  'settings.discoverableBadgeOff': '○ hidden from username search',
+  'settings.discoverableTooltipOn': 'Others can find you by nickname (search)',
+  'settings.discoverableTooltipOff': 'You are not listed in nickname search',
   'settings.loadFailed': 'Could not load settings (check login / network)',
   'settings.vaultBackup': 'Vault backup',
   'settings.languageHint': 'Choose interface language',

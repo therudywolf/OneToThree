@@ -1,4 +1,5 @@
 import { API_URL } from './auth'
+import { normalizeUuid } from '@/lib/peer-input'
 
 export type ApiChatRow = {
   id: string
@@ -32,7 +33,7 @@ export async function createDirectE2EChat(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       type: 'direct_e2e',
-      member_ids: [peerUserId],
+      member_ids: [normalizeUuid(peerUserId)],
     }),
   })
   const data = (await res.json().catch(() => ({}))) as {
@@ -59,7 +60,10 @@ export async function createGroupE2EChat(params: {
     body: JSON.stringify({
       type: 'group_e2e',
       name: params.name?.trim() || null,
-      members: params.members,
+      members: params.members.map((m) => ({
+        ...m,
+        userId: normalizeUuid(m.userId),
+      })),
     }),
   })
   const data = (await res.json().catch(() => ({}))) as {

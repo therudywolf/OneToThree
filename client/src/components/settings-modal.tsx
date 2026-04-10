@@ -5,6 +5,7 @@ import { API_URL, fetchMe } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
 import { readVaultBlob, vaultStorageKey } from '@/lib/vault'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
+import { clearAllMediaCache } from '@/lib/media-cache'
 import { SettingsDevicesPanel } from '@/components/settings-devices-panel'
 import { SettingsMediaPanel } from '@/components/settings-media-panel'
 import { SettingsRecoveryMnemonic } from '@/components/settings-recovery-mnemonic'
@@ -209,6 +210,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   async function purgeLocalCache() {
     console.log('[Phase 18] PURGE LOCAL CACHE — starting')
+    try {
+      await clearAllMediaCache()
+    } catch (e) {
+      console.error('[Phase 33] clear media cache failed', e)
+    }
     try {
       await purgeLocalMessageCache()
     } catch (e) {

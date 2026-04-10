@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { decryptBinary } from '@/lib/crypto'
 import { getDownloadUrl } from '@/lib/api/storage'
+import {
+  getCachedMedia,
+  setCachedMedia,
+} from '@/lib/media-cache'
+import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
 
 function mimeFromPathAndType(
@@ -52,6 +57,7 @@ type Props = {
 }
 
 export function MediaBubble({ message, sharedKey }: Props) {
+  const { t } = useTranslation()
   const mediaPath = message.media_path
   const mediaIv = message.media_iv
   const mediaType = message.media_type
@@ -91,20 +97,37 @@ export function MediaBubble({ message, sharedKey }: Props) {
     setLoadErr(null)
     setObjectUrl(null)
     try {
+      const cached = await getCachedMedia(message.id)
+      if (cached?.blob) {
+        const url = URL.createObjectURL(cached.blob)
+        blobUrlRef.current = url
+        setObjectUrl(url)
+        return
+      }
+
       const downloadUrl = await getDownloadUrl(mediaPath)
       const res = await fetch(downloadUrl)
+      if (res.status === 404 || res.status === 410) {
+        throw new Error('FILE_EXPIRED')
+      }
       if (!res.ok) throw new Error('FETCH_MEDIA_FAILED')
       const cipher = await res.arrayBuffer()
       const plain = await decryptBinary(sharedKey, cipher, mediaIv)
       const mime = mimeFromPathAndType(mediaPath, mediaType)
       const blob = new Blob([plain], { type: mime })
+      await setCachedMedia(message.id, blob, mime)
       const url = URL.createObjectURL(blob)
       blobUrlRef.current = url
       setObjectUrl(url)
     } catch (e) {
-      setLoadErr(e instanceof Error ? e.message : 'MEDIA_LOAD_FAIL')
+      const code = e instanceof Error ? e.message : 'MEDIA_LOAD_FAIL'
+      if (code === 'FILE_EXPIRED') {
+        setLoadErr(t('media.fileExpiredServer'))
+      } else {
+        setLoadErr(code)
+      }
     }
-  }, [mediaPath, mediaIv, sharedKey, mediaType])
+  }, [mediaPath, mediaIv, sharedKey, mediaType, message.id, t])
 
   useEffect(() => {
     if (!visible || !mediaPath || !mediaIv || !sharedKey) return

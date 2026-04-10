@@ -230,6 +230,16 @@ const ru = {
   'settings.mediaDenied':
     'Доступ к камере или микрофону запрещён. Разрешите в браузере для предпросмотра.',
   'settings.mediaPreviewFailed': 'Не удалось запустить поток предпросмотра.',
+
+  'settings.digitalDenTitle': 'НОРА :: ЛОКАЛЬНЫЙ КЭШ МЕДИА',
+  'settings.digitalDenHint':
+    'Расшифрованные blob в IndexedDB (только устройство). При переполнении (~1 ГиБ) удаляются старые.',
+  'settings.digitalDenUsage': 'Занято',
+  'settings.digitalDenClear': 'ОЧИСТИТЬ КЭШ',
+  'settings.digitalDenCleared': 'Кэш очищен.',
+  'settings.digitalDenBusy': '…',
+
+  'media.fileExpiredServer': 'Срок хранения на сервере истек.',
 } as const
 
 export default ru

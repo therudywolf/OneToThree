@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@scure/bip39": "^2.0.1",
+    "dexie": "^4.4.2",
     "framer-motion": "^11.11.17",
     "idb": "^7.1.1",
     "lucide-react": "^0.468.0",

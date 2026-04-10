@@ -40,6 +40,9 @@ export async function getDownloadUrl(filePath: string): Promise<string> {
     error?: string
   }
   if (!res.ok) {
+    if (res.status === 410 || data.error === 'FILE_EXPIRED') {
+      throw new Error('FILE_EXPIRED')
+    }
     throw new Error(data.error ?? 'DOWNLOAD_URL_FAILED')
   }
   if (!data.downloadUrl) {

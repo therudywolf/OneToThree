@@ -1,10 +1,5 @@
 import { expect, type Page } from '@playwright/test'
 
-const API =
-  process.env.PLAYWRIGHT_API_URL?.replace(/\/$/, '') ??
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ??
-  'http://127.0.0.1:8080'
-
 export function uniqueHandle(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
@@ -32,21 +27,22 @@ export async function registerNewUser(
   await unlockVaultModal(page, passphrase)
 }
 
+/** Same-origin `/api` so `fm_session` from the page origin (e.g. :3000) is sent. */
 export async function fetchUserId(page: Page): Promise<string> {
-  const data = await page.evaluate(async (apiRoot) => {
-    const r = await fetch(`${apiRoot}/api/auth/me`, { credentials: 'include' })
+  const data = await page.evaluate(async () => {
+    const r = await fetch('/api/auth/me', { credentials: 'include' })
     if (!r.ok) throw new Error(`me ${r.status}`)
     const j = (await r.json()) as { user?: { id: string } }
     return j.user?.id
-  }, API)
+  })
   if (!data) throw new Error('no user id from /api/auth/me')
   return data
 }
 
 export async function setDiscoverable(page: Page, value: boolean): Promise<void> {
   const status = await page.evaluate(
-    async ({ apiRoot, enabled }) => {
-      const r = await fetch(`${apiRoot}/api/users/me`, {
+    async (enabled) => {
+      const r = await fetch('/api/users/me', {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -54,7 +50,7 @@ export async function setDiscoverable(page: Page, value: boolean): Promise<void>
       })
       return r.status
     },
-    { apiRoot: API, enabled: value }
+    value
   )
   if (status !== 200) {
     throw new Error(`failed to set discoverable: ${status}`)

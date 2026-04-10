@@ -102,31 +102,31 @@ test.describe('chat / core & crypto', () => {
     const alice = uniqueHandle('inv_alice')
     const bob = uniqueHandle('inv_bob')
 
-    const ctxB = await browser.newContext()
-    const pageB = await ctxB.newPage()
-    await registerNewUser(pageB, bob, passphrase)
-    const bobId = await fetchUserId(pageB)
-    await ctxB.close()
-
     const ctxA = await browser.newContext()
     const pageA = await ctxA.newPage()
     await registerNewUser(pageA, alice, passphrase)
+    const aliceId = await fetchUserId(pageA)
+    await ctxA.close()
+
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    await registerNewUser(pageB, bob, passphrase)
 
     const origin = baseURL ?? 'http://127.0.0.1:3000'
-    const created = pageA.waitForResponse(
+    const created = pageB.waitForResponse(
       (r) =>
         r.url().includes('/chats') &&
         r.request().method() === 'POST' &&
         r.status() === 201
     )
-    await pageA.goto(`${origin}/?invite=${bobId}`)
+    await pageB.goto(`${origin}/?invite=${aliceId}`)
     await created
 
-    await expect(pageA.getByText('[DIR]', { exact: false }).first()).toBeVisible({
+    await expect(pageB.getByText('[DIR]', { exact: false }).first()).toBeVisible({
       timeout: 45_000,
     })
 
-    await ctxA.close()
+    await ctxB.close()
   })
 
   test('delete for everyone removes message for all peers', async ({ browser }) => {

@@ -18,8 +18,12 @@ export async function registerNewUser(
   handle: string,
   passphrase: string
 ) {
+  /** Fresh Playwright context has no session; same-origin `/api/auth/me` → real 401 → login form. */
   await page.goto('/login')
-  await page.getByRole('button', { name: /NEW_DEVICE/i }).click()
+  await page.locator('#username').waitFor({ state: 'visible', timeout: 60_000 })
+  await page
+    .getByRole('button', { name: /New device|Новое устройство/i })
+    .click()
   await page.locator('#username').fill(handle)
   await page.locator('#password').fill(passphrase)
   await page.getByRole('button', { name: /REGISTER/i }).click()

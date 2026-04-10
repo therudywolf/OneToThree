@@ -25,6 +25,7 @@ import { ChatInput } from '@/components/chat/chat-input'
 import { LogoutButton } from '@/components/logout-button'
 import { OfflineBanner } from '@/components/offline-banner'
 import { SettingsModal } from '@/components/settings-modal'
+import { StartGuide } from '@/components/onboarding/start-guide'
 import { IncomingCallModal } from '@/components/call/incoming-call-modal'
 import { ActiveCallOverlay } from '@/components/call/active-call-overlay'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
@@ -46,6 +47,10 @@ export function ChatApp({
     'loading'
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [showGuide, setShowGuide] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return !localStorage.getItem(`p13:onboarded:${userId}`)
+  })
 
   const {
     peerReady,
@@ -130,6 +135,14 @@ export function ChatApp({
         onToggleCamera={toggleCamera}
       />
 
+      {showGuide ? (
+        <StartGuide
+          onComplete={() => {
+            localStorage.setItem(`p13:onboarded:${userId}`, '1')
+            setShowGuide(false)
+          }}
+        />
+      ) : null}
       <OfflineBanner />
       {settingsOpen ? (
         <SettingsModal

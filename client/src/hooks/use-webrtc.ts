@@ -80,6 +80,30 @@ export function useWebRTC(userId: string | null) {
   }, [cleanupPeer, resetCallStore])
 
   useEffect(() => {
+    if (!userId) return
+    const socket = getFmSocket()
+    return socket.subscribe((msg) => {
+      if (msg.type === 'call_invite') {
+        const state = useCallStore.getState()
+        if (state.isCalling || state.incomingCall) return
+        setIncomingCall({
+          peerId: msg.from_user_id,
+          isVideo: msg.is_video,
+          offer: { type: 'offer', sdp: '' },
+        })
+      }
+      if (msg.type === 'call_leave') {
+        cleanupPeer(msg.from_user_id)
+        const remaining = pcsRef.current.size
+        if (remaining === 0 && useCallStore.getState().isCalling) {
+          stopStreamTracks(useCallStore.getState().localStream)
+          resetCallStore()
+        }
+      }
+    })
+  }, [userId, setIncomingCall, cleanupPeer, resetCallStore])
+
+  useEffect(() => {
     if (!userId) {
       setPeerReady(false)
       endCall()

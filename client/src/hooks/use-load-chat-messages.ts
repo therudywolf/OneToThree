@@ -13,6 +13,7 @@ type ApiMessageRow = {
   id: string
   chat_id: string
   sender_id: string
+  reply_to_id?: string | null
   content: string | null
   iv: string | null
   media_path?: string | null
@@ -62,6 +63,7 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
           id: m.id,
           chat_id: m.chat_id,
           sender_id: m.sender_id,
+          reply_to_id: m.reply_to_id ?? null,
           plaintext,
           created_at: m.created_at,
           media_path: m.media_path,

@@ -4,6 +4,7 @@ export type DecryptedMessage = {
   sender_id: string
   plaintext: string
   created_at: string
+  reply_to_id?: string | null
   media_path?: string | null
   media_type?: 'audio' | 'video' | 'image' | null
   media_iv?: string | null

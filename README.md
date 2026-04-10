@@ -78,6 +78,35 @@ For PWA install, push subscriptions, and media uploads from the browser, use **H
 1. **Authentication:** The server issues a short-lived challenge; the client signs it with an **ECDSA P-256** private key held in the user vault. The server stores only the **public** JWK.
 2. **E2E messaging:** **ECDH** (NIST curves) derives shared AES keys for direct chats; **group** keys are wrapped per member and stored as opaque blobs. The server sees ciphertext and IVs only.
 3. **Media:** Files are **encrypted in the browser** before upload; MinIO holds ciphertext. Metadata in the DB references paths and IVs, not plaintext.
+4. **Calls:** WebRTC peer connections are established via **custom signaling** over the WebSocket. The server relays opaque `offer`/`answer`/`ICE` blobs — it cannot intercept media streams.
+5. **Search:** Message search is **client-side only**, operating over the already-decrypted message array in browser memory. No plaintext ever reaches the server.
+
+## Conceptual zero-knowledge map
+
+```
+┌─────────────────────────────────────────────────┐
+│                  CLIENT (Browser)               │
+│  ┌─────────┐  ┌──────────┐  ┌────────────────┐ │
+│  │ ECDSA   │  │ ECDH     │  │ AES-GCM-256    │ │
+│  │ Sign    │  │ Derive   │  │ Encrypt/Decrypt │ │
+│  └────┬────┘  └────┬─────┘  └───────┬────────┘ │
+│       │            │                │           │
+│  [challenge]  [shared key]    [ciphertext+IV]   │
+│       │            │                │           │
+└───────┼────────────┼────────────────┼───────────┘
+        │            ×                │
+        ▼            │                ▼
+┌───────────────────────────────────────────────┐
+│               SERVER (Blind Router)           │
+│  Stores: public JWK, ciphertext, IVs, paths  │
+│  Sees:   nothing in plaintext                 │
+│  Routes: WS signals, push notifications       │
+└───────────────────────────────────────────────┘
+```
+
+## API reference
+
+See **[API.md](./API.md)** for complete endpoint and WebSocket protocol documentation.
 
 ## Repository hygiene
 

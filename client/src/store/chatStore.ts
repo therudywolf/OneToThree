@@ -6,10 +6,12 @@ type ChatState = {
   messages: DecryptedMessage[]
   unwrappedPrivateKey: CryptoKey | null
   userId: string | null
+  replyTo: DecryptedMessage | null
   setActiveChatId: (id: string | null) => void
   setMessages: (messages: DecryptedMessage[]) => void
   appendMessage: (m: DecryptedMessage) => void
   removeMessage: (id: string) => void
+  setReplyTo: (m: DecryptedMessage | null) => void
   setUnwrappedPrivateKey: (k: CryptoKey | null) => void
   setUserId: (id: string | null) => void
   reset: () => void
@@ -20,7 +22,8 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   unwrappedPrivateKey: null,
   userId: null,
-  setActiveChatId: (id) => set({ activeChatId: id }),
+  replyTo: null,
+  setActiveChatId: (id) => set({ activeChatId: id, replyTo: null }),
   setMessages: (messages) => set({ messages }),
   appendMessage: (m) =>
     set((s) => {
@@ -38,6 +41,7 @@ export const useChatStore = create<ChatState>((set) => ({
     set((s) => ({
       messages: s.messages.filter((m) => m.id !== id),
     })),
+  setReplyTo: (m) => set({ replyTo: m }),
   setUnwrappedPrivateKey: (k) => set({ unwrappedPrivateKey: k }),
   setUserId: (id) => set({ userId: id }),
   reset: () =>
@@ -46,5 +50,6 @@ export const useChatStore = create<ChatState>((set) => ({
       messages: [],
       unwrappedPrivateKey: null,
       userId: null,
+      replyTo: null,
     }),
 }))

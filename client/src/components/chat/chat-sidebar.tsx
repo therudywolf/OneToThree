@@ -7,6 +7,7 @@ import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
 import { searchUsers } from '@/lib/api/users'
+import { useTranslation } from '@/hooks/use-translation'
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -15,6 +16,7 @@ function isUuid(value: string): boolean {
 }
 
 export function ChatSidebar({ userId }: { userId: string }) {
+  const { t } = useTranslation()
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const { chats, reload } = useChats(userId)
@@ -23,6 +25,16 @@ export function ChatSidebar({ userId }: { userId: string }) {
   const [createErr, setCreateErr] = useState<string | null>(null)
   const [groupModalOpen, setGroupModalOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  function mapSidebarError(code: string): string {
+    const m: Record<string, string> = {
+      USER_NOT_FOUND_OR_HIDDEN: t('sidebar.userNotFound'),
+      CANNOT_OPEN_DIRECT_WITH_SELF: t('sidebar.cannotOpenSelf'),
+      CREATE_FAILED: t('sidebar.createFailed'),
+      INVITE_LINK_COPIED: t('sidebar.copyInviteSuccess'),
+    }
+    return m[code] ?? code
+  }
 
   async function openDirect() {
     const raw = peerInput.trim()
@@ -68,7 +80,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
       ) : null}
       <NotificationToggle userId={userId} />
       <div className="border-b border-neon-cyan/40 p-3 text-[10px] uppercase tracking-[0.3em] text-neon-cyan">
-        :: CHANNELS
+        :: {t('sidebar.channels')}
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto">
         {chats.length === 0 ? (
@@ -80,7 +92,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
           <button
             key={c.id}
             type="button"
-            aria-label={`Open chat ${c.name?.trim() || c.id}`}
+            aria-label={`${t('common.openChatAria')} ${c.name?.trim() || c.id}`}
             onClick={() => setActiveChatId(c.id)}
             className={`w-full rounded-none border-b border-neon-cyan/20 px-3 py-2 text-left font-mono text-xs transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
               activeChatId === c.id
@@ -137,7 +149,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
       <div className="border-t border-neon-cyan/40 p-2">
         <button
           type="button"
-          aria-label="Copy my invite link"
+          aria-label={t('common.copyInviteAria')}
           onClick={async () => {
             const origin = window.location.origin
             const link = `${origin}/?invite=${encodeURIComponent(userId)}`
@@ -154,22 +166,24 @@ export function ChatSidebar({ userId }: { userId: string }) {
         </button>
         <button
           type="button"
-          aria-label="Create group E2E"
+          aria-label={t('common.createGroupAria')}
           onClick={() => setGroupModalOpen(true)}
           className="mb-2 w-full rounded-none border border-neon-cyan bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
         >
           [ CREATE_GROUP_E2E ]
         </button>
         <p className="mb-1 text-[10px] uppercase tracking-widest text-neon-cyan">
-          :: open_direct
+          :: {t('sidebar.openDirect')}
         </p>
         {createErr ? (
-          <p className="mb-1 font-mono text-[10px] text-neon-red">{createErr}</p>
+          <p className="mb-1 font-mono text-[10px] text-neon-red">
+            {mapSidebarError(createErr)}
+          </p>
         ) : null}
         <input
           className="terminal-input mb-2 text-xs"
-          placeholder="peer uuid or username"
-          aria-label="Peer UUID or username"
+          placeholder={t('sidebar.peerPlaceholder')}
+          aria-label={t('common.peerInputAria')}
           value={peerInput}
           onChange={(e) => setPeerInput(e.target.value)}
         />

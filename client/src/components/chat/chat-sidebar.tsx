@@ -5,6 +5,7 @@ import { useChatStore } from '@/store/chatStore'
 import { NotificationToggle } from '@/components/notification-toggle'
 import { createDirectE2EChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
+import { CreateGroupModal } from '@/components/chat/create-group-modal'
 
 export function ChatSidebar({ userId }: { userId: string }) {
   const activeChatId = useChatStore((s) => s.activeChatId)
@@ -13,6 +14,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState<string | null>(null)
+  const [groupModalOpen, setGroupModalOpen] = useState(false)
 
   async function openDirect() {
     const pid = peerInput.trim()
@@ -32,6 +34,16 @@ export function ChatSidebar({ userId }: { userId: string }) {
 
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r border-neon-cyan/40 bg-black">
+      {groupModalOpen ? (
+        <CreateGroupModal
+          userId={userId}
+          onClose={() => setGroupModalOpen(false)}
+          onCreated={(id) => {
+            setActiveChatId(id)
+            setGroupModalOpen(false)
+          }}
+        />
+      ) : null}
       <NotificationToggle userId={userId} />
       <div className="border-b border-neon-cyan/40 p-3 text-[10px] uppercase tracking-[0.3em] text-neon-cyan">
         :: CHANNELS
@@ -59,6 +71,13 @@ export function ChatSidebar({ userId }: { userId: string }) {
         ))}
       </nav>
       <div className="border-t border-neon-cyan/40 p-2">
+        <button
+          type="button"
+          onClick={() => setGroupModalOpen(true)}
+          className="mb-2 w-full rounded-none border border-neon-cyan bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
+        >
+          [ CREATE_GROUP_E2E ]
+        </button>
         <p className="mb-1 text-[10px] uppercase tracking-widest text-neon-cyan">
           :: open_direct
         </p>

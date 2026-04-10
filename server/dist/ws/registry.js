@@ -31,3 +31,14 @@ export function broadcastToUsers(userIds, payload) {
         sendToUser(id, payload);
     }
 }
+/** True if the user has at least one open WebSocket connection. */
+export function hasActiveSocket(userId) {
+    const set = userSockets.get(userId);
+    if (!set?.size)
+        return false;
+    for (const socket of set) {
+        if (socket.readyState === socket.OPEN)
+            return true;
+    }
+    return false;
+}

@@ -52,6 +52,7 @@ export async function buildChatCryptoContext(
     if (!me?.encrypted_group_key) {
       throw new Error('MISSING_GROUP_KEY')
     }
+    /* Unwrap: creator-KEK format (ECDH with creator pub) or legacy ephemeral wrap. */
     const groupKey = await unwrapGroupKeyFromStoredPayload(
       privateKey,
       me.encrypted_group_key

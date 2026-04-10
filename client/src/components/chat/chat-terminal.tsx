@@ -2,13 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useChatStore } from '@/store/chatStore'
-import type { DecryptedMessage } from '@/types/chat'
-import { SecureAudioPlayer } from '@/components/chat/secure-audio-player'
-import { SecureVideoCircle } from '@/components/chat/secure-video-circle'
-
-function mediaMime(m: DecryptedMessage): string {
-  return m.media_type === 'audio' ? 'audio/webm' : 'video/webm'
-}
+import { MediaMessage } from '@/components/chat/media-message'
 
 export function ChatTerminal({
   userId,
@@ -57,21 +51,7 @@ export function ChatTerminal({
               <div className="whitespace-pre-wrap break-words">{m.plaintext}</div>
             ) : null}
             {m.media_path && m.media_iv && m.media_type ? (
-              m.media_type === 'audio' ? (
-                <SecureAudioPlayer
-                  mediaPath={m.media_path}
-                  mediaIv={m.media_iv}
-                  mimeType={mediaMime(m)}
-                  sharedKey={sharedKey}
-                />
-              ) : (
-                <SecureVideoCircle
-                  mediaPath={m.media_path}
-                  mediaIv={m.media_iv}
-                  mimeType={mediaMime(m)}
-                  sharedKey={sharedKey}
-                />
-              )
+              <MediaMessage message={m} sharedKey={sharedKey} />
             ) : null}
           </div>
         ))}

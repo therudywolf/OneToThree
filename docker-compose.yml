@@ -42,8 +42,14 @@ services:
       DATABASE_URL: postgres://forest:forest@db:5432/forest
       JWT_SECRET: ${JWT_SECRET:-dev-change-in-production}
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio_secret_change_me
+      MINIO_BUCKET: forest-media
       MINIO_ACCESS_KEY: minio
       MINIO_SECRET_KEY: minio_secret_change_me
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@localhost}
     depends_on:
       - db
       - minio

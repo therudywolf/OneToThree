@@ -111,6 +111,17 @@ export function exportEcdhPublicJwkFromPrivateKeyString(jwkString: string): stri
   return JSON.stringify(pub)
 }
 
+/** Export ECDH public JWK from an ECDH private key (Web Crypto JWK includes x,y,d). */
+export async function exportEcdhPublicJwkFromPrivateKey(
+  privateKey: CryptoKey
+): Promise<string> {
+  const jwk = (await getSubtle().exportKey('jwk', privateKey)) as JsonWebKey & {
+    d?: string
+  }
+  const { d: _d, ...pub } = jwk
+  return JSON.stringify(pub)
+}
+
 /** Import a stored ECDH private JWK (from vault unwrap). */
 export async function importEcdhPrivateKey(jwkString: string): Promise<CryptoKey> {
   const jwk = JSON.parse(jwkString) as JsonWebKey
@@ -181,6 +192,35 @@ export async function decryptMessage(
   )
 
   return new TextDecoder().decode(plainBuffer)
+}
+
+/** AES-GCM encrypt arbitrary bytes (same 256-bit key as text messages). */
+export async function encryptBinary(
+  sharedKey: CryptoKey,
+  plain: ArrayBuffer
+): Promise<{ cipher: ArrayBuffer; ivBase64: string }> {
+  const iv = new Uint8Array(AES_GCM_IV_LENGTH)
+  crypto.getRandomValues(iv)
+  const cipherBuffer = await getSubtle().encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    sharedKey,
+    plain as BufferSource
+  )
+  return { cipher: cipherBuffer, ivBase64: uint8ToBase64(iv) }
+}
+
+/** Decrypt binary payload from {@link encryptBinary}. */
+export async function decryptBinary(
+  sharedKey: CryptoKey,
+  ciphertext: ArrayBuffer,
+  ivBase64: string
+): Promise<ArrayBuffer> {
+  const iv = base64ToUint8(ivBase64)
+  return getSubtle().decrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    sharedKey,
+    ciphertext as BufferSource
+  )
 }
 
 /* —— ECDSA P-256 (challenge–response auth; distinct from ECDH above) —— */

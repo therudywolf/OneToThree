@@ -13,6 +13,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { isUuid, normalizePeerInput } from '@/lib/peer-input'
+import { canonicalUserId } from '@/lib/user-id'
 
 export function ChatSidebar({ userId }: { userId: string }) {
   const { t } = useTranslation()
@@ -57,7 +58,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
         }
         pid = picked.id
       }
-      if (pid === userId) {
+      if (canonicalUserId(pid) === canonicalUserId(userId)) {
         throw new Error('CANNOT_OPEN_DIRECT_WITH_SELF')
       }
       const chat = await createDirectE2EChat(userId, pid)

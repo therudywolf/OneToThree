@@ -56,9 +56,46 @@ function isGroupType(t: string): boolean {
   return t === 'group_e2e'
 }
 
+/** If a direct_e2e chat already links exactly these two users, return it (idempotent create). */
+async function findExistingDirectE2EBetween(
+  userA: string,
+  userB: string
+): Promise<{ id: string; name: string | null; type: string } | null> {
+  const aRows = await db
+    .select({ chatId: chatMembers.chatId })
+    .from(chatMembers)
+    .innerJoin(chats, eq(chats.id, chatMembers.chatId))
+    .where(and(eq(chatMembers.userId, userA), eq(chats.type, 'direct_e2e')))
+
+  const bIds = new Set(
+    (
+      await db
+        .select({ chatId: chatMembers.chatId })
+        .from(chatMembers)
+        .where(eq(chatMembers.userId, userB))
+    ).map((r) => r.chatId)
+  )
+
+  for (const { chatId } of aRows) {
+    if (!bIds.has(chatId)) continue
+    const members = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, chatId))
+    if (members.length !== 2) continue
+    const [chat] = await db
+      .select()
+      .from(chats)
+      .where(eq(chats.id, chatId))
+      .limit(1)
+    if (chat) return chat
+  }
+  return null
+}
+
 export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
@@ -106,7 +143,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.get('/:chatId', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
@@ -160,7 +197,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.post('/', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
@@ -294,6 +331,24 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'UNKNOWN_MEMBER' })
     }
 
+    if (type === 'direct_e2e') {
+      const peerId = uniqueIds.find((id) => id !== authId)
+      if (peerId) {
+        const existingDirect = await findExistingDirectE2EBetween(authId, peerId)
+        if (existingDirect) {
+          return reply.status(201).send({
+            chat: {
+              id: existingDirect.id,
+              name: existingDirect.name,
+              type: existingDirect.type,
+              is_group: false,
+              member_ids: uniqueIds,
+            },
+          })
+        }
+      }
+    }
+
     const [created] = await db.transaction(async (tx) => {
       const inserted = await tx
         .insert(chats)
@@ -333,7 +388,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.post('/:chatId/leave', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
     const { chatId } = request.params as { chatId: string }
 
@@ -367,7 +422,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.delete('/:chatId', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
     const { chatId } = request.params as { chatId: string }
 

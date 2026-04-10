@@ -19,7 +19,7 @@ const unsubscribeBodySchema = z.object({
 
 export const pushRoutes: FastifyPluginAsync = async (app) => {
   app.post('/subscribe', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
@@ -51,7 +51,7 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.delete('/unsubscribe', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }

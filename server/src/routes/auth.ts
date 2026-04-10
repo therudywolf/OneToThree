@@ -17,7 +17,10 @@ import {
   safeEqualUtf8,
   verifyNonceSignatureEcdsaP256,
 } from '../lib/ecdsa-verify.js'
-import { SESSION_COOKIE } from '../lib/session-cookie.js'
+import {
+  clearFmSessionCookie,
+  SESSION_COOKIE,
+} from '../lib/session-cookie.js'
 import { normalizeUuid } from '../lib/uuid.js'
 
 const challengeBodySchema = z.object({
@@ -47,7 +50,7 @@ function sessionCookieBase(): CookieSerializeOptions {
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get('/ws-ticket', async (request, reply) => {
-    const user = await getAuthUser(request)
+    const user = await getAuthUser(request, reply)
     if (!user) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
@@ -63,33 +66,32 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   })
 
   app.get('/me', async (request, reply) => {
-    const token = request.cookies[SESSION_COOKIE]
-    if (!token) {
+    const hadCookie = Boolean(request.cookies[SESSION_COOKIE])
+    const user = await getAuthUser(request, reply)
+    if (user) {
+      return reply.send({
+        user: {
+          id: user.id,
+          username: user.username,
+          is_discoverable: user.is_discoverable,
+        },
+      })
+    }
+    if (!hadCookie) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
     try {
-      const payload = await request.server.jwt.verify<{
-        sub: string
-        username: string
-      }>(token)
-      return reply.send({
-        user: {
-          id: normalizeUuid(payload.sub),
-          username: payload.username,
-        },
-      })
+      await request.server.jwt.verify(request.cookies[SESSION_COOKIE] ?? '')
     } catch {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
+    return reply
+      .status(401)
+      .send({ error: 'GHOST_SESSION_USER_NOT_FOUND' })
   })
 
   app.post('/logout', async (_request, reply) => {
-    const base = sessionCookieBase()
-    reply.clearCookie(SESSION_COOKIE, {
-      path: base.path,
-      sameSite: base.sameSite,
-      secure: base.secure,
-    })
+    clearFmSessionCookie(reply)
     return reply.send({ ok: true })
   })
 

@@ -24,6 +24,7 @@ export function ChatTerminal({
   const removeMessage = useChatStore((s) => s.removeMessage)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useChatStore((s) => s.activeChatId)
+  const typingUsers = useChatStore((s) => s.typingUsers)
   const ref = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
   const [olderMessages, setOlderMessages] = useState<DecryptedMessage[]>([])
@@ -64,6 +65,9 @@ export function ChatTerminal({
 
   const msgById = (id: string) => renderMessages.find((m) => m.id === id)
   const oldestLoaded = renderMessages[0] ?? null
+  const typingNow = activeChatId
+    ? Object.values(typingUsers[activeChatId] ?? {}).map((v) => v.username)
+    : []
 
   useEffect(() => {
     if (!activeChatId || !topSentinelRef.current || !ref.current) return
@@ -225,6 +229,12 @@ export function ChatTerminal({
             </div>
           )
         })}
+        {typingNow.length > 0 ? (
+          <div className="sticky bottom-0 mt-2 border-t border-neon-cyan/20 bg-black/90 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
+            [ @{typingNow[0]} IS TYPING
+            <span className="animate-pulse">...</span> ]
+          </div>
+        ) : null}
       </div>
     </div>
   )

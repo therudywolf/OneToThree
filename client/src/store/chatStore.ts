@@ -20,6 +20,7 @@ type ChatState = {
   unwrappedPrivateKey: CryptoKey | null
   userId: string | null
   replyTo: DecryptedMessage | null
+  typingUsers: Record<string, Record<string, { username: string; expiresAt: number }>>
   setActiveChatId: (id: string | null) => void
   setMessages: (messages: DecryptedMessage[]) => void
   appendMessage: (m: DecryptedMessage) => void
@@ -27,6 +28,10 @@ type ChatState = {
   setReplyTo: (m: DecryptedMessage | null) => void
   setUnwrappedPrivateKey: (k: CryptoKey | null) => void
   setUserId: (id: string | null) => void
+  setTypingUser: (chatId: string, userId: string, username: string, ttlMs?: number) => void
+  clearTypingUser: (chatId: string, userId: string) => void
+  clearTypingUserEverywhere: (userId: string) => void
+  pruneTypingUsers: (nowMs?: number) => void
   reset: () => void
 }
 
@@ -36,6 +41,7 @@ export const useChatStore = create<ChatState>((set) => ({
   unwrappedPrivateKey: null,
   userId: null,
   replyTo: null,
+  typingUsers: {},
   setActiveChatId: (id) => set({ activeChatId: id, replyTo: null }),
   setMessages: (messages) =>
     set({
@@ -57,6 +63,50 @@ export const useChatStore = create<ChatState>((set) => ({
   setReplyTo: (m) => set({ replyTo: m }),
   setUnwrappedPrivateKey: (k) => set({ unwrappedPrivateKey: k }),
   setUserId: (id) => set({ userId: id }),
+  setTypingUser: (chatId, userId, username, ttlMs = 3000) =>
+    set((s) => ({
+      typingUsers: {
+        ...s.typingUsers,
+        [chatId]: {
+          ...(s.typingUsers[chatId] ?? {}),
+          [userId]: {
+            username,
+            expiresAt: Date.now() + ttlMs,
+          },
+        },
+      },
+    })),
+  clearTypingUser: (chatId, userId) =>
+    set((s) => {
+      const bucket = { ...(s.typingUsers[chatId] ?? {}) }
+      delete bucket[userId]
+      const typingUsers = { ...s.typingUsers }
+      if (Object.keys(bucket).length === 0) delete typingUsers[chatId]
+      else typingUsers[chatId] = bucket
+      return { typingUsers }
+    }),
+  clearTypingUserEverywhere: (userId) =>
+    set((s) => {
+      const typingUsers: ChatState['typingUsers'] = {}
+      for (const [chatId, users] of Object.entries(s.typingUsers)) {
+        const nextUsers = { ...users }
+        delete nextUsers[userId]
+        if (Object.keys(nextUsers).length > 0) typingUsers[chatId] = nextUsers
+      }
+      return { typingUsers }
+    }),
+  pruneTypingUsers: (nowMs = Date.now()) =>
+    set((s) => {
+      const typingUsers: ChatState['typingUsers'] = {}
+      for (const [chatId, users] of Object.entries(s.typingUsers)) {
+        const nextUsers: Record<string, { username: string; expiresAt: number }> = {}
+        for (const [uid, state] of Object.entries(users)) {
+          if (state.expiresAt > nowMs) nextUsers[uid] = state
+        }
+        if (Object.keys(nextUsers).length > 0) typingUsers[chatId] = nextUsers
+      }
+      return { typingUsers }
+    }),
   reset: () =>
     set({
       activeChatId: null,
@@ -64,5 +114,6 @@ export const useChatStore = create<ChatState>((set) => ({
       unwrappedPrivateKey: null,
       userId: null,
       replyTo: null,
+      typingUsers: {},
     }),
 }))

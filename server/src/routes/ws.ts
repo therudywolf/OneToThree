@@ -71,6 +71,18 @@ const messageReadSchema = z.object({
   message_id: z.string().uuid(),
 })
 
+const typingStartSchema = z.object({
+  type: z.literal('typing_start'),
+  chat_id: z.string().uuid(),
+  user_id: z.string().uuid().optional(),
+})
+
+const typingStopSchema = z.object({
+  type: z.literal('typing_stop'),
+  chat_id: z.string().uuid(),
+  user_id: z.string().uuid().optional(),
+})
+
 /** Converts websocket payload variants into UTF-8 text for JSON parsing. */
 function bufferToString(raw: unknown): string {
   if (typeof raw === 'string') return raw
@@ -270,6 +282,38 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             chat_id,
             message_id,
             reader_id: user.id,
+          })
+          return
+        }
+
+        const typingStartParsed = typingStartSchema.safeParse(json)
+        if (typingStartParsed.success) {
+          const { chat_id } = typingStartParsed.data
+          if (!(await isMemberOfChat(chat_id, user.id))) return
+          const otherIds = (await getChatMemberIds(chat_id)).filter(
+            (id) => id !== user.id
+          )
+          broadcastToUsers(otherIds, {
+            type: 'typing_start',
+            chat_id,
+            user_id: user.id,
+            username: user.username,
+          })
+          return
+        }
+
+        const typingStopParsed = typingStopSchema.safeParse(json)
+        if (typingStopParsed.success) {
+          const { chat_id } = typingStopParsed.data
+          if (!(await isMemberOfChat(chat_id, user.id))) return
+          const otherIds = (await getChatMemberIds(chat_id)).filter(
+            (id) => id !== user.id
+          )
+          broadcastToUsers(otherIds, {
+            type: 'typing_stop',
+            chat_id,
+            user_id: user.id,
+            username: user.username,
           })
           return
         }

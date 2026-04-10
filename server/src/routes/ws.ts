@@ -5,6 +5,13 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, messages } from '../db/schema.js'
 import { getAuthUser, type AuthUser } from '../lib/auth-user.js'
+import { sendPushToUser } from '../lib/push.js'
+import {
+  broadcastToUsers,
+  hasActiveSocket,
+  registerUserSocket,
+  sendToUser,
+} from '../ws/registry.js'
 
 async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> {
   const fromCookie = await getAuthUser(request)
@@ -24,13 +31,6 @@ async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> 
     return null
   }
 }
-import { sendPushToUser } from '../lib/push.js'
-import {
-  broadcastToUsers,
-  hasActiveSocket,
-  registerUserSocket,
-  sendToUser,
-} from '../ws/registry.js'
 
 const chatMessageInSchema = z.object({
   type: z.literal('chat_message'),
@@ -40,12 +40,30 @@ const chatMessageInSchema = z.object({
   media_path: z.string().nullable().optional(),
   media_type: z.string().nullable().optional(),
   media_iv: z.string().nullable().optional(),
+  reply_to_id: z.string().uuid().nullable().optional(),
 })
 
 const webrtcSignalSchema = z.object({
   type: z.literal('webrtc_signal'),
   targetUserId: z.string().uuid(),
   signalData: z.unknown(),
+})
+
+const callInviteSchema = z.object({
+  type: z.literal('call_invite'),
+  chat_id: z.string().uuid(),
+  is_video: z.boolean().default(false),
+})
+
+const callLeaveSchema = z.object({
+  type: z.literal('call_leave'),
+  chat_id: z.string().uuid(),
+})
+
+const messageReadSchema = z.object({
+  type: z.literal('message_read'),
+  chat_id: z.string().uuid(),
+  message_id: z.string().uuid(),
 })
 
 function bufferToString(raw: unknown): string {
@@ -98,6 +116,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             .values({
               chatId: p.chat_id,
               senderId: user.id,
+              replyToId: p.reply_to_id ?? null,
               content: p.content ?? null,
               iv: p.iv ?? null,
               mediaPath: p.media_path ?? null,
@@ -108,6 +127,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               id: messages.id,
               chatId: messages.chatId,
               senderId: messages.senderId,
+              replyToId: messages.replyToId,
               content: messages.content,
               iv: messages.iv,
               mediaPath: messages.mediaPath,
@@ -138,6 +158,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               id: row.id,
               chat_id: row.chatId,
               sender_id: row.senderId,
+              reply_to_id: row.replyToId,
               content: row.content,
               iv: row.iv,
               media_path: row.mediaPath,
@@ -168,6 +189,87 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             type: 'webrtc_signal',
             fromUserId: user.id,
             signalData,
+          })
+          return
+        }
+
+        const inviteParsed = callInviteSchema.safeParse(json)
+        if (inviteParsed.success) {
+          const { chat_id, is_video } = inviteParsed.data
+          const memberOk = await db
+            .select({ one: chatMembers.userId })
+            .from(chatMembers)
+            .where(
+              and(
+                eq(chatMembers.chatId, chat_id),
+                eq(chatMembers.userId, user.id)
+              )
+            )
+            .limit(1)
+          if (!memberOk.length) {
+            ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
+            return
+          }
+          const allMembers = await db
+            .select({ userId: chatMembers.userId })
+            .from(chatMembers)
+            .where(eq(chatMembers.chatId, chat_id))
+          const otherIds = allMembers
+            .map((m) => m.userId)
+            .filter((id) => id !== user.id)
+          broadcastToUsers(otherIds, {
+            type: 'call_invite',
+            chat_id,
+            from_user_id: user.id,
+            is_video,
+          })
+          return
+        }
+
+        const leaveParsed = callLeaveSchema.safeParse(json)
+        if (leaveParsed.success) {
+          const { chat_id } = leaveParsed.data
+          const allMembers = await db
+            .select({ userId: chatMembers.userId })
+            .from(chatMembers)
+            .where(eq(chatMembers.chatId, chat_id))
+          const otherIds = allMembers
+            .map((m) => m.userId)
+            .filter((id) => id !== user.id)
+          broadcastToUsers(otherIds, {
+            type: 'call_leave',
+            chat_id,
+            from_user_id: user.id,
+          })
+          return
+        }
+
+        const readParsed = messageReadSchema.safeParse(json)
+        if (readParsed.success) {
+          const { chat_id, message_id } = readParsed.data
+          const memberOk = await db
+            .select({ one: chatMembers.userId })
+            .from(chatMembers)
+            .where(
+              and(
+                eq(chatMembers.chatId, chat_id),
+                eq(chatMembers.userId, user.id)
+              )
+            )
+            .limit(1)
+          if (!memberOk.length) return
+          const allMembers = await db
+            .select({ userId: chatMembers.userId })
+            .from(chatMembers)
+            .where(eq(chatMembers.chatId, chat_id))
+          const otherIds = allMembers
+            .map((m) => m.userId)
+            .filter((id) => id !== user.id)
+          broadcastToUsers(otherIds, {
+            type: 'message_read',
+            chat_id,
+            message_id,
+            reader_id: user.id,
           })
           return
         }

@@ -5,6 +5,7 @@ export type DbMessageRow = {
   id: string
   chat_id: string
   sender_id: string
+  reply_to_id?: string | null
   encrypted_content: string | null
   iv: string | null
   media_path: string | null
@@ -46,6 +47,7 @@ export async function rowToDecryptedMessage(
     id: row.id,
     chat_id: row.chat_id,
     sender_id: row.sender_id,
+    reply_to_id: row.reply_to_id ?? null,
     plaintext,
     created_at: row.created_at,
     media_path: row.media_path,

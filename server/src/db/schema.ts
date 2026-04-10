@@ -60,6 +60,7 @@ export const messages = pgTable('messages', {
   senderId: uuid('sender_id')
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
+  replyToId: uuid('reply_to_id'),
   content: text('content'),
   iv: text('iv'),
   mediaPath: text('media_path'),

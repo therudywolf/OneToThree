@@ -131,5 +131,6 @@ export function useMediaRecorder() {
     startVoiceCapture,
     startVideoCircleCapture,
     stopCapture,
+    previewStream: streamRef.current,
   }
 }

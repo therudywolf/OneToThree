@@ -14,7 +14,7 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
 
   const sendText = useCallback(
-    async (text: string) => {
+    async (text: string, replyToId?: string | null) => {
       const t = text.trim()
       if (
         !t ||
@@ -35,6 +35,7 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
         chat_id: activeChatId,
         content: encrypted_content,
         iv,
+        reply_to_id: replyToId ?? null,
       })
     },
     [activeChatId, userId, unwrappedPrivateKey, cryptoCtx]

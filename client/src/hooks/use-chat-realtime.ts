@@ -47,6 +47,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
           id: m.id,
           chat_id: m.chat_id,
           sender_id: m.sender_id,
+          reply_to_id: m.reply_to_id ?? null,
           plaintext,
           created_at: m.created_at,
           media_path: m.media_path,

@@ -27,6 +27,7 @@ export type WsInboundMessage =
         id: string
         chat_id: string
         sender_id: string
+        reply_to_id?: string | null
         content: string | null
         iv: string | null
         media_path?: string | null
@@ -38,6 +39,19 @@ export type WsInboundMessage =
   | { type: 'webrtc_signal'; fromUserId: string; signalData: unknown }
   | { type: 'chats_updated' }
   | { type: 'message_deleted'; message_id: string; chat_id: string }
+  | {
+      type: 'call_invite'
+      chat_id: string
+      from_user_id: string
+      is_video: boolean
+    }
+  | { type: 'call_leave'; chat_id: string; from_user_id: string }
+  | {
+      type: 'message_read'
+      chat_id: string
+      message_id: string
+      reader_id: string
+    }
   | { type: 'error'; error: string }
 
 class FmSocketClient {

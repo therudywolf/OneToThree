@@ -23,6 +23,8 @@ import { ChatTerminal } from '@/components/chat/chat-terminal'
 import { ChatMediaControls } from '@/components/chat/chat-media-controls'
 import { ChatInput } from '@/components/chat/chat-input'
 import { LogoutButton } from '@/components/logout-button'
+import { OfflineBanner } from '@/components/offline-banner'
+import { SettingsModal } from '@/components/settings-modal'
 import { IncomingCallModal } from '@/components/call/incoming-call-modal'
 import { ActiveCallOverlay } from '@/components/call/active-call-overlay'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
@@ -43,6 +45,7 @@ export function ChatApp({
   const [vaultState, setVaultState] = useState<'loading' | 'ok' | 'missing'>(
     'loading'
   )
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const {
     peerReady,
@@ -116,7 +119,7 @@ export function ChatApp({
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-black">
+    <div className="flex h-dvh flex-col bg-black supports-[height:100dvh]:h-dvh">
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
         onReject={rejectIncomingCall}
@@ -127,6 +130,14 @@ export function ChatApp({
         onToggleCamera={toggleCamera}
       />
 
+      <OfflineBanner />
+      {settingsOpen ? (
+        <SettingsModal
+          userId={userId}
+          username={username}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-neon-cyan/40 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           <span className="shrink-0">PROJECT_13 :: E2E</span>
@@ -137,7 +148,16 @@ export function ChatApp({
             onVideoCall={() => void handleVideoCall()}
           />
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="border border-neon-cyan/60 bg-black px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+          >
+            [ CFG ]
+          </button>
+          <LogoutButton />
+        </div>
       </header>
       <div className="flex min-h-0 flex-1">
         <ChatSidebar userId={userId} />

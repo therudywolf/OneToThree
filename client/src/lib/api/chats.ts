@@ -84,3 +84,41 @@ export async function fetchPeerIdsForChat(
   if (!c) return []
   return c.member_ids.filter((id) => id !== myUserId)
 }
+
+export async function leaveChat(chatId: string): Promise<void> {
+  const r = await fetch(`${API_URL}/chats/${chatId}/leave`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'LEAVE_FAILED')
+  }
+}
+
+export async function deleteChat(chatId: string): Promise<void> {
+  const r = await fetch(`${API_URL}/chats/${chatId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'DELETE_FAILED')
+  }
+}
+
+export async function deleteMessage(
+  messageId: string,
+  forEveryone: boolean
+): Promise<void> {
+  const r = await fetch(`${API_URL}/messages/${messageId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ for_everyone: forEveryone }),
+  })
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'DELETE_MSG_FAILED')
+  }
+}

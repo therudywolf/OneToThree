@@ -15,7 +15,8 @@ function escapeIlikePattern(fragment: string): string {
 }
 
 const patchMeSchema = z.object({
-  ecdh_public_key_jwk: z.string().min(8),
+  ecdh_public_key_jwk: z.string().min(8).optional(),
+  is_discoverable: z.boolean().optional(),
 })
 
 const lookupBodySchema = z.object({
@@ -23,6 +24,17 @@ const lookupBodySchema = z.object({
 })
 
 export const userRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/me/settings', async (request, reply) => {
+    const user = await getAuthUser(request)
+    if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    const [row] = await db
+      .select({ isDiscoverable: users.isDiscoverable })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+    return reply.send({ is_discoverable: row?.isDiscoverable ?? false })
+  })
+
   app.patch('/me', async (request, reply) => {
     const user = await getAuthUser(request)
     if (!user) {
@@ -32,20 +44,31 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
-    let jwk: { crv?: string; kty?: string; x?: string; y?: string }
-    try {
-      jwk = JSON.parse(parsed.data.ecdh_public_key_jwk) as typeof jwk
-    } catch {
-      return reply.status(400).send({ error: 'INVALID_JWK' })
-    }
-    if (jwk.kty !== 'EC' || (jwk.crv !== 'P-256' && jwk.crv !== 'P-384')) {
-      return reply.status(400).send({ error: 'INVALID_JWK' })
+
+    const updates: Record<string, unknown> = {}
+
+    if (parsed.data.ecdh_public_key_jwk !== undefined) {
+      let jwk: { crv?: string; kty?: string; x?: string; y?: string }
+      try {
+        jwk = JSON.parse(parsed.data.ecdh_public_key_jwk) as typeof jwk
+      } catch {
+        return reply.status(400).send({ error: 'INVALID_JWK' })
+      }
+      if (jwk.kty !== 'EC' || (jwk.crv !== 'P-256' && jwk.crv !== 'P-384')) {
+        return reply.status(400).send({ error: 'INVALID_JWK' })
+      }
+      updates.ecdhPublicKeyJwk = parsed.data.ecdh_public_key_jwk
     }
 
-    await db
-      .update(users)
-      .set({ ecdhPublicKeyJwk: parsed.data.ecdh_public_key_jwk })
-      .where(eq(users.id, user.id))
+    if (parsed.data.is_discoverable !== undefined) {
+      updates.isDiscoverable = parsed.data.is_discoverable
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
+    }
+
+    await db.update(users).set(updates).where(eq(users.id, user.id))
 
     return reply.send({ ok: true })
   })

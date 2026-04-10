@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { decryptBinary } from '@/lib/crypto'
 import { getDownloadUrl } from '@/lib/api/storage'
 import type { DecryptedMessage } from '@/types/chat'
@@ -42,72 +42,80 @@ export function MediaMessage({ message, sharedKey }: Props) {
   const [progress, setProgress] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    if (!mediaPath || !mediaIv || !sharedKey) {
-      setObjectUrl(null)
-      return
+    const el = sentinelRef.current
+    if (!el) return
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setVisible(true)
+          io.disconnect()
+        }
+      },
+      { rootMargin: '200px' }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+
+  const decrypt = useCallback(async () => {
+    if (!mediaPath || !mediaIv || !sharedKey) return
+    setLoadErr(null)
+    setObjectUrl(null)
+    try {
+      const downloadUrl = await getDownloadUrl(mediaPath)
+      const res = await fetch(downloadUrl)
+      if (!res.ok) throw new Error('FETCH_MEDIA_FAILED')
+      const cipher = await res.arrayBuffer()
+      const plain = await decryptBinary(sharedKey, cipher, mediaIv)
+      const mime = mimeFromPathAndType(mediaPath, mediaType)
+      const blob = new Blob([plain], { type: mime })
+      const url = URL.createObjectURL(blob)
+      blobUrlRef.current = url
+      setObjectUrl(url)
+    } catch (e) {
+      setLoadErr(e instanceof Error ? e.message : 'MEDIA_LOAD_FAIL')
     }
+  }, [mediaPath, mediaIv, sharedKey, mediaType])
 
-    let cancelled = false
-    ;(async () => {
-      setLoadErr(null)
-      setObjectUrl(null)
-      try {
-        const downloadUrl = await getDownloadUrl(mediaPath)
-        const res = await fetch(downloadUrl)
-        if (!res.ok) throw new Error('FETCH_MEDIA_FAILED')
-        const cipher = await res.arrayBuffer()
-        const plain = await decryptBinary(sharedKey, cipher, mediaIv)
-        const mime = mimeFromPathAndType(mediaPath, mediaType)
-        const blob = new Blob([plain], { type: mime })
-        const url = URL.createObjectURL(blob)
-        if (cancelled) {
-          URL.revokeObjectURL(url)
-          return
-        }
-        blobUrlRef.current = url
-        setObjectUrl(url)
-      } catch (e) {
-        if (!cancelled) {
-          setLoadErr(e instanceof Error ? e.message : 'MEDIA_LOAD_FAIL')
-        }
-      }
-    })()
-
+  useEffect(() => {
+    if (!visible || !mediaPath || !mediaIv || !sharedKey) return
+    void decrypt()
     return () => {
-      cancelled = true
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current)
         blobUrlRef.current = null
       }
       setObjectUrl(null)
     }
-  }, [mediaPath, mediaIv, sharedKey, mediaType, message.id])
+  }, [visible, decrypt, mediaPath, mediaIv, sharedKey])
 
-  if (!mediaPath || !mediaIv) {
-    return null
-  }
+  if (!mediaPath || !mediaIv) return null
 
   if (!sharedKey) {
     return (
-      <p className="mt-2 font-mono text-[10px] text-red-800">
+      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-red-800">
         NO_SESSION_KEY
-      </p>
+      </div>
     )
   }
 
   if (loadErr) {
     return (
-      <p className="mt-2 font-mono text-[10px] text-neon-red">[!] {loadErr}</p>
+      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-neon-red">
+        [!] {loadErr}
+      </div>
     )
   }
 
   if (!objectUrl) {
     return (
-      <p className="mt-2 font-mono text-[10px] text-red-800">
+      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-red-800 animate-pulse">
         DECRYPTING_MEDIA…
-      </p>
+      </div>
     )
   }
 

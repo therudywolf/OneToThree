@@ -100,6 +100,37 @@ Review `git status` before pushing.
 
 `server/drizzle/meta/` is listed in `.gitignore` (local Drizzle cache). **SQL migrations** under `server/drizzle/*.sql` remain the source of truth for schema changes; regenerate with `npm run db:generate` when the schema changes.
 
+## Reverse proxy (production)
+
+A ready-made **nginx** template lives at `deploy/nginx.conf`. Key points:
+
+- Enables **WebSocket** upgrade for `/api/` (required for real-time chat and WebRTC signaling).
+- Sets `client_max_body_size 64m` for encrypted media uploads.
+- Adds HSTS, `X-Frame-Options`, `X-Content-Type-Options` headers.
+- Replace `your-domain.example.com` and the SSL certificate paths with your own.
+
+For **Caddy**, the equivalent is a simple reverse-proxy block since Caddy handles TLS automatically.
+
+## Backup
+
+```bash
+npx tsx scripts/backup.ts
+```
+
+Dumps the Postgres database and MinIO data from running Docker containers into a timestamped `.tar.gz` archive under `backups/`.
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` warning during `docker compose up` | Run `npm run setup` first. The key is read from `client/.env.local`, not from Docker Compose env. |
+| `relation "users" does not exist` | Apply the DB schema: `npm run db:push:docker` (for Dockerized Postgres) or `npm run db:push` (local). |
+| CORS errors on media upload | MinIO does not support `PutBucketCors`; the API silently ignores this. If using a proxy, ensure `Access-Control-Allow-Origin` headers pass through. |
+| `PutBucketCors … NotImplemented` in API logs | Harmless — MinIO limitation. The warning is silently suppressed. |
+| PWA / Push not working | Web Push requires HTTPS. Use a tunnel (e.g. `ngrok`, `cloudflared`) for local testing. Ensure VAPID keys match between client and server. |
+| iOS Safari 100vh issues | The UI uses `100dvh` (dynamic viewport height). If the browser doesn't support it, a CSS fallback is provided. |
+| WebSocket drops behind reverse proxy | Ensure your proxy passes `Upgrade` and `Connection` headers. See `deploy/nginx.conf`. |
+
 ## Contact
 
 [Telegram](https://t.me/rudy_wolf) · [X](https://x.com/therudywolf) · [GitHub](https://github.com/therudywolf)

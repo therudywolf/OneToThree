@@ -49,7 +49,8 @@ export async function rowToDecryptedMessage(
     plaintext,
     created_at: row.created_at,
     media_path: row.media_path,
-    media_type: mt === 'audio' || mt === 'video' ? mt : null,
+    media_type:
+      mt === 'audio' || mt === 'video' || mt === 'image' ? mt : null,
     media_iv: row.media_iv,
   }
 }

@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, chats, users } from '../db/schema.js'
+import { chatMembers, chats, messages, users } from '../db/schema.js'
 import { getAuthUser } from '../lib/auth-user.js'
 import { broadcastToUsers } from '../ws/registry.js'
 
@@ -294,5 +294,72 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         member_ids: uniqueIds,
       },
     })
+  })
+
+  app.post('/:chatId/leave', async (request, reply) => {
+    const user = await getAuthUser(request)
+    if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    const { chatId } = request.params as { chatId: string }
+
+    const deleted = await db
+      .delete(chatMembers)
+      .where(
+        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
+      )
+      .returning({ chatId: chatMembers.chatId })
+
+    if (!deleted.length) {
+      return reply.status(404).send({ error: 'NOT_A_MEMBER' })
+    }
+
+    const remaining = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, chatId))
+
+    if (remaining.length === 0) {
+      await db.delete(messages).where(eq(messages.chatId, chatId))
+      await db.delete(chats).where(eq(chats.id, chatId))
+    } else {
+      broadcastToUsers(
+        remaining.map((r) => r.userId),
+        { type: 'chats_updated' }
+      )
+    }
+
+    return reply.send({ ok: true })
+  })
+
+  app.delete('/:chatId', async (request, reply) => {
+    const user = await getAuthUser(request)
+    if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    const { chatId } = request.params as { chatId: string }
+
+    const memberOk = await db
+      .select({ one: chatMembers.userId })
+      .from(chatMembers)
+      .where(
+        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
+      )
+      .limit(1)
+    if (!memberOk.length) {
+      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+    }
+
+    const allMembers = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, chatId))
+
+    await db.delete(messages).where(eq(messages.chatId, chatId))
+    await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+    await db.delete(chats).where(eq(chats.id, chatId))
+
+    broadcastToUsers(
+      allMembers.map((m) => m.userId),
+      { type: 'chats_updated' }
+    )
+
+    return reply.send({ ok: true })
   })
 }

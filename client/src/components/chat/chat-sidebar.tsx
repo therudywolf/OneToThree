@@ -3,18 +3,19 @@
 import { useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { NotificationToggle } from '@/components/notification-toggle'
-import { createDirectE2EChat } from '@/lib/api/chats'
+import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
 
 export function ChatSidebar({ userId }: { userId: string }) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
-  const { chats } = useChats(userId)
+  const { chats, reload } = useChats(userId)
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState<string | null>(null)
   const [groupModalOpen, setGroupModalOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   async function openDirect() {
     const pid = peerInput.trim()
@@ -70,6 +71,47 @@ export function ChatSidebar({ userId }: { userId: string }) {
           </button>
         ))}
       </nav>
+      {activeChatId ? (
+        <div className="flex gap-1 border-t border-neon-cyan/40 px-2 pt-2">
+          {chats.find((c) => c.id === activeChatId)?.is_group ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true)
+                void leaveChat(activeChatId)
+                  .then(() => {
+                    setActiveChatId(null)
+                    void reload()
+                  })
+                  .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
+                  .finally(() => setBusy(false))
+              }}
+              className="flex-1 border border-red-900 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red disabled:opacity-40"
+            >
+              [ LEAVE ]
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              if (!confirm('PURGE_CHAT_DATA?')) return
+              setBusy(true)
+              void deleteChat(activeChatId)
+                .then(() => {
+                  setActiveChatId(null)
+                  void reload()
+                })
+                .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
+                .finally(() => setBusy(false))
+            }}
+            className="flex-1 border border-red-900 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red disabled:opacity-40"
+          >
+            [ DELETE ]
+          </button>
+        </div>
+      ) : null}
       <div className="border-t border-neon-cyan/40 p-2">
         <button
           type="button"

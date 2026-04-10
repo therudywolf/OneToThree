@@ -5,6 +5,7 @@ import {
   setDiscoverable,
   uniqueHandle,
 } from './helpers'
+import { ChatPage } from './pom/chat-page'
 
 function wsTapInitScript() {
   const win = window as unknown as { __p13WsSent: string[] }
@@ -24,8 +25,8 @@ function wsTapInitScript() {
   }
 }
 
-test.describe('chat / websocket ciphertext', () => {
-  test('two users: direct E2E chat → outbound WS payload is not plaintext', async ({
+test.describe('chat / core & crypto', () => {
+  test('two users: outbound WS JSON is ciphertext (not plaintext); includes iv', async ({
     browser,
   }) => {
     const passphrase = 'E2E_Strong_Pass_99!'
@@ -40,23 +41,23 @@ test.describe('chat / websocket ciphertext', () => {
     const pageA = await ctxA.newPage()
     const pageB = await ctxB.newPage()
 
+    const wsUrls: string[] = []
+    pageA.on('websocket', (ws) => {
+      wsUrls.push(ws.url())
+    })
+
     await registerNewUser(pageA, alice, passphrase)
     await registerNewUser(pageB, bob, passphrase)
 
     const bobId = await fetchUserId(pageB)
-
-    await pageA.getByPlaceholder('peer uuid or username').fill(bobId)
-    await pageA.getByRole('button', { name: '[ OPEN ]' }).click()
+    const chat = new ChatPage(pageA)
+    await chat.openDirectChatByPeerId(bobId)
 
     await expect(pageA.getByText('[DIR]', { exact: false }).first()).toBeVisible({
       timeout: 60_000,
     })
 
-    const txForm = pageA.locator('form').filter({
-      has: pageA.getByRole('button', { name: /TX/ }),
-    })
-    await txForm.locator('input.terminal-input').fill(plain)
-    await pageA.getByRole('button', { name: /TX/ }).click()
+    await chat.sendChatMessage(plain)
 
     await expect
       .poll(
@@ -86,8 +87,46 @@ test.describe('chat / websocket ciphertext', () => {
     expect(parsed.content).not.toBe(plain)
     expect(parsed.content!.length).toBeGreaterThan(8)
 
+    expect(wsUrls.length).toBeGreaterThan(0)
+    expect(wsUrls.some((u) => /ws/i.test(u))).toBe(true)
+
     await ctxA.close()
     await ctxB.close()
+  })
+
+  test('invite ?invite=UUID creates direct chat after vault unlock', async ({
+    browser,
+    baseURL,
+  }) => {
+    const passphrase = 'E2E_Strong_Pass_99!'
+    const alice = uniqueHandle('inv_alice')
+    const bob = uniqueHandle('inv_bob')
+
+    const ctxB = await browser.newContext()
+    const pageB = await ctxB.newPage()
+    await registerNewUser(pageB, bob, passphrase)
+    const bobId = await fetchUserId(pageB)
+    await ctxB.close()
+
+    const ctxA = await browser.newContext()
+    const pageA = await ctxA.newPage()
+    await registerNewUser(pageA, alice, passphrase)
+
+    const origin = baseURL ?? 'http://127.0.0.1:3000'
+    const created = pageA.waitForResponse(
+      (r) =>
+        r.url().includes('/chats') &&
+        r.request().method() === 'POST' &&
+        r.status() === 201
+    )
+    await pageA.goto(`${origin}/?invite=${bobId}`)
+    await created
+
+    await expect(pageA.getByText('[DIR]', { exact: false }).first()).toBeVisible({
+      timeout: 45_000,
+    })
+
+    await ctxA.close()
   })
 
   test('delete for everyone removes message for all peers', async ({ browser }) => {

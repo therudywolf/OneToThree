@@ -1,0 +1,10 @@
+{
+  "name": "db-migrate",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2"
+  }
+}

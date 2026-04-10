@@ -6,36 +6,10 @@ import { motion } from 'framer-motion'
 import { useAuth } from '@/components/auth/auth-provider'
 import { cryptoLogin } from '@/lib/auth/crypto-login'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
-
-function mapError(code: string): string {
-  const m: Record<string, string> = {
-    USERNAME_REQUIRED: 'Username is required.',
-    PASSWORD_REQUIRED: 'Passphrase is required.',
-    PIN_MIN_8: 'Passphrase must be at least 8 characters for new keys.',
-    NO_LOCAL_VAULT:
-      'No local vault for this handle. Register on this device first.',
-    VAULT_ALREADY_EXISTS: 'A vault already exists for this handle. Use login.',
-    UNWRAP_FAILED: 'Wrong passphrase or corrupted vault.',
-    INVALID_VAULT_FORMAT: 'Vault data is invalid.',
-    LEGACY_VAULT_REQUIRES_REREGISTER:
-      'This vault predates ECDSA auth. Register a new handle or clear local data.',
-    INVALID_SIGNING_KEY: 'Could not load signing key from vault.',
-    SIGN_FAILED: 'Signing the challenge failed.',
-    CHALLENGE_FAILED: 'Could not reach auth server.',
-    VERIFY_FAILED: 'Verification failed.',
-    UNAUTHORIZED: 'Session invalid.',
-    NO_CHALLENGE: 'No active challenge — try again.',
-    NONCE_MISMATCH: 'Challenge mismatch — try again.',
-    SIGNATURE_INVALID: 'Signature rejected by server.',
-    PUBLIC_KEY_REQUIRED: 'Server expected a public key (registration).',
-    PUBLIC_KEY_CONFLICT: 'Public key does not match server record.',
-    USERNAME_TAKEN: 'That handle is already taken.',
-    INVALID_BODY: 'Invalid request.',
-  }
-  return m[code] ?? code.replace(/_/g, ' ')
-}
+import { useTranslation } from '@/hooks/use-translation'
 
 export function LoginForm() {
+  const { t } = useTranslation()
   const router = useRouter()
   const { user, loading: authLoading, refresh } = useAuth()
   const [username, setUsername] = useState('')
@@ -49,6 +23,32 @@ export function LoginForm() {
       router.replace('/')
     }
   }, [authLoading, user, router])
+
+  function mapError(code: string): string {
+    const m: Record<string, string> = {
+      USERNAME_REQUIRED: t('login.usernameRequired'),
+      PASSWORD_REQUIRED: t('login.passwordRequired'),
+      PIN_MIN_8: t('login.pinMin8'),
+      NO_LOCAL_VAULT: t('login.noLocalVault'),
+      VAULT_ALREADY_EXISTS: t('login.vaultExists'),
+      UNWRAP_FAILED: t('login.unwrapFailed'),
+      INVALID_VAULT_FORMAT: t('login.invalidVaultFormat'),
+      LEGACY_VAULT_REQUIRES_REREGISTER: t('login.legacyVault'),
+      INVALID_SIGNING_KEY: t('login.invalidSigningKey'),
+      SIGN_FAILED: t('login.signFailed'),
+      CHALLENGE_FAILED: t('login.challengeFailed'),
+      VERIFY_FAILED: t('login.verifyFailed'),
+      UNAUTHORIZED: t('login.unauthorized'),
+      NO_CHALLENGE: t('login.noChallenge'),
+      NONCE_MISMATCH: t('login.nonceMismatch'),
+      SIGNATURE_INVALID: t('login.signatureInvalid'),
+      PUBLIC_KEY_REQUIRED: t('login.publicKeyRequired'),
+      PUBLIC_KEY_CONFLICT: t('login.publicKeyConflict'),
+      USERNAME_TAKEN: t('login.usernameTaken'),
+      INVALID_BODY: t('login.invalidBody'),
+    }
+    return m[code] ?? code.replace(/_/g, ' ')
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -73,7 +73,7 @@ export function LoginForm() {
   if (authLoading) {
     return (
       <div className="terminal-panel mx-auto max-w-md p-6 font-mono text-xs text-neon-cyan">
-        CHECKING_SESSION…
+        {t('login.authLoading')}
       </div>
     )
   }
@@ -98,7 +98,7 @@ export function LoginForm() {
 
       <div>
         <label htmlFor="username" className="terminal-label">
-          &gt; HANDLE
+          &gt; {t('login.handleLabel')}
         </label>
         <input
           id="username"
@@ -109,13 +109,13 @@ export function LoginForm() {
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           className="terminal-input"
-          placeholder="operator"
+          placeholder={t('login.handlePlaceholder')}
         />
       </div>
 
       <div>
         <label htmlFor="password" className="terminal-label">
-          &gt; VAULT_PASSPHRASE
+          &gt; {t('login.vaultPassphraseLabel')}
         </label>
         <input
           id="password"
@@ -151,7 +151,9 @@ export function LoginForm() {
           }}
           className="rounded-none border border-transparent px-2 py-1 text-left font-mono text-xs uppercase tracking-widest text-neon-cyan underline-offset-4 hover:text-neon-red hover:underline"
         >
-          {mode === 'login' ? ':: NEW_DEVICE' : ':: EXISTING_VAULT'}
+          {mode === 'login'
+            ? `:: ${t('login.newDevice')}`
+            : `:: ${t('login.existingVault')}`}
         </button>
       </div>
     </motion.form>

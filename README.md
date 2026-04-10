@@ -113,6 +113,11 @@ See **[API.md](./API.md)** for complete endpoint and WebSocket protocol document
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** — monorepo structure, auth flow, WS + media routing.
 - **[SECURITY.md](./SECURITY.md)** — cryptographic primitives, threat model, and operational controls.
 
+## i18n policy
+
+- **Conversational Layer (Translate):** Тексты гидов, человекочитаемые ошибки, подсказки, настройки. Всё, что общается с пользователем (человеком).
+- **System/Noir Layer (Hardcoded EN):** Терминальные маркеры (`[ OPEN ]`, `[ REBOOT_SESSION ]`, `:: NETWORK_OFFLINE`), крипто-статусы, консольные логи. Всё, что имитирует работу железа или терминала.
+
 ## Repository hygiene
 
 - **Never commit** `.env`, `.env.local`, or `.env.production` with real secrets. Templates live in `*.example` files only.

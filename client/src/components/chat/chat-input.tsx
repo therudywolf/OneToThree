@@ -48,6 +48,8 @@ export function ChatInput({ sendText, disabled }: Props) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           disabled={disabled}
+          aria-label="Message input"
+          placeholder="type encrypted message"
           autoComplete="off"
           spellCheck={false}
         />

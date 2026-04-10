@@ -7,6 +7,8 @@ dist/
 out/
 build/
 *.tsbuildinfo
+coverage/
+.nyc_output/
 
 # Environment — never commit secrets (templates only)
 .env
@@ -26,6 +28,8 @@ server/drizzle/meta/
 # OS & logs
 .DS_Store
 Thumbs.db
+*.swp
+*~
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -35,6 +39,9 @@ yarn-error.log*
 
 # Vercel / misc
 .vercel
+.cursor/
+.idea/
+.vscode/
 *.pem
 
 # PWA / next-pwa generated (regenerated on build)

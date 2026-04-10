@@ -80,6 +80,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
           <button
             key={c.id}
             type="button"
+            aria-label={`Open chat ${c.name?.trim() || c.id}`}
             onClick={() => setActiveChatId(c.id)}
             className={`w-full rounded-none border-b border-neon-cyan/20 px-3 py-2 text-left font-mono text-xs transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
               activeChatId === c.id
@@ -136,6 +137,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
       <div className="border-t border-neon-cyan/40 p-2">
         <button
           type="button"
+          aria-label="Copy my invite link"
           onClick={async () => {
             const origin = window.location.origin
             const link = `${origin}/?invite=${encodeURIComponent(userId)}`
@@ -152,6 +154,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
         </button>
         <button
           type="button"
+          aria-label="Create group E2E"
           onClick={() => setGroupModalOpen(true)}
           className="mb-2 w-full rounded-none border border-neon-cyan bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
         >
@@ -166,6 +169,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
         <input
           className="terminal-input mb-2 text-xs"
           placeholder="peer uuid or username"
+          aria-label="Peer UUID or username"
           value={peerInput}
           onChange={(e) => setPeerInput(e.target.value)}
         />

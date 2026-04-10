@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   pgEnum,
   pgTable,
   primaryKey,
@@ -52,24 +53,35 @@ export const chatMembers = pgTable(
   })
 )
 
-export const messages = pgTable('messages', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  chatId: uuid('chat_id')
-    .notNull()
-    .references(() => chats.id, { onDelete: 'cascade' }),
-  senderId: uuid('sender_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  replyToId: uuid('reply_to_id'),
-  content: text('content'),
-  iv: text('iv'),
-  mediaPath: text('media_path'),
-  mediaType: text('media_type'),
-  mediaIv: text('media_iv'),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-})
+export const messages = pgTable(
+  'messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chats.id, { onDelete: 'cascade' }),
+    senderId: uuid('sender_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    replyToId: uuid('reply_to_id'),
+    content: text('content'),
+    iv: text('iv'),
+    mediaPath: text('media_path'),
+    mediaType: text('media_type'),
+    mediaIv: text('media_iv'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    chatCreatedIdx: index('messages_chat_id_created_at_idx').on(
+      t.chatId,
+      t.createdAt
+    ),
+    senderIdx: index('messages_sender_id_idx').on(t.senderId),
+    replyIdx: index('messages_reply_to_id_idx').on(t.replyToId),
+  })
+)
 
 export const pushSubscriptions = pgTable(
   'push_subscriptions',

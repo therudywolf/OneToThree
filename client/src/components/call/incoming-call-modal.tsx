@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { Phone, PhoneOff } from 'lucide-react'
 import { useCallStore } from '@/store/callStore'
 
@@ -11,7 +11,6 @@ type Props = {
 
 export function IncomingCallModal({ onAccept, onReject }: Props) {
   const incoming = useCallStore((s) => s.incomingCall)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     if (!incoming) return

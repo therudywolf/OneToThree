@@ -55,10 +55,13 @@ export function ChatTerminal({
       {ctxMenu ? (
         <div
           className="fixed z-50 border border-neon-red bg-black shadow-lg"
+          role="menu"
+          aria-label="Message actions"
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
         >
           <button
             type="button"
+            role="menuitem"
             className="block w-full px-4 py-2 text-left font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10"
             onClick={(e) => {
               e.stopPropagation()
@@ -71,6 +74,7 @@ export function ChatTerminal({
           {ctxMenu.isMine ? (
             <button
               type="button"
+              role="menuitem"
               className="block w-full px-4 py-2 text-left font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10"
               onClick={(e) => {
                 e.stopPropagation()
@@ -85,6 +89,7 @@ export function ChatTerminal({
           ) : null}
           <button
             type="button"
+            role="menuitem"
             className="block w-full px-4 py-2 text-left font-mono text-[10px] uppercase text-red-800 hover:bg-neon-red/10"
             onClick={(e) => {
               e.stopPropagation()

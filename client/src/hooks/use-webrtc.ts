@@ -126,6 +126,9 @@ export function useWebRTC(userId: string | null) {
         }
       }
       pc.onicecandidate = (ev) => {
+        // WARNING: ICE candidate routing must stay peer-targeted.
+        // Broadcasting candidates to non-target peers can leak network metadata
+        // and break connection establishment in full-mesh calls.
         sendSignal(peerId, {
           kind: 'ice',
           candidate: ev.candidate ? ev.candidate.toJSON() : null,

@@ -15,7 +15,6 @@ export const RESERVED_NICKNAMES = new Set([
   'null',
   'undefined',
   'help',
-  'warden',
 ])
 
 export const nicknameSchema = z

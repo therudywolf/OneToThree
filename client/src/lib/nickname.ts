@@ -13,7 +13,6 @@ export const RESERVED_NICKNAMES = new Set([
   'null',
   'undefined',
   'help',
-  'warden',
 ])
 
 export type NicknameParseResult =

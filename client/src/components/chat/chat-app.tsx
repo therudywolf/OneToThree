@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Globe, ShieldCheck } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
@@ -26,6 +26,7 @@ import { LogoutButton } from '@/components/logout-button'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
+import { LocaleToggle } from '@/components/locale-toggle'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -65,7 +66,7 @@ export function ChatApp({
   userId: string
   username: string
 }) {
-  const { locale, toggleLocale, t } = useTranslation()
+  const { t } = useTranslation()
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const setUserId = useChatStore((s) => s.setUserId)
@@ -263,15 +264,7 @@ export function ChatApp({
           />
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            aria-label={t('common.toggleLanguageAria')}
-            onClick={toggleLocale}
-            className="inline-flex min-w-[60px] items-center justify-center gap-1 border border-neon-cyan/60 bg-black px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
-          >
-            <Globe className="h-3.5 w-3.5" />
-            {locale}
-          </button>
+          <LocaleToggle />
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}

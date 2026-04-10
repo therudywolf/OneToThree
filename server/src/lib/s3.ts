@@ -83,7 +83,13 @@ async function applyBucketCors(
     if (code === 'NotImplemented' || status === 501) {
       return
     }
-    console.warn('[s3] PutBucketCors failed (browser uploads may require manual CORS):', err)
+    process.stderr.write(
+      `${JSON.stringify({
+        level: 'warn',
+        msg: '[s3] PutBucketCors failed (browser uploads may require manual CORS)',
+        err: String(err),
+      })}\n`
+    )
   }
 }
 

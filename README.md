@@ -108,6 +108,11 @@ For PWA install, push subscriptions, and media uploads from the browser, use **H
 
 See **[API.md](./API.md)** for complete endpoint and WebSocket protocol documentation.
 
+## Deep-dive docs
+
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — monorepo structure, auth flow, WS + media routing.
+- **[SECURITY.md](./SECURITY.md)** — cryptographic primitives, threat model, and operational controls.
+
 ## Repository hygiene
 
 - **Never commit** `.env`, `.env.local`, or `.env.production` with real secrets. Templates live in `*.example` files only.

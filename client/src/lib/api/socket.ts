@@ -57,11 +57,13 @@ export type WsInboundMessage =
 class FmSocketClient {
   private ws: WebSocket | null = null
   private listeners = new Set<(m: WsInboundMessage) => void>()
+  private statusListeners = new Set<() => void>()
   private refCount = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private attempt = 0
   private ticket: string | null = null
   private wantOpen = false
+  private outboundQueue: string[] = []
 
   subscribe(fn: (m: WsInboundMessage) => void): () => void {
     this.listeners.add(fn)
@@ -78,14 +80,37 @@ class FmSocketClient {
     }
   }
 
-  send(payload: object): void {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(payload))
+  subscribeStatus(fn: () => void): () => void {
+    this.statusListeners.add(fn)
+    fn()
+    return () => {
+      this.statusListeners.delete(fn)
     }
+  }
+
+  private emitStatus(): void {
+    for (const fn of this.statusListeners) fn()
+  }
+
+  send(payload: object): void {
+    const raw = JSON.stringify(payload)
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(raw)
+      this.emitStatus()
+      return
+    }
+    // Queue outbound messages while offline; bounded to prevent unbounded memory growth.
+    if (this.outboundQueue.length >= 200) this.outboundQueue.shift()
+    this.outboundQueue.push(raw)
+    this.emitStatus()
   }
 
   get connected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN
+  }
+
+  get queuedCount(): number {
+    return this.outboundQueue.length
   }
 
   private shutdownSocket(): void {
@@ -100,6 +125,7 @@ class FmSocketClient {
       this.ws.close()
       this.ws = null
     }
+    this.emitStatus()
   }
 
   private scheduleConnect(delayMs: number): void {
@@ -119,6 +145,13 @@ class FmSocketClient {
 
     ws.onopen = () => {
       this.attempt = 0
+      // Flush queued outbound payloads in FIFO order once the socket is up.
+      while (this.outboundQueue.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
+        const raw = this.outboundQueue.shift()
+        if (!raw) break
+        this.ws.send(raw)
+      }
+      this.emitStatus()
     }
 
     ws.onmessage = (ev) => {
@@ -134,6 +167,7 @@ class FmSocketClient {
 
     ws.onclose = (ev) => {
       this.ws = null
+      this.emitStatus()
       if (!this.wantOpen) return
       if (ev.code === 1008 && !this.ticket) {
         void fetchWsTicket()
@@ -151,6 +185,7 @@ class FmSocketClient {
 
     ws.onerror = () => {
       /* onclose follows */
+      this.emitStatus()
     }
   }
 

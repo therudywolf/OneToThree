@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import { randomUUID } from 'node:crypto'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { WebSocket } from 'ws'
 import { z } from 'zod'
@@ -13,6 +14,10 @@ import {
   sendToUser,
 } from '../ws/registry.js'
 
+/**
+ * Resolves authenticated websocket user from session cookie or ws ticket JWT.
+ * The ticket path is used when the browser does not include cookies during WS upgrade.
+ */
 async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> {
   const fromCookie = await getAuthUser(request)
   if (fromCookie) return fromCookie
@@ -66,6 +71,7 @@ const messageReadSchema = z.object({
   message_id: z.string().uuid(),
 })
 
+/** Converts websocket payload variants into UTF-8 text for JSON parsing. */
 function bufferToString(raw: unknown): string {
   if (typeof raw === 'string') return raw
   if (Buffer.isBuffer(raw)) return raw.toString('utf8')
@@ -78,17 +84,40 @@ function bufferToString(raw: unknown): string {
   return ''
 }
 
+/** Verifies chat membership for a user to enforce zero-trust chat boundaries. */
+async function isMemberOfChat(chatId: string, userId: string): Promise<boolean> {
+  const member = await db
+    .select({ one: chatMembers.userId })
+    .from(chatMembers)
+    .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, userId)))
+    .limit(1)
+  return member.length > 0
+}
+
+/** Returns all member ids of a chat for secure fan-out routing. */
+async function getChatMemberIds(chatId: string): Promise<string[]> {
+  const rows = await db
+    .select({ userId: chatMembers.userId })
+    .from(chatMembers)
+    .where(eq(chatMembers.chatId, chatId))
+  return rows.map((m) => m.userId)
+}
+
 export const wsRoutes: FastifyPluginAsync = async (app) => {
+  /** WebSocket endpoint handling chat events, read receipts, and WebRTC signaling. */
   app.get('/ws', { websocket: true }, (ws: WebSocket, request) => {
+    const correlationId = randomUUID()
     const pending: unknown[] = []
     let authed: AuthUser | null = null
 
+    /** Handles a single parsed raw websocket frame for an authenticated user. */
     const handleMessage = (raw: unknown, user: AuthUser) => {
       void (async () => {
         let json: unknown
         try {
           json = JSON.parse(bufferToString(raw))
         } catch {
+          request.log.warn({ correlationId }, 'ws: invalid json frame')
           ws.send(JSON.stringify({ type: 'error', error: 'INVALID_JSON' }))
           return
         }
@@ -96,17 +125,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const chatParsed = chatMessageInSchema.safeParse(json)
         if (chatParsed.success) {
           const p = chatParsed.data
-          const member = await db
-            .select({ one: chatMembers.userId })
-            .from(chatMembers)
-            .where(
-              and(
-                eq(chatMembers.chatId, p.chat_id),
-                eq(chatMembers.userId, user.id)
-              )
+          if (!(await isMemberOfChat(p.chat_id, user.id))) {
+            request.log.warn(
+              { correlationId, chatId: p.chat_id, userId: user.id },
+              'ws: not a member for chat_message'
             )
-            .limit(1)
-          if (!member.length) {
             ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
@@ -137,16 +160,15 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             })
 
           if (!row) {
+            request.log.error(
+              { correlationId, chatId: p.chat_id, userId: user.id },
+              'ws: insert failed for chat_message'
+            )
             ws.send(JSON.stringify({ type: 'error', error: 'INSERT_FAILED' }))
             return
           }
 
-          const memberRows = await db
-            .select({ userId: chatMembers.userId })
-            .from(chatMembers)
-            .where(eq(chatMembers.chatId, p.chat_id))
-
-          const ids = memberRows.map((m) => m.userId)
+          const ids = await getChatMemberIds(p.chat_id)
           const createdAt =
             row.createdAt instanceof Date
               ? row.createdAt.toISOString()
@@ -185,38 +207,34 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const rtcParsed = webrtcSignalSchema.safeParse(json)
         if (rtcParsed.success) {
           const { targetUserId, signalData } = rtcParsed.data
+          // WARNING: This relay must stay opaque. Never introspect or mutate SDP/ICE fields,
+          // otherwise zero-trust call signaling can be accidentally broken.
           sendToUser(targetUserId, {
             type: 'webrtc_signal',
             fromUserId: user.id,
             signalData,
           })
+          request.log.debug(
+            { correlationId, fromUserId: user.id, targetUserId },
+            'ws: relayed webrtc_signal'
+          )
           return
         }
 
         const inviteParsed = callInviteSchema.safeParse(json)
         if (inviteParsed.success) {
           const { chat_id, is_video } = inviteParsed.data
-          const memberOk = await db
-            .select({ one: chatMembers.userId })
-            .from(chatMembers)
-            .where(
-              and(
-                eq(chatMembers.chatId, chat_id),
-                eq(chatMembers.userId, user.id)
-              )
+          if (!(await isMemberOfChat(chat_id, user.id))) {
+            request.log.warn(
+              { correlationId, chatId: chat_id, userId: user.id },
+              'ws: not a member for call_invite'
             )
-            .limit(1)
-          if (!memberOk.length) {
             ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
-          const allMembers = await db
-            .select({ userId: chatMembers.userId })
-            .from(chatMembers)
-            .where(eq(chatMembers.chatId, chat_id))
-          const otherIds = allMembers
-            .map((m) => m.userId)
-            .filter((id) => id !== user.id)
+          const otherIds = (await getChatMemberIds(chat_id)).filter(
+            (id) => id !== user.id
+          )
           broadcastToUsers(otherIds, {
             type: 'call_invite',
             chat_id,
@@ -229,13 +247,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const leaveParsed = callLeaveSchema.safeParse(json)
         if (leaveParsed.success) {
           const { chat_id } = leaveParsed.data
-          const allMembers = await db
-            .select({ userId: chatMembers.userId })
-            .from(chatMembers)
-            .where(eq(chatMembers.chatId, chat_id))
-          const otherIds = allMembers
-            .map((m) => m.userId)
-            .filter((id) => id !== user.id)
+          const otherIds = (await getChatMemberIds(chat_id)).filter(
+            (id) => id !== user.id
+          )
           broadcastToUsers(otherIds, {
             type: 'call_leave',
             chat_id,
@@ -247,24 +261,10 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const readParsed = messageReadSchema.safeParse(json)
         if (readParsed.success) {
           const { chat_id, message_id } = readParsed.data
-          const memberOk = await db
-            .select({ one: chatMembers.userId })
-            .from(chatMembers)
-            .where(
-              and(
-                eq(chatMembers.chatId, chat_id),
-                eq(chatMembers.userId, user.id)
-              )
-            )
-            .limit(1)
-          if (!memberOk.length) return
-          const allMembers = await db
-            .select({ userId: chatMembers.userId })
-            .from(chatMembers)
-            .where(eq(chatMembers.chatId, chat_id))
-          const otherIds = allMembers
-            .map((m) => m.userId)
-            .filter((id) => id !== user.id)
+          if (!(await isMemberOfChat(chat_id, user.id))) return
+          const otherIds = (await getChatMemberIds(chat_id)).filter(
+            (id) => id !== user.id
+          )
           broadcastToUsers(otherIds, {
             type: 'message_read',
             chat_id,
@@ -288,11 +288,13 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
 
     void resolveWsUser(request).then((user) => {
       if (!user) {
+        request.log.warn({ correlationId }, 'ws: unauthorized upgrade')
         ws.close(1008, 'unauthorized')
         return
       }
       authed = user
       registerUserSocket(user.id, ws)
+      request.log.info({ correlationId, userId: user.id }, 'ws: connected')
       for (const raw of pending) {
         handleMessage(raw, user)
       }

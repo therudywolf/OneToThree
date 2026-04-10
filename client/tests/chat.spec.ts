@@ -1,21 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { registerNewUser, uniqueHandle } from './helpers'
-
-const API =
-  process.env.PLAYWRIGHT_API_URL?.replace(/\/$/, '') ??
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ??
-  'http://127.0.0.1:8080'
-
-async function fetchUserId(page: import('@playwright/test').Page): Promise<string> {
-  const data = await page.evaluate(async (apiRoot) => {
-    const r = await fetch(`${apiRoot}/api/auth/me`, { credentials: 'include' })
-    if (!r.ok) throw new Error(`me ${r.status}`)
-    const j = (await r.json()) as { user?: { id: string } }
-    return j.user?.id
-  }, API)
-  if (!data) throw new Error('no user id from /api/auth/me')
-  return data
-}
+import {
+  fetchUserId,
+  registerNewUser,
+  setDiscoverable,
+  uniqueHandle,
+} from './helpers'
 
 function wsTapInitScript() {
   const win = window as unknown as { __p13WsSent: string[] }
@@ -56,7 +45,7 @@ test.describe('chat / websocket ciphertext', () => {
 
     const bobId = await fetchUserId(pageB)
 
-    await pageA.getByPlaceholder('peer user uuid').fill(bobId)
+    await pageA.getByPlaceholder('peer uuid or username').fill(bobId)
     await pageA.getByRole('button', { name: '[ OPEN ]' }).click()
 
     await expect(pageA.getByText('[DIR]', { exact: false }).first()).toBeVisible({
@@ -99,5 +88,83 @@ test.describe('chat / websocket ciphertext', () => {
 
     await ctxA.close()
     await ctxB.close()
+  })
+
+  test('delete for everyone removes message for all peers', async ({ browser }) => {
+    const passphrase = 'E2E_Strong_Pass_99!'
+    const alice = uniqueHandle('alice')
+    const bob = uniqueHandle('bob')
+    const plain = `delete-everyone-${Date.now()}`
+
+    const ctxA = await browser.newContext()
+    const ctxB = await browser.newContext()
+    const pageA = await ctxA.newPage()
+    const pageB = await ctxB.newPage()
+
+    await registerNewUser(pageA, alice, passphrase)
+    await registerNewUser(pageB, bob, passphrase)
+
+    const bobId = await fetchUserId(pageB)
+    await pageA.getByPlaceholder('peer uuid or username').fill(bobId)
+    await pageA.getByRole('button', { name: '[ OPEN ]' }).click()
+
+    await expect(pageA.getByText('[DIR]', { exact: false }).first()).toBeVisible({
+      timeout: 60_000,
+    })
+
+    const txForm = pageA.locator('form').filter({
+      has: pageA.getByRole('button', { name: /TX/ }),
+    })
+    await txForm.locator('input.terminal-input').fill(plain)
+    await pageA.getByRole('button', { name: /TX/ }).click()
+
+    await expect(pageA.getByText(plain)).toBeVisible({ timeout: 15_000 })
+    await expect(pageB.getByText(plain)).toBeVisible({ timeout: 15_000 })
+
+    await pageA.getByText(plain).first().click({ button: 'right' })
+    await pageA.getByRole('button', { name: 'Delete for everyone' }).click()
+
+    await expect(pageA.getByText(plain)).toHaveCount(0, { timeout: 15_000 })
+    await expect(pageB.getByText(plain)).toHaveCount(0, { timeout: 15_000 })
+
+    await ctxA.close()
+    await ctxB.close()
+  })
+
+  test('create group e2e flow', async ({ browser }) => {
+    const passphrase = 'E2E_Strong_Pass_99!'
+    const alpha = uniqueHandle('alpha')
+    const beta = uniqueHandle('beta')
+    const gamma = uniqueHandle('gamma')
+
+    const ctxA = await browser.newContext()
+    const ctxB = await browser.newContext()
+    const ctxC = await browser.newContext()
+    const pageA = await ctxA.newPage()
+    const pageB = await ctxB.newPage()
+    const pageC = await ctxC.newPage()
+
+    await registerNewUser(pageA, alpha, passphrase)
+    await registerNewUser(pageB, beta, passphrase)
+    await registerNewUser(pageC, gamma, passphrase)
+    await setDiscoverable(pageB, true)
+    await setDiscoverable(pageC, true)
+
+    const groupName = `GRP-${Date.now()}`
+    await pageA.getByRole('button', { name: '[ CREATE_GROUP_E2E ]' }).click()
+    await expect(pageA.getByRole('dialog', { name: 'Create group' })).toBeVisible()
+
+    await pageA.locator('#grp-name').fill(groupName)
+    await pageA.locator('#grp-radar').fill(beta)
+    await pageA.getByRole('button', { name: beta }).first().click()
+    await pageA.locator('#grp-radar').fill(gamma)
+    await pageA.getByRole('button', { name: gamma }).first().click()
+    await pageA.getByRole('button', { name: '[ CREATE ]' }).click()
+
+    await expect(pageA.getByText(groupName)).toBeVisible({ timeout: 20_000 })
+
+    await ctxA.close()
+    await ctxB.close()
+    await ctxC.close()
   })
 })

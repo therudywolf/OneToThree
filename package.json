@@ -12,6 +12,7 @@
     "dev:server": "npm run dev -w server",
     "build": "npm run build -w client && npm run build -w server",
     "build:all": "npm run build --workspaces --if-present",
+    "lint": "npm run lint -w project-13-client && npm run lint -w project-13-server",
     "prod:start": "npm run docker:up",
     "test:server": "npm run test -w project-13-server",
     "test:e2e": "npm run test:e2e -w project-13-client",

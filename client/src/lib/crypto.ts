@@ -25,6 +25,7 @@ export type EncryptedMessage = {
 const AES_GCM_IV_LENGTH = 12
 const AES_GCM_KEY_LENGTH = 256
 
+/** Returns `crypto.subtle` or throws when unavailable (non-secure/runtime mismatch). */
 function getSubtle(): SubtleCrypto {
   if (typeof globalThis === 'undefined' || !globalThis.crypto?.subtle) {
     throw new Error('Web Crypto API (crypto.subtle) is not available')
@@ -32,6 +33,7 @@ function getSubtle(): SubtleCrypto {
   return globalThis.crypto.subtle
 }
 
+/** Encodes bytes to standard base64 for compact JSON transport. */
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = ''
   for (let i = 0; i < bytes.length; i++) {
@@ -40,6 +42,7 @@ function uint8ToBase64(bytes: Uint8Array): string {
   return btoa(binary)
 }
 
+/** Decodes standard base64 into raw bytes for Web Crypto operations. */
 function base64ToUint8(b64: string): Uint8Array {
   const binary = atob(b64)
   const out = new Uint8Array(binary.length)
@@ -84,6 +87,7 @@ export async function exportPrivateKey(key: CryptoKey): Promise<string> {
   return JSON.stringify(jwk)
 }
 
+/** Determines curve from JWK and safely defaults to P-256 for legacy records. */
 function namedCurveFromJwk(jwk: JsonWebKey): EcdhCurve {
   return jwk.crv === 'P-384' ? 'P-384' : 'P-256'
 }
@@ -268,6 +272,8 @@ export async function signUtf8WithEcdsaP256(
   privateKey: CryptoKey,
   utf8: string
 ): Promise<string> {
+  // WARNING: Do not replace ECDSA P-256 signing with ad-hoc hashing or custom formats.
+  // The server verifies DER-encoded ECDSA signatures for challenge-response auth.
   const enc = new TextEncoder()
   const sig = await getSubtle().sign(
     { name: 'ECDSA', hash: 'SHA-256' },

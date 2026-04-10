@@ -1,34 +1,55 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/auth/auth-provider'
-import {
-  mirrorVaultLoginToUserId,
-  persistVaultBlob,
-  readVaultBlob,
-  readVaultBlobByLoginUsername,
-} from '@/lib/vault'
 import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
+import { useCryptoVault } from '@/hooks/use-crypto-vault'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
 import { createDirectE2EChat, fetchPeerIdsForChat } from '@/lib/api/chats'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
-import { VaultModal } from '@/components/chat/vault-modal'
-import { ChatSidebar } from '@/components/chat/chat-sidebar'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
 import { ChatMediaControls } from '@/components/chat/chat-media-controls'
 import { ChatInput } from '@/components/chat/chat-input'
 import { LogoutButton } from '@/components/logout-button'
 import { OfflineBanner } from '@/components/offline-banner'
-import { SettingsModal } from '@/components/settings-modal'
-import { StartGuide } from '@/components/onboarding/start-guide'
-import { IncomingCallModal } from '@/components/call/incoming-call-modal'
-import { ActiveCallOverlay } from '@/components/call/active-call-overlay'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
+
+const VaultModal = dynamic(
+  () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
+  { ssr: false }
+)
+const ChatSidebar = dynamic(
+  () => import('@/components/chat/chat-sidebar').then((m) => m.ChatSidebar),
+  { ssr: false }
+)
+const SettingsModal = dynamic(
+  () => import('@/components/settings-modal').then((m) => m.SettingsModal),
+  { ssr: false }
+)
+const StartGuide = dynamic(
+  () => import('@/components/onboarding/start-guide').then((m) => m.StartGuide),
+  { ssr: false }
+)
+const IncomingCallModal = dynamic(
+  () =>
+    import('@/components/call/incoming-call-modal').then(
+      (m) => m.IncomingCallModal
+    ),
+  { ssr: false }
+)
+const ActiveCallOverlay = dynamic(
+  () =>
+    import('@/components/call/active-call-overlay').then(
+      (m) => m.ActiveCallOverlay
+    ),
+  { ssr: false }
+)
 
 export function ChatApp({
   userId,
@@ -43,14 +64,12 @@ export function ChatApp({
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const activeChatId = useChatStore((s) => s.activeChatId)
-  const [vaultState, setVaultState] = useState<'loading' | 'ok' | 'missing'>(
-    'loading'
-  )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showGuide, setShowGuide] = useState(() => {
     if (typeof window === 'undefined') return false
     return !localStorage.getItem(`p13:onboarded:${userId}`)
   })
+  const vaultState = useCryptoVault(userId, user?.username ?? username)
 
   const {
     peerReady,
@@ -83,22 +102,6 @@ export function ChatApp({
         /* invalid invite or hidden/unknown user */
       })
   }, [searchParams, setActiveChatId, userId])
-
-  useEffect(() => {
-    if (readVaultBlob(userId)) {
-      setVaultState('ok')
-      return
-    }
-    const handle = user?.username ?? username
-    const byLogin = readVaultBlobByLoginUsername(handle)
-    if (byLogin) {
-      mirrorVaultLoginToUserId(handle, userId)
-      persistVaultBlob(userId, byLogin)
-      setVaultState('ok')
-      return
-    }
-    setVaultState('missing')
-  }, [userId, user?.username, username])
 
   const { cryptoCtx, ctxError } = useChatCryptoContext()
   const sharedKey = useChatAesKey(cryptoCtx)

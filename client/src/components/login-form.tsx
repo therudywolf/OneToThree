@@ -83,7 +83,7 @@ export function LoginForm() {
 
   return (
     <motion.form
-      onSubmit={(ev) => void handleSubmit(ev)}
+      onSubmit={(ev: React.FormEvent<HTMLFormElement>) => void handleSubmit(ev)}
       className="terminal-panel mx-auto max-w-md space-y-6"
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}

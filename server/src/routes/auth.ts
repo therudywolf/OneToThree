@@ -11,7 +11,7 @@ import {
   getPending,
   setChallenge,
 } from '../lib/challenge-store.js'
-import { getAuthUser } from '../lib/auth-user.js'
+import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import {
   safeEqualNonce,
   safeEqualUtf8,
@@ -22,13 +22,14 @@ import {
   SESSION_COOKIE,
 } from '../lib/session-cookie.js'
 import { normalizeUuid } from '../lib/uuid.js'
+import { parseNickname } from '../lib/nickname.js'
 
 const challengeBodySchema = z.object({
-  username: z.string().min(1).max(128),
+  username: z.string(),
 })
 
 const verifyBodySchema = z.object({
-  username: z.string().min(1).max(128),
+  username: z.string(),
   nonce: z.string().min(1),
   signature: z.string().min(1),
   public_key_jwk: z.string().min(1).optional(),
@@ -51,9 +52,7 @@ function sessionCookieBase(): CookieSerializeOptions {
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get('/ws-ticket', async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!user) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!assertAuthed(reply, user)) return
     const ticket = await reply.jwtSign(
       {
         sub: normalizeUuid(user.id),
@@ -74,8 +73,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           id: user.id,
           username: user.username,
           is_discoverable: user.is_discoverable,
+          role: user.role,
         },
       })
+    }
+    if (reply.sent) {
+      return
     }
     if (!hadCookie) {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
@@ -108,10 +111,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         if (!parsed.success) {
           return reply.status(400).send({ error: 'INVALID_BODY' })
         }
-        const username = parsed.data.username.trim()
-        if (!username) {
-          return reply.status(400).send({ error: 'INVALID_USERNAME' })
+        const nick = parseNickname(parsed.data.username)
+        if (!nick.ok) {
+          return reply.status(400).send({ error: nick.error })
         }
+        const username = nick.value
 
         const nonce = randomUUID()
         setChallenge(username, nonce)
@@ -126,10 +130,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
         const { username: rawUser, nonce, signature, public_key_jwk } =
           parsed.data
-        const username = rawUser.trim()
-        if (!username) {
-          return reply.status(400).send({ error: 'INVALID_USERNAME' })
+        const nick = parseNickname(rawUser)
+        if (!nick.ok) {
+          return reply.status(400).send({ error: nick.error })
         }
+        const username = nick.value
 
         const pending = getPending(username)
         if (!pending) {

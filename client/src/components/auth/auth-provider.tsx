@@ -11,12 +11,14 @@ import {
   type ReactNode,
 } from 'react'
 import { AuthHttpError, fetchMe, logoutApi } from '@/lib/api/auth'
+import { wipeAllClientLocalState } from '@/lib/client-wipe'
 
 /** `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional). */
 export type AuthUser = {
   id: string
   username: string
   is_discoverable?: boolean
+  role?: 'user' | 'admin'
 }
 
 type AuthContextValue = {
@@ -57,6 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           status: e.status,
           message: e.message,
         })
+        if (e.message === 'BANNED_USER') {
+          await wipeAllClientLocalState()
+        }
       }
       setUser(null)
     } finally {

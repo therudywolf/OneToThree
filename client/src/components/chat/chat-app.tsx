@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
@@ -192,7 +193,7 @@ export function ChatApp({
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-black supports-[height:100dvh]:h-dvh">
+    <div className="chat-safe-shell flex h-dvh flex-col bg-black supports-[height:100dvh]:h-dvh">
       <InviteChatLinkEffect userId={userId} />
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
@@ -259,6 +260,14 @@ export function ChatApp({
         </div>
         <div className="flex items-center gap-2">
           <LocaleToggle />
+          {user?.role === 'admin' ? (
+            <Link
+              href="/admin"
+              className="border border-red-900 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red"
+            >
+              [ WARDEN ]
+            </Link>
+          ) : null}
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}

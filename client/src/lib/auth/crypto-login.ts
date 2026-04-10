@@ -16,6 +16,7 @@ import {
   unwrapPrivateJwkWithPin,
   wrapPrivateJwkWithPin,
 } from '@/lib/vault'
+import { parseNickname } from '@/lib/nickname'
 
 export type CryptoLoginResult =
   | { ok: true; user: { id: string; username: string } }
@@ -39,6 +40,11 @@ export async function cryptoLogin(
   if (!username) {
     return { ok: false, error: 'USERNAME_REQUIRED' }
   }
+  const nick = parseNickname(username)
+  if (!nick.ok) {
+    return { ok: false, error: nick.error }
+  }
+  const canonicalHandle = nick.value
   if (!password) {
     return { ok: false, error: 'PASSWORD_REQUIRED' }
   }
@@ -46,7 +52,7 @@ export async function cryptoLogin(
     return { ok: false, error: 'PIN_MIN_8' }
   }
 
-  const hasVault = !!readVaultBlobByLoginUsername(username)
+  const hasVault = !!readVaultBlobByLoginUsername(canonicalHandle)
 
   if (params.mode === 'login' && !hasVault) {
     return { ok: false, error: 'NO_LOCAL_VAULT' }
@@ -66,7 +72,7 @@ export async function cryptoLogin(
     ecdhPrivateJwkForVault = await exportPrivateKey(ecdhPair.privateKey)
     publicKeyJwk = await exportEcdsaPublicKeyJwk(ecdsaPair.publicKey)
   } else {
-    const blob = readVaultBlobByLoginUsername(username)
+    const blob = readVaultBlobByLoginUsername(canonicalHandle)
     if (!blob) {
       return { ok: false, error: 'NO_LOCAL_VAULT' }
     }
@@ -89,7 +95,7 @@ export async function cryptoLogin(
 
   let nonce: string
   try {
-    const ch = await requestChallenge(username)
+    const ch = await requestChallenge(canonicalHandle)
     nonce = ch.nonce
   } catch (e) {
     return {
@@ -114,7 +120,7 @@ export async function cryptoLogin(
 
   try {
     const { user } = await verifyChallenge({
-      username,
+      username: canonicalHandle,
       nonce,
       signature,
       public_key_jwk: publicKeyJwk,
@@ -126,10 +132,10 @@ export async function cryptoLogin(
         ecdhPrivateJwkForVault
       )
       const blob = await wrapPrivateJwkWithPin(inner, password)
-      persistVaultBlobByLoginUsername(username, blob)
+      persistVaultBlobByLoginUsername(canonicalHandle, blob)
     }
 
-    mirrorVaultLoginToUserId(username, user.id)
+    mirrorVaultLoginToUserId(canonicalHandle, user.id)
 
     return { ok: true, user }
   } catch (e) {

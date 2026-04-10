@@ -47,6 +47,8 @@ export function LoginForm() {
       PUBLIC_KEY_CONFLICT: t('login.publicKeyConflict'),
       USERNAME_TAKEN: t('login.usernameTaken'),
       INVALID_BODY: t('login.invalidBody'),
+      INVALID_USERNAME_FORMAT: t('login.invalidUsernameFormat'),
+      USERNAME_RESERVED: t('login.usernameReserved'),
     }
     return m[code] ?? code.replace(/_/g, ' ')
   }

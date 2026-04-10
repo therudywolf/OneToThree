@@ -18,6 +18,7 @@ import {
   verifyNonceSignatureEcdsaP256,
 } from '../lib/ecdsa-verify.js'
 import { SESSION_COOKIE } from '../lib/session-cookie.js'
+import { normalizeUuid } from '../lib/uuid.js'
 
 const challengeBodySchema = z.object({
   username: z.string().min(1).max(128),
@@ -51,7 +52,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
     const ticket = await reply.jwtSign(
-      { sub: user.id, username: user.username, scope: 'ws' },
+      {
+        sub: normalizeUuid(user.id),
+        username: user.username,
+        scope: 'ws',
+      },
       { expiresIn: 120 }
     )
     return reply.send({ ticket })
@@ -68,7 +73,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         username: string
       }>(token)
       return reply.send({
-        user: { id: payload.sub, username: payload.username },
+        user: {
+          id: normalizeUuid(payload.sub),
+          username: payload.username,
+        },
       })
     } catch {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
@@ -195,15 +203,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           userId = row.id
         }
 
+        const canonicalId = normalizeUuid(userId)
         const token = await reply.jwtSign(
-          { sub: userId, username },
+          { sub: canonicalId, username },
           { expiresIn: SESSION_MAX_AGE_S }
         )
 
         reply.setCookie(SESSION_COOKIE, token, sessionCookieBase())
 
         return reply.send({
-          user: { id: userId, username },
+          user: { id: canonicalId, username },
         })
       })
     }

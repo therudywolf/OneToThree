@@ -1,9 +1,11 @@
+import { canonicalUserId } from '@/lib/user-id'
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-/** Match JWT / DB / query-string ids regardless of hex letter case. */
+/** @deprecated Prefer canonicalUserId — kept for existing imports. */
 export function normalizeUuid(id: string): string {
-  return id.trim().toLowerCase()
+  return canonicalUserId(id)
 }
 
 /** Extract a peer user id or search text from sidebar input (username, UUID, or pasted invite URL). */

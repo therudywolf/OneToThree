@@ -1,5 +1,5 @@
 import { API_URL } from './auth'
-import { normalizeUuid } from '@/lib/peer-input'
+import { canonicalUserId } from '@/lib/user-id'
 
 export type ApiChatRow = {
   id: string
@@ -33,7 +33,7 @@ export async function createDirectE2EChat(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       type: 'direct_e2e',
-      member_ids: [normalizeUuid(peerUserId)],
+      member_ids: [canonicalUserId(peerUserId)],
     }),
   })
   const data = (await res.json().catch(() => ({}))) as {
@@ -62,7 +62,7 @@ export async function createGroupE2EChat(params: {
       name: params.name?.trim() || null,
       members: params.members.map((m) => ({
         ...m,
-        userId: normalizeUuid(m.userId),
+        userId: canonicalUserId(m.userId),
       })),
     }),
   })
@@ -86,7 +86,9 @@ export async function fetchPeerIdsForChat(
   const chats = await fetchChatsList()
   const c = chats.find((x) => x.id === chatId)
   if (!c) return []
-  return c.member_ids.filter((id) => id !== myUserId)
+  return c.member_ids.filter(
+    (id) => canonicalUserId(id) !== canonicalUserId(myUserId)
+  )
 }
 
 export async function leaveChat(chatId: string): Promise<void> {

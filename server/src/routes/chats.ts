@@ -5,17 +5,17 @@ import { db } from '../db/index.js'
 import { chatMembers, chats, messages, users } from '../db/schema.js'
 import { getAuthUser } from '../lib/auth-user.js'
 import { broadcastToUsers } from '../ws/registry.js'
-import { normalizeUuid } from '../lib/uuid.js'
+import { uuidSchema } from '../lib/zod-uuid.js'
 
 const createChatSchema = z
   .object({
     type: z.enum(['direct_e2e', 'group_e2e', 'public_open']),
     name: z.string().max(256).optional().nullable(),
-    member_ids: z.array(z.string().uuid()).optional(),
+    member_ids: z.array(uuidSchema).optional(),
     members: z
       .array(
         z.object({
-          userId: z.string().uuid(),
+          userId: uuidSchema,
           encryptedGroupKey: z.string().min(1),
         })
       )
@@ -179,15 +179,12 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const keyByUser = new Map(
-        members.map((m) => [
-          normalizeUuid(m.userId),
-          m.encryptedGroupKey,
-        ] as const)
+        members.map((m) => [m.userId, m.encryptedGroupKey] as const)
       )
       if (keyByUser.size !== members.length) {
         return reply.status(400).send({ error: 'DUPLICATE_MEMBER' })
       }
-      if (!keyByUser.has(normalizeUuid(user.id))) {
+      if (!keyByUser.has(user.id)) {
         return reply.status(400).send({ error: 'CREATOR_NOT_IN_MEMBERS' })
       }
 
@@ -244,10 +241,10 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const authId = normalizeUuid(user.id)
+    const authId = user.id
     let uniqueIds: string[]
     if (type === 'direct_e2e') {
-      const mids = member_ids.map((id) => normalizeUuid(id))
+      const mids = member_ids
       if (mids.length === 1) {
         const peer = mids[0]
         if (!peer || peer === authId) {
@@ -275,7 +272,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
       }
     } else {
-      const memberSet = new Set(member_ids.map((id) => normalizeUuid(id)))
+      const memberSet = new Set(member_ids)
       memberSet.add(authId)
       uniqueIds = [...memberSet]
     }

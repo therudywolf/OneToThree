@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { users } from '../db/schema.js'
 import { getAuthUser } from '../lib/auth-user.js'
-import { normalizeUuid } from '../lib/uuid.js'
+import { uuidSchema } from '../lib/zod-uuid.js'
 
 const searchQuerySchema = z.object({
   q: z.string().min(1).max(128),
@@ -15,17 +15,22 @@ function escapeIlikePattern(fragment: string): string {
   return fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
-const UUID_QUERY_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const booleanish = z.preprocess(
+  (v) => {
+    if (v === true || v === 'true' || v === 1 || v === '1') return true
+    if (v === false || v === 'false' || v === 0 || v === '0') return false
+    return v
+  },
+  z.boolean()
+)
 
 const patchMeSchema = z.object({
   ecdh_public_key_jwk: z.string().min(8).optional(),
-  /** Coerce strings from odd proxies / clients (e.g. "true") */
-  is_discoverable: z.coerce.boolean().optional(),
+  is_discoverable: booleanish.optional(),
 })
 
 const lookupBodySchema = z.object({
-  user_ids: z.array(z.string().uuid()).min(1).max(64),
+  user_ids: z.array(uuidSchema).min(1).max(64),
 })
 
 export const userRoutes: FastifyPluginAsync = async (app) => {
@@ -95,7 +100,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
     const q = parsed.data.q.trim()
 
-    if (UUID_QUERY_RE.test(q)) {
+    const uuidQuery = uuidSchema.safeParse(q)
+    if (uuidQuery.success) {
+      const id = uuidQuery.data
       const [row] = await db
         .select({
           id: users.id,
@@ -104,7 +111,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
           ecdh_public_key_jwk: users.ecdhPublicKeyJwk,
         })
         .from(users)
-        .where(eq(users.id, normalizeUuid(q)))
+        .where(eq(users.id, id))
         .limit(1)
       return reply.send(row ? [row] : [])
     }
@@ -141,7 +148,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const ids = parsed.data.user_ids.map((id) => normalizeUuid(id))
+    const ids = parsed.data.user_ids
     const unique = [...new Set(ids)]
     const rows = await db
       .select({

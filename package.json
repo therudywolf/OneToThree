@@ -18,10 +18,10 @@
     "test:e2e": "npm run test:e2e -w project-13-client",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
-    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
-    "db:push": "drizzle-kit push --config drizzle.config.ts",
+    "db:generate": "node ./node_modules/drizzle-kit/bin.cjs generate --config drizzle.config.ts",
+    "db:push": "node ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",
     "db:push:docker": "node --env-file=docker.db.env ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",
-    "db:studio": "drizzle-kit studio --config drizzle.config.ts",
+    "db:studio": "node ./node_modules/drizzle-kit/bin.cjs studio --config drizzle.config.ts",
     "typecheck": "npm run typecheck -w project-13-client && npm run typecheck -w project-13-server",
     "backup": "npx tsx scripts/backup.ts"
   },

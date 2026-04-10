@@ -11,6 +11,7 @@ import { pushRoutes } from './routes/push.js'
 import { userRoutes } from './routes/users.js'
 import { storageRoutes } from './routes/storage.js'
 import { wsRoutes } from './routes/ws.js'
+import { writeApiAccessLog } from './lib/api-access-log.js'
 
 export async function buildApp() {
   const trustProxy =
@@ -71,6 +72,16 @@ export async function buildApp() {
   await app.register(wsRoutes, { prefix: '/api' })
 
   app.get('/health', async () => ({ ok: true }))
+
+  if (process.env.API_FILE_LOG === '1') {
+    app.addHook('onResponse', (request, reply, done) => {
+      const ip = request.ip
+      writeApiAccessLog(
+        `${request.method} ${request.url} ${reply.statusCode} ip=${ip} ua=${request.headers['user-agent'] ?? ''}`
+      )
+      done()
+    })
+  }
 
   return app
 }

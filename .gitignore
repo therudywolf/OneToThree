@@ -29,6 +29,9 @@ backups/
 # Drizzle local cache (SQL migrations remain tracked)
 server/drizzle/meta/
 
+# Runtime API logs (optional)
+logs/
+
 # OS & logs
 .DS_Store
 Thumbs.db

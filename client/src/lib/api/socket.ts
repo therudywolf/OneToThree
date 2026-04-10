@@ -2,12 +2,24 @@
 
 import { fetchWsTicket } from './auth'
 
+/** WebSocket upgrade is not proxied by Next rewrites; connect to the Fastify host:port directly. */
 function httpOrigin(): string {
-  const raw =
-    (typeof process !== 'undefined' &&
-      process.env.NEXT_PUBLIC_API_URL?.trim()) ||
-    'http://localhost:8080'
-  return raw.replace(/\/$/, '')
+  const wsOnly =
+    typeof process !== 'undefined'
+      ? process.env.NEXT_PUBLIC_WS_ORIGIN?.trim()
+      : undefined
+  if (wsOnly) return wsOnly.replace(/\/$/, '') // e.g. http://localhost:8080
+
+  const api =
+    typeof process !== 'undefined'
+      ? process.env.NEXT_PUBLIC_API_URL?.trim()
+      : undefined
+  if (api) return api.replace(/\/$/, '')
+
+  if (typeof window !== 'undefined') {
+    return `${window.location.protocol}//${window.location.hostname}:8080`
+  }
+  return 'http://localhost:8080'
 }
 
 function buildWsUrl(ticket?: string | null): string {

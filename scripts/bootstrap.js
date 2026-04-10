@@ -196,8 +196,9 @@ function main() {
     console.log('[bootstrap] Set WEBHOOK_SECRET in client/.env.local')
   }
 
+  // Empty = same-origin /api (Next rewrites to Fastify); set http://localhost:8080 only to bypass proxy.
   if (!getKey(clientEnv, 'NEXT_PUBLIC_API_URL')) {
-    clientEnv = upsertKey(clientEnv, 'NEXT_PUBLIC_API_URL', 'http://localhost:8080')
+    clientEnv = upsertKey(clientEnv, 'NEXT_PUBLIC_API_URL', '')
   }
   if (!getKey(clientEnv, 'SITE_URL')) {
     clientEnv = upsertKey(clientEnv, 'SITE_URL', 'http://localhost:3000')

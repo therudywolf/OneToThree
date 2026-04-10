@@ -86,6 +86,8 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@localhost}
+      # Optional: hourly UTC log files under ./logs (api-access-*utc.log). Mount ./logs if needed.
+      # API_FILE_LOG: "1"
     depends_on:
       db:
         condition: service_healthy
@@ -118,7 +120,9 @@ services:
     environment:
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
-      NEXT_PUBLIC_API_URL: http://localhost:8080
+      # Same-origin /api so browser session cookie is on :3000 (middleware proxy.ts can see fm_session).
+      API_INTERNAL_URL: http://api:8080
+      NEXT_PUBLIC_API_URL: ""
     volumes:
       - ./client:/app
       - web_node_modules:/app/node_modules

@@ -7,10 +7,29 @@ const nextConfig = {
   devIndicators: false,
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '..'),
+  /**
+   * Proxy API to Fastify so the browser talks to :3000/api/* and session cookies are host-scoped
+   * to the Next origin (required for `src/proxy.ts` middleware + httpOnly auth cookie).
+   * In Docker, set API_INTERNAL_URL=http://api:8080 on the web service.
+   */
+  async rewrites() {
+    const internal =
+      process.env.API_INTERNAL_URL?.trim() ||
+      process.env.API_URL?.trim() ||
+      'http://127.0.0.1:8080'
+    const base = internal.replace(/\/$/, '')
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${base}/api/:path*`,
+      },
+    ]
+  },
   async headers() {
-    const apiUrl = (
-      process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
-    ).replace(/\/$/, '')
+    // Do not use API_INTERNAL_URL here — browser cannot resolve Docker service hostnames.
+    const publicApi =
+      process.env.NEXT_PUBLIC_API_URL?.trim() ||
+      'http://localhost:8080 http://127.0.0.1:8080'
     const isProd = process.env.NODE_ENV === 'production'
 
     const cspDirectives = [
@@ -23,7 +42,7 @@ const nextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",
-      `connect-src 'self' ${apiUrl} ws: wss:`,
+      `connect-src 'self' ${publicApi} ws: wss:`,
       "worker-src 'self' blob:",
     ]
     if (isProd) {

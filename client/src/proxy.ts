@@ -18,6 +18,7 @@ function isBypassPath(pathname: string): boolean {
 function resolveApiBase(request: NextRequest): string {
   const fromEnv = process.env.NEXT_PUBLIC_API_URL?.trim()
   if (fromEnv) return `${fromEnv.replace(/\/$/, '')}/api`
+  // Same-origin API (Next rewrites to Fastify) — session cookie is on this origin.
   return `${request.nextUrl.origin}/api`
 }
 

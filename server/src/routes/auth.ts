@@ -66,30 +66,47 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(401).send({ error: 'NONCE_MISMATCH' })
     }
 
-    deletePending(username)
-
-    const existing = await db.query.users.findFirst({
-      where: eq(users.username, username),
-    })
+    const existingRows = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, username))
+      .limit(1)
+    const existing = existingRows[0]
 
     let publicKeyJwkStr: string
-    let userId: string
-
     if (existing) {
       publicKeyJwkStr = existing.publicKeyJwk
-      userId = existing.id
-      if (public_key_jwk && public_key_jwk !== existing.publicKeyJwk) {
+      if (
+        public_key_jwk &&
+        public_key_jwk.trim() !== existing.publicKeyJwk
+      ) {
+        deletePending(username)
         return reply.status(400).send({ error: 'PUBLIC_KEY_CONFLICT' })
       }
     } else {
-      if (!public_key_jwk) {
+      if (!public_key_jwk?.trim()) {
+        deletePending(username)
         return reply.status(400).send({ error: 'PUBLIC_KEY_REQUIRED' })
       }
       publicKeyJwkStr = public_key_jwk.trim()
-      if (!publicKeyJwkStr) {
-        return reply.status(400).send({ error: 'PUBLIC_KEY_REQUIRED' })
-      }
+    }
 
+    const ok = verifyNonceSignatureEcdsaP256(
+      nonce,
+      signature,
+      publicKeyJwkStr
+    )
+    if (!ok) {
+      deletePending(username)
+      return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
+    }
+
+    deletePending(username)
+
+    let userId: string
+    if (existing) {
+      userId = existing.id
+    } else {
       let inserted
       try {
         inserted = await db
@@ -111,15 +128,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(500).send({ error: 'INSERT_FAILED' })
       }
       userId = row.id
-    }
-
-    const ok = verifyNonceSignatureEcdsaP256(
-      nonce,
-      signature,
-      publicKeyJwkStr
-    )
-    if (!ok) {
-      return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
     }
 
     const token = await reply.jwtSign(

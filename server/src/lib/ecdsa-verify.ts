@@ -1,7 +1,7 @@
 import {
   createPublicKey,
+  createVerify,
   timingSafeEqual,
-  verify as cryptoVerify,
   type JsonWebKey,
 } from 'node:crypto'
 
@@ -36,21 +36,24 @@ export function verifyNonceSignatureEcdsaP256(
   const sig = decodeSignatureBuffer(signatureInput)
   if (!sig) return false
 
+  const vDer = createVerify('SHA256')
+  vDer.update(msg)
+  vDer.end()
   try {
-    if (cryptoVerify('sha256', msg, publicKey, sig)) return true
+    if (vDer.verify(publicKey, sig)) return true
   } catch {
-    /* try raw */
+    /* try ieee-p1363 */
   }
 
   if (sig.length === 64) {
+    const vRaw = createVerify('SHA256')
+    vRaw.update(msg)
+    vRaw.end()
     try {
-      if (
-        cryptoVerify('sha256', msg, publicKey, sig, {
-          dsaEncoding: 'ieee-p1363',
-        })
-      ) {
-        return true
-      }
+      return vRaw.verify(
+        { key: publicKey, dsaEncoding: 'ieee-p1363' },
+        sig
+      )
     } catch {
       return false
     }
@@ -78,12 +81,8 @@ function decodeSignatureBuffer(signatureInput: string): Buffer | null {
     }
   }
 
-  try {
-    const standard = Buffer.from(s, 'base64')
-    if (standard.length > 0) return standard
-  } catch {
-    /* fall through */
-  }
+  const standard = Buffer.from(s, 'base64')
+  if (standard.length > 0) return standard
 
   const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4))
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + pad

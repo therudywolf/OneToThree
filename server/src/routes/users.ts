@@ -1,4 +1,4 @@
-import { and, eq, ilike } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -8,6 +8,7 @@ const searchQuerySchema = z.object({
   q: z.string().min(1).max(128),
 })
 
+/** Backslash-escape `%`, `_`, and `\` for PostgreSQL ILIKE … ESCAPE '\\'. */
 function escapeIlikePattern(fragment: string): string {
   return fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
@@ -26,11 +27,14 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .select({
         id: users.id,
         username: users.username,
-        publicKeyJwk: users.publicKeyJwk,
+        public_key_jwk: users.publicKeyJwk,
       })
       .from(users)
       .where(
-        and(eq(users.isDiscoverable, true), ilike(users.username, pattern))
+        and(
+          eq(users.isDiscoverable, true),
+          sql`${users.username} ILIKE ${pattern} ESCAPE '\\'`
+        )
       )
       .limit(50)
 

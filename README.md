@@ -77,13 +77,15 @@ The script:
 4. Runs **`docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`**.  
 5. **`db-migrate`** runs automatically as a **one-shot** after Postgres is **healthy**; **api** waits for migrate + MinIO + DB.
 
-### `docker-compose.prod.yml` (hardened)
+### `docker-compose.prod.yml` (hardened · high-throughput lane)
 
 - **`restart: always`** on `db`, `minio`, `api`, `web`, `caddy`.  
-- **Healthchecks**: Postgres (`pg_isready`), MinIO (`mc ready`), API (`GET /health`), Web (Node `fetch` to `:3000/`).  
-- **Caddy** starts only when **web**, **api**, and **minio** are healthy.  
-- **Resource caps** (small VPS–friendly defaults): `api` **384m / 0.75 CPU**, `web` **768m / 1.25 CPU** (tune in Compose).  
-- **`TRUST_PROXY`** passed into API (default **`1`** in Compose when unset).
+- **CPU priority**: **`cpu_shares: 512`** on **web**, **api**, and **db** — uses spare cycles when idle, yields under host contention. **web** / **api** may use up to **`cpus: '4.0'`** each on a 4-core host (tunable).  
+- **Memory (typical 4C / 6GB+ class)**: **web** `1536m` limit / `512m` reservation · **api** `1024m` / `256m` · **db** & **minio** `512m` each · **api** `tmpfs` `/tmp` **128m** (signaling-heavy workloads).  
+- **Healthchecks**: Postgres (**`pg_isready -U $POSTGRES_USER -d $POSTGRES_DB`**), MinIO (`mc ready`), API (`GET /health`), Web (Node `fetch` to `/`).  
+- **Caddy** starts only when **web**, **api**, and **minio** report **`service_healthy`**. **Only Caddy** publishes **`80`** and **`443`** to the host; **api**, **db**, **minio**, **web** stay on **`app_network`** (no host ports).  
+- **Volumes** (named, persistent): **`pgdata`** (Postgres), **`minio_data`**, **`caddy_data`** (`/data` for Caddy state). Upgrading from an older compose that used `postgres_data`: bind-migrate data into **`pgdata`** or rename the volume once; see comment in `docker-compose.prod.yml`.  
+- **`TRUST_PROXY`** on API (default **`1`** via Compose when unset).
 
 ### DNS → Caddy
 
@@ -110,7 +112,7 @@ Then open **`/admin`** while logged in as that user. Rotate secrets if this comm
 |---------|-----------|
 | **Client** | **Dexie** / IndexedDB **`project13-media-cache`** stores **decrypted** media blobs keyed by `message_id` (device-only; fastest replay). |
 | **Cap** | **~1 GiB** total + **200 entries** max — oldest evicted first so the first **1000+ text messages** do not bloat media storage. |
-| **Server** | **Retention purge** (optional): deletes MinIO objects older than **`MEDIA_RETENTION_DAYS`** (default **30**) and nulls `media_path` on rows. **Off-peak** mode in production: purge runs only between **01:00–06:00 UTC** unless `MEDIA_PURGE_OFF_PEAK=0`. Small batches + **25 ms** delay between row updates to reduce lock pressure. |
+| **Server** | **Retention purge** (optional): deletes MinIO objects older than **`MEDIA_RETENTION_DAYS`** and nulls `media_path` on rows. Tune **`MEDIA_RETENTION_DAYS`** in **`.env.prod`** so total object storage stays inside your disk budget (e.g. **40–50GB** — lower days or batch size if uploads are large). **Off-peak** UTC window + small batches + short delays between rows (see **`env.prod.example`**). |
 | **Download policy** | Presigned GET only if a **live** `messages.media_path` row still claims the object — otherwise **`410 FILE_EXPIRED`**. UI: *FILE EXPIRED ON SERVER* / *Срок хранения на сервере истек.* |
 
 **Settings → SENSORS → DIGITAL DEN:** shows occupancy and **CLEAR LOCAL CACHE**. Nuclear “purge local” in Settings also wipes this store.

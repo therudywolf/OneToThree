@@ -6,6 +6,10 @@ import {
   decryptInboundText,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
+import {
+  cacheMessages,
+  getRecentCachedMessages,
+} from '@/lib/message-cache'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
 
@@ -35,6 +39,11 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
 
     let cancelled = false
     ;(async () => {
+      const cached = await getRecentCachedMessages(activeChatId, 50)
+      if (!cancelled && cached.length > 0) {
+        setMessages(cached)
+      }
+
       const res = await fetch(`${API_URL}/messages/${activeChatId}`, {
         credentials: 'include',
       })
@@ -81,6 +90,7 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
           (a, b) =>
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )
+        await cacheMessages(out)
         setMessages(out)
       }
     })()

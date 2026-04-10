@@ -1,6 +1,19 @@
 import { create } from 'zustand'
 import type { DecryptedMessage } from '@/types/chat'
 
+const RAM_WINDOW_SIZE = 50
+
+function sortByCreatedAt(messages: DecryptedMessage[]): DecryptedMessage[] {
+  return [...messages].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  )
+}
+
+function trimToRamWindow(messages: DecryptedMessage[]): DecryptedMessage[] {
+  if (messages.length <= RAM_WINDOW_SIZE) return messages
+  return messages.slice(messages.length - RAM_WINDOW_SIZE)
+}
+
 type ChatState = {
   activeChatId: string | null
   messages: DecryptedMessage[]
@@ -24,17 +37,17 @@ export const useChatStore = create<ChatState>((set) => ({
   userId: null,
   replyTo: null,
   setActiveChatId: (id) => set({ activeChatId: id, replyTo: null }),
-  setMessages: (messages) => set({ messages }),
+  setMessages: (messages) =>
+    set({
+      messages: trimToRamWindow(sortByCreatedAt(messages)),
+    }),
   appendMessage: (m) =>
     set((s) => {
       if (s.messages.some((x) => x.id === m.id)) {
         return s
       }
       return {
-        messages: [...s.messages, m].sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        ),
+        messages: trimToRamWindow(sortByCreatedAt([...s.messages, m])),
       }
     }),
   removeMessage: (id) =>

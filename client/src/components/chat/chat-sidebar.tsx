@@ -1,13 +1,17 @@
 'use client'
 
 import { useState } from 'react'
+import { useEffect } from 'react'
+import { ShieldCheck } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { NotificationToggle } from '@/components/notification-toggle'
 import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
-import { searchUsers } from '@/lib/api/users'
+import { lookupUsers, searchUsers } from '@/lib/api/users'
 import { useTranslation } from '@/hooks/use-translation'
+import { hashPublicKeyJwk } from '@/lib/crypto'
+import { resolveTrustStatus } from '@/lib/trust-store'
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -25,6 +29,7 @@ export function ChatSidebar({ userId }: { userId: string }) {
   const [createErr, setCreateErr] = useState<string | null>(null)
   const [groupModalOpen, setGroupModalOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [trustedPeerIds, setTrustedPeerIds] = useState<Set<string>>(new Set())
 
   function mapSidebarError(code: string): string {
     const m: Record<string, string> = {
@@ -66,6 +71,41 @@ export function ChatSidebar({ userId }: { userId: string }) {
     }
   }
 
+  useEffect(() => {
+    const directPeerIds = chats
+      .filter((c) => !c.is_group)
+      .map((c) => c.member_ids.find((id) => id !== userId))
+      .filter((id): id is string => Boolean(id))
+    if (!directPeerIds.length) {
+      setTrustedPeerIds(new Set())
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const users = await lookupUsers(directPeerIds)
+        const trusted = new Set<string>()
+        for (const u of users) {
+          if (!u.ecdh_public_key_jwk) continue
+          try {
+            const jwk = JSON.parse(u.ecdh_public_key_jwk) as JsonWebKey
+            const hash = await hashPublicKeyJwk(jwk)
+            const trust = resolveTrustStatus(u.id, hash)
+            if (trust.verified) trusted.add(u.id)
+          } catch {
+            /* ignore parse failures */
+          }
+        }
+        if (!cancelled) setTrustedPeerIds(trusted)
+      } catch {
+        if (!cancelled) setTrustedPeerIds(new Set())
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [chats, userId])
+
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r border-neon-cyan/40 bg-black">
       {groupModalOpen ? (
@@ -100,8 +140,15 @@ export function ChatSidebar({ userId }: { userId: string }) {
                 : 'text-neon-red'
             }`}
           >
-            {c.is_group ? '[GRP]' : '[DIR]'}{' '}
-            {c.name?.trim() || `${c.id.slice(0, 8)}…`}
+            <span className="inline-flex min-w-0 items-center gap-1">
+              {!c.is_group && trustedPeerIds.has(c.member_ids.find((id) => id !== userId) ?? '') ? (
+                <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
+              ) : null}
+              <span>
+                {c.is_group ? '[GRP]' : '[DIR]'}{' '}
+                {c.name?.trim() || `${c.id.slice(0, 8)}…`}
+              </span>
+            </span>
           </button>
         ))}
       </nav>

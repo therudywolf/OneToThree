@@ -52,6 +52,26 @@ function base64ToUint8(b64: string): Uint8Array {
   return out
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => stableStringify(v)).join(',')}]`
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const keys = Object.keys(obj).sort((a, b) => a.localeCompare(b))
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function uint8ToHex(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, '0')
+  }
+  return out
+}
+
 /**
  * Generate an ECDH key pair for X25519 is not used here; we use NIST curves per Web Crypto interop.
  *
@@ -286,4 +306,32 @@ export async function signUtf8WithEcdsaP256(
     binary += String.fromCharCode(bytes[i])
   }
   return btoa(binary)
+}
+
+/**
+ * Computes a deterministic SHA-256 hash over a canonicalized JWK JSON string.
+ * Used for local trust pinning and key-change detection.
+ */
+export async function hashPublicKeyJwk(publicKeyJwk: JsonWebKey): Promise<string> {
+  const canonical = stableStringify(publicKeyJwk)
+  const bytes = new TextEncoder().encode(canonical)
+  const digest = await getSubtle().digest('SHA-256', bytes as BufferSource)
+  return uint8ToHex(new Uint8Array(digest))
+}
+
+/**
+ * Builds a human-readable safety number from public key material.
+ * Format: 6 blocks of 5 digits (e.g. 12345 67890 12345 67890 12345 67890).
+ */
+export async function generateSafetyNumber(
+  publicKeyJwk: JsonWebKey
+): Promise<string> {
+  const hex = await hashPublicKeyJwk(publicKeyJwk)
+  const decimal = BigInt(`0x${hex}`).toString(10).padStart(60, '0')
+  const normalized = decimal.slice(0, 30)
+  const blocks: string[] = []
+  for (let i = 0; i < 30; i += 5) {
+    blocks.push(normalized.slice(i, i + 5))
+  }
+  return blocks.join(' ')
 }

@@ -1,9 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { useMediaRecorder } from '@/hooks/use-media-recorder'
 import { useSendMediaMessage } from '@/hooks/use-send-media-message'
+import {
+  isMediaTooLarge,
+  MAX_FILE_SIZE_LABEL,
+  MEDIA_TOO_LARGE_CODE,
+} from '@/lib/media-limits'
 
 type Props = {
   cryptoCtx: ChatCryptoContext | null
@@ -71,6 +76,7 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
   const {
     isRecording,
     error,
+    clearError,
     startVoiceCapture,
     startVideoCircleCapture,
     stopCapture,
@@ -87,6 +93,24 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
   const [cancelled, setCancelled] = useState(false)
   const startXRef = useRef(0)
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [uiError, setUiError] = useState<string | null>(null)
+  const renderedError =
+    uiError ??
+    (error === MEDIA_TOO_LARGE_CODE
+      ? `[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`
+      : error
+        ? `[!] ${error}`
+        : null)
+
+  useEffect(() => {
+    if (!renderedError) return
+    const id = window.setTimeout(() => {
+      setUiError(null)
+      clearError()
+    }, 5000)
+    return () => window.clearTimeout(id)
+  }, [clearError, renderedError])
 
   useEffect(() => {
     if (!isRecording) {
@@ -119,9 +143,55 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
       setCancelled(false)
       const r = await stopCapture()
       if (!r || !cryptoCtx || !sendIt) return
-      await sendMedia(r.blob, currentMode === 'voice' ? 'audio' : 'video')
+      try {
+        await sendMedia(r.blob, currentMode === 'voice' ? 'audio' : 'video')
+      } catch (e) {
+        if (
+          e instanceof Error &&
+          e.message.includes(MEDIA_TOO_LARGE_CODE)
+        ) {
+          setUiError(`[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`)
+        } else {
+          setUiError('[ ERROR ] MEDIA_SEND_FAILED')
+        }
+      }
     } finally {
       busyRef.current = false
+    }
+  }
+
+  async function handleAttachmentPick(ev: ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0]
+    ev.target.value = ''
+    if (!file || disabled || !cryptoCtx) return
+    // Hard stop before any reader/arrayBuffer allocation.
+    if (isMediaTooLarge(file.size)) {
+      setUiError(`[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`)
+      return
+    }
+    const mediaType =
+      file.type.startsWith('image/')
+        ? 'image'
+        : file.type.startsWith('video/')
+          ? 'video'
+          : file.type.startsWith('audio/')
+            ? 'audio'
+            : null
+    if (!mediaType) {
+      setUiError('[ ERROR ] MEDIA_TYPE_UNSUPPORTED')
+      return
+    }
+    try {
+      await sendMedia(file, mediaType, undefined, {
+        fileName: file.name,
+        fileType: file.type || undefined,
+      })
+    } catch (e) {
+      if (e instanceof Error && e.message.includes(MEDIA_TOO_LARGE_CODE)) {
+        setUiError(`[ ERROR ] ${MEDIA_TOO_LARGE_CODE}`)
+      } else {
+        setUiError('[ ERROR ] MEDIA_SEND_FAILED')
+      }
     }
   }
 
@@ -172,10 +242,43 @@ export function ChatMediaControls({ cryptoCtx, disabled }: Props) {
           <span>:: MEDIA</span>
         </div>
       ) : null}
-      {error ? (
-        <p className="mb-1 font-mono text-[10px] text-neon-red">[!] {error}</p>
+      {renderedError ? (
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <p className="font-mono text-[10px] text-neon-red">{renderedError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setUiError(null)
+              clearError()
+            }}
+            className="font-mono text-[10px] text-red-800 hover:text-neon-red"
+            aria-label="Dismiss media error"
+          >
+            [X]
+          </button>
+        </div>
       ) : null}
+      {!isRecording ? (
+        <p className="mb-1 font-mono text-[10px] text-red-800">
+          :: MAX_MEDIA_SIZE {MAX_FILE_SIZE_LABEL}
+        </p>
+      ) : null}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*,audio/*"
+        className="hidden"
+        onChange={(ev) => void handleAttachmentPick(ev)}
+      />
       <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={disabled || !cryptoCtx || isRecording}
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded-none border border-neon-cyan/60 bg-black px-3 py-2 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+        >
+          [ ATTACH ]
+        </button>
         <button
           type="button"
           disabled={disabled || !cryptoCtx}

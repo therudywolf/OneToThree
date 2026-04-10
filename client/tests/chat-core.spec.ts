@@ -98,35 +98,44 @@ test.describe('chat / core & crypto', () => {
     browser,
     baseURL,
   }) => {
-    const passphrase = 'E2E_Strong_Pass_99!'
-    const alice = uniqueHandle('inv_alice')
-    const bob = uniqueHandle('inv_bob')
+    /** Distinct peers in isolated storage state — never open ?invite= with the same session as the inviter. */
+    const passphrase = `E2E_${Date.now()}_Aa1!xtra`
+    const alice = uniqueHandle('alice')
+    const bob = uniqueHandle('bob')
 
-    const ctxA = await browser.newContext()
-    const pageA = await ctxA.newPage()
-    await registerNewUser(pageA, alice, passphrase)
-    const aliceId = await fetchUserId(pageA)
-    await ctxA.close()
+    const contextA = await browser.newContext()
+    const contextB = await browser.newContext()
+    const pageA = await contextA.newPage()
+    const pageB = await contextB.newPage()
 
-    const ctxB = await browser.newContext()
-    const pageB = await ctxB.newPage()
-    await registerNewUser(pageB, bob, passphrase)
+    try {
+      await registerNewUser(pageA, alice, passphrase)
+      const aliceId = await fetchUserId(pageA)
 
-    const origin = baseURL ?? 'http://127.0.0.1:3000'
-    const created = pageB.waitForResponse(
-      (r) =>
-        r.url().includes('/chats') &&
-        r.request().method() === 'POST' &&
-        r.status() === 201
-    )
-    await pageB.goto(`${origin}/?invite=${aliceId}`)
-    await created
+      await registerNewUser(pageB, bob, passphrase)
 
-    await expect(pageB.getByText('[DIR]', { exact: false }).first()).toBeVisible({
-      timeout: 45_000,
-    })
+      const origin = baseURL ?? 'http://127.0.0.1:3000'
+      const created = pageB.waitForResponse(
+        (r) =>
+          r.url().includes('/chats') &&
+          r.request().method() === 'POST' &&
+          r.status() === 201
+      )
+      await pageB.goto(`${origin}/?invite=${aliceId}`)
+      await created
 
-    await ctxB.close()
+      await expect(pageB.getByText('[DIR]', { exact: false }).first()).toBeVisible({
+        timeout: 45_000,
+      })
+
+      /** Bob opened Alice’s invite while logged in as Bob — Alice’s shell may list the new DIR via WS. */
+      await expect
+        .soft(pageA.getByText('[DIR]', { exact: false }).first())
+        .toBeVisible({ timeout: 30_000 })
+    } finally {
+      await contextA.close()
+      await contextB.close()
+    }
   })
 
   test('delete for everyone removes message for all peers', async ({ browser }) => {

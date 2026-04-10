@@ -15,9 +15,9 @@ export function LogoutButton() {
   async function handleLogout() {
     const callState = useCallStore.getState()
     callState.localStream?.getTracks().forEach((t) => t.stop())
-    Object.values(callState.connections).forEach((c) => {
+    Object.values(callState.peerConnections).forEach((pc) => {
       try {
-        c.close()
+        pc.close()
       } catch {
         /* ignore */
       }

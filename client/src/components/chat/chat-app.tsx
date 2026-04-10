@@ -11,11 +11,11 @@ import {
 } from '@/lib/vault'
 import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
-import { useLoadChatMessages } from '@/hooks/use-load-chat-messages'
-import { useChatRealtime } from '@/hooks/use-chat-realtime'
 import { useSendMessage } from '@/hooks/use-send-message'
+import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
-import { fetchPeerIdsForChat, useWebRTC } from '@/hooks/use-webrtc'
+import { fetchPeerIdsForChat } from '@/lib/api/chats'
+import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { VaultModal } from '@/components/chat/vault-modal'
 import { ChatSidebar } from '@/components/chat/chat-sidebar'
@@ -81,8 +81,7 @@ export function ChatApp({
 
   const { cryptoCtx, ctxError } = useChatCryptoContext()
   const sharedKey = useChatAesKey(cryptoCtx)
-  useLoadChatMessages(cryptoCtx)
-  useChatRealtime(cryptoCtx)
+  useMessages(cryptoCtx)
   const { sendText } = useSendMessage(cryptoCtx)
 
   async function handleVoiceCall() {

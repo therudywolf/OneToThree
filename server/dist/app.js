@@ -4,7 +4,10 @@ import jwt from '@fastify/jwt';
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import { authRoutes } from './routes/auth.js';
+import { chatsRoutes } from './routes/chats.js';
+import { messagesRoutes } from './routes/messages.js';
 import { userRoutes } from './routes/users.js';
+import { wsRoutes } from './routes/ws.js';
 export async function buildApp() {
     const app = Fastify({ logger: true });
     const corsOrigins = process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()).filter(Boolean) ??
@@ -25,6 +28,9 @@ export async function buildApp() {
     await app.register(websocket);
     await app.register(authRoutes, { prefix: '/api/auth' });
     await app.register(userRoutes, { prefix: '/api/users' });
+    await app.register(chatsRoutes, { prefix: '/api/chats' });
+    await app.register(messagesRoutes, { prefix: '/api/messages' });
+    await app.register(wsRoutes, { prefix: '/api' });
     app.get('/health', async () => ({ ok: true }));
     return app;
 }

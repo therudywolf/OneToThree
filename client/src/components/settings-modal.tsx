@@ -2,20 +2,33 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { API_URL } from '@/lib/api/auth'
+import { useAuth } from '@/components/auth/auth-provider'
 import { readVaultBlob, vaultStorageKey } from '@/lib/vault'
+import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 
 type Props = { userId: string; username: string; onClose: () => void }
 
+function parseDiscoverable(
+  raw: boolean | string | undefined
+): boolean | null {
+  if (raw === true || raw === 'true') return true
+  if (raw === false || raw === 'false') return false
+  if (typeof raw === 'string' && raw.toLowerCase() === 'true') return true
+  if (typeof raw === 'string' && raw.toLowerCase() === 'false') return false
+  return null
+}
+
 export function SettingsModal({ userId, username, onClose }: Props) {
   const { locale, setLocale, t } = useTranslation()
+  const { updateUser } = useAuth()
   const [discoverable, setDiscoverable] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
-  const fetchMe = useCallback(async () => {
+  const loadSettingsFromApi = useCallback(async () => {
     setError(null)
     try {
       const r = await fetch(`${API_URL}/users/me/settings`, {
@@ -30,30 +43,23 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         return
       }
       const raw = d.is_discoverable
-      setDiscoverable(
+      const parsed =
         raw === true ||
-          raw === 'true' ||
-          (typeof raw === 'string' && raw.toLowerCase() === 'true')
-      )
+        raw === 'true' ||
+        (typeof raw === 'string' && raw.toLowerCase() === 'true')
+      setDiscoverable(parsed)
+      updateUser({ is_discoverable: parsed })
+      console.log('[Phase 18] GET /users/me/settings', {
+        is_discoverable: parsed,
+      })
     } catch {
       setError(t('settings.loadFailed'))
     }
-  }, [t])
+  }, [t, updateUser])
 
   useEffect(() => {
-    void fetchMe()
-  }, [fetchMe, userId])
-
-  function parseDiscoverable(
-    raw: boolean | string | undefined
-  ): boolean | null {
-    if (raw === true || raw === 'true') return true
-    if (raw === false || raw === 'false') return false
-    if (typeof raw === 'string' && raw.toLowerCase() === 'true') return true
-    if (typeof raw === 'string' && raw.toLowerCase() === 'false')
-      return false
-    return null
-  }
+    void loadSettingsFromApi()
+  }, [loadSettingsFromApi, userId])
 
   async function toggleDiscoverable() {
     setBusy(true)
@@ -75,7 +81,37 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         throw new Error(d.error ?? t('settings.toggleFailed'))
       }
       const fromServer = parseDiscoverable(d.is_discoverable)
-      setDiscoverable(fromServer ?? newVal)
+      const next = fromServer ?? newVal
+      setDiscoverable(next)
+      updateUser({ is_discoverable: next })
+      console.log('[Phase 18] PATCH /users/me discoverability', {
+        raw: d.is_discoverable,
+        applied: next,
+      })
+
+      const r2 = await fetch(`${API_URL}/users/me/settings`, {
+        credentials: 'include',
+      })
+      const d2 = (await r2.json().catch(() => ({}))) as {
+        is_discoverable?: boolean | string
+        error?: string
+      }
+      if (r2.ok) {
+        const confirmed = parseDiscoverable(d2.is_discoverable)
+        if (confirmed !== null) {
+          setDiscoverable(confirmed)
+          updateUser({ is_discoverable: confirmed })
+          console.log('[Phase 18] GET /users/me/settings after PATCH', {
+            applied: confirmed,
+          })
+        }
+      } else {
+        console.error('[Phase 18] confirm GET /users/me/settings failed', {
+          status: r2.status,
+          error: d2.error,
+        })
+      }
+
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (e) {
@@ -84,6 +120,22 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function purgeLocalCache() {
+    console.log('[Phase 18] PURGE LOCAL CACHE — starting')
+    try {
+      await purgeLocalMessageCache()
+    } catch (e) {
+      console.error('[Phase 18] purge IndexedDB failed', e)
+    }
+    try {
+      localStorage.clear()
+      sessionStorage.clear()
+    } catch (e) {
+      console.error('[Phase 18] purge web storage failed', e)
+    }
+    window.location.reload()
   }
 
   function exportVault() {
@@ -232,6 +284,20 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 [ IMPORT ]
               </TerminalGlitchButton>
             </div>
+          </div>
+
+          <div className="border-t border-neon-red/40 pt-3">
+            <p className="mb-1 text-xs uppercase tracking-widest text-neon-red">
+              {t('settings.dangerZone')}
+            </p>
+            <p className="mb-2 text-[9px] text-zinc-500">{t('settings.purgeHint')}</p>
+            <TerminalGlitchButton
+              type="button"
+              onClick={() => void purgeLocalCache()}
+              className="w-full !border-neon-red !px-2 !py-2 !text-[10px] !text-neon-red hover:!bg-neon-red/10"
+            >
+              [ {t('settings.purgeLocalCache')} ]
+            </TerminalGlitchButton>
           </div>
         </div>
 

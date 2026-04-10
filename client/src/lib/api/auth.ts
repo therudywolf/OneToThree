@@ -22,6 +22,16 @@ function normalizeApiRoot(): string {
 
 export const API_URL = normalizeApiRoot()
 
+/** Thrown when `/auth/me` or other auth API calls fail; includes HTTP status for 401 handling. */
+export class AuthHttpError extends Error {
+  readonly status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'AuthHttpError'
+    this.status = status
+  }
+}
+
 export async function requestChallenge(username: string): Promise<{ nonce: string }> {
   const res = await fetch(`${API_URL}/auth/challenge`, {
     method: 'POST',
@@ -93,7 +103,13 @@ export async function fetchMe(): Promise<{ user: { id: string; username: string 
     error?: string
   }
   if (!res.ok) {
-    throw new Error(data.error ?? 'UNAUTHORIZED')
+    if (res.status === 401) {
+      console.error(
+        '[AUTH] Session invalid — wiping local state before redirect to login [Phase 18]',
+        { status: res.status, error: data.error }
+      )
+    }
+    throw new AuthHttpError(data.error ?? 'UNAUTHORIZED', res.status)
   }
   if (!data.user?.id) {
     throw new Error('INVALID_ME_RESPONSE')

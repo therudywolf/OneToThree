@@ -235,7 +235,9 @@ export function ChatApp({
       ) : null}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-neon-cyan/40 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-          <span className="shrink-0">PROJECT_13 :: E2E</span>
+          <span className="shrink-0 truncate">
+            PROJECT_13 :: E2E :: @{user?.username ?? username}
+          </span>
           {peerIdentity ? (
             <button
               type="button"

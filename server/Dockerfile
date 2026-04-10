@@ -21,5 +21,6 @@ COPY --from=build /app/package.json ./package.json
 RUN chown -R app:app /app
 USER app
 ENV NODE_ENV=production
+# JWT_SECRET is injected by docker-compose (set JWT_SECRET in repo-root `.env` for stable sessions).
 EXPOSE 8080
 CMD ["node", "dist/index.js"]

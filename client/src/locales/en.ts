@@ -113,6 +113,10 @@ const en = {
   'settings.importFailed': 'Import failed',
   'settings.toggleFailed': 'Failed to update setting',
   'settings.unknown': 'Unknown error',
+  'settings.dangerZone': 'Danger zone',
+  'settings.purgeHint':
+    'Clears localStorage, sessionStorage, and the message IndexedDB — use when debugging corrupt local state.',
+  'settings.purgeLocalCache': 'PURGE LOCAL CACHE',
 } as const
 
 export default en

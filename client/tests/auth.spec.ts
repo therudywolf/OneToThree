@@ -24,7 +24,7 @@ test.describe('auth / registration', () => {
 
     await unlockVaultModal(page, passphrase)
 
-    await expect(page.getByText('PROJECT_13 :: E2E')).toBeVisible({
+    await expect(page.getByText(new RegExp(`PROJECT_13 :: E2E :: @${handle}`))).toBeVisible({
       timeout: 30_000,
     })
   })

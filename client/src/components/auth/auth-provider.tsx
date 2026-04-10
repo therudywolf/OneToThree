@@ -10,15 +10,22 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { fetchMe, logoutApi } from '@/lib/api/auth'
+import { AuthHttpError, fetchMe, logoutApi } from '@/lib/api/auth'
 
-export type AuthUser = { id: string; username: string }
+/** `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional). */
+export type AuthUser = {
+  id: string
+  username: string
+  is_discoverable?: boolean
+}
 
 type AuthContextValue = {
   user: AuthUser | null
   loading: boolean
   refresh: () => Promise<void>
   logout: () => Promise<void>
+  /** Merge server-backed fields (e.g. discoverability) without a full session refresh. */
+  updateUser: (patch: Partial<AuthUser>) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -43,8 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { user: u } = await fetchMe()
       if (myId !== refreshGeneration.current) return
       setUser(u)
-    } catch {
+    } catch (e) {
       if (myId !== refreshGeneration.current) return
+      if (e instanceof AuthHttpError) {
+        console.error('[Phase 18] refresh() auth failed; user cleared', {
+          status: e.status,
+          message: e.message,
+        })
+      }
       setUser(null)
     } finally {
       if (myId === refreshGeneration.current) {
@@ -65,9 +78,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false)
   }, [])
 
+  const updateUser = useCallback((patch: Partial<AuthUser>) => {
+    setUser((prev) => (prev ? { ...prev, ...patch } : null))
+  }, [])
+
   const value = useMemo(
-    () => ({ user, loading, refresh, logout }),
-    [user, loading, refresh, logout]
+    () => ({ user, loading, refresh, logout, updateUser }),
+    [user, loading, refresh, logout, updateUser]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

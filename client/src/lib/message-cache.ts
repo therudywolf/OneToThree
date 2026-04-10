@@ -1,6 +1,6 @@
 'use client'
 
-import { openDB } from 'idb'
+import { deleteDB, openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
 import type { DecryptedMessage } from '@/types/chat'
 
@@ -20,6 +20,13 @@ interface MessageCacheDb extends DBSchema {
 }
 
 let dbPromise: Promise<IDBPDatabase<MessageCacheDb>> | null = null
+
+/** Dev/debug: drop the message cache DB so the next openDB() recreates a clean store. */
+export async function purgeLocalMessageCache(): Promise<void> {
+  dbPromise = null
+  if (typeof indexedDB === 'undefined') return
+  await deleteDB(DB_NAME)
+}
 
 function getDbPromise(): Promise<IDBPDatabase<MessageCacheDb>> {
   if (typeof indexedDB === 'undefined') {

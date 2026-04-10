@@ -1,4 +1,5 @@
 import { API_URL } from './auth'
+import { canonicalUserId } from '@/lib/user-id'
 
 export type SearchUserRow = {
   id: string
@@ -32,7 +33,9 @@ export type UserLookupRow = {
 }
 
 export async function lookupUsers(userIds: string[]): Promise<UserLookupRow[]> {
-  const unique = Array.from(new Set(userIds))
+  const unique = Array.from(
+    new Set(userIds.map((id) => canonicalUserId(id)))
+  )
   if (unique.length === 0) return []
   const res = await fetch(`${API_URL}/users/lookup`, {
     method: 'POST',

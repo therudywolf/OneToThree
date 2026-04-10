@@ -4,7 +4,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { MediaMessage } from '@/components/chat/media-message'
 import { deleteMessage } from '@/lib/api/chats'
+import {
+  deleteCachedMessage,
+  getOlderCachedMessages,
+} from '@/lib/message-cache'
 import type { DecryptedMessage } from '@/types/chat'
+
+const OLDER_PAGE_SIZE = 25
+const OLDER_RAM_CAP = 200
 
 export function ChatTerminal({
   userId,
@@ -18,6 +25,10 @@ export function ChatTerminal({
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useChatStore((s) => s.activeChatId)
   const ref = useRef<HTMLDivElement>(null)
+  const topSentinelRef = useRef<HTMLDivElement>(null)
+  const [olderMessages, setOlderMessages] = useState<DecryptedMessage[]>([])
+  const [hasMoreOlder, setHasMoreOlder] = useState(true)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<{
     msg: DecryptedMessage
     x: number
@@ -30,12 +41,65 @@ export function ChatTerminal({
   }, [messages])
 
   useEffect(() => {
+    setOlderMessages([])
+    setHasMoreOlder(true)
+    setLoadingOlder(false)
+  }, [activeChatId])
+
+  useEffect(() => {
     const close = () => setCtxMenu(null)
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
   }, [])
 
-  const msgById = (id: string) => messages.find((m) => m.id === id)
+  const renderMessages = (() => {
+    const map = new Map<string, DecryptedMessage>()
+    for (const m of [...olderMessages, ...messages]) {
+      map.set(m.id, m)
+    }
+    return [...map.values()].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+  })()
+
+  const msgById = (id: string) => renderMessages.find((m) => m.id === id)
+  const oldestLoaded = renderMessages[0] ?? null
+
+  useEffect(() => {
+    if (!activeChatId || !topSentinelRef.current || !ref.current) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0]
+        if (!first?.isIntersecting) return
+        if (loadingOlder || !hasMoreOlder || !oldestLoaded) return
+        setLoadingOlder(true)
+        void getOlderCachedMessages({
+          chatId: activeChatId,
+          beforeCreatedAt: oldestLoaded.created_at,
+          beforeId: oldestLoaded.id,
+          limit: OLDER_PAGE_SIZE,
+        })
+          .then((rows) => {
+            if (!rows.length) {
+              setHasMoreOlder(false)
+              return
+            }
+            setOlderMessages((prev) => {
+              const merged = [...rows, ...prev]
+              if (merged.length <= OLDER_RAM_CAP) return merged
+              return merged.slice(0, OLDER_RAM_CAP)
+            })
+            if (rows.length < OLDER_PAGE_SIZE) {
+              setHasMoreOlder(false)
+            }
+          })
+          .finally(() => setLoadingOlder(false))
+      },
+      { root: ref.current, threshold: 0.05 }
+    )
+    io.observe(topSentinelRef.current)
+    return () => io.disconnect()
+  }, [activeChatId, hasMoreOlder, loadingOlder, oldestLoaded])
 
   if (!activeChatId) {
     return (
@@ -81,6 +145,7 @@ export function ChatTerminal({
                 void deleteMessage(ctxMenu.msg.id, true).then(() =>
                   removeMessage(ctxMenu.msg.id)
                 )
+                void deleteCachedMessage(ctxMenu.msg.id)
                 setCtxMenu(null)
               }}
             >
@@ -94,6 +159,7 @@ export function ChatTerminal({
             onClick={(e) => {
               e.stopPropagation()
               removeMessage(ctxMenu.msg.id)
+              void deleteCachedMessage(ctxMenu.msg.id)
               setCtxMenu(null)
             }}
           >
@@ -105,7 +171,8 @@ export function ChatTerminal({
         ref={ref}
         className="h-full overflow-y-auto px-4 py-3 font-mono text-sm text-neon-red"
       >
-        {messages.length === 0 ? (
+        <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
+        {renderMessages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="space-y-2 text-center">
               <p className="text-xs text-neon-cyan/40">NO_PACKETS</p>
@@ -115,7 +182,7 @@ export function ChatTerminal({
             </div>
           </div>
         ) : null}
-        {messages.map((m) => {
+        {renderMessages.map((m) => {
           const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
           return (
             <div

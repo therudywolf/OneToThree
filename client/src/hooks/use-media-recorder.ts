@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isMediaTooLarge, MEDIA_TOO_LARGE_CODE } from '@/lib/media-limits'
 
 export type CaptureResult = {
   blob: Blob
@@ -119,15 +120,23 @@ export function useMediaRecorder() {
           resolve(null)
           return
         }
+        if (isMediaTooLarge(blob.size)) {
+          setError(MEDIA_TOO_LARGE_CODE)
+          resolve(null)
+          return
+        }
         resolve({ blob, mimeType: mime })
       }
       rec.stop()
     })
   }, [])
 
+  const clearError = useCallback(() => setError(null), [])
+
   return {
     isRecording,
     error,
+    clearError,
     startVoiceCapture,
     startVideoCircleCapture,
     stopCapture,

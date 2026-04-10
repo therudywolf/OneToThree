@@ -6,6 +6,7 @@ import {
   decryptInboundText,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
+import { cacheMessage, deleteCachedMessage } from '@/lib/message-cache'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
 
@@ -24,6 +25,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
     const off = socket.subscribe((msg) => {
       if (msg.type === 'message_deleted') {
         if (msg.chat_id === activeChatId) removeMessage(msg.message_id)
+        void deleteCachedMessage(msg.message_id)
         return
       }
       if (msg.type !== 'chat_message') return
@@ -59,6 +61,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
               : null,
           media_iv: m.media_iv,
         }
+        await cacheMessage(row)
         appendMessage(row)
       })()
     })

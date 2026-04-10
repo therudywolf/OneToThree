@@ -8,6 +8,7 @@ import {
 import { encryptBinary } from '@/lib/crypto'
 import { postUploadUrl } from '@/lib/api/storage'
 import { getFmSocket } from '@/lib/api/socket'
+import { isMediaTooLarge, MEDIA_TOO_LARGE_CODE } from '@/lib/media-limits'
 import { useChatStore } from '@/store/chatStore'
 
 async function putWithRetry(
@@ -42,21 +43,52 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
 
   const sendMedia = useCallback(
-    async (blob: Blob, mediaType: 'audio' | 'video', _caption?: string) => {
+    async (
+      blob: Blob,
+      mediaType: 'audio' | 'video' | 'image',
+      _caption?: string,
+      options?: { fileName?: string; fileType?: string }
+    ) => {
       if (!activeChatId || !userId || !unwrappedPrivateKey || !cryptoCtx) {
         return
+      }
+      // Guard before any ArrayBuffer allocation to avoid browser OOM.
+      if (isMediaTooLarge(blob.size)) {
+        throw new Error(MEDIA_TOO_LARGE_CODE)
       }
 
       const aesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
       const plain = await blob.arrayBuffer()
       const { cipher, ivBase64 } = await encryptBinary(aesKey, plain)
 
-      const fileType =
-        mediaType === 'audio' ? 'audio/webm' : 'video/webm'
-      const fileName =
+      const inferredType =
         mediaType === 'audio'
-          ? `voice-${Date.now()}.webm`
-          : `video-${Date.now()}.webm`
+          ? 'audio/webm'
+          : mediaType === 'video'
+            ? 'video/webm'
+            : 'image/jpeg'
+      const fileType = options?.fileType?.trim() || inferredType
+      const ext =
+        fileType.includes('png')
+          ? 'png'
+          : fileType.includes('gif')
+            ? 'gif'
+            : fileType.includes('webp')
+              ? 'webp'
+              : fileType.includes('jpeg') || fileType.includes('jpg')
+                ? 'jpg'
+                : fileType.includes('mp4')
+                  ? 'mp4'
+                  : fileType.includes('mpeg')
+                    ? 'mp3'
+                    : 'webm'
+      const defaultName =
+        mediaType === 'audio'
+          ? `voice-${Date.now()}.${ext}`
+          : mediaType === 'video'
+            ? `video-${Date.now()}.${ext}`
+            : `image-${Date.now()}.${ext}`
+      const fileName = options?.fileName?.trim() || defaultName
 
       const { uploadUrl, filePath } = await postUploadUrl({
         chatId: activeChatId,

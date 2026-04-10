@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Globe } from 'lucide-react'
+import { Globe, ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { useChatStore } from '@/store/chatStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
@@ -13,6 +13,10 @@ import { useSendMessage } from '@/hooks/use-send-message'
 import { useMessages } from '@/hooks/use-messages'
 import { useChatAesKey } from '@/hooks/use-chat-aes-key'
 import { createDirectE2EChat, fetchPeerIdsForChat } from '@/lib/api/chats'
+import { lookupUsers } from '@/lib/api/users'
+import { hashPublicKeyJwk } from '@/lib/crypto'
+import { resolveTrustStatus } from '@/lib/trust-store'
+import { useChats } from '@/hooks/use-chats'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
@@ -21,6 +25,7 @@ import { ChatInput } from '@/components/chat/chat-input'
 import { LogoutButton } from '@/components/logout-button'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
+import { IdentityModal } from '@/components/chat/identity-modal'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -68,11 +73,19 @@ export function ChatApp({
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const activeChatId = useChatStore((s) => s.activeChatId)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [identityOpen, setIdentityOpen] = useState(false)
+  const [peerIdentity, setPeerIdentity] = useState<{
+    userId: string
+    username: string
+    ecdhPublicKeyJwk: string
+    verified: boolean
+  } | null>(null)
   const [showGuide, setShowGuide] = useState(() => {
     if (typeof window === 'undefined') return false
     return !localStorage.getItem(`p13:onboarded:${userId}`)
   })
   const vaultState = useCryptoVault(userId, user?.username ?? username)
+  const { chats } = useChats(userId)
 
   const {
     peerReady,
@@ -105,6 +118,50 @@ export function ChatApp({
         /* invalid invite or hidden/unknown user */
       })
   }, [searchParams, setActiveChatId, userId])
+
+  useEffect(() => {
+    if (!activeChatId || !userId) {
+      setPeerIdentity(null)
+      return
+    }
+    const active = chats.find((c) => c.id === activeChatId)
+    if (!active || active.is_group) {
+      setPeerIdentity(null)
+      return
+    }
+    const peerId = active.member_ids.find((id) => id !== userId)
+    if (!peerId) {
+      setPeerIdentity(null)
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const rows = await lookupUsers([peerId])
+        const row = rows[0]
+        if (!row?.ecdh_public_key_jwk || cancelled) {
+          if (!cancelled) setPeerIdentity(null)
+          return
+        }
+        const jwk = JSON.parse(row.ecdh_public_key_jwk) as JsonWebKey
+        const hash = await hashPublicKeyJwk(jwk)
+        const trust = resolveTrustStatus(peerId, hash)
+        if (cancelled) return
+        setPeerIdentity({
+          userId: row.id,
+          username: row.username,
+          ecdhPublicKeyJwk: row.ecdh_public_key_jwk,
+          verified: trust.verified,
+        })
+      } catch {
+        if (!cancelled) setPeerIdentity(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeChatId, chats, userId])
 
   const { cryptoCtx, ctxError } = useChatCryptoContext()
   const sharedKey = useChatAesKey(cryptoCtx)
@@ -170,9 +227,34 @@ export function ChatApp({
           onClose={() => setSettingsOpen(false)}
         />
       ) : null}
+      {identityOpen && peerIdentity ? (
+        <IdentityModal
+          peerUserId={peerIdentity.userId}
+          peerUsername={peerIdentity.username}
+          peerEcdhPublicKeyJwk={peerIdentity.ecdhPublicKeyJwk}
+          onClose={() => setIdentityOpen(false)}
+          onTrustChanged={(verified) =>
+            setPeerIdentity((prev) =>
+              prev ? { ...prev, verified } : prev
+            )
+          }
+        />
+      ) : null}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-neon-cyan/40 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           <span className="shrink-0">PROJECT_13 :: E2E</span>
+          {peerIdentity ? (
+            <button
+              type="button"
+              onClick={() => setIdentityOpen(true)}
+              className="inline-flex min-w-[120px] items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-1 text-[10px] tracking-[0.2em] text-neon-cyan hover:border-neon-red hover:text-neon-red"
+            >
+              {peerIdentity.verified ? (
+                <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
+              ) : null}
+              <span className="truncate">{peerIdentity.username}</span>
+            </button>
+          ) : null}
           <CallHeaderButtons
             disabled={!activeChatId || !!ctxError}
             peerReady={peerReady}

@@ -69,6 +69,14 @@ export function safeEqualNonce(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb)
 }
 
+/** Timing-safe UTF-8 string compare when lengths match (e.g. public JWK equality). */
+export function safeEqualUtf8(a: string, b: string): boolean {
+  const ba = Buffer.from(a, 'utf8')
+  const bb = Buffer.from(b, 'utf8')
+  if (ba.length !== bb.length) return false
+  return timingSafeEqual(ba, bb)
+}
+
 function decodeSignatureBuffer(signatureInput: string): Buffer | null {
   const s = signatureInput.trim()
   if (s.length === 0) return null

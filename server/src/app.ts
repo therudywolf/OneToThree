@@ -1,5 +1,6 @@
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
+import helmet from '@fastify/helmet'
 import jwt from '@fastify/jwt'
 import Fastify from 'fastify'
 import websocket from '@fastify/websocket'
@@ -12,11 +13,35 @@ import { storageRoutes } from './routes/storage.js'
 import { wsRoutes } from './routes/ws.js'
 
 export async function buildApp() {
-  const app = Fastify({ logger: true })
+  const trustProxy =
+    process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true'
 
-  const corsOrigins =
-    process.env.CORS_ORIGIN?.split(',').map((o) => o.trim()).filter(Boolean) ??
-    true
+  const app = Fastify({
+    logger: true,
+    trustProxy,
+  })
+
+  const isProd = process.env.NODE_ENV === 'production'
+  const corsOriginsRaw =
+    process.env.CORS_ORIGIN?.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean) ?? []
+
+  if (isProd) {
+    if (corsOriginsRaw.length === 0 || corsOriginsRaw.some((o) => o === '*')) {
+      throw new Error(
+        'CORS_ORIGIN must be set to explicit origin(s) in production (never use *)'
+      )
+    }
+  }
+
+  const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsRaw : true
+
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false,
+  })
 
   await app.register(cors, {
     origin: corsOrigins,

@@ -8,17 +8,26 @@
     "dev:client": "npm run dev -w client",
     "dev:server": "npm run dev -w server",
     "build": "npm run build -w client && npm run build -w server",
+    "build:all": "npm run build --workspaces --if-present",
+    "prod:start": "npm run docker:up",
+    "test:server": "npm run test -w project-13-server",
+    "test:e2e": "npm run test:e2e -w project-13-client",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:push": "drizzle-kit push --config drizzle.config.ts",
     "db:push:docker": "node --env-file=docker.db.env ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",
-    "db:studio": "drizzle-kit studio --config drizzle.config.ts"
+    "db:studio": "drizzle-kit studio --config drizzle.config.ts",
+    "typecheck": "npm run typecheck -w project-13-client && npm run typecheck -w project-13-server"
   },
   "devDependencies": {
-    "dotenv": "^16.4.7",
+    "dotenv": "^16.6.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "web-push": "^3.6.7"
+  },
+  "overrides": {
+    "serialize-javascript": "^6.0.2",
+    "glob": "^10.4.6"
   }
 }

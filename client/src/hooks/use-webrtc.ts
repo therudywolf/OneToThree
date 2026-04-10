@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
+import { getUserMediaConstraints } from '@/lib/media-devices'
 import { MEDIA_ACCESS_ERROR_MESSAGE } from '@/lib/media-limits'
 import { useCallStore } from '@/store/callStore'
 
@@ -236,10 +237,9 @@ export function useWebRTC(userId: string | null) {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('NO_MEDIA_API')
       }
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: !!inc.isVideo,
-      })
+      stream = await navigator.mediaDevices.getUserMedia(
+        getUserMediaConstraints({ video: !!inc.isVideo })
+      )
     } catch {
       setMediaAccessError(MEDIA_ACCESS_ERROR_MESSAGE)
       setIncomingCall(null)
@@ -286,10 +286,9 @@ export function useWebRTC(userId: string | null) {
         if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
           throw new Error('NO_MEDIA_API')
         }
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: isVideo,
-        })
+        stream = await navigator.mediaDevices.getUserMedia(
+          getUserMediaConstraints({ video: isVideo })
+        )
       } catch {
         setMediaAccessError(MEDIA_ACCESS_ERROR_MESSAGE)
         return

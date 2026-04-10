@@ -5,6 +5,7 @@ import { API_URL, fetchMe } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
 import { readVaultBlob, vaultStorageKey } from '@/lib/vault'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
+import { SettingsMediaPanel } from '@/components/settings-media-panel'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 
@@ -32,6 +33,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableCode, setTotpDisableCode] = useState('')
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<'main' | 'media'>('main')
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -275,7 +277,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     >
       <div
         className={`terminal-panel w-full space-y-5 ${
-          totpSetup ? 'max-w-lg' : 'max-w-md'
+          totpSetup ? 'max-w-lg' : settingsTab === 'media' ? 'max-w-2xl' : 'max-w-md'
         }`}
       >
         <header className="flex items-center justify-between border-b border-neon-red/40 pb-3">
@@ -291,7 +293,34 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
         </header>
 
-        <div className="space-y-3">
+        <div className="flex gap-2 border-b border-neon-cyan/20 pb-2">
+          <button
+            type="button"
+            onClick={() => setSettingsTab('main')}
+            className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              settingsTab === 'main'
+                ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
+            }`}
+          >
+            [ {t('settings.tabGeneral')} ]
+          </button>
+          <button
+            type="button"
+            onClick={() => setSettingsTab('media')}
+            className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              settingsTab === 'media'
+                ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
+            }`}
+          >
+            [ {t('settings.tabMedia')} ]
+          </button>
+        </div>
+
+        {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
+
+        <div className={`space-y-3 ${settingsTab === 'media' ? 'hidden' : ''}`}>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">

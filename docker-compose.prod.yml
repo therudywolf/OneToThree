@@ -1,0 +1,147 @@
+# Production stack: only Caddy exposes 80/443. Internal services stay on app_network.
+# Copy .env.prod from .env.example values and set secrets (JWT_SECRET, POSTGRES_PASSWORD, …).
+# TLS: put cert.pem + key.pem in ./certs/ on the host (see Caddyfile).
+
+services:
+  db:
+    image: postgres:alpine
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-forest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-forest}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-forest} -d ${POSTGRES_DB:-forest}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env.prod}
+    volumes:
+      - minio_data:/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: docker/db-migrate/Dockerfile
+    restart: 'no'
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=64m
+    mem_limit: 512m
+    cpus: 1.0
+    expose:
+      - '8080'
+    env_file:
+      - .env.prod
+    environment:
+      NODE_ENV: production
+      HOME: /tmp
+      PORT: '8080'
+      DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://onetothree.ru}
+      MINIO_ENDPOINT: http://minio:9000
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    networks:
+      - app_network
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          "node -e \"fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 40s
+
+  web:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.onetothree.ru}
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 2.0
+    expose:
+      - '3000'
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - app_network
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+    depends_on:
+      - web
+      - api
+      - minio
+    networks:
+      - app_network
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  app_network:
+    driver: bridge

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { getUserMediaConstraints } from '@/lib/media-devices'
 import {
   isMediaTooLarge,
   MEDIA_ACCESS_ERROR_MESSAGE,
@@ -57,7 +58,9 @@ export function useMediaRecorder() {
         setError(MEDIA_ACCESS_ERROR_MESSAGE)
         return
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia(
+        getUserMediaConstraints({ video: false })
+      )
       streamRef.current = stream
       kindRef.current = 'audio'
       const mime = pickAudioMime()
@@ -82,9 +85,15 @@ export function useMediaRecorder() {
         setError(MEDIA_ACCESS_ERROR_MESSAGE)
         return
       }
+      const base = getUserMediaConstraints({ video: true })
+      const fromPrefs: MediaTrackConstraints =
+        base.video && typeof base.video === 'object'
+          ? (base.video as MediaTrackConstraints)
+          : {}
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+        audio: base.audio,
         video: {
+          ...fromPrefs,
           facingMode: 'user',
           width: { ideal: 720 },
           height: { ideal: 720 },

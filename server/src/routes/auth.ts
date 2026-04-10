@@ -13,6 +13,7 @@ import {
   safeEqualNonce,
   verifyNonceSignatureEcdsaP256,
 } from '../lib/ecdsa-verify.js'
+import { SESSION_COOKIE } from '../lib/session-cookie.js'
 
 const challengeBodySchema = z.object({
   username: z.string().min(1).max(128),
@@ -25,10 +26,32 @@ const verifyBodySchema = z.object({
   public_key_jwk: z.string().min(1).optional(),
 })
 
-const SESSION_COOKIE = 'fm_session'
 const SESSION_MAX_AGE_S = 60 * 60 * 24 * 7
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/me', async (request, reply) => {
+    const token = request.cookies[SESSION_COOKIE]
+    if (!token) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    }
+    try {
+      const payload = await request.server.jwt.verify<{
+        sub: string
+        username: string
+      }>(token)
+      return reply.send({
+        user: { id: payload.sub, username: payload.username },
+      })
+    } catch {
+      return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    }
+  })
+
+  app.post('/logout', async (_request, reply) => {
+    reply.clearCookie(SESSION_COOKIE, { path: '/' })
+    return reply.send({ ok: true })
+  })
+
   app.post('/challenge', async (request, reply) => {
     const parsed = challengeBodySchema.safeParse(request.body)
     if (!parsed.success) {

@@ -172,3 +172,55 @@ export async function decryptMessage(
 
   return new TextDecoder().decode(plainBuffer)
 }
+
+/* —— ECDSA P-256 (challenge–response auth; distinct from ECDH above) —— */
+
+export async function generateEcdsaP256KeyPair(): Promise<CryptoKeyPair> {
+  return getSubtle().generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify']
+  )
+}
+
+export async function exportEcdsaPrivateKeyJwk(key: CryptoKey): Promise<string> {
+  const jwk = await getSubtle().exportKey('jwk', key)
+  return JSON.stringify(jwk)
+}
+
+export async function exportEcdsaPublicKeyJwk(key: CryptoKey): Promise<string> {
+  const jwk = await getSubtle().exportKey('jwk', key)
+  return JSON.stringify(jwk)
+}
+
+export async function importEcdsaPrivateKeyForSign(
+  jwkString: string
+): Promise<CryptoKey> {
+  const jwk = JSON.parse(jwkString) as JsonWebKey
+  return getSubtle().importKey(
+    'jwk',
+    jwk,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign']
+  )
+}
+
+/** Web Crypto ECDSA-SHA256 over UTF-8; returns DER signature as standard base64. */
+export async function signUtf8WithEcdsaP256(
+  privateKey: CryptoKey,
+  utf8: string
+): Promise<string> {
+  const enc = new TextEncoder()
+  const sig = await getSubtle().sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    enc.encode(utf8) as BufferSource
+  )
+  const bytes = new Uint8Array(sig)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}

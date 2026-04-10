@@ -1,4 +1,8 @@
-import { requestChallenge, verifyChallenge } from '@/lib/api/auth'
+import {
+  complete2faLogin,
+  requestChallenge,
+  verifyChallenge,
+} from '@/lib/api/auth'
 import {
   exportEcdsaPrivateKeyJwk,
   exportEcdsaPublicKeyJwk,
@@ -20,12 +24,42 @@ import { parseNickname } from '@/lib/nickname'
 
 export type CryptoLoginResult =
   | { ok: true; user: { id: string; username: string } }
+  | { ok: 'needs_2fa'; pendingToken: string; userId: string }
   | { ok: false; error: string }
 
 export type CryptoLoginParams = {
   username: string
   password: string
   mode: 'login' | 'register'
+}
+
+/**
+ * After ECDSA verify returned `needs_2fa`, submit TOTP and attach session cookie.
+ */
+export async function finalizeLoginWithTotp(params: {
+  pendingToken: string
+  code: string
+  canonicalHandle: string
+}): Promise<
+  { ok: true; user: { id: string; username: string } } | { ok: false; error: string }
+> {
+  const nick = parseNickname(params.canonicalHandle)
+  if (!nick.ok) {
+    return { ok: false, error: nick.error }
+  }
+  try {
+    const { user } = await complete2faLogin(
+      params.pendingToken,
+      params.code.replace(/\D/g, '').slice(0, 6)
+    )
+    mirrorVaultLoginToUserId(nick.value, user.id)
+    return { ok: true, user }
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'TOTP_VERIFY_FAILED',
+    }
+  }
 }
 
 /**
@@ -119,12 +153,22 @@ export async function cryptoLogin(
   }
 
   try {
-    const { user } = await verifyChallenge({
+    const vr = await verifyChallenge({
       username: canonicalHandle,
       nonce,
       signature,
       public_key_jwk: publicKeyJwk,
     })
+
+    if (vr.kind === '2fa_pending') {
+      return {
+        ok: 'needs_2fa',
+        pendingToken: vr.pendingToken,
+        userId: vr.userId,
+      }
+    }
+
+    const { user } = vr
 
     if (params.mode === 'register' && ecdhPrivateJwkForVault) {
       const inner = stringifyVaultKeyringV2(

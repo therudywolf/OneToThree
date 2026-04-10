@@ -43,6 +43,15 @@ const en = {
   'login.authLoading': 'Checking session...',
   'login.newDevice': 'New device',
   'login.existingVault': 'Existing vault',
+  'login.totpTitle': 'SECOND_GATE',
+  'login.totpSubtitle': 'TOTP · GOOGLE AUTHENTICATOR COMPATIBLE',
+  'login.totpCodeLabel': '6-digit code',
+  'login.totpSubmit': 'VERIFY',
+  'login.totpBack': 'Back to sign-in',
+  'login.totpInvalid': 'Invalid or expired one-time code.',
+  'login.totpPendingInvalid': 'Session step expired. Sign in again.',
+  'login.totpVerifyFailed': 'Two-factor verification failed.',
+  'login.totpSixDigits': 'Enter exactly 6 digits.',
   'login.tosRegisterTitle': '[ EN ] Terms of Service',
   'login.tosRegisterBody': `Privacy & Encryption: This service provides End-to-End encryption. We physically cannot access your messages or keys. Losing your Vault passphrase means permanent loss of your chat history.
 
@@ -128,6 +137,21 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.purgeHint':
     'Clears localStorage, sessionStorage, and the message IndexedDB — use when debugging corrupt local state.',
   'settings.purgeLocalCache': 'PURGE LOCAL CACHE',
+  'settings.totpSection': 'Security / 2FA',
+  'settings.totpHint':
+    'Time-based one-time passwords (RFC 6238). Scan the QR in your authenticator app.',
+  'settings.totpActive': '2FA is active',
+  'settings.totpInactive': '2FA is off',
+  'settings.totpSetup': 'SETUP_2FA',
+  'settings.totpScanQr': 'Scan this QR with your authenticator app, then enter a code to confirm.',
+  'settings.totpSecretManual': 'Manual secret (base32)',
+  'settings.totpEnableCode': 'Confirmation code',
+  'settings.totpConfirm': 'CONFIRM & ENABLE',
+  'settings.totpCancelSetup': 'Cancel setup',
+  'settings.totpDisable': 'DISABLE_2FA',
+  'settings.totpDisableWarn':
+    'Disabling 2FA weakens your account. You will need a valid code from your app.',
+  'settings.totpDisableCode': 'Current authenticator code',
 } as const
 
 export default en

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/components/auth/auth-provider'
-import { cryptoLogin } from '@/lib/auth/crypto-login'
+import { cryptoLogin, finalizeLoginWithTotp } from '@/lib/auth/crypto-login'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 
@@ -15,6 +15,9 @@ export function LoginForm() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [step, setStep] = useState<'credentials' | 'totp'>('credentials')
+  const [pendingToken, setPendingToken] = useState<string | null>(null)
+  const [totpCode, setTotpCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const submitLock = useRef(false)
@@ -49,11 +52,20 @@ export function LoginForm() {
       INVALID_BODY: t('login.invalidBody'),
       INVALID_USERNAME_FORMAT: t('login.invalidUsernameFormat'),
       USERNAME_RESERVED: t('login.usernameReserved'),
+      TOTP_INVALID: t('login.totpInvalid'),
+      INVALID_PENDING_TOKEN: t('login.totpPendingInvalid'),
+      TOTP_VERIFY_FAILED: t('login.totpVerifyFailed'),
     }
     return m[code] ?? code.replace(/_/g, ' ')
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function resetTotpStep() {
+    setStep('credentials')
+    setPendingToken(null)
+    setTotpCode('')
+  }
+
+  async function handleSubmitCredentials(e: React.FormEvent) {
     e.preventDefault()
     if (submitLock.current || busy) return
     submitLock.current = true
@@ -61,8 +73,44 @@ export function LoginForm() {
     setBusy(true)
     try {
       const result = await cryptoLogin({ username, password, mode })
+      if (result.ok === 'needs_2fa') {
+        setPendingToken(result.pendingToken)
+        setStep('totp')
+        return
+      }
       if (!result.ok) {
         setError(mapError(result.error))
+        return
+      }
+      await refresh()
+      router.refresh()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'UNKNOWN_ERROR')
+    } finally {
+      setBusy(false)
+      submitLock.current = false
+    }
+  }
+
+  async function handleSubmitTotp(e: React.FormEvent) {
+    e.preventDefault()
+    if (submitLock.current || busy || !pendingToken) return
+    const digits = totpCode.replace(/\D/g, '').slice(0, 6)
+    if (digits.length !== 6) {
+      setError(t('login.totpSixDigits'))
+      return
+    }
+    submitLock.current = true
+    setError(null)
+    setBusy(true)
+    try {
+      const r = await finalizeLoginWithTotp({
+        pendingToken,
+        code: digits,
+        canonicalHandle: username.trim(),
+      })
+      if (!r.ok) {
+        setError(mapError(r.error))
         return
       }
       await refresh()
@@ -86,9 +134,72 @@ export function LoginForm() {
     return null
   }
 
+  if (step === 'totp') {
+    return (
+      <motion.form
+        onSubmit={(ev: React.FormEvent<HTMLFormElement>) =>
+          void handleSubmitTotp(ev)
+        }
+        className="terminal-panel mx-auto max-w-md space-y-6"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35 }}
+      >
+        <div className="space-y-1 border-b border-neon-red/40 pb-4">
+          <p className="text-xs text-neon-cyan">[AUTH] :: {t('login.totpTitle')}</p>
+          <p className="text-[10px] uppercase tracking-[0.3em] text-red-700">
+            {t('login.totpSubtitle')}
+          </p>
+        </div>
+        <div>
+          <label htmlFor="totp" className="terminal-label">
+            &gt; {t('login.totpCodeLabel')}
+          </label>
+          <input
+            id="totp"
+            name="totp"
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={totpCode}
+            onChange={(e) =>
+              setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+            }
+            className="terminal-input tracking-[0.5em]"
+            placeholder="000000"
+            aria-label={t('login.totpCodeLabel')}
+          />
+        </div>
+        {error ? (
+          <p className="border border-neon-red bg-black px-2 py-1 font-mono text-xs text-neon-red">
+            [!] {error}
+          </p>
+        ) : null}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <TerminalGlitchButton type="submit" disabled={busy}>
+            [ {t('login.totpSubmit')} ]
+          </TerminalGlitchButton>
+          <button
+            type="button"
+            onClick={() => {
+              resetTotpStep()
+              setError(null)
+            }}
+            className="rounded-none border border-transparent px-2 py-1 text-left font-mono text-xs uppercase tracking-widest text-neon-cyan underline-offset-4 hover:text-neon-red hover:underline"
+          >
+            :: {t('login.totpBack')}
+          </button>
+        </div>
+      </motion.form>
+    )
+  }
+
   return (
     <motion.form
-      onSubmit={(ev: React.FormEvent<HTMLFormElement>) => void handleSubmit(ev)}
+      onSubmit={(ev: React.FormEvent<HTMLFormElement>) =>
+        void handleSubmitCredentials(ev)
+      }
       className={`terminal-panel mx-auto space-y-6 ${
         mode === 'register' ? 'max-w-2xl' : 'max-w-md'
       }`}
@@ -178,6 +289,7 @@ export function LoginForm() {
           onClick={() => {
             setMode(mode === 'login' ? 'register' : 'login')
             setError(null)
+            resetTotpStep()
           }}
           className="rounded-none border border-transparent px-2 py-1 text-left font-mono text-xs uppercase tracking-widest text-neon-cyan underline-offset-4 hover:text-neon-red hover:underline"
         >

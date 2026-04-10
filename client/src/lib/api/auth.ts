@@ -93,3 +93,22 @@ export async function logoutApi(): Promise<void> {
     credentials: 'include',
   })
 }
+
+/** Short-lived JWT for WebSocket when the upgrade cannot send cookies. */
+export async function fetchWsTicket(): Promise<string> {
+  const res = await fetch(`${API_URL}/auth/ws-ticket`, {
+    method: 'GET',
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    ticket?: string
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'WS_TICKET_FAILED')
+  }
+  if (!data.ticket) {
+    throw new Error('INVALID_WS_TICKET')
+  }
+  return data.ticket
+}

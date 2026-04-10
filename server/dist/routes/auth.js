@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { deletePending, getPending, setChallenge, } from '../lib/challenge-store.js';
+import { getAuthUser } from '../lib/auth-user.js';
 import { safeEqualNonce, verifyNonceSignatureEcdsaP256, } from '../lib/ecdsa-verify.js';
 import { SESSION_COOKIE } from '../lib/session-cookie.js';
 const challengeBodySchema = z.object({
@@ -17,6 +18,14 @@ const verifyBodySchema = z.object({
 });
 const SESSION_MAX_AGE_S = 60 * 60 * 24 * 7;
 export const authRoutes = async (app) => {
+    app.get('/ws-ticket', async (request, reply) => {
+        const user = await getAuthUser(request);
+        if (!user) {
+            return reply.status(401).send({ error: 'UNAUTHORIZED' });
+        }
+        const ticket = await reply.jwtSign({ sub: user.id, username: user.username, scope: 'ws' }, { expiresIn: 120 });
+        return reply.send({ ticket });
+    });
     app.get('/me', async (request, reply) => {
         const token = request.cookies[SESSION_COOKIE];
         if (!token) {

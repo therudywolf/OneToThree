@@ -1,7 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { importEcdhPrivateKey } from '@/lib/crypto'
+import {
+  exportEcdhPublicJwkFromPrivateKeyString,
+  importEcdhPrivateKey,
+} from '@/lib/crypto'
+import { patchMyEcdhPublicKey } from '@/lib/api/users'
 import { parseVaultPlaintext } from '@/lib/vault-keyring'
 import {
   readVaultBlob,
@@ -41,11 +45,25 @@ export function VaultModal({ userId, displayHandle }: Props) {
       if (parsed.kind === 'legacy_ecdh') {
         const key = await importEcdhPrivateKey(parsed.ecdhPrivateJwkString)
         setUnwrappedPrivateKey(key)
+        try {
+          await patchMyEcdhPublicKey(
+            exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhPrivateJwkString)
+          )
+        } catch {
+          /* server may be offline; direct E2E needs ECDH pub later */
+        }
         setPin('')
         return
       }
       const key = await importEcdhPrivateKey(parsed.ecdhPrivateJwk)
       setUnwrappedPrivateKey(key)
+      try {
+        await patchMyEcdhPublicKey(
+          exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhPrivateJwk)
+        )
+      } catch {
+        /* non-fatal */
+      }
       setPin('')
     } catch {
       setError('UNWRAP_FAILED')

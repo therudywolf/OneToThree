@@ -1,32 +1,30 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { NotificationToggle } from '@/components/notification-toggle'
-
-type ChatRow = { id: string; is_group: boolean }
+import { createDirectE2EChat } from '@/lib/api/chats'
+import { useChats } from '@/hooks/use-chats'
 
 export function ChatSidebar({ userId }: { userId: string }) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
-  const [chats, setChats] = useState<ChatRow[]>([])
+  const { chats } = useChats(userId)
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)
-
-  const loadChats = useCallback(async () => {
-    setChats([])
-  }, [])
-
-  useEffect(() => {
-    void loadChats()
-  }, [loadChats])
+  const [createErr, setCreateErr] = useState<string | null>(null)
 
   async function openDirect() {
     const pid = peerInput.trim()
     if (!pid || pid === userId) return
     setCreating(true)
+    setCreateErr(null)
     try {
-      void pid
+      const chat = await createDirectE2EChat(userId, pid)
+      setActiveChatId(chat.id)
+      setPeerInput('')
+    } catch (e) {
+      setCreateErr(e instanceof Error ? e.message : 'CREATE_FAILED')
     } finally {
       setCreating(false)
     }
@@ -55,7 +53,8 @@ export function ChatSidebar({ userId }: { userId: string }) {
                 : 'text-neon-red'
             }`}
           >
-            {c.is_group ? '[GRP]' : '[DIR]'} {c.id.slice(0, 8)}…
+            {c.is_group ? '[GRP]' : '[DIR]'}{' '}
+            {c.name?.trim() || `${c.id.slice(0, 8)}…`}
           </button>
         ))}
       </nav>
@@ -63,6 +62,9 @@ export function ChatSidebar({ userId }: { userId: string }) {
         <p className="mb-1 text-[10px] uppercase tracking-widest text-neon-cyan">
           :: open_direct
         </p>
+        {createErr ? (
+          <p className="mb-1 font-mono text-[10px] text-neon-red">{createErr}</p>
+        ) : null}
         <input
           className="terminal-input mb-2 text-xs"
           placeholder="peer user uuid"

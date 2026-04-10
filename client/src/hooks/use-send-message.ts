@@ -1,7 +1,11 @@
 'use client'
 
 import { useCallback } from 'react'
-import type { ChatCryptoContext } from '@/lib/chat-crypto'
+import {
+  encryptOutboundText,
+  type ChatCryptoContext,
+} from '@/lib/chat-crypto'
+import { getFmSocket } from '@/lib/api/socket'
 import { useChatStore } from '@/store/chatStore'
 
 export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
@@ -21,7 +25,17 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
       ) {
         return
       }
-      void t
+      const { encrypted_content, iv } = await encryptOutboundText(
+        unwrappedPrivateKey,
+        t,
+        cryptoCtx
+      )
+      getFmSocket().send({
+        type: 'chat_message',
+        chat_id: activeChatId,
+        content: encrypted_content,
+        iv,
+      })
     },
     [activeChatId, userId, unwrappedPrivateKey, cryptoCtx]
   )

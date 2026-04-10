@@ -8,6 +8,8 @@ export const users = pgTable('users', {
     id: uuid('id').primaryKey().defaultRandom(),
     username: text('username').notNull().unique(),
     publicKeyJwk: text('public_key_jwk').notNull(),
+    /** ECDH public JWK for E2E messaging (optional until client uploads). */
+    ecdhPublicKeyJwk: text('ecdh_public_key_jwk'),
     isDiscoverable: boolean('is_discoverable').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
         .notNull()

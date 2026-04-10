@@ -101,6 +101,16 @@ export async function importEcdhPublicKey(jwkString: string): Promise<CryptoKey>
   )
 }
 
+/** Strip private component `d` from an ECDH private JWK to publish the public half. */
+export function exportEcdhPublicJwkFromPrivateKeyString(jwkString: string): string {
+  const jwk = JSON.parse(jwkString) as JsonWebKey & { d?: string }
+  const { d: _d, ...pub } = jwk
+  if (!pub.x || !pub.y || pub.kty !== 'EC') {
+    throw new Error('INVALID_ECDH_JWK')
+  }
+  return JSON.stringify(pub)
+}
+
 /** Import a stored ECDH private JWK (from vault unwrap). */
 export async function importEcdhPrivateKey(jwkString: string): Promise<CryptoKey> {
   const jwk = JSON.parse(jwkString) as JsonWebKey

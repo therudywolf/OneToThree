@@ -89,7 +89,9 @@ export function LoginForm() {
   return (
     <motion.form
       onSubmit={(ev: React.FormEvent<HTMLFormElement>) => void handleSubmit(ev)}
-      className="terminal-panel mx-auto max-w-md space-y-6"
+      className={`terminal-panel mx-auto space-y-6 ${
+        mode === 'register' ? 'max-w-2xl' : 'max-w-md'
+      }`}
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
@@ -100,6 +102,29 @@ export function LoginForm() {
           ECDSA P-256 · KEYS STAY ON DEVICE
         </p>
       </div>
+
+      {mode === 'register' ? (
+        <section
+          className="border border-neon-cyan/30 bg-black/60"
+          aria-labelledby="tos-register-heading"
+        >
+          <h2
+            id="tos-register-heading"
+            className="border-b border-neon-cyan/25 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.25em] text-neon-red"
+          >
+            {t('login.tosRegisterTitle')}
+          </h2>
+          <div className="max-h-[min(52vh,30rem)] overflow-y-auto px-3 py-3 font-mono text-[10px] leading-relaxed text-red-800/95">
+            {t('login.tosRegisterBody')
+              .split('\n\n')
+              .map((para, i) => (
+                <p key={i} className="mb-3 last:mb-0">
+                  {para}
+                </p>
+              ))}
+          </div>
+        </section>
+      ) : null}
 
       <div>
         <label htmlFor="username" className="terminal-label">

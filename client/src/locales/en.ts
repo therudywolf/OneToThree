@@ -43,6 +43,14 @@ const en = {
   'login.authLoading': 'Checking session...',
   'login.newDevice': 'New device',
   'login.existingVault': 'Existing vault',
+  'login.tosRegisterTitle': '[ EN ] Terms of Service',
+  'login.tosRegisterBody': `Privacy & Encryption: This service provides End-to-End encryption. We physically cannot access your messages or keys. Losing your Vault passphrase means permanent loss of your chat history.
+
+Zero Liability Zone: By entering, you accept full responsibility for your actions at your own risk. This is a free board. We do not moderate content, we are not liable for it, and we do not care how you use these tools. Every user is solely responsible for the consequences of their actions.
+
+Limitation of Liability: The service is provided "As-Is". The administration is not liable for any damages or data loss.
+
+Right to Terminate: This is a private bunker. The administration reserves the right to ban any account at any time, without prior notice or explanation.`,
 
   'guide.step': 'Step',
   'guide.onboardingTitle': 'Onboarding',

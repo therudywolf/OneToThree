@@ -1,6 +1,6 @@
 /**
- * Warden (admin) API — requires `users.role = 'admin'`.
- * Promote the first operator: `UPDATE users SET role = 'admin' WHERE username = 'your_handle';`
+ * Admin API — only `users.role = 'admin'`. Grant that role manually in your database;
+ * there is no automatic promotion or seed script in the application.
  */
 import { desc, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'

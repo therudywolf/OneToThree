@@ -67,16 +67,28 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         <p className="mt-1 text-[9px] text-red-800">{t('settings.devicesHint')}</p>
       </div>
 
-      {loading ? (
-        <p className="font-mono text-[10px] text-zinc-500">:: LOADING…</p>
-      ) : null}
       {error ? (
         <p className="border border-neon-red px-2 py-1 font-mono text-[10px] text-neon-red">
           [!] {error}
         </p>
       ) : null}
 
-      <ul className="max-h-64 space-y-2 overflow-y-auto border border-neon-cyan/20 p-2">
+      <div className="relative min-h-[10rem]">
+        {loading ? (
+          <div
+            className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-black/55 backdrop-blur-[1px]"
+            aria-hidden
+          >
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90">
+              [ LOADING... ]
+            </span>
+          </div>
+        ) : null}
+        <ul
+          className={`max-h-64 space-y-2 overflow-y-auto border border-neon-cyan/20 p-2 ${
+            loading ? 'opacity-40' : ''
+          }`}
+        >
         {devices.map((d) => (
           <li
             key={d.id}
@@ -117,7 +129,8 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         {!loading && devices.length === 0 ? (
           <li className="text-[10px] text-zinc-600">:: NO_ROWS</li>
         ) : null}
-      </ul>
+        </ul>
+      </div>
       <p className="text-[9px] text-zinc-600">
         device_id:{' '}
         <span className="text-neon-cyan/80">{user?.device_id ?? '—'}</span>

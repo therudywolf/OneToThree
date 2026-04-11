@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import en from '@/locales/en'
 import ru from '@/locales/ru'
 import { useLocaleStore } from '@/store/localeStore'
@@ -20,7 +20,11 @@ export function useTranslation() {
   const toggleLocale = useLocaleStore((s) => s.toggleLocale)
 
   const dict = useMemo(() => dictByLocale[locale], [locale])
-  const t = (key: TranslationKey): string => dict[key] ?? key
+  /** Stable per locale — inline `t` caused infinite effect loops when listed in deps. */
+  const t = useCallback(
+    (key: TranslationKey): string => dict[key] ?? key,
+    [dict]
+  )
 
   return { locale, setLocale, toggleLocale, t }
 }

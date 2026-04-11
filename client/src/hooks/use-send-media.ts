@@ -37,14 +37,27 @@ async function putWithRetry(
   while (attempt < retries) {
     attempt++
     try {
+      console.log(
+        '[MEDIA UPLOAD] Attempting PUT to exact URL:',
+        uploadUrl,
+        `(attempt ${attempt}/${retries})`
+      )
       const put = await fetch(uploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': fileType },
         body: cipher,
       })
       if (put.ok) return
+      const errText = await put.text().catch(() => '')
+      console.error(
+        '[MEDIA UPLOAD] PUT failed',
+        put.status,
+        put.statusText,
+        errText ? errText.slice(0, 500) : ''
+      )
       lastErr = new Error(`MINIO_PUT_FAILED_${put.status}`)
     } catch (err) {
+      console.error('[MEDIA UPLOAD FATAL ERROR]', err)
       lastErr = err
     }
     await new Promise((r) => setTimeout(r, 350 * attempt))

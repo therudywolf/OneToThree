@@ -14,6 +14,7 @@ import {
   getBucketName,
   presignGetObject,
   presignPutObject,
+  rewritePresignedUrlToPublicBase,
 } from '../lib/s3.js'
 
 /** Object key: chats/{chatId}/{userId}/{uuid}{ext} */
@@ -73,12 +74,14 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     const ext = extensionFromFileName(fileName)
     const key = `chats/${chatId}/${user.id}/${randomUUID()}${ext}`
 
-    const uploadUrl = await presignPutObject({
-      client: presignClient,
-      bucket,
-      key,
-      contentType: fileType,
-    })
+    const uploadUrl = rewritePresignedUrlToPublicBase(
+      await presignPutObject({
+        client: presignClient,
+        bucket,
+        key,
+        contentType: fileType,
+      })
+    )
 
     return reply.send({
       uploadUrl,
@@ -125,11 +128,13 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(410).send({ error: 'FILE_EXPIRED' })
     }
 
-    const downloadUrl = await presignGetObject({
-      client: presignClient,
-      bucket,
-      key: filePath,
-    })
+    const downloadUrl = rewritePresignedUrlToPublicBase(
+      await presignGetObject({
+        client: presignClient,
+        bucket,
+        key: filePath,
+      })
+    )
 
     return reply.send({ downloadUrl })
   })
@@ -159,12 +164,14 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
 
     const bucket = getAvatarsBucketName()
     await ensureBucketExists(client, bucket)
-    const downloadUrl = await presignGetObject({
-      client: presignClient,
-      bucket,
-      key,
-      expiresIn: 3600,
-    })
+    const downloadUrl = rewritePresignedUrlToPublicBase(
+      await presignGetObject({
+        client: presignClient,
+        bucket,
+        key,
+        expiresIn: 3600,
+      })
+    )
 
     return reply.send({ downloadUrl })
   })

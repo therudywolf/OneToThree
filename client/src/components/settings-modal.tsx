@@ -66,7 +66,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   useEffect(() => {
     void loadSettingsFromApi()
-  }, [loadSettingsFromApi, userId])
+  }, [userId, loadSettingsFromApi])
 
   useEffect(() => {
     void (async () => {

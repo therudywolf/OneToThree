@@ -326,7 +326,7 @@ export function ChatApp({
   }
 
   return (
-    <div className="chat-safe-shell flex h-dvh flex-col bg-black supports-[height:100dvh]:h-dvh">
+    <div className="chat-safe-shell flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black supports-[height:100dvh]:h-[100dvh]">
       <InviteChatLinkEffect userId={userId} />
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
@@ -370,11 +370,11 @@ export function ChatApp({
           }
         />
       ) : null}
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:px-3 md:pt-2">
+      <header className="flex shrink-0 flex-col gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-2 md:px-3 md:py-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:gap-3">
           <button
             type="button"
-            className="flex shrink-0 md:hidden min-h-[44px] min-w-[44px] items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan hover:border-neon-red hover:text-neon-red"
+            className="touch-manipulation flex shrink-0 md:hidden min-h-11 min-w-11 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan hover:border-neon-red hover:text-neon-red"
             aria-label={t('call.openChannels')}
             onClick={() => setMobileSidebarOpen(true)}
           >
@@ -388,7 +388,7 @@ export function ChatApp({
               <button
                 type="button"
                 onClick={() => setIdentityOpen(true)}
-                className="inline-flex min-w-[120px] items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-1 text-[10px] tracking-[0.2em] text-neon-cyan hover:border-neon-red hover:text-neon-red"
+                className="touch-manipulation inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-2 text-[10px] tracking-[0.2em] text-neon-cyan hover:border-neon-red hover:text-neon-red md:min-h-0 md:py-1"
               >
                 {peerIdentity.verified ? (
                   <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
@@ -414,14 +414,16 @@ export function ChatApp({
               ) : null}
             </div>
           ) : null}
-          <CallHeaderButtons
-            disabled={!activeChatId || !!ctxError}
-            peerReady={peerReady}
-            onVoiceCall={() => void handleVoiceCall()}
-            onVideoCall={() => void handleVideoCall()}
-          />
+          <div className="flex w-full min-w-0 flex-[1_1_100%] md:flex-[0_1_auto] md:w-auto">
+            <CallHeaderButtons
+              disabled={!activeChatId || !!ctxError}
+              peerReady={peerReady}
+              onVoiceCall={() => void handleVoiceCall()}
+              onVideoCall={() => void handleVideoCall()}
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2 md:shrink-0">
           <LocaleToggle />
           {user?.role === 'admin' ? (
             <Link
@@ -434,24 +436,24 @@ export function ChatApp({
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="border border-neon-cyan/60 bg-black px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+            className="touch-manipulation min-h-11 min-w-11 border border-neon-cyan/60 bg-black px-2 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red md:min-h-0 md:min-w-0 md:py-1"
           >
             [ CFG ]
           </button>
           <LogoutButton />
         </div>
       </header>
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden overscroll-none">
         {mobileSidebarOpen ? (
           <button
             type="button"
-            className="fixed inset-0 z-40 bg-black/75 md:hidden"
+            className="fixed inset-0 z-40 touch-none bg-black/75 md:hidden"
             aria-label="Close channel list"
             onClick={() => setMobileSidebarOpen(false)}
           />
         ) : null}
         <div
-          className={`fixed inset-y-0 left-0 z-50 flex h-full w-[min(20rem,92vw)] flex-col border-r border-neon-cyan/40 bg-black shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-200 ease-out md:static md:z-0 md:h-auto md:w-72 md:translate-x-0 md:shadow-none ${
+          className={`fixed inset-y-0 left-0 z-50 flex h-full max-h-[100dvh] w-[min(20rem,92vw)] flex-col border-r border-neon-cyan/40 bg-black shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-200 ease-out md:static md:z-0 md:h-auto md:max-h-none md:w-72 md:translate-x-0 md:shadow-none ${
             mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
           } md:translate-x-0`}
         >
@@ -462,7 +464,7 @@ export function ChatApp({
             onNavigate={() => setMobileSidebarOpen(false)}
           />
         </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain">
           {ctxError ? (
             <div className="shrink-0 border-b border-zinc-800 px-3 py-1 font-mono text-xs text-zinc-500">
               SIGNAL LOST

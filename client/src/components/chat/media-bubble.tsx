@@ -312,6 +312,7 @@ export function MediaBubble({ message, sharedKey }: Props) {
               muted
               autoPlay
               loop
+              controls={false}
               preload="metadata"
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
@@ -343,6 +344,8 @@ export function MediaBubble({ message, sharedKey }: Props) {
           src={objectUrl}
           className="aspect-video w-full bg-black object-contain"
           playsInline
+          muted
+          autoPlay={false}
           controls
           preload="metadata"
           onPlay={() => setPlaying(true)}

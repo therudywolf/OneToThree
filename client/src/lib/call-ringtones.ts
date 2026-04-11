@@ -1,5 +1,7 @@
 /**
- * Optional assets: place `ringing.mp3` and `incoming.mp3` under `/public/sounds/`.
+ * Optional assets under `/public/sounds/`:
+ *   ring.mp3     — outgoing / ringing while connecting (looped)
+ *   incoming.mp3 — incoming call (looped until accept/reject)
  * If missing or autoplay blocked, falls back to short Web Audio tones.
  */
 
@@ -76,7 +78,7 @@ function startLoopingMp3OrFallback(
 
 /** Caller / outgoing: loop until `stop()`. */
 export function startOutgoingRingtone(): () => void {
-  return startLoopingMp3OrFallback('/sounds/ringing.mp3', 0.35, 520, 900)
+  return startLoopingMp3OrFallback('/sounds/ring.mp3', 0.35, 520, 900)
 }
 
 /** Callee incoming modal — loop until stop. */

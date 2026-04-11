@@ -30,7 +30,11 @@ export function LogoutButton() {
   }
 
   return (
-    <TerminalGlitchButton type="button" onClick={() => void handleLogout()}>
+    <TerminalGlitchButton
+      type="button"
+      className="min-h-11 px-4 md:min-h-0"
+      onClick={() => void handleLogout()}
+    >
       [ LOGOUT ]
     </TerminalGlitchButton>
   )

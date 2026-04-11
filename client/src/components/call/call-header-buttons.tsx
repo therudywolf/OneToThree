@@ -21,7 +21,7 @@ export function CallHeaderButtons({
         type="button"
         disabled={off}
         onClick={onVoiceCall}
-        className="flex min-h-[44px] min-w-0 items-center justify-center rounded-none border border-neon-cyan bg-black px-3 py-2 text-[10px] uppercase tracking-[0.25em] text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 md:min-h-0 md:px-2 md:py-1"
+        className="touch-manipulation flex min-h-11 min-w-[44px] shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-black px-3 py-2 text-[10px] uppercase tracking-[0.25em] text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 md:min-h-9 md:px-2 md:py-1.5"
       >
         [ CALL :: VOICE ]
       </button>
@@ -29,7 +29,7 @@ export function CallHeaderButtons({
         type="button"
         disabled={off}
         onClick={onVideoCall}
-        className="flex min-h-[44px] min-w-0 items-center justify-center rounded-none border border-neon-red bg-black px-3 py-2 text-[10px] uppercase tracking-[0.25em] text-neon-red hover:bg-neon-red/10 disabled:opacity-40 md:min-h-0 md:px-2 md:py-1"
+        className="touch-manipulation flex min-h-11 min-w-[44px] shrink-0 items-center justify-center rounded-none border border-neon-red bg-black px-3 py-2 text-[10px] uppercase tracking-[0.25em] text-neon-red hover:bg-neon-red/10 disabled:opacity-40 md:min-h-9 md:px-2 md:py-1.5"
       >
         [ CALL :: VIDEO ]
       </button>

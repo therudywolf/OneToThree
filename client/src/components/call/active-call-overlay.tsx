@@ -11,7 +11,7 @@ import {
   VideoOff,
 } from 'lucide-react'
 import { applyPreferredAudioOutput } from '@/lib/media-devices'
-import { useIsNarrowViewport } from '@/hooks/use-is-narrow-viewport'
+import { isAndroidMobile } from '@/lib/android'
 import { useCallStore } from '@/store/callStore'
 
 type Props = {
@@ -58,6 +58,9 @@ function PeerTile({
     const a = audioRef.current
     if (hasVideo && v) {
       v.srcObject = stream
+      void v.play().catch(() => {
+        /* iOS may block autoplay until gesture; user can tap overlay */
+      })
       if (!muted) void applyPreferredAudioOutput(v)
       if (a) {
         a.srcObject = null
@@ -92,6 +95,7 @@ function PeerTile({
           autoPlay
           playsInline
           muted={muted}
+          controls={false}
           className="aspect-video w-full bg-black object-cover"
         />
       ) : (
@@ -114,7 +118,6 @@ export function ActiveCallOverlay({
   isScreenSharing,
   onToggleScreenShare,
 }: Props) {
-  const narrow = useIsNarrowViewport()
   const isCalling = useCallStore((s) => s.isCalling)
   const localStream = useCallStore((s) => s.localStream)
   const remoteStreams = useCallStore((s) => s.remoteStreams)
@@ -122,6 +125,11 @@ export function ActiveCallOverlay({
   const [tick, setTick] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const startRef = useRef<number | null>(null)
+  const [screenShareAllowed, setScreenShareAllowed] = useState(true)
+
+  useEffect(() => {
+    setScreenShareAllowed(!isAndroidMobile())
+  }, [])
 
   const remoteEntries = useMemo(
     () => Object.entries(remoteStreams),
@@ -176,7 +184,7 @@ export function ActiveCallOverlay({
       role="dialog"
       aria-label="Active call"
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-red-500/50 px-4 py-3 shadow-[0_0_10px_rgba(255,0,0,0.35)]">
+      <div className="flex shrink-0 items-center justify-between border-b border-red-500/50 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_0_10px_rgba(255,0,0,0.35)]">
         <p className="font-mono text-xs uppercase tracking-[0.35em] text-neon-cyan">
           :: LIVE_SESSION [{tileCount} PEER{tileCount > 1 ? 'S' : ''}]
         </p>
@@ -185,7 +193,7 @@ export function ActiveCallOverlay({
         </p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
         <div className={`grid gap-3 ${gridCols(tileCount)}`}>
           <PeerTile
             peerId="LOCAL"
@@ -204,7 +212,7 @@ export function ActiveCallOverlay({
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-red-500/50 bg-black px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_0_10px_rgba(255,0,0,0.35)] md:gap-4 md:px-4 md:py-4 md:pb-4">
+      <div className="pb-safe flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-red-500/50 bg-black px-3 py-3 pt-3 shadow-[0_0_10px_rgba(255,0,0,0.35)] md:gap-4 md:px-4 md:py-4">
         <button
           type="button"
           onClick={handleMute}
@@ -234,14 +242,14 @@ export function ActiveCallOverlay({
             type="button"
             onClick={() => void onSwitchCamera()}
             disabled={isScreenSharing}
-            title="Switch front / back camera"
+            title="Switch camera (front / back)"
             className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-zinc-500 bg-black p-3 text-zinc-300 hover:border-neon-cyan hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-30"
             aria-label="Switch camera"
           >
             <RefreshCw className="h-5 w-5" strokeWidth={1.5} />
           </button>
         ) : null}
-        {!narrow ? (
+        {screenShareAllowed ? (
           <button
             type="button"
             onClick={handleScreenShare}
@@ -253,7 +261,7 @@ export function ActiveCallOverlay({
                   ? 'Stop sharing'
                   : 'Share screen'
             }
-            className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 disabled:cursor-not-allowed disabled:opacity-30 ${
+            className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 disabled:cursor-not-allowed disabled:opacity-30 md:flex ${
               isScreenSharing
                 ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)] hover:bg-neon-cyan/10'
                 : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'

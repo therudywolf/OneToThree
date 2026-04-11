@@ -16,6 +16,9 @@ import { useChatStore } from '@/store/chatStore'
 
 const DEFAULT_STUN: RTCIceServer = { urls: 'stun:stun.l.google.com:19302' }
 
+/** ICE servers from env only. When the API host is behind Cloudflare proxy, TURN must use a
+ * separate DNS-only hostname (UDP) — do not point NEXT_PUBLIC_TURN_URL at the same host as NEXT_PUBLIC_API_URL.
+ */
 function buildIceServers(): RTCIceServer[] {
   const turnUrl =
     typeof process !== 'undefined'

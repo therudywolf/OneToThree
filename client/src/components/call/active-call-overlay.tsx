@@ -1,14 +1,24 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Mic, MicOff, Monitor, PhoneOff, Video, VideoOff } from 'lucide-react'
+import {
+  Mic,
+  MicOff,
+  Monitor,
+  PhoneOff,
+  RefreshCw,
+  Video,
+  VideoOff,
+} from 'lucide-react'
 import { applyPreferredAudioOutput } from '@/lib/media-devices'
+import { useIsNarrowViewport } from '@/hooks/use-is-narrow-viewport'
 import { useCallStore } from '@/store/callStore'
 
 type Props = {
   onEndCall: () => void
   onToggleMute: () => void
   onToggleCamera: () => void
+  onSwitchCamera: () => void
   isScreenSharing: boolean
   onToggleScreenShare: () => void
 }
@@ -100,9 +110,11 @@ export function ActiveCallOverlay({
   onEndCall,
   onToggleMute,
   onToggleCamera,
+  onSwitchCamera,
   isScreenSharing,
   onToggleScreenShare,
 }: Props) {
+  const narrow = useIsNarrowViewport()
   const isCalling = useCallStore((s) => s.isCalling)
   const localStream = useCallStore((s) => s.localStream)
   const remoteStreams = useCallStore((s) => s.remoteStreams)
@@ -192,11 +204,11 @@ export function ActiveCallOverlay({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center justify-center gap-4 border-t border-red-500/50 bg-black px-4 py-4 shadow-[0_0_10px_rgba(255,0,0,0.35)]">
+      <div className="flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-red-500/50 bg-black px-3 py-3 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_0_10px_rgba(255,0,0,0.35)] md:gap-4 md:px-4 md:py-4 md:pb-4">
         <button
           type="button"
           onClick={handleMute}
-          className="rounded-none border border-neon-cyan bg-black p-3 text-neon-cyan hover:bg-neon-cyan/10"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-neon-cyan bg-black p-3 text-neon-cyan hover:bg-neon-cyan/10"
           aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
         >
           {audioMuted ? (
@@ -208,7 +220,7 @@ export function ActiveCallOverlay({
         <button
           type="button"
           onClick={handleCam}
-          className="rounded-none border border-neon-red bg-black p-3 text-neon-red hover:bg-neon-red/10"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-neon-red bg-black p-3 text-neon-red hover:bg-neon-red/10"
           aria-label={videoOff ? 'Enable camera' : 'Disable camera'}
         >
           {videoOff ? (
@@ -217,30 +229,44 @@ export function ActiveCallOverlay({
             <Video className="h-5 w-5" strokeWidth={1.5} />
           )}
         </button>
-        <button
-          type="button"
-          onClick={handleScreenShare}
-          disabled={!hasCameraTrack}
-          title={
-            !hasCameraTrack
-              ? 'Screen share requires a video track'
-              : isScreenSharing
-                ? 'Stop sharing'
-                : 'Share screen'
-          }
-          className={`rounded-none border bg-black p-3 disabled:cursor-not-allowed disabled:opacity-30 ${
-            isScreenSharing
-              ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)] hover:bg-neon-cyan/10'
-              : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
-          }`}
-          aria-label={isScreenSharing ? 'Stop screen share' : 'Share screen'}
-        >
-          <Monitor className="h-5 w-5" strokeWidth={1.5} />
-        </button>
+        {hasCameraTrack && !videoOff ? (
+          <button
+            type="button"
+            onClick={() => void onSwitchCamera()}
+            disabled={isScreenSharing}
+            title="Switch front / back camera"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-zinc-500 bg-black p-3 text-zinc-300 hover:border-neon-cyan hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label="Switch camera"
+          >
+            <RefreshCw className="h-5 w-5" strokeWidth={1.5} />
+          </button>
+        ) : null}
+        {!narrow ? (
+          <button
+            type="button"
+            onClick={handleScreenShare}
+            disabled={!hasCameraTrack}
+            title={
+              !hasCameraTrack
+                ? 'Screen share requires a video track'
+                : isScreenSharing
+                  ? 'Stop sharing'
+                  : 'Share screen'
+            }
+            className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 disabled:cursor-not-allowed disabled:opacity-30 ${
+              isScreenSharing
+                ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)] hover:bg-neon-cyan/10'
+                : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
+            }`}
+            aria-label={isScreenSharing ? 'Stop screen share' : 'Share screen'}
+          >
+            <Monitor className="h-5 w-5" strokeWidth={1.5} />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={onEndCall}
-          className="rounded-none border-2 border-neon-red bg-red-950/50 p-3 text-neon-red hover:bg-neon-red/20"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border-2 border-neon-red bg-red-950/50 p-3 text-neon-red hover:bg-neon-red/20"
           aria-label="End call"
         >
           <PhoneOff className="h-5 w-5" strokeWidth={1.5} />

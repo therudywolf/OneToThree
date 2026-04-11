@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { Phone, PhoneOff } from 'lucide-react'
+import { startIncomingRingtone } from '@/lib/call-ringtones'
 import { useCallStore } from '@/store/callStore'
 
 type Props = {
@@ -14,28 +15,9 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
 
   useEffect(() => {
     if (!incoming) return
-    const ctx = new AudioContext()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = 440
-    gain.gain.value = 0.15
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-
-    const id = setInterval(() => {
-      const t = ctx.currentTime
-      gain.gain.setValueAtTime(0.15, t)
-      gain.gain.linearRampToValueAtTime(0, t + 0.4)
-      gain.gain.setValueAtTime(0, t + 0.6)
-      gain.gain.linearRampToValueAtTime(0.15, t + 0.7)
-    }, 1400)
-
+    const stop = startIncomingRingtone()
     return () => {
-      clearInterval(id)
-      osc.stop()
-      ctx.close().catch(() => {})
+      stop()
     }
   }, [incoming])
 
@@ -64,7 +46,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
           <button
             type="button"
             onClick={onAccept}
-            className="animate-neon-pulse rounded-none border-2 border-neon-cyan bg-black p-4 text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className="animate-neon-pulse flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border-2 border-neon-cyan bg-black p-4 text-neon-cyan transition-colors hover:bg-neon-cyan/10"
             aria-label="Accept call"
           >
             <Phone className="h-6 w-6" strokeWidth={1.5} />
@@ -72,7 +54,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
           <button
             type="button"
             onClick={onReject}
-            className="rounded-none border-2 border-neon-red bg-black p-4 text-neon-red transition-colors hover:bg-neon-red/10"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border-2 border-neon-red bg-black p-4 text-neon-red transition-colors hover:bg-neon-red/10"
             aria-label="Reject call"
           >
             <PhoneOff className="h-6 w-6" strokeWidth={1.5} />

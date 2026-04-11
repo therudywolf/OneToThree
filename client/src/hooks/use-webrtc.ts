@@ -2,9 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
+import { startOutgoingRingtone } from '@/lib/call-ringtones'
 import { getUserMediaConstraints } from '@/lib/media-devices'
-import { MEDIA_ACCESS_ERROR_MESSAGE } from '@/lib/media-limits'
+import {
+  isMediaPermissionDenied,
+  MEDIA_ACCESS_ERROR_MESSAGE,
+  MEDIA_PERMISSION_DENIED_CODE,
+} from '@/lib/media-limits'
 import { useCallStore } from '@/store/callStore'
+import { useChatStore } from '@/store/chatStore'
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 
@@ -43,6 +49,10 @@ export function useWebRTC(userId: string | null) {
   /** Active screen-capture track (stop on revert; onended → revert). */
   const screenVideoTrackRef = useRef<MediaStreamTrack | null>(null)
   const revertToCameraRef = useRef<() => void>(() => {})
+  /** Browser `setTimeout` id (avoid NodeJS `Timeout` typing in client). */
+  const iceDisconnectTimersRef = useRef(new Map<string, number>())
+  const outgoingRingStopRef = useRef<(() => void) | null>(null)
+  const facingModeRef = useRef<'user' | 'environment'>('user')
 
   const setIncomingCall = useCallStore((s) => s.setIncomingCall)
   const resetCallStore = useCallStore((s) => s.reset)
@@ -66,8 +76,17 @@ export function useWebRTC(userId: string | null) {
     delete pendingIceRef.current[peerId]
   }, [])
 
+  const clearIceDisconnectTimer = useCallback((peerId: string) => {
+    const t = iceDisconnectTimersRef.current.get(peerId)
+    if (t) {
+      clearTimeout(t)
+      iceDisconnectTimersRef.current.delete(peerId)
+    }
+  }, [])
+
   const cleanupPeer = useCallback(
     (peerId: string) => {
+      clearIceDisconnectTimer(peerId)
       const pc = pcsRef.current.get(peerId)
       if (pc) {
         pc.close()
@@ -77,11 +96,13 @@ export function useWebRTC(userId: string | null) {
       removeRemoteStream(peerId)
       delete pendingIceRef.current[peerId]
     },
-    [removePeerConnection, removeRemoteStream]
+    [removePeerConnection, removeRemoteStream, clearIceDisconnectTimer]
   )
 
   const maybeResetCallIfNoPeers = useCallback(() => {
     if (pcsRef.current.size > 0) return
+    outgoingRingStopRef.current?.()
+    outgoingRingStopRef.current = null
     const state = useCallStore.getState()
     if (
       state.isCalling ||
@@ -138,8 +159,14 @@ export function useWebRTC(userId: string | null) {
   }, [revertToCamera])
 
   const endCall = useCallback(() => {
+    outgoingRingStopRef.current?.()
+    outgoingRingStopRef.current = null
     setMediaAccessError(null)
     revertToCamera()
+    const chatId = useChatStore.getState().activeChatId
+    if (chatId) {
+      getFmSocket().send({ type: 'call_leave', chat_id: chatId })
+    }
     for (const id of Array.from(pcsRef.current.keys())) {
       cleanupPeer(id)
     }
@@ -184,14 +211,44 @@ export function useWebRTC(userId: string | null) {
 
   const attachPeerHandlers = useCallback(
     (peerId: string, pc: RTCPeerConnection) => {
-      pc.oniceconnectionstatechange = () => {
-        const st = pc.iceConnectionState
-        if (st !== 'disconnected' && st !== 'failed' && st !== 'closed') {
-          return
-        }
+      const teardownIfStillThisPc = () => {
+        if (pcsRef.current.get(peerId) !== pc) return
         if (!pcsRef.current.has(peerId)) return
         cleanupPeer(peerId)
         maybeResetCallIfNoPeers()
+      }
+
+      pc.oniceconnectionstatechange = () => {
+        const st = pc.iceConnectionState
+        if (st === 'connected' || st === 'completed') {
+          clearIceDisconnectTimer(peerId)
+          outgoingRingStopRef.current?.()
+          outgoingRingStopRef.current = null
+          return
+        }
+        if (st === 'failed' || st === 'closed') {
+          clearIceDisconnectTimer(peerId)
+          teardownIfStillThisPc()
+          return
+        }
+        if (st === 'disconnected') {
+          clearIceDisconnectTimer(peerId)
+          const timerId = window.setTimeout(() => {
+            iceDisconnectTimersRef.current.delete(peerId)
+            if (pcsRef.current.get(peerId) !== pc) return
+            if (pc.iceConnectionState !== 'disconnected') return
+            teardownIfStillThisPc()
+          }, 3200)
+          iceDisconnectTimersRef.current.set(peerId, timerId)
+        }
+      }
+
+      pc.onconnectionstatechange = () => {
+        const st = pc.connectionState
+        if (st === 'failed' || st === 'closed') {
+          clearIceDisconnectTimer(peerId)
+          teardownIfStillThisPc()
+        }
       }
       pc.ontrack = (ev) => {
         if (ev.streams[0]) {
@@ -208,7 +265,12 @@ export function useWebRTC(userId: string | null) {
         })
       }
     },
-    [setRemoteStream, cleanupPeer, maybeResetCallIfNoPeers]
+    [
+      setRemoteStream,
+      cleanupPeer,
+      maybeResetCallIfNoPeers,
+      clearIceDisconnectTimer,
+    ]
   )
 
   useEffect(() => {
@@ -291,8 +353,12 @@ export function useWebRTC(userId: string | null) {
       stream = await navigator.mediaDevices.getUserMedia(
         getUserMediaConstraints({ video: !!inc.isVideo })
       )
-    } catch {
-      setMediaAccessError(MEDIA_ACCESS_ERROR_MESSAGE)
+    } catch (err) {
+      setMediaAccessError(
+        isMediaPermissionDenied(err)
+          ? MEDIA_PERMISSION_DENIED_CODE
+          : MEDIA_ACCESS_ERROR_MESSAGE
+      )
       setIncomingCall(null)
       return
     }
@@ -340,13 +406,18 @@ export function useWebRTC(userId: string | null) {
         stream = await navigator.mediaDevices.getUserMedia(
           getUserMediaConstraints({ video: isVideo })
         )
-      } catch {
-        setMediaAccessError(MEDIA_ACCESS_ERROR_MESSAGE)
+      } catch (err) {
+        setMediaAccessError(
+          isMediaPermissionDenied(err)
+            ? MEDIA_PERMISSION_DENIED_CODE
+            : MEDIA_ACCESS_ERROR_MESSAGE
+        )
         return
       }
 
       setLocalStream(stream)
       setIsCalling(true)
+      if (isVideo) facingModeRef.current = 'user'
 
       for (const peerId of recipientIds) {
         if (peerId === userId) continue
@@ -369,6 +440,12 @@ export function useWebRTC(userId: string | null) {
         } catch {
           cleanupPeer(peerId)
         }
+      }
+
+      outgoingRingStopRef.current?.()
+      outgoingRingStopRef.current = null
+      if (pcsRef.current.size > 0) {
+        outgoingRingStopRef.current = startOutgoingRingtone()
       }
 
       if (pcsRef.current.size === 0) {
@@ -400,6 +477,61 @@ export function useWebRTC(userId: string | null) {
       t.enabled = !t.enabled
     })
   }, [])
+
+  const switchCamera = useCallback(async () => {
+    if (screenVideoTrackRef.current) return
+    const local = useCallStore.getState().localStream
+    if (!local || pcsRef.current.size === 0) return
+    const oldVideo = local.getVideoTracks()[0]
+    if (!oldVideo) return
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
+      return
+    }
+
+    facingModeRef.current =
+      facingModeRef.current === 'user' ? 'environment' : 'user'
+    const nextFacing = facingModeRef.current
+
+    try {
+      const base = getUserMediaConstraints({ video: true })
+      const fromPrefs =
+        base.video && typeof base.video === 'object'
+          ? (base.video as MediaTrackConstraints)
+          : {}
+
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          ...fromPrefs,
+          facingMode: nextFacing,
+          width: { ideal: 720 },
+          height: { ideal: 720 },
+        },
+      })
+      const newTrack = newStream.getVideoTracks()[0]
+      if (!newTrack) {
+        facingModeRef.current = nextFacing === 'user' ? 'environment' : 'user'
+        newStream.getTracks().forEach((t) => t.stop())
+        return
+      }
+
+      for (const [, pc] of pcsRef.current) {
+        const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
+        if (sender) void sender.replaceTrack(newTrack)
+      }
+
+      local.removeTrack(oldVideo)
+      oldVideo.stop()
+      local.addTrack(newTrack)
+      newStream.getAudioTracks().forEach((t) => t.stop())
+      setLocalStream(local)
+    } catch {
+      facingModeRef.current = nextFacing === 'user' ? 'environment' : 'user'
+    }
+  }, [setLocalStream])
 
   const toggleScreenShare = useCallback(async () => {
     if (screenVideoTrackRef.current) {
@@ -479,6 +611,7 @@ export function useWebRTC(userId: string | null) {
     endCall,
     toggleMuteMic,
     toggleCamera,
+    switchCamera,
     isScreenSharing,
     toggleScreenShare,
   }

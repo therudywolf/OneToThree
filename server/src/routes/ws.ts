@@ -4,7 +4,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { WebSocket } from 'ws'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, messages, users } from '../db/schema.js'
+import { chatMembers, users } from '../db/schema.js'
 import {
   getAuthUser,
   isUserDeviceSessionValid,
@@ -12,7 +12,7 @@ import {
 } from '../lib/auth-user.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { markMessageReadByReader } from '../lib/mark-message-read.js'
-import { sendPushToUser } from '../lib/push.js'
+import { persistChatMessageAndFanOut } from '../lib/chat-message-persist.js'
 import {
   broadcastOnlineStatusChange,
   getRelatedUserIds,
@@ -182,80 +182,24 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             return
           }
 
-          const [row] = await db
-            .insert(messages)
-            .values({
-              chatId: p.chat_id,
-              senderId: user.id,
-              replyToId: p.reply_to_id ?? null,
-              content: p.content ?? null,
-              iv: p.iv ?? null,
-              mediaPath: p.media_path ?? null,
-              mediaType: p.media_type ?? null,
-              mediaIv: p.media_iv ?? null,
-            })
-            .returning({
-              id: messages.id,
-              chatId: messages.chatId,
-              senderId: messages.senderId,
-              replyToId: messages.replyToId,
-              content: messages.content,
-              iv: messages.iv,
-              mediaPath: messages.mediaPath,
-              mediaType: messages.mediaType,
-              mediaIv: messages.mediaIv,
-              readAt: messages.readAt,
-              createdAt: messages.createdAt,
-            })
+          const persisted = await persistChatMessageAndFanOut({
+            chatId: p.chat_id,
+            senderId: user.id,
+            replyToId: p.reply_to_id ?? null,
+            content: p.content ?? null,
+            iv: p.iv ?? null,
+            mediaPath: p.media_path ?? null,
+            mediaType: p.media_type ?? null,
+            mediaIv: p.media_iv ?? null,
+          })
 
-          if (!row) {
+          if (!persisted.ok) {
             request.log.error(
               { correlationId, chatId: p.chat_id, userId: user.id },
               'ws: insert failed for chat_message'
             )
             ws.send(JSON.stringify({ type: 'error', error: 'INSERT_FAILED' }))
             return
-          }
-
-          const ids = await getChatMemberIds(p.chat_id)
-          const createdAt =
-            row.createdAt instanceof Date
-              ? row.createdAt.toISOString()
-              : String(row.createdAt)
-          const readAt =
-            row.readAt == null
-              ? null
-              : row.readAt instanceof Date
-                ? row.readAt.toISOString()
-                : String(row.readAt)
-
-          broadcastToUsers(ids, {
-            type: 'chat_message',
-            message: {
-              id: row.id,
-              chat_id: row.chatId,
-              sender_id: row.senderId,
-              reply_to_id: row.replyToId,
-              content: row.content,
-              iv: row.iv,
-              media_path: row.mediaPath,
-              media_type: row.mediaType,
-              media_iv: row.mediaIv,
-              read_at: readAt,
-              created_at: createdAt,
-            },
-          })
-
-          for (const memberId of new Set(ids)) {
-            if (memberId === user.id) continue
-            if (!hasActiveSocket(memberId)) {
-              void sendPushToUser(memberId, {
-                title: 'Новое сообщение',
-                body: 'Вам пришло зашифрованное сообщение',
-                url: `/?chat=${p.chat_id}`,
-                icon: '/wolf-logo.png',
-              })
-            }
           }
           return
         }

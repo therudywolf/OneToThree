@@ -162,6 +162,28 @@ export const messages = pgTable(
   })
 )
 
+/** Per-recipient delivery for store-and-forward (E2EE ciphertext is opaque to the server). */
+export const messageDeliveries = pgTable(
+  'message_deliveries',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Set when the recipient client acknowledges display (REST) or equivalent sync. */
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.messageId, t.userId] }),
+    userPendingIdx: index('message_deliveries_user_pending_idx').on(
+      t.userId,
+      t.deliveredAt
+    ),
+  })
+)
+
 export const pushSubscriptions = pgTable(
   'push_subscriptions',
   {

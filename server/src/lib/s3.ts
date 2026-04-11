@@ -56,18 +56,38 @@ export function createS3Client(): S3Client {
 
 let bucketReady: Promise<void> | null = null
 
+/** Origins allowed by MinIO bucket CORS for browser PUT/GET to presigned URLs. */
+function browserUploadCorsOrigins(): string[] {
+  const explicit = process.env.MINIO_CORS_ORIGINS?.trim()
+  if (explicit) {
+    return explicit
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean)
+  }
+  const apiCors = process.env.CORS_ORIGIN?.trim()
+  if (apiCors && apiCors !== '*') {
+    return apiCors
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean)
+  }
+  return ['*']
+}
+
 async function applyBucketCors(
   client: S3Client,
   bucket: string
 ): Promise<void> {
   try {
+    const allowedOrigins = browserUploadCorsOrigins()
     await client.send(
       new PutBucketCorsCommand({
         Bucket: bucket,
         CORSConfiguration: {
           CORSRules: [
             {
-              AllowedOrigins: ['*'],
+              AllowedOrigins: allowedOrigins,
               AllowedMethods: ['GET', 'PUT', 'POST', 'HEAD'],
               AllowedHeaders: ['*'],
               ExposeHeaders: ['ETag', 'Content-Length'],

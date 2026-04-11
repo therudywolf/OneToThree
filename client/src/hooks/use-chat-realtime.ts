@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { acknowledgeMessagesDelivered } from '@/lib/api/messages'
 import { getFmSocket } from '@/lib/api/socket'
 import {
   decryptInboundText,
@@ -114,6 +115,11 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
         }
         await cacheMessage(row)
         appendMessage(row)
+        if (userId && m.sender_id !== userId) {
+          void acknowledgeMessagesDelivered([m.id]).catch(() => {
+            /* best-effort */
+          })
+        }
       })()
     })
 

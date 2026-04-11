@@ -122,7 +122,8 @@ async function applyBucketCors(
           CORSRules: [
             {
               AllowedOrigins: allowedOrigins,
-              AllowedMethods: ['GET', 'PUT', 'POST', 'HEAD', 'OPTIONS'],
+              // PUT + browser CORS preflight (OPTIONS). GET/HEAD for downloads.
+              AllowedMethods: ['GET', 'HEAD', 'PUT', 'OPTIONS'],
               AllowedHeaders: ['*'],
               ExposeHeaders: ['ETag', 'Content-Length'],
               MaxAgeSeconds: 3600,
@@ -170,6 +171,27 @@ export function ensureBucketExists(client: S3Client, bucket: string): Promise<vo
 }
 
 const DEFAULT_PRESIGN_TTL_S = 3600
+
+/**
+ * Normalize presigned URL origin to `MINIO_PUBLIC_URL` using the URL API (no string replace).
+ * If `MINIO_PUBLIC_URL` is unset or parsing fails, returns `signedUrl` unchanged.
+ * Presigning must use the same host SigV4 expects — typically via {@link createS3ClientForPresigning}
+ * pointing at this URL — so this mainly fixes formatting / consistency, not internal→public rewrites.
+ */
+export function rewritePresignedUrlToPublicBase(signedUrl: string): string {
+  const raw = process.env.MINIO_PUBLIC_URL?.trim()
+  if (!raw) return signedUrl
+  try {
+    const generatedUrl = new URL(signedUrl)
+    const publicBase = new URL(raw)
+    generatedUrl.protocol = publicBase.protocol
+    generatedUrl.host = publicBase.host
+    generatedUrl.port = publicBase.port
+    return generatedUrl.toString()
+  } catch {
+    return signedUrl
+  }
+}
 
 export async function presignPutObject(params: {
   client: S3Client

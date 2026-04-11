@@ -13,6 +13,11 @@ import {
   type AuthUser,
 } from '../lib/auth-user.js'
 import { adminPurgeUser } from '../lib/admin-purge-user.js'
+import {
+  collectSystemStats,
+  collectUserStorageUsage,
+} from '../lib/admin-system-stats.js'
+import { createS3Client } from '../lib/s3.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
 async function requireAdmin(
@@ -37,6 +42,31 @@ const purgeBodySchema = z.object({
 })
 
 export const adminRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/system-stats', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    try {
+      const s3 = createS3Client()
+      const stats = await collectSystemStats(s3)
+      return reply.send(stats)
+    } catch (e) {
+      request.log.error(e)
+      return reply.status(500).send({ error: 'SYSTEM_STATS_FAILED' })
+    }
+  })
+
+  app.get('/users/storage-usage', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    try {
+      const rows = await collectUserStorageUsage()
+      return reply.send({ users: rows })
+    } catch (e) {
+      request.log.error(e)
+      return reply.status(500).send({ error: 'STORAGE_USAGE_FAILED' })
+    }
+  })
+
   app.get('/users', async (request, reply) => {
     const admin = await requireAdmin(request, reply)
     if (!admin) return

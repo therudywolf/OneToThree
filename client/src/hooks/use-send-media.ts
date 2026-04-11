@@ -1,5 +1,6 @@
 'use client'
 
+import imageCompression from 'browser-image-compression'
 import { useCallback } from 'react'
 import {
   encryptOutboundText,
@@ -106,25 +107,6 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
       if (!activeChatId || !userId || !unwrappedPrivateKey || !cryptoCtx) {
         return
       }
-      if (isMediaTooLarge(blob.size)) {
-        throw new Error(MEDIA_TOO_LARGE_CODE)
-      }
-
-      const aesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
-      const fileKey = await generateAesGcm256Key()
-      const plain = await blob.arrayBuffer()
-      const fileIv = new Uint8Array(12)
-      crypto.getRandomValues(fileIv)
-      const cipher = await getSubtle().encrypt(
-        { name: 'AES-GCM', iv: fileIv as BufferSource },
-        fileKey,
-        plain as BufferSource
-      )
-      const rawKey = await getSubtle().exportKey('raw', fileKey)
-      const { cipher: wrapCipher, ivBase64: wrapIv } = await encryptBinary(
-        aesKey,
-        rawKey as ArrayBuffer
-      )
 
       const inferredType =
         mediaType === 'audio'
@@ -151,11 +133,44 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
       const fileName = options?.fileName?.trim() || defaultName
       const uploadName = fileName.includes('.') ? fileName : `${fileName}.${ext}`
 
+      let workBlob: Blob = blob
+      if (mediaType === 'image') {
+        const source =
+          blob instanceof File
+            ? blob
+            : new File([blob], uploadName, { type: fileType })
+        workBlob = await imageCompression(source, {
+          maxWidthOrHeight: 1920,
+          useWebWorker: true,
+          initialQuality: 0.8,
+        })
+      }
+
+      if (isMediaTooLarge(workBlob.size)) {
+        throw new Error(MEDIA_TOO_LARGE_CODE)
+      }
+
+      const aesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
+      const fileKey = await generateAesGcm256Key()
+      const plain = await workBlob.arrayBuffer()
+      const fileIv = new Uint8Array(12)
+      crypto.getRandomValues(fileIv)
+      const cipher = await getSubtle().encrypt(
+        { name: 'AES-GCM', iv: fileIv as BufferSource },
+        fileKey,
+        plain as BufferSource
+      )
+      const rawKey = await getSubtle().exportKey('raw', fileKey)
+      const { cipher: wrapCipher, ivBase64: wrapIv } = await encryptBinary(
+        aesKey,
+        rawKey as ArrayBuffer
+      )
+
       const envelope: AttachmentEnvelopeV1 = {
         p13: 'attachment',
         v: 1,
         fileName: uploadName,
-        fileSize: blob.size,
+        fileSize: workBlob.size,
         mimeType: fileType,
         wrapIv,
         wrapCt: arrayBufferToBase64(wrapCipher),
@@ -189,6 +204,7 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
         media_path: filePath,
         media_type: mediaType,
         media_iv: ivB64,
+        media_original_bytes: workBlob.size,
       })
       if (via === 'rest' && serverMessage) {
         const row = await decryptApiMessageRow(

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { deleteCachedMessage } from '@/lib/message-cache'
 import type { DecryptedMessage } from '@/types/chat'
 
 const RAM_WINDOW_SIZE = 50
@@ -25,6 +26,8 @@ type ChatState = {
   setMessages: (messages: DecryptedMessage[]) => void
   appendMessage: (m: DecryptedMessage) => void
   removeMessage: (id: string) => void
+  /** Drop messages whose burn_at is in the past (local + IndexedDB). */
+  pruneBurnedMessages: (nowMs?: number) => void
   setReplyTo: (m: DecryptedMessage | null) => void
   setUnwrappedPrivateKey: (k: CryptoKey | null) => void
   setUserId: (id: string | null) => void
@@ -79,6 +82,22 @@ export const useChatStore = create<ChatState>((set) => ({
     set((s) => ({
       messages: s.messages.filter((m) => m.id !== id),
     })),
+  pruneBurnedMessages: (nowMs = Date.now()) =>
+    set((s) => {
+      const doomed = s.messages.filter((m) => {
+        if (!m.burn_at) return false
+        const t = new Date(m.burn_at).getTime()
+        return Number.isFinite(t) && nowMs > t
+      })
+      for (const m of doomed) {
+        void deleteCachedMessage(m.id)
+      }
+      if (doomed.length === 0) return s
+      const drop = new Set(doomed.map((m) => m.id))
+      return {
+        messages: s.messages.filter((m) => !drop.has(m.id)),
+      }
+    }),
   setReplyTo: (m) => set({ replyTo: m }),
   setUnwrappedPrivateKey: (k) => set({ unwrappedPrivateKey: k }),
   setUserId: (id) => set({ userId: id }),

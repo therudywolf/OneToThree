@@ -84,7 +84,11 @@ export function ChatTerminal({
   myAvatarKey?: string | null
   peerAvatarKey?: string | null
   cryptoCtx: ChatCryptoContext | null
-  sendText: (t: string, replyToId?: string | null) => Promise<void>
+  sendText: (
+    t: string,
+    replyToId?: string | null,
+    opts?: { burn_at?: string | null }
+  ) => Promise<void>
   sendMedia: (
     blob: Blob,
     mediaType: 'audio' | 'video' | 'image' | 'file',

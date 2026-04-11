@@ -9,6 +9,8 @@ export type SendChatMessageBody = {
   media_path?: string | null
   media_type?: string | null
   media_iv?: string | null
+  media_original_bytes?: number | null
+  burn_at?: string | null
 }
 
 /** REST store-and-forward when the WebSocket is not connected. */

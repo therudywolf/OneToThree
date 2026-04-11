@@ -1,7 +1,7 @@
 import { and, eq, inArray, ne } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { chatMembers, users } from '../db/schema.js'
-import { broadcastToUsers } from '../ws/registry.js'
+import { sendToUser } from '../ws/registry.js'
 
 /** Distinct user ids that share at least one chat with `userId` (excluding self). */
 export async function getRelatedUserIds(userId: string): Promise<string[]> {
@@ -40,18 +40,29 @@ export async function touchLastSeenPing(
   return touchLastSeen(userId)
 }
 
-export function broadcastOnlineStatusChange(
+export async function broadcastOnlineStatusChange(
   relatedUserIds: string[],
   payload: {
     user_id: string
     online: boolean
-    last_seen_at: string
+    last_seen_at: string | null
   }
-): void {
-  broadcastToUsers(relatedUserIds, {
-    type: 'online_status_change',
-    user_id: payload.user_id,
-    online: payload.online,
-    last_seen_at: payload.last_seen_at,
-  })
+): Promise<void> {
+  const [subject] = await db
+    .select({ hidePresence: users.hidePresence })
+    .from(users)
+    .where(eq(users.id, payload.user_id))
+    .limit(1)
+  const hide = subject?.hidePresence === true
+  const sid = payload.user_id
+
+  for (const peer of relatedUserIds) {
+    const mask = hide && peer !== sid
+    sendToUser(peer, {
+      type: 'online_status_change',
+      user_id: sid,
+      online: mask ? false : payload.online,
+      last_seen_at: mask ? null : payload.last_seen_at,
+    })
+  }
 }

@@ -21,6 +21,7 @@ export type ApiMessageRow = {
   media_type?: string | null
   media_iv?: string | null
   read_at?: string | null
+  burn_at?: string | null
   created_at: string
 }
 
@@ -45,6 +46,7 @@ function apiRowToDecrypted(
         ? m.media_type
         : null,
     media_iv: m.media_iv,
+    burn_at: m.burn_at ?? null,
   }
 }
 

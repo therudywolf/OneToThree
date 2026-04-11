@@ -1,35 +1,62 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth/auth-provider'
 import {
   fetchAdminReports,
+  fetchAdminSystemStats,
+  fetchAdminUserStorageUsage,
   fetchAdminUsers,
   patchUserBan,
   postAdminPurgeUser,
   type AdminReportRow,
+  type AdminSystemStats,
+  type AdminStorageUserRow,
   type AdminUserRow,
 } from '@/lib/api/admin'
+
+function formatBytes(n: bigint): string {
+  const B = BigInt(1024)
+  if (n < B) return `${n} B`
+  const kb = B
+  const mb = kb * kb
+  const gb = mb * kb
+  if (n < mb) return `${(Number(n) / Number(kb)).toFixed(1)} KB`
+  if (n < gb) return `${(Number(n) / Number(mb)).toFixed(2)} MB`
+  return `${(Number(n) / Number(gb)).toFixed(2)} GB`
+}
 
 export default function AdminPage() {
   const router = useRouter()
   const { user, loading } = useAuth()
   const [users, setUsers] = useState<AdminUserRow[]>([])
+  const [storageRows, setStorageRows] = useState<AdminStorageUserRow[]>([])
+  const [systemStats, setSystemStats] = useState<AdminSystemStats | null>(null)
   const [reports, setReports] = useState<AdminReportRow[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  const storageByUser = useMemo(() => {
+    const m = new Map<string, AdminStorageUserRow>()
+    for (const r of storageRows) m.set(r.user_id, r)
+    return m
+  }, [storageRows])
+
   const load = useCallback(async () => {
     setErr(null)
     try {
-      const [u, r] = await Promise.all([
+      const [u, r, stats, su] = await Promise.all([
         fetchAdminUsers(),
         fetchAdminReports(),
+        fetchAdminSystemStats(),
+        fetchAdminUserStorageUsage(),
       ])
       setUsers(u)
       setReports(r)
+      setSystemStats(stats)
+      setStorageRows(su)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'LOAD_FAILED')
     }
@@ -122,14 +149,70 @@ export default function AdminPage() {
 
       <section className="mb-10">
         <h2 className="mb-2 text-[10px] uppercase tracking-[0.35em] text-red-800">
+          :: RESOURCE_PULSE
+        </h2>
+        {systemStats ? (
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div
+              className={`border px-3 py-2 font-mono text-[10px] uppercase tracking-widest ${
+                systemStats.process.cpu_percent > 85
+                  ? 'border-neon-red text-neon-red'
+                  : 'border-neon-cyan/50 text-neon-cyan'
+              }`}
+            >
+              <p className="text-red-800">CPU %</p>
+              <p className="text-lg">
+                {systemStats.process.cpu_percent.toFixed(1)}
+              </p>
+            </div>
+            <div className="border border-neon-cyan/40 px-3 py-2 font-mono text-[10px] text-neon-cyan">
+              <p className="text-red-800">HOST RAM</p>
+              <p className="text-lg">
+                {(
+                  (1 -
+                    systemStats.host.freemem / systemStats.host.totalmem) *
+                  100
+                ).toFixed(1)}
+                %
+              </p>
+              <p className="mt-1 text-[9px] text-red-800/80">
+                proc RSS{' '}
+                {formatBytes(BigInt(Math.floor(systemStats.process.memory.rss)))}
+              </p>
+            </div>
+            <div className="border border-neon-cyan/40 px-3 py-2 font-mono text-[10px] text-neon-cyan">
+              <p className="text-red-800">DB ROWS</p>
+              <p>
+                users {systemStats.database.user_count} · msgs{' '}
+                {systemStats.database.message_count}
+              </p>
+            </div>
+            <div className="border border-neon-cyan/40 px-3 py-2 font-mono text-[10px] text-neon-cyan">
+              <p className="text-red-800">MINIO TOTAL</p>
+              <p className="break-all">
+                {formatBytes(BigInt(systemStats.storage.minio_total_bytes))}
+              </p>
+              <p className="mt-1 text-[9px] text-red-800/80">
+                {systemStats.storage.buckets.join(', ')}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="mb-4 text-[10px] text-red-800">:: NO_PULSE_DATA</p>
+        )}
+      </section>
+
+      <section className="mb-10">
+        <h2 className="mb-2 text-[10px] uppercase tracking-[0.35em] text-red-800">
           :: USERS
         </h2>
         <div className="overflow-x-auto border border-neon-cyan/30">
           <table className="w-full min-w-[640px] border-collapse text-left text-xs">
             <thead>
               <tr className="border-b border-neon-cyan/40 bg-black text-[10px] uppercase tracking-widest text-neon-cyan">
-                <th className="p-2 font-mono">ID</th>
                 <th className="p-2 font-mono">HANDLE</th>
+                <th className="p-2 font-mono">MSG_COUNT</th>
+                <th className="p-2 font-mono">STORAGE</th>
                 <th className="p-2 font-mono">ROLE</th>
                 <th className="p-2 font-mono">BANNED</th>
                 <th className="p-2 font-mono">ACTIONS</th>
@@ -141,10 +224,15 @@ export default function AdminPage() {
                   key={r.id}
                   className="border-b border-neon-cyan/15 odd:bg-black even:bg-neon-cyan/[0.03]"
                 >
-                  <td className="p-2 font-mono text-[10px] text-red-800">
-                    {r.id}
-                  </td>
                   <td className="p-2 text-neon-cyan">{r.username}</td>
+                  <td className="p-2 font-mono text-neon-cyan/90">
+                    {storageByUser.get(r.id)?.msg_count ?? 0}
+                  </td>
+                  <td className="p-2 font-mono text-[10px] text-neon-cyan/80">
+                    {formatBytes(
+                      BigInt(storageByUser.get(r.id)?.storage_used ?? '0')
+                    )}
+                  </td>
                   <td className="p-2 uppercase text-neon-red">{r.role}</td>
                   <td className="p-2">{r.is_banned ? 'YES' : 'NO'}</td>
                   <td className="p-2">

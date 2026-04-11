@@ -12,7 +12,9 @@ import {
 } from '../lib/auth-user.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { markMessageReadByReader } from '../lib/mark-message-read.js'
+import { parseOptionalBurnAt } from '../lib/burn-at.js'
 import { persistChatMessageAndFanOut } from '../lib/chat-message-persist.js'
+import { resolveMediaOriginalBytes } from '../lib/message-send-helpers.js'
 import {
   broadcastOnlineStatusChange,
   getRelatedUserIds,
@@ -78,6 +80,8 @@ const chatMessageInSchema = z.object({
   media_type: z.string().nullable().optional(),
   media_iv: z.string().nullable().optional(),
   reply_to_id: z.string().uuid().nullable().optional(),
+  media_original_bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  burn_at: z.string().nullable().optional(),
 })
 
 const webrtcSignalSchema = z.object({
@@ -182,6 +186,12 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             return
           }
 
+          const burn = parseOptionalBurnAt(p.burn_at ?? null)
+          if (!burn.ok) {
+            ws.send(JSON.stringify({ type: 'error', error: burn.error }))
+            return
+          }
+
           const persisted = await persistChatMessageAndFanOut({
             chatId: p.chat_id,
             senderId: user.id,
@@ -191,6 +201,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             mediaPath: p.media_path ?? null,
             mediaType: p.media_type ?? null,
             mediaIv: p.media_iv ?? null,
+            mediaOriginalBytes: resolveMediaOriginalBytes(
+              p.media_path ?? null,
+              p.media_original_bytes
+            ),
+            burnAt: burn.date,
           })
 
           if (!persisted.ok) {
@@ -330,7 +345,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         void (async () => {
           const iso = await touchLastSeen(uid)
           const peers = await getRelatedUserIds(uid)
-          broadcastOnlineStatusChange(peers, {
+          await broadcastOnlineStatusChange(peers, {
             user_id: uid,
             online: false,
             last_seen_at: iso,
@@ -338,7 +353,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         })()
       })
       if (!wasOnline) {
-        broadcastOnlineStatusChange(related, {
+        await broadcastOnlineStatusChange(related, {
           user_id: user.id,
           online: true,
           last_seen_at: lastSeenIso,

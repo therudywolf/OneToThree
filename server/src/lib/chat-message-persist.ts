@@ -17,6 +17,8 @@ export type PersistedMessageRow = {
   mediaPath: string | null
   mediaType: string | null
   mediaIv: string | null
+  mediaOriginalBytes: number | null
+  burnAt: Date | null
   readAt: Date | null
   createdAt: Date
 }
@@ -30,6 +32,8 @@ export type PersistChatMessageInput = {
   mediaPath?: string | null
   mediaType?: string | null
   mediaIv?: string | null
+  mediaOriginalBytes?: number | null
+  burnAt?: Date | null
 }
 
 function rowToWireMessage(row: PersistedMessageRow) {
@@ -43,6 +47,12 @@ function rowToWireMessage(row: PersistedMessageRow) {
       : row.readAt instanceof Date
         ? row.readAt.toISOString()
         : String(row.readAt)
+  const burnAt =
+    row.burnAt == null
+      ? null
+      : row.burnAt instanceof Date
+        ? row.burnAt.toISOString()
+        : String(row.burnAt)
   return {
     id: row.id,
     chat_id: row.chatId,
@@ -53,6 +63,7 @@ function rowToWireMessage(row: PersistedMessageRow) {
     media_path: row.mediaPath,
     media_type: row.mediaType,
     media_iv: row.mediaIv,
+    burn_at: burnAt,
     read_at: readAt,
     created_at: createdAt,
   }
@@ -88,6 +99,8 @@ export async function persistChatMessageAndFanOut(
         mediaPath: input.mediaPath ?? null,
         mediaType: input.mediaType ?? null,
         mediaIv: input.mediaIv ?? null,
+        mediaOriginalBytes: input.mediaOriginalBytes ?? null,
+        burnAt: input.burnAt ?? null,
       })
       .returning({
         id: messages.id,
@@ -99,6 +112,8 @@ export async function persistChatMessageAndFanOut(
         mediaPath: messages.mediaPath,
         mediaType: messages.mediaType,
         mediaIv: messages.mediaIv,
+        mediaOriginalBytes: messages.mediaOriginalBytes,
+        burnAt: messages.burnAt,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
       })

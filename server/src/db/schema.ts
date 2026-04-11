@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   index,
   integer,
@@ -47,6 +48,8 @@ export const users = pgTable('users', {
   avatarKey: text('avatar_key'),
   /** Updated on WS connect, heartbeat, and disconnect (presence / last seen). */
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  /** When true, peers see offline / no last-seen; viewer still sees others (asymmetric). */
+  hidePresence: boolean('hide_presence').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -146,6 +149,10 @@ export const messages = pgTable(
     mediaPath: text('media_path'),
     mediaType: text('media_type'),
     mediaIv: text('media_iv'),
+    /** Plaintext byte length of uploaded blob (for admin storage audit). */
+    mediaOriginalBytes: bigint('media_original_bytes', { mode: 'number' }),
+    /** Burn-after-read: hide locally after this time (server metadata). */
+    burnAt: timestamp('burn_at', { withTimezone: true }),
     /** Direct E2E: set when the peer reads (first read wins). Null in group chats. */
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })

@@ -11,13 +11,11 @@ ForestMessenger/
 ├── setup.sh                    # Production “single claw” launcher
 ├── docker-compose.prod.yml     # Hardened Compose (db, minio, api, web, caddy, db-migrate)
 ├── docker-compose.yml          # Dev-oriented compose (optional local lane)
-├── Caddyfile                   # TLS + reverse proxy to web / api / MinIO hostnames
+├── Caddyfile                   # Reverse proxy + automatic HTTPS (Let’s Encrypt)
 ├── env.prod.example            # Template → copy to `.env.prod` (secrets)
 ├── .env.prod.example           # Same contract as env.prod.example (docs / CI)
 ├── MANIFEST.md                 # This file
-├── certs/                      # Host-mounted PEMs (not committed)
-│   ├── cert.pem                # TLS certificate
-│   └── key.pem                 # Private key
+├── certs/                      # (Optional) legacy manual PEMs — not used when Caddyfile uses Auto-SSL
 ├── server/
 │   ├── Dockerfile
 │   └── src/
@@ -65,7 +63,7 @@ Use this as a mental checklist; fix blockers before pointing users at the host.
 | `docker` + Compose v2 available | Script exits if `docker compose` missing |
 | **`docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`** | Build failures, port conflicts on host (only Caddy should bind 80/443) |
 | **`app_network`** (implicit from compose) | Name clashes rare; custom networks OK |
-| Volumes **`pgdata`**, **`minio_data`**, **`caddy_data`** | Wrong permissions or full disk → DB/MinIO/Caddy unhealthy |
+| Volumes **`pgdata`**, **`minio_data`**, **`caddy_data`**, **`caddy_config`** | Wrong permissions or full disk → DB/MinIO/Caddy unhealthy |
 
 ### 3. Bootstrap
 
@@ -78,7 +76,7 @@ Use this as a mental checklist; fix blockers before pointing users at the host.
 
 | Step | Risk |
 |------|------|
-| **`./certs/cert.pem`** + **`./certs/key.pem`** present and valid for hostnames | Caddy TLS handshake fails; script warns if cert missing |
+| **DNS** `onetothree.ru` / `api` / `s3` → host + **80/443** open | Let’s Encrypt **HTTP-01** fails; watch `docker compose … logs -f caddy` |
 | **TOTP** enabled per user in app | Operator must store backup codes; seed flow is in-app (no secrets in logs) |
 
 ### 5. Connectivity
@@ -95,7 +93,7 @@ Use this as a mental checklist; fix blockers before pointing users at the host.
 
 | Artifact | Role |
 |----------|------|
-| `setup.sh` | Automator — Compose up with env + cert warnings |
+| `setup.sh` | Automator — Compose up with env + TLS (ACME) hints |
 | `docker-compose.prod.yml` | Orchestrator — services, volumes, health |
 | `Caddyfile` | Shield — TLS + reverse proxy |
 | `env.prod.example` / `.env.prod.example` | Template — copy to `.env.prod` |
@@ -107,7 +105,7 @@ Use this as a mental checklist; fix blockers before pointing users at the host.
 ## Alpha checklist (RU) — после деплоя
 
 1. **DNS:** `onetothree.ru`, `api.onetothree.ru`, `s3.onetothree.ru` → **A** на **5.187.0.150** (проверить с внешней машины).
-2. **Сертификаты:** `certs/cert.pem` и `certs/key.pem` на сервере в каталоге репозитория.
+2. **TLS:** Caddy сам получает сертификаты Let’s Encrypt (том `caddy_data`). Ручные PEM в `certs/` не нужны. Следи: `docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f caddy`.
 3. **Окружение:** из шаблона (`.env.prod.example` или `env.prod.example`) → **`.env.prod`**, заполнить JWT, пароли БД/MinIO, `CORS_ORIGIN`, `NEXT_PUBLIC_*`.
 4. **Запуск:** `chmod +x setup.sh && ./setup.sh`.
 5. **Warden:** первый админ — по README (SQL в контейнере БД).
@@ -117,4 +115,4 @@ Use this as a mental checklist; fix blockers before pointing users at the host.
 
 ## External / ignored
 
-- **`certs/`** — PEMs supplied by the operator; never commit real keys.
+- **`caddy_data`** / **`caddy_config`** — Docker volumes: ACME certificates and Caddy runtime config (back up with your volume backup strategy).

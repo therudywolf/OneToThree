@@ -1,17 +1,19 @@
-# Project 13 — production gateway (TLS via host-mounted certs in ./certs)
-# Place cert.pem and key.pem on the server; mount ./certs:/certs:ro in Compose.
+# Project 13 — Caddy automatic HTTPS (Let's Encrypt / ACME).
+# Certificates and account data persist in the Docker volume `caddy_data` → /data.
+# Prerequisites: public DNS A/AAAA for each host below → this machine; ports 80/443 reachable.
+
+{
+	email alonerudywolf@gmail.com
+}
 
 onetothree.ru {
-	tls /certs/cert.pem /certs/key.pem
 	reverse_proxy web:3000
 }
 
 api.onetothree.ru {
-	tls /certs/cert.pem /certs/key.pem
 	reverse_proxy api:8080
 }
 
 s3.onetothree.ru {
-	tls /certs/cert.pem /certs/key.pem
 	reverse_proxy minio:9000
 }

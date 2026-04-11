@@ -1,6 +1,7 @@
 # =============================================================================
 # Project 13 — production (high-throughput host: ~4 cores / 6GB+ RAM class)
-# :: Caddy is the ONLY service binding 80/443 — all else stays on app_network
+# :: Caddy is the ONLY service binding 80/443 — TLS via Let's Encrypt (see Caddyfile)
+# :: ACME certs persist in volume caddy_data (/data); config autosave in caddy_config (/config)
 # :: Launch: ./setup.sh
 # :: Volume upgrade: if you used `postgres_data`, rename/migrate to `pgdata` or
 #    keep the old volume name by editing the db service volume line below.
@@ -177,6 +178,8 @@ volumes:
   minio_data:
     driver: local
   caddy_data:
+    driver: local
+  caddy_config:
     driver: local
 
 networks:

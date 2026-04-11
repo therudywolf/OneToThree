@@ -114,6 +114,8 @@ services:
       retries: 10
       start_period: 45s
 
+  # Next.js embeds NEXT_PUBLIC_* at build time from .env.prod (see args below). TURN ICE must use a
+  # dedicated DNS name (e.g. turn.onetothree.ru), not api.* — see coturn comments (Cloudflare / UDP).
   web:
     build:
       context: ./client
@@ -153,6 +155,11 @@ services:
 
   # TURN relay for WebRTC (symmetric NAT). Uses host networking so UDP relay ports are not
   # behind Docker NAT. Open 3478/tcp+udp and 49152-65535/udp on the host firewall.
+  #
+  # CRITICAL (Cloudflare): If the zone uses Cloudflare, create a dedicated hostname (e.g.
+  # turn.onetothree.ru) pointing at this server's IP and set it to "DNS only" (gray cloud).
+  # Orange-cloud proxy does not support the UDP traffic TURN needs; api.* and apex can stay proxied.
+  # Set NEXT_PUBLIC_TURN_URL=turn:turn.onetothree.ru:3478 in .env.prod — not the api. host.
   coturn:
     image: coturn/coturn:latest
     restart: always

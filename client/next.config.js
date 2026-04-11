@@ -1,5 +1,3 @@
-const path = require('path')
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -12,7 +10,8 @@ const nextConfig = {
         : false,
   },
   output: 'standalone',
-  outputFileTracingRoot: path.join(__dirname, '..'),
+  /** Client-only in Docker (`context: ./client`); `..` would resolve to `/` in the image and break standalone paths. */
+  outputFileTracingRoot: __dirname,
   /**
    * Proxy API to Fastify so the browser talks to :3000/api/* and session cookies are host-scoped
    * to the Next origin (required for `src/proxy.ts` middleware + httpOnly auth cookie).

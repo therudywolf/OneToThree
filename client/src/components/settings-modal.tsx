@@ -52,6 +52,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [killOpen, setKillOpen] = useState(false)
   const [killPhrase, setKillPhrase] = useState('')
   const [killPin, setKillPin] = useState('')
+  const [allowNewDeviceLinking, setAllowNewDeviceLinking] = useState(false)
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -80,6 +81,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   useEffect(() => {
     void loadSettingsFromApi()
   }, [userId, loadSettingsFromApi])
+
+  useEffect(() => {
+    const stored = localStorage.getItem('p13:allow_new_device_linking')
+    setAllowNewDeviceLinking(stored === 'true')
+  }, [userId])
 
   useEffect(() => {
     void (async () => {
@@ -668,6 +674,34 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 )}
               </div>
             )}
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-widest text-neon-cyan">
+                {t('common.deviceLinking')} · NEW_DEVICE_GATE
+              </p>
+              <p className="break-words text-[9px] text-red-800">
+                {allowNewDeviceLinking
+                  ? 'ON: New devices can link via QR'
+                  : 'OFF: New device linking blocked (default)'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const newVal = !allowNewDeviceLinking
+                setAllowNewDeviceLinking(newVal)
+                localStorage.setItem('p13:allow_new_device_linking', String(newVal))
+              }}
+              className={`shrink-0 border px-3 py-2 font-mono text-[10px] uppercase tracking-widest ${
+                allowNewDeviceLinking
+                  ? 'border-neon-cyan bg-neon-cyan/20 text-neon-cyan'
+                  : 'border-neon-red bg-neon-red/10 text-neon-red'
+              }`}
+            >
+              [{allowNewDeviceLinking ? 'ON' : 'OFF'}]
+            </button>
           </div>
 
           <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">

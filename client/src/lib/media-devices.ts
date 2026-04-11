@@ -85,6 +85,7 @@ export function getUserMediaConstraints(input: {
   const audioProcessing = {
     echoCancellation: noiseSuppression,
     noiseSuppression: noiseSuppression,
+    autoGainControl: true,
   }
   const mic = deviceConstraint(micId)
   const audio: boolean | MediaTrackConstraints = mic

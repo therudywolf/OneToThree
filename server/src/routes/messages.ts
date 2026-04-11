@@ -10,7 +10,7 @@ import {
 } from '../lib/chat-message-persist.js'
 import { parseOptionalBurnAt } from '../lib/burn-at.js'
 import { resolveMediaOriginalBytes } from '../lib/message-send-helpers.js'
-import { markMessageReadByReader } from '../lib/mark-message-read.js'
+import { markMessageReadByReader, markMessagesReadByReader } from '../lib/mark-message-read.js'
 import { broadcastToUsers } from '../ws/registry.js'
 
 const deleteMessageSchema = z.object({
@@ -30,6 +30,10 @@ const sendMessageBodySchema = z.object({
 })
 
 const deliveredAckSchema = z.object({
+  message_ids: z.array(z.string().uuid()).min(1).max(200),
+})
+
+const batchReadSchema = z.object({
   message_ids: z.array(z.string().uuid()).min(1).max(200),
 })
 
@@ -203,6 +207,26 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         .send({ error: result.error })
     }
     return reply.send({ ok: true, read_at: result.read_at })
+  })
+
+  /** Batch mark multiple messages as read (optimize scrolling through many messages). */
+  app.post('/batch-read', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const parsed = batchReadSchema.safeParse(request.body ?? {})
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    const messageIds = parsed.data.message_ids
+    const results = await markMessagesReadByReader(user.id, messageIds)
+    const successful = results.filter((r) => r.ok)
+    const failed = results.filter((r) => !r.ok)
+    return reply.send({
+      ok: true,
+      marked_count: successful.length,
+      failed_count: failed.length,
+      results: results,
+    })
   })
 
   /** Voice/audio/video index for media archive (newest first). */

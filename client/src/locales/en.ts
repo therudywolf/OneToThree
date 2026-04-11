@@ -178,6 +178,21 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.discoverableBadgeOff': '○ hidden from username search',
   'settings.discoverableTooltipOn': 'Others can find you by nickname (search)',
   'settings.discoverableTooltipOff': 'You are not listed in nickname search',
+  'settings.notificationsTitle': 'Notifications',
+  'settings.notificationsHint':
+    'Background push for new messages (needs HTTPS, VAPID, and a production build with the service worker).',
+  'settings.pushEnabled': 'PUSH ENABLED',
+  'settings.pushEnable': '[ ENABLE PUSH ]',
+  'settings.pushDisable': '[ DISABLE PUSH ]',
+  'settings.pushBlocked':
+    'Blocked in browser settings — allow notifications for this site in your browser’s site controls.',
+  'settings.pushUnsupported': 'Web Push is not available in this browser.',
+  'settings.pushNoSw':
+    'Service worker could not be registered. Use HTTPS and a production build (next-pwa generates /sw.js).',
+  'settings.pushVapidMissing':
+    'NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set in the client build — push cannot be enabled.',
+  'settings.pushGrantNoSubHint':
+    'Permission granted — tap enable to finish registering with the server.',
   'settings.loadFailed': 'Could not load settings (check login / network)',
   'settings.vaultBackup': 'Vault backup',
   'settings.vaultBackupHint':

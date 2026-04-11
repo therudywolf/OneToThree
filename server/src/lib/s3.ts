@@ -54,6 +54,40 @@ export function createS3Client(): S3Client {
   })
 }
 
+/**
+ * Client used only for {@link presignPutObject} / {@link presignGetObject}.
+ * Must use a **browser-reachable** endpoint (see `MINIO_PUBLIC_URL`); signing with an
+ * internal Docker hostname (`http://minio:9000`) yields URLs the browser cannot use and
+ * breaks SigV4 if you only string-replace the host after signing.
+ */
+export function createS3ClientForPresigning(): S3Client {
+  const internal =
+    process.env.MINIO_ENDPOINT?.trim() || 'http://127.0.0.1:9000'
+  const publicBase = process.env.MINIO_PUBLIC_URL?.trim()
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !publicBase &&
+    /minio\b|:\s*9000\b/i.test(internal)
+  ) {
+    process.stderr.write(
+      `${JSON.stringify({
+        level: 'warn',
+        msg: '[s3] MINIO_PUBLIC_URL is unset while MINIO_ENDPOINT looks internal — presigned URLs may be unreachable from browsers',
+        internal,
+      })}\n`
+    )
+  }
+  const endpoint = publicBase || internal
+  const { accessKeyId, secretAccessKey } = readCredentials()
+
+  return new S3Client({
+    region: 'us-east-1',
+    endpoint,
+    credentials: { accessKeyId, secretAccessKey },
+    forcePathStyle: true,
+  })
+}
+
 let bucketReady: Promise<void> | null = null
 
 /** Origins allowed by MinIO bucket CORS for browser PUT/GET to presigned URLs. */
@@ -88,7 +122,7 @@ async function applyBucketCors(
           CORSRules: [
             {
               AllowedOrigins: allowedOrigins,
-              AllowedMethods: ['GET', 'PUT', 'POST', 'HEAD'],
+              AllowedMethods: ['GET', 'PUT', 'POST', 'HEAD', 'OPTIONS'],
               AllowedHeaders: ['*'],
               ExposeHeaders: ['ETag', 'Content-Length'],
               MaxAgeSeconds: 3600,

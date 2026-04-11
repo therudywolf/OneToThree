@@ -9,6 +9,7 @@ import { clearAllMediaCache } from '@/lib/media-cache'
 import { SettingsDevicesPanel } from '@/components/settings-devices-panel'
 import { SettingsMediaPanel } from '@/components/settings-media-panel'
 import { SettingsRecoveryMnemonic } from '@/components/settings-recovery-mnemonic'
+import { SettingsPushNotifications } from '@/components/settings-push-notifications'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { SettingsAvatarSection } from '@/components/settings-avatar-section'
 import { useTranslation } from '@/hooks/use-translation'
@@ -371,6 +372,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           className={`space-y-3 ${settingsTab !== 'main' ? 'hidden' : ''}`}
         >
           <SettingsAvatarSection userId={userId} username={username} />
+          <SettingsPushNotifications userId={userId} />
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">

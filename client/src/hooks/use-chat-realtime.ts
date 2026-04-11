@@ -8,6 +8,7 @@ import {
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
 import { cacheMessage, deleteCachedMessage } from '@/lib/message-cache'
+import { playNotificationSound } from '@/lib/call-ringtones'
 import { lookupUsers } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
@@ -78,8 +79,11 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
         return
       }
       if (msg.type !== 'chat_message') return
-      if (!cryptoCtx || !unwrappedPrivateKey) return
       const m = msg.message
+      if (userId && m.sender_id !== userId) {
+        playNotificationSound()
+      }
+      if (!cryptoCtx || !unwrappedPrivateKey) return
       if (m.chat_id !== activeChatId) return
       void (async () => {
         let plaintext = ''

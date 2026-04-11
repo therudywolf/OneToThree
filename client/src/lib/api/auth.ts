@@ -10,8 +10,9 @@ import { canonicalUserId } from '@/lib/user-id'
  */
 
 /**
- * Same-origin `/api` (Next rewrites → Fastify) so `fm_session` is set on the page origin.
- * Set `NEXT_PUBLIC_API_URL=http://localhost:8080` only if you intentionally bypass the proxy.
+ * Same-origin `/api` when `NEXT_PUBLIC_API_URL` is unset (Next rewrites → Fastify; session on page origin).
+ * Otherwise `${NEXT_PUBLIC_API_URL}/api` for a dedicated API host — must be a **public** origin in production.
+ * Development-only: set `NEXT_PUBLIC_API_URL=http://localhost:8080` to bypass the Next proxy.
  */
 function normalizeApiRoot(): string {
   const raw =

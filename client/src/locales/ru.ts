@@ -183,6 +183,21 @@ const ru = {
   'settings.discoverableBadgeOff': '○ скрыты из поиска по нику',
   'settings.discoverableTooltipOn': 'Вас можно найти по нику (поиск)',
   'settings.discoverableTooltipOff': 'Вас нет в поиске по нику',
+  'settings.notificationsTitle': 'Уведомления',
+  'settings.notificationsHint':
+    'Фоновые push о новых сообщениях (нужны HTTPS, VAPID и production-сборка со service worker).',
+  'settings.pushEnabled': 'PUSH ВКЛЮЧЁН',
+  'settings.pushEnable': '[ ВКЛЮЧИТЬ PUSH ]',
+  'settings.pushDisable': '[ ОТКЛЮЧИТЬ PUSH ]',
+  'settings.pushBlocked':
+    'Заблокировано в настройках браузера — разрешите уведомления для этого сайта.',
+  'settings.pushUnsupported': 'Web Push недоступен в этом браузере.',
+  'settings.pushNoSw':
+    'Не удалось зарегистрировать service worker. Нужны HTTPS и production-сборка (next-pwa, /sw.js).',
+  'settings.pushVapidMissing':
+    'В сборке не задан NEXT_PUBLIC_VAPID_PUBLIC_KEY — push недоступен.',
+  'settings.pushGrantNoSubHint':
+    'Разрешение выдано — нажмите «включить», чтобы завершить регистрацию на сервере.',
   'settings.loadFailed': 'Не удалось загрузить настройки (сеть или сессия)',
   'settings.vaultBackup': 'Резервная копия vault',
   'settings.vaultBackupHint':

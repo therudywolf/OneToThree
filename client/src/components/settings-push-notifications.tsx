@@ -1,0 +1,157 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import { Bell, BellOff } from 'lucide-react'
+import {
+  getExistingPushSubscription,
+  getNotificationPermission,
+  getVapidPublicKey,
+  subscribeUserPush,
+  supportsWebPush,
+  unsubscribeUserPush,
+  warnIfVapidPublicKeyMissing,
+} from '@/lib/push-subscription'
+import { useTranslation } from '@/hooks/use-translation'
+
+type Props = { userId: string }
+
+export function SettingsPushNotifications({ userId }: Props) {
+  const { t } = useTranslation()
+  const [permission, setPermission] =
+    useState<NotificationPermission>('default')
+  const [hasBrowserSubscription, setHasBrowserSubscription] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+
+  const vapidOk = !!getVapidPublicKey()
+  const pushSupported = supportsWebPush()
+
+  const refresh = useCallback(async () => {
+    const p = await getNotificationPermission()
+    setPermission(p)
+    if (!pushSupported) {
+      setHasBrowserSubscription(false)
+      return
+    }
+    try {
+      const sub = await getExistingPushSubscription()
+      setHasBrowserSubscription(!!sub && p === 'granted')
+    } catch (e) {
+      console.error('[push] Settings: could not read subscription state', e)
+      setHasBrowserSubscription(false)
+    }
+  }, [pushSupported])
+
+  useEffect(() => {
+    warnIfVapidPublicKeyMissing()
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  async function onToggleEnable() {
+    setLocalError(null)
+    setBusy(true)
+    try {
+      if (hasBrowserSubscription) {
+        await unsubscribeUserPush(userId)
+      } else {
+        if (!vapidOk) {
+          setLocalError(t('settings.pushVapidMissing'))
+          return
+        }
+        await subscribeUserPush(userId)
+      }
+      await refresh()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('[push] Settings toggle failed', e)
+      if (msg === 'NOTIFICATION_DENIED') {
+        setLocalError(t('settings.pushBlocked'))
+      } else if (msg === 'SERVICE_WORKER_REGISTER_FAILED') {
+        setLocalError(t('settings.pushNoSw'))
+      } else if (msg === 'WEB_PUSH_UNSUPPORTED') {
+        setLocalError(t('settings.pushUnsupported'))
+      } else {
+        setLocalError(msg)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const showEnableButton =
+    permission !== 'denied' && vapidOk && pushSupported && !hasBrowserSubscription
+
+  const pushActive = hasBrowserSubscription && permission === 'granted'
+
+  return (
+    <div className="border-t border-neon-cyan/30 pt-3">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <p className="text-xs uppercase tracking-widest text-neon-cyan">
+          {t('settings.notificationsTitle')}
+        </p>
+        {pushActive ? (
+          <Bell className="h-4 w-4 shrink-0 text-neon-cyan" aria-hidden />
+        ) : (
+          <BellOff className="h-4 w-4 shrink-0 text-red-800" aria-hidden />
+        )}
+      </div>
+      <p className="mb-2 text-[9px] text-red-800">{t('settings.notificationsHint')}</p>
+
+      {!pushSupported ? (
+        <p className="font-mono text-[10px] uppercase tracking-wider text-red-800">
+          :: {t('settings.pushUnsupported')}
+        </p>
+      ) : null}
+
+      {permission === 'denied' ? (
+        <p className="border border-neon-red/50 bg-black px-2 py-2 font-mono text-[10px] uppercase tracking-wide text-neon-red">
+          :: {t('settings.pushBlocked')}
+        </p>
+      ) : null}
+
+      {!vapidOk ? (
+        <p className="text-[9px] text-red-800">{t('settings.pushVapidMissing')}</p>
+      ) : null}
+
+      {permission === 'granted' && hasBrowserSubscription ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neon-cyan">
+            :: {t('settings.pushEnabled')}
+          </p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void onToggleEnable()}
+            className="shrink-0 border border-neon-red/70 bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red transition-colors hover:bg-neon-red/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy ? '[ … ]' : t('settings.pushDisable')}
+          </button>
+        </div>
+      ) : null}
+
+      {showEnableButton ? (
+        <button
+          type="button"
+          disabled={busy || !vapidOk}
+          onClick={() => void onToggleEnable()}
+          className="w-full border border-neon-cyan/70 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {busy ? '[ … ]' : t('settings.pushEnable')}
+        </button>
+      ) : null}
+
+      {permission === 'granted' && !hasBrowserSubscription && vapidOk && pushSupported ? (
+        <p className="mt-1 text-[9px] text-zinc-500">
+          {t('settings.pushGrantNoSubHint')}
+        </p>
+      ) : null}
+
+      {localError ? (
+        <p className="mt-2 font-mono text-[10px] text-neon-red">[!] {localError}</p>
+      ) : null}
+    </div>
+  )
+}

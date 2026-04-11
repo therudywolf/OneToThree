@@ -23,6 +23,11 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - app_network
+    extra_hosts:
+      - 'onetothree.ru:host-gateway'
+      - 'api.onetothree.ru:host-gateway'
+      - 's3.onetothree.ru:host-gateway'
+      - 'turn.onetothree.ru:host-gateway'
     healthcheck:
       test:
         [
@@ -49,6 +54,11 @@ services:
       - minio_data:/data
     networks:
       - app_network
+    extra_hosts:
+      - 'onetothree.ru:host-gateway'
+      - 'api.onetothree.ru:host-gateway'
+      - 's3.onetothree.ru:host-gateway'
+      - 'turn.onetothree.ru:host-gateway'
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']
       interval: 5s
@@ -69,6 +79,11 @@ services:
         condition: service_healthy
     networks:
       - app_network
+    extra_hosts:
+      - 'onetothree.ru:host-gateway'
+      - 'api.onetothree.ru:host-gateway'
+      - 's3.onetothree.ru:host-gateway'
+      - 'turn.onetothree.ru:host-gateway'
 
   api:
     build:
@@ -103,6 +118,11 @@ services:
         condition: service_completed_successfully
     networks:
       - app_network
+    extra_hosts:
+      - 'onetothree.ru:host-gateway'
+      - 'api.onetothree.ru:host-gateway'
+      - 's3.onetothree.ru:host-gateway'
+      - 'turn.onetothree.ru:host-gateway'
     healthcheck:
       test:
         [
@@ -136,12 +156,16 @@ services:
       - '3000'
     environment:
       NODE_ENV: production
-      API_INTERNAL_URL: http://api:8080
     depends_on:
       api:
         condition: service_healthy
     networks:
       - app_network
+    extra_hosts:
+      - 'onetothree.ru:host-gateway'
+      - 'api.onetothree.ru:host-gateway'
+      - 's3.onetothree.ru:host-gateway'
+      - 'turn.onetothree.ru:host-gateway'
     healthcheck:
       test:
         [
@@ -200,6 +224,11 @@ services:
         condition: service_healthy
     networks:
       - app_network
+    extra_hosts:
+      - 'onetothree.ru:host-gateway'
+      - 'api.onetothree.ru:host-gateway'
+      - 's3.onetothree.ru:host-gateway'
+      - 'turn.onetothree.ru:host-gateway'
 
 volumes:
   pgdata:

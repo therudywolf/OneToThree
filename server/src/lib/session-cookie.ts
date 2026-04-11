@@ -68,9 +68,10 @@ function sessionCookieSameSite(): CookieSerializeOptions['sameSite'] {
 }
 
 function sessionCookieSecure(): boolean {
-  const prod = process.env.NODE_ENV === 'production'
-  const forceSecure = process.env.COOKIE_SECURE === '1'
-  return prod || forceSecure
+  if (process.env.NODE_ENV === 'production') {
+    return true
+  }
+  return process.env.COOKIE_SECURE === '1'
 }
 
 function sessionCookieClearShape(): Pick<

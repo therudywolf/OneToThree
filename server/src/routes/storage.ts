@@ -8,6 +8,7 @@ import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import {
   createS3Client,
+  createS3ClientForPresigning,
   ensureBucketExists,
   getAvatarsBucketName,
   getBucketName,
@@ -35,7 +36,10 @@ const uploadBodySchema = z.object({
 })
 
 export const storageRoutes: FastifyPluginAsync = async (app) => {
+  /** Server-side S3 ops (bucket, head) — internal `MINIO_ENDPOINT`. */
   const client = createS3Client()
+  /** Presigned URLs returned to browsers — `MINIO_PUBLIC_URL` when set (see `createS3ClientForPresigning`). */
+  const presignClient = createS3ClientForPresigning()
   const bucket = getBucketName()
   let bucketInit: Promise<void> | null = null
   async function ensureBucketOnce() {
@@ -70,7 +74,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     const key = `chats/${chatId}/${user.id}/${randomUUID()}${ext}`
 
     const uploadUrl = await presignPutObject({
-      client,
+      client: presignClient,
       bucket,
       key,
       contentType: fileType,
@@ -122,7 +126,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const downloadUrl = await presignGetObject({
-      client,
+      client: presignClient,
       bucket,
       key: filePath,
     })
@@ -156,7 +160,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     const bucket = getAvatarsBucketName()
     await ensureBucketExists(client, bucket)
     const downloadUrl = await presignGetObject({
-      client,
+      client: presignClient,
       bucket,
       key,
       expiresIn: 3600,

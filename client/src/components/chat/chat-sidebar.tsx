@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { useEffect } from 'react'
 import { Pin, ShieldCheck } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
-import { NotificationToggle } from '@/components/notification-toggle'
 import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
@@ -221,7 +220,6 @@ export function ChatSidebar({
           }}
         />
       ) : null}
-      <NotificationToggle userId={userId} />
       <div className="border-b border-neon-cyan/40 p-3 text-[10px] uppercase tracking-[0.3em] text-neon-cyan">
         :: {t('sidebar.channels')}
       </div>

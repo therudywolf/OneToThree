@@ -2,13 +2,19 @@
 
 import { fetchWsTicket } from './auth'
 
-/** WebSocket upgrade is not proxied by Next rewrites; connect to the Fastify host:port directly. */
+let warnedMissingWsEnv = false
+
+/**
+ * Base HTTP origin for the Fastify WebSocket URL (`/api/ws`).
+ * Prefer `NEXT_PUBLIC_WS_ORIGIN`, then `NEXT_PUBLIC_API_URL`.
+ * Dev-only fallback: `hostname:8080`. Production: never default to `localhost:8080` in the browser.
+ */
 function httpOrigin(): string {
   const wsOnly =
     typeof process !== 'undefined'
       ? process.env.NEXT_PUBLIC_WS_ORIGIN?.trim()
       : undefined
-  if (wsOnly) return wsOnly.replace(/\/$/, '') // e.g. http://localhost:8080
+  if (wsOnly) return wsOnly.replace(/\/$/, '')
 
   const api =
     typeof process !== 'undefined'
@@ -16,10 +22,22 @@ function httpOrigin(): string {
       : undefined
   if (api) return api.replace(/\/$/, '')
 
+  const isProd = process.env.NODE_ENV === 'production'
+
   if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:8080`
+    if (!isProd) {
+      return `${window.location.protocol}//${window.location.hostname}:8080`
+    }
+    if (!warnedMissingWsEnv) {
+      warnedMissingWsEnv = true
+      console.warn(
+        '[fm-socket] Set NEXT_PUBLIC_WS_ORIGIN or NEXT_PUBLIC_API_URL in production. Using page origin for WebSocket until then.'
+      )
+    }
+    return window.location.origin.replace(/\/$/, '')
   }
-  return 'http://localhost:8080'
+
+  return isProd ? 'http://127.0.0.1:8080' : 'http://localhost:8080'
 }
 
 function buildWsUrl(ticket?: string | null): string {

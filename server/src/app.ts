@@ -34,6 +34,7 @@ export async function buildApp() {
   registerGlobalErrorHandler(app)
 
   const isProd = process.env.NODE_ENV === 'production'
+  /** Comma-separated explicit origins; each entry trimmed (e.g. `https://a,https://b`). */
   const corsOriginsRaw =
     process.env.CORS_ORIGIN?.split(',')
       .map((o) => o.trim())

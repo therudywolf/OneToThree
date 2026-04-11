@@ -86,6 +86,25 @@ export function startIncomingRingtone(): () => void {
   return startLoopingMp3OrFallback('/sounds/incoming.mp3', 0.4, 440, 1400)
 }
 
+/** Short beep when an incoming chat message arrives (not for your own sends). */
+export function playNotificationSound(): void {
+  if (typeof window === 'undefined') return
+  try {
+    const el = new Audio('/sounds/notification.mp3')
+    el.volume = 0.42
+    void el.play().catch((e: unknown) => {
+      if (
+        e instanceof DOMException &&
+        (e.name === 'NotAllowedError' || e.name === 'AbortError')
+      ) {
+        return
+      }
+    })
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Resume AudioContext after a user gesture (iOS). Safe to call repeatedly. */
 export async function resumeAudioContextAfterGesture(): Promise<void> {
   try {

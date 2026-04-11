@@ -84,7 +84,11 @@ describe('auth routes', () => {
 
     expect(res.body.user?.username).toBe(username)
     const setCookie = res.headers['set-cookie'] as string[] | undefined
-    expect(setCookie?.some((c) => c.startsWith('fm_session='))).toBe(true)
+    const fm = setCookie?.find((c) => c.startsWith('fm_session='))
+    expect(fm).toBeTruthy()
+    expect(fm).toMatch(/Max-Age=\d+/)
+    expect(fm).not.toMatch(/Max-Age=0\b/)
+    expect(fm).not.toMatch(/Thu, 01 Jan 1970/)
   })
 
   it('POST /verify with invalid signature returns 401', async () => {

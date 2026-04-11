@@ -53,6 +53,31 @@ export async function patchUserBan(
   return { ...data.user, id: canonicalUserId(data.user.id) }
 }
 
+export async function postAdminPurgeUser(
+  userId: string,
+  confirmUsername: string
+): Promise<{ ok: true; purged_direct_chats: number }> {
+  const res = await fetch(`${API_URL}/admin/users/${userId}/purge`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirm_username: confirmUsername }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean
+    purged_direct_chats?: number
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'ADMIN_PURGE_FAILED')
+  }
+  if (!data.ok) throw new Error('INVALID_ADMIN_RESPONSE')
+  return {
+    ok: true,
+    purged_direct_chats: data.purged_direct_chats ?? 0,
+  }
+}
+
 export async function fetchAdminReports(): Promise<AdminReportRow[]> {
   const res = await fetch(`${API_URL}/admin/reports`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as {

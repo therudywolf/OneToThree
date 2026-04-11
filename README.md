@@ -178,6 +178,7 @@ npx tsx scripts/backup.ts
 | Web: `Cannot find module '.../server.js'` | **`outputFileTracingRoot`** in `client/next.config.js` must be the **client** dir (not `..`) when the image builds with **`context: ./client`**; production entry is **`/app/server.js`**. Rebuild **web** (`docker compose … build --no-cache web`). |
 | `FILE_EXPIRED` on media | Object purged or row cleared — peer must re-send; local **Digital Den** may still have a copy. |
 | Wrong client IP in logs | Set **`TRUST_PROXY=1`** for API behind Caddy. |
+| CORS / preflight regressions | See **[docs/cors-and-requests-audit.md](./docs/cors-and-requests-audit.md)** and run **`npm run cors:smoke`** with `CORS_SMOKE_API_URL` + `CORS_SMOKE_ORIGIN` against your deployed API. |
 | After login, **307 loop** to `/login` on the web host | Set **`COOKIE_DOMAIN=.your-apex.tld`** in **`.env.prod`** (same parent as **`CORS_ORIGIN`** and **`NEXT_PUBLIC_API_URL`** subdomains). Rebuild **api**; cookie must be **`SameSite=Lax`**, **`Secure`**, and **`Domain`**-scoped (see `server/src/lib/session-cookie.ts`). |
 | `relation "users" does not exist` | Ensure **`db-migrate`** completed; `docker compose … logs db-migrate`. |
 

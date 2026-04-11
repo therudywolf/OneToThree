@@ -58,6 +58,16 @@ export async function buildApp() {
   await app.register(cors, {
     origin: corsOrigins,
     credentials: true,
+    /** Browser preflight must list real methods — default omitted PATCH (breaks /users/me, admin, chats). */
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Client-Device-Id',
+      'X-Device-Name',
+      'X-Nonce',
+      'X-Signature',
+    ],
   })
 
   await app.register(cookie)

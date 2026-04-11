@@ -107,6 +107,8 @@ export const chats = pgTable(
     type: chatTypeEnum('type').notNull(),
     /** Random slug for group invite links; unique when set. */
     inviteCode: text('invite_code'),
+    /** When true, first successful join by a new member clears `invite_code`. */
+    inviteOneTime: boolean('invite_one_time').notNull().default(false),
   },
   (t) => ({
     inviteCodeUnique: uniqueIndex('chats_invite_code_unique').on(t.inviteCode),

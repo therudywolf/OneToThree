@@ -11,6 +11,7 @@ import {
   MEDIA_TOO_LARGE_CODE,
 } from '@/lib/media-limits'
 import { useTranslation } from '@/hooks/use-translation'
+import { vibrateShort } from '@/lib/vibrate'
 
 type SendMediaFn = (
   blob: Blob,
@@ -267,6 +268,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
             setCancelled(false)
             modeRef.current = 'voice'
             setMode('voice')
+            vibrateShort(12)
             void startVoiceCapture().then(() => {
               void resumeAudioContextAfterGesture()
               const stream = getStream()
@@ -284,6 +286,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
             setCancelled(false)
             modeRef.current = 'voice'
             setMode('voice')
+            vibrateShort(12)
             void startVoiceCapture().then(() => {
               void resumeAudioContextAfterGesture()
               const stream = getStream()
@@ -327,6 +330,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
             setCancelled(false)
             modeRef.current = 'video'
             setMode('video')
+            vibrateShort([10, 20, 10])
             void startVideoCircleCapture().then(() => {
               void resumeAudioContextAfterGesture()
             })
@@ -342,6 +346,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
             setCancelled(false)
             modeRef.current = 'video'
             setMode('video')
+            vibrateShort([10, 20, 10])
             void startVideoCircleCapture().then(() => {
               void resumeAudioContextAfterGesture()
             })

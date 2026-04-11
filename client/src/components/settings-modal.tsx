@@ -1,10 +1,15 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useState } from 'react'
 import { API_URL, fetchMe } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
-import { readVaultBlob, vaultStorageKey } from '@/lib/vault'
+import { nuclearWipeClient } from '@/lib/client-wipe'
+import {
+  readVaultBlob,
+  unwrapPrivateJwkWithPin,
+  vaultStorageKey,
+} from '@/lib/vault'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { clearAllMediaCache } from '@/lib/media-cache'
 import { SettingsDevicesPanel } from '@/components/settings-devices-panel'
@@ -44,6 +49,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [settingsTab, setSettingsTab] = useState<'main' | 'media' | 'devices'>(
     'main'
   )
+  const [killOpen, setKillOpen] = useState(false)
+  const [killPhrase, setKillPhrase] = useState('')
+  const [killPin, setKillPin] = useState('')
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -264,6 +272,28 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       /* ignore */
     }
     window.location.reload()
+  }
+
+  async function runGlobalKillSwitch() {
+    setError(null)
+    const expected = '!!_GLOBAL_KILL_SWITCH_!!'
+    if (killPhrase !== expected) {
+      setError(t('settings.killPhraseMismatch'))
+      return
+    }
+    const blob = readVaultBlob(userId)
+    if (!blob) {
+      setError(t('settings.noLocalVault'))
+      return
+    }
+    try {
+      await unwrapPrivateJwkWithPin(blob, killPin)
+    } catch {
+      setError(t('settings.killPinBad'))
+      return
+    }
+    setBusy(true)
+    void nuclearWipeClient({ revokeServerSessions: true })
   }
 
   function exportVault() {
@@ -709,6 +739,61 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             >
               [ {t('settings.purgeLocalCache')} ]
             </TerminalGlitchButton>
+          </div>
+
+          <div className="border-t border-red-600/50 pt-3">
+            <button
+              type="button"
+              onClick={() => setKillOpen((v) => !v)}
+              className="glitch-text mb-2 w-full border border-red-600 bg-black py-2 font-mono text-[10px] uppercase tracking-[0.25em] text-red-500 hover:bg-red-950/40"
+            >
+              [ !!_GLOBAL_KILL_SWITCH_!! ]
+            </button>
+            <AnimatePresence initial={false}>
+              {killOpen ? (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <p className="mb-2 break-words text-[9px] text-red-800">
+                    {t('settings.killSwitchHint')}
+                  </p>
+                  <label className="terminal-label" htmlFor="kill-phrase">
+                    {t('settings.killPhraseLabel')}
+                  </label>
+                  <input
+                    id="kill-phrase"
+                    className="terminal-input mb-2 text-[10px]"
+                    value={killPhrase}
+                    onChange={(e) => setKillPhrase(e.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <label className="terminal-label" htmlFor="kill-pin">
+                    {t('settings.killPinLabel')}
+                  </label>
+                  <input
+                    id="kill-pin"
+                    type="password"
+                    className="terminal-input mb-2 text-[10px]"
+                    value={killPin}
+                    onChange={(e) => setKillPin(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <TerminalGlitchButton
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void runGlobalKillSwitch()}
+                    className="w-full !border-red-600 !py-2 !text-[10px] !text-red-500 hover:!bg-red-950/50"
+                  >
+                    [ {t('settings.killExecute')} ]
+                  </TerminalGlitchButton>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
         </div>
 

@@ -8,6 +8,7 @@ import {
 import { sendChatMessageOverTransport } from '@/lib/chat-message-transport'
 import { decryptApiMessageRow } from '@/lib/decrypt-chat-api-message'
 import { cacheMessage } from '@/lib/message-cache'
+import { vibrateShort } from '@/lib/vibrate'
 import { useChatStore } from '@/store/chatStore'
 
 export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
@@ -55,6 +56,7 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
           /* best-effort */
         })
         appendMessage(row)
+        vibrateShort(18)
       }
     },
     [

@@ -105,6 +105,20 @@ textarea {
   .terminal-label {
     @apply mb-1 block text-xs uppercase tracking-widest text-neon-cyan;
   }
+
+  /** Subtle chromatic drift + jitter on hover (titles / critical actions). */
+  .glitch-text {
+    position: relative;
+    display: inline-block;
+    transition: transform 0.12s ease-out;
+  }
+
+  .glitch-text:hover {
+    text-shadow:
+      1px 0 0 rgba(255, 0, 0, 0.55),
+      -1px 0 0 rgba(0, 255, 255, 0.45);
+    transform: translate(0.5px, -0.5px);
+  }
 }
 
 @keyframes glitch-flicker {

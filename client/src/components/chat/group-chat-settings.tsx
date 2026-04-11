@@ -51,8 +51,10 @@ export function GroupChatSettings({
   const [detail, setDetail] = useState<{
     my_role: ChatMemberRole
     invite_code: string | null
+    invite_one_time: boolean | null
     members: ChatDetailMember[]
   } | null>(null)
+  const [oneTimeInvite, setOneTimeInvite] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -63,8 +65,12 @@ export function GroupChatSettings({
       setDetail({
         my_role: d.chat.my_role,
         invite_code: d.chat.invite_code,
+        invite_one_time: d.chat.invite_one_time,
         members: d.members,
       })
+      if (typeof d.chat.invite_one_time === 'boolean') {
+        setOneTimeInvite(d.chat.invite_one_time)
+      }
     } catch (e) {
       setDetail(null)
       setErr(e instanceof Error ? e.message : 'LOAD_FAILED')
@@ -84,8 +90,9 @@ export function GroupChatSettings({
     setBusy(true)
     setErr(null)
     try {
-      const code =
-        detail?.invite_code ?? (await ensureGroupInviteCode(chatId))
+      const code = await ensureGroupInviteCode(chatId, {
+        invite_one_time: oneTimeInvite,
+      })
       const origin =
         typeof window !== 'undefined' ? window.location.origin : ''
       const url = `${origin}/join/${encodeURIComponent(code)}`
@@ -180,6 +187,16 @@ export function GroupChatSettings({
       ) : null}
       {subTab === 'pack' && canManageLinks ? (
         <div className="mb-3 space-y-2">
+          <label className="flex cursor-pointer items-start gap-2 border border-neon-cyan/30 bg-black/40 px-2 py-1.5 text-[9px] normal-case tracking-normal text-neon-cyan/90">
+            <input
+              type="checkbox"
+              checked={oneTimeInvite}
+              onChange={(e) => setOneTimeInvite(e.target.checked)}
+              disabled={busy}
+              className="mt-0.5 accent-neon-cyan"
+            />
+            <span>{t('group.oneTimeInvite')}</span>
+          </label>
           <button
             type="button"
             disabled={busy}

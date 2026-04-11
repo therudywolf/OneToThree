@@ -129,6 +129,9 @@ const ru = {
   'guide.backup.body':
     'Используйте Settings -> Export Vault, чтобы сохранить зашифрованную копию. На новом устройстве импортируйте ее для восстановления доступа.',
 
+  'sidebar.localGhostSearch':
+    'Поиск по кэшу (только локально, IndexedDB)…',
+  'sidebar.ghostNoHits': 'Нет совпадений в локальном кэше.',
   'sidebar.channels': 'Каналы',
   'sidebar.openDirect': 'Личный чат',
   'sidebar.peerPlaceholder': 'UUID или имя пользователя',
@@ -213,6 +216,8 @@ const ru = {
   'group.copyInviteLink': '[ КОПИРОВАТЬ_ССЫЛКУ ]',
   'group.inviteGenerateHint':
     'Сгенерируйте ссылку — здесь появится адрес приглашения.',
+  'group.oneTimeInvite':
+    '[ ОДНОРАЗОВО ] — ссылка сгорит после первого нового участника.',
   'group.makeAdmin': 'АДМИН',
   'group.demoteMember': 'УЧАСТНИК',
   'group.transferOwner': 'ВЛАДЕЛЕЦ',
@@ -298,6 +303,13 @@ const ru = {
   'settings.purgeHint':
     'Очищает localStorage, sessionStorage и IndexedDB сообщений — для отладки битого локального состояния.',
   'settings.purgeLocalCache': 'ОЧИСТИТЬ ЛОКАЛЬНЫЙ КЭШ',
+  'settings.killSwitchHint':
+    'Отзывает все сессии на сервере, стирает IndexedDB сообщений/медиа/WebAuthn и очищает хранилище на этом устройстве. Введите фразу точно, затем PIN vault.',
+  'settings.killPhraseLabel': 'Фраза подтверждения',
+  'settings.killPinLabel': 'PIN vault (проверка)',
+  'settings.killExecute': 'ГЛОБАЛЬНОЕ_СТИРАНИЕ',
+  'settings.killPhraseMismatch': 'Фраза подтверждения не совпадает.',
+  'settings.killPinBad': 'Неверный PIN vault.',
   'settings.totpSection': 'Безопасность / 2FA',
   'settings.totpHint':
     'Одноразовые коды по времени (RFC 6238). Отсканируйте QR в приложении-аутентификаторе.',

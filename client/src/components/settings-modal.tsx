@@ -13,6 +13,7 @@ import { SettingsRecoveryMnemonic } from '@/components/settings-recovery-mnemoni
 import { SettingsPushNotifications } from '@/components/settings-push-notifications'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { SettingsAvatarSection } from '@/components/settings-avatar-section'
+import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 
 type Props = { userId: string; username: string; onClose: () => void }
@@ -654,6 +655,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         {saved ? (
           <p className="shrink-0 text-[10px] text-neon-cyan">:: {t('common.saved')}</p>
         ) : null}
+        <div className="mt-2 shrink-0 border-t border-red-900/50 px-0.5 pt-3">
+          <LogoutButton variant="critical" />
+        </div>
         </div>
 
       </motion.div>

@@ -177,10 +177,12 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
       {isRecording && mode ? (
         <div className="mb-2 space-y-2">
           <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-widest">
-            <span className="animate-pulse text-neon-red">REC :: {mode}</span>
+            <span className="animate-pulse text-neon-red">
+              {t('media.recLabel')} :: {mode}
+            </span>
             <span className="tabular-nums text-red-800">{fmtElapsed}</span>
             {cancelled ? (
-              <span className="text-neon-cyan">SLIDE_RELEASE_TO_CANCEL</span>
+              <span className="text-neon-cyan">{t('media.slideCancel')}</span>
             ) : null}
           </div>
           {mode === 'voice' ? (
@@ -219,11 +221,13 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
       ) : null}
       {!isRecording ? (
         <div className="mb-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
-          <span>:: CAPTURE</span>
+          <span>:: {t('media.capture')}</span>
         </div>
       ) : null}
       {banner ? (
-        <p className="mb-1 font-mono text-[10px] text-zinc-500">ERROR</p>
+        <p className="mb-1 font-mono text-[10px] text-zinc-500">
+          {t('media.errorGeneric')}
+        </p>
       ) : null}
       {error === MEDIA_PERMISSION_DENIED_CODE ? (
         <p className="mb-1 font-mono text-[10px] leading-snug text-neon-red">
@@ -231,14 +235,18 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
         </p>
       ) : null}
       {showRecorderError ? (
-        <p className="mb-1 font-mono text-[10px] text-zinc-500">SIGNAL LOST</p>
+        <p className="mb-1 font-mono text-[10px] text-zinc-500">
+          {t('media.signalLost')}
+        </p>
       ) : null}
       {error === MEDIA_TOO_LARGE_CODE ? (
-        <p className="mb-1 font-mono text-[10px] text-zinc-500">ERROR</p>
+        <p className="mb-1 font-mono text-[10px] text-zinc-500">
+          {t('media.errorGeneric')}
+        </p>
       ) : null}
       {!isRecording ? (
         <p className="mb-1 font-mono text-[10px] text-red-800">
-          :: MAX_MEDIA_SIZE {MAX_FILE_SIZE_LABEL}
+          :: {t('media.maxSizeLine')} {MAX_FILE_SIZE_LABEL}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
@@ -298,7 +306,9 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
           onTouchCancel={() => void finish(false)}
           className="touch-manipulation flex min-h-11 min-w-[44px] items-center justify-center rounded-none border border-neon-cyan bg-black px-4 py-3 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 md:min-h-9 md:px-3 md:py-2"
         >
-          {isRecording && mode === 'voice' ? '[ ● REC ]' : '[ HOLD :: VOICE ]'}
+          {isRecording && mode === 'voice'
+            ? `[ ● ${t('media.recording')} ]`
+            : `[ ${t('media.holdVoice')} ]`}
         </button>
         <button
           type="button"
@@ -352,7 +362,9 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
           onTouchCancel={() => void finish(false)}
           className="touch-manipulation flex min-h-11 min-w-[44px] items-center justify-center rounded-none border border-neon-red bg-black px-4 py-3 font-mono text-xs uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40 md:min-h-9 md:px-3 md:py-2"
         >
-          {isRecording && mode === 'video' ? '[ ● REC ]' : '[ HOLD :: CIRCLE ]'}
+          {isRecording && mode === 'video'
+            ? `[ ● ${t('media.recording')} ]`
+            : `[ ${t('media.holdCircle')} ]`}
         </button>
         {showRecorderError ? (
           <button

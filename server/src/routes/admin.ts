@@ -12,6 +12,7 @@ import {
   getAuthUser,
   type AuthUser,
 } from '../lib/auth-user.js'
+import { adminPurgeUser } from '../lib/admin-purge-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
 async function requireAdmin(
@@ -29,6 +30,10 @@ async function requireAdmin(
 
 const banBodySchema = z.object({
   banned: z.boolean(),
+})
+
+const purgeBodySchema = z.object({
+  confirm_username: z.string().min(1).max(200),
 })
 
 export const adminRoutes: FastifyPluginAsync = async (app) => {
@@ -81,6 +86,42 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return reply.send({ user: after })
+  })
+
+  app.post('/users/:id/purge', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+
+    const params = z
+      .object({ id: uuidSchema })
+      .safeParse(request.params)
+    if (!params.success) {
+      return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    }
+
+    const parsed = purgeBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const result = await adminPurgeUser({
+      targetUserId: params.data.id,
+      adminUserId: admin.id,
+      confirmUsername: parsed.data.confirm_username.trim(),
+    })
+
+    if ('error' in result) {
+      if (result.error === 'USER_NOT_FOUND') {
+        return reply.status(404).send({ error: result.error })
+      }
+      return reply.status(400).send({ error: result.error })
+    }
+
+    return reply.send({
+      ok: true,
+      purged_direct_chats: result.purged_direct_chats,
+      notified_user_ids: result.notified_user_ids,
+    })
   })
 
   app.get('/reports', async (request, reply) => {

@@ -8,6 +8,7 @@ import {
   fetchAdminReports,
   fetchAdminUsers,
   patchUserBan,
+  postAdminPurgeUser,
   type AdminReportRow,
   type AdminUserRow,
 } from '@/lib/api/admin'
@@ -46,6 +47,29 @@ export default function AdminPage() {
     }
     void load()
   }, [loading, user, router, load])
+
+  async function purgeUser(row: AdminUserRow) {
+    if (busyId || row.id === user?.id) return
+    const typed = window.prompt(
+      `PURGE deletes this account, 1:1 chats with them, their group messages, devices, reports, and avatar. Type exact handle to confirm:\n\n${row.username}`
+    )
+    if (typed == null) return
+    if (typed.trim() !== row.username) {
+      setErr('CONFIRM_MISMATCH')
+      return
+    }
+    setBusyId(row.id)
+    setErr(null)
+    try {
+      await postAdminPurgeUser(row.id, typed.trim())
+      setUsers((prev) => prev.filter((x) => x.id !== row.id))
+      await load()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'PURGE_FAILED')
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   async function toggleBan(row: AdminUserRow) {
     if (busyId || row.id === user?.id) return
@@ -108,7 +132,7 @@ export default function AdminPage() {
                 <th className="p-2 font-mono">HANDLE</th>
                 <th className="p-2 font-mono">ROLE</th>
                 <th className="p-2 font-mono">BANNED</th>
-                <th className="p-2 font-mono">ACTION</th>
+                <th className="p-2 font-mono">ACTIONS</th>
               </tr>
             </thead>
             <tbody>
@@ -124,14 +148,24 @@ export default function AdminPage() {
                   <td className="p-2 uppercase text-neon-red">{r.role}</td>
                   <td className="p-2">{r.is_banned ? 'YES' : 'NO'}</td>
                   <td className="p-2">
-                    <button
-                      type="button"
-                      disabled={busyId === r.id || r.id === user.id}
-                      onClick={() => void toggleBan(r)}
-                      className="border border-neon-red px-2 py-1 text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-30"
-                    >
-                      {r.is_banned ? '[ UNBAN ]' : '[ BAN ]'}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busyId === r.id || r.id === user.id}
+                        onClick={() => void toggleBan(r)}
+                        className="border border-neon-red px-2 py-1 text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-30"
+                      >
+                        {r.is_banned ? '[ UNBAN ]' : '[ BAN ]'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyId === r.id || r.id === user.id}
+                        onClick={() => void purgeUser(r)}
+                        className="border border-red-600 px-2 py-1 text-[10px] uppercase tracking-widest text-red-600 hover:bg-red-600/10 disabled:opacity-30"
+                      >
+                        [ PURGE ]
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

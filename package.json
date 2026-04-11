@@ -26,7 +26,8 @@
     "db:push:docker": "node --env-file=docker.db.env ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",
     "db:studio": "node ./node_modules/drizzle-kit/bin.cjs studio --config drizzle.config.ts",
     "typecheck": "npm run typecheck -w project-13-client && npm run typecheck -w project-13-server",
-    "backup": "npx tsx scripts/backup.ts"
+    "backup": "npx tsx scripts/backup.ts",
+    "cors:smoke": "node scripts/cors-preflight-smoke.mjs"
   },
   "devDependencies": {
     "dotenv": "^16.6.1",

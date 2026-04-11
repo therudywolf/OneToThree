@@ -25,6 +25,7 @@ import {
 import { getRelatedUserIds } from '../lib/presence.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
+import { clearFmSessionCookie } from '../lib/session-cookie.js'
 import { hasActiveSocket, sendToUser } from '../ws/registry.js'
 
 const searchQuerySchema = z.object({
@@ -487,6 +488,20 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       device_id: deviceId,
     })
 
+    return reply.send({ ok: true })
+  })
+
+  /** Revoke all device rows for this user and clear session cookie (global sign-out). */
+  app.delete('/me/sessions', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    await db
+      .update(devices)
+      .set({ revokedAt: new Date() })
+      .where(eq(devices.userId, user.id))
+
+    clearFmSessionCookie(reply)
     return reply.send({ ok: true })
   })
 }

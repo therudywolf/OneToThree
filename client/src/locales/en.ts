@@ -124,6 +124,9 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'guide.backup.body':
     'Use Settings -> Export Vault to save an encrypted backup. Import it on a new device to restore access.',
 
+  'sidebar.localGhostSearch':
+    'Search cached plaintext (local only, IndexedDB)…',
+  'sidebar.ghostNoHits': 'No cached plaintext matches.',
   'sidebar.channels': 'Channels',
   'sidebar.openDirect': 'Open direct',
   'sidebar.peerPlaceholder': 'peer UUID or username',
@@ -207,6 +210,8 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'group.copyInviteLink': '[ COPY_INVITE_LINK ]',
   'group.inviteGenerateHint':
     'Generate a link to show the brutalist invite URL here.',
+  'group.oneTimeInvite':
+    '[ ONE_TIME_ONLY ] — invite link self-destructs after first new member joins.',
   'group.makeAdmin': 'ADMIN',
   'group.demoteMember': 'MEMBER',
   'group.transferOwner': 'OWNER',
@@ -292,6 +297,13 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.purgeHint':
     'Clears localStorage, sessionStorage, and the message IndexedDB — use when debugging corrupt local state.',
   'settings.purgeLocalCache': 'PURGE LOCAL CACHE',
+  'settings.killSwitchHint':
+    'Revokes all server sessions for this account, wipes message/media/WebAuthn IndexedDB, and clears storage on this device. Type the phrase exactly, then your vault PIN.',
+  'settings.killPhraseLabel': 'Confirmation phrase',
+  'settings.killPinLabel': 'Vault PIN (verify)',
+  'settings.killExecute': 'EXECUTE_GLOBAL_WIPE',
+  'settings.killPhraseMismatch': 'Confirmation phrase does not match.',
+  'settings.killPinBad': 'Vault PIN incorrect.',
   'settings.totpSection': 'Security / 2FA',
   'settings.totpHint':
     'Time-based one-time passwords (RFC 6238). Scan the QR in your authenticator app.',

@@ -21,6 +21,10 @@ const wrappedKeySchema = z.object({
   encrypted_group_key: z.string().min(1),
 })
 
+const invitePostSchema = z.object({
+  invite_one_time: z.boolean().optional(),
+})
+
 const createChatSchema = z
   .object({
     type: z.enum(['direct_e2e', 'group_e2e', 'public_open']),
@@ -227,7 +231,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
     }
 
-    const existing = await db
+    const alreadyMember = await db
       .select({ userId: chatMembers.userId })
       .from(chatMembers)
       .where(
@@ -235,22 +239,58 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       )
       .limit(1)
 
-    if (existing.length) {
+    if (alreadyMember.length) {
       return reply.send({
         chat_id: chat.id,
         already_member: true,
       })
     }
 
-    await db
-      .insert(chatMembers)
-      .values({
-        chatId: chat.id,
-        userId: user.id,
-        encryptedGroupKey: null,
-        role: 'member',
+    const outcome = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(chatMembers)
+        .values({
+          chatId: chat.id,
+          userId: user.id,
+          encryptedGroupKey: null,
+          role: 'member',
+        })
+        .onConflictDoNothing()
+        .returning({ userId: chatMembers.userId })
+
+      if (inserted.length === 0) {
+        const again = await tx
+          .select({ userId: chatMembers.userId })
+          .from(chatMembers)
+          .where(
+            and(
+              eq(chatMembers.chatId, chat.id),
+              eq(chatMembers.userId, user.id)
+            )
+          )
+          .limit(1)
+        if (again.length) {
+          return { kind: 'already_member' as const }
+        }
+        throw new Error('JOIN_RACE')
+      }
+
+      if (chat.inviteOneTime) {
+        await tx
+          .update(chats)
+          .set({ inviteCode: null })
+          .where(eq(chats.id, chat.id))
+      }
+
+      return { kind: 'joined' as const }
+    })
+
+    if (outcome.kind === 'already_member') {
+      return reply.send({
+        chat_id: chat.id,
+        already_member: true,
       })
-      .onConflictDoNothing()
+    }
 
     const memberIds = (
       await db
@@ -466,6 +506,12 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     if (!assertAuthed(reply, user)) return
     const { chatId } = request.params as { chatId: string }
 
+    const parsedBody = invitePostSchema.safeParse(request.body ?? {})
+    if (!parsedBody.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    const wantOneTime = parsedBody.data.invite_one_time
+
     const chat = await getChatById(chatId)
     if (!chat || chat.type !== 'group_e2e') {
       return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
@@ -481,11 +527,30 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       code = await generateUniqueInviteCode()
       await db
         .update(chats)
-        .set({ inviteCode: code })
+        .set({
+          inviteCode: code,
+          ...(typeof wantOneTime === 'boolean'
+            ? { inviteOneTime: wantOneTime }
+            : {}),
+        })
+        .where(eq(chats.id, chatId))
+    } else if (typeof wantOneTime === 'boolean') {
+      await db
+        .update(chats)
+        .set({ inviteOneTime: wantOneTime })
         .where(eq(chats.id, chatId))
     }
 
-    return reply.send({ invite_code: code })
+    const [fresh] = await db
+      .select({ inviteCode: chats.inviteCode })
+      .from(chats)
+      .where(eq(chats.id, chatId))
+      .limit(1)
+    if (!fresh?.inviteCode) {
+      return reply.status(500).send({ error: 'INVITE_CODE_MISSING' })
+    }
+
+    return reply.send({ invite_code: fresh.inviteCode })
   })
 
   app.post('/:chatId/leave', async (request, reply) => {
@@ -915,6 +980,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         type: chat.type,
         is_group: isGroupType(chat.type),
         invite_code: showInvite ? chat.inviteCode : null,
+        invite_one_time: showInvite ? chat.inviteOneTime : null,
         my_role: memberOk[0].myRole,
       },
       members: members.map((m) => ({

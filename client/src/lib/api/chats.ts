@@ -35,6 +35,7 @@ export type ChatDetailPayload = {
     type: string
     is_group: boolean
     invite_code: string | null
+    invite_one_time: boolean | null
     my_role: ChatMemberRole
   }
   members: ChatDetailMember[]
@@ -157,10 +158,18 @@ export async function fetchChatDetail(chatId: string): Promise<ChatDetailPayload
   return data as ChatDetailPayload
 }
 
-export async function ensureGroupInviteCode(chatId: string): Promise<string> {
+export async function ensureGroupInviteCode(
+  chatId: string,
+  opts?: { invite_one_time?: boolean }
+): Promise<string> {
   const res = await fetch(`${API_URL}/chats/${chatId}/invite`, {
     method: 'POST',
     credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body:
+      opts?.invite_one_time !== undefined
+        ? JSON.stringify({ invite_one_time: opts.invite_one_time })
+        : undefined,
   })
   const data = (await res.json().catch(() => ({}))) as {
     invite_code?: string

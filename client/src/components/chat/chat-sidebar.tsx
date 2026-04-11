@@ -16,6 +16,7 @@ import { resolveTrustStatus } from '@/lib/trust-store'
 import { isUuid, normalizePeerInput } from '@/lib/peer-input'
 import { canonicalUserId } from '@/lib/user-id'
 import type { ApiChatRow } from '@/lib/api/chats'
+import { searchLocalMessages } from '@/lib/message-cache'
 
 const PINNED_CHATS_KEY = 'fm_pinned_chats'
 
@@ -77,6 +78,10 @@ export function ChatSidebar({
   const [busy, setBusy] = useState(false)
   const [trustedPeerIds, setTrustedPeerIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinnedIds)
+  const [localGhostQuery, setLocalGhostQuery] = useState('')
+  const [ghostHitChatIds, setGhostHitChatIds] = useState<Set<string> | null>(
+    null
+  )
   const [peerLookupByUserId, setPeerLookupByUserId] = useState<
     Record<string, { username: string; avatar_key: string | null }>
   >({})
@@ -127,6 +132,30 @@ export function ChatSidebar({
   }, [chats, userId])
 
   const sidebarChats = orderedSidebarChats(chats, pinnedIds)
+
+  useEffect(() => {
+    const q = localGhostQuery.trim()
+    if (q.length < 2) {
+      setGhostHitChatIds(null)
+      return
+    }
+    let cancelled = false
+    const tm = window.setTimeout(() => {
+      void searchLocalMessages(q).then((rows) => {
+        if (cancelled) return
+        setGhostHitChatIds(new Set(rows.map((r) => r.chatId)))
+      })
+    }, 250)
+    return () => {
+      cancelled = true
+      window.clearTimeout(tm)
+    }
+  }, [localGhostQuery])
+
+  const sidebarChatsFiltered =
+    ghostHitChatIds === null
+      ? sidebarChats
+      : sidebarChats.filter((c) => ghostHitChatIds.has(c.id))
 
   function togglePin(chatId: string) {
     setPinnedIds((prev) =>
@@ -229,13 +258,33 @@ export function ChatSidebar({
       <div className="border-b border-neon-cyan/40 p-3 text-[10px] uppercase tracking-[0.3em] text-neon-cyan">
         :: {t('sidebar.channels')}
       </div>
+      <div className="border-b border-neon-cyan/25 px-3 py-2">
+        <label className="sr-only" htmlFor="ghost-search">
+          {t('sidebar.localGhostSearch')}
+        </label>
+        <input
+          id="ghost-search"
+          className="terminal-input text-[10px]"
+          placeholder={t('sidebar.localGhostSearch')}
+          value={localGhostQuery}
+          onChange={(e) => setLocalGhostQuery(e.target.value)}
+          autoComplete="off"
+        />
+      </div>
       <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
         {chats.length === 0 ? (
           <p className="px-3 py-2 font-mono text-[10px] text-red-800">
             {t('sidebar.noActiveRoutes')}
           </p>
         ) : null}
-        {sidebarChats.map((c) => {
+        {ghostHitChatIds !== null &&
+        localGhostQuery.trim().length >= 2 &&
+        sidebarChatsFiltered.length === 0 ? (
+          <p className="px-3 py-2 font-mono text-[10px] text-red-800">
+            {t('sidebar.ghostNoHits')}
+          </p>
+        ) : null}
+        {sidebarChatsFiltered.map((c) => {
           const isPinned = pinnedIds.includes(c.id)
           const peerId = !c.is_group
             ? c.member_ids.find((id) => id !== userId)

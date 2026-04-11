@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   exportEcdhPublicJwkFromPrivateKeyString,
   importEcdhPrivateKey,
@@ -11,8 +11,15 @@ import {
   readVaultBlob,
   unwrapPrivateJwkWithPin,
 } from '@/lib/vault'
+import {
+  enrollWebAuthnVaultUnlock,
+  hasWebAuthnVaultMeta,
+  largeBlobLikelySupported,
+  unlockVaultWithWebAuthn,
+} from '@/lib/webauthn-vault'
 import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
+import { vibrateShort } from '@/lib/vibrate'
 
 type Props = {
   userId: string
@@ -25,18 +32,14 @@ export function VaultModal({ userId, displayHandle }: Props) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [bioEnrolled, setBioEnrolled] = useState(false)
 
-  async function handleUnlock(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setBusy(true)
-    try {
-      const blob = readVaultBlob(userId)
-      if (!blob) {
-        setError('NO_LOCAL_VAULT')
-        return
-      }
-      const plain = await unwrapPrivateJwkWithPin(blob, pin)
+  useEffect(() => {
+    void hasWebAuthnVaultMeta(userId).then(setBioEnrolled)
+  }, [userId])
+
+  const applyPlaintext = useCallback(
+    async (plain: string) => {
       const parsed = parseVaultPlaintext(plain)
       if (!parsed) {
         setError('INVALID_VAULT_FORMAT')
@@ -50,7 +53,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
             exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhPrivateJwkString)
           )
         } catch {
-          /* server may be offline; direct E2E needs ECDH pub later */
+          /* server may be offline */
         }
         setPin('')
         return
@@ -65,12 +68,69 @@ export function VaultModal({ userId, displayHandle }: Props) {
         /* non-fatal */
       }
       setPin('')
+    },
+    [setUnwrappedPrivateKey]
+  )
+
+  async function handleUnlock(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setBusy(true)
+    try {
+      const blob = readVaultBlob(userId)
+      if (!blob) {
+        setError('NO_LOCAL_VAULT')
+        return
+      }
+      const plain = await unwrapPrivateJwkWithPin(blob, pin)
+      await applyPlaintext(plain)
+      vibrateShort(20)
     } catch {
       setError('UNWRAP_FAILED')
     } finally {
       setBusy(false)
     }
   }
+
+  async function handleBiometricUnlock() {
+    setError(null)
+    setBusy(true)
+    try {
+      const plain = await unlockVaultWithWebAuthn(userId)
+      await applyPlaintext(plain)
+      vibrateShort(25)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'WEBAUTHN_FAILED')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleEnrollBiometrics() {
+    setError(null)
+    if (!pin.trim()) {
+      setError('PIN_REQUIRED_FOR_SETUP')
+      return
+    }
+    setBusy(true)
+    try {
+      const r = await enrollWebAuthnVaultUnlock(userId, displayHandle, pin)
+      if (!r.ok) {
+        setError(r.error)
+        return
+      }
+      await applyPlaintext(r.plaintext)
+      setBioEnrolled(true)
+      vibrateShort([15, 30, 15])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'ENROLL_FAILED')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const showBioSetup =
+    largeBlobLikelySupported() && !bioEnrolled && !busy
 
   return (
     <div
@@ -81,7 +141,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
     >
       <div className="terminal-panel w-full max-w-md space-y-6">
         <header className="border-b border-neon-red/40 pb-3">
-          <p className="text-xs uppercase tracking-[0.35em] text-neon-cyan">
+          <p className="glitch-text text-xs uppercase tracking-[0.35em] text-neon-cyan">
             [ VAULT ] :: UNLOCK_SESSION
           </p>
           <p className="mt-1 font-mono text-[10px] text-red-800">{displayHandle}</p>
@@ -90,30 +150,69 @@ export function VaultModal({ userId, displayHandle }: Props) {
           </p>
         </header>
 
-        <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-4">
-          <div>
-            <label className="terminal-label" htmlFor="vault-pin">
-              &gt; VAULT_PIN
-            </label>
-            <input
-              id="vault-pin"
-              type="password"
-              autoComplete="off"
-              className="terminal-input"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              required
-            />
-          </div>
-          {error ? (
-            <p className="border border-neon-red px-2 py-1 font-mono text-xs text-neon-red">
-              [!] {error}
+        {bioEnrolled ? (
+          <div className="space-y-4">
+            <p className="font-mono text-[10px] text-neon-cyan/80">
+              Biometric unlock is configured. Vault is bound to this device&apos;s
+              passkey — your previous PIN no longer applies.
             </p>
-          ) : null}
-          <TerminalGlitchButton type="submit" disabled={busy}>
-            [ UNLOCK ]
-          </TerminalGlitchButton>
-        </form>
+            <TerminalGlitchButton
+              type="button"
+              disabled={busy}
+              onClick={() => void handleBiometricUnlock()}
+            >
+              [ USE_BIOMETRICS ]
+            </TerminalGlitchButton>
+            {error ? (
+              <p className="border border-neon-red px-2 py-1 font-mono text-xs text-neon-red">
+                [!] {error}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-4">
+            <div>
+              <label className="terminal-label" htmlFor="vault-pin">
+                &gt; VAULT_PIN
+              </label>
+              <input
+                id="vault-pin"
+                type="password"
+                autoComplete="off"
+                className="terminal-input"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                required
+              />
+            </div>
+            {error ? (
+              <p className="border border-neon-red px-2 py-1 font-mono text-xs text-neon-red">
+                [!] {error}
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <TerminalGlitchButton type="submit" disabled={busy}>
+                [ UNLOCK ]
+              </TerminalGlitchButton>
+              {showBioSetup && !bioEnrolled ? (
+                <TerminalGlitchButton
+                  type="button"
+                  disabled={busy || !pin.trim()}
+                  onClick={() => void handleEnrollBiometrics()}
+                  className="border-neon-red/80 text-neon-red"
+                >
+                  [ CONFIGURE_BIOMETRICS ]
+                </TerminalGlitchButton>
+              ) : null}
+            </div>
+            {!largeBlobLikelySupported() ? (
+              <p className="font-mono text-[9px] text-red-800">
+                Biometric vault requires HTTPS and a browser with WebAuthn largeBlob
+                (e.g. Chromium).
+              </p>
+            ) : null}
+          </form>
+        )}
       </div>
     </div>
   )

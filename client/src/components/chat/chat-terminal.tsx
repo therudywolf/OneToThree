@@ -524,7 +524,7 @@ export function ChatTerminal({
         <div ref={bottomRef} className="h-px w-full shrink-0" aria-hidden />
       </div>
 
-      <div className="shrink-0 border-t border-neon-cyan/25 bg-black px-2 py-2">
+      <div className="shrink-0 border-t border-neon-cyan/25 bg-black px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <input
           ref={filePickerRef}
           type="file"
@@ -624,7 +624,7 @@ export function ChatTerminal({
             type="button"
             disabled={composeDisabled || !cryptoCtx}
             onClick={() => filePickerRef.current?.click()}
-            className="flex shrink-0 items-center justify-center rounded-none border border-neon-cyan/60 bg-black px-2 text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-none border border-neon-cyan/60 bg-black px-2 text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 md:min-h-0 md:min-w-0"
             aria-label={t('attach.pickAria')}
           >
             <Paperclip className="h-4 w-4" />

@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { useMediaRecorder } from '@/hooks/use-media-recorder'
+import { resumeAudioContextAfterGesture } from '@/lib/call-ringtones'
 import {
   isMediaTooLarge,
   MAX_FILE_SIZE_LABEL,
+  MEDIA_PERMISSION_DENIED_CODE,
   MEDIA_TOO_LARGE_CODE,
 } from '@/lib/media-limits'
+import { useTranslation } from '@/hooks/use-translation'
 
 type SendMediaFn = (
   blob: Blob,
@@ -79,6 +82,7 @@ function useAudioAnalyser(isRecording: boolean) {
 }
 
 export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
+  const { t } = useTranslation()
   const {
     isRecording,
     error,
@@ -87,6 +91,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
     startVideoCircleCapture,
     stopCapture,
     previewStream,
+    getStream,
   } = useMediaRecorder()
 
   const { level, connectStream, disconnect } = useAudioAnalyser(isRecording)
@@ -157,10 +162,11 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
   const showRecorderError =
     error &&
     error !== MEDIA_TOO_LARGE_CODE &&
+    error !== MEDIA_PERMISSION_DENIED_CODE &&
     error.length > 0
 
   return (
-    <div className="shrink-0 border-t border-neon-cyan/30 bg-black px-2 py-2">
+    <div className="shrink-0 border-t border-neon-cyan/30 bg-black px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
       {isRecording && mode ? (
         <div className="mb-2 space-y-2">
           <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-widest">
@@ -211,6 +217,11 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
       {banner ? (
         <p className="mb-1 font-mono text-[10px] text-zinc-500">ERROR</p>
       ) : null}
+      {error === MEDIA_PERMISSION_DENIED_CODE ? (
+        <p className="mb-1 font-mono text-[10px] leading-snug text-neon-red">
+          {t('media.permissionDenied')}
+        </p>
+      ) : null}
       {showRecorderError ? (
         <p className="mb-1 font-mono text-[10px] text-zinc-500">SIGNAL LOST</p>
       ) : null}
@@ -229,16 +240,16 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
           onPointerDown={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.currentTarget.setPointerCapture(e.pointerId)
-            startXRef.current = e.clientX
-            setCancelled(false)
-            modeRef.current = 'voice'
-            setMode('voice')
-            void startVoiceCapture().then(() => {
-              const mr = (
-                window as unknown as { __p13_last_stream?: MediaStream }
-              ).__p13_last_stream
-              if (mr) connectStream(mr)
-            })
+            void (async () => {
+              await resumeAudioContextAfterGesture()
+              startXRef.current = e.clientX
+              setCancelled(false)
+              modeRef.current = 'voice'
+              setMode('voice')
+              await startVoiceCapture()
+              const stream = getStream()
+              if (stream) connectStream(stream)
+            })()
           }}
           onPointerMove={(e) => {
             if (modeRef.current !== 'voice') return
@@ -246,7 +257,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
           }}
           onPointerUp={() => void finish(!cancelled)}
           onPointerCancel={() => void finish(false)}
-          className="rounded-none border border-neon-cyan bg-black px-3 py-2 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+          className="flex min-h-[44px] items-center justify-center rounded-none border border-neon-cyan bg-black px-4 py-3 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 md:min-h-0 md:px-3 md:py-2"
         >
           {isRecording && mode === 'voice' ? '[ ● REC ]' : '[ HOLD :: VOICE ]'}
         </button>
@@ -256,11 +267,14 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
           onPointerDown={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.currentTarget.setPointerCapture(e.pointerId)
-            startXRef.current = e.clientX
-            setCancelled(false)
-            modeRef.current = 'video'
-            setMode('video')
-            void startVideoCircleCapture()
+            void (async () => {
+              await resumeAudioContextAfterGesture()
+              startXRef.current = e.clientX
+              setCancelled(false)
+              modeRef.current = 'video'
+              setMode('video')
+              await startVideoCircleCapture()
+            })()
           }}
           onPointerMove={(e) => {
             if (modeRef.current !== 'video') return
@@ -268,7 +282,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
           }}
           onPointerUp={() => void finish(!cancelled)}
           onPointerCancel={() => void finish(false)}
-          className="rounded-none border border-neon-red bg-black px-3 py-2 font-mono text-xs uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+          className="flex min-h-[44px] items-center justify-center rounded-none border border-neon-red bg-black px-4 py-3 font-mono text-xs uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40 md:min-h-0 md:px-3 md:py-2"
         >
           {isRecording && mode === 'video' ? '[ ● REC ]' : '[ HOLD :: CIRCLE ]'}
         </button>

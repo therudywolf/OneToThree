@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getUserMediaConstraints } from '@/lib/media-devices'
 import {
+  isMediaPermissionDenied,
   isMediaTooLarge,
   MEDIA_ACCESS_ERROR_MESSAGE,
+  MEDIA_PERMISSION_DENIED_CODE,
   MEDIA_TOO_LARGE_CODE,
 } from '@/lib/media-limits'
 
@@ -14,30 +16,44 @@ export type CaptureResult = {
 }
 
 function pickAudioMime(): string {
-  if (typeof MediaRecorder === 'undefined') return 'audio/webm'
+  if (typeof MediaRecorder === 'undefined') return 'audio/mp4'
+  if (MediaRecorder.isTypeSupported('audio/mp4')) {
+    return 'audio/mp4'
+  }
   if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
     return 'audio/webm;codecs=opus'
   }
-  return 'audio/webm'
+  if (MediaRecorder.isTypeSupported('audio/webm')) {
+    return 'audio/webm'
+  }
+  return 'audio/mp4'
 }
 
 function pickVideoMime(): string {
-  if (typeof MediaRecorder === 'undefined') return 'video/webm'
+  if (typeof MediaRecorder === 'undefined') return 'video/mp4'
+  if (MediaRecorder.isTypeSupported('video/mp4')) {
+    return 'video/mp4'
+  }
   if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
     return 'video/webm;codecs=vp9'
   }
   if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
     return 'video/webm;codecs=vp8'
   }
-  return 'video/webm'
+  if (MediaRecorder.isTypeSupported('video/webm')) {
+    return 'video/webm'
+  }
+  return 'video/mp4'
 }
 
+
 /**
- * MediaRecorder capture: audio/webm and square-ish video/webm (circle UX in UI).
+ * MediaRecorder capture: prefers MP4 on Safari iOS; circle UX for video in UI.
  */
 export function useMediaRecorder() {
   const [isRecording, setIsRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
@@ -46,6 +62,7 @@ export function useMediaRecorder() {
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop())
+      setPreviewStream(null)
     }
   }, [])
 
@@ -54,7 +71,11 @@ export function useMediaRecorder() {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       chunksRef.current = []
       setError(null)
-      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setPreviewStream(null)
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator.mediaDevices?.getUserMedia
+      ) {
         setError(MEDIA_ACCESS_ERROR_MESSAGE)
         return
       }
@@ -62,17 +83,29 @@ export function useMediaRecorder() {
         getUserMediaConstraints({ video: false })
       )
       streamRef.current = stream
+      setPreviewStream(stream)
       kindRef.current = 'audio'
       const mime = pickAudioMime()
-      const rec = new MediaRecorder(stream, { mimeType: mime })
+      const rec = (() => {
+        try {
+          return new MediaRecorder(stream, { mimeType: mime })
+        } catch {
+          return new MediaRecorder(stream)
+        }
+      })()
       recorderRef.current = rec
       rec.ondataavailable = (e) => {
         if (e.data.size) chunksRef.current.push(e.data)
       }
       rec.start()
       setIsRecording(true)
-    } catch {
-      setError(MEDIA_ACCESS_ERROR_MESSAGE)
+    } catch (err) {
+      setPreviewStream(null)
+      setError(
+        isMediaPermissionDenied(err)
+          ? MEDIA_PERMISSION_DENIED_CODE
+          : MEDIA_ACCESS_ERROR_MESSAGE
+      )
     }
   }, [])
 
@@ -81,7 +114,11 @@ export function useMediaRecorder() {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       chunksRef.current = []
       setError(null)
-      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      setPreviewStream(null)
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator.mediaDevices?.getUserMedia
+      ) {
         setError(MEDIA_ACCESS_ERROR_MESSAGE)
         return
       }
@@ -101,17 +138,29 @@ export function useMediaRecorder() {
         },
       })
       streamRef.current = stream
+      setPreviewStream(stream)
       kindRef.current = 'video'
       const mime = pickVideoMime()
-      const rec = new MediaRecorder(stream, { mimeType: mime })
+      const rec = (() => {
+        try {
+          return new MediaRecorder(stream, { mimeType: mime })
+        } catch {
+          return new MediaRecorder(stream)
+        }
+      })()
       recorderRef.current = rec
       rec.ondataavailable = (e) => {
         if (e.data.size) chunksRef.current.push(e.data)
       }
       rec.start()
       setIsRecording(true)
-    } catch {
-      setError(MEDIA_ACCESS_ERROR_MESSAGE)
+    } catch (err) {
+      setPreviewStream(null)
+      setError(
+        isMediaPermissionDenied(err)
+          ? MEDIA_PERMISSION_DENIED_CODE
+          : MEDIA_ACCESS_ERROR_MESSAGE
+      )
     }
   }, [])
 
@@ -122,6 +171,7 @@ export function useMediaRecorder() {
 
     if (!rec || rec.state === 'inactive') {
       setIsRecording(false)
+      setPreviewStream(null)
       return null
     }
 
@@ -136,6 +186,7 @@ export function useMediaRecorder() {
         kindRef.current = null
         stream?.getTracks().forEach((t) => t.stop())
         streamRef.current = null
+        setPreviewStream(null)
         setIsRecording(false)
         if (!blob.size) {
           resolve(null)
@@ -154,6 +205,8 @@ export function useMediaRecorder() {
 
   const clearError = useCallback(() => setError(null), [])
 
+  const getStream = useCallback(() => streamRef.current, [])
+
   return {
     isRecording,
     error,
@@ -161,6 +214,7 @@ export function useMediaRecorder() {
     startVoiceCapture,
     startVideoCircleCapture,
     stopCapture,
-    previewStream: streamRef.current,
+    previewStream,
+    getStream,
   }
 }

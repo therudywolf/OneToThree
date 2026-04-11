@@ -96,12 +96,8 @@ export function LoginForm() {
         const text = await file.text()
         const data = JSON.parse(text) as {
           userId?: string
+          username?: string
           vault?: VaultBlob
-        }
-        const nick = parseNickname(username.trim())
-        if (!nick.ok) {
-          setError(t('login.invalidUsernameFormat'))
-          return
         }
         if (
           !data.vault?.saltB64 ||
@@ -111,7 +107,25 @@ export function LoginForm() {
           setError(t('settings.invalidVaultFile'))
           return
         }
+        const fromFile =
+          typeof data.username === 'string' ? data.username.trim() : ''
+        const fromForm = username.trim()
+        let nick = fromFile
+          ? parseNickname(fromFile)
+          : ({ ok: false, error: 'INVALID_USERNAME_FORMAT' } as const)
+        if (!nick.ok && fromForm) {
+          nick = parseNickname(fromForm)
+        }
+        if (!nick.ok) {
+          if (!fromFile && !fromForm) {
+            setError(t('login.vaultImportHandleMissing'))
+          } else {
+            setError(mapError(nick.error))
+          }
+          return
+        }
         persistVaultBlobByLoginUsername(nick.value, data.vault)
+        setUsername(nick.value)
         setVaultImportOk(true)
       } catch {
         setError(t('settings.importFailed'))

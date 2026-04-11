@@ -58,10 +58,13 @@ export function ChatSidebar({
   userId,
   sharedKey,
   onPackSettingsChanged,
+  onNavigate,
 }: {
   userId: string
   sharedKey: CryptoKey | null
   onPackSettingsChanged?: () => void
+  /** e.g. close mobile drawer after picking a chat */
+  onNavigate?: () => void
 }) {
   const { t } = useTranslation()
   const activeChatId = useChatStore((s) => s.activeChatId)
@@ -206,7 +209,7 @@ export function ChatSidebar({
   }, [chats, userId])
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-neon-cyan/40 bg-black">
+    <aside className="flex h-full w-full min-w-0 flex-col border-r border-neon-cyan/40 bg-black md:w-72 md:shrink-0">
       {groupModalOpen ? (
         <CreateGroupModal
           userId={userId}
@@ -214,6 +217,7 @@ export function ChatSidebar({
           onCreated={(id) => {
             setActiveChatId(id)
             setGroupModalOpen(false)
+            onNavigate?.()
           }}
         />
       ) : null}
@@ -252,7 +256,10 @@ export function ChatSidebar({
                   activeChatId === c.id ? 'text-neon-cyan' : 'text-neon-red'
                 }`}
                 aria-label={`${t('common.openChatAria')} ${c.name?.trim() || c.id}`}
-                onClick={() => setActiveChatId(c.id)}
+                onClick={() => {
+                  setActiveChatId(c.id)
+                  onNavigate?.()
+                }}
               >
                 <span className="inline-flex min-w-0 items-center gap-2">
                   {peerId ? (

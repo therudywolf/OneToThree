@@ -23,6 +23,12 @@ const en = {
 
   'media.loading': '…',
   'media.download': 'DOWNLOAD',
+  'media.permissionDenied':
+    'Microphone or camera blocked. On iPhone: Settings → Safari → Camera/Microphone → Allow for this site (HTTPS required).',
+
+  'call.openChannels': 'Open channel list',
+  'call.mediaPermissionDenied':
+    'Microphone or camera blocked for calls. Check Safari / site permissions.',
 
   'login.usernameRequired': 'Username is required.',
   'login.passwordRequired': 'Passphrase is required.',
@@ -72,6 +78,8 @@ const en = {
   'login.vaultRecoveryImport': 'IMPORT_VAULT_FILE',
   'login.vaultRecoveryOk':
     'Encrypted vault stored for this handle. You can sign in with your passphrase.',
+  'login.vaultImportHandleMissing':
+    'The backup file has no username and the handle field is empty. Either use a backup exported from Settings (it includes your handle), or type your exact ASCII handle, then import again.',
   'login.tosRegisterTitle': '[ EN ] Terms of Service',
   'login.tosRegisterBody': `Privacy & Encryption: This service provides End-to-End encryption. We physically cannot access your messages or keys. Losing your Vault passphrase means permanent loss of your chat history.
 

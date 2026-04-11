@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import { db } from '../db/index.js'
 import { devices } from '../db/schema.js'
+import { decodeFetchUtf8Header } from './http-fetch-headers.js'
 import { normalizeUuid } from './uuid.js'
 
 export type DeviceUpsertResult =
@@ -27,12 +28,14 @@ export async function upsertDeviceForSession(
   userId: string
 ): Promise<DeviceUpsertResult> {
   const uid = normalizeUuid(userId)
-  const clientKey = headerString(request, 'x-client-device-id')
+  const clientKeyRaw = headerString(request, 'x-client-device-id')
+  const clientKey = decodeFetchUtf8Header(clientKeyRaw, 128).trim()
   if (!clientKey || clientKey.length < 4) {
     return { ok: false, error: 'CLIENT_DEVICE_ID_REQUIRED' }
   }
   const deviceName =
-    headerString(request, 'x-device-name')?.slice(0, 256) || 'Unknown device'
+    decodeFetchUtf8Header(headerString(request, 'x-device-name'), 512) ||
+    'Unknown device'
   const ua = request.headers['user-agent']?.slice(0, 512)
   const ip = request.ip?.slice(0, 128)
 

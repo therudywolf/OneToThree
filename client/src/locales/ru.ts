@@ -14,6 +14,7 @@ const ru = {
   'common.logout': 'ВЫХОД',
   'common.openSettings': 'НАСТРОЙКИ',
   'common.adminWarden': 'СМОТРИТЕЛЬ',
+  'common.deviceLinking': 'ПРИВЯЗКА УСТРОЙСТВ',
 
   'settings.logoutSystem': 'ВЫЙТИ_ИЗ_СИСТЕМЫ',
 

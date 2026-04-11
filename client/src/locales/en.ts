@@ -14,6 +14,7 @@ const en = {
   'common.logout': 'LOGOUT',
   'common.openSettings': 'CFG',
   'common.adminWarden': 'WARDEN',
+  'common.deviceLinking': 'DEVICE LINKING',
 
   'settings.logoutSystem': 'LOG_OUT_OF_SYSTEM',
 

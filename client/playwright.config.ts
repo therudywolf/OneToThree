@@ -32,7 +32,7 @@ export default defineConfig({
   webServer: {
     /** `output: standalone` — `next start` is unreliable; run the generated Node server. */
     command:
-      'npm run build && node .next/standalone/client/server.js',
+      'npm run build && node .next/standalone/server.js',
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,

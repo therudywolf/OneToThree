@@ -175,7 +175,7 @@ npx tsx scripts/backup.ts
 | Symptom | Likely fix |
 |---------|------------|
 | Caddy / ACME fails | Confirm **DNS** → this host, **80/443** open, `logs -f caddy`; check rate limits at Let’s Encrypt. |
-| Web: `Cannot find module '/app/server.js'` | Rebuild **web** after pulling latest `client/Dockerfile` (standalone entry is **`/app/client/server.js`** when `outputFileTracingRoot` points at the repo root). |
+| Web: `Cannot find module '.../server.js'` | **`outputFileTracingRoot`** in `client/next.config.js` must be the **client** dir (not `..`) when the image builds with **`context: ./client`**; production entry is **`/app/server.js`**. Rebuild **web** (`docker compose … build --no-cache web`). |
 | `FILE_EXPIRED` on media | Object purged or row cleared — peer must re-send; local **Digital Den** may still have a copy. |
 | Wrong client IP in logs | Set **`TRUST_PROXY=1`** for API behind Caddy. |
 | `relation "users" does not exist` | Ensure **`db-migrate`** completed; `docker compose … logs db-migrate`. |

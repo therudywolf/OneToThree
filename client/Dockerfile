@@ -27,8 +27,7 @@ RUN printf '%s\n' \
 
 RUN npm run build
 
-# Standalone layout: with outputFileTracingRoot = repo parent, Next emits
-# `.next/standalone/client/server.js` (not `/app/server.js`). Run from that dir.
+# Standalone: `outputFileTracingRoot` is the client dir so `.next/standalone/server.js` lives here.
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
@@ -36,13 +35,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/public ./client/public
-COPY --from=builder /app/.next/static ./client/.next/static
-COPY --from=builder /app/.env.production ./client/.env.production
-COPY --from=builder /app/.env.production ./client/.env
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/.env.production ./.env.production
+COPY --from=builder /app/.env.production ./.env
 RUN chown -R nextjs:nodejs /app
 USER nextjs
-WORKDIR /app/client
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"

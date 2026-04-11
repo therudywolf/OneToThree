@@ -36,7 +36,7 @@ Self-hosted. Zero-trust lane. The server routes blind; the client encrypts.
 | **Data** | **PostgreSQL** + **Drizzle ORM** |
 | **Objects** | **MinIO** (S3-compatible presigned PUT/GET) |
 | **Realtime** | **WebRTC** (STUN + custom WS signaling) |
-| **Edge** | **Caddy 2** (TLS termination, reverse proxy) |
+| **Edge** | **Caddy 2** (reverse proxy + **automatic HTTPS** / Let’s Encrypt) |
 
 Deep references: **[API.md](./API.md)** · **[ARCHITECTURE.md](./ARCHITECTURE.md)** · **[SECURITY.md](./SECURITY.md)** · **[MANIFEST.md](./MANIFEST.md)** (production file map & launch checklist)
 
@@ -60,7 +60,7 @@ Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error":
 
 - **Docker** + **Compose v2** (`docker compose`) on the host (Linux VPS, or **WSL2** / macOS for `./setup.sh`).
 - **openssl** (for `./setup.sh` secret generation).
-- **TLS PEMs**: `./certs/cert.pem` and `./certs/key.pem` (mounted read-only into Caddy — see `Caddyfile`).
+- **Public DNS** for **`onetothree.ru`**, **`api.onetothree.ru`**, **`s3.onetothree.ru`** pointing at this host’s public IP, and **ports 80 + 443** reachable from the internet (required for **Let’s Encrypt** via Caddy — see `Caddyfile` for ACME contact email).
 - **`.env.prod`** at repo root: if missing, **`./setup.sh`** creates it from **`.env.prod.example`** (or `env.prod.example`). You must set strong **Postgres / MinIO / CORS** values; **JWT**, **WEBHOOK_SECRET**, and **VAPID** can be auto-generated when left empty.
 
 ### Single claw
@@ -75,10 +75,10 @@ The script:
 1. Verifies **Docker**, **Compose**, and **openssl**.  
 2. Creates **`.env.prod`** from the template when absent, then prompts you to save required operator secrets.  
 3. **Auto-fills** empty or placeholder **`JWT_SECRET`**, **`WEBHOOK_SECRET`**, and **VAPID** keys (VAPID uses a short **Node** container via Docker; **`NEXT_PUBLIC_VAPID_PUBLIC_KEY`** is synced to the public key).  
-4. Warns if **`./certs/cert.pem`** is missing.  
+4. Reminds you that **Caddy** will use **automatic TLS** (no manual PEMs).  
 5. Validates **non-empty** `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `CORS_ORIGIN`, and `JWT_SECRET`.  
 6. Runs **`docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`**.  
-7. **`db-migrate`** runs automatically as a **one-shot** after Postgres is **healthy**; **api** waits for migrate + MinIO + DB. Prints a **Noir-style** status block with host hint and log command.
+7. **`db-migrate`** runs automatically as a **one-shot** after Postgres is **healthy**; **api** waits for migrate + MinIO + DB. Prints a **Noir-style** status block with host hint and log commands.
 
 ### `docker-compose.prod.yml` (hardened · high-throughput lane)
 
@@ -87,12 +87,20 @@ The script:
 - **Memory (typical 4C / 6GB+ class)**: **web** `1536m` limit / `512m` reservation · **api** `1024m` / `256m` · **db** & **minio** `512m` each · **api** `tmpfs` `/tmp` **128m** (signaling-heavy workloads).  
 - **Healthchecks**: Postgres (**`pg_isready -U $POSTGRES_USER -d $POSTGRES_DB`**), MinIO (`mc ready`), API (`GET /health`), Web (Node `fetch` to `/`).  
 - **Caddy** starts only when **web**, **api**, and **minio** report **`service_healthy`**. **Only Caddy** publishes **`80`** and **`443`** to the host; **api**, **db**, **minio**, **web** stay on **`app_network`** (no host ports).  
-- **Volumes** (named, persistent): **`pgdata`** (Postgres), **`minio_data`**, **`caddy_data`** (`/data` for Caddy state). Upgrading from an older compose that used `postgres_data`: bind-migrate data into **`pgdata`** or rename the volume once; see comment in `docker-compose.prod.yml`.  
+- **Volumes** (named, persistent): **`pgdata`** (Postgres), **`minio_data`**, **`caddy_data`** (Caddy **ACME certs + TLS state** under `/data`), **`caddy_config`** (`/config`). Upgrading from an older compose that used `postgres_data`: bind-migrate data into **`pgdata`** or rename the volume once; see comment in `docker-compose.prod.yml`.  
 - **`TRUST_PROXY`** on API (default **`1`** via Compose when unset).
 
-### DNS → Caddy
+### DNS → Caddy (Automatic Shield)
 
-Point **A/AAAA** records for your apex, **api.** subdomain, and **s3.** (or your MinIO hostname) at the VPS. Align hostnames in **`Caddyfile`** with `env.prod.example` / `.env.prod` (`NEXT_PUBLIC_API_URL`, `CORS_ORIGIN`).
+Point **A/AAAA** records for **`onetothree.ru`**, **`api.onetothree.ru`**, and **`s3.onetothree.ru`** at the VPS public IP. Align **`Caddyfile`** hostnames and **`.env.prod`** (`NEXT_PUBLIC_API_URL`, `CORS_ORIGIN`) with the same names.
+
+**The Watcher** — after `./setup.sh`, follow Caddy until certificates are issued:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f caddy
+```
+
+Look for *obtaining certificate* / *certificate obtained successfully*. If ACME fails, fix DNS or firewall first; certificates live in the **`caddy_data`** volume (no `./certs` folder required).
 
 ---
 
@@ -166,7 +174,7 @@ npx tsx scripts/backup.ts
 
 | Symptom | Likely fix |
 |---------|------------|
-| Caddy TLS fails | Install **`./certs/cert.pem`** + **`key.pem`**; reload stack. |
+| Caddy / ACME fails | Confirm **DNS** → this host, **80/443** open, `logs -f caddy`; check rate limits at Let’s Encrypt. |
 | `FILE_EXPIRED` on media | Object purged or row cleared — peer must re-send; local **Digital Den** may still have a copy. |
 | Wrong client IP in logs | Set **`TRUST_PROXY=1`** for API behind Caddy. |
 | `relation "users" does not exist` | Ensure **`db-migrate`** completed; `docker compose … logs db-migrate`. |

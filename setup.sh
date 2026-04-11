@@ -139,11 +139,9 @@ if needs_secret "$VPUB" || needs_secret "$VPRIV"; then
   fi
 fi
 
-# --- TLS warning ------------------------------------------------------------
-if [[ ! -f "${ROOT}/certs/cert.pem" ]]; then
-  warn "./certs/cert.pem not found — Caddy TLS will fail until PEM + key are mounted."
-  warn "  Place cert.pem and key.pem under ./certs/ (see Caddyfile)."
-fi
+# --- TLS (Automatic Shield — Let's Encrypt via Caddy) ------------------------
+log "TLS: Caddy will obtain Let's Encrypt certificates automatically."
+log "    Ensure DNS A/AAAA for onetothree.ru, api.*, s3.* → this host, and ports 80/443 are open."
 
 # --- Required keys (operator must set) --------------------------------------
 check_key() {
@@ -201,6 +199,7 @@ noir "  │  :: CHANNEL OPEN — Project 13 (Forest Messenger)         │"
 noir "  │  Stack is launching in the background.                   │"
 noir "  └──────────────────────────────────────────────────────────┘"
 echo -e "${DIM}  Host: ${PRIMARY_IP:-unknown}   Origin hint: ${DOMAIN_HINT:-—}${NC}"
-echo -e "${DIM}  Logs:  ${DC[*]} -f ${COMPOSE_FILE} --env-file ${ENV_FILE} logs -f api${NC}"
+echo -e "${DIM}  Logs API: ${DC[*]} -f ${COMPOSE_FILE} --env-file ${ENV_FILE} logs -f api${NC}"
+echo -e "${DIM}  Logs TLS: ${DC[*]} -f ${COMPOSE_FILE} --env-file ${ENV_FILE} logs -f caddy${NC}"
 echo -e "${DIM}  Warden: first admin — see README (bootstrap / SQL).${NC}"
 echo ""

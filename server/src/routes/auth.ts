@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
-import type { CookieSerializeOptions } from '@fastify/cookie'
 import { generateSecret, generateURI, verifySync } from 'otplib'
 import QRCode from 'qrcode'
 import { z } from 'zod'
@@ -27,6 +26,7 @@ import {
 import {
   clearFmSessionCookie,
   SESSION_COOKIE,
+  sessionCookieSetOptions,
 } from '../lib/session-cookie.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { parseNickname } from '../lib/nickname.js'
@@ -56,18 +56,6 @@ const login2faBodySchema = z.object({
 const disable2faBodySchema = z.object({
   code: totpCodeSchema,
 })
-
-function sessionCookieBase(): CookieSerializeOptions {
-  const prod = process.env.NODE_ENV === 'production'
-  const forceSecure = process.env.COOKIE_SECURE === '1'
-  return {
-    path: '/',
-    httpOnly: true,
-    sameSite: prod ? 'strict' : 'lax',
-    secure: prod || forceSecure,
-    maxAge: SESSION_MAX_AGE_S,
-  }
-}
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get('/ws-ticket', async (request, reply) => {
@@ -306,7 +294,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       },
       { expiresIn: SESSION_MAX_AGE_S }
     )
-    reply.setCookie(SESSION_COOKIE, token, sessionCookieBase())
+    reply.setCookie(SESSION_COOKIE, token, sessionCookieSetOptions(SESSION_MAX_AGE_S))
 
     return reply.send({
       user: { id: canonicalId, username: row.username },
@@ -466,7 +454,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           { expiresIn: SESSION_MAX_AGE_S }
         )
 
-        reply.setCookie(SESSION_COOKIE, token, sessionCookieBase())
+        reply.setCookie(SESSION_COOKIE, token, sessionCookieSetOptions(SESSION_MAX_AGE_S))
 
         return reply.send({
           user: { id: canonicalId, username },

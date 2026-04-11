@@ -177,6 +177,29 @@ if [[ "$MISSING" -ne 0 ]]; then
   exit 1
 fi
 
+# --- Cross-subdomain session (fm_session must reach Next on apex + Fastify on api.*) -----
+web_host_from_cors() {
+  local raw
+  raw=$(val_for_key CORS_ORIGIN | cut -d',' -f1 | tr -d '\r')
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  echo "${raw#http://}" | sed 's|^https://||' | cut -d'/' -f1
+}
+api_host_from_env() {
+  local raw
+  raw=$(val_for_key NEXT_PUBLIC_API_URL | tr -d '\r')
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  echo "${raw#http://}" | sed 's|^https://||' | cut -d'/' -f1
+}
+WEB_HOST=$(web_host_from_cors)
+API_HOST=$(api_host_from_env)
+COOKIE_DOM=$(val_for_key COOKIE_DOMAIN | tr -d '\r')
+if [[ -n "$API_HOST" && -n "$WEB_HOST" && "$API_HOST" != "$WEB_HOST" && -z "$COOKIE_DOM" ]]; then
+  warn "NEXT_PUBLIC_API_URL host (${API_HOST}) differs from CORS_ORIGIN host (${WEB_HOST}) but COOKIE_DOMAIN is empty."
+  warn "Set COOKIE_DOMAIN=.your-apex-domain in ${ENV_FILE} so fm_session is shared (avoids /login redirect loop)."
+fi
+
 log "Building and starting stack (${COMPOSE_FILE}, env: ${ENV_FILE})…"
 "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build
 

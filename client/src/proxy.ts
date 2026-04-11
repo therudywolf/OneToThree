@@ -18,7 +18,7 @@ function isBypassPath(pathname: string): boolean {
 function resolveApiBase(request: NextRequest): string {
   const fromEnv = process.env.NEXT_PUBLIC_API_URL?.trim()
   if (fromEnv) return `${fromEnv.replace(/\/$/, '')}/api`
-  // Same-origin API (Next rewrites to Fastify) — session cookie is on this origin.
+  // Same-origin API (Next rewrites to Fastify); cookie is on page origin without COOKIE_DOMAIN.
   return `${request.nextUrl.origin}/api`
 }
 
@@ -26,6 +26,7 @@ async function hasValidSession(request: NextRequest): Promise<boolean> {
   const token = request.cookies.get(SESSION_COOKIE)?.value
   if (!token) return false
 
+  /** Includes `fm_session` when API set `Domain=.parent` (see server `COOKIE_DOMAIN`). */
   const cookieHeader = request.headers.get('cookie') ?? ''
   if (!cookieHeader) return false
 

@@ -2,10 +2,9 @@
 
 import { useEffect } from 'react'
 import { API_URL } from '@/lib/api/auth'
-import {
-  decryptInboundText,
-  type ChatCryptoContext,
-} from '@/lib/chat-crypto'
+import { acknowledgeMessagesDelivered } from '@/lib/api/messages'
+import { type ChatCryptoContext } from '@/lib/chat-crypto'
+import { decryptApiMessageRow, type ApiMessageRow } from '@/lib/decrypt-chat-api-message'
 import {
   cacheMessages,
   getRecentCachedMessages,
@@ -13,24 +12,11 @@ import {
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
 
-type ApiMessageRow = {
-  id: string
-  chat_id: string
-  sender_id: string
-  reply_to_id?: string | null
-  content: string | null
-  iv: string | null
-  media_path?: string | null
-  media_type?: string | null
-  media_iv?: string | null
-  read_at?: string | null
-  created_at: string
-}
-
 export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setMessages = useChatStore((s) => s.setMessages)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
+  const userId = useChatStore((s) => s.userId)
 
   useEffect(() => {
     if (!activeChatId || !cryptoCtx || !unwrappedPrivateKey) {
@@ -60,37 +46,13 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
       const rows = data.messages ?? []
       const out: DecryptedMessage[] = []
       for (const m of rows) {
-        let plaintext = ''
-        if (m.content != null && m.iv != null && m.content !== '') {
-          try {
-            plaintext = await decryptInboundText(
-              unwrappedPrivateKey,
-              cryptoCtx,
-              m.content,
-              m.iv
-            )
-          } catch {
-            plaintext = '[DECRYPT_FAIL]'
-          }
-        }
-        out.push({
-          id: m.id,
-          chat_id: m.chat_id,
-          sender_id: m.sender_id,
-          reply_to_id: m.reply_to_id ?? null,
-          plaintext,
-          created_at: m.created_at,
-          read_at: m.read_at ?? null,
-          media_path: m.media_path,
-          media_type:
-            m.media_type === 'audio' ||
-            m.media_type === 'video' ||
-            m.media_type === 'image' ||
-            m.media_type === 'file'
-              ? m.media_type
-              : null,
-          media_iv: m.media_iv,
-        })
+        out.push(
+          await decryptApiMessageRow(
+            unwrappedPrivateKey,
+            cryptoCtx,
+            m
+          )
+        )
       }
       if (!cancelled) {
         out.sort(
@@ -103,11 +65,21 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
           /* cache write best-effort */
         }
         setMessages(out)
+        if (userId) {
+          const incomingIds = out
+            .filter((m) => m.sender_id !== userId)
+            .map((m) => m.id)
+          if (incomingIds.length > 0) {
+            void acknowledgeMessagesDelivered(incomingIds).catch(() => {
+              /* delivery ack is best-effort */
+            })
+          }
+        }
       }
     })()
 
     return () => {
       cancelled = true
     }
-  }, [activeChatId, cryptoCtx, unwrappedPrivateKey, setMessages])
+  }, [activeChatId, cryptoCtx, unwrappedPrivateKey, setMessages, userId])
 }

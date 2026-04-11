@@ -5,13 +5,16 @@ import {
   encryptOutboundText,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
-import { getFmSocket } from '@/lib/api/socket'
+import { sendChatMessageOverTransport } from '@/lib/chat-message-transport'
+import { decryptApiMessageRow } from '@/lib/decrypt-chat-api-message'
+import { cacheMessage } from '@/lib/message-cache'
 import { useChatStore } from '@/store/chatStore'
 
 export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const userId = useChatStore((s) => s.userId)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
+  const appendMessage = useChatStore((s) => s.appendMessage)
 
   const sendText = useCallback(
     async (text: string, replyToId?: string | null) => {
@@ -30,15 +33,31 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
         t,
         cryptoCtx
       )
-      getFmSocket().send({
-        type: 'chat_message',
+      const { via, serverMessage } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
         content: encrypted_content,
         iv,
         reply_to_id: replyToId ?? null,
       })
+      if (via === 'rest' && serverMessage) {
+        const row = await decryptApiMessageRow(
+          unwrappedPrivateKey,
+          cryptoCtx,
+          serverMessage
+        )
+        await cacheMessage(row).catch(() => {
+          /* best-effort */
+        })
+        appendMessage(row)
+      }
     },
-    [activeChatId, userId, unwrappedPrivateKey, cryptoCtx]
+    [
+      activeChatId,
+      userId,
+      unwrappedPrivateKey,
+      cryptoCtx,
+      appendMessage,
+    ]
   )
 
   return { sendText }

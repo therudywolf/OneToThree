@@ -1,9 +1,13 @@
-import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, messages } from '../db/schema.js'
+import { chatMembers, messageDeliveries, messages } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import {
+  persistChatMessageAndFanOut,
+  persistedRowToClientJson,
+} from '../lib/chat-message-persist.js'
 import { markMessageReadByReader } from '../lib/mark-message-read.js'
 import { broadcastToUsers } from '../ws/registry.js'
 
@@ -11,7 +15,153 @@ const deleteMessageSchema = z.object({
   for_everyone: z.boolean().default(false),
 })
 
+const sendMessageBodySchema = z.object({
+  chat_id: z.string().uuid(),
+  content: z.string().nullable().optional(),
+  iv: z.string().nullable().optional(),
+  media_path: z.string().nullable().optional(),
+  media_type: z.string().nullable().optional(),
+  media_iv: z.string().nullable().optional(),
+  reply_to_id: z.string().uuid().nullable().optional(),
+})
+
+const deliveredAckSchema = z.object({
+  message_ids: z.array(z.string().uuid()).min(1).max(200),
+})
+
 export const messagesRoutes: FastifyPluginAsync = async (app) => {
+  /** Encrypted store-and-forward when WebSocket is unavailable (same payload as WS `chat_message`). */
+  app.post('/send', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const parsed = sendMessageBodySchema.safeParse(request.body ?? {})
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    const p = parsed.data
+    const memberOk = await db
+      .select({ one: chatMembers.userId })
+      .from(chatMembers)
+      .where(
+        and(eq(chatMembers.chatId, p.chat_id), eq(chatMembers.userId, user.id))
+      )
+      .limit(1)
+    if (!memberOk.length) {
+      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+    }
+
+    const persisted = await persistChatMessageAndFanOut({
+      chatId: p.chat_id,
+      senderId: user.id,
+      replyToId: p.reply_to_id ?? null,
+      content: p.content ?? null,
+      iv: p.iv ?? null,
+      mediaPath: p.media_path ?? null,
+      mediaType: p.media_type ?? null,
+      mediaIv: p.media_iv ?? null,
+    })
+    if (!persisted.ok) {
+      return reply.status(500).send({ error: 'INSERT_FAILED' })
+    }
+    return reply.send({ message: persistedRowToClientJson(persisted.row) })
+  })
+
+  /** Pending ciphertext rows for this user (not yet acknowledged after delivery sync). */
+  app.get('/sync/pending', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const q = request.query as { chat_id?: string }
+    const chatId = q.chat_id?.trim()
+    if (chatId && !z.string().uuid().safeParse(chatId).success) {
+      return reply.status(400).send({ error: 'INVALID_CHAT_ID' })
+    }
+
+    const memberFilter = chatId
+      ? and(
+          eq(messageDeliveries.userId, user.id),
+          isNull(messageDeliveries.deliveredAt),
+          eq(messages.chatId, chatId)
+        )
+      : and(
+          eq(messageDeliveries.userId, user.id),
+          isNull(messageDeliveries.deliveredAt)
+        )
+
+    const rows = await db
+      .select({
+        id: messages.id,
+        chatId: messages.chatId,
+        senderId: messages.senderId,
+        replyToId: messages.replyToId,
+        content: messages.content,
+        iv: messages.iv,
+        mediaPath: messages.mediaPath,
+        mediaType: messages.mediaType,
+        mediaIv: messages.mediaIv,
+        readAt: messages.readAt,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .innerJoin(
+        messageDeliveries,
+        eq(messages.id, messageDeliveries.messageId)
+      )
+      .innerJoin(
+        chatMembers,
+        and(
+          eq(chatMembers.chatId, messages.chatId),
+          eq(chatMembers.userId, user.id)
+        )
+      )
+      .where(memberFilter)
+      .orderBy(asc(messages.createdAt))
+      .limit(200)
+
+    return reply.send({
+      messages: rows.map((m) => ({
+        id: m.id,
+        chat_id: m.chatId,
+        sender_id: m.senderId,
+        reply_to_id: m.replyToId,
+        content: m.content,
+        iv: m.iv,
+        media_path: m.mediaPath,
+        media_type: m.mediaType,
+        media_iv: m.mediaIv,
+        read_at:
+          m.readAt == null
+            ? null
+            : m.readAt instanceof Date
+              ? m.readAt.toISOString()
+              : String(m.readAt),
+        created_at:
+          m.createdAt instanceof Date
+            ? m.createdAt.toISOString()
+            : String(m.createdAt),
+      })),
+    })
+  })
+
+  app.post('/delivered', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const parsed = deliveredAckSchema.safeParse(request.body ?? {})
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    const ids = parsed.data.message_ids
+    await db
+      .update(messageDeliveries)
+      .set({ deliveredAt: new Date() })
+      .where(
+        and(
+          eq(messageDeliveries.userId, user.id),
+          inArray(messageDeliveries.messageId, ids)
+        )
+      )
+    return reply.send({ ok: true })
+  })
+
   /** Mark a direct message as read (REST; mirrors WebSocket `message_read`). */
   app.post('/read/:messageId', async (request, reply) => {
     const user = await getAuthUser(request, reply)

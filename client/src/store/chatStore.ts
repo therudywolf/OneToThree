@@ -46,6 +46,9 @@ type ChatState = {
   /** Merged into message rows (covers `olderMessages` not held in `messages`). */
   readAtOverrides: Record<string, string>
   updateMessageReadAt: (messageId: string, readAt: string) => void
+  /** Large history / delivery batch decrypt in progress (subtle UI). */
+  historyDecryptBusy: boolean
+  setHistoryDecryptBusy: (busy: boolean) => void
   reset: () => void
 }
 
@@ -57,7 +60,8 @@ export const useChatStore = create<ChatState>((set) => ({
   replyTo: null,
   typingUsers: {},
   peerPresence: {},
-  setActiveChatId: (id) => set({ activeChatId: id, replyTo: null, readAtOverrides: {} }),
+  setActiveChatId: (id) =>
+    set({ activeChatId: id, replyTo: null, readAtOverrides: {}, historyDecryptBusy: false }),
   setMessages: (messages) =>
     set({
       messages: trimToRamWindow(sortByCreatedAt(messages)),
@@ -151,6 +155,8 @@ export const useChatStore = create<ChatState>((set) => ({
         m.id === messageId ? { ...m, read_at: readAt } : m
       ),
     })),
+  historyDecryptBusy: false,
+  setHistoryDecryptBusy: (busy) => set({ historyDecryptBusy: busy }),
   reset: () =>
     set({
       activeChatId: null,
@@ -161,5 +167,6 @@ export const useChatStore = create<ChatState>((set) => ({
       typingUsers: {},
       peerPresence: {},
       readAtOverrides: {},
+      historyDecryptBusy: false,
     }),
 }))

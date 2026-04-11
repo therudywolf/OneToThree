@@ -6,7 +6,8 @@ import {
   fetchPendingDeliveries,
 } from '@/lib/api/messages'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
-import { decryptApiMessageRow } from '@/lib/decrypt-chat-api-message'
+import { decryptApiMessageRows } from '@/lib/decrypt-chat-api-message'
+import { BATCH_WORKER_MIN } from '@/lib/crypto-batch-worker'
 import { getFmSocket } from '@/lib/api/socket'
 import { cacheMessage } from '@/lib/message-cache'
 import { useChatStore } from '@/store/chatStore'
@@ -16,22 +17,34 @@ async function pullPendingForChat(
   chatId: string,
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
-  appendMessage: (m: DecryptedMessage) => void
+  appendMessage: (m: DecryptedMessage) => void,
+  setDecryptBusy?: (busy: boolean) => void
 ): Promise<void> {
   const rows = await fetchPendingDeliveries(chatId)
   if (rows.length === 0) return
-  const ids: string[] = []
-  for (const m of rows) {
-    const row = await decryptApiMessageRow(
+  const cipherCount = rows.filter(
+    (m) => m.content != null && m.iv != null && m.content !== ''
+  ).length
+  const showBusy = cipherCount >= BATCH_WORKER_MIN
+  if (showBusy) setDecryptBusy?.(true)
+  let decrypted: DecryptedMessage[] = []
+  try {
+    decrypted = await decryptApiMessageRows(
       unwrappedPrivateKey,
       cryptoCtx,
-      m
+      rows
     )
+  } finally {
+    if (showBusy) setDecryptBusy?.(false)
+  }
+  const ids: string[] = []
+  for (let i = 0; i < decrypted.length; i++) {
+    const row = decrypted[i]!
     await cacheMessage(row).catch(() => {
       /* best-effort */
     })
     appendMessage(row)
-    ids.push(m.id)
+    ids.push(rows[i]!.id)
   }
   await acknowledgeMessagesDelivered(ids)
 }
@@ -39,6 +52,7 @@ async function pullPendingForChat(
 export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const appendMessage = useChatStore((s) => s.appendMessage)
+  const setHistoryDecryptBusy = useChatStore((s) => s.setHistoryDecryptBusy)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const prevConnected = useRef(false)
 
@@ -51,7 +65,13 @@ export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
         const pk = useChatStore.getState().unwrappedPrivateKey
         const ctx = cryptoCtx
         if (chatId && pk && ctx) {
-          void pullPendingForChat(chatId, pk, ctx, appendMessage).catch(() => {
+          void pullPendingForChat(
+            chatId,
+            pk,
+            ctx,
+            appendMessage,
+            setHistoryDecryptBusy
+          ).catch(() => {
             /* ignore transient sync errors */
           })
         }
@@ -59,7 +79,7 @@ export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
       prevConnected.current = now
     })
     return offStatus
-  }, [cryptoCtx, appendMessage])
+  }, [cryptoCtx, appendMessage, setHistoryDecryptBusy])
 
   useEffect(() => {
     if (!activeChatId || !cryptoCtx || !unwrappedPrivateKey) return
@@ -68,9 +88,16 @@ export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
       activeChatId,
       unwrappedPrivateKey,
       cryptoCtx,
-      appendMessage
+      appendMessage,
+      setHistoryDecryptBusy
     ).catch(() => {
       /* ignore */
     })
-  }, [activeChatId, cryptoCtx, unwrappedPrivateKey, appendMessage])
+  }, [
+    activeChatId,
+    cryptoCtx,
+    unwrappedPrivateKey,
+    appendMessage,
+    setHistoryDecryptBusy,
+  ])
 }

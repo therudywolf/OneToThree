@@ -14,7 +14,39 @@ import {
 import { useCallStore } from '@/store/callStore'
 import { useChatStore } from '@/store/chatStore'
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
+const DEFAULT_STUN: RTCIceServer = { urls: 'stun:stun.l.google.com:19302' }
+
+function buildIceServers(): RTCIceServer[] {
+  const turnUrl =
+    typeof process !== 'undefined'
+      ? process.env.NEXT_PUBLIC_TURN_URL?.trim()
+      : undefined
+  const turnUser =
+    typeof process !== 'undefined'
+      ? process.env.NEXT_PUBLIC_TURN_USERNAME?.trim()
+      : undefined
+  const turnPass =
+    typeof process !== 'undefined'
+      ? process.env.NEXT_PUBLIC_TURN_PASSWORD?.trim()
+      : undefined
+
+  if (turnUrl && turnUser && turnPass) {
+    const urls = turnUrl
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (urls.length === 0) return [DEFAULT_STUN]
+    return [
+      DEFAULT_STUN,
+      {
+        urls,
+        username: turnUser,
+        credential: turnPass,
+      },
+    ]
+  }
+  return [DEFAULT_STUN]
+}
 
 function stopStreamTracks(stream: MediaStream | null) {
   stream?.getTracks().forEach((t) => t.stop())
@@ -392,7 +424,7 @@ export function useWebRTC(userId: string | null) {
 
     setLocalStream(stream)
     if (inc.isVideo) facingModeRef.current = 'user'
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+    const pc = new RTCPeerConnection({ iceServers: buildIceServers() })
     pcsRef.current.set(inc.peerId, pc)
     addPeerConnection(inc.peerId, pc)
     attachPeerHandlers(inc.peerId, pc)
@@ -451,7 +483,7 @@ export function useWebRTC(userId: string | null) {
         if (peerId === userId) continue
         if (pcsRef.current.has(peerId)) continue
 
-        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+        const pc = new RTCPeerConnection({ iceServers: buildIceServers() })
         pcsRef.current.set(peerId, pc)
         addPeerConnection(peerId, pc)
         attachPeerHandlers(peerId, pc)

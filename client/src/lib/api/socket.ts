@@ -238,9 +238,13 @@ class FmSocketClient {
   private scheduleReconnect(): void {
     if (!this.wantOpen) return
     this.attempt++
-    const base = Math.min(30_000, 1000 * 2 ** Math.min(this.attempt, 5))
-    const jitter = Math.floor(Math.random() * 400)
-    this.scheduleConnect(base + jitter)
+    const BASE_MS = 1000
+    const MAX_MS = 30_000
+    const exp = BASE_MS * 2 ** (this.attempt - 1)
+    const capped = Math.min(MAX_MS, exp)
+    const jitterFactor = 0.8 + Math.random() * 0.4
+    const delayMs = Math.min(MAX_MS, Math.round(capped * jitterFactor))
+    this.scheduleConnect(delayMs)
   }
 }
 

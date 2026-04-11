@@ -29,6 +29,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const { user, updateUser, refresh } = useAuth()
   /** `null` until GET /users/me/settings succeeds — never assume true (shadow default). */
   const [discoverable, setDiscoverable] = useState<boolean | null>(null)
+  const [hidePresence, setHidePresence] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -52,6 +53,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       })
       const d = (await r.json().catch(() => ({}))) as {
         is_discoverable?: unknown
+        hide_presence?: unknown
         error?: string
       }
       if (!r.ok) {
@@ -61,6 +63,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       const value = readDiscoverableFromPayload(d.is_discoverable)
       setDiscoverable(value)
       updateUser({ is_discoverable: value })
+      setHidePresence(typeof d.hide_presence === 'boolean' ? d.hide_presence : false)
     } catch {
       setError(t('settings.loadFailed'))
     }
@@ -173,6 +176,39 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setError(e instanceof Error ? e.message : t('settings.unknown'))
     } finally {
       setTotpBusy(false)
+    }
+  }
+
+  async function toggleHidePresence() {
+    if (hidePresence === null || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const nextRequest = !hidePresence
+      const r = await fetch(`${API_URL}/users/me`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hide_presence: nextRequest }),
+      })
+      const d = (await r.json().catch(() => ({}))) as {
+        ok?: boolean
+        hide_presence?: unknown
+        error?: string
+      }
+      if (!r.ok) {
+        throw new Error(d.error ?? t('settings.toggleFailed'))
+      }
+      if (typeof d.hide_presence !== 'boolean') {
+        throw new Error(t('settings.toggleFailed'))
+      }
+      setHidePresence(d.hide_presence)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -297,8 +333,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     input.click()
   }
 
-  const settingsReady = discoverable !== null
+  const settingsReady = discoverable !== null && hidePresence !== null
   const discoverableOn = discoverable === true
+  const ghostOn = hidePresence === true
 
   const settingsBtn =
     'border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
@@ -429,6 +466,34 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
             >
               {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs uppercase tracking-widest text-neon-cyan">
+                {t('settings.ghostPresence')}
+              </p>
+              <p className="break-words text-[9px] text-red-800">
+                {t('settings.ghostPresenceHint')}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={ghostOn}
+              title={t('settings.ghostPresence')}
+              disabled={busy || !settingsReady}
+              onClick={() => void toggleHidePresence()}
+              className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
+                !settingsReady
+                  ? 'border-zinc-700 bg-zinc-950 text-zinc-600'
+                  : ghostOn
+                    ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
+                    : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+              } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
+            >
+              {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : ghostOn ? '[ ON ]' : '[ OFF ]'}
             </button>
           </div>
 

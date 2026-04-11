@@ -8,6 +8,8 @@ import {
   persistChatMessageAndFanOut,
   persistedRowToClientJson,
 } from '../lib/chat-message-persist.js'
+import { parseOptionalBurnAt } from '../lib/burn-at.js'
+import { resolveMediaOriginalBytes } from '../lib/message-send-helpers.js'
 import { markMessageReadByReader } from '../lib/mark-message-read.js'
 import { broadcastToUsers } from '../ws/registry.js'
 
@@ -23,6 +25,8 @@ const sendMessageBodySchema = z.object({
   media_type: z.string().nullable().optional(),
   media_iv: z.string().nullable().optional(),
   reply_to_id: z.string().uuid().nullable().optional(),
+  media_original_bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+  burn_at: z.string().nullable().optional(),
 })
 
 const deliveredAckSchema = z.object({
@@ -50,6 +54,11 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'NOT_A_MEMBER' })
     }
 
+    const burn = parseOptionalBurnAt(p.burn_at ?? null)
+    if (!burn.ok) {
+      return reply.status(400).send({ error: burn.error })
+    }
+
     const persisted = await persistChatMessageAndFanOut({
       chatId: p.chat_id,
       senderId: user.id,
@@ -59,6 +68,11 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       mediaPath: p.media_path ?? null,
       mediaType: p.media_type ?? null,
       mediaIv: p.media_iv ?? null,
+      mediaOriginalBytes: resolveMediaOriginalBytes(
+        p.media_path ?? null,
+        p.media_original_bytes
+      ),
+      burnAt: burn.date,
     })
     if (!persisted.ok) {
       return reply.status(500).send({ error: 'INSERT_FAILED' })
@@ -98,6 +112,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         mediaPath: messages.mediaPath,
         mediaType: messages.mediaType,
         mediaIv: messages.mediaIv,
+        burnAt: messages.burnAt,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
       })
@@ -134,6 +149,12 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
             : m.readAt instanceof Date
               ? m.readAt.toISOString()
               : String(m.readAt),
+        burn_at:
+          m.burnAt == null
+            ? null
+            : m.burnAt instanceof Date
+              ? m.burnAt.toISOString()
+              : String(m.burnAt),
         created_at:
           m.createdAt instanceof Date
             ? m.createdAt.toISOString()
@@ -268,6 +289,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         mediaPath: messages.mediaPath,
         mediaType: messages.mediaType,
         mediaIv: messages.mediaIv,
+        burnAt: messages.burnAt,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
       })
@@ -293,6 +315,12 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
             : m.readAt instanceof Date
               ? m.readAt.toISOString()
               : String(m.readAt),
+        burn_at:
+          m.burnAt == null
+            ? null
+            : m.burnAt instanceof Date
+              ? m.burnAt.toISOString()
+              : String(m.burnAt),
         created_at:
           m.createdAt instanceof Date
             ? m.createdAt.toISOString()

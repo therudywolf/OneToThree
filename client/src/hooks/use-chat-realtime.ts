@@ -116,6 +116,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
               ? m.media_type
               : null,
           media_iv: m.media_iv,
+          burn_at: m.burn_at ?? null,
         }
         await cacheMessage(row)
         appendMessage(row)

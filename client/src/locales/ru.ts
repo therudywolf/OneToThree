@@ -164,6 +164,7 @@ const ru = {
   'chat.noLogsHint': 'Ожидание сигнала — отправьте первый пакет.',
   'chat.replyBanner': 'Ответ на',
   'chat.inputPlaceholder': 'введите зашифрованное сообщение',
+  'chat.burnTimerLabel': 'ТАЙМЕР / СЖИГАНИЕ',
   'chat.originalDeleted': 'ОРИГИНАЛ_УДАЛЁН',
 
   'media.capture': 'ЗАХВАТ',
@@ -235,6 +236,9 @@ const ru = {
   'group.mediaArchiveEmpty': 'В этом канале пока нет медиа.',
 
   'settings.discoverable': 'Обнаруживаемость',
+  'settings.ghostPresence': 'Режим призрака',
+  'settings.ghostPresenceHint':
+    'Скрыть онлайн и «был в сети» от других. Их статус вы всё ещё видите.',
   'settings.discoverableHint':
     'Другие смогут найти вас по нику. Чтобы найти кого-то по нику, эта опция должна быть включена у него.',
   'settings.discoverableBadgeOn': '● видны в поиске по нику',

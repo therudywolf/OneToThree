@@ -6,8 +6,25 @@ import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
 import { useTranslation } from '@/hooks/use-translation'
 
+type BurnPreset = 'off' | '1m' | '1h' | '24h'
+
+function burnIsoFromPreset(preset: BurnPreset): string | null {
+  if (preset === 'off') return null
+  const addMs =
+    preset === '1m'
+      ? 60_000
+      : preset === '1h'
+        ? 3_600_000
+        : 86_400_000
+  return new Date(Date.now() + addMs).toISOString()
+}
+
 type Props = {
-  sendText: (t: string, replyToId?: string | null) => Promise<void>
+  sendText: (
+    t: string,
+    replyToId?: string | null,
+    opts?: { burn_at?: string | null }
+  ) => Promise<void>
   disabled?: boolean
 }
 
@@ -38,6 +55,7 @@ const EMOJI_PRESET = [
 export function ChatInput({ sendText, disabled }: Props) {
   const { t } = useTranslation()
   const [value, setValue] = useState('')
+  const [burnPreset, setBurnPreset] = useState<BurnPreset>('off')
   const [emojiOpen, setEmojiOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const replyTo = useChatStore((s) => s.replyTo)
@@ -79,7 +97,10 @@ export function ChatInput({ sendText, disabled }: Props) {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!value.trim() || disabled) return
-    await sendText(value, replyTo?.id ?? null)
+    const burn_at = burnIsoFromPreset(burnPreset)
+    await sendText(value, replyTo?.id ?? null, {
+      burn_at: burn_at ?? undefined,
+    })
     onSubmitOrClear()
     setValue('')
     setReplyTo(null)
@@ -124,6 +145,21 @@ export function ChatInput({ sendText, disabled }: Props) {
           ))}
         </div>
       ) : null}
+      <div className="mb-1 flex flex-wrap items-center gap-2 font-mono text-[9px] uppercase tracking-wider text-neon-cyan/90">
+        <span className="text-neon-red/90">{t('chat.burnTimerLabel')}</span>
+        <select
+          value={burnPreset}
+          onChange={(e) => setBurnPreset(e.target.value as BurnPreset)}
+          disabled={disabled}
+          className="max-w-[140px] border border-neon-cyan/40 bg-black px-1 py-0.5 text-[9px] text-neon-cyan"
+          aria-label={t('chat.burnTimerLabel')}
+        >
+          <option value="off">OFF</option>
+          <option value="1m">1m</option>
+          <option value="1h">1h</option>
+          <option value="24h">24h</option>
+        </select>
+      </div>
       <div className="flex items-center gap-2">
         <button
           type="button"

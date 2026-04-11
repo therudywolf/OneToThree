@@ -10,6 +10,8 @@ export type DecryptedMessage = {
   media_iv?: string | null
   /** Direct E2E: set when peer has read (server `read_at`). */
   read_at?: string | null
+  /** Burn-after-read: remove locally after this instant (server-synced metadata). */
+  burn_at?: string | null
 }
 
 export type ChatRow = {

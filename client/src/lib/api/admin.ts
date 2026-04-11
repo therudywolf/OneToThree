@@ -17,6 +17,38 @@ export type AdminReportRow = {
   created_at: string
 }
 
+export type AdminSystemStats = {
+  process: {
+    cpu_percent: number
+    memory: {
+      rss: number
+      heap_used: number
+      heap_total: number
+    }
+    uptime_ms: number
+  }
+  host: {
+    freemem: number
+    totalmem: number
+  }
+  database: {
+    message_count: number
+    user_count: number
+  }
+  storage: {
+    minio_total_bytes: string
+    buckets: string[]
+  }
+}
+
+export type AdminStorageUserRow = {
+  user_id: string
+  username: string
+  is_banned: boolean
+  msg_count: number
+  storage_used: string
+}
+
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
   const res = await fetch(`${API_URL}/admin/users`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as {
@@ -76,6 +108,38 @@ export async function postAdminPurgeUser(
     ok: true,
     purged_direct_chats: data.purged_direct_chats ?? 0,
   }
+}
+
+export async function fetchAdminSystemStats(): Promise<AdminSystemStats> {
+  const res = await fetch(`${API_URL}/admin/system-stats`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as AdminSystemStats & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'ADMIN_SYSTEM_STATS_FAILED')
+  }
+  return data
+}
+
+export async function fetchAdminUserStorageUsage(): Promise<
+  AdminStorageUserRow[]
+> {
+  const res = await fetch(`${API_URL}/admin/users/storage-usage`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    users?: AdminStorageUserRow[]
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'ADMIN_STORAGE_USAGE_FAILED')
+  }
+  return (data.users ?? []).map((u) => ({
+    ...u,
+    user_id: canonicalUserId(u.user_id),
+  }))
 }
 
 export async function fetchAdminReports(): Promise<AdminReportRow[]> {

@@ -17,7 +17,11 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
   const appendMessage = useChatStore((s) => s.appendMessage)
 
   const sendText = useCallback(
-    async (text: string, replyToId?: string | null) => {
+    async (
+      text: string,
+      replyToId?: string | null,
+      opts?: { burn_at?: string | null }
+    ) => {
       const t = text.trim()
       if (
         !t ||
@@ -33,11 +37,13 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
         t,
         cryptoCtx
       )
+      const burnAt = opts?.burn_at
       const { via, serverMessage } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
         content: encrypted_content,
         iv,
         reply_to_id: replyToId ?? null,
+        ...(burnAt ? { burn_at: burnAt } : {}),
       })
       if (via === 'rest' && serverMessage) {
         const row = await decryptApiMessageRow(

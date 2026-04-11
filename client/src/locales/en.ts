@@ -158,6 +158,7 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'chat.noLogsHint': 'Waiting for signal — send the first packet.',
   'chat.replyBanner': 'Replying to',
   'chat.inputPlaceholder': 'type encrypted message',
+  'chat.burnTimerLabel': 'TIMER / BURN',
   'chat.originalDeleted': 'ORIGINAL_DELETED',
 
   'media.capture': 'CAPTURE',
@@ -229,6 +230,9 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'group.mediaArchiveEmpty': 'No media packets in this channel yet.',
 
   'settings.discoverable': 'Discoverable',
+  'settings.ghostPresence': 'Ghost presence',
+  'settings.ghostPresenceHint':
+    'Hide your online status and last seen from others. You still see theirs.',
   'settings.discoverableHint':
     'Lets others find you by username. To find someone else, they must enable this too.',
   'settings.discoverableBadgeOn': '● visible in username search',

@@ -243,6 +243,13 @@ export function ChatApp({
   const { sendMedia } = useSendMediaMessage(cryptoCtx)
   useGroupKeyDistribution(cryptoCtx, reload)
 
+  useEffect(() => {
+    const tick = () => useChatStore.getState().pruneBurnedMessages()
+    tick()
+    const id = window.setInterval(tick, 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
   const typingUsers = useChatStore((s) => s.typingUsers)
   const peerPresence = useChatStore((s) => s.peerPresence)

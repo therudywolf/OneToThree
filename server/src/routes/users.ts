@@ -41,6 +41,7 @@ const patchMeSchema = z
   .object({
     ecdh_public_key_jwk: z.string().min(8).optional(),
     is_discoverable: z.coerce.boolean().optional(),
+    hide_presence: z.coerce.boolean().optional(),
   })
   .strict()
 
@@ -201,11 +202,17 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const [row] = await db
-      .select({ isDiscoverable: users.isDiscoverable })
+      .select({
+        isDiscoverable: users.isDiscoverable,
+        hidePresence: users.hidePresence,
+      })
       .from(users)
       .where(eq(users.id, user.id))
       .limit(1)
-    return reply.send({ is_discoverable: row?.isDiscoverable ?? false })
+    return reply.send({
+      is_discoverable: row?.isDiscoverable ?? false,
+      hide_presence: row?.hidePresence ?? false,
+    })
   })
 
   app.patch('/me', async (request, reply) => {
@@ -235,6 +242,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       updates.isDiscoverable = parsed.data.is_discoverable
     }
 
+    if (parsed.data.hide_presence !== undefined) {
+      updates.hidePresence = parsed.data.hide_presence
+    }
+
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
@@ -250,11 +261,15 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .update(users)
       .set(updates)
       .where(eq(users.id, user.id))
-      .returning({ isDiscoverable: users.isDiscoverable })
+      .returning({
+        isDiscoverable: users.isDiscoverable,
+        hidePresence: users.hidePresence,
+      })
 
     return reply.send({
       ok: true,
       is_discoverable: after?.isDiscoverable ?? false,
+      hide_presence: after?.hidePresence ?? false,
     })
   })
 
@@ -346,21 +361,27 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .select({
         id: users.id,
         lastSeenAt: users.lastSeenAt,
+        hidePresence: users.hidePresence,
       })
       .from(users)
       .where(inArray(users.id, requested))
 
     return reply.send({
-      users: rows.map((u) => ({
-        id: u.id,
-        last_seen_at:
-          u.lastSeenAt == null
+      users: rows.map((u) => {
+        const isSelf = u.id === auth.id
+        const mask = !isSelf && u.hidePresence === true
+        return {
+          id: u.id,
+          last_seen_at: mask
             ? null
-            : u.lastSeenAt instanceof Date
-              ? u.lastSeenAt.toISOString()
-              : String(u.lastSeenAt),
-        online: hasActiveSocket(u.id),
-      })),
+            : u.lastSeenAt == null
+              ? null
+              : u.lastSeenAt instanceof Date
+                ? u.lastSeenAt.toISOString()
+                : String(u.lastSeenAt),
+          online: mask ? false : hasActiveSocket(u.id),
+        }
+      }),
     })
   })
 

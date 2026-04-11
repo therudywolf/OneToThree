@@ -122,6 +122,9 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.onetothree.ru}
         NEXT_PUBLIC_WS_ORIGIN: ${NEXT_PUBLIC_WS_ORIGIN:-https://api.onetothree.ru}
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
+        NEXT_PUBLIC_TURN_URL: ${NEXT_PUBLIC_TURN_URL:-}
+        NEXT_PUBLIC_TURN_USERNAME: ${NEXT_PUBLIC_TURN_USERNAME:-}
+        NEXT_PUBLIC_TURN_PASSWORD: ${NEXT_PUBLIC_TURN_PASSWORD:-}
     restart: always
     cpu_shares: 512
     cpus: '4.0'
@@ -147,6 +150,25 @@ services:
       timeout: 8s
       retries: 8
       start_period: 90s
+
+  # TURN relay for WebRTC (symmetric NAT). Uses host networking so UDP relay ports are not
+  # behind Docker NAT. Open 3478/tcp+udp and 49152-65535/udp on the host firewall.
+  coturn:
+    image: coturn/coturn:latest
+    restart: always
+    network_mode: host
+    env_file:
+      - .env.prod
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --min-port=49152
+      - --max-port=65535
+      - --lt-cred-mech
+      - --fingerprint
+      - --realm=onetothree.ru
+      - --user=${TURN_USERNAME:?set TURN_USERNAME in .env.prod}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.prod}
 
   caddy:
     image: caddy:2-alpine

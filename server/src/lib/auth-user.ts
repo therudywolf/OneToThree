@@ -2,7 +2,11 @@ import { and, eq, isNull } from 'drizzle-orm'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import { db } from '../db/index.js'
 import { devices, users } from '../db/schema.js'
-import { clearFmSessionCookie, SESSION_COOKIE } from './session-cookie.js'
+import {
+  clearFmSessionCookie,
+  readFmSessionToken,
+  SESSION_COOKIE,
+} from './session-cookie.js'
 import { normalizeUuid } from './uuid.js'
 
 export type AuthUser = {
@@ -26,7 +30,7 @@ export async function verifySessionJwt(
   request: FastifyRequest,
   token?: string
 ): Promise<SessionJwtPayload | null> {
-  const t = token ?? request.cookies[SESSION_COOKIE]
+  const t = token ?? readFmSessionToken(request)
   if (!t) return null
   try {
     return await request.server.jwt.verify<SessionJwtPayload>(t)

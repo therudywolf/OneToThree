@@ -36,6 +36,8 @@ import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
 import { LocaleToggle } from '@/components/locale-toggle'
+import { PwaInstallBanner } from '@/components/pwa-install-banner'
+import { PushOnboardingBanner } from '@/components/push-onboarding-banner'
 import { InviteChatLinkEffect } from '@/components/chat/invite-chat-link-effect'
 import { useTranslation } from '@/hooks/use-translation'
 import { MEDIA_PERMISSION_DENIED_CODE } from '@/lib/media-limits'
@@ -351,6 +353,7 @@ export function ChatApp({
         />
       ) : null}
       <OfflineBanner />
+      <PwaInstallBanner />
       {settingsOpen ? (
         <SettingsModal
           userId={userId}
@@ -479,6 +482,7 @@ export function ChatApp({
               Decrypting backlog…
             </div>
           ) : null}
+          <PushOnboardingBanner />
           {mediaAccessError ? (
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-3 py-1 font-mono text-[11px] leading-snug text-zinc-500">
               <span className="min-w-0 flex-1">

@@ -43,11 +43,16 @@ function PeerTile({
   stream,
   label,
   muted,
+  remoteMicMuted,
+  remoteCamOff,
 }: {
   peerId: string
   stream: MediaStream
   label: string
   muted?: boolean
+  /** Signaled from peer (WebSocket), not track inspection. */
+  remoteMicMuted?: boolean
+  remoteCamOff?: boolean
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -83,6 +88,9 @@ function PeerTile({
     }
   }, [stream, hasVideo, muted])
 
+  const showRemoteHints =
+    label === 'REMOTE' && (remoteMicMuted || remoteCamOff)
+
   return (
     <div className="relative border border-neon-cyan/40 shadow-[0_0_8px_rgba(0,255,255,0.2)]">
       <p className="border-b border-neon-cyan/30 bg-black px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan">
@@ -90,20 +98,45 @@ function PeerTile({
       </p>
       <audio ref={audioRef} className="hidden" playsInline />
       {hasVideo ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={muted}
-          controls={false}
-          className="aspect-video w-full bg-black object-cover"
-        />
+        <div className="relative">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={muted}
+            controls={false}
+            className="aspect-video w-full bg-black object-cover"
+          />
+          {showRemoteHints ? (
+            <div className="pointer-events-none absolute bottom-1 left-1 flex flex-wrap gap-1">
+              {remoteMicMuted ? (
+                <span className="border border-neon-red bg-black/85 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-neon-red shadow-[0_0_8px_rgba(255,0,0,0.35)]">
+                  MIC MUTED
+                </span>
+              ) : null}
+              {remoteCamOff ? (
+                <span className="border border-neon-red bg-black/85 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-neon-red shadow-[0_0_8px_rgba(255,0,0,0.35)]">
+                  CAM OFF
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       ) : (
-        <div className="flex aspect-video w-full items-center justify-center bg-black">
+        <div className="relative flex aspect-video w-full items-center justify-center bg-black">
           <div className="space-y-1 text-center">
             <div className="mx-auto h-12 w-12 rounded-full border border-neon-red bg-black" />
             <p className="font-mono text-[9px] uppercase text-neon-red">AUDIO</p>
           </div>
+          {showRemoteHints ? (
+            <div className="pointer-events-none absolute bottom-2 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-1">
+              {remoteMicMuted ? (
+                <span className="border border-neon-red bg-black/90 px-2 py-0.5 font-mono text-[8px] uppercase text-neon-red">
+                  MIC MUTED
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       )}
     </div>
@@ -121,6 +154,7 @@ export function ActiveCallOverlay({
   const isCalling = useCallStore((s) => s.isCalling)
   const localStream = useCallStore((s) => s.localStream)
   const remoteStreams = useCallStore((s) => s.remoteStreams)
+  const remotePeerMedia = useCallStore((s) => s.remotePeerMedia)
 
   const [tick, setTick] = useState(0)
   const [elapsed, setElapsed] = useState(0)
@@ -201,14 +235,19 @@ export function ActiveCallOverlay({
             label="YOU"
             muted
           />
-          {remoteEntries.map(([peerId, stream]) => (
-            <PeerTile
-              key={peerId}
-              peerId={peerId}
-              stream={stream}
-              label="REMOTE"
-            />
-          ))}
+          {remoteEntries.map(([peerId, stream]) => {
+            const hint = remotePeerMedia[peerId]
+            return (
+              <PeerTile
+                key={peerId}
+                peerId={peerId}
+                stream={stream}
+                label="REMOTE"
+                remoteMicMuted={hint?.micMuted}
+                remoteCamOff={hint?.cameraOff}
+              />
+            )
+          })}
         </div>
       </div>
 
@@ -216,7 +255,11 @@ export function ActiveCallOverlay({
         <button
           type="button"
           onClick={handleMute}
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-neon-cyan bg-black p-3 text-neon-cyan hover:bg-neon-cyan/10"
+          className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none bg-black p-3 hover:bg-neon-cyan/10 ${
+            audioMuted
+              ? 'border-2 border-neon-red text-neon-red shadow-[0_0_14px_rgba(255,0,0,0.35)]'
+              : 'border border-neon-cyan text-neon-cyan'
+          }`}
           aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
         >
           {audioMuted ? (

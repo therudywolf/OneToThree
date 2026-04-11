@@ -109,7 +109,7 @@ export function ChatInput({ sendText, disabled }: Props) {
   return (
     <form
       onSubmit={(e) => void onSubmit(e)}
-      className="relative shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-black p-2"
+      className="relative shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-black p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
     >
       {replyTo ? (
         <div className="mb-2 flex items-center gap-2 border-l-2 border-neon-cyan/50 pl-2">

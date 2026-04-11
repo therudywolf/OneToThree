@@ -85,6 +85,21 @@ export async function markMessageRead(messageId: string): Promise<void> {
   }
 }
 
+/** POST /api/messages/batch-read — batch mark multiple messages as read (optimized for scrolling). */
+export async function markMessagesReadBatch(messageIds: string[]): Promise<void> {
+  if (!messageIds.length) return
+  const res = await fetch(`${API_URL}/messages/batch-read`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message_ids: messageIds }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(data.error ?? 'BATCH_READ_FAILED')
+  }
+}
+
 export type MediaArchiveRow = {
   id: string
   chat_id: string

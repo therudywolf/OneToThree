@@ -110,3 +110,21 @@ export async function markMessageReadByReader(
     read_at: readAtIso,
   }
 }
+
+/**
+ * Batch mark multiple messages as read. Idempotent.
+ * Returns array of results (individual success/error per message).
+ */
+export async function markMessagesReadByReader(
+  readerId: string,
+  messageIds: string[]
+): Promise<MarkReadResult[]> {
+  if (!messageIds.length) return []
+
+  const results: MarkReadResult[] = []
+  for (const msgId of messageIds) {
+    const result = await markMessageReadByReader(readerId, msgId)
+    results.push(result)
+  }
+  return results
+}

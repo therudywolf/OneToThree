@@ -36,14 +36,7 @@ export function useWebSocketNetwork(): WebSocketNetworkState {
       setWsConnected(socket.connected)
       setQueuedCount(socket.queuedCount)
     })
-    const iv = setInterval(() => {
-      setWsConnected(socket.connected)
-      setQueuedCount(socket.queuedCount)
-    }, 1000)
-    return () => {
-      off()
-      clearInterval(iv)
-    }
+    return off
   }, [])
 
   return { online, wsConnected, queuedCount }

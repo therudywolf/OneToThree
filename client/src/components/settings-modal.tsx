@@ -1,5 +1,6 @@
 'use client'
 
+import { motion } from 'framer-motion'
 import { useCallback, useEffect, useState } from 'react'
 import { API_URL, fetchMe } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
@@ -298,15 +299,21 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const settingsReady = discoverable !== null
   const discoverableOn = discoverable === true
 
+  const settingsBtn =
+    'border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
+
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 px-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-black/90 px-3 py-6 sm:px-4"
       role="dialog"
       aria-modal="true"
       aria-label={t('common.settings')}
     >
-      <div
-        className={`terminal-panel w-full space-y-5 ${
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+        className={`terminal-panel flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${
           totpSetup
             ? 'max-w-lg'
             : settingsTab === 'media' || settingsTab === 'devices'
@@ -314,24 +321,24 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               : 'max-w-md'
         }`}
       >
-        <header className="flex items-center justify-between border-b border-neon-red/40 pb-3">
-          <p className="text-xs uppercase tracking-[0.35em] text-neon-cyan">
+        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-neon-red/40 pb-3">
+          <p className="min-w-0 break-words text-xs uppercase tracking-[0.35em] text-neon-cyan">
             [ SETTINGS ] :: {username}
           </p>
           <button
             type="button"
             onClick={onClose}
-            className="font-mono text-xs text-neon-red hover:text-neon-cyan"
+            className="shrink-0 font-mono text-xs text-neon-red transition-all duration-200 ease-in-out hover:text-neon-cyan active:scale-95"
           >
             [X]
           </button>
         </header>
 
-        <div className="flex gap-2 border-b border-neon-cyan/20 pb-2">
+        <div className="flex shrink-0 flex-col gap-2 border-b border-neon-cyan/20 py-2 sm:flex-row sm:flex-wrap">
           <button
             type="button"
             onClick={() => setSettingsTab('main')}
-            className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+            className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
               settingsTab === 'main'
                 ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
                 : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
@@ -342,7 +349,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           <button
             type="button"
             onClick={() => setSettingsTab('media')}
-            className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+            className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
               settingsTab === 'media'
                 ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
                 : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
@@ -353,7 +360,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           <button
             type="button"
             onClick={() => setSettingsTab('devices')}
-            className={`border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+            className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
               settingsTab === 'devices'
                 ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
                 : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
@@ -362,6 +369,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             [ {t('settings.tabDevices')} ]
           </button>
         </div>
+
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-0.5 py-4">
 
         {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
         {settingsTab === 'devices' ? (
@@ -373,12 +382,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         >
           <SettingsAvatarSection userId={userId} username={username} />
           <SettingsPushNotifications userId={userId} />
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">
                 {t('settings.discoverable')}
               </p>
-              <p className="text-[9px] text-red-800">
+              <p className="break-words text-[9px] text-red-800">
                 {t('settings.discoverableHint')}
               </p>
               <p
@@ -410,7 +419,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               }
               disabled={busy || !settingsReady}
               onClick={() => void toggleDiscoverable()}
-              className={`shrink-0 border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+              className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
                 !settingsReady
                   ? 'border-zinc-700 bg-zinc-950 text-zinc-600'
                   : discoverableOn
@@ -565,15 +574,17 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t border-neon-cyan/30 pt-3">
-            <div>
+          <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="min-w-0">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">
                 {t('common.language')} / Язык
               </p>
-              <p className="text-[9px] text-red-800">{t('settings.languageHint')}</p>
+              <p className="break-words text-[9px] text-red-800">
+                {t('settings.languageHint')}
+              </p>
             </div>
             <select
-              className="terminal-input h-8 w-28 py-1 text-xs uppercase"
+              className="terminal-input h-8 w-full max-w-[10rem] shrink-0 py-1 text-xs uppercase"
               value={locale}
               onChange={(e) => setLocale(e.target.value === 'ru' ? 'ru' : 'en')}
               aria-label={`${t('common.language')} / Язык`}
@@ -587,26 +598,28 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <p className="mb-2 text-xs uppercase tracking-widest text-neon-cyan">
               {t('settings.vaultBackup')}
             </p>
-            <p className="mb-2 text-[9px] text-zinc-500">{t('settings.vaultBackupHint')}</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="mb-2 break-words text-[9px] text-zinc-500">
+              {t('settings.vaultBackupHint')}
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <TerminalGlitchButton
                 type="button"
                 onClick={exportVault}
-                className="flex-1 !px-2 !py-1.5 !text-[10px]"
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[10px] sm:flex-1 sm:basis-[calc(33.333%-0.5rem)]"
               >
                 [ {t('settings.vaultExportJson')} ]
               </TerminalGlitchButton>
               <TerminalGlitchButton
                 type="button"
                 onClick={exportPhysicalKey}
-                className="flex-1 !px-2 !py-1.5 !text-[10px]"
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[10px] sm:flex-1 sm:basis-[calc(33.333%-0.5rem)]"
               >
                 [ {t('settings.vaultExportKey')} ]
               </TerminalGlitchButton>
               <TerminalGlitchButton
                 type="button"
                 onClick={importVault}
-                className="flex-1 !px-2 !py-1.5 !text-[10px]"
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[10px] sm:flex-1 sm:basis-[calc(33.333%-0.5rem)]"
               >
                 [ {t('settings.vaultImport')} ]
               </TerminalGlitchButton>
@@ -620,7 +633,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <p className="mb-1 text-xs uppercase tracking-widest text-neon-red">
               {t('settings.dangerZone')}
             </p>
-            <p className="mb-2 text-[9px] text-zinc-500">{t('settings.purgeHint')}</p>
+            <p className="mb-2 break-words text-[9px] text-zinc-500">
+              {t('settings.purgeHint')}
+            </p>
             <TerminalGlitchButton
               type="button"
               onClick={() => void purgeLocalCache()}
@@ -632,14 +647,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         </div>
 
         {error ? (
-          <p className="border border-neon-red px-2 py-1 font-mono text-[10px] text-neon-red">
+          <p className="shrink-0 border border-neon-red px-2 py-1 font-mono text-[10px] text-neon-red break-words">
             [!] {error}
           </p>
         ) : null}
         {saved ? (
-          <p className="text-[10px] text-neon-cyan">:: {t('common.saved')}</p>
+          <p className="shrink-0 text-[10px] text-neon-cyan">:: {t('common.saved')}</p>
         ) : null}
-      </div>
+        </div>
+
+      </motion.div>
     </div>
   )
 }

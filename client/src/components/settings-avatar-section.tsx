@@ -66,7 +66,7 @@ export function SettingsAvatarSection({ userId, username }: Props) {
   }
 
   return (
-    <div className="border border-neon-cyan/30 bg-black/40 p-3">
+    <div className="min-w-0 border border-neon-cyan/30 bg-black/40 p-3">
       <p className="mb-2 text-[10px] uppercase tracking-widest text-neon-cyan">
         {t('settings.avatarTitle')}
       </p>
@@ -97,7 +97,7 @@ export function SettingsAvatarSection({ userId, username }: Props) {
             type="button"
             disabled={busy}
             onClick={onPickFile}
-            className="w-full border border-neon-red bg-black py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40"
+            className="w-full border border-neon-red bg-black py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-red transition-all duration-200 ease-in-out hover:scale-[1.02] hover:border-neon-cyan hover:text-neon-cyan active:scale-95 disabled:opacity-40"
           >
             {busy ? t('settings.avatarBusy') : t('settings.avatarChoose')}
           </button>

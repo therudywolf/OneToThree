@@ -38,7 +38,7 @@ export async function fetchAvatarDownloadUrl(
 }
 
 /**
- * Upload cropped JPEG bytes; requires vault PIN to sign the payload.
+ * Upload cropped JPEG: presign → PUT to MinIO → commit DB (mirrors chat media flow).
  */
 export async function uploadAvatarJpeg(params: {
   userId: string
@@ -55,27 +55,60 @@ export async function uploadAvatarJpeg(params: {
     message
   )
 
-  const form = new FormData()
-  form.append(
-    'file',
-    new File([params.jpegBlob], 'avatar.jpg', { type: 'image/jpeg' })
-  )
-
-  const res = await fetch(`${API_URL}/users/me/avatar`, {
+  const presign = await fetch(`${API_URL}/users/me/avatar/presign`, {
     method: 'POST',
     credentials: 'include',
     headers: sanitizeFetchHeaderRecord({
+      'Content-Type': 'application/json',
       'X-Nonce': nonce,
       'X-Signature': signature,
     }),
-    body: form,
+    body: JSON.stringify({ digest }),
   })
-  const data = (await res.json().catch(() => ({}))) as {
+  const presignData = (await presign.json().catch(() => ({}))) as {
+    uploadUrl?: string
     avatar_key?: string
     error?: string
   }
-  if (!res.ok || !data.avatar_key) {
-    throw new Error(data.error ?? 'AVATAR_UPLOAD_FAILED')
+  if (!presign.ok || !presignData.uploadUrl || !presignData.avatar_key) {
+    throw new Error(presignData.error ?? 'AVATAR_PRESIGN_FAILED')
   }
-  return { avatar_key: data.avatar_key }
+
+  const { uploadUrl, avatar_key } = presignData
+
+  console.log('[AVATAR UPLOAD] PUT to:', uploadUrl)
+
+  let put: Response
+  try {
+    put = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: buf,
+    })
+  } catch (e) {
+    console.error('[AVATAR UPLOAD FATAL]', e)
+    throw e instanceof Error ? e : new Error('AVATAR_PUT_NETWORK')
+  }
+
+  if (!put.ok) {
+    const t = await put.text().catch(() => '')
+    console.error('[AVATAR UPLOAD] PUT failed', put.status, t.slice(0, 400))
+    throw new Error(`AVATAR_PUT_FAILED_${put.status}`)
+  }
+
+  const commit = await fetch(`${API_URL}/users/me/avatar/commit`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ avatar_key }),
+  })
+  const commitData = (await commit.json().catch(() => ({}))) as {
+    avatar_key?: string
+    error?: string
+  }
+  if (!commit.ok || !commitData.avatar_key) {
+    throw new Error(commitData.error ?? 'AVATAR_COMMIT_FAILED')
+  }
+
+  return { avatar_key: commitData.avatar_key }
 }

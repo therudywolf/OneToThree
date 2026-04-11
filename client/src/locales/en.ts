@@ -214,6 +214,10 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.devicesRevoke': 'REVOKE',
   'settings.devicesRevokeConfirm':
     'Revoke this device? It will be signed out on the next request.',
+  'settings.linkDeviceCta': 'LINK_DEVICE_QR',
+  'settings.linkDeviceTitle': '[ LINK :: NEW_DEVICE :: QR ]',
+  'settings.linkDeviceHint':
+    'Scan from the new device’s login screen (stub: TOTP accounts not supported yet). Token expires in ~5 min.',
   'settings.recoveryMnemonicTitle': 'BIP39 recovery phrase (12 words)',
   'settings.recoveryMnemonicHint':
     'Offline backup only. Never share. Does not replace your vault passphrase for login.',

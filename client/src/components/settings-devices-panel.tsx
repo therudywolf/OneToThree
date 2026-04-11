@@ -7,6 +7,7 @@ import {
   type DeviceRow,
 } from '@/lib/api/devices'
 import { useAuth } from '@/components/auth/auth-provider'
+import { SettingsLinkDeviceModal } from '@/components/settings-link-device-modal'
 import { useTranslation } from '@/hooks/use-translation'
 
 type Props = { userId: string; active: boolean }
@@ -18,6 +19,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [linkQrOpen, setLinkQrOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,11 +62,26 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
 
   return (
     <div className="space-y-4 border-t border-neon-cyan/30 pt-3">
+      {linkQrOpen ? (
+        <SettingsLinkDeviceModal onClose={() => setLinkQrOpen(false)} />
+      ) : null}
       <div>
         <p className="text-xs uppercase tracking-[0.25em] text-neon-cyan">
           {t('settings.devicesSectionTitle')}
         </p>
-        <p className="mt-1 text-[9px] text-red-800">{t('settings.devicesHint')}</p>
+        <p className="mt-1 break-words text-[9px] text-red-800">
+          {t('settings.devicesHint')}
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <button
+          type="button"
+          onClick={() => setLinkQrOpen(true)}
+          className="w-full border border-neon-cyan/70 bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-cyan/10 active:scale-95 sm:w-auto"
+        >
+          [ {t('settings.linkDeviceCta')} ]
+        </button>
       </div>
 
       {error ? (
@@ -118,7 +135,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                   type="button"
                   disabled={busyId === d.id}
                   onClick={() => void onRevoke(d)}
-                  className="shrink-0 border border-neon-red/70 px-2 py-1 text-[9px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                  className="shrink-0 border border-neon-red/70 px-2 py-1 text-[9px] uppercase text-neon-red transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-red/10 active:scale-95 disabled:opacity-40"
                 >
                   {busyId === d.id ? '…' : t('settings.devicesRevoke')}
                 </button>

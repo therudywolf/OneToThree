@@ -2,6 +2,7 @@ import {
   authDeviceHeaders,
   getOrCreateClientDeviceId,
 } from '@/lib/client-device'
+import { sanitizeFetchHeaderRecord } from '@/lib/http-fetch-headers'
 import { canonicalUserId } from '@/lib/user-id'
 
 /**
@@ -72,10 +73,10 @@ export async function verifyChallenge(
 ): Promise<VerifyChallengeResult> {
   const res = await fetch(`${API_URL}/auth/verify`, {
     method: 'POST',
-    headers: {
+    headers: sanitizeFetchHeaderRecord({
       'Content-Type': 'application/json',
       ...authDeviceHeaders(),
-    },
+    }),
     credentials: 'include',
     body: JSON.stringify({
       username: payload.username.trim(),
@@ -125,10 +126,10 @@ export async function complete2faLogin(
 ): Promise<{ user: { id: string; username: string } }> {
   const res = await fetch(`${API_URL}/auth/login/2fa`, {
     method: 'POST',
-    headers: {
+    headers: sanitizeFetchHeaderRecord({
       'Content-Type': 'application/json',
       ...authDeviceHeaders(),
-    },
+    }),
     credentials: 'include',
     body: JSON.stringify({
       pending_token: pendingToken,

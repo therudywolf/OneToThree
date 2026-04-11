@@ -1,21 +1,6 @@
-const STORAGE_KEY = 'fm_client_device_id'
+import { sanitizeFetchHeaderRecord, toFetchSafeHeaderValue } from '@/lib/http-fetch-headers'
 
-/**
- * `fetch()` / `Headers` require ISO-8859-1 (ByteString). Unicode outside U+00FF throws.
- */
-function latin1FetchHeaderValue(input: string, maxLen: number): string {
-  let out = ''
-  for (let i = 0; i < input.length && out.length < maxLen; ) {
-    const cp = input.codePointAt(i) ?? 0
-    i += cp > 0xffff ? 2 : 1
-    if (cp > 0xff) {
-      out += '?'
-    } else {
-      out += String.fromCodePoint(cp)
-    }
-  }
-  return out
-}
+const STORAGE_KEY = 'fm_client_device_id'
 
 function randomId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -38,7 +23,7 @@ export function getOrCreateClientDeviceId(): string {
   }
 }
 
-/** Short label for X-Device-Name (server truncates). ASCII/Latin-1 only — fetch forbids U+2026 etc. */
+/** Human-readable device label (may include non-Latin-1 from OS/UA); sent UTF-8-safe via headers. */
 export function getDeviceDisplayLabel(): string {
   if (typeof navigator === 'undefined') return 'Unknown'
   const ua = navigator.userAgent || ''
@@ -47,12 +32,13 @@ export function getDeviceDisplayLabel(): string {
   return `${platform} | ${short}`
 }
 
+/** Headers for `/auth/verify` etc.; values are ByteString-safe (FM1: + percent-encoding when needed). */
 export function authDeviceHeaders(): Record<string, string> {
-  return {
-    'X-Client-Device-Id': latin1FetchHeaderValue(
+  return sanitizeFetchHeaderRecord({
+    'X-Client-Device-Id': toFetchSafeHeaderValue(
       getOrCreateClientDeviceId(),
       128
     ),
-    'X-Device-Name': latin1FetchHeaderValue(getDeviceDisplayLabel(), 256),
-  }
+    'X-Device-Name': toFetchSafeHeaderValue(getDeviceDisplayLabel(), 400),
+  })
 }

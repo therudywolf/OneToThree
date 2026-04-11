@@ -1,4 +1,5 @@
 import { API_URL } from './auth'
+import { sanitizeFetchHeaderRecord } from '@/lib/http-fetch-headers'
 import { sha256HexBytes } from '@/lib/sha256'
 import { signMessageWithVaultPin } from '@/lib/vault-signing'
 
@@ -63,10 +64,10 @@ export async function uploadAvatarJpeg(params: {
   const res = await fetch(`${API_URL}/users/me/avatar`, {
     method: 'POST',
     credentials: 'include',
-    headers: {
+    headers: sanitizeFetchHeaderRecord({
       'X-Nonce': nonce,
       'X-Signature': signature,
-    },
+    }),
     body: form,
   })
   const data = (await res.json().catch(() => ({}))) as {

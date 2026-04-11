@@ -13,6 +13,7 @@ import {
   getOlderCachedMessages,
 } from '@/lib/message-cache'
 import { lookupUsers } from '@/lib/api/users'
+import { NoirPlaintext } from '@/components/chat/noir-plaintext'
 import { UserAvatar } from '@/components/user-avatar'
 import type { ApiChatRow, ChatMemberRole } from '@/lib/api/chats'
 import { useReadReceipts } from '@/hooks/use-read-receipts'
@@ -99,6 +100,7 @@ export function ChatTerminal({
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useChatStore((s) => s.activeChatId)
   const ref = useRef<HTMLDivElement>(null)
+  const ctxMenuRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
   const [olderMessages, setOlderMessages] = useState<DecryptedMessage[]>([])
@@ -189,10 +191,14 @@ export function ChatTerminal({
   }, [activeChatId])
 
   useEffect(() => {
-    const close = () => setCtxMenu(null)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [])
+    if (!ctxMenu) return
+    const onDown = (e: MouseEvent) => {
+      if (ctxMenuRef.current?.contains(e.target as Node)) return
+      setCtxMenu(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [ctxMenu])
 
   const msgById = (id: string) => renderMessages.find((m) => m.id === id)
   const oldestLoaded = renderMessages[0] ?? null
@@ -347,10 +353,10 @@ export function ChatTerminal({
       <div className="crt-terminal-vignette flex flex-1 items-center justify-center bg-black font-mono text-xs text-red-800">
         <div className="max-w-xs space-y-3 border border-neon-cyan/20 px-6 py-4 text-center">
           <p className="text-sm tracking-[0.2em] text-neon-cyan/50">
-            WAITING FOR SIGNAL
+            {t('chat.emptyTitle')}
           </p>
           <p className="text-[10px] uppercase tracking-widest text-red-900">
-            Select or create a secure channel from the sidebar
+            {t('chat.emptySubtitle')}
           </p>
         </div>
       </div>
@@ -361,44 +367,28 @@ export function ChatTerminal({
     <div className="crt-terminal-vignette relative flex min-h-0 flex-1 flex-col overflow-hidden bg-black">
       {ctxMenu ? (
         <div
-          className="fixed z-50 border border-neon-red bg-black shadow-lg"
+          ref={ctxMenuRef}
+          className="fixed z-[120] min-w-[11rem] border border-neon-cyan/80 bg-black py-1 shadow-[0_0_20px_rgba(0,255,255,0.12)]"
           role="menu"
-          aria-label="Message actions"
+          aria-label={t('chat.contextMenuAria')}
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
         >
           <button
             type="button"
             role="menuitem"
-            className="block w-full px-4 py-2 text-left font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10"
+            className="block w-full px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
             onClick={(e) => {
               e.stopPropagation()
               setReplyTo(ctxMenu.msg)
               setCtxMenu(null)
             }}
           >
-            Reply
+            [ {t('chat.contextReply')} ]
           </button>
-          {ctxMenu.isMine ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-4 py-2 text-left font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10"
-              onClick={(e) => {
-                e.stopPropagation()
-                void deleteMessage(ctxMenu.msg.id, true).then(() =>
-                  removeMessage(ctxMenu.msg.id)
-                )
-                void deleteCachedMessage(ctxMenu.msg.id)
-                setCtxMenu(null)
-              }}
-            >
-              Delete for everyone
-            </button>
-          ) : null}
           <button
             type="button"
             role="menuitem"
-            className="block w-full px-4 py-2 text-left font-mono text-[10px] uppercase text-red-800 hover:bg-neon-red/10"
+            className="block w-full px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest text-red-800 hover:bg-neon-red/10"
             onClick={(e) => {
               e.stopPropagation()
               removeMessage(ctxMenu.msg.id)
@@ -406,8 +396,31 @@ export function ChatTerminal({
               setCtxMenu(null)
             }}
           >
-            Delete for me
+            [ {t('chat.contextDeleteMe')} ]
           </button>
+          {ctxMenu.isMine ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="block w-full px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/15"
+              onClick={(e) => {
+                e.stopPropagation()
+                const id = ctxMenu.msg.id
+                setCtxMenu(null)
+                void (async () => {
+                  try {
+                    await deleteMessage(id, true)
+                    removeMessage(id)
+                    await deleteCachedMessage(id)
+                  } catch {
+                    /* Server rejected — message may remain for others */
+                  }
+                })()
+              }}
+            >
+              [ {t('chat.contextDeleteEveryone')} ]
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div
@@ -419,10 +432,10 @@ export function ChatTerminal({
           <div className="flex h-full min-h-[12rem] items-center justify-center">
             <div className="space-y-2 border border-neon-cyan/20 px-6 py-4 text-center">
               <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/50">
-                NO LOGS FOUND
+                {t('chat.noLogsTitle')}
               </p>
               <p className="text-[9px] uppercase tracking-widest text-red-900">
-                Waiting for signal — send the first packet.
+                {t('chat.noLogsHint')}
               </p>
             </div>
           </div>
@@ -438,10 +451,25 @@ export function ChatTerminal({
               className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
               onContextMenu={(e) => {
                 e.preventDefault()
+                const pad = 8
+                const mw = 200
+                const mh = 120
+                const x = Math.min(
+                  e.clientX,
+                  (typeof window !== 'undefined' ? window.innerWidth : e.clientX) -
+                    mw -
+                    pad
+                )
+                const y = Math.min(
+                  e.clientY,
+                  (typeof window !== 'undefined' ? window.innerHeight : e.clientY) -
+                    mh -
+                    pad
+                )
                 setCtxMenu({
                   msg: m,
-                  x: e.clientX,
-                  y: e.clientY,
+                  x: Math.max(pad, x),
+                  y: Math.max(pad, y),
                   isMine: mine,
                 })
               }}
@@ -492,14 +520,17 @@ export function ChatTerminal({
                     </div>
                   ) : m.reply_to_id ? (
                     <div className="mb-1 text-[10px] text-red-900">
-                      ↳ [ORIGINAL_DELETED]
+                      ↳ [{t('chat.originalDeleted')}]
                     </div>
                   ) : null}
                   <div className="mb-1 text-[9px] text-red-800/90">
                     {new Date(m.created_at).toLocaleString()}
                   </div>
                   {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
-                    <div className="whitespace-pre-wrap break-words">{m.plaintext}</div>
+                    <NoirPlaintext
+                      text={m.plaintext}
+                      className="whitespace-pre-wrap break-words"
+                    />
                   ) : null}
                   {m.media_path && m.media_iv && m.media_type ? (
                     <MediaMessage message={m} sharedKey={sharedKey} />

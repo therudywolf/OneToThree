@@ -31,7 +31,6 @@ import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
 import { ChatMediaControls } from '@/components/chat/chat-media-controls'
-import { LogoutButton } from '@/components/logout-button'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
@@ -434,7 +433,7 @@ export function ChatApp({
               href="/admin"
               className="border border-red-900 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red"
             >
-              [ WARDEN ]
+              [ {t('common.adminWarden')} ]
             </Link>
           ) : null}
           <button
@@ -442,9 +441,8 @@ export function ChatApp({
             onClick={() => setSettingsOpen(true)}
             className="touch-manipulation min-h-11 min-w-11 border border-neon-cyan/60 bg-black px-2 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red md:min-h-0 md:min-w-0 md:py-1"
           >
-            [ CFG ]
+            [ {t('common.openSettings')} ]
           </button>
-          <LogoutButton />
         </div>
       </header>
       <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden overscroll-none">
@@ -471,7 +469,7 @@ export function ChatApp({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain">
           {ctxError ? (
             <div className="shrink-0 border-b border-zinc-800 px-3 py-1 font-mono text-xs text-zinc-500">
-              SIGNAL LOST
+              {t('errors.signalLost')}
             </div>
           ) : null}
           {historyDecryptBusy ? (

@@ -77,8 +77,8 @@ export function ChatSidebar({
   const [busy, setBusy] = useState(false)
   const [trustedPeerIds, setTrustedPeerIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinnedIds)
-  const [peerAvatarByUserId, setPeerAvatarByUserId] = useState<
-    Record<string, string | null>
+  const [peerLookupByUserId, setPeerLookupByUserId] = useState<
+    Record<string, { username: string; avatar_key: string | null }>
   >({})
 
   useEffect(() => {
@@ -99,21 +99,27 @@ export function ChatSidebar({
       )
     )
     if (!peerIds.length) {
-      setPeerAvatarByUserId({})
+      setPeerLookupByUserId({})
       return
     }
     let cancelled = false
     void lookupUsers(peerIds)
       .then((rows) => {
         if (cancelled) return
-        const next: Record<string, string | null> = {}
+        const next: Record<
+          string,
+          { username: string; avatar_key: string | null }
+        > = {}
         for (const r of rows) {
-          next[r.id] = r.avatar_key ?? null
+          next[r.id] = {
+            username: r.username,
+            avatar_key: r.avatar_key ?? null,
+          }
         }
-        setPeerAvatarByUserId(next)
+        setPeerLookupByUserId(next)
       })
       .catch(() => {
-        if (!cancelled) setPeerAvatarByUserId({})
+        if (!cancelled) setPeerLookupByUserId({})
       })
     return () => {
       cancelled = true
@@ -226,7 +232,7 @@ export function ChatSidebar({
       <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
         {chats.length === 0 ? (
           <p className="px-3 py-2 font-mono text-[10px] text-red-800">
-            NO_ACTIVE_ROUTES
+            {t('sidebar.noActiveRoutes')}
           </p>
         ) : null}
         {sidebarChats.map((c) => {
@@ -235,12 +241,16 @@ export function ChatSidebar({
             ? c.member_ids.find((id) => id !== userId)
             : null
           const pres = peerId ? peerPresence[peerId] : undefined
+          const resolved = peerId ? peerLookupByUserId[peerId] : undefined
           const peerName =
-            peerId && c.name?.trim()
-              ? c.name.trim()
-              : peerId
-                ? `${peerId.slice(0, 8)}…`
-                : ''
+            c.name?.trim() ||
+            resolved?.username?.trim() ||
+            (peerId ? `${peerId.slice(0, 8)}…` : '')
+          const listTitle = c.is_group
+            ? c.name?.trim() || t('sidebar.groupUntitled')
+            : c.name?.trim() ||
+              resolved?.username?.trim() ||
+              (peerId ? `${peerId.slice(0, 8)}…` : `${c.id.slice(0, 8)}…`)
           return (
             <div
               key={c.id}
@@ -253,7 +263,7 @@ export function ChatSidebar({
                 className={`min-w-0 flex-1 px-3 py-2 text-left font-mono text-xs transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
                   activeChatId === c.id ? 'text-neon-cyan' : 'text-neon-red'
                 }`}
-                aria-label={`${t('common.openChatAria')} ${c.name?.trim() || c.id}`}
+                aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {
                   setActiveChatId(c.id)
                   onNavigate?.()
@@ -264,7 +274,7 @@ export function ChatSidebar({
                     <UserAvatar
                       userId={peerId}
                       username={peerName || '…'}
-                      avatarKey={peerAvatarByUserId[peerId] ?? null}
+                      avatarKey={resolved?.avatar_key ?? null}
                       size={24}
                     />
                   ) : c.is_group ? (
@@ -283,17 +293,19 @@ export function ChatSidebar({
                       {pres?.online ? (
                         <span
                           className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]"
-                          title="Online"
+                          title={t('sidebar.online')}
                         />
                       ) : null}
                       <span className="truncate">
-                        {c.is_group ? '[GRP]' : '[DIR]'}{' '}
-                        {c.name?.trim() || `${c.id.slice(0, 8)}…`}
+                        {c.is_group
+                          ? `[${t('sidebar.badgeGroup')}]`
+                          : `[${t('sidebar.badgeDirect')}]`}{' '}
+                        {listTitle}
                       </span>
                     </span>
                     {pres && !pres.online ? (
                       <span className="text-[8px] normal-case tracking-normal text-red-900/90">
-                        Last seen:{' '}
+                        {t('sidebar.lastSeen')}:{' '}
                         {pres.last_seen_at
                           ? new Date(pres.last_seen_at).toLocaleString(
                               undefined,
@@ -312,8 +324,10 @@ export function ChatSidebar({
               </button>
               <button
                 type="button"
-                title={isPinned ? 'Unpin' : 'Pin'}
-                aria-label={isPinned ? 'Unpin chat' : 'Pin chat'}
+                title={isPinned ? t('sidebar.unpin') : t('sidebar.pin')}
+                aria-label={
+                  isPinned ? t('sidebar.unpinAria') : t('sidebar.pinAria')
+                }
                 onClick={(e) => {
                   e.stopPropagation()
                   togglePin(c.id)
@@ -361,7 +375,7 @@ export function ChatSidebar({
                 }}
                 className="flex-1 border border-red-900 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red disabled:opacity-40"
               >
-                [ LEAVE ]
+                [ {t('sidebar.leaveGroup')} ]
               </button>
             ) : null}
             {(() => {
@@ -374,7 +388,7 @@ export function ChatSidebar({
                   type="button"
                   disabled={busy}
                   onClick={() => {
-                    if (!confirm('PURGE_CHAT_DATA?')) return
+                    if (!confirm(t('sidebar.purgeChatConfirm'))) return
                     setBusy(true)
                     void deleteChat(activeChatId)
                       .then(() => {
@@ -388,7 +402,7 @@ export function ChatSidebar({
                   }}
                   className="flex-1 border border-red-900 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red disabled:opacity-40"
                 >
-                  [ DELETE ]
+                  [ {t('sidebar.deleteChat')} ]
                 </button>
               )
             })()}
@@ -411,7 +425,7 @@ export function ChatSidebar({
           }}
           className="mb-2 w-full rounded-none border border-neon-red/70 bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-red hover:bg-neon-red/10"
         >
-          [ COPY_MY_INVITE ]
+          [ {t('sidebar.copyMyInvite')} ]
         </button>
         <button
           type="button"
@@ -419,7 +433,7 @@ export function ChatSidebar({
           onClick={() => setGroupModalOpen(true)}
           className="mb-2 w-full rounded-none border border-neon-cyan bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
         >
-          [ CREATE_GROUP_E2E ]
+          [ {t('sidebar.createGroupE2e')} ]
         </button>
         <p className="mb-1 text-[10px] uppercase tracking-widest text-neon-cyan">
           :: {t('sidebar.openDirect')}
@@ -442,7 +456,7 @@ export function ChatSidebar({
           disabled={creating}
           className="w-full rounded-none border border-neon-red bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40"
         >
-          [ OPEN ]
+          [ {t('sidebar.openPeer')} ]
         </button>
       </div>
     </aside>

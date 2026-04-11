@@ -56,6 +56,7 @@ type SignalPayload =
   | { kind: 'offer'; sdp: string; isVideo?: boolean }
   | { kind: 'answer'; sdp: string }
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null }
+  | { kind: 'media_state'; media: 'audio' | 'video'; enabled: boolean }
 
 function sendSignal(targetUserId: string, signalData: SignalPayload) {
   getFmSocket().send({ type: 'webrtc_signal', targetUserId, signalData })
@@ -96,6 +97,7 @@ export function useWebRTC(userId: string | null) {
   const removeRemoteStream = useCallStore((s) => s.removeRemoteStream)
   const setLocalStream = useCallStore((s) => s.setLocalStream)
   const setIsCalling = useCallStore((s) => s.setIsCalling)
+  const clearRemotePeerMedia = useCallStore((s) => s.clearRemotePeerMedia)
 
   const flushPendingIce = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const q = pendingIceRef.current[peerId]
@@ -132,9 +134,10 @@ export function useWebRTC(userId: string | null) {
       }
       removePeerConnection(peerId)
       removeRemoteStream(peerId)
+      clearRemotePeerMedia(peerId)
       delete pendingIceRef.current[peerId]
     },
-    [removePeerConnection, removeRemoteStream, clearIceDisconnectTimer]
+    [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearIceDisconnectTimer]
   )
 
   const revertToCamera = useCallback(() => {
@@ -336,6 +339,32 @@ export function useWebRTC(userId: string | null) {
     if (!userId) return
 
     const handleSignal = async (fromUserId: string, raw: unknown) => {
+      if (
+        raw &&
+        typeof raw === 'object' &&
+        (raw as { kind?: string }).kind === 'media_state'
+      ) {
+        const m = raw as {
+          media?: string
+          enabled?: boolean
+        }
+        if (
+          (m.media === 'audio' || m.media === 'video') &&
+          typeof m.enabled === 'boolean'
+        ) {
+          if (m.media === 'audio') {
+            useCallStore.getState().setRemotePeerMedia(fromUserId, {
+              micMuted: !m.enabled,
+            })
+          } else {
+            useCallStore.getState().setRemotePeerMedia(fromUserId, {
+              cameraOff: !m.enabled,
+            })
+          }
+        }
+        return
+      }
+
       if (!isSignalPayload(raw)) return
       const data = raw
 
@@ -526,16 +555,27 @@ export function useWebRTC(userId: string | null) {
 
   const toggleMuteMic = useCallback(() => {
     const s = useCallStore.getState().localStream
-    s?.getAudioTracks().forEach((t) => {
+    if (!s) return
+    s.getAudioTracks().forEach((t) => {
       t.enabled = !t.enabled
     })
+    const enabled = s.getAudioTracks()[0]?.enabled ?? true
+    for (const peerId of Array.from(pcsRef.current.keys())) {
+      sendSignal(peerId, { kind: 'media_state', media: 'audio', enabled })
+    }
   }, [])
 
   const toggleCamera = useCallback(() => {
     const s = useCallStore.getState().localStream
-    s?.getVideoTracks().forEach((t) => {
+    if (!s) return
+    s.getVideoTracks().forEach((t) => {
       t.enabled = !t.enabled
     })
+    const vt = s.getVideoTracks()[0]
+    const enabled = vt ? vt.enabled : false
+    for (const peerId of Array.from(pcsRef.current.keys())) {
+      sendSignal(peerId, { kind: 'media_state', media: 'video', enabled })
+    }
   }, [])
 
   const switchCamera = useCallback(async () => {

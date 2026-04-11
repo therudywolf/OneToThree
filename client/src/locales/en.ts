@@ -10,6 +10,11 @@ const en = {
   'common.copyInviteAria': 'Copy my invite link',
   'common.createGroupAria': 'Create group E2E',
   'common.toggleLanguageAria': 'Toggle language',
+  'common.dismiss': 'Dismiss',
+
+  'pushOnboarding.banner':
+    'ENABLE PUSH TO RECEIVE MESSAGES IN BACKGROUND',
+  'pushOnboarding.enable': 'ENABLE',
 
   'errors.boundaryGeneric': 'Signal lost. Try again.',
   'errors.signalLost': 'SIGNAL LOST',

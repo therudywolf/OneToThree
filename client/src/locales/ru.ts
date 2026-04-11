@@ -10,6 +10,11 @@ const ru = {
   'common.copyInviteAria': 'Скопировать мою ссылку-приглашение',
   'common.createGroupAria': 'Создать E2E группу',
   'common.toggleLanguageAria': 'Переключить язык',
+  'common.dismiss': 'Закрыть',
+
+  'pushOnboarding.banner':
+    'ВКЛЮЧИТЕ PUSH, ЧТОБЫ ПОЛУЧАТЬ СООБЩЕНИЯ В ФОНЕ',
+  'pushOnboarding.enable': 'ВКЛЮЧИТЬ',
 
   'errors.boundaryGeneric': 'Сигнал потерян. Повторите попытку.',
   'errors.signalLost': 'СИГНАЛ ПОТЕРЯН',

@@ -1,4 +1,13 @@
 /* Imported by Workbox service worker (next-pwa). Handles push + notification clicks. */
+/** Required for installability: explicit fetch handler (network-first pass-through). */
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    fetch(event.request).catch(() => {
+      return Response.error()
+    })
+  )
+})
+
 self.addEventListener('push', (event) => {
   let payload = {
     title: 'Project 13',

@@ -11,7 +11,7 @@ services:
     image: postgres:alpine
     restart: always
     cpu_shares: 512
-    cpus: '2.0'
+    cpus: '1.0'
     mem_limit: 512m
     mem_reservation: 128m
     environment:
@@ -119,6 +119,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.onetothree.ru}
+        NEXT_PUBLIC_WS_ORIGIN: ${NEXT_PUBLIC_WS_ORIGIN:-https://api.onetothree.ru}
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
     restart: always
     cpu_shares: 512

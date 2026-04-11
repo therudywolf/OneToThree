@@ -3,22 +3,28 @@ FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci || npm install
 
 FROM node:20-alpine AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+# Build-time public env (baked into client bundle; set via docker-compose `args:`)
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_ORIGIN
 ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WS_ORIGIN=$NEXT_PUBLIC_WS_ORIGIN
 ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
-# Build-time public env (no committed .env.local required in CI / docker-compose.prod)
+
 RUN printf '%s\n' \
   "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
+  "NEXT_PUBLIC_WS_ORIGIN=${NEXT_PUBLIC_WS_ORIGIN}" \
   "NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}" \
   > .env.production
+
 RUN npm run build
 
 FROM node:20-alpine AS runner

@@ -39,7 +39,7 @@ ForestMessenger/
 ## Silence protocol (client, production)
 
 - **React Query Devtools:** not used in this repo; nothing to strip from the bundle.
-- **`next.config.js`:** `compiler.removeConsole` in production (keeps `warn` / `error` for non-shipped diagnostics; `log` / `debug` / `info` removed at build).
+- **`next.config.js`:** `compiler.removeConsole` in production (removes `log` / `debug` / `info` from the bundle; keeps `warn` / `error`).
 - **`SilenceConsole`:** mounted from `client/src/app/layout.tsx` — runtime no-op for `console.log` / `debug` / `info` in production.
 - **Error boundary:** generic localized copy only (`errors.boundaryGeneric` / `errors.retrySession`); no stack traces or raw `Error.message` in the UI.
 - **Fastify `setErrorHandler`:** full error logged server-side; clients receive **`{ "error": "INTERNAL_SERVER_ERROR" }`** for **5xx** in production (see `server/src/lib/error-handler.ts`).
@@ -55,7 +55,7 @@ Use this as a mental checklist; fix blockers before pointing users at the host.
 | Step | Risk |
 |------|------|
 | DNS **A/AAAA** for apex, `api.`, MinIO host point to VPS | Propagation delay → TLS/CORS mismatch until records settle |
-| Copy **`env.prod.example` → `.env.prod`** and fill secrets | Missing file → `setup.sh` exits immediately |
+| **`./setup.sh`** creates **`.env.prod`** from **`.env.prod.example`** when missing; otherwise fill secrets manually | Weak placeholders for Postgres/MinIO still rejected |
 | Align `CORS_ORIGIN`, `NEXT_PUBLIC_*` URLs with real HTTPS hostnames | Browser blocks cookies or API calls |
 
 ### 2. Orchestration (`setup.sh` → Compose)

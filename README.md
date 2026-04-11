@@ -59,8 +59,9 @@ Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error":
 ### Prerequisites
 
 - **Docker** + **Compose v2** (`docker compose`) on the host (Linux VPS, or **WSL2** / macOS for `./setup.sh`).
+- **openssl** (for `./setup.sh` secret generation).
 - **TLS PEMs**: `./certs/cert.pem` and `./certs/key.pem` (mounted read-only into Caddy — see `Caddyfile`).
-- **`.env.prod`** at repo root (copy from **`env.prod.example`** or **`.env.prod.example`** and replace every secret).
+- **`.env.prod`** at repo root: if missing, **`./setup.sh`** creates it from **`.env.prod.example`** (or `env.prod.example`). You must set strong **Postgres / MinIO / CORS** values; **JWT**, **WEBHOOK_SECRET**, and **VAPID** can be auto-generated when left empty.
 
 ### Single claw
 
@@ -71,16 +72,18 @@ chmod +x ./setup.sh
 
 The script:
 
-1. Verifies `docker` and Compose are available.  
-2. Warns if `./certs/cert.pem` is missing.  
-3. Validates **non-empty** `POSTGRES_PASSWORD`, `JWT_SECRET`, `MINIO_ROOT_PASSWORD`, and `CORS_ORIGIN` inside `.env.prod`.  
-4. Runs **`docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`**.  
-5. **`db-migrate`** runs automatically as a **one-shot** after Postgres is **healthy**; **api** waits for migrate + MinIO + DB.
+1. Verifies **Docker**, **Compose**, and **openssl**.  
+2. Creates **`.env.prod`** from the template when absent, then prompts you to save required operator secrets.  
+3. **Auto-fills** empty or placeholder **`JWT_SECRET`**, **`WEBHOOK_SECRET`**, and **VAPID** keys (VAPID uses a short **Node** container via Docker; **`NEXT_PUBLIC_VAPID_PUBLIC_KEY`** is synced to the public key).  
+4. Warns if **`./certs/cert.pem`** is missing.  
+5. Validates **non-empty** `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `CORS_ORIGIN`, and `JWT_SECRET`.  
+6. Runs **`docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`**.  
+7. **`db-migrate`** runs automatically as a **one-shot** after Postgres is **healthy**; **api** waits for migrate + MinIO + DB. Prints a **Noir-style** status block with host hint and log command.
 
 ### `docker-compose.prod.yml` (hardened · high-throughput lane)
 
 - **`restart: always`** on `db`, `minio`, `api`, `web`, `caddy`.  
-- **CPU priority**: **`cpu_shares: 512`** on **web**, **api**, and **db** — uses spare cycles when idle, yields under host contention. **web** / **api** may use up to **`cpus: '4.0'`** each on a 4-core host (tunable).  
+- **CPU priority**: **`cpu_shares: 512`** on **web**, **api**, and **db**. **web** / **api** may use up to **`cpus: '4.0'`** each; **db** is capped at **`cpus: '1.0'`** so the lane stays predictable on a 4C host (tunable).  
 - **Memory (typical 4C / 6GB+ class)**: **web** `1536m` limit / `512m` reservation · **api** `1024m` / `256m` · **db** & **minio** `512m` each · **api** `tmpfs` `/tmp` **128m** (signaling-heavy workloads).  
 - **Healthchecks**: Postgres (**`pg_isready -U $POSTGRES_USER -d $POSTGRES_DB`**), MinIO (`mc ready`), API (`GET /health`), Web (Node `fetch` to `/`).  
 - **Caddy** starts only when **web**, **api**, and **minio** report **`service_healthy`**. **Only Caddy** publishes **`80`** and **`443`** to the host; **api**, **db**, **minio**, **web** stay on **`app_network`** (no host ports).  

@@ -25,8 +25,8 @@ import {
 } from '../lib/ecdsa-verify.js'
 import {
   clearFmSessionCookie,
+  commitFmSessionCookie,
   SESSION_COOKIE,
-  sessionCookieSetOptions,
 } from '../lib/session-cookie.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { parseNickname } from '../lib/nickname.js'
@@ -294,7 +294,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       },
       { expiresIn: SESSION_MAX_AGE_S }
     )
-    reply.setCookie(SESSION_COOKIE, token, sessionCookieSetOptions(SESSION_MAX_AGE_S))
+    commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
 
     return reply.send({
       user: { id: canonicalId, username: row.username },
@@ -454,7 +454,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           { expiresIn: SESSION_MAX_AGE_S }
         )
 
-        reply.setCookie(SESSION_COOKIE, token, sessionCookieSetOptions(SESSION_MAX_AGE_S))
+        commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
 
         return reply.send({
           user: { id: canonicalId, username },

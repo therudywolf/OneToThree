@@ -1,9 +1,19 @@
 import { serialize } from 'cookie'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { parseLastFmSessionValue } from './session-cookie.js'
 
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.resetModules()
+})
+
+describe('parseLastFmSessionValue', () => {
+  it('prefers the last duplicate fm_session', () => {
+    const a = 'eyJhbG.one'
+    const b = 'eyJhbG.two'
+    const raw = `other=1; fm_session=${a}; fm_session=${b}`
+    expect(parseLastFmSessionValue(raw)).toBe(b)
+  })
 })
 
 describe('sessionCookieSetOptions', () => {

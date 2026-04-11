@@ -1,7 +1,35 @@
-import type { FastifyReply } from 'fastify'
+import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { CookieSerializeOptions } from '@fastify/cookie'
 
 export const SESSION_COOKIE = 'fm_session'
+
+/**
+ * Raw `Cookie` can contain duplicate `fm_session` (e.g. after switching accounts on shared
+ * `Domain=.parent`). The `cookie` parser keeps the first; we take the **last** non-empty value.
+ */
+export function parseLastFmSessionValue(cookieHeader: string): string | undefined {
+  let last: string | undefined
+  for (const part of cookieHeader.split(';')) {
+    const trimmed = part.trim()
+    const eq = trimmed.indexOf('=')
+    if (eq < 1) continue
+    const name = trimmed.slice(0, eq).trim()
+    if (name !== SESSION_COOKIE) continue
+    const val = trimmed.slice(eq + 1).trim()
+    if (val.length > 0) last = val
+  }
+  return last
+}
+
+export function readFmSessionToken(request: FastifyRequest): string | undefined {
+  const h = request.headers.cookie as string | string[] | undefined
+  const raw =
+    typeof h === 'string' ? h : Array.isArray(h) ? h.join('; ') : ''
+  const fromRaw = raw ? parseLastFmSessionValue(raw) : undefined
+  if (fromRaw) return fromRaw
+  const parsed = request.cookies[SESSION_COOKIE]
+  return typeof parsed === 'string' && parsed.length > 0 ? parsed : undefined
+}
 
 function trimmedEnv(key: string): string | undefined {
   const v = process.env[key]?.trim()

@@ -26,6 +26,7 @@ import {
 import {
   clearFmSessionCookie,
   commitFmSessionCookie,
+  readFmSessionToken,
   SESSION_COOKIE,
 } from '../lib/session-cookie.js'
 import { normalizeUuid } from '../lib/uuid.js'
@@ -106,7 +107,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
     try {
-      await request.server.jwt.verify(request.cookies[SESSION_COOKIE] ?? '')
+      await request.server.jwt.verify(readFmSessionToken(request) ?? '')
     } catch {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }

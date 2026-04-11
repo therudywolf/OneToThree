@@ -104,6 +104,9 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
   const [cancelled, setCancelled] = useState(false)
   const startXRef = useRef(0)
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null)
+  /** Debounce touch + pointer duplicate starts on iOS (same gesture fires both). */
+  const lastVoiceGestureAt = useRef(0)
+  const lastVideoGestureAt = useRef(0)
   const [banner, setBanner] = useState(false)
 
   useEffect(() => {
@@ -123,8 +126,12 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
   }, [isRecording])
 
   useEffect(() => {
-    if (previewStream && videoPreviewRef.current) {
-      videoPreviewRef.current.srcObject = previewStream
+    const el = videoPreviewRef.current
+    if (previewStream && el) {
+      el.srcObject = previewStream
+      void el.play().catch(() => {
+        /* iOS may defer play until layer ready */
+      })
     }
     return () => {
       if (videoPreviewRef.current) videoPreviewRef.current.srcObject = null
@@ -166,7 +173,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
     error.length > 0
 
   return (
-    <div className="shrink-0 border-t border-neon-cyan/30 bg-black px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+    <div className="pb-safe shrink-0 border-t border-neon-cyan/30 bg-black px-2 pt-2">
       {isRecording && mode ? (
         <div className="mb-2 space-y-2">
           <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-widest">
@@ -203,6 +210,7 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
                 autoPlay
                 playsInline
                 muted
+                controls={false}
                 className="h-full w-full object-cover"
               />
             </div>
@@ -239,25 +247,56 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
           disabled={disabled || !cryptoCtx || isRecording}
           onPointerDown={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
-            e.currentTarget.setPointerCapture(e.pointerId)
-            void (async () => {
-              await resumeAudioContextAfterGesture()
-              startXRef.current = e.clientX
-              setCancelled(false)
-              modeRef.current = 'voice'
-              setMode('voice')
-              await startVoiceCapture()
+            const now = Date.now()
+            if (now - lastVoiceGestureAt.current < 450) return
+            lastVoiceGestureAt.current = now
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId)
+            } catch {
+              /* ignore */
+            }
+            startXRef.current = e.clientX
+            setCancelled(false)
+            modeRef.current = 'voice'
+            setMode('voice')
+            void startVoiceCapture().then(() => {
+              void resumeAudioContextAfterGesture()
               const stream = getStream()
               if (stream) connectStream(stream)
-            })()
+            })
+          }}
+          onTouchStart={(e) => {
+            if (disabled || !cryptoCtx || isRecording) return
+            const now = Date.now()
+            if (now - lastVoiceGestureAt.current < 450) return
+            lastVoiceGestureAt.current = now
+            const t = e.touches[0]
+            if (!t) return
+            startXRef.current = t.clientX
+            setCancelled(false)
+            modeRef.current = 'voice'
+            setMode('voice')
+            void startVoiceCapture().then(() => {
+              void resumeAudioContextAfterGesture()
+              const stream = getStream()
+              if (stream) connectStream(stream)
+            })
           }}
           onPointerMove={(e) => {
             if (modeRef.current !== 'voice') return
             setCancelled(e.clientX < startXRef.current - 80)
           }}
+          onTouchMove={(e) => {
+            if (modeRef.current !== 'voice') return
+            const t = e.touches[0]
+            if (!t) return
+            setCancelled(t.clientX < startXRef.current - 80)
+          }}
           onPointerUp={() => void finish(!cancelled)}
           onPointerCancel={() => void finish(false)}
-          className="flex min-h-[44px] items-center justify-center rounded-none border border-neon-cyan bg-black px-4 py-3 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 md:min-h-0 md:px-3 md:py-2"
+          onTouchEnd={() => void finish(!cancelled)}
+          onTouchCancel={() => void finish(false)}
+          className="touch-manipulation flex min-h-11 min-w-[44px] items-center justify-center rounded-none border border-neon-cyan bg-black px-4 py-3 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 md:min-h-9 md:px-3 md:py-2"
         >
           {isRecording && mode === 'voice' ? '[ ● REC ]' : '[ HOLD :: VOICE ]'}
         </button>
@@ -266,23 +305,52 @@ export function ChatMediaControls({ cryptoCtx, sendMedia, disabled }: Props) {
           disabled={disabled || !cryptoCtx}
           onPointerDown={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
-            e.currentTarget.setPointerCapture(e.pointerId)
-            void (async () => {
-              await resumeAudioContextAfterGesture()
-              startXRef.current = e.clientX
-              setCancelled(false)
-              modeRef.current = 'video'
-              setMode('video')
-              await startVideoCircleCapture()
-            })()
+            const now = Date.now()
+            if (now - lastVideoGestureAt.current < 450) return
+            lastVideoGestureAt.current = now
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId)
+            } catch {
+              /* ignore */
+            }
+            startXRef.current = e.clientX
+            setCancelled(false)
+            modeRef.current = 'video'
+            setMode('video')
+            void startVideoCircleCapture().then(() => {
+              void resumeAudioContextAfterGesture()
+            })
+          }}
+          onTouchStart={(e) => {
+            if (disabled || !cryptoCtx || isRecording) return
+            const now = Date.now()
+            if (now - lastVideoGestureAt.current < 450) return
+            lastVideoGestureAt.current = now
+            const t = e.touches[0]
+            if (!t) return
+            startXRef.current = t.clientX
+            setCancelled(false)
+            modeRef.current = 'video'
+            setMode('video')
+            void startVideoCircleCapture().then(() => {
+              void resumeAudioContextAfterGesture()
+            })
           }}
           onPointerMove={(e) => {
             if (modeRef.current !== 'video') return
             setCancelled(e.clientX < startXRef.current - 80)
           }}
+          onTouchMove={(e) => {
+            if (modeRef.current !== 'video') return
+            const t = e.touches[0]
+            if (!t) return
+            setCancelled(t.clientX < startXRef.current - 80)
+          }}
           onPointerUp={() => void finish(!cancelled)}
           onPointerCancel={() => void finish(false)}
-          className="flex min-h-[44px] items-center justify-center rounded-none border border-neon-red bg-black px-4 py-3 font-mono text-xs uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40 md:min-h-0 md:px-3 md:py-2"
+          onTouchEnd={() => void finish(!cancelled)}
+          onTouchCancel={() => void finish(false)}
+          className="touch-manipulation flex min-h-11 min-w-[44px] items-center justify-center rounded-none border border-neon-red bg-black px-4 py-3 font-mono text-xs uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40 md:min-h-9 md:px-3 md:py-2"
         >
           {isRecording && mode === 'video' ? '[ ● REC ]' : '[ HOLD :: CIRCLE ]'}
         </button>

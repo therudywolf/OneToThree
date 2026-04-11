@@ -225,7 +225,7 @@ export function ChatSidebar({
       <div className="border-b border-neon-cyan/40 p-3 text-[10px] uppercase tracking-[0.3em] text-neon-cyan">
         :: {t('sidebar.channels')}
       </div>
-      <nav className="min-h-0 flex-1 overflow-y-auto">
+      <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
         {chats.length === 0 ? (
           <p className="px-3 py-2 font-mono text-[10px] text-red-800">
             NO_ACTIVE_ROUTES

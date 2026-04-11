@@ -67,6 +67,8 @@ export function SecureVideoCircle({
           src={objectUrl}
           preload="auto"
           playsInline
+          muted
+          autoPlay={false}
           className="h-full w-full object-cover"
           controls={false}
           onPlay={() => setPlaying(true)}

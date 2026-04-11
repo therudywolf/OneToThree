@@ -33,7 +33,7 @@ export function TerminalGlitchButton({
             }
       }
       transition={{ duration: 0.25, ease: 'easeInOut' }}
-      className={`rounded-none border border-neon-red bg-black px-6 py-2 font-mono text-sm uppercase tracking-widest text-neon-red transition-colors hover:border-neon-cyan hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      className={`touch-manipulation rounded-none border border-neon-red bg-black px-6 py-2 font-mono text-sm uppercase tracking-widest text-neon-red transition-colors hover:border-neon-cyan hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
     >
       {children}
     </motion.button>

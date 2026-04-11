@@ -22,16 +22,21 @@ export const metadata: Metadata = {
   },
   other: {
     'apple-mobile-web-app-capable': 'yes',
+    /** Reinforce status bar + Chrome toolbar tint alongside `viewport.themeColor`. */
+    'theme-color': '#000000',
   },
 }
 
+/** `interactive-widget` helps Android Chrome resize the layout when the IME opens. */
 export const viewport: Viewport = {
   themeColor: '#000000',
   colorScheme: 'dark',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  userScalable: false,
   viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
 }
 
 export default function RootLayout({
@@ -41,12 +46,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="bg-void">
-      <body className="relative min-h-dvh bg-void">
+      <body className="relative min-h-dvh overflow-x-hidden bg-void supports-[height:100dvh]:min-h-[100dvh]">
         <SilenceConsole />
         <ErrorBoundary>
           <AuthProvider>
             <div className="crt-overlay" aria-hidden />
-            <div className="crt-vignette relative z-10 min-h-dvh">
+            <div className="crt-vignette relative z-10 min-h-dvh supports-[height:100dvh]:min-h-[100dvh]">
               {children}
             </div>
           </AuthProvider>

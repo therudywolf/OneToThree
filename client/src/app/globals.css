@@ -15,6 +15,7 @@ html {
 body {
   @apply min-h-screen bg-void font-mono text-neon-red antialiased;
   text-shadow: 0 0 1px rgba(255, 0, 0, 0.35);
+  overflow-x: hidden;
 }
 
 /* iOS Safari: avoid auto-zoom on focus for inputs (Phase 25) */
@@ -23,9 +24,17 @@ textarea {
   font-size: 16px !important;
 }
 
-/** Main chat column: keep composer above home indicator on notched phones */
+/**
+ * Chat shell: composer / media controls apply their own `pb-[max(...,env(safe-area-inset-bottom))]`
+ * so we avoid double-padding the whole viewport.
+ */
 .chat-safe-shell {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: 0;
+}
+
+/** Bottom safe area for fixed/sticky composers (iOS home indicator) */
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
 }
 
 /* CRT scanline overlay — fixed, non-interactive */

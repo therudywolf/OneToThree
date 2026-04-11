@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
 import { startOutgoingRingtone } from '@/lib/call-ringtones'
+import { isAndroidMobile } from '@/lib/android'
+import { isIOSOrIPadOS } from '@/lib/ios'
 import { getUserMediaConstraints } from '@/lib/media-devices'
 import {
   isMediaPermissionDenied,
@@ -87,6 +89,10 @@ export function useWebRTC(userId: string | null) {
   const cleanupPeer = useCallback(
     (peerId: string) => {
       clearIceDisconnectTimer(peerId)
+      const remote = useCallStore.getState().remoteStreams[peerId]
+      if (remote) {
+        stopStreamTracks(remote)
+      }
       const pc = pcsRef.current.get(peerId)
       if (pc) {
         pc.close()
@@ -98,21 +104,6 @@ export function useWebRTC(userId: string | null) {
     },
     [removePeerConnection, removeRemoteStream, clearIceDisconnectTimer]
   )
-
-  const maybeResetCallIfNoPeers = useCallback(() => {
-    if (pcsRef.current.size > 0) return
-    outgoingRingStopRef.current?.()
-    outgoingRingStopRef.current = null
-    const state = useCallStore.getState()
-    if (
-      state.isCalling ||
-      state.incomingCall != null ||
-      state.localStream != null
-    ) {
-      stopStreamTracks(state.localStream)
-      resetCallStore()
-    }
-  }, [resetCallStore])
 
   const revertToCamera = useCallback(() => {
     const orig = originalVideoTrackRef.current
@@ -154,9 +145,41 @@ export function useWebRTC(userId: string | null) {
     setIsScreenSharing(false)
   }, [setLocalStream])
 
+  const maybeResetCallIfNoPeers = useCallback(() => {
+    if (pcsRef.current.size > 0) return
+    outgoingRingStopRef.current?.()
+    outgoingRingStopRef.current = null
+    const state = useCallStore.getState()
+    if (
+      !state.isCalling &&
+      state.incomingCall == null &&
+      state.localStream == null
+    ) {
+      return
+    }
+    revertToCamera()
+    for (const stream of Object.values(state.remoteStreams)) {
+      stopStreamTracks(stream)
+    }
+    stopStreamTracks(state.localStream)
+    resetCallStore()
+  }, [resetCallStore, revertToCamera])
+
   useEffect(() => {
     revertToCameraRef.current = revertToCamera
   }, [revertToCamera])
+
+  /** iOS suspends getDisplayMedia when backgrounded; tear down screen share to avoid stuck/black video. */
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'hidden') return
+      if (screenVideoTrackRef.current) {
+        revertToCameraRef.current()
+      }
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
 
   const endCall = useCallback(() => {
     outgoingRingStopRef.current?.()
@@ -170,7 +193,11 @@ export function useWebRTC(userId: string | null) {
     for (const id of Array.from(pcsRef.current.keys())) {
       cleanupPeer(id)
     }
-    stopStreamTracks(useCallStore.getState().localStream)
+    const after = useCallStore.getState()
+    for (const stream of Object.values(after.remoteStreams)) {
+      stopStreamTracks(stream)
+    }
+    stopStreamTracks(after.localStream)
     resetCallStore()
   }, [cleanupPeer, resetCallStore, revertToCamera])
 
@@ -364,6 +391,7 @@ export function useWebRTC(userId: string | null) {
     }
 
     setLocalStream(stream)
+    if (inc.isVideo) facingModeRef.current = 'user'
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
     pcsRef.current.set(inc.peerId, pc)
     addPeerConnection(inc.peerId, pc)
@@ -497,19 +525,28 @@ export function useWebRTC(userId: string | null) {
 
     try {
       const base = getUserMediaConstraints({ video: true })
-      const fromPrefs =
+      const fromPrefs: MediaTrackConstraints =
         base.video && typeof base.video === 'object'
-          ? (base.video as MediaTrackConstraints)
+          ? { ...(base.video as MediaTrackConstraints) }
           : {}
+      // Pinning `deviceId` conflicts with toggling by facing mode — drop it for this swap.
+      delete (fromPrefs as { deviceId?: unknown }).deviceId
+
+      const videoConstraints: MediaTrackConstraints = isIOSOrIPadOS()
+        ? {
+            ...fromPrefs,
+            facingMode: { ideal: nextFacing },
+          }
+        : {
+            ...fromPrefs,
+            facingMode: { ideal: nextFacing },
+            width: { ideal: 720 },
+            height: { ideal: 720 },
+          }
 
       const newStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: {
-          ...fromPrefs,
-          facingMode: nextFacing,
-          width: { ideal: 720 },
-          height: { ideal: 720 },
-        },
+        video: videoConstraints,
       })
       const newTrack = newStream.getVideoTracks()[0]
       if (!newTrack) {
@@ -536,6 +573,11 @@ export function useWebRTC(userId: string | null) {
   const toggleScreenShare = useCallback(async () => {
     if (screenVideoTrackRef.current) {
       revertToCamera()
+      return
+    }
+
+    /** Mobile Chrome/Firefox: getDisplayMedia is unsupported or unusable — avoid NotAllowedError noise. */
+    if (isAndroidMobile()) {
       return
     }
 

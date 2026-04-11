@@ -28,7 +28,7 @@ export function ChatInput({ sendText, disabled }: Props) {
   return (
     <form
       onSubmit={(e) => void onSubmit(e)}
-      className="shrink-0 border-t border-neon-cyan/40 bg-black p-2"
+      className="shrink-0 border-t border-neon-cyan/40 bg-black p-2 touch-manipulation"
     >
       {replyTo ? (
         <div className="mb-2 flex items-center gap-2 border-l-2 border-neon-cyan/50 pl-2">
@@ -63,6 +63,7 @@ export function ChatInput({ sendText, disabled }: Props) {
         <TerminalGlitchButton
           type="submit"
           disabled={disabled || !value.trim()}
+          className="min-h-11 min-w-[44px] shrink-0 px-4 py-2 md:min-h-0 md:min-w-0"
         >
           [ TX ]
         </TerminalGlitchButton>

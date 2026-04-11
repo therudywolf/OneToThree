@@ -265,6 +265,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           autoPlay
           playsInline
           muted
+          controls={false}
           className="mt-1 h-48 w-full border border-neon-cyan/30 bg-black object-cover"
         />
         {previewError ? (

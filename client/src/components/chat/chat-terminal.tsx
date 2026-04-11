@@ -412,7 +412,7 @@ export function ChatTerminal({
       ) : null}
       <div
         ref={ref}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-3 font-mono text-sm text-neon-red"
+        className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-4 py-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch]"
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
         {renderMessages.length === 0 ? (
@@ -524,7 +524,7 @@ export function ChatTerminal({
         <div ref={bottomRef} className="h-px w-full shrink-0" aria-hidden />
       </div>
 
-      <div className="shrink-0 border-t border-neon-cyan/25 bg-black px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div className="shrink-0 border-t border-neon-cyan/25 bg-black px-2 py-2">
         <input
           ref={filePickerRef}
           type="file"
@@ -560,6 +560,8 @@ export function ChatTerminal({
                       className="max-h-20 max-w-full object-cover"
                       muted
                       playsInline
+                      autoPlay={false}
+                      controls={false}
                     />
                   ) : null}
                   {p.kind === 'audio' ? (

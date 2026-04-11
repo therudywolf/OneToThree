@@ -11,6 +11,12 @@ export function issueAvatarNonce(userId: string): string {
   return nonce
 }
 
+/** True if nonce exists, belongs to user, and is not expired (does not consume). */
+export function validateAvatarNonce(userId: string, nonce: string): boolean {
+  const row = nonces.get(nonce.trim())
+  return !!(row && row.userId === userId && Date.now() <= row.exp)
+}
+
 /** Validates nonce belongs to user and removes it (single use). */
 export function takeAvatarNonce(userId: string, nonce: string): boolean {
   const row = nonces.get(nonce.trim())

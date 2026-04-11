@@ -58,7 +58,100 @@ const disable2faBodySchema = z.object({
   code: totpCodeSchema,
 })
 
+const qrLoginBodySchema = z.object({
+  token: z.string().uuid(),
+})
+
+/** In-memory stub for QR device linking (replace with Redis in production). */
+const qrLinkTokens = new Map<
+  string,
+  { sub: string; username: string; exp: number }
+>()
+const QR_LINK_TTL_S = 300
+
 export const authRoutes: FastifyPluginAsync = async (app) => {
+  /**
+   * Authenticated device issues a short-lived token; show as QR on this device for another to scan.
+   */
+  app.post('/qr-generate', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const token = randomUUID()
+    qrLinkTokens.set(token, {
+      sub: normalizeUuid(user.id),
+      username: user.username,
+      exp: Date.now() + QR_LINK_TTL_S * 1000,
+    })
+
+    return reply.send({
+      link_token: token,
+      expires_in: QR_LINK_TTL_S,
+    })
+  })
+
+  /**
+   * New device: redeem token → session cookie (stub; extend with TOTP / rate limits as needed).
+   */
+  app.post('/qr-login', async (request, reply) => {
+    const parsed = qrLoginBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const entry = qrLinkTokens.get(parsed.data.token)
+    if (!entry || Date.now() > entry.exp) {
+      qrLinkTokens.delete(parsed.data.token)
+      return reply.status(401).send({ error: 'INVALID_OR_EXPIRED_TOKEN' })
+    }
+    qrLinkTokens.delete(parsed.data.token)
+
+    const [row] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        isTotpEnabled: users.isTotpEnabled,
+        isBanned: users.isBanned,
+      })
+      .from(users)
+      .where(eq(users.id, entry.sub))
+      .limit(1)
+
+    if (!row) {
+      return reply.status(401).send({ error: 'USER_NOT_FOUND' })
+    }
+    if (row.isBanned) {
+      return reply.status(401).send({ error: 'BANNED_USER' })
+    }
+    if (row.isTotpEnabled) {
+      return reply.status(501).send({ error: 'QR_LOGIN_REQUIRES_TOTP_STUB' })
+    }
+
+    const canonicalId = normalizeUuid(row.id)
+    const dev = await upsertDeviceForSession(request, canonicalId)
+    if (!dev.ok) {
+      if (dev.error === 'DEVICE_REVOKED') {
+        return reply.status(403).send({ error: 'DEVICE_REVOKED' })
+      }
+      return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
+    }
+
+    const token = await reply.jwtSign(
+      {
+        sub: canonicalId,
+        username: row.username,
+        device_id: dev.deviceId,
+      },
+      { expiresIn: SESSION_MAX_AGE_S }
+    )
+    commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
+
+    return reply.send({
+      ok: true,
+      user: { id: canonicalId, username: row.username },
+    })
+  })
+
   app.get('/ws-ticket', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

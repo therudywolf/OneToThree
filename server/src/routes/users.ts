@@ -1,19 +1,26 @@
-import { createHash, randomUUID } from 'node:crypto'
-import multipart from '@fastify/multipart'
+import { randomUUID } from 'node:crypto'
+import { HeadObjectCommand } from '@aws-sdk/client-s3'
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { devices, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
-import { issueAvatarNonce, takeAvatarNonce } from '../lib/avatar-nonce.js'
+import { setPendingAvatarKey, takePendingAvatarKey } from '../lib/avatar-pending.js'
+import {
+  issueAvatarNonce,
+  takeAvatarNonce,
+  validateAvatarNonce,
+} from '../lib/avatar-nonce.js'
 import { verifyNonceSignatureEcdsaP256 } from '../lib/ecdsa-verify.js'
 import {
   createS3Client,
+  createS3ClientForPresigning,
   deleteObjectIfExists,
   ensureBucketExists,
   getAvatarsBucketName,
-  putObjectBuffer,
+  presignPutObject,
+  rewritePresignedUrlToPublicBase,
 } from '../lib/s3.js'
 import { getRelatedUserIds } from '../lib/presence.js'
 import { normalizeUuid } from '../lib/uuid.js'
@@ -47,16 +54,20 @@ const presenceBodySchema = z.object({
 
 const AVATAR_SIGN_PREFIX = 'avatar:v1:'
 
-function sha256Hex(buf: Buffer): string {
-  return createHash('sha256').update(buf).digest('hex')
-}
+const AVATAR_OBJECT_KEY_RE =
+  /^avatars\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[^/]+$/i
+
+const avatarPresignBodySchema = z.object({
+  digest: z.string().regex(/^[a-f0-9]{64}$/),
+})
+
+const avatarCommitBodySchema = z.object({
+  avatar_key: z.string().min(1).max(512),
+})
 
 export const userRoutes: FastifyPluginAsync = async (app) => {
-  await app.register(multipart, {
-    limits: { fileSize: 2 * 1024 * 1024 },
-  })
-
   const s3 = createS3Client()
+  const presignS3 = createS3ClientForPresigning()
 
   app.get('/me/avatar-challenge', async (request, reply) => {
     const user = await getAuthUser(request, reply)
@@ -65,7 +76,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ nonce })
   })
 
-  app.post('/me/avatar', async (request, reply) => {
+  /**
+   * Presigned PUT for browser → MinIO (digest + vault signature prove intent before upload).
+   */
+  app.post('/me/avatar/presign', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -77,10 +91,19 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'MISSING_SIGNATURE_HEADERS' })
     }
 
+    const parsed = avatarPresignBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    const { digest } = parsed.data
+
+    if (!validateAvatarNonce(user.id, nonce)) {
+      return reply.status(401).send({ error: 'INVALID_NONCE' })
+    }
+
     const [row] = await db
       .select({
         publicKeyJwk: users.publicKeyJwk,
-        avatarKey: users.avatarKey,
       })
       .from(users)
       .where(eq(users.id, user.id))
@@ -89,39 +112,76 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'NO_SIGNING_KEY' })
     }
 
-    const data = await request.file()
-    if (!data) {
-      return reply.status(400).send({ error: 'NO_FILE' })
-    }
-
-    const buffer = await data.toBuffer()
-    if (buffer.length === 0 || buffer.length > 1.5 * 1024 * 1024) {
-      return reply.status(400).send({ error: 'INVALID_IMAGE' })
+    const message = `${AVATAR_SIGN_PREFIX}${nonce}:${digest}`
+    if (!verifyNonceSignatureEcdsaP256(message, signature, row.publicKeyJwk)) {
+      return reply.status(401).send({ error: 'INVALID_SIGNATURE' })
     }
 
     if (!takeAvatarNonce(user.id, nonce)) {
       return reply.status(401).send({ error: 'INVALID_NONCE' })
     }
 
-    const digest = sha256Hex(buffer)
-    const message = `${AVATAR_SIGN_PREFIX}${nonce}:${digest}`
-    if (!verifyNonceSignatureEcdsaP256(message, signature, row.publicKeyJwk)) {
-      return reply.status(401).send({ error: 'INVALID_SIGNATURE' })
+    const bucket = getAvatarsBucketName()
+    await ensureBucketExists(s3, bucket)
+
+    const key = `avatars/${user.id}/${randomUUID()}.jpg`
+    const uploadUrl = rewritePresignedUrlToPublicBase(
+      await presignPutObject({
+        client: presignS3,
+        bucket,
+        key,
+        contentType: 'image/jpeg',
+      })
+    )
+
+    setPendingAvatarKey(user.id, key)
+
+    return reply.send({ uploadUrl, avatar_key: key })
+  })
+
+  /** After successful PUT to MinIO, commit DB row (verifies object exists). */
+  app.post('/me/avatar/commit', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const parsed = avatarCommitBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    const { avatar_key: avatarKey } = parsed.data
+
+    if (!AVATAR_OBJECT_KEY_RE.test(avatarKey)) {
+      return reply.status(400).send({ error: 'INVALID_PATH' })
+    }
+    if (!avatarKey.startsWith(`avatars/${user.id}/`)) {
+      return reply.status(403).send({ error: 'INVALID_PATH' })
+    }
+
+    if (!takePendingAvatarKey(user.id, avatarKey)) {
+      return reply.status(400).send({ error: 'NO_PENDING_AVATAR' })
     }
 
     const bucket = getAvatarsBucketName()
     await ensureBucketExists(s3, bucket)
 
-    const key = `avatars/${user.id}/${randomUUID()}.jpg`
-    await putObjectBuffer({
-      client: s3,
-      bucket,
-      key,
-      body: buffer,
-      contentType: 'image/jpeg',
-    })
+    try {
+      await s3.send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: avatarKey,
+        })
+      )
+    } catch {
+      return reply.status(412).send({ error: 'AVATAR_OBJECT_MISSING' })
+    }
 
-    if (row.avatarKey && row.avatarKey !== key) {
+    const [row] = await db
+      .select({ avatarKey: users.avatarKey })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+
+    if (row?.avatarKey && row.avatarKey !== avatarKey) {
       await deleteObjectIfExists({
         client: s3,
         bucket,
@@ -131,10 +191,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
     await db
       .update(users)
-      .set({ avatarKey: key })
+      .set({ avatarKey })
       .where(eq(users.id, user.id))
 
-    return reply.send({ ok: true, avatar_key: key })
+    return reply.send({ ok: true, avatar_key: avatarKey })
   })
 
   app.get('/me/settings', async (request, reply) => {

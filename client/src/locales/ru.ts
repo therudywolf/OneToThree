@@ -219,6 +219,10 @@ const ru = {
   'settings.devicesRevoke': 'ОТОЗВАТЬ',
   'settings.devicesRevokeConfirm':
     'Отозвать это устройство? Сессия сбросится при следующем запросе.',
+  'settings.linkDeviceCta': 'ПРИВЯЗАТЬ_УСТРОЙСТВО_QR',
+  'settings.linkDeviceTitle': '[ ПРИВЯЗКА :: НОВОЕ_УСТРОЙСТВО :: QR ]',
+  'settings.linkDeviceHint':
+    'Сканируйте с экрана входа на новом устройстве (заглушка: TOTP пока не поддержан). Токен ~5 мин.',
   'settings.recoveryMnemonicTitle': 'Фраза восстановления BIP39 (12 слов)',
   'settings.recoveryMnemonicHint':
     'Только офлайн. Не передавайте. Не заменяет пароль vault для входа.',

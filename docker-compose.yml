@@ -122,7 +122,7 @@ services:
     environment:
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
-      # Same-origin /api so browser session cookie is on :3000 (middleware proxy.ts can see fm_session).
+      # Same-origin /api so browser session cookie is on :3000 (`src/proxy.ts` can see fm_session).
       API_INTERNAL_URL: http://api:8080
       NEXT_PUBLIC_API_URL: ""
     volumes:

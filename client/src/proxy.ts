@@ -12,7 +12,9 @@ function isBypassPath(pathname: string): boolean {
   if (pathname === '/manifest.webmanifest') return true
   if (pathname === '/sw.js') return true
   if (pathname.startsWith('/workbox-')) return true
-  return /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml)$/i.test(pathname)
+  return /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml)$/i.test(
+    pathname
+  )
 }
 
 function resolveApiBase(request: NextRequest): string {
@@ -44,6 +46,7 @@ async function hasValidSession(request: NextRequest): Promise<boolean> {
   }
 }
 
+/** Next.js 16+ edge entry (replaces deprecated `middleware.ts`). */
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
 
@@ -57,7 +60,8 @@ export async function proxy(request: NextRequest) {
   if (!isAuthed && !isPublic) {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
-    loginUrl.search = pathname === '/' ? '' : `?next=${encodeURIComponent(`${pathname}${search}`)}`
+    loginUrl.search =
+      pathname === '/' ? '' : `?next=${encodeURIComponent(`${pathname}${search}`)}`
     return NextResponse.redirect(loginUrl)
   }
 
@@ -74,4 +78,3 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: ['/((?!_next/static|_next/image).*)'],
 }
-

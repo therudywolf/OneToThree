@@ -14,7 +14,7 @@ const nextConfig = {
   outputFileTracingRoot: __dirname,
   /**
    * Proxy API to Fastify so the browser talks to :3000/api/* and session cookies are host-scoped
-   * to the Next origin (required for `src/proxy.ts` middleware + httpOnly auth cookie).
+   * to the Next origin (required for `src/proxy.ts` + httpOnly auth cookie).
    * In Docker, set API_INTERNAL_URL=http://api:8080 on the web service.
    */
   async rewrites() {

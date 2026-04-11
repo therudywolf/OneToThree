@@ -71,6 +71,12 @@ const en = {
   'login.handlePlaceholder': 'operator',
   'login.authLoading': 'Checking session...',
   'login.newDevice': 'New device',
+  'login.qrLinkSection': 'LINK_DEVICE_WITH_QR_TOKEN',
+  'login.qrLinkHint':
+    'Paste the token shown under the QR code on your other signed-in device. This browser must send a device id (created automatically).',
+  'login.qrTokenPlaceholder': 'uuid token from QR screen',
+  'login.qrLinkSubmit': 'REDEEM_TOKEN',
+  'login.qrTokenInvalid': 'Token looks invalid (expect UUID).',
   'login.existingVault': 'Existing vault',
   'login.totpTitle': 'SECOND_GATE',
   'login.totpSubtitle': 'TOTP · GOOGLE AUTHENTICATOR COMPATIBLE',

@@ -1,4 +1,5 @@
 import { LoginForm } from '@/components/login-form'
+import { LoginQrDevicePanel } from '@/components/login-qr-device-panel'
 import { LocaleToggle } from '@/components/locale-toggle'
 
 export const dynamic = 'force-dynamic'
@@ -18,6 +19,7 @@ export default function LoginPage() {
         </p>
       </header>
       <LoginForm />
+      <LoginQrDevicePanel />
     </main>
   )
 }

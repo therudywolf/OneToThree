@@ -75,6 +75,12 @@ const ru = {
   'login.handlePlaceholder': 'оператор',
   'login.authLoading': 'Проверка сессии...',
   'login.newDevice': 'Новое устройство',
+  'login.qrLinkSection': 'ПРИВЯЗКА_ПО_QR_ТОКЕНУ',
+  'login.qrLinkHint':
+    'Вставьте токен с экрана QR на другом устройстве, где вы уже вошли. Этот браузер должен отправлять id устройства (создаётся автоматически).',
+  'login.qrTokenPlaceholder': 'uuid токена с экрана QR',
+  'login.qrLinkSubmit': 'АКТИВИРОВАТЬ_ТОКЕН',
+  'login.qrTokenInvalid': 'Токен похож на неверный (ожидается UUID).',
   'login.existingVault': 'Существующий vault',
   'login.totpTitle': 'ВТОРОЙ_КОНТУР',
   'login.totpSubtitle': 'TOTP · СОВМЕСТИМОСТЬ С GOOGLE AUTHENTICATOR',

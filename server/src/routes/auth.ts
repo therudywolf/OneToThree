@@ -31,6 +31,11 @@ import {
 } from '../lib/session-cookie.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { parseNickname } from '../lib/nickname.js'
+import {
+  consumeQrLinkToken,
+  saveQrLinkToken,
+  type QrLinkPayload,
+} from '../lib/qr-link-store.js'
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -62,11 +67,6 @@ const qrLoginBodySchema = z.object({
   token: z.string().uuid(),
 })
 
-/** In-memory stub for QR device linking (replace with Redis in production). */
-const qrLinkTokens = new Map<
-  string,
-  { sub: string; username: string; exp: number }
->()
 const QR_LINK_TTL_S = 300
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
@@ -78,11 +78,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!assertAuthed(reply, user)) return
 
     const token = randomUUID()
-    qrLinkTokens.set(token, {
+    const payload: QrLinkPayload = {
       sub: normalizeUuid(user.id),
       username: user.username,
       exp: Date.now() + QR_LINK_TTL_S * 1000,
-    })
+    }
+    await saveQrLinkToken(token, payload)
 
     return reply.send({
       link_token: token,
@@ -99,12 +100,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const entry = qrLinkTokens.get(parsed.data.token)
-    if (!entry || Date.now() > entry.exp) {
-      qrLinkTokens.delete(parsed.data.token)
+    const entry = await consumeQrLinkToken(parsed.data.token)
+    if (!entry) {
       return reply.status(401).send({ error: 'INVALID_OR_EXPIRED_TOKEN' })
     }
-    qrLinkTokens.delete(parsed.data.token)
 
     const [row] = await db
       .select({

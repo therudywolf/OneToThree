@@ -19,3 +19,8 @@ process.env.MINIO_ACCESS_KEY =
   process.env.MINIO_ACCESS_KEY?.trim() || process.env.MINIO_ROOT_USER
 process.env.MINIO_SECRET_KEY =
   process.env.MINIO_SECRET_KEY?.trim() || process.env.MINIO_ROOT_PASSWORD
+
+/** QR link store tests use in-memory fallback unless `VITEST_REDIS_URL` is set. */
+if (!process.env.VITEST_REDIS_URL) {
+  delete process.env.REDIS_URL
+}

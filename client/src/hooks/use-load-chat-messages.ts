@@ -4,7 +4,11 @@ import { useEffect } from 'react'
 import { API_URL } from '@/lib/api/auth'
 import { acknowledgeMessagesDelivered } from '@/lib/api/messages'
 import { type ChatCryptoContext } from '@/lib/chat-crypto'
-import { decryptApiMessageRow, type ApiMessageRow } from '@/lib/decrypt-chat-api-message'
+import {
+  decryptApiMessageRows,
+  type ApiMessageRow,
+} from '@/lib/decrypt-chat-api-message'
+import { BATCH_WORKER_MIN } from '@/lib/crypto-batch-worker'
 import {
   cacheMessages,
   getRecentCachedMessages,
@@ -15,6 +19,7 @@ import type { DecryptedMessage } from '@/types/chat'
 export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setMessages = useChatStore((s) => s.setMessages)
+  const setHistoryDecryptBusy = useChatStore((s) => s.setHistoryDecryptBusy)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const userId = useChatStore((s) => s.userId)
 
@@ -44,15 +49,20 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
       }
       const data = (await res.json()) as { messages?: ApiMessageRow[] }
       const rows = data.messages ?? []
-      const out: DecryptedMessage[] = []
-      for (const m of rows) {
-        out.push(
-          await decryptApiMessageRow(
-            unwrappedPrivateKey,
-            cryptoCtx,
-            m
-          )
+      const cipherCount = rows.filter(
+        (m) => m.content != null && m.iv != null && m.content !== ''
+      ).length
+      const showDecryptBusy = cipherCount >= BATCH_WORKER_MIN
+      if (showDecryptBusy) setHistoryDecryptBusy(true)
+      let out: DecryptedMessage[] = []
+      try {
+        out = await decryptApiMessageRows(
+          unwrappedPrivateKey,
+          cryptoCtx,
+          rows
         )
+      } finally {
+        if (showDecryptBusy) setHistoryDecryptBusy(false)
       }
       if (!cancelled) {
         out.sort(
@@ -81,5 +91,12 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
     return () => {
       cancelled = true
     }
-  }, [activeChatId, cryptoCtx, unwrappedPrivateKey, setMessages, userId])
+  }, [
+    activeChatId,
+    cryptoCtx,
+    unwrappedPrivateKey,
+    setMessages,
+    setHistoryDecryptBusy,
+    userId,
+  ])
 }

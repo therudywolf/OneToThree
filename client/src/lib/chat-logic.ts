@@ -205,7 +205,7 @@ export async function unwrapGroupKeyFromStoredPayload(
       'raw',
       raw as BufferSource,
       { name: 'AES-GCM', length: 256 },
-      false,
+      true,
       ['encrypt', 'decrypt']
     )
   }
@@ -223,7 +223,7 @@ export async function unwrapGroupKeyFromStoredPayload(
     'raw',
     raw as BufferSource,
     { name: 'AES-GCM', length: 256 },
-    false,
+    true,
     ['encrypt', 'decrypt']
   )
 }

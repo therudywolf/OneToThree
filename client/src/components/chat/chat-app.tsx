@@ -85,6 +85,7 @@ export function ChatApp({
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const activeChatId = useChatStore((s) => s.activeChatId)
+  const historyDecryptBusy = useChatStore((s) => s.historyDecryptBusy)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [identityOpen, setIdentityOpen] = useState(false)
   const [peerIdentity, setPeerIdentity] = useState<{
@@ -468,6 +469,14 @@ export function ChatApp({
           {ctxError ? (
             <div className="shrink-0 border-b border-zinc-800 px-3 py-1 font-mono text-xs text-zinc-500">
               SIGNAL LOST
+            </div>
+          ) : null}
+          {historyDecryptBusy ? (
+            <div
+              className="shrink-0 border-b border-neon-cyan/25 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/60"
+              aria-live="polite"
+            >
+              Decrypting backlog…
             </div>
           ) : null}
           {mediaAccessError ? (

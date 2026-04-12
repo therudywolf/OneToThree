@@ -47,7 +47,8 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-void">
       <body className="relative min-h-dvh overflow-x-hidden bg-void supports-[height:100dvh]:min-h-[100dvh]">
-        <SilenceConsole />
+        {/* DEBUG: SilenceConsole disabled for WebRTC diagnostics */}
+        {/* <SilenceConsole /> */}
         <ErrorBoundary>
           <AuthProvider>
             <div className="crt-overlay" aria-hidden />

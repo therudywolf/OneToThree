@@ -38,7 +38,11 @@ function buildIceServers(): RTCIceServer[] {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
-    if (urls.length === 0) return [DEFAULT_STUN]
+    if (urls.length === 0) {
+      console.warn('[ICE] TURN_URL configured but empty, using defaults')
+      return [DEFAULT_STUN]
+    }
+    console.warn('[ICE] Configured TURN servers:', { count: urls.length, user: turnUser })
     return [
       DEFAULT_STUN,
       {
@@ -48,6 +52,7 @@ function buildIceServers(): RTCIceServer[] {
       },
     ]
   }
+  console.warn('[ICE] No TURN configured, using STUN only')
   return [DEFAULT_STUN]
 }
 
@@ -62,6 +67,16 @@ type SignalPayload =
   | { kind: 'media_state'; media: 'audio' | 'video'; enabled: boolean }
 
 function sendSignal(targetUserId: string, signalData: SignalPayload) {
+  const label = `[SIGNAL→${targetUserId.slice(0, 8)}]`
+  const kind = signalData.kind
+  console.warn(
+    `${label} Sending ${kind}`,
+    kind === 'offer' || kind === 'answer'
+      ? { kind, sdpLen: (signalData as { sdp?: string }).sdp?.length ?? 0 }
+      : kind === 'ice'
+        ? { kind, candidate: (signalData as { candidate?: unknown }).candidate }
+        : { kind, media: (signalData as { media?: string }).media }
+  )
   getFmSocket().send({ type: 'webrtc_signal', targetUserId, signalData })
 }
 
@@ -104,14 +119,24 @@ export function useWebRTC(userId: string | null) {
 
   const flushPendingIce = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const q = pendingIceRef.current[peerId]
-    if (!q?.length) return
+    if (!q?.length) {
+      console.warn(`[FLUSH←${peerId.slice(0, 8)}] No pending ICE candidates`)
+      return
+    }
+    console.warn(
+      `[FLUSH←${peerId.slice(0, 8)}] Flushing ${q.length} pending ICE candidates...`
+    )
     for (const c of q) {
       try {
         await pc.addIceCandidate(c)
-      } catch {
-        /* ignore */
+      } catch (err) {
+        console.warn(
+          `[FLUSH←${peerId.slice(0, 8)}] Failed to add pending candidate:`,
+          (err as Error)?.message
+        )
       }
     }
+    console.warn(`[FLUSH←${peerId.slice(0, 8)}] Flush complete`)
     delete pendingIceRef.current[peerId]
   }, [])
 
@@ -244,8 +269,19 @@ export function useWebRTC(userId: string | null) {
     const socket = getFmSocket()
     return socket.subscribe((msg) => {
       if (msg.type === 'call_invite') {
+        console.warn(
+          `[INVITE] call_invite from ${msg.from_user_id.slice(0, 8)} (video=${msg.is_video})`
+        )
         const state = useCallStore.getState()
-        if (state.isCalling || state.incomingCall) return
+        if (state.isCalling) {
+          console.warn('[INVITE] Already calling, ignoring invite')
+          return
+        }
+        if (state.incomingCall) {
+          console.warn('[INVITE] Already have incoming call, ignoring')
+          return
+        }
+        console.warn('[INVITE] Setting incomingCall state')
         setIncomingCall({
           peerId: msg.from_user_id,
           isVideo: msg.is_video,
@@ -253,6 +289,9 @@ export function useWebRTC(userId: string | null) {
         })
       }
       if (msg.type === 'call_leave') {
+        console.warn(
+          `[INVITE] call_leave from ${msg.from_user_id.slice(0, 8)}`
+        )
         cleanupPeer(msg.from_user_id)
         maybeResetCallIfNoPeers()
       }
@@ -285,23 +324,34 @@ export function useWebRTC(userId: string | null) {
 
       pc.oniceconnectionstatechange = () => {
         const st = pc.iceConnectionState
+        console.warn(
+          `[PC←${peerId.slice(0, 8)}] iceConnectionState: ${st} (connectionState: ${pc.connectionState})`
+        )
         if (st === 'connected' || st === 'completed') {
+          console.warn(`[PC←${peerId.slice(0, 8)}] ✓ Connected!`)
           clearIceDisconnectTimer(peerId)
           outgoingRingStopRef.current?.()
           outgoingRingStopRef.current = null
           return
         }
         if (st === 'failed' || st === 'closed') {
+          console.error(
+            `[PC←${peerId.slice(0, 8)}] ✗ ${st}, cleaning up`
+          )
           clearIceDisconnectTimer(peerId)
           teardownIfStillThisPc()
           return
         }
         if (st === 'disconnected') {
+          console.warn(
+            `[PC←${peerId.slice(0, 8)}] Disconnected, waiting 3.2s before teardown`
+          )
           clearIceDisconnectTimer(peerId)
           const timerId = window.setTimeout(() => {
             iceDisconnectTimersRef.current.delete(peerId)
             if (pcsRef.current.get(peerId) !== pc) return
             if (pc.iceConnectionState !== 'disconnected') return
+            console.error(`[PC←${peerId.slice(0, 8)}] ICE still disconnected, tearing down`)
             teardownIfStillThisPc()
           }, 3200)
           iceDisconnectTimersRef.current.set(peerId, timerId)
@@ -310,13 +360,22 @@ export function useWebRTC(userId: string | null) {
 
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState
+        console.warn(
+          `[PC←${peerId.slice(0, 8)}] connectionState: ${st} (iceConnectionState: ${pc.iceConnectionState})`
+        )
         if (st === 'failed' || st === 'closed') {
+          console.error(`[PC←${peerId.slice(0, 8)}] Connection ${st}, cleaning up`)
           clearIceDisconnectTimer(peerId)
           teardownIfStillThisPc()
         }
       }
       pc.ontrack = (ev) => {
+        console.warn(
+          `[PC←${peerId.slice(0, 8)}] ontrack event: ${ev.track.kind}`,
+          { streamCount: ev.streams.length }
+        )
         if (ev.streams[0]) {
+          console.warn(`[PC←${peerId.slice(0, 8)}] Setting remote stream`)
           setRemoteStream(peerId, ev.streams[0])
         }
       }
@@ -324,6 +383,13 @@ export function useWebRTC(userId: string | null) {
         // WARNING: ICE candidate routing must stay peer-targeted.
         // Broadcasting candidates to non-target peers can leak network metadata
         // and break connection establishment in full-mesh calls.
+        if (ev.candidate) {
+          console.warn(
+            `[PC←${peerId.slice(0, 8)}] onicecandidate: ${ev.candidate.candidate.slice(0, 50)}...`
+          )
+        } else {
+          console.warn(`[PC←${peerId.slice(0, 8)}] onicecandidate: (end of candidates)`)
+        }
         sendSignal(peerId, {
           kind: 'ice',
           candidate: ev.candidate ? ev.candidate.toJSON() : null,
@@ -376,30 +442,56 @@ export function useWebRTC(userId: string | null) {
         if (data.candidate && pc) {
           if (pc.remoteDescription) {
             try {
+              console.warn(
+                `[ICE←${fromUserId.slice(0, 8)}] Adding ice candidate: ${data.candidate.candidate?.slice(0, 50) ?? 'null'}...`
+              )
               await pc.addIceCandidate(data.candidate)
-            } catch {
-              /* ignore */
+            } catch (err) {
+              console.warn(
+                `[ICE←${fromUserId.slice(0, 8)}] Failed to add candidate:`,
+                (err as Error)?.message
+              )
             }
           } else {
+            console.warn(
+              `[ICE←${fromUserId.slice(0, 8)}] Queueing candidate (no remoteDescription yet): ${data.candidate.candidate?.slice(0, 50) ?? 'null'}...`
+            )
             const bucket = pendingIceRef.current[fromUserId] ?? []
             bucket.push(data.candidate)
             pendingIceRef.current[fromUserId] = bucket
           }
+        } else {
+          console.warn(`[ICE←${fromUserId.slice(0, 8)}] End of ICE candidates`)
         }
         return
       }
 
       if (data.kind === 'offer') {
+        console.warn(
+          `[SIG←${fromUserId.slice(0, 8)}] Received offer (sdp=${data.sdp?.length ?? 0} bytes)`
+        )
         if (pcsRef.current.has(fromUserId)) {
+          console.warn(
+            `[SIG←${fromUserId.slice(0, 8)}] Already have PeerConnection, ignoring duplicate offer`
+          )
           return
         }
         const state = useCallStore.getState()
         if (state.incomingCall?.peerId === fromUserId) {
+          console.warn(
+            `[SIG←${fromUserId.slice(0, 8)}] Incoming call already set, ignoring`
+          )
           return
         }
         if (state.isCalling) {
+          console.warn(
+            `[SIG←${fromUserId.slice(0, 8)}] Already calling, ignoring incoming offer`
+          )
           return
         }
+        console.warn(
+          `[SIG←${fromUserId.slice(0, 8)}] Setting incomingCall state (video=${!!data.isVideo})`
+        )
         setIncomingCall({
           peerId: fromUserId,
           isVideo: !!data.isVideo,
@@ -409,13 +501,33 @@ export function useWebRTC(userId: string | null) {
       }
 
       if (data.kind === 'answer') {
+        console.warn(
+          `[SIG←${fromUserId.slice(0, 8)}] Received answer (sdp=${data.sdp?.length ?? 0} bytes)`
+        )
         const pc = pcsRef.current.get(fromUserId)
-        if (!pc) return
+        if (!pc) {
+          console.error(
+            `[SIG←${fromUserId.slice(0, 8)}] No PeerConnection found for answer`
+          )
+          return
+        }
         try {
+          console.warn(
+            `[SIG←${fromUserId.slice(0, 8)}] Setting remote description (answer)`
+          )
           await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp })
+          console.warn(
+            `[SIG←${fromUserId.slice(0, 8)}] Remote description set, flushing pending ICE`
+          )
           await flushPendingIce(fromUserId, pc)
-        } catch {
-          /* ignore */
+          console.warn(
+            `[SIG←${fromUserId.slice(0, 8)}] Answer handshake complete`
+          )
+        } catch (err) {
+          console.error(
+            `[SIG←${fromUserId.slice(0, 8)}] Error processing answer:`,
+            err
+          )
         }
       }
     }
@@ -423,7 +535,11 @@ export function useWebRTC(userId: string | null) {
     const socket = getFmSocket()
     return socket.subscribe((msg) => {
       if (msg.type !== 'webrtc_signal') return
-      if (msg.fromUserId === userId) return
+      if (msg.fromUserId === userId) {
+        console.warn('[SOCKET] Ignoring loopback signal from self')
+        return
+      }
+      console.warn(`[SOCKET] Received webrtc_signal from ${msg.fromUserId.slice(0, 8)}`)
       void handleSignal(msg.fromUserId, msg.signalData)
     })
   }, [userId, setIncomingCall, flushPendingIce])
@@ -456,6 +572,9 @@ export function useWebRTC(userId: string | null) {
 
     setLocalStream(stream)
     if (inc.isVideo) facingModeRef.current = 'user'
+    console.warn(
+      `[ACCEPT←${inc.peerId.slice(0, 8)}] Creating PeerConnection for answer (video=${inc.isVideo})`
+    )
     const pc = new RTCPeerConnection({ iceServers: buildIceServers() })
     pcsRef.current.set(inc.peerId, pc)
     addPeerConnection(inc.peerId, pc)
@@ -463,12 +582,21 @@ export function useWebRTC(userId: string | null) {
     stream.getTracks().forEach((t) => pc.addTrack(t, stream))
 
     try {
+      console.warn(
+        `[ACCEPT←${inc.peerId.slice(0, 8)}] Setting remote description (offer sdp=${inc.offer.sdp?.length ?? 0} bytes)`
+      )
       await pc.setRemoteDescription(inc.offer)
+      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Remote description set, flushing pending ICE candidates`)
       await flushPendingIce(inc.peerId, pc)
+      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Creating answer...`)
       const answer = await pc.createAnswer()
+      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Answer created (sdp=${answer.sdp?.length ?? 0} bytes)`)
+      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Setting local description...`)
       await pc.setLocalDescription(answer)
+      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Local description set, signaling answer`)
       sendSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
-    } catch {
+    } catch (err) {
+      console.error(`[ACCEPT←${inc.peerId.slice(0, 8)}] Error accepting call:`, err)
       cleanupPeer(inc.peerId)
       stopStreamTracks(stream)
       setLocalStream(null)
@@ -515,6 +643,7 @@ export function useWebRTC(userId: string | null) {
         if (peerId === userId) continue
         if (pcsRef.current.has(peerId)) continue
 
+        console.warn(`[INIT→${peerId.slice(0, 8)}] Creating PeerConnection (video=${isVideo})`)
         const pc = new RTCPeerConnection({ iceServers: buildIceServers() })
         pcsRef.current.set(peerId, pc)
         addPeerConnection(peerId, pc)
@@ -522,14 +651,19 @@ export function useWebRTC(userId: string | null) {
         stream.getTracks().forEach((t) => pc.addTrack(t, stream))
 
         try {
+          console.warn(`[INIT→${peerId.slice(0, 8)}] Creating offer...`)
           const offer = await pc.createOffer()
+          console.warn(`[INIT→${peerId.slice(0, 8)}] Offer created (sdp=${offer.sdp?.length ?? 0} bytes)`)
+          console.warn(`[INIT→${peerId.slice(0, 8)}] Setting local description...`)
           await pc.setLocalDescription(offer)
+          console.warn(`[INIT→${peerId.slice(0, 8)}] Local description set, signaling offer`)
           sendSignal(peerId, {
             kind: 'offer',
             sdp: offer.sdp ?? '',
             isVideo,
           })
-        } catch {
+        } catch (err) {
+          console.error(`[INIT→${peerId.slice(0, 8)}] Error creating offer:`, err)
           cleanupPeer(peerId)
         }
       }

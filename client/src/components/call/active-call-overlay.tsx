@@ -158,7 +158,7 @@ function PeerTile({
           </button>
         )}
       </div>
-      <audio ref={audioRef} className="hidden" playsInline />
+      <audio ref={audioRef} className="hidden" playsInline muted={muted} />
       {hasVideo ? (
         <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
           <video

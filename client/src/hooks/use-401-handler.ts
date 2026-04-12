@@ -25,7 +25,7 @@ export function use401Handler() {
     window.fetch = async (
       ...args: Parameters<typeof fetch>
     ): Promise<Response> => {
-      const response = await originalFetch.current!(...args)
+      const response = await originalFetch.current!.apply(window, args)
 
       // Handle 401 Unauthorized
       if (response.status === 401 && !hasRedirectedRef.current) {

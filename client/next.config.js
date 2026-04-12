@@ -95,6 +95,15 @@ const withPWA = require('next-pwa')({
   skipWaiting: true,
   disable: process.env.NODE_ENV === 'development',
   importScripts: ['/push-handler.js'],
+  runtimeCaching: [
+    {
+      urlPattern: /(_rsc=|__rsc=)/,
+      handler: 'NetworkOnly',
+      options: {
+        cacheableResponse: { statuses: [0, 200] },
+      },
+    },
+  ],
 })
 
 module.exports = withPWA(nextConfig)

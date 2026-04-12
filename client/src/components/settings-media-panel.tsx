@@ -269,7 +269,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           className="mt-1 h-48 w-full border border-neon-cyan/30 bg-black object-cover"
         />
         {previewError ? (
-          <p className="mt-2 border border-neon-red/60 px-2 py-1 font-mono text-[10px] text-neon-red">
+          <p className="mt-2 break-words border border-neon-red/60 px-2 py-1 font-mono text-[10px] text-neon-red">
             [!] {previewError}
           </p>
         ) : null}
@@ -283,10 +283,10 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           {t('settings.digitalDenHint')}
         </p>
         <div className="flex flex-wrap items-center justify-between gap-2 border border-neon-cyan/15 px-2 py-2 font-mono text-[10px] text-neon-cyan/90">
-          <span>
+          <p className="break-words">
             :: {t('settings.digitalDenUsage')}:{' '}
             {denBytes === null ? '—' : formatBytes(denBytes)}
-          </span>
+          </p>
           <button
             type="button"
             disabled={denBusy}
@@ -312,7 +312,9 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           </button>
         </div>
         {denNote ? (
-          <p className="text-[9px] text-neon-cyan/80">:: {denNote}</p>
+          <p className="break-words font-mono text-[9px] text-neon-cyan/90">
+            :: {denNote}
+          </p>
         ) : null}
       </div>
     </div>

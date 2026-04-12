@@ -14,7 +14,6 @@ import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { clearAllMediaCache } from '@/lib/media-cache'
 import { SettingsDevicesPanel } from '@/components/settings-devices-panel'
 import { SettingsMediaPanel } from '@/components/settings-media-panel'
-import { SettingsRecoveryMnemonic } from '@/components/settings-recovery-mnemonic'
 import { SettingsPushNotifications } from '@/components/settings-push-notifications'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { SettingsAvatarSection } from '@/components/settings-avatar-section'
@@ -317,12 +316,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     const url = URL.createObjectURL(file)
     const a = document.createElement('a')
     a.href = url
-    a.download = `p13-vault-${username}-${Date.now()}.json`
+    a.download = `forest_vault_key.json`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  function exportPhysicalKey() {
+  async function copyVaultKey() {
     const blob = readVaultBlob(userId)
     if (!blob) {
       setError(t('settings.noLocalVault'))
@@ -333,13 +332,13 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       null,
       2
     )
-    const file = new Blob([payload], { type: 'application/json' })
-    const url = URL.createObjectURL(file)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `p13-vault-${username}-${Date.now()}.key`
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      await navigator.clipboard.writeText(payload)
+      setError('COPIED')
+      setTimeout(() => setError(null), 2000)
+    } catch {
+      setError('COPY_FAILED')
+    }
   }
 
   function importVault() {
@@ -729,27 +728,24 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               <TerminalGlitchButton
                 type="button"
                 onClick={exportVault}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1 sm:min-w-[calc(33.333%-0.75rem)]"
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
               >
-                [ {t('settings.vaultExportJson')} ]
+                [ ↓ EXPORT VAULT KEY ]
               </TerminalGlitchButton>
               <TerminalGlitchButton
                 type="button"
-                onClick={exportPhysicalKey}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1 sm:min-w-[calc(33.333%-0.75rem)]"
+                onClick={() => void copyVaultKey()}
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
               >
-                [ {t('settings.vaultExportKey')} ]
+                [ COPY KEY TO CLIPBOARD ]
               </TerminalGlitchButton>
               <TerminalGlitchButton
                 type="button"
                 onClick={importVault}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1 sm:min-w-[calc(33.333%-0.75rem)]"
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
               >
                 [ {t('settings.vaultImport')} ]
               </TerminalGlitchButton>
-            </div>
-            <div className="mt-4">
-              <SettingsRecoveryMnemonic />
             </div>
           </div>
 

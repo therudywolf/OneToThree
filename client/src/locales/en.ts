@@ -81,7 +81,8 @@ const en = {
   'login.qrTokenInvalid': 'Token looks invalid (expect UUID).',
   'login.existingVault': 'Existing vault',
   'login.totpTitle': 'SECOND_GATE',
-  'login.totpSubtitle': 'TOTP · GOOGLE AUTHENTICATOR COMPATIBLE',
+  'login.totpSubtitle': 'TOTP PROTOCOL',
+  'login.totpDescription': 'Works with any TOTP authenticator app (Google Authenticator, Authy, Microsoft Authenticator, etc.),',
   'login.totpCodeLabel': '6-digit code',
   'login.totpSubmit': 'VERIFY',
   'login.totpBack': 'Back to sign-in',
@@ -265,8 +266,7 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.vaultBackup': 'Vault backup',
   'settings.vaultBackupHint':
     'JSON export or .key “physical key”; ciphertext only — passphrase stays offline.',
-  'settings.vaultExportJson': 'EXPORT_JSON',
-  'settings.vaultExportKey': 'DOWNLOAD_PHYSICAL_KEY',
+
   'settings.vaultImport': 'IMPORT',
   'settings.tabDevices': 'DEVICES',
   'settings.devicesSectionTitle': 'УСТРОЙСТВА / DEVICES',
@@ -282,14 +282,7 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
   'settings.linkDeviceTitle': '[ LINK :: NEW_DEVICE :: QR ]',
   'settings.linkDeviceHint':
     'Scan from the new device’s login screen (stub: TOTP accounts not supported yet). Token expires in ~5 min.',
-  'settings.recoveryMnemonicTitle': 'BIP39 recovery phrase (12 words)',
-  'settings.recoveryMnemonicHint':
-    'Offline backup only. Never share. Does not replace your vault passphrase for login.',
-  'settings.recoveryMnemonicGenerate': 'GENERATE_PHRASE',
-  'settings.recoveryMnemonicWarn':
-    'Write these words on paper and store offline. Clear screen when done.',
-  'settings.recoveryMnemonicAck': 'I wrote the phrase offline',
-  'settings.recoveryMnemonicDone': 'CLEAR',
+
   'settings.languageHint': 'Choose interface language',
   'settings.noLocalVault': 'No local vault',
   'settings.invalidVaultFile': 'Invalid vault file',

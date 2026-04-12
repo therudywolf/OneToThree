@@ -59,7 +59,15 @@ export async function setMasterDevice(deviceId: string): Promise<void> {
   )
   const data = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) {
-    throw new Error(data.error ?? 'SET_MASTER_FAILED')
+    const fallback =
+      res.status === 404
+        ? 'DEVICE_NOT_FOUND'
+        : res.status >= 500
+        ? 'SERVER_ERROR'
+        : res.status === 401
+        ? 'UNAUTHORIZED'
+        : 'SET_MASTER_FAILED'
+    throw new Error(data.error ?? `${fallback} (${res.status})`)
   }
 }
 

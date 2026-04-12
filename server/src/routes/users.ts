@@ -461,6 +461,68 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
+  app.patch('/me/devices/:deviceId/master', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ deviceId: uuidSchema }).safeParse(request.params)
+    if (!params.success) {
+      return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    }
+
+    const deviceId = normalizeUuid(params.data.deviceId)
+
+    const [existingDevice] = await db
+      .select({ id: devices.id })
+      .from(devices)
+      .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+      .limit(1)
+
+    if (!existingDevice) {
+      return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.update(devices).set({ isMaster: false }).where(eq(devices.userId, user.id))
+      await tx
+        .update(devices)
+        .set({ isMaster: true })
+        .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+    })
+
+    const sess = await verifySessionJwt(request)
+    const currentDeviceId = sess?.device_id ? normalizeUuid(sess.device_id) : null
+    const rows = await db
+      .select({
+        id: devices.id,
+        deviceName: devices.deviceName,
+        isMaster: devices.isMaster,
+        lastActive: devices.lastActive,
+        userAgent: devices.userAgent,
+        ipAddress: devices.ipAddress,
+        revokedAt: devices.revokedAt,
+      })
+      .from(devices)
+      .where(eq(devices.userId, user.id))
+      .orderBy(desc(devices.lastActive))
+
+    return reply.send({
+      current_device_id: currentDeviceId,
+      devices: rows.map((r) => ({
+        id: normalizeUuid(r.id),
+        device_name: r.deviceName,
+        is_master: r.isMaster,
+        last_active: r.lastActive.toISOString(),
+        user_agent: r.userAgent,
+        ip_address: r.ipAddress,
+        revoked: r.revokedAt != null,
+        is_current:
+          currentDeviceId !== null &&
+          normalizeUuid(r.id) === currentDeviceId,
+      })),
+    })
+  })
+
   app.delete('/me/devices/:deviceId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

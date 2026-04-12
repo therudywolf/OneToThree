@@ -45,9 +45,10 @@ const nextConfig = {
       "object-src 'none'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: blob:",
+      "img-src 'self' https://s3.onetothree.ru blob: data:",
+      "media-src 'self' https://s3.onetothree.ru blob:",
       "font-src 'self'",
-      `connect-src 'self' ${publicApi} ws: wss:`,
+      `connect-src 'self' ${publicApi} https://s3.onetothree.ru wss://api.onetothree.ru`,
       "worker-src 'self' blob:",
     ]
     if (isProd) {

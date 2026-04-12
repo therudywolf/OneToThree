@@ -9,6 +9,7 @@ export type DeviceRow = {
   ip_address: string | null
   revoked: boolean
   is_current: boolean
+  is_master: boolean
 }
 
 export async function fetchDevices(): Promise<{

@@ -1,0 +1,1 @@
+ALTER TABLE "devices" ADD COLUMN IF NOT EXISTS "is_master" boolean DEFAULT false NOT NULL;

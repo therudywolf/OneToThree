@@ -69,7 +69,7 @@ export async function buildApp() {
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],
         workerSrc: ["'self'", 'blob:'],
-        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : undefined,
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : null,
       },
     },
     crossOriginResourcePolicy: { policy: 'cross-origin' },

@@ -274,6 +274,7 @@ Right to Terminate: This is a private bunker. The administration reserves the ri
     'Sessions bound to this browser profile. Revoke to invalidate that session JWT.',
   'settings.devicesCurrent': 'CURRENT',
   'settings.devicesRevoked': 'REVOKED',
+  'settings.devicesMaster': 'MASTER',
   'settings.devicesRevoke': 'REVOKE',
   'settings.devicesRevokeConfirm':
     'Revoke this device? It will be signed out on the next request.',

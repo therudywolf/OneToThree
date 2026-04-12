@@ -120,6 +120,11 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                       {t('settings.devicesCurrent')}
                     </span>
                   ) : null}
+                  {d.is_master ? (
+                    <span className="ml-2 border border-yellow-500 px-1 text-[9px] uppercase text-yellow-500">
+                      {t('settings.devicesMaster')}
+                    </span>
+                  ) : null}
                   {d.revoked ? (
                     <span className="ml-2 text-red-700">
                       {t('settings.devicesRevoked')}
@@ -130,7 +135,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                   {d.last_active} · {d.ip_address ?? '—'}
                 </p>
               </div>
-              {!d.revoked ? (
+              {!d.revoked && !d.is_master ? (
                 <button
                   type="button"
                   disabled={busyId === d.id}

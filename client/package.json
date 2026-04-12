@@ -18,6 +18,7 @@
     "@scure/bip39": "^2.0.1",
     "browser-image-compression": "^2.0.2",
     "dexie": "^4.4.2",
+    "emoji-picker-react": "^4.18.0",
     "emoji-regex": "^9.2.2",
     "framer-motion": "^11.11.17",
     "idb": "^7.1.1",

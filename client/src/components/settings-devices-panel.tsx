@@ -4,11 +4,16 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   fetchDevices,
   revokeDevice,
+  setMasterDevice,
+  revokeAllOtherSessions,
+  clearRevokedDevices,
   type DeviceRow,
 } from '@/lib/api/devices'
 import { useAuth } from '@/components/auth/auth-provider'
 import { SettingsLinkDeviceModal } from '@/components/settings-link-device-modal'
 import { useTranslation } from '@/hooks/use-translation'
+import { readVaultBlob } from '@/lib/vault'
+import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 
 type Props = { userId: string; active: boolean }
 
@@ -19,7 +24,9 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [busyAction, setBusyAction] = useState<string | null>(null)
   const [linkQrOpen, setLinkQrOpen] = useState(false)
+  const [showVaultExportPrompt, setShowVaultExportPrompt] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,6 +67,84 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
     }
   }
 
+  async function onSetMaster(d: DeviceRow) {
+    if (d.is_master || d.revoked) return
+    setBusyId(d.id)
+    setBusyAction('master')
+    setError(null)
+    try {
+      await setMasterDevice(d.id)
+      await load()
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setBusyId(null)
+      setBusyAction(null)
+    }
+  }
+
+  async function onRevokeAllOthers() {
+    if (!window.confirm('Terminate all other sessions? You will remain logged in on this device.')) {
+      return
+    }
+    setBusyAction('terminate-all')
+    setError(null)
+    try {
+      await revokeAllOtherSessions()
+      await load()
+      await refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  async function onClearRevoked() {
+    setBusyAction('clear-revoked')
+    setError(null)
+    try {
+      await clearRevokedDevices()
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setBusyAction(null)
+    }
+  }
+
+  function exportVault() {
+    const blob = readVaultBlob(userId)
+    if (!blob) {
+      setError(t('settings.noLocalVault'))
+      return
+    }
+    const payload = JSON.stringify(
+      { userId, vault: blob, exported_at: new Date().toISOString() },
+      null,
+      2
+    )
+    const file = new Blob([payload], { type: 'application/json' })
+    const url = URL.createObjectURL(file)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `forest_vault_key.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setShowVaultExportPrompt(false)
+  }
+
+  function handleLinkDeviceClick() {
+    const blob = readVaultBlob(userId)
+    if (!blob) {
+      window.alert(t('settings.noLocalVault') + ' - Please export your Vault Key first.')
+      setShowVaultExportPrompt(true)
+      return
+    }
+    setLinkQrOpen(true)
+  }
+
   return (
     <div className="space-y-4 border-t border-neon-cyan/30 pt-3">
       {linkQrOpen ? (
@@ -77,11 +162,38 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <button
           type="button"
-          onClick={() => setLinkQrOpen(true)}
+          onClick={handleLinkDeviceClick}
           className="w-full border border-neon-cyan/70 bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-cyan/10 active:scale-95 sm:w-auto"
         >
-          [ {t('settings.linkDeviceCta')} ]
+          [ + {t('settings.linkDeviceCta') || 'ДОБАВИТЬ УСТРОЙСТВО'} ]
         </button>
+        <TerminalGlitchButton
+          type="button"
+          onClick={exportVault}
+          className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
+        >
+          [ ↓ EXPORT VAULT KEY ]
+        </TerminalGlitchButton>
+        {devices.some(d => !d.revoked && d.id !== user?.device_id) && (
+          <TerminalGlitchButton
+            type="button"
+            onClick={() => void onRevokeAllOthers()}
+            disabled={busyAction === 'terminate-all'}
+            className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap !border-neon-red !text-neon-red hover:!bg-neon-red/10 sm:flex-1"
+          >
+            [ {busyAction === 'terminate-all' ? '…' : 'ЗАВЕРШИТЬ ВСЕ'} ]
+          </TerminalGlitchButton>
+        )}
+        {devices.some(d => d.revoked) && (
+          <TerminalGlitchButton
+            type="button"
+            onClick={() => void onClearRevoked()}
+            disabled={busyAction === 'clear-revoked'}
+            className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap !border-zinc-600 !text-zinc-400 hover:!bg-zinc-800/30 sm:flex-1"
+          >
+            [ {busyAction === 'clear-revoked' ? '…' : 'ОЧИСТИТЬ'} ]
+          </TerminalGlitchButton>
+        )}
       </div>
 
       {error ? (
@@ -136,6 +248,27 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                 </p>
               </div>
               {!d.revoked && !d.is_master ? (
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    disabled={busyId === d.id}
+                    onClick={() => void onSetMaster(d)}
+                    className="shrink-0 border border-yellow-500/70 px-2 py-1 text-[9px] uppercase text-yellow-500 transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-yellow-500/10 active:scale-95 disabled:opacity-40"
+                  >
+                    {busyId === d.id && busyAction === 'master' ? '…' : 'ГЛАВНОЕ'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === d.id}
+                    onClick={() => void onRevoke(d)}
+                    className="shrink-0 border border-neon-red/70 px-2 py-1 text-[9px] uppercase text-neon-red transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-red/10 active:scale-95 disabled:opacity-40"
+                  >
+                    {busyId === d.id ? '…' : t('settings.devicesRevoke')}
+                  </button>
+                </div>
+              ) : !d.revoked && d.is_master ? (
+                <span className="text-[9px] text-yellow-500">MASTER</span>
+              ) : !d.revoked ? (
                 <button
                   type="button"
                   disabled={busyId === d.id}
@@ -157,6 +290,21 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         device_id:{' '}
         <span className="text-neon-cyan/80">{user?.device_id ?? '—'}</span>
       </p>
+
+      {showVaultExportPrompt && (
+        <div className="border border-neon-red/50 bg-black/80 p-3">
+          <p className="mb-2 text-[9px] text-neon-red">
+            Download your Vault Key before linking a new device:
+          </p>
+          <button
+            type="button"
+            onClick={exportVault}
+            className="w-full border border-neon-cyan px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
+          >
+            [ ↓ EXPORT VAULT KEY ]
+          </button>
+        </div>
+      )}
     </div>
   )
 }

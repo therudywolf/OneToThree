@@ -732,20 +732,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               >
                 [ ↓ EXPORT VAULT KEY ]
               </TerminalGlitchButton>
-              <TerminalGlitchButton
-                type="button"
-                onClick={() => void copyVaultKey()}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
-              >
-                [ COPY KEY TO CLIPBOARD ]
-              </TerminalGlitchButton>
-              <TerminalGlitchButton
-                type="button"
-                onClick={importVault}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
-              >
-                [ {t('settings.vaultImport')} ]
-              </TerminalGlitchButton>
             </div>
           </div>
 

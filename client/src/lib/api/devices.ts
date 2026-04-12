@@ -46,3 +46,41 @@ export async function revokeDevice(deviceId: string): Promise<void> {
     throw new Error(data.error ?? 'DEVICE_REVOKE_FAILED')
   }
 }
+
+export async function setMasterDevice(deviceId: string): Promise<void> {
+  const res = await fetch(
+    `${API_URL}/users/me/devices/${encodeURIComponent(deviceId)}/master`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_master: true }),
+    }
+  )
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'SET_MASTER_FAILED')
+  }
+}
+
+export async function revokeAllOtherSessions(): Promise<void> {
+  const res = await fetch(`${API_URL}/users/me/devices/revoke-all-others`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'REVOKE_ALL_FAILED')
+  }
+}
+
+export async function clearRevokedDevices(): Promise<void> {
+  const res = await fetch(`${API_URL}/users/me/devices/clear-revoked`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'CLEAR_REVOKED_FAILED')
+  }
+}

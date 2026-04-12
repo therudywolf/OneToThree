@@ -408,7 +408,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
         </header>
 
-        <div className="flex shrink-0 flex-col gap-2 border-b border-neon-cyan/20 py-2 sm:flex-row sm:flex-wrap">
+        <div className="flex shrink-0 flex-col gap-2 border-b border-neon-cyan/20 py-2 sm:flex-row sm:flex-wrap sm:overflow-x-auto">
           <button
             type="button"
             onClick={() => setSettingsTab('main')}
@@ -444,7 +444,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-0.5 py-4">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4">
 
         {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
         {settingsTab === 'devices' ? (
@@ -630,7 +630,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     <p className="text-[9px] text-red-800">
                       {t('settings.totpSecretManual')}
                     </p>
-                    <p className="break-all font-mono text-[9px] text-neon-cyan/80">
+                    <p className="break-all font-mono text-[9px] text-neon-cyan/80 overflow-x-hidden">
                       {totpSetup.secret}
                     </p>
                     <label className="terminal-label" htmlFor="totp-enable-code">
@@ -731,25 +731,25 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <p className="mb-2 break-words text-[9px] text-zinc-500">
               {t('settings.vaultBackupHint')}
             </p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
               <TerminalGlitchButton
                 type="button"
                 onClick={exportVault}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[10px] sm:flex-1 sm:basis-[calc(33.333%-0.5rem)]"
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1 sm:min-w-[calc(33.333%-0.75rem)]"
               >
                 [ {t('settings.vaultExportJson')} ]
               </TerminalGlitchButton>
               <TerminalGlitchButton
                 type="button"
                 onClick={exportPhysicalKey}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[10px] sm:flex-1 sm:basis-[calc(33.333%-0.5rem)]"
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1 sm:min-w-[calc(33.333%-0.75rem)]"
               >
                 [ {t('settings.vaultExportKey')} ]
               </TerminalGlitchButton>
               <TerminalGlitchButton
                 type="button"
                 onClick={importVault}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[10px] sm:flex-1 sm:basis-[calc(33.333%-0.5rem)]"
+                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1 sm:min-w-[calc(33.333%-0.75rem)]"
               >
                 [ {t('settings.vaultImport')} ]
               </TerminalGlitchButton>
@@ -832,7 +832,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         </div>
 
         {error ? (
-          <p className="shrink-0 border border-neon-red px-2 py-1 font-mono text-[10px] text-neon-red break-words">
+          <p className="shrink-0 border border-neon-red px-2 py-1 font-mono text-[10px] text-neon-red break-words overflow-x-hidden">
             [!] {error}
           </p>
         ) : null}

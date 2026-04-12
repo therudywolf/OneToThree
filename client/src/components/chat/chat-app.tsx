@@ -34,7 +34,6 @@ import { ChatMediaControls } from '@/components/chat/chat-media-controls'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
-import { LocaleToggle } from '@/components/locale-toggle'
 import { PwaInstallBanner } from '@/components/pwa-install-banner'
 import { PushOnboardingBanner } from '@/components/push-onboarding-banner'
 import { InviteChatLinkEffect } from '@/components/chat/invite-chat-link-effect'
@@ -434,7 +433,6 @@ export function ChatApp({
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 md:shrink-0">
-          <LocaleToggle />
           {user?.role === 'admin' ? (
             <Link
               href="/admin"

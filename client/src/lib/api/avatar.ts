@@ -5,6 +5,52 @@ import { signMessageWithVaultPin } from '@/lib/vault-signing'
 
 const AVATAR_PREFIX = 'avatar:v1:'
 
+/**
+ * PUT to presigned URL with retry (exponential backoff).
+ * Mirrors putWithRetry from use-send-media.ts
+ */
+async function putAvatarWithRetry(
+  uploadUrl: string,
+  buf: ArrayBuffer,
+  retries = 3
+): Promise<void> {
+  let attempt = 0
+  let lastErr: unknown
+  while (attempt < retries) {
+    attempt++
+    try {
+      console.log(
+        '[AVATAR UPLOAD] Attempting PUT to MinIO:',
+        uploadUrl.split('?')[0],
+        `(attempt ${attempt}/${retries})`
+      )
+      const put = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: buf,
+      })
+      if (put.ok) return
+      const errText = await put.text().catch(() => '')
+      console.error(
+        '[AVATAR UPLOAD] PUT failed',
+        put.status,
+        put.statusText,
+        errText ? errText.slice(0, 500) : ''
+      )
+      lastErr = new Error(`MINIO_AVATAR_PUT_FAILED_${put.status}`)
+    } catch (err) {
+      console.error('[AVATAR UPLOAD FATAL ERROR]', err)
+      lastErr = err
+    }
+    if (attempt < retries) {
+      const delay = 350 * attempt
+      console.log(`[AVATAR UPLOAD] Retrying in ${delay}ms...`)
+      await new Promise((r) => setTimeout(r, delay))
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('MINIO_AVATAR_PUT_FAILED')
+}
+
 export async function fetchAvatarChallenge(): Promise<{ nonce: string }> {
   const res = await fetch(`${API_URL}/users/me/avatar-challenge`, {
     credentials: 'include',
@@ -76,25 +122,8 @@ export async function uploadAvatarJpeg(params: {
 
   const { uploadUrl, avatar_key } = presignData
 
-  console.log('[AVATAR UPLOAD] PUT to:', uploadUrl)
-
-  let put: Response
-  try {
-    put = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/jpeg' },
-      body: buf,
-    })
-  } catch (e) {
-    console.error('[AVATAR UPLOAD FATAL]', e)
-    throw e instanceof Error ? e : new Error('AVATAR_PUT_NETWORK')
-  }
-
-  if (!put.ok) {
-    const t = await put.text().catch(() => '')
-    console.error('[AVATAR UPLOAD] PUT failed', put.status, t.slice(0, 400))
-    throw new Error(`AVATAR_PUT_FAILED_${put.status}`)
-  }
+  // Execute PUT to MinIO with retry logic (matches media upload flow)
+  await putAvatarWithRetry(uploadUrl, buf)
 
   const commit = await fetch(`${API_URL}/users/me/avatar/commit`, {
     method: 'POST',

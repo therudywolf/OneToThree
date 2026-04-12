@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/auth/auth-provider'
+import { Auth401Interceptor } from '@/components/auth/auth-401-interceptor'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { SilenceConsole } from '@/components/silence-console'
+import { RecoveryHandler } from '@/components/recovery-handler'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -49,12 +51,15 @@ export default function RootLayout({
       <body className="relative min-h-dvh overflow-x-hidden bg-void supports-[height:100dvh]:min-h-[100dvh]">
         {/* DEBUG: SilenceConsole disabled for WebRTC diagnostics */}
         {/* <SilenceConsole /> */}
+        <RecoveryHandler />
         <ErrorBoundary>
           <AuthProvider>
-            <div className="crt-overlay" aria-hidden />
-            <div className="crt-vignette relative z-10 min-h-dvh supports-[height:100dvh]:min-h-[100dvh]">
-              {children}
-            </div>
+            <Auth401Interceptor>
+              <div className="crt-overlay" aria-hidden />
+              <div className="crt-vignette relative z-10 min-h-dvh supports-[height:100dvh]:min-h-[100dvh]">
+                {children}
+              </div>
+            </Auth401Interceptor>
           </AuthProvider>
         </ErrorBoundary>
       </body>

@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useRouter } from 'next/navigation'
 import { AuthHttpError, fetchMe, logoutApi } from '@/lib/api/auth'
 import { wipeAllClientLocalState } from '@/lib/client-wipe'
 
@@ -45,10 +46,12 @@ export function useAuth(): AuthContextValue {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   /** Only the latest `refresh()` may update state (avoids race: initial /me after login sets cookie). */
   const refreshGeneration = useRef(0)
+  const redirectedRef = useRef(false)
 
   const refresh = useCallback(async () => {
     const myId = ++refreshGeneration.current
@@ -60,11 +63,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         device_id: u.device_id ?? null,
         avatar_key: u.avatar_key ?? null,
       })
+      redirectedRef.current = false
     } catch (e) {
       if (myId !== refreshGeneration.current) return
       if (e instanceof AuthHttpError) {
         if (process.env.NODE_ENV !== 'production') {
           console.warn('[auth] refresh failed', e.status)
+        }
+        // Handle 401: redirect to login
+        if (e.status === 401 && !redirectedRef.current) {
+          redirectedRef.current = true
+          console.warn('[auth] Session expired (401) — redirecting to login')
+          setUser(null)
+          setLoading(false)
+          // Use a timeout to ensure state updates propagate
+          setTimeout(() => {
+            router.push('/login')
+          }, 50)
+          return
         }
         if (e.message === 'BANNED_USER') {
           await wipeAllClientLocalState()
@@ -76,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false)
       }
     }
-  }, [])
+  }, [router])
 
   useEffect(() => {
     setLoading(true)
@@ -85,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     refreshGeneration.current++
+    redirectedRef.current = true
     await logoutApi()
     setUser(null)
     setLoading(false)

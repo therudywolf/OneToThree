@@ -118,26 +118,43 @@ export function useWebRTC(userId: string | null) {
   const clearRemotePeerMedia = useCallStore((s) => s.clearRemotePeerMedia)
 
   const flushPendingIce = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
+    // Snapshot the queue to handle candidates arriving during flush
     const q = pendingIceRef.current[peerId]
     if (!q?.length) {
       console.warn(`[FLUSH←${peerId.slice(0, 8)}] No pending ICE candidates`)
       return
     }
+    
+    // Capture current length - new candidates may arrive during flush
+    const candidatesToFlush = [...q]
     console.warn(
-      `[FLUSH←${peerId.slice(0, 8)}] Flushing ${q.length} pending ICE candidates...`
+      `[FLUSH←${peerId.slice(0, 8)}] Flushing ${candidatesToFlush.length} pending ICE candidates...`
     )
-    for (const c of q) {
+    
+    // Process snapshot
+    for (const c of candidatesToFlush) {
       try {
-        await pc.addIceCandidate(c)
+        // Skip null candidates (end-of-candidates marker)
+        if (!c) {
+          console.warn(`[FLUSH←${peerId.slice(0, 8)}] Skipping null candidate (end-of-candidates)`)
+          continue
+        }
+        await pc.addIceCandidate(new RTCIceCandidate(c))
       } catch (err) {
+        const errMsg = (err as Error)?.message ?? 'Unknown error'
         console.warn(
           `[FLUSH←${peerId.slice(0, 8)}] Failed to add pending candidate:`,
-          (err as Error)?.message
+          errMsg
         )
       }
     }
+    
+    // Clear only the candidates we just processed; new ones may have arrived
+    pendingIceRef.current[peerId] = q.slice(candidatesToFlush.length)
+    if (pendingIceRef.current[peerId].length === 0) {
+      delete pendingIceRef.current[peerId]
+    }
     console.warn(`[FLUSH←${peerId.slice(0, 8)}] Flush complete`)
-    delete pendingIceRef.current[peerId]
   }, [])
 
   const clearIceDisconnectTimer = useCallback((peerId: string) => {
@@ -445,11 +462,12 @@ export function useWebRTC(userId: string | null) {
               console.warn(
                 `[ICE←${fromUserId.slice(0, 8)}] Adding ice candidate: ${data.candidate.candidate?.slice(0, 50) ?? 'null'}...`
               )
-              await pc.addIceCandidate(data.candidate)
+              await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
             } catch (err) {
+              const errMsg = (err as Error)?.message ?? 'Unknown error'
               console.warn(
                 `[ICE←${fromUserId.slice(0, 8)}] Failed to add candidate:`,
-                (err as Error)?.message
+                errMsg
               )
             }
           } else {

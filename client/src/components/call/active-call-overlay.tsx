@@ -15,6 +15,7 @@ import {
 import { applyPreferredAudioOutput } from '@/lib/media-devices'
 import { isAndroidMobile } from '@/lib/android'
 import { useCallStore } from '@/store/callStore'
+import { PortalRoot } from '@/components/portal-root'
 
 type Props = {
   onEndCall: () => void
@@ -168,6 +169,7 @@ function PeerTile({
             muted={muted}
             controls={false}
             className="h-full w-full bg-black object-cover"
+            style={{ objectFit: 'cover', transform: 'scaleX(-1)' }}
           />
           {showRemoteHints ? (
             <div className="pointer-events-none absolute bottom-1 left-1 flex flex-wrap gap-1">
@@ -280,22 +282,23 @@ export function ActiveCallOverlay({
   if (!isCalling || !localStream) return null
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex flex-col bg-black"
-      role="dialog"
-      aria-label="Active call"
-    >
-      <div className="flex shrink-0 items-center justify-between border-b border-red-500/50 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_0_10px_rgba(255,0,0,0.35)]">
-        <p className="font-mono text-xs uppercase tracking-[0.35em] text-neon-cyan">
-          :: LIVE_SESSION [{tileCount} PEER{tileCount > 1 ? 'S' : ''}]
-        </p>
-        <p className="font-mono text-sm tabular-nums text-neon-red">
-          {formatDuration(elapsed)}
-        </p>
-      </div>
+    <PortalRoot>
+      <div
+        className="fixed inset-0 z-[200] flex flex-col bg-black"
+        role="dialog"
+        aria-label="Active call"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-red-500/50 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_0_10px_rgba(255,0,0,0.35)]">
+          <p className="font-mono text-xs uppercase tracking-[0.35em] text-neon-cyan">
+            :: LIVE_SESSION [{tileCount} PEER{tileCount > 1 ? 'S' : ''}]
+          </p>
+          <p className="font-mono text-sm tabular-nums text-neon-red">
+            {formatDuration(elapsed)}
+          </p>
+        </div>
 
-      <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
-        <div className={`grid gap-3 ${gridCols(tileCount)}`}>
+        <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
+          <div className={`grid gap-3 ${gridCols(tileCount)}`}>
           <PeerTile
             peerId="LOCAL"
             stream={localStream}
@@ -391,6 +394,7 @@ export function ActiveCallOverlay({
         </button>
       </div>
       <span className="hidden">{tick}</span>
-    </div>
+      </div>
+    </PortalRoot>
   )
 }

@@ -92,6 +92,7 @@ function deviceConstraint(deviceId: string | null | undefined) {
 export function getUserMediaConstraints(input: {
   video: boolean
   lowBandwidth?: boolean
+  hd?: boolean
 }): MediaStreamConstraints {
   const { cameraId, micId, noiseSuppression } = loadMediaPrefs()
   const audioProcessing = {
@@ -108,8 +109,8 @@ export function getUserMediaConstraints(input: {
     return { audio, video: false }
   }
 
-  const cam = deviceConstraint(cameraId)
-  const baseVideoConstraints: MediaTrackConstraints = input.lowBandwidth
+  const useHd = input.hd ?? !input.lowBandwidth
+  const baseVideoConstraints: MediaTrackConstraints = !useHd
     ? {
         width: { ideal: 640, max: 640 },
         height: { ideal: 360, max: 480 },
@@ -121,6 +122,7 @@ export function getUserMediaConstraints(input: {
         frameRate: { ideal: 30, max: 60 },
       }
 
+  const cam = deviceConstraint(cameraId)
   const video: boolean | MediaTrackConstraints = cam
     ? { deviceId: cam, ...baseVideoConstraints }
     : baseVideoConstraints

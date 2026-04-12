@@ -5,7 +5,7 @@ import { getFmSocket } from '@/lib/api/socket'
 import { startOutgoingRingtone } from '@/lib/call-ringtones'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
-import { getUserMediaConstraints } from '@/lib/media-devices'
+import { getUserMediaConstraints, loadMediaPrefs } from '@/lib/media-devices'
 import {
   isMediaPermissionDenied,
   MEDIA_ACCESS_ERROR_MESSAGE,
@@ -58,6 +58,26 @@ function buildIceServers(): RTCIceServer[] {
 
 function stopStreamTracks(stream: MediaStream | null) {
   stream?.getTracks().forEach((t) => t.stop())
+}
+
+async function requestUserMedia(
+  constraints: MediaStreamConstraints
+): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia(constraints)
+  } catch (err) {
+    const name = (err as Error)?.name
+    if (name === 'OverconstrainedError') {
+      console.warn(
+        '[WEBRTC] Overconstrained camera request, retrying with default video constraints'
+      )
+      return await navigator.mediaDevices.getUserMedia({
+        audio: constraints.audio ?? true,
+        video: true,
+      })
+    }
+    throw err
+  }
 }
 
 type SignalPayload =
@@ -612,8 +632,12 @@ export function useWebRTC(userId: string | null) {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('NO_MEDIA_API')
       }
-      stream = await navigator.mediaDevices.getUserMedia(
-        getUserMediaConstraints({ video: !!inc.isVideo })
+      const prefs = loadMediaPrefs()
+      stream = await requestUserMedia(
+        getUserMediaConstraints({
+          video: !!inc.isVideo,
+          hd: !prefs.lowBandwidth,
+        })
       )
     } catch (err) {
       setMediaAccessError(
@@ -678,8 +702,12 @@ export function useWebRTC(userId: string | null) {
         if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
           throw new Error('NO_MEDIA_API')
         }
-        stream = await navigator.mediaDevices.getUserMedia(
-          getUserMediaConstraints({ video: isVideo })
+        const prefs = loadMediaPrefs()
+        stream = await requestUserMedia(
+          getUserMediaConstraints({
+            video: isVideo,
+            hd: !prefs.lowBandwidth,
+          })
         )
       } catch (err) {
         setMediaAccessError(
@@ -802,8 +830,12 @@ export function useWebRTC(userId: string | null) {
       }
 
       try {
-        const videoStream = await navigator.mediaDevices.getUserMedia(
-          getUserMediaConstraints({ video: true })
+        const prefs = loadMediaPrefs()
+        const videoStream = await requestUserMedia(
+          getUserMediaConstraints({
+            video: true,
+            hd: !prefs.lowBandwidth,
+          })
         )
         const videoTrack = videoStream.getVideoTracks()[0]
         if (!videoTrack) {
@@ -851,7 +883,11 @@ export function useWebRTC(userId: string | null) {
     const nextFacing = facingModeRef.current
 
     try {
-      const base = getUserMediaConstraints({ video: true })
+      const prefs = loadMediaPrefs()
+      const base = getUserMediaConstraints({
+        video: true,
+        hd: !prefs.lowBandwidth,
+      })
       const fromPrefs: MediaTrackConstraints =
         base.video && typeof base.video === 'object'
           ? { ...(base.video as MediaTrackConstraints) }
@@ -911,8 +947,7 @@ export function useWebRTC(userId: string | null) {
     const local = useCallStore.getState().localStream
     if (!local || pcsRef.current.size === 0) return
 
-    const camTrack = local.getVideoTracks()[0]
-    if (!camTrack) return
+    const camTrack = local.getVideoTracks()[0] || null
 
     if (
       typeof navigator === 'undefined' ||
@@ -949,15 +984,19 @@ export function useWebRTC(userId: string | null) {
     originalVideoTrackRef.current = camTrack
     screenVideoTrackRef.current = screenTrack
 
-    // Replace track in all peer connections and trigger renegotiation
-    for (const [peerId, pc] of pcsRef.current) {
+    // Replace or add the screen track across active peer connections.
+    for (const [, pc] of pcsRef.current) {
       const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
       if (sender) {
         void sender.replaceTrack(screenTrack)
+      } else {
+        pc.addTrack(screenTrack, local)
       }
     }
 
-    local.removeTrack(camTrack)
+    if (camTrack) {
+      local.removeTrack(camTrack)
+    }
     local.addTrack(screenTrack)
     setLocalStream(local)
     setIsScreenSharing(true)

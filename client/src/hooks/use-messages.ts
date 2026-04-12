@@ -6,8 +6,8 @@ import { useLoadChatMessages } from '@/hooks/use-load-chat-messages'
 import { useMessageDeliverySync } from '@/hooks/use-message-delivery-sync'
 
 /** REST history + WebSocket live updates. Read receipts are wired in `ChatTerminal`. */
-export function useMessages(cryptoCtx: ChatCryptoContext | null) {
+export function useMessages(cryptoCtx: ChatCryptoContext | null, triggerBackgroundPush?: (title: string, body: string) => void) {
   useLoadChatMessages(cryptoCtx)
   useMessageDeliverySync(cryptoCtx)
-  useChatRealtime(cryptoCtx)
+  useChatRealtime(cryptoCtx, triggerBackgroundPush)
 }

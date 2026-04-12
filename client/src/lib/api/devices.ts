@@ -37,6 +37,8 @@ export async function fetchDevices(): Promise<{
 }
 
 export async function revokeDevice(deviceId: string): Promise<void> {
+  if (!deviceId) return
+
   const res = await fetch(
     `${API_URL}/users/me/devices/${encodeURIComponent(deviceId)}`,
     { method: 'DELETE', credentials: 'include' }
@@ -48,6 +50,8 @@ export async function revokeDevice(deviceId: string): Promise<void> {
 }
 
 export async function setMasterDevice(deviceId: string): Promise<void> {
+  if (!deviceId) return
+
   const res = await fetch(
     `${API_URL}/users/me/devices/${encodeURIComponent(deviceId)}/master`,
     {

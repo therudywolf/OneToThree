@@ -8,7 +8,6 @@ import { nuclearWipeClient } from '@/lib/client-wipe'
 import {
   readVaultBlob,
   unwrapPrivateJwkWithPin,
-  vaultStorageKey,
 } from '@/lib/vault'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { clearAllMediaCache } from '@/lib/media-cache'
@@ -319,53 +318,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     a.download = `forest_vault_key.json`
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  async function copyVaultKey() {
-    const blob = readVaultBlob(userId)
-    if (!blob) {
-      setError(t('settings.noLocalVault'))
-      return
-    }
-    const payload = JSON.stringify(
-      { userId, username, vault: blob, exported_at: new Date().toISOString() },
-      null,
-      2
-    )
-    try {
-      await navigator.clipboard.writeText(payload)
-      setError('COPIED')
-      setTimeout(() => setError(null), 2000)
-    } catch {
-      setError('COPY_FAILED')
-    }
-  }
-
-  function importVault() {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.accept = '.json,.key,application/json'
-    input.onchange = async () => {
-      const file = input.files?.[0]
-      if (!file) return
-      try {
-        const text = await file.text()
-        const data = JSON.parse(text) as {
-          userId?: string
-          vault?: { saltB64: string; ivB64: string; ciphertextB64: string }
-        }
-        if (!data.vault?.saltB64 || !data.vault?.ivB64 || !data.vault?.ciphertextB64) {
-          throw new Error(t('settings.invalidVaultFile'))
-        }
-        const key = vaultStorageKey(data.userId || userId)
-        localStorage.setItem(key, JSON.stringify(data.vault))
-        setSaved(true)
-        setTimeout(() => setSaved(false), 1500)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : t('settings.importFailed'))
-      }
-    }
-    input.click()
   }
 
   const settingsReady = discoverable !== null && hidePresence !== null

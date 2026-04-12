@@ -118,6 +118,7 @@ export function ChatApp({
     endCall,
     toggleMuteMic,
     toggleCamera,
+    toggleVideo,
     switchCamera,
     isScreenSharing,
     toggleScreenShare,
@@ -344,6 +345,7 @@ export function ChatApp({
         onEndCall={endCall}
         onToggleMute={toggleMuteMic}
         onToggleCamera={toggleCamera}
+        onToggleVideo={toggleVideo}
         onSwitchCamera={() => void switchCamera()}
         isScreenSharing={isScreenSharing}
         onToggleScreenShare={toggleScreenShare}

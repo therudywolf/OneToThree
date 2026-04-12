@@ -7,6 +7,7 @@ export const FM_CAMERA_ID = 'fm_camera_id'
 export const FM_MIC_ID = 'fm_mic_id'
 export const FM_SPEAKER_ID = 'fm_speaker_id'
 export const FM_NOISE_SUPPRESSION = 'fm_noise_suppression'
+export const FM_LOW_BANDWIDTH = 'fm_low_bandwidth'
 
 export type MediaDevicePrefs = {
   cameraId: string | null
@@ -14,6 +15,8 @@ export type MediaDevicePrefs = {
   speakerId: string | null
   /** When true, echoCancellation + noiseSuppression are enabled in constraints. */
   noiseSuppression: boolean
+  /** When true, use low-bandwidth video constraints for poor connections. */
+  lowBandwidth: boolean
 }
 
 function readLs(key: string): string | null {
@@ -39,6 +42,7 @@ export function loadMediaPrefs(): MediaDevicePrefs {
     micId: readLs(FM_MIC_ID),
     speakerId: readLs(FM_SPEAKER_ID),
     noiseSuppression: readBool(FM_NOISE_SUPPRESSION, true),
+    lowBandwidth: readBool(FM_LOW_BANDWIDTH, false),
   }
 }
 
@@ -65,6 +69,12 @@ export function saveMediaPrefs(partial: Partial<MediaDevicePrefs>): void {
         partial.noiseSuppression ? 'true' : 'false'
       )
     }
+    if (partial.lowBandwidth !== undefined) {
+      window.localStorage.setItem(
+        FM_LOW_BANDWIDTH,
+        partial.lowBandwidth ? 'true' : 'false'
+      )
+    }
   } catch {
     /* quota / private mode */
   }
@@ -77,9 +87,11 @@ function deviceConstraint(deviceId: string | null | undefined) {
 
 /**
  * Constraints for getUserMedia — uses saved device IDs and noise flags.
+ * Enhanced with optimal quality settings that allow graceful degradation.
  */
 export function getUserMediaConstraints(input: {
   video: boolean
+  lowBandwidth?: boolean
 }): MediaStreamConstraints {
   const { cameraId, micId, noiseSuppression } = loadMediaPrefs()
   const audioProcessing = {
@@ -97,9 +109,21 @@ export function getUserMediaConstraints(input: {
   }
 
   const cam = deviceConstraint(cameraId)
+  const baseVideoConstraints: MediaTrackConstraints = input.lowBandwidth
+    ? {
+        width: { ideal: 640, max: 640 },
+        height: { ideal: 360, max: 480 },
+        frameRate: { ideal: 15, max: 24 },
+      }
+    : {
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30, max: 60 },
+      }
+
   const video: boolean | MediaTrackConstraints = cam
-    ? { deviceId: cam }
-    : true
+    ? { deviceId: cam, ...baseVideoConstraints }
+    : baseVideoConstraints
 
   return { audio, video }
 }

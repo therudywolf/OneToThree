@@ -339,6 +339,25 @@ export function useWebRTC(userId: string | null) {
         maybeResetCallIfNoPeers()
       }
 
+      pc.onnegotiationneeded = async () => {
+        console.warn(`[NEGOTIATE→${peerId.slice(0, 8)}] Negotiation needed, creating offer`)
+        if (pc.signalingState !== 'stable') {
+          console.warn(`[NEGOTIATE→${peerId.slice(0, 8)}] Signaling state not stable (${pc.signalingState}), skipping`)
+          return
+        }
+        try {
+          const offer = await pc.createOffer()
+          await pc.setLocalDescription(offer)
+          sendSignal(peerId, {
+            kind: 'offer',
+            sdp: offer.sdp ?? '',
+            isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length,
+          })
+        } catch (err) {
+          console.error(`[NEGOTIATE→${peerId.slice(0, 8)}] Error in negotiationneeded:`, err)
+        }
+      }
+
       pc.oniceconnectionstatechange = () => {
         const st = pc.iceConnectionState
         console.warn(
@@ -488,10 +507,28 @@ export function useWebRTC(userId: string | null) {
         console.warn(
           `[SIG←${fromUserId.slice(0, 8)}] Received offer (sdp=${data.sdp?.length ?? 0} bytes)`
         )
-        if (pcsRef.current.has(fromUserId)) {
+        const pc = pcsRef.current.get(fromUserId)
+        if (pc) {
+          // Handle renegotiation offer
           console.warn(
-            `[SIG←${fromUserId.slice(0, 8)}] Already have PeerConnection, ignoring duplicate offer`
+            `[RENEGOTIATE←${fromUserId.slice(0, 8)}] Handling renegotiation offer`
           )
+          try {
+            await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp })
+            console.warn(
+              `[RENEGOTIATE←${fromUserId.slice(0, 8)}] Remote description set, flushing pending ICE`
+            )
+            await flushPendingIce(fromUserId, pc)
+            console.warn(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Creating answer...`)
+            const answer = await pc.createAnswer()
+            console.warn(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Answer created (sdp=${answer.sdp?.length ?? 0} bytes)`)
+            console.warn(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Setting local description...`)
+            await pc.setLocalDescription(answer)
+            console.warn(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Local description set, signaling answer`)
+            sendSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
+          } catch (err) {
+            console.error(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Error handling renegotiation:`, err)
+          }
           return
         }
         const state = useCallStore.getState()
@@ -726,12 +763,75 @@ export function useWebRTC(userId: string | null) {
     s.getVideoTracks().forEach((t) => {
       t.enabled = !t.enabled
     })
-    const vt = s.getVideoTracks()[0]
-    const enabled = vt ? vt.enabled : false
+    const enabled = s.getVideoTracks()[0]?.enabled ?? false
     for (const peerId of Array.from(pcsRef.current.keys())) {
       sendSignal(peerId, { kind: 'media_state', media: 'video', enabled })
     }
   }, [])
+
+  const toggleVideo = useCallback(async () => {
+    const local = useCallStore.getState().localStream
+    if (!local || pcsRef.current.size === 0) return
+
+    const hasVideo = local.getVideoTracks().length > 0
+    if (hasVideo) {
+      // Remove video track
+      const videoTrack = local.getVideoTracks()[0]
+      if (videoTrack) {
+        for (const [, pc] of pcsRef.current) {
+          const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
+          if (sender) {
+            void pc.removeTrack(sender)
+          }
+        }
+        local.removeTrack(videoTrack)
+        videoTrack.stop()
+        setLocalStream(local)
+        // Signal video disabled
+        for (const peerId of Array.from(pcsRef.current.keys())) {
+          sendSignal(peerId, { kind: 'media_state', media: 'video', enabled: false })
+        }
+      }
+    } else {
+      // Add video track
+      if (
+        typeof navigator === 'undefined' ||
+        !navigator.mediaDevices?.getUserMedia
+      ) {
+        return
+      }
+
+      try {
+        const videoStream = await navigator.mediaDevices.getUserMedia(
+          getUserMediaConstraints({ video: true })
+        )
+        const videoTrack = videoStream.getVideoTracks()[0]
+        if (!videoTrack) {
+          videoStream.getTracks().forEach((t) => t.stop())
+          return
+        }
+
+        // Add video track to all peer connections
+        for (const [, pc] of pcsRef.current) {
+          pc.addTrack(videoTrack, local)
+        }
+
+        // Add to local stream
+        local.addTrack(videoTrack)
+        setLocalStream(local)
+        facingModeRef.current = 'user'
+
+        // Signal video enabled
+        for (const peerId of Array.from(pcsRef.current.keys())) {
+          sendSignal(peerId, { kind: 'media_state', media: 'video', enabled: true })
+        }
+
+        // onnegotiationneeded will handle renegotiation automatically
+      } catch (err) {
+        console.error('[TOGGLE_VIDEO] Error adding video:', err)
+      }
+    }
+  }, [setLocalStream])
 
   const switchCamera = useCallback(async () => {
     if (screenVideoTrackRef.current) return
@@ -849,7 +949,8 @@ export function useWebRTC(userId: string | null) {
     originalVideoTrackRef.current = camTrack
     screenVideoTrackRef.current = screenTrack
 
-    for (const [, pc] of pcsRef.current) {
+    // Replace track in all peer connections and trigger renegotiation
+    for (const [peerId, pc] of pcsRef.current) {
       const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
       if (sender) {
         void sender.replaceTrack(screenTrack)
@@ -864,6 +965,8 @@ export function useWebRTC(userId: string | null) {
     screenTrack.onended = () => {
       revertToCameraRef.current()
     }
+
+    // onnegotiationneeded will handle renegotiation automatically
   }, [revertToCamera, setLocalStream])
 
   const clearMediaAccessError = useCallback(() => {
@@ -880,6 +983,7 @@ export function useWebRTC(userId: string | null) {
     endCall,
     toggleMuteMic,
     toggleCamera,
+    toggleVideo,
     switchCamera,
     isScreenSharing,
     toggleScreenShare,

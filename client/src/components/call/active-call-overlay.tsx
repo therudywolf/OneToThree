@@ -11,8 +11,11 @@ import {
   VideoOff,
   Maximize2,
   Minimize2,
+  Grid3X3,
+  Focus,
+  Zap,
 } from 'lucide-react'
-import { applyPreferredAudioOutput } from '@/lib/media-devices'
+import { applyPreferredAudioOutput, loadMediaPrefs, saveMediaPrefs } from '@/lib/media-devices'
 import { isAndroidMobile } from '@/lib/android'
 import { useCallStore } from '@/store/callStore'
 import { PortalRoot } from '@/components/portal-root'
@@ -21,6 +24,7 @@ type Props = {
   onEndCall: () => void
   onToggleMute: () => void
   onToggleCamera: () => void
+  onToggleVideo?: () => void
   onSwitchCamera: () => void
   isScreenSharing: boolean
   onToggleScreenShare: () => void
@@ -33,7 +37,10 @@ function formatDuration(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
 }
 
-function gridCols(count: number): string {
+function gridCols(count: number, layoutMode: 'grid' | 'focus'): string {
+  if (layoutMode === 'focus') {
+    return 'grid-cols-1'
+  }
   if (count <= 1) return 'grid-cols-1'
   if (count <= 2) return 'grid-cols-1 md:grid-cols-2'
   if (count <= 4) return 'grid-cols-2'
@@ -52,6 +59,9 @@ function PeerTile({
   onFullscreenToggle,
   isDragging,
   position,
+  isFocused,
+  onFocusToggle,
+  layoutMode,
 }: {
   peerId: string
   stream: MediaStream
@@ -63,6 +73,9 @@ function PeerTile({
   onFullscreenToggle?: () => void
   isDragging?: boolean
   position?: { x: number; y: number }
+  isFocused?: boolean
+  onFocusToggle?: () => void
+  layoutMode?: 'grid' | 'focus'
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -112,6 +125,14 @@ function PeerTile({
     }
   }
 
+  const handleClick = () => {
+    if (layoutMode === 'focus' && onFocusToggle) {
+      onFocusToggle()
+    } else {
+      handleDoubleTap()
+    }
+  }
+
   const showRemoteHints =
     label === 'REMOTE' && (remoteMicMuted || remoteCamOff)
 
@@ -132,10 +153,12 @@ function PeerTile({
       className={`relative border shadow-[0_0_8px_rgba(0,255,255,0.2)] ${
         isFullscreen
           ? 'fixed inset-0 z-[210] border-neon-red'
-          : 'border-neon-cyan/40'
+          : isFocused
+            ? 'border-neon-cyan ring-2 ring-neon-cyan/50'
+            : 'border-neon-cyan/40'
       }`}
       style={tileStyle}
-      onClick={handleDoubleTap}
+      onClick={handleClick}
     >
       <div className="flex items-center justify-between border-b border-neon-cyan/30 bg-black px-2 py-1">
         <p className="font-mono text-[9px] uppercase tracking-widest text-neon-cyan">
@@ -212,6 +235,7 @@ export function ActiveCallOverlay({
   onEndCall,
   onToggleMute,
   onToggleCamera,
+  onToggleVideo,
   onSwitchCamera,
   isScreenSharing,
   onToggleScreenShare,
@@ -229,9 +253,47 @@ export function ActiveCallOverlay({
   const [localDragPos, setLocalDragPos] = useState<{ x: number; y: number } | null>(null)
   const [isDraggingLocal, setIsDraggingLocal] = useState(false)
   const dragStateRef = useRef<{ startX: number; startY: number } | null>(null)
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'focus'>('grid')
+  const [focusedPeerId, setFocusedPeerId] = useState<string | null>(null)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [lowBandwidth, setLowBandwidth] = useState(() => loadMediaPrefs().lowBandwidth)
 
   useEffect(() => {
     setScreenShareAllowed(!isAndroidMobile())
+  }, [])
+
+  // Auto-hide controls after 3 seconds of inactivity
+  useEffect(() => {
+    const resetControlsTimeout = () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
+      }
+      setControlsVisible(true)
+      controlsTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false)
+      }, 3000)
+    }
+
+    const handleMouseMove = () => resetControlsTimeout()
+    const handleMouseLeave = () => {
+      controlsTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false)
+      }, 1000)
+    }
+
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseleave', handleMouseLeave)
+
+    resetControlsTimeout()
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseleave', handleMouseLeave)
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
+      }
+    }
   }, [])
 
   const remoteEntries = useMemo(
@@ -279,6 +341,28 @@ export function ActiveCallOverlay({
     setTick((x) => x + 1)
   }
 
+  function toggleLayout() {
+    setLayoutMode((prev) => prev === 'grid' ? 'focus' : 'grid')
+    if (layoutMode === 'grid') {
+      // When switching to focus, focus on the first remote peer or self
+      setFocusedPeerId(remoteEntries[0]?.[0] || 'LOCAL')
+    } else {
+      setFocusedPeerId(null)
+    }
+  }
+
+  function toggleBandwidth() {
+    const newValue = !lowBandwidth
+    setLowBandwidth(newValue)
+    saveMediaPrefs({ lowBandwidth: newValue })
+  }
+
+  function handlePeerFocus(peerId: string) {
+    if (layoutMode === 'focus') {
+      setFocusedPeerId(peerId)
+    }
+  }
+
   if (!isCalling || !localStream) return null
 
   return (
@@ -298,30 +382,103 @@ export function ActiveCallOverlay({
         </div>
 
         <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
-          <div className={`grid gap-3 ${gridCols(tileCount)}`}>
-          <PeerTile
-            peerId="LOCAL"
-            stream={localStream}
-            label="YOU"
-            muted
-          />
-          {remoteEntries.map(([peerId, stream]) => {
-            const hint = remotePeerMedia[peerId]
-            return (
+          {layoutMode === 'focus' && focusedPeerId ? (
+            <div className="flex flex-col gap-3">
+              {/* Focused peer - large */}
+              <div className="flex-1">
+                {focusedPeerId === 'LOCAL' ? (
+                  <PeerTile
+                    peerId="LOCAL"
+                    stream={localStream}
+                    label="YOU (FOCUSED)"
+                    muted
+                    layoutMode={layoutMode}
+                  />
+                ) : (
+                  remoteEntries
+                    .filter(([peerId]) => peerId === focusedPeerId)
+                    .map(([peerId, stream]) => {
+                      const hint = remotePeerMedia[peerId]
+                      return (
+                        <PeerTile
+                          key={peerId}
+                          peerId={peerId}
+                          stream={stream}
+                          label="REMOTE (FOCUSED)"
+                          remoteMicMuted={hint?.micMuted}
+                          remoteCamOff={hint?.cameraOff}
+                          layoutMode={layoutMode}
+                        />
+                      )
+                    })
+                )}
+              </div>
+              {/* Other peers - small row */}
+              <div className="flex gap-2 overflow-x-auto">
+                {focusedPeerId !== 'LOCAL' && (
+                  <div className="flex-shrink-0 w-32">
+                    <PeerTile
+                      peerId="LOCAL"
+                      stream={localStream}
+                      label="YOU"
+                      muted
+                      onFocusToggle={() => handlePeerFocus('LOCAL')}
+                      layoutMode={layoutMode}
+                    />
+                  </div>
+                )}
+                {remoteEntries
+                  .filter(([peerId]) => peerId !== focusedPeerId)
+                  .map(([peerId, stream]) => {
+                    const hint = remotePeerMedia[peerId]
+                    return (
+                      <div key={peerId} className="flex-shrink-0 w-32">
+                        <PeerTile
+                          peerId={peerId}
+                          stream={stream}
+                          label="REMOTE"
+                          remoteMicMuted={hint?.micMuted}
+                          remoteCamOff={hint?.cameraOff}
+                          onFocusToggle={() => handlePeerFocus(peerId)}
+                          layoutMode={layoutMode}
+                        />
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
+          ) : (
+            <div className={`grid gap-3 ${gridCols(tileCount, layoutMode)}`}>
               <PeerTile
-                key={peerId}
-                peerId={peerId}
-                stream={stream}
-                label="REMOTE"
-                remoteMicMuted={hint?.micMuted}
-                remoteCamOff={hint?.cameraOff}
+                peerId="LOCAL"
+                stream={localStream}
+                label="YOU"
+                muted
+                onFocusToggle={() => handlePeerFocus('LOCAL')}
+                layoutMode={layoutMode}
               />
-            )
-          })}
+              {remoteEntries.map(([peerId, stream]) => {
+                const hint = remotePeerMedia[peerId]
+                return (
+                  <PeerTile
+                    key={peerId}
+                    peerId={peerId}
+                    stream={stream}
+                    label="REMOTE"
+                    remoteMicMuted={hint?.micMuted}
+                    remoteCamOff={hint?.cameraOff}
+                    onFocusToggle={() => handlePeerFocus(peerId)}
+                    layoutMode={layoutMode}
+                  />
+                )
+              })}
+            </div>
+          )}
         </div>
-      </div>
 
-      <div className="pb-safe flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-red-500/50 bg-black px-3 py-3 pt-3 shadow-[0_0_10px_rgba(255,0,0,0.35)] md:gap-4 md:px-4 md:py-4">
+      <div className={`pb-safe flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-red-500/50 bg-black px-3 py-3 pt-3 shadow-[0_0_10px_rgba(255,0,0,0.35)] md:gap-4 md:px-4 md:py-4 transition-opacity duration-300 ${
+        controlsVisible ? 'opacity-100' : 'opacity-0'
+      }`}>
         <button
           type="button"
           onClick={handleMute}
@@ -338,6 +495,27 @@ export function ActiveCallOverlay({
             <Mic className="h-5 w-5" strokeWidth={1.5} />
           )}
         </button>
+        {onToggleVideo && (
+          <button
+            type="button"
+            onClick={() => {
+              void onToggleVideo()
+              setTick((x) => x + 1)
+            }}
+            className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 hover:bg-neon-cyan/10 ${
+              hasCameraTrack && !videoOff
+                ? 'border-neon-cyan text-neon-cyan'
+                : 'border-zinc-600 text-zinc-400'
+            }`}
+            aria-label={hasCameraTrack && !videoOff ? 'Disable video' : 'Enable video'}
+          >
+            {hasCameraTrack && !videoOff ? (
+              <Video className="h-5 w-5" strokeWidth={1.5} />
+            ) : (
+              <VideoOff className="h-5 w-5" strokeWidth={1.5} />
+            )}
+          </button>
+        )}
         <button
           type="button"
           onClick={handleCam}
@@ -384,6 +562,32 @@ export function ActiveCallOverlay({
             <Monitor className="h-5 w-5" strokeWidth={1.5} />
           </button>
         ) : null}
+        <button
+          type="button"
+          onClick={toggleBandwidth}
+          title={lowBandwidth ? 'Disable bandwidth limit' : 'Enable bandwidth limit'}
+          className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 hover:bg-neon-cyan/10 ${
+            lowBandwidth
+              ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)]'
+              : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
+          }`}
+          aria-label={lowBandwidth ? 'Disable bandwidth limit' : 'Enable bandwidth limit'}
+        >
+          <Zap className="h-5 w-5" strokeWidth={1.5} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleLayout}
+          title={layoutMode === 'grid' ? 'Switch to focus mode' : 'Switch to grid mode'}
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-zinc-500 bg-black p-3 text-zinc-300 hover:border-neon-cyan hover:text-neon-cyan"
+          aria-label={layoutMode === 'grid' ? 'Focus mode' : 'Grid mode'}
+        >
+          {layoutMode === 'grid' ? (
+            <Focus className="h-5 w-5" strokeWidth={1.5} />
+          ) : (
+            <Grid3X3 className="h-5 w-5" strokeWidth={1.5} />
+          )}
+        </button>
         <button
           type="button"
           onClick={onEndCall}

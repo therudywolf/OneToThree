@@ -125,3 +125,66 @@ export async function applyPreferredAudioOutput(
     /* NotAllowedError, unsupported sink, etc. */
   }
 }
+
+/**
+ * Switch camera between front/back (user/environment) without renegotiation.
+ * Uses RTCRtpSender.replaceTrack() to swap the video track.
+ * @param peerConnection - The RTCPeerConnection to modify
+ * @param currentStream - The current MediaStream
+ * @returns The new MediaStream with the swapped camera track, or null on error
+ */
+export async function switchCamera(
+  peerConnection: RTCPeerConnection,
+  currentStream: MediaStream
+): Promise<MediaStream | null> {
+  try {
+    const videoTrack = currentStream.getVideoTracks()[0]
+    if (!videoTrack) {
+      console.warn('[media] No active video track to switch')
+      return null
+    }
+
+    const facingMode = videoTrack.getSettings().facingMode
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user'
+
+    // Get new stream with swapped camera
+    const constraints: MediaStreamConstraints = {
+      video: {
+        facingMode: { exact: newFacingMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    }
+
+    const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+    const newVideoTrack = newStream.getVideoTracks()[0]
+
+    if (!newVideoTrack) {
+      console.warn('[media] Failed to get new video track')
+      return null
+    }
+
+    // Replace track in all senders
+    const senders = peerConnection.getSenders()
+    for (const sender of senders) {
+      if (sender.track?.kind === 'video') {
+        await sender.replaceTrack(newVideoTrack)
+        console.log(`[media] Camera switched to ${newFacingMode}`)
+      }
+    }
+
+    // Stop old track
+    videoTrack.stop()
+
+    // Update current stream: remove old video, add new video
+    const audioTracks = currentStream.getAudioTracks()
+    const updatedStream = new MediaStream([...audioTracks, newVideoTrack])
+
+    return updatedStream
+  } catch (e) {
+    console.error('[media] Camera switch error', e)
+    return null
+  }
+}
+

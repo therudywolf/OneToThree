@@ -51,7 +51,26 @@ export async function buildApp() {
   const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsRaw : true
 
   await app.register(helmet, {
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
+        /** Allow S3 and blob URLs for media, plus WebSocket origins */
+        connectSrc: [
+          "'self'",
+          'https://s3.onetothree.ru',
+          'wss://api.onetothree.ru',
+          'ws:',
+        ],
+        imgSrc: ["'self'", 'https://s3.onetothree.ru', 'data:'],
+        mediaSrc: ["'self'", 'https://s3.onetothree.ru', 'blob:'],
+        fontSrc: ["'self'", 'data:'],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : undefined,
+      },
+    },
     crossOriginResourcePolicy: { policy: 'cross-origin' },
     crossOriginEmbedderPolicy: false,
   })

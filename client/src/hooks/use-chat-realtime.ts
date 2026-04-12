@@ -13,7 +13,7 @@ import { lookupUsers } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
 
-export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
+export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBackgroundPush?: (title: string, body: string) => void) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const appendMessage = useChatStore((s) => s.appendMessage)
   const removeMessage = useChatStore((s) => s.removeMessage)
@@ -82,6 +82,9 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null) {
       const m = msg.message
       if (userId && m.sender_id !== userId) {
         playNotificationSound()
+        if (triggerBackgroundPush) {
+          triggerBackgroundPush('Project 13: Новая активность', 'Получено новое зашифрованное сообщение');
+        }
       }
       if (!cryptoCtx || !unwrappedPrivateKey) return
       if (m.chat_id !== activeChatId) return

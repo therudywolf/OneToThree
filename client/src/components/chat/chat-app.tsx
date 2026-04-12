@@ -38,6 +38,7 @@ import { PwaInstallBanner } from '@/components/pwa-install-banner'
 import { PushOnboardingBanner } from '@/components/push-onboarding-banner'
 import { InviteChatLinkEffect } from '@/components/chat/invite-chat-link-effect'
 import { useTranslation } from '@/hooks/use-translation'
+import { usePhantomPush } from '@/hooks/use-phantom-push'
 import { MEDIA_PERMISSION_DENIED_CODE } from '@/lib/media-limits'
 
 const VaultModal = dynamic(
@@ -237,8 +238,9 @@ export function ChatApp({
   }, [activeChatId, chats, userId])
 
   const { cryptoCtx, ctxError } = useChatCryptoContext()
+  const { triggerBackgroundPush } = usePhantomPush()
   const sharedKey = useChatAesKey(cryptoCtx)
-  useMessages(cryptoCtx)
+  useMessages(cryptoCtx, triggerBackgroundPush)
   const { sendText } = useSendMessage(cryptoCtx)
   const { sendMedia } = useSendMediaMessage(cryptoCtx)
   useGroupKeyDistribution(cryptoCtx, reload)

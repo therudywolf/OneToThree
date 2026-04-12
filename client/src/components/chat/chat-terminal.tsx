@@ -20,12 +20,32 @@ import { useReadReceipts } from '@/hooks/use-read-receipts'
 import { useTranslation } from '@/hooks/use-translation'
 import { isMediaTooLarge } from '@/lib/media-limits'
 import type { DecryptedMessage } from '@/types/chat'
+import { MediaLightbox } from '@/components/chat/media-lightbox'
+import { groupMessages, type GroupedMessage } from '@/lib/message-grouping'
 
 const OLDER_PAGE_SIZE = 25
 const OLDER_RAM_CAP = 200
 
 function shortId(id: string) {
   return `${id.slice(0, 8)}…`
+}
+
+function mimeFromPathAndType(
+  mediaPath: string,
+  mediaType: DecryptedMessage['media_type']
+): string {
+  const p = mediaPath.toLowerCase()
+  if (p.endsWith('.webm')) {
+    return mediaType === 'audio' ? 'audio/webm' : 'video/webm'
+  }
+  if (p.endsWith('.png')) return 'image/png'
+  if (p.endsWith('.jpg') || p.endsWith('.jpeg')) return 'image/jpeg'
+  if (p.endsWith('.gif')) return 'image/gif'
+  if (p.endsWith('.mp4')) return 'video/mp4'
+  if (mediaType === 'audio') return 'audio/webm'
+  if (mediaType === 'video') return 'video/webm'
+  if (mediaType === 'image') return 'image/jpeg'
+  return 'application/octet-stream'
 }
 
 type PendingAttach = {
@@ -123,6 +143,9 @@ export function ChatTerminal({
   const [pendingAttach, setPendingAttach] = useState<PendingAttach[]>([])
   const [attachBusy, setAttachBusy] = useState(false)
   const [attachBanner, setAttachBanner] = useState(false)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }>>([])
+  const [lightboxIndex, setLightboxIndex] = useState(0)
 
   const isGroup = activeChat?.is_group ?? false
 
@@ -143,6 +166,10 @@ export function ChatTerminal({
         read_at: m.read_at ?? readAtOverrides[m.id] ?? null,
       }))
   }, [olderMessages, messages, readAtOverrides])
+
+  const groupedMessages = useMemo(() => {
+    return groupMessages(renderMessages)
+  }, [renderMessages])
 
   const senderIdsToResolve = useMemo(() => {
     if (!isGroup || !activeChatId) return []
@@ -271,6 +298,61 @@ export function ChatTerminal({
       if (row?.previewUrl) URL.revokeObjectURL(row.previewUrl)
       return prev.filter((x) => x.id !== id)
     })
+  }
+
+  const handleMediaClick = (media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
+    // Collect all media from the chat for navigation
+    const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }> = []
+
+    for (const group of groupedMessages) {
+      if (group.type === 'single') {
+        const msg = group.message
+        if (msg.media_path && msg.media_iv && msg.media_type) {
+          const mime = mimeFromPathAndType(msg.media_path, msg.media_type)
+          if (msg.media_type === 'image' || msg.media_type === 'video') {
+            allMedia.push({
+              id: msg.id,
+              url: '', // Will be populated when decrypted
+              type: msg.media_type as 'image' | 'video',
+              mimeType: mime,
+            })
+          }
+        }
+      } else {
+        for (const msg of group.messages) {
+          if (msg.media_path && msg.media_iv && msg.media_type) {
+            const mime = mimeFromPathAndType(msg.media_path, msg.media_type)
+            if (msg.media_type === 'image' || msg.media_type === 'video') {
+              allMedia.push({
+                id: msg.id,
+                url: '', // Will be populated when decrypted
+                type: msg.media_type as 'image' | 'video',
+                mimeType: mime,
+              })
+            }
+          }
+        }
+      }
+    }
+
+    const currentIndex = allMedia.findIndex(m => m.id === media.id)
+    if (currentIndex !== -1) {
+      // Update the URL for the clicked media
+      allMedia[currentIndex] = media
+      setLightboxMedia(allMedia)
+      setLightboxIndex(currentIndex)
+      setLightboxOpen(true)
+    }
+  }
+
+  const handleLightboxNavigate = (index: number) => {
+    setLightboxIndex(index)
+  }
+
+  const handleLightboxClose = () => {
+    setLightboxOpen(false)
+    setLightboxMedia([])
+    setLightboxIndex(0)
   }
 
   async function transmitPending() {
@@ -444,117 +526,206 @@ export function ChatTerminal({
             </div>
           </div>
         ) : null}
-        {renderMessages.map((m) => {
-          const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
-          const mine = m.sender_id === userId
-          const senderLabel = labelForSender(m.sender_id)
-          return (
-            <div
-              key={m.id}
-              data-message-id={m.id}
-              className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                const pad = 8
-                const mw = 200
-                const mh = 120
-                const x = Math.min(
-                  e.clientX,
-                  (typeof window !== 'undefined' ? window.innerWidth : e.clientX) -
-                    mw -
-                    pad
-                )
-                const y = Math.min(
-                  e.clientY,
-                  (typeof window !== 'undefined' ? window.innerHeight : e.clientY) -
-                    mh -
-                    pad
-                )
-                setCtxMenu({
-                  msg: m,
-                  x: Math.max(pad, x),
-                  y: Math.max(pad, y),
-                  isMine: mine,
-                })
-              }}
-            >
+        {groupedMessages.map((group, groupIndex) => {
+          if (group.type === 'single') {
+            const m = group.message
+            const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
+            const mine = m.sender_id === userId
+            const senderLabel = labelForSender(m.sender_id)
+            return (
               <div
-                className={`max-w-[min(100%,42rem)] min-w-0 ${
-                  mine ? 'items-end' : 'items-start'
-                } flex flex-col gap-1`}
+                key={m.id}
+                data-message-id={m.id}
+                className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  const pad = 8
+                  const mw = 200
+                  const mh = 120
+                  const x = Math.min(
+                    e.clientX,
+                    (typeof window !== 'undefined' ? window.innerWidth : e.clientX) -
+                      mw -
+                      pad
+                  )
+                  const y = Math.min(
+                    e.clientY,
+                    (typeof window !== 'undefined' ? window.innerHeight : e.clientY) -
+                      mh -
+                      pad
+                  )
+                  setCtxMenu({
+                    msg: m,
+                    x: Math.max(pad, x),
+                    y: Math.max(pad, y),
+                    isMine: mine,
+                  })
+                }}
               >
                 <div
-                  className={`flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-widest ${
-                    mine
-                      ? 'flex-row-reverse justify-end text-right text-neon-cyan/70'
-                      : 'justify-start text-left text-neon-cyan/80'
-                  }`}
+                  className={`max-w-[min(100%,42rem)] min-w-0 ${
+                    mine ? 'items-end' : 'items-start'
+                  } flex flex-col gap-1`}
                 >
-                  {!mine ? (
-                    <UserAvatar
-                      userId={m.sender_id}
-                      username={labelForSender(m.sender_id)}
-                      avatarKey={avatarKeyForSender(m.sender_id)}
-                      size={22}
-                    />
-                  ) : (
-                    <UserAvatar
-                      userId={userId}
-                      username={currentUsername || 'YOU'}
-                      avatarKey={myAvatarKey}
-                      size={22}
-                    />
-                  )}
-                  {roleGlyph(m.sender_id)}
-                  <span>{senderLabel}</span>
-                </div>
-                <div
-                  className={`w-full rounded-none border px-3 py-2 ${
-                    mine
-                      ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
-                      : 'border-neon-cyan/25 bg-black/80 text-neon-red'
-                  }`}
-                >
-                  {replyMsg ? (
-                    <div className="mb-1 border-l border-neon-cyan/30 pl-2 text-[10px] text-neon-cyan/60">
-                      <span className="text-red-800">
-                        ↳ {labelForSender(replyMsg.sender_id)}:
-                      </span>{' '}
-                      {replySnippet(replyMsg)}
-                    </div>
-                  ) : m.reply_to_id ? (
-                    <div className="mb-1 text-[10px] text-red-900">
-                      ↳ [{t('chat.originalDeleted')}]
-                    </div>
-                  ) : null}
-                  <div className="mb-1 text-[9px] text-red-800/90">
-                    {new Date(m.created_at).toLocaleString()}
+                  <div
+                    className={`flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-widest ${
+                      mine
+                        ? 'flex-row-reverse justify-end text-right text-neon-cyan/70'
+                        : 'justify-start text-left text-neon-cyan/80'
+                    }`}
+                  >
+                    {!mine ? (
+                      <UserAvatar
+                        userId={m.sender_id}
+                        username={labelForSender(m.sender_id)}
+                        avatarKey={avatarKeyForSender(m.sender_id)}
+                        size={22}
+                      />
+                    ) : (
+                      <UserAvatar
+                        userId={userId}
+                        username={currentUsername || 'YOU'}
+                        avatarKey={myAvatarKey}
+                        size={22}
+                      />
+                    )}
+                    {roleGlyph(m.sender_id)}
+                    <span>{senderLabel}</span>
                   </div>
-                  {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
-                    <NoirPlaintext
-                      text={m.plaintext}
-                      className="whitespace-pre-wrap break-words"
-                    />
-                  ) : null}
-                  {m.media_path && m.media_iv && m.media_type ? (
-                    <MediaMessage message={m} sharedKey={sharedKey} />
-                  ) : null}
-                  {mine && !isGroup ? (
-                    <div
-                      className="mt-1 flex items-center justify-end gap-0.5 text-[10px]"
-                      aria-hidden
-                    >
-                      {m.read_at ? (
-                        <CheckCheck className="h-3.5 w-3.5 text-cyan-400 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]" />
-                      ) : (
-                        <Check className="h-3 w-3 text-zinc-500" />
-                      )}
+                  <div
+                    className={`w-full rounded-none border px-3 py-2 ${
+                      mine
+                        ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                        : 'border-neon-cyan/25 bg-black/80 text-neon-red'
+                    }`}
+                  >
+                    {replyMsg ? (
+                      <div className="mb-1 border-l border-neon-cyan/30 pl-2 text-[10px] text-neon-cyan/60">
+                        <span className="text-red-800">
+                          ↳ {labelForSender(replyMsg.sender_id)}:
+                        </span>{' '}
+                        {replySnippet(replyMsg)}
+                      </div>
+                    ) : m.reply_to_id ? (
+                      <div className="mb-1 text-[10px] text-red-900">
+                        ↳ [{t('chat.originalDeleted')}]
+                      </div>
+                    ) : null}
+                    <div className="mb-1 text-[9px] text-red-800/90">
+                      {new Date(m.created_at).toLocaleString()}
                     </div>
-                  ) : null}
+                    {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
+                      <NoirPlaintext
+                        text={m.plaintext}
+                        className="whitespace-pre-wrap break-words"
+                      />
+                    ) : null}
+                    {m.media_path && m.media_iv && m.media_type ? (
+                      <MediaMessage
+                        message={m}
+                        sharedKey={sharedKey}
+                        onMediaClick={handleMediaClick}
+                      />
+                    ) : null}
+                    {mine && !isGroup ? (
+                      <div
+                        className="mt-1 flex items-center justify-end gap-0.5 text-[10px]"
+                        aria-hidden
+                      >
+                        {m.read_at ? (
+                          <CheckCheck className="h-3.5 w-3.5 text-cyan-400 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]" />
+                        ) : (
+                          <Check className="h-3 w-3 text-zinc-500" />
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          )
+            )
+          } else {
+            // Grouped media messages
+            const mine = group.senderId === userId
+            const senderLabel = labelForSender(group.senderId)
+            const gridCols = group.messages.length === 1 ? 1 :
+                           group.messages.length === 2 ? 2 :
+                           group.messages.length === 3 ? 3 : 3
+            const gridRows = Math.ceil(group.messages.length / gridCols)
+
+            return (
+              <div
+                key={`group-${groupIndex}`}
+                className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[min(100%,42rem)] min-w-0 ${
+                    mine ? 'items-end' : 'items-start'
+                  } flex flex-col gap-1`}
+                >
+                  <div
+                    className={`flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-widest ${
+                      mine
+                        ? 'flex-row-reverse justify-end text-right text-neon-cyan/70'
+                        : 'justify-start text-left text-neon-cyan/80'
+                    }`}
+                  >
+                    {!mine ? (
+                      <UserAvatar
+                        userId={group.senderId}
+                        username={labelForSender(group.senderId)}
+                        avatarKey={avatarKeyForSender(group.senderId)}
+                        size={22}
+                      />
+                    ) : (
+                      <UserAvatar
+                        userId={userId}
+                        username={currentUsername || 'YOU'}
+                        avatarKey={myAvatarKey}
+                        size={22}
+                      />
+                    )}
+                    {roleGlyph(group.senderId)}
+                    <span>{senderLabel}</span>
+                  </div>
+                  <div
+                    className={`w-full rounded-none border px-3 py-2 ${
+                      mine
+                        ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
+                        : 'border-neon-cyan/25 bg-black/80 text-neon-red'
+                    }`}
+                  >
+                    <div className="mb-1 text-[9px] text-red-800/90">
+                      {group.timestamp.toLocaleString()}
+                    </div>
+                    <div
+                      className={`grid gap-1 ${
+                        gridCols === 1 ? 'grid-cols-1' :
+                        gridCols === 2 ? 'grid-cols-2' :
+                        'grid-cols-3'
+                      }`}
+                      style={{
+                        aspectRatio: gridCols === 1 ? '4/3' :
+                                   gridCols === 2 ? '2/1' :
+                                   gridRows === 1 ? '3/1' : '1/1'
+                      }}
+                    >
+                      {group.messages.map((m) => (
+                        <div key={m.id} className="relative">
+                          {m.media_path && m.media_iv && m.media_type ? (
+                            <MediaMessage
+                              message={m}
+                              sharedKey={sharedKey}
+                              onMediaClick={handleMediaClick}
+                            />
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          }
         })}
         <div ref={bottomRef} className="h-px w-full shrink-0" aria-hidden />
       </div>
@@ -667,10 +838,23 @@ export function ChatTerminal({
             <Paperclip className="h-4 w-4" />
           </button>
           <div className="min-w-0 flex-1">
-            <ChatInput sendText={sendText} disabled={composeDisabled} />
+            <ChatInput
+              sendText={sendText}
+              sendMedia={sendMedia}
+              cryptoCtx={cryptoCtx}
+              disabled={composeDisabled}
+            />
           </div>
         </div>
       </div>
+
+      <MediaLightbox
+        isOpen={lightboxOpen}
+        media={lightboxMedia}
+        currentIndex={lightboxIndex}
+        onClose={handleLightboxClose}
+        onNavigate={handleLightboxNavigate}
+      />
     </div>
   )
 }

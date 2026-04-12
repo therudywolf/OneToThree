@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
@@ -36,33 +35,11 @@ type Props = {
     caption?: string,
     options?: { fileName?: string; fileType?: string }
   ) => Promise<void>
-  cryptoCtx: any // ChatCryptoContext
+  cryptoCtx: Record<string, unknown>
   disabled?: boolean
 }
 
-/** Curated grid — lightweight, no heavy emoji font bundle */
-const EMOJI_PRESET = [
-  '😀',
-  '😅',
-  '😐',
-  '🙂',
-  '😈',
-  '👍',
-  '👎',
-  '🔥',
-  '💀',
-  '⚡',
-  '✨',
-  '🖤',
-  '❤️',
-  '✅',
-  '❌',
-  '❓',
-  '⚠️',
-  '➡️',
-  '📎',
-  '🔐',
-]
+
 
 export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
@@ -79,6 +56,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const [isRecording, setIsRecording] = useState(false)
   const [recordingStartTime, setRecordingStartTime] = useState(0)
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const recordingHeldRef = useRef(false)
 
   const {
     startVoiceCapture,
@@ -219,11 +197,10 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
               insertEmoji(emojiData.emoji)
               setEmojiOpen(false)
             }}
-            theme="dark"
             skinTonesDisabled
             searchDisabled
             previewConfig={{
-              showPreview: false
+              showPreview: false,
             }}
             width={300}
             height={350}
@@ -268,19 +245,35 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
               : 'border-neon-red text-neon-red hover:bg-neon-red'
           }`}
           disabled={disabled || !cryptoCtx}
-          onClick={toggleMediaMode}
+          onClick={(e) => {
+            if (recordingHeldRef.current) {
+              e.preventDefault()
+              return
+            }
+            toggleMediaMode()
+          }}
           onMouseDown={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.preventDefault()
+            recordingHeldRef.current = true
             startRecording()
           }}
-          onMouseUp={stopRecording}
+          onMouseUp={async () => {
+            if (!recordingHeldRef.current) return
+            recordingHeldRef.current = false
+            await stopRecording()
+          }}
           onTouchStart={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.preventDefault()
+            recordingHeldRef.current = true
             startRecording()
           }}
-          onTouchEnd={stopRecording}
+          onTouchEnd={async () => {
+            if (!recordingHeldRef.current) return
+            recordingHeldRef.current = false
+            await stopRecording()
+          }}
           style={{ touchAction: 'none' }}
         >
           {isRecording ? (

@@ -27,6 +27,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   const [micId, setMicId] = useState('')
   const [speakerId, setSpeakerId] = useState('')
   const [noiseOn, setNoiseOn] = useState(true)
+  const [lowBandwidthOn, setLowBandwidthOn] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [denBytes, setDenBytes] = useState<number | null>(null)

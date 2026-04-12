@@ -43,6 +43,7 @@ const ru = {
 
   'login.usernameRequired': 'Требуется имя пользователя.',
   'login.passwordRequired': 'Требуется парольная фраза.',
+  'login.passwordMismatch': 'Пароли не совпадают.',
   'login.pinMin8':
     'Для новых ключей парольная фраза должна быть не короче 8 символов.',
   'login.noLocalVault':

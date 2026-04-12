@@ -63,9 +63,11 @@ type Props = {
     'id' | 'media_path' | 'media_iv' | 'media_type'
   > & { plaintext?: string | null }
   sharedKey: CryptoKey | null
+  onMediaClick?: (media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => void
+  onAudioEnd?: () => void
 }
 
-export function MediaBubble({ message, sharedKey }: Props) {
+export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Props) {
   const { t } = useTranslation()
   const mediaPath = message.media_path
   const mediaIv = message.media_iv
@@ -88,8 +90,10 @@ export function MediaBubble({ message, sharedKey }: Props) {
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
   const [currentSec, setCurrentSec] = useState(0)
+  const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [videoNoteExpanded, setVideoNoteExpanded] = useState(false)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [visible, setVisible] = useState(false)
 
@@ -224,7 +228,13 @@ export function MediaBubble({ message, sharedKey }: Props) {
       <img
         src={objectUrl}
         alt=""
-        className="mt-2 max-h-64 max-w-full border border-neon-cyan/40 object-contain"
+        className="mt-2 max-h-64 max-w-full cursor-pointer border border-neon-cyan/40 object-contain hover:border-neon-cyan/60"
+        onClick={() => onMediaClick?.({
+          id: message.id,
+          url: objectUrl,
+          type: 'image',
+          mimeType: effectiveMime,
+        })}
       />
     )
   }
@@ -243,6 +253,7 @@ export function MediaBubble({ message, sharedKey }: Props) {
             setPlaying(false)
             setProgress(0)
             setCurrentSec(0)
+            onAudioEnd?.()
           }}
           onLoadedMetadata={() => {
             const el = audioRef.current
@@ -267,6 +278,19 @@ export function MediaBubble({ message, sharedKey }: Props) {
             className="shrink-0 rounded-none border border-neon-red bg-black px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan"
           >
             {playing ? '||' : '>'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const newSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1
+              setPlaybackSpeed(newSpeed)
+              if (audioRef.current) {
+                audioRef.current.playbackRate = newSpeed
+              }
+            }}
+            className="shrink-0 rounded-none border border-neon-cyan/50 bg-black px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
+          >
+            {playbackSpeed}x
           </button>
           <div className="flex h-8 flex-1 items-end gap-px">
             {barHeights.map((h, i) => (
@@ -303,7 +327,13 @@ export function MediaBubble({ message, sharedKey }: Props) {
     if (circleStyle) {
       return (
         <div className="mt-2 max-w-xs border border-neon-cyan/40">
-          <div className="mx-auto aspect-square w-full max-w-[240px] overflow-hidden rounded-full border-2 border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.12)]">
+          <div
+            className={`mx-auto w-full max-w-[240px] overflow-hidden rounded-full border-2 border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.12)] transition-transform duration-300 ${
+              videoNoteExpanded ? 'scale-150' : 'scale-100'
+            }`}
+            onClick={() => setVideoNoteExpanded(!videoNoteExpanded)}
+            style={{ cursor: 'pointer' }}
+          >
             <video
               ref={videoRef}
               src={objectUrl}
@@ -342,7 +372,7 @@ export function MediaBubble({ message, sharedKey }: Props) {
         <video
           ref={videoRef}
           src={objectUrl}
-          className="aspect-video w-full bg-black object-contain"
+          className="aspect-video w-full cursor-pointer bg-black object-contain"
           playsInline
           muted
           autoPlay={false}
@@ -350,6 +380,12 @@ export function MediaBubble({ message, sharedKey }: Props) {
           preload="metadata"
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
+          onClick={() => onMediaClick?.({
+            id: message.id,
+            url: objectUrl,
+            type: 'video',
+            mimeType: effectiveMime,
+          })}
         />
       </div>
     )

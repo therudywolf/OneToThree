@@ -1,10 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Mic, Camera, Paperclip } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
 import { useTranslation } from '@/hooks/use-translation'
+import { useMediaRecorder } from '@/hooks/use-media-recorder'
+import { resumeAudioContextAfterGesture } from '@/lib/call-ringtones'
+import { vibrateShort } from '@/lib/vibrate'
 
 type BurnPreset = 'off' | '1m' | '1h' | '24h'
 
@@ -25,6 +29,13 @@ type Props = {
     replyToId?: string | null,
     opts?: { burn_at?: string | null }
   ) => Promise<void>
+  sendMedia: (
+    blob: Blob,
+    mediaType: 'audio' | 'video' | 'image' | 'file',
+    caption?: string,
+    options?: { fileName?: string; fileType?: string }
+  ) => Promise<void>
+  cryptoCtx: any // ChatCryptoContext
   disabled?: boolean
 }
 
@@ -52,7 +63,7 @@ const EMOJI_PRESET = [
   '🔐',
 ]
 
-export function ChatInput({ sendText, disabled }: Props) {
+export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
   const [value, setValue] = useState('')
   const [burnPreset, setBurnPreset] = useState<BurnPreset>('off')
@@ -62,12 +73,88 @@ export function ChatInput({ sendText, disabled }: Props) {
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
 
+  // Media recording state
+  const [mediaMode, setMediaMode] = useState<'mic' | 'camera'>('mic')
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingStartTime, setRecordingStartTime] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const {
+    startVoiceCapture,
+    startVideoCircleCapture,
+    stopCapture,
+    isRecording: mediaRecorderActive,
+    error: mediaError,
+    clearError: clearMediaError,
+  } = useMediaRecorder()
+
   useEffect(() => {
     if (!emojiOpen) return
     const close = () => setEmojiOpen(false)
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [emojiOpen])
+
+  useEffect(() => {
+    if (isRecording) {
+      recordingTimerRef.current = setInterval(() => {
+        setElapsed(Date.now() - recordingStartTime)
+      }, 100)
+    } else {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+        recordingTimerRef.current = null
+      }
+      setElapsed(0)
+    }
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+      }
+    }
+  }, [isRecording, recordingStartTime])
+
+  const toggleMediaMode = () => {
+    setMediaMode(prev => prev === 'mic' ? 'camera' : 'mic')
+  }
+
+  const startRecording = async () => {
+    if (!cryptoCtx || disabled) return
+
+    setIsRecording(true)
+    setRecordingStartTime(Date.now())
+    vibrateShort(12)
+
+    try {
+      if (mediaMode === 'mic') {
+        await startVoiceCapture()
+      } else {
+        await startVideoCircleCapture()
+      }
+      await resumeAudioContextAfterGesture()
+    } catch (error) {
+      console.error('Failed to start recording:', error)
+      setIsRecording(false)
+    }
+  }
+
+  const stopRecording = async () => {
+    if (!isRecording) return
+
+    setIsRecording(false)
+    try {
+      const result = await stopCapture()
+      if (result && cryptoCtx) {
+        await sendMedia(
+          result.blob,
+          mediaMode === 'mic' ? 'audio' : 'video'
+        )
+      }
+    } catch (error) {
+      console.error('Failed to stop recording:', error)
+    }
+  }
 
   function insertEmoji(ch: string) {
     setValue((prev) => {
@@ -174,6 +261,41 @@ export function ChatInput({ sendText, disabled }: Props) {
           onClick={() => setEmojiOpen((o) => !o)}
         >
           [ {t('emoji.pickerToggle')} ]
+        </button>
+        <button
+          type="button"
+          className={`shrink-0 border bg-black px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest hover:bg-opacity-10 disabled:opacity-40 ${
+            mediaMode === 'mic'
+              ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan'
+              : 'border-neon-red text-neon-red hover:bg-neon-red'
+          }`}
+          disabled={disabled || !cryptoCtx}
+          onClick={toggleMediaMode}
+          onPointerDown={(e) => {
+            if (disabled || !cryptoCtx || isRecording) return
+            e.preventDefault()
+            startRecording()
+          }}
+          onPointerUp={stopRecording}
+          onPointerCancel={stopRecording}
+          onTouchStart={(e) => {
+            if (disabled || !cryptoCtx || isRecording) return
+            e.preventDefault()
+            startRecording()
+          }}
+          onTouchEnd={stopRecording}
+          onTouchCancel={stopRecording}
+          style={{ touchAction: 'none' }}
+        >
+          {isRecording ? (
+            <span className="animate-pulse">
+              [ ● {mediaMode === 'mic' ? 'REC' : 'VID'} ]
+            </span>
+          ) : mediaMode === 'mic' ? (
+            '[ 🎤 ]'
+          ) : (
+            '[ 📹 ]'
+          )}
         </button>
         <span className="shrink-0 select-none font-mono text-neon-cyan">&gt;_</span>
         <input

@@ -53,7 +53,7 @@ const nextConfig = {
       "form-action 'self'",
       "frame-ancestors 'none'",
       "object-src 'none'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' https://s3.onetothree.ru blob: data:",
       "media-src 'self' https://s3.onetothree.ru blob:",

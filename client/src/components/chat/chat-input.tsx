@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Mic, Camera, Paperclip } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
@@ -9,6 +9,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useMediaRecorder } from '@/hooks/use-media-recorder'
 import { resumeAudioContextAfterGesture } from '@/lib/call-ringtones'
 import { vibrateShort } from '@/lib/vibrate'
+import EmojiPicker from 'emoji-picker-react'
 
 type BurnPreset = 'off' | '1m' | '1h' | '24h'
 
@@ -77,16 +78,12 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const [mediaMode, setMediaMode] = useState<'mic' | 'camera'>('mic')
   const [isRecording, setIsRecording] = useState(false)
   const [recordingStartTime, setRecordingStartTime] = useState(0)
-  const [elapsed, setElapsed] = useState(0)
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const {
     startVoiceCapture,
     startVideoCircleCapture,
     stopCapture,
-    isRecording: mediaRecorderActive,
-    error: mediaError,
-    clearError: clearMediaError,
   } = useMediaRecorder()
 
   useEffect(() => {
@@ -99,14 +96,13 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   useEffect(() => {
     if (isRecording) {
       recordingTimerRef.current = setInterval(() => {
-        setElapsed(Date.now() - recordingStartTime)
+        // Update timer visual feedback
       }, 100)
     } else {
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current)
         recordingTimerRef.current = null
       }
-      setElapsed(0)
     }
     return () => {
       if (recordingTimerRef.current) {
@@ -215,21 +211,23 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       ) : null}
       {emojiOpen ? (
         <div
-          className="relative z-10 mb-2 flex max-h-28 flex-wrap gap-1 overflow-y-auto border border-neon-cyan/50 bg-black p-2 shadow-[inset_0_0_12px_rgba(0,255,255,0.08)]"
-          role="listbox"
-          aria-label={t('emoji.pickerAria')}
+          className="relative z-10 mb-2 border border-neon-cyan/50 bg-black p-2 shadow-[inset_0_0_12px_rgba(0,255,255,0.08)]"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {EMOJI_PRESET.map((ch, i) => (
-            <button
-              key={`${i}-${ch}`}
-              type="button"
-              className="flex h-9 w-9 items-center justify-center border border-transparent font-mono text-lg leading-none hover:border-neon-cyan/60 hover:bg-neon-cyan/5"
-              onClick={() => insertEmoji(ch)}
-            >
-              <span className="noir-emoji-inline">{ch}</span>
-            </button>
-          ))}
+          <EmojiPicker
+            onEmojiClick={(emojiData) => {
+              insertEmoji(emojiData.emoji)
+              setEmojiOpen(false)
+            }}
+            theme="dark"
+            skinTonesDisabled
+            searchDisabled
+            previewConfig={{
+              showPreview: false
+            }}
+            width={300}
+            height={350}
+          />
         </div>
       ) : null}
       <div className="mb-1 flex flex-wrap items-center gap-2 font-mono text-[9px] uppercase tracking-wider text-neon-cyan/90">
@@ -271,30 +269,26 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           }`}
           disabled={disabled || !cryptoCtx}
           onClick={toggleMediaMode}
-          onPointerDown={(e) => {
+          onMouseDown={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.preventDefault()
             startRecording()
           }}
-          onPointerUp={stopRecording}
-          onPointerCancel={stopRecording}
+          onMouseUp={stopRecording}
           onTouchStart={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.preventDefault()
             startRecording()
           }}
           onTouchEnd={stopRecording}
-          onTouchCancel={stopRecording}
           style={{ touchAction: 'none' }}
         >
           {isRecording ? (
-            <span className="animate-pulse">
-              [ ● {mediaMode === 'mic' ? 'REC' : 'VID'} ]
-            </span>
+            <span className="animate-pulse">●</span>
           ) : mediaMode === 'mic' ? (
-            '[ 🎤 ]'
+            '🎤'
           ) : (
-            '[ 📹 ]'
+            '📷'
           )}
         </button>
         <span className="shrink-0 select-none font-mono text-neon-cyan">&gt;_</span>

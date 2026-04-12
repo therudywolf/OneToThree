@@ -43,6 +43,7 @@ const en = {
 
   'login.usernameRequired': 'Username is required.',
   'login.passwordRequired': 'Passphrase is required.',
+  'login.passwordMismatch': 'Passwords do not match.',
   'login.pinMin8': 'Passphrase must be at least 8 characters for new keys.',
   'login.noLocalVault':
     'No local vault for this handle. Register on this device first.',

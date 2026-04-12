@@ -26,6 +26,7 @@ export async function registerNewUser(
     .click()
   await page.locator('#username').fill(handle)
   await page.locator('#password').fill(passphrase)
+  await page.locator('#confirmPassword').fill(passphrase)
   await page.getByRole('button', { name: /REGISTER/i }).click()
   await page.waitForURL('/', { timeout: 60_000 })
   await unlockVaultModal(page, passphrase)

@@ -20,6 +20,7 @@ export function LoginForm() {
   const { user, loading: authLoading, refresh } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [step, setStep] = useState<'credentials' | 'totp'>('credentials')
   const [pendingToken, setPendingToken] = useState<string | null>(null)
@@ -147,6 +148,10 @@ export function LoginForm() {
     setError(null)
     setBusy(true)
     try {
+      if (mode === 'register' && password !== confirmPassword) {
+        setError(t('login.passwordMismatch'))
+        return
+      }
       const result = await cryptoLogin({ username, password, mode })
       if (result.ok === 'needs_2fa') {
         setPendingToken(result.pendingToken)
@@ -331,7 +336,7 @@ export function LoginForm() {
 
       <div>
         <label htmlFor="password" className="terminal-label">
-          &gt; {t('login.vaultPassphraseLabel')}
+          &gt; {mode === 'register' ? 'Master Password (Vault Key)' : 'Enter Master Password'}
         </label>
         <input
           id="password"
@@ -349,6 +354,38 @@ export function LoginForm() {
         />
       </div>
 
+      {mode === 'register' ? (
+        <div>
+          <label htmlFor="confirmPassword" className="terminal-label">
+            &gt; Confirm Master Password
+          </label>
+          <input
+            id="confirmPassword"
+            name="confirmPassword"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            className="terminal-input"
+            placeholder="••••••••"
+          />
+        </div>
+      ) : null}
+
+      {mode === 'register' ? (
+        <div className="border border-red-500/50 bg-red-950/20 px-3 py-2 font-mono text-xs text-red-400">
+          <div className="flex items-center gap-2">
+            <span className="text-red-500">⚠</span>
+            <span className="uppercase tracking-widest text-red-300">ОСТОРОЖНО</span>
+          </div>
+          <p className="mt-1 leading-relaxed">
+            Этот пароль локально шифрует ваш крипто-сейф (Vault). Сервер не имеет к нему доступа. При утере пароля восстановление истории переписок НЕВОЗМОЖНО.
+          </p>
+        </div>
+      ) : null}
+
       {error ? (
         <p className="border border-neon-red bg-black px-2 py-1 font-mono text-xs text-neon-red">
           [!] {error}
@@ -356,13 +393,20 @@ export function LoginForm() {
       ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <TerminalGlitchButton type="submit" disabled={busy}>
+        <TerminalGlitchButton 
+          type="submit" 
+          disabled={
+            busy || 
+            (mode === 'register' && (password !== confirmPassword || password.length < 8 || confirmPassword.length < 8))
+          }
+        >
           {mode === 'login' ? '[ LOGIN ]' : '[ REGISTER ]'}
         </TerminalGlitchButton>
         <button
           type="button"
           onClick={() => {
             setMode(mode === 'login' ? 'register' : 'login')
+            setConfirmPassword('')
             setError(null)
             resetTotpStep()
           }}

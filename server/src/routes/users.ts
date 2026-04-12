@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { HeadObjectCommand } from '@aws-sdk/client-s3'
-import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -459,6 +459,43 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
           normalizeUuid(r.id) === currentDeviceId,
       })),
     })
+  })
+
+  app.post('/me/devices/clear-revoked', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    await db.delete(devices).where(
+      and(eq(devices.userId, user.id), isNotNull(devices.revokedAt))
+    )
+
+    return reply.send({ ok: true })
+  })
+
+  app.delete('/me/devices/others', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const sess = await verifySessionJwt(request)
+    const currentDeviceId = sess?.device_id
+      ? normalizeUuid(sess.device_id)
+      : null
+
+    if (!currentDeviceId) {
+      return reply.status(400).send({ error: 'MISSING_CURRENT_DEVICE' })
+    }
+
+    await db
+      .update(devices)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(devices.userId, user.id),
+          ne(devices.id, currentDeviceId)
+        )
+      )
+
+    return reply.send({ ok: true })
   })
 
   app.patch('/me/devices/:deviceId/master', async (request, reply) => {

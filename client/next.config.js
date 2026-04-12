@@ -55,10 +55,10 @@ const nextConfig = {
       "object-src 'none'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' https://s3.onetothree.ru blob: data:",
+      "img-src 'self' https://s3.onetothree.ru https://cdn.jsdelivr.net blob: data:",
       "media-src 'self' https://s3.onetothree.ru blob:",
       "font-src 'self'",
-      `connect-src 'self' ${publicApi} https://s3.onetothree.ru wss://api.onetothree.ru`,
+      `connect-src 'self' ${publicApi} https://s3.onetothree.ru https://api.onetothree.ru wss://api.onetothree.ru`,
       "worker-src 'self' blob:",
     ]
     if (isProd) {

@@ -1,7 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 
-const DEFAULT_ICE_SERVERS = [
+const DEFAULT_ICE_SERVERS: Array<{
+  urls: string | string[]
+  username?: string
+  credential?: string
+}> = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
 ]

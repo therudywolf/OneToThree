@@ -45,6 +45,25 @@ export async function buildChatCryptoContext(
     if (!other?.ecdh_public_key_jwk) {
       throw new Error('MISSING_PEER_ECDH')
     }
+    // Verify peer key authenticity
+    let verifiedKeys: Record<string, string> = {}
+    try {
+      const stored = localStorage.getItem('fm_verified_keys')
+      if (stored) {
+        verifiedKeys = JSON.parse(stored)
+      }
+    } catch (e) {
+      // Ignore corrupted localStorage
+    }
+    const storedKey = verifiedKeys[other.user_id]
+    if (storedKey) {
+      const normalizeJwk = (jwk: string) => JSON.stringify(JSON.parse(jwk), Object.keys(JSON.parse(jwk)).sort())
+      if (normalizeJwk(storedKey) !== normalizeJwk(other.ecdh_public_key_jwk)) {
+        throw new Error('SECURITY_KEY_MISMATCH')
+      }
+    } else {
+      // TODO: Implement manual key verification for first contact
+    }
     return { mode: 'direct', peerPublicKeyJwk: other.ecdh_public_key_jwk }
   }
 

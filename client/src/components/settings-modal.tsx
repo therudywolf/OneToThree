@@ -388,6 +388,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
         className={`terminal-panel flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${settingsTab === 'media' || settingsTab === 'devices' ? 'max-w-2xl' : totpSetup ? 'max-w-lg' : 'max-w-md'}`}
+      >
         <header className="flex shrink-0 items-start justify-between gap-2 border-b border-neon-red/40 pb-3">
           <p className="min-w-0 break-words text-xs uppercase tracking-[0.35em] text-neon-cyan">
             [ SETTINGS ] :: {username}

@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { FastifyRequest } from 'fastify'
 import { db } from '../db/index.js'
 import { devices } from '../db/schema.js'
@@ -67,12 +67,21 @@ export async function upsertDeviceForSession(
     return { ok: true, deviceId: normalizeUuid(existing.id) }
   }
 
+  // Check if this is the first device for this user (should be master)
+  const [existingDevices] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(devices)
+    .where(and(eq(devices.userId, uid), isNull(devices.revokedAt)))
+
+  const isFirstDevice = Number(existingDevices.count) === 0
+
   const [row] = await db
     .insert(devices)
     .values({
       userId: uid,
       clientDeviceKey: clientKey,
       deviceName,
+      isMaster: isFirstDevice,
       userAgent: ua,
       ipAddress: ip,
     })

@@ -280,6 +280,7 @@ const ru = {
     'Сессии привязаны к профилю браузера. Отзыв инвалидирует JWT этого устройства.',
   'settings.devicesCurrent': 'ТЕКУЩЕЕ',
   'settings.devicesRevoked': 'ОТОЗВАНО',
+  'settings.devicesMaster': 'ГЛАВНОЕ',
   'settings.devicesRevoke': 'ОТОЗВАТЬ',
   'settings.devicesRevokeConfirm':
     'Отозвать это устройство? Сессия сбросится при следующем запросе.',

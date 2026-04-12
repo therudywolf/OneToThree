@@ -434,6 +434,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .select({
         id: devices.id,
         deviceName: devices.deviceName,
+        isMaster: devices.isMaster,
         lastActive: devices.lastActive,
         userAgent: devices.userAgent,
         ipAddress: devices.ipAddress,
@@ -448,6 +449,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       devices: rows.map((r) => ({
         id: normalizeUuid(r.id),
         device_name: r.deviceName,
+        is_master: r.isMaster,
         last_active: r.lastActive.toISOString(),
         user_agent: r.userAgent,
         ip_address: r.ipAddress,
@@ -471,6 +473,20 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const deviceId = normalizeUuid(params.data.deviceId)
+
+    // Check if the device to revoke is a master device
+    const [deviceToRevoke] = await db
+      .select({ isMaster: devices.isMaster })
+      .from(devices)
+      .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+
+    if (!deviceToRevoke) {
+      return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
+    }
+
+    if (deviceToRevoke.isMaster) {
+      return reply.status(403).send({ error: 'CANNOT_REVOKE_MASTER_DEVICE' })
+    }
 
     const [updated] = await db
       .update(devices)

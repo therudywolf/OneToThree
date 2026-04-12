@@ -65,6 +65,8 @@ export const devices = pgTable(
     /** Stable id from client localStorage (per browser profile). */
     clientDeviceKey: text('client_device_key').notNull(),
     deviceName: text('device_name').notNull(),
+    /** Master device cannot be revoked by other devices */
+    isMaster: boolean('is_master').notNull().default(false),
     lastActive: timestamp('last_active', { withTimezone: true })
       .notNull()
       .defaultNow(),

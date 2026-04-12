@@ -14,7 +14,10 @@ import {
 import { useCallStore } from '@/store/callStore'
 import { useChatStore } from '@/store/chatStore'
 
-const DEFAULT_STUN: RTCIceServer = { urls: 'stun:stun.l.google.com:19302' }
+const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' }
+]
 
 /** ICE servers from env only. When the API host is behind Cloudflare proxy, TURN must use a
  * separate DNS-only hostname (UDP) — do not point NEXT_PUBLIC_TURN_URL at the same host as NEXT_PUBLIC_API_URL.
@@ -40,11 +43,11 @@ function buildIceServers(): RTCIceServer[] {
       .filter(Boolean)
     if (urls.length === 0) {
       console.warn('[ICE] TURN_URL configured but empty, using defaults')
-      return [DEFAULT_STUN]
+      return DEFAULT_STUN_SERVERS
     }
     console.warn('[ICE] Configured TURN servers:', { count: urls.length, user: turnUser })
     return [
-      DEFAULT_STUN,
+      ...DEFAULT_STUN_SERVERS,
       {
         urls,
         username: turnUser,
@@ -53,7 +56,7 @@ function buildIceServers(): RTCIceServer[] {
     ]
   }
   console.warn('[ICE] No TURN configured, using STUN only')
-  return [DEFAULT_STUN]
+  return DEFAULT_STUN_SERVERS
 }
 
 function stopStreamTracks(stream: MediaStream | null) {
@@ -654,7 +657,10 @@ export function useWebRTC(userId: string | null) {
     console.warn(
       `[ACCEPT←${inc.peerId.slice(0, 8)}] Creating PeerConnection for answer (video=${inc.isVideo})`
     )
-    const pc = new RTCPeerConnection({ iceServers: buildIceServers() })
+    const pc = new RTCPeerConnection({ 
+      iceServers: buildIceServers(),
+      iceCandidatePoolSize: 10
+    })
     pcsRef.current.set(inc.peerId, pc)
     addPeerConnection(inc.peerId, pc)
     attachPeerHandlers(inc.peerId, pc)
@@ -727,7 +733,10 @@ export function useWebRTC(userId: string | null) {
         if (pcsRef.current.has(peerId)) continue
 
         console.warn(`[INIT→${peerId.slice(0, 8)}] Creating PeerConnection (video=${isVideo})`)
-        const pc = new RTCPeerConnection({ iceServers: buildIceServers() })
+        const pc = new RTCPeerConnection({ 
+          iceServers: buildIceServers(),
+          iceCandidatePoolSize: 10
+        })
         pcsRef.current.set(peerId, pc)
         addPeerConnection(peerId, pc)
         attachPeerHandlers(peerId, pc)

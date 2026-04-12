@@ -61,7 +61,7 @@ function PeerTile({
   position,
   isFocused,
   onFocusToggle,
-  layoutMode,
+  layout,
 }: {
   peerId: string
   stream: MediaStream
@@ -75,7 +75,7 @@ function PeerTile({
   position?: { x: number; y: number }
   isFocused?: boolean
   onFocusToggle?: () => void
-  layoutMode?: 'grid' | 'focus'
+  layout?: 'grid' | 'focus'
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -126,7 +126,7 @@ function PeerTile({
   }
 
   const handleClick = () => {
-    if (layoutMode === 'focus' && onFocusToggle) {
+    if (layout === 'focus' && onFocusToggle) {
       onFocusToggle()
     } else {
       handleDoubleTap()
@@ -135,6 +135,20 @@ function PeerTile({
 
   const showRemoteHints =
     label === 'REMOTE' && (remoteMicMuted || remoteCamOff)
+
+  const containerClass = layout === 'grid'
+    ? 'grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full p-4 bg-black'
+    : 'relative w-full h-full bg-black'
+
+  const localVideoClass = layout === 'grid'
+    ? 'w-full h-full object-cover rounded-xl border border-neutral-800'
+    : 'absolute bottom-20 right-6 w-32 h-48 md:w-48 md:h-72 object-cover rounded-xl shadow-2xl border border-neutral-700 z-10 transition-all duration-300'
+
+  const remoteVideoClass = layout === 'grid'
+    ? 'w-full h-full object-cover rounded-xl border border-neutral-800'
+    : 'w-full h-full object-cover'
+
+  const videoClass = label === 'YOU' ? localVideoClass : remoteVideoClass
 
   const tileStyle = isDragging && position
     ? {
@@ -184,14 +198,14 @@ function PeerTile({
       </div>
       <audio ref={audioRef} className="hidden" playsInline muted={muted} />
       {hasVideo ? (
-        <div className="relative w-full" style={{ aspectRatio: '16/9' }}>
+        <div className={containerClass} style={layout === 'grid' ? undefined : { aspectRatio: '16/9' }}>
           <video
             ref={videoRef}
             autoPlay
             playsInline
             muted={muted}
             controls={false}
-            className="h-full w-full bg-black object-cover"
+            className={videoClass}
             style={{ objectFit: 'cover', transform: 'scaleX(-1)' }}
           />
           {showRemoteHints ? (
@@ -253,46 +267,28 @@ export function ActiveCallOverlay({
   const [localDragPos, setLocalDragPos] = useState<{ x: number; y: number } | null>(null)
   const [isDraggingLocal, setIsDraggingLocal] = useState(false)
   const dragStateRef = useRef<{ startX: number; startY: number } | null>(null)
-  const [layoutMode, setLayoutMode] = useState<'grid' | 'focus'>('grid')
+  const [layout, setLayout] = useState<'grid' | 'focus'>('grid')
   const [focusedPeerId, setFocusedPeerId] = useState<string | null>(null)
-  const [controlsVisible, setControlsVisible] = useState(true)
+  const [showControls, setShowControls] = useState(true)
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const [lowBandwidth, setLowBandwidth] = useState(() => loadMediaPrefs().lowBandwidth)
+  const [isHD, setIsHD] = useState(() => !loadMediaPrefs().lowBandwidth)
 
   useEffect(() => {
     setScreenShareAllowed(!isAndroidMobile())
   }, [])
 
-  // Auto-hide controls after 3 seconds of inactivity
   useEffect(() => {
-    const resetControlsTimeout = () => {
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current)
-      }
-      setControlsVisible(true)
-      controlsTimeoutRef.current = setTimeout(() => {
-        setControlsVisible(false)
-      }, 3000)
+    let timeout: NodeJS.Timeout
+    const handleMouseMove = () => {
+      setShowControls(true)
+      clearTimeout(timeout)
+      timeout = setTimeout(() => setShowControls(false), 3000)
     }
 
-    const handleMouseMove = () => resetControlsTimeout()
-    const handleMouseLeave = () => {
-      controlsTimeoutRef.current = setTimeout(() => {
-        setControlsVisible(false)
-      }, 1000)
-    }
-
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseleave', handleMouseLeave)
-
-    resetControlsTimeout()
-
+    window.addEventListener('mousemove', handleMouseMove)
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseleave', handleMouseLeave)
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current)
-      }
+      window.removeEventListener('mousemove', handleMouseMove)
+      clearTimeout(timeout)
     }
   }, [])
 
@@ -302,6 +298,8 @@ export function ActiveCallOverlay({
   )
 
   const tileCount = 1 + remoteEntries.length
+
+  const controlsOverlayClass = `absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center gap-4 bg-neutral-900/80 backdrop-blur border border-neutral-800 p-3 rounded-full z-50 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`
 
   useEffect(() => {
     if (!isCalling || !localStream) {
@@ -342,7 +340,7 @@ export function ActiveCallOverlay({
   }
 
   function toggleLayout() {
-    setLayoutMode((prev) => {
+    setLayout((prev) => {
       const next = prev === 'grid' ? 'focus' : 'grid'
       if (next === 'focus') {
         setFocusedPeerId(remoteEntries[0]?.[0] || 'LOCAL')
@@ -354,13 +352,13 @@ export function ActiveCallOverlay({
   }
 
   function toggleBandwidth() {
-    const newValue = !lowBandwidth
-    setLowBandwidth(newValue)
-    saveMediaPrefs({ lowBandwidth: newValue })
+    const newValue = !isHD
+    setIsHD(newValue)
+    saveMediaPrefs({ lowBandwidth: !newValue })
   }
 
   function handlePeerFocus(peerId: string) {
-    if (layoutMode === 'focus') {
+    if (layout === 'focus') {
       setFocusedPeerId(peerId)
     }
   }
@@ -384,7 +382,7 @@ export function ActiveCallOverlay({
         </div>
 
         <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
-          {layoutMode === 'focus' && focusedPeerId ? (
+          {layout === 'focus' && focusedPeerId ? (
             <div className="relative flex-1">
               <div className="relative min-h-[320px] w-full">
                 {focusedPeerId === 'LOCAL' ? (
@@ -393,7 +391,7 @@ export function ActiveCallOverlay({
                     stream={localStream}
                     label="YOU (FOCUSED)"
                     muted
-                    layoutMode={layoutMode}
+                    layout={layout}
                   />
                 ) : (
                   remoteEntries
@@ -408,7 +406,7 @@ export function ActiveCallOverlay({
                           label="REMOTE (FOCUSED)"
                           remoteMicMuted={hint?.micMuted}
                           remoteCamOff={hint?.cameraOff}
-                          layoutMode={layoutMode}
+                          layout={layout}
                         />
                       )
                     })
@@ -423,7 +421,7 @@ export function ActiveCallOverlay({
                     label="YOU"
                     muted
                     onFocusToggle={() => handlePeerFocus('LOCAL')}
-                    layoutMode={layoutMode}
+                    layout={layout}
                   />
                 </div>
               ) : null}
@@ -441,7 +439,7 @@ export function ActiveCallOverlay({
                           remoteMicMuted={hint?.micMuted}
                           remoteCamOff={hint?.cameraOff}
                           onFocusToggle={() => handlePeerFocus(peerId)}
-                          layoutMode={layoutMode}
+                          layout={layout}
                         />
                       </div>
                     )
@@ -450,14 +448,14 @@ export function ActiveCallOverlay({
               ) : null}
             </div>
           ) : (
-            <div className={`grid gap-3 ${gridCols(tileCount, layoutMode)}`}>
+            <div className={`grid gap-3 ${gridCols(tileCount, layout)}`}>
               <PeerTile
                 peerId="LOCAL"
                 stream={localStream}
                 label="YOU"
                 muted
                 onFocusToggle={() => handlePeerFocus('LOCAL')}
-                layoutMode={layoutMode}
+                layout={layout}
               />
               {remoteEntries.map(([peerId, stream]) => {
                 const hint = remotePeerMedia[peerId]
@@ -470,7 +468,7 @@ export function ActiveCallOverlay({
                     remoteMicMuted={hint?.micMuted}
                     remoteCamOff={hint?.cameraOff}
                     onFocusToggle={() => handlePeerFocus(peerId)}
-                    layoutMode={layoutMode}
+                    layout={layout}
                   />
                 )
               })}
@@ -478,9 +476,7 @@ export function ActiveCallOverlay({
           )}
         </div>
 
-      <div className={`pb-safe flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-red-500/50 bg-black px-3 py-3 pt-3 shadow-[0_0_10px_rgba(255,0,0,0.35)] md:gap-4 md:px-4 md:py-4 transition-opacity duration-300 ${
-        controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-      }`}>
+      <div className={controlsOverlayClass}>
         <button
           type="button"
           onClick={handleMute}
@@ -560,24 +556,24 @@ export function ActiveCallOverlay({
         <button
           type="button"
           onClick={toggleBandwidth}
-          title={lowBandwidth ? 'Switch to HD' : 'Switch to SD'}
+          title={isHD ? 'Switch to SD' : 'Switch to HD'}
           className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 hover:bg-neon-cyan/10 ${
-            lowBandwidth
+            isHD
               ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)]'
               : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
           }`}
-          aria-label={lowBandwidth ? 'Switch to HD' : 'Switch to SD'}
+          aria-label={isHD ? 'Switch to SD' : 'Switch to HD'}
         >
           <Zap className="h-5 w-5" strokeWidth={1.5} />
         </button>
         <button
           type="button"
           onClick={toggleLayout}
-          title={layoutMode === 'grid' ? 'Switch to focus mode' : 'Switch to grid mode'}
+          title={layout === 'grid' ? 'Switch to focus mode' : 'Switch to grid mode'}
           className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-zinc-500 bg-black p-3 text-zinc-300 hover:border-neon-cyan hover:text-neon-cyan"
-          aria-label={layoutMode === 'grid' ? 'Focus mode' : 'Grid mode'}
+          aria-label={layout === 'grid' ? 'Focus mode' : 'Grid mode'}
         >
-          {layoutMode === 'grid' ? (
+          {layout === 'grid' ? (
             <Focus className="h-5 w-5" strokeWidth={1.5} />
           ) : (
             <Grid3X3 className="h-5 w-5" strokeWidth={1.5} />

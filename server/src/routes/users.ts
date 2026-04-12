@@ -469,7 +469,27 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       and(eq(devices.userId, user.id), isNotNull(devices.revokedAt))
     )
 
-    return reply.send({ ok: true })
+    return reply.send({ success: true })
+  })
+
+  app.post('/me/devices/revoke-all-others', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const sess = await verifySessionJwt(request)
+    const currentDeviceId = sess?.device_id
+      ? normalizeUuid(sess.device_id)
+      : null
+
+    if (!currentDeviceId) {
+      return reply.status(400).send({ error: 'MISSING_CURRENT_DEVICE' })
+    }
+
+    await db.delete(devices).where(
+      and(eq(devices.userId, user.id), ne(devices.id, currentDeviceId))
+    )
+
+    return reply.send({ success: true })
   })
 
   app.delete('/me/devices/others', async (request, reply) => {
@@ -485,17 +505,11 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'MISSING_CURRENT_DEVICE' })
     }
 
-    await db
-      .update(devices)
-      .set({ revokedAt: new Date() })
-      .where(
-        and(
-          eq(devices.userId, user.id),
-          ne(devices.id, currentDeviceId)
-        )
-      )
+    await db.delete(devices).where(
+      and(eq(devices.userId, user.id), ne(devices.id, currentDeviceId))
+    )
 
-    return reply.send({ ok: true })
+    return reply.send({ success: true })
   })
 
   app.patch('/me/devices/:deviceId/master', async (request, reply) => {

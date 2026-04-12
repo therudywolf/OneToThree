@@ -55,7 +55,7 @@ export async function buildApp() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'wasm-unsafe-eval'", 'https://cdn.jsdelivr.net', 'blob:'],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://cdn.jsdelivr.net', 'blob:'],
         /** Allow S3 and blob URLs for media, plus WebSocket origins */
         connectSrc: [
           "'self'",
@@ -64,7 +64,7 @@ export async function buildApp() {
           'wss://api.onetothree.ru',
           'ws:',
         ],
-        imgSrc: ["'self'", 'https://s3.onetothree.ru', 'https://cdn.jsdelivr.net', 'data:'],
+        imgSrc: ["'self'", 'https://s3.onetothree.ru', 'https://cdn.jsdelivr.net', 'blob:', 'data:'],
         mediaSrc: ["'self'", 'https://s3.onetothree.ru', 'blob:'],
         fontSrc: ["'self'", 'data:'],
         styleSrc: ["'self'", "'unsafe-inline'"],

@@ -47,23 +47,20 @@ const nextConfig = {
       'http://localhost:8080 http://127.0.0.1:8080'
     const isProd = process.env.NODE_ENV === 'production'
 
-    const cspDirectives = [
-      "default-src 'self'",
-      "base-uri 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' https://s3.onetothree.ru https://cdn.jsdelivr.net blob: data:",
-      "media-src 'self' https://s3.onetothree.ru blob:",
-      "font-src 'self'",
-      `connect-src 'self' ${publicApi} https://s3.onetothree.ru https://api.onetothree.ru wss://api.onetothree.ru`,
-      "worker-src 'self' blob:",
-    ]
-    if (isProd) {
-      cspDirectives.push('upgrade-insecure-requests')
-    }
+    const cspHeader = `
+    default-src 'self';
+    script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net blob:;
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' blob: data: https://cdn.jsdelivr.net https://s3.onetothree.ru;
+    font-src 'self';
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self';
+    frame-ancestors 'none';
+    connect-src 'self' https://api.onetothree.ru wss://api.onetothree.ru https://cdn.jsdelivr.net;
+    worker-src 'self' blob:;
+    upgrade-insecure-requests;
+`.replace(/\n/g, "");
 
     return [
       {
@@ -71,7 +68,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: cspDirectives.join('; '),
+            value: cspHeader,
           },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
@@ -102,6 +99,10 @@ const withPWA = require('next-pwa')({
       options: {
         cacheableResponse: { statuses: [0, 200] },
       },
+    },
+    {
+      urlPattern: /^https:\/\/cdn\.jsdelivr\.net/,
+      handler: 'NetworkOnly',
     },
   ],
 })

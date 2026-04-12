@@ -60,10 +60,11 @@ export async function buildApp() {
         connectSrc: [
           "'self'",
           'https://s3.onetothree.ru',
+          'https://api.onetothree.ru',
           'wss://api.onetothree.ru',
           'ws:',
         ],
-        imgSrc: ["'self'", 'https://s3.onetothree.ru', 'data:'],
+        imgSrc: ["'self'", 'https://s3.onetothree.ru', 'https://cdn.jsdelivr.net', 'data:'],
         mediaSrc: ["'self'", 'https://s3.onetothree.ru', 'blob:'],
         fontSrc: ["'self'", 'data:'],
         styleSrc: ["'self'", "'unsafe-inline'"],

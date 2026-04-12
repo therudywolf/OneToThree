@@ -54,7 +54,7 @@ export async function buildApp() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'wasm-unsafe-eval'"],
+        scriptSrc: ["'self'", "'wasm-unsafe-eval'", 'https://cdn.jsdelivr.net', 'blob:'],
         /** Allow S3 and blob URLs for media, plus WebSocket origins */
         connectSrc: [
           "'self'",
@@ -68,6 +68,7 @@ export async function buildApp() {
         styleSrc: ["'self'", "'unsafe-inline'"],
         frameSrc: ["'none'"],
         objectSrc: ["'none'"],
+        workerSrc: ["'self'", 'blob:'],
         upgradeInsecureRequests: process.env.NODE_ENV === 'production' ? [] : undefined,
       },
     },

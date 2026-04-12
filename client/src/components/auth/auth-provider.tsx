@@ -13,6 +13,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { AuthHttpError, fetchMe, logoutApi } from '@/lib/api/auth'
 import { wipeAllClientLocalState } from '@/lib/client-wipe'
+import { invalidateAvatarCache, clearAllAvatarCache } from '@/lib/avatar-cache'
 
 /** `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional). */
 export type AuthUser = {
@@ -105,10 +106,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await logoutApi()
     setUser(null)
     setLoading(false)
+    // Clear all cached avatars on logout to prevent memory leaks
+    clearAllAvatarCache()
   }, [])
 
   const updateUser = useCallback((patch: Partial<AuthUser>) => {
-    setUser((prev) => (prev ? { ...prev, ...patch } : null))
+    setUser((prev) => {
+      if (prev && patch.avatar_key !== undefined && patch.avatar_key !== prev.avatar_key) {
+        // Avatar key changed - invalidate cache for this user
+        invalidateAvatarCache(prev.id)
+      }
+      return prev ? { ...prev, ...patch } : null
+    })
   }, [])
 
   const value = useMemo(

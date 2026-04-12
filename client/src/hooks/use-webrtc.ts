@@ -19,44 +19,38 @@ const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' }
 ]
 
-/** ICE servers from env only. When the API host is behind Cloudflare proxy, TURN must use a
- * separate DNS-only hostname (UDP) — do not point NEXT_PUBLIC_TURN_URL at the same host as NEXT_PUBLIC_API_URL.
- */
-function buildIceServers(): RTCIceServer[] {
-  const turnUrl =
-    typeof process !== 'undefined'
-      ? process.env.NEXT_PUBLIC_TURN_URL?.trim()
-      : undefined
-  const turnUser =
-    typeof process !== 'undefined'
-      ? process.env.NEXT_PUBLIC_TURN_USERNAME?.trim()
-      : undefined
-  const turnPass =
-    typeof process !== 'undefined'
-      ? process.env.NEXT_PUBLIC_TURN_PASSWORD?.trim()
-      : undefined
-
-  if (turnUrl && turnUser && turnPass) {
-    const urls = turnUrl
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-    if (urls.length === 0) {
-      console.warn('[ICE] TURN_URL configured but empty, using defaults')
-      return DEFAULT_STUN_SERVERS
-    }
-    console.warn('[ICE] Configured TURN servers:', { count: urls.length, user: turnUser })
-    return [
-      ...DEFAULT_STUN_SERVERS,
-      {
-        urls,
-        username: turnUser,
-        credential: turnPass,
+async function fetchIceServers(): Promise<RTCIceServer[]> {
+  try {
+    const response = await fetch('/api/turn', {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json',
       },
-    ]
+    })
+
+    if (!response.ok) {
+      throw new Error(`TURN fetch failed: ${response.status} ${response.statusText}`)
+    }
+
+    const payload = (await response.json()) as { iceServers?: unknown }
+    if (!payload || !Array.isArray(payload.iceServers)) {
+      throw new Error('TURN response did not contain iceServers array')
+    }
+
+    return payload.iceServers.map((item) => {
+      if (!item || typeof item !== 'object' || !('urls' in item)) {
+        throw new Error('Invalid ICE server entry')
+      }
+      return item as RTCIceServer
+    })
+  } catch (err) {
+    console.warn(
+      '[ICE] Failed to fetch TURN config from backend, falling back to STUN only:',
+      err
+    )
+    return DEFAULT_STUN_SERVERS
   }
-  console.warn('[ICE] No TURN configured, using STUN only')
-  return DEFAULT_STUN_SERVERS
 }
 
 function stopStreamTracks(stream: MediaStream | null) {
@@ -657,8 +651,9 @@ export function useWebRTC(userId: string | null) {
     console.warn(
       `[ACCEPT←${inc.peerId.slice(0, 8)}] Creating PeerConnection for answer (video=${inc.isVideo})`
     )
+    const iceServers = await fetchIceServers()
     const pc = new RTCPeerConnection({ 
-      iceServers: buildIceServers(),
+      iceServers,
       iceCandidatePoolSize: 10
     })
     pcsRef.current.set(inc.peerId, pc)
@@ -733,8 +728,9 @@ export function useWebRTC(userId: string | null) {
         if (pcsRef.current.has(peerId)) continue
 
         console.warn(`[INIT→${peerId.slice(0, 8)}] Creating PeerConnection (video=${isVideo})`)
+        const iceServers = await fetchIceServers()
         const pc = new RTCPeerConnection({ 
-          iceServers: buildIceServers(),
+          iceServers,
           iceCandidatePoolSize: 10
         })
         pcsRef.current.set(peerId, pc)

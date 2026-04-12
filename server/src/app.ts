@@ -9,6 +9,7 @@ import { chatsRoutes } from './routes/chats.js'
 import { messagesRoutes } from './routes/messages.js'
 import { pushRoutes } from './routes/push.js'
 import { userRoutes } from './routes/users.js'
+import { webrtcRoutes } from './routes/webrtc.js'
 import { storageRoutes } from './routes/storage.js'
 import { adminRoutes } from './routes/admin.js'
 import { vaultRoutes } from './routes/vault.js'
@@ -107,6 +108,7 @@ export async function buildApp() {
 
   await app.register(authRoutes, { prefix: '/api/auth' })
   await app.register(userRoutes, { prefix: '/api/users' })
+  await app.register(webrtcRoutes, { prefix: '/api' })
   await app.register(chatsRoutes, { prefix: '/api/chats' })
   await app.register(messagesRoutes, { prefix: '/api/messages' })
   await app.register(storageRoutes, { prefix: '/api/storage' })

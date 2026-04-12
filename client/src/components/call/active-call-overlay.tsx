@@ -342,13 +342,15 @@ export function ActiveCallOverlay({
   }
 
   function toggleLayout() {
-    setLayoutMode((prev) => prev === 'grid' ? 'focus' : 'grid')
-    if (layoutMode === 'grid') {
-      // When switching to focus, focus on the first remote peer or self
-      setFocusedPeerId(remoteEntries[0]?.[0] || 'LOCAL')
-    } else {
-      setFocusedPeerId(null)
-    }
+    setLayoutMode((prev) => {
+      const next = prev === 'grid' ? 'focus' : 'grid'
+      if (next === 'focus') {
+        setFocusedPeerId(remoteEntries[0]?.[0] || 'LOCAL')
+      } else {
+        setFocusedPeerId(null)
+      }
+      return next
+    })
   }
 
   function toggleBandwidth() {
@@ -383,9 +385,8 @@ export function ActiveCallOverlay({
 
         <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
           {layoutMode === 'focus' && focusedPeerId ? (
-            <div className="flex flex-col gap-3">
-              {/* Focused peer - large */}
-              <div className="flex-1">
+            <div className="relative flex-1">
+              <div className="relative min-h-[320px] w-full">
                 {focusedPeerId === 'LOCAL' ? (
                   <PeerTile
                     peerId="LOCAL"
@@ -413,26 +414,26 @@ export function ActiveCallOverlay({
                     })
                 )}
               </div>
-              {/* Other peers - small row */}
-              <div className="flex gap-2 overflow-x-auto">
-                {focusedPeerId !== 'LOCAL' && (
-                  <div className="flex-shrink-0 w-32">
-                    <PeerTile
-                      peerId="LOCAL"
-                      stream={localStream}
-                      label="YOU"
-                      muted
-                      onFocusToggle={() => handlePeerFocus('LOCAL')}
-                      layoutMode={layoutMode}
-                    />
-                  </div>
-                )}
-                {remoteEntries
-                  .filter(([peerId]) => peerId !== focusedPeerId)
-                  .map(([peerId, stream]) => {
+
+              {focusedPeerId !== 'LOCAL' && localStream ? (
+                <div className="pointer-events-auto absolute bottom-4 right-4 z-20 w-44 rounded border border-neon-cyan/50 bg-black/90 p-1 shadow-[0_0_20px_rgba(0,255,255,0.25)]">
+                  <PeerTile
+                    peerId="LOCAL"
+                    stream={localStream}
+                    label="YOU"
+                    muted
+                    onFocusToggle={() => handlePeerFocus('LOCAL')}
+                    layoutMode={layoutMode}
+                  />
+                </div>
+              ) : null}
+
+              {focusedPeerId === 'LOCAL' && remoteEntries.length > 0 ? (
+                <div className="mt-3 flex gap-2 overflow-x-auto">
+                  {remoteEntries.map(([peerId, stream]) => {
                     const hint = remotePeerMedia[peerId]
                     return (
-                      <div key={peerId} className="flex-shrink-0 w-32">
+                      <div key={peerId} className="flex-shrink-0 w-36">
                         <PeerTile
                           peerId={peerId}
                           stream={stream}
@@ -445,7 +446,8 @@ export function ActiveCallOverlay({
                       </div>
                     )
                   })}
-              </div>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className={`grid gap-3 ${gridCols(tileCount, layoutMode)}`}>
@@ -477,7 +479,7 @@ export function ActiveCallOverlay({
         </div>
 
       <div className={`pb-safe flex shrink-0 flex-wrap items-center justify-center gap-3 border-t border-red-500/50 bg-black px-3 py-3 pt-3 shadow-[0_0_10px_rgba(255,0,0,0.35)] md:gap-4 md:px-4 md:py-4 transition-opacity duration-300 ${
-        controlsVisible ? 'opacity-100' : 'opacity-0'
+        controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
       }`}>
         <button
           type="button"
@@ -544,15 +546,8 @@ export function ActiveCallOverlay({
           <button
             type="button"
             onClick={handleScreenShare}
-            disabled={!hasCameraTrack}
-            title={
-              !hasCameraTrack
-                ? 'Screen share requires a video track'
-                : isScreenSharing
-                  ? 'Stop sharing'
-                  : 'Share screen'
-            }
-            className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 disabled:cursor-not-allowed disabled:opacity-30 md:flex ${
+            title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
+            className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 md:flex ${
               isScreenSharing
                 ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)] hover:bg-neon-cyan/10'
                 : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
@@ -565,13 +560,13 @@ export function ActiveCallOverlay({
         <button
           type="button"
           onClick={toggleBandwidth}
-          title={lowBandwidth ? 'Disable bandwidth limit' : 'Enable bandwidth limit'}
+          title={lowBandwidth ? 'Switch to HD' : 'Switch to SD'}
           className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 hover:bg-neon-cyan/10 ${
             lowBandwidth
               ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)]'
               : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
           }`}
-          aria-label={lowBandwidth ? 'Disable bandwidth limit' : 'Enable bandwidth limit'}
+          aria-label={lowBandwidth ? 'Switch to HD' : 'Switch to SD'}
         >
           <Zap className="h-5 w-5" strokeWidth={1.5} />
         </button>

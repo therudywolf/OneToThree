@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { fetchAvatarDownloadUrl } from '@/lib/api/avatar'
+import { getCachedAvatarUrl, invalidateAvatarCache } from '@/lib/avatar-cache'
 
 function initialsFrom(name: string): string {
   const t = name.trim()
@@ -35,27 +35,23 @@ export function UserAvatar({
       setErr(false)
       return
     }
+
     let cancelled = false
-    let objectUrl: string | null = null
+
     void (async () => {
       try {
-        const signed = await fetchAvatarDownloadUrl(userId)
-        if (cancelled || !signed) {
-          if (!cancelled) setErr(true)
-          return
+        const cachedUrl = await getCachedAvatarUrl(userId)
+        if (!cancelled) {
+          setUrl(cachedUrl)
+          setErr(!cachedUrl) // Set error if no avatar was found
         }
-        const res = await fetch(signed)
-        if (!res.ok) throw new Error('fetch')
-        const blob = await res.blob()
-        objectUrl = URL.createObjectURL(blob)
-        if (!cancelled) setUrl(objectUrl)
       } catch {
         if (!cancelled) setErr(true)
       }
     })()
+
     return () => {
       cancelled = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [userId, avatarKey])
 

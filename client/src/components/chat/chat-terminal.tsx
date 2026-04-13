@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Crown, Star, ArrowDown } from 'lucide-react'
+import { Crown, Star, ArrowDown, Reply } from 'lucide-react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useChatStore } from '@/store/chatStore'
 import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
@@ -126,6 +127,10 @@ export function ChatTerminal({
   const [isNearBottom, setIsNearBottom] = useState(true)
   const [hasNewBelow, setHasNewBelow] = useState(false)
   const prevMsgCountRef = useRef(0)
+  const swipeRef = useRef<{ startX: number; msgId: string } | null>(null)
+  const [swipingMsgId, setSwipingMsgId] = useState<string | null>(null)
+  const [swipeOffset, setSwipeOffset] = useState(0)
+  const prevScrollHeightRef = useRef(0)
 
   const isGroup = activeChat?.is_group ?? false
 
@@ -305,6 +310,34 @@ export function ChatTerminal({
     }
   }, [])
 
+  // Swipe-to-reply handlers (mobile)
+  const handleSwipeStart = useCallback((msgId: string, e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    if (!touch) return
+    swipeRef.current = { startX: touch.clientX, msgId }
+  }, [])
+
+  const handleSwipeMove = useCallback((e: React.TouchEvent) => {
+    if (!swipeRef.current) return
+    const touch = e.touches[0]
+    if (!touch) return
+    const dx = touch.clientX - swipeRef.current.startX
+    if (dx > 0) {
+      setSwipingMsgId(swipeRef.current.msgId)
+      setSwipeOffset(Math.min(dx, 80))
+    }
+  }, [])
+
+  const handleSwipeEnd = useCallback(() => {
+    if (swipeRef.current && swipeOffset > 50) {
+      const msg = renderMessages.find((m) => m.id === swipeRef.current!.msgId)
+      if (msg) setReplyTo(msg)
+    }
+    swipeRef.current = null
+    setSwipingMsgId(null)
+    setSwipeOffset(0)
+  }, [swipeOffset, renderMessages, setReplyTo])
+
   // Context menu close is handled by MessageActions component internally
 
   const msgById = (id: string) => renderMessages.find((m) => m.id === id)
@@ -453,6 +486,8 @@ export function ChatTerminal({
         const first = entries[0]
         if (!first?.isIntersecting) return
         if (loadingOlder || !hasMoreOlder || !oldestLoaded) return
+        const scrollEl = ref.current
+        if (scrollEl) prevScrollHeightRef.current = scrollEl.scrollHeight
         setLoadingOlder(true)
         void getOlderCachedMessages(activeChatId, OLDER_PAGE_SIZE + olderMessages.length)
           .then((rows) => {
@@ -468,6 +503,13 @@ export function ChatTerminal({
             if (rows.length < OLDER_PAGE_SIZE) {
               setHasMoreOlder(false)
             }
+            // Preserve scroll position after older messages are inserted
+            requestAnimationFrame(() => {
+              if (scrollEl) {
+                const newHeight = scrollEl.scrollHeight
+                scrollEl.scrollTop += newHeight - prevScrollHeightRef.current
+              }
+            })
           })
           .finally(() => setLoadingOlder(false))
       },
@@ -508,6 +550,13 @@ export function ChatTerminal({
         className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 py-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch] sm:px-4"
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
+        {loadingOlder ? (
+          <div className="flex items-center justify-center py-2">
+            <span className="animate-pulse font-mono text-[9px] uppercase tracking-widest text-neon-cyan/50">
+              {t('common.loading')}
+            </span>
+          </div>
+        ) : null}
         {historyDecryptBusy && renderMessages.length === 0 ? (
           <div className="space-y-2 py-4">
             {Array.from({ length: 6 }, (_, i) => (
@@ -553,7 +602,10 @@ export function ChatTerminal({
               <div
                 key={m.id}
                 data-message-id={m.id}
-                className={`group/msg relative mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+                className={`group/msg relative mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'} transition-transform duration-150`}
+                style={{
+                  transform: swipingMsgId === m.id ? `translateX(${swipeOffset}px)` : undefined,
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   const pad = 8
@@ -576,10 +628,29 @@ export function ChatTerminal({
                 }}
                 onMouseEnter={() => setHoveredMsgId(m.id)}
                 onMouseLeave={() => setHoveredMsgId(null)}
-                onTouchStart={(e) => handleTouchStart(m, e)}
-                onTouchEnd={handleTouchEnd}
-                onTouchCancel={handleTouchEnd}
+                onTouchStart={(e) => {
+                  handleTouchStart(m, e)
+                  handleSwipeStart(m.id, e)
+                }}
+                onTouchMove={handleSwipeMove}
+                onTouchEnd={() => {
+                  handleTouchEnd()
+                  handleSwipeEnd()
+                }}
+                onTouchCancel={() => {
+                  handleTouchEnd()
+                  handleSwipeEnd()
+                }}
               >
+                {/* Swipe-to-reply indicator (mobile) */}
+                {swipingMsgId === m.id && swipeOffset > 10 ? (
+                  <div
+                    className="absolute left-0 top-1/2 z-10 -translate-x-full -translate-y-1/2 flex items-center justify-center md:hidden"
+                    style={{ opacity: Math.min(1, swipeOffset / 50) }}
+                  >
+                    <Reply className="h-4 w-4 text-neon-cyan" />
+                  </div>
+                ) : null}
                 {/* Hover quick-react bar (desktop only) */}
                 {hoveredMsgId === m.id ? (
                   <div className={`absolute top-0 z-10 hidden md:block ${mine ? 'left-0' : 'right-0'}`}>

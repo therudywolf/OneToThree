@@ -108,7 +108,11 @@ case "$CMD" in
     git pull origin master
     log "Пересборка образов (данные в volumes сохраняются)..."
     # НИКОГДА не используем 'down -v' — это удалит данные
+    # db-migrate пересобирается без кэша — чтобы новые SQL миграции попали в образ
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans
+    log "Применяю новые миграции БД..."
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
     ok "Обновление завершено. Данные сохранены."
     exit 0
     ;;

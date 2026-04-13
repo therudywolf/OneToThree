@@ -229,6 +229,10 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     onSubmitOrClear()
     setMessageText('')
     setReplyTo(null)
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto'
+      inputRef.current.focus()
+    }
   }
 
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -323,12 +327,26 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           >
             <textarea
               ref={inputRef}
+              rows={1}
               className="terminal-input flex-1 min-h-6 max-h-24 resize-none text-sm bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed"
               value={messageText}
               onChange={(e) => {
                 const next = e.target.value
                 setMessageText(next)
                 onDraftChanged(next)
+                e.target.style.height = 'auto'
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 96)}px`
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  if (messageText.trim() && !disabled) {
+                    void onSubmit(e as unknown as React.FormEvent)
+                  }
+                }
+                if (e.key === 'Escape' && replyTo) {
+                  setReplyTo(null)
+                }
               }}
               onPaste={handlePaste}
               disabled={disabled || isRecordingUI}
@@ -391,6 +409,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           type="submit"
           disabled={disabled || !messageText.trim() || isRecordingUI}
           className="min-h-11 min-w-[44px] shrink-0 px-3 py-2 md:min-h-0 md:min-w-0 border border-neon-cyan bg-black text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors"
+          title={t('common.send')}
         >
           <Send className="h-4 w-4" />
         </button>

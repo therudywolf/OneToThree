@@ -6,16 +6,20 @@ import { getFmSocket } from '@/lib/api/socket'
 
 export function useChats(userId: string | null) {
   const [chats, setChats] = useState<ApiChatRow[]>([])
+  const [initialLoading, setInitialLoading] = useState(true)
 
   const reload = useCallback(async () => {
     if (!userId) {
       setChats([])
+      setInitialLoading(false)
       return
     }
     try {
       setChats(await fetchChatsList())
     } catch {
       setChats([])
+    } finally {
+      setInitialLoading(false)
     }
   }, [userId])
 
@@ -33,5 +37,5 @@ export function useChats(userId: string | null) {
     })
   }, [userId, reload])
 
-  return { chats, reload }
+  return { chats, reload, initialLoading }
 }

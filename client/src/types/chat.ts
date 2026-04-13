@@ -52,6 +52,8 @@ export type DecryptedMessage = {
   media_iv?: string | null
   read_at?: string | null
   burn_at?: string | null
+  /** Emoji reactions — map of emoji to array of user IDs who reacted */
+  reactions?: Record<string, string[]>
 }
 
 export type ChannelNode = {

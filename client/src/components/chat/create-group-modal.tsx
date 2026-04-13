@@ -152,6 +152,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
             </label>
             <input
               id="grp-name"
+              autoFocus
               className="w-full border border-neutral-900 bg-zinc-950 px-3 py-2 font-mono text-xs text-white outline-none transition-all focus:border-neon-cyan/50"
               value={channelName}
               onChange={(e) => setChannelName(e.target.value)}

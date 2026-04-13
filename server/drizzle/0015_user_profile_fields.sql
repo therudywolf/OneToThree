@@ -1,3 +1,3 @@
-ALTER TABLE "users" ADD COLUMN "bio" text;--> statement-breakpoint
-ALTER TABLE "users" ADD COLUMN "status_text" text;--> statement-breakpoint
-ALTER TABLE "users" ADD COLUMN "social_links" text;
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "bio" text;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "status_text" text;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "social_links" text;

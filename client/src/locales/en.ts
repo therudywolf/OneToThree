@@ -548,6 +548,72 @@ The administration reserves the right to remove any account without warning.`,
   'groupCall.noParticipants': 'No other participants',
   'groupCall.maxParticipants': 'Maximum 8 participants',
   'groupCall.screenShareActive': 'Screen sharing active',
+
+  // [MESSAGE STATES]
+  'msg.sending': 'Sending',
+  'msg.sent': 'Sent',
+  'msg.delivered': 'Delivered',
+  'msg.read': 'Read',
+  'msg.failed': 'Failed to send',
+  'msg.retry': 'Retry',
+  'msg.showMore': 'Show more',
+  'msg.showLess': 'Show less',
+  'msg.newMessages': 'New messages',
+  'msg.newCount': '{count} new messages',
+
+  // [REACTIONS]
+  'reactions.add': 'Add reaction',
+  'reactions.pickerAria': 'Choose a reaction',
+  'reactions.recentlyUsed': 'Recently used',
+
+  // [MESSAGE ACTIONS]
+  'msgAction.reply': 'Reply',
+  'msgAction.react': 'React',
+  'msgAction.edit': 'Edit',
+  'msgAction.deleteForMe': 'Delete for me',
+  'msgAction.deleteForAll': 'Delete for everyone',
+  'msgAction.forward': 'Forward',
+  'msgAction.copy': 'Copy text',
+  'msgAction.pin': 'Pin message',
+  'msgAction.unpin': 'Unpin message',
+
+  // [PROFILE - EXPANDED]
+  'profile.mutualGroups': 'Mutual Groups',
+  'profile.noMutualGroups': 'No mutual groups',
+  'profile.sharedMedia': 'Shared Media',
+  'profile.sharedFiles': 'Shared Files',
+  'profile.message': 'Message',
+  'profile.voiceCall': 'Voice Call',
+  'profile.videoCall': 'Video Call',
+  'profile.block': 'Block',
+  'profile.report': 'Report',
+  'profile.lastSeen': 'Last seen',
+  'profile.lastSeenPrivacy': 'Last seen hidden',
+  'profile.editName': 'Edit display name',
+  'profile.editBio': 'Edit bio',
+  'profile.editStatus': 'Edit status',
+  'profile.charCount': '{count}/500',
+  'profile.dangerZone': 'Danger Zone',
+  'profile.changePassword': 'Change Password',
+  'profile.deleteAccount': 'Delete Account',
+  'profile.lastSeenSettings': 'Last Seen',
+  'profile.lastSeenEveryone': 'Everyone',
+  'profile.lastSeenContacts': 'Contacts',
+  'profile.lastSeenNobody': 'Nobody',
+  'profile.viewFullPhoto': 'View full photo',
+  'profile.loadMore': 'Load more',
+
+  // [CODE BLOCKS]
+  'code.copy': 'Copy',
+  'code.copied': 'Copied!',
+
+  // [LINK PREVIEW]
+  'linkPreview.loading': 'Loading preview...',
+  'linkPreview.openLink': 'Open link',
+
+  // [RESPONSIVE]
+  'responsive.memberPanel': 'Members',
+  'responsive.closeMemberPanel': 'Close member panel',
 } as const;
 
 export default en;

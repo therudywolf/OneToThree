@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useEffect } from 'react'
-import { Pin, ShieldCheck } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Pin, ShieldCheck, Search } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
@@ -63,7 +62,6 @@ export function ChatSidebar({
   userId: string
   sharedKey: CryptoKey | null
   onPackSettingsChanged?: () => void
-  /** e.g. close mobile drawer after picking a chat */
   onNavigate?: () => void
 }) {
   const { t } = useTranslation()
@@ -79,9 +77,7 @@ export function ChatSidebar({
   const [trustedPeerIds, setTrustedPeerIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinnedIds)
   const [localGhostQuery, setLocalGhostQuery] = useState('')
-  const [ghostHitChatIds, setGhostHitChatIds] = useState<Set<string> | null>(
-    null
-  )
+  const [ghostHitChatIds, setGhostHitChatIds] = useState<Set<string> | null>(null)
   const [peerLookupByUserId, setPeerLookupByUserId] = useState<
     Record<string, { username: string; avatar_key: string | null }>
   >({})
@@ -111,10 +107,7 @@ export function ChatSidebar({
     void lookupUsers(peerIds)
       .then((rows) => {
         if (cancelled) return
-        const next: Record<
-          string,
-          { username: string; avatar_key: string | null }
-        > = {}
+        const next: Record<string, { username: string; avatar_key: string | null }> = {}
         for (const r of rows) {
           next[r.id] = {
             username: r.username,
@@ -165,10 +158,10 @@ export function ChatSidebar({
 
   function mapSidebarError(code: string): string {
     const m: Record<string, string> = {
-      USER_NOT_FOUND_OR_HIDDEN: t('sidebar.userNotFound'),
-      CANNOT_OPEN_DIRECT_WITH_SELF: t('sidebar.cannotOpenSelf'),
-      CREATE_FAILED: t('sidebar.createFailed'),
-      INVITE_LINK_COPIED: t('sidebar.copyInviteSuccess'),
+      USER_NOT_FOUND_OR_HIDDEN: t('sidebar.userNotFound') || 'USER_NOT_FOUND',
+      CANNOT_OPEN_DIRECT_WITH_SELF: t('sidebar.cannotOpenSelf') || 'CANNOT_ADD_SELF',
+      CREATE_FAILED: t('sidebar.createFailed') || 'CREATION_FAILED',
+      INVITE_LINK_COPIED: t('sidebar.copyInviteSuccess') || 'LINK_COPIED_TO_CLIPBOARD',
     }
     return m[code] ?? code
   }
@@ -243,7 +236,7 @@ export function ChatSidebar({
   }, [chats, userId])
 
   return (
-    <aside className="flex h-full w-full min-w-0 flex-col border-r border-neon-cyan/40 bg-black md:w-72 md:shrink-0">
+    <aside className="flex h-full w-full min-w-0 flex-col border-r border-neon-cyan/40 bg-black md:w-72 md:shrink-0 shadow-[4px_0_24px_rgba(0,255,255,0.03)]">
       {groupModalOpen ? (
         <CreateGroupModal
           userId={userId}
@@ -255,35 +248,50 @@ export function ChatSidebar({
           }}
         />
       ) : null}
-      <div className="border-b border-neon-cyan/40 p-3 text-[10px] uppercase tracking-[0.3em] text-neon-cyan">
-        :: {t('sidebar.channels')}
+      
+      {/* Header */}
+      <div className="border-b border-neon-cyan/40 bg-zinc-950/50 p-3 flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan font-bold">
+          :: {t('sidebar.channels') || 'COM_LINKS'}
+        </span>
+        <span className="flex h-2 w-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_8px_rgba(0,255,255,0.8)]" />
       </div>
-      <div className="border-b border-neon-cyan/25 px-3 py-2">
+
+      {/* Ghost Search */}
+      <div className="border-b border-neon-cyan/25 bg-black px-3 py-2">
         <label className="sr-only" htmlFor="ghost-search">
-          {t('sidebar.localGhostSearch')}
+          {t('sidebar.localGhostSearch') || 'GHOST_SEARCH'}
         </label>
-        <input
-          id="ghost-search"
-          className="terminal-input text-[10px]"
-          placeholder={t('sidebar.localGhostSearch')}
-          value={localGhostQuery}
-          onChange={(e) => setLocalGhostQuery(e.target.value)}
-          autoComplete="off"
-        />
+        <div className="relative flex items-center">
+          <Search className="absolute left-2 h-3.5 w-3.5 text-neon-cyan/50" />
+          <input
+            id="ghost-search"
+            className="w-full bg-transparent border-b border-neon-cyan/30 py-1 pl-7 text-[10px] text-neon-cyan placeholder:text-neon-cyan/30 focus:border-neon-cyan focus:outline-none transition-colors"
+            placeholder={t('sidebar.localGhostSearch') || 'LOCAL_GHOST_SEARCH...'}
+            value={localGhostQuery}
+            onChange={(e) => setLocalGhostQuery(e.target.value)}
+            autoComplete="off"
+            spellCheck="false"
+          />
+        </div>
       </div>
+
+      {/* Chat List */}
       <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
         {chats.length === 0 ? (
-          <p className="px-3 py-2 font-mono text-[10px] text-red-800">
-            {t('sidebar.noActiveRoutes')}
+          <p className="px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-red-800">
+            [ {t('sidebar.noActiveRoutes') || 'NO_ACTIVE_ROUTES'} ]
           </p>
         ) : null}
+        
         {ghostHitChatIds !== null &&
         localGhostQuery.trim().length >= 2 &&
         sidebarChatsFiltered.length === 0 ? (
-          <p className="px-3 py-2 font-mono text-[10px] text-red-800">
-            {t('sidebar.ghostNoHits')}
+          <p className="px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red border border-neon-red/30 mx-2 mt-2 bg-red-950/20">
+            [ {t('sidebar.ghostNoHits') || 'NO_MATCHES_FOUND'} ]
           </p>
         ) : null}
+
         {sidebarChatsFiltered.map((c) => {
           const isPinned = pinnedIds.includes(c.id)
           const peerId = !c.is_group
@@ -296,104 +304,100 @@ export function ChatSidebar({
             resolved?.username?.trim() ||
             (peerId ? `${peerId.slice(0, 8)}…` : '')
           const listTitle = c.is_group
-            ? c.name?.trim() || t('sidebar.groupUntitled')
+            ? c.name?.trim() || (t('sidebar.groupUntitled') || 'UNNAMED_GROUP')
             : c.name?.trim() ||
               resolved?.username?.trim() ||
               (peerId ? `${peerId.slice(0, 8)}…` : `${c.id.slice(0, 8)}…`)
+
           return (
             <div
               key={c.id}
-              className={`flex w-full items-stretch border-b border-neon-cyan/20 ${
-                activeChatId === c.id ? 'bg-neon-cyan/15' : ''
-              } ${isPinned ? 'border-l-2 border-l-neon-cyan/40' : ''}`}
+              className={`group flex w-full items-stretch border-b border-neon-cyan/20 transition-colors ${
+                activeChatId === c.id ? 'bg-neon-cyan/10' : 'bg-black hover:bg-neon-cyan/5'
+              } ${isPinned ? 'border-l-2 border-l-neon-cyan' : 'border-l-2 border-l-transparent'}`}
             >
               <button
                 type="button"
-                className={`min-w-0 flex-1 px-3 py-2 text-left font-mono text-xs transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan ${
-                  activeChatId === c.id ? 'text-neon-cyan' : 'text-neon-red'
-                }`}
+                className="min-w-0 flex-1 px-3 py-2 text-left font-mono text-xs outline-none"
                 aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {
                   setActiveChatId(c.id)
                   onNavigate?.()
                 }}
               >
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  {peerId ? (
-                    <UserAvatar
-                      userId={peerId}
-                      username={peerName || '…'}
-                      avatarKey={resolved?.avatar_key ?? null}
-                      size={24}
-                    />
-                  ) : c.is_group ? (
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center border border-neon-cyan/40 font-mono text-[9px] text-neon-cyan">
-                      G
-                    </span>
-                  ) : null}
-                  {!c.is_group &&
-                  trustedPeerIds.has(
-                    c.member_ids.find((id) => id !== userId) ?? ''
-                  ) ? (
-                    <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
-                  ) : null}
-                  <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="inline-flex min-w-0 items-center gap-3">
+                  {/* Avatar wrapper */}
+                  <div className="relative">
+                    {peerId ? (
+                      <UserAvatar
+                        userId={peerId}
+                        username={peerName || '…'}
+                        avatarKey={resolved?.avatar_key ?? null}
+                        size={28}
+                      />
+                    ) : c.is_group ? (
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center border border-neon-cyan/50 bg-black font-mono text-[10px] text-neon-cyan">
+                        GRP
+                      </div>
+                    ) : null}
+                    
+                    {/* Status Dot for Direct Chats */}
+                    {!c.is_group && pres?.online ? (
+                       <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-black bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                    ) : null}
+                  </div>
+
+                  <span className="flex min-w-0 flex-col gap-[1px]">
                     <span className="inline-flex items-center gap-1.5">
-                      {pres?.online ? (
-                        <span
-                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]"
-                          title={t('sidebar.online')}
-                        />
+                      {!c.is_group && trustedPeerIds.has(peerId ?? '') ? (
+                        <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
                       ) : null}
-                      <span className="truncate">
-                        {c.is_group
-                          ? `[${t('sidebar.badgeGroup')}]`
-                          : `[${t('sidebar.badgeDirect')}]`}{' '}
+                      <span className={`truncate ${activeChatId === c.id ? 'text-neon-cyan font-bold' : 'text-neon-cyan/80'}`}>
                         {listTitle}
                       </span>
                     </span>
+                    
                     {pres && !pres.online ? (
-                      <span className="text-[8px] normal-case tracking-normal text-red-900/90">
-                        {t('sidebar.lastSeen')}:{' '}
+                      <span className="text-[9px] uppercase tracking-widest text-zinc-600 truncate">
+                        {t('sidebar.lastSeen') || 'LAST_SEEN'}:{' '}
                         {pres.last_seen_at
                           ? new Date(pres.last_seen_at).toLocaleString(
                               undefined,
-                              {
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              }
+                              { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
                             )
                           : '—'}
                       </span>
+                    ) : c.is_group ? (
+                       <span className="text-[9px] uppercase tracking-widest text-zinc-600 truncate">
+                         {c.member_ids.length} {t('sidebar.members') || 'MEMBERS'}
+                       </span>
                     ) : null}
                   </span>
                 </span>
               </button>
               <button
                 type="button"
-                title={isPinned ? t('sidebar.unpin') : t('sidebar.pin')}
-                aria-label={
-                  isPinned ? t('sidebar.unpinAria') : t('sidebar.pinAria')
-                }
+                title={isPinned ? (t('sidebar.unpin') || 'UNPIN') : (t('sidebar.pin') || 'PIN')}
                 onClick={(e) => {
                   e.stopPropagation()
                   togglePin(c.id)
                 }}
-                className="shrink-0 border-l border-neon-cyan/20 px-2 text-neon-cyan/70 hover:bg-neon-cyan/10 hover:text-neon-cyan"
+                className={`shrink-0 border-l border-neon-cyan/10 px-3 transition-colors ${
+                  isPinned 
+                    ? 'text-neon-cyan bg-neon-cyan/5 hover:bg-neon-red/10 hover:text-neon-red' 
+                    : 'text-zinc-700 hover:bg-neon-cyan/10 hover:text-neon-cyan opacity-0 group-hover:opacity-100'
+                }`}
               >
-                <Pin
-                  className={`h-3.5 w-3.5 ${isPinned ? 'text-neon-cyan' : 'text-neon-cyan/40'}`}
-                  aria-hidden
-                />
+                <Pin className="h-3.5 w-3.5" aria-hidden />
               </button>
             </div>
           )
         })}
       </nav>
+
+      {/* Active Chat Controls */}
       {activeChatId ? (
-        <>
+        <div className="border-t border-neon-cyan/40 bg-zinc-950/30 p-2 space-y-1">
           {chats.find((c) => c.id === activeChatId)?.is_group ? (
             <GroupChatSettings
               chatId={activeChatId}
@@ -405,7 +409,8 @@ export function ChatSidebar({
               }}
             />
           ) : null}
-          <div className="flex gap-1 border-t border-neon-cyan/40 px-2 pt-2">
+          
+          <div className="flex gap-1">
             {chats.find((c) => c.id === activeChatId)?.is_group ? (
               <button
                 type="button"
@@ -417,96 +422,101 @@ export function ChatSidebar({
                       setActiveChatId(null)
                       void reload()
                     })
-                    .catch((e) =>
-                      setCreateErr(e instanceof Error ? e.message : 'ERR')
-                    )
+                    .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
                     .finally(() => setBusy(false))
                 }}
-                className="flex-1 border border-red-900 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red disabled:opacity-40"
+                className="flex-1 border border-red-900/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
               >
-                [ {t('sidebar.leaveGroup')} ]
+                [ {t('sidebar.leaveGroup') || 'LEAVE'} ]
               </button>
             ) : null}
+            
             {(() => {
               const row = chats.find((c) => c.id === activeChatId)
-              const showDelete =
-                !row?.is_group || row.my_role === 'owner'
+              const showDelete = !row?.is_group || row.my_role === 'owner'
               if (!showDelete) return null
               return (
                 <button
                   type="button"
                   disabled={busy}
                   onClick={() => {
-                    if (!confirm(t('sidebar.purgeChatConfirm'))) return
+                    if (!confirm(t('sidebar.purgeChatConfirm') || 'PURGE THIS ROUTE?')) return
                     setBusy(true)
                     void deleteChat(activeChatId)
                       .then(() => {
                         setActiveChatId(null)
                         void reload()
                       })
-                      .catch((e) =>
-                        setCreateErr(e instanceof Error ? e.message : 'ERR')
-                      )
+                      .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
                       .finally(() => setBusy(false))
                   }}
-                  className="flex-1 border border-red-900 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red disabled:opacity-40"
+                  className="flex-1 border border-red-900/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
                 >
-                  [ {t('sidebar.deleteChat')} ]
+                  [ {t('sidebar.deleteChat') || 'PURGE'} ]
                 </button>
               )
             })()}
           </div>
-        </>
+        </div>
       ) : null}
-      <div className="border-t border-neon-cyan/40 p-2">
-        <button
-          type="button"
-          aria-label={t('common.copyInviteAria')}
-          onClick={async () => {
-            const origin = window.location.origin
-            const link = `${origin}/?invite=${encodeURIComponent(userId)}`
-            try {
-              await navigator.clipboard.writeText(link)
-              setCreateErr('INVITE_LINK_COPIED')
-            } catch {
-              setCreateErr(link)
-            }
-          }}
-          className="mb-2 w-full rounded-none border border-neon-red/70 bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-red hover:bg-neon-red/10"
-        >
-          [ {t('sidebar.copyMyInvite')} ]
-        </button>
-        <button
-          type="button"
-          aria-label={t('common.createGroupAria')}
-          onClick={() => setGroupModalOpen(true)}
-          className="mb-2 w-full rounded-none border border-neon-cyan bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
-        >
-          [ {t('sidebar.createGroupE2e')} ]
-        </button>
-        <p className="mb-1 text-[10px] uppercase tracking-widest text-neon-cyan">
-          :: {t('sidebar.openDirect')}
-        </p>
-        {createErr ? (
-          <p className="mb-1 font-mono text-[10px] text-neon-red">
-            {mapSidebarError(createErr)}
+
+      {/* Global Actions */}
+      <div className="border-t border-neon-cyan/40 bg-black p-3 space-y-2">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              const origin = window.location.origin
+              const link = `${origin}/?invite=${encodeURIComponent(userId)}`
+              try {
+                await navigator.clipboard.writeText(link)
+                setCreateErr('INVITE_LINK_COPIED')
+              } catch {
+                setCreateErr(link)
+              }
+            }}
+            className="flex-1 border border-neon-cyan/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+          >
+            [ COPY_ID ]
+          </button>
+          <button
+            type="button"
+            onClick={() => setGroupModalOpen(true)}
+            className="flex-1 border border-neon-cyan/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+          >
+            [ NEW_GRP ]
+          </button>
+        </div>
+
+        <div className="pt-2 border-t border-neon-cyan/20">
+          <p className="mb-1.5 text-[9px] uppercase tracking-[0.2em] text-neon-cyan/70">
+            :: {t('sidebar.openDirect') || 'INITIATE_DIRECT'}
           </p>
-        ) : null}
-        <input
-          className="terminal-input mb-2 text-xs"
-          placeholder={t('sidebar.peerPlaceholder')}
-          aria-label={t('common.peerInputAria')}
-          value={peerInput}
-          onChange={(e) => setPeerInput(e.target.value)}
-        />
-        <button
-          type="button"
-          onClick={() => void openDirect()}
-          disabled={creating}
-          className="w-full rounded-none border border-neon-red bg-black py-1 font-mono text-xs uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40"
-        >
-          [ {t('sidebar.openPeer')} ]
-        </button>
+          
+          {createErr ? (
+            <p className={`mb-2 font-mono text-[9px] uppercase tracking-wider p-1 border ${createErr === 'INVITE_LINK_COPIED' ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10' : 'border-neon-red text-neon-red bg-neon-red/10'}`}>
+              {mapSidebarError(createErr)}
+            </p>
+          ) : null}
+
+          <div className="flex gap-1">
+            <input
+              className="terminal-input w-full px-2 py-1 text-[10px] placeholder:text-neon-cyan/30"
+              placeholder={t('sidebar.peerPlaceholder') || 'ENTER_ID_OR_HANDLE'}
+              value={peerInput}
+              onChange={(e) => setPeerInput(e.target.value)}
+              spellCheck="false"
+            />
+            <button
+              type="button"
+              onClick={() => void openDirect()}
+              disabled={creating || !peerInput.trim()}
+              className="shrink-0 border border-neon-cyan bg-black px-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-black disabled:opacity-40 disabled:hover:bg-black disabled:hover:text-neon-cyan"
+            >
+              CONNECT
+            </button>
+          </div>
+        </div>
       </div>
     </aside>
   )

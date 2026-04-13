@@ -19,126 +19,67 @@ import { cacheMessage } from '@/lib/message-cache'
 import { postUploadUrl } from '@/lib/api/storage'
 import { isMediaTooLarge, MEDIA_TOO_LARGE_CODE } from '@/lib/media-limits'
 import { useChatStore } from '@/store/chatStore'
+import { vibrateShort } from '@/lib/vibrate'
 
-function getSubtle(): SubtleCrypto {
-  if (!globalThis.crypto?.subtle) {
-    throw new Error('NO_SUBTLE')
-  }
+/**
+ * PROJECT 13 :: BINARY_TRANSMISSION_PROTOCOL
+ * Level: Connection Layer (Data Injection)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
+const getSubtle = (): SubtleCrypto => {
+  if (!globalThis.crypto?.subtle) throw new Error('ERR_NO_SUBTLE_CRYPTO')
   return globalThis.crypto.subtle
 }
 
-async function putWithRetry(
-  uploadUrl: string,
-  fileType: string,
-  cipher: ArrayBuffer,
-  retries = 3
+/** [DATA_INJECTION_RETRY] :: Повторные попытки пробиться к хранилищу */
+async function injectWithRetry(
+  url: string,
+  mime: string,
+  payload: ArrayBuffer,
+  maxAttempts = 3
 ): Promise<void> {
   let attempt = 0
-  let lastErr: unknown
-  while (attempt < retries) {
+  while (attempt < maxAttempts) {
     attempt++
     try {
-      console.log(
-        '[MEDIA UPLOAD] Attempting PUT to exact URL:',
-        uploadUrl,
-        `(attempt ${attempt}/${retries})`
-      )
-      const put = await fetch(uploadUrl, {
+      const response = await fetch(url, {
         method: 'PUT',
-        headers: { 'Content-Type': fileType },
-        body: cipher,
+        headers: { 'Content-Type': mime },
+        body: payload,
       })
-      if (put.ok) return
-      const errText = await put.text().catch(() => '')
-      console.error(
-        '[MEDIA UPLOAD] PUT failed',
-        put.status,
-        put.statusText,
-        errText ? errText.slice(0, 500) : ''
-      )
-      lastErr = new Error(`MINIO_PUT_FAILED_${put.status}`)
+      if (response.ok) return
+      
+      const log = await response.text().catch(() => '')
+      console.error(`>> [SYS.STORAGE] PUT_FAULT [${response.status}]:`, log.slice(0, 256))
     } catch (err) {
-      console.error('[MEDIA UPLOAD FATAL ERROR]', err)
-      lastErr = err
+      console.error('>> [SYS.STORAGE] INJECTION_INTERRUPTED:', err)
     }
-    await new Promise((r) => setTimeout(r, 350 * attempt))
+    await new Promise((r) => setTimeout(r, 400 * attempt))
   }
-  throw lastErr instanceof Error ? lastErr : new Error('MINIO_PUT_FAILED')
+  throw new Error('STORAGE_INJECTION_FAILED')
 }
 
-function extFromMimeAndName(
-  mediaType: 'audio' | 'video' | 'image' | 'file',
-  fileType: string,
-  fileName: string
-): string {
-  const ft = fileType.toLowerCase()
-  if (ft.includes('png')) return 'png'
-  if (ft.includes('gif')) return 'gif'
-  if (ft.includes('webp')) return 'webp'
-  if (ft.includes('jpeg') || ft.includes('jpg')) return 'jpg'
-  if (ft.includes('mp4')) return 'mp4'
-  if (ft.includes('quicktime')) return 'mov'
-  if (ft.includes('mpeg') || ft.includes('mp3')) return 'mp3'
-  if (ft.includes('ogg')) return 'ogg'
-  if (ft.includes('wav')) return 'wav'
-  if (ft.includes('pdf')) return 'pdf'
-  if (ft.includes('zip')) return 'zip'
-  if (mediaType === 'audio') return 'webm'
-  if (mediaType === 'video') return 'webm'
-  if (mediaType === 'image') return 'jpg'
-  const base = fileName.split(/[/\\]/).pop() ?? fileName
-  const m = base.match(/(\.[a-zA-Z0-9]{1,12})$/)
-  return m ? m[1].replace('.', '').toLowerCase() : 'bin'
-}
+export function useBinaryTransmission(cryptoCtx: ChatCryptoContext | null) {
+  const { activeChatId, userId, unwrappedPrivateKey, appendMessage } = useChatStore()
 
-export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
-  const activeChatId = useChatStore((s) => s.activeChatId)
-  const userId = useChatStore((s) => s.userId)
-  const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
-  const appendMessage = useChatStore((s) => s.appendMessage)
-
-  const sendMedia = useCallback(
+  const transmitBinary = useCallback(
     async (
-      blob: Blob,
-      mediaType: 'audio' | 'video' | 'image' | 'file',
-      _caption?: string,
-      options?: { fileName?: string; fileType?: string }
+      rawBlob: Blob,
+      segmentClass: 'audio' | 'video' | 'image' | 'file',
+      options?: { label?: string; mime?: string }
     ) => {
-      if (!activeChatId || !userId || !unwrappedPrivateKey || !cryptoCtx) {
-        return
-      }
+      // [0] PRE_FLIGHT_CHECK
+      if (!activeChatId || !userId || !unwrappedPrivateKey || !cryptoCtx) return
 
-      const inferredType =
-        mediaType === 'audio'
-          ? 'audio/webm'
-          : mediaType === 'video'
-            ? 'video/webm'
-            : mediaType === 'image'
-              ? 'image/jpeg'
-              : 'application/octet-stream'
-      const fileType = options?.fileType?.trim() || inferredType
-      const ext = extFromMimeAndName(
-        mediaType,
-        fileType,
-        options?.fileName ?? 'unnamed.bin'
-      )
-      const defaultName =
-        mediaType === 'audio'
-          ? `voice-${Date.now()}.${ext}`
-          : mediaType === 'video'
-            ? `video-${Date.now()}.${ext}`
-            : mediaType === 'image'
-              ? `image-${Date.now()}.${ext}`
-              : `file-${Date.now()}.${ext}`
-      const fileName = options?.fileName?.trim() || defaultName
-      const uploadName = fileName.includes('.') ? fileName : `${fileName}.${ext}`
+      const mimeType = options?.mime?.trim() || rawBlob.type || 'application/octet-stream'
+      const label = options?.label?.trim() || `segment-${Date.now()}`
+      
+      let workBlob: Blob = rawBlob
 
-      let workBlob: Blob = blob
-      if (mediaType === 'image') {
-        const source =
-          blob instanceof File
-            ? blob
-            : new File([blob], uploadName, { type: fileType })
+      // [1] SEGMENT_CALIBRATION :: Сжатие оптики, если это изображение
+      if (segmentClass === 'image') {
+        const source = rawBlob instanceof File ? rawBlob : new File([rawBlob], label, { type: mimeType })
         workBlob = await imageCompression(source, {
           maxWidthOrHeight: 1920,
           useWebWorker: true,
@@ -146,80 +87,78 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
         })
       }
 
-      if (isMediaTooLarge(workBlob.size)) {
-        throw new Error(MEDIA_TOO_LARGE_CODE)
-      }
+      if (isMediaTooLarge(workBlob.size)) throw new Error(MEDIA_TOO_LARGE_CODE)
 
-      const aesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
-      const fileKey = await generateAesGcm256Key()
-      const plain = await workBlob.arrayBuffer()
-      const fileIv = new Uint8Array(12)
-      crypto.getRandomValues(fileIv)
-      const cipher = await getSubtle().encrypt(
-        { name: 'AES-GCM', iv: fileIv as BufferSource },
-        fileKey,
-        plain as BufferSource
-      )
-      const rawKey = await getSubtle().exportKey('raw', fileKey)
-      const { cipher: wrapCipher, ivBase64: wrapIv } = await encryptBinary(
-        aesKey,
-        rawKey as ArrayBuffer
+      // [2] CRYPTOGRAPHIC_LOCKDOWN :: Глубокое шифрование сегмента
+      const sectorAesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
+      const segmentKey = await generateAesGcm256Key()
+      const plainData = await workBlob.arrayBuffer()
+      
+      const segmentIv = crypto.getRandomValues(new Uint8Array(12))
+      
+      // Шифруем сам контент
+      const cipherData = await getSubtle().encrypt(
+        { name: 'AES-GCM', iv: segmentIv },
+        segmentKey,
+        plainData
       )
 
+      // Экспортируем и оборачиваем ключ сегмента ключом сектора
+      const rawSegmentKey = await getSubtle().exportKey('raw', segmentKey)
+      const { cipher: wrappedKey, ivBase64: wrapIv } = await encryptBinary(
+        sectorAesKey,
+        rawSegmentKey
+      )
+
+      // [3] ENVELOPE_GENERATION :: Формирование мета-инструкции
       const envelope: AttachmentEnvelopeV1 = {
         p13: 'attachment',
         v: 1,
-        fileName: uploadName,
+        fileName: label,
         fileSize: workBlob.size,
-        mimeType: fileType,
+        mimeType: mimeType,
         wrapIv,
-        wrapCt: arrayBufferToBase64(wrapCipher),
+        wrapCt: arrayBufferToBase64(wrappedKey),
       }
 
-      const { encrypted_content, iv } = await encryptOutboundText(
+      const { encrypted_content, iv: envelopeIv } = await encryptOutboundText(
         unwrappedPrivateKey,
         JSON.stringify(envelope),
         cryptoCtx
       )
 
+      // [4] TRANSPORT_HANDSHAKE :: Резервирование пути в облаке
       const { uploadUrl, filePath } = await postUploadUrl({
         chatId: activeChatId,
-        fileName: uploadName,
-        fileType,
+        fileName: label,
+        fileType: mimeType,
       })
 
-      await putWithRetry(uploadUrl, fileType, cipher)
+      // [5] DATA_INJECTION :: Загрузка шифрованного блоба
+      await injectWithRetry(uploadUrl, mimeType, cipherData)
 
-      const ivB64 = arrayBufferToBase64(
-        fileIv.buffer.slice(
-          fileIv.byteOffset,
-          fileIv.byteOffset + fileIv.byteLength
-        )
-      )
+      const mediaIvB64 = arrayBufferToBase64(segmentIv.buffer)
 
+      // [6] SIGNAL_BROADCAST :: Публикация сегмента в фид сектора
       const { via, serverMessage } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
         content: encrypted_content,
-        iv,
+        iv: envelopeIv,
         media_path: filePath,
-        media_type: mediaType,
-        media_iv: ivB64,
+        media_type: segmentClass,
+        media_iv: mediaIvB64,
         media_original_bytes: workBlob.size,
       })
+
       if (via === 'rest' && serverMessage) {
-        const row = await decryptApiMessageRow(
-          unwrappedPrivateKey,
-          cryptoCtx,
-          serverMessage
-        )
-        await cacheMessage(row).catch(() => {
-          /* best-effort */
-        })
-        appendMessage(row)
+        const node = await decryptApiMessageRow(unwrappedPrivateKey, cryptoCtx, serverMessage)
+        void cacheMessage(node).catch(() => {})
+        appendMessage(node)
+        vibrateShort(20) // Подтверждение успешного диспатча
       }
     },
     [activeChatId, userId, unwrappedPrivateKey, cryptoCtx, appendMessage]
   )
 
-  return { sendMedia }
+  return { transmitBinary }
 }

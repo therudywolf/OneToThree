@@ -1,59 +1,79 @@
 /**
- * Plaintext inside the PIN-wrapped vault blob.
- * v2: ECDSA (auth) + ECDH (E2E). Legacy: single ECDH JWK JSON string.
+ * PROJECT 13 :: VAULT_PAYLOAD_EXTRACTOR
+ * Level: Core Layer (Secret Encapsulation)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
-export type VaultKeyringV2 = {
+/** [VAULT_V2] :: Современный стандарт — разделение ECDSA (Auth) и ECDH (E2E) */
+export type VaultPayloadV2 = {
   v: 2
   ecdsaPrivateJwk: string
   ecdhPrivateJwk: string
 }
 
-export type ParsedVaultPlaintext =
-  | { kind: 'v2'; ecdsaPrivateJwk: string; ecdhPrivateJwk: string }
-  | { kind: 'legacy_ecdh'; ecdhPrivateJwkString: string }
+/** [EXTRACTED_RESULT] :: Результат вскрытия контейнера сейфа */
+export type ExtractedVault =
+  | { kind: 'V2'; ecdsaJwk: string; ecdhJwk: string }
+  | { kind: 'LEGACY'; ecdhJwk: string }
 
-export function stringifyVaultKeyringV2(
+/**
+ * [SERIALIZE_VAULT]
+ * Упаковка ключей в JSON-стринг перед PIN-шифрованием.
+ */
+export function serializeVaultV2(
   ecdsaPrivateJwk: string,
   ecdhPrivateJwk: string
 ): string {
-  const payload: VaultKeyringV2 = {
+  const packet: VaultPayloadV2 = {
     v: 2,
     ecdsaPrivateJwk,
     ecdhPrivateJwk,
   }
-  return JSON.stringify(payload)
+  return JSON.stringify(packet)
 }
 
-export function parseVaultPlaintext(plain: string): ParsedVaultPlaintext | null {
-  const trimmed = plain.trim()
-  if (!trimmed) return null
+/**
+ * [EXTRACT_VAULT_PAYLOAD]
+ * Десериализация дешифрованного содержимого сейфа.
+ * Поддерживает V2 и Legacy (одиночный JWK).
+ */
+export function extractVaultPayload(raw: string): ExtractedVault | null {
+  const signal = raw.trim()
+  if (!signal) return null
+
   try {
-    const o = JSON.parse(trimmed) as Record<string, unknown>
+    const data = JSON.parse(signal) as Record<string, any>
+    if (!data || typeof data !== 'object') return null
+
+    // [1] PROTOCOL_V2 :: Обнаружена многоцелевая связка ключей
     if (
-      o &&
-      typeof o === 'object' &&
-      o.v === 2 &&
-      typeof o.ecdsaPrivateJwk === 'string' &&
-      typeof o.ecdhPrivateJwk === 'string'
+      data.v === 2 &&
+      typeof data.ecdsaPrivateJwk === 'string' &&
+      typeof data.ecdhPrivateJwk === 'string'
     ) {
       return {
-        kind: 'v2',
-        ecdsaPrivateJwk: o.ecdsaPrivateJwk,
-        ecdhPrivateJwk: o.ecdhPrivateJwk,
+        kind: 'V2',
+        ecdsaJwk: data.ecdsaPrivateJwk,
+        ecdhJwk: data.ecdhPrivateJwk,
       }
     }
+
+    // [2] PROTOCOL_LEGACY :: Прямой JWK (одиночный ECDH)
+    // Проверка сигнатуры JWK: kty=EC, d (private part), crv
     if (
-      o &&
-      typeof o === 'object' &&
-      o.kty === 'EC' &&
-      typeof o.d === 'string' &&
-      typeof o.crv === 'string'
+      data.kty === 'EC' &&
+      typeof data.d === 'string' &&
+      typeof data.crv === 'string'
     ) {
-      return { kind: 'legacy_ecdh', ecdhPrivateJwkString: trimmed }
+      return { 
+        kind: 'LEGACY', 
+        ecdhJwk: signal 
+      }
     }
   } catch {
+    // Сигнал искажен или не является JSON-пакетом
     return null
   }
+
   return null
 }

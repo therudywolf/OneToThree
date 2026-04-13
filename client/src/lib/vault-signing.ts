@@ -1,24 +1,48 @@
+'use client'
+
 import {
   importEcdsaPrivateKeyForSign,
   signUtf8WithEcdsaP256,
 } from '@/lib/crypto'
-import { parseVaultPlaintext } from '@/lib/vault-keyring'
+import { extractVaultPayload } from '@/lib/vault-payload'
 import { readVaultBlob, unwrapPrivateJwkWithPin } from '@/lib/vault'
 
-export async function signMessageWithVaultPin(
+/**
+ * PROJECT 13 :: VAULT_SIGNATURE_PROTOCOL
+ * Level: Authority Layer (Authentication)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
+/**
+ * [SIGN_SIGNAL_WITH_VAULT]
+ * Наложение цифровой подписи (ECDSA) на произвольный сигнал.
+ * Требует вскрытия Сейфа через PIN-код.
+ */
+export async function signSignalWithVault(
   userId: string,
   pin: string,
-  message: string
+  signal: string
 ): Promise<string> {
-  const blob = readVaultBlob(userId)
-  if (!blob) {
-    throw new Error('NO_VAULT')
+  // [1] RETRIEVE_CONTAINER :: Поиск зашифрованного блоба в локальной памяти
+  const container = readVaultBlob(userId)
+  if (!container) {
+    throw new Error('VAULT_NOT_FOUND')
   }
-  const plain = await unwrapPrivateJwkWithPin(blob, pin)
-  const parsed = parseVaultPlaintext(plain)
-  if (!parsed || parsed.kind !== 'v2') {
-    throw new Error('LEGACY_VAULT_NO_SIGNING')
+
+  // [2] UNWRAP_SEQUENCE :: Дешифровка Сейфа ПИН-кодом (AES-GCM)
+  const decryptedPayload = await unwrapPrivateJwkWithPin(container, pin)
+
+  // [3] EXTRACT_KEYS :: Разбор содержимого Сейфа
+  const keyring = extractVaultPayload(decryptedPayload)
+
+  // Проверка протокола: только V2 поддерживает разделение ключей и подпись
+  if (!keyring || keyring.kind !== 'V2') {
+    throw new Error('LEGACY_PROTOCOL_FAULT :: SIGNING_NOT_SUPPORTED')
   }
-  const key = await importEcdsaPrivateKeyForSign(parsed.ecdsaPrivateJwk)
-  return signUtf8WithEcdsaP256(key, message)
+
+  // [4] AUTH_SEAL :: Импорт ECDSA-ключа и фиксация подписи
+  const authKey = await importEcdsaPrivateKeyForSign(keyring.ecdsaJwk)
+  
+  /** Возвращаем сигнатуру в формате Base64 / Hex (зависит от реализации крипто-модуля) */
+  return signUtf8WithEcdsaP256(authKey, signal)
 }

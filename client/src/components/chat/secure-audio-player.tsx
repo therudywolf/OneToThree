@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { decryptBlob } from '@/lib/crypto'
+import { getS3ObjectUrl } from '@/lib/s3-urls'
 
 type Props = {
   mediaPath: string
@@ -23,12 +25,43 @@ export function SecureAudioPlayer({
   const [progress, setProgress] = useState(0)
 
   useEffect(() => {
-    void mediaPath
-    void mediaIv
-    void mimeType
-    if (!sharedKey) return
-    setLoadErr('STORAGE_BACKEND_PENDING')
+    if (!sharedKey || !mediaPath || !mediaIv) {
+      setLoadErr('MISSING_KEY_OR_DATA')
+      return
+    }
+
+    let isSubscribed = true
+    setLoadErr(null)
+
+    const runDecryption = async () => {
+      try {
+        const s3Url = await getS3ObjectUrl(mediaPath)
+        const res = await fetch(s3Url)
+        if (!res.ok) throw new Error('FETCH_FAILED')
+        const encryptedBuf = await res.arrayBuffer()
+
+        const decryptedBlob = await decryptBlob(
+          encryptedBuf,
+          sharedKey,
+          mediaIv,
+          mimeType || 'audio/webm'
+        )
+
+        if (isSubscribed) {
+          const url = URL.createObjectURL(decryptedBlob)
+          blobUrlRef.current = url
+          setObjectUrl(url)
+        }
+      } catch (error) {
+        console.error('Audio decryption error:', error)
+        if (isSubscribed) setLoadErr('DECRYPTION_FAILED')
+      }
+    }
+
+    void runDecryption()
+
     return () => {
+      isSubscribed = false
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current)
         blobUrlRef.current = null
@@ -55,12 +88,14 @@ export function SecureAudioPlayer({
 
   if (!sharedKey || !objectUrl) {
     return (
-      <p className="font-mono text-[10px] text-red-800">LOADING_CIPHER…</p>
+      <div className="mt-2 max-w-md rounded-none border border-neon-cyan/50 bg-black p-2">
+         <p className="animate-pulse font-mono text-[10px] text-neon-cyan">DECRYPTING_AUDIO...</p>
+      </div>
     )
   }
 
   return (
-    <div className="mt-2 max-w-md rounded-none border border-neon-cyan bg-black p-2">
+    <div className="mt-2 max-w-md rounded-none border border-neon-cyan bg-black p-2 shadow-[0_0_10px_rgba(0,255,255,0.05)]">
       <audio
         ref={audioRef}
         src={objectUrl}
@@ -82,13 +117,13 @@ export function SecureAudioPlayer({
         <button
           type="button"
           onClick={togglePlay}
-          className="rounded-none border border-neon-red bg-black px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-black font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan hover:text-black transition-colors"
         >
-          {playing ? '||' : '>'}
+          {playing ? '||' : '▶'}
         </button>
-        <div className="h-2 flex-1 rounded-none bg-red-950">
+        <div className="h-1.5 flex-1 rounded-none bg-zinc-900 overflow-hidden">
           <div
-            className="h-full rounded-none bg-neon-red"
+            className="h-full rounded-none bg-neon-cyan transition-all duration-100 ease-linear"
             style={{ width: `${progress}%` }}
           />
         </div>

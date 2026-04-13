@@ -4,111 +4,100 @@ import { deleteDB, openDB } from 'idb'
 import type { DBSchema, IDBPDatabase } from 'idb'
 import type { DecryptedMessage } from '@/types/chat'
 
-const DB_NAME = 'project13-messages'
-const DB_VERSION = 2
+/**
+ * PROJECT 13 :: LEXICAL_TRACE_CORE
+ * Level: Core Layer (Local Persistence)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
 
-const MAX_TOKENS_PER_MESSAGE = 80
+const CORE_NAME = 'p13-ghost-logs'
+const CORE_VERSION = 2
+const MAX_LEXICAL_TOKENS = 80
 
-type CachedMessage = DecryptedMessage
-
-type SearchIndexRow = {
+type SearchTraceRow = {
   token: string
   message_id: string
   chat_id: string
   created_at: string
 }
 
-interface MessageCacheDb extends DBSchema {
-  messages: {
+interface GhostLogsDb extends DBSchema {
+  message_feed: {
     key: string
-    value: CachedMessage
-    indexes: {
-      byChatCreated: [string, string, string]
-    }
+    value: DecryptedMessage
+    indexes: { bySectorCreated: [string, string, string] }
   }
-  search_index: {
+  lexical_trace: {
     key: [string, string]
-    value: SearchIndexRow
-    indexes: {
-      byToken: string
-      byMessageId: string
-    }
+    value: SearchTraceRow
+    indexes: { byToken: string; byMessageId: string }
   }
 }
 
-let dbPromise: Promise<IDBPDatabase<MessageCacheDb>> | null = null
+let connection: Promise<IDBPDatabase<GhostLogsDb>> | null = null
 
-/** Dev/debug: drop the message cache DB so the next openDB() recreates a clean store. */
-export async function purgeLocalMessageCache(): Promise<void> {
-  dbPromise = null
+/** [WIPE_PROTOCOL] :: Стерилизация локального кэша */
+export async function wipeGhostLogs(): Promise<void> {
+  connection = null
   if (typeof indexedDB === 'undefined') return
-  await deleteDB(DB_NAME)
+  await deleteDB(CORE_NAME)
 }
 
-function getDbPromise(): Promise<IDBPDatabase<MessageCacheDb>> {
+function initConnection(): Promise<IDBPDatabase<GhostLogsDb>> {
   if (typeof indexedDB === 'undefined') {
-    return Promise.reject(new Error('indexedDB is only available in the browser'))
+    return Promise.reject(new Error('CRITICAL_FAULT :: IndexedDB offline'))
   }
-  if (!dbPromise) {
-    dbPromise = openDB<MessageCacheDb>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion) {
-        if (oldVersion < 1) {
-          const store = db.createObjectStore('messages', { keyPath: 'id' })
-          store.createIndex('byChatCreated', ['chat_id', 'created_at', 'id'])
+  if (!connection) {
+    connection = openDB<GhostLogsDb>(CORE_NAME, CORE_VERSION, {
+      upgrade(db, oldVer) {
+        if (oldVer < 1) {
+          const feed = db.createObjectStore('message_feed', { keyPath: 'id' })
+          feed.createIndex('bySectorCreated', ['chat_id', 'created_at', 'id'])
         }
-        if (oldVersion < 2) {
-          if (!db.objectStoreNames.contains('search_index')) {
-            const si = db.createObjectStore('search_index', {
+        if (oldVer < 2) {
+          if (!db.objectStoreNames.contains('lexical_trace')) {
+            const trace = db.createObjectStore('lexical_trace', {
               keyPath: ['token', 'message_id'],
             })
-            si.createIndex('byToken', 'token')
-            si.createIndex('byMessageId', 'message_id')
+            trace.createIndex('byToken', 'token')
+            trace.createIndex('byMessageId', 'message_id')
           }
         }
       },
     })
   }
-  return dbPromise
+  return connection
 }
 
-async function db(): Promise<IDBPDatabase<MessageCacheDb>> {
-  return getDbPromise()
-}
-
-function chatRange(chatId: string): IDBKeyRange {
-  return IDBKeyRange.bound([chatId, '', ''], [chatId, '\uffff', '\uffff'])
-}
-
-export function tokenizeForSearch(text: string): string[] {
-  const lower = text.toLowerCase()
-  const parts = lower.split(/[^a-z0-9]+/).filter((t) => t.length >= 2)
-  const seen = new Set<string>()
-  const out: string[] = []
-  for (const t of parts) {
-    if (out.length >= MAX_TOKENS_PER_MESSAGE) break
-    if (seen.has(t)) continue
-    seen.add(t)
-    out.push(t)
+/** [TOKENIZE] :: Разбивка текста на атомарные токены для радара */
+export function tokenizeSignal(text: string): string[] {
+  const parts = text.toLowerCase().split(/[^a-z0-9а-яё]+/).filter(t => t.length >= 2)
+  const registry = new Set<string>()
+  const output: string[] = []
+  
+  for (const token of parts) {
+    if (output.length >= MAX_LEXICAL_TOKENS) break
+    if (registry.has(token)) continue
+    registry.add(token)
+    output.push(token)
   }
-  return out
+  return output
 }
 
-function scheduleIdle(fn: () => void | Promise<void>): void {
-  const run = () => void Promise.resolve(fn()).catch(() => {})
+/** [IDLE_DISPATCH] :: Запуск задач в фоновом шуме системы */
+function scheduleTrace(fn: () => void | Promise<void>): void {
+  const exec = () => void Promise.resolve(fn()).catch(() => {})
   if (typeof requestIdleCallback !== 'undefined') {
-    requestIdleCallback(() => run(), { timeout: 2000 })
+    requestIdleCallback(() => exec(), { timeout: 2000 })
   } else {
-    setTimeout(run, 0)
+    setTimeout(exec, 0)
   }
 }
 
-async function removeSearchRowsForMessage(
-  conn: IDBPDatabase<MessageCacheDb>,
-  messageId: string
-): Promise<void> {
-  const tx = conn.transaction('search_index', 'readwrite')
+async function purgeTraceForNode(conn: IDBPDatabase<GhostLogsDb>, msgId: string) {
+  const tx = conn.transaction('lexical_trace', 'readwrite')
   const idx = tx.store.index('byMessageId')
-  let cursor = await idx.openCursor(IDBKeyRange.only(messageId))
+  let cursor = await idx.openCursor(IDBKeyRange.only(msgId))
   while (cursor) {
     await cursor.delete()
     cursor = await cursor.continue()
@@ -116,153 +105,95 @@ async function removeSearchRowsForMessage(
   await tx.done
 }
 
-async function indexMessageContent(message: DecryptedMessage): Promise<void> {
-  const conn = await db()
-  await removeSearchRowsForMessage(conn, message.id)
-  const tokens = tokenizeForSearch(message.plaintext ?? '')
+async function indexNodeContent(msg: DecryptedMessage): Promise<void> {
+  const conn = await initConnection()
+  await purgeTraceForNode(conn, msg.id)
+  
+  const tokens = tokenizeSignal(msg.plaintext ?? '')
   if (tokens.length === 0) return
-  const tx = conn.transaction('search_index', 'readwrite')
-  const store = tx.objectStore('search_index')
+
+  const tx = conn.transaction('lexical_trace', 'readwrite')
   for (const token of tokens) {
-    await store.put({
+    await tx.store.put({
       token,
-      message_id: message.id,
-      chat_id: message.chat_id,
-      created_at: message.created_at,
+      message_id: msg.id,
+      chat_id: msg.chat_id,
+      created_at: msg.created_at,
     })
   }
   await tx.done
 }
 
-export async function cacheMessages(messages: DecryptedMessage[]): Promise<void> {
-  if (typeof indexedDB === 'undefined' || messages.length === 0) return
-  const conn = await db()
-  const tx = conn.transaction('messages', 'readwrite')
-  for (const message of messages) {
-    await tx.store.put(message)
-  }
+// --- PUBLIC_INTERFACE ---
+
+export async function cacheNodes(nodes: DecryptedMessage[]): Promise<void> {
+  if (typeof indexedDB === 'undefined' || nodes.length === 0) return
+  const conn = await initConnection()
+  const tx = conn.transaction('message_feed', 'readwrite')
+  for (const node of nodes) await tx.store.put(node)
   await tx.done
-  for (const m of messages) {
-    scheduleIdle(() => indexMessageContent(m))
-  }
+  for (const node of nodes) scheduleTrace(() => indexNodeContent(node))
 }
 
-export async function cacheMessage(message: DecryptedMessage): Promise<void> {
+export async function cacheNode(node: DecryptedMessage): Promise<void> {
   if (typeof indexedDB === 'undefined') return
-  const conn = await db()
-  await conn.put('messages', message)
-  scheduleIdle(() => indexMessageContent(message))
+  const conn = await initConnection()
+  await conn.put('message_feed', node)
+  scheduleTrace(() => indexNodeContent(node))
 }
 
-export async function deleteCachedMessage(messageId: string): Promise<void> {
-  if (typeof indexedDB === 'undefined') return
-  const conn = await db()
-  await conn.delete('messages', messageId)
-  await removeSearchRowsForMessage(conn, messageId)
-}
-
-export async function getRecentCachedMessages(
-  chatId: string,
-  limit = 50
-): Promise<DecryptedMessage[]> {
+export async function pullRecentLogs(chatId: string, limit = 50): Promise<DecryptedMessage[]> {
   if (typeof indexedDB === 'undefined') return []
-  const conn = await db()
-  const tx = conn.transaction('messages', 'readonly')
-  const index = tx.store.index('byChatCreated')
-  const out: DecryptedMessage[] = []
-  let cursor = await index.openCursor(chatRange(chatId), 'prev')
-  while (cursor && out.length < limit) {
-    out.push(cursor.value)
+  const conn = await initConnection()
+  const range = IDBKeyRange.bound([chatId, '', ''], [chatId, '\uffff', '\uffff'])
+  const tx = conn.transaction('message_feed', 'readonly')
+  const idx = tx.store.index('bySectorCreated')
+  
+  const logs: DecryptedMessage[] = []
+  let cursor = await idx.openCursor(range, 'prev')
+  
+  while (cursor && logs.length < limit) {
+    logs.push(cursor.value)
     cursor = await cursor.continue()
   }
-  await tx.done
-  out.reverse()
-  return out
+  return logs.reverse()
 }
 
-export async function getOlderCachedMessages(params: {
-  chatId: string
-  beforeCreatedAt: string
-  beforeId: string
-  limit?: number
-}): Promise<DecryptedMessage[]> {
-  if (typeof indexedDB === 'undefined') return []
-  const conn = await db()
-  const tx = conn.transaction('messages', 'readonly')
-  const index = tx.store.index('byChatCreated')
-  const out: DecryptedMessage[] = []
-  const max = params.limit ?? 25
-  const range = IDBKeyRange.bound(
-    [params.chatId, '', ''],
-    [params.chatId, params.beforeCreatedAt, params.beforeId],
-    false,
-    true
-  )
-  let cursor = await index.openCursor(range, 'prev')
-  while (cursor && out.length < max) {
-    out.push(cursor.value)
-    cursor = await cursor.continue()
-  }
-  await tx.done
-  out.reverse()
-  return out
-}
-
-/** Local full-text–style search over cached decrypted plaintext (IndexedDB only). */
-export async function searchLocalMessages(
-  query: string
-): Promise<Array<{ messageId: string; chatId: string }>> {
+/** [RADAR_SEARCH] :: Локальный поиск по дешифрованным следам */
+export async function searchLocalTrace(query: string) {
   if (typeof indexedDB === 'undefined') return []
   const q = query.trim().toLowerCase()
   if (q.length < 2) return []
 
-  const queryTokens = tokenizeForSearch(q)
-  const searchKeys =
-    queryTokens.length > 0
-      ? queryTokens
-      : q.length >= 2
-        ? [q]
-        : []
+  const searchTokens = tokenizeSignal(q)
+  if (searchTokens.length === 0) return []
 
-  if (searchKeys.length === 0) return []
-
-  const conn = await db()
-  const tx = conn.transaction('search_index', 'readonly')
+  const conn = await initConnection()
+  const tx = conn.transaction('lexical_trace', 'readonly')
   const idx = tx.store.index('byToken')
 
-  async function matchesForKey(key: string): Promise<Map<string, string>> {
-    const out = new Map<string, string>()
-    const range = IDBKeyRange.bound(key, `${key}\uffff`, false, true)
+  let results: Map<string, string> | null = null
+
+  for (const token of searchTokens) {
+    const currentMatches = new Map<string, string>()
+    const range = IDBKeyRange.bound(token, `${token}\uffff`, false, true)
     let cursor = await idx.openCursor(range)
+    
     while (cursor) {
-      const row = cursor.value as SearchIndexRow
-      out.set(row.message_id, row.chat_id)
+      currentMatches.set(cursor.value.message_id, cursor.value.chat_id)
       cursor = await cursor.continue()
     }
-    return out
-  }
 
-  let combined: Map<string, string> | null = null
-  for (const kt of searchKeys) {
-    const m = await matchesForKey(kt)
-    if (m.size === 0) {
-      await tx.done
-      return []
-    }
-    if (combined === null) {
-      combined = m
+    if (currentMatches.size === 0) return [] // Прямое пересечение (AND)
+    
+    if (results === null) {
+      results = currentMatches
     } else {
-      for (const id of [...combined.keys()]) {
-        if (!m.has(id)) combined.delete(id)
+      for (const id of results.keys()) {
+        if (!currentMatches.has(id)) results.delete(id)
       }
     }
   }
-  await tx.done
 
-  if (!combined || combined.size === 0) return []
-
-  return [...combined.entries()].map(([messageId, chatId]) => ({
-    messageId,
-    chatId,
-  }))
+  return results ? [...results.entries()].map(([messageId, chatId]) => ({ messageId, chatId })) : []
 }

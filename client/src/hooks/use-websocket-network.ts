@@ -3,42 +3,57 @@
 import { useEffect, useState } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
 
-export type WebSocketNetworkState = {
-  online: boolean
-  wsConnected: boolean
-  queuedCount: number
+/**
+ * PROJECT 13 :: SIGNAL_MONITOR_PROTOCOL
+ * Level: Network Layer (Pulse Tracking)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
+export type SignalPulse = {
+  /** [PULSE] :: Статус физического линка браузера */
+  is_online: boolean
+  /** [LINK] :: Состояние WebSocket-контура */
+  is_linked: boolean
+  /** [BUFFER] :: Глубина очереди пакетов, ожидающих отправки */
+  buffer_depth: number
 }
 
 /**
- * Centralized network status hook for UI indicators.
- * Keeps browser connectivity and websocket queue/connection state in one place.
+ * Централизованный мониторинг сетевого статуса узла.
+ * Используется для UI-индикаторов в шапке терминала.
  */
-export function useWebSocketNetwork(): WebSocketNetworkState {
-  const [online, setOnline] = useState(true)
-  const [wsConnected, setWsConnected] = useState(false)
-  const [queuedCount, setQueuedCount] = useState(0)
+export function useSignalMonitor(): SignalPulse {
+  const [is_online, setIsOnline] = useState(true)
+  const [is_linked, setIsLinked] = useState(false)
+  const [buffer_depth, setBufferDepth] = useState(0)
 
   useEffect(() => {
-    const goOnline = () => setOnline(true)
-    const goOffline = () => setOnline(false)
-    window.addEventListener('online', goOnline)
-    window.addEventListener('offline', goOffline)
-    setOnline(navigator.onLine)
+    const handlePulseUp = () => setIsOnline(true)
+    const handlePulseDown = () => setIsOnline(false)
+
+    window.addEventListener('online', handlePulseUp)
+    window.addEventListener('offline', handlePulseDown)
+    
+    // Инициализация текущего состояния линка
+    setIsOnline(navigator.onLine)
+
     return () => {
-      window.removeEventListener('online', goOnline)
-      window.removeEventListener('offline', goOffline)
+      window.removeEventListener('online', handlePulseUp)
+      window.removeEventListener('offline', handlePulseDown)
     }
   }, [])
 
   useEffect(() => {
     const socket = getFmSocket()
-    const off = socket.subscribeStatus(() => {
-      setWsConnected(socket.connected)
-      setQueuedCount(socket.queuedCount)
+
+    /** [SYNC] :: Подписка на изменение состояния сокета */
+    const unsubscribe = socket.subscribeStatus(() => {
+      setIsLinked(socket.connected)
+      setBufferDepth(socket.queuedCount)
     })
-    return off
+
+    return unsubscribe
   }, [])
 
-  return { online, wsConnected, queuedCount }
+  return { is_online, is_linked, buffer_depth }
 }
-

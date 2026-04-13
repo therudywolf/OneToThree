@@ -1,3 +1,5 @@
+'use client'
+
 import { API_URL } from '@/lib/api/auth'
 import {
   decryptMessage,
@@ -7,11 +9,17 @@ import {
 } from './crypto'
 import { unwrapGroupKeyFromStoredPayload } from './chat-logic'
 
-export type ChatCryptoContext =
-  | { mode: 'direct'; peerPublicKeyJwk: string }
-  | { mode: 'group'; groupKey: CryptoKey }
+/**
+ * PROJECT 13 :: ENCRYPTION_FRAME_PROTOCOL
+ * Level: Connection Layer (E2E Logic)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
 
-type ChatDetailResponse = {
+export type EncryptionFrame =
+  | { mode: 'DIRECT'; peerPublicKeyJwk: string }
+  | { mode: 'SECTOR'; groupKey: CryptoKey }
+
+type SectorDetailResponse = {
   chat: { type: string }
   members: Array<{
     user_id: string
@@ -21,105 +29,96 @@ type ChatDetailResponse = {
   }>
 }
 
-/** Loads member keys / wrapped group key for the active chat. */
-export async function buildChatCryptoContext(
+/** [CALIBRATE_FRAME] :: Снятие показаний и построение крипто-контекста для сектора */
+export async function calibrateEncryptionFrame(
   chatId: string,
   myUserId: string,
   privateKey: CryptoKey
-): Promise<ChatCryptoContext | null> {
-  const res = await fetch(`${API_URL}/chats/${chatId}`, {
-    credentials: 'include',
-  })
-  if (!res.ok) {
-    return null
-  }
-  const data = (await res.json()) as ChatDetailResponse
-  const { chat, members } = data
+): Promise<EncryptionFrame | null> {
+  const response = await fetch(`${API_URL}/chats/${chatId}`, { credentials: 'include' })
+  if (!response.ok) return null
 
-  if (chat.type === 'public_open') {
-    return null
-  }
+  const { chat, members } = (await response.json()) as SectorDetailResponse
 
+  if (chat.type === 'public_open') return null
+
+  // [1] DIRECT_E2E_LINK :: Прямой канал между двумя узлами
   if (chat.type === 'direct_e2e') {
-    const other = members.find((m) => m.user_id !== myUserId)
-    if (!other?.ecdh_public_key_jwk) {
-      throw new Error('MISSING_PEER_ECDH')
-    }
-    // Verify peer key authenticity
-    let verifiedKeys: Record<string, string> = {}
-    try {
-      const stored = localStorage.getItem('fm_verified_keys')
-      if (stored) {
-        verifiedKeys = JSON.parse(stored)
+    const peer = members.find((m) => m.user_id !== myUserId)
+    if (!peer?.ecdh_public_key_jwk) throw new Error('ERR_MISSING_PEER_SIGNAL')
+
+    /** [TRUST_VERIFICATION] :: Проверка отпечатка в локальном реестре */
+    const registryRaw = localStorage.getItem('p13_trust_registry')
+    if (registryRaw) {
+      try {
+        const registry = JSON.parse(registryRaw)
+        const pinnedSignal = registry[peer.user_id]
+        
+        if (pinnedSignal) {
+          const normalize = (jwk: string) => JSON.stringify(JSON.parse(jwk), Object.keys(JSON.parse(jwk)).sort())
+          if (normalize(pinnedSignal) !== normalize(peer.ecdh_public_key_jwk)) {
+            throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
+          }
+        }
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('MISMATCH')) throw err
       }
-    } catch (e) {
-      // Ignore corrupted localStorage
     }
-    const storedKey = verifiedKeys[other.user_id]
-    if (storedKey) {
-      const normalizeJwk = (jwk: string) => JSON.stringify(JSON.parse(jwk), Object.keys(JSON.parse(jwk)).sort())
-      if (normalizeJwk(storedKey) !== normalizeJwk(other.ecdh_public_key_jwk)) {
-        throw new Error('SECURITY_KEY_MISMATCH')
-      }
-    } else {
-      // TODO: Implement manual key verification for first contact
-    }
-    return { mode: 'direct', peerPublicKeyJwk: other.ecdh_public_key_jwk }
+
+    return { mode: 'DIRECT', peerPublicKeyJwk: peer.ecdh_public_key_jwk }
   }
 
+  // [2] SECTOR_E2E_LINK :: Групповой зашифрованный канал стаи
   if (chat.type === 'group_e2e') {
     const me = members.find((m) => m.user_id === myUserId)
-    if (!me?.encrypted_group_key) {
-      throw new Error('MISSING_GROUP_KEY')
-    }
-    /* Unwrap: creator-KEK format (ECDH with creator pub) or legacy ephemeral wrap. */
-    const groupKey = await unwrapGroupKeyFromStoredPayload(
-      privateKey,
-      me.encrypted_group_key
-    )
-    return { mode: 'group', groupKey }
+    if (!me?.encrypted_group_key) throw new Error('ERR_MISSING_SECTOR_KEY')
+
+    // Вскрытие ключа сектора (KEK-протокол)
+    const sectorKey = await unwrapGroupKeyFromStoredPayload(privateKey, me.encrypted_group_key)
+    return { mode: 'SECTOR', groupKey: sectorKey }
   }
 
   return null
 }
 
-export async function encryptOutboundText(
+/** [SEAL_SIGNAL] :: Запечатывание исходящего пакета данных */
+export async function sealSignal(
   privateKey: CryptoKey,
-  plain: string,
-  ctx: ChatCryptoContext
+  plaintext: string,
+  frame: EncryptionFrame
 ): Promise<{ encrypted_content: string; iv: string }> {
-  if (ctx.mode === 'group') {
-    const { ciphertext, iv } = await encryptMessage(ctx.groupKey, plain)
-    return { encrypted_content: ciphertext, iv }
+  if (frame.mode === 'SECTOR') {
+    return encryptMessage(frame.groupKey, plaintext)
   }
-  const peerPub = await importEcdhPublicKey(ctx.peerPublicKeyJwk)
-  const sk = await deriveSharedSecret(privateKey, peerPub)
-  const { ciphertext, iv } = await encryptMessage(sk, plain)
-  return { encrypted_content: ciphertext, iv }
+
+  const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
+  const sharedSecret = await deriveSharedSecret(privateKey, peerPub)
+  return encryptMessage(sharedSecret, plaintext)
 }
 
-export async function decryptInboundText(
+/** [UNSEAL_SIGNAL] :: Вскрытие входящего пакета данных */
+export async function unsealSignal(
   privateKey: CryptoKey,
-  ctx: ChatCryptoContext,
-  encrypted_content: string,
+  frame: EncryptionFrame,
+  ciphertext: string,
   iv: string
 ): Promise<string> {
-  if (ctx.mode === 'group') {
-    return decryptMessage(ctx.groupKey, encrypted_content, iv)
+  if (frame.mode === 'SECTOR') {
+    return decryptMessage(frame.groupKey, ciphertext, iv)
   }
-  const peerPub = await importEcdhPublicKey(ctx.peerPublicKeyJwk)
-  const sk = await deriveSharedSecret(privateKey, peerPub)
-  return decryptMessage(sk, encrypted_content, iv)
+
+  const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
+  const sharedSecret = await deriveSharedSecret(privateKey, peerPub)
+  return decryptMessage(sharedSecret, ciphertext, iv)
 }
 
-/** Same AES-GCM key used for text and binary payloads in a chat. */
-export async function getAesKeyForChat(
+/** [EXTRACT_SECTOR_KEY] :: Получение AES-GCM ключа для текущего линка */
+export async function getSectorKey(
   privateKey: CryptoKey,
-  ctx: ChatCryptoContext
+  frame: EncryptionFrame
 ): Promise<CryptoKey> {
-  if (ctx.mode === 'group') {
-    return ctx.groupKey
-  }
-  const peerPub = await importEcdhPublicKey(ctx.peerPublicKeyJwk)
+  if (frame.mode === 'SECTOR') return frame.groupKey
+  
+  const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
   return deriveSharedSecret(privateKey, peerPub)
 }

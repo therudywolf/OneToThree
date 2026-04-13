@@ -1,20 +1,32 @@
 import type { MetadataRoute } from 'next'
 
+/**
+ * PROJECT 13 :: PWA_MANIFEST_DESCRIPTOR
+ * Level: Interface Layer (OS Integration)
+ * Vibe: Clinical Pure / Zero-Trust Perimeter
+ */
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    id: '/',
+    id: 'p13_core_node',
     name: 'Project 13 (One to Three)',
     short_name: 'P13',
-    description: 'Self-hosted zero-trust E2E messenger — Project 13',
-    lang: 'en',
+    description: 'Clinical-grade zero-trust E2E transmission node',
+    lang: 'ru', // Переводим основной дескриптор на наш язык
     start_url: '/',
     scope: '/',
     display: 'standalone',
-    display_override: ['standalone', 'browser'],
+    display_override: ['standalone', 'window-controls-overlay', 'browser'],
     background_color: '#000000',
     theme_color: '#000000',
     orientation: 'portrait-primary',
-    categories: ['social', 'utilities'],
+    categories: ['social', 'utilities', 'security'],
+    
+    /**
+     * RESOURCE_ASSETS
+     * Иконки должны удовлетворять обоим типам: 'any' для точности 
+     * и 'maskable' для адаптивных систем (Android).
+     */
     icons: [
       {
         src: '/icon-192.png',

@@ -1,8 +1,6 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { X } from 'lucide-react'
-import { useState } from 'react'
 
 type Props = {
   userId: string
@@ -21,8 +19,6 @@ export function UserProfileModal({
   socialLinks = [],
   onClose,
 }: Props) {
-  const [isClosing, setIsClosing] = useState(false)
-
   const statusLabel = {
     online: 'ONLINE',
     offline: 'OFFLINE',
@@ -35,35 +31,30 @@ export function UserProfileModal({
     dead_inside: 'text-neon-red',
   }[status]
 
-  const handleClose = () => {
-    setIsClosing(true)
-    setTimeout(onClose, 200)
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 px-4"
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/90 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label={`Profile :: ${username}`}
-      onClick={handleClose}
+      onPointerDown={onClose}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: -20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: -20 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className="terminal-panel w-full max-w-sm space-y-6 border border-neon-cyan/40 p-6"
-        onClick={(e) => e.stopPropagation()}
+        className="terminal-panel w-full max-w-sm space-y-6 border border-neon-cyan/40 bg-black p-6 shadow-[0_0_30px_rgba(0,255,255,0.05)]"
+        onPointerDown={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button
           type="button"
-          onClick={handleClose}
+          onClick={onClose}
           className="absolute right-4 top-4 font-mono text-xs text-neon-red hover:text-neon-cyan transition-colors"
         >
           [X]
@@ -78,7 +69,7 @@ export function UserProfileModal({
               transition={{ duration: 0.3 }}
               src={avatarUrl}
               alt={username}
-              className="h-32 w-32 border-2 border-neon-cyan/60 bg-black object-cover"
+              className="h-32 w-32 border-2 border-neon-cyan/60 bg-black object-cover p-1"
             />
           ) : (
             <div className="flex h-32 w-32 items-center justify-center border-2 border-neon-cyan/40 bg-zinc-900 font-mono text-3xl text-neon-cyan/40">
@@ -93,7 +84,7 @@ export function UserProfileModal({
             {username}
           </p>
           <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-            {userId}
+            ID: {userId.split('-')[0]}
           </p>
         </div>
 
@@ -121,7 +112,7 @@ export function UserProfileModal({
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.05 }}
-                  className="flex items-center justify-between border border-neon-cyan/40 bg-black/50 px-3 py-2 font-mono text-[9px] uppercase tracking-wider text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/5 transition-all"
+                  className="flex items-center justify-between border border-neon-cyan/40 bg-black/50 px-3 py-2 font-mono text-[9px] uppercase tracking-wider text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all"
                 >
                   <span>{link.platform}</span>
                   <span className="text-neon-red">↗</span>
@@ -134,7 +125,7 @@ export function UserProfileModal({
         {/* Footer hint */}
         <div className="border-t border-neon-cyan/20 pt-3 text-center">
           <p className="font-mono text-[8px] text-zinc-600 uppercase tracking-widest">
-            [ Click outside to close ]
+            [ Tap outside to close ]
           </p>
         </div>
       </motion.div>

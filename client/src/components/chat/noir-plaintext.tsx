@@ -1,35 +1,59 @@
 'use client'
 
-import { useMemo } from 'react'
+import React, { useMemo } from 'react'
 import emojiRegex from 'emoji-regex'
 
-type Props = { text: string; className?: string }
+/**
+ * PROJECT 13 :: TEXT_VISUAL_FILTER
+ * Level: Interface Layer (Aesthetic Processing)
+ * Vibe: Clinical Pure / Noir Filter / Dead Inside
+ * Purpose: Wrapping emoji clusters for terminal-grade CSS injection.
+ */
 
-/** Wraps emoji code points in spans for noir CSS filter (terminal aesthetic). */
+type Props = { 
+  text: string; 
+  className?: string 
+}
+
 export function NoirPlaintext({ text, className = '' }: Props) {
-  const parts = useMemo(() => {
+  const processedNodes = useMemo(() => {
     const re = emojiRegex()
-    const out: React.ReactNode[] = []
-    let last = 0
-    let k = 0
-    for (const m of text.matchAll(re)) {
-      const match = m[0]
-      const i = m.index ?? 0
-      if (i > last) {
-        out.push(text.slice(last, i))
+    const segments: React.ReactNode[] = []
+    
+    let lastCursor = 0
+    let nodeIndex = 0
+
+    // [PROCESS_STREAM] :: Поиск и изоляция эмодзи-кластеров
+    for (const match of text.matchAll(re)) {
+      const emoji = match[0]
+      const index = match.index ?? 0
+
+      // Вставка обычного текстового узла до эмодзи
+      if (index > lastCursor) {
+        segments.push(text.slice(lastCursor, index))
       }
-      out.push(
-        <span key={`e-${k++}`} className="noir-emoji-inline">
-          {match}
+
+      // Вставка изолированного эмодзи-узла под нуар-фильтр
+      segments.push(
+        <span 
+          key={`node-${nodeIndex++}`} 
+          className="noir-emoji-inline"
+          aria-hidden="false"
+        >
+          {emoji}
         </span>
       )
-      last = i + match.length
+      
+      lastCursor = index + emoji.length
     }
-    if (last < text.length) {
-      out.push(text.slice(last))
+
+    // Хвост текстового потока
+    if (lastCursor < text.length) {
+      segments.push(text.slice(lastCursor))
     }
-    return out
+
+    return segments
   }, [text])
 
-  return <span className={className}>{parts}</span>
+  return <span className={className}>{processedNodes}</span>
 }

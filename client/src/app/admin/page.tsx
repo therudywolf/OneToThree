@@ -17,7 +17,13 @@ import {
   type AdminUserRow,
 } from '@/lib/api/admin'
 
-function formatBytes(n: bigint): string {
+/**
+ * PROJECT 13 :: ALPHA_WARDEN_CONSOLE
+ * Level: Authority Layer (Master Override)
+ * Vibe: Clinical Steel / Neon Noir / Dead Inside
+ */
+
+function measureSegmentSize(n: bigint): string {
   const B = BigInt(1024)
   if (n < B) return `${n} B`
   const kb = B
@@ -31,284 +37,274 @@ function formatBytes(n: bigint): string {
 export default function AdminPage() {
   const router = useRouter()
   const { user, loading } = useAuth()
-  const [users, setUsers] = useState<AdminUserRow[]>([])
-  const [storageRows, setStorageRows] = useState<AdminStorageUserRow[]>([])
-  const [systemStats, setSystemStats] = useState<AdminSystemStats | null>(null)
-  const [reports, setReports] = useState<AdminReportRow[]>([])
-  const [err, setErr] = useState<string | null>(null)
-  const [busyId, setBusyId] = useState<string | null>(null)
+  
+  const [nodes, setNodes] = useState<AdminUserRow[]>([])
+  const [storageData, setStorageData] = useState<AdminStorageUserRow[]>([])
+  const [sysPulse, setSysPulse] = useState<AdminSystemStats | null>(null)
+  const [incidents, setIncidents] = useState<AdminReportRow[]>([])
+  
+  const [errorLog, setErrorLog] = useState<string | null>(null)
+  const [lockId, setLockId] = useState<string | null>(null)
 
-  const storageByUser = useMemo(() => {
+  const nodeStorageMap = useMemo(() => {
     const m = new Map<string, AdminStorageUserRow>()
-    for (const r of storageRows) m.set(r.user_id, r)
+    for (const r of storageData) m.set(r.user_id, r)
     return m
-  }, [storageRows])
+  }, [storageData])
 
-  const load = useCallback(async () => {
-    setErr(null)
+  const syncState = useCallback(async () => {
+    setErrorLog(null)
     try {
-      const [u, r, stats, su] = await Promise.all([
+      const [u, r, pulse, storage] = await Promise.all([
         fetchAdminUsers(),
         fetchAdminReports(),
         fetchAdminSystemStats(),
         fetchAdminUserStorageUsage(),
       ])
-      setUsers(u)
-      setReports(r)
-      setSystemStats(stats)
-      setStorageRows(su)
+      setNodes(u)
+      setIncidents(r)
+      setSysPulse(pulse)
+      setStorageData(storage)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'LOAD_FAILED')
+      setErrorLog(e instanceof Error ? e.message : 'SYNC_PROTOCOL_FAILURE')
     }
   }, [])
 
   useEffect(() => {
     if (loading) return
-    if (!user) {
+    if (!user || user.role !== 'admin') {
       router.replace('/')
       return
     }
-    if (user.role !== 'admin') {
-      router.replace('/')
-      return
-    }
-    void load()
-  }, [loading, user, router, load])
+    void syncState()
+  }, [loading, user, router, syncState])
 
-  async function purgeUser(row: AdminUserRow) {
-    if (busyId || row.id === user?.id) return
-    const typed = window.prompt(
-      `PURGE deletes this account, 1:1 chats with them, their group messages, devices, reports, and avatar. Type exact handle to confirm:\n\n${row.username}`
+  const expungeNode = async (row: AdminUserRow) => {
+    if (lockId || row.id === user?.id) return
+    
+    const confirm = window.prompt(
+      `[CRITICAL] EXPUNGE NODE: This will annihilate account, sessions, assets, and logs. Type handle to confirm:\n\n${row.username}`
     )
-    if (typed == null) return
-    if (typed.trim() !== row.username) {
-      setErr('CONFIRM_MISMATCH')
+    
+    if (confirm?.trim() !== row.username) {
+      setErrorLog('EXPUNGE_AUTH_MISMATCH')
       return
     }
-    setBusyId(row.id)
-    setErr(null)
+
+    setLockId(row.id)
     try {
-      await postAdminPurgeUser(row.id, typed.trim())
-      setUsers((prev) => prev.filter((x) => x.id !== row.id))
-      await load()
+      await postAdminPurgeUser(row.id, confirm.trim())
+      setNodes(prev => prev.filter(x => x.id !== row.id))
+      await syncState()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'PURGE_FAILED')
+      setErrorLog(e instanceof Error ? e.message : 'NODE_ANNIHILATION_FAILED')
     } finally {
-      setBusyId(null)
+      setLockId(null)
     }
   }
 
-  async function toggleBan(row: AdminUserRow) {
-    if (busyId || row.id === user?.id) return
-    setBusyId(row.id)
-    setErr(null)
+  const toggleIsolation = async (row: AdminUserRow) => {
+    if (lockId || row.id === user?.id) return
+    setLockId(row.id)
     try {
       const next = await patchUserBan(row.id, !row.is_banned)
-      setUsers((prev) =>
-        prev.map((x) => (x.id === next.id ? next : x))
-      )
+      setNodes(prev => prev.map(x => x.id === next.id ? next : x))
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'BAN_FAILED')
+      setErrorLog(e instanceof Error ? e.message : 'ISOLATION_TOGGLE_FAILED')
     } finally {
-      setBusyId(null)
+      setLockId(null)
     }
   }
 
   if (loading || !user || user.role !== 'admin') {
     return (
-      <div className="min-h-dvh bg-black p-6 font-mono text-xs text-neon-cyan">
-        :: ACCESS_CHECK…
+      <div className="flex min-h-dvh items-center justify-center bg-black font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
+        <span className="animate-pulse">:: SECURITY_CHECK_IN_PROGRESS…</span>
       </div>
     )
   }
 
   return (
-    <div className="min-h-dvh bg-black p-4 font-mono text-sm text-neon-red md:p-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-neon-cyan/40 pb-4">
-        <div>
-          <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
-            [ WARDEN ]
-          </p>
-          <h1 className="text-lg uppercase tracking-widest text-neon-cyan">
-            ADMIN_CONSOLE
-          </h1>
+    <div className="min-h-dvh bg-zinc-950 p-4 font-mono text-xs text-zinc-400 md:p-8 selection:bg-neon-red selection:text-black">
+      {/* HEADER_UNIT */}
+      <header className="mb-10 flex flex-wrap items-center justify-between gap-6 border-b border-neutral-900 pb-6">
+        <div className="flex items-center gap-4">
+          <div className="h-10 w-1 border border-neon-red bg-neon-red/20 shadow-[0_0_10px_rgba(255,0,0,0.3)]" />
+          <div>
+            <p className="text-[9px] uppercase tracking-[0.4em] text-neutral-600">ALPHA_WARDEN_CONSOLE</p>
+            <h1 className="text-xl font-bold tracking-tighter text-white">PROJECT_13 // OVERRIDE</h1>
+          </div>
         </div>
+        
         <Link
           href="/"
-          className="border border-neon-red/80 px-3 py-1 text-[10px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan"
+          className="flex h-10 items-center border border-neutral-800 bg-black px-6 text-[10px] uppercase tracking-[0.3em] text-zinc-500 transition-all hover:border-neon-red hover:text-neon-red"
         >
-          [ EXIT ]
+          [ EXIT_SYSTEM ]
         </Link>
       </header>
 
-      {err ? (
-        <p className="mb-4 border border-neon-red px-2 py-1 text-xs text-neon-red">
-          [!] {err}
-        </p>
-      ) : null}
+      {errorLog && (
+        <div className="mb-6 border border-neon-red/50 bg-neon-red/5 p-3 text-neon-red shadow-[0_0_15px_rgba(255,0,0,0.1)]">
+          <span className="mr-2 font-bold">[!] ERROR:</span> {errorLog}
+        </div>
+      )}
 
-      <section className="mb-10">
-        <h2 className="mb-2 text-[10px] uppercase tracking-[0.35em] text-red-800">
-          :: RESOURCE_PULSE
-        </h2>
-        {systemStats ? (
-          <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div
-              className={`border px-3 py-2 font-mono text-[10px] uppercase tracking-widest ${
-                systemStats.process.cpu_percent > 85
-                  ? 'border-neon-red text-neon-red'
-                  : 'border-neon-cyan/50 text-neon-cyan'
-              }`}
-            >
-              <p className="text-red-800">CPU %</p>
-              <p className="text-lg">
-                {systemStats.process.cpu_percent.toFixed(1)}
+      {/* SYSTEM_PULSE_SECTION */}
+      <section className="mb-12">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="h-1 w-1 bg-neon-cyan" />
+          <h2 className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan">:: RESOURCE_TELEMETRY</h2>
+        </div>
+        
+        {sysPulse ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={`border p-4 transition-colors ${sysPulse.process.cpu_percent > 80 ? 'border-neon-red bg-neon-red/5' : 'border-neutral-900 bg-black'}`}>
+              <p className="text-[9px] text-neutral-600 uppercase mb-1">NODE_CPU_LOAD</p>
+              <p className={`text-2xl font-bold ${sysPulse.process.cpu_percent > 80 ? 'text-neon-red' : 'text-white'}`}>
+                {sysPulse.process.cpu_percent.toFixed(1)}%
               </p>
             </div>
-            <div className="border border-neon-cyan/40 px-3 py-2 font-mono text-[10px] text-neon-cyan">
-              <p className="text-red-800">HOST RAM</p>
-              <p className="text-lg">
-                {(
-                  (1 -
-                    systemStats.host.freemem / systemStats.host.totalmem) *
-                  100
-                ).toFixed(1)}
-                %
+
+            <div className="border border-neutral-900 bg-black p-4">
+              <p className="text-[9px] text-neutral-600 uppercase mb-1">HOST_MEMORY_DUMP</p>
+              <p className="text-2xl font-bold text-white">
+                {((1 - sysPulse.host.freemem / sysPulse.host.totalmem) * 100).toFixed(1)}%
               </p>
-              <p className="mt-1 text-[9px] text-red-800/80">
-                proc RSS{' '}
-                {formatBytes(BigInt(Math.floor(systemStats.process.memory.rss)))}
+              <p className="mt-2 text-[9px] text-zinc-500">
+                RSS: {measureSegmentSize(BigInt(Math.floor(sysPulse.process.memory.rss)))}
               </p>
             </div>
-            <div className="border border-neon-cyan/40 px-3 py-2 font-mono text-[10px] text-neon-cyan">
-              <p className="text-red-800">DB ROWS</p>
-              <p>
-                users {systemStats.database.user_count} · msgs{' '}
-                {systemStats.database.message_count}
+
+            <div className="border border-neutral-900 bg-black p-4">
+              <p className="text-[9px] text-neutral-600 uppercase mb-1">DB_OBJECT_COUNT</p>
+              <p className="text-lg font-bold text-white">
+                U: {sysPulse.database.user_count} // M: {sysPulse.database.message_count}
               </p>
             </div>
-            <div className="border border-neon-cyan/40 px-3 py-2 font-mono text-[10px] text-neon-cyan">
-              <p className="text-red-800">MINIO TOTAL</p>
-              <p className="break-all">
-                {formatBytes(BigInt(systemStats.storage.minio_total_bytes))}
+
+            <div className="border border-neutral-900 bg-black p-4">
+              <p className="text-[9px] text-neutral-600 uppercase mb-1">S3_TOTAL_CAPACITY</p>
+              <p className="truncate text-lg font-bold text-neon-cyan">
+                {measureSegmentSize(BigInt(sysPulse.storage.minio_total_bytes))}
               </p>
-              <p className="mt-1 text-[9px] text-red-800/80">
-                {systemStats.storage.buckets.join(', ')}
-              </p>
+              <div className="mt-2 flex gap-1">
+                {sysPulse.storage.buckets.map(b => (
+                  <span key={b} className="bg-zinc-900 px-1 text-[8px] text-zinc-500">{b}</span>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
-          <p className="mb-4 text-[10px] text-red-800">:: NO_PULSE_DATA</p>
+          <div className="h-24 w-full animate-pulse border border-neutral-900 bg-black/50" />
         )}
       </section>
 
-      <section className="mb-10">
-        <h2 className="mb-2 text-[10px] uppercase tracking-[0.35em] text-red-800">
-          :: USERS
-        </h2>
-        <div className="overflow-x-auto border border-neon-cyan/30">
-          <table className="w-full min-w-[640px] border-collapse text-left text-xs">
+      {/* NODE_REGISTRY_SECTION */}
+      <section className="mb-12">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="h-1 w-1 bg-neon-red" />
+          <h2 className="text-[10px] uppercase tracking-[0.3em] text-neon-red">:: NODE_REGISTRY</h2>
+        </div>
+        
+        <div className="overflow-hidden border border-neutral-900 bg-black shadow-2xl">
+          <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-neon-cyan/40 bg-black text-[10px] uppercase tracking-widest text-neon-cyan">
-                <th className="p-2 font-mono">HANDLE</th>
-                <th className="p-2 font-mono">MSG_COUNT</th>
-                <th className="p-2 font-mono">STORAGE</th>
-                <th className="p-2 font-mono">ROLE</th>
-                <th className="p-2 font-mono">BANNED</th>
-                <th className="p-2 font-mono">ACTIONS</th>
+              <tr className="border-b border-neutral-900 bg-zinc-900/50 text-[9px] uppercase tracking-[0.2em] text-neutral-500">
+                <th className="px-4 py-3 font-normal">IDENTIFIER</th>
+                <th className="px-4 py-3 font-normal">OBJ_CNT</th>
+                <th className="px-4 py-3 font-normal">VOL_USED</th>
+                <th className="px-4 py-3 font-normal">RANK</th>
+                <th className="px-4 py-3 font-normal">STATUS</th>
+                <th className="px-4 py-3 font-normal">OPERATIONS</th>
               </tr>
             </thead>
-            <tbody>
-              {users.map((r) => (
-                <tr
-                  key={r.id}
-                  className="border-b border-neon-cyan/15 odd:bg-black even:bg-neon-cyan/[0.03]"
-                >
-                  <td className="p-2 text-neon-cyan">{r.username}</td>
-                  <td className="p-2 font-mono text-neon-cyan/90">
-                    {storageByUser.get(r.id)?.msg_count ?? 0}
-                  </td>
-                  <td className="p-2 font-mono text-[10px] text-neon-cyan/80">
-                    {formatBytes(
-                      BigInt(storageByUser.get(r.id)?.storage_used ?? '0')
-                    )}
-                  </td>
-                  <td className="p-2 uppercase text-neon-red">{r.role}</td>
-                  <td className="p-2">{r.is_banned ? 'YES' : 'NO'}</td>
-                  <td className="p-2">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={busyId === r.id || r.id === user.id}
-                        onClick={() => void toggleBan(r)}
-                        className="border border-neon-red px-2 py-1 text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-30"
-                      >
-                        {r.is_banned ? '[ UNBAN ]' : '[ BAN ]'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === r.id || r.id === user.id}
-                        onClick={() => void purgeUser(r)}
-                        className="border border-red-600 px-2 py-1 text-[10px] uppercase tracking-widest text-red-600 hover:bg-red-600/10 disabled:opacity-30"
-                      >
-                        [ PURGE ]
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-neutral-900">
+              {nodes.map((node) => {
+                const storage = nodeStorageMap.get(node.id)
+                const isSelf = node.id === user.id
+                
+                return (
+                  <tr key={node.id} className="group hover:bg-white/[0.02] transition-colors">
+                    <td className="px-4 py-3">
+                      <span className={node.is_banned ? 'text-zinc-600 line-through' : 'text-neon-cyan'}>
+                        {node.username}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-zinc-500">{storage?.msg_count ?? 0}</td>
+                    <td className="px-4 py-3 text-[10px] text-zinc-500">
+                      {measureSegmentSize(BigInt(storage?.storage_used ?? '0'))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[10px] uppercase ${node.role === 'admin' ? 'text-neon-red' : 'text-neutral-600'}`}>
+                        {node.role}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[10px] ${node.is_banned ? 'text-neon-red' : 'text-zinc-600'}`}>
+                        {node.is_banned ? 'ISOLATED' : 'ACTIVE'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2 opacity-40 group-hover:opacity-100 transition-opacity">
+                        <button
+                          disabled={lockId === node.id || isSelf}
+                          onClick={() => toggleIsolation(node)}
+                          className="border border-neutral-800 px-2 py-1 text-[9px] uppercase tracking-widest hover:border-neon-cyan hover:text-neon-cyan disabled:hidden"
+                        >
+                          {node.is_banned ? '[ REINTEGRATE ]' : '[ ISOLATE ]'}
+                        </button>
+                        <button
+                          disabled={lockId === node.id || isSelf}
+                          onClick={() => expungeNode(node)}
+                          className="border border-neutral-800 px-2 py-1 text-[9px] uppercase tracking-widest text-red-900 hover:border-neon-red hover:text-neon-red disabled:hidden"
+                        >
+                          [ EXPUNGE ]
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       </section>
 
+      {/* INCIDENT_QUEUE_SECTION */}
       <section>
-        <h2 className="mb-2 text-[10px] uppercase tracking-[0.35em] text-red-800">
-          :: REPORTS
-        </h2>
-        <div className="overflow-x-auto border border-neon-cyan/30">
-          <table className="w-full min-w-[560px] border-collapse text-left text-xs">
+        <div className="mb-4 flex items-center gap-2">
+          <span className="h-1 w-1 bg-zinc-600" />
+          <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-600">:: INCIDENT_QUEUE</h2>
+        </div>
+        
+        <div className="overflow-hidden border border-neutral-900 bg-black">
+          <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-neon-cyan/40 bg-black text-[10px] uppercase tracking-widest text-neon-cyan">
-                <th className="p-2 font-mono">ID</th>
-                <th className="p-2 font-mono">REPORTER</th>
-                <th className="p-2 font-mono">REPORTED</th>
-                <th className="p-2 font-mono">STATUS</th>
-                <th className="p-2 font-mono">REASON</th>
-                <th className="p-2 font-mono">CREATED</th>
+              <tr className="border-b border-neutral-900 bg-zinc-900/50 text-[9px] uppercase tracking-[0.2em] text-neutral-500">
+                <th className="px-4 py-3 font-normal">ID</th>
+                <th className="px-4 py-3 font-normal">TARGET</th>
+                <th className="px-4 py-3 font-normal">STATE</th>
+                <th className="px-4 py-3 font-normal">REASON</th>
+                <th className="px-4 py-3 font-normal">TIMESTAMP</th>
               </tr>
             </thead>
-            <tbody>
-              {reports.length === 0 ? (
+            <tbody className="divide-y divide-neutral-900">
+              {incidents.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="p-4 text-center text-[10px] text-red-800"
-                  >
-                    NO_REPORTS_IN_QUEUE
+                  <td colSpan={5} className="p-8 text-center text-[10px] uppercase tracking-widest text-zinc-800">
+                    QUEUE_EMPTY // NO_ACTIVE_THREATS
                   </td>
                 </tr>
               ) : (
-                reports.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="border-b border-neon-cyan/15 odd:bg-black even:bg-neon-cyan/[0.03]"
-                  >
-                    <td className="p-2 font-mono text-[10px] text-red-800">
-                      {r.id.slice(0, 8)}…
-                    </td>
-                    <td className="max-w-[120px] truncate p-2 font-mono text-[10px]">
-                      {r.reporter_id}
-                    </td>
-                    <td className="max-w-[120px] truncate p-2 font-mono text-[10px]">
-                      {r.reported_id}
-                    </td>
-                    <td className="p-2 uppercase">{r.status}</td>
-                    <td className="max-w-xs truncate p-2 text-neon-cyan/80">
-                      {r.reason}
-                    </td>
-                    <td className="p-2 text-[10px] text-red-800">
-                      {new Date(r.created_at).toLocaleString()}
+                incidents.map((incident) => (
+                  <tr key={incident.id} className="text-[10px]">
+                    <td className="px-4 py-3 text-red-900 font-bold">{incident.id.slice(0, 8)}</td>
+                    <td className="px-4 py-3 text-zinc-500">{incident.reported_id.slice(0, 8)}…</td>
+                    <td className="px-4 py-3 uppercase text-zinc-400">{incident.status}</td>
+                    <td className="px-4 py-3 max-w-xs truncate text-zinc-500 italic">"{incident.reason}"</td>
+                    <td className="px-4 py-3 text-zinc-600">
+                      {new Date(incident.created_at).toISOString().replace('T', ' ').split('.')[0]}
                     </td>
                   </tr>
                 ))
@@ -317,6 +313,13 @@ export default function AdminPage() {
           </table>
         </div>
       </section>
+
+      {/* FOOTER_DECOR */}
+      <footer className="mt-16 text-center">
+        <p className="text-[8px] uppercase tracking-[0.5em] text-neutral-800">
+          SYS.ADMIN // NODAL_CONTROL_V4.0 // Project_13
+        </p>
+      </footer>
     </div>
   )
 }

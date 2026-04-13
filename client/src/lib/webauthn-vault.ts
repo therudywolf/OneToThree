@@ -1,82 +1,53 @@
 /**
- * WebAuthn + largeBlob: vault re-wrapped with a random "fast PIN" stored on the passkey.
- * Requires a browser that supports the largeBlob extension (Chromium).
+ * PROJECT 13 :: BIOMETRIC_AUTHORITY_PROTOCOL
+ * Level: Authority Layer (Hardware Intercept)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ * Requirement: Chromium Node + largeBlob Extension Support
  */
 
 import { openDB, type IDBPDatabase } from 'idb'
 import {
-  persistVaultBlob,
+  persistVault,
   readVaultBlob,
   unwrapPrivateJwkWithPin,
   wrapPrivateJwkWithPin,
 } from '@/lib/vault'
+import { emitHapticPulse } from '@/lib/haptics'
 
-const META_DB = 'project13-webauthn-vault'
-const META_VER = 1
+const BIO_META_DB = 'p13-biometric-meta'
+const BIO_META_VER = 1
 
-type MetaRow = {
-  userId: string
+type BiometricMeta = {
+  node_id: string
   credentialIdB64: string
 }
 
-let metaDb: Promise<IDBPDatabase<unknown>> | null = null
+let registry: Promise<IDBPDatabase<any>> | null = null
 
-function metaDbOpen() {
-  if (!metaDb) {
-    metaDb = openDB(META_DB, META_VER, {
+/** [REGISTRY_OPEN] :: Инициализация локального реестра биометрических меток */
+function openRegistry() {
+  if (!registry) {
+    registry = openDB(BIO_META_DB, BIO_META_VER, {
       upgrade(db) {
-        if (!db.objectStoreNames.contains('meta')) {
-          db.createObjectStore('meta', { keyPath: 'userId' })
+        if (!db.objectStoreNames.contains('registry')) {
+          db.createObjectStore('registry', { keyPath: 'node_id' })
         }
       },
     })
   }
-  return metaDb
+  return registry
 }
 
-export async function hasWebAuthnVaultMeta(userId: string): Promise<boolean> {
-  if (typeof indexedDB === 'undefined') return false
-  try {
-    const db = await metaDbOpen()
-    const row = await db.get('meta', userId)
-    return Boolean(row?.credentialIdB64)
-  } catch {
-    return false
-  }
-}
+// --- SIGNAL_CONVERSION (STERILE) ---
 
-export async function clearWebAuthnVaultMeta(userId?: string): Promise<void> {
-  if (typeof indexedDB === 'undefined') return
-  try {
-    const db = await metaDbOpen()
-    if (userId) await db.delete('meta', userId)
-    else await db.clear('meta')
-  } catch {
-    /* ignore */
-  }
-}
+const toB64 = (buf: ArrayBuffer): string => 
+  btoa(Array.from(new Uint8Array(buf), b => String.fromCharCode(b)).join(''))
 
-function randomFastPin(): string {
-  const b = new Uint8Array(32)
-  crypto.getRandomValues(b)
-  return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
-}
+const fromB64 = (b64: string): ArrayBuffer => 
+  Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer
 
-function b64ToBuf(b64: string): ArrayBuffer {
-  const bin = atob(b64)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out.buffer
-}
-
-function bufToB64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf)
-  let s = ''
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
-  return btoa(s)
-}
-
-function uuidToUserHandle(uuid: string): Uint8Array {
+/** [ID_PROBE] :: Трансформация UUID в байтовую сигнатуру пользователя */
+function extractUserHandle(uuid: string): Uint8Array {
   const hex = uuid.replace(/-/g, '')
   const out = new Uint8Array(16)
   for (let i = 0; i < 16; i++) {
@@ -85,7 +56,9 @@ function uuidToUserHandle(uuid: string): Uint8Array {
   return out
 }
 
-export function largeBlobLikelySupported(): boolean {
+// --- PUBLIC_INTERFACE ---
+
+export function isBiometricsAvailable(): boolean {
   return (
     typeof window !== 'undefined' &&
     window.isSecureContext === true &&
@@ -93,193 +66,135 @@ export function largeBlobLikelySupported(): boolean {
   )
 }
 
-/**
- * After successful PIN unlock: re-wrap vault with a random fast PIN and store it via WebAuthn largeBlob.
- * Overwrites local vault blob — PIN-only unlock no longer works until recovery import.
+/** * [BIND_BIOMETRIC_AUTHORITY]
+ * Привязка аппаратного ключа к Сейфу. 
+ * Создает «эфемероидный» ПИН-код и прячет его внутри LargeBlob.
  */
-export async function enrollWebAuthnVaultUnlock(
-  userId: string,
-  displayName: string,
+export async function bindBiometricAuthority(
+  nodeId: string,
+  handle: string,
   pin: string
-): Promise<
-  | { ok: true; plaintext: string }
-  | { ok: false; error: string }
-> {
-  if (!largeBlobLikelySupported()) {
-    return { ok: false, error: 'WEBAUTHN_CONTEXT' }
-  }
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isBiometricsAvailable()) return { ok: false, error: 'HARDWARE_CONTEXT_FAULT' }
 
-  const blob = readVaultBlob(userId)
-  if (!blob) return { ok: false, error: 'NO_LOCAL_VAULT' }
+  // [1] ACCESS_VAULT :: Вскрытие Сейфа через ПИН-код для извлечения ключей
+  const container = readVaultBlob(nodeId)
+  if (!container) return { ok: false, error: 'VAULT_NOT_FOUND' }
 
-  let plain: string
+  let plainPayload: string
   try {
-    plain = await unwrapPrivateJwkWithPin(blob, pin)
+    plainPayload = await unwrapPrivateJwkWithPin(container, pin)
   } catch {
-    return { ok: false, error: 'UNWRAP_FAILED' }
+    return { ok: false, error: 'VAULT_UNWRAP_FAULT' }
   }
 
-  const fastPin = randomFastPin()
-  let bioBlob
+  // [2] GENERATE_EPHEMERAL_KEY :: Создание быстрого ПИН-кода для LargeBlob
+  const ephemeralPin = toB64(crypto.getRandomValues(new Uint8Array(32)))
+  const bioContainer = await wrapPrivateJwkWithPin(plainPayload, ephemeralPin)
+
+  // [3] HARDWARE_GENESIS :: Запрос создания аппаратного ключа
+  const challenge = crypto.getRandomValues(new Uint8Array(32))
+  
   try {
-    bioBlob = await wrapPrivateJwkWithPin(plain, fastPin)
-  } catch {
-    return { ok: false, error: 'WRAP_FAILED' }
-  }
-
-  const challenge = new Uint8Array(32)
-  crypto.getRandomValues(challenge)
-
-  const rpId = window.location.hostname
-
-  const createOptions: CredentialCreationOptions = {
-    publicKey: {
-      challenge: challenge as BufferSource,
-      rp: { name: 'Forest Messenger', id: rpId },
-      user: {
-        id: uuidToUserHandle(userId) as BufferSource,
-        name: displayName,
-        displayName: displayName,
+    const cred = (await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: 'Project 13', id: window.location.hostname },
+        user: {
+          id: extractUserHandle(nodeId),
+          name: handle,
+          displayName: handle,
+        },
+        pubKeyCredParams: [{ alg: -7, type: 'public-key' }], // ES256
+        authenticatorSelection: {
+          authenticatorAttachment: 'platform',
+          userVerification: 'required',
+          residentKey: 'preferred',
+        },
+        extensions: { largeBlob: { support: 'preferred' } } as any,
       },
-      pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
-      authenticatorSelection: {
-        authenticatorAttachment: 'platform',
+    })) as PublicKeyCredential
+
+    if (!cred) throw new Error('CREDENTIAL_GENESIS_ABORTED')
+
+    // [4] INJECT_BLOB :: Запись эфемероидного ключа в память узла
+    const assertion = (await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ id: cred.rawId, type: 'public-key', transports: ['internal'] }],
         userVerification: 'required',
-        residentKey: 'preferred',
+        extensions: { 
+          largeBlob: { write: new TextEncoder().encode(ephemeralPin) } 
+        } as any,
       },
-      extensions: {
-        largeBlob: { support: 'preferred' },
-      } as AuthenticationExtensionsClientInputs,
-    },
+    })) as PublicKeyCredential
+
+    const extResult = assertion.getClientExtensionResults() as any
+    if (extResult.largeBlob?.written === false) {
+      throw new Error('LARGE_BLOB_INJECTION_FAILED')
+    }
+
+    // [5] COMMIT_CHANGES :: Замена локального сейфа и фиксация метки
+    persistVault(nodeId, bioContainer)
+    const db = await openRegistry()
+    await db.put('registry', {
+      node_id: nodeId,
+      credentialIdB64: toB64(cred.rawId),
+    })
+
+    emitHapticPulse([30, 50, 30]) // Подтверждение привязки
+    return { ok: true }
+
+  } catch (err) {
+    console.error('>> [SYS.BIO] BIND_FAULT:', err)
+    return { ok: false, error: err instanceof Error ? err.message : 'UNKNOWN_FAULT' }
   }
-
-  let cred: PublicKeyCredential
-  try {
-    const c = await navigator.credentials.create(createOptions)
-    if (!c || c.type !== 'public-key') {
-      return { ok: false, error: 'WEBAUTHN_CREATE_FAILED' }
-    }
-    cred = c as PublicKeyCredential
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : 'WEBAUTHN_CREATE_FAILED',
-    }
-  }
-
-  const rawId = cred.rawId
-  const enc = new TextEncoder()
-  const fastBytes = enc.encode(fastPin)
-
-  const authChallenge = new Uint8Array(32)
-  crypto.getRandomValues(authChallenge)
-
-  const getOptions: CredentialRequestOptions = {
-    publicKey: {
-      challenge: authChallenge as BufferSource,
-      allowCredentials: [
-        { id: rawId as BufferSource, type: 'public-key', transports: ['internal'] },
-      ],
-      userVerification: 'required',
-      extensions: {
-        largeBlob: { write: fastBytes },
-      } as AuthenticationExtensionsClientInputs,
-    },
-  }
-
-  try {
-    const assertion = await navigator.credentials.get(getOptions)
-    if (!assertion) {
-      return { ok: false, error: 'LARGE_BLOB_WRITE_FAILED' }
-    }
-    const pkAssert = assertion as PublicKeyCredential
-    const ext = pkAssert.getClientExtensionResults() as {
-      largeBlob?: { written?: boolean }
-    }
-    if (ext.largeBlob?.written === false) {
-      return { ok: false, error: 'LARGE_BLOB_NOT_SUPPORTED' }
-    }
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? e.message : 'LARGE_BLOB_WRITE_FAILED',
-    }
-  }
-
-  persistVaultBlob(userId, bioBlob)
-
-  const idb = await metaDbOpen()
-  await idb.put('meta', {
-    userId,
-    credentialIdB64: bufToB64(cred.rawId),
-  } satisfies MetaRow)
-
-  return { ok: true, plaintext: plain }
 }
 
 /**
- * Unlock vault using platform authenticator + largeBlob read.
+ * [INTERCEPT_BIOMETRIC_SIGNAL]
+ * Вскрытие Сейфа через биометрический сканер узла.
  */
-export async function unlockVaultWithWebAuthn(
-  userId: string
-): Promise<string> {
-  const metaConn = await metaDbOpen()
-  const row = await metaConn.get('meta', userId)
-  if (!row?.credentialIdB64) {
-    throw new Error('WEBAUTHN_NOT_ENROLLED')
-  }
+export async function interceptBiometricSignal(nodeId: string): Promise<string> {
+  const db = await openRegistry()
+  const meta = await db.get('registry', nodeId)
+  if (!meta?.credentialIdB64) throw new Error('BIOMETRICS_NOT_BOUND')
 
-  const rawId = b64ToBuf(row.credentialIdB64)
-
-  const challenge = new Uint8Array(32)
-  crypto.getRandomValues(challenge)
-
-  const getOptions: CredentialRequestOptions = {
+  // [1] READ_HARDWARE_BLOB :: Извлечение эфемероидного ключа
+  const assertion = (await navigator.credentials.get({
     publicKey: {
-      challenge: challenge as BufferSource,
-      allowCredentials: [
-        {
-          id: new Uint8Array(rawId) as BufferSource,
-          type: 'public-key',
-          transports: ['internal'],
-        },
-      ],
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{
+        id: fromB64(meta.credentialIdB64),
+        type: 'public-key',
+        transports: ['internal'],
+      }],
       userVerification: 'required',
-      extensions: {
-        largeBlob: { read: true },
-      } as AuthenticationExtensionsClientInputs,
+      extensions: { largeBlob: { read: true } } as any,
     },
-  }
+  })) as PublicKeyCredential
 
-  const assertion = await navigator.credentials.get(getOptions)
-  if (!assertion || assertion.type !== 'public-key') {
-    throw new Error('WEBAUTHN_GET_FAILED')
-  }
+  const extResult = assertion.getClientExtensionResults() as any
+  const blobBuf = extResult.largeBlob?.blob
+  if (!blobBuf) throw new Error('LARGE_BLOB_READ_FAULT')
 
-  const pkAssert = assertion as PublicKeyCredential
-  const ext = pkAssert.getClientExtensionResults() as {
-    largeBlob?: { blob?: ArrayBuffer }
-  }
-  const blobBuf = ext.largeBlob?.blob
-  if (!blobBuf) {
-    throw new Error('LARGE_BLOB_READ_FAILED')
-  }
+  // [2] DECODE_EPHEMERAL_LINK :: Превращение блоба в ПИН-код
+  const ephemeralPin = new TextDecoder().decode(new Uint8Array(blobBuf))
+  
+  // [3] OPEN_VAULT :: Вскрытие контейнера
+  const container = readVaultBlob(nodeId)
+  if (!container) throw new Error('VAULT_OFFLINE')
 
-  const fastPin = new TextDecoder().decode(new Uint8Array(blobBuf))
-  const vault = readVaultBlob(userId)
-  if (!vault) throw new Error('NO_LOCAL_VAULT')
-
-  return unwrapPrivateJwkWithPin(vault, fastPin)
+  const plain = await unwrapPrivateJwkWithPin(container, ephemeralPin)
+  emitHapticPulse(20) // Подтверждение линка
+  return plain
 }
 
-export async function deleteWebAuthnMetaDb(): Promise<void> {
+/** [PURGE_BIO_REGISTRY] :: Аннигиляция биометрических меток */
+export async function purgeBioRegistry(nodeId?: string): Promise<void> {
   if (typeof indexedDB === 'undefined') return
-  metaDb = null
-  await new Promise<void>((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(META_DB)
-    req.onsuccess = () => resolve()
-    req.onerror = () => reject(req.error)
-  }).catch(() => {
-    /* ignore */
-  })
+  try {
+    const db = await openRegistry()
+    nodeId ? await db.delete('registry', nodeId) : await db.clear('registry')
+  } catch { /* Silence */ }
 }

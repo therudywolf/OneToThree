@@ -1,216 +1,144 @@
 /**
- * Persisted media preferences (localStorage) for WebRTC and capture.
- * Keys must stay stable — referenced by settings UI and hooks.
+ * PROJECT 13 :: SENSORS_PROBE_PROTOCOL
+ * Level: Hardware Layer (WebRTC / Media)
+ * Vibe: Clinical Pure / Terminal Noir
  */
 
-export const FM_CAMERA_ID = 'fm_camera_id'
-export const FM_MIC_ID = 'fm_mic_id'
-export const FM_SPEAKER_ID = 'fm_speaker_id'
-export const FM_NOISE_SUPPRESSION = 'fm_noise_suppression'
-export const FM_LOW_BANDWIDTH = 'fm_low_bandwidth'
+export const SENSOR_CAM_ID = 'p13_optics_id'
+export const SENSOR_MIC_ID = 'p13_audio_in_id'
+export const SENSOR_SPK_ID = 'p13_audio_out_id'
+export const SENSOR_NOISE_ISO = 'p13_noise_isolation'
+export const SENSOR_LOW_BND = 'p13_low_bandwidth_mode'
 
-export type MediaDevicePrefs = {
+export type SensorConfig = {
   cameraId: string | null
   micId: string | null
   speakerId: string | null
-  /** When true, echoCancellation + noiseSuppression are enabled in constraints. */
-  noiseSuppression: boolean
-  /** When true, use low-bandwidth video constraints for poor connections. */
+  /** Активация echoCancellation + noiseSuppression */
+  isIsolated: boolean
+  /** Форсированный режим низкого битрейта для нестабильных линков */
   lowBandwidth: boolean
 }
 
-function readLs(key: string): string | null {
+const readRaw = (key: string): string | null => {
   if (typeof window === 'undefined') return null
   try {
     const v = window.localStorage.getItem(key)
     return v && v.length > 0 ? v : null
-  } catch {
-    return null
-  }
+  } catch { return null }
 }
 
-function readBool(key: string, defaultTrue: boolean): boolean {
-  const v = readLs(key)
-  if (v === null) return defaultTrue
-  if (v === '0' || v === 'false') return false
+const readBool = (key: string, def: boolean): boolean => {
+  const v = readRaw(key)
+  if (v === null) return def
   return v === '1' || v === 'true'
 }
 
-export function loadMediaPrefs(): MediaDevicePrefs {
+/** [CALIBRATE] :: Снятие текущих показаний с хранилища */
+export function calibrateSensors(): SensorConfig {
   return {
-    cameraId: readLs(FM_CAMERA_ID),
-    micId: readLs(FM_MIC_ID),
-    speakerId: readLs(FM_SPEAKER_ID),
-    noiseSuppression: readBool(FM_NOISE_SUPPRESSION, true),
-    lowBandwidth: readBool(FM_LOW_BANDWIDTH, false),
+    cameraId: readRaw(SENSOR_CAM_ID),
+    micId: readRaw(SENSOR_MIC_ID),
+    speakerId: readRaw(SENSOR_SPK_ID),
+    isIsolated: readBool(SENSOR_NOISE_ISO, true),
+    lowBandwidth: readBool(SENSOR_LOW_BND, false),
   }
 }
 
-export function saveMediaPrefs(partial: Partial<MediaDevicePrefs>): void {
+/** [PERSIST] :: Запись конфигурации в локальный реестр */
+export function persistSensors(map: Partial<SensorConfig>): void {
   if (typeof window === 'undefined') return
   try {
-    if (partial.cameraId !== undefined) {
-      if (partial.cameraId)
-        window.localStorage.setItem(FM_CAMERA_ID, partial.cameraId)
-      else window.localStorage.removeItem(FM_CAMERA_ID)
+    if (map.cameraId !== undefined) {
+      map.cameraId ? localStorage.setItem(SENSOR_CAM_ID, map.cameraId) : localStorage.removeItem(SENSOR_CAM_ID)
     }
-    if (partial.micId !== undefined) {
-      if (partial.micId) window.localStorage.setItem(FM_MIC_ID, partial.micId)
-      else window.localStorage.removeItem(FM_MIC_ID)
+    if (map.micId !== undefined) {
+      map.micId ? localStorage.setItem(SENSOR_MIC_ID, map.micId) : localStorage.removeItem(SENSOR_MIC_ID)
     }
-    if (partial.speakerId !== undefined) {
-      if (partial.speakerId)
-        window.localStorage.setItem(FM_SPEAKER_ID, partial.speakerId)
-      else window.localStorage.removeItem(FM_SPEAKER_ID)
+    if (map.speakerId !== undefined) {
+      map.speakerId ? localStorage.setItem(SENSOR_SPK_ID, map.speakerId) : localStorage.removeItem(SENSOR_SPK_ID)
     }
-    if (partial.noiseSuppression !== undefined) {
-      window.localStorage.setItem(
-        FM_NOISE_SUPPRESSION,
-        partial.noiseSuppression ? 'true' : 'false'
-      )
+    if (map.isIsolated !== undefined) {
+      localStorage.setItem(SENSOR_NOISE_ISO, map.isIsolated ? 'true' : 'false')
     }
-    if (partial.lowBandwidth !== undefined) {
-      window.localStorage.setItem(
-        FM_LOW_BANDWIDTH,
-        partial.lowBandwidth ? 'true' : 'false'
-      )
+    if (map.lowBandwidth !== undefined) {
+      localStorage.setItem(SENSOR_LOW_BND, map.lowBandwidth ? 'true' : 'false')
     }
-  } catch {
-    /* quota / private mode */
-  }
+  } catch { /* Quota fault */ }
 }
 
-function deviceConstraint(deviceId: string | null | undefined) {
-  if (!deviceId) return undefined
-  return { exact: deviceId }
-}
-
-/**
- * Constraints for getUserMedia — uses saved device IDs and noise flags.
- * Enhanced with optimal quality settings that allow graceful degradation.
- */
-export function getUserMediaConstraints(input: {
+/** [GENERATE_CONSTRAINTS] :: Формирование протокола захвата */
+export function getCaptureProtocol(opts: {
   video: boolean
-  lowBandwidth?: boolean
+  forceLowBnd?: boolean
   hd?: boolean
 }): MediaStreamConstraints {
-  const { cameraId, micId, noiseSuppression } = loadMediaPrefs()
-  const audioProcessing = {
-    echoCancellation: noiseSuppression,
-    noiseSuppression: noiseSuppression,
+  const cfg = calibrateSensors()
+  
+  const audioContext: MediaTrackConstraints = {
+    deviceId: cfg.micId ? { exact: cfg.micId } : undefined,
+    echoCancellation: cfg.isIsolated,
+    noiseSuppression: cfg.isIsolated,
     autoGainControl: true,
   }
-  const mic = deviceConstraint(micId)
-  const audio: boolean | MediaTrackConstraints = mic
-    ? { deviceId: mic, ...audioProcessing }
-    : audioProcessing
 
-  if (!input.video) {
-    return { audio, video: false }
+  if (!opts.video) return { audio: audioContext, video: false }
+
+  const useHd = opts.hd ?? !cfg.lowBandwidth
+  const videoContext: MediaTrackConstraints = {
+    deviceId: cfg.cameraId ? { exact: cfg.cameraId } : undefined,
+    ...(useHd 
+      ? { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 }, frameRate: { ideal: 30 } }
+      : { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15 } }
+    )
   }
 
-  const useHd = input.hd ?? !input.lowBandwidth
-  const baseVideoConstraints: MediaTrackConstraints = !useHd
-    ? {
-        width: { ideal: 640, max: 640 },
-        height: { ideal: 360, max: 480 },
-        frameRate: { ideal: 15, max: 24 },
-      }
-    : {
-        width: { ideal: 1280, max: 1920 },
-        height: { ideal: 720, max: 1080 },
-        frameRate: { ideal: 30, max: 60 },
-      }
-
-  const cam = deviceConstraint(cameraId)
-  const video: boolean | MediaTrackConstraints = cam
-    ? { deviceId: cam, ...baseVideoConstraints }
-    : baseVideoConstraints
-
-  return { audio, video }
+  return { audio: audioContext, video: videoContext }
 }
 
-type MediaElementWithSink = HTMLMediaElement & {
-  setSinkId?: (id: string) => Promise<void>
-}
-
-/**
- * Route playback to the saved output device (Chrome/Edge; no-op elsewhere).
- */
-export async function applyPreferredAudioOutput(
-  el: HTMLMediaElement | null
-): Promise<void> {
+/** [ROUTE_OUTPUT] :: Направление потока на выбранный спикер */
+export async function applyAudioOutput(el: HTMLMediaElement | null): Promise<void> {
   if (!el || typeof window === 'undefined') return
-  const { speakerId } = loadMediaPrefs()
-  if (!speakerId) return
-  const sink = el as MediaElementWithSink
-  if (typeof sink.setSinkId !== 'function') return
+  const { speakerId } = calibrateSensors()
+  if (!speakerId || !('setSinkId' in el)) return
   try {
-    await sink.setSinkId(speakerId)
-  } catch {
-    /* NotAllowedError, unsupported sink, etc. */
+    await (el as any).setSinkId(speakerId)
+  } catch (err) {
+    console.error('>> [SYS.MEDIA] OUTPUT_ROUTING_FAULT:', err)
   }
 }
 
-/**
- * Switch camera between front/back (user/environment) without renegotiation.
- * Uses RTCRtpSender.replaceTrack() to swap the video track.
- * @param peerConnection - The RTCPeerConnection to modify
- * @param currentStream - The current MediaStream
- * @returns The new MediaStream with the swapped camera track, or null on error
- */
-export async function switchCamera(
-  peerConnection: RTCPeerConnection,
-  currentStream: MediaStream
+/** [CYCLE_OPTICS] :: Ротация камер (Front/Back) без разрыва сессии */
+export async function cycleOptics(
+  pc: RTCPeerConnection,
+  activeStream: MediaStream
 ): Promise<MediaStream | null> {
   try {
-    const videoTrack = currentStream.getVideoTracks()[0]
-    if (!videoTrack) {
-      console.warn('[media] No active video track to switch')
-      return null
+    const oldTrack = activeStream.getVideoTracks()[0]
+    if (!oldTrack) return null
+
+    const currentMode = oldTrack.getSettings().facingMode
+    const targetMode = currentMode === 'user' ? 'environment' : 'user'
+
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: targetMode }, width: { ideal: 1280 } },
+      audio: false
+    })
+
+    const newTrack = newStream.getVideoTracks()[0]
+    if (!newTrack) return null
+
+    const senders = pc.getSenders()
+    const videoSender = senders.find(s => s.track?.kind === 'video')
+    
+    if (videoSender) {
+      await videoSender.replaceTrack(newTrack)
     }
 
-    const facingMode = videoTrack.getSettings().facingMode
-    const newFacingMode = facingMode === 'user' ? 'environment' : 'user'
-
-    // Get new stream with swapped camera
-    const constraints: MediaStreamConstraints = {
-      video: {
-        facingMode: { exact: newFacingMode },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: false,
-    }
-
-    const newStream = await navigator.mediaDevices.getUserMedia(constraints)
-    const newVideoTrack = newStream.getVideoTracks()[0]
-
-    if (!newVideoTrack) {
-      console.warn('[media] Failed to get new video track')
-      return null
-    }
-
-    // Replace track in all senders
-    const senders = peerConnection.getSenders()
-    for (const sender of senders) {
-      if (sender.track?.kind === 'video') {
-        await sender.replaceTrack(newVideoTrack)
-        console.log(`[media] Camera switched to ${newFacingMode}`)
-      }
-    }
-
-    // Stop old track
-    videoTrack.stop()
-
-    // Update current stream: remove old video, add new video
-    const audioTracks = currentStream.getAudioTracks()
-    const updatedStream = new MediaStream([...audioTracks, newVideoTrack])
-
-    return updatedStream
-  } catch (e) {
-    console.error('[media] Camera switch error', e)
+    oldTrack.stop()
+    return new MediaStream([...activeStream.getAudioTracks(), newTrack])
+  } catch (err) {
+    console.error('>> [SYS.MEDIA] OPTICS_CYCLE_FAULT:', err)
     return null
   }
 }
-

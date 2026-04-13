@@ -2,105 +2,123 @@
 
 import Dexie, { type Table } from 'dexie'
 
-/** Default cap for decrypted media blobs (1 GiB). */
-export const MEDIA_CACHE_MAX_BYTES = 1024 * 1024 * 1024
+/**
+ * PROJECT 13 :: DIGITAL_DEN_STORAGE
+ * Level: Interface Layer (Local Cache)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
 
-/** Hard cap on row count so opening huge histories does not flood IndexedDB before byte trim runs. */
-export const MEDIA_CACHE_MAX_ENTRIES = 200
+/** Лимит «Норы»: 1 GiB для дешифрованных бинарных сегментов. */
+export const DEN_CAPACITY_LIMIT = 1024 * 1024 * 1024
+/** Максимальное количество записей, чтобы IndexedDB не захлебнулась. */
+export const DEN_ENTRY_LIMIT = 200
 
-export type MediaCacheRow = {
-  /** `messages.id` — one row per message attachment. */
+export type BinarySegmentRow = {
+  /** Связь с ID сообщения. */
   id: string
-  /** SHA-256 hex of decrypted payload (integrity / dedupe metadata). */
+  /** Отпечаток (SHA-256) для верификации целостности. */
   fileHash: string
   blob: Blob
   mimeType: string
   timestamp: number
 }
 
-class MediaCacheDexie extends Dexie {
-  media_cache!: Table<MediaCacheRow, string>
+class DigitalDenDexie extends Dexie {
+  segments!: Table<BinarySegmentRow, string>
 
   constructor() {
-    super('project13-media-cache')
+    super('p13-digital-den')
     this.version(1).stores({
-      media_cache: 'id, timestamp, fileHash',
+      segments: 'id, timestamp, fileHash',
     })
   }
 }
 
-const db = new MediaCacheDexie()
+const den = new DigitalDenDexie()
 
-async function sha256Hex(buf: ArrayBuffer): Promise<string> {
-  const h = await crypto.subtle.digest('SHA-256', buf)
-  return Array.from(new Uint8Array(h))
+/** [DIGITAL_FINGERPRINT] :: Генерация SHA-256 хэша для проверки данных */
+async function getFingerprint(buf: ArrayBuffer): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buf)
+  return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
 }
 
-/** Returns decrypted blob + mime if present. */
-export async function getCachedMedia(
+/** [EXTRACT] :: Извлечение сегмента из локальной памяти */
+export async function getCachedSegment(
   messageId: string
 ): Promise<{ blob: Blob; mimeType: string } | undefined> {
   if (typeof indexedDB === 'undefined') return undefined
-  const row = await db.media_cache.get(messageId)
+  
+  const row = await den.segments.get(messageId)
   if (!row?.blob) return undefined
+  
   return { blob: row.blob, mimeType: row.mimeType }
 }
 
-/** Persists decrypted media; enforces size cap (drops oldest first). */
-export async function setCachedMedia(
+/** [INJECT] :: Сохранение дешифрованного сегмента с проверкой лимитов */
+export async function setCachedSegment(
   messageId: string,
   blob: Blob,
   mimeType: string
 ): Promise<void> {
   if (typeof indexedDB === 'undefined') return
-  const ab = await blob.arrayBuffer()
-  const fileHash = await sha256Hex(ab)
-  await db.media_cache.put({
+  
+  const buffer = await blob.arrayBuffer()
+  const fileHash = await getFingerprint(buffer)
+  
+  await den.segments.put({
     id: messageId,
     fileHash,
     blob,
     mimeType,
     timestamp: Date.now(),
   })
-  await clearOldCache()
+  
+  await purgeOldSegments()
 }
 
-/**
- * Removes oldest entries until total size is under {@link MEDIA_CACHE_MAX_BYTES}.
- */
-export async function clearOldCache(
-  maxBytes: number = MEDIA_CACHE_MAX_BYTES,
-  maxEntries: number = MEDIA_CACHE_MAX_ENTRIES
+/** [PURGE_PROTOCOL] :: Очистка старых данных (FIFO) при превышении квот */
+export async function purgeOldSegments(
+  maxSize: number = DEN_CAPACITY_LIMIT,
+  maxCount: number = DEN_ENTRY_LIMIT
 ): Promise<void> {
   if (typeof indexedDB === 'undefined') return
-  let rows = await db.media_cache.orderBy('timestamp').toArray()
+  
+  let rows = await den.segments.orderBy('timestamp').toArray()
 
-  if (rows.length > maxEntries) {
-    const overflow = rows.length - maxEntries
-    for (let i = 0; i < overflow; i++) {
-      await db.media_cache.delete(rows[i].id)
-    }
-    rows = await db.media_cache.orderBy('timestamp').toArray()
+  // 1. Проверка лимита по количеству (Entries Cap)
+  if (rows.length > maxCount) {
+    const toDelete = rows.slice(0, rows.length - maxCount).map(r => r.id)
+    await den.segments.bulkDelete(toDelete)
+    rows = await den.segments.orderBy('timestamp').toArray()
   }
 
-  let total = rows.reduce((s, r) => s + (r.blob?.size ?? 0), 0)
-  if (total <= maxBytes) return
-  for (const r of rows) {
-    if (total <= maxBytes) break
-    await db.media_cache.delete(r.id)
-    total -= r.blob?.size ?? 0
+  // 2. Проверка лимита по объему (Byte Cap)
+  let currentSize = rows.reduce((acc, r) => acc + (r.blob?.size ?? 0), 0)
+  if (currentSize <= maxSize) return
+
+  const idsToPurge: string[] = []
+  for (const row of rows) {
+    if (currentSize <= maxSize) break
+    idsToPurge.push(row.id)
+    currentSize -= row.blob?.size ?? 0
+  }
+
+  if (idsToPurge.length > 0) {
+    await den.segments.bulkDelete(idsToPurge)
   }
 }
 
-export async function getDigitalDenUsageBytes(): Promise<number> {
+/** Снятие показаний о загруженности сектора */
+export async function getDenUsage(): Promise<number> {
   if (typeof indexedDB === 'undefined') return 0
-  const rows = await db.media_cache.toArray()
-  return rows.reduce((s, r) => s + (r.blob?.size ?? 0), 0)
+  const rows = await den.segments.toArray()
+  return rows.reduce((acc, r) => acc + (r.blob?.size ?? 0), 0)
 }
 
-export async function clearAllMediaCache(): Promise<void> {
+/** Полная стерилизация кэша */
+export async function wipeDigitalDen(): Promise<void> {
   if (typeof indexedDB === 'undefined') return
-  await db.media_cache.clear()
+  await den.segments.clear()
 }

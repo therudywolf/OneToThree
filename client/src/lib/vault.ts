@@ -1,8 +1,11 @@
 /**
- * PIN never leaves RAM except as PBKDF2 input. Wrapped private JWK lives in localStorage only.
+ * PROJECT 13 :: VAULT_CORE_PROTOCOL
+ * Level: Authority Layer (Secret Encapsulation)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
 const PBKDF2_ITERATIONS = 210_000
+const VAULT_PREFIX = 'p13:vault'
 
 export type VaultBlob = {
   saltB64: string
@@ -10,90 +13,63 @@ export type VaultBlob = {
   ciphertextB64: string
 }
 
-export function vaultStorageKey(userId: string): string {
-  return `forest:vault:${userId}`
-}
+/** [IDENT_RESOLVER] :: Пути к ячейкам памяти */
+const getSlot = (id: string) => `${VAULT_PREFIX}:stable:${id}`
+const getLoginSlot = (handle: string) => `${VAULT_PREFIX}:login:${handle.trim().toLowerCase()}`
 
-/** Vault blob keyed by login handle (before / without stable user id). */
-export function vaultLoginStorageKey(username: string): string {
-  return `forest:vault:login:${username.trim()}`
-}
-
-export function readVaultBlobByLoginUsername(username: string): VaultBlob | null {
-  if (typeof window === 'undefined') return null
-  const raw = localStorage.getItem(vaultLoginStorageKey(username))
-  if (!raw) return null
-  try {
-    return JSON.parse(raw) as VaultBlob
-  } catch {
-    return null
-  }
-}
-
-export function persistVaultBlobByLoginUsername(
-  username: string,
-  blob: VaultBlob
-): void {
-  localStorage.setItem(vaultLoginStorageKey(username), JSON.stringify(blob))
-}
+// --- STORAGE_INTERFACE ---
 
 export function readVaultBlob(userId: string): VaultBlob | null {
   if (typeof window === 'undefined') return null
-  const raw = localStorage.getItem(vaultStorageKey(userId))
+  const raw = localStorage.getItem(getSlot(userId))
   if (!raw) return null
-  try {
-    return JSON.parse(raw) as VaultBlob
-  } catch {
-    return null
-  }
+  try { return JSON.parse(raw) as VaultBlob } catch { return null }
 }
 
-export function persistVaultBlob(userId: string, blob: VaultBlob): void {
-  localStorage.setItem(vaultStorageKey(userId), JSON.stringify(blob))
+export function readVaultByLogin(username: string): VaultBlob | null {
+  if (typeof window === 'undefined') return null
+  const raw = localStorage.getItem(getLoginSlot(username))
+  if (!raw) return null
+  try { return JSON.parse(raw) as VaultBlob } catch { return null }
 }
 
-export function clearVaultBlob(userId: string): void {
-  localStorage.removeItem(vaultStorageKey(userId))
+export function persistVault(userId: string, blob: VaultBlob): void {
+  localStorage.setItem(getSlot(userId), JSON.stringify(blob))
 }
 
-export function clearVaultBlobByLoginUsername(username: string): void {
-  localStorage.removeItem(vaultLoginStorageKey(username))
+export function persistVaultByLogin(username: string, blob: VaultBlob): void {
+  localStorage.setItem(getLoginSlot(username), JSON.stringify(blob))
 }
 
-/** After login, mirror the same encrypted blob under the server user id. */
-export function mirrorVaultLoginToUserId(username: string, userId: string): void {
-  if (typeof window === 'undefined') return
-  const blob = readVaultBlobByLoginUsername(username)
-  if (blob) {
-    persistVaultBlob(userId, blob)
-  }
+export function wipeVault(userId: string): void {
+  localStorage.removeItem(getSlot(userId))
 }
 
-function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
+export function wipeVaultByLogin(username: string): void {
+  localStorage.removeItem(getLoginSlot(username))
 }
 
-function base64ToUint8(b64: string): Uint8Array {
-  const binary = atob(b64)
-  const out = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    out[i] = binary.charCodeAt(i)
-  }
-  return out
+/** [SYNC_LINK] :: Зеркалирование временного сейфа в стабильный узел после логина */
+export function linkLoginVaultToUser(username: string, userId: string): void {
+  const blob = readVaultByLogin(username)
+  if (blob) persistVault(userId, blob)
 }
 
-export async function deriveWrapKeyFromPin(
-  password: string,
-  salt: Uint8Array
-): Promise<CryptoKey> {
-  const enc = new TextEncoder()
-  const keyMaterial = await crypto.subtle.importKey(
+// --- BINARY_CONVERSION (STERILE_METHOD) ---
+
+const toB64 = (bytes: Uint8Array): string => 
+  btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''))
+
+const fromB64 = (b64: string): Uint8Array => 
+  Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+
+// --- CRYPTO_LOGIC ---
+
+/** [DERIVE_KEY] :: Выжигание ключа из ПИН-кода через PBKDF2 */
+export async function deriveWrapKey(pin: string, salt: Uint8Array): Promise<CryptoKey> {
+  const material = await crypto.subtle.importKey(
     'raw',
-    enc.encode(password) as BufferSource,
+    new TextEncoder().encode(pin),
     'PBKDF2',
     false,
     ['deriveKey']
@@ -101,50 +77,53 @@ export async function deriveWrapKeyFromPin(
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: salt as BufferSource,
+      salt,
       iterations: PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
-    keyMaterial,
+    material,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
   )
 }
 
+/** [WRAP] :: Инкапсуляция JWK-строки в шифрованный блоб */
 export async function wrapPrivateJwkWithPin(
-  privateJwkString: string,
+  jwkString: string,
   pin: string
 ): Promise<VaultBlob> {
   const salt = crypto.getRandomValues(new Uint8Array(16))
-  const wrapKey = await deriveWrapKeyFromPin(pin, salt)
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const enc = new TextEncoder()
-  const plain = enc.encode(privateJwkString)
+  const wrapKey = await deriveWrapKey(pin, salt)
+  
   const cipherBuf = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
+    { name: 'AES-GCM', iv },
     wrapKey,
-    plain as BufferSource
+    new TextEncoder().encode(jwkString)
   )
+
   return {
-    saltB64: uint8ToBase64(salt),
-    ivB64: uint8ToBase64(iv),
-    ciphertextB64: uint8ToBase64(new Uint8Array(cipherBuf)),
+    saltB64: toB64(salt),
+    ivB64: toB64(iv),
+    ciphertextB64: toB64(new Uint8Array(cipherBuf)),
   }
 }
 
+/** [UNWRAP] :: Вскрытие Сейфа и извлечение ключей */
 export async function unwrapPrivateJwkWithPin(
   blob: VaultBlob,
   pin: string
 ): Promise<string> {
-  const salt = base64ToUint8(blob.saltB64)
-  const iv = base64ToUint8(blob.ivB64)
-  const ciphertext = base64ToUint8(blob.ciphertextB64)
-  const wrapKey = await deriveWrapKeyFromPin(pin, salt)
-  const out = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
+  const salt = fromB64(blob.saltB64)
+  const iv = fromB64(blob.ivB64)
+  const cipher = fromB64(blob.ciphertextB64)
+  const wrapKey = await deriveWrapKey(pin, salt)
+
+  const plainBuf = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
     wrapKey,
-    ciphertext as BufferSource
+    cipher
   )
-  return new TextDecoder().decode(out)
+  return new TextDecoder().decode(plainBuf)
 }

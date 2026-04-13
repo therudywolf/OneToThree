@@ -3,27 +3,41 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-export type Locale = 'en' | 'ru'
+/**
+ * PROJECT 13 :: LINGUISTIC_PROTOCOL_CORE
+ * Level: Interface Layer (User Preference)
+ * Vibe: Clinical / Terminal Noir
+ */
 
-type LocaleState = {
-  locale: Locale
-  setLocale: (locale: Locale) => void
-  toggleLocale: () => void
+export type LocaleSegment = 'en' | 'ru'
+
+type LinguisticState = {
+  // [DATA_NODE]
+  module: LocaleSegment
+  
+  // [OPERATIONS]
+  setModule: (segment: LocaleSegment) => void
+  cycleProtocol: () => void
 }
 
-export const useLocaleStore = create<LocaleState>()(
+export const useLocaleStore = create<LinguisticState>()(
   persist(
     (set, get) => ({
-      locale: 'en',
-      setLocale: (locale) => set({ locale }),
-      toggleLocale: () =>
-        set({ locale: get().locale === 'en' ? 'ru' : 'en' }),
+      // Default node configuration
+      module: 'ru', // Ставим ru по дефолту, мы же в лесу
+
+      /** Установка конкретного языкового сегмента */
+      setModule: (segment) => set({ module: segment }),
+
+      /** Инверсия лингвистического протокола (Toggle) */
+      cycleProtocol: () =>
+        set({ module: get().module === 'en' ? 'ru' : 'en' }),
     }),
     {
-      name: 'fm_locale',
+      name: 'fm_linguistic_config',
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ locale: s.locale }),
+      // Изолируем только необходимые данные для сохранения
+      partialize: (state) => ({ module: state.module }),
     }
   )
 )
-

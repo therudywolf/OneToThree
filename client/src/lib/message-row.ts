@@ -1,7 +1,15 @@
+'use client'
+
 import { decryptInboundText, type ChatCryptoContext } from '@/lib/chat-crypto'
 import type { DecryptedMessage } from '@/types/chat'
 
-export type DbMessageRow = {
+/**
+ * PROJECT 13 :: DECODE_TRANSMISSION_ROW
+ * Level: Connection Layer (Data Interpretation)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
+export type RawSectorPacket = {
   id: string
   chat_id: string
   sender_id: string
@@ -14,45 +22,56 @@ export type DbMessageRow = {
   created_at: string
 }
 
-export async function rowToDecryptedMessage(
-  row: DbMessageRow,
+/**
+ * Превращает сырой пакет из БД в дешифрованный узел сообщения.
+ * Возвращает null, если целостность пакета нарушена.
+ */
+export async function decodeTransmissionRow(
+  packet: RawSectorPacket,
   privateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext
 ): Promise<DecryptedMessage | null> {
-  let plaintext = ''
-  if (
-    row.encrypted_content != null &&
-    row.encrypted_content !== '' &&
-    row.iv != null &&
-    row.iv !== ''
-  ) {
+  let payload = ''
+
+  // [1] INTEGRITY_CHECK :: Проверка наличия зашифрованной нагрузки
+  const hasCipher = !!(packet.encrypted_content?.trim() && packet.iv?.trim())
+
+  if (hasCipher) {
     try {
-      plaintext = await decryptInboundText(
+      // [2] DECRYPT_SEQUENCE :: Попытка вскрыть пакет
+      payload = await decryptInboundText(
         privateKey,
         cryptoCtx,
-        row.encrypted_content,
-        row.iv
+        packet.encrypted_content!,
+        packet.iv!
       )
-    } catch {
+    } catch (err) {
+      // [!] FAULT :: Пакет не может быть дешифрован текущим ключом
+      console.error('>> [SYS.CRYPTO] DECODE_FAULT:', packet.id)
       return null
     }
   }
 
-  if (!plaintext && !row.media_path) {
+  // [3] VOID_CHECK :: Если текста нет и медиа-линк отсутствует — узел бесполезен
+  if (!payload && !packet.media_path) {
     return null
   }
 
-  const mt = row.media_type
+  // [4] MEDIA_CALIBRATION :: Валидация типов медиа-сегментов
+  const mClass = packet.media_type
+  const validatedClass = (mClass === 'audio' || mClass === 'video' || mClass === 'image') 
+    ? mClass 
+    : null
+
   return {
-    id: row.id,
-    chat_id: row.chat_id,
-    sender_id: row.sender_id,
-    reply_to_id: row.reply_to_id ?? null,
-    plaintext,
-    created_at: row.created_at,
-    media_path: row.media_path,
-    media_type:
-      mt === 'audio' || mt === 'video' || mt === 'image' ? mt : null,
-    media_iv: row.media_iv,
+    id: packet.id,
+    chat_id: packet.chat_id,
+    sender_id: packet.sender_id,
+    reply_to_id: packet.reply_to_id ?? null,
+    plaintext: payload,
+    created_at: packet.created_at,
+    media_path: packet.media_path,
+    media_type: validatedClass,
+    media_iv: packet.media_iv,
   }
 }

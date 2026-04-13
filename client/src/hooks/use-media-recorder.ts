@@ -76,14 +76,14 @@ function pickVideoMime(): string {
   return ''
 }
 
-
 /**
- * MediaRecorder capture: prefers MP4 on Safari iOS; circle UX for video in UI.
+ * MediaRecorder capture: strict blob assembly, no race conditions.
  */
 export function useMediaRecorder() {
   const [isRecording, setIsRecording] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null)
+  
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
@@ -102,29 +102,33 @@ export function useMediaRecorder() {
       chunksRef.current = []
       setError(null)
       setPreviewStream(null)
-      if (
-        typeof navigator === 'undefined' ||
-        !navigator.mediaDevices?.getUserMedia
-      ) {
+
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         setError(MEDIA_ACCESS_ERROR_MESSAGE)
         return
       }
-      /** Must be the first await in this chain — call only from a direct user gesture (tap). */
+
       const stream = await navigator.mediaDevices.getUserMedia(
         getUserMediaConstraints({ video: false })
       )
+      
       streamRef.current = stream
       setPreviewStream(stream)
       kindRef.current = 'audio'
+      
       const rec = createMediaRecorderWithMimeFallback(
         stream,
         AUDIO_RECORDER_MIME_CANDIDATES
       )
+      
       recorderRef.current = rec
+      
       rec.ondataavailable = (e) => {
-        if (e.data.size) chunksRef.current.push(e.data)
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data)
+        }
       }
-      // Periodic chunks help Safari flush data before stop(); iOS often needs this.
+      
       rec.start(isIOSOrIPadOS() ? 250 : undefined)
       setIsRecording(true)
     } catch (err) {
@@ -143,22 +147,18 @@ export function useMediaRecorder() {
       chunksRef.current = []
       setError(null)
       setPreviewStream(null)
-      if (
-        typeof navigator === 'undefined' ||
-        !navigator.mediaDevices?.getUserMedia
-      ) {
+
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         setError(MEDIA_ACCESS_ERROR_MESSAGE)
         return
       }
+
       const base = getUserMediaConstraints({ video: true })
       const fromPrefs: MediaTrackConstraints =
         base.video && typeof base.video === 'object'
           ? (base.video as MediaTrackConstraints)
           : {}
-      /**
-       * First `await` below must stay tied to a direct user gesture. On iOS avoid
-       * over-constraining width/height/aspect (can fail or stall).
-       */
+          
       const videoConstraints: MediaTrackConstraints = isIOSOrIPadOS()
         ? {
             ...fromPrefs,
@@ -171,21 +171,29 @@ export function useMediaRecorder() {
             height: { ideal: 720 },
             aspectRatio: { ideal: 1 },
           }
+          
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: base.audio,
         video: videoConstraints,
       })
+      
       streamRef.current = stream
       setPreviewStream(stream)
       kindRef.current = 'video'
+      
       const rec = createMediaRecorderWithMimeFallback(
         stream,
         VIDEO_RECORDER_MIME_CANDIDATES
       )
+      
       recorderRef.current = rec
+      
       rec.ondataavailable = (e) => {
-        if (e.data.size) chunksRef.current.push(e.data)
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data)
+        }
       }
+      
       rec.start(isIOSOrIPadOS() ? 250 : undefined)
       setIsRecording(true)
     } catch (err) {
@@ -209,19 +217,25 @@ export function useMediaRecorder() {
       return null
     }
 
+    // Fast UI reset so buttons react instantly
+    setIsRecording(false)
+
     return new Promise((resolve) => {
-      const cleanup = () => {
+      rec.onstop = () => {
         const mime =
           rec.mimeType ||
           (kind === 'audio' ? pickAudioMime() : pickVideoMime())
+          
         const blob = new Blob(chunksRef.current, { type: mime })
+        
+        // Clear references AFTER the blob is safely created
         chunksRef.current = []
         recorderRef.current = null
         kindRef.current = null
+        
         stream?.getTracks().forEach((t) => t.stop())
         streamRef.current = null
         setPreviewStream(null)
-        setIsRecording(false)
 
         if (!blob.size) {
           resolve(null)
@@ -232,32 +246,22 @@ export function useMediaRecorder() {
           resolve(null)
           return
         }
+        
         resolve({ blob, mimeType: mime })
       }
 
-      rec.ondataavailable = (e) => {
-        if (e.data?.size) {
-          chunksRef.current.push(e.data)
-        }
-      }
-
-      rec.onstop = () => {
-        window.setTimeout(cleanup, 0)
-      }
-
       try {
-        if (rec.state === 'recording') {
+        if (rec.state !== 'inactive') {
           rec.requestData?.()
+          rec.stop()
         }
       } catch {
-        /* ignore */
+        resolve(null)
       }
-      rec.stop()
     })
   }, [])
 
   const clearError = useCallback(() => setError(null), [])
-
   const getStream = useCallback(() => streamRef.current, [])
 
   return {

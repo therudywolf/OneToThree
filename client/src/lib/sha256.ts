@@ -1,12 +1,23 @@
-/** SHA-256 hex digest of bytes (browser Web Crypto). */
-export async function sha256HexBytes(buf: ArrayBuffer): Promise<string> {
+/**
+ * PROJECT 13 :: SIGNAL_FINGERPRINT_PROTOCOL
+ * Level: Core Layer (Integrity Check)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
+/**
+ * [DIGEST_SIGNAL] :: Генерация SHA-256 хэша из бинарного потока.
+ * Используется для верификации сегментов данных перед инъекцией в кэш.
+ */
+export async function digestSignalHash(buf: ArrayBuffer): Promise<string> {
   const subtle = globalThis.crypto?.subtle
-  if (!subtle) throw new Error('NO_SUBTLE')
-  const hash = await subtle.digest('SHA-256', buf)
-  const bytes = new Uint8Array(hash)
-  let out = ''
-  for (let i = 0; i < bytes.length; i++) {
-    out += bytes[i].toString(16).padStart(2, '0')
-  }
-  return out
+  if (!subtle) throw new Error('SYS_FAULT :: CRYPTO_CORE_OFFLINE')
+
+  // [1] EXECUTE_DIGEST :: Снятие цифрового отпечатка
+  const hashBuffer = await subtle.digest('SHA-256', buf)
+
+  // [2] HEX_ENCODING :: Перевод байтов в шестнадцатеричную сигнатуру
+  // Используем Array.from для лаконичности и стерильности
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('')
 }

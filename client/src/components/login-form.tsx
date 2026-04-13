@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/components/auth/auth-provider'
 import { cryptoLogin, finalizeLoginWithTotp } from '@/lib/auth/crypto-login'
 import { ensureClientDeviceId } from '@/lib/api/auth'
@@ -14,21 +14,32 @@ import {
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 
+/**
+ * PROJECT 13 :: IDENTITY_PROBE_INTERFACE
+ * Level: Authority Layer (Public Entry)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
 export function LoginForm() {
   const { t } = useTranslation()
   const router = useRouter()
   const { user, loading: authLoading, refresh } = useAuth()
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [step, setStep] = useState<'credentials' | 'totp'>('credentials')
+
+  // [DATA_NODES]
+  const [handle, setHandle] = useState('')
+  const [pin, setPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  
+  const [mode, setMode] = useState<'ACCESS' | 'GENESIS'>('ACCESS')
+  const [stage, setStage] = useState<'IDENTITY' | 'MFA_SYNC'>('IDENTITY')
+  
   const [pendingToken, setPendingToken] = useState<string | null>(null)
   const [totpCode, setTotpCode] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [vaultImportOk, setVaultImportOk] = useState(false)
-  const submitLock = useRef(false)
+  const [errorLog, setErrorLog] = useState<string | null>(null)
+  const [isBusy, setIsBusy] = useState(false)
+  const [vaultLinkOk, setVaultLinkOk] = useState(false)
+  
+  const lock = useRef(false)
 
   useEffect(() => {
     ensureClientDeviceId()
@@ -36,23 +47,15 @@ export function LoginForm() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      if (typeof window === 'undefined') {
-        router.replace('/')
-        return
-      }
-      const code = new URLSearchParams(window.location.search)
-        .get('code')
-        ?.trim()
-      if (code) {
-        router.replace(`/join/${encodeURIComponent(code)}`)
-      } else {
-        router.replace('/')
-      }
+      const params = new URLSearchParams(window.location.search)
+      const inviteCode = params.get('code')?.trim()
+      router.replace(inviteCode ? `/join/${encodeURIComponent(inviteCode)}` : '/')
     }
   }, [authLoading, user, router])
 
-  function mapError(code: string): string {
-    const m: Record<string, string> = {
+  /** [ERROR_INTERCEPTOR] */
+  const mapFault = (code: string): string => {
+    const registry: Record<string, string> = {
       USERNAME_REQUIRED: t('login.usernameRequired'),
       PASSWORD_REQUIRED: t('login.passwordRequired'),
       PIN_MIN_8: t('login.pinMin8'),
@@ -60,383 +63,264 @@ export function LoginForm() {
       VAULT_ALREADY_EXISTS: t('login.vaultExists'),
       UNWRAP_FAILED: t('login.unwrapFailed'),
       INVALID_VAULT_FORMAT: t('login.invalidVaultFormat'),
-      LEGACY_VAULT_REQUIRES_REREGISTER: t('login.legacyVault'),
-      INVALID_SIGNING_KEY: t('login.invalidSigningKey'),
-      SIGN_FAILED: t('login.signFailed'),
-      CHALLENGE_FAILED: t('login.challengeFailed'),
-      VERIFY_FAILED: t('login.verifyFailed'),
-      UNAUTHORIZED: t('login.unauthorized'),
-      NO_CHALLENGE: t('login.noChallenge'),
-      NONCE_MISMATCH: t('login.nonceMismatch'),
-      SIGNATURE_INVALID: t('login.signatureInvalid'),
-      PUBLIC_KEY_REQUIRED: t('login.publicKeyRequired'),
-      PUBLIC_KEY_CONFLICT: t('login.publicKeyConflict'),
-      USERNAME_TAKEN: t('login.usernameTaken'),
-      INVALID_BODY: t('login.invalidBody'),
-      INVALID_USERNAME_FORMAT: t('login.invalidUsernameFormat'),
-      USERNAME_RESERVED: t('login.usernameReserved'),
       TOTP_INVALID: t('login.totpInvalid'),
-      INVALID_PENDING_TOKEN: t('login.totpPendingInvalid'),
-      TOTP_VERIFY_FAILED: t('login.totpVerifyFailed'),
-      CLIENT_DEVICE_ID_REQUIRED: t('login.clientDeviceRequired'),
       DEVICE_REVOKED: t('login.deviceRevoked'),
     }
-    return m[code] ?? code.replace(/_/g, ' ')
+    return registry[code] ?? code.replace(/_/g, ' ')
   }
 
-  function handlePreLoginVaultImport() {
+  /** [VAULT_INTEGRATION] :: Импорт существующего крипто-ядра */
+  const handleVaultImport = () => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = '.json,.key,application/json'
+    input.accept = '.json,.key'
     input.onchange = async () => {
       const file = input.files?.[0]
       if (!file) return
-      setError(null)
-      setVaultImportOk(false)
+      setErrorLog(null)
       try {
-        const text = await file.text()
-        const data = JSON.parse(text) as {
-          userId?: string
-          username?: string
-          vault?: VaultBlob
-        }
-        if (
-          !data.vault?.saltB64 ||
-          !data.vault?.ivB64 ||
-          !data.vault?.ciphertextB64
-        ) {
-          setError(t('settings.invalidVaultFile'))
-          return
-        }
-        const fromFile =
-          typeof data.username === 'string' ? data.username.trim() : ''
-        const fromForm = username.trim()
-        let nick = fromFile
-          ? parseNickname(fromFile)
-          : ({ ok: false, error: 'INVALID_USERNAME_FORMAT' } as const)
-        if (!nick.ok && fromForm) {
-          nick = parseNickname(fromForm)
-        }
-        if (!nick.ok) {
-          if (!fromFile && !fromForm) {
-            setError(t('login.vaultImportHandleMissing'))
-          } else {
-            setError(mapError(nick.error))
-          }
-          return
-        }
+        const data = JSON.parse(await file.text()) as { username?: string; vault?: VaultBlob }
+        if (!data.vault?.ciphertextB64) throw new Error('INVALID_STRUCTURE')
+        
+        const nick = parseNickname(data.username?.trim() || handle.trim())
+        if (!nick.ok) throw new Error(nick.error)
+
         persistVaultBlobByLoginUsername(nick.value, data.vault)
-        setUsername(nick.value)
-        setVaultImportOk(true)
+        setHandle(nick.value)
+        setVaultLinkOk(true)
       } catch {
-        setError(t('settings.importFailed'))
+        setErrorLog(t('settings.importFailed'))
       }
     }
     input.click()
   }
 
-  function resetTotpStep() {
-    setStep('credentials')
-    setPendingToken(null)
-    setTotpCode('')
-  }
-
-  async function handleSubmitCredentials(e: React.FormEvent) {
+  const execAuthProtocol = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (submitLock.current || busy) return
-    submitLock.current = true
-    setError(null)
-    setBusy(true)
+    if (lock.current || isBusy) return
+    lock.current = true
+    setErrorLog(null)
+    setIsBusy(true)
+
     try {
-      if (mode === 'register' && password !== confirmPassword) {
-        setError(t('login.passwordMismatch'))
+      if (mode === 'GENESIS' && pin !== confirmPin) {
+        setErrorLog(t('login.passwordMismatch'))
         return
       }
-      const result = await cryptoLogin({ username, password, mode })
-      if (result.ok === 'needs_2fa') {
-        setPendingToken(result.pendingToken)
-        setStep('totp')
+
+      const res = await cryptoLogin({ 
+        username: handle, 
+        password: pin, 
+        mode: mode === 'ACCESS' ? 'login' : 'register' 
+      })
+
+      if (res.ok === 'needs_2fa') {
+        setPendingToken(res.pendingToken)
+        setStage('MFA_SYNC')
         return
       }
-      if (!result.ok) {
-        setError(mapError(result.error))
+
+      if (!res.ok) {
+        setErrorLog(mapFault(res.error))
         return
       }
+
       await refresh()
       router.refresh()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'UNKNOWN_ERROR')
+    } catch (err: any) {
+      setErrorLog(err.message || 'SYS_FAULT')
     } finally {
-      setBusy(false)
-      submitLock.current = false
+      setIsBusy(false)
+      lock.current = false
     }
   }
 
-  async function handleSubmitTotp(e: React.FormEvent) {
+  const execMfaSync = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (submitLock.current || busy || !pendingToken) return
+    if (lock.current || isBusy || !pendingToken) return
     const digits = totpCode.replace(/\D/g, '').slice(0, 6)
-    if (digits.length !== 6) {
-      setError(t('login.totpSixDigits'))
-      return
-    }
-    submitLock.current = true
-    setError(null)
-    setBusy(true)
+    
+    lock.current = true
+    setErrorLog(null)
+    setIsBusy(true)
+
     try {
       const r = await finalizeLoginWithTotp({
         pendingToken,
         code: digits,
-        canonicalHandle: username.trim(),
+        canonicalHandle: handle.trim(),
       })
       if (!r.ok) {
-        setError(mapError(r.error))
+        setErrorLog(mapFault(r.error))
         return
       }
       await refresh()
       router.refresh()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'UNKNOWN_ERROR')
+    } catch (err: any) {
+      setErrorLog(err.message || 'MFA_FAULT')
     } finally {
-      setBusy(false)
-      submitLock.current = false
+      setIsBusy(false)
+      lock.current = false
     }
   }
 
-  if (authLoading) {
-    return (
-      <div className="terminal-panel mx-auto max-w-md p-6 font-mono text-xs text-neon-cyan">
-        {t('login.authLoading')}
-      </div>
-    )
-  }
-  if (user) {
-    return null
-  }
-
-  if (step === 'totp') {
-    return (
-      <motion.form
-        onSubmit={(ev: React.FormEvent<HTMLFormElement>) =>
-          void handleSubmitTotp(ev)
-        }
-        className="terminal-panel mx-auto max-w-md space-y-6"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-      >
-        <div className="space-y-1 border-b border-neon-red/40 pb-4">
-          <p className="text-xs text-neon-cyan">[AUTH] :: {t('login.totpTitle')}</p>
-          <p className="text-[10px] uppercase tracking-[0.3em] text-red-700">
-            {t('login.totpSubtitle')}
-          </p>
-        </div>
-        <div>
-          <label htmlFor="totp" className="terminal-label">
-            &gt; {t('login.totpCodeLabel')}
-          </label>
-          <input
-            id="totp"
-            name="totp"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            value={totpCode}
-            onChange={(e) =>
-              setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))
-            }
-            className="terminal-input tracking-[0.5em]"
-            placeholder="000000"
-            aria-label={t('login.totpCodeLabel')}
-          />
-        </div>
-        {error ? (
-          <p className="border border-neon-red bg-black px-2 py-1 font-mono text-xs text-neon-red">
-            [!] {error}
-          </p>
-        ) : null}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <TerminalGlitchButton type="submit" disabled={busy}>
-            [ {t('login.totpSubmit')} ]
-          </TerminalGlitchButton>
-          <button
-            type="button"
-            onClick={() => {
-              resetTotpStep()
-              setError(null)
-            }}
-            className="rounded-none border border-transparent px-2 py-1 text-left font-mono text-xs uppercase tracking-widest text-neon-cyan underline-offset-4 hover:text-neon-red hover:underline"
-          >
-            :: {t('login.totpBack')}
-          </button>
-        </div>
-      </motion.form>
-    )
-  }
+  if (authLoading) return (
+    <div className="border border-neutral-900 bg-black p-6 font-mono text-[10px] uppercase tracking-[0.4em] text-zinc-600 animate-pulse">
+      :: {t('login.authLoading')}
+    </div>
+  )
 
   return (
-    <motion.form
-      onSubmit={(ev: React.FormEvent<HTMLFormElement>) =>
-        void handleSubmitCredentials(ev)
-      }
-      className={`terminal-panel mx-auto space-y-6 ${
-        mode === 'register' ? 'max-w-2xl' : 'max-w-md'
-      }`}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35 }}
-    >
-      <div className="space-y-1 border-b border-neon-red/40 pb-4">
-        <p className="text-xs text-neon-cyan">[AUTH] CHALLENGE–RESPONSE</p>
-        <p className="text-[10px] uppercase tracking-[0.3em] text-red-700">
-          ECDSA P-256 · KEYS STAY ON DEVICE
-        </p>
-      </div>
-
-      {mode === 'register' ? (
-        <section
-          className="border border-neon-cyan/30 bg-black/60"
-          aria-labelledby="tos-register-heading"
+    <AnimatePresence mode="wait">
+      {stage === 'MFA_SYNC' ? (
+        <motion.form
+          key="mfa"
+          onSubmit={execMfaSync}
+          className="relative w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl"
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
         >
-          <h2
-            id="tos-register-heading"
-            className="border-b border-neon-cyan/25 px-3 py-2 font-mono text-[11px] uppercase tracking-[0.25em] text-neon-red"
-          >
-            {t('login.tosRegisterTitle')}
-          </h2>
-          <div className="max-h-[min(52vh,30rem)] overflow-y-auto px-3 py-3 font-mono text-[10px] leading-relaxed text-red-800/95">
-            {t('login.tosRegisterBody')
-              .split('\n\n')
-              .map((para, i) => (
-                <p key={i} className="mb-3 last:mb-0">
-                  {para}
-                </p>
-              ))}
+          <header className="mb-8 border-b border-neutral-900 pb-4">
+            <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">:: MFA_SYNC_REQUIRED</p>
+          </header>
+          
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-zinc-500">&gt; {t('login.totpCodeLabel')}</label>
+              <input
+                id="totp"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                className="w-full bg-zinc-950 border border-neutral-900 p-3 font-mono text-xl tracking-[0.6em] text-neon-cyan text-center outline-none focus:border-neon-cyan/50"
+                placeholder="000000"
+              />
+            </div>
+            
+            <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
+              [ {t('login.totpSubmit')} ]
+            </TerminalGlitchButton>
+
+            <button
+              type="button"
+              onClick={() => setStage('IDENTITY')}
+              className="w-full text-[9px] uppercase tracking-widest text-zinc-700 hover:text-neon-red"
+            >
+              // ABORT_MFA_SYNC
+            </button>
           </div>
-        </section>
-      ) : null}
+        </motion.form>
+      ) : (
+        <motion.form
+          key="identity"
+          onSubmit={execAuthProtocol}
+          className={`relative w-full border border-neutral-900 bg-black p-8 shadow-2xl transition-all duration-500 ${mode === 'GENESIS' ? 'max-w-xl' : 'max-w-sm'}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
+          
+          <header className="mb-8 border-b border-neutral-900 pb-4">
+            <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">:: {mode === 'ACCESS' ? 'NODE_ACCESS_PROTOCOL' : 'IDENTITY_GENESIS'}</p>
+            <p className="mt-1 text-[8px] text-zinc-600 tracking-widest">ECDSA P-256 // ZERO-TRUST // NON-CUSTODIAL</p>
+          </header>
 
-      <div>
-        <label htmlFor="username" className="terminal-label">
-          &gt; {t('login.handleLabel')}
-        </label>
-        <input
-          id="username"
-          name="username"
-          type="text"
-          autoComplete="username"
-          required
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          className="terminal-input"
-          placeholder={t('login.handlePlaceholder')}
-        />
-      </div>
+          <div className="space-y-6">
+            {mode === 'GENESIS' && (
+              <div className="mb-6 border border-zinc-900 bg-zinc-950/50 p-4">
+                <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">// TERMS_OF_SERVICE</p>
+                <div className="max-h-32 overflow-y-auto text-[9px] leading-relaxed text-zinc-500 pr-2 custom-scrollbar">
+                  {t('login.tosRegisterBody')}
+                </div>
+              </div>
+            )}
 
-      <div>
-        <label htmlFor="password" className="terminal-label">
-          &gt; {mode === 'register' ? 'Master Password (Vault Key)' : 'Enter Master Password'}
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete={
-            mode === 'login' ? 'current-password' : 'new-password'
-          }
-          required
-          minLength={mode === 'register' ? 8 : 1}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="terminal-input"
-          placeholder="••••••••"
-        />
-      </div>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[9px] uppercase tracking-widest text-zinc-500">&gt; HANDLE</label>
+                <input
+                  type="text"
+                  required
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-cyan/50"
+                  placeholder="@handle"
+                />
+              </div>
 
-      {mode === 'register' ? (
-        <div>
-          <label htmlFor="confirmPassword" className="terminal-label">
-            &gt; Confirm Master Password
-          </label>
-          <input
-            id="confirmPassword"
-            name="confirmPassword"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            className="terminal-input"
-            placeholder="••••••••"
-          />
-        </div>
-      ) : null}
+              <div className="space-y-2">
+                <label className="text-[9px] uppercase tracking-widest text-zinc-500">&gt; MASTER_PIN</label>
+                <input
+                  type="password"
+                  required
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-red/50"
+                  placeholder="••••••••"
+                />
+              </div>
 
-      {mode === 'register' ? (
-        <div className="border border-red-500/50 bg-red-950/20 px-3 py-2 font-mono text-xs text-red-400">
-          <div className="flex items-center gap-2">
-            <span className="text-red-500">⚠</span>
-            <span className="uppercase tracking-widest text-red-300">ОСТОРОЖНО</span>
+              {mode === 'GENESIS' && (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                  <label className="text-[9px] uppercase tracking-widest text-zinc-500">&gt; CONFIRM_PIN</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPin}
+                    onChange={(e) => setConfirmPin(e.target.value)}
+                    className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-red/50"
+                    placeholder="••••••••"
+                  />
+                </div>
+              )}
+            </div>
+
+            {mode === 'GENESIS' && (
+              <div className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
+                <span className="text-neon-red font-bold">WARNING:</span> ПАРОЛЬ ШИФРУЕТ VAULT ЛОКАЛЬНО. СЕРВЕР НЕ ИМЕЕТ ДОСТУПА. ПОТЕРЯ ПАРОЛЯ = ПОТЕРЯ ВСЕЙ ИСТОРИИ.
+              </div>
+            )}
+
+            {errorLog && (
+              <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono uppercase">
+                [!] FAULT: {errorLog}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-4 pt-4">
+              <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
+                {mode === 'ACCESS' ? '[ INITIALIZE_LINK ]' : '[ EXECUTE_GENESIS ]'}
+              </TerminalGlitchButton>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS')
+                  setErrorLog(null)
+                }}
+                className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors"
+              >
+                // {mode === 'ACCESS' ? 'INIT_NEW_NODE' : 'ACCESS_EXISTING_VAULT'}
+              </button>
+            </div>
+
+            {mode === 'ACCESS' && (
+              <div className="mt-6 border-t border-neutral-900 pt-6">
+                <button
+                  type="button"
+                  onClick={handleVaultImport}
+                  className="w-full border border-neutral-800 bg-zinc-950 py-2 text-[9px] uppercase tracking-widest text-zinc-500 hover:border-neon-cyan hover:text-neon-cyan transition-all"
+                >
+                  [ IMPORT_CRYPT_KEY ]
+                </button>
+                {vaultLinkOk && <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">:: VAULT_LINK_ESTABLISHED</p>}
+              </div>
+            )}
           </div>
-          <p className="mt-1 leading-relaxed">
-            Этот пароль локально шифрует ваш крипто-сейф (Vault). Сервер не имеет к нему доступа. При утере пароля восстановление истории переписок НЕВОЗМОЖНО.
-          </p>
-        </div>
-      ) : null}
-
-      {error ? (
-        <p className="border border-neon-red bg-black px-2 py-1 font-mono text-xs text-neon-red">
-          [!] {error}
-        </p>
-      ) : null}
-
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <TerminalGlitchButton 
-          type="submit" 
-          disabled={
-            busy || 
-            (mode === 'register' && (password !== confirmPassword || password.length < 8 || confirmPassword.length < 8))
-          }
-        >
-          {mode === 'login' ? '[ LOGIN ]' : '[ REGISTER ]'}
-        </TerminalGlitchButton>
-        <button
-          type="button"
-          onClick={() => {
-            setMode(mode === 'login' ? 'register' : 'login')
-            setConfirmPassword('')
-            setError(null)
-            resetTotpStep()
-          }}
-          className="rounded-none border border-transparent px-2 py-1 text-left font-mono text-xs uppercase tracking-widest text-neon-cyan underline-offset-4 hover:text-neon-red hover:underline"
-        >
-          {mode === 'login'
-            ? `:: ${t('login.newDevice')}`
-            : `:: ${t('login.existingVault')}`}
-        </button>
-      </div>
-
-      {mode === 'login' ? (
-        <div className="border-t border-zinc-800 pt-4">
-          <p className="mb-2 text-[9px] uppercase tracking-widest text-zinc-500">
-            {t('login.vaultRecoveryTitle')}
-          </p>
-          <button
-            type="button"
-            onClick={handlePreLoginVaultImport}
-            className="w-full border border-zinc-700 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan"
-          >
-            [ {t('login.vaultRecoveryImport')} ]
-          </button>
-          {vaultImportOk ? (
-            <p className="mt-2 font-mono text-[10px] text-neon-cyan">
-              :: {t('login.vaultRecoveryOk')}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-    </motion.form>
+        </motion.form>
+      )}
+    </AnimatePresence>
   )
 }

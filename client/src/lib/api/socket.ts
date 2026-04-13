@@ -117,6 +117,74 @@ export type WsInboundMessage =
       device_id?: string
       at?: string
     }
+  | {
+      type: 'group_call:participant_list'
+      room_id: string
+      participants: Array<{
+        userId: string
+        username: string
+        joinedAt: number
+        isMuted: boolean
+        isVideoOff: boolean
+      }>
+    }
+  | {
+      type: 'group_call:member_join'
+      room_id: string
+      user_id: string
+      username: string
+    }
+  | {
+      type: 'group_call:member_leave'
+      room_id: string
+      user_id: string
+    }
+  | {
+      type: 'group_call:offer'
+      room_id: string
+      from_user_id: string
+      sdp: string
+      is_video: boolean
+    }
+  | {
+      type: 'group_call:answer'
+      room_id: string
+      from_user_id: string
+      sdp: string
+    }
+  | {
+      type: 'group_call:ice'
+      room_id: string
+      from_user_id: string
+      candidate: unknown
+    }
+  | {
+      type: 'group_call:mute'
+      room_id: string
+      user_id: string
+      is_muted: boolean
+    }
+  | {
+      type: 'group_call:video_toggle'
+      room_id: string
+      user_id: string
+      is_video_off: boolean
+    }
+  | {
+      type: 'group_call:speaking'
+      room_id: string
+      user_id: string
+      is_speaking: boolean
+    }
+  | {
+      type: 'group_call:active'
+      room_id: string
+      participant_count: number
+    }
+  | {
+      type: 'group_call:ended'
+      room_id: string
+    }
   | { type: 'error'; error: string }
 
 class FmSocketClient {

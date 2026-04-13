@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { Fingerprint, ScanFace } from 'lucide-react'
 import {
   exportEcdhPublicJwkFromPrivateKeyString,
   importEcdhPrivateKey,
@@ -23,6 +24,16 @@ import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { vibrateShort } from '@/lib/vibrate'
 import { useTranslation } from '@/hooks/use-translation'
+import { isIOSOrIPadOS } from '@/lib/ios'
+
+/** Detect if the device likely uses Face ID (iOS) vs fingerprint (Android/other) */
+function useBiometricIcon() {
+  const [isApple, setIsApple] = useState(false)
+  useEffect(() => {
+    setIsApple(isIOSOrIPadOS())
+  }, [])
+  return isApple ? ScanFace : Fingerprint
+}
 
 type Props = {
   userId: string
@@ -32,11 +43,13 @@ type Props = {
 export function VaultModal({ userId, displayHandle }: Props) {
   const { t } = useTranslation()
   const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
+  const BiometricIcon = useBiometricIcon()
 
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [bioEnrolled, setBioEnrolled] = useState(false)
+  const [showPinFallback, setShowPinFallback] = useState(false)
 
   useEffect(() => {
     void hasWebAuthnVaultMeta(userId).then(setBioEnrolled)
@@ -163,10 +176,10 @@ export function VaultModal({ userId, displayHandle }: Props) {
           </p>
         </header>
 
-        {bioEnrolled ? (
+        {bioEnrolled && !showPinFallback ? (
           <div className="space-y-5">
             <p className="border-l-2 border-neon-cyan/50 bg-neon-cyan/5 pl-3 py-2 font-mono text-[9px] uppercase leading-relaxed tracking-widest text-neon-cyan/80">
-              Biometric unlock available.
+              {t('vault.biometricAvailable')}
             </p>
             <TerminalGlitchButton
               type="button"
@@ -174,8 +187,18 @@ export function VaultModal({ userId, displayHandle }: Props) {
               onClick={() => void handleBiometricUnlock()}
               className="w-full"
             >
-              {t('login.signIn')}
+              <span className="inline-flex items-center gap-2">
+                <BiometricIcon className="h-4 w-4" />
+                {t('vault.unlockBiometric')}
+              </span>
             </TerminalGlitchButton>
+            <button
+              type="button"
+              onClick={() => setShowPinFallback(true)}
+              className="w-full border border-zinc-700 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500 transition-colors hover:border-neon-cyan/50 hover:text-neon-cyan/70"
+            >
+              {t('vault.usePinInstead')}
+            </button>
             {error ? (
               <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
                 {error}
@@ -208,6 +231,19 @@ export function VaultModal({ userId, displayHandle }: Props) {
               <TerminalGlitchButton type="submit" disabled={busy} className="w-full">
                 {t('login.signIn')}
               </TerminalGlitchButton>
+              {bioEnrolled && showPinFallback ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => { setShowPinFallback(false); setError(null) }}
+                  className="w-full border border-neon-cyan/50 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <BiometricIcon className="h-3.5 w-3.5" />
+                    {t('vault.unlockBiometric')}
+                  </span>
+                </button>
+              ) : null}
               {showBioSetup && !bioEnrolled ? (
                 <button
                   type="button"
@@ -215,7 +251,10 @@ export function VaultModal({ userId, displayHandle }: Props) {
                   onClick={() => void handleEnrollBiometrics()}
                   className="w-full border border-neon-red/50 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
                 >
-                  Biometrics
+                  <span className="inline-flex items-center gap-2">
+                    <BiometricIcon className="h-3.5 w-3.5" />
+                    {t('vault.enableBiometric')}
+                  </span>
                 </button>
               ) : null}
             </div>

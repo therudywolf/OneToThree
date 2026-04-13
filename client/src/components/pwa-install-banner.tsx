@@ -19,7 +19,7 @@ function isIosSafariLike(): boolean {
 }
 
 export function PwaInstallBanner() {
-  const { canNativeInstall, promptInstall, clearDeferred } = usePwaInstall()
+  const { isInstallable: canNativeInstall, triggerIntegration: promptInstall, purgeIntegration: clearDeferred } = usePwaInstall()
   const [dismissed, setDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
 

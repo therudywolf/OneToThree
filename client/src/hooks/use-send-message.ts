@@ -90,5 +90,7 @@ export function useTransmissionDispatcher(cryptoCtx: ChatCryptoContext | null) {
     ]
   )
 
-  return { dispatchTransmission }
+  return { dispatchTransmission, sendText: dispatchTransmission }
 }
+
+export const useSendMessage = useTransmissionDispatcher

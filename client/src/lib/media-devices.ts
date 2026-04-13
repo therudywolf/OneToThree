@@ -149,3 +149,4 @@ export const loadMediaPrefs = calibrateSensors
 export const saveMediaPrefs = persistSensors
 export const applyPreferredAudioOutput = applyAudioOutput
 export const getDigitalDenUsageBytes = getDenUsage
+export const getUserMediaConstraints = getCaptureProtocol

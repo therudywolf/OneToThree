@@ -632,6 +632,51 @@ The administration reserves the right to remove any account without warning.`,
   // [RESPONSIVE]
   'responsive.memberPanel': 'Members',
   'responsive.closeMemberPanel': 'Close member panel',
+
+  // [MEDIA PREVIEW]
+  'mediaPreview.title': 'Send File',
+  'mediaPreview.captionPlaceholder': 'Add a caption...',
+  'mediaPreview.send': 'Send',
+  'mediaPreview.cancel': 'Cancel',
+  'mediaPreview.fileInfo': 'File',
+  'mediaPreview.size': 'Size',
+
+  // [GROUP DESCRIPTION TOOLTIP]
+  'group.publicHintChecked': 'Open group \u2014 the group will have a public link, anyone with the link can join.',
+  'group.publicHintUnchecked': 'Private group \u2014 members by invitation only.',
+
+  // [QR SCANNER]
+  'login.qrScanTitle': 'Scan QR Code',
+  'login.qrScanHint': 'Point your camera at the QR code on the other device.',
+  'login.qrScanStart': 'Scan QR',
+  'login.qrScanStop': 'Stop Scanner',
+  'login.qrScanNoCamera': 'Camera unavailable. Check permissions.',
+  'login.qrScanProcessing': 'QR code detected, connecting...',
+
+  // [ONBOARDING WELCOME]
+  'welcome.title': 'OneToThree',
+  'welcome.subtitle': 'Self-hosted E2EE messenger. All messages are encrypted on your device. The server never sees the content of your conversations.',
+  'welcome.featureE2e': 'End-to-end encryption',
+  'welcome.featureSelfHosted': 'Self-hosted',
+  'welcome.featureNoTracking': 'No tracking',
+  'welcome.licenseLink': 'License (MIT)',
+  'welcome.continue': 'Continue',
+
+  // [ACCOUNT PASSWORD EXPLANATIONS]
+  'login.accountPasswordExplain': 'Checked by the server. Used to authenticate your identity.',
+  'login.vaultPasswordExplain': 'Protects your private encryption keys locally. Never sent to the server. If forgotten \u2014 keys will be inaccessible.',
+
+  // [SETTINGS - CHANGE ACCOUNT PASSWORD]
+  'settings.changeAccountPasswordTitle': 'Change Account Password',
+  'settings.changeAccountPasswordHint': 'Update the password used to sign in to your account.',
+  'settings.changeAccountPasswordAction': 'Change Password',
+  'settings.changeAccountPasswordOld': 'Current account password',
+  'settings.changeAccountPasswordNew': 'New account password',
+  'settings.changeAccountPasswordConfirm': 'Confirm new password',
+  'settings.changeAccountPasswordSuccess': 'Account password changed.',
+  'settings.changeAccountPasswordMismatch': 'New passwords do not match.',
+  'settings.changeAccountPasswordMinLength': 'New password must be at least 8 characters.',
+  'settings.changeAccountPasswordSame': 'New password must differ from current.',
 } as const;
 
 export default en;

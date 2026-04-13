@@ -177,17 +177,22 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
 
         <form onSubmit={(ev) => void handleGenesis(ev)} className="space-y-5">
           {/* PUBLIC_GROUP_TOGGLE */}
-          <label className="flex cursor-pointer items-center gap-3 border border-neutral-900 bg-zinc-950 p-3 transition-colors hover:border-neutral-800">
-            <input
-              type="checkbox"
-              checked={isPublic}
-              onChange={(e) => setIsPublic(e.target.checked)}
-              className="h-3 w-3 accent-neon-cyan"
-            />
-            <span className="text-[9px] uppercase tracking-widest text-zinc-400">
-              {t('group.publicToggle')}
-            </span>
-          </label>
+          <div className="border border-neutral-900 bg-zinc-950 p-3 transition-colors hover:border-neutral-800">
+            <label className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+                className="h-3 w-3 accent-neon-cyan"
+              />
+              <span className="text-[9px] uppercase tracking-widest text-zinc-400">
+                {t('group.publicToggle')}
+              </span>
+            </label>
+            <p className="mt-2 pl-6 text-[8px] leading-relaxed text-zinc-600">
+              {isPublic ? t('group.publicHintChecked') : t('group.publicHintUnchecked')}
+            </p>
+          </div>
 
           {/* CHANNEL_NAME_INPUT */}
           <div className="space-y-2">

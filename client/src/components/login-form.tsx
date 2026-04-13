@@ -300,6 +300,7 @@ export function LoginForm() {
                   <div className="space-y-4 border border-neon-cyan/20 p-3 animate-in fade-in slide-in-from-top-1">
                     <p className="text-[9px] uppercase tracking-widest text-neon-cyan">{t('login.accountPasswordLabel')}</p>
                     <p className="text-[8px] text-zinc-500">{t('login.accountPasswordHint')}</p>
+                    <p className="text-[8px] text-zinc-600 border-l-2 border-neon-cyan/30 pl-2">{t('login.accountPasswordExplain')}</p>
                     <div className="space-y-2">
                       <label className="terminal-label">{t('login.accountPasswordLabel')}</label>
                       <input
@@ -329,6 +330,7 @@ export function LoginForm() {
                   <div className="space-y-4 border border-neon-red/30 p-3 animate-in fade-in slide-in-from-top-1">
                     <p className="text-[9px] uppercase tracking-widest text-neon-red">{t('login.vaultPasswordLabel')}</p>
                     <p className="text-[8px] text-zinc-500">{t('login.vaultPasswordHint')}</p>
+                    <p className="text-[8px] text-zinc-600 border-l-2 border-neon-red/30 pl-2">{t('login.vaultPasswordExplain')}</p>
                     <div className="space-y-2">
                       <label className="terminal-label">{t('login.vaultPasswordLabel')}</label>
                       <input

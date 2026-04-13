@@ -57,7 +57,7 @@ const nextConfig = {
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
-    connect-src 'self' https://api.onetothree.ru wss://api.onetothree.ru https://cdn.jsdelivr.net;
+    connect-src 'self' https://api.onetothree.ru wss://api.onetothree.ru https://cdn.jsdelivr.net https://s3.onetothree.ru;
     worker-src 'self' blob:;
     upgrade-insecure-requests;
 `.replace(/\n/g, "");

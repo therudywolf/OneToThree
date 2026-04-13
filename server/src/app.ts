@@ -63,7 +63,7 @@ export async function buildApp() {
         baseUri: ["'self'"],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
-        connectSrc: ["'self'", "https://api.onetothree.ru", "wss://api.onetothree.ru", "https://cdn.jsdelivr.net"],
+        connectSrc: ["'self'", "https://api.onetothree.ru", "wss://api.onetothree.ru", "https://cdn.jsdelivr.net", "https://s3.onetothree.ru"],
         workerSrc: ["'self'", "blob:"],
         upgradeInsecureRequests: [],
       },

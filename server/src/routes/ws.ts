@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { WebSocket } from 'ws'
@@ -299,6 +299,16 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
     let sessionDeviceId: string | undefined
     const rateLimiter = new WsRateLimiter()
 
+    // FIX 1: Handle websocket errors to prevent ECONNRESET crashes
+    ws.on('error', (err) => {
+      request.log.error({ err, userId: authed?.id }, 'websocket error')
+      try { ws.terminate() } catch {}
+    })
+
+    // FIX 2: Mark connection alive for heartbeat
+    ;(ws as any).__isAlive = true
+    ws.on('pong', () => { (ws as any).__isAlive = true })
+
     /** Handles a single parsed raw websocket frame for an authenticated user. */
     const handleMessage = (raw: unknown, user: AuthUser) => {
       void (async () => {
@@ -382,6 +392,32 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const rtcParsed = webrtcSignalSchema.safeParse(json)
         if (rtcParsed.success) {
           const { targetUserId, signalData } = rtcParsed.data
+
+          // FIX 3: Verify sender and target share at least one chat
+          const senderChats = await db
+            .select({ chatId: chatMembers.chatId })
+            .from(chatMembers)
+            .where(eq(chatMembers.userId, user.id))
+          const senderChatIds = senderChats.map((r) => r.chatId)
+          if (senderChatIds.length === 0) {
+            ws.send(JSON.stringify({ type: 'error', error: 'NO_SHARED_CHAT' }))
+            return
+          }
+          const [targetInShared] = await db
+            .select({ chatId: chatMembers.chatId })
+            .from(chatMembers)
+            .where(
+              and(
+                eq(chatMembers.userId, targetUserId),
+                inArray(chatMembers.chatId, senderChatIds)
+              )
+            )
+            .limit(1)
+          if (!targetInShared) {
+            ws.send(JSON.stringify({ type: 'error', error: 'NO_SHARED_CHAT' }))
+            return
+          }
+
           // WARNING: This relay must stay opaque. Never introspect or mutate SDP/ICE fields,
           // otherwise zero-trust call signaling can be accidentally broken.
           sendToUser(targetUserId, {
@@ -407,7 +443,16 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
-          const otherIds = (await getChatMemberIds(chat_id)).filter(
+          // FIX 10: Block check — blocked users cannot call
+          const memberIds = await getChatMemberIds(chat_id)
+          if (memberIds.length === 2) {
+            const peerId = memberIds.find((id) => id !== user.id)
+            if (peerId && await isBlocked(user.id, peerId)) {
+              ws.send(JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+              return
+            }
+          }
+          const otherIds = memberIds.filter(
             (id) => id !== user.id
           )
           broadcastToUsers(otherIds, {

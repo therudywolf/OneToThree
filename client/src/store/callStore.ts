@@ -132,8 +132,24 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
   const setMiniPlayer = (value: boolean) => set({ isMiniPlayer: value })
   const setCallStartTime = (time: number | null) => set({ callStartTime: time })
   const setShowRelayToast = (value: boolean) => set({ showRelayToast: value })
-  const reset = () =>
+  const reset = () => {
+    // FIX 9: Close peer connections and stop media tracks before clearing state
+    const state = get()
+    for (const pc of Object.values(state.peerConnections)) {
+      try { pc.close() } catch {}
+    }
+    if (state.localStream) {
+      for (const track of state.localStream.getTracks()) {
+        try { track.stop() } catch {}
+      }
+    }
+    for (const stream of Object.values(state.remoteStreams)) {
+      for (const track of stream.getTracks()) {
+        try { track.stop() } catch {}
+      }
+    }
     set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false })
+  }
 
   return {
     localStream: null,

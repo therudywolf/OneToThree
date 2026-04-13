@@ -81,11 +81,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
             />
           ) : null}
         </div>
-        {linkToken && !err ? (
-          <p className="mt-3 break-all font-mono text-[9px] text-zinc-500">
-            :: TOKEN_RAW :: {linkToken}
-          </p>
-        ) : null}
+        {/* FIX 5: Raw token display removed — QR code only */}
       </motion.div>
     </div>
   )

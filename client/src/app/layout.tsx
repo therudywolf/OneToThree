@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 therudywolf
+
 import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/auth/auth-provider'
 import { Auth401Interceptor } from '@/components/auth/auth-401-interceptor'

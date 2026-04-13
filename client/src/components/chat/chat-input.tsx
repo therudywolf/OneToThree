@@ -58,7 +58,9 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   // Media recording state
   const [mediaMode, setMediaMode] = useState<'voice' | 'video'>('voice')
   const [isRecording, setIsRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
   const recordingHeldRef = useRef(false)
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const {
     startVoiceCapture,
@@ -83,7 +85,13 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     if (!cryptoCtx || disabled) return
 
     setIsRecording(true)
+    setRecordingTime(0)
     vibrateShort(12)
+
+    // Start recording timer
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingTime(t => t + 1)
+    }, 1000)
 
     try {
       if (mediaMode === 'voice') {
@@ -95,6 +103,10 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     } catch (error) {
       console.error('Failed to start recording:', error)
       setIsRecording(false)
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+        recordingTimerRef.current = null
+      }
     }
   }
 
@@ -102,6 +114,11 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     if (!isRecording) return
 
     setIsRecording(false)
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+    
     try {
       const result = await stopCapture()
       if (result && cryptoCtx) {
@@ -290,7 +307,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <button
           type="button"
           className="shrink-0 border border-neon-cyan/50 bg-black px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40"
-          disabled={disabled}
+          disabled={disabled || isRecording}
           onClick={handleAttachClick}
           aria-label={t('chat.attachFile') || 'Attach file'}
         >
@@ -301,7 +318,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <button
           type="button"
           className="shrink-0 border border-neon-cyan/50 bg-black px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40"
-          disabled={disabled}
+          disabled={disabled || isRecording}
           onClick={() => setEmojiOpen((o) => !o)}
           onMouseDown={(e) => {
             e.stopPropagation()
@@ -313,26 +330,39 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           😊
         </button>
 
-        {/* CENTER: Text input */}
-        <div className="flex flex-1 items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-1.5">
-          <span className="shrink-0 select-none font-mono text-[9px] text-neon-cyan/70">&gt;_</span>
-          <textarea
-            ref={inputRef}
-            className="terminal-input flex-1 min-h-6 max-h-24 resize-none text-sm bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none"
-            value={messageText}
-            onChange={(e) => {
-              const next = e.target.value
-              setMessageText(next)
-              onDraftChanged(next)
-            }}
-            onPaste={handlePaste}
-            disabled={disabled}
-            aria-label={t('chat.inputPlaceholder')}
-            placeholder={t('chat.inputPlaceholder')}
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
+        {/* CENTER: Text input or Recording state */}
+        {isRecording ? (
+          <div className="flex flex-1 items-center justify-between gap-2 border border-neon-red/60 bg-black/80 px-3 py-2">
+            <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-neon-red" />
+            <span className="flex-1 font-mono text-sm text-neon-red">
+              {mediaMode === 'voice' ? '🎤 RECORDING...' : '📹 RECORDING'}
+            </span>
+            <span className="font-mono text-xs text-neon-cyan">
+              {String(Math.floor(recordingTime / 60)).padStart(2, '0')}:{String(recordingTime % 60).padStart(2, '0')}
+            </span>
+            <span className="text-[9px] text-zinc-500 whitespace-nowrap">slide ⬅ cancel</span>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-1.5">
+            <span className="shrink-0 select-none font-mono text-[9px] text-neon-cyan/70">&gt;_</span>
+            <textarea
+              ref={inputRef}
+              className="terminal-input flex-1 min-h-6 max-h-24 resize-none text-sm bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none"
+              value={messageText}
+              onChange={(e) => {
+                const next = e.target.value
+                setMessageText(next)
+                onDraftChanged(next)
+              }}
+              onPaste={handlePaste}
+              disabled={disabled}
+              aria-label={t('chat.inputPlaceholder')}
+              placeholder={t('chat.inputPlaceholder')}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+        )}
 
         {/* RIGHT: Unified media button */}
         <button
@@ -386,7 +416,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         {/* RIGHT: Send button */}
         <TerminalGlitchButton
           type="submit"
-          disabled={disabled || !messageText.trim()}
+          disabled={disabled || !messageText.trim() || isRecording}
           className="min-h-11 min-w-[44px] shrink-0 px-4 py-2 md:min-h-0 md:min-w-0"
         >
           [ TX ]

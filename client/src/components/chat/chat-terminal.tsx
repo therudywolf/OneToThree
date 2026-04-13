@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Check, CheckCheck, Crown, Star, X } from 'lucide-react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { Check, CheckCheck, Crown, Star, X, ArrowDown } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
@@ -21,6 +21,8 @@ import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
 import { MediaLightbox } from '@/components/chat/media-lightbox'
 import { groupMessages } from '@/lib/message-grouping'
+import { MessageSkeleton } from '@/components/ui/skeleton'
+import { formatMessageTimestamp } from '@/lib/timestamp-format'
 
 const OLDER_PAGE_SIZE = 25
 const OLDER_RAM_CAP = 200
@@ -83,8 +85,9 @@ export function ChatTerminal({
   ) => Promise<void>
   composeDisabled?: boolean
 }) {
-  const { t } = useTranslation()
+  const { t, module: locale } = useTranslation()
   const messages = useChatStore((s) => s.messages)
+  const historyDecryptBusy = useChatStore((s) => s.historyDecryptBusy)
   const readAtOverrides = useChatStore((s) => s.readAtOverrides)
   const removeMessage = useChatStore((s) => s.removeMessage)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
@@ -108,10 +111,40 @@ export function ChatTerminal({
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
+  const [isNearBottom, setIsNearBottom] = useState(true)
+  const [hasNewBelow, setHasNewBelow] = useState(false)
+  const prevMsgCountRef = useRef(0)
 
   const isGroup = activeChat?.is_group ?? false
 
   useReadReceipts(ref, { enabled: !isGroup })
+
+  const handleScroll = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    setIsNearBottom(near)
+    if (near) setHasNewBelow(false)
+  }, [])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [handleScroll])
+
+  useEffect(() => {
+    if (messages.length > prevMsgCountRef.current && !isNearBottom) {
+      setHasNewBelow(true)
+    }
+    prevMsgCountRef.current = messages.length
+  }, [messages.length, isNearBottom])
+
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    setHasNewBelow(false)
+  }, [])
 
   const renderMessages = useMemo(() => {
     const map = new Map<string, DecryptedMessage>()
@@ -401,14 +434,37 @@ export function ChatTerminal({
         className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-4 py-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch]"
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
-        {renderMessages.length === 0 ? (
+        {historyDecryptBusy && renderMessages.length === 0 ? (
+          <div className="space-y-2 py-4">
+            {Array.from({ length: 6 }, (_, i) => (
+              <MessageSkeleton key={i} align={i % 2 === 0 ? 'left' : 'right'} />
+            ))}
+          </div>
+        ) : renderMessages.length === 0 ? (
           <div className="flex h-full min-h-[12rem] items-center justify-center">
-            <div className="space-y-2 border border-neon-cyan/20 px-6 py-4 text-center">
+            <div className="space-y-3 border border-neon-cyan/20 px-6 py-4 text-center">
+              {!isGroup && directPeerUsername ? (
+                <>
+                  <UserAvatar
+                    userId={activeChat?.member_ids.find((id) => id !== userId) ?? ''}
+                    username={directPeerUsername}
+                    avatarKey={null}
+                    size={48}
+                  />
+                  <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/60">
+                    {directPeerUsername}
+                  </p>
+                </>
+              ) : isGroup ? (
+                <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/60">
+                  {activeChat?.name || t('sidebar.groupUntitled')}
+                </p>
+              ) : null}
               <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/50">
                 {t('chat.noLogsTitle')}
               </p>
               <p className="text-[9px] uppercase tracking-widest text-red-900">
-                {t('chat.noLogsHint')}
+                {isGroup ? t('chat.emptyGroupHint') : t('chat.noLogsHint')}
               </p>
             </div>
           </div>
@@ -495,7 +551,7 @@ export function ChatTerminal({
                       </div>
                     ) : null}
                     <div className="mb-1 text-[9px] text-red-800/90">
-                      {new Date(m.created_at).toLocaleString()}
+                      {formatMessageTimestamp(m.created_at, locale)}
                     </div>
                     {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
                       <NoirPlaintext
@@ -577,7 +633,7 @@ export function ChatTerminal({
                     }`}
                   >
                     <div className="mb-1 text-[9px] text-red-800/90">
-                      {group.timestamp.toLocaleString()}
+                      {formatMessageTimestamp(group.timestamp.toISOString(), locale)}
                     </div>
                     <div
                       className={`grid gap-1 ${
@@ -611,6 +667,17 @@ export function ChatTerminal({
         })}
         <div ref={bottomRef} className="h-px w-full shrink-0" aria-hidden />
       </div>
+
+      {hasNewBelow ? (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 inline-flex items-center gap-1.5 border border-neon-cyan/60 bg-black/90 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.15)] transition-colors hover:bg-neon-cyan/10"
+        >
+          <ArrowDown className="h-3 w-3" />
+          {t('chat.scrollToBottom')}
+        </button>
+      ) : null}
 
       {/* ONLY THE UNIFIED CHAT INPUT REMAINS */}
       <div className="shrink-0 bg-black">

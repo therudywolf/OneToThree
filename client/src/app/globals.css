@@ -182,6 +182,13 @@ textarea {
   animation: skeleton-pulse 2s ease-in-out infinite;
 }
 
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
 input,
 button,
 textarea,

@@ -336,6 +336,10 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'sidebar.members': 'Участники',
 
   'media.fileExpiredServer': 'Файл удалён с сервера. Срок хранения истёк.',
+
+  'offline.banner': 'Нет подключения. Сообщения отправятся при восстановлении.',
+  'chat.scrollToBottom': 'Новые сообщения',
+  'chat.emptyGroupHint': 'Добавьте участников и начните общение',
 } as const;
 
 export default ru;

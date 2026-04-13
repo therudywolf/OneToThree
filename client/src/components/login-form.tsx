@@ -237,6 +237,7 @@ export function LoginForm() {
                 <input
                   type="text"
                   required
+                  autoFocus
                   value={handle}
                   onChange={(e) => setHandle(e.target.value)}
                   className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-cyan/50"

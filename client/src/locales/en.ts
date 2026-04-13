@@ -336,6 +336,10 @@ The administration reserves the right to remove any account without warning.`,
   'settings.recoveryMnemonicDone': 'Hide',
 
   'media.fileExpiredServer': 'File removed from server. Retention period expired.',
+
+  'offline.banner': 'No connection. Messages will be sent when reconnected.',
+  'chat.scrollToBottom': 'New messages',
+  'chat.emptyGroupHint': 'Add members and start chatting',
 } as const;
 
 export default en;

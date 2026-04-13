@@ -10,6 +10,7 @@ import { GroupChatSettings } from '@/components/chat/group-chat-settings'
 import { UserAvatar } from '@/components/user-avatar'
 import { lookupUsers, searchUsers } from '@/lib/api/users'
 import { useTranslation } from '@/hooks/use-translation'
+import { ChatRowSkeleton } from '@/components/ui/skeleton'
 import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { isUuid, normalizePeerInput } from '@/lib/peer-input'
@@ -68,7 +69,7 @@ export function ChatSidebar({
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const peerPresence = useChatStore((s) => s.peerPresence)
-  const { chats, reload } = useChats(userId)
+  const { chats, reload, initialLoading } = useChats(userId)
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState<string | null>(null)
@@ -286,7 +287,13 @@ export function ChatSidebar({
 
       {/* Chat List */}
       <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
-        {chats.length === 0 ? (
+        {initialLoading ? (
+          <div className="space-y-1 py-2">
+            {Array.from({ length: 5 }, (_, i) => (
+              <ChatRowSkeleton key={i} />
+            ))}
+          </div>
+        ) : chats.length === 0 ? (
           <div className="px-4 py-8 text-center space-y-3">
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
               {t('sidebar.noActiveRoutes')}

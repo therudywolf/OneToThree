@@ -20,6 +20,7 @@ import { useReadReceipts } from '@/hooks/use-read-receipts'
 import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
 import { MediaLightbox } from '@/components/chat/media-lightbox'
+import { UserProfileModal } from '@/components/chat/user-profile-modal'
 import { groupMessages } from '@/lib/message-grouping'
 import { MessageSkeleton } from '@/components/ui/skeleton'
 import { formatMessageTimestamp } from '@/lib/timestamp-format'
@@ -111,6 +112,11 @@ export function ChatTerminal({
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
+  const [profileTarget, setProfileTarget] = useState<{
+    userId: string
+    username: string
+    avatarKey?: string | null
+  } | null>(null)
   const [isNearBottom, setIsNearBottom] = useState(true)
   const [hasNewBelow, setHasNewBelow] = useState(false)
   const prevMsgCountRef = useRef(0)
@@ -299,6 +305,14 @@ export function ChatTerminal({
     setLightboxOpen(false)
     setLightboxMedia([])
     setLightboxIndex(0)
+  }
+
+  function openProfile(senderId: string) {
+    setProfileTarget({
+      userId: senderId,
+      username: labelForSender(senderId),
+      avatarKey: avatarKeyForSender(senderId),
+    })
   }
 
   function roleGlyph(senderId: string) {
@@ -513,23 +527,35 @@ export function ChatTerminal({
                         : 'justify-start text-left text-neon-cyan/80'
                     }`}
                   >
-                    {!mine ? (
-                      <UserAvatar
-                        userId={m.sender_id}
-                        username={labelForSender(m.sender_id)}
-                        avatarKey={avatarKeyForSender(m.sender_id)}
-                        size={22}
-                      />
-                    ) : (
-                      <UserAvatar
-                        userId={userId}
-                        username={currentUsername || 'YOU'}
-                        avatarKey={myAvatarKey}
-                        size={22}
-                      />
-                    )}
+                    <button
+                      type="button"
+                      className="shrink-0 cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); openProfile(m.sender_id) }}
+                    >
+                      {!mine ? (
+                        <UserAvatar
+                          userId={m.sender_id}
+                          username={labelForSender(m.sender_id)}
+                          avatarKey={avatarKeyForSender(m.sender_id)}
+                          size={22}
+                        />
+                      ) : (
+                        <UserAvatar
+                          userId={userId}
+                          username={currentUsername || 'YOU'}
+                          avatarKey={myAvatarKey}
+                          size={22}
+                        />
+                      )}
+                    </button>
                     {roleGlyph(m.sender_id)}
-                    <span>{senderLabel}</span>
+                    <button
+                      type="button"
+                      className="cursor-pointer hover:text-neon-red transition-colors"
+                      onClick={(e) => { e.stopPropagation(); openProfile(m.sender_id) }}
+                    >
+                      {senderLabel}
+                    </button>
                   </div>
                   <div
                     className={`w-full rounded-none border px-3 py-2 ${
@@ -607,23 +633,35 @@ export function ChatTerminal({
                         : 'justify-start text-left text-neon-cyan/80'
                     }`}
                   >
-                    {!mine ? (
-                      <UserAvatar
-                        userId={group.originId}
-                        username={labelForSender(group.originId)}
-                        avatarKey={avatarKeyForSender(group.originId)}
-                        size={22}
-                      />
-                    ) : (
-                      <UserAvatar
-                        userId={userId}
-                        username={currentUsername || 'YOU'}
-                        avatarKey={myAvatarKey}
-                        size={22}
-                      />
-                    )}
+                    <button
+                      type="button"
+                      className="shrink-0 cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); openProfile(group.originId) }}
+                    >
+                      {!mine ? (
+                        <UserAvatar
+                          userId={group.originId}
+                          username={labelForSender(group.originId)}
+                          avatarKey={avatarKeyForSender(group.originId)}
+                          size={22}
+                        />
+                      ) : (
+                        <UserAvatar
+                          userId={userId}
+                          username={currentUsername || 'YOU'}
+                          avatarKey={myAvatarKey}
+                          size={22}
+                        />
+                      )}
+                    </button>
                     {roleGlyph(group.originId)}
-                    <span>{senderLabel}</span>
+                    <button
+                      type="button"
+                      className="cursor-pointer hover:text-neon-red transition-colors"
+                      onClick={(e) => { e.stopPropagation(); openProfile(group.originId) }}
+                    >
+                      {senderLabel}
+                    </button>
                   </div>
                   <div
                     className={`w-full rounded-none border px-3 py-2 ${
@@ -696,6 +734,15 @@ export function ChatTerminal({
         onClose={handleLightboxClose}
         onNavigate={handleLightboxNavigate}
       />
+
+      {profileTarget ? (
+        <UserProfileModal
+          userId={profileTarget.userId}
+          username={profileTarget.username}
+          avatarKey={profileTarget.avatarKey}
+          onClose={() => setProfileTarget(null)}
+        />
+      ) : null}
     </div>
   )
 }

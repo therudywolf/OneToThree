@@ -33,6 +33,7 @@ import { ChatTerminal } from '@/components/chat/chat-terminal'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
+import { UserProfileModal } from '@/components/chat/user-profile-modal'
 import { PwaInstallBanner } from '@/components/pwa-install-banner'
 import { PushOnboardingBanner } from '@/components/push-onboarding-banner'
 import { InviteChatLinkEffect } from '@/components/chat/invite-chat-link-effect'
@@ -107,6 +108,7 @@ export function ChatApp({
   const [groupDetailTick, setGroupDetailTick] = useState(0)
   const [peerAvatarKey, setPeerAvatarKey] = useState<string | null>(null)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [headerProfileOpen, setHeaderProfileOpen] = useState(false)
 
   const {
     peerReady,
@@ -398,6 +400,14 @@ export function ChatApp({
           }
         />
       ) : null}
+      {headerProfileOpen && peerIdentity ? (
+        <UserProfileModal
+          userId={peerIdentity.userId}
+          username={peerIdentity.username}
+          avatarKey={peerAvatarKey}
+          onClose={() => setHeaderProfileOpen(false)}
+        />
+      ) : null}
       <header className="flex shrink-0 flex-col gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-2 md:px-3 md:py-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:gap-3">
           <button
@@ -415,7 +425,7 @@ export function ChatApp({
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIdentityOpen(true)}
+                onClick={() => setHeaderProfileOpen(true)}
                 className="touch-manipulation inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-2 text-[10px] tracking-[0.2em] text-neon-cyan hover:border-neon-red hover:text-neon-red md:min-h-0 md:py-1"
               >
                 {peerIdentity.verified ? (

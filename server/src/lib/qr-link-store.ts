@@ -73,9 +73,8 @@ export async function consumeQrLinkToken(
   const r = getRedis()
   const key = `${KEY_PREFIX}${token}`
   if (r) {
-    const raw = await r.get(key)
+    const raw = await r.getdel(key)
     if (!raw) return null
-    await r.del(key)
     try {
       const payload = JSON.parse(raw) as QrLinkPayload
       if (Date.now() > payload.exp) return null

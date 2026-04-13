@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   HeadBucketCommand,
   PutBucketCorsCommand,
+  PutBucketPolicyCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -166,6 +167,19 @@ export function ensureBucketExists(client: S3Client, bucket: string): Promise<vo
       await client.send(new HeadBucketCommand({ Bucket: bucket }))
     } catch {
       await client.send(new CreateBucketCommand({ Bucket: bucket }))
+      await client.send(new PutBucketPolicyCommand({
+        Bucket: bucket,
+        Policy: JSON.stringify({
+          Version: '2012-10-17',
+          Statement: [{
+            Effect: 'Deny',
+            Principal: '*',
+            Action: 's3:GetObject',
+            Resource: `arn:aws:s3:::${bucket}/*`,
+            Condition: { StringNotEquals: { 's3:signatureversion': 'AWS4-HMAC-SHA256' } },
+          }],
+        }),
+      }))
     }
     await applyBucketCors(client, bucket)
   })()
@@ -201,12 +215,14 @@ export async function presignPutObject(params: {
   bucket: string
   key: string
   contentType: string
+  contentLength?: number
   expiresIn?: number
 }): Promise<string> {
   const cmd = new PutObjectCommand({
     Bucket: params.bucket,
     Key: params.key,
     ContentType: params.contentType,
+    ...(params.contentLength != null && { ContentLength: params.contentLength }),
   })
   return getSignedUrl(params.client, cmd, {
     expiresIn: params.expiresIn ?? DEFAULT_PRESIGN_TTL_S,

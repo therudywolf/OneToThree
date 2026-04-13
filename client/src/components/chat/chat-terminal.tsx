@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Check, CheckCheck, Crown, Star, X, ArrowDown } from 'lucide-react'
+import { Crown, Star, ArrowDown } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
@@ -14,6 +14,10 @@ import {
 } from '@/lib/message-cache'
 import { lookupUsers } from '@/lib/api/users'
 import { NoirPlaintext } from '@/components/chat/noir-plaintext'
+import { CollapsibleText } from '@/components/chat/collapsible-text'
+import { MessageStatus } from '@/components/chat/message-status'
+import { MessageReactions } from '@/components/chat/message-reactions'
+import { MessageActions, QuickReactBar } from '@/components/chat/message-actions'
 import { UserAvatar } from '@/components/user-avatar'
 import type { ApiChatRow, ChatMemberRole } from '@/lib/api/chats'
 import { useReadReceipts } from '@/hooks/use-read-receipts'
@@ -94,7 +98,6 @@ export function ChatTerminal({
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useChatStore((s) => s.activeChatId)
   const ref = useRef<HTMLDivElement>(null)
-  const ctxMenuRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
   const [olderMessages, setOlderMessages] = useState<DecryptedMessage[]>([])
@@ -109,6 +112,9 @@ export function ChatTerminal({
     y: number
     isMine: boolean
   } | null>(null)
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null)
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [newMsgCount, setNewMsgCount] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
@@ -141,8 +147,13 @@ export function ChatTerminal({
   }, [handleScroll])
 
   useEffect(() => {
-    if (messages.length > prevMsgCountRef.current && !isNearBottom) {
+    const diff = messages.length - prevMsgCountRef.current
+    if (diff > 0 && !isNearBottom) {
       setHasNewBelow(true)
+      setNewMsgCount((prev) => prev + diff)
+    }
+    if (isNearBottom) {
+      setNewMsgCount(0)
     }
     prevMsgCountRef.current = messages.length
   }, [messages.length, isNearBottom])
@@ -150,6 +161,7 @@ export function ChatTerminal({
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
     setHasNewBelow(false)
+    setNewMsgCount(0)
   }, [])
 
   const renderMessages = useMemo(() => {
@@ -206,8 +218,19 @@ export function ChatTerminal({
   }, [senderIdsToResolve])
 
   useLayoutEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, activeChatId])
+    // Only auto-scroll to bottom when we're near bottom or chat changed
+    if (isNearBottom || prevMsgCountRef.current === 0) {
+      bottomRef.current?.scrollIntoView({ block: 'end' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId])
+
+  // Scroll to bottom on initial load and when near bottom
+  useLayoutEffect(() => {
+    if (isNearBottom) {
+      bottomRef.current?.scrollIntoView({ block: 'end' })
+    }
+  }, [messages.length, isNearBottom])
 
   useEffect(() => {
     setOlderMessages([])
@@ -215,15 +238,74 @@ export function ChatTerminal({
     setLoadingOlder(false)
   }, [activeChatId])
 
-  useEffect(() => {
-    if (!ctxMenu) return
-    const onDown = (e: MouseEvent) => {
-      if (ctxMenuRef.current?.contains(e.target as Node)) return
-      setCtxMenu(null)
+  const handleMessageAction = useCallback(
+    (action: string, msg: DecryptedMessage) => {
+      const mine = msg.sender_id === userId
+      switch (action) {
+        case 'reply':
+          setReplyTo(msg)
+          break
+        case 'copy':
+          if (msg.plaintext) {
+            void navigator.clipboard.writeText(msg.plaintext)
+          }
+          break
+        case 'deleteForMe':
+          removeMessage(msg.id)
+          void deleteCachedMessage(msg.id)
+          break
+        case 'deleteForAll':
+          if (mine) {
+            void (async () => {
+              try {
+                await deleteMessage(msg.id, true)
+                removeMessage(msg.id)
+                await deleteCachedMessage(msg.id)
+              } catch {
+                /* Server rejected */
+              }
+            })()
+          }
+          break
+      }
+    },
+    [userId, setReplyTo, removeMessage],
+  )
+
+  const handleToggleReaction = useCallback(
+    (_emoji: string, _msgId: string) => {
+      // Reaction handling — reactions stored on message.reactions object
+      // For now this is a UI-only placeholder: full WS emission would be in hooks
+    },
+    [],
+  )
+
+  // Long-press for mobile context menu
+  const handleTouchStart = useCallback(
+    (msg: DecryptedMessage, e: React.TouchEvent) => {
+      const touch = e.touches[0]
+      if (!touch) return
+      longPressRef.current = setTimeout(() => {
+        const mine = msg.sender_id === userId
+        setCtxMenu({
+          msg,
+          x: touch.clientX,
+          y: touch.clientY,
+          isMine: mine,
+        })
+      }, 500)
+    },
+    [userId],
+  )
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current)
+      longPressRef.current = null
     }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [ctxMenu])
+  }, [])
+
+  // Context menu close is handled by MessageActions component internally
 
   const msgById = (id: string) => renderMessages.find((m) => m.id === id)
   const oldestLoaded = renderMessages[0] ?? null
@@ -413,62 +495,13 @@ export function ChatTerminal({
   return (
     <div className="crt-terminal-vignette relative flex min-h-0 flex-1 flex-col overflow-hidden bg-black">
       {ctxMenu ? (
-        <div
-          ref={ctxMenuRef}
-          className="fixed z-[120] min-w-[11rem] border border-neon-cyan/80 bg-black py-1 shadow-[0_0_20px_rgba(0,255,255,0.12)]"
-          role="menu"
-          aria-label={t('chat.contextMenuAria')}
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
-            onClick={(e) => {
-              e.stopPropagation()
-              setReplyTo(ctxMenu.msg)
-              setCtxMenu(null)
-            }}
-          >
-            {t('chat.contextReply')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="block w-full px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest text-red-800 hover:bg-neon-red/10"
-            onClick={(e) => {
-              e.stopPropagation()
-              removeMessage(ctxMenu.msg.id)
-              void deleteCachedMessage(ctxMenu.msg.id)
-              setCtxMenu(null)
-            }}
-          >
-            {t('chat.contextDeleteMe')}
-          </button>
-          {ctxMenu.isMine ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="block w-full px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/15"
-              onClick={(e) => {
-                e.stopPropagation()
-                const id = ctxMenu.msg.id
-                setCtxMenu(null)
-                void (async () => {
-                  try {
-                    await deleteMessage(id, true)
-                    removeMessage(id)
-                    await deleteCachedMessage(id)
-                  } catch {
-                    /* Server rejected */
-                  }
-                })()
-              }}
-            >
-              {t('chat.contextDeleteEveryone')}
-            </button>
-          ) : null}
-        </div>
+        <MessageActions
+          message={ctxMenu.msg}
+          isMine={ctxMenu.isMine}
+          position={{ x: ctxMenu.x, y: ctxMenu.y }}
+          onAction={(action) => handleMessageAction(action, ctxMenu.msg)}
+          onClose={() => setCtxMenu(null)}
+        />
       ) : null}
       <div
         ref={ref}
@@ -520,12 +553,12 @@ export function ChatTerminal({
               <div
                 key={m.id}
                 data-message-id={m.id}
-                className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+                className={`group/msg relative mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   const pad = 8
                   const mw = 200
-                  const mh = 120
+                  const mh = 320
                   const x = Math.min(
                     e.clientX,
                     (typeof window !== 'undefined' ? window.innerWidth : e.clientX) - mw - pad
@@ -541,7 +574,18 @@ export function ChatTerminal({
                     isMine: mine,
                   })
                 }}
+                onMouseEnter={() => setHoveredMsgId(m.id)}
+                onMouseLeave={() => setHoveredMsgId(null)}
+                onTouchStart={(e) => handleTouchStart(m, e)}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
               >
+                {/* Hover quick-react bar (desktop only) */}
+                {hoveredMsgId === m.id ? (
+                  <div className={`absolute top-0 z-10 hidden md:block ${mine ? 'left-0' : 'right-0'}`}>
+                    <QuickReactBar onReact={(emoji) => handleToggleReaction(emoji, m.id)} />
+                  </div>
+                ) : null}
                 <div
                   className={`max-w-[min(100%,42rem)] min-w-0 ${
                     mine ? 'items-end' : 'items-start'
@@ -607,10 +651,14 @@ export function ChatTerminal({
                       {formatMessageTimestamp(m.created_at, locale)}
                     </div>
                     {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
-                      <NoirPlaintext
-                        text={m.plaintext}
-                        className="whitespace-pre-wrap break-words"
-                      />
+                      <CollapsibleText text={m.plaintext}>
+                        {(visibleText) => (
+                          <NoirPlaintext
+                            text={visibleText}
+                            className="whitespace-pre-wrap break-words"
+                          />
+                        )}
+                      </CollapsibleText>
                     ) : null}
                     {m.media_path && m.media_iv && m.media_type ? (
                       <MediaMessage
@@ -622,22 +670,23 @@ export function ChatTerminal({
                         onNextVoice={voiceMessageIds.indexOf(m.id) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
                       />
                     ) : null}
-                    {mine && !isGroup ? (
+                    {m.reactions && Object.keys(m.reactions).length > 0 ? (
+                      <MessageReactions
+                        reactions={m.reactions}
+                        currentUserId={userId}
+                        onToggleReaction={(emoji) => handleToggleReaction(emoji, m.id)}
+                        onOpenPicker={() => {}}
+                      />
+                    ) : null}
+                    {mine ? (
                       <div
                         className="mt-1 flex items-center justify-end gap-0.5 text-[10px]"
                         aria-hidden
                       >
-                        {m._pending ? (
-                          <span className="inline-flex items-center gap-1 text-zinc-500">
-                            <svg className="h-3 w-3 animate-spin" viewBox="0 0 16 16" fill="none">
-                              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" />
-                            </svg>
-                          </span>
-                        ) : m.read_at ? (
-                          <CheckCheck className="h-3.5 w-3.5 text-cyan-400 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]" />
-                        ) : (
-                          <Check className="h-3 w-3 text-zinc-500" />
-                        )}
+                        <MessageStatus
+                          pending={m._pending}
+                          readAt={m.read_at}
+                        />
                       </div>
                     ) : null}
                   </div>
@@ -752,7 +801,9 @@ export function ChatTerminal({
           className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 inline-flex items-center gap-1.5 border border-neon-cyan/60 bg-black/90 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.15)] transition-colors hover:bg-neon-cyan/10"
         >
           <ArrowDown className="h-3 w-3" />
-          {t('chat.scrollToBottom')}
+          {newMsgCount > 0
+            ? `\u2193 ${newMsgCount} ${t('msg.newMessages')}`
+            : t('chat.scrollToBottom')}
         </button>
       ) : null}
 

@@ -1,0 +1,191 @@
+'use client'
+
+import { useRef, useEffect, useCallback, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Reply,
+  SmilePlus,
+  Pencil,
+  Trash2,
+  Forward,
+  Copy,
+  Pin,
+  PinOff,
+} from 'lucide-react'
+import { useTranslation } from '@/hooks/use-translation'
+import type { DecryptedMessage } from '@/types/chat'
+
+type Action =
+  | 'reply'
+  | 'react'
+  | 'edit'
+  | 'deleteForMe'
+  | 'deleteForAll'
+  | 'forward'
+  | 'copy'
+  | 'pin'
+
+type Props = {
+  message: DecryptedMessage
+  isMine: boolean
+  isPinned?: boolean
+  position: { x: number; y: number }
+  onAction: (action: Action) => void
+  onClose: () => void
+}
+
+export function MessageActions({
+  message,
+  isMine,
+  isPinned = false,
+  position,
+  onAction,
+  onClose,
+}: Props) {
+  const { t } = useTranslation()
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return
+      onClose()
+    }
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  // Clamp position to viewport
+  const menuWidth = 200
+  const menuHeight = 320
+  const x = Math.min(
+    Math.max(8, position.x),
+    (typeof window !== 'undefined' ? window.innerWidth : 400) - menuWidth - 8,
+  )
+  const y = Math.min(
+    Math.max(8, position.y),
+    (typeof window !== 'undefined' ? window.innerHeight : 400) - menuHeight - 8,
+  )
+
+  const actions: Array<{
+    key: Action
+    label: string
+    icon: typeof Reply
+    show: boolean
+    danger?: boolean
+  }> = [
+    { key: 'reply', label: t('msgAction.reply'), icon: Reply, show: true },
+    { key: 'react', label: t('msgAction.react'), icon: SmilePlus, show: true },
+    {
+      key: 'copy',
+      label: t('msgAction.copy'),
+      icon: Copy,
+      show: !!message.plaintext,
+    },
+    { key: 'edit', label: t('msgAction.edit'), icon: Pencil, show: isMine },
+    {
+      key: 'forward',
+      label: t('msgAction.forward'),
+      icon: Forward,
+      show: true,
+    },
+    {
+      key: 'pin',
+      label: isPinned ? t('msgAction.unpin') : t('msgAction.pin'),
+      icon: isPinned ? PinOff : Pin,
+      show: true,
+    },
+    {
+      key: 'deleteForMe',
+      label: t('msgAction.deleteForMe'),
+      icon: Trash2,
+      show: true,
+      danger: true,
+    },
+    {
+      key: 'deleteForAll',
+      label: t('msgAction.deleteForAll'),
+      icon: Trash2,
+      show: isMine,
+      danger: true,
+    },
+  ]
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        ref={menuRef}
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.12, ease: 'easeOut' }}
+        className="fixed z-[120] min-w-[12rem] border border-neon-cyan/60 bg-black py-1 shadow-[0_0_24px_rgba(0,255,255,0.1)]"
+        role="menu"
+        aria-label={t('chat.contextMenuAria')}
+        style={{ left: x, top: y }}
+      >
+        {actions
+          .filter((a) => a.show)
+          .map((action) => {
+            const Icon = action.icon
+            return (
+              <button
+                key={action.key}
+                type="button"
+                role="menuitem"
+                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                  action.danger
+                    ? 'text-red-700 hover:bg-neon-red/10 hover:text-neon-red'
+                    : 'text-neon-cyan hover:bg-neon-cyan/10'
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onAction(action.key)
+                  onClose()
+                }}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                {action.label}
+              </button>
+            )
+          })}
+      </motion.div>
+    </AnimatePresence>
+  )
+}
+
+/**
+ * Quick-reaction bar: shown on hover (desktop) or alongside action menu.
+ * Shows 5 most-used emoji for quick tap reaction.
+ */
+const QUICK_REACTIONS = ['\u{1F44D}', '\u{2764}\u{FE0F}', '\u{1F602}', '\u{1F62E}', '\u{1F44E}']
+
+type QuickReactProps = {
+  onReact: (emoji: string) => void
+}
+
+export function QuickReactBar({ onReact }: QuickReactProps) {
+  return (
+    <div className="flex items-center gap-0.5 border border-neon-cyan/40 bg-black px-1 py-0.5 shadow-[0_0_12px_rgba(0,255,255,0.08)]">
+      {QUICK_REACTIONS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onReact(emoji)
+          }}
+          className="flex h-7 w-7 items-center justify-center text-base transition-transform hover:scale-125 active:scale-95"
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  )
+}

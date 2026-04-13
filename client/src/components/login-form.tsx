@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/components/auth/auth-provider'
 import { cryptoLogin, finalizeLoginWithTotp } from '@/lib/auth/crypto-login'
-import { ensureClientDeviceId } from '@/lib/api/auth'
+import { ensureClientDeviceId, clearSessionApi } from '@/lib/api/auth'
 import { parseNickname } from '@/lib/nickname'
 import {
   persistVaultBlobByLoginUsername,
@@ -33,11 +33,28 @@ export function LoginForm() {
   const [errorLog, setErrorLog] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [vaultLinkOk, setVaultLinkOk] = useState(false)
+  const [staleSession, setStaleSession] = useState(false)
+  /** When set, shows a blue info banner instead of a red error. */
+  const [infoLog, setInfoLog] = useState<string | null>(null)
 
   const lock = useRef(false)
 
   useEffect(() => {
     ensureClientDeviceId()
+  }, [])
+
+  // Detect stale session: AuthProvider redirects here with ?expired=1 on 401
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('expired') === '1') {
+      setStaleSession(true)
+      // Clear stale cookie
+      clearSessionApi().catch(() => {})
+      // Clean up URL without reload
+      const clean = new URL(window.location.href)
+      clean.searchParams.delete('expired')
+      window.history.replaceState({}, '', clean.pathname + clean.search)
+    }
   }, [])
 
   useEffect(() => {
@@ -94,6 +111,7 @@ export function LoginForm() {
     if (lock.current || isBusy) return
     lock.current = true
     setErrorLog(null)
+    setInfoLog(null)
     setIsBusy(true)
 
     try {
@@ -121,6 +139,10 @@ export function LoginForm() {
       }
 
       if (!res.ok) {
+        if (res.error === 'USERNAME_TAKEN' || res.error === 'PUBLIC_KEY_CONFLICT') {
+          setInfoLog(t('login.accountExists'))
+          return
+        }
         setErrorLog(mapFault(res.error))
         return
       }
@@ -128,7 +150,12 @@ export function LoginForm() {
       await refresh()
       router.refresh()
     } catch (err: any) {
-      setErrorLog(err.message || 'SYS_FAULT')
+      const msg = err.message || ''
+      if (msg === 'USERNAME_TAKEN' || msg === 'PUBLIC_KEY_CONFLICT') {
+        setInfoLog(t('login.accountExists'))
+        return
+      }
+      setErrorLog(msg || 'SYS_FAULT')
     } finally {
       setIsBusy(false)
       lock.current = false
@@ -342,6 +369,28 @@ export function LoginForm() {
               </p>
             )}
 
+            {staleSession && !errorLog && !infoLog && (
+              <div className="border border-neon-cyan/40 bg-neon-cyan/5 p-2 text-[9px] text-neon-cyan font-mono">
+                {t('login.sessionExpired')}
+              </div>
+            )}
+
+            {infoLog && (
+              <div className="border border-neon-cyan/40 bg-neon-cyan/5 p-2 text-[9px] text-neon-cyan font-mono flex items-center justify-between gap-2">
+                <span>{infoLog}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('ACCESS')
+                    setInfoLog(null)
+                  }}
+                  className="shrink-0 border border-neon-cyan/50 px-2 py-0.5 text-[8px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 transition-colors"
+                >
+                  {t('login.accountExistsAction')}
+                </button>
+              </div>
+            )}
+
             {errorLog && (
               <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono">
                 {errorLog}
@@ -358,6 +407,7 @@ export function LoginForm() {
                 onClick={() => {
                   setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS')
                   setErrorLog(null)
+                  setInfoLog(null)
                 }}
                 className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors"
               >
@@ -366,7 +416,7 @@ export function LoginForm() {
             </div>
 
             {mode === 'ACCESS' && (
-              <div className="mt-6 border-t border-neutral-900 pt-6">
+              <div className="mt-6 border-t border-neutral-900 pt-6 space-y-3">
                 <button
                   type="button"
                   onClick={handleVaultImport}
@@ -375,6 +425,16 @@ export function LoginForm() {
                   {t('login.vaultRecoveryImport')}
                 </button>
                 {vaultLinkOk && <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">{t('login.vaultRecoveryOk')}</p>}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await clearSessionApi().catch(() => {})
+                    window.location.reload()
+                  }}
+                  className="w-full text-[8px] uppercase tracking-widest text-zinc-600 hover:text-zinc-400 transition-colors"
+                >
+                  {t('login.clearSession')}
+                </button>
               </div>
             )}
           </div>

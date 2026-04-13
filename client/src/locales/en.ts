@@ -140,6 +140,11 @@ As-Is: Service provided without warranty. Data loss is possible.
 The administration reserves the right to remove any account without warning.`,
   'login.signIn': 'Sign In',
   'login.register': 'Register',
+  'login.sessionExpired': 'Session expired. Please sign in again.',
+  'login.clearSession': 'Having trouble? Clear session',
+  'login.clearSessionDone': 'Session cleared.',
+  'login.accountExists': 'This username is already registered.',
+  'login.accountExistsAction': 'Sign In',
 
   // [ONBOARDING]
   'guide.step': 'Step',

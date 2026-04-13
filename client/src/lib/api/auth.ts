@@ -224,6 +224,14 @@ export async function logoutApi(): Promise<void> {
   })
 }
 
+/** Drop the session cookie without auth. Used on login page to clear stale sessions. */
+export async function clearSessionApi(): Promise<void> {
+  await fetch(`${API_URL}/auth/clear-session`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+}
+
 /** Short-lived JWT for WebSocket when the upgrade cannot send cookies. */
 export async function fetchWsTicket(): Promise<string> {
   const res = await fetch(`${API_URL}/auth/ws-ticket`, {

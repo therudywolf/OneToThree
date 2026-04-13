@@ -257,6 +257,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
+  /**
+   * Clear session cookie without requiring auth. Used by login page to drop stale cookies.
+   */
+  app.post('/clear-session', async (_request, reply) => {
+    clearFmSessionCookie(reply)
+    return reply.send({ ok: true })
+  })
+
   app.post('/logout', async (request, reply) => {
     const token = readFmSessionToken(request)
     if (token) {

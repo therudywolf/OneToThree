@@ -12,6 +12,9 @@ services:
   db:
     image: postgres:alpine
     restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     cpu_shares: 512
     cpus: '1.0'
     mem_limit: 512m
@@ -43,6 +46,9 @@ services:
   minio:
     image: minio/minio:latest
     restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     cpu_shares: 384
     cpus: '2.0'
     mem_limit: 512m
@@ -72,6 +78,9 @@ services:
       context: .
       dockerfile: docker/db-migrate/Dockerfile
     restart: 'no'
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     cpu_shares: 256
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
@@ -91,6 +100,9 @@ services:
       context: ./server
       dockerfile: Dockerfile
     restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=128m
@@ -149,6 +161,9 @@ services:
         NEXT_PUBLIC_TURN_USERNAME: ${NEXT_PUBLIC_TURN_USERNAME:-}
         NEXT_PUBLIC_TURN_PASSWORD: ${NEXT_PUBLIC_TURN_PASSWORD:-}
     restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     cpu_shares: 512
     cpus: '4.0'
     mem_limit: 1536m
@@ -209,6 +224,9 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: always
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
     cpu_shares: 256

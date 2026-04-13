@@ -36,17 +36,38 @@ self.addEventListener('push', (event) => {
   }
 
   const url = payload.data?.url || '/'
+  const isIncomingCall = payload.data?.type === 'incoming_call'
 
-  event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: payload.icon || '/wolf-logo.png',
-      badge: '/wolf-logo.png',
-      tag: 'forest-msg',
-      data: { ...payload.data, url },
-      requireInteraction: false,
-    })
-  )
+  if (isIncomingCall) {
+    const callerName = payload.data?.caller_name || 'Unknown'
+    const chatId = payload.data?.chat_id || ''
+    event.waitUntil(
+      self.registration.showNotification('Incoming call from ' + callerName, {
+        body: 'Tap to answer',
+        icon: payload.icon || '/wolf-logo.png',
+        badge: '/wolf-logo.png',
+        actions: [
+          { action: 'accept', title: '\u2713 Answer' },
+          { action: 'decline', title: '\u2717 Decline' },
+        ],
+        tag: 'incoming-call',
+        data: { ...payload.data, url: '/?chat=' + chatId, chat_id: chatId, type: 'incoming_call' },
+        requireInteraction: true,
+        vibrate: [200, 100, 200, 100, 200],
+      })
+    )
+  } else {
+    event.waitUntil(
+      self.registration.showNotification(payload.title, {
+        body: payload.body,
+        icon: payload.icon || '/wolf-logo.png',
+        badge: '/wolf-logo.png',
+        tag: 'forest-msg',
+        data: { ...payload.data, url },
+        requireInteraction: false,
+      })
+    )
+  }
 })
 
 /* ── Background Sync: Outbox ── */
@@ -121,16 +142,42 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const raw = event.notification.data || {}
+  const action = event.action
+  const isCallNotification = raw.type === 'incoming_call'
+
+  // Handle incoming call actions
+  if (isCallNotification && action === 'decline') {
+    // Signal decline to server
+    const chatId = raw.chat_id
+    if (chatId) {
+      event.waitUntil(
+        fetch('/api/calls/decline', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId }),
+        }).catch(function () { /* best-effort */ })
+      )
+    }
+    return
+  }
+
+  // Accept call or general notification click: navigate to the app
   const targetUrl = typeof raw.url === 'string' ? raw.url : '/'
+  // For call accept, add accept_call param
+  const finalUrl = isCallNotification && (action === 'accept' || !action)
+    ? targetUrl + (targetUrl.includes('?') ? '&' : '?') + 'accept_call=1'
+    : targetUrl
 
   event.waitUntil(
     (async () => {
-      const clientList = await self.clients.matchAll({
+      var clientList = await self.clients.matchAll({
         type: 'window',
         includeUncontrolled: true,
       })
-      const absUrl = new URL(targetUrl, self.location.origin).href
-      for (const client of clientList) {
+      var absUrl = new URL(finalUrl, self.location.origin).href
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i]
         if (!client.url.startsWith(self.location.origin)) continue
         if ('navigate' in client && typeof client.navigate === 'function') {
           try {

@@ -297,6 +297,7 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'settings.killExecute': 'Удалить аккаунт',
   'settings.killPhraseMismatch': 'Неверная строка подтверждения.',
   'settings.killPinBad': 'Неверный пароль.',
+  'settings.tabSecurity': 'Безопасность',
   'settings.totpSection': 'Двухфакторная аутентификация',
   'settings.totpHint': 'Одноразовые коды (TOTP, приложение-аутентификатор).',
   'settings.totpActive': 'Включена',

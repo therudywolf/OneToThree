@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { devices, users } from '../db/schema.js'
+import { devices, loginEvents, userBlocks, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { setPendingAvatarKey, takePendingAvatarKey } from '../lib/avatar-pending.js'
 import {
@@ -771,6 +771,148 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .update(devices)
       .set({ revokedAt: new Date() })
       .where(eq(devices.userId, user.id))
+
+    clearFmSessionCookie(reply)
+    return reply.send({ ok: true })
+  })
+
+  /* ─────────────  Login History  ───────────── */
+
+  /** Return last 20 login events for the authenticated user. */
+  app.get('/me/login-history', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const rows = await db
+      .select({
+        id: loginEvents.id,
+        outcome: loginEvents.outcome,
+        ipAddress: loginEvents.ipAddress,
+        userAgent: loginEvents.userAgent,
+        createdAt: loginEvents.createdAt,
+      })
+      .from(loginEvents)
+      .where(eq(loginEvents.userId, user.id))
+      .orderBy(desc(loginEvents.createdAt))
+      .limit(20)
+
+    return reply.send({
+      events: rows.map((r) => ({
+        id: r.id,
+        outcome: r.outcome,
+        ip_address: r.ipAddress,
+        user_agent: r.userAgent,
+        created_at: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+      })),
+    })
+  })
+
+  /* ─────────────  Block / Unblock  ───────────── */
+
+  /** Block a user. Blocked users cannot message you, see your presence, or add you to groups. */
+  app.post('/me/block/:targetId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ targetId: uuidSchema }).safeParse(request.params)
+    if (!params.success) {
+      return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    }
+    const targetId = params.data.targetId
+    if (targetId === user.id) {
+      return reply.status(400).send({ error: 'CANNOT_BLOCK_SELF' })
+    }
+
+    const [target] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, targetId))
+      .limit(1)
+    if (!target) {
+      return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+    }
+
+    await db
+      .insert(userBlocks)
+      .values({ blockerId: user.id, blockedId: targetId })
+      .onConflictDoNothing()
+
+    return reply.send({ ok: true })
+  })
+
+  /** Unblock a user. */
+  app.delete('/me/block/:targetId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ targetId: uuidSchema }).safeParse(request.params)
+    if (!params.success) {
+      return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    }
+
+    await db
+      .delete(userBlocks)
+      .where(
+        and(
+          eq(userBlocks.blockerId, user.id),
+          eq(userBlocks.blockedId, params.data.targetId)
+        )
+      )
+
+    return reply.send({ ok: true })
+  })
+
+  /** List all users this user has blocked. */
+  app.get('/me/blocked', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const rows = await db
+      .select({
+        blockedId: userBlocks.blockedId,
+        username: users.username,
+        avatarKey: users.avatarKey,
+        createdAt: userBlocks.createdAt,
+      })
+      .from(userBlocks)
+      .innerJoin(users, eq(users.id, userBlocks.blockedId))
+      .where(eq(userBlocks.blockerId, user.id))
+      .orderBy(desc(userBlocks.createdAt))
+
+    return reply.send({
+      blocked: rows.map((r) => ({
+        user_id: r.blockedId,
+        username: r.username,
+        avatar_key: r.avatarKey,
+        blocked_at: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+      })),
+    })
+  })
+
+  /* ─────────────  Account Deletion  ───────────── */
+
+  /** Permanently delete the authenticated user's account and all associated data. */
+  app.delete('/me/account', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const parsed = z
+      .object({ confirm_username: z.string().min(1) })
+      .safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    if (parsed.data.confirm_username !== user.username) {
+      return reply.status(400).send({ error: 'USERNAME_MISMATCH' })
+    }
+
+    // Delete all user data: devices, push subs, blocks, then the user row
+    // (messages and chat_members cascade from foreign keys)
+    await db.delete(devices).where(eq(devices.userId, user.id))
+    await db.delete(userBlocks).where(eq(userBlocks.blockerId, user.id))
+    await db.delete(userBlocks).where(eq(userBlocks.blockedId, user.id))
+    await db.delete(users).where(eq(users.id, user.id))
 
     clearFmSessionCookie(reply)
     return reply.send({ ok: true })

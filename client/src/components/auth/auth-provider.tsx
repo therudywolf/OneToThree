@@ -15,13 +15,16 @@ import { AuthHttpError, fetchMe, logoutApi } from '@/lib/api/auth'
 import { wipeAllClientLocalState } from '@/lib/client-wipe'
 import { invalidateAvatarCache, clearAllAvatarCache } from '@/lib/avatar-cache'
 
-/** `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional). */
+/** * `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional).
+ * `has_passkeys` indicates if the user has enrolled WebAuthn devices.
+ */
 export type AuthUser = {
   id: string
   username: string
   is_discoverable?: boolean
   role?: 'user' | 'admin'
   totp_enabled?: boolean
+  has_passkeys?: boolean // <-- Флаг для Windows Hello / Face ID
   /** Session-bound device row id (JWT), when present. */
   device_id?: string | null
   avatar_key?: string | null

@@ -2,43 +2,58 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+/**
+ * PROJECT 13 :: SHELL_INTEGRATION_PROTOCOL
+ * Level: OS Layer (PWA Deployment)
+ * Vibe: Clinical Pure / Terminal Noir
+ */
+
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
-export function usePwaInstall() {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(
+export function useShellIntegration() {
+  const [integrationEvent, setIntegrationEvent] = useState<BeforeInstallPromptEvent | null>(
     null
   )
 
   useEffect(() => {
+    /** [SIGNAL_INTERCEPT] :: Перехват запроса на установку оболочки */
     const onBeforeInstallPrompt = (e: Event) => {
       e.preventDefault()
-      setDeferred(e as BeforeInstallPromptEvent)
+      setIntegrationEvent(e as BeforeInstallPromptEvent)
     }
+
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    
     return () =>
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
   }, [])
 
-  const promptInstall = useCallback(async () => {
-    if (!deferred) return
-    try {
-      await deferred.prompt()
-      await deferred.userChoice
-    } catch (e) {
-      console.error('[pwa-install] prompt() failed', e)
-    } finally {
-      setDeferred(null)
-    }
-  }, [deferred])
+  /** [EXECUTE_INTEGRATION] :: Запуск процесса развертывания нативного узла */
+  const triggerIntegration = useCallback(async () => {
+    if (!integrationEvent) return
 
-  const clearDeferred = useCallback(() => setDeferred(null), [])
+    try {
+      await integrationEvent.prompt()
+      const { outcome } = await integrationEvent.userChoice
+      
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`>> [SYS.PWA] INTEGRATION_OUTCOME: ${outcome.toUpperCase()}`)
+      }
+    } catch (err) {
+      console.error('>> [SYS.PWA] INTEGRATION_FAULT:', err)
+    } finally {
+      setIntegrationEvent(null)
+    }
+  }, [integrationEvent])
+
+  const purgeIntegration = useCallback(() => setIntegrationEvent(null), [])
 
   return {
-    canNativeInstall: !!deferred,
-    promptInstall,
-    clearDeferred,
+    isInstallable: !!integrationEvent,
+    triggerIntegration,
+    purgeIntegration,
   }
 }

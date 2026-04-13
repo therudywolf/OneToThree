@@ -37,10 +37,8 @@ function formatDuration(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
 }
 
-function gridCols(count: number, layoutMode: 'grid' | 'focus'): string {
-  if (layoutMode === 'focus') {
-    return 'grid-cols-1'
-  }
+function getGridClass(count: number, layoutMode: 'grid' | 'focus'): string {
+  if (layoutMode === 'focus') return 'grid-cols-1'
   if (count <= 1) return 'grid-cols-1'
   if (count <= 2) return 'grid-cols-1 md:grid-cols-2'
   if (count <= 4) return 'grid-cols-2'
@@ -48,20 +46,21 @@ function gridCols(count: number, layoutMode: 'grid' | 'focus'): string {
   return 'grid-cols-3 md:grid-cols-4'
 }
 
+// --- PEER TILE (TERMINAL NODE) ---
 function PeerTile({
   peerId,
   stream,
   label,
-  muted,
-  remoteMicMuted,
-  remoteCamOff,
-  isFullscreen,
+  muted = false,
+  remoteMicMuted = false,
+  remoteCamOff = false,
+  isFullscreen = false,
   onFullscreenToggle,
-  isDragging,
+  isDragging = false,
   position,
-  isFocused,
+  isFocused = false,
   onFocusToggle,
-  layout,
+  layout = 'grid',
 }: {
   peerId: string
   stream: MediaStream
@@ -79,7 +78,6 @@ function PeerTile({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const containerRef = useRef<HTMLDivElement | null>(null)
   const hasVideo = stream.getVideoTracks().length > 0
   const [tapCount, setTapCount] = useState(0)
   const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -89,9 +87,7 @@ function PeerTile({
     const a = audioRef.current
     if (hasVideo && v) {
       v.srcObject = stream
-      void v.play().catch(() => {
-        /* iOS may block autoplay until gesture; user can tap overlay */
-      })
+      void v.play().catch(() => {})
       if (!muted) void applyPreferredAudioOutput(v)
       if (a) {
         a.srcObject = null
@@ -99,9 +95,7 @@ function PeerTile({
       }
     } else if (!hasVideo && a) {
       a.srcObject = stream
-      void a.play().catch(() => {
-        /* autoplay policy */
-      })
+      void a.play().catch(() => {})
       if (!muted) void applyPreferredAudioOutput(a)
       if (v) v.srcObject = null
     }
@@ -114,10 +108,15 @@ function PeerTile({
     }
   }, [stream, hasVideo, muted])
 
-  const handleDoubleTap = () => {
+  const handleInteraction = () => {
+    if (layout === 'focus' && onFocusToggle) {
+      onFocusToggle()
+      return
+    }
+    // Double tap mechanic
     setTapCount((c) => c + 1)
     if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current)
-    if (tapCount === 1 && onFullscreenToggle && label === 'REMOTE') {
+    if (tapCount === 1 && onFullscreenToggle && !label.includes('LOCAL')) {
       onFullscreenToggle()
       setTapCount(0)
     } else {
@@ -125,78 +124,54 @@ function PeerTile({
     }
   }
 
-  const handleClick = () => {
-    if (layout === 'focus' && onFocusToggle) {
-      onFocusToggle()
-    } else {
-      handleDoubleTap()
-    }
-  }
-
-  const showRemoteHints =
-    label === 'REMOTE' && (remoteMicMuted || remoteCamOff)
+  const isRemote = !label.includes('LOCAL')
+  const showWarnings = isRemote && (remoteMicMuted || remoteCamOff)
 
   const containerClass = layout === 'grid'
-    ? 'grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full p-4 bg-black'
-    : 'relative w-full h-full bg-black'
+    ? 'relative w-full h-full bg-black border border-neutral-900 group'
+    : 'relative w-full h-full bg-black group'
 
-  const localVideoClass = layout === 'grid'
-    ? 'w-full h-full object-cover rounded-xl border border-neutral-800'
-    : 'absolute bottom-20 right-6 w-32 h-48 md:w-48 md:h-72 object-cover rounded-xl shadow-2xl border border-neutral-700 z-10 transition-all duration-300'
+  const videoClass = layout === 'grid'
+    ? 'w-full h-full object-cover filter contrast-125 grayscale-[20%]'
+    : 'w-full h-full object-cover filter contrast-125 grayscale-[20%]'
 
-  const remoteVideoClass = layout === 'grid'
-    ? 'w-full h-full object-cover rounded-xl border border-neutral-800'
-    : 'w-full h-full object-cover'
-
-  const videoClass = label === 'YOU' ? localVideoClass : remoteVideoClass
-
-  const tileStyle = isDragging && position
-    ? {
-        position: 'fixed' as const,
-        left: `${position.x}px`,
-        top: `${position.y}px`,
-        width: '150px',
-        height: '200px',
-        zIndex: 199,
-      }
-    : undefined
+  const isLocalPIP = layout === 'focus' && !isRemote
+  const localPIPClass = 'absolute bottom-24 right-6 w-32 h-48 md:w-48 md:h-72 object-cover border border-neon-cyan/50 shadow-[0_0_15px_rgba(0,255,255,0.15)] z-10'
 
   return (
     <div
-      ref={containerRef}
-      className={`relative border shadow-[0_0_8px_rgba(0,255,255,0.2)] ${
+      className={`relative bg-black transition-all duration-200 ${
         isFullscreen
-          ? 'fixed inset-0 z-[210] border-neon-red'
+          ? 'fixed inset-0 z-[210] border-2 border-neon-red'
           : isFocused
-            ? 'border-neon-cyan ring-2 ring-neon-cyan/50'
-            : 'border-neon-cyan/40'
+            ? 'border border-neon-cyan ring-1 ring-neon-cyan/30'
+            : isLocalPIP 
+              ? localPIPClass 
+              : 'border border-neutral-800 hover:border-neutral-700'
       }`}
-      style={tileStyle}
-      onClick={handleClick}
+      style={isDragging && position ? {
+        position: 'fixed', left: `${position.x}px`, top: `${position.y}px`, width: '150px', height: '200px', zIndex: 199
+      } : undefined}
+      onClick={handleInteraction}
     >
-      <div className="flex items-center justify-between border-b border-neon-cyan/30 bg-black px-2 py-1">
-        <p className="font-mono text-[9px] uppercase tracking-widest text-neon-cyan">
-          {label} :: {peerId.slice(0, 8)}…
+      {/* NODE HEADER */}
+      <div className="absolute top-0 left-0 w-full z-10 flex items-center justify-between border-b border-white/5 bg-black/80 backdrop-blur-sm px-2 py-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-white/70">
+          <span className={isRemote ? 'text-neon-cyan' : 'text-zinc-500'}>[{label}]</span> :: {peerId.slice(0, 8)}
         </p>
-        {label === 'REMOTE' && onFullscreenToggle && (
+        {isRemote && onFullscreenToggle && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onFullscreenToggle()
-            }}
-            className="p-1 hover:text-neon-cyan"
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            onClick={(e) => { e.stopPropagation(); onFullscreenToggle(); }}
+            className="text-white/50 hover:text-neon-cyan transition-colors"
           >
-            {isFullscreen ? (
-              <Minimize2 className="h-3 w-3" strokeWidth={2} />
-            ) : (
-              <Maximize2 className="h-3 w-3" strokeWidth={2} />
-            )}
+            {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
           </button>
         )}
       </div>
+
       <audio ref={audioRef} className="hidden" playsInline muted={muted} />
+      
       {hasVideo ? (
         <div className={containerClass} style={layout === 'grid' ? undefined : { aspectRatio: '16/9' }}>
           <video
@@ -205,46 +180,40 @@ function PeerTile({
             playsInline
             muted={muted}
             controls={false}
-            className={videoClass}
-            style={{ objectFit: 'cover', transform: 'scaleX(-1)' }}
+            className={isLocalPIP ? 'w-full h-full object-cover transform scale-x-[-1]' : `${videoClass} transform scale-x-[-1]`}
           />
-          {showRemoteHints ? (
-            <div className="pointer-events-none absolute bottom-1 left-1 flex flex-wrap gap-1">
-              {remoteMicMuted ? (
-                <span className="border border-neon-red bg-black/85 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-neon-red shadow-[0_0_8px_rgba(255,0,0,0.35)]">
-                  MIC MUTED
-                </span>
-              ) : null}
-              {remoteCamOff ? (
-                <span className="border border-neon-red bg-black/85 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-wider text-neon-red shadow-[0_0_8px_rgba(255,0,0,0.35)]">
-                  CAM OFF
-                </span>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       ) : (
-        <div className="relative flex w-full items-center justify-center bg-black" style={{ aspectRatio: '16/9' }}>
-          <div className="space-y-1 text-center">
-            <div className="mx-auto h-12 w-12 rounded-full border border-neon-red bg-black" />
-            <p className="font-mono text-[9px] uppercase text-neon-red">AUDIO</p>
-          </div>
-          {showRemoteHints ? (
-            <div className="pointer-events-none absolute bottom-2 left-1/2 flex -translate-x-1/2 flex-wrap justify-center gap-1">
-              {remoteMicMuted ? (
-                <span className="border border-neon-red bg-black/90 px-2 py-0.5 font-mono text-[8px] uppercase text-neon-red">
-                  MIC MUTED
-                </span>
-              ) : null}
+        <div className="flex w-full h-full items-center justify-center bg-zinc-950 inset-0 absolute">
+          <div className="space-y-2 text-center">
+            <div className="mx-auto h-10 w-10 border border-neutral-800 bg-neutral-900 flex items-center justify-center">
+              <span className="block w-2 h-2 bg-neon-red animate-pulse" />
             </div>
-          ) : null}
+            <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">OPTICS_OFFLINE</p>
+          </div>
+        </div>
+      )}
+
+      {/* STATUS OVERLAYS */}
+      {showWarnings && (
+        <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 z-10">
+          {remoteMicMuted && (
+            <span className="border border-neon-red/50 bg-black/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
+              AUDIO_CUT
+            </span>
+          )}
+          {remoteCamOff && hasVideo && (
+            <span className="border border-neon-red/50 bg-black/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
+              FEED_LOST
+            </span>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-
+// --- MAIN OVERLAY ---
 export function ActiveCallOverlay({
   onEndCall,
   onToggleMute,
@@ -263,14 +232,9 @@ export function ActiveCallOverlay({
   const [elapsed, setElapsed] = useState(0)
   const startRef = useRef<number | null>(null)
   const [screenShareAllowed, setScreenShareAllowed] = useState(true)
-  const [fullscreenPeerId, setFullscreenPeerId] = useState<string | null>(null)
-  const [localDragPos, setLocalDragPos] = useState<{ x: number; y: number } | null>(null)
-  const [isDraggingLocal, setIsDraggingLocal] = useState(false)
-  const dragStateRef = useRef<{ startX: number; startY: number } | null>(null)
   const [layout, setLayout] = useState<'grid' | 'focus'>('grid')
   const [focusedPeerId, setFocusedPeerId] = useState<string | null>(null)
   const [showControls, setShowControls] = useState(true)
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [isHD, setIsHD] = useState(() => !loadMediaPrefs().lowBandwidth)
 
   useEffect(() => {
@@ -282,9 +246,8 @@ export function ActiveCallOverlay({
     const handleMouseMove = () => {
       setShowControls(true)
       clearTimeout(timeout)
-      timeout = setTimeout(() => setShowControls(false), 3000)
+      timeout = setTimeout(() => setShowControls(false), 3500)
     }
-
     window.addEventListener('mousemove', handleMouseMove)
     return () => {
       window.removeEventListener('mousemove', handleMouseMove)
@@ -292,14 +255,8 @@ export function ActiveCallOverlay({
     }
   }, [])
 
-  const remoteEntries = useMemo(
-    () => Object.entries(remoteStreams),
-    [remoteStreams]
-  )
-
+  const remoteEntries = useMemo(() => Object.entries(remoteStreams), [remoteStreams])
   const tileCount = 1 + remoteEntries.length
-
-  const controlsOverlayClass = `absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center gap-4 bg-neutral-900/80 backdrop-blur border border-neutral-800 p-3 rounded-full z-50 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`
 
   useEffect(() => {
     if (!isCalling || !localStream) {
@@ -309,44 +266,20 @@ export function ActiveCallOverlay({
     }
     startRef.current = Date.now()
     const id = window.setInterval(() => {
-      if (startRef.current) {
-        setElapsed(Date.now() - startRef.current)
-      }
+      if (startRef.current) setElapsed(Date.now() - startRef.current)
     }, 500)
     return () => window.clearInterval(id)
   }, [isCalling, localStream])
 
-  const audioMuted =
-    localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
+  const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
   const hasCameraTrack = (localStream?.getVideoTracks().length ?? 0) > 0
-  const videoOff =
-    localStream?.getVideoTracks().length === 0
-      ? true
-      : (localStream?.getVideoTracks().some((t) => !t.enabled) ?? false)
-
-  function handleMute() {
-    onToggleMute()
-    setTick((x) => x + 1)
-  }
-
-  function handleCam() {
-    onToggleCamera()
-    setTick((x) => x + 1)
-  }
-
-  function handleScreenShare() {
-    void onToggleScreenShare()
-    setTick((x) => x + 1)
-  }
+  const videoOff = localStream?.getVideoTracks().length === 0 || (localStream?.getVideoTracks().some((t) => !t.enabled) ?? false)
 
   function toggleLayout() {
     setLayout((prev) => {
       const next = prev === 'grid' ? 'focus' : 'grid'
-      if (next === 'focus') {
-        setFocusedPeerId(remoteEntries[0]?.[0] || 'LOCAL')
-      } else {
-        setFocusedPeerId(null)
-      }
+      if (next === 'focus') setFocusedPeerId(remoteEntries[0]?.[0] || 'LOCAL_UNIT')
+      else setFocusedPeerId(null)
       return next
     })
   }
@@ -357,238 +290,124 @@ export function ActiveCallOverlay({
     saveMediaPrefs({ lowBandwidth: !newValue })
   }
 
-  function handlePeerFocus(peerId: string) {
-    if (layout === 'focus') {
-      setFocusedPeerId(peerId)
-    }
-  }
-
   if (!isCalling || !localStream) return null
 
   return (
     <PortalRoot>
-      <div
-        className="fixed inset-0 z-[200] flex flex-col bg-black"
-        role="dialog"
-        aria-label="Active call"
-      >
-        <div className="flex shrink-0 items-center justify-between border-b border-red-500/50 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] shadow-[0_0_10px_rgba(255,0,0,0.35)]">
-          <p className="font-mono text-xs uppercase tracking-[0.35em] text-neon-cyan">
-            :: LIVE_SESSION [{tileCount} PEER{tileCount > 1 ? 'S' : ''}]
-          </p>
-          <p className="font-mono text-sm tabular-nums text-neon-red">
-            {formatDuration(elapsed)}
+      <div className="fixed inset-0 z-[200] flex flex-col bg-zinc-950 font-mono" role="dialog">
+        {/* HEADER BAR */}
+        <div className="flex shrink-0 items-center justify-between border-b border-neutral-900 bg-black/50 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full bg-neon-cyan opacity-75"></span>
+              <span className="relative inline-flex h-2 w-2 bg-neon-cyan"></span>
+            </span>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">
+              SYS.LINK // <span className="text-white">NODES: {tileCount}</span>
+            </p>
+          </div>
+          <p className="text-xs text-neon-cyan/70 tracking-wider">
+            [{formatDuration(elapsed)}]
           </p>
         </div>
 
-        <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-3 [-webkit-overflow-scrolling:touch]">
+        {/* STREAMS CONTAINER */}
+        <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-2 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 to-black">
           {layout === 'focus' && focusedPeerId ? (
-            <div className="relative flex-1">
-              <div className="relative min-h-[320px] w-full">
-                {focusedPeerId === 'LOCAL' ? (
-                  <PeerTile
-                    peerId="LOCAL"
-                    stream={localStream}
-                    label="YOU (FOCUSED)"
-                    muted
-                    layout={layout}
-                  />
+            <div className="relative flex-1 h-full flex flex-col">
+              <div className="relative flex-1 w-full min-h-[50vh]">
+                {focusedPeerId === 'LOCAL_UNIT' ? (
+                  <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted layout={layout} />
                 ) : (
-                  remoteEntries
-                    .filter(([peerId]) => peerId === focusedPeerId)
-                    .map(([peerId, stream]) => {
-                      const hint = remotePeerMedia[peerId]
-                      return (
-                        <PeerTile
-                          key={peerId}
-                          peerId={peerId}
-                          stream={stream}
-                          label="REMOTE (FOCUSED)"
-                          remoteMicMuted={hint?.micMuted}
-                          remoteCamOff={hint?.cameraOff}
-                          layout={layout}
-                        />
-                      )
-                    })
+                  remoteEntries.filter(([id]) => id === focusedPeerId).map(([id, stream]) => (
+                    <PeerTile
+                      key={id} peerId={id} stream={stream} label="REMOTE_LINK"
+                      remoteMicMuted={remotePeerMedia[id]?.micMuted}
+                      remoteCamOff={remotePeerMedia[id]?.cameraOff} layout={layout}
+                    />
+                  ))
                 )}
               </div>
 
-              {focusedPeerId !== 'LOCAL' && localStream ? (
-                <div className="pointer-events-auto absolute bottom-4 right-4 z-20 w-44 rounded border border-neon-cyan/50 bg-black/90 p-1 shadow-[0_0_20px_rgba(0,255,255,0.25)]">
-                  <PeerTile
-                    peerId="LOCAL"
-                    stream={localStream}
-                    label="YOU"
-                    muted
-                    onFocusToggle={() => handlePeerFocus('LOCAL')}
-                    layout={layout}
-                  />
-                </div>
-              ) : null}
+              {/* LOCAL PIP IN FOCUS MODE */}
+              {focusedPeerId !== 'LOCAL_UNIT' && (
+                 <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted onFocusToggle={() => setFocusedPeerId('LOCAL_UNIT')} layout={layout} />
+              )}
 
-              {focusedPeerId === 'LOCAL' && remoteEntries.length > 0 ? (
-                <div className="mt-3 flex gap-2 overflow-x-auto">
-                  {remoteEntries.map(([peerId, stream]) => {
-                    const hint = remotePeerMedia[peerId]
-                    return (
-                      <div key={peerId} className="flex-shrink-0 w-36">
-                        <PeerTile
-                          peerId={peerId}
-                          stream={stream}
-                          label="REMOTE"
-                          remoteMicMuted={hint?.micMuted}
-                          remoteCamOff={hint?.cameraOff}
-                          onFocusToggle={() => handlePeerFocus(peerId)}
-                          layout={layout}
-                        />
-                      </div>
-                    )
-                  })}
+              {/* FOCUS THUMBNAILS */}
+              {focusedPeerId === 'LOCAL_UNIT' && remoteEntries.length > 0 && (
+                <div className="mt-2 flex gap-2 overflow-x-auto border-t border-neutral-900 pt-2 px-2">
+                  {remoteEntries.map(([id, stream]) => (
+                    <div key={id} className="flex-shrink-0 w-40 h-28 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
+                      <PeerTile
+                        peerId={id} stream={stream} label="REMOTE_LINK"
+                        remoteMicMuted={remotePeerMedia[id]?.micMuted}
+                        remoteCamOff={remotePeerMedia[id]?.cameraOff}
+                        onFocusToggle={() => setFocusedPeerId(id)} layout="grid"
+                      />
+                    </div>
+                  ))}
                 </div>
-              ) : null}
+              )}
             </div>
           ) : (
-            <div className={`grid gap-3 ${gridCols(tileCount, layout)}`}>
-              <PeerTile
-                peerId="LOCAL"
-                stream={localStream}
-                label="YOU"
-                muted
-                onFocusToggle={() => handlePeerFocus('LOCAL')}
-                layout={layout}
-              />
-              {remoteEntries.map(([peerId, stream]) => {
-                const hint = remotePeerMedia[peerId]
-                return (
-                  <PeerTile
-                    key={peerId}
-                    peerId={peerId}
-                    stream={stream}
-                    label="REMOTE"
-                    remoteMicMuted={hint?.micMuted}
-                    remoteCamOff={hint?.cameraOff}
-                    onFocusToggle={() => handlePeerFocus(peerId)}
-                    layout={layout}
-                  />
-                )
-              })}
+            <div className={`grid gap-2 h-full ${getGridClass(tileCount, layout)}`}>
+              <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted onFocusToggle={() => setFocusedPeerId('LOCAL_UNIT')} layout={layout} />
+              {remoteEntries.map(([id, stream]) => (
+                <PeerTile
+                  key={id} peerId={id} stream={stream} label="REMOTE_LINK"
+                  remoteMicMuted={remotePeerMedia[id]?.micMuted}
+                  remoteCamOff={remotePeerMedia[id]?.cameraOff}
+                  onFocusToggle={() => setFocusedPeerId(id)} layout={layout}
+                />
+              ))}
             </div>
           )}
         </div>
 
-      <div className={controlsOverlayClass}>
-        <button
-          type="button"
-          onClick={handleMute}
-          className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none bg-black p-3 hover:bg-neon-cyan/10 ${
-            audioMuted
-              ? 'border-2 border-neon-red text-neon-red shadow-[0_0_14px_rgba(255,0,0,0.35)]'
-              : 'border border-neon-cyan text-neon-cyan'
-          }`}
-          aria-label={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
-        >
-          {audioMuted ? (
-            <MicOff className="h-5 w-5" strokeWidth={1.5} />
-          ) : (
-            <Mic className="h-5 w-5" strokeWidth={1.5} />
-          )}
-        </button>
-        {onToggleVideo && (
-          <button
-            type="button"
-            onClick={() => {
-              void onToggleVideo()
-              setTick((x) => x + 1)
-            }}
-            className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 hover:bg-neon-cyan/10 ${
-              hasCameraTrack && !videoOff
-                ? 'border-neon-cyan text-neon-cyan'
-                : 'border-zinc-600 text-zinc-400'
-            }`}
-            aria-label={hasCameraTrack && !videoOff ? 'Disable video' : 'Enable video'}
-          >
-            {hasCameraTrack && !videoOff ? (
-              <Video className="h-5 w-5" strokeWidth={1.5} />
-            ) : (
-              <VideoOff className="h-5 w-5" strokeWidth={1.5} />
-            )}
+        {/* TACTICAL CONTROLS */}
+        <div className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-black/90 border border-neutral-800 backdrop-blur-xl shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
+          
+          <button onClick={() => { onToggleMute(); setTick(t => t + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${audioMuted ? 'bg-red-950/30 text-neon-red hover:bg-red-900/50' : 'text-neutral-300 hover:text-white hover:bg-white/5'}`}>
+            {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={handleCam}
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-neon-red bg-black p-3 text-neon-red hover:bg-neon-red/10"
-          aria-label={videoOff ? 'Enable camera' : 'Disable camera'}
-        >
-          {videoOff ? (
-            <VideoOff className="h-5 w-5" strokeWidth={1.5} />
-          ) : (
-            <Video className="h-5 w-5" strokeWidth={1.5} />
+
+          {onToggleVideo && (
+            <button onClick={() => { onToggleVideo(); setTick(t => t + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${!hasCameraTrack || videoOff ? 'bg-neutral-900/50 text-neutral-600 hover:bg-neutral-800' : 'text-neutral-300 hover:text-white hover:bg-white/5'}`}>
+              {!hasCameraTrack || videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+            </button>
           )}
-        </button>
-        {hasCameraTrack && !videoOff ? (
-          <button
-            type="button"
-            onClick={() => void onSwitchCamera()}
-            disabled={isScreenSharing}
-            title="Switch camera (front / back)"
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-zinc-500 bg-black p-3 text-zinc-300 hover:border-neon-cyan hover:text-neon-cyan disabled:cursor-not-allowed disabled:opacity-30"
-            aria-label="Switch camera"
-          >
-            <RefreshCw className="h-5 w-5" strokeWidth={1.5} />
+
+          <button onClick={() => { onToggleCamera(); setTick(t => t + 1); }} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-neon-cyan hover:bg-neon-cyan/5 transition-colors">
+            {videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
           </button>
-        ) : null}
-        {screenShareAllowed ? (
-          <button
-            type="button"
-            onClick={handleScreenShare}
-            title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
-            className={`hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 md:flex ${
-              isScreenSharing
-                ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)] hover:bg-neon-cyan/10'
-                : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
-            }`}
-            aria-label={isScreenSharing ? 'Stop screen share' : 'Share screen'}
-          >
-            <Monitor className="h-5 w-5" strokeWidth={1.5} />
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={toggleBandwidth}
-          title={isHD ? 'Switch to SD' : 'Switch to HD'}
-          className={`flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border bg-black p-3 hover:bg-neon-cyan/10 ${
-            isHD
-              ? 'border-neon-cyan text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.25)]'
-              : 'border-zinc-600 text-zinc-400 hover:border-zinc-400 hover:text-zinc-200'
-          }`}
-          aria-label={isHD ? 'Switch to SD' : 'Switch to HD'}
-        >
-          <Zap className="h-5 w-5" strokeWidth={1.5} />
-        </button>
-        <button
-          type="button"
-          onClick={toggleLayout}
-          title={layout === 'grid' ? 'Switch to focus mode' : 'Switch to grid mode'}
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border border-zinc-500 bg-black p-3 text-zinc-300 hover:border-neon-cyan hover:text-neon-cyan"
-          aria-label={layout === 'grid' ? 'Focus mode' : 'Grid mode'}
-        >
-          {layout === 'grid' ? (
-            <Focus className="h-5 w-5" strokeWidth={1.5} />
-          ) : (
-            <Grid3X3 className="h-5 w-5" strokeWidth={1.5} />
+
+          {hasCameraTrack && !videoOff && (
+            <button onClick={onSwitchCamera} disabled={isScreenSharing} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-20 transition-colors">
+              <RefreshCw className="h-4 w-4" />
+            </button>
           )}
-        </button>
-        <button
-          type="button"
-          onClick={onEndCall}
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border-2 border-neon-red bg-red-950/50 p-3 text-neon-red hover:bg-neon-red/20"
-          aria-label="End call"
-        >
-          <PhoneOff className="h-5 w-5" strokeWidth={1.5} />
-        </button>
-      </div>
-      <span className="hidden">{tick}</span>
+
+          {screenShareAllowed && (
+            <button onClick={() => { onToggleScreenShare(); setTick(t => t + 1); }} className={`hidden md:flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${isScreenSharing ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>
+              <Monitor className="h-4 w-4" />
+            </button>
+          )}
+
+          <button onClick={toggleBandwidth} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${isHD ? 'text-neon-cyan bg-neon-cyan/5' : 'text-neutral-500 hover:text-neutral-300'}`}>
+            <Zap className="h-4 w-4" />
+          </button>
+
+          <button onClick={toggleLayout} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors">
+            {layout === 'grid' ? <Focus className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
+          </button>
+
+          <button onClick={onEndCall} className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-black transition-all">
+            <PhoneOff className="h-5 w-5" />
+          </button>
+        </div>
+        
+        <span className="hidden">{tick}</span>
       </div>
     </PortalRoot>
   )

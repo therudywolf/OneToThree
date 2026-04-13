@@ -527,11 +527,6 @@ export function ChatApp({
               <span className="animate-pulse">...</span> ]
             </div>
           ) : null}
-          <ChatMediaControls
-            cryptoCtx={cryptoCtx}
-            sendMedia={sendMedia}
-            disabled={!activeChatId || !!ctxError}
-          />
         </div>
       </div>
     </div>

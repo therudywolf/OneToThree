@@ -134,81 +134,85 @@ export function VaultModal({ userId, displayHandle }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 px-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 px-4 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-label="Key vault"
     >
-      <div className="terminal-panel w-full max-w-md space-y-6">
-        <header className="border-b border-neon-red/40 pb-3">
-          <p className="glitch-text text-xs uppercase tracking-[0.35em] text-neon-cyan">
-            [ VAULT ] :: UNLOCK_SESSION
+      <div className="w-full max-w-sm space-y-6 border border-neon-cyan/40 bg-black p-6 shadow-[0_0_30px_rgba(0,255,255,0.05)]">
+        <header className="border-b border-neon-cyan/30 pb-4">
+          <p className="font-mono text-sm uppercase tracking-[0.35em] text-neon-cyan animate-pulse">
+            [ VAULT_LOCKED ]
           </p>
-          <p className="mt-1 font-mono text-[10px] text-red-800">{displayHandle}</p>
-          <p className="mt-1 font-mono text-[10px] text-red-700">
-            PIN EXISTS ONLY IN RAM — NEVER LOGGED OR PERSISTED
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
+            ID :: {displayHandle}
+          </p>
+          <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-red-900">
+            SYS_WARN: KEY EXISTS ONLY IN RAM. NO PERSISTENCE.
           </p>
         </header>
 
         {bioEnrolled ? (
-          <div className="space-y-4">
-            <p className="font-mono text-[10px] text-neon-cyan/80">
-              Biometric unlock is configured. Vault is bound to this device&apos;s
-              passkey — your previous PIN no longer applies.
+          <div className="space-y-5">
+            <p className="border-l-2 border-neon-cyan/50 bg-neon-cyan/5 pl-3 py-2 font-mono text-[9px] uppercase leading-relaxed tracking-widest text-neon-cyan/80">
+              [ AUTH_OVERRIDE ]<br />
+              HARDWARE KEYCHAIN ACTIVE.<br />
+              LOCAL PIN DISABLED.
             </p>
             <TerminalGlitchButton
               type="button"
               disabled={busy}
               onClick={() => void handleBiometricUnlock()}
+              className="w-full"
             >
               [ USE_BIOMETRICS ]
             </TerminalGlitchButton>
             {error ? (
-              <p className="border border-neon-red px-2 py-1 font-mono text-xs text-neon-red">
+              <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
                 [!] {error}
               </p>
             ) : null}
           </div>
         ) : (
-          <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-4">
+          <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-5">
             <div>
-              <label className="terminal-label" htmlFor="vault-pin">
-                &gt; VAULT_PIN
+              <label className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-neon-cyan/70" htmlFor="vault-pin">
+                &gt; ENTER_DECRYPTION_PIN
               </label>
               <input
                 id="vault-pin"
                 type="password"
                 autoComplete="off"
-                className="terminal-input"
+                autoFocus
+                className="w-full border border-neon-cyan/30 bg-black px-3 py-2 font-mono text-neon-cyan transition-colors focus:border-neon-cyan focus:bg-neon-cyan/5 focus:outline-none"
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
                 required
               />
             </div>
             {error ? (
-              <p className="border border-neon-red px-2 py-1 font-mono text-xs text-neon-red">
+              <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
                 [!] {error}
               </p>
             ) : null}
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <TerminalGlitchButton type="submit" disabled={busy}>
+            <div className="flex flex-col gap-3">
+              <TerminalGlitchButton type="submit" disabled={busy} className="w-full">
                 [ UNLOCK ]
               </TerminalGlitchButton>
               {showBioSetup && !bioEnrolled ? (
-                <TerminalGlitchButton
+                <button
                   type="button"
                   disabled={busy || !pin.trim()}
                   onClick={() => void handleEnrollBiometrics()}
-                  className="border-neon-red/80 text-neon-red"
+                  className="w-full border border-neon-red/50 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
                 >
                   [ CONFIGURE_BIOMETRICS ]
-                </TerminalGlitchButton>
+                </button>
               ) : null}
             </div>
             {!largeBlobLikelySupported() ? (
-              <p className="font-mono text-[9px] text-red-800">
-                Biometric vault requires HTTPS and a browser with WebAuthn largeBlob
-                (e.g. Chromium).
+              <p className="font-mono text-[8px] uppercase tracking-widest text-zinc-600">
+                // BIO_AUTH REQUIRES HTTPS & WEBAUTHN LARGEBLOB SUPPORT.
               </p>
             ) : null}
           </form>

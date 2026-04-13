@@ -1,8 +1,15 @@
-/** Keep rules in sync with server/src/lib/nickname.ts */
+/**
+ * PROJECT 13 :: IDENTITY_SIGNATURE_VALIDATOR
+ * Level: Core Layer (Logic Sync)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ * * CRITICAL: Sync with uplink logic [server/src/lib/nickname.ts]
+ */
 
-export const NICKNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,20}$/
+/** [SIGNATURE_PATTERN] :: Только латиница, цифры и системные разделители. 3-20 символов. */
+export const IDENTITY_SIGNATURE_PATTERN = /^[a-zA-Z0-9_.-]{3,20}$/
 
-export const RESERVED_NICKNAMES = new Set([
+/** [PROTECTED_SIGNATURES] :: Зарезервированные системные идентификаторы (Warden Level) */
+export const PROTECTED_SIGNATURES = new Set([
   'admin',
   'administrator',
   'system',
@@ -13,19 +20,30 @@ export const RESERVED_NICKNAMES = new Set([
   'null',
   'undefined',
   'help',
+  'p13',
+  'warden',
 ])
 
-export type NicknameParseResult =
+export type SignatureProbeResult =
   | { ok: true; value: string }
   | { ok: false; error: 'INVALID_USERNAME_FORMAT' | 'USERNAME_RESERVED' }
 
-export function parseNickname(raw: string): NicknameParseResult {
-  const s = raw.trim()
-  if (!NICKNAME_PATTERN.test(s)) {
+/**
+ * [PROBE_SIGNATURE] :: Сканирование сырого хэндла на соответствие протоколам стаи.
+ */
+export function probeIdentitySignature(raw: string): SignatureProbeResult {
+  const signal = raw.trim()
+
+  // [1] PATTERN_CHECK :: Проверка структуры сигнала
+  if (!IDENTITY_SIGNATURE_PATTERN.test(signal)) {
     return { ok: false, error: 'INVALID_USERNAME_FORMAT' }
   }
-  if (RESERVED_NICKNAMES.has(s.toLowerCase())) {
+
+  // [2] RESERVATION_CHECK :: Проверка на попытку мимикрии под систему
+  if (PROTECTED_SIGNATURES.has(signal.toLowerCase())) {
     return { ok: false, error: 'USERNAME_RESERVED' }
   }
-  return { ok: true, value: s }
+
+  // [3] VALIDATED :: Сигнал чист
+  return { ok: true, value: signal }
 }

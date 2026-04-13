@@ -35,12 +35,14 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const [messageText, setMessageText] = useState('')
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [mediaMode, setMediaMode] = useState<'voice' | 'circle'>('voice')
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
+  
+  // Мы используем useRef для флага записи, чтобы обойти асинхронность useState при быстрых кликах
+  const isRecordingRef = useRef(false)
+  const [isRecordingUI, setIsRecordingUI] = useState(false)
+  
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
   const replyTo = useChatStore((s) => s.replyTo)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
@@ -51,7 +53,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     stopCapture,
   } = useMediaRecorder()
 
-  // Close emoji picker on outside click
   useEffect(() => {
     if (!emojiOpen) return
     const close = () => setEmojiOpen(false)
@@ -60,54 +61,46 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   }, [emojiOpen])
 
   const toggleMediaMode = () => {
-    if (isRecording) return
+    if (isRecordingRef.current) return
     setMediaMode((prev) => (prev === 'voice' ? 'circle' : 'voice'))
   }
 
   const startRecording = async () => {
-    if (!cryptoCtx || disabled || isRecording) return
+    if (!cryptoCtx || disabled || isRecordingRef.current) return
 
-    setIsRecording(true)
-    setRecordingTime(0)
+    isRecordingRef.current = true
+    setIsRecordingUI(true)
     vibrateShort(12)
 
-    recordingTimerRef.current = setInterval(() => {
-      setRecordingTime((time) => time + 1)
-    }, 1000)
-
     try {
+      await resumeAudioContextAfterGesture()
       if (mediaMode === 'voice') {
         await startVoiceCapture()
       } else {
         await startVideoCircleCapture()
       }
-      await resumeAudioContextAfterGesture()
     } catch (error) {
       console.error('Failed to start recording:', error)
-      setIsRecording(false)
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current)
-        recordingTimerRef.current = null
-      }
+      isRecordingRef.current = false
+      setIsRecordingUI(false)
     }
   }
 
   const stopRecording = async () => {
-    if (!isRecording) return
+    if (!isRecordingRef.current) return
 
-    setIsRecording(false)
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current)
-      recordingTimerRef.current = null
-    }
+    isRecordingRef.current = false
+    setIsRecordingUI(false)
 
     try {
       const result = await stopCapture()
-      if (result && cryptoCtx) {
+      if (result && result.blob.size > 0 && cryptoCtx) {
         await sendMedia(
           result.blob,
           mediaMode === 'voice' ? 'audio' : 'video'
         )
+      } else {
+        console.warn('Capture stopped but blob is empty or null.')
       }
     } catch (error) {
       console.error('Failed to stop recording:', error)
@@ -128,9 +121,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         el.focus()
         try {
           el.setSelectionRange(pos, pos)
-        } catch {
-          /* ignore */
-        }
+        } catch { /* ignore */ }
       })
       
       onDraftChanged(next)
@@ -152,25 +143,19 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (containerRef.current) {
-      containerRef.current.classList.add('drag-over')
-    }
+    containerRef.current?.classList.add('drag-over')
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (containerRef.current) {
-      containerRef.current.classList.remove('drag-over')
-    }
+    containerRef.current?.classList.remove('drag-over')
   }
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (containerRef.current) {
-      containerRef.current.classList.remove('drag-over')
-    }
+    containerRef.current?.classList.remove('drag-over')
 
     if (!e.dataTransfer?.files.length) return
 
@@ -206,6 +191,11 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     onSubmitOrClear()
     setMessageText('')
     setReplyTo(null)
+  }
+
+  // Prevent default context menu on media button to avoid interruptions
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault()
   }
 
   return (
@@ -255,9 +245,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             }}
             skinTonesDisabled
             searchDisabled
-            previewConfig={{
-              showPreview: false,
-            }}
+            previewConfig={{ showPreview: false }}
             width={300}
             height={350}
           />
@@ -268,9 +256,8 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <button
           type="button"
           className="shrink-0 border border-neon-cyan/50 bg-black px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40"
-          disabled={disabled || isRecording}
+          disabled={disabled || isRecordingUI}
           onClick={handleAttachClick}
-          aria-label={t('chat.attachFile') || 'Attach file'}
         >
           📎
         </button>
@@ -278,14 +265,12 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <button
           type="button"
           className="shrink-0 border border-neon-cyan/50 bg-black px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40"
-          disabled={disabled || isRecording}
+          disabled={disabled || isRecordingUI}
           onClick={() => setEmojiOpen((o) => !o)}
           onMouseDown={(e) => {
             e.stopPropagation()
             e.preventDefault()
           }}
-          aria-label={t('emoji.pickerAria')}
-          aria-expanded={emojiOpen}
         >
           😊
         </button>
@@ -293,7 +278,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <div className="relative flex-1">
           <div
             className={`flex items-center gap-2 rounded border px-3 py-2 ${
-              isRecording
+              isRecordingUI
                 ? 'border-neon-red/70 bg-zinc-950'
                 : 'border-neon-cyan/40 bg-black'
             }`}
@@ -308,17 +293,12 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
                 onDraftChanged(next)
               }}
               onPaste={handlePaste}
-              disabled={disabled || isRecording}
-              aria-label={t('chat.inputPlaceholder')}
-              placeholder={
-                isRecording
-                  ? 'RECORDING...'
-                  : t('chat.inputPlaceholder')
-              }
+              disabled={disabled || isRecordingUI}
+              placeholder={isRecordingUI ? 'RECORDING...' : 'type encrypted message'}
               autoComplete="off"
               spellCheck={false}
             />
-            {isRecording ? (
+            {isRecordingUI ? (
               <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-600 animate-pulse" />
             ) : null}
           </div>
@@ -326,50 +306,42 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
         <button
           type="button"
-          className={`shrink-0 border bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest hover:bg-opacity-10 disabled:opacity-40 transition-all ${
-            isRecording
+          className={`shrink-0 select-none border bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest hover:bg-opacity-10 disabled:opacity-40 transition-all ${
+            isRecordingUI
               ? 'border-red-600 bg-red-950/20 text-red-300'
               : mediaMode === 'voice'
               ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'
               : 'border-neon-red text-neon-red hover:bg-neon-red/10'
           }`}
           disabled={disabled || !cryptoCtx}
-          onClick={() => {
-            if (!isRecording) toggleMediaMode()
-          }}
-          onMouseDown={(e) => {
-            if (disabled || !cryptoCtx || isRecording) return
+          onContextMenu={handleContextMenu}
+          onClick={(e) => {
             e.preventDefault()
+            // Switch mode ONLY if we are not recording and haven't just finished a drag/long press
+            if (!isRecordingRef.current) toggleMediaMode()
+          }}
+          onPointerDown={(e) => {
+            if (disabled || !cryptoCtx) return
+            e.preventDefault()
+            // Pointer event catches both mouse and touch reliably
             void startRecording()
           }}
-          onMouseUp={async () => {
-            if (!isRecording) return
-            await stopRecording()
-          }}
-          onTouchStart={(e) => {
-            if (disabled || !cryptoCtx || isRecording) return
+          onPointerUp={(e) => {
             e.preventDefault()
-            void startRecording()
+            void stopRecording()
           }}
-          onTouchEnd={async () => {
-            if (!isRecording) return
-            await stopRecording()
+          onPointerCancel={(e) => {
+             e.preventDefault()
+             void stopRecording()
           }}
-          style={{ touchAction: 'none' }}
-          title={
-            isRecording
-              ? 'Stop recording'
-              : mediaMode === 'voice'
-              ? 'Voice mode (hold to record, tap to switch)'
-              : 'Circle mode (hold to record, tap to switch)'
-          }
+          style={{ touchAction: 'none' }} // Prevents browser from intercepting touches for scrolling
         >
-          {isRecording ? '●' : mediaMode === 'voice' ? '🎤' : '📹'}
+          {isRecordingUI ? '●' : mediaMode === 'voice' ? '🎤' : '📹'}
         </button>
 
         <TerminalGlitchButton
           type="submit"
-          disabled={disabled || !messageText.trim() || isRecording}
+          disabled={disabled || !messageText.trim() || isRecordingUI}
           className="min-h-11 min-w-[44px] shrink-0 px-4 py-2 md:min-h-0 md:min-w-0"
         >
           [ TX ]

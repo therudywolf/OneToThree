@@ -6,9 +6,15 @@ import { SilenceConsole } from '@/components/silence-console'
 import { RecoveryHandler } from '@/components/recovery-handler'
 import './globals.css'
 
+/**
+ * PROJECT 13 :: CORE_SHELL_CONTAINMENT
+ * Level: Root Layer (Zero-Trust Perimeter)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
 export const metadata: Metadata = {
   title: 'Project 13 (One to Three)',
-  description: 'Self-hosted zero-trust E2E messenger',
+  description: 'Clinical-grade zero-trust E2E transmission node',
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [
@@ -24,12 +30,10 @@ export const metadata: Metadata = {
   },
   other: {
     'apple-mobile-web-app-capable': 'yes',
-    /** Reinforce status bar + Chrome toolbar tint alongside `viewport.themeColor`. */
     'theme-color': '#000000',
   },
 }
 
-/** `interactive-widget` helps Android Chrome resize the layout when the IME opens. */
 export const viewport: Viewport = {
   themeColor: '#000000',
   colorScheme: 'dark',
@@ -47,21 +51,31 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-void">
-      <body className="relative min-h-dvh overflow-x-hidden bg-void supports-[height:100dvh]:min-h-[100dvh]">
-        {/* DEBUG: SilenceConsole disabled for WebRTC diagnostics */}
-        {/* <SilenceConsole /> */}
+    <html lang="en" className="bg-zinc-950 selection:bg-neon-red selection:text-black">
+      <body className="relative min-h-dvh overflow-x-hidden bg-black font-mono antialiased supports-[height:100dvh]:min-h-[100dvh]">
+        
+        {/* [1] SYSTEM_DIAGNOSTICS_LAYER */}
+        {/* <SilenceConsole /> // Disabled for active signal debugging */}
         <RecoveryHandler />
+
         <ErrorBoundary>
+          {/* [2] IDENTITY_VERIFICATION_LAYER */}
           <AuthProvider>
             <Auth401Interceptor>
-              <div className="crt-overlay" aria-hidden />
-              <div className="crt-vignette relative z-10 min-h-dvh supports-[height:100dvh]:min-h-[100dvh]">
+              
+              {/* [3] VISUAL_INTERFACE_LAYER (CRT_AESTHETIC) */}
+              <div className="crt-overlay pointer-events-none fixed inset-0 z-[100]" aria-hidden />
+              
+              <div className="crt-vignette relative z-10 flex min-h-dvh flex-col supports-[height:100dvh]:min-h-[100dvh]">
                 {children}
               </div>
+
+              {/* [4] NOISE_TEXTURE :: Стерильный визуальный шум */}
+              <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.02] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
             </Auth401Interceptor>
           </AuthProvider>
         </ErrorBoundary>
+
       </body>
     </html>
   )

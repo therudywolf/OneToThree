@@ -1,30 +1,45 @@
-import { useEffect, useCallback } from 'react';
+'use client'
 
-export function usePhantomPush() {
+import { useEffect, useCallback } from 'react'
+
+/**
+ * PROJECT 13 :: PHANTOM_INTERCEPT_HOOK
+ * Level: Interface Layer (OS Alerts)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ * Purpose: Emitting signal alerts when the node is in a background (hidden) state.
+ */
+
+export function usePhantomIntercept() {
   useEffect(() => {
-    // Запрашиваем права на системные уведомления при загрузке
+    /** [PROTOCOL_INIT] :: Запрос полномочий на прерывание в спящем режиме */
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      void Notification.requestPermission()
     }
-  }, []);
+  }, [])
 
-  const triggerBackgroundPush = useCallback((title: string, body: string) => {
-    // Срабатывает ТОЛЬКО если вкладка скрыта/свернута (Phantom State)
-    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-      const notification = new Notification(title, {
-        body: body,
-        icon: '/icon-192.png', // Убедись, что иконка есть в папке public
+  /** * [EMIT_SIGNAL] :: Генерация системного уведомления.
+   * Срабатывает только если вкладка скрыта (document.hidden).
+   */
+  const emitPhantomSignal = useCallback((label: string, content: string) => {
+    const isPhantom = document.hidden
+    const hasAuthority = 'Notification' in window && Notification.permission === 'granted'
+
+    if (isPhantom && hasAuthority) {
+      const signal = new Notification(label, {
+        body: content,
+        icon: '/icon-192.png', // Системная метка узла
         badge: '/icon-192.png',
-        tag: 'project13-message', // Группирует пуши
-        silent: false, // Оставляем системный звук
-      });
+        tag: 'p13-intercept', // Группировка сигналов в один стек
+        silent: false, // Оставляем системный акустический отклик
+      })
 
-      notification.onclick = function () {
-        window.focus(); // Возвращает фокус на вкладку при клике
-        this.close();
-      };
+      signal.onclick = function () {
+        /** [FOCUS_LOCK] :: Возврат к активному терминалу при перехвате */
+        window.focus()
+        this.close()
+      }
     }
-  }, []);
+  }, [])
 
-  return { triggerBackgroundPush };
+  return { emitPhantomSignal }
 }

@@ -1,92 +1,85 @@
+'use client'
+
 import type { DecryptedMessage } from '@/types/chat'
 
-export type GroupedMessage = {
-  type: 'single'
+/**
+ * PROJECT 13 :: TRANSMISSION_AGGREGATOR
+ * Level: Interface Layer (UI/UX Optimization)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
+export type AggregatedNode = {
+  type: 'UNIT'
   message: DecryptedMessage
 } | {
-  type: 'grouped'
+  type: 'COLLECTION'
   messages: DecryptedMessage[]
-  senderId: string
+  originId: string
   timestamp: Date
 }
 
-export function groupMessages(messages: DecryptedMessage[]): GroupedMessage[] {
-  const grouped: GroupedMessage[] = []
-  let currentGroup: DecryptedMessage[] = []
-  let currentSenderId = ''
-  let lastTimestamp = 0
-
-  for (const message of messages) {
-    const messageTime = new Date(message.created_at).getTime()
-    const isImageMessage = message.media_type === 'image' ||
-      (message.plaintext && parseAttachmentEnvelope(message.plaintext)?.mimeType?.startsWith('image/'))
-
-    // Check if we can add to current group
-    const canGroup = currentGroup.length > 0 &&
-      message.sender_id === currentSenderId &&
-      isImageMessage &&
-      currentGroup.every(m => m.media_type === 'image' ||
-        (m.plaintext && parseAttachmentEnvelope(m.plaintext)?.mimeType?.startsWith('image/'))) &&
-      (messageTime - lastTimestamp) <= 60000 // 1 minute
-
-    if (canGroup) {
-      currentGroup.push(message)
-      lastTimestamp = messageTime
-    } else {
-      // Finish current group if it exists
-      if (currentGroup.length > 0) {
-        if (currentGroup.length === 1) {
-          grouped.push({ type: 'single', message: currentGroup[0] })
-        } else {
-          grouped.push({
-            type: 'grouped',
-            messages: currentGroup,
-            senderId: currentSenderId,
-            timestamp: new Date(currentGroup[0].created_at)
-          })
-        }
-      }
-
-      // Start new group
-      if (isImageMessage) {
-        currentGroup = [message]
-        currentSenderId = message.sender_id
-        lastTimestamp = messageTime
-      } else {
-        grouped.push({ type: 'single', message })
-        currentGroup = []
-        currentSenderId = ''
-      }
+/** [SIGNAL_PROBE] :: Проверка, является ли пакет визуальным сегментом */
+function isVisualSegment(msg: DecryptedMessage): boolean {
+  if (msg.media_type === 'image') return true
+  
+  if (msg.plaintext) {
+    try {
+      const envelope = JSON.parse(msg.plaintext)
+      return envelope.p13 === 'attachment' && envelope.v === 1 && envelope.mimeType?.startsWith('image/')
+    } catch {
+      return false
     }
   }
-
-  // Finish last group
-  if (currentGroup.length > 0) {
-    if (currentGroup.length === 1) {
-      grouped.push({ type: 'single', message: currentGroup[0] })
-    } else {
-      grouped.push({
-        type: 'grouped',
-        messages: currentGroup,
-        senderId: currentSenderId,
-        timestamp: new Date(currentGroup[0].created_at)
-      })
-    }
-  }
-
-  return grouped
+  return false
 }
 
-// Helper function to parse attachment envelope (duplicate from media-bubble for now)
-function parseAttachmentEnvelope(plaintext: string | null) {
-  if (!plaintext) return null
-  try {
-    const parsed = JSON.parse(plaintext)
-    if (parsed.p13 === 'attachment' && parsed.v === 1) {
-      return parsed
+/**
+ * [AGGREGATE_TRANSMISSIONS] :: Группировка последовательных визуальных пакетов в коллекции.
+ * Лимит разрыва между пакетами: 60 секунд.
+ */
+export function aggregateTransmissions(feed: DecryptedMessage[]): AggregatedNode[] {
+  const result: AggregatedNode[] = []
+  let buffer: DecryptedMessage[] = []
+  
+  const flushBuffer = () => {
+    if (buffer.length === 0) return
+    
+    if (buffer.length === 1) {
+      result.push({ type: 'UNIT', message: buffer[0] })
+    } else {
+      result.push({
+        type: 'COLLECTION',
+        messages: [...buffer],
+        originId: buffer[0].sender_id,
+        timestamp: new Date(buffer[0].created_at)
+      })
     }
-  } catch {
-    // ignore
+    buffer = []
   }
-  return null
+
+  for (const packet of feed) {
+    const isVisual = isVisualSegment(packet)
+    const packetTime = new Date(packet.created_at).getTime()
+    
+    // Проверка условий для вхождения в текущую коллекцию
+    const canCluster = buffer.length > 0 &&
+      packet.sender_id === buffer[0].sender_id &&
+      isVisual &&
+      (packetTime - new Date(buffer[buffer.length - 1].created_at).getTime()) <= 60000
+
+    if (canCluster) {
+      buffer.push(packet)
+    } else {
+      flushBuffer()
+      
+      if (isVisual) {
+        buffer = [packet]
+      } else {
+        result.push({ type: 'UNIT', message: packet })
+      }
+    }
+  }
+
+  flushBuffer()
+  return result
 }

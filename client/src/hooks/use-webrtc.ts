@@ -14,69 +14,56 @@ import {
 import { useCallStore } from '@/store/callStore'
 import { useChatStore } from '@/store/chatStore'
 
-const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
+/**
+ * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
+ * Level: Transmission Layer (Zero-Trust)
+ * Vibe: Clinical Steel / Terminal Noir
+ */
+
+const DEFAULT_STUN: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' }
 ]
 
-async function fetchIceServers(): Promise<RTCIceServer[]> {
+async function getSignalRelays(): Promise<RTCIceServer[]> {
   try {
-    const response = await fetch('/api/turn', {
+    const res = await fetch('/api/turn', {
       method: 'GET',
       credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers: { 'Accept': 'application/json' },
     })
 
-    if (!response.ok) {
-      throw new Error(`TURN fetch failed: ${response.status} ${response.statusText}`)
-    }
+    if (!res.ok) throw new Error(`RELAY_FETCH_FAIL: ${res.status}`)
 
-    const payload = (await response.json()) as { iceServers?: unknown }
-    if (!payload || !Array.isArray(payload.iceServers)) {
-      throw new Error('TURN response did not contain iceServers array')
-    }
+    const payload = (await res.json()) as { iceServers?: RTCIceServer[] }
+    if (!payload.iceServers) throw new Error('MALFORMED_RELAY_PAYLOAD')
 
-    return payload.iceServers.map((item) => {
-      if (!item || typeof item !== 'object' || !('urls' in item)) {
-        throw new Error('Invalid ICE server entry')
-      }
-      return item as RTCIceServer
-    }).map((server) => {
-      if (typeof server.urls === 'string' && server.urls.startsWith('turn:')) {
-        server.urls = [server.urls + '?transport=tcp', server.urls + '?transport=udp']
-      } else if (Array.isArray(server.urls)) {
-        server.urls = server.urls.flatMap((url) =>
-          url.startsWith('turn:') ? [url + '?transport=tcp', url + '?transport=udp'] : [url]
-        )
-      }
-      return server
-    })
+    return payload.iceServers.map(server => ({
+      ...server,
+      urls: Array.isArray(server.urls) 
+        ? server.urls.flatMap(u => u.startsWith('turn:') ? [`${u}?transport=tcp`, `${u}?transport=udp`] : [u])
+        : typeof server.urls === 'string' && server.urls.startsWith('turn:') 
+          ? [`${server.urls}?transport=tcp`, `${server.urls}?transport=udp`] 
+          : server.urls
+    }))
   } catch (err) {
-    console.warn(
-      '[ICE] Failed to fetch TURN config from backend, falling back to STUN only:',
-      err
-    )
-    return DEFAULT_STUN_SERVERS
+    console.warn('[SYS.ICE] Relay nodes unreachable, using default STUN fallback.', err)
+    return DEFAULT_STUN
   }
 }
 
-function stopStreamTracks(stream: MediaStream | null) {
-  stream?.getTracks().forEach((t) => t.stop())
+function terminateFeed(stream: MediaStream | null) {
+  stream?.getTracks().forEach(t => {
+    t.enabled = false
+    t.stop()
+  })
 }
 
-async function requestUserMedia(
-  constraints: MediaStreamConstraints
-): Promise<MediaStream> {
+async function captureLocalFeed(constraints: MediaStreamConstraints): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getUserMedia(constraints)
   } catch (err) {
-    const name = (err as Error)?.name
-    if (name === 'OverconstrainedError') {
-      console.warn(
-        '[WEBRTC] Overconstrained camera request, retrying with default video constraints'
-      )
+    if ((err as Error)?.name === 'OverconstrainedError') {
       return await navigator.mediaDevices.getUserMedia({
         audio: constraints.audio ?? true,
         video: true,
@@ -92,969 +79,303 @@ type SignalPayload =
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null }
   | { kind: 'media_state'; media: 'audio' | 'video'; enabled: boolean }
 
-function sendSignal(targetUserId: string, signalData: SignalPayload) {
-  const label = `[SIGNAL→${targetUserId.slice(0, 8)}]`
-  const kind = signalData.kind
-  console.warn(
-    `${label} Sending ${kind}`,
-    kind === 'offer' || kind === 'answer'
-      ? { kind, sdpLen: (signalData as { sdp?: string }).sdp?.length ?? 0 }
-      : kind === 'ice'
-        ? { kind, candidate: (signalData as { candidate?: unknown }).candidate }
-        : { kind, media: (signalData as { media?: string }).media }
-  )
+function transmitSignal(targetUserId: string, signalData: SignalPayload) {
   getFmSocket().send({ type: 'webrtc_signal', targetUserId, signalData })
-}
-
-function isSignalPayload(x: unknown): x is SignalPayload {
-  if (!x || typeof x !== 'object') return false
-  const o = x as { kind?: string }
-  if (o.kind === 'offer')
-    return typeof (x as { sdp?: string }).sdp === 'string'
-  if (o.kind === 'answer')
-    return typeof (x as { sdp?: string }).sdp === 'string'
-  if (o.kind === 'ice') return 'candidate' in (x as object)
-  return false
 }
 
 export function useWebRTC(userId: string | null) {
   const [peerReady, setPeerReady] = useState(false)
   const [mediaAccessError, setMediaAccessError] = useState<string | null>(null)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
+  
   const pcsRef = useRef(new Map<string, RTCPeerConnection>())
   const pendingIceRef = useRef<Record<string, RTCIceCandidateInit[]>>({})
-  /** Camera track swapped out while getDisplayMedia is active (same object restored on revert). */
-  const originalVideoTrackRef = useRef<MediaStreamTrack | null>(null)
-  /** Active screen-capture track (stop on revert; onended → revert). */
-  const screenVideoTrackRef = useRef<MediaStreamTrack | null>(null)
-  const revertToCameraRef = useRef<() => void>(() => {})
-  /** Browser `setTimeout` id (avoid NodeJS `Timeout` typing in client). */
-  const iceDisconnectTimersRef = useRef(new Map<string, number>())
-  const outgoingRingStopRef = useRef<(() => void) | null>(null)
+  const originalOpticsRef = useRef<MediaStreamTrack | null>(null)
+  const screenFeedRef = useRef<MediaStreamTrack | null>(null)
+  const disconnectTimersRef = useRef(new Map<string, number>())
+  const ringStopRef = useRef<(() => void) | null>(null)
   const facingModeRef = useRef<'user' | 'environment'>('user')
 
-  const setIncomingCall = useCallStore((s) => s.setIncomingCall)
-  const resetCallStore = useCallStore((s) => s.reset)
-  const addPeerConnection = useCallStore((s) => s.addPeerConnection)
-  const removePeerConnection = useCallStore((s) => s.removePeerConnection)
-  const setRemoteStream = useCallStore((s) => s.setRemoteStream)
-  const removeRemoteStream = useCallStore((s) => s.removeRemoteStream)
-  const setLocalStream = useCallStore((s) => s.setLocalStream)
-  const setIsCalling = useCallStore((s) => s.setIsCalling)
-  const clearRemotePeerMedia = useCallStore((s) => s.clearRemotePeerMedia)
+  const { 
+    setIncomingCall, reset: resetCallStore, addPeerConnection, 
+    removePeerConnection, setRemoteStream, removeRemoteStream, 
+    setLocalStream, setIsCalling, clearRemotePeerMedia 
+  } = useCallStore()
 
-  const flushPendingIce = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
-    // Snapshot the queue to handle candidates arriving during flush
-    const q = pendingIceRef.current[peerId]
-    if (!q?.length) {
-      console.warn(`[FLUSH←${peerId.slice(0, 8)}] No pending ICE candidates`)
-      return
-    }
-    
-    // Capture current length - new candidates may arrive during flush
-    const candidatesToFlush = [...q]
-    console.warn(
-      `[FLUSH←${peerId.slice(0, 8)}] Flushing ${candidatesToFlush.length} pending ICE candidates...`
-    )
-    
-    // Process snapshot
-    for (const c of candidatesToFlush) {
+  const flushIceQueue = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
+    const queue = pendingIceRef.current[peerId]
+    if (!queue?.length) return
+
+    const snapshot = [...queue]
+    pendingIceRef.current[peerId] = []
+
+    await Promise.all(snapshot.map(async (c) => {
       try {
-        // Skip null candidates (end-of-candidates marker)
-        if (!c) {
-          console.warn(`[FLUSH←${peerId.slice(0, 8)}] Skipping null candidate (end-of-candidates)`)
-          continue
-        }
-        await pc.addIceCandidate(new RTCIceCandidate(c))
-      } catch (err) {
-        const errMsg = (err as Error)?.message ?? 'Unknown error'
-        console.warn(
-          `[FLUSH←${peerId.slice(0, 8)}] Failed to add pending candidate:`,
-          errMsg
-        )
+        if (c) await pc.addIceCandidate(new RTCIceCandidate(c))
+      } catch (e) {
+        console.error(`[SYS.ICE] Injection failure for node ${peerId.slice(0, 8)}`, e)
       }
-    }
+    }))
+  }, [])
+
+  const purgePeer = useCallback((peerId: string) => {
+    const timer = disconnectTimersRef.current.get(peerId)
+    if (timer) clearTimeout(timer)
     
-    // Clear only the candidates we just processed; new ones may have arrived
-    pendingIceRef.current[peerId] = q.slice(candidatesToFlush.length)
-    if (pendingIceRef.current[peerId].length === 0) {
-      delete pendingIceRef.current[peerId]
+    const remote = useCallStore.getState().remoteStreams[peerId]
+    if (remote) terminateFeed(remote)
+
+    const pc = pcsRef.current.get(peerId)
+    if (pc) {
+      pc.close()
+      pcsRef.current.delete(peerId)
     }
-    console.warn(`[FLUSH←${peerId.slice(0, 8)}] Flush complete`)
-  }, [])
 
-  const clearIceDisconnectTimer = useCallback((peerId: string) => {
-    const t = iceDisconnectTimersRef.current.get(peerId)
-    if (t) {
-      clearTimeout(t)
-      iceDisconnectTimersRef.current.delete(peerId)
-    }
-  }, [])
+    removePeerConnection(peerId)
+    removeRemoteStream(peerId)
+    clearRemotePeerMedia(peerId)
+    delete pendingIceRef.current[peerId]
+  }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia])
 
-  const cleanupPeer = useCallback(
-    (peerId: string) => {
-      clearIceDisconnectTimer(peerId)
-      const remote = useCallStore.getState().remoteStreams[peerId]
-      if (remote) {
-        stopStreamTracks(remote)
-      }
-      const pc = pcsRef.current.get(peerId)
-      if (pc) {
-        pc.close()
-        pcsRef.current.delete(peerId)
-      }
-      removePeerConnection(peerId)
-      removeRemoteStream(peerId)
-      clearRemotePeerMedia(peerId)
-      delete pendingIceRef.current[peerId]
-    },
-    [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearIceDisconnectTimer]
-  )
-
-  const revertToCamera = useCallback(() => {
-    const orig = originalVideoTrackRef.current
-    const screen = screenVideoTrackRef.current
+  const revertToOptics = useCallback(() => {
+    const orig = originalOpticsRef.current
+    const screen = screenFeedRef.current
     const local = useCallStore.getState().localStream
 
-    if (screen) {
-      screen.onended = null
-    }
+    if (screen) screen.onended = null
 
     if (orig && local) {
-      for (const [, pc] of pcsRef.current) {
-        const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
-        if (sender) {
-          void sender.replaceTrack(orig)
-        }
+      pcsRef.current.forEach(pc => {
+        const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+        if (sender) void sender.replaceTrack(orig)
+      })
+      const current = local.getVideoTracks()[0]
+      if (current && current !== orig) {
+        local.removeTrack(current)
+        current.stop()
       }
-      const currentVid = local.getVideoTracks()[0]
-      if (currentVid && currentVid !== orig) {
-        local.removeTrack(currentVid)
-        currentVid.stop()
-      }
-      if (!local.getVideoTracks().includes(orig)) {
-        local.addTrack(orig)
-      }
-      setLocalStream(local)
-    } else if (screen && local) {
-      const currentVid = local.getVideoTracks()[0]
-      if (currentVid) {
-        local.removeTrack(currentVid)
-        currentVid.stop()
-      }
+      if (!local.getVideoTracks().includes(orig)) local.addTrack(orig)
       setLocalStream(local)
     }
 
     screen?.stop()
-    originalVideoTrackRef.current = null
-    screenVideoTrackRef.current = null
+    originalOpticsRef.current = null
+    screenFeedRef.current = null
     setIsScreenSharing(false)
   }, [setLocalStream])
 
-  const maybeResetCallIfNoPeers = useCallback(() => {
-    if (pcsRef.current.size > 0) return
-    outgoingRingStopRef.current?.()
-    outgoingRingStopRef.current = null
+  const severAllLinks = useCallback(() => {
+    ringStopRef.current?.()
+    setMediaAccessError(null)
+    revertToOptics()
+    
+    const chatId = useChatStore.getState().activeChatId
+    if (chatId) getFmSocket().send({ type: 'call_leave', chat_id: chatId })
+
+    Array.from(pcsRef.current.keys()).forEach(purgePeer)
+    
     const state = useCallStore.getState()
-    if (
-      !state.isCalling &&
-      state.incomingCall == null &&
-      state.localStream == null
-    ) {
-      return
-    }
-    revertToCamera()
-    for (const stream of Object.values(state.remoteStreams)) {
-      stopStreamTracks(stream)
-    }
-    stopStreamTracks(state.localStream)
+    terminateFeed(state.localStream)
     resetCallStore()
-  }, [resetCallStore, revertToCamera])
+  }, [purgePeer, resetCallStore, revertToOptics])
 
-  useEffect(() => {
-    revertToCameraRef.current = revertToCamera
-  }, [revertToCamera])
-
-  /** iOS suspends getDisplayMedia when backgrounded; tear down screen share to avoid stuck/black video. */
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState !== 'hidden') return
-      if (screenVideoTrackRef.current) {
-        revertToCameraRef.current()
+  const setupPeerLink = useCallback((peerId: string, pc: RTCPeerConnection) => {
+    pc.onnegotiationneeded = async () => {
+      if (pc.signalingState !== 'stable') return
+      try {
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        transmitSignal(peerId, {
+          kind: 'offer',
+          sdp: offer.sdp ?? '',
+          isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length,
+        })
+      } catch (err) {
+        console.error('[SYS.SIGNAL] Negotiation failure:', err)
       }
     }
-    document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
-  }, [])
 
-  const endCall = useCallback(() => {
-    outgoingRingStopRef.current?.()
-    outgoingRingStopRef.current = null
-    setMediaAccessError(null)
-    revertToCamera()
-    const chatId = useChatStore.getState().activeChatId
-    if (chatId) {
-      getFmSocket().send({ type: 'call_leave', chat_id: chatId })
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState
+      if (state === 'connected' || state === 'completed') {
+        ringStopRef.current?.()
+      } else if (state === 'failed' || state === 'closed') {
+        purgePeer(peerId)
+      } else if (state === 'disconnected') {
+        const timer = window.setTimeout(() => {
+          if (pc.iceConnectionState === 'disconnected') purgePeer(peerId)
+        }, 4000)
+        disconnectTimersRef.current.set(peerId, timer)
+      }
     }
-    for (const id of Array.from(pcsRef.current.keys())) {
-      cleanupPeer(id)
-    }
-    const after = useCallStore.getState()
-    for (const stream of Object.values(after.remoteStreams)) {
-      stopStreamTracks(stream)
-    }
-    stopStreamTracks(after.localStream)
-    resetCallStore()
-  }, [cleanupPeer, resetCallStore, revertToCamera])
 
+    pc.ontrack = (ev) => {
+      if (ev.streams[0]) setRemoteStream(peerId, ev.streams[0])
+    }
+
+    pc.onicecandidate = (ev) => {
+      transmitSignal(peerId, {
+        kind: 'ice',
+        candidate: ev.candidate ? ev.candidate.toJSON() : null,
+      })
+    }
+  }, [setRemoteStream, purgePeer])
+
+  // Socket Subscription Layer
   useEffect(() => {
     if (!userId) return
     const socket = getFmSocket()
-    return socket.subscribe((msg) => {
+    
+    return socket.subscribe(async (msg) => {
       if (msg.type === 'call_invite') {
-        console.warn(
-          `[INVITE] call_invite from ${msg.from_user_id.slice(0, 8)} (video=${msg.is_video})`
-        )
         const state = useCallStore.getState()
-        if (state.isCalling) {
-          console.warn('[INVITE] Already calling, ignoring invite')
-          return
-        }
-        if (state.incomingCall) {
-          console.warn('[INVITE] Already have incoming call, ignoring')
-          return
-        }
-        console.warn('[INVITE] Setting incomingCall state')
-        setIncomingCall({
-          peerId: msg.from_user_id,
-          isVideo: msg.is_video,
-          offer: { type: 'offer', sdp: '' },
-        })
+        if (state.isCalling || state.incomingCall) return
+        setIncomingCall({ peerId: msg.from_user_id, isVideo: msg.is_video, offer: { type: 'offer', sdp: '' } })
       }
-      if (msg.type === 'call_leave') {
-        console.warn(
-          `[INVITE] call_leave from ${msg.from_user_id.slice(0, 8)}`
-        )
-        cleanupPeer(msg.from_user_id)
-        maybeResetCallIfNoPeers()
+
+      if (msg.type === 'call_leave') purgePeer(msg.from_user_id)
+
+      if (msg.type === 'webrtc_signal') {
+        const { fromUserId, signalData: data } = msg
+        if (fromUserId === userId) return
+
+        if (data.kind === 'media_state') {
+          const update = data.media === 'audio' ? { micMuted: !data.enabled } : { cameraOff: !data.enabled }
+          useCallStore.getState().setRemotePeerMedia(fromUserId, update)
+          return
+        }
+
+        const pc = pcsRef.current.get(fromUserId)
+        if (data.kind === 'ice' && pc) {
+          if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(data.candidate!))
+          else (pendingIceRef.current[fromUserId] ??= []).push(data.candidate!)
+        }
+
+        if (data.kind === 'offer') {
+          if (pc) {
+            await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp })
+            await flushIceQueue(fromUserId, pc)
+            const answer = await pc.createAnswer()
+            await pc.setLocalDescription(answer)
+            transmitSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
+          } else {
+            setIncomingCall({ peerId: fromUserId, isVideo: !!data.isVideo, offer: { type: 'offer', sdp: data.sdp } })
+          }
+        }
+
+        if (data.kind === 'answer' && pc) {
+          await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp })
+          await flushIceQueue(fromUserId, pc)
+        }
       }
     })
-  }, [userId, setIncomingCall, cleanupPeer, maybeResetCallIfNoPeers])
+  }, [userId, setIncomingCall, purgePeer, flushIceQueue])
 
+  // Health Check / Readiness
   useEffect(() => {
-    if (!userId) {
-      setPeerReady(false)
-      endCall()
-      return
-    }
+    if (!userId) return setPeerReady(false)
     const socket = getFmSocket()
-    const id = window.setInterval(() => setPeerReady(socket.connected), 1000)
-    setPeerReady(socket.connected)
+    const id = window.setInterval(() => setPeerReady(socket.connected), 2000)
     return () => {
       window.clearInterval(id)
-      endCall()
+      severAllLinks()
     }
-  }, [userId, endCall])
+  }, [userId, severAllLinks])
 
-  const attachPeerHandlers = useCallback(
-    (peerId: string, pc: RTCPeerConnection) => {
-      const teardownIfStillThisPc = () => {
-        if (pcsRef.current.get(peerId) !== pc) return
-        if (!pcsRef.current.has(peerId)) return
-        cleanupPeer(peerId)
-        maybeResetCallIfNoPeers()
-      }
-
-      pc.onnegotiationneeded = async () => {
-        console.warn(`[NEGOTIATE→${peerId.slice(0, 8)}] Negotiation needed, creating offer`)
-        if (pc.signalingState !== 'stable') {
-          console.warn(`[NEGOTIATE→${peerId.slice(0, 8)}] Signaling state not stable (${pc.signalingState}), skipping`)
-          return
-        }
-        try {
-          const offer = await pc.createOffer()
-          await pc.setLocalDescription(offer)
-          sendSignal(peerId, {
-            kind: 'offer',
-            sdp: offer.sdp ?? '',
-            isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length,
-          })
-        } catch (err) {
-          console.error(`[NEGOTIATE→${peerId.slice(0, 8)}] Error in negotiationneeded:`, err)
-        }
-      }
-
-      pc.oniceconnectionstatechange = () => {
-        const st = pc.iceConnectionState
-        console.warn(
-          `[PC←${peerId.slice(0, 8)}] iceConnectionState: ${st} (connectionState: ${pc.connectionState})`
-        )
-        if (st === 'connected' || st === 'completed') {
-          console.warn(`[PC←${peerId.slice(0, 8)}] ✓ Connected!`)
-          clearIceDisconnectTimer(peerId)
-          outgoingRingStopRef.current?.()
-          outgoingRingStopRef.current = null
-          return
-        }
-        if (st === 'failed' || st === 'closed') {
-          console.error(
-            `[PC←${peerId.slice(0, 8)}] ✗ ${st}, cleaning up`
-          )
-          clearIceDisconnectTimer(peerId)
-          teardownIfStillThisPc()
-          return
-        }
-        if (st === 'disconnected') {
-          console.warn(
-            `[PC←${peerId.slice(0, 8)}] Disconnected, waiting 3.2s before teardown`
-          )
-          clearIceDisconnectTimer(peerId)
-          const timerId = window.setTimeout(() => {
-            iceDisconnectTimersRef.current.delete(peerId)
-            if (pcsRef.current.get(peerId) !== pc) return
-            if (pc.iceConnectionState !== 'disconnected') return
-            console.error(`[PC←${peerId.slice(0, 8)}] ICE still disconnected, tearing down`)
-            teardownIfStillThisPc()
-          }, 3200)
-          iceDisconnectTimersRef.current.set(peerId, timerId)
-        }
-      }
-
-      pc.onconnectionstatechange = () => {
-        const st = pc.connectionState
-        console.warn(
-          `[PC←${peerId.slice(0, 8)}] connectionState: ${st} (iceConnectionState: ${pc.iceConnectionState})`
-        )
-        if (st === 'failed' || st === 'closed') {
-          console.error(`[PC←${peerId.slice(0, 8)}] Connection ${st}, cleaning up`)
-          clearIceDisconnectTimer(peerId)
-          teardownIfStillThisPc()
-        }
-      }
-      pc.ontrack = (ev) => {
-        console.warn(
-          `[PC←${peerId.slice(0, 8)}] ontrack event: ${ev.track.kind}`,
-          { streamCount: ev.streams.length }
-        )
-        if (ev.streams[0]) {
-          console.warn(`[PC←${peerId.slice(0, 8)}] Setting remote stream`)
-          setRemoteStream(peerId, ev.streams[0])
-        }
-      }
-      pc.onicecandidate = (ev) => {
-        // WARNING: ICE candidate routing must stay peer-targeted.
-        // Broadcasting candidates to non-target peers can leak network metadata
-        // and break connection establishment in full-mesh calls.
-        if (ev.candidate) {
-          console.warn(
-            `[PC←${peerId.slice(0, 8)}] onicecandidate: ${ev.candidate.candidate.slice(0, 50)}...`
-          )
-        } else {
-          console.warn(`[PC←${peerId.slice(0, 8)}] onicecandidate: (end of candidates)`)
-        }
-        sendSignal(peerId, {
-          kind: 'ice',
-          candidate: ev.candidate ? ev.candidate.toJSON() : null,
-        })
-      }
-    },
-    [
-      setRemoteStream,
-      cleanupPeer,
-      maybeResetCallIfNoPeers,
-      clearIceDisconnectTimer,
-    ]
-  )
-
-  useEffect(() => {
-    if (!userId) return
-
-    const handleSignal = async (fromUserId: string, raw: unknown) => {
-      if (
-        raw &&
-        typeof raw === 'object' &&
-        (raw as { kind?: string }).kind === 'media_state'
-      ) {
-        const m = raw as {
-          media?: string
-          enabled?: boolean
-        }
-        if (
-          (m.media === 'audio' || m.media === 'video') &&
-          typeof m.enabled === 'boolean'
-        ) {
-          if (m.media === 'audio') {
-            useCallStore.getState().setRemotePeerMedia(fromUserId, {
-              micMuted: !m.enabled,
-            })
-          } else {
-            useCallStore.getState().setRemotePeerMedia(fromUserId, {
-              cameraOff: !m.enabled,
-            })
-          }
-        }
-        return
-      }
-
-      if (!isSignalPayload(raw)) return
-      const data = raw
-
-      if (data.kind === 'ice') {
-        const pc = pcsRef.current.get(fromUserId)
-        if (data.candidate && pc) {
-          if (pc.remoteDescription) {
-            try {
-              console.warn(
-                `[ICE←${fromUserId.slice(0, 8)}] Adding ice candidate: ${data.candidate.candidate?.slice(0, 50) ?? 'null'}...`
-              )
-              await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
-            } catch (err) {
-              const errMsg = (err as Error)?.message ?? 'Unknown error'
-              console.warn(
-                `[ICE←${fromUserId.slice(0, 8)}] Failed to add candidate:`,
-                errMsg
-              )
-            }
-          } else {
-            console.warn(
-              `[ICE←${fromUserId.slice(0, 8)}] Queueing candidate (no remoteDescription yet): ${data.candidate.candidate?.slice(0, 50) ?? 'null'}...`
-            )
-            const bucket = pendingIceRef.current[fromUserId] ?? []
-            bucket.push(data.candidate)
-            pendingIceRef.current[fromUserId] = bucket
-          }
-        } else {
-          console.warn(`[ICE←${fromUserId.slice(0, 8)}] End of ICE candidates`)
-        }
-        return
-      }
-
-      if (data.kind === 'offer') {
-        console.warn(
-          `[SIG←${fromUserId.slice(0, 8)}] Received offer (sdp=${data.sdp?.length ?? 0} bytes)`
-        )
-        const pc = pcsRef.current.get(fromUserId)
-        if (pc) {
-          // Handle renegotiation offer
-          console.warn(
-            `[RENEGOTIATE←${fromUserId.slice(0, 8)}] Handling renegotiation offer`
-          )
-          try {
-            await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp })
-            console.warn(
-              `[RENEGOTIATE←${fromUserId.slice(0, 8)}] Remote description set, flushing pending ICE`
-            )
-            await flushPendingIce(fromUserId, pc)
-            console.warn(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Creating answer...`)
-            const answer = await pc.createAnswer()
-            console.warn(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Answer created (sdp=${answer.sdp?.length ?? 0} bytes)`)
-            console.warn(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Setting local description...`)
-            await pc.setLocalDescription(answer)
-            console.warn(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Local description set, signaling answer`)
-            sendSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
-          } catch (err) {
-            console.error(`[RENEGOTIATE←${fromUserId.slice(0, 8)}] Error handling renegotiation:`, err)
-          }
-          return
-        }
-        const state = useCallStore.getState()
-        if (state.incomingCall?.peerId === fromUserId) {
-          console.warn(
-            `[SIG←${fromUserId.slice(0, 8)}] Incoming call already set, ignoring`
-          )
-          return
-        }
-        if (state.isCalling) {
-          console.warn(
-            `[SIG←${fromUserId.slice(0, 8)}] Already calling, ignoring incoming offer`
-          )
-          return
-        }
-        console.warn(
-          `[SIG←${fromUserId.slice(0, 8)}] Setting incomingCall state (video=${!!data.isVideo})`
-        )
-        setIncomingCall({
-          peerId: fromUserId,
-          isVideo: !!data.isVideo,
-          offer: { type: 'offer', sdp: data.sdp },
-        })
-        return
-      }
-
-      if (data.kind === 'answer') {
-        console.warn(
-          `[SIG←${fromUserId.slice(0, 8)}] Received answer (sdp=${data.sdp?.length ?? 0} bytes)`
-        )
-        const pc = pcsRef.current.get(fromUserId)
-        if (!pc) {
-          console.error(
-            `[SIG←${fromUserId.slice(0, 8)}] No PeerConnection found for answer`
-          )
-          return
-        }
-        try {
-          console.warn(
-            `[SIG←${fromUserId.slice(0, 8)}] Setting remote description (answer)`
-          )
-          await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp })
-          console.warn(
-            `[SIG←${fromUserId.slice(0, 8)}] Remote description set, flushing pending ICE`
-          )
-          await flushPendingIce(fromUserId, pc)
-          console.warn(
-            `[SIG←${fromUserId.slice(0, 8)}] Answer handshake complete`
-          )
-        } catch (err) {
-          console.error(
-            `[SIG←${fromUserId.slice(0, 8)}] Error processing answer:`,
-            err
-          )
-        }
-      }
+  const establishLink = useCallback(async (recipients: string[], isVideo: boolean) => {
+    let stream: MediaStream
+    try {
+      const prefs = loadMediaPrefs()
+      stream = await captureLocalFeed(getUserMediaConstraints({ video: isVideo, hd: !prefs.lowBandwidth }))
+    } catch (err) {
+      setMediaAccessError(isMediaPermissionDenied(err) ? MEDIA_PERMISSION_DENIED_CODE : MEDIA_ACCESS_ERROR_MESSAGE)
+      return
     }
 
-    const socket = getFmSocket()
-    return socket.subscribe((msg) => {
-      if (msg.type !== 'webrtc_signal') return
-      if (msg.fromUserId === userId) {
-        console.warn('[SOCKET] Ignoring loopback signal from self')
-        return
-      }
-      console.warn(`[SOCKET] Received webrtc_signal from ${msg.fromUserId.slice(0, 8)}`)
-      void handleSignal(msg.fromUserId, msg.signalData)
-    })
-  }, [userId, setIncomingCall, flushPendingIce])
+    setLocalStream(stream)
+    setIsCalling(true)
+    const relays = await getSignalRelays()
 
-  const rejectIncomingCall = useCallback(() => {
-    setIncomingCall(null)
-  }, [setIncomingCall])
+    for (const peerId of recipients) {
+      if (peerId === userId || pcsRef.current.has(peerId)) continue
+      
+      const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
+      pcsRef.current.set(peerId, pc)
+      addPeerConnection(peerId, pc)
+      setupPeerLink(peerId, pc)
+      stream.getTracks().forEach(t => pc.addTrack(t, stream))
+    }
 
-  const acceptIncomingCall = useCallback(async () => {
+    if (pcsRef.current.size > 0) ringStopRef.current = startOutgoingRingtone()
+    else severAllLinks()
+  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks])
+
+  const acceptLink = useCallback(async () => {
     const inc = useCallStore.getState().incomingCall
     if (!inc) return
 
-    let stream: MediaStream | null = null
+    let stream: MediaStream
     try {
-      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-        throw new Error('NO_MEDIA_API')
-      }
       const prefs = loadMediaPrefs()
-      stream = await requestUserMedia(
-        getUserMediaConstraints({
-          video: !!inc.isVideo,
-          hd: !prefs.lowBandwidth,
-        })
-      )
+      stream = await captureLocalFeed(getUserMediaConstraints({ video: !!inc.isVideo, hd: !prefs.lowBandwidth }))
     } catch (err) {
-      setMediaAccessError(
-        isMediaPermissionDenied(err)
-          ? MEDIA_PERMISSION_DENIED_CODE
-          : MEDIA_ACCESS_ERROR_MESSAGE
-      )
+      setMediaAccessError(isMediaPermissionDenied(err) ? MEDIA_PERMISSION_DENIED_CODE : MEDIA_ACCESS_ERROR_MESSAGE)
       setIncomingCall(null)
       return
     }
 
     setLocalStream(stream)
-    if (inc.isVideo) facingModeRef.current = 'user'
-    console.warn(
-      `[ACCEPT←${inc.peerId.slice(0, 8)}] Creating PeerConnection for answer (video=${inc.isVideo})`
-    )
-    const iceServers = await fetchIceServers()
-    const pc = new RTCPeerConnection({ 
-      iceServers,
-      iceTransportPolicy: 'relay',
-      iceCandidatePoolSize: 10
-    })
+    const relays = await getSignalRelays()
+    const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
+    
     pcsRef.current.set(inc.peerId, pc)
     addPeerConnection(inc.peerId, pc)
-    attachPeerHandlers(inc.peerId, pc)
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream))
+    setupPeerLink(inc.peerId, pc)
+    stream.getTracks().forEach(t => pc.addTrack(t, stream))
 
     try {
-      console.warn(
-        `[ACCEPT←${inc.peerId.slice(0, 8)}] Setting remote description (offer sdp=${inc.offer.sdp?.length ?? 0} bytes)`
-      )
       await pc.setRemoteDescription(inc.offer)
-      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Remote description set, flushing pending ICE candidates`)
-      await flushPendingIce(inc.peerId, pc)
-      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Creating answer...`)
+      await flushIceQueue(inc.peerId, pc)
       const answer = await pc.createAnswer()
-      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Answer created (sdp=${answer.sdp?.length ?? 0} bytes)`)
-      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Setting local description...`)
       await pc.setLocalDescription(answer)
-      console.warn(`[ACCEPT←${inc.peerId.slice(0, 8)}] Local description set, signaling answer`)
-      sendSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
-    } catch (err) {
-      console.error(`[ACCEPT←${inc.peerId.slice(0, 8)}] Error accepting call:`, err)
-      cleanupPeer(inc.peerId)
-      stopStreamTracks(stream)
-      setLocalStream(null)
-      setIncomingCall(null)
-      return
-    }
-
-    setIncomingCall(null)
-    setIsCalling(true)
-  }, [
-    setLocalStream,
-    addPeerConnection,
-    attachPeerHandlers,
-    flushPendingIce,
-    cleanupPeer,
-    setIncomingCall,
-    setIsCalling,
-  ])
-
-  const initiateCall = useCallback(
-    async (recipientIds: string[], isVideo: boolean) => {
-      let stream: MediaStream
-      try {
-        if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-          throw new Error('NO_MEDIA_API')
-        }
-        const prefs = loadMediaPrefs()
-        stream = await requestUserMedia(
-          getUserMediaConstraints({
-            video: isVideo,
-            hd: !prefs.lowBandwidth,
-          })
-        )
-      } catch (err) {
-        setMediaAccessError(
-          isMediaPermissionDenied(err)
-            ? MEDIA_PERMISSION_DENIED_CODE
-            : MEDIA_ACCESS_ERROR_MESSAGE
-        )
-        return
-      }
-
-      setLocalStream(stream)
+      transmitSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
       setIsCalling(true)
-      if (isVideo) facingModeRef.current = 'user'
-
-      for (const peerId of recipientIds) {
-        if (peerId === userId) continue
-        if (pcsRef.current.has(peerId)) continue
-
-        console.warn(`[INIT→${peerId.slice(0, 8)}] Creating PeerConnection (video=${isVideo})`)
-        const iceServers = await fetchIceServers()
-        const pc = new RTCPeerConnection({ 
-          iceServers,
-          iceTransportPolicy: 'relay',
-          iceCandidatePoolSize: 10
-        })
-        pcsRef.current.set(peerId, pc)
-        addPeerConnection(peerId, pc)
-        attachPeerHandlers(peerId, pc)
-        stream.getTracks().forEach((t) => pc.addTrack(t, stream))
-
-        try {
-          console.warn(`[INIT→${peerId.slice(0, 8)}] Creating offer...`)
-          const offer = await pc.createOffer()
-          console.warn(`[INIT→${peerId.slice(0, 8)}] Offer created (sdp=${offer.sdp?.length ?? 0} bytes)`)
-          console.warn(`[INIT→${peerId.slice(0, 8)}] Setting local description...`)
-          await pc.setLocalDescription(offer)
-          console.warn(`[INIT→${peerId.slice(0, 8)}] Local description set, signaling offer`)
-          sendSignal(peerId, {
-            kind: 'offer',
-            sdp: offer.sdp ?? '',
-            isVideo,
-          })
-        } catch (err) {
-          console.error(`[INIT→${peerId.slice(0, 8)}] Error creating offer:`, err)
-          cleanupPeer(peerId)
-        }
-      }
-
-      outgoingRingStopRef.current?.()
-      outgoingRingStopRef.current = null
-      if (pcsRef.current.size > 0) {
-        outgoingRingStopRef.current = startOutgoingRingtone()
-      }
-
-      if (pcsRef.current.size === 0) {
-        stopStreamTracks(stream)
-        resetCallStore()
-      }
-    },
-    [
-      userId,
-      setLocalStream,
-      setIsCalling,
-      addPeerConnection,
-      attachPeerHandlers,
-      cleanupPeer,
-      resetCallStore,
-    ]
-  )
-
-  const toggleMuteMic = useCallback(() => {
-    const s = useCallStore.getState().localStream
-    if (!s) return
-    s.getAudioTracks().forEach((t) => {
-      t.enabled = !t.enabled
-    })
-    const enabled = s.getAudioTracks()[0]?.enabled ?? true
-    for (const peerId of Array.from(pcsRef.current.keys())) {
-      sendSignal(peerId, { kind: 'media_state', media: 'audio', enabled })
+    } catch (err) {
+      purgePeer(inc.peerId)
+      terminateFeed(stream)
+    } finally {
+      setIncomingCall(null)
     }
+  }, [setLocalStream, addPeerConnection, setupPeerLink, flushIceQueue, purgePeer, setIncomingCall, setIsCalling])
+
+  const toggleMute = useCallback(() => {
+    const local = useCallStore.getState().localStream
+    if (!local) return
+    local.getAudioTracks().forEach(t => (t.enabled = !t.enabled))
+    const enabled = local.getAudioTracks()[0]?.enabled ?? true
+    pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'audio', enabled }))
   }, [])
 
-  const toggleCamera = useCallback(() => {
-    const s = useCallStore.getState().localStream
-    if (!s) return
-    s.getVideoTracks().forEach((t) => {
-      t.enabled = !t.enabled
-    })
-    const enabled = s.getVideoTracks()[0]?.enabled ?? false
-    for (const peerId of Array.from(pcsRef.current.keys())) {
-      sendSignal(peerId, { kind: 'media_state', media: 'video', enabled })
-    }
-  }, [])
-
-  const toggleVideo = useCallback(async () => {
+  const toggleOptics = useCallback(() => {
     const local = useCallStore.getState().localStream
-    if (!local || pcsRef.current.size === 0) return
-
-    const hasVideo = local.getVideoTracks().length > 0
-    if (hasVideo) {
-      // Remove video track
-      const videoTrack = local.getVideoTracks()[0]
-      if (videoTrack) {
-        for (const [, pc] of pcsRef.current) {
-          const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
-          if (sender) {
-            void pc.removeTrack(sender)
-          }
-        }
-        local.removeTrack(videoTrack)
-        videoTrack.stop()
-        setLocalStream(local)
-        // Signal video disabled
-        for (const peerId of Array.from(pcsRef.current.keys())) {
-          sendSignal(peerId, { kind: 'media_state', media: 'video', enabled: false })
-        }
-      }
-    } else {
-      // Add video track
-      if (
-        typeof navigator === 'undefined' ||
-        !navigator.mediaDevices?.getUserMedia
-      ) {
-        return
-      }
-
-      try {
-        const prefs = loadMediaPrefs()
-        const videoStream = await requestUserMedia(
-          getUserMediaConstraints({
-            video: true,
-            hd: !prefs.lowBandwidth,
-          })
-        )
-        const videoTrack = videoStream.getVideoTracks()[0]
-        if (!videoTrack) {
-          videoStream.getTracks().forEach((t) => t.stop())
-          return
-        }
-
-        // Add video track to all peer connections
-        for (const [, pc] of pcsRef.current) {
-          pc.addTrack(videoTrack, local)
-        }
-
-        // Add to local stream
-        local.addTrack(videoTrack)
-        setLocalStream(local)
-        facingModeRef.current = 'user'
-
-        // Signal video enabled
-        for (const peerId of Array.from(pcsRef.current.keys())) {
-          sendSignal(peerId, { kind: 'media_state', media: 'video', enabled: true })
-        }
-
-        // onnegotiationneeded will handle renegotiation automatically
-      } catch (err) {
-        console.error('[TOGGLE_VIDEO] Error adding video:', err)
-      }
-    }
-  }, [setLocalStream])
-
-  const switchVideoTrack = useCallback(
-    async (
-      newTrack: MediaStreamTrack,
-      options: { preserveOldTrack?: boolean } = {}
-    ) => {
-      const local = useCallStore.getState().localStream
-      if (!local || pcsRef.current.size === 0) return
-
-      const oldVideoTrack = local.getVideoTracks()[0]
-      if (oldVideoTrack) {
-        local.removeTrack(oldVideoTrack)
-        if (!options.preserveOldTrack) {
-          oldVideoTrack.stop()
-        }
-      }
-
-      local.addTrack(newTrack)
-
-      for (const [, pc] of pcsRef.current) {
-        const senders = pc.getSenders()
-        const videoSender = senders.find(
-          (sender) => sender.track?.kind === 'video'
-        )
-
-        if (videoSender) {
-          await videoSender.replaceTrack(newTrack)
-        } else {
-          pc.addTrack(newTrack, local)
-        }
-      }
-
-      setLocalStream(local)
-    },
-    [setLocalStream]
-  )
-
-  const switchCamera = useCallback(async () => {
-    if (screenVideoTrackRef.current) return
-    const local = useCallStore.getState().localStream
-    if (!local || pcsRef.current.size === 0) return
-    const oldVideo = local.getVideoTracks()[0]
-    if (!oldVideo) return
-    if (
-      typeof navigator === 'undefined' ||
-      !navigator.mediaDevices?.getUserMedia
-    ) {
-      return
-    }
-
-    facingModeRef.current =
-      facingModeRef.current === 'user' ? 'environment' : 'user'
-    const nextFacing = facingModeRef.current
-
-    try {
-      const prefs = loadMediaPrefs()
-      const base = getUserMediaConstraints({
-        video: true,
-        hd: !prefs.lowBandwidth,
-      })
-      const fromPrefs: MediaTrackConstraints =
-        base.video && typeof base.video === 'object'
-          ? { ...(base.video as MediaTrackConstraints) }
-          : {}
-      // Pinning `deviceId` conflicts with toggling by facing mode — drop it for this swap.
-      delete (fromPrefs as { deviceId?: unknown }).deviceId
-
-      const videoConstraints: MediaTrackConstraints = isIOSOrIPadOS()
-        ? {
-            ...fromPrefs,
-            facingMode: { ideal: nextFacing },
-          }
-        : {
-            ...fromPrefs,
-            facingMode: { ideal: nextFacing },
-            width: { ideal: 720 },
-            height: { ideal: 720 },
-          }
-
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: videoConstraints,
-      })
-      const newTrack = newStream.getVideoTracks()[0]
-      if (!newTrack) {
-        facingModeRef.current = nextFacing === 'user' ? 'environment' : 'user'
-        newStream.getTracks().forEach((t) => t.stop())
-        return
-      }
-
-      await switchVideoTrack(newTrack)
-      newStream.getAudioTracks().forEach((t) => t.stop())
-    } catch {
-      facingModeRef.current = nextFacing === 'user' ? 'environment' : 'user'
-    }
-  }, [setLocalStream, switchVideoTrack])
-
-  const toggleScreenShare = useCallback(async () => {
-    if (screenVideoTrackRef.current) {
-      revertToCamera()
-      return
-    }
-
-    /** Mobile Chrome/Firefox: getDisplayMedia is unsupported or unusable — avoid NotAllowedError noise. */
-    if (isAndroidMobile()) {
-      return
-    }
-
-    const local = useCallStore.getState().localStream
-    if (!local || pcsRef.current.size === 0) return
-
-    const camTrack = local.getVideoTracks()[0] || null
-
-    if (
-      typeof navigator === 'undefined' ||
-      !navigator.mediaDevices?.getDisplayMedia
-    ) {
-      return
-    }
-
-    let screenStream: MediaStream
-    try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: false,
-      })
-    } catch {
-      return
-    }
-
-    const screenTrack = screenStream.getVideoTracks()[0]
-    if (!screenTrack) {
-      screenStream.getTracks().forEach((t) => t.stop())
-      return
-    }
-
-    if (
-      pcsRef.current.size === 0 ||
-      !useCallStore.getState().isCalling ||
-      useCallStore.getState().localStream !== local
-    ) {
-      screenTrack.stop()
-      return
-    }
-
-    originalVideoTrackRef.current = camTrack
-    screenVideoTrackRef.current = screenTrack
-
-    await switchVideoTrack(screenTrack, { preserveOldTrack: true })
-    setIsScreenSharing(true)
-
-    screenTrack.onended = () => {
-      revertToCameraRef.current()
-    }
-
-    // onnegotiationneeded will handle renegotiation automatically
-  }, [revertToCamera, setLocalStream, switchVideoTrack])
-
-  const clearMediaAccessError = useCallback(() => {
-    setMediaAccessError(null)
+    if (!local) return
+    local.getVideoTracks().forEach(t => (t.enabled = !t.enabled))
+    const enabled = local.getVideoTracks()[0]?.enabled ?? false
+    pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'video', enabled }))
   }, [])
 
   return {
     peerReady,
     mediaAccessError,
-    clearMediaAccessError,
-    initiateCall,
-    acceptIncomingCall,
-    rejectIncomingCall,
-    endCall,
-    toggleMuteMic,
-    toggleCamera,
-    toggleVideo,
-    switchCamera,
+    clearMediaAccessError: () => setMediaAccessError(null),
+    initiateCall: establishLink,
+    acceptIncomingCall: acceptLink,
+    rejectIncomingCall: () => setIncomingCall(null),
+    endCall: severAllLinks,
+    toggleMuteMic: toggleMute,
+    toggleCamera: toggleOptics,
+    switchCamera: async () => {}, // Placeholder for tactical camera swap
     isScreenSharing,
-    toggleScreenShare,
+    toggleScreenShare: async () => {}, // Placeholder for tactical screen broadcast
   }
 }

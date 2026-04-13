@@ -1,65 +1,88 @@
 /**
- * Project 13 — Backup Script
- *
- * Dumps Postgres DB and MinIO bucket to a timestamped compressed archive.
- *
- * Usage:
- *   npx tsx scripts/backup.ts
- *
- * Requires: docker CLI, tar. Runs against the Docker Compose stack.
+ * PROJECT 13 :: BACKUP_STASH_PROTOCOL
+ * Level: DevOps / Maintenance
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ * Purpose: Dumps Postgres and MinIO assets into a timestamped container.
  */
 
 import { execSync } from 'node:child_process'
-import { mkdirSync, existsSync, rmSync } from 'node:fs'
+import { mkdirSync, existsSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-const BACKUP_DIR = join(process.cwd(), 'backups')
-const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-const workDir = join(BACKUP_DIR, `p13-${ts}`)
+/** [CONFIG] :: Параметры архивации */
+const STASH_ROOT = join(process.cwd(), 'backups')
+const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+const WORK_DIR = join(STASH_ROOT, `p13-extract-${TIMESTAMP}`)
 
-function run(cmd: string, label: string) {
-  console.log(`[backup] ${label}...`)
+/** [INTERCEPT_COMMAND] :: Выполнение системных вызовов с логированием */
+function execute(cmd: string, label: string) {
+  console.log(`>> [SYS.BACKUP] ${label}...`)
   try {
     execSync(cmd, { stdio: 'inherit', cwd: process.cwd() })
-  } catch (e) {
-    console.error(`[backup] FAILED: ${label}`)
-    throw e
+  } catch (err) {
+    console.error(`>> [FAULT] ${label} FAILED.`)
+    throw err
   }
 }
 
-function findContainer(service: string): string {
-  const out = execSync(
-    `docker compose ps -q ${service}`,
-    { encoding: 'utf8', cwd: process.cwd() }
-  ).trim()
-  if (!out) throw new Error(`Container for service '${service}' not found. Is the stack running?`)
-  return out
+/** [NODE_PROBE] :: Поиск активного ID контейнера в стеке */
+function findNode(service: string): string {
+  try {
+    const id = execSync(`docker compose ps -q ${service}`, { 
+      encoding: 'utf8', 
+      cwd: process.cwd() 
+    }).trim()
+    
+    if (!id) throw new Error(`NODE_NOT_FOUND :: ${service} offline`)
+    return id
+  } catch {
+    throw new Error(`CRITICAL_FAULT :: Service '${service}' is unreachable.`)
+  }
 }
 
-mkdirSync(workDir, { recursive: true })
+// --- INITIALIZE_STASH ---
+if (!existsSync(STASH_ROOT)) mkdirSync(STASH_ROOT, { recursive: true })
+mkdirSync(WORK_DIR, { recursive: true })
 
-const dbContainer = findContainer('db')
-const dbDump = join(workDir, 'postgres.sql')
-run(
-  `docker exec ${dbContainer} pg_dumpall -U forest > "${dbDump}"`,
-  'Dumping Postgres'
-)
+try {
+  // [1] DATABASE_DUMP :: Извлечение всех таблиц Postgres
+  const dbNode = findNode('db')
+  const dbDumpPath = join(WORK_DIR, 'postgres_dump.sql')
+  // Используем pg_dumpall для захвата ролей и всех БД
+  execute(
+    `docker exec ${dbNode} pg_dumpall -U forest > "${dbDumpPath}"`,
+    'EXTRACTING_SQL_ASSETS'
+  )
 
-const minioContainer = findContainer('minio')
-const minioDir = join(workDir, 'minio-data')
-mkdirSync(minioDir, { recursive: true })
-run(
-  `docker cp ${minioContainer}:/data/. "${minioDir}"`,
-  'Copying MinIO data'
-)
+  // [2] STORAGE_CLONE :: Копирование бинарных сегментов из MinIO
+  const minioNode = findNode('minio')
+  const storageDir = join(WORK_DIR, 'minio_data')
+  mkdirSync(storageDir, { recursive: true })
+  execute(
+    `docker cp ${minioNode}:/data/. "${storageDir}"`,
+    'CLONING_STORAGE_SEGMENTS'
+  )
 
-const archive = join(BACKUP_DIR, `p13-${ts}.tar.gz`)
-run(
-  `tar -czf "${archive}" -C "${BACKUP_DIR}" "p13-${ts}"`,
-  'Compressing archive'
-)
+  // [3] ENCAPSULATION :: Сжатие данных в финальный архив
+  const archiveName = `p13-stash-${TIMESTAMP}.tar.gz`
+  const archivePath = join(STASH_ROOT, archiveName)
+  
+  // Упаковываем только содержимое временной папки, чтобы избежать вложенности путей
+  execute(
+    `tar -czf "${archivePath}" -C "${WORK_DIR}" .`,
+    'ENCAPSULATING_STASH'
+  )
 
-rmSync(workDir, { recursive: true, force: true })
+  // [4] TERMINATE_WORK_DIR :: Зачистка следов после успешной сборки
+  rmSync(WORK_DIR, { recursive: true, force: true })
 
-console.log(`\n[backup] Archive ready: ${archive}`)
-console.log(`[backup] Size: ${(require('node:fs').statSync(archive).size / 1024 / 1024).toFixed(2)} MB`)
+  const finalSize = (statSync(archivePath).size / 1024 / 1024).toFixed(2)
+  console.log(`\n>> [SYS.STASH_COMPLETE]`)
+  console.log(`>> PATH: ${archivePath}`)
+  console.log(`>> SIZE: ${finalSize} MB`)
+
+} catch (err) {
+  console.error('>> [SYS.STASH_ABORTED] ::', err instanceof Error ? err.message : 'UNKNOWN_FAULT')
+  // Оставляем WORK_DIR для ручного анализа при сбое
+  process.exit(1)
+}

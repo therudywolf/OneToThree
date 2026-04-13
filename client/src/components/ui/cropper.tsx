@@ -1,6 +1,6 @@
 'use client'
 
-import { createElement, useCallback, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import {
   ReactCrop,
   centerCrop,
@@ -11,9 +11,15 @@ import {
 } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 
-function centerAspectCrop(
-  mediaWidth: number,
-  mediaHeight: number,
+/**
+ * PROJECT 13 :: OPTICS_CALIBRATOR
+ * Level: Interface Layer (Identity Segmenting)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
+
+function calibrateSegment(
+  width: number,
+  height: number,
   aspect: number
 ): PercentCrop {
   return centerCrop(
@@ -23,15 +29,16 @@ function centerAspectCrop(
         width: 85,
       },
       aspect,
-      mediaWidth,
-      mediaHeight
+      width,
+      height
     ),
-    mediaWidth,
-    mediaHeight
+    width,
+    height
   )
 }
 
-async function canvasFromCrop(
+/** [DATA_EXTRACTION] :: Стерильная вырезка сегмента из памяти */
+async function extractSegmentBlob(
   image: HTMLImageElement,
   crop: PixelCrop
 ): Promise<Blob> {
@@ -40,21 +47,28 @@ async function canvasFromCrop(
   const scaleY = image.naturalHeight / image.height
   const w = Math.floor(crop.width * scaleX)
   const h = Math.floor(crop.height * scaleY)
+
   canvas.width = w
   canvas.height = h
   const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    throw new Error('NO_2D')
-  }
-  const sx = crop.x * scaleX
-  const sy = crop.y * scaleY
-  ctx.drawImage(image, sx, sy, w, h, 0, 0, w, h)
+
+  if (!ctx) throw new Error('ERR_CANVAS_INIT_FAILURE')
+
+  ctx.drawImage(
+    image,
+    crop.x * scaleX,
+    crop.y * scaleY,
+    w,
+    h,
+    0,
+    0,
+    w,
+    h
+  )
+
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (b) => {
-        if (b) resolve(b)
-        else reject(new Error('TO_BLOB_FAILED'))
-      },
+      (b) => b ? resolve(b) : reject(new Error('ERR_BLOB_GENERATION_FAILED')),
       'image/jpeg',
       0.92
     )
@@ -70,84 +84,97 @@ export function AvatarCropModal({
   onCancel: () => void
   onCropped: (blob: Blob) => void
 }) {
-  const imgRef = useRef<HTMLImageElement | null>(null)
-  const [crop, setCrop] = useState<Crop>()
-  const [pixelCrop, setPixelCrop] = useState<PixelCrop | null>(null)
-  const [busy, setBusy] = useState(false)
+  const opticsRef = useRef<HTMLImageElement | null>(null)
+  const [sequence, setSequence] = useState<Crop>()
+  const [pixelData, setPixelData] = useState<PixelCrop | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
 
-  const onImageLoad = useCallback(
+  const onOpticsLoad = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {
       const { width, height } = e.currentTarget
-      setCrop(centerAspectCrop(width, height, 1))
+      setSequence(calibrateSegment(width, height, 1))
     },
     []
   )
 
-  async function confirm() {
-    const img = imgRef.current
-    if (!img || !pixelCrop || pixelCrop.width < 2 || pixelCrop.height < 2) {
-      return
-    }
-    setBusy(true)
+  const commitData = async () => {
+    const img = opticsRef.current
+    if (!img || !pixelData || pixelData.width < 2 || pixelData.height < 2) return
+
+    setIsProcessing(true)
     try {
-      const blob = await canvasFromCrop(img, pixelCrop)
+      const blob = await extractSegmentBlob(img, pixelData)
       onCropped(blob)
+    } catch (err) {
+      console.error('[SYS.OPTICS] Extraction failed:', err)
     } finally {
-      setBusy(false)
+      setIsProcessing(false)
     }
   }
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 px-3"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/95 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-label="Crop avatar"
     >
-      <div className="w-full max-w-md border border-neon-cyan/50 bg-black p-4 font-mono shadow-[0_0_24px_rgba(0,255,255,0.08)]">
-        <p className="mb-3 text-center text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
-          :: CROP_MARK ::
-        </p>
-        <div className="relative mx-auto max-h-[min(60vh,420px)] overflow-hidden border border-neon-cyan/30">
-          {createElement(
-            ReactCrop as never,
-            {
-              crop,
-              circularCrop: true,
-              aspect: 1,
-              onChange: (_pixel: PixelCrop, percent: PercentCrop) => {
-                setCrop(percent)
-              },
-              onComplete: (c: PixelCrop) => setPixelCrop(c),
-            },
-            // eslint-disable-next-line @next/next/no-img-element
-            createElement('img', {
-              ref: imgRef,
-              alt: '',
-              src: imageSrc,
-              className: 'max-h-[min(60vh,420px)] w-full object-contain',
-              onLoad: onImageLoad,
-            })
-          )}
+      <div className="relative w-full max-w-md border border-neutral-900 bg-black p-6 shadow-2xl">
+        {/* TOP_DECOR_LINE */}
+        <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50" />
+
+        <header className="mb-6 flex items-center gap-2 border-b border-neutral-900 pb-4">
+          <span className="h-2 w-2 animate-pulse bg-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.4)]" />
+          <p className="text-[10px] uppercase tracking-[0.4em] text-neutral-500">
+            SYS.OPTICS // {isProcessing ? 'PROCESSING' : 'CALIBRATION'}
+          </p>
+        </header>
+
+        {/* VIEWPORT_CONTAINER */}
+        <div className="relative mx-auto max-h-[min(60vh,420px)] overflow-hidden border border-neutral-900 bg-zinc-950">
+          <ReactCrop
+            crop={sequence}
+            circularCrop
+            aspect={1}
+            onChange={(_, p) => setSequence(p)}
+            onComplete={(c) => setPixelData(c)}
+          >
+            <img
+              ref={opticsRef}
+              alt="Node Target"
+              src={imageSrc}
+              className="max-h-[min(60vh,420px)] w-full object-contain"
+              onLoad={onOpticsLoad}
+            />
+          </ReactCrop>
         </div>
-        <div className="mt-4 flex gap-2">
+
+        {/* TACTICAL_CONTROLS */}
+        <div className="mt-6 flex gap-3">
           <button
             type="button"
-            disabled={busy}
+            disabled={isProcessing}
             onClick={onCancel}
-            className="flex-1 border border-red-900 py-2 text-[10px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red disabled:opacity-40"
+            className="flex-1 border border-neutral-800 bg-black py-2.5 font-mono text-[10px] uppercase tracking-widest text-zinc-600 transition-all hover:border-neon-red hover:text-neon-red disabled:opacity-20"
           >
-            [ ABORT ]
+            [ ABORT_SEQ ]
           </button>
+          
           <button
             type="button"
-            disabled={busy || !pixelCrop}
-            onClick={() => void confirm()}
-            className="flex-1 border border-neon-cyan py-2 text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+            disabled={isProcessing || !pixelData}
+            onClick={() => void commitData()}
+            className="flex-1 border border-neon-cyan bg-black py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan/10 hover:shadow-[0_0_15px_rgba(0,255,255,0.1)] disabled:opacity-20"
           >
-            {busy ? '…' : '[ COMMIT ]'}
+            {isProcessing ? 'EXTRACTING...' : '>> COMMIT_SEGMENT'}
           </button>
         </div>
+
+        {/* FOOTER_MARK */}
+        <footer className="mt-8 pt-4 border-t border-neutral-900/50">
+          <p className="text-center text-[8px] uppercase tracking-widest text-neutral-800">
+            Project_13 // Identity_Calibrator_v4
+          </p>
+        </footer>
       </div>
     </div>
   )

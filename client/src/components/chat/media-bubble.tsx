@@ -203,9 +203,9 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
     return (
       <div
         ref={sentinelRef}
-        className="mt-2 animate-pulse font-mono text-[10px] text-zinc-600"
+        className="mt-2 animate-pulse font-mono text-[10px] text-neon-cyan/60"
       >
-        {t('media.loading')}
+        [ DECRYPTING_MEDIA... ]
       </div>
     )
   }
@@ -228,7 +228,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
       <img
         src={objectUrl}
         alt=""
-        className="mt-2 max-h-64 max-w-full cursor-pointer border border-neon-cyan/40 object-contain hover:border-neon-cyan/60"
+        className="mt-2 max-h-64 max-w-full cursor-pointer border border-neon-cyan/40 object-contain hover:border-neon-cyan/80 transition-colors"
         onClick={() => onMediaClick?.({
           id: message.id,
           url: objectUrl,
@@ -241,7 +241,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
 
   if (isAudio) {
     return (
-      <div className="mt-2 max-w-md rounded-none border border-neon-cyan bg-black p-2">
+      <div className="mt-2 max-w-sm rounded-none border border-neon-cyan/40 bg-black p-2 shadow-[0_0_10px_rgba(0,255,255,0.05)]">
         <audio
           ref={audioRef}
           src={objectUrl}
@@ -275,9 +275,9 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
               if (playing) el.pause()
               else void el.play()
             }}
-            className="shrink-0 rounded-none border border-neon-red bg-black px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-black font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-black"
           >
-            {playing ? '||' : '>'}
+            {playing ? '||' : '▶'}
           </button>
           <button
             type="button"
@@ -288,29 +288,30 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
                 audioRef.current.playbackRate = newSpeed
               }
             }}
-            className="shrink-0 rounded-none border border-neon-cyan/50 bg-black px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
+            className="flex h-7 w-8 shrink-0 items-center justify-center rounded-none border border-neon-cyan/30 bg-black font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
           >
             {playbackSpeed}x
           </button>
-          <div className="flex h-8 flex-1 items-end gap-px">
+          <div className="flex h-7 flex-1 items-end gap-[1px]">
             {barHeights.map((h, i) => (
               <div
                 key={i}
-                className="min-w-[2px] flex-1 rounded-[1px] bg-neon-cyan/30"
+                className="min-w-[2px] flex-1 rounded-[1px] bg-neon-cyan"
                 style={{
                   height: `${Math.round(h * 100)}%`,
-                  opacity: playing ? 0.45 + (i % 5) * 0.08 : 0.28,
+                  opacity: playing ? 0.6 + (i % 5) * 0.08 : 0.2,
+                  transition: 'opacity 0.2s',
                 }}
               />
             ))}
           </div>
-          <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/80">
+          <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/70">
             {formatTime(currentSec)} / {formatTime(duration)}
           </span>
         </div>
-        <div className="mt-1 h-1 w-full rounded-none bg-red-950">
+        <div className="mt-2 h-[2px] w-full rounded-none bg-zinc-900 overflow-hidden">
           <div
-            className="h-full rounded-none bg-neon-red"
+            className="h-full rounded-none bg-neon-cyan transition-all duration-100 ease-linear"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -326,10 +327,10 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
 
     if (circleStyle) {
       return (
-        <div className="mt-2 max-w-xs border border-neon-cyan/40">
+        <div className="mt-2 max-w-[240px] rounded-sm border border-neon-cyan/20 bg-black/40 p-2">
           <div
-            className={`mx-auto w-full max-w-[240px] overflow-hidden rounded-full border-2 border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.12)] transition-transform duration-300 ${
-              videoNoteExpanded ? 'scale-150' : 'scale-100'
+            className={`relative mx-auto aspect-square w-full overflow-hidden rounded-full border-2 border-neon-cyan shadow-[0_0_15px_rgba(0,255,255,0.15)] transition-transform duration-300 ${
+              videoNoteExpanded ? 'scale-[1.2] z-10' : 'scale-100'
             }`}
             onClick={() => setVideoNoteExpanded(!videoNoteExpanded)}
             style={{ cursor: 'pointer' }}
@@ -337,7 +338,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
             <video
               ref={videoRef}
               src={objectUrl}
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
               playsInline
               muted
               autoPlay
@@ -348,7 +349,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
               onPause={() => setPlaying(false)}
             />
           </div>
-          <div className="flex items-center gap-2 border-t border-neon-cyan/30 p-2">
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-neon-cyan/20 pt-2">
             <button
               type="button"
               onClick={() => {
@@ -358,17 +359,20 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
                 if (playing) el.pause()
                 else void el.play()
               }}
-              className="rounded-none border border-neon-red bg-black px-3 py-1 font-mono text-[10px] uppercase text-neon-red hover:border-neon-cyan hover:text-neon-cyan"
+              className="flex h-6 items-center justify-center rounded-none border border-neon-red bg-black px-2 font-mono text-[9px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-cyan hover:bg-neon-cyan hover:text-black"
             >
-              {playing ? '||' : '> UNMUTE'}
+              {playing ? '|| PAUSE' : '▶ UNMUTE'}
             </button>
+            <span className="font-mono text-[9px] text-neon-cyan/50 tracking-widest">
+              CIRCLE_VID
+            </span>
           </div>
         </div>
       )
     }
 
     return (
-      <div className="mt-2 max-w-md border border-neon-cyan/40 bg-black">
+      <div className="mt-2 max-w-md border border-neon-cyan/40 bg-black p-1">
         <video
           ref={videoRef}
           src={objectUrl}
@@ -393,7 +397,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
 
   /* Generic file */
   return (
-    <div className="mt-2 max-w-sm border-2 border-zinc-700 bg-zinc-950/80 p-3 font-mono">
+    <div className="mt-2 max-w-sm border border-zinc-700 bg-zinc-950/80 p-3 font-mono">
       <div className="mb-2 text-[10px] uppercase tracking-[0.4em] text-zinc-500">
         :: file
       </div>
@@ -408,7 +412,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
       <a
         href={objectUrl}
         download={displayName}
-        className="inline-block w-full border border-neon-cyan/60 bg-black py-2 text-center text-[10px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
+        className="inline-block w-full border border-neon-cyan/60 bg-black py-2 text-center text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
       >
         {t('media.download')}
       </a>

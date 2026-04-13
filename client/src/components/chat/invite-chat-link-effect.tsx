@@ -9,76 +9,91 @@ import { canonicalUserId } from '@/lib/user-id'
 import { useChatStore } from '@/store/chatStore'
 
 /**
- * Dedupe concurrent invite handling (React Strict Mode double-mount + effect re-runs).
- * Module scope: remount clears in-flight Set via cleanup so the "real" effect can POST once.
+ * PROJECT 13 :: DIRECT_LINK_GENESIS
+ * Level: Connection Layer (Signal Interceptor)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
-const inviteInflight = new Set<string>()
 
-/**
- * Runs only when mounted (vault unlocked + private key available).
- * Preflights lookup, then creates direct E2E chat — avoids POST before ECDH/keys exist.
- */
+// [LOCK_MECHANISM] :: Блокировка повторных запросов в Strict Mode
+const genesisLock = new Set<string>()
+
 export function InviteChatLinkEffect({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
-  const setActiveChatId = useChatStore((s) => s.setActiveChatId)
-  const [banner, setBanner] = useState<string | null>(null)
+  const { setActiveChatId } = useChatStore()
+  const [errorLog, setErrorLog] = useState<string | null>(null)
 
   useEffect(() => {
-    const rawInvite = searchParams.get('invite')?.trim()
-    if (!rawInvite) return
-    const extracted = normalizePeerInput(rawInvite)
-    if (!extracted) return
-    const peer = canonicalUserId(extracted)
+    const rawSignal = searchParams.get('invite')?.trim()
+    if (!rawSignal) return
+
+    const peerIdRaw = normalizePeerInput(rawSignal)
+    if (!peerIdRaw) return
+
+    const peer = canonicalUserId(peerIdRaw)
     const self = canonicalUserId(userId)
+
+    // [VALIDATION] :: Проверка на замыкание контура на самого себя
     if (peer === self) {
-      setBanner('[ INVITE :: CANNOT_OPEN_WITH_SELF ]')
+      setErrorLog('GENESIS_ERR // CANNOT_LINK_WITH_SELF')
       return
     }
 
-    const doneKey = `p13:invite-opened:v2:${self}:${peer}`
-    if (sessionStorage.getItem(doneKey) === '1') return
+    const sessionKey = `p13:genesis:v2:${self}:${peer}`
+    if (sessionStorage.getItem(sessionKey) === '1') return
 
     const lockKey = `${self}::${peer}`
-    if (inviteInflight.has(lockKey)) return
-    inviteInflight.add(lockKey)
+    if (genesisLock.has(lockKey)) return
+    genesisLock.add(lockKey)
 
-    let cancelled = false
+    let aborted = false
+
     void (async () => {
       try {
-        const rows = await lookupUsers([peer])
-        const row = rows[0]
-        if (!row) {
-          throw new Error('INVITE_PEER_UNKNOWN')
+        // [1] SCAN_PHASE :: Проверка существования и ключей узла
+        const [targetNode] = await lookupUsers([peer])
+        
+        if (!targetNode) {
+          throw new Error('NODE_UNKNOWN')
         }
-        if (!row.ecdh_public_key_jwk?.trim()) {
-          throw new Error('INVITE_PEER_NO_ECDH')
+        
+        if (!targetNode.ecdh_public_key_jwk?.trim()) {
+          throw new Error('NODE_CRYPTO_MISSING')
         }
-        const chat = await createDirectE2EChat(userId, row.id)
-        if (cancelled) return
-        sessionStorage.setItem(doneKey, '1')
+
+        // [2] GENESIS_PHASE :: Создание прямого E2E канала
+        const chat = await createDirectE2EChat(userId, targetNode.id)
+        
+        if (aborted) return
+
+        sessionStorage.setItem(sessionKey, '1')
         setActiveChatId(chat.id)
+        
       } catch (e) {
-        if (cancelled) return
-        const code = e instanceof Error ? e.message : String(e)
-        setBanner(`[ INVITE_FAILED :: ${code} ]`)
+        if (aborted) return
+        const faultCode = e instanceof Error ? e.message : 'SIGNAL_INTERRUPTED'
+        setErrorLog(`GENESIS_FAILURE // ${faultCode}`)
       } finally {
-        inviteInflight.delete(lockKey)
+        genesisLock.delete(lockKey)
       }
     })()
 
     return () => {
-      cancelled = true
-      inviteInflight.delete(lockKey)
+      aborted = true
+      genesisLock.delete(lockKey)
     }
   }, [searchParams, userId, setActiveChatId])
 
-  if (!banner) return null
+  if (!errorLog) return null
+
   return (
     <div
-      className="pointer-events-none fixed left-2 right-2 top-14 z-[200] border border-neon-red bg-black/95 px-3 py-2 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red"
+      className="pointer-events-none fixed left-4 right-4 top-20 z-[200] flex justify-center"
       role="alert"
     >
-      {banner}
+      <div className="border border-neon-red bg-black/90 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-red shadow-[0_0_15px_rgba(255,0,0,0.2)] backdrop-blur-md">
+        <span className="mr-2 animate-pulse font-bold">[!]</span>
+        {errorLog}
+      </div>
     </div>
   )
 }

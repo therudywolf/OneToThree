@@ -6,54 +6,76 @@ import { fetchUserPresence } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
 import type { ApiChatRow } from '@/lib/api/chats'
 
-const PING_MS = 45_000
+/**
+ * PROJECT 13 :: PULSE_RADAR_PROTOCOL
+ * Level: Connection Layer (Presence Tracking)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ */
 
-/** Initial fetch + WS `online_status_change` + lightweight `presence_ping`. */
-export function usePresenceSync(userId: string, chats: ApiChatRow[]) {
-  const mergePeerPresenceBatch = useChatStore((s) => s.mergePeerPresenceBatch)
-  const setPeerPresence = useChatStore((s) => s.setPeerPresence)
+const HEARTBEAT_INTERVAL_MS = 45_000
 
-  const directPeerIds = useMemo(() => {
+/**
+ * Синхронизация статусов «В сети» через REST (Initial) и WS (Real-time).
+ * Поддерживает активность узла в контуре через presence_ping.
+ */
+export function usePulseRadar(userId: string, sectors: ApiChatRow[]) {
+  const { mergePeerPresenceBatch, setPeerPresence } = useChatStore()
+
+  // [1] PEER_ID_EXTRACTION :: Выделяем идентификаторы пиров из активных линков
+  const targetPeerIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const c of chats) {
-      if (c.is_group) continue
-      const peer = c.member_ids.find((id) => id !== userId)
+    for (const sector of sectors) {
+      if (sector.is_group) continue // Групповые секторы обрабатываются иначе
+      const peer = sector.member_ids.find((id) => id !== userId)
       if (peer) ids.add(peer)
     }
     return [...ids]
-  }, [chats, userId])
+  }, [sectors, userId])
 
+  // [2] INITIAL_SCAN :: Первичный запрос состояний через REST-шлюз
   useEffect(() => {
-    if (directPeerIds.length === 0) return
-    let cancelled = false
-    void fetchUserPresence(directPeerIds)
+    if (targetPeerIds.length === 0) return
+    
+    let isAborted = false
+    
+    void fetchUserPresence(targetPeerIds)
       .then((rows) => {
-        if (!cancelled) mergePeerPresenceBatch(rows)
+        if (!isAborted) mergePeerPresenceBatch(rows)
       })
       .catch(() => {
-        /* offline / auth */
+        // Сигнал потерян или шлюз закрыт — игнорируем, ждем WS
       })
-    return () => {
-      cancelled = true
-    }
-  }, [directPeerIds, mergePeerPresenceBatch])
 
+    return () => {
+      isAborted = true
+    }
+  }, [targetPeerIds, mergePeerPresenceBatch])
+
+  // [3] SIGNAL_INTERCEPT :: Подписка на изменение пульса через WebSocket
   useEffect(() => {
     const socket = getFmSocket()
-    return socket.subscribe((m) => {
-      if (m.type !== 'online_status_change') return
-      setPeerPresence(m.user_id, {
-        online: m.online,
-        last_seen_at: m.last_seen_at,
+    
+    /** [INTERCEPTOR] :: Фильтрация входящих пакетов статуса */
+    return socket.subscribe((packet) => {
+      if (packet.type !== 'online_status_change') return
+      
+      setPeerPresence(packet.user_id, {
+        online: packet.online,
+        last_seen_at: packet.last_seen_at,
       })
     })
   }, [setPeerPresence])
 
+  // [4] KEEP_ALIVE_PULSE :: Поддержание активности узла в сети
   useEffect(() => {
-    const id = window.setInterval(() => {
-      if (!getFmSocket().connected) return
-      getFmSocket().send({ type: 'presence_ping' })
-    }, PING_MS)
-    return () => window.clearInterval(id)
+    const heartbeat = window.setInterval(() => {
+      const socket = getFmSocket()
+      if (!socket.connected) return
+      
+      /** Отправляем легкий пинг для подтверждения присутствия в секторе */
+      socket.send({ type: 'presence_ping' })
+    }, HEARTBEAT_INTERVAL_MS)
+
+    return () => window.clearInterval(heartbeat)
   }, [])
 }

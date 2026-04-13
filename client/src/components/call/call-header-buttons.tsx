@@ -13,25 +13,54 @@ export function CallHeaderButtons({
   onVoiceCall,
   onVideoCall,
 }: Props) {
-  const off = disabled || !peerReady
+  const isOffline = disabled || !peerReady
 
   return (
-    <div className="flex flex-wrap items-center gap-2 font-mono">
+    <div className="flex items-center border border-neutral-900 bg-black font-mono shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+      {/* Node Status Indicator */}
+      <div className="hidden sm:flex h-9 w-10 items-center justify-center border-r border-neutral-900 bg-zinc-950/50">
+        <span className="relative flex h-1.5 w-1.5">
+          {!isOffline && (
+            <span className="absolute inline-flex h-full w-full animate-ping bg-neon-cyan opacity-75"></span>
+          )}
+          <span
+            className={`relative inline-flex h-1.5 w-1.5 ${
+              isOffline ? 'bg-neutral-700' : 'bg-neon-cyan shadow-[0_0_5px_rgba(0,255,255,0.8)]'
+            }`}
+          ></span>
+        </span>
+      </div>
+
+      {/* Audio Link */}
       <button
         type="button"
-        disabled={off}
+        disabled={isOffline}
         onClick={onVoiceCall}
-        className="touch-manipulation flex min-h-11 min-w-[44px] shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-black px-3 py-2 text-[10px] uppercase tracking-[0.25em] text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 md:min-h-9 md:px-2 md:py-1.5"
+        className={`touch-manipulation relative flex h-9 items-center justify-center border-r border-neutral-900 px-4 transition-all ${
+          isOffline
+            ? 'cursor-not-allowed text-neutral-600'
+            : 'text-neon-cyan hover:bg-neon-cyan/10 hover:text-white active:bg-neon-cyan/20'
+        }`}
       >
-        [ CALL :: VOICE ]
+        <span className="text-[10px] uppercase tracking-[0.25em]">
+          {isOffline ? 'NO_LINK' : 'SYS.AUDIO'}
+        </span>
       </button>
+
+      {/* Optics Link */}
       <button
         type="button"
-        disabled={off}
+        disabled={isOffline}
         onClick={onVideoCall}
-        className="touch-manipulation flex min-h-11 min-w-[44px] shrink-0 items-center justify-center rounded-none border border-neon-red bg-black px-3 py-2 text-[10px] uppercase tracking-[0.25em] text-neon-red hover:bg-neon-red/10 disabled:opacity-40 md:min-h-9 md:px-2 md:py-1.5"
+        className={`touch-manipulation relative flex h-9 items-center justify-center px-4 transition-all ${
+          isOffline
+            ? 'cursor-not-allowed text-neutral-600'
+            : 'text-neon-red hover:bg-neon-red/10 hover:text-white active:bg-neon-red/20'
+        }`}
       >
-        [ CALL :: VIDEO ]
+        <span className="text-[10px] uppercase tracking-[0.25em]">
+          {isOffline ? 'NO_LINK' : 'SYS.OPTICS'}
+        </span>
       </button>
     </div>
   )

@@ -5,107 +5,111 @@ import type { RefObject } from 'react'
 import { markMessagesReadBatch } from '@/lib/api/messages'
 import { useChatStore } from '@/store/chatStore'
 
-const BATCH_DEBOUNCE_MS = 500
-
 /**
- * When peer messages scroll into view in the active chat, mark them read (REST).
- * Uses batch API with debouncing to prevent spam when scrolling through many messages.
- * Collects message IDs for 500ms, then sends as one request.
+ * PROJECT 13 :: VISUAL_CAPTURE_SYNC
+ * Level: Connection Layer (Read Receipts)
+ * Vibe: Clinical Pure / Terminal Noir
+ * Purpose: Batching intersection signals to synchronize node state.
  */
+
+const BATCH_SYNC_DELAY_MS = 500
+
 export function useReadReceipts(
   scrollRootRef: RefObject<HTMLDivElement | null>,
   opts?: { enabled?: boolean }
 ) {
-  const activeChatId = useChatStore((s) => s.activeChatId)
-  const userId = useChatStore((s) => s.userId)
-  const markedRef = useRef(new Set<string>())
-  const pendingBatchRef = useRef(new Set<string>())
-  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const enabled = opts?.enabled ?? true
+  const { activeChatId, userId, messages } = useChatStore()
+  
+  const processedRef = useRef(new Set<string>())
+  const syncQueueRef = useRef(new Set<string>())
+  const dispatchTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  const isEnabled = opts?.enabled ?? true
 
-  // Clear marked set when switching chats
+  // [1] RESET_PHASE :: Зачистка кэша при смене сектора
   useEffect(() => {
-    markedRef.current.clear()
-    pendingBatchRef.current.clear()
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current)
-      debounceTimeoutRef.current = null
+    processedRef.current.clear()
+    syncQueueRef.current.clear()
+    if (dispatchTimerRef.current) {
+      clearTimeout(dispatchTimerRef.current)
+      dispatchTimerRef.current = null
     }
   }, [activeChatId])
 
-  // Flush remaining batch on unmount
+  // [2] FINAL_FLUSH :: Выброс остатков очереди при демонтаже узла
   useEffect(() => {
     return () => {
-      if (debounceTimeoutRef.current) {
-        clearTimeout(debounceTimeoutRef.current)
-      }
-      const batch = Array.from(pendingBatchRef.current)
-      if (batch.length > 0) {
-        void markMessagesReadBatch(batch).catch(() => {
-          /* ignore unmount errors */
+      if (dispatchTimerRef.current) clearTimeout(dispatchTimerRef.current)
+      const finalBatch = Array.from(syncQueueRef.current)
+      if (finalBatch.length > 0) {
+        void markMessagesReadBatch(finalBatch).catch(() => {
+          /* SILENCE_FAULT */
         })
       }
     }
   }, [])
 
-  // Debounced batch sender
-  const flushBatch = () => {
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current)
-    }
-    debounceTimeoutRef.current = setTimeout(() => {
-      const batch = Array.from(pendingBatchRef.current)
-      if (batch.length > 0) {
-        pendingBatchRef.current.clear()
-        void markMessagesReadBatch(batch).catch(() => {
-          // On error, restore to pending
-          for (const id of batch) {
-            pendingBatchRef.current.add(id)
-          }
-        })
-      }
-    }, BATCH_DEBOUNCE_MS)
+  /** [DISPATCH_PROTOCOL] :: Дебаунс-передача пакетов прочитанных ID */
+  const triggerBatchSync = () => {
+    if (dispatchTimerRef.current) clearTimeout(dispatchTimerRef.current)
+    
+    dispatchTimerRef.current = setTimeout(() => {
+      const batch = Array.from(syncQueueRef.current)
+      if (batch.length === 0) return
+
+      syncQueueRef.current.clear()
+      
+      void markMessagesReadBatch(batch).catch((err) => {
+        console.error('>> [SYS.SYNC] BATCH_DISPATCH_FAILURE:', err)
+        // Реинъекция пакета в очередь при отказе
+        for (const id of batch) syncQueueRef.current.add(id)
+      })
+    }, BATCH_SYNC_DELAY_MS)
   }
 
+  // [3] OBSERVATION_CORE
   useEffect(() => {
-    if (!enabled || !activeChatId || !userId) return
+    if (!isEnabled || !activeChatId || !userId) return
     const root = scrollRootRef.current
     if (!root) return
 
-    const obs = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue
-          const id = (e.target as HTMLElement).dataset.messageId
-          if (!id) continue
-          const msg = useChatStore.getState().messages.find((m) => m.id === id)
-          if (!msg || msg.sender_id === userId) continue
-          if (markedRef.current.has(id)) continue
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          
+          const msgId = (entry.target as HTMLElement).dataset.messageId
+          if (!msgId || processedRef.current.has(msgId)) continue
 
-          markedRef.current.add(id)
-          pendingBatchRef.current.add(id)
-          flushBatch()
+          // [VERIFICATION] :: Проверка, что сообщение чужое и еще не прочитано
+          const targetNode = messages.find((m) => m.id === msgId)
+          if (!targetNode || targetNode.sender_id === userId) continue
+
+          processedRef.current.add(msgId)
+          syncQueueRef.current.add(msgId)
+          triggerBatchSync()
         }
       },
-      { root, threshold: [0, 0.35, 0.55, 0.85, 1] }
+      { root, threshold: 0.25 } // Стерильный порог захвата
     )
 
-    function observeAll(): void {
-      const elRoot = scrollRootRef.current
-      if (!elRoot) return
-      for (const el of elRoot.querySelectorAll<HTMLElement>('[data-message-id]')) {
-        obs.observe(el)
-      }
+    const scanNodes = () => {
+      const container = scrollRootRef.current
+      if (!container) return
+      container.querySelectorAll('[data-message-id]').forEach((el) => {
+        observer.observe(el)
+      })
     }
 
-    observeAll()
-    const mo = new MutationObserver(() => observeAll())
-    mo.observe(root, { childList: true, subtree: true })
+    scanNodes()
+
+    // [MUTATION_INTERCEPT] :: Слежка за новыми узлами в DOM
+    const monitor = new MutationObserver(() => scanNodes())
+    monitor.observe(root, { childList: true, subtree: true })
 
     return () => {
-      mo.disconnect()
-      obs.disconnect()
+      monitor.disconnect()
+      observer.disconnect()
     }
-  }, [enabled, activeChatId, userId, scrollRootRef])
+  }, [isEnabled, activeChatId, userId, messages, scrollRootRef])
 }
-

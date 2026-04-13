@@ -1,35 +1,29 @@
 /**
- * Web Push in the browser; subscriptions are stored via Fastify `/api/push/*`.
+ * PROJECT 13 :: PUSH_INTERCEPT_PROTOCOL
+ * Level: Connection Layer (OS Alerts)
+ * Vibe: Clinical Pure / Terminal Noir
  */
 
 import { API_URL } from '@/lib/api/auth'
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const rawData = atob(base64)
-  const outputArray = new Uint8Array(rawData.length)
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i)
-  }
-  return outputArray
+/** [SIGNAL_ENCODING] :: Подготовка VAPID-ключа для браузерного PushManager */
+function toUint8(b64: string): Uint8Array {
+  const padding = '='.repeat((4 - (b64.length % 4)) % 4)
+  const base = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base)
+  return new Uint8Array(Array.from(raw, (c) => c.charCodeAt(0)))
 }
 
-export function getVapidPublicKey(): string | undefined {
-  return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-}
+export const getSignalKey = () => process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
-/** Log once when push UI mounts if the build is missing the public VAPID key. */
-export function warnIfVapidPublicKeyMissing(): void {
-  if (typeof window === 'undefined') return
-  if (!getVapidPublicKey()) {
-    console.warn(
-      '[push] NEXT_PUBLIC_VAPID_PUBLIC_KEY is missing — enable push is disabled until the client is built with this env var.'
-    )
+/** [WARN_LOG] :: Проверка наличия ключа в сборке */
+export function validateVapidSignal(): void {
+  if (typeof window !== 'undefined' && !getSignalKey()) {
+    console.warn('>> [SYS.PUSH] VAPID_KEY_MISSING. Intercept protocol disabled.')
   }
 }
 
-export function supportsWebPush(): boolean {
+export function isPushSupported(): boolean {
   if (typeof window === 'undefined') return false
   return (
     'serviceWorker' in navigator &&
@@ -38,168 +32,125 @@ export function supportsWebPush(): boolean {
   )
 }
 
-export async function getNotificationPermission(): Promise<NotificationPermission> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return 'denied'
-  }
+/** [AUTH_PROBE] :: Проверка текущих прав на прерывание */
+export async function getInterceptAuthority(): Promise<NotificationPermission> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied'
   return Notification.permission
 }
 
-export async function requestNotificationPermission(): Promise<NotificationPermission> {
-  if (typeof window === 'undefined' || !('Notification' in window)) {
-    return 'denied'
-  }
-  if (Notification.permission === 'granted') {
-    return 'granted'
-  }
+export async function requestInterceptAuthority(): Promise<NotificationPermission> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied'
+  if (Notification.permission === 'granted') return 'granted'
   return Notification.requestPermission()
 }
 
-/** Read subscription without registering a service worker (for settings UI state). */
-export async function getExistingPushSubscription(): Promise<PushSubscription | null> {
-  if (!supportsWebPush()) return null
+/** [SCAN] :: Поиск существующего перехвата без регистрации нового SW */
+export async function getActiveIntercept(): Promise<PushSubscription | null> {
+  if (!isPushSupported()) return null
   try {
     const reg = await navigator.serviceWorker.getRegistration()
-    if (!reg) return null
-    return await reg.pushManager.getSubscription()
-  } catch (e) {
-    console.error('[push] getExistingPushSubscription failed', e)
+    return reg ? await reg.pushManager.getSubscription() : null
+  } catch (err) {
+    console.error('>> [SYS.PUSH] SCAN_FAULT:', err)
     return null
   }
 }
 
-/**
- * Ensure we have a service worker registration (next-pwa serves `/sw.js` in production).
- * Without this, `navigator.serviceWorker.ready` can hang forever if no SW was ever registered.
- */
-export async function getServiceWorkerRegistrationForPush(): Promise<ServiceWorkerRegistration> {
-  if (!supportsWebPush()) {
-    throw new Error('WEB_PUSH_UNSUPPORTED')
-  }
+/** [SW_INITIALIZE] :: Подготовка оболочки для приема сигналов */
+export async function initPushWorker(): Promise<ServiceWorkerRegistration> {
+  if (!isPushSupported()) throw new Error('WEB_PUSH_UNSUPPORTED')
+
   let reg = await navigator.serviceWorker.getRegistration()
+  
   if (!reg) {
     try {
       reg = await navigator.serviceWorker.register('/sw.js', {
         scope: '/',
         updateViaCache: 'none',
       })
-    } catch (e) {
-      console.error('[push] Service worker registration failed (/sw.js)', e)
+    } catch (err) {
+      console.error('>> [SYS.PUSH] WORKER_GENESIS_FAULT:', err)
       throw new Error('SERVICE_WORKER_REGISTER_FAILED')
     }
   } else {
-    await reg.update().catch((e) => {
-      console.error('[push] serviceWorker.update() failed', e)
-    })
+    // Принудительное обновление для синхронизации слоев
+    await reg.update().catch(() => {})
   }
+
   await navigator.serviceWorker.ready
   return reg
 }
 
-async function postSubscribeToApi(sub: PushSubscription): Promise<void> {
-  const j = sub.toJSON()
-  if (!j.endpoint || !j.keys?.p256dh || !j.keys?.auth) {
-    console.error('[push] Invalid PushSubscription JSON from browser', j)
-    throw new Error('INVALID_PUSH_SUBSCRIPTION')
+/** [SYNC_CORE] :: Передача данных перехвата на основной сервер */
+async function syncInterceptWithCore(sub: PushSubscription): Promise<void> {
+  const data = sub.toJSON()
+  if (!data.endpoint || !data.keys?.p256dh || !data.keys?.auth) {
+    throw new Error('INVALID_PUSH_DATA')
   }
-  try {
-    const res = await fetch(`${API_URL}/push/subscribe`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        endpoint: j.endpoint,
-        keys: { p256dh: j.keys.p256dh, auth: j.keys.auth },
-      }),
-    })
-    const data = (await res.json().catch(() => ({}))) as { error?: string }
-    if (!res.ok) {
-      console.error('[push] POST /api/push/subscribe failed', res.status, data)
-      throw new Error(data.error ?? 'PUSH_SUBSCRIBE_FAILED')
-    }
-  } catch (e) {
-    console.error('[push] postSubscribeToApi failed', e)
-    throw e
+
+  const res = await fetch(`${API_URL}/push/subscribe`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      endpoint: data.endpoint,
+      keys: { p256dh: data.keys.p256dh, auth: data.keys.auth },
+    }),
+  })
+
+  if (!res.ok) {
+    const fault = await res.json().catch(() => ({}))
+    throw new Error(fault.error ?? 'PUSH_SYNC_FAILED')
   }
 }
 
-async function deleteSubscribeFromApi(endpoint: string): Promise<void> {
-  try {
-    const res = await fetch(`${API_URL}/push/unsubscribe`, {
-      method: 'DELETE',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endpoint }),
-    })
-    const data = (await res.json().catch(() => ({}))) as { error?: string }
-    if (!res.ok) {
-      console.error('[push] DELETE /api/push/unsubscribe failed', res.status, data)
-      throw new Error(data.error ?? 'PUSH_UNSUBSCRIBE_FAILED')
-    }
-  } catch (e) {
-    if (e instanceof Error && e.message.startsWith('PUSH_')) {
-      throw e
-    }
-    console.error('[push] deleteSubscribeFromApi error', e)
-    throw e
-  }
-}
-
-export async function subscribeUserPush(_userId: string): Promise<void> {
-  void _userId
-  const vapid = getVapidPublicKey()
-  if (!vapid) {
-    console.error('[push] subscribeUserPush: NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set')
-    throw new Error('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set')
-  }
-  if (!supportsWebPush()) {
-    console.error('[push] subscribeUserPush: Web Push APIs unavailable')
-    throw new Error('WEB_PUSH_UNSUPPORTED')
-  }
+/** [ESTABLISH_INTERCEPT] :: Полный цикл активации оповещений */
+export async function establishPushIntercept(): Promise<void> {
+  const vapid = getSignalKey()
+  if (!vapid || !isPushSupported()) throw new Error('SIGNAL_HARDWARE_FAULT')
 
   try {
-    const permission = await requestNotificationPermission()
-    if (permission !== 'granted') {
-      console.warn('[push] Notification permission not granted:', permission)
-      throw new Error('NOTIFICATION_DENIED')
-    }
+    const authority = await requestInterceptAuthority()
+    if (authority !== 'granted') throw new Error('AUTHORITY_DENIED')
 
-    const reg = await getServiceWorkerRegistrationForPush()
+    const reg = await initPushWorker()
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapid) as BufferSource,
+      applicationServerKey: toUint8(vapid),
     })
-    await postSubscribeToApi(sub)
-  } catch (e) {
-    if (e instanceof Error && e.message === 'NOTIFICATION_DENIED') {
-      /* user dismissed prompt — avoid noisy error */
-    } else {
-      console.error('[push] subscribeUserPush failed', e)
+
+    await syncInterceptWithCore(sub)
+  } catch (err) {
+    if (!(err instanceof Error && err.message === 'AUTHORITY_DENIED')) {
+      console.error('>> [SYS.PUSH] INTERCEPT_ESTABLISH_FAULT:', err)
     }
-    throw e
+    throw err
   }
 }
 
-export async function unsubscribeUserPush(_userId: string): Promise<void> {
-  void _userId
+/** [TERMINATE_INTERCEPT] :: Удаление узла из системы оповещений */
+export async function terminatePushIntercept(): Promise<void> {
   try {
     const reg = await navigator.serviceWorker.getRegistration()
     if (!reg) return
+
     const sub = await reg.pushManager.getSubscription()
-    if (!sub) {
-      return
+    if (!sub) return
+
+    const endpoint = sub.toJSON().endpoint
+    if (endpoint) {
+      // Пытаемся уведомить сервер (Best-effort)
+      await fetch(`${API_URL}/push/unsubscribe`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint }),
+      }).catch(() => {})
     }
-    const j = sub.toJSON()
-    if (j.endpoint) {
-      try {
-        await deleteSubscribeFromApi(j.endpoint)
-      } catch (e) {
-        console.error('[push] Server unsubscribe failed; continuing with browser unsubscribe', e)
-      }
-    }
+
     await sub.unsubscribe()
-  } catch (e) {
-    console.error('[push] unsubscribeUserPush failed', e)
-    throw e
+  } catch (err) {
+    console.error('>> [SYS.PUSH] TERMINATE_FAULT:', err)
+    throw err
   }
 }

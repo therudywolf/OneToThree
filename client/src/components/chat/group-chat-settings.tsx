@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { Crown, Star } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Crown, Star, ShieldAlert, Database } from 'lucide-react'
 import {
   ensureGroupInviteCode,
   fetchChatDetail,
@@ -15,23 +15,15 @@ import { useTranslation } from '@/hooks/use-translation'
 import { UserAvatar } from '@/components/user-avatar'
 import { MediaArchivePanel } from '@/components/chat/media-archive-panel'
 
-function roleBadge(role: ChatMemberRole) {
-  if (role === 'owner') {
-    return (
-      <Crown
-        className="inline h-3 w-3 shrink-0 text-neon-cyan"
-        aria-hidden
-      />
-    )
-  }
-  if (role === 'admin') {
-    return (
-      <Star
-        className="inline h-3 w-3 shrink-0 text-neon-cyan/90"
-        aria-hidden
-      />
-    )
-  }
+/**
+ * PROJECT 13 :: SECTOR_AUTHORITY_HUB
+ * Level: Authority Layer (Pack Control)
+ * Vibe: Clinical Pure / Terminal Noir / Zero-Trust
+ */
+
+function AuthorityBadge({ role }: { role: ChatMemberRole }) {
+  if (role === 'owner') return <Crown className="inline h-3 w-3 shrink-0 text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.3)]" aria-hidden />
+  if (role === 'admin') return <Star className="inline h-3 w-3 shrink-0 text-neon-cyan/80" aria-hidden />
   return null
 }
 
@@ -47,252 +39,224 @@ export function GroupChatSettings({
   onChanged: () => void
 }) {
   const { t } = useTranslation()
-  const [subTab, setSubTab] = useState<'pack' | 'archive'>('pack')
-  const [detail, setDetail] = useState<{
+  const [activeTab, setActiveTab] = useState<'nodes' | 'vault'>('nodes')
+  const [protocol, setProtocol] = useState<{
     my_role: ChatMemberRole
     invite_code: string | null
     invite_one_time: boolean | null
     members: ChatDetailMember[]
   } | null>(null)
-  const [oneTimeInvite, setOneTimeInvite] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  
+  const [oneTimeLink, setOneTimeLink] = useState(false)
+  const [errorLog, setErrorLog] = useState<string | null>(null)
+  const [isBusy, setIsBusy] = useState(false)
 
-  const load = useCallback(async () => {
-    setErr(null)
+  const syncSector = useCallback(async () => {
+    setErrorLog(null)
     try {
       const d = await fetchChatDetail(chatId)
-      setDetail({
+      setProtocol({
         my_role: d.chat.my_role,
         invite_code: d.chat.invite_code,
         invite_one_time: d.chat.invite_one_time,
         members: d.members,
       })
       if (typeof d.chat.invite_one_time === 'boolean') {
-        setOneTimeInvite(d.chat.invite_one_time)
+        setOneTimeLink(d.chat.invite_one_time)
       }
     } catch (e) {
-      setDetail(null)
-      setErr(e instanceof Error ? e.message : 'LOAD_FAILED')
+      setProtocol(null)
+      setErrorLog(e instanceof Error ? e.message : 'SYNC_FAILURE')
     }
   }, [chatId])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    void syncSector()
+  }, [syncSector])
 
-  const myRole = detail?.my_role
-  const canManageLinks = myRole === 'owner' || myRole === 'admin'
-  const canOwner = myRole === 'owner'
-  const canAdmin = myRole === 'admin'
+  const { myRole, canManage, canOwner, canAdmin } = useMemo(() => {
+    const role = protocol?.my_role
+    return {
+      myRole: role,
+      canManage: role === 'owner' || role === 'admin',
+      canOwner: role === 'owner',
+      canAdmin: role === 'admin'
+    }
+  }, [protocol])
 
-  async function copyInviteLink() {
-    setBusy(true)
-    setErr(null)
+  const generateIntegrationLink = async () => {
+    setIsBusy(true)
+    setErrorLog(null)
     try {
-      const code = await ensureGroupInviteCode(chatId, {
-        invite_one_time: oneTimeInvite,
-      })
-      const origin =
-        typeof window !== 'undefined' ? window.location.origin : ''
-      const url = `${origin}/join/${encodeURIComponent(code)}`
+      const code = await ensureGroupInviteCode(chatId, { invite_one_time: oneTimeLink })
+      const url = `${window.location.origin}/join/${encodeURIComponent(code)}`
       await navigator.clipboard.writeText(url)
-      await load()
+      await syncSector()
       onChanged()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'COPY_FAILED')
+      setErrorLog(e instanceof Error ? e.message : 'LINK_GEN_FAILED')
     } finally {
-      setBusy(false)
+      setIsBusy(false)
     }
   }
 
-  async function setRole(targetId: string, role: ChatMemberRole) {
-    setBusy(true)
-    setErr(null)
+  const reassignAuthority = async (targetId: string, role: ChatMemberRole) => {
+    setIsBusy(true)
+    setErrorLog(null)
     try {
       await patchChatMemberRole(chatId, targetId, role)
-      await load()
+      await syncSector()
       onChanged()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'ROLE_FAILED')
+      setErrorLog(e instanceof Error ? e.message : 'ROLE_UPDATE_FAILED')
     } finally {
-      setBusy(false)
+      setIsBusy(false)
     }
   }
 
-  async function kick(targetId: string) {
+  const expungeNode = async (targetId: string) => {
     if (!confirm(t('group.kickConfirm'))) return
-    setBusy(true)
-    setErr(null)
+    setIsBusy(true)
     try {
       await kickChatMember(chatId, targetId)
-      await load()
+      await syncSector()
       onChanged()
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'KICK_FAILED')
+      setErrorLog(e instanceof Error ? e.message : 'EXPUNGE_FAILED')
     } finally {
-      setBusy(false)
+      setIsBusy(false)
     }
   }
 
-  if (!detail) {
+  if (!protocol) {
     return (
-      <div className="border-t border-neon-cyan/30 px-2 py-2 font-mono text-[10px] text-red-800">
-        {err ?? '…'}
+      <div className="border-t border-neutral-900 bg-black/20 p-4 font-mono text-[10px] text-red-900">
+        {errorLog ? `>> ERROR: ${errorLog}` : '>> SCANNING_SECTOR...'}
       </div>
     )
   }
 
-  const inviteDisplay =
-    detail.invite_code != null && detail.invite_code !== ''
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/join/${detail.invite_code}`
-      : null
+  const activeLink = protocol.invite_code ? `${window.location.origin}/join/${protocol.invite_code}` : null
 
   return (
-    <div className="border-t border-neon-cyan/40 px-2 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
-      <div className="mb-2 flex gap-1">
+    <div className="flex flex-col border-t border-neutral-900 bg-black font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+      
+      {/* TACTICAL_TABS */}
+      <div className="flex border-b border-neutral-900">
         <button
-          type="button"
-          onClick={() => setSubTab('pack')}
-          className={`flex-1 border py-1 text-[9px] ${
-            subTab === 'pack'
-              ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-              : 'border-neon-cyan/30 text-neon-cyan/50'
+          onClick={() => setActiveTab('nodes')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 transition-all ${
+            activeTab === 'nodes' ? 'bg-zinc-900 text-neon-cyan' : 'hover:bg-zinc-900/50'
           }`}
         >
+          <ShieldAlert className="h-3 w-3" />
           {t('group.packSettings')}
         </button>
         <button
-          type="button"
-          onClick={() => setSubTab('archive')}
-          className={`flex-1 border py-1 text-[9px] normal-case ${
-            subTab === 'archive'
-              ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-              : 'border-neon-cyan/30 text-neon-cyan/50'
+          onClick={() => setActiveTab('vault')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3 transition-all ${
+            activeTab === 'vault' ? 'bg-zinc-900 text-neon-cyan' : 'hover:bg-zinc-900/50'
           }`}
         >
+          <Database className="h-3 w-3" />
           {t('group.mediaArchiveTab')}
         </button>
       </div>
-      {err ? (
-        <p className="mb-2 text-neon-red">{err}</p>
-      ) : null}
-      {subTab === 'archive' ? (
-        <div>
-          <p className="mb-2 text-[9px] normal-case tracking-normal text-neon-cyan/70">
-            {t('group.mediaArchiveTitle')}
-          </p>
-          <MediaArchivePanel chatId={chatId} sharedKey={sharedKey} />
-        </div>
-      ) : null}
-      {subTab === 'pack' && canManageLinks ? (
-        <div className="mb-3 space-y-2">
-          <label className="flex cursor-pointer items-start gap-2 border border-neon-cyan/30 bg-black/40 px-2 py-1.5 text-[9px] normal-case tracking-normal text-neon-cyan/90">
-            <input
-              type="checkbox"
-              checked={oneTimeInvite}
-              onChange={(e) => setOneTimeInvite(e.target.checked)}
-              disabled={busy}
-              className="mt-0.5 accent-neon-cyan"
-            />
-            <span>{t('group.oneTimeInvite')}</span>
-          </label>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void copyInviteLink()}
-            className="w-full border border-neon-cyan/60 bg-black py-1 text-[9px] tracking-[0.2em] text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
-          >
-            {t('group.copyInviteLink')}
-          </button>
-          {inviteDisplay ? (
-            <pre className="break-all border border-neon-cyan/40 bg-black px-2 py-1.5 text-[9px] normal-case leading-snug tracking-normal text-neon-cyan/90">
-              {inviteDisplay}
-            </pre>
-          ) : (
-            <p className="text-[9px] normal-case tracking-normal text-red-800">
-              {t('group.inviteGenerateHint')}
-            </p>
-          )}
-        </div>
-      ) : null}
-      {subTab === 'pack' ? (
-      <div className="max-h-40 space-y-1 overflow-y-auto text-[9px] normal-case tracking-normal">
-        {detail.members.map((m) => {
-          const mine = canonicalUserId(m.user_id) === canonicalUserId(userId)
-          const target = m.role
-          const showKick =
-            !mine &&
-            ((canOwner && target !== 'owner') ||
-              (canAdmin && target === 'member'))
-          const showMakeAdmin =
-            !mine && target === 'member' && (canOwner || canAdmin)
-          const showDemote =
-            !mine && canOwner && target === 'admin'
-          const showTakeOwner =
-            !mine && canOwner && target !== 'owner'
 
-          return (
-            <div
-              key={m.user_id}
-              className="flex flex-wrap items-center gap-1 border-b border-neon-cyan/15 py-1 text-neon-red"
-            >
-              <span className="inline-flex min-w-0 items-center gap-1">
-                <UserAvatar
-                  userId={m.user_id}
-                  username={m.username}
-                  avatarKey={m.avatar_key}
-                  size={20}
-                />
-                {roleBadge(m.role)}
-                <span className="truncate">{m.username}</span>
-              </span>
-              <span className="text-neon-cyan/50">[{m.role}]</span>
-              {showMakeAdmin ? (
+      <div className="p-4 space-y-4">
+        {errorLog && <p className="text-neon-red animate-pulse">!! SYNC_ERR: {errorLog}</p>}
+
+        {activeTab === 'vault' ? (
+          <div className="animate-in fade-in slide-in-from-bottom-1">
+            <p className="mb-4 text-zinc-600 normal-case tracking-normal">{t('group.mediaArchiveTitle')}</p>
+            <MediaArchivePanel chatId={chatId} sharedKey={sharedKey} />
+          </div>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-bottom-1 space-y-6">
+            
+            {/* INTEGRATION_LINK_SECTION */}
+            {canManage && (
+              <div className="space-y-3">
+                <label className="flex cursor-pointer items-center gap-3 border border-neutral-900 bg-zinc-950 p-3 transition-colors hover:border-neutral-800">
+                  <input
+                    type="checkbox"
+                    checked={oneTimeLink}
+                    onChange={(e) => setOneTimeLink(e.target.checked)}
+                    disabled={isBusy}
+                    className="h-3 w-3 accent-neon-cyan"
+                  />
+                  <span className="text-[9px] text-zinc-400">{t('group.oneTimeInvite')}</span>
+                </label>
+                
                 <button
-                  type="button"
-                  disabled={busy}
-                  className="ml-auto border border-neon-cyan/40 px-1 text-[8px] text-neon-cyan hover:bg-neon-cyan/10"
-                  onClick={() => void setRole(m.user_id, 'admin')}
+                  disabled={isBusy}
+                  onClick={() => void generateIntegrationLink()}
+                  className="w-full border border-neon-cyan/40 bg-black py-2 text-[9px] font-bold text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black disabled:opacity-20"
                 >
-                  {t('group.makeAdmin')}
+                  {t('group.copyInviteLink')}
                 </button>
-              ) : null}
-              {showDemote ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="border border-neon-cyan/40 px-1 text-[8px] text-neon-cyan hover:bg-neon-cyan/10"
-                  onClick={() => void setRole(m.user_id, 'member')}
-                >
-                  {t('group.demoteMember')}
-                </button>
-              ) : null}
-              {showTakeOwner ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="border border-neon-cyan/40 px-1 text-[8px] text-neon-cyan hover:bg-neon-cyan/10"
-                  onClick={() => void setRole(m.user_id, 'owner')}
-                >
-                  {t('group.transferOwner')}
-                </button>
-              ) : null}
-              {showKick ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  className="border border-neon-red/60 px-1 text-[8px] text-neon-red hover:bg-neon-red/10"
-                  onClick={() => void kick(m.user_id)}
-                >
-                  {t('group.kick')}
-                </button>
-              ) : null}
+
+                {activeLink ? (
+                  <div className="border border-neutral-900 bg-zinc-950 p-2 break-all font-mono text-[9px] lowercase text-zinc-500">
+                    {activeLink}
+                  </div>
+                ) : (
+                  <p className="text-red-900 lowercase">{t('group.inviteGenerateHint')}</p>
+                )}
+              </div>
+            )}
+
+            {/* NODE_REGISTRY */}
+            <div className="space-y-2">
+              <p className="text-[9px] text-zinc-700 tracking-[0.4em] mb-3">:: NODE_REGISTRY</p>
+              <div className="max-h-60 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                {protocol.members.map((m) => {
+                  const isSelf = canonicalUserId(m.user_id) === canonicalUserId(userId)
+                  const targetRole = m.role
+                  
+                  const showExpunge = !isSelf && ((canOwner && targetRole !== 'owner') || (canAdmin && targetRole === 'member'))
+                  const showGrantAdmin = !isSelf && targetRole === 'member' && (canOwner || canAdmin)
+                  const showRevokeAdmin = !isSelf && canOwner && targetRole === 'admin'
+                  const showTransfer = !isSelf && canOwner && targetRole !== 'owner'
+
+                  return (
+                    <div key={m.user_id} className="flex items-center gap-3 border border-neutral-950 bg-black p-2 transition-colors hover:bg-zinc-900/30">
+                      <UserAvatar
+                        userId={m.user_id}
+                        username={m.username}
+                        avatarKey={m.avatar_key}
+                        size={24}
+                      />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <div className="flex items-center gap-1">
+                          <AuthorityBadge role={m.role} />
+                          <span className="truncate text-white">{m.username}</span>
+                        </div>
+                        <span className="text-[8px] text-zinc-600">[{m.role}]</span>
+                      </div>
+
+                      <div className="flex gap-1">
+                        {showGrantAdmin && (
+                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-cyan">GRANT</button>
+                        )}
+                        {showRevokeAdmin && (
+                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-red">REVOKE</button>
+                        )}
+                        {showTransfer && (
+                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-cyan">TRANS</button>
+                        )}
+                        {showExpunge && (
+                          <button onClick={() => void expungeNode(m.user_id)} className="border border-neutral-900 px-2 py-1 text-[8px] text-red-900 hover:border-neon-red hover:text-neon-red">EXPUNGE</button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-          )
-        })}
+          </div>
+        )}
       </div>
-      ) : null}
     </div>
   )
 }

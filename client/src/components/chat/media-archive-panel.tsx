@@ -38,58 +38,77 @@ export function MediaArchivePanel({
 
   if (loading) {
     return (
-      <p className="py-2 font-mono text-[9px] normal-case text-red-800">
-        {t('group.mediaArchiveLoading')}
-      </p>
+      <div className="flex animate-pulse items-center gap-2 py-4 px-2">
+        <span className="h-2 w-2 rounded-none bg-neon-cyan" />
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neon-cyan/70">
+          {t('group.mediaArchiveLoading') || 'SCANNING_ARCHIVE...'}
+        </p>
+      </div>
     )
   }
 
   if (err) {
     return (
-      <p className="py-2 font-mono text-[9px] text-neon-red">{err}</p>
+      <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
+        [!] {err}
+      </p>
     )
   }
 
   if (rows.length === 0) {
     return (
-      <p className="py-2 font-mono text-[9px] normal-case text-red-800">
-        {t('group.mediaArchiveEmpty')}
+      <p className="border border-zinc-800 bg-black/50 px-3 py-3 text-center font-mono text-[10px] uppercase tracking-widest text-zinc-600">
+        {t('group.mediaArchiveEmpty') || 'ARCHIVE_EMPTY'}
       </p>
     )
   }
 
   return (
-    <div className="max-h-64 space-y-2 overflow-y-auto text-[9px] normal-case">
+    <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
       {rows.map((r) => {
         const isOpen = openId === r.id
-        const mt = r.media_type ?? '?'
+        const mt = r.media_type ?? 'UNKNOWN'
+        
+        // Стерильное форматирование даты
+        const d = new Date(r.created_at)
+        const dateStr = !isNaN(d.getTime()) 
+          ? d.toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+          : 'UNKNOWN_TIME'
+
         return (
           <div
             key={r.id}
-            className="border border-neon-cyan/25 bg-black/80 px-2 py-1.5"
+            className={`border transition-colors duration-200 ${
+              isOpen ? 'border-neon-cyan/50 bg-black' : 'border-neon-cyan/20 bg-black/60 hover:border-neon-cyan/40'
+            }`}
           >
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-2 text-left font-mono text-neon-cyan/90 hover:text-neon-cyan"
+              className="flex w-full items-center justify-between px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest outline-none"
               onClick={() => setOpenId(isOpen ? null : r.id)}
             >
-              <span>
-                [{mt}] {new Date(r.created_at).toLocaleString()}
+              <span className="flex items-center gap-2 truncate text-neon-cyan/90">
+                <span className="inline-block min-w-[60px] text-zinc-500">
+                  [{mt}]
+                </span>
+                <span className="truncate">{dateStr}</span>
               </span>
-              <span className="text-neon-red">{isOpen ? '▼' : '▶'}</span>
+              <span className={isOpen ? 'text-neon-red' : 'text-neon-cyan/50'}>
+                {isOpen ? '[-]' : '[+]'}
+              </span>
             </button>
+            
             {isOpen && r.media_path && r.media_iv && r.media_type ? (
-              <div className="mt-2 border-t border-neon-cyan/20 pt-2">
+              <div className="border-t border-neon-cyan/20 bg-zinc-950/30 p-3">
                 <MediaBubble
                   message={{
                     id: r.id,
-                    plaintext: null,
+                    // Если бекенд отдает plaintext в архиве, он прокинется. Иначе null.
+                    plaintext: (r as any).plaintext ?? null,
                     media_path: r.media_path,
                     media_iv: r.media_iv,
-                    media_type:
-                      r.media_type === 'audio' || r.media_type === 'video'
-                        ? r.media_type
-                        : 'audio',
+                    // Строгий каст типа без сломанного фоллбэка на 'audio'
+                    media_type: r.media_type as 'audio' | 'video' | 'image' | 'file',
                   }}
                   sharedKey={sharedKey}
                 />

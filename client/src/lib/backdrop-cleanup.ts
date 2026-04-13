@@ -1,38 +1,50 @@
+'use client'
+
 /**
- * Backdrop & Portal cleanup utilities
- * Ensures overlays don't leave stray CSS (overflow: hidden, dark filters) when unmounting.
+ * PROJECT 13 :: OPTICAL_SHROUD_CLEANUP
+ * Level: Interface Layer (DOM Cleanup)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ * Purpose: Ensures node root is sterile after overlay termination.
  */
 
-export function cleanupBackdropOverflow() {
+/** [PURGE_OVERFLOW] :: Аннигиляция блокировок скролла */
+export function purgeInterfaceOverflow(): void {
   if (typeof document === 'undefined') return
+  
+  // Возвращаем исходное состояние основным контейнерам узла
   document.body.style.overflow = ''
   document.documentElement.style.overflow = ''
 }
 
-export function ensureBackdropCleanup() {
+/** * [MONITOR_STRAY_PORTALS] 
+ * Проверка на наличие «забытых» диалоговых окон в DOM. 
+ * Если радар чист — сбрасываем блокировки интерфейса.
+ */
+export function monitorStrayPortals(): void {
   if (typeof document === 'undefined') return
-  // Listen for the next RAF to clean up any lingering backdrop/overflow state
-  const checkAndClean = () => {
-    // Check if there are any fixed position overlays still in DOM
-    const overlays = document.querySelectorAll('[role="dialog"]')
-    if (overlays.length === 0) {
-      cleanupBackdropOverflow()
-    }
-  }
 
-  requestAnimationFrame(checkAndClean)
+  /** [NEXT_CYCLE_SYNC] :: Ожидание следующего кадра для синхронизации слоев */
+  requestAnimationFrame(() => {
+    // Ищем любые активные шлюзы (диалоги)
+    const activePortals = document.querySelectorAll('[role="dialog"]')
+    
+    if (activePortals.length === 0) {
+      purgeInterfaceOverflow()
+    }
+  })
 }
 
-/**
- * Remove dark filters from body after modal/call closes
+/** * [RESET_OPTICAL_FILTERS] 
+ * Снятие затемняющих фильтров и очистка фона после закрытия сессии.
  */
-export function removeDarkFilters() {
+export function resetOpticalFilters(): void {
   if (typeof document === 'undefined') return
-  const body = document.body
 
-  // Remove any bg-black/95 or similar classes that were applied
-  body.style.backgroundColor = ''
+  const nodeRoot = document.body
 
-  // Ensure overflow is restored
-  cleanupBackdropOverflow()
+  // Стерилизация фона — убираем любые инъекции стилей (черный фон, блюр и т.д.)
+  nodeRoot.style.backgroundColor = ''
+  
+  // Гарантированный сброс блокировок скролла
+  purgeInterfaceOverflow()
 }

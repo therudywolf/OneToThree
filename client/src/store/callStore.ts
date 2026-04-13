@@ -1,93 +1,125 @@
 import { create } from 'zustand'
 
-export type IncomingCallInfo = {
+/**
+ * PROJECT 13 :: CALL_PROTOCOL_STORAGE
+ * Level: Session Layer (Pulse Control)
+ * Vibe: Clinical Pure / Terminal Noir
+ */
+
+export type InboundLinkRequest = {
   peerId: string
   isVideo?: boolean
   offer: RTCSessionDescriptionInit
 }
 
-/** Remote peer media hints from WebSocket `media_state` signals (not inferred from tracks). */
-export type RemotePeerMedia = { micMuted: boolean; cameraOff: boolean }
-
-type CallState = {
-  localStream: MediaStream | null
-  /** Remote peer id → MediaStream */
-  remoteStreams: Record<string, MediaStream>
-  /** Signaled mute/cam-off from peer (WebRTC signal), keyed by peer id. */
-  remotePeerMedia: Record<string, RemotePeerMedia>
-  isCalling: boolean
-  incomingCall: IncomingCallInfo | null
-  peerConnections: Record<string, RTCPeerConnection>
-  setLocalStream: (s: MediaStream | null) => void
-  setRemoteStream: (peerId: string, stream: MediaStream) => void
-  removeRemoteStream: (peerId: string) => void
-  setRemotePeerMedia: (
-    peerId: string,
-    partial: Partial<RemotePeerMedia>
-  ) => void
-  clearRemotePeerMedia: (peerId: string) => void
-  setIncomingCall: (info: IncomingCallInfo | null) => void
-  setIsCalling: (v: boolean) => void
-  addPeerConnection: (peerId: string, pc: RTCPeerConnection) => void
-  removePeerConnection: (peerId: string) => void
-  reset: () => void
+/** Состояние периферии удаленного узла (оптика/акустика) */
+export type NodeMediaState = { 
+  micMuted: boolean 
+  cameraOff: boolean 
 }
 
-const defaultRemoteMedia = (): RemotePeerMedia => ({
+type CallProtocolState = {
+  // [FEED_LAYER]
+  localFeed: MediaStream | null
+  remoteFeeds: Record<string, MediaStream>
+  
+  // [SIGNAL_LAYER]
+  nodeHints: Record<string, NodeMediaState>
+  signalLinks: Record<string, RTCPeerConnection>
+  
+  // [STATUS_LAYER]
+  isLinkActive: boolean
+  inboundRequest: InboundLinkRequest | null
+
+  // [ACTIONS]
+  setLocalFeed: (feed: MediaStream | null) => void
+  setRemoteFeed: (peerId: string, feed: MediaStream) => void
+  dropRemoteFeed: (peerId: string) => void
+  
+  updateNodeHint: (peerId: string, patch: Partial<NodeMediaState>) => void
+  purgeNodeHint: (peerId: string) => void
+  
+  setInboundRequest: (request: InboundLinkRequest | null) => void
+  setLinkStatus: (active: boolean) => void
+  
+  registerSignalLink: (peerId: string, pc: RTCPeerConnection) => void
+  severSignalLink: (peerId: string) => void
+  
+  /** Полная деактивация протокола и очистка контура */
+  resetProtocol: () => void
+}
+
+const INITIAL_MEDIA_STATE = (): NodeMediaState => ({
   micMuted: false,
   cameraOff: false,
 })
 
-export const useCallStore = create<CallState>((set) => ({
-  localStream: null,
-  remoteStreams: {},
-  remotePeerMedia: {},
-  isCalling: false,
-  incomingCall: null,
-  peerConnections: {},
-  setLocalStream: (s) => set({ localStream: s }),
-  setRemoteStream: (peerId, stream) =>
+export const useCallStore = create<CallProtocolState>((set) => ({
+  localFeed: null,
+  remoteFeeds: {},
+  nodeHints: {},
+  signalLinks: {},
+  isLinkActive: false,
+  inboundRequest: null,
+
+  // Управление локальным потоком (сенсоры устройства)
+  setLocalFeed: (feed) => set({ localFeed: feed }),
+
+  // Управление входящими фидами от стаи
+  setRemoteFeed: (peerId, feed) =>
     set((state) => ({
-      remoteStreams: { ...state.remoteStreams, [peerId]: stream },
+      remoteFeeds: { ...state.remoteFeeds, [peerId]: feed },
     })),
-  removeRemoteStream: (peerId) =>
+
+  dropRemoteFeed: (peerId) =>
     set((state) => {
-      const { [peerId]: _, ...rest } = state.remoteStreams
-      return { remoteStreams: rest }
+      const { [peerId]: _, ...rest } = state.remoteFeeds
+      return { remoteFeeds: rest }
     }),
-  setRemotePeerMedia: (peerId, partial) =>
+
+  // Телеметрия удаленных узлов (статус микро/камер)
+  updateNodeHint: (peerId, patch) =>
     set((state) => {
-      const cur = state.remotePeerMedia[peerId] ?? defaultRemoteMedia()
+      const current = state.nodeHints[peerId] ?? INITIAL_MEDIA_STATE()
       return {
-        remotePeerMedia: {
-          ...state.remotePeerMedia,
-          [peerId]: { ...cur, ...partial },
+        nodeHints: {
+          ...state.nodeHints,
+          [peerId]: { ...current, ...patch },
         },
       }
     }),
-  clearRemotePeerMedia: (peerId) =>
+
+  purgeNodeHint: (peerId) =>
     set((state) => {
-      const { [peerId]: _, ...rest } = state.remotePeerMedia
-      return { remotePeerMedia: rest }
+      const { [peerId]: _, ...rest } = state.nodeHints
+      return { nodeHints: rest }
     }),
-  setIncomingCall: (info) => set({ incomingCall: info }),
-  setIsCalling: (v) => set({ isCalling: v }),
-  addPeerConnection: (peerId, pc) =>
+
+  // Сигнальные запросы на установку связи
+  setInboundRequest: (request) => set({ inboundRequest: request }),
+
+  setLinkStatus: (active) => set({ isLinkActive: active }),
+
+  // Прямое управление дескрипторами WebRTC соединений
+  registerSignalLink: (peerId, pc) =>
     set((state) => ({
-      peerConnections: { ...state.peerConnections, [peerId]: pc },
+      signalLinks: { ...state.signalLinks, [peerId]: pc },
     })),
-  removePeerConnection: (peerId) =>
+
+  severSignalLink: (peerId) =>
     set((state) => {
-      const { [peerId]: _, ...rest } = state.peerConnections
-      return { peerConnections: rest }
+      const { [peerId]: _, ...rest } = state.signalLinks
+      return { signalLinks: rest }
     }),
-  reset: () =>
+
+  // Команда «ОТБОЙ» :: Полная стерилизация состояния
+  resetProtocol: () =>
     set({
-      localStream: null,
-      remoteStreams: {},
-      remotePeerMedia: {},
-      isCalling: false,
-      incomingCall: null,
-      peerConnections: {},
+      localFeed: null,
+      remoteFeeds: {},
+      nodeHints: {},
+      signalLinks: {},
+      isLinkActive: false,
+      inboundRequest: null,
     }),
 }))

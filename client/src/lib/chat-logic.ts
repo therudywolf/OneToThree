@@ -1,6 +1,7 @@
 /**
- * Group E2E key distribution (browser Web Crypto).
- * Wraps a random AES-GCM group key for each member using ECDH + per-run ephemeral sender keys.
+ * PROJECT 13 :: SECTOR_KEY_DISPATCH_PROTOCOL
+ * Level: Connection Layer (Group E2E Logic)
+ * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
 import {
@@ -11,141 +12,114 @@ import {
   importEcdhPublicKey,
 } from './crypto'
 
-const AES_GCM_IV_LENGTH = 12
+const GCM_IV_LEN = 12
 
-function getSubtle(): SubtleCrypto {
-  if (typeof globalThis === 'undefined' || !globalThis.crypto?.subtle) {
-    throw new Error('Web Crypto API (crypto.subtle) is not available')
-  }
+/** [INTERNAL_SUBTLE] :: Прямой доступ к крипто-ядру */
+const getSubtle = () => {
+  if (!globalThis.crypto?.subtle) throw new Error('SYS_FAULT :: CRYPTO_CORE_OFFLINE')
   return globalThis.crypto.subtle
 }
 
-function uint8ToBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
-}
+// --- BINARY_CONVERSION (STERILE) ---
 
-function base64ToUint8(b64: string): Uint8Array {
-  const binary = atob(b64)
-  const out = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    out[i] = binary.charCodeAt(i)
-  }
-  return out
-}
+const toB64 = (bytes: Uint8Array): string => 
+  btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''))
 
-export type GroupKeyRecipientPayload = {
+const fromB64 = (b64: string): Uint8Array => 
+  Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+
+// --- DATA_STRUCTURES ---
+
+/** [UNIT_PAYLOAD] :: Пакет ключа сектора для обычного участника */
+export type SectorKeyUnit = {
   ciphertext: string
   iv: string
-  /** Ephemeral ECDH public key (JWK string) so the member can derive the same wrap key. */
+  /** Эфемероидный публичный ключ для вывода общего секрета (JWK) */
   ephemeralPublicKeyJwk: string
 }
 
-/** Group key wrapped with ECDH(creator_private, member_ecdh_public); members unwrap with ECDH(member_private, creator_ecdh_public). */
-export type GroupKeyCreatorWrapPayload = {
-  kind: 'creator_ecdh_wrap'
+/** [AUTH_WRAP_PAYLOAD] :: Пакет ключа, обернутый ключом создателя сектора */
+export type SectorKeyAuthWrap = {
+  kind: 'CREATOR_AUTH_WRAP'
   v: 1
   ciphertext: string
   iv: string
   creatorEcdhPublicKeyJwk: string
 }
 
-/**
- * Base64 (UTF-8) of JSON {@link GroupKeyRecipientPayload} for `chat_members.encrypted_group_key`.
- */
-export type PreparedGroupKeyRow = {
-  /** Member's ECDH public key (same string you will persist on `users.public_key_jwk`). */
+export type PreparedSectorKeyRow = {
   publicKey: string
-  /** Serialized payload for DB storage (single column). */
   encryptedGroupKeyBase64: string
 }
 
-async function encryptAesGcmBytes(
-  aesKey: CryptoKey,
-  plaintext: Uint8Array
-): Promise<{ ciphertext: string; iv: string }> {
-  const iv = new Uint8Array(AES_GCM_IV_LENGTH)
-  crypto.getRandomValues(iv)
+// --- INTERNAL_CRYPTO_OPS ---
 
-  const cipherBuffer = await getSubtle().encrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
-    aesKey,
-    plaintext as BufferSource
-  )
-
+async function sealBytes(key: CryptoKey, plain: Uint8Array) {
+  const iv = crypto.getRandomValues(new Uint8Array(GCM_IV_LEN))
+  const buf = await getSubtle().encrypt({ name: 'AES-GCM', iv }, key, plain)
   return {
-    ciphertext: uint8ToBase64(new Uint8Array(cipherBuffer)),
-    iv: uint8ToBase64(iv),
+    ciphertext: toB64(new Uint8Array(buf)),
+    iv: toB64(iv),
   }
 }
 
-async function decryptAesGcmBytes(
-  aesKey: CryptoKey,
-  ciphertextB64: string,
-  ivB64: string
-): Promise<Uint8Array> {
-  const ciphertext = base64ToUint8(ciphertextB64)
-  const iv = base64ToUint8(ivB64)
+async function unsealBytes(key: CryptoKey, cipherB64: string, ivB64: string) {
   const buf = await getSubtle().decrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
-    aesKey,
-    ciphertext as BufferSource
+    { name: 'AES-GCM', iv: fromB64(ivB64) },
+    key,
+    fromB64(cipherB64)
   )
   return new Uint8Array(buf)
 }
 
-function payloadToStoredBase64(
-  payload: GroupKeyRecipientPayload | GroupKeyCreatorWrapPayload
-): string {
-  const json = JSON.stringify(payload)
-  return uint8ToBase64(new TextEncoder().encode(json))
+function packPayload(payload: SectorKeyUnit | SectorKeyAuthWrap): string {
+  const signal = new TextEncoder().encode(JSON.stringify(payload))
+  return toB64(signal)
 }
 
+// --- PUBLIC_INTERFACE ---
+
 /**
- * Creates a random 256-bit AES-GCM group key, then wraps a copy for each member using:
- * ECDH(ephemeral sender private, member public) → AES-GCM wrap key → encrypt raw group key bytes.
- *
- * Each `encryptedGroupKeyBase64` embeds the ephemeral public key so members can unwrap offline.
+ * [DISPATCH_SECTOR_KEYS]
+ * Генерация ключа сектора (AES-256) и его упаковка для всех участников стаи.
+ * Использует временный (эфемероидный) ключ для изоляции этой сессии раздачи.
  */
-export async function prepareGroupChatKeys(
+export async function dispatchSectorKeys(
   memberPublicKeys: string[]
-): Promise<PreparedGroupKeyRow[]> {
-  if (memberPublicKeys.length === 0) {
-    return []
-  }
+): Promise<PreparedSectorKeyRow[]> {
+  if (memberPublicKeys.length === 0) return []
 
   const subtle = getSubtle()
 
-  const groupKey = await subtle.generateKey(
+  // [1] GENERATE_SECTOR_KEY :: Создание мастер-ключа для сектора
+  const sectorKey = await subtle.generateKey(
     { name: 'AES-GCM', length: 256 },
     true,
     ['encrypt', 'decrypt']
   )
+  const rawKey = new Uint8Array(await subtle.exportKey('raw', sectorKey))
 
-  const rawGroupKey = new Uint8Array(await subtle.exportKey('raw', groupKey))
-
+  // [2] EPHEMERAL_HANDSHAKE :: Создание временной пары ключей для раздачи
   const ephemeral = await generateKeyPair({ curve: 'P-256' })
   const ephemeralPubJwk = await exportPublicKey(ephemeral.publicKey)
 
-  const rows: PreparedGroupKeyRow[] = []
+  const rows: PreparedSectorKeyRow[] = []
 
-  for (const memberPubJwk of memberPublicKeys) {
-    const memberPub = await importEcdhPublicKey(memberPubJwk)
+  // [3] ENCAPSULATION_LOOP :: Упаковка ключа для каждого узла
+  for (const memberJwk of memberPublicKeys) {
+    const memberPub = await importEcdhPublicKey(memberJwk)
     const wrapKey = await deriveSharedSecret(ephemeral.privateKey, memberPub)
-    const { ciphertext, iv } = await encryptAesGcmBytes(wrapKey, rawGroupKey)
+    const { ciphertext, iv } = await sealBytes(wrapKey, rawKey)
 
-    const payload: GroupKeyRecipientPayload = {
+    const payload: SectorKeyUnit = {
       ciphertext,
       iv,
       ephemeralPublicKeyJwk: ephemeralPubJwk,
     }
 
     rows.push({
-      publicKey: memberPubJwk,
-      encryptedGroupKeyBase64: payloadToStoredBase64(payload),
+      publicKey: memberJwk,
+      encryptedGroupKeyBase64: packPayload(payload),
     })
   }
 
@@ -153,75 +127,62 @@ export async function prepareGroupChatKeys(
 }
 
 /**
- * Wrap `groupKey` for one member using ECDH between the creator's ECDH private key
- * and the member's ECDH public key. Embeds the creator's ECDH public JWK for unwrap.
+ * [WRAP_SECTOR_KEY_FOR_MEMBER]
+ * Упаковка существующего ключа сектора с использованием статического ключа создателя.
  */
-export async function wrapGroupKeyForMemberWithCreatorEcdh(
-  creatorEcdhPrivateKey: CryptoKey,
-  memberEcdhPublicKeyJwk: string,
-  groupKey: CryptoKey
+export async function wrapSectorKeyWithCreatorAuth(
+  creatorPrivateKey: CryptoKey,
+  memberPublicKeyJwk: string,
+  sectorKey: CryptoKey
 ): Promise<string> {
-  const creatorEcdhPublicKeyJwk =
-    await exportEcdhPublicJwkFromPrivateKey(creatorEcdhPrivateKey)
-  const memberPub = await importEcdhPublicKey(memberEcdhPublicKeyJwk)
-  const wrapKey = await deriveSharedSecret(creatorEcdhPrivateKey, memberPub)
-  const rawGroupKey = new Uint8Array(
-    await getSubtle().exportKey('raw', groupKey)
-  )
-  const { ciphertext, iv } = await encryptAesGcmBytes(wrapKey, rawGroupKey)
+  const creatorPubJwk = await exportEcdhPublicJwkFromPrivateKey(creatorPrivateKey)
+  const memberPub = await importEcdhPublicKey(memberPublicKeyJwk)
+  const wrapKey = await deriveSharedSecret(creatorPrivateKey, memberPub)
+  
+  const rawKey = new Uint8Array(await getSubtle().exportKey('raw', sectorKey))
+  const { ciphertext, iv } = await sealBytes(wrapKey, rawKey)
 
-  const payload: GroupKeyCreatorWrapPayload = {
-    kind: 'creator_ecdh_wrap',
+  return packPayload({
+    kind: 'CREATOR_AUTH_WRAP',
     v: 1,
     ciphertext,
     iv,
-    creatorEcdhPublicKeyJwk,
-  }
-  return payloadToStoredBase64(payload)
+    creatorEcdhPublicKeyJwk: creatorPubJwk,
+  })
 }
 
 /**
- * Unwrap the AES-GCM group key stored in `chat_members.encrypted_group_key` for this member.
- * Supports creator-KEK wraps ({@link GroupKeyCreatorWrapPayload}) and legacy ephemeral wraps.
+ * [EXTRACT_SECTOR_KEY]
+ * Вскрытие контейнера и извлечение ключа сектора участником.
+ * Поддерживает как эфемероидные, так и авторизованные упаковки.
  */
-export async function unwrapGroupKeyFromStoredPayload(
+export async function extractSectorKey(
   memberPrivateKey: CryptoKey,
-  encryptedGroupKeyBase64: string
+  encryptedBase64: string
 ): Promise<CryptoKey> {
-  const jsonBytes = base64ToUint8(encryptedGroupKeyBase64)
-  const json = JSON.parse(
-    new TextDecoder().decode(jsonBytes)
-  ) as GroupKeyCreatorWrapPayload | GroupKeyRecipientPayload
+  const signal = new TextDecoder().decode(fromB64(encryptedBase64))
+  const data = JSON.parse(signal) as SectorKeyAuthWrap | SectorKeyUnit
 
-  if (
-    'kind' in json &&
-    json.kind === 'creator_ecdh_wrap' &&
-    'creatorEcdhPublicKeyJwk' in json
-  ) {
-    const creatorPub = await importEcdhPublicKey(json.creatorEcdhPublicKeyJwk)
-    const wrapKey = await deriveSharedSecret(memberPrivateKey, creatorPub)
-    const raw = await decryptAesGcmBytes(wrapKey, json.ciphertext, json.iv)
-    return getSubtle().importKey(
-      'raw',
-      raw as BufferSource,
-      { name: 'AES-GCM', length: 256 },
-      true,
-      ['encrypt', 'decrypt']
-    )
+  let wrapKey: CryptoKey
+
+  if ('kind' in data && data.kind === 'CREATOR_AUTH_WRAP') {
+    // Вскрытие через ключ создателя (Auth Wrap)
+    const creatorPub = await importEcdhPublicKey(data.creatorEcdhPublicKeyJwk)
+    wrapKey = await deriveSharedSecret(memberPrivateKey, creatorPub)
+  } else {
+    // Вскрытие через эфемероидный ключ (Standard Unit)
+    const legacy = data as SectorKeyUnit
+    if (!legacy.ephemeralPublicKeyJwk) throw new Error('ERR_UNKNOWN_SIGNAL_FORMAT')
+    
+    const ephemeralPub = await importEcdhPublicKey(legacy.ephemeralPublicKeyJwk)
+    wrapKey = await deriveSharedSecret(memberPrivateKey, ephemeralPub)
   }
 
-  const legacy = json as GroupKeyRecipientPayload
-  if (!legacy.ephemeralPublicKeyJwk) {
-    throw new Error('UNKNOWN_GROUP_KEY_FORMAT')
-  }
-
-  const ephemeralPub = await importEcdhPublicKey(legacy.ephemeralPublicKeyJwk)
-  const wrapKey = await deriveSharedSecret(memberPrivateKey, ephemeralPub)
-  const raw = await decryptAesGcmBytes(wrapKey, legacy.ciphertext, legacy.iv)
+  const rawKey = await unsealBytes(wrapKey, data.ciphertext, data.iv)
 
   return getSubtle().importKey(
     'raw',
-    raw as BufferSource,
+    rawKey,
     { name: 'AES-GCM', length: 256 },
     true,
     ['encrypt', 'decrypt']

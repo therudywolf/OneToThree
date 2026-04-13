@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { decryptBlob } from '@/lib/crypto'
+import { getS3ObjectUrl } from '@/lib/s3-urls'
 
 type Props = {
   mediaPath: string
@@ -23,12 +25,43 @@ export function SecureVideoCircle({
   const [progress, setProgress] = useState(0)
 
   useEffect(() => {
-    void mediaPath
-    void mediaIv
-    void mimeType
-    if (!sharedKey) return
-    setLoadErr('STORAGE_BACKEND_PENDING')
+    if (!sharedKey || !mediaPath || !mediaIv) {
+      setLoadErr('MISSING_KEY_OR_DATA')
+      return
+    }
+
+    let isSubscribed = true
+    setLoadErr(null)
+
+    const runDecryption = async () => {
+      try {
+        const s3Url = await getS3ObjectUrl(mediaPath)
+        const res = await fetch(s3Url)
+        if (!res.ok) throw new Error('FETCH_FAILED')
+        const encryptedBuf = await res.arrayBuffer()
+
+        const decryptedBlob = await decryptBlob(
+          encryptedBuf,
+          sharedKey,
+          mediaIv,
+          mimeType || 'video/webm'
+        )
+
+        if (isSubscribed) {
+          const url = URL.createObjectURL(decryptedBlob)
+          blobUrlRef.current = url
+          setObjectUrl(url)
+        }
+      } catch (error) {
+        console.error('VideoCircle decryption error:', error)
+        if (isSubscribed) setLoadErr('DECRYPTION_FAILED')
+      }
+    }
+
+    void runDecryption()
+
     return () => {
+      isSubscribed = false
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current)
         blobUrlRef.current = null
@@ -55,13 +88,18 @@ export function SecureVideoCircle({
 
   if (!sharedKey || !objectUrl) {
     return (
-      <p className="font-mono text-[10px] text-red-800">LOADING_CIPHER…</p>
+      <div className="relative flex h-48 w-48 items-center justify-center rounded-full border-2 border-neon-cyan bg-black">
+        <p className="animate-pulse font-mono text-[10px] text-neon-cyan">LOADING...</p>
+      </div>
     )
   }
 
   return (
     <div className="mt-2 inline-block">
-      <div className="relative h-48 w-48 overflow-hidden rounded-full border-2 border-neon-red bg-black shadow-[0_0_16px_rgba(0,255,255,0.35)]">
+      {/* The aspect-square and rounded-full classes force the video to be a circle. 
+        object-cover ensures it fills the circle without stretching.
+      */}
+      <div className="relative aspect-square w-48 overflow-hidden rounded-full border-2 border-neon-cyan bg-black shadow-[0_0_16px_rgba(0,255,255,0.15)] group">
         <video
           ref={videoRef}
           src={objectUrl}
@@ -86,14 +124,14 @@ export function SecureVideoCircle({
         <button
           type="button"
           onClick={togglePlay}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-none border border-neon-cyan bg-black/80 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:text-neon-red"
+          className="absolute inset-0 m-auto flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-neon-cyan opacity-100 backdrop-blur-sm transition-opacity hover:bg-neon-cyan hover:text-black group-hover:opacity-100"
         >
-          {playing ? '||' : '>'}
+          {playing ? '||' : '▶'}
         </button>
       </div>
-      <div className="mt-2 h-2 w-48 rounded-none bg-red-950">
+      <div className="mt-3 h-1 w-48 overflow-hidden bg-zinc-900">
         <div
-          className="h-full rounded-none bg-neon-red"
+          className="h-full bg-neon-cyan transition-all duration-100 ease-linear"
           style={{ width: `${progress}%` }}
         />
       </div>

@@ -4,78 +4,95 @@ import { useCallback, useEffect, useRef } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
 import { useChatStore } from '@/store/chatStore'
 
-const START_THROTTLE_MS = 1000
-const STOP_DEBOUNCE_MS = 3000
-
 /**
- * Outbound typing presence engine.
- * - `typing_start` throttled to at most once/second
- * - `typing_stop` debounced to 3s inactivity
+ * PROJECT 13 :: INPUT_PRESENCE_ENGINE
+ * Level: Presence Layer (Pulse Control)
+ * Vibe: Clinical / Terminal Noir
  */
-export function useTypingIndicator() {
-  const activeChatId = useChatStore((s) => s.activeChatId)
-  const userId = useChatStore((s) => s.userId)
-  const startedRef = useRef(false)
-  const lastStartRef = useRef(0)
-  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const emitStop = useCallback(() => {
-    if (!activeChatId || !userId || !startedRef.current) return
+const THROTTLE_INTERVAL = 1500 // Интервал между сигналами старта (мс)
+const TERMINATE_DEBOUNCE = 3000 // Задержка перед обрывом сигнала (мс)
+
+export function useTypingIndicator() {
+  const { activeChatId, userId } = useChatStore()
+  
+  const isTypingActive = useRef(false)
+  const lastSignalTime = useRef(0)
+  const terminateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // [SIGNAL_TERMINATE] :: Обрыв сигнала активности
+  const stopPresence = useCallback(() => {
+    if (!activeChatId || !userId || !isTypingActive.current) return
+
     getFmSocket().send({
       type: 'typing_stop',
       chat_id: activeChatId,
       user_id: userId,
     })
-    startedRef.current = false
+    
+    isTypingActive.current = false
+    if (terminateTimer.current) {
+      clearTimeout(terminateTimer.current)
+      terminateTimer.current = null
+    }
   }, [activeChatId, userId])
 
-  const scheduleStop = useCallback(() => {
-    if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
-    stopTimerRef.current = setTimeout(() => emitStop(), STOP_DEBOUNCE_MS)
-  }, [emitStop])
+  // [SIGNAL_PULSE] :: Планирование автоматического обрыва
+  const scheduleTermination = useCallback(() => {
+    if (terminateTimer.current) clearTimeout(terminateTimer.current)
+    terminateTimer.current = setTimeout(stopPresence, TERMINATE_DEBOUNCE)
+  }, [stopPresence])
 
+  // [INPUT_HANDLERS] :: Обработка изменения входного потока
   const onDraftChanged = useCallback(
     (nextValue: string) => {
       if (!activeChatId || !userId) return
-      const hasText = nextValue.trim().length > 0
-      if (!hasText) {
-        if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
-        emitStop()
+
+      const content = nextValue.trim()
+      
+      // Если поле пустое — немедленный обрыв сигнала
+      if (content.length === 0) {
+        stopPresence()
         return
       }
+
       const now = Date.now()
-      if (!startedRef.current || now - lastStartRef.current >= START_THROTTLE_MS) {
+      const timeSinceLastPulse = now - lastSignalTime.current
+
+      // Троттлинг сигнала старта: не частим, бережем канал
+      if (!isTypingActive.current || timeSinceLastPulse >= THROTTLE_INTERVAL) {
         getFmSocket().send({
           type: 'typing_start',
           chat_id: activeChatId,
           user_id: userId,
         })
-        startedRef.current = true
-        lastStartRef.current = now
+        isTypingActive.current = true
+        lastSignalTime.current = now
       }
-      scheduleStop()
+
+      scheduleTermination()
     },
-    [activeChatId, emitStop, scheduleStop, userId]
+    [activeChatId, userId, stopPresence, scheduleTermination]
   )
 
-  const onSubmitOrClear = useCallback(() => {
-    if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
-    emitStop()
-  }, [emitStop])
+  // Сброс при отправке или ручной очистке
+  const forceTerminate = useCallback(() => {
+    stopPresence()
+  }, [stopPresence])
+
+  // [LIFECYCLE_CLEANUP] :: Изоляция при демонтаже или смене узла
+  useEffect(() => {
+    return () => stopPresence()
+  }, [stopPresence])
 
   useEffect(() => {
-    return () => {
-      if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
-      emitStop()
-    }
-  }, [emitStop])
+    // При переключении чата старый сигнал должен быть немедленно аннулирован
+    stopPresence()
+    isTypingActive.current = false
+  }, [activeChatId, stopPresence])
 
-  useEffect(() => {
-    // Chat switch should terminate typing state in the previous chat.
-    if (stopTimerRef.current) clearTimeout(stopTimerRef.current)
-    startedRef.current = false
-  }, [activeChatId])
-
-  return { onDraftChanged, onSubmitOrClear }
+  return { 
+    onDraftChanged, 
+    onSubmitOrClear: forceTerminate 
+  }
 }
-

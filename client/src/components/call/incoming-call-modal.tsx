@@ -27,39 +27,70 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
   return (
     <PortalRoot>
       <div
-        className="fixed inset-0 z-[250] flex items-center justify-center bg-black/95 px-4"
+        className="fixed inset-0 z-[250] flex items-center justify-center bg-black/90 px-4 font-mono backdrop-blur-md"
         role="dialog"
         aria-modal="true"
-        aria-label="Incoming call"
+        aria-label="Incoming connection"
       >
-        <div className="terminal-panel w-full max-w-md space-y-6 border border-red-500/50 shadow-[0_0_20px_rgba(255,0,0,0.5)]">
-          <header className="border-b border-neon-cyan/40 pb-3">
-            <p className="animate-pulse text-xs uppercase tracking-[0.35em] text-neon-cyan">
-              [ INCOMING_CALL ]
-            </p>
-            <p className="mt-2 font-mono text-sm text-neon-red">
-              PEER :: {incoming.peerId.slice(0, 12)}…
-            </p>
-            <p className="mt-1 font-mono text-[10px] text-red-800">
-              MODE :: {incoming.isVideo ? 'VIDEO' : 'AUDIO'}
-            </p>
+        {/* TERMINAL MODAL */}
+        <div className="relative w-full max-w-sm border border-neon-red bg-black p-6 shadow-[0_0_40px_rgba(255,0,0,0.15)]">
+          {/* ACCENT BAR */}
+          <div className="absolute left-0 top-0 h-1 w-full animate-pulse bg-neon-red" />
+
+          <header className="border-b border-neutral-900 pb-4">
+            <div className="flex items-center gap-2">
+              <span className="block h-2 w-2 animate-ping bg-neon-red" />
+              <p className="text-[10px] uppercase tracking-[0.4em] text-neon-red">
+                SYS.ALERT // INBOUND_LINK
+              </p>
+            </div>
+            
+            <div className="mt-5 space-y-1">
+              <p className="text-[9px] uppercase tracking-widest text-neutral-600">
+                ORIGIN_NODE
+              </p>
+              <p className="text-sm text-neutral-200">
+                {incoming.peerId.slice(0, 12)}…
+              </p>
+            </div>
+
+            <div className="mt-3 space-y-1">
+              <p className="text-[9px] uppercase tracking-widest text-neutral-600">
+                PAYLOAD_TYPE
+              </p>
+              <p className="text-[10px] tracking-widest text-neon-cyan">
+                {incoming.isVideo ? '[ AUDIO + OPTICS ]' : '[ AUDIO_ONLY ]'}
+              </p>
+            </div>
           </header>
-          <div className="flex items-center justify-center gap-6">
+
+          <div className="mt-5 flex gap-3">
             <button
               type="button"
               onClick={onAccept}
-              className="animate-neon-pulse flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border-2 border-neon-cyan bg-black p-4 text-neon-cyan transition-colors hover:bg-neon-cyan/10"
-              aria-label="Accept call"
+              className="group relative flex h-11 flex-1 items-center justify-center border border-neon-cyan bg-black text-neon-cyan transition-all hover:bg-neon-cyan/10 hover:shadow-[0_0_15px_rgba(0,255,255,0.2)]"
+              aria-label="Accept link"
             >
-              <Phone className="h-6 w-6" strokeWidth={1.5} />
+              <span className="absolute left-3 opacity-50 transition-opacity group-hover:opacity-100">
+                <Phone className="h-4 w-4" />
+              </span>
+              <span className="pl-4 text-[10px] uppercase tracking-[0.2em]">
+                ACCEPT
+              </span>
             </button>
+            
             <button
               type="button"
               onClick={onReject}
-              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-none border-2 border-neon-red bg-black p-4 text-neon-red transition-colors hover:bg-neon-red/10"
-              aria-label="Reject call"
+              className="group relative flex h-11 flex-1 items-center justify-center border border-neon-red bg-black text-neon-red transition-all hover:bg-neon-red/10 hover:shadow-[0_0_15px_rgba(255,0,0,0.2)]"
+              aria-label="Sever link"
             >
-              <PhoneOff className="h-6 w-6" strokeWidth={1.5} />
+              <span className="absolute right-3 opacity-50 transition-opacity group-hover:opacity-100">
+                <PhoneOff className="h-4 w-4" />
+              </span>
+              <span className="pr-4 text-[10px] uppercase tracking-[0.2em]">
+                SEVER
+              </span>
             </button>
           </div>
         </div>

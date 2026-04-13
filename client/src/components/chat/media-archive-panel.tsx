@@ -104,7 +104,7 @@ export function MediaArchivePanel({
                   message={{
                     id: r.id,
                     // Если бекенд отдает plaintext в архиве, он прокинется. Иначе null.
-                    plaintext: (r as any).plaintext ?? null,
+                    plaintext: (r as Record<string, unknown>).plaintext as string ?? null,
                     media_path: r.media_path,
                     media_iv: r.media_iv,
                     // Строгий каст типа без сломанного фоллбэка на 'audio'

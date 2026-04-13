@@ -149,8 +149,8 @@ export function LoginForm() {
 
       await refresh()
       router.refresh()
-    } catch (err: any) {
-      const msg = err.message || ''
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ''
       if (msg === 'USERNAME_TAKEN' || msg === 'PUBLIC_KEY_CONFLICT') {
         setInfoLog(t('login.accountExists'))
         return
@@ -183,8 +183,8 @@ export function LoginForm() {
       }
       await refresh()
       router.refresh()
-    } catch (err: any) {
-      setErrorLog(err.message || 'MFA_FAULT')
+    } catch (err: unknown) {
+      setErrorLog(err instanceof Error ? err.message : 'MFA_FAULT')
     } finally {
       setIsBusy(false)
       lock.current = false

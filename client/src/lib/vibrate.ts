@@ -22,7 +22,7 @@ export function emitHapticPulse(pattern: number | number[] = 20): void {
 
     // [3] SIGNAL_DISPATCH :: Подача импульса на корпус узла
     navigator.vibrate(pattern)
-  } catch (err) {
+  } catch {
     // Сбой драйвера или блокировка политики безопасности — игнорируем
   }
 }

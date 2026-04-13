@@ -233,7 +233,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     mediaType === 'audio' || effectiveMime.startsWith('audio/')
   const isVideo =
     mediaType === 'video' || effectiveMime.startsWith('video/')
-  const isFile =
+  const _isFile =
     mediaType === 'file' ||
     (!isImage && !isAudio && !isVideo)
 

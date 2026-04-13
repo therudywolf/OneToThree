@@ -47,7 +47,7 @@ export function extractVaultPayload(raw: string): ExtractedVault | null {
   if (!signal) return null
 
   try {
-    const data = JSON.parse(signal) as Record<string, any>
+    const data = JSON.parse(signal) as Record<string, unknown>
     if (!data || typeof data !== 'object') return null
 
     // [1] PROTOCOL_V2 :: Обнаружена многоцелевая связка ключей (v: 2 ИЛИ kind: 'v2')

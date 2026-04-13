@@ -15,7 +15,7 @@ import { useTranslation } from '@/hooks/use-translation'
 
 type Props = { userId: string }
 
-export function SettingsPushNotifications({ userId }: Props) {
+export function SettingsPushNotifications({ userId: _userId }: Props) {
   const { t } = useTranslation()
   const [permission, setPermission] =
     useState<NotificationPermission>('default')

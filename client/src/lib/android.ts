@@ -31,7 +31,7 @@ export function isStandaloneNode(): boolean {
   
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone ||
+    (window.navigator as unknown as Record<string, boolean>).standalone ||
     document.referrer.includes('android-app://')
   )
 }

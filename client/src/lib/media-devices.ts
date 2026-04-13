@@ -4,7 +4,7 @@
  * Vibe: Clinical Pure / Terminal Noir
  */
 
-import { getDigitalDenUsageBytes } from '@/lib/media-cache'
+import { getDigitalDenUsageBytes as _getDigitalDenUsageBytes } from '@/lib/media-cache'
 
 export const SENSOR_CAM_ID = 'p13_optics_id'
 export const SENSOR_MIC_ID = 'p13_audio_in_id'
@@ -106,7 +106,7 @@ export async function applyPreferredAudioOutput(el: HTMLMediaElement | null): Pr
   const { speakerId } = loadMediaPrefs()
   if (!speakerId || !('setSinkId' in el)) return
   try {
-    await (el as any).setSinkId(speakerId)
+    await (el as unknown as { setSinkId: (id: string) => Promise<void> }).setSinkId(speakerId)
   } catch (err) {
     console.error('>> [SYS.MEDIA] OUTPUT_ROUTING_FAULT:', err)
   }

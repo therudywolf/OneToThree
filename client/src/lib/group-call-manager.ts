@@ -11,7 +11,7 @@
 
 import { getFmSocket } from '@/lib/api/socket'
 import { useGroupCallStore } from '@/store/groupCallStore'
-import type { GroupCallParticipant } from '@/store/groupCallStore'
+import type { GroupCallParticipant as _GroupCallParticipant } from '@/store/groupCallStore'
 
 const DEFAULT_STUN: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -390,7 +390,7 @@ export async function handleGroupCallOffer(
   roomId: string,
   fromUserId: string,
   sdp: string,
-  isVideo: boolean
+  _isVideo: boolean
 ) {
   const store = useGroupCallStore.getState()
   if (store.roomId !== roomId || !store.localStream) return

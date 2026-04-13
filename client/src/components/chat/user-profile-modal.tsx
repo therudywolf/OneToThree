@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Github,
@@ -11,7 +11,6 @@ import {
   Video,
   ShieldX,
   Flag,
-  ChevronDown,
   ImageIcon,
   FileText,
 } from 'lucide-react'

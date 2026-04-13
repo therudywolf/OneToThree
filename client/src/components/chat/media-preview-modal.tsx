@@ -71,7 +71,6 @@ export function MediaPreviewModal({ file, mediaType, onSend, onCancel }: Props) 
         {/* Preview area */}
         <div className="mb-4 flex items-center justify-center border border-neutral-900 bg-zinc-950 p-2 min-h-[120px] max-h-[50vh] overflow-hidden">
           {mediaType === 'image' && previewUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={previewUrl}
               alt={file.name}

@@ -82,25 +82,31 @@ const nextConfig = {
   },
 }
 
-const withPWA = require('next-pwa')({
-  dest: 'public',
-  register: true,
-  skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
-  importScripts: ['/push-handler.js'],
-  runtimeCaching: [
-    {
-      urlPattern: /(_rsc=|__rsc=)/,
-      handler: 'NetworkOnly',
-      options: {
-        cacheableResponse: { statuses: [0, 200] },
+let withPWA
+try {
+  withPWA = require('next-pwa')({
+    dest: 'public',
+    register: true,
+    skipWaiting: true,
+    disable: process.env.NODE_ENV === 'development',
+    importScripts: ['/push-handler.js'],
+    runtimeCaching: [
+      {
+        urlPattern: /(_rsc=|__rsc=)/,
+        handler: 'NetworkOnly',
+        options: {
+          cacheableResponse: { statuses: [0, 200] },
+        },
       },
-    },
-    {
-      urlPattern: /^https:\/\/cdn\.jsdelivr\.net/,
-      handler: 'NetworkOnly',
-    },
-  ],
-})
+      {
+        urlPattern: /^https:\/\/cdn\.jsdelivr\.net/,
+        handler: 'NetworkOnly',
+      },
+    ],
+  })
+} catch {
+  // next-pwa may fail with newer Next.js versions; fall through without PWA
+  withPWA = (config) => config
+}
 
 module.exports = withPWA(nextConfig)

@@ -98,7 +98,6 @@ function LinkPreviewCard({ url }: { url: string }) {
   return (
     <div className="mt-1 flex gap-2 border border-neon-cyan/20 bg-zinc-950/80 p-2 max-w-xs">
       {meta.image ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={meta.image}
           alt=""
@@ -148,7 +147,7 @@ function LinkSpan({ url }: { url: string }) {
 export function NoirPlaintext({ text, className = '' }: Props) {
   const processedNodes = useMemo(() => {
     const safeText = sanitizeText(text)
-    const emojiRe = emojiRegex()
+    const _emojiRe = emojiRegex()
 
     // First, split out code blocks
     const segments: React.ReactNode[] = []
@@ -170,8 +169,8 @@ export function NoirPlaintext({ text, className = '' }: Props) {
     const processInlineText = (chunk: string): React.ReactNode[] => {
       const nodes: React.ReactNode[] = []
       // Split by inline code, then URLs, then emoji
-      let remaining = chunk
-      let cursor = 0
+      let _remaining = chunk
+      let _cursor = 0
 
       // Find all inline code spans
       const inlineMatches: Array<{ start: number; end: number; code: string }> = []

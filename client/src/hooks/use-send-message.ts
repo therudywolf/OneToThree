@@ -10,6 +10,7 @@ import { decryptApiMessageRow } from '@/lib/decrypt-chat-api-message'
 import { cacheMessage } from '@/lib/message-cache'
 import { vibrateShort } from '@/lib/vibrate'
 import { useChatStore } from '@/store/chatStore'
+import type { DecryptedMessage } from '@/types/chat'
 
 /**
  * PROJECT 13 :: TRANSMISSION_DISPATCHER
@@ -104,7 +105,7 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
           reactions: {},
           created_at: new Date().toISOString(),
           _pending: true,
-        } as any)
+        } as unknown as DecryptedMessage)
         vibrateShort(8)
       }
     },

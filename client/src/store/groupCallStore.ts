@@ -115,16 +115,16 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
     // FIX 9: Close peer connections and stop media tracks before clearing state
     const state = get()
     for (const pc of Object.values(state.peerConnections)) {
-      try { pc.close() } catch {}
+      try { pc.close() } catch { /* ignore */ }
     }
     if (state.localStream) {
       for (const track of state.localStream.getTracks()) {
-        try { track.stop() } catch {}
+        try { track.stop() } catch { /* ignore */ }
       }
     }
     for (const stream of Object.values(state.remoteStreams)) {
       for (const track of stream.getTracks()) {
-        try { track.stop() } catch {}
+        try { track.stop() } catch { /* ignore */ }
       }
     }
     set({

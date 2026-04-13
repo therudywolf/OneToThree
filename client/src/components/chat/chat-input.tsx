@@ -59,7 +59,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const [recordLocked, setRecordLocked] = useState(false)
   const [swipeOffsetY, setSwipeOffsetY] = useState(0)
   const [swipeOffsetX, setSwipeOffsetX] = useState(0)
-  const [cancelSlide, setCancelSlide] = useState(false)
+  const [, setCancelSlide] = useState(false)
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
   const lockAnimRef = useRef(false)
 

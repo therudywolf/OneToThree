@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
 import { startOutgoingRingtone } from '@/lib/call-ringtones'
-import { isAndroidMobile } from '@/lib/android'
-import { isIOSOrIPadOS } from '@/lib/ios'
+import { isAndroidMobile as _isAndroidMobile } from '@/lib/android'
+import { isIOSOrIPadOS as _isIOSOrIPadOS } from '@/lib/ios'
 import { getUserMediaConstraints, loadMediaPrefs } from '@/lib/media-devices'
 import {
   isMediaPermissionDenied,
@@ -122,7 +122,7 @@ export function useWebRTC(userId: string | null) {
     setReconnecting, setConnectionLost, setIceRetryCount,
     setConnectionQuality,
     setPeerConnectionType, clearPeerConnectionType,
-    setCallStartTime, setMiniPlayer,
+    setCallStartTime, setMiniPlayer: _setMiniPlayer,
   } = useCallStore()
 
   const flushIceQueue = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
@@ -594,7 +594,7 @@ export function useWebRTC(userId: string | null) {
       transmitSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
       setIsCalling(true)
       setCallStartTime(Date.now())
-    } catch (err) {
+    } catch {
       purgePeer(inc.peerId)
       terminateFeed(stream)
     } finally {

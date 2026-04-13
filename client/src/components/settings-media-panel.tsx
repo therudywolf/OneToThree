@@ -27,7 +27,6 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   const [micId, setMicId] = useState('')
   const [speakerId, setSpeakerId] = useState('')
   const [noiseOn, setNoiseOn] = useState(true)
-  const [lowBandwidthOn, setLowBandwidthOn] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [denBytes, setDenBytes] = useState<number | null>(null)
@@ -260,7 +259,6 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
         <p className="mb-1 text-[9px] uppercase tracking-wider text-zinc-500">
           {t('settings.mediaViewfinder')}
         </p>
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video
           ref={videoRef}
           autoPlay

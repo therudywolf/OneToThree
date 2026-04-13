@@ -454,7 +454,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     void nuclearWipeClient({ revokeServerSessions: true })
   }
 
-  function exportVault() {
+  function _exportVault() {
     const blob = readVaultBlob(userId)
     if (!blob) {
       setError(t('settings.noLocalVault'))
@@ -660,7 +660,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <p className="text-[9px] text-neon-cyan/90">
                         {t('settings.totpScanQr')}
                       </p>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={totpSetup.qr_data_url}
                         alt=""

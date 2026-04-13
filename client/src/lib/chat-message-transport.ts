@@ -52,7 +52,7 @@ export async function sendChatMessageOverTransport(
       await registerOutboxSync()
       console.warn('>> [SYS.TRANSPORT] QUEUED_FOR_SYNC:', outboxId)
       return { via: 'QUEUED', outboxId }
-    } catch (queueErr) {
+    } catch {
       // IndexedDB недоступен — прокидываем исходную ошибку
       console.error('>> [SYS.TRANSPORT] DISPATCH_FAULT:', err)
       throw err

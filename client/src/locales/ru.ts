@@ -356,6 +356,28 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
 
   'sidebar.members': 'Участники',
 
+  // [PROFILE]
+  'profile.title': 'Профиль пользователя',
+  'profile.bio': 'О себе',
+  'profile.bioPlaceholder': 'Расскажите о себе...',
+  'profile.statusText': 'Статус',
+  'profile.statusPlaceholder': 'Чем занимаетесь?',
+  'profile.socialLinks': 'Ссылки',
+  'profile.addLink': 'Добавить ссылку',
+  'profile.removeLink': 'Убрать',
+  'profile.platform': 'Платформа',
+  'profile.url': 'URL',
+  'profile.online': 'В СЕТИ',
+  'profile.offline': 'НЕ В СЕТИ',
+  'profile.deadInside': 'DEAD_INSIDE',
+  'profile.externalLinks': 'ВНЕШНИЕ_ССЫЛКИ',
+  'profile.tapToClose': 'Нажмите за пределами для закрытия',
+  'profile.saveFailed': 'Ошибка сохранения профиля.',
+  'profile.section': 'Профиль',
+  'profile.statusPresets': 'Шаблоны',
+  'profile.busy': 'Занят',
+  'profile.doNotDisturb': 'Не беспокоить',
+
   'media.fileExpiredServer': 'Файл удалён с сервера. Срок хранения истёк.',
 
   'offline.banner': 'Нет подключения. Сообщения отправятся при восстановлении.',

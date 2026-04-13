@@ -83,6 +83,47 @@ export async function lookupUsers(userIds: string[]): Promise<UserLookupRow[]> {
   return data.users ?? []
 }
 
+export type UserProfile = {
+  username: string
+  avatar_key: string | null
+  bio: string | null
+  status_text: string | null
+  social_links: Array<{ platform: string; url: string }>
+  online: boolean
+  last_seen_at: string | null
+}
+
+export async function fetchUserProfile(username: string): Promise<UserProfile> {
+  const res = await fetch(
+    `${API_URL}/users/${encodeURIComponent(username)}/profile`,
+    { credentials: 'include' }
+  )
+  const data = (await res.json().catch(() => ({}))) as UserProfile & { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'PROFILE_FAILED')
+  }
+  return data
+}
+
+export type ProfilePatch = {
+  bio?: string
+  status_text?: string
+  social_links?: Array<{ platform: string; url: string }>
+}
+
+export async function patchMyProfile(patch: ProfilePatch): Promise<void> {
+  const res = await fetch(`${API_URL}/users/me`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'PROFILE_PATCH_FAILED')
+  }
+}
+
 export async function patchMyEcdhPublicKey(
   ecdh_public_key_jwk: string
 ): Promise<void> {

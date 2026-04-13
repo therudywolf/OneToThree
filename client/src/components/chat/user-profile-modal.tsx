@@ -148,11 +148,22 @@ export function UserProfileModal({
               </button>
             </div>
 
-            {/* Username + ID */}
+            {/* Display name + Username + ID */}
             <div className="mt-4 space-y-1 text-center">
-              <p className="font-mono text-xl uppercase tracking-[0.15em] text-neon-cyan">
-                {username}
-              </p>
+              {profile?.display_name ? (
+                <>
+                  <p className="font-mono text-xl uppercase tracking-[0.15em] text-neon-cyan">
+                    {profile.display_name}
+                  </p>
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
+                    @{username}
+                  </p>
+                </>
+              ) : (
+                <p className="font-mono text-xl uppercase tracking-[0.15em] text-neon-cyan">
+                  {username}
+                </p>
+              )}
               <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
                 ID: {userId.split('-')[0]}
               </p>
@@ -296,18 +307,36 @@ export function UserProfileModal({
                     </div>
                   ) : null}
 
-                  {/* Mutual groups placeholder */}
+                  {/* Mutual groups */}
                   <div>
                     <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/60">
                       {t('profile.mutualGroups')}
                     </p>
-                    <p className="font-mono text-[10px] text-zinc-600">
-                      {t('profile.noMutualGroups')}
-                    </p>
+                    {profile?.mutual_groups && profile.mutual_groups.length > 0 ? (
+                      <div className="space-y-1">
+                        {profile.mutual_groups.map((g) => (
+                          <div
+                            key={g.id}
+                            className="flex items-center gap-2 border border-neon-cyan/20 bg-black/50 px-3 py-2 font-mono text-[10px] text-neon-cyan/80"
+                          >
+                            <span className="h-2 w-2 rounded-full bg-neon-cyan/40 shrink-0" />
+                            <span className="truncate">{g.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="font-mono text-[10px] text-zinc-600">
+                        {t('profile.noMutualGroups')}
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : activeTab === 'media' ? (
                 <div className="space-y-3">
+                  {/* 3-column photo grid */}
+                  <div className="grid grid-cols-3 gap-1">
+                    {/* Empty state */}
+                  </div>
                   <div className="flex items-center justify-center py-8">
                     <div className="text-center">
                       <ImageIcon className="mx-auto h-8 w-8 text-zinc-700" />
@@ -316,6 +345,12 @@ export function UserProfileModal({
                       </p>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    className="w-full border border-neon-cyan/30 bg-black py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/50 hover:bg-neon-cyan/5 transition-colors hidden"
+                  >
+                    {t('profile.loadMore')}
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -327,6 +362,12 @@ export function UserProfileModal({
                       </p>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    className="w-full border border-neon-cyan/30 bg-black py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/50 hover:bg-neon-cyan/5 transition-colors hidden"
+                  >
+                    {t('profile.loadMore')}
+                  </button>
                 </div>
               )}
             </div>

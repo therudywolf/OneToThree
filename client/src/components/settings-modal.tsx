@@ -55,7 +55,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableCode, setTotpDisableCode] = useState('')
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'main' | 'media' | 'devices' | 'security'>(
+  const [settingsTab, setSettingsTab] = useState<'main' | 'profile' | 'media' | 'devices' | 'security'>(
     'main'
   )
   const [changePinOpen, setChangePinOpen] = useState(false)
@@ -73,6 +73,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [statusText, setStatusText] = useState('')
   const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([])
   const [profileBusy, setProfileBusy] = useState(false)
+  const [displayName, setDisplayName] = useState('')
+  const [lastSeenPrivacy, setLastSeenPrivacy] = useState<'everyone' | 'contacts' | 'nobody'>('everyone')
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -85,6 +87,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         hide_presence?: unknown
         bio?: string | null
         status_text?: string | null
+        display_name?: string | null
+        last_seen_privacy?: string | null
         social_links?: Array<{ platform: string; url: string }>
         error?: string
       }
@@ -98,6 +102,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setHidePresence(typeof d.hide_presence === 'boolean' ? d.hide_presence : false)
       setBio(d.bio ?? '')
       setStatusText(d.status_text ?? '')
+      setDisplayName(d.display_name ?? '')
+      setLastSeenPrivacy(
+        d.last_seen_privacy === 'contacts' ? 'contacts'
+          : d.last_seen_privacy === 'nobody' ? 'nobody'
+          : 'everyone'
+      )
       setSocialLinks(Array.isArray(d.social_links) ? d.social_links : [])
     } catch {
       setError(t('settings.loadFailed'))
@@ -410,7 +420,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className={`terminal-panel flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' ? 'max-w-2xl' : totpSetup ? 'max-w-lg' : 'max-w-md'}`}
+        className={`terminal-panel flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' ? 'max-w-2xl' : settingsTab === 'profile' ? 'max-w-lg' : totpSetup ? 'max-w-lg' : 'max-w-md'}`}
       >
         <header className="flex shrink-0 items-start justify-between gap-2 border-b border-neon-red/40 pb-3">
           <p className="min-w-0 break-words text-xs uppercase tracking-[0.35em] text-neon-cyan">
@@ -436,6 +446,17 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             }`}
           >
             [ {t('settings.tabGeneral')} ]
+          </button>
+          <button
+            type="button"
+            onClick={() => setSettingsTab('profile')}
+            className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
+              settingsTab === 'profile'
+                ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
+            }`}
+          >
+            [ {t('profile.section')} ]
           </button>
           <button
             type="button"
@@ -826,6 +847,218 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
         {settingsTab === 'devices' ? (
           <SettingsDevicesPanel userId={userId} active />
+        ) : null}
+
+        {settingsTab === 'profile' ? (
+          <div className="space-y-4">
+            {/* Avatar */}
+            <SettingsAvatarSection userId={userId} username={username} />
+
+            {/* Display Name */}
+            <div className="border border-neon-cyan/30 p-3 space-y-2">
+              <label className="terminal-label" htmlFor="profile-display-name">
+                {t('profile.editName')}
+              </label>
+              <input
+                id="profile-display-name"
+                className="terminal-input text-[10px]"
+                maxLength={64}
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder={username}
+              />
+            </div>
+
+            {/* @username (read-only) */}
+            <div className="border border-neon-cyan/30 p-3 space-y-1">
+              <p className="terminal-label">@{t('common.peerInputAria')}</p>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm text-neon-cyan/70">@{username}</span>
+                <span className="font-mono text-[8px] uppercase tracking-widest text-zinc-600">
+                  ({t('profile.readOnly')})
+                </span>
+              </div>
+            </div>
+
+            {/* Bio */}
+            <div className="border border-neon-cyan/30 p-3 space-y-2">
+              <label className="terminal-label" htmlFor="profile-bio-tab">
+                {t('profile.bio')}
+              </label>
+              <textarea
+                id="profile-bio-tab"
+                className="terminal-input mt-1 min-h-[5rem] w-full resize-y text-[10px]"
+                maxLength={500}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder={t('profile.bioPlaceholder')}
+              />
+              <p className={`text-right font-mono text-[8px] ${bio.length > 450 ? 'text-neon-red' : 'text-zinc-600'}`}>
+                {bio.length}/500
+              </p>
+            </div>
+
+            {/* Status text */}
+            <div className="border border-neon-cyan/30 p-3 space-y-2">
+              <label className="terminal-label" htmlFor="profile-status-tab">
+                {t('profile.statusText')}
+              </label>
+              <input
+                id="profile-status-tab"
+                className="terminal-input text-[10px]"
+                maxLength={128}
+                value={statusText}
+                onChange={(e) => setStatusText(e.target.value)}
+                placeholder={t('profile.statusPlaceholder')}
+              />
+              <div className="flex flex-wrap gap-1 mt-1">
+                <p className="w-full text-[8px] uppercase tracking-widest text-zinc-600">{t('profile.statusPresets')}:</p>
+                {[
+                  { label: t('profile.online'), value: '' },
+                  { label: t('profile.busy'), value: 'busy' },
+                  { label: t('profile.doNotDisturb'), value: 'do not disturb' },
+                  { label: 'DEAD_INSIDE', value: 'dead_inside' },
+                ].map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => setStatusText(preset.value)}
+                    className={`border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest transition-colors ${
+                      statusText === preset.value
+                        ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                        : 'border-zinc-700 text-zinc-500 hover:border-neon-cyan/50'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Last Seen Privacy */}
+            <div className="border border-neon-cyan/30 p-3 space-y-2">
+              <p className="terminal-label">{t('profile.lastSeenSettings')}</p>
+              <p className="text-[9px] text-red-800">{t('profile.lastSeenPrivacyHint')}</p>
+              <div className="flex flex-wrap gap-2">
+                {(['everyone', 'contacts', 'nobody'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setLastSeenPrivacy(opt)}
+                    className={`border px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest transition-colors ${
+                      lastSeenPrivacy === opt
+                        ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                        : 'border-zinc-700 text-zinc-500 hover:border-neon-cyan/50'
+                    }`}
+                  >
+                    {t(`profile.lastSeen${opt.charAt(0).toUpperCase() + opt.slice(1)}` as Parameters<typeof t>[0])}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Social Links */}
+            <div className="border border-neon-cyan/30 p-3 space-y-2">
+              <p className="terminal-label">{t('profile.socialLinks')}</p>
+              <div className="space-y-2">
+                {socialLinks.map((link, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <select
+                      className="terminal-input w-28 text-[10px]"
+                      value={link.platform}
+                      onChange={(e) => {
+                        const next = [...socialLinks]
+                        next[idx] = { ...next[idx], platform: e.target.value }
+                        setSocialLinks(next)
+                      }}
+                    >
+                      <option value="telegram">Telegram</option>
+                      <option value="github">GitHub</option>
+                      <option value="website">Website</option>
+                    </select>
+                    <input
+                      className="terminal-input flex-1 text-[10px]"
+                      value={link.url}
+                      onChange={(e) => {
+                        const next = [...socialLinks]
+                        next[idx] = { ...next[idx], url: e.target.value }
+                        setSocialLinks(next)
+                      }}
+                      placeholder={t('profile.url')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSocialLinks(socialLinks.filter((_, i) => i !== idx))}
+                      className="shrink-0 border border-neon-red/50 px-2 py-1 font-mono text-[9px] text-neon-red hover:bg-neon-red/10"
+                    >
+                      [X]
+                    </button>
+                  </div>
+                ))}
+                {socialLinks.length < 5 ? (
+                  <button
+                    type="button"
+                    onClick={() => setSocialLinks([...socialLinks, { platform: 'telegram', url: '' }])}
+                    className="w-full border border-neon-cyan/40 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10"
+                  >
+                    + {t('profile.addLink')}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Save Profile */}
+            <button
+              type="button"
+              disabled={profileBusy}
+              onClick={() => {
+                setProfileBusy(true)
+                setError(null)
+                void patchMyProfile({
+                  bio,
+                  status_text: statusText,
+                  display_name: displayName || undefined,
+                  last_seen_privacy: lastSeenPrivacy,
+                  social_links: socialLinks.filter((l) => l.url.trim()),
+                })
+                  .then(() => {
+                    setSaved(true)
+                    setTimeout(() => setSaved(false), 1500)
+                  })
+                  .catch((e) => {
+                    setError(e instanceof Error ? e.message : t('profile.saveFailed'))
+                  })
+                  .finally(() => setProfileBusy(false))
+              }}
+              className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+            >
+              {profileBusy ? '[ ... ]' : `[ ${t('profile.saveProfile')} ]`}
+            </button>
+
+            {/* Danger Zone */}
+            <div className="border-t border-neon-red/40 pt-3 space-y-3">
+              <p className="text-xs uppercase tracking-widest text-neon-red">
+                {t('profile.dangerZone')}
+              </p>
+              <button
+                type="button"
+                onClick={() => setSettingsTab('security')}
+                className="w-full border border-neon-red/50 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red/70 hover:bg-neon-red/10 hover:text-neon-red transition-colors"
+              >
+                [ {t('profile.changePassword')} ]
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setKillOpen(true)
+                  setSettingsTab('security')
+                }}
+                className="w-full border border-red-600 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-red-500 hover:bg-red-950/40 transition-colors"
+              >
+                [ {t('profile.deleteAccount')} ]
+              </button>
+            </div>
+          </div>
         ) : null}
 
         <div

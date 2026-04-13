@@ -84,6 +84,20 @@ function transmitSignal(targetUserId: string, signalData: SignalPayload) {
   getFmSocket().send({ type: 'webrtc_signal', targetUserId, signalData })
 }
 
+/** Set Opus audio bitrate to 64kbps via RTCRtpSender.setParameters() */
+async function tuneOpusBitrate(pc: RTCPeerConnection): Promise<void> {
+  try {
+    const sender = pc.getSenders().find(s => s.track?.kind === 'audio')
+    if (!sender) return
+    const params = sender.getParameters()
+    if (!params.encodings || !params.encodings[0]) return
+    params.encodings[0].maxBitrate = 64000
+    await sender.setParameters(params)
+  } catch {
+    // Opus tuning not supported in this browser
+  }
+}
+
 export function useWebRTC(userId: string | null) {
   const [peerReady, setPeerReady] = useState(false)
   const [mediaAccessError, setMediaAccessError] = useState<string | null>(null)
@@ -206,6 +220,7 @@ export function useWebRTC(userId: string | null) {
       if (state === 'connected' || state === 'completed') {
         ringStopRef.current?.()
         setReconnecting(false)
+        void tuneOpusBitrate(pc)
         const timer = disconnectTimersRef.current.get(peerId)
         if (timer) {
           clearTimeout(timer)
@@ -391,11 +406,11 @@ export function useWebRTC(userId: string | null) {
 
                 // Auto-adapt quality
                 if (state.qualityLevel === 'auto' && bitrate != null) {
-                  if (bitrate < 200_000) {
+                  if (bitrate < 150_000) {
                     lowBitrateCountRef.current++
                     highBitrateCountRef.current = 0
                     if (lowBitrateCountRef.current >= 1) { // 5s (1 poll at 5s interval)
-                      applyQualityConstraints('360p')
+                      applyQualityConstraints('480p')
                     }
                   } else if (bitrate > 800_000) {
                     highBitrateCountRef.current++

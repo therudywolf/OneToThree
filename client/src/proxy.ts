@@ -1,12 +1,17 @@
+/**
+ * PROJECT 13 :: GATEWAY_PROBE_PROTOCOL
+ * Level: Edge Layer (Middleware)
+ * Vibe: Clinical Pure / Terminal Noir
+ */
+
 import { NextResponse, type NextRequest } from 'next/server'
 
 const SESSION_COOKIE = 'fm_session'
 const PUBLIC_PATHS = new Set<string>(['/login'])
-
 const BYPASS_PREFIXES = ['/_next/', '/api/', '/workbox-']
 const STATIC_ASSETS_RE = /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml)$/i
 
-// Быстрый фильтр системных путей
+/** [PROBE_BYPASS] :: Фильтрация системного шума */
 function isBypassPath(pathname: string): boolean {
   if (pathname === '/favicon.ico' || pathname === '/icon.png' || pathname === '/manifest.webmanifest' || pathname === '/sw.js') return true
   if (BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return true
@@ -19,6 +24,7 @@ function resolveApiBase(request: NextRequest): string {
   return `${request.nextUrl.origin}/api`
 }
 
+/** [AUTH_SCAN] :: Верификация сессии через API шлюз */
 async function verifySessionLock(request: NextRequest): Promise<boolean> {
   const token = request.cookies.get(SESSION_COOKIE)?.value
   if (!token) return false
@@ -26,7 +32,6 @@ async function verifySessionLock(request: NextRequest): Promise<boolean> {
   const cookieHeader = request.headers.get('cookie')
   if (!cookieHeader) return false
 
-  // SYS.TIMEOUT: Не ждем ответа от API дольше 800мс на уровне Edge
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 800)
 
@@ -41,14 +46,16 @@ async function verifySessionLock(request: NextRequest): Promise<boolean> {
     return res.ok
   } catch (error) {
     clearTimeout(timeoutId)
-    // Глушим ошибку таймаута или сбоя сети, но логируем в консоль сервера
-    const msg = error instanceof Error ? error.message : String(error)
-    console.warn(`[GATEWAY_WARN] Session verification failed/aborted: ${msg}`)
+    console.warn(`>> [SYS.GATEWAY] AUTH_SCAN_ABORTED: ${error instanceof Error ? error.message : 'TIMEOUT'}`)
     return false
   }
 }
 
-export async function middleware(request: NextRequest) {
+/**
+ * [PROXY_LOGIC] :: Главный диспетчер трафика.
+ * Next.js 16 требует именованный экспорт "proxy" или "default".
+ */
+export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
 
   if (isBypassPath(pathname)) {
@@ -73,7 +80,7 @@ export async function middleware(request: NextRequest) {
     response = NextResponse.redirect(homeUrl)
   }
 
-  // Внедрение жесткой клиники (Security Headers)
+  // [HARD_CLINIC] :: Security Headers
   response.headers.set('X-Content-Type-Options', 'nosniff')
   response.headers.set('X-Frame-Options', 'DENY')
   response.headers.set('X-XSS-Protection', '1; mode=block')
@@ -82,6 +89,9 @@ export async function middleware(request: NextRequest) {
 
   return response
 }
+
+/** [DEFAULT_EXPORT] :: Для совместимости с мидлваром */
+export default proxy
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image).*)'],

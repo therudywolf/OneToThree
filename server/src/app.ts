@@ -97,8 +97,10 @@ export async function buildApp() {
   await app.register(cookie)
 
   const jwtSecret = process.env.JWT_SECRET?.trim()
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET is not set')
+  if (!jwtSecret || jwtSecret.length < 32) {
+    throw new Error(
+      'FATAL: JWT_SECRET must be set and at least 32 characters. Generate with: openssl rand -hex 32'
+    )
   }
 
   await app.register(jwt, {

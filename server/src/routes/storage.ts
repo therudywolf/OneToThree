@@ -24,10 +24,49 @@ const CHAT_OBJECT_KEY_RE =
 const AVATAR_KEY_RE =
   /^avatars\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[^/]+$/i
 
+/** Allowed file extensions for upload. Blocks executable, script, and archive-bomb types. */
+const ALLOWED_EXTENSIONS = new Set([
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif',
+  '.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v',
+  '.mp3', '.ogg', '.wav', '.flac', '.aac', '.m4a', '.opus', '.weba',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.txt', '.csv', '.json', '.xml', '.md', '.rtf',
+  '.zip', '.7z', '.tar', '.gz',
+])
+
+/** Allowed MIME type prefixes for upload. */
+const ALLOWED_MIME_PREFIXES = [
+  'image/', 'video/', 'audio/',
+  'application/pdf', 'application/msword',
+  'application/vnd.openxmlformats', 'application/vnd.ms-',
+  'text/', 'application/json', 'application/xml',
+  'application/zip', 'application/x-7z-compressed',
+  'application/gzip', 'application/x-tar',
+  'application/octet-stream',
+]
+
 function extensionFromFileName(fileName: string): string {
   const base = fileName.split(/[/\\]/).pop() ?? fileName
   const m = base.match(/(\.[a-zA-Z0-9]{1,12})$/)
   return m ? m[1].toLowerCase() : '.bin'
+}
+
+/** Strips path traversal, null bytes, and control chars from filenames. */
+function sanitizeFileName(raw: string): string {
+  return raw
+    .replace(/[\x00-\x1f]/g, '')       // strip control chars
+    .replace(/\.\./g, '')              // strip path traversal
+    .replace(/[/\\]/g, '_')            // replace path separators
+    .slice(0, 255)                     // limit length
+}
+
+function isAllowedExtension(ext: string): boolean {
+  return ALLOWED_EXTENSIONS.has(ext.toLowerCase())
+}
+
+function isAllowedMimeType(mime: string): boolean {
+  const lower = mime.toLowerCase()
+  return ALLOWED_MIME_PREFIXES.some((prefix) => lower.startsWith(prefix))
 }
 
 const uploadBodySchema = z.object({
@@ -48,7 +87,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     await bucketInit
   }
 
-  app.post('/upload-url', async (request, reply) => {
+  app.post('/upload-url', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     await ensureBucketOnce()
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -58,7 +97,16 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const { fileName, fileType, chatId } = parsed.data
+    const { fileName: rawFileName, fileType, chatId } = parsed.data
+    const fileName = sanitizeFileName(rawFileName)
+
+    const ext = extensionFromFileName(fileName)
+    if (!isAllowedExtension(ext)) {
+      return reply.status(400).send({ error: 'FILE_TYPE_NOT_ALLOWED' })
+    }
+    if (!isAllowedMimeType(fileType)) {
+      return reply.status(400).send({ error: 'MIME_TYPE_NOT_ALLOWED' })
+    }
 
     const member = await db
       .select({ one: chatMembers.userId })
@@ -71,7 +119,6 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'NOT_A_MEMBER' })
     }
 
-    const ext = extensionFromFileName(fileName)
     const key = `chats/${chatId}/${user.id}/${randomUUID()}${ext}`
 
     const uploadUrl = rewritePresignedUrlToPublicBase(

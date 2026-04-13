@@ -39,7 +39,7 @@ const batchReadSchema = z.object({
 
 export const messagesRoutes: FastifyPluginAsync = async (app) => {
   /** Encrypted store-and-forward when WebSocket is unavailable (same payload as WS `chat_message`). */
-  app.post('/send', async (request, reply) => {
+  app.post('/send', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const parsed = sendMessageBodySchema.safeParse(request.body ?? {})

@@ -10,6 +10,7 @@ import { resumeAudioContextAfterGesture } from '@/lib/call-ringtones'
 import { vibrateShort } from '@/lib/vibrate'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import EmojiPicker from 'emoji-picker-react'
+import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 
 function isImageFile(file: File): boolean {
   return file.type.startsWith('image/')
@@ -61,6 +62,8 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const [cancelSlide, setCancelSlide] = useState(false)
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
   const lockAnimRef = useRef(false)
+
+  const [previewFile, setPreviewFile] = useState<{ file: File; mediaType: 'image' | 'video' | 'audio' | 'file' } | null>(null)
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
@@ -212,11 +215,10 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const handlePaste = async (e: React.ClipboardEvent) => {
     if (!e.clipboardData?.files.length) return
 
-    for (const file of e.clipboardData.files) {
-      if (isImageFile(file)) {
-        e.preventDefault()
-        await sendMedia(file, 'image')
-      }
+    const file = e.clipboardData.files[0]
+    if (file && isImageFile(file)) {
+      e.preventDefault()
+      setPreviewFile({ file, mediaType: 'image' })
     }
   }
 
@@ -239,12 +241,10 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
     if (!e.dataTransfer?.files.length) return
 
-    for (const file of e.dataTransfer.files) {
+    const file = e.dataTransfer.files[0]
+    if (file) {
       const mediaType = detectMediaType(file)
-      await sendMedia(file, mediaType, undefined, {
-        fileName: file.name,
-        fileType: file.type,
-      })
+      setPreviewFile({ file, mediaType })
     }
   }
 
@@ -253,14 +253,12 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   }
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return
+    if (!e.target.files?.length) return
 
-    for (const file of e.target.files) {
+    const file = e.target.files[0]
+    if (file) {
       const mediaType = detectMediaType(file)
-      await sendMedia(file, mediaType, undefined, {
-        fileName: file.name,
-        fileType: file.type,
-      })
+      setPreviewFile({ file, mediaType })
     }
 
     if (fileInputRef.current) {
@@ -344,6 +342,22 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       onDrop={handleDrop}
       className="sticky bottom-0 z-10 shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-black p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200 data-[drag-over=true]:bg-neon-cyan/5"
     >
+      {previewFile && (
+        <MediaPreviewModal
+          file={previewFile.file}
+          mediaType={previewFile.mediaType}
+          onSend={(caption) => {
+            const { file, mediaType } = previewFile
+            setPreviewFile(null)
+            void sendMedia(file, mediaType, caption || undefined, {
+              fileName: file.name,
+              fileType: file.type,
+            })
+          }}
+          onCancel={() => setPreviewFile(null)}
+        />
+      )}
+
       <input
         ref={fileInputRef}
         type="file"

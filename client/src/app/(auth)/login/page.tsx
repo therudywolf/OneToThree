@@ -1,8 +1,10 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { LoginForm } from '@/components/login-form'
 import { LoginQrDevicePanel } from '@/components/login-qr-device-panel'
 import { LocaleToggle } from '@/components/locale-toggle'
+import { WelcomeScreen } from '@/components/onboarding/welcome-screen'
 
 /**
  * PROJECT 13 :: GATEWAY_NODE
@@ -13,8 +15,22 @@ import { LocaleToggle } from '@/components/locale-toggle'
 export const dynamic = 'force-dynamic'
 
 export default function LoginPage() {
+  const [showWelcome, setShowWelcome] = useState(false)
+
+  useEffect(() => {
+    if (!localStorage.getItem('p13:onboarding_shown')) {
+      setShowWelcome(true)
+    }
+  }, [])
+
+  const dismissWelcome = () => {
+    localStorage.setItem('p13:onboarding_shown', 'true')
+    setShowWelcome(false)
+  }
+
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-zinc-950 px-4 py-16 font-mono selection:bg-neon-red selection:text-black">
+      {showWelcome && <WelcomeScreen onContinue={dismissWelcome} />}
       
       {/* BACKGROUND_FX :: Стерильный градиент и шум */}
       <div className="pointer-events-none absolute inset-0 z-0">

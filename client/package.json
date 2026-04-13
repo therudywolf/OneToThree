@@ -23,6 +23,7 @@
     "emoji-regex": "^9.2.2",
     "framer-motion": "^11.18.2",
     "idb": "^7.1.1",
+    "jsqr": "^1.4.0",
     "lucide-react": "^0.577.0",
     "next": "16.2.3",
     "qrcode.react": "^4.2.0",

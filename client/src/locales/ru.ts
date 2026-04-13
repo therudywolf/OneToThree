@@ -632,6 +632,51 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   // [RESPONSIVE]
   'responsive.memberPanel': 'Участники',
   'responsive.closeMemberPanel': 'Закрыть панель участников',
+
+  // [MEDIA PREVIEW]
+  'mediaPreview.title': 'Отправить файл',
+  'mediaPreview.captionPlaceholder': 'Добавить подпись...',
+  'mediaPreview.send': 'Отправить',
+  'mediaPreview.cancel': 'Отмена',
+  'mediaPreview.fileInfo': 'Файл',
+  'mediaPreview.size': 'Размер',
+
+  // [GROUP DESCRIPTION TOOLTIP]
+  'group.publicHintChecked': 'Открытая группа \u2014 у группы будет публичная ссылка, любой по ссылке может вступить.',
+  'group.publicHintUnchecked': 'Закрытая группа \u2014 только участники по приглашению.',
+
+  // [QR SCANNER]
+  'login.qrScanTitle': 'Сканировать QR-код',
+  'login.qrScanHint': 'Наведите камеру на QR-код на другом устройстве.',
+  'login.qrScanStart': 'Сканировать QR',
+  'login.qrScanStop': 'Остановить сканер',
+  'login.qrScanNoCamera': 'Камера недоступна. Проверьте разрешения.',
+  'login.qrScanProcessing': 'QR-код обнаружен, подключение...',
+
+  // [ONBOARDING WELCOME]
+  'welcome.title': 'OneToThree',
+  'welcome.subtitle': 'Самоуправляемый E2EE мессенджер. Все сообщения шифруются на вашем устройстве. Сервер никогда не видит содержимое ваших переписок.',
+  'welcome.featureE2e': 'Сквозное шифрование',
+  'welcome.featureSelfHosted': 'Self-hosted',
+  'welcome.featureNoTracking': 'Без отслеживания',
+  'welcome.licenseLink': 'Лицензия (MIT)',
+  'welcome.continue': 'Продолжить',
+
+  // [ACCOUNT PASSWORD EXPLANATIONS]
+  'login.accountPasswordExplain': 'Проверяется сервером. Используется для подтверждения вашей личности.',
+  'login.vaultPasswordExplain': 'Защищает ваши приватные ключи шифрования локально. Никогда не отправляется на сервер. Если забудете \u2014 ключи будут недоступны.',
+
+  // [SETTINGS - CHANGE ACCOUNT PASSWORD]
+  'settings.changeAccountPasswordTitle': 'Сменить пароль аккаунта',
+  'settings.changeAccountPasswordHint': 'Обновить пароль для входа в аккаунт.',
+  'settings.changeAccountPasswordAction': 'Сменить пароль',
+  'settings.changeAccountPasswordOld': 'Текущий пароль аккаунта',
+  'settings.changeAccountPasswordNew': 'Новый пароль аккаунта',
+  'settings.changeAccountPasswordConfirm': 'Подтвердите новый пароль',
+  'settings.changeAccountPasswordSuccess': 'Пароль аккаунта изменён.',
+  'settings.changeAccountPasswordMismatch': 'Новые пароли не совпадают.',
+  'settings.changeAccountPasswordMinLength': 'Новый пароль должен быть не менее 8 символов.',
+  'settings.changeAccountPasswordSame': 'Новый пароль должен отличаться от текущего.',
 } as const;
 
 export default ru;

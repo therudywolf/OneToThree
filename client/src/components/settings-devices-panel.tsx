@@ -85,7 +85,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
   }
 
   async function onRevokeAllOthers() {
-    if (!window.confirm('Terminate all other sessions? You will remain logged in on this device.')) {
+    if (!window.confirm(t('settings.devicesRevokeConfirm'))) {
       return
     }
     setBusyAction('terminate-all')
@@ -138,7 +138,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
   function handleLinkDeviceClick() {
     const blob = readVaultBlob(userId)
     if (!blob) {
-      window.alert(t('settings.noLocalVault') + ' - Please export your Vault Key first.')
+      window.alert(t('settings.noLocalVault'))
       setShowVaultExportPrompt(true)
       return
     }
@@ -165,14 +165,14 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
           onClick={handleLinkDeviceClick}
           className="w-full border border-neon-cyan/70 bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-cyan/10 active:scale-95 sm:w-auto"
         >
-          [ + {t('settings.linkDeviceCta') || 'ДОБАВИТЬ УСТРОЙСТВО'} ]
+          {t('settings.linkDeviceCta')}
         </button>
         <TerminalGlitchButton
           type="button"
           onClick={exportVault}
           className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
         >
-          [ ↓ EXPORT VAULT KEY ]
+          {t('settings.vaultBackup')}
         </TerminalGlitchButton>
         {devices.some(d => !d.revoked && d.id !== user?.device_id) && (
           <TerminalGlitchButton
@@ -181,7 +181,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
             disabled={busyAction === 'terminate-all'}
             className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap !border-neon-red !text-neon-red hover:!bg-neon-red/10 sm:flex-1"
           >
-            [ {busyAction === 'terminate-all' ? '…' : 'ЗАВЕРШИТЬ ВСЕ'} ]
+            {busyAction === 'terminate-all' ? '…' : t('settings.devicesRevoke')}
           </TerminalGlitchButton>
         )}
         {devices.some(d => d.revoked) && (
@@ -191,7 +191,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
             disabled={busyAction === 'clear-revoked'}
             className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap !border-zinc-600 !text-zinc-400 hover:!bg-zinc-800/30 sm:flex-1"
           >
-            [ {busyAction === 'clear-revoked' ? '…' : 'ОЧИСТИТЬ'} ]
+            {busyAction === 'clear-revoked' ? '…' : t('settings.digitalDenClear')}
           </TerminalGlitchButton>
         )}
       </div>
@@ -209,7 +209,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
             aria-hidden
           >
             <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90">
-              [ LOADING... ]
+              {t('common.loading')}
             </span>
           </div>
         ) : null}
@@ -255,7 +255,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                     onClick={() => void onSetMaster(d)}
                     className="shrink-0 border border-yellow-500/70 px-2 py-1 text-[9px] uppercase text-yellow-500 transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-yellow-500/10 active:scale-95 disabled:opacity-40"
                   >
-                    {busyId === d.id && busyAction === 'master' ? '…' : 'ГЛАВНОЕ'}
+                    {busyId === d.id && busyAction === 'master' ? '…' : t('settings.devicesMaster')}
                   </button>
                   <button
                     type="button"
@@ -267,7 +267,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                   </button>
                 </div>
               ) : !d.revoked && d.is_master ? (
-                <span className="text-[9px] text-yellow-500">MASTER</span>
+                <span className="text-[9px] text-yellow-500">{t('settings.devicesMaster')}</span>
               ) : !d.revoked ? (
                 <button
                   type="button"
@@ -282,7 +282,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
           </li>
         ))}
         {!loading && devices.length === 0 ? (
-          <li className="text-[10px] text-zinc-600">:: NO_ROWS</li>
+          <li className="text-[10px] text-zinc-600">{t('sidebar.noActiveRoutes')}</li>
         ) : null}
         </ul>
       </div>
@@ -294,14 +294,14 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       {showVaultExportPrompt && (
         <div className="border border-neon-red/50 bg-black/80 p-3">
           <p className="mb-2 text-[9px] text-neon-red">
-            Download your Vault Key before linking a new device:
+            {t('settings.vaultBackupHint')}
           </p>
           <button
             type="button"
             onClick={exportVault}
             className="w-full border border-neon-cyan px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
           >
-            [ ↓ EXPORT VAULT KEY ]
+            {t('settings.vaultBackup')}
           </button>
         </div>
       )}

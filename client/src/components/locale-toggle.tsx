@@ -32,13 +32,9 @@ export function LocaleToggle({ className = '' }: { className?: string }) {
     >
       <Globe className="h-3 w-3 opacity-70" />
       
-      {/* Отображаем активный сегмент модуля */}
       <span className="min-w-[1.5rem] text-center">
-        {module}
+        {module === 'ru' ? 'RU' : 'EN'}
       </span>
-
-      {/* Индикатор активности контура */}
-      <div className="h-1 w-1 bg-neon-cyan/40 shadow-[0_0_5px_rgba(0,255,255,0.2)]" />
     </button>
   )
 }

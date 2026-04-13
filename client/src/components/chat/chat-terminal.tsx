@@ -356,7 +356,7 @@ export function ChatTerminal({
               setCtxMenu(null)
             }}
           >
-            [ {t('chat.contextReply')} ]
+            {t('chat.contextReply')}
           </button>
           <button
             type="button"
@@ -369,7 +369,7 @@ export function ChatTerminal({
               setCtxMenu(null)
             }}
           >
-            [ {t('chat.contextDeleteMe')} ]
+            {t('chat.contextDeleteMe')}
           </button>
           {ctxMenu.isMine ? (
             <button
@@ -391,7 +391,7 @@ export function ChatTerminal({
                 })()
               }}
             >
-              [ {t('chat.contextDeleteEveryone')} ]
+              {t('chat.contextDeleteEveryone')}
             </button>
           ) : null}
         </div>

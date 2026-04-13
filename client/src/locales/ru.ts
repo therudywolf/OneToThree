@@ -401,6 +401,21 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'offline.banner': 'Нет подключения. Сообщения отправятся при восстановлении.',
   'chat.scrollToBottom': 'Новые сообщения',
   'chat.emptyGroupHint': 'Добавьте участников и начните общение',
+
+  // [VAULT - BIOMETRIC]
+  'vault.biometricAvailable': 'Доступна биометрическая разблокировка.',
+  'vault.unlockBiometric': 'Разблокировать биометрией',
+  'vault.usePinInstead': 'Ввести пароль вручную',
+  'vault.enableBiometric': 'Включить биометрию',
+
+  // [SETTINGS - AUTO-LOCK]
+  'settings.autoLockTitle': 'Автоблокировка',
+  'settings.autoLockHint': 'Блокировка хранилища при бездействии. Пауза во время звонков.',
+  'settings.autoLock1min': '1 минута',
+  'settings.autoLock5min': '5 минут',
+  'settings.autoLock15min': '15 минут',
+  'settings.autoLock30min': '30 минут',
+  'settings.autoLockNever': 'Никогда',
 } as const;
 
 export default ru;

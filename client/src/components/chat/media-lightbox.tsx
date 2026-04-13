@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 
@@ -29,36 +29,47 @@ export function MediaLightbox({
   const { t } = useTranslation()
   const [zoom, setZoom] = useState(1)
   const [isZoomed, setIsZoomed] = useState(false)
+  const [panX, setPanX] = useState(0)
+  const [panY, setPanY] = useState(0)
+  const dragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null)
+  const pinchRef = useRef<{ initialDistance: number; initialZoom: number } | null>(null)
+  const imageRef = useRef<HTMLImageElement | null>(null)
+
+  const resetPan = useCallback(() => {
+    setPanX(0)
+    setPanY(0)
+  }, [])
 
   // Memoize navigation callbacks to prevent stale closures in event listeners
   const navigatePrev = useCallback(() => {
-    // Find the closest previous index that has a valid URL
     for (let i = currentIndex - 1; i >= 0; i--) {
       if (media[i] && media[i].url) {
         onNavigate(i)
         setZoom(1)
         setIsZoomed(false)
+        resetPan()
         return
       }
     }
-  }, [currentIndex, media, onNavigate])
+  }, [currentIndex, media, onNavigate, resetPan])
 
   const navigateNext = useCallback(() => {
-    // Find the closest next index that has a valid URL
     for (let i = currentIndex + 1; i < media.length; i++) {
       if (media[i] && media[i].url) {
         onNavigate(i)
         setZoom(1)
         setIsZoomed(false)
+        resetPan()
         return
       }
     }
-  }, [currentIndex, media, onNavigate])
+  }, [currentIndex, media, onNavigate, resetPan])
 
   useEffect(() => {
     if (!isOpen) {
       setZoom(1)
       setIsZoomed(false)
+      resetPan()
       return
     }
 
@@ -101,19 +112,91 @@ export function MediaLightbox({
     setZoom(newZoom)
     if (newZoom <= 1) {
       setIsZoomed(false)
+      resetPan()
     }
   }
 
   const resetZoom = () => {
     setZoom(1)
     setIsZoomed(false)
+    resetPan()
   }
+
+  // Pointer handlers for drag-to-pan
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (zoom <= 1) return
+    e.preventDefault()
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startPanX: panX,
+      startPanY: panY,
+    }
+  }, [zoom, panX, panY])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current || zoom <= 1) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+    setPanX(dragRef.current.startPanX + dx / zoom)
+    setPanY(dragRef.current.startPanY + dy / zoom)
+  }, [zoom])
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null
+  }, [])
+
+  // Touch pinch-to-zoom
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      pinchRef.current = {
+        initialDistance: Math.hypot(dx, dy),
+        initialZoom: zoom,
+      }
+    }
+  }, [zoom])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchRef.current) {
+      e.preventDefault()
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const distance = Math.hypot(dx, dy)
+      const scale = distance / pinchRef.current.initialDistance
+      const newZoom = Math.min(Math.max(pinchRef.current.initialZoom * scale, 1), 3)
+      setZoom(newZoom)
+      setIsZoomed(newZoom > 1)
+      if (newZoom <= 1) resetPan()
+    }
+  }, [resetPan])
+
+  const handleTouchEnd = useCallback(() => {
+    pinchRef.current = null
+  }, [])
+
+  // Mouse wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault()
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+    setZoom((prev) => {
+      const next = Math.min(Math.max(prev * factor, 1), 3)
+      if (next <= 1) {
+        setIsZoomed(false)
+        resetPan()
+      } else {
+        setIsZoomed(true)
+      }
+      return next
+    })
+  }, [resetPan])
 
   if (!isOpen || !media[currentIndex]) return null
 
   const currentMedia = media[currentIndex]
-  
-  // Check if there are actual valid previous/next items
+
   const hasPrev = media.slice(0, currentIndex).some(m => m && !!m.url)
   const hasNext = media.slice(currentIndex + 1).some(m => m && !!m.url)
   const hasMultiple = hasPrev || hasNext
@@ -188,23 +271,36 @@ export function MediaLightbox({
       )}
 
       {/* Media content */}
-      <div 
-        className="relative flex h-full w-full items-center justify-center p-4"
-        onClick={onClose} // Clicking the dark background closes the lightbox
+      <div
+        className="relative flex h-full w-full items-center justify-center overflow-hidden p-4"
+        onClick={zoom <= 1 ? onClose : undefined}
+        onWheel={handleWheel}
       >
         {currentMedia.type === 'image' ? (
           <img
+            ref={imageRef}
             src={currentMedia.url}
             alt="Decrypted Media"
-            className="max-h-full max-w-full object-contain transition-transform duration-200"
+            className="max-h-full max-w-full object-contain select-none"
             style={{
-              transform: `scale(${zoom})`,
-              cursor: isZoomed ? 'zoom-out' : 'zoom-in',
+              transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`,
+              cursor: zoom > 1 ? (dragRef.current ? 'grabbing' : 'grab') : 'zoom-in',
+              transition: dragRef.current ? 'none' : 'transform 0.2s ease',
+              touchAction: 'none',
             }}
             onClick={(e) => {
-              e.stopPropagation();
-              isZoomed ? resetZoom() : handleZoomIn();
+              e.stopPropagation()
+              if (!dragRef.current) {
+                isZoomed ? resetZoom() : handleZoomIn()
+              }
             }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             draggable={false}
           />
         ) : (
@@ -215,7 +311,7 @@ export function MediaLightbox({
             style={{ transform: `scale(${zoom})` }}
             autoPlay={false}
             playsInline
-            onClick={(e) => e.stopPropagation()} // Prevent video click from closing modal
+            onClick={(e) => e.stopPropagation()}
           />
         )}
       </div>

@@ -206,6 +206,12 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'media.recording': 'Запись...',
   'media.maxSizeLine': 'Файл слишком большой',
   'media.errorGeneric': 'Ошибка',
+  'media.swipeHint': 'вверх — зафиксировать',
+  'media.switchToCircle': 'Переключить на кружок',
+  'media.switchToVoice': 'Переключить на голосовое',
+  'media.prevVoice': 'Предыдущее голосовое',
+  'media.nextVoice': 'Следующее голосовое',
+  'media.pendingSync': 'Отправится при подключении...',
 
   'emoji.pickerToggle': 'Эмодзи',
   'emoji.pickerAria': 'Вставить эмодзи',
@@ -299,6 +305,8 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'settings.linkDeviceCta': 'Добавить устройство',
   'settings.linkDeviceTitle': 'Привязка нового устройства',
   'settings.linkDeviceHint': 'Сканируйте с нового устройства. Код действует 5 минут.',
+  'settings.devicesReauthorize': 'Восстановить',
+  'settings.devicesReauthorizeHint': 'Введите пароль хранилища для восстановления устройства. Ему потребуется заново привязаться (QR), но оно больше не будет заблокировано.',
 
 
   'settings.languageHint': 'Выбор языка',

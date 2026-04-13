@@ -374,7 +374,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
             }`}
           >
-            {t('settings.totpSection')}
+            [ {t('settings.tabSecurity')} ]
           </button>
           <button
             type="button"
@@ -550,25 +550,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Vault Export */}
-            <div className="border border-neon-cyan/30 p-3">
-              <p className="mb-2 text-xs uppercase tracking-widest text-neon-cyan">
-                {t('settings.vaultBackup')}
-              </p>
-              <p className="mb-2 break-words text-[9px] text-zinc-500">
-                {t('settings.vaultBackupHint')}
-              </p>
-              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
-                <TerminalGlitchButton
-                  type="button"
-                  onClick={exportVault}
-                  className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
-                >
-                  {t('settings.vaultBackup')}
-                </TerminalGlitchButton>
-              </div>
             </div>
 
             {/* Device Linking Gate */}

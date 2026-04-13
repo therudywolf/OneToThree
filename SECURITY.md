@@ -1,4 +1,4 @@
-# Project 13 Security Model
+# Forest Messenger — Security Model
 
 ## Cryptographic primitives
 

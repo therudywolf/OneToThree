@@ -6,68 +6,96 @@ Self-hosted end-to-end encrypted messenger. The server stores only ciphertext �
 
 ---
 
+## Table of Contents
+
+- [Features](#features)
+- [Stack](#stack)
+- [Requirements](#requirements)
+- [Quick Deploy (5 minutes)](#quick-deploy-5-minutes)
+- [start.sh Commands](#startsh-commands)
+- [First Run Walkthrough](#first-run-walkthrough)
+- [Updating](#updating)
+- [Backup & Restore](#backup--restore)
+- [Troubleshooting](#troubleshooting)
+- [Architecture](#architecture)
+- [Security](#security)
+- [License](#license)
+
+---
+
 ## Features
 
 - **E2EE messaging** — AES-GCM-256 per message, ECDH key exchange, keys stored in browser vault
-- **Voice & video calls** — WebRTC with TURN relay, ICE fallback, connection quality monitoring
+- **Voice & video calls** — WebRTC with TURN relay, DTLS-SRTP, connection quality monitoring
 - **File sharing** — encrypted media upload to MinIO/S3, client-side decryption
 - **Groups** — encrypted group key distribution per member
 - **Multi-device** — QR-based device linking, device revocation
 - **2FA** — optional TOTP (RFC 6238)
-- **PWA** — installable, offline banner, push notifications via Web Push (VAPID)
-- **Self-hosted** — single Docker Compose stack, automatic TLS via Let's Encrypt (Caddy)
-
-**Stack:** Next.js 16 · Fastify · PostgreSQL · MinIO · WebRTC · Caddy · coturn
+- **PWA** — installable on mobile, push notifications via Web Push (VAPID)
+- **Self-hosted** — single `./start.sh` command, automatic TLS via Let's Encrypt
 
 ---
 
-## Quick Start
+## Stack
 
-### Requirements
+| Component | Technology |
+|-----------|-----------|
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
+| Backend | Fastify 5, Node.js |
+| Database | PostgreSQL (Drizzle ORM) |
+| Media storage | MinIO (S3-compatible) |
+| Reverse proxy | Caddy 2 (automatic TLS via Let's Encrypt) |
+| TURN server | coturn (WebRTC relay for NAT traversal) |
+| Orchestration | Docker Compose |
+| Cryptography | Web Crypto API — AES-GCM-256, ECDH P-256, ECDSA, PBKDF2 |
 
-- Linux VPS (4+ vCPU, 4+ GB RAM recommended)
-- Docker + Docker Compose v2
-- Domain with DNS pointing to the server
-- Ports **80**, **443**, **3478/tcp+udp**, **49152–65535/udp** open
+---
 
-### 1. Clone and configure
+## Requirements
+
+| Resource | Minimum |
+|----------|---------|
+| OS | Linux (Ubuntu 22.04+ recommended) |
+| CPU | 2 vCPU (4+ recommended) |
+| RAM | 4 GB |
+| Disk | 20 GB SSD |
+| Docker | Docker Engine 24+ with Compose v2 |
+| Domain | 1 domain with 4 DNS records (see below) |
+| Ports | 80/tcp, 443/tcp, 3478/tcp+udp, 5349/tcp, 49152–65535/udp |
+
+---
+
+## Quick Deploy (5 minutes)
+
+### 1. Clone the repository
 
 ```bash
-git clone -b ver2 https://github.com/therudywolf/OneToThree.git
+git clone https://github.com/therudywolf/OneToThree.git
 cd OneToThree
 ```
 
-**No manual `.env.prod` editing needed.** On first run, `./start.sh` will detect that secrets haven't been initialized and launch an interactive setup that:
-1. Generates all passwords and secrets (DB, MinIO, JWT, TURN, VAPID)
-2. Asks for your domain, email, and server IP
-3. Displays credentials **once** (save them!)
-4. Stores secrets in `./secrets/` (chmod 700, never committed to git)
+### 2. Set up DNS
 
-Secrets are injected into containers via [Docker secrets](https://docs.docker.com/compose/how-tos/use-secrets/) (`/run/secrets/*`), so no plaintext `.env.prod` with passwords is needed on disk.
+Create four A records pointing to your server IP:
 
-> **Existing deployments:** If you already have a working `.env.prod`, the system is fully backward-compatible. Docker secrets are preferred when available, but the API falls back to env vars seamlessly.
+| Record | Type | Value | Cloudflare proxy |
+|--------|------|-------|------------------|
+| `example.com` | A | `YOUR_SERVER_IP` | Orange cloud (proxied) OK |
+| `api.example.com` | A | `YOUR_SERVER_IP` | Orange cloud (proxied) OK |
+| `s3.example.com` | A | `YOUR_SERVER_IP` | Orange cloud (proxied) OK |
+| `turn.example.com` | A | `YOUR_SERVER_IP` | **Gray cloud (DNS only) — REQUIRED** |
 
-### 2. Configure DNS
-
-Point DNS records to your server IP:
-
-| Record | Type | Value |
-|---|---|---|
-| `your-domain.com` | A | Server IP |
-| `api.your-domain.com` | A | Server IP |
-| `s3.your-domain.com` | A | Server IP |
-| `turn.your-domain.com` | A | Server IP ← **DNS only, no proxy** |
-
-> **Cloudflare users:** `turn.*` must be set to **"DNS only" (gray cloud)**. The orange proxy blocks UDP traffic that WebRTC calls need. The other records can stay proxied.
+> **Important:** The `turn.*` record **must not** be proxied. Cloudflare's proxy blocks UDP traffic required for WebRTC calls. All other records can be proxied.
 
 ### 3. Open firewall ports
 
 ```bash
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw allow 3478/tcp
-ufw allow 3478/udp
-ufw allow 49152:65535/udp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 3478/tcp
+sudo ufw allow 3478/udp
+sudo ufw allow 5349/tcp
+sudo ufw allow 49152:65535/udp
 ```
 
 ### 4. Launch
@@ -77,135 +105,189 @@ chmod +x ./start.sh
 ./start.sh
 ```
 
-On **first run**, the script will:
-1. Run `generate-secrets.sh` — generates all secrets, prompts for domain/IP/email
-2. Display credentials **once** (save them!)
-3. Sync secrets into `.env.prod` for services that need env vars
-4. Build and start all containers
-5. Wait for health checks to pass
-6. Show the stack status
-
-On **subsequent runs**, secrets are read from `./secrets/` and containers start directly.
+On **first run**, the script automatically:
+1. Runs `generate-secrets.sh` — generates all passwords and secrets (DB, MinIO, JWT, TURN, VAPID)
+2. Asks for your domain, ACME email, server IP, and VAPID contact email
+3. Displays all credentials **once** — save them immediately!
+4. Stores secrets in `./secrets/` (chmod 700, never committed to git)
+5. Syncs secrets into `.env.prod` for backward compatibility
+6. Builds and starts all 7 containers
+7. Waits for health checks to pass
 
 TLS certificates are obtained automatically from Let's Encrypt. First run takes 2–5 minutes.
 
-> To regenerate all secrets: delete `./secrets/` and re-run `./start.sh`.
+### 5. Save your credentials
+
+The credentials are shown **only once** during the first run. Copy them to a secure password manager immediately. If you lose them, delete `./secrets/` and re-run `./start.sh` to regenerate (existing data will be inaccessible with new DB passwords).
+
+### 6. Register and become admin
+
+1. Open `https://your-domain.com` in a browser
+2. Register a new account
+3. Promote yourself to admin:
+
+```bash
+docker exec -it forestmessenger-db-1 psql -U forest -d forest \
+  -c "UPDATE users SET role = 'admin' WHERE username = 'yourusername';"
+```
+
+4. Open `/admin` while logged in
 
 ---
 
-## Managing the Stack
+## start.sh Commands
 
-```bash
-./start.sh              # Start / rebuild
-./start.sh stop         # Stop all containers
-./start.sh restart      # Restart without rebuilding
-./start.sh logs         # Live logs (all services)
-./start.sh status       # Container status
-./start.sh update       # git pull + rebuild (data preserved)
-./start.sh backup       # Dump database → backups/db_TIMESTAMP.sql.gz
-```
+| Command | Description |
+|---------|-------------|
+| `./start.sh` | Start the stack (builds images if needed) |
+| `./start.sh stop` | Stop all containers |
+| `./start.sh restart` | Restart containers without rebuilding |
+| `./start.sh logs` | Tail live logs from all services |
+| `./start.sh status` | Show container status |
+| `./start.sh update` | Pull latest code, rebuild images, restart (data preserved) |
+| `./start.sh backup` | Dump database to `backups/db_TIMESTAMP.sql.gz` |
 
-### Update to a new version
+---
+
+## First Run Walkthrough
+
+When you run `./start.sh` for the first time, here is what happens step by step:
+
+1. **Dependency check** — verifies Docker, Docker Compose, openssl, and curl are installed
+2. **Volume check** — reports whether existing data volumes are found (they won't exist on first run)
+3. **Secret generation** — launches `generate-secrets.sh`:
+   - Generates: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_PASSWORD`
+   - Prompts you for: domain, ACME email, TURN external IP, VAPID contact email
+   - Generates VAPID key pair (via Docker — requires pulling `node:20-alpine`)
+   - Writes all secrets to `./secrets/` as individual files (Docker secrets format)
+   - Displays credentials in a bordered box — **save them now**
+4. **Env file sync** — creates `.env.prod` from template and fills in values from `./secrets/`
+5. **Validation** — checks all required fields are populated
+6. **TURN check** — warns if TURN and API share the same hostname (Cloudflare conflict)
+7. **Build & start** — runs `docker compose up -d --build`
+8. **Health check** — waits for PostgreSQL, MinIO, API, and Next.js to report healthy
+9. **Status** — prints container status, site URL, and helpful commands
+
+> For a detailed beginner guide including VPS setup and Docker installation, see [FIRST_START.md](./FIRST_START.md).
+
+---
+
+## Updating
 
 ```bash
 ./start.sh update
 ```
 
-This runs `git pull` and rebuilds images. **Databases, files, and TLS certificates are preserved** — they live in Docker named volumes and are never touched by `--build`.
+This command:
+1. Pulls the latest code from git (`git pull origin master`)
+2. Rebuilds Docker images
+3. Restarts containers with `--remove-orphans`
+4. Database migrations run automatically via the `db-migrate` container on startup
 
-> Never run `docker compose down -v` unless you want to erase all data.
+**Your data is safe.** Databases, media files, and TLS certificates live in Docker named volumes (`pgdata`, `minio_data`, `caddy_data`) and are never touched by image rebuilds.
 
----
+> **Warning:** Never run `docker compose down -v` — the `-v` flag deletes all volumes and data.
 
-## First Admin
-
-After the stack is running, register through the normal signup flow, then promote yourself to admin:
-
-```bash
-./start.sh status   # confirm stack is healthy first
-
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec db \
-  psql -U forest -d forest \
-  -c "UPDATE users SET role = 'admin' WHERE username = 'your_handle';"
-```
-
-Then open `/admin` while logged in.
+For detailed update procedures, rollback instructions, and pre-update checklists, see [UPDATE.md](./UPDATE.md).
 
 ---
 
 ## Backup & Restore
 
-**Create a backup:**
+### Create a backup
+
 ```bash
 ./start.sh backup
-# Saves to: backups/db_YYYYMMDD_HHMMSS.sql.gz
 ```
 
-**Restore from backup:**
+This creates a compressed PostgreSQL dump at `backups/db_YYYYMMDD_HHMMSS.sql.gz`.
+
+### Restore from backup
+
 ```bash
 gunzip -c backups/db_20260101_120000.sql.gz | \
   docker compose -f docker-compose.prod.yml --env-file .env.prod \
   exec -T db psql -U forest -d forest
 ```
 
----
-
-## Caddyfile (Custom Domains)
-
-Edit `Caddyfile` to replace `onetothree.ru` with your domain, then rebuild:
-
-```bash
-./start.sh restart
-```
+> **Note:** Media files are stored in the MinIO volume separately. A full backup strategy should also include the MinIO data volume. You can export it with:
+> ```bash
+> docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
+>   alpine tar czf /backup/minio_YYYYMMDD.tar.gz -C /data .
+> ```
 
 ---
 
 ## Troubleshooting
 
 | Symptom | Fix |
-|---|---|
-| Caddy fails to get certificate | Confirm DNS resolves to this server, ports 80/443 are open. Check: `./start.sh logs` → filter caddy |
-| WebRTC calls don't work | Make sure `turn.*` DNS is **not** proxied by Cloudflare. Check `TURN_EXTERNAL_IP` is correct |
-| Login redirect loop `/login` | Set `COOKIE_DOMAIN=.your-domain.com` in `.env.prod`, rebuild api |
-| `relation "users" does not exist` | Migration failed — check: `docker compose logs db-migrate` |
-| Media shows "File expired" | Object was purged by retention policy or peer must re-send |
-| Wrong IPs in logs | Ensure `TRUST_PROXY=1` in `.env.prod` |
+|---------|-----|
+| Caddy fails to get TLS certificate | Confirm DNS A records resolve to this server. Ensure ports 80 and 443 are open. Check logs: `./start.sh logs` and look for Caddy errors. |
+| WebRTC calls don't connect | Ensure `turn.*` DNS is set to **DNS only** (gray cloud) in Cloudflare. Verify `TURN_EXTERNAL_IP` matches your server's public IP (`curl -s ifconfig.me`). Check that ports 3478 and 49152–65535/udp are open. |
+| Login redirect loop on `/login` | Verify `COOKIE_DOMAIN` is set to `.your-domain.com` (with leading dot) in `.env.prod`. Rebuild the API container after changes. |
+| `relation "users" does not exist` | Database migration failed. Check: `docker compose -f docker-compose.prod.yml logs db-migrate` |
+| Media shows "File expired" | The object was purged by the retention policy, or the peer needs to re-send the file. |
+| Wrong client IPs in logs | Set `TRUST_PROXY=1` in `.env.prod` so Fastify reads the `X-Forwarded-For` header from Caddy. |
+| Containers keep restarting | Check resource limits. The stack needs at least 4 GB RAM. Run `./start.sh logs` to find the failing service. |
+| `./start.sh` says secrets not initialized | Delete `./secrets/` and re-run `./start.sh` to regenerate all secrets. |
 
 ---
 
-## Security Model
+## Architecture
 
-- **Private keys never leave the browser.** The vault is encrypted with PBKDF2 + AES-GCM locally.
-- **Server stores only ciphertext.** Messages, media, and group keys are opaque blobs.
-- **Auth via ECDSA challenge-response.** No passwords sent to the server.
-- **Media encrypted before upload** to MinIO.
-- **WebRTC signaling is relayed as opaque payloads** — server does not parse SDP.
-- **Secrets via Docker secrets.** Credentials are mounted at `/run/secrets/*` — no plaintext passwords in environment variables or on-disk `.env` files at runtime.
+The stack consists of 7 Docker containers:
 
-See [SECURITY.md](./SECURITY.md) for the full threat model and [ARCHITECTURE.md](./ARCHITECTURE.md) for data flow details.
+```
+                    ┌─────────┐
+                    │  Caddy   │ :80, :443
+                    │ (reverse │ automatic TLS
+                    │  proxy)  │
+                    └────┬─────┘
+           ┌─────────────┼─────────────┐
+           │             │             │
+      ┌────▼───┐   ┌────▼───┐   ┌────▼───┐
+      │ Next.js│   │ Fastify│   │  MinIO  │
+      │  :3000 │   │  :8080 │   │  :9000  │
+      └────────┘   └───┬────┘   └─────────┘
+                       │
+                  ┌────▼────┐
+                  │ Postgres│
+                  │  :5432  │
+                  └─────────┘
+
+      ┌──────────┐
+      │  coturn   │ :3478 (host network)
+      │ TURN/STUN │ :49152–65535/udp
+      └──────────┘
+```
+
+- **Caddy** — reverse proxy, automatic HTTPS certificates from Let's Encrypt
+- **Next.js** — frontend PWA (SSR, static assets, service worker)
+- **Fastify** — API server, WebSocket relay, push notification dispatch
+- **PostgreSQL** — user accounts, chat metadata, encrypted message storage
+- **MinIO** — S3-compatible object storage for encrypted media
+- **db-migrate** — one-shot container that runs Drizzle ORM migrations on startup
+- **coturn** — TURN/STUN server for WebRTC NAT traversal (host networking for UDP)
+
+For full architecture details, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
-## Environment Reference
+## Security
 
-Full reference: [`.env.prod.example`](./.env.prod.example)
+Forest Messenger uses a **zero-trust server model**:
 
-| Variable | Auto-generated | Required |
-|---|---|---|
-| `POSTGRES_PASSWORD` | No | Yes |
-| `MINIO_ROOT_PASSWORD` | No | Yes |
-| `CORS_ORIGIN` | No | Yes |
-| `ACME_EMAIL` | No | Yes |
-| `TURN_EXTERNAL_IP` | No | Yes |
-| `TURN_PASSWORD` | No | Yes |
-| `JWT_SECRET` | Yes | — |
-| `WEBHOOK_SECRET` | Yes | — |
-| `VAPID_PUBLIC_KEY` | Yes | — |
-| `VAPID_PRIVATE_KEY` | Yes | — |
-| `DATABASE_URL` | Yes (from POSTGRES_*) | — |
+- **Private keys never leave the browser.** The key vault is encrypted locally with PBKDF2 (600k iterations) + AES-GCM-256.
+- **Server stores only ciphertext.** Messages, media, and group keys are opaque encrypted blobs.
+- **Authentication via ECDSA challenge-response.** No passwords are ever sent to the server.
+- **Media is encrypted before upload** to MinIO with per-file unique keys.
+- **WebRTC signaling is relayed as opaque payloads** — the server does not parse SDP.
+- **Infrastructure secrets use Docker secrets** — credentials are mounted at `/run/secrets/*`, not stored as plaintext environment variables.
+
+For the full threat model, cryptographic details, and security audit findings, see [SECURITY.md](./SECURITY.md).
 
 ---
 
-## Contact
+## License
 
-[Telegram](https://t.me/rudy_wolf) · [GitHub](https://github.com/therudywolf)
+MIT

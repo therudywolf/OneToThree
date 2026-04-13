@@ -19,9 +19,11 @@ services:
     cpus: '1.0'
     mem_limit: 512m
     mem_reservation: 128m
+    secrets:
+      - postgres_password
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-forest}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: ${POSTGRES_DB:-forest}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -54,9 +56,11 @@ services:
     mem_limit: 512m
     mem_reservation: 128m
     command: server /data --console-address ':9001'
+    secrets:
+      - minio_root_password
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env.prod}
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
     volumes:
       - minio_data:/data
     networks:
@@ -82,8 +86,11 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     cpu_shares: 256
+    secrets:
+      - postgres_password
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     depends_on:
       db:
         condition: service_healthy
@@ -112,6 +119,12 @@ services:
     mem_reservation: 256m
     expose:
       - '8080'
+    secrets:
+      - jwt_secret
+      - webhook_secret
+      - postgres_password
+      - minio_root_password
+      - turn_password
     env_file:
       - .env.prod
     environment:
@@ -122,6 +135,11 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
       CORS_ORIGIN: ${CORS_ORIGIN:-https://onetothree.ru}
       MINIO_ENDPOINT: http://minio:9000
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      WEBHOOK_SECRET_FILE: /run/secrets/webhook_secret
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      TURN_PASSWORD_FILE: /run/secrets/turn_password
     depends_on:
       db:
         condition: service_healthy
@@ -254,6 +272,18 @@ services:
       - 'api.onetothree.ru:host-gateway'
       - 's3.onetothree.ru:host-gateway'
       - 'turn.onetothree.ru:host-gateway'
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  minio_root_password:
+    file: ./secrets/minio_root_password
+  jwt_secret:
+    file: ./secrets/jwt_secret
+  webhook_secret:
+    file: ./secrets/webhook_secret
+  turn_password:
+    file: ./secrets/turn_password
 
 volumes:
   pgdata:

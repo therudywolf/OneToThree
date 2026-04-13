@@ -182,6 +182,30 @@ check_volume "caddy_data"  "TLS сертификаты"
 check_volume "caddy_config" "Caddy config"
 
 # =============================================================================
+# DOCKER SECRETS — генерация при первом запуске
+# =============================================================================
+SECRETS_DIR="./secrets"
+SECRETS_DONE="$SECRETS_DIR/.initialized"
+
+if [[ ! -f "$SECRETS_DONE" ]]; then
+  sep
+  log "Секреты не инициализированы. Запускаю генерацию..."
+  echo ""
+  if [[ -x "./generate-secrets.sh" ]]; then
+    ./generate-secrets.sh
+  else
+    chmod +x ./generate-secrets.sh 2>/dev/null || true
+    bash ./generate-secrets.sh
+  fi
+  if [[ ! -f "$SECRETS_DONE" ]]; then
+    die "Генерация секретов не завершена. Проверьте generate-secrets.sh."
+  fi
+  ok "Docker secrets готовы."
+else
+  ok "Docker secrets уже инициализированы ($SECRETS_DIR/)."
+fi
+
+# =============================================================================
 # ENV ФАЙЛ — создать из шаблона если нет
 # =============================================================================
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -204,6 +228,51 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo -e "  Остальное (JWT_SECRET, WEBHOOK_SECRET, VAPID ключи) ${GRN}генерируется автоматически${NC}."
   echo ""
   read -r -p "  Нажмите Enter когда заполнили .env.prod (или Ctrl+C для отмены)..." || true
+fi
+
+# =============================================================================
+# СИНХРОНИЗАЦИЯ СЕКРЕТОВ В .env.prod ИЗ ./secrets/
+# =============================================================================
+# Если Docker secrets инициализированы, автозаполняем .env.prod для backward compat
+# (coturn, web build args, and other services that still read from env file).
+if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
+  sync_secret_to_env() {
+    local secret_file="$1" env_key="$2"
+    if [[ -f "$SECRETS_DIR/$secret_file" ]]; then
+      local val
+      val=$(cat "$SECRETS_DIR/$secret_file")
+      local current
+      current=$(val_for_key "$env_key")
+      if is_placeholder "$current"; then
+        update_key "$env_key" "$val"
+        ok "${env_key} синхронизирован из secrets."
+      fi
+    fi
+  }
+
+  sync_secret_to_env "postgres_password"    "POSTGRES_PASSWORD"
+  sync_secret_to_env "minio_root_password"  "MINIO_ROOT_PASSWORD"
+  sync_secret_to_env "jwt_secret"           "JWT_SECRET"
+  sync_secret_to_env "webhook_secret"       "WEBHOOK_SECRET"
+  sync_secret_to_env "turn_password"        "TURN_PASSWORD"
+  sync_secret_to_env "turn_password"        "NEXT_PUBLIC_TURN_PASSWORD"
+  sync_secret_to_env "cors_origin"          "CORS_ORIGIN"
+  sync_secret_to_env "acme_email"           "ACME_EMAIL"
+  sync_secret_to_env "turn_external_ip"     "TURN_EXTERNAL_IP"
+  sync_secret_to_env "vapid_subject"        "VAPID_SUBJECT"
+  if [[ -f "$SECRETS_DIR/domain" ]]; then
+    DOMAIN_VAL=$(cat "$SECRETS_DIR/domain")
+    current_api=$(val_for_key NEXT_PUBLIC_API_URL)
+    if is_placeholder "$current_api" || [[ -z "$current_api" ]]; then
+      update_key NEXT_PUBLIC_API_URL "https://api.${DOMAIN_VAL}"
+      update_key NEXT_PUBLIC_WS_ORIGIN "https://api.${DOMAIN_VAL}"
+      update_key COOKIE_DOMAIN ".${DOMAIN_VAL}"
+      update_key MINIO_PUBLIC_URL "https://s3.${DOMAIN_VAL}"
+      update_key MINIO_CORS_ORIGINS "https://${DOMAIN_VAL},https://www.${DOMAIN_VAL}"
+      update_key NEXT_PUBLIC_TURN_URL "turn:turn.${DOMAIN_VAL}:3478"
+      ok "Доменные переменные синхронизированы для ${DOMAIN_VAL}."
+    fi
+  fi
 fi
 
 # =============================================================================

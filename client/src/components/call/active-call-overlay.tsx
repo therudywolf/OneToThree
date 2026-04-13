@@ -14,6 +14,7 @@ import {
   Grid3X3,
   Focus,
   Zap,
+  WifiOff,
 } from 'lucide-react'
 import { applyPreferredAudioOutput, loadMediaPrefs, saveMediaPrefs } from '@/lib/media-devices'
 import { isAndroidMobile } from '@/lib/android'
@@ -227,6 +228,8 @@ export function ActiveCallOverlay({
   const localStream = useCallStore((s) => s.localStream)
   const remoteStreams = useCallStore((s) => s.remoteStreams)
   const remotePeerMedia = useCallStore((s) => s.remotePeerMedia)
+  const isReconnecting = useCallStore((s) => s.isReconnecting)
+  const connectionQuality = useCallStore((s) => s.connectionQuality)
 
   const [tick, setTick] = useState(0)
   const [elapsed, setElapsed] = useState(0)
@@ -306,9 +309,23 @@ export function ActiveCallOverlay({
               SYS.LINK // <span className="text-white">NODES: {tileCount}</span>
             </p>
           </div>
-          <p className="text-xs text-neon-cyan/70 tracking-wider">
-            [{formatDuration(elapsed)}]
-          </p>
+          <div className="flex items-center gap-3">
+            {isReconnecting && (
+              <span className="flex items-center gap-1.5 border border-amber-500/50 bg-amber-950/50 px-2 py-0.5 animate-pulse">
+                <RefreshCw className="h-3 w-3 text-amber-400 animate-spin" />
+                <span className="font-mono text-[9px] uppercase tracking-wider text-amber-400">RECONNECTING</span>
+              </span>
+            )}
+            {!isReconnecting && connectionQuality?.poor && (
+              <span className="flex items-center gap-1.5 border border-orange-500/50 bg-orange-950/50 px-2 py-0.5">
+                <WifiOff className="h-3 w-3 text-orange-400" />
+                <span className="font-mono text-[9px] uppercase tracking-wider text-orange-400">POOR_LINK</span>
+              </span>
+            )}
+            <p className="text-xs text-neon-cyan/70 tracking-wider">
+              [{formatDuration(elapsed)}]
+            </p>
+          </div>
         </div>
 
         {/* STREAMS CONTAINER */}

@@ -18,6 +18,13 @@ export type NodeMediaState = {
   cameraOff: boolean 
 }
 
+/** Connection quality stats from RTCPeerConnection getStats(). */
+export type ConnectionQuality = {
+  rtt: number | null
+  outgoingBitrate: number | null
+  poor: boolean
+}
+
 export type CallProtocolState = {
   // [FEED_LAYER]
   localFeed: MediaStream | null
@@ -29,6 +36,8 @@ export type CallProtocolState = {
 
   // [STATUS_LAYER]
   isLinkActive: boolean
+  isReconnecting: boolean
+  connectionQuality: ConnectionQuality | null
   inboundRequest: InboundLinkRequest | null
 
   // [ACTIONS]
@@ -41,6 +50,8 @@ export type CallProtocolState = {
 
   setInboundRequest: (request: InboundLinkRequest | null) => void
   setLinkStatus: (active: boolean) => void
+  setReconnecting: (value: boolean) => void
+  setConnectionQuality: (quality: ConnectionQuality | null) => void
 
   registerSignalLink: (peerId: string, pc: RTCPeerConnection) => void
   severSignalLink: (peerId: string) => void
@@ -86,12 +97,14 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     set((state) => { const { [peerId]: _, ...rest } = state.nodeHints; return { nodeHints: rest } })
   const setInboundRequest = (request: InboundLinkRequest | null) => set({ inboundRequest: request })
   const setLinkStatus = (active: boolean) => set({ isLinkActive: active })
+  const setReconnecting = (value: boolean) => set({ isReconnecting: value })
+  const setConnectionQuality = (quality: ConnectionQuality | null) => set({ connectionQuality: quality })
   const registerSignalLink = (peerId: string, pc: RTCPeerConnection) =>
     set((state) => ({ signalLinks: { ...state.signalLinks, [peerId]: pc } }))
   const severSignalLink = (peerId: string) =>
     set((state) => { const { [peerId]: _, ...rest } = state.signalLinks; return { signalLinks: rest } })
   const resetProtocol = () =>
-    set({ localFeed: null, remoteFeeds: {}, nodeHints: {}, signalLinks: {}, isLinkActive: false, inboundRequest: null })
+    set({ localFeed: null, remoteFeeds: {}, nodeHints: {}, signalLinks: {}, isLinkActive: false, isReconnecting: false, connectionQuality: null, inboundRequest: null })
 
   return {
     localFeed: null,
@@ -99,6 +112,8 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     nodeHints: {},
     signalLinks: {},
     isLinkActive: false,
+    isReconnecting: false,
+    connectionQuality: null,
     inboundRequest: null,
 
     setLocalFeed,
@@ -108,6 +123,8 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     purgeNodeHint,
     setInboundRequest,
     setLinkStatus,
+    setReconnecting,
+    setConnectionQuality,
     registerSignalLink,
     severSignalLink,
     resetProtocol,

@@ -331,10 +331,15 @@ export function LoginForm() {
               )}
             </div>
 
-            {mode === 'GENESIS' && (
-              <div className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
+            {mode === 'GENESIS' && pin.length > 0 && pin.length < 8 && (
+              <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
                 <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
-              </div>
+              </p>
+            )}
+            {mode === 'GENESIS' && vaultPin.length > 0 && vaultPin.length < 8 && (
+              <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
+                <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
+              </p>
             )}
 
             {errorLog && (

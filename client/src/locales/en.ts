@@ -401,6 +401,21 @@ The administration reserves the right to remove any account without warning.`,
   'offline.banner': 'No connection. Messages will be sent when reconnected.',
   'chat.scrollToBottom': 'New messages',
   'chat.emptyGroupHint': 'Add members and start chatting',
+
+  // [VAULT - BIOMETRIC]
+  'vault.biometricAvailable': 'Biometric unlock available.',
+  'vault.unlockBiometric': 'Unlock with biometrics',
+  'vault.usePinInstead': 'Use password instead',
+  'vault.enableBiometric': 'Enable biometric unlock',
+
+  // [SETTINGS - AUTO-LOCK]
+  'settings.autoLockTitle': 'Auto-Lock',
+  'settings.autoLockHint': 'Lock vault after inactivity. Paused during calls.',
+  'settings.autoLock1min': '1 minute',
+  'settings.autoLock5min': '5 minutes',
+  'settings.autoLock15min': '15 minutes',
+  'settings.autoLock30min': '30 minutes',
+  'settings.autoLockNever': 'Never',
 } as const;
 
 export default en;

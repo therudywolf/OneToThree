@@ -9,6 +9,7 @@ import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
 import { useChatStore } from '@/store/chatStore'
+import { useCallStore } from '@/store/callStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
 import { useCryptoVault } from '@/hooks/use-crypto-vault'
 import { useSendMessage } from '@/hooks/use-send-message'
@@ -39,6 +40,9 @@ import { PushOnboardingBanner } from '@/components/push-onboarding-banner'
 import { InviteChatLinkEffect } from '@/components/chat/invite-chat-link-effect'
 import { useTranslation } from '@/hooks/use-translation'
 import { usePhantomPush } from '@/hooks/use-phantom-push'
+import { useAutoLock } from '@/hooks/use-auto-lock'
+import { useCallPwa } from '@/hooks/use-call-pwa'
+import { useAppBadge } from '@/hooks/use-app-badge'
 import { MEDIA_PERMISSION_DENIED_CODE } from '@/lib/media-limits'
 
 const VaultModal = dynamic(
@@ -99,6 +103,8 @@ export function ChatApp({
     if (typeof window === 'undefined') return false
     return !localStorage.getItem(`p13:onboarded:${userId}`)
   })
+  useAutoLock()
+  useAppBadge(userId)
   const vaultState = useCryptoVault(userId, user?.username ?? username)
   const { chats, reload } = useChats(userId)
   usePresenceSync(userId, chats)
@@ -126,6 +132,16 @@ export function ChatApp({
     toggleScreenShare,
     setQuality,
   } = useWebRTC(userId)
+
+  // Call-related PWA enhancements: MediaSession, Wake Lock, Orientation Lock
+  const callLocalStream = useCallStore((s) => s.localStream)
+  const callIsVideo = (callLocalStream?.getVideoTracks().length ?? 0) > 0
+  useCallPwa({
+    peerUsername: peerIdentity?.username ?? null,
+    onEndCall: endCall,
+    onToggleMute: toggleMuteMic,
+    isVideo: callIsVideo,
+  })
 
   useLayoutEffect(() => {
     setUserId(userId)

@@ -504,6 +504,7 @@ export function ChatApp({
           username={peerIdentity.username}
           avatarKey={peerAvatarKey}
           onClose={() => setHeaderProfileOpen(false)}
+          onMessage={() => setHeaderProfileOpen(false)}
         />
       ) : null}
       <header className="chat-header-compact flex shrink-0 flex-col gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-2 md:px-3 md:py-2">

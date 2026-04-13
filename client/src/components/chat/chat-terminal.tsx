@@ -24,7 +24,8 @@ import { MessageStatus } from '@/components/chat/message-status'
 import { MessageReactions } from '@/components/chat/message-reactions'
 import { MessageActions, QuickReactBar } from '@/components/chat/message-actions'
 import { UserAvatar } from '@/components/user-avatar'
-import type { ApiChatRow, ChatMemberRole } from '@/lib/api/chats'
+import { createDirectE2EChat, fetchChatsList, type ApiChatRow, type ChatMemberRole } from '@/lib/api/chats'
+import { canonicalUserId } from '@/lib/user-id'
 import { useReadReceipts } from '@/hooks/use-read-receipts'
 import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
@@ -992,6 +993,22 @@ export function ChatTerminal({
           username={profileTarget.username}
           avatarKey={profileTarget.avatarKey}
           onClose={() => setProfileTarget(null)}
+          onMessage={async () => {
+            try {
+              const chats = await fetchChatsList()
+              const existing = chats.find(
+                c => !c.is_group && c.member_ids.some(id => canonicalUserId(id) === canonicalUserId(profileTarget.userId))
+              )
+              if (existing) {
+                useChatStore.getState().setActiveChatId(existing.id)
+              } else {
+                const chat = await createDirectE2EChat(userId, profileTarget.userId)
+                useChatStore.getState().setActiveChatId(chat.id)
+              }
+            } catch (err) {
+              console.error('[SYS.CHAT] Failed to open DM:', err)
+            }
+          }}
         />
       ) : null}
     </div>

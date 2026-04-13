@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { devices, loginEvents, messages, userBlocks, users } from '../db/schema.js'
+import { devices, loginEvents, messages, pushSubscriptions, userBlocks, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { setPendingAvatarKey, takePendingAvatarKey } from '../lib/avatar-pending.js'
 import {
@@ -1043,6 +1043,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // 5. Delete all user data: devices, push subs, blocks, then the user row
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id))
     await db.delete(devices).where(eq(devices.userId, user.id))
     await db.delete(userBlocks).where(eq(userBlocks.blockerId, user.id))
     await db.delete(userBlocks).where(eq(userBlocks.blockedId, user.id))

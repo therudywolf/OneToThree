@@ -45,7 +45,7 @@ export async function decodeTransmissionRow(
         packet.encrypted_content!,
         packet.iv!
       )
-    } catch (err) {
+    } catch {
       // [!] FAULT :: Пакет не может быть дешифрован текущим ключом
       console.error('>> [SYS.CRYPTO] DECODE_FAULT:', packet.id)
       return null

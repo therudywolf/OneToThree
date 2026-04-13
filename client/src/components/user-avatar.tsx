@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { getCachedAvatarUrl, invalidateAvatarCache } from '@/lib/avatar-cache'
+import { getCachedAvatarUrl } from '@/lib/avatar-cache'
 
 function initialsFrom(name: string): string {
   const t = name.trim()
@@ -64,7 +64,6 @@ export function UserAvatar({
         className={`inline-flex shrink-0 overflow-hidden rounded-full border border-neon-cyan/70 shadow-[0_0_8px_rgba(0,255,255,0.15)] ${className}`}
         style={{ width: px, height: px }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={url} alt="" className="h-full w-full object-cover" />
       </span>
     )

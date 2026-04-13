@@ -19,7 +19,7 @@ import {
   ChevronDown,
   MonitorOff,
 } from 'lucide-react'
-import { applyPreferredAudioOutput, loadMediaPrefs } from '@/lib/media-devices'
+import { applyPreferredAudioOutput } from '@/lib/media-devices'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { useCallStore } from '@/store/callStore'
@@ -150,7 +150,7 @@ function PeerTile({
   }
 
   const isRemote = !label.includes('LOCAL')
-  const showWarnings = isRemote && (remoteMicMuted || remoteCamOff)
+  const _showWarnings = isRemote && (remoteMicMuted || remoteCamOff)
 
   const containerClass = layout === 'grid'
     ? 'relative w-full h-full bg-black border border-neutral-900 group'
@@ -355,7 +355,7 @@ export function ActiveCallOverlay({
     })
   }
 
-  function cycleQuality() {
+  function _cycleQuality() {
     const idx = QUALITY_OPTIONS.indexOf(qualityLevel)
     const next = QUALITY_OPTIONS[(idx + 1) % QUALITY_OPTIONS.length]
     onSetQuality(next)

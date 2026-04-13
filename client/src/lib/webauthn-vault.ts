@@ -17,11 +17,12 @@ import { emitHapticPulse } from '@/lib/vibrate'
 const BIO_META_DB = 'p13-biometric-meta'
 const BIO_META_VER = 1
 
-type BiometricMeta = {
+interface _BiometricMeta {
   node_id: string
   credentialIdB64: string
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let registry: Promise<IDBPDatabase<any>> | null = null
 
 /** [REGISTRY_OPEN] :: Инициализация локального реестра биометрических меток */
@@ -117,6 +118,7 @@ export async function bindBiometricAuthority(
           userVerification: 'required',
           residentKey: 'preferred',
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         extensions: { largeBlob: { support: 'preferred' } } as any,
       },
     })) as PublicKeyCredential
@@ -129,12 +131,14 @@ export async function bindBiometricAuthority(
         challenge: crypto.getRandomValues(new Uint8Array(32)),
         allowCredentials: [{ id: cred.rawId, type: 'public-key', transports: ['internal'] }],
         userVerification: 'required',
-        extensions: { 
-          largeBlob: { write: new TextEncoder().encode(ephemeralPin) } 
+        extensions: {
+          largeBlob: { write: new TextEncoder().encode(ephemeralPin) }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any,
       },
     })) as PublicKeyCredential
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const extResult = assertion.getClientExtensionResults() as any
     if (extResult.largeBlob?.written === false) {
       throw new Error('LARGE_BLOB_INJECTION_FAILED')
@@ -176,10 +180,12 @@ export async function interceptBiometricSignal(nodeId: string): Promise<string> 
         transports: ['internal'],
       }],
       userVerification: 'required',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       extensions: { largeBlob: { read: true } } as any,
     },
   })) as PublicKeyCredential
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const extResult = assertion.getClientExtensionResults() as any
   const blobBuf = extResult.largeBlob?.blob
   if (!blobBuf) throw new Error('LARGE_BLOB_READ_FAULT')

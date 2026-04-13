@@ -28,7 +28,7 @@ export function MediaLightbox({
   onNavigate,
   onLoadMedia,
 }: MediaLightboxProps) {
-  const { t } = useTranslation()
+  const { t: _t } = useTranslation()
   const [zoom, setZoom] = useState(1)
   const [isZoomed, setIsZoomed] = useState(false)
   const [panX, setPanX] = useState(0)

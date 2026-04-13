@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/auth/auth-provider'
 import { Auth401Interceptor } from '@/components/auth/auth-401-interceptor'
 import { ErrorBoundary } from '@/components/error-boundary'
-import { SilenceConsole } from '@/components/silence-console'
+import { SilenceConsole as _SilenceConsole } from '@/components/silence-console'
 import { RecoveryHandler } from '@/components/recovery-handler'
 import './globals.css'
 

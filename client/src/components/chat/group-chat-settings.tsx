@@ -74,10 +74,9 @@ export function GroupChatSettings({
     void syncSector()
   }, [syncSector])
 
-  const { myRole, canManage, canOwner, canAdmin } = useMemo(() => {
+  const { canManage, canOwner, canAdmin } = useMemo(() => {
     const role = protocol?.my_role
     return {
-      myRole: role,
       canManage: role === 'owner' || role === 'admin',
       canOwner: role === 'owner',
       canAdmin: role === 'admin'

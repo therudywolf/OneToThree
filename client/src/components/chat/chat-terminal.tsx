@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Crown, Star, ArrowDown, Reply } from 'lucide-react'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import { useVirtualizer as _useVirtualizer } from '@tanstack/react-virtual'
 import { useChatStore } from '@/store/chatStore'
 import { getFmSocket } from '@/lib/api/socket'
 import { MediaMessage } from '@/components/chat/media-message'
@@ -234,7 +234,6 @@ export function ChatTerminal({
     if (isNearBottom || prevMsgCountRef.current === 0) {
       bottomRef.current?.scrollIntoView({ block: 'end' })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatId])
 
   // Scroll to bottom on initial load and when near bottom

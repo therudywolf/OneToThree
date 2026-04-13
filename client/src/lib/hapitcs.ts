@@ -14,7 +14,7 @@ export function emitHapticPulse(pattern: number | number[] = 20): void {
     if (isMotionReduced) return
 
     navigator.vibrate(pattern)
-  } catch (err) {
+  } catch {
     // Silence hardware faults
   }
 }

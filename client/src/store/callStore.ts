@@ -126,7 +126,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
   const clearPeerConnectionType = (peerId: string) =>
     set((state) => { const { [peerId]: _, ...rest } = state.peerConnectionTypes; return { peerConnectionTypes: rest } })
   const setQualityLevel = (level: QualityLevel) => {
-    try { window.localStorage.setItem(QUALITY_STORAGE_KEY, level) } catch {}
+    try { window.localStorage.setItem(QUALITY_STORAGE_KEY, level) } catch { /* storage unavailable */ }
     set({ qualityLevel: level })
   }
   const setMiniPlayer = (value: boolean) => set({ isMiniPlayer: value })
@@ -136,16 +136,16 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     // FIX 9: Close peer connections and stop media tracks before clearing state
     const state = get()
     for (const pc of Object.values(state.peerConnections)) {
-      try { pc.close() } catch {}
+      try { pc.close() } catch { /* ignore */ }
     }
     if (state.localStream) {
       for (const track of state.localStream.getTracks()) {
-        try { track.stop() } catch {}
+        try { track.stop() } catch { /* ignore */ }
       }
     }
     for (const stream of Object.values(state.remoteStreams)) {
       for (const track of stream.getTracks()) {
-        try { track.stop() } catch {}
+        try { track.stop() } catch { /* ignore */ }
       }
     }
     set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false })

@@ -10,7 +10,6 @@ import {
   Video,
   VideoOff,
   Users,
-  MessageSquare,
   MoreVertical,
   Hand,
   X,

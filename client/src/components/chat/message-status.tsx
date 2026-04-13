@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, CheckCheck, Clock, AlertCircle, RotateCcw } from 'lucide-react'
+import { Check, CheckCheck, RotateCcw } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 
 type DeliveryState = 'sending' | 'sent' | 'delivered' | 'read' | 'failed'

@@ -136,8 +136,8 @@ export function AvatarCropModal({
             crop={sequence}
             circularCrop
             aspect={1}
-            onChange={(_: any, p: any) => setSequence(p)}
-            onComplete={(c: any) => setPixelData(c)}
+            onChange={(_: unknown, p: unknown) => setSequence(p as typeof sequence)}
+            onComplete={(c: unknown) => setPixelData((c as PixelCrop) ?? null)}
           >
             <img
               ref={opticsRef}

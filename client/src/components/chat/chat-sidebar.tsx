@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Pin, ShieldCheck, Search } from 'lucide-react'
+import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
@@ -78,6 +78,7 @@ export function ChatSidebar({
   const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinnedIds)
   const [localGhostQuery, setLocalGhostQuery] = useState('')
   const [ghostHitChatIds, setGhostHitChatIds] = useState<Set<string> | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
   const [peerLookupByUserId, setPeerLookupByUserId] = useState<
     Record<string, { username: string; avatar_key: string | null }>
   >({})
@@ -130,13 +131,16 @@ export function ChatSidebar({
     const q = localGhostQuery.trim()
     if (q.length < 2) {
       setGhostHitChatIds(null)
+      setIsSearching(false)
       return
     }
+    setIsSearching(true)
     let cancelled = false
     const tm = window.setTimeout(() => {
       void searchLocalMessages(q).then((rows) => {
         if (cancelled) return
         setGhostHitChatIds(new Set(rows.map((r) => r.chatId)))
+        setIsSearching(false)
       })
     }, 250)
     return () => {
@@ -158,10 +162,10 @@ export function ChatSidebar({
 
   function mapSidebarError(code: string): string {
     const m: Record<string, string> = {
-      USER_NOT_FOUND_OR_HIDDEN: t('sidebar.userNotFound') || 'USER_NOT_FOUND',
-      CANNOT_OPEN_DIRECT_WITH_SELF: t('sidebar.cannotOpenSelf') || 'CANNOT_ADD_SELF',
-      CREATE_FAILED: t('sidebar.createFailed') || 'CREATION_FAILED',
-      INVITE_LINK_COPIED: t('sidebar.copyInviteSuccess') || 'LINK_COPIED_TO_CLIPBOARD',
+      USER_NOT_FOUND_OR_HIDDEN: t('sidebar.userNotFound'),
+      CANNOT_OPEN_DIRECT_WITH_SELF: t('sidebar.cannotOpenSelf'),
+      CREATE_FAILED: t('sidebar.createFailed'),
+      INVITE_LINK_COPIED: t('sidebar.copyInviteSuccess'),
     }
     return m[code] ?? code
   }
@@ -248,26 +252,30 @@ export function ChatSidebar({
           }}
         />
       ) : null}
-      
+
       {/* Header */}
       <div className="border-b border-neon-cyan/40 bg-zinc-950/50 p-3 flex items-center justify-between">
         <span className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan font-bold">
-          :: {t('sidebar.channels') || 'COM_LINKS'}
+          {t('sidebar.channels')}
         </span>
         <span className="flex h-2 w-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_8px_rgba(0,255,255,0.8)]" />
       </div>
 
-      {/* Ghost Search */}
+      {/* Search */}
       <div className="border-b border-neon-cyan/25 bg-black px-3 py-2">
         <label className="sr-only" htmlFor="ghost-search">
-          {t('sidebar.localGhostSearch') || 'GHOST_SEARCH'}
+          {t('sidebar.localGhostSearch')}
         </label>
         <div className="relative flex items-center">
-          <Search className="absolute left-2 h-3.5 w-3.5 text-neon-cyan/50" />
+          {isSearching ? (
+            <Loader2 className="absolute left-2 h-3.5 w-3.5 text-neon-cyan/50 animate-spin" />
+          ) : (
+            <Search className="absolute left-2 h-3.5 w-3.5 text-neon-cyan/50" />
+          )}
           <input
             id="ghost-search"
             className="w-full bg-transparent border-b border-neon-cyan/30 py-1 pl-7 text-[10px] text-neon-cyan placeholder:text-neon-cyan/30 focus:border-neon-cyan focus:outline-none transition-colors"
-            placeholder={t('sidebar.localGhostSearch') || 'LOCAL_GHOST_SEARCH...'}
+            placeholder={t('sidebar.localGhostSearch')}
             value={localGhostQuery}
             onChange={(e) => setLocalGhostQuery(e.target.value)}
             autoComplete="off"
@@ -279,16 +287,29 @@ export function ChatSidebar({
       {/* Chat List */}
       <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
         {chats.length === 0 ? (
-          <p className="px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-red-800">
-            [ {t('sidebar.noActiveRoutes') || 'NO_ACTIVE_ROUTES'} ]
-          </p>
+          <div className="px-4 py-8 text-center space-y-3">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
+              {t('sidebar.noActiveRoutes')}
+            </p>
+            <p className="text-[9px] text-zinc-700">
+              {t('chat.startChatHint')}
+            </p>
+            <button
+              type="button"
+              onClick={() => setGroupModalOpen(true)}
+              className="inline-flex items-center gap-1.5 border border-neon-cyan/50 bg-black px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            >
+              <MessageSquarePlus className="h-3 w-3" />
+              {t('chat.newChat')}
+            </button>
+          </div>
         ) : null}
-        
+
         {ghostHitChatIds !== null &&
         localGhostQuery.trim().length >= 2 &&
         sidebarChatsFiltered.length === 0 ? (
           <p className="px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red border border-neon-red/30 mx-2 mt-2 bg-red-950/20">
-            [ {t('sidebar.ghostNoHits') || 'NO_MATCHES_FOUND'} ]
+            {t('sidebar.ghostNoHits')}
           </p>
         ) : null}
 
@@ -304,7 +325,7 @@ export function ChatSidebar({
             resolved?.username?.trim() ||
             (peerId ? `${peerId.slice(0, 8)}…` : '')
           const listTitle = c.is_group
-            ? c.name?.trim() || (t('sidebar.groupUntitled') || 'UNNAMED_GROUP')
+            ? c.name?.trim() || t('sidebar.groupUntitled')
             : c.name?.trim() ||
               resolved?.username?.trim() ||
               (peerId ? `${peerId.slice(0, 8)}…` : `${c.id.slice(0, 8)}…`)
@@ -326,7 +347,6 @@ export function ChatSidebar({
                 }}
               >
                 <span className="inline-flex min-w-0 items-center gap-3">
-                  {/* Avatar wrapper */}
                   <div className="relative">
                     {peerId ? (
                       <UserAvatar
@@ -340,8 +360,7 @@ export function ChatSidebar({
                         GRP
                       </div>
                     ) : null}
-                    
-                    {/* Status Dot for Direct Chats */}
+
                     {!c.is_group && pres?.online ? (
                        <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-black bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
                     ) : null}
@@ -356,10 +375,10 @@ export function ChatSidebar({
                         {listTitle}
                       </span>
                     </span>
-                    
+
                     {pres && !pres.online ? (
-                      <span className="text-[9px] uppercase tracking-widest text-zinc-600 truncate">
-                        {t('sidebar.lastSeen') || 'LAST_SEEN'}:{' '}
+                      <span className="text-[9px] text-zinc-600 truncate">
+                        {t('sidebar.lastSeen')}:{' '}
                         {pres.last_seen_at
                           ? new Date(pres.last_seen_at).toLocaleString(
                               undefined,
@@ -368,8 +387,8 @@ export function ChatSidebar({
                           : '—'}
                       </span>
                     ) : c.is_group ? (
-                       <span className="text-[9px] uppercase tracking-widest text-zinc-600 truncate">
-                         {c.member_ids.length} {t('sidebar.members') || 'MEMBERS'}
+                       <span className="text-[9px] text-zinc-600 truncate">
+                         {c.member_ids.length} {t('sidebar.members')}
                        </span>
                     ) : null}
                   </span>
@@ -377,14 +396,14 @@ export function ChatSidebar({
               </button>
               <button
                 type="button"
-                title={isPinned ? (t('sidebar.unpin') || 'UNPIN') : (t('sidebar.pin') || 'PIN')}
+                title={isPinned ? t('sidebar.unpin') : t('sidebar.pin')}
                 onClick={(e) => {
                   e.stopPropagation()
                   togglePin(c.id)
                 }}
                 className={`shrink-0 border-l border-neon-cyan/10 px-3 transition-colors ${
-                  isPinned 
-                    ? 'text-neon-cyan bg-neon-cyan/5 hover:bg-neon-red/10 hover:text-neon-red' 
+                  isPinned
+                    ? 'text-neon-cyan bg-neon-cyan/5 hover:bg-neon-red/10 hover:text-neon-red'
                     : 'text-zinc-700 hover:bg-neon-cyan/10 hover:text-neon-cyan opacity-0 group-hover:opacity-100'
                 }`}
               >
@@ -409,7 +428,7 @@ export function ChatSidebar({
               }}
             />
           ) : null}
-          
+
           <div className="flex gap-1">
             {chats.find((c) => c.id === activeChatId)?.is_group ? (
               <button
@@ -427,10 +446,10 @@ export function ChatSidebar({
                 }}
                 className="flex-1 border border-red-900/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
               >
-                [ {t('sidebar.leaveGroup') || 'LEAVE'} ]
+                {t('sidebar.leaveGroup')}
               </button>
             ) : null}
-            
+
             {(() => {
               const row = chats.find((c) => c.id === activeChatId)
               const showDelete = !row?.is_group || row.my_role === 'owner'
@@ -440,7 +459,7 @@ export function ChatSidebar({
                   type="button"
                   disabled={busy}
                   onClick={() => {
-                    if (!confirm(t('sidebar.purgeChatConfirm') || 'PURGE THIS ROUTE?')) return
+                    if (!confirm(t('sidebar.purgeChatConfirm'))) return
                     setBusy(true)
                     void deleteChat(activeChatId)
                       .then(() => {
@@ -452,7 +471,7 @@ export function ChatSidebar({
                   }}
                   className="flex-1 border border-red-900/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
                 >
-                  [ {t('sidebar.deleteChat') || 'PURGE'} ]
+                  {t('sidebar.deleteChat')}
                 </button>
               )
             })()}
@@ -477,22 +496,22 @@ export function ChatSidebar({
             }}
             className="flex-1 border border-neon-cyan/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
           >
-            [ COPY_ID ]
+            {t('sidebar.copyMyInvite')}
           </button>
           <button
             type="button"
             onClick={() => setGroupModalOpen(true)}
             className="flex-1 border border-neon-cyan/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
           >
-            [ NEW_GRP ]
+            {t('sidebar.createGroupE2e')}
           </button>
         </div>
 
         <div className="pt-2 border-t border-neon-cyan/20">
           <p className="mb-1.5 text-[9px] uppercase tracking-[0.2em] text-neon-cyan/70">
-            :: {t('sidebar.openDirect') || 'INITIATE_DIRECT'}
+            {t('sidebar.openDirect')}
           </p>
-          
+
           {createErr ? (
             <p className={`mb-2 font-mono text-[9px] uppercase tracking-wider p-1 border ${createErr === 'INVITE_LINK_COPIED' ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10' : 'border-neon-red text-neon-red bg-neon-red/10'}`}>
               {mapSidebarError(createErr)}
@@ -502,7 +521,7 @@ export function ChatSidebar({
           <div className="flex gap-1">
             <input
               className="terminal-input w-full px-2 py-1 text-[10px] placeholder:text-neon-cyan/30"
-              placeholder={t('sidebar.peerPlaceholder') || 'ENTER_ID_OR_HANDLE'}
+              placeholder={t('sidebar.peerPlaceholder')}
               value={peerInput}
               onChange={(e) => setPeerInput(e.target.value)}
               spellCheck="false"
@@ -513,7 +532,7 @@ export function ChatSidebar({
               disabled={creating || !peerInput.trim()}
               className="shrink-0 border border-neon-cyan bg-black px-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-black disabled:opacity-40 disabled:hover:bg-black disabled:hover:text-neon-cyan"
             >
-              CONNECT
+              {t('sidebar.openPeer')}
             </button>
           </div>
         </div>

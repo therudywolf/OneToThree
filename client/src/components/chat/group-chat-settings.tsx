@@ -131,7 +131,7 @@ export function GroupChatSettings({
   if (!protocol) {
     return (
       <div className="border-t border-neutral-900 bg-black/20 p-4 font-mono text-[10px] text-red-900">
-        {errorLog ? `>> ERROR: ${errorLog}` : '>> SCANNING_SECTOR...'}
+        {errorLog ? errorLog : t('common.loading')}
       </div>
     )
   }
@@ -164,7 +164,7 @@ export function GroupChatSettings({
       </div>
 
       <div className="p-4 space-y-4">
-        {errorLog && <p className="text-neon-red animate-pulse">!! SYNC_ERR: {errorLog}</p>}
+        {errorLog && <p className="text-neon-red animate-pulse">{errorLog}</p>}
 
         {activeTab === 'vault' ? (
           <div className="animate-in fade-in slide-in-from-bottom-1">
@@ -208,7 +208,7 @@ export function GroupChatSettings({
 
             {/* NODE_REGISTRY */}
             <div className="space-y-2">
-              <p className="text-[9px] text-zinc-700 tracking-[0.4em] mb-3">:: NODE_REGISTRY</p>
+              <p className="text-[9px] text-zinc-700 tracking-[0.4em] mb-3">{t('sidebar.members')}</p>
               <div className="max-h-60 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                 {protocol.members.map((m) => {
                   const isSelf = canonicalUserId(m.user_id) === canonicalUserId(userId)
@@ -237,16 +237,16 @@ export function GroupChatSettings({
 
                       <div className="flex gap-1">
                         {showGrantAdmin && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-cyan">GRANT</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-cyan">{t('group.makeAdmin')}</button>
                         )}
                         {showRevokeAdmin && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-red">REVOKE</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-red">{t('group.demoteMember')}</button>
                         )}
                         {showTransfer && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-cyan">TRANS</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-cyan">{t('group.transferOwner')}</button>
                         )}
                         {showExpunge && (
-                          <button onClick={() => void expungeNode(m.user_id)} className="border border-neutral-900 px-2 py-1 text-[8px] text-red-900 hover:border-neon-red hover:text-neon-red">EXPUNGE</button>
+                          <button onClick={() => void expungeNode(m.user_id)} className="border border-neutral-900 px-2 py-1 text-[8px] text-red-900 hover:border-neon-red hover:text-neon-red">{t('group.kick')}</button>
                         )}
                       </div>
                     </div>

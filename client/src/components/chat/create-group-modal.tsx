@@ -129,7 +129,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
         <header className="mb-6 flex items-start justify-between border-b border-neutral-900 pb-4">
           <div className="space-y-1">
             <h2 className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
-              :: GENESIS_PROTOCOL // {t('group.title')}
+              {t('group.title')}
             </h2>
             <p className="font-mono text-[9px] text-zinc-600">
               {t('group.hintEcdh')}
@@ -176,7 +176,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
               />
               {isSearching && (
                 <span className="absolute right-3 top-2.5 animate-pulse text-[9px] text-neon-red">
-                  SCANNING...
+                  {t('group.scanning')}
                 </span>
               )}
             </div>
@@ -186,7 +186,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           <div className="max-h-32 overflow-y-auto border border-neutral-900 bg-black/40">
             {radarResults.length === 0 ? (
               <p className="p-4 text-center font-mono text-[10px] text-zinc-800">
-                {t('group.noHits')} // NO_NODES_FOUND
+                {t('group.noHits')}
               </p>
             ) : (
               radarResults.map((node) => {
@@ -215,14 +215,14 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
             <p className="text-[9px] uppercase tracking-widest text-zinc-700">{t('group.selectedLabel')}</p>
             <p className="mt-1 font-mono text-[10px] text-neon-cyan truncate">
               {selectedNodes.length === 0
-                ? '// WAITING_FOR_SELECTION'
+                ? t('group.selectHint')
                 : selectedNodes.map((s) => s.username).join(', ')}
             </p>
           </div>
 
           {systemMessage && (
             <div className="border border-neon-red/50 bg-neon-red/5 p-2 font-mono text-[10px] text-neon-red">
-              [!] SYSTEM_ERROR: {systemMessage}
+              {systemMessage}
             </div>
           )}
 
@@ -233,7 +233,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
               disabled={!canInitialize}
               className="flex-1"
             >
-              {busy ? `// ${t('group.creating')}...` : `>> ${t('group.create')}`}
+              {busy ? t('group.creating') : t('group.create')}
             </TerminalGlitchButton>
             
             <button

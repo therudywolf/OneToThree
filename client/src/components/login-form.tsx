@@ -14,31 +14,24 @@ import {
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 
-/**
- * PROJECT 13 :: IDENTITY_PROBE_INTERFACE
- * Level: Authority Layer (Public Entry)
- * Vibe: Clinical Pure / Terminal Noir / Dead Inside
- */
-
 export function LoginForm() {
   const { t } = useTranslation()
   const router = useRouter()
   const { user, loading: authLoading, refresh } = useAuth()
 
-  // [DATA_NODES]
   const [handle, setHandle] = useState('')
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
-  
+
   const [mode, setMode] = useState<'ACCESS' | 'GENESIS'>('ACCESS')
   const [stage, setStage] = useState<'IDENTITY' | 'MFA_SYNC'>('IDENTITY')
-  
+
   const [pendingToken, setPendingToken] = useState<string | null>(null)
   const [totpCode, setTotpCode] = useState('')
   const [errorLog, setErrorLog] = useState<string | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [vaultLinkOk, setVaultLinkOk] = useState(false)
-  
+
   const lock = useRef(false)
 
   useEffect(() => {
@@ -53,7 +46,6 @@ export function LoginForm() {
     }
   }, [authLoading, user, router])
 
-  /** [ERROR_INTERCEPTOR] */
   const mapFault = (code: string): string => {
     const registry: Record<string, string> = {
       USERNAME_REQUIRED: t('login.usernameRequired'),
@@ -69,7 +61,6 @@ export function LoginForm() {
     return registry[code] ?? code.replace(/_/g, ' ')
   }
 
-  /** [VAULT_INTEGRATION] :: Импорт существующего крипто-ядра */
   const handleVaultImport = () => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -81,7 +72,7 @@ export function LoginForm() {
       try {
         const data = JSON.parse(await file.text()) as { username?: string; vault?: VaultBlob }
         if (!data.vault?.ciphertextB64) throw new Error('INVALID_STRUCTURE')
-        
+
         const nick = parseNickname(data.username?.trim() || handle.trim())
         if (!nick.ok) throw new Error(nick.error)
 
@@ -108,10 +99,10 @@ export function LoginForm() {
         return
       }
 
-      const res = await cryptoLogin({ 
-        username: handle, 
-        password: pin, 
-        mode: mode === 'ACCESS' ? 'login' : 'register' 
+      const res = await cryptoLogin({
+        username: handle,
+        password: pin,
+        mode: mode === 'ACCESS' ? 'login' : 'register'
       })
 
       if (res.ok === 'needs_2fa') {
@@ -139,7 +130,7 @@ export function LoginForm() {
     e.preventDefault()
     if (lock.current || isBusy || !pendingToken) return
     const digits = totpCode.replace(/\D/g, '').slice(0, 6)
-    
+
     lock.current = true
     setErrorLog(null)
     setIsBusy(true)
@@ -166,7 +157,7 @@ export function LoginForm() {
 
   if (authLoading) return (
     <div className="border border-neutral-900 bg-black p-6 font-mono text-[10px] uppercase tracking-[0.4em] text-zinc-600 animate-pulse">
-      :: {t('login.authLoading')}
+      {t('login.authLoading')}
     </div>
   )
 
@@ -181,12 +172,12 @@ export function LoginForm() {
           animate={{ opacity: 1, scale: 1 }}
         >
           <header className="mb-8 border-b border-neutral-900 pb-4">
-            <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">:: MFA_SYNC_REQUIRED</p>
+            <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">{t('login.totpTitle')}</p>
           </header>
-          
+
           <div className="space-y-6">
             <div className="space-y-2">
-              <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-zinc-500">&gt; {t('login.totpCodeLabel')}</label>
+              <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-zinc-500">{t('login.totpCodeLabel')}</label>
               <input
                 id="totp"
                 type="text"
@@ -196,11 +187,12 @@ export function LoginForm() {
                 onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                 className="w-full bg-zinc-950 border border-neutral-900 p-3 font-mono text-xl tracking-[0.6em] text-neon-cyan text-center outline-none focus:border-neon-cyan/50"
                 placeholder="000000"
+                autoComplete="one-time-code"
               />
             </div>
-            
+
             <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
-              [ {t('login.totpSubmit')} ]
+              {t('login.totpSubmit')}
             </TerminalGlitchButton>
 
             <button
@@ -208,7 +200,7 @@ export function LoginForm() {
               onClick={() => setStage('IDENTITY')}
               className="w-full text-[9px] uppercase tracking-widest text-zinc-700 hover:text-neon-red"
             >
-              // ABORT_MFA_SYNC
+              {t('common.back')}
             </button>
           </div>
         </motion.form>
@@ -221,16 +213,18 @@ export function LoginForm() {
           animate={{ opacity: 1 }}
         >
           <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
-          
+
           <header className="mb-8 border-b border-neutral-900 pb-4">
-            <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">:: {mode === 'ACCESS' ? 'NODE_ACCESS_PROTOCOL' : 'IDENTITY_GENESIS'}</p>
-            <p className="mt-1 text-[8px] text-zinc-600 tracking-widest">ECDSA P-256 // ZERO-TRUST // NON-CUSTODIAL</p>
+            <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
+              {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
+            </p>
+            <p className="mt-1 text-[8px] text-zinc-600 tracking-widest">E2E // ECDSA P-256 // ZERO-TRUST</p>
           </header>
 
           <div className="space-y-6">
             {mode === 'GENESIS' && (
               <div className="mb-6 border border-zinc-900 bg-zinc-950/50 p-4">
-                <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">// TERMS_OF_SERVICE</p>
+                <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">{t('login.tosRegisterTitle')}</p>
                 <div className="max-h-32 overflow-y-auto text-[9px] leading-relaxed text-zinc-500 pr-2 custom-scrollbar">
                   {t('login.tosRegisterBody')}
                 </div>
@@ -239,19 +233,20 @@ export function LoginForm() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[9px] uppercase tracking-widest text-zinc-500">&gt; HANDLE</label>
+                <label className="text-[9px] uppercase tracking-widest text-zinc-500">{t('login.handleLabel')}</label>
                 <input
                   type="text"
                   required
                   value={handle}
                   onChange={(e) => setHandle(e.target.value)}
                   className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-cyan/50"
-                  placeholder="@handle"
+                  placeholder={t('login.handlePlaceholder')}
+                  autoComplete="username"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[9px] uppercase tracking-widest text-zinc-500">&gt; MASTER_PIN</label>
+                <label className="text-[9px] uppercase tracking-widest text-zinc-500">{t('login.vaultPassphraseLabel')}</label>
                 <input
                   type="password"
                   required
@@ -259,12 +254,13 @@ export function LoginForm() {
                   onChange={(e) => setPin(e.target.value)}
                   className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-red/50"
                   placeholder="••••••••"
+                  autoComplete={mode === 'ACCESS' ? 'current-password' : 'new-password'}
                 />
               </div>
 
               {mode === 'GENESIS' && (
                 <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                  <label className="text-[9px] uppercase tracking-widest text-zinc-500">&gt; CONFIRM_PIN</label>
+                  <label className="text-[9px] uppercase tracking-widest text-zinc-500">{t('common.confirm')}</label>
                   <input
                     type="password"
                     required
@@ -272,6 +268,7 @@ export function LoginForm() {
                     onChange={(e) => setConfirmPin(e.target.value)}
                     className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-red/50"
                     placeholder="••••••••"
+                    autoComplete="new-password"
                   />
                 </div>
               )}
@@ -279,19 +276,19 @@ export function LoginForm() {
 
             {mode === 'GENESIS' && (
               <div className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
-                <span className="text-neon-red font-bold">WARNING:</span> ПАРОЛЬ ШИФРУЕТ VAULT ЛОКАЛЬНО. СЕРВЕР НЕ ИМЕЕТ ДОСТУПА. ПОТЕРЯ ПАРОЛЯ = ПОТЕРЯ ВСЕЙ ИСТОРИИ.
+                <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
               </div>
             )}
 
             {errorLog && (
-              <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono uppercase">
-                [!] FAULT: {errorLog}
+              <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono">
+                {errorLog}
               </div>
             )}
 
             <div className="flex flex-col gap-4 pt-4">
               <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
-                {mode === 'ACCESS' ? '[ INITIALIZE_LINK ]' : '[ EXECUTE_GENESIS ]'}
+                {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
               </TerminalGlitchButton>
 
               <button
@@ -302,7 +299,7 @@ export function LoginForm() {
                 }}
                 className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors"
               >
-                // {mode === 'ACCESS' ? 'INIT_NEW_NODE' : 'ACCESS_EXISTING_VAULT'}
+                {mode === 'ACCESS' ? t('login.newDevice') : t('login.existingVault')}
               </button>
             </div>
 
@@ -313,9 +310,9 @@ export function LoginForm() {
                   onClick={handleVaultImport}
                   className="w-full border border-neutral-800 bg-zinc-950 py-2 text-[9px] uppercase tracking-widest text-zinc-500 hover:border-neon-cyan hover:text-neon-cyan transition-all"
                 >
-                  [ IMPORT_CRYPT_KEY ]
+                  {t('login.vaultRecoveryImport')}
                 </button>
-                {vaultLinkOk && <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">:: VAULT_LINK_ESTABLISHED</p>}
+                {vaultLinkOk && <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">{t('login.vaultRecoveryOk')}</p>}
               </div>
             )}
           </div>

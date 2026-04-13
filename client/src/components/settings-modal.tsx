@@ -280,7 +280,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   async function runGlobalKillSwitch() {
     setError(null)
-    const expected = '!!_GLOBAL_KILL_SWITCH_!!'
+    const expected = t('settings.killPhraseExpected')
     if (killPhrase !== expected) {
       setError(t('settings.killPhraseMismatch'))
       return
@@ -342,7 +342,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       >
         <header className="flex shrink-0 items-start justify-between gap-2 border-b border-neon-red/40 pb-3">
           <p className="min-w-0 break-words text-xs uppercase tracking-[0.35em] text-neon-cyan">
-            [ SETTINGS ] :: {username}
+            {t('common.settings')} :: {username}
           </p>
           <button
             type="button"
@@ -374,7 +374,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
             }`}
           >
-            [ БЕЗОПАСНОСТЬ ]
+            {t('settings.totpSection')}
           </button>
           <button
             type="button"
@@ -405,7 +405,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         {settingsTab === 'security' ? (
           <div className="space-y-3">
             <p className="text-xs uppercase tracking-widest text-neon-red">
-              [ ЗОНА БЕЗОПАСНОСТИ ]
+              {t('settings.totpSection')}
             </p>
 
             {/* TOTP Section */}
@@ -460,7 +460,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                           onClick={() => void disableTotp()}
                           className="flex-1 border border-neon-red bg-black py-1 font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
                         >
-                          [ CONFIRM ]
+                          {t('common.confirm')}
                         </button>
                         <button
                           type="button"
@@ -470,7 +470,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                           }}
                           className="flex-1 border border-neon-cyan/40 py-1 font-mono text-[10px] text-neon-cyan"
                         >
-                          [ CANCEL ]
+                          {t('common.cancel')}
                         </button>
                       </div>
                     </div>
@@ -566,7 +566,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   onClick={exportVault}
                   className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
                 >
-                  [ ↓ EXPORT VAULT KEY ]
+                  {t('settings.vaultBackup')}
                 </TerminalGlitchButton>
               </div>
             </div>
@@ -575,12 +575,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <div className="flex flex-col gap-2 border border-neon-cyan/30 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-widest text-neon-cyan">
-                  {t('common.deviceLinking')} · NEW_DEVICE_GATE
+                  {t('common.deviceLinking')}
                 </p>
                 <p className="break-words text-[9px] text-red-800">
                   {allowNewDeviceLinking
-                    ? 'ON: New devices can link via QR'
-                    : 'OFF: New device linking blocked (default)'}
+                    ? 'ON'
+                    : 'OFF'}
                 </p>
               </div>
               <button
@@ -607,7 +607,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 onClick={() => setKillOpen((v) => !v)}
                 className="glitch-text mb-2 w-full border border-red-600 bg-black py-2 font-mono text-[10px] uppercase tracking-[0.25em] text-red-500 hover:bg-red-950/40"
               >
-                [ !! ИНСИНЕРАЦИЯ_ЛИЧНОСТИ !! ]
+                {t('settings.killExecute')}
               </button>
               <AnimatePresence initial={false}>
                 {killOpen ? (
@@ -619,7 +619,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     className="overflow-hidden"
                   >
                     <p className="mb-2 break-words text-[9px] text-red-800">
-                      Мгновенная очистка всех локальных ключей и кэша. Обратного пути нет.
+                      {t('settings.killSwitchHint')}
                     </p>
                     <label className="terminal-label" htmlFor="kill-phrase">
                       {t('settings.killPhraseLabel')}

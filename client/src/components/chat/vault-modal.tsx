@@ -20,6 +20,7 @@ import {
 import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { vibrateShort } from '@/lib/vibrate'
+import { useTranslation } from '@/hooks/use-translation'
 
 type Props = {
   userId: string
@@ -27,6 +28,7 @@ type Props = {
 }
 
 export function VaultModal({ userId, displayHandle }: Props) {
+  const { t } = useTranslation()
   const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
 
   const [pin, setPin] = useState('')
@@ -42,7 +44,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
     async (plain: string) => {
       const parsed = parseVaultPlaintext(plain)
       if (!parsed) {
-        setError('INVALID_VAULT_FORMAT')
+        setError(t('login.invalidVaultFormat'))
         return
       }
       if (parsed.kind === 'LEGACY') {
@@ -69,7 +71,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
       }
       setPin('')
     },
-    [setUnwrappedPrivateKey]
+    [setUnwrappedPrivateKey, t]
   )
 
   async function handleUnlock(e: React.FormEvent) {
@@ -79,14 +81,14 @@ export function VaultModal({ userId, displayHandle }: Props) {
     try {
       const blob = readVaultBlob(userId)
       if (!blob) {
-        setError('NO_LOCAL_VAULT')
+        setError(t('login.noLocalVault'))
         return
       }
       const plain = await unwrapPrivateJwkWithPin(blob, pin)
       await applyPlaintext(plain)
       vibrateShort(20)
     } catch {
-      setError('UNWRAP_FAILED')
+      setError(t('login.unwrapFailed'))
     } finally {
       setBusy(false)
     }
@@ -100,7 +102,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
       await applyPlaintext(plain)
       vibrateShort(25)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'WEBAUTHN_FAILED')
+      setError(e instanceof Error ? e.message : t('errors.generic'))
     } finally {
       setBusy(false)
     }
@@ -109,7 +111,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
   async function handleEnrollBiometrics() {
     setError(null)
     if (!pin.trim()) {
-      setError('PIN_REQUIRED_FOR_SETUP')
+      setError(t('login.passwordRequired'))
       return
     }
     setBusy(true)
@@ -123,7 +125,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
       setBioEnrolled(true)
       vibrateShort([15, 30, 15])
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'ENROLL_FAILED')
+      setError(e instanceof Error ? e.message : t('errors.generic'))
     } finally {
       setBusy(false)
     }
@@ -137,27 +139,25 @@ export function VaultModal({ userId, displayHandle }: Props) {
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 px-4 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
-      aria-label="Key vault"
+      aria-label={t('login.vaultPassphraseLabel')}
     >
       <div className="w-full max-w-sm space-y-6 border border-neon-cyan/40 bg-black p-6 shadow-[0_0_30px_rgba(0,255,255,0.05)]">
         <header className="border-b border-neon-cyan/30 pb-4">
           <p className="font-mono text-sm uppercase tracking-[0.35em] text-neon-cyan animate-pulse">
-            [ VAULT_LOCKED ]
+            {t('login.vaultPassphraseLabel')}
           </p>
           <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
-            ID :: {displayHandle}
+            {displayHandle}
           </p>
           <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-red-900">
-            SYS_WARN: KEY EXISTS ONLY IN RAM. NO PERSISTENCE.
+            E2E // {t('login.pinMin8')}
           </p>
         </header>
 
         {bioEnrolled ? (
           <div className="space-y-5">
             <p className="border-l-2 border-neon-cyan/50 bg-neon-cyan/5 pl-3 py-2 font-mono text-[9px] uppercase leading-relaxed tracking-widest text-neon-cyan/80">
-              [ AUTH_OVERRIDE ]<br />
-              HARDWARE KEYCHAIN ACTIVE.<br />
-              LOCAL PIN DISABLED.
+              Biometric unlock available.
             </p>
             <TerminalGlitchButton
               type="button"
@@ -165,11 +165,11 @@ export function VaultModal({ userId, displayHandle }: Props) {
               onClick={() => void handleBiometricUnlock()}
               className="w-full"
             >
-              [ USE_BIOMETRICS ]
+              {t('login.signIn')}
             </TerminalGlitchButton>
             {error ? (
               <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
-                [!] {error}
+                {error}
               </p>
             ) : null}
           </div>
@@ -177,12 +177,12 @@ export function VaultModal({ userId, displayHandle }: Props) {
           <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-5">
             <div>
               <label className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-neon-cyan/70" htmlFor="vault-pin">
-                &gt; ENTER_DECRYPTION_PIN
+                {t('login.vaultPassphraseLabel')}
               </label>
               <input
                 id="vault-pin"
                 type="password"
-                autoComplete="off"
+                autoComplete="current-password"
                 autoFocus
                 className="w-full border border-neon-cyan/30 bg-black px-3 py-2 font-mono text-neon-cyan transition-colors focus:border-neon-cyan focus:bg-neon-cyan/5 focus:outline-none"
                 value={pin}
@@ -192,12 +192,12 @@ export function VaultModal({ userId, displayHandle }: Props) {
             </div>
             {error ? (
               <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
-                [!] {error}
+                {error}
               </p>
             ) : null}
             <div className="flex flex-col gap-3">
               <TerminalGlitchButton type="submit" disabled={busy} className="w-full">
-                [ UNLOCK ]
+                {t('login.signIn')}
               </TerminalGlitchButton>
               {showBioSetup && !bioEnrolled ? (
                 <button
@@ -206,15 +206,10 @@ export function VaultModal({ userId, displayHandle }: Props) {
                   onClick={() => void handleEnrollBiometrics()}
                   className="w-full border border-neon-red/50 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
                 >
-                  [ CONFIGURE_BIOMETRICS ]
+                  Biometrics
                 </button>
               ) : null}
             </div>
-            {!largeBlobLikelySupported() ? (
-              <p className="font-mono text-[8px] uppercase tracking-widest text-zinc-600">
-                // BIO_AUTH REQUIRES HTTPS & WEBAUTHN LARGEBLOB SUPPORT.
-              </p>
-            ) : null}
           </form>
         )}
       </div>

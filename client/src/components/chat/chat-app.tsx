@@ -122,6 +122,7 @@ export function ChatApp({
     switchCamera,
     isScreenSharing,
     toggleScreenShare,
+    setQuality,
   } = useWebRTC(userId)
 
   useLayoutEffect(() => {
@@ -364,6 +365,7 @@ export function ChatApp({
         onSwitchCamera={() => void switchCamera()}
         isScreenSharing={isScreenSharing}
         onToggleScreenShare={toggleScreenShare}
+        onSetQuality={setQuality}
       />
 
       {showGuide ? (

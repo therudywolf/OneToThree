@@ -48,6 +48,26 @@ const ru = {
   'call.openChannels': 'Звонки',
   'call.mediaPermissionDenied': 'Камера и микрофон недоступны. Проверьте настройки браузера.',
 
+  // [CALL UI]
+  'call.screenSharing': 'Демонстрация экрана',
+  'call.startScreenShare': 'Показать экран',
+  'call.stopScreenShare': 'Остановить показ',
+  'call.connP2P': 'Прямое P2P',
+  'call.connRelay': 'Через сервер',
+  'call.p2pTooltip': 'Прямое зашифрованное соединение',
+  'call.relayTooltip': 'Данные передаются через сервер (зашифрованы, сервер не видит содержимое)',
+  'call.quality': 'Качество',
+  'call.qualityAuto': 'Авто',
+  'call.qualityAudioOnly': 'Только аудио',
+  'call.mute': 'Выключить микрофон',
+  'call.unmute': 'Включить микрофон',
+  'call.videoOn': 'Включить камеру',
+  'call.videoOff': 'Выключить камеру',
+  'call.toggleCamera': 'Переключить камеру',
+  'call.switchCamera': 'Сменить камеру',
+  'call.toggleLayout': 'Сменить вид',
+  'call.endCall': 'Завершить звонок',
+
   // [LOGIN]
   'login.usernameRequired': 'Введите никнейм.',
   'login.passwordRequired': 'Введите пароль.',

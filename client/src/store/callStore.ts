@@ -25,6 +25,12 @@ export type ConnectionQuality = {
   poor: boolean
 }
 
+/** P2P vs relay connection type per peer */
+export type PeerConnectionType = 'p2p' | 'relay' | 'unknown'
+
+/** Granular video quality levels */
+export type QualityLevel = 'auto' | '720p' | '480p' | '360p' | 'audio_only'
+
 export type CallProtocolState = {
   // [FEED_LAYER]
   localStream: MediaStream | null
@@ -39,6 +45,8 @@ export type CallProtocolState = {
   isReconnecting: boolean
   connectionQuality: ConnectionQuality | null
   incomingCall: InboundLinkRequest | null
+  peerConnectionTypes: Record<string, PeerConnectionType>
+  qualityLevel: QualityLevel
 
   // [ACTIONS]
   setLocalStream: (feed: MediaStream | null) => void
@@ -56,6 +64,10 @@ export type CallProtocolState = {
   addPeerConnection: (peerId: string, pc: RTCPeerConnection) => void
   removePeerConnection: (peerId: string) => void
 
+  setPeerConnectionType: (peerId: string, type: PeerConnectionType) => void
+  clearPeerConnectionType: (peerId: string) => void
+  setQualityLevel: (level: QualityLevel) => void
+
   /** Полная деактивация протокола и очистка контура */
   reset: () => void
 }
@@ -64,6 +76,15 @@ const INITIAL_MEDIA_STATE = (): NodeMediaState => ({
   micMuted: false,
   cameraOff: false,
 })
+
+const QUALITY_STORAGE_KEY = 'p13_quality_level'
+
+function loadQualityLevel(): QualityLevel {
+  if (typeof window === 'undefined') return 'auto'
+  const v = window.localStorage.getItem(QUALITY_STORAGE_KEY)
+  if (v === '720p' || v === '480p' || v === '360p' || v === 'audio_only') return v
+  return 'auto'
+}
 
 export const useCallStore = create<CallProtocolState>((set, get) => {
   const setLocalStream = (feed: MediaStream | null) => set({ localStream: feed })
@@ -85,8 +106,16 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     set((state) => ({ peerConnections: { ...state.peerConnections, [peerId]: pc } }))
   const removePeerConnection = (peerId: string) =>
     set((state) => { const { [peerId]: _, ...rest } = state.peerConnections; return { peerConnections: rest } })
+  const setPeerConnectionType = (peerId: string, type: PeerConnectionType) =>
+    set((state) => ({ peerConnectionTypes: { ...state.peerConnectionTypes, [peerId]: type } }))
+  const clearPeerConnectionType = (peerId: string) =>
+    set((state) => { const { [peerId]: _, ...rest } = state.peerConnectionTypes; return { peerConnectionTypes: rest } })
+  const setQualityLevel = (level: QualityLevel) => {
+    try { window.localStorage.setItem(QUALITY_STORAGE_KEY, level) } catch {}
+    set({ qualityLevel: level })
+  }
   const reset = () =>
-    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, connectionQuality: null, incomingCall: null })
+    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, connectionQuality: null, incomingCall: null, peerConnectionTypes: {} })
 
   return {
     localStream: null,
@@ -97,6 +126,8 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     isReconnecting: false,
     connectionQuality: null,
     incomingCall: null,
+    peerConnectionTypes: {},
+    qualityLevel: loadQualityLevel(),
 
     setLocalStream,
     setRemoteStream,
@@ -109,6 +140,9 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     setConnectionQuality,
     addPeerConnection,
     removePeerConnection,
+    setPeerConnectionType,
+    clearPeerConnectionType,
+    setQualityLevel,
     reset,
   }
 })

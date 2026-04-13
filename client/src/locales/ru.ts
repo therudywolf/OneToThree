@@ -140,6 +140,11 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
 Администрация оставляет за собой право удалить любой аккаунт без предупреждения.`,
   'login.signIn': 'Войти',
   'login.register': 'Зарегистрироваться',
+  'login.sessionExpired': 'Сессия истекла. Войдите снова.',
+  'login.clearSession': 'Проблемы со входом? Очистить сессию',
+  'login.clearSessionDone': 'Сессия очищена.',
+  'login.accountExists': 'Этот никнейм уже зарегистрирован.',
+  'login.accountExistsAction': 'Войти',
 
   // [ONBOARDING]
   'guide.step': 'Шаг',

@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLoading(false)
           // Use a timeout to ensure state updates propagate
           setTimeout(() => {
-            router.push('/login')
+            router.push('/login?expired=1')
           }, 50)
           return
         }

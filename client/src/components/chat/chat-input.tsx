@@ -322,7 +322,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="relative shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-black p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] transition-colors duration-200 data-[drag-over=true]:bg-neon-cyan/5"
+      className="relative shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-black p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200 data-[drag-over=true]:bg-neon-cyan/5"
     >
       <input
         ref={fileInputRef}

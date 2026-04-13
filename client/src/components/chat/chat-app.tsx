@@ -414,7 +414,7 @@ export function ChatApp({
   }
 
   return (
-    <div className="chat-safe-shell flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black supports-[height:100dvh]:h-[100dvh]">
+    <div className="chat-safe-shell safe-all flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black supports-[height:100dvh]:h-[100dvh]">
       <InviteChatLinkEffect userId={userId} />
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
@@ -486,7 +486,7 @@ export function ChatApp({
           onClose={() => setHeaderProfileOpen(false)}
         />
       ) : null}
-      <header className="flex shrink-0 flex-col gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-2 md:px-3 md:py-2">
+      <header className="chat-header-compact flex shrink-0 flex-col gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-2 md:px-3 md:py-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:gap-3">
           <button
             type="button"
@@ -563,7 +563,7 @@ export function ChatApp({
           </button>
         </div>
       </header>
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden overscroll-none">
+      <div className="chat-ultrawide-container relative flex min-h-0 min-w-0 flex-1 overflow-hidden overscroll-none">
         {mobileSidebarOpen ? (
           <button
             type="button"
@@ -573,8 +573,8 @@ export function ChatApp({
           />
         ) : null}
         <div
-          className={`fixed inset-y-0 left-0 z-50 flex h-full max-h-[100dvh] w-[min(20rem,92vw)] flex-col border-r border-neon-cyan/40 bg-black shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-200 ease-out md:static md:z-0 md:h-auto md:max-h-none md:w-72 md:translate-x-0 md:shadow-none ${
-            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          className={`chat-layout-sidebar fixed inset-y-0 left-0 z-50 flex h-full max-h-[100dvh] w-[min(20rem,92vw)] flex-col border-r border-neon-cyan/40 bg-black shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-200 ease-out md:static md:z-0 md:h-auto md:max-h-none md:w-72 lg:w-80 md:translate-x-0 md:shadow-none ${
+            mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
         >
           <ChatSidebar
@@ -584,7 +584,7 @@ export function ChatApp({
             onNavigate={() => setMobileSidebarOpen(false)}
           />
         </div>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain">
+        <div className="chat-layout-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain">
           {ctxError ? (
             <div className="shrink-0 border-b border-zinc-800 px-3 py-1 font-mono text-xs text-zinc-500">
               {t('errors.signalLost')}

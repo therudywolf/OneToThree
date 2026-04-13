@@ -13,13 +13,15 @@ coverage/
 # Environment — never commit secrets (templates only)
 .env
 .env.*
-!.env.example
 !.env.prod.example
 !.env.local.example
+!.env.example
 !server/.env.example
 !client/.env.local.example
 # Explicit prod filenames (also covered by .env.* — listed for clarity)
 .env.prod
+.env.production
+env.prod.example
 
 # TLS material & host-mounted certs (never commit keys or chains)
 certs/

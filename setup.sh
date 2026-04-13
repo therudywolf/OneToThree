@@ -43,13 +43,11 @@ ENV_FILE="${ENV_FILE:-.env.prod}"
 ENV_TEMPLATE=""
 if [[ -f "${ROOT}/.env.prod.example" ]]; then
   ENV_TEMPLATE="${ROOT}/.env.prod.example"
-elif [[ -f "${ROOT}/env.prod.example" ]]; then
-  ENV_TEMPLATE="${ROOT}/env.prod.example"
 fi
 
 if [[ ! -f "$ENV_FILE" ]]; then
   if [[ -z "$ENV_TEMPLATE" ]]; then
-    warn "Missing ${ENV_FILE} and no .env.prod.example / env.prod.example to copy."
+    warn "Missing ${ENV_FILE} and no .env.prod.example to copy."
     exit 1
   fi
   log "Creating ${ENV_FILE} from template…"
@@ -170,9 +168,16 @@ check_key() {
 }
 
 MISSING=0
-for key in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD CORS_ORIGIN JWT_SECRET; do
+for key in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD CORS_ORIGIN JWT_SECRET TURN_EXTERNAL_IP; do
   check_key "$key" || MISSING=1
 done
+
+# Helpful hint for TURN_EXTERNAL_IP
+TURN_IP=$(val_for_key TURN_EXTERNAL_IP)
+if [[ -z "$TURN_IP" ]]; then
+  log "  TURN_EXTERNAL_IP: run 'curl -s ifconfig.me' to get your server IP"
+fi
+
 if [[ "$MISSING" -ne 0 ]]; then
   exit 1
 fi

@@ -31,11 +31,13 @@ Forest Messenger is:
 1. [Technology Stack](#technology-stack)
 2. [Architecture Diagram](#architecture-diagram)
 3. [Cryptographic Architecture](#cryptographic-architecture)
-4. [Feature Implementation Map](#feature-implementation-map)
-5. [Data Flow — What the Server Sees](#data-flow--what-the-server-sees)
-6. [Infrastructure](#infrastructure)
-7. [Self-Hosting Guide](#self-hosting-guide)
-8. [Roadmap](#roadmap)
+4. [Security Audit](#security-audit)
+5. [Feature Implementation Map](#feature-implementation-map)
+6. [Data Flow — What the Server Sees](#data-flow--what-the-server-sees)
+7. [Infrastructure](#infrastructure)
+8. [Self-Hosting Guide](#self-hosting-guide)
+9. [Roadmap](#roadmap)
+10. [Mobile Strategy](#mobile-strategy)
 
 ---
 
@@ -434,6 +436,36 @@ Groups use a shared symmetric key. The creator distributes it encrypted per-memb
 | Call encryption | DTLS-SRTP (WebRTC standard — always E2EE) |
 | Key fingerprint | SHA-256 of canonicalized JWK → 6-block safety number |
 | TOTP | HMAC-SHA1, 6 digits, 30-second step (RFC 6238) |
+
+---
+
+## Security Audit
+
+**Last audited:** April 2026
+
+### Cryptographic Strengths
+- ✅ Exclusive Web Crypto API (no JS crypto libraries)
+- ✅ AES-256-GCM with random 12-byte IVs, no IV reuse
+- ✅ ECDSA P-256 challenge-response (password never sent to server)
+- ✅ Per-file encryption keys (compromise of one file doesn't expose others)
+- ✅ PBKDF2-SHA256 with 600,000 iterations (updated from 210k)
+- ✅ Parameterized SQL via Drizzle ORM (no SQL injection)
+- ✅ httpOnly, Secure, SameSite=Strict cookies
+- ✅ HSTS with preload, 2-year max-age
+
+### Mitigated Issues (fixed)
+- ✅ JWT server-side revocation via jti denylist
+- ✅ Vault PIN change mechanism
+- ✅ CSP unsafe-eval removed from production
+- ✅ PBKDF2 iterations increased to 600k
+- ✅ Session lifetime reduced to 24h sliding window
+- ✅ TOTP secret only persisted after successful verification
+- ✅ Permissions-Policy allows camera/mic for WebRTC
+
+### Known Limitations
+- Vault stored in localStorage (mitigated by AES-256-GCM encryption)
+- Background Sync not supported on iOS Safari
+- WebAuthn largeBlob not universally supported (fallback to PRF extension)
 
 ---
 
@@ -874,6 +906,56 @@ OneToThree/
 ├── .env.prod.example          # Environment template
 └── FOSS.md                    # ← You are here
 ```
+
+---
+
+## Mobile Strategy
+
+### Current: PWA (Progressive Web App)
+Forest Messenger ships as a full-featured PWA installable on Android and iOS.
+
+| Feature | Android Chrome | iOS Safari (16.4+) |
+|---------|---------------|-------------------|
+| Install to home screen | ✅ | ✅ |
+| Push notifications | ✅ | ✅ |
+| Background sync | ✅ | ❌ (Safari limitation) |
+| Biometric unlock (WebAuthn) | ✅ | ✅ |
+| Wake Lock (screen on during call) | ✅ | ❌ |
+| MediaSession (lock screen controls) | ✅ | ⚠️ Partial |
+| Incoming call notification actions | ✅ | ⚠️ Partial |
+| Share Target | ✅ | ❌ |
+| Badging API | ✅ | ✅ (16.4+) |
+
+### PWA Implemented Features
+- WebAuthn / Passkeys — fingerprint and Face ID vault unlock
+- MediaSession API — lock screen call controls, headphone buttons
+- Wake Lock — screen stays on during calls
+- Badging API — unread count on app icon
+- Auto-lock — vault locks after configurable idle timeout
+- Incoming call push with Accept/Decline actions
+- Share Target — receive files shared from other apps
+- Screen orientation lock for video calls
+- Background Sync — queued messages sent when back online
+- Periodic Background Sync (Chrome) — badge updates in background
+
+### Future: Native Apps (Roadmap)
+
+**Option A: Capacitor (Recommended next step)**
+- Wraps existing Next.js code in native WebView
+- Estimated effort: 4-6 weeks
+- Platforms: Android + iOS simultaneously
+- Unlocks: CallKit (iOS), Foreground Service (Android), system contact picker
+- Requirements: Mac for iOS builds, Apple Developer ($99/year)
+
+**Option B: React Native**
+- Full native UI rewrite with shared business logic
+- Estimated effort: 4-6 months
+- Best quality native experience, background calls on both platforms
+
+**Option C: Flutter**
+- Complete rewrite in Dart
+- Estimated effort: 6-9 months
+- Best performance, single codebase for Android + iOS + Desktop
 
 ---
 

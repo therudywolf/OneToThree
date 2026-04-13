@@ -115,6 +115,7 @@ export function ChatTerminal({
     isMine: boolean
   } | null>(null)
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null)
+  const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [newMsgCount, setNewMsgCount] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -134,6 +135,7 @@ export function ChatTerminal({
   const prevScrollHeightRef = useRef(0)
 
   const isGroup = activeChat?.is_group ?? false
+  const isSelfChat = !isGroup && activeChat != null && activeChat.member_ids.length === 1 && activeChat.member_ids[0] === userId
 
   useReadReceipts(ref, { enabled: !isGroup })
 
@@ -272,6 +274,9 @@ export function ChatTerminal({
               }
             })()
           }
+          break
+        case 'react':
+          setReactingMsgId(msg.id)
           break
       }
     },
@@ -554,6 +559,7 @@ export function ChatTerminal({
       <div
         ref={ref}
         className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 py-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch] sm:px-4"
+        onClick={() => { if (reactingMsgId) setReactingMsgId(null) }}
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
         {loadingOlder ? (
@@ -572,7 +578,11 @@ export function ChatTerminal({
         ) : renderMessages.length === 0 ? (
           <div className="flex h-full min-h-[12rem] items-center justify-center">
             <div className="space-y-3 border border-neon-cyan/20 px-6 py-4 text-center">
-              {!isGroup && directPeerUsername ? (
+              {isSelfChat ? (
+                <p className="font-mono text-xs tracking-[0.25em] text-amber-400">
+                  {t('sidebar.savedMessages')}
+                </p>
+              ) : !isGroup && directPeerUsername ? (
                 <>
                   <UserAvatar
                     userId={activeChat?.member_ids.find((id) => id !== userId) ?? ''}
@@ -754,6 +764,11 @@ export function ChatTerminal({
                         onToggleReaction={(emoji) => handleToggleReaction(emoji, m.id)}
                         onOpenPicker={() => {}}
                       />
+                    ) : null}
+                    {reactingMsgId === m.id ? (
+                      <div className="mt-1">
+                        <QuickReactBar onReact={(emoji) => { handleToggleReaction(emoji, m.id); setReactingMsgId(null) }} />
+                      </div>
                     ) : null}
                     {mine ? (
                       <div

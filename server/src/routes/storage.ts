@@ -66,7 +66,7 @@ function isAllowedExtension(ext: string): boolean {
 }
 
 function isAllowedMimeType(mime: string): boolean {
-  const lower = mime.toLowerCase()
+  const lower = mime.toLowerCase().split(';')[0].trim()
   return ALLOWED_MIME_PREFIXES.some((prefix) => lower.startsWith(prefix))
 }
 

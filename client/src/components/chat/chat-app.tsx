@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck } from 'lucide-react'
+import { Menu, ShieldCheck, Star } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -320,6 +320,7 @@ export function ChatApp({
   }, [])
 
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
+  const isSelfChat = activeRow != null && !activeRow.is_group && activeRow.member_ids.length === 1 && activeRow.member_ids[0] === userId
   const typingUsers = useChatStore((s) => s.typingUsers)
   const peerPresence = useChatStore((s) => s.peerPresence)
 
@@ -499,7 +500,12 @@ export function ChatApp({
           <span className="min-w-0 shrink truncate">
             PROJECT_13 :: E2E :: @{user?.username ?? username}
           </span>
-          {peerIdentity ? (
+          {isSelfChat ? (
+            <div className="flex min-w-0 items-center gap-1.5 border border-amber-500/40 bg-black px-2 py-1 text-[10px] tracking-[0.2em] text-amber-400">
+              <Star className="h-3.5 w-3.5 fill-amber-400" />
+              <span>{t('sidebar.savedMessages')}</span>
+            </div>
+          ) : peerIdentity ? (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <button
                 type="button"

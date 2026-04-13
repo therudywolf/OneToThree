@@ -222,10 +222,12 @@ export function useMediaRecorder() {
 
     return new Promise((resolve) => {
       rec.onstop = () => {
-        const mime =
+        const rawMime =
           rec.mimeType ||
           (kind === 'audio' ? pickAudioMime() : pickVideoMime())
-          
+        // Strip codec params so browser doesn't choke on duration detection
+        const mime = rawMime.split(';')[0] || rawMime
+
         const blob = new Blob(chunksRef.current, { type: mime })
         
         // Clear references AFTER the blob is safely created

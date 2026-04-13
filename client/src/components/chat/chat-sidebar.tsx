@@ -150,10 +150,19 @@ export function ChatSidebar({
     }
   }, [localGhostQuery])
 
+  // Filter out self-chat from the list — it already has a dedicated "Saved Messages" button
+  const nonSelfChats = sidebarChats.filter(
+    (c) => !(
+      !c.is_group &&
+      c.member_ids.length === 1 &&
+      c.member_ids[0] === userId
+    )
+  )
+
   const sidebarChatsFiltered =
     ghostHitChatIds === null
-      ? sidebarChats
-      : sidebarChats.filter((c) => ghostHitChatIds.has(c.id))
+      ? nonSelfChats
+      : nonSelfChats.filter((c) => ghostHitChatIds.has(c.id))
 
   function togglePin(chatId: string) {
     setPinnedIds((prev) =>

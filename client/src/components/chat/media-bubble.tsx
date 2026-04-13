@@ -83,8 +83,9 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   )
 
   const effectiveMime = useMemo(() => {
-    if (envelope?.mimeType) return envelope.mimeType
-    return mimeFromPathAndType(mediaPath ?? '', mediaType)
+    const raw = envelope?.mimeType ?? mimeFromPathAndType(mediaPath ?? '', mediaType)
+    // Strip codec params for reliable browser playback
+    return raw.split(';')[0]
   }, [envelope, mediaPath, mediaType])
 
   const blobUrlRef = useRef<string | null>(null)
@@ -170,7 +171,10 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
         }
       }
 
-      const mime = envelope?.mimeType ?? mimeFromPathAndType(mediaPath, mediaType)
+      const rawMime = envelope?.mimeType ?? mimeFromPathAndType(mediaPath, mediaType)
+      // Strip codec params (e.g. "audio/webm;codecs=opus" → "audio/webm")
+      // to avoid browser playback issues with duration detection
+      const mime = rawMime.split(';')[0]
       const blob = new Blob([plain], { type: mime })
       await setCachedMedia(message.id, blob, mime)
       const url = URL.createObjectURL(blob)
@@ -286,11 +290,29 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
           }}
           onLoadedMetadata={() => {
             const el = audioRef.current
-            if (el?.duration) setDuration(el.duration)
+            if (!el) return
+            if (Number.isFinite(el.duration) && el.duration > 0) {
+              setDuration(el.duration)
+            } else {
+              // WebM from MediaRecorder often lacks duration metadata.
+              // Seek to a large time to force the browser to resolve real duration.
+              el.currentTime = 1e10
+            }
+          }}
+          onDurationChange={() => {
+            const el = audioRef.current
+            if (!el) return
+            if (Number.isFinite(el.duration) && el.duration > 0) {
+              setDuration(el.duration)
+              // If we seeked to force duration, reset back to start
+              if (el.currentTime > el.duration) {
+                el.currentTime = 0
+              }
+            }
           }}
           onTimeUpdate={() => {
             const el = audioRef.current
-            if (!el?.duration) return
+            if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return
             setCurrentSec(el.currentTime)
             setProgress((el.currentTime / el.duration) * 100)
           }}
@@ -427,12 +449,28 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                 preload="metadata"
                 onPlay={() => setPlaying(true)}
                 onPause={() => setPlaying(false)}
+                onLoadedMetadata={() => {
+                  const el = videoRef.current
+                  if (!el) return
+                  if (Number.isFinite(el.duration) && el.duration > 0) {
+                    setDuration(el.duration)
+                  } else {
+                    el.currentTime = 1e10
+                  }
+                }}
+                onDurationChange={() => {
+                  const el = videoRef.current
+                  if (!el) return
+                  if (Number.isFinite(el.duration) && el.duration > 0) {
+                    setDuration(el.duration)
+                    if (el.currentTime > el.duration) el.currentTime = 0
+                  }
+                }}
                 onTimeUpdate={() => {
                   const el = videoRef.current
-                  if (!el?.duration) return
+                  if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return
                   setCurrentSec(el.currentTime)
                   setProgress((el.currentTime / el.duration) * 100)
-                  if (!duration) setDuration(el.duration)
                 }}
               />
             </motion.div>

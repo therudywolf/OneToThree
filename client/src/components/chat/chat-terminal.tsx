@@ -667,17 +667,17 @@ export function ChatTerminal({
                     <Reply className="h-4 w-4 text-neon-cyan" />
                   </div>
                 ) : null}
-                {/* Hover quick-react bar (desktop only) */}
-                {hoveredMsgId === m.id ? (
-                  <div className={`absolute top-0 z-10 hidden md:block ${mine ? 'left-0' : 'right-0'}`}>
-                    <QuickReactBar onReact={(emoji) => handleToggleReaction(emoji, m.id)} />
-                  </div>
-                ) : null}
                 <div
-                  className={`msg-bubble-width min-w-0 ${
+                  className={`msg-bubble-width min-w-0 relative ${
                     mine ? 'items-end' : 'items-start'
                   } flex flex-col gap-1`}
                 >
+                  {/* Hover quick-react bar (desktop only) — positioned relative to bubble */}
+                  {hoveredMsgId === m.id ? (
+                    <div className={`absolute -top-8 z-10 hidden md:block ${mine ? 'right-0' : 'left-0'}`}>
+                      <QuickReactBar onReact={(emoji) => handleToggleReaction(emoji, m.id)} />
+                    </div>
+                  ) : null}
                   <div
                     className={`flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-widest ${
                       mine

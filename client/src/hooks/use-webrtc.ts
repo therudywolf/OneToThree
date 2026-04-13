@@ -114,6 +114,7 @@ export function useWebRTC(userId: string | null) {
   const statsIntervalRef = useRef<number | null>(null)
 
   const iceRetryTimersRef = useRef(new Map<string, number>())
+  const connectTimeoutRef = useRef<number | null>(null)
 
   const {
     setIncomingCall, reset: resetCallStore, addPeerConnection,
@@ -190,6 +191,7 @@ export function useWebRTC(userId: string | null) {
 
   const severAllLinks = useCallback(() => {
     ringStopRef.current?.()
+    if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
     setMediaAccessError(null)
     revertToOptics()
     
@@ -223,6 +225,7 @@ export function useWebRTC(userId: string | null) {
       const iceState = pc.iceConnectionState
       if (iceState === 'connected' || iceState === 'completed') {
         ringStopRef.current?.()
+        if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
         setReconnecting(false)
         setConnectionLost(false)
         setIceRetryCount(0)
@@ -329,8 +332,10 @@ export function useWebRTC(userId: string | null) {
 
         const pc = pcsRef.current.get(fromUserId)
         if (data.kind === 'ice' && pc) {
-          if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(data.candidate!))
-          else (pendingIceRef.current[fromUserId] ??= []).push(data.candidate!)
+          if (data.candidate) {
+            if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
+            else (pendingIceRef.current[fromUserId] ??= []).push(data.candidate)
+          }
         }
 
         if (data.kind === 'offer') {
@@ -559,8 +564,21 @@ export function useWebRTC(userId: string | null) {
       stream.getTracks().forEach(t => pc.addTrack(t, stream))
     }
 
-    if (pcsRef.current.size > 0) ringStopRef.current = startOutgoingRingtone()
-    else severAllLinks()
+    if (pcsRef.current.size > 0) {
+      ringStopRef.current = startOutgoingRingtone()
+      // 30s timeout: if no peer reaches 'connected', hang up
+      connectTimeoutRef.current = window.setTimeout(() => {
+        const anyConnected = Array.from(pcsRef.current.values()).some(
+          p => p.iceConnectionState === 'connected' || p.iceConnectionState === 'completed'
+        )
+        if (!anyConnected && useCallStore.getState().isCalling) {
+          console.warn('[SYS.ICE] 30s connection timeout — no peers connected')
+          severAllLinks()
+        }
+      }, 30_000)
+    } else {
+      severAllLinks()
+    }
   }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks])
 
   const acceptLink = useCallback(async () => {

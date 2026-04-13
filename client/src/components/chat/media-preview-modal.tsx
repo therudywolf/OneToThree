@@ -80,6 +80,7 @@ export function MediaPreviewModal({ file, mediaType, onSend, onCancel }: Props) 
             <video
               src={previewUrl}
               controls
+              playsInline
               className="max-h-[48vh] max-w-full"
             />
           ) : (
@@ -106,7 +107,8 @@ export function MediaPreviewModal({ file, mediaType, onSend, onCancel }: Props) 
             onKeyDown={handleKeyDown}
             rows={2}
             maxLength={512}
-            className="w-full resize-none border border-neutral-900 bg-zinc-950 px-3 py-2 font-mono text-xs text-white outline-none transition-all focus:border-neon-cyan/50 placeholder:text-zinc-600"
+            className="w-full resize-none border border-neutral-900 bg-zinc-950 px-3 py-2 font-mono text-white outline-none transition-all focus:border-neon-cyan/50 placeholder:text-zinc-600"
+            style={{ fontSize: 'max(16px, 1em)' }}
             placeholder={t('mediaPreview.captionPlaceholder')}
             autoComplete="off"
             spellCheck={false}

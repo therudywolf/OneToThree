@@ -499,7 +499,8 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <textarea
               ref={inputRef}
               rows={1}
-              className="terminal-input flex-1 min-h-6 max-h-24 resize-none text-sm bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed"
+              className="terminal-input flex-1 min-h-6 max-h-24 resize-none bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed"
+              style={{ fontSize: 'max(16px, 1em)' }}
               value={messageText}
               onChange={(e) => {
                 const next = e.target.value

@@ -6,6 +6,7 @@ import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useChatStore } from '@/store/chatStore'
 import { useCallStore } from '@/store/callStore'
 import { useTranslation } from '@/hooks/use-translation'
+import { wipeAllClientLocalState } from '@/lib/client-wipe'
 
 type LogoutProps = {
   /** Default: compact header label; `critical` uses long settings-style label + full width. */
@@ -36,6 +37,8 @@ export function LogoutButton({
     resetCallStore()
     resetStore()
     await logout()
+    // Clear IndexedDB vault, media cache, and all local storage on logout
+    await wipeAllClientLocalState()
     router.push('/login')
     router.refresh()
   }

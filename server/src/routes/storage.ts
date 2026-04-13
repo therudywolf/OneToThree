@@ -69,10 +69,14 @@ function isAllowedMimeType(mime: string): boolean {
   return ALLOWED_MIME_PREFIXES.some((prefix) => lower.startsWith(prefix))
 }
 
+/** Maximum allowed upload size in bytes (100 MiB). */
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+
 const uploadBodySchema = z.object({
   fileName: z.string().min(1).max(512),
   fileType: z.string().min(1).max(256),
   chatId: z.string().uuid(),
+  fileSize: z.number().int().nonnegative().max(MAX_UPLOAD_BYTES).optional(),
 })
 
 export const storageRoutes: FastifyPluginAsync = async (app) => {
@@ -97,8 +101,12 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const { fileName: rawFileName, fileType, chatId } = parsed.data
+    const { fileName: rawFileName, fileType, chatId, fileSize } = parsed.data
     const fileName = sanitizeFileName(rawFileName)
+
+    if (fileSize !== undefined && fileSize > MAX_UPLOAD_BYTES) {
+      return reply.status(413).send({ error: 'FILE_TOO_LARGE' })
+    }
 
     const ext = extensionFromFileName(fileName)
     if (!isAllowedExtension(ext)) {

@@ -8,8 +8,10 @@ import { chatMembers, users } from '../db/schema.js'
 import {
   getAuthUser,
   isUserDeviceSessionValid,
+  assertDeviceActiveForUser,
   type AuthUser,
 } from '../lib/auth-user.js'
+import { isJtiDenied } from '../lib/jwt-denylist.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { markMessageReadByReader } from '../lib/mark-message-read.js'
 import { parseOptionalBurnAt } from '../lib/burn-at.js'
@@ -39,13 +41,39 @@ import {
   isRoomActive,
 } from '../ws/group-call-rooms.js'
 
+type WsAuthResult = {
+  user: AuthUser
+  jti?: string
+  device_id?: string
+}
+
 /**
  * Resolves authenticated websocket user from session cookie or ws ticket JWT.
  * The ticket path is used when the browser does not include cookies during WS upgrade.
+ * Returns user + session metadata (jti, device_id) for ongoing revocation checks.
  */
-async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> {
+async function resolveWsUser(request: FastifyRequest): Promise<WsAuthResult | null> {
+  // Try cookie-based auth first
   const fromCookie = await getAuthUser(request)
-  if (fromCookie) return fromCookie
+  if (fromCookie) {
+    // Extract JTI and device_id from the cookie JWT for ongoing checks
+    const { readFmSessionToken } = await import('../lib/session-cookie.js')
+    const token = readFmSessionToken(request)
+    let jti: string | undefined
+    let device_id: string | undefined
+    if (token) {
+      try {
+        const payload = await request.server.jwt.verify<{
+          jti?: string
+          device_id?: string
+        }>(token)
+        jti = payload.jti
+        device_id = payload.device_id
+      } catch { /* token verification handled elsewhere */ }
+    }
+    return { user: fromCookie, jti, device_id }
+  }
+
   const q = request.query as { ticket?: string }
   const ticket = q?.ticket?.trim()
   if (!ticket) return null
@@ -55,6 +83,7 @@ async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> 
       username: string
       scope?: string
       device_id?: string
+      jti?: string
     }>(ticket)
     if (p.scope !== 'ws' || !p.sub || !p.username) return null
     const id = normalizeUuid(p.sub)
@@ -72,10 +101,14 @@ async function resolveWsUser(request: FastifyRequest): Promise<AuthUser | null> 
       .limit(1)
     if (!row || row.isBanned) return null
     return {
-      id: normalizeUuid(row.id),
-      username: row.username,
-      is_discoverable: row.isDiscoverable,
-      role: row.role === 'admin' ? 'admin' : 'user',
+      user: {
+        id: normalizeUuid(row.id),
+        username: row.username,
+        is_discoverable: row.isDiscoverable,
+        role: row.role === 'admin' ? 'admin' : 'user',
+      },
+      jti: p.jti,
+      device_id: p.device_id,
     }
   } catch {
     return null
@@ -254,6 +287,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
     const correlationId = randomUUID()
     const pending: unknown[] = []
     let authed: AuthUser | null = null
+    /** Session metadata for ongoing revocation checks. */
+    let sessionJti: string | undefined
+    let sessionDeviceId: string | undefined
     const rateLimiter = new WsRateLimiter()
 
     /** Handles a single parsed raw websocket frame for an authenticated user. */
@@ -401,6 +437,22 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
 
         const pingParsed = presencePingSchema.safeParse(json)
         if (pingParsed.success) {
+          // Revalidate session on each heartbeat: check JTI denylist + device revocation
+          if (sessionJti && isJtiDenied(sessionJti)) {
+            request.log.info({ correlationId, userId: user.id }, 'ws: session revoked (JTI denied)')
+            ws.send(JSON.stringify({ type: 'error', error: 'SESSION_REVOKED' }))
+            ws.close(1008, 'session revoked')
+            return
+          }
+          if (sessionDeviceId) {
+            const deviceOk = await assertDeviceActiveForUser(user.id, sessionDeviceId)
+            if (!deviceOk) {
+              request.log.info({ correlationId, userId: user.id }, 'ws: device revoked')
+              ws.send(JSON.stringify({ type: 'error', error: 'DEVICE_REVOKED' }))
+              ws.close(1008, 'device revoked')
+              return
+            }
+          }
           void touchLastSeenPing(user.id)
           return
         }
@@ -604,13 +656,16 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       handleMessage(raw, authed)
     })
 
-    void resolveWsUser(request).then(async (user) => {
-      if (!user) {
+    void resolveWsUser(request).then(async (result) => {
+      if (!result) {
         request.log.warn({ correlationId }, 'ws: unauthorized upgrade')
         ws.close(1008, 'unauthorized')
         return
       }
+      const user = result.user
       authed = user
+      sessionJti = result.jti
+      sessionDeviceId = result.device_id
       const wasOnline = hasActiveSocket(user.id)
       const lastSeenIso = await touchLastSeen(user.id)
       const related = await getRelatedUserIds(user.id)

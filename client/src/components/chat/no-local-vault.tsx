@@ -13,7 +13,7 @@ export function NoLocalVault() {
     <main className="relative flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-4 font-mono selection:bg-neon-red selection:text-black">
       
       {/* BACKGROUND_FX :: Стерильная пустота */}
-      <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+      <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.03] bg-[url('/noise.svg')]" />
 
       <div className="relative z-10 w-full max-w-md border border-neutral-900 bg-black p-8 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
         

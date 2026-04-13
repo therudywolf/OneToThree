@@ -32,7 +32,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return (
       <div className="fixed inset-0 z-[500] flex flex-col items-center justify-center bg-black px-6 font-mono selection:bg-neon-red selection:text-black">
-        <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.05] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+        <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.05] bg-[url('/noise.svg')]" />
 
         <div className="relative z-10 w-full max-w-md border border-neutral-900 bg-black p-8 shadow-[0_0_60px_rgba(255,0,0,0.1)]">
           <div className="absolute top-0 left-0 h-[1px] w-full bg-neon-red opacity-60" />

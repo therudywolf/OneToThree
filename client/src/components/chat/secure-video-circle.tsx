@@ -41,7 +41,9 @@ export function SecureVideoCircle({
         const encryptedBuf = await res.arrayBuffer()
 
         const decryptedBuf = await decryptBinary(sharedKey, encryptedBuf, mediaIv)
-        const decryptedBlob = new Blob([decryptedBuf], { type: mimeType || 'video/webm' })
+        // Strip codec params (e.g. "video/webm;codecs=vp8,opus" → "video/webm")
+        const blobMime = (mimeType || 'video/webm').split(';')[0]
+        const decryptedBlob = new Blob([decryptedBuf], { type: blobMime })
 
         if (isSubscribed) {
           const url = URL.createObjectURL(decryptedBlob)

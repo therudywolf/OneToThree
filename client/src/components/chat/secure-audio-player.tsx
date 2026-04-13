@@ -41,7 +41,9 @@ export function SecureAudioPlayer({
         const encryptedBuf = await res.arrayBuffer()
 
         const decryptedBuf = await decryptBinary(sharedKey, encryptedBuf, mediaIv)
-        const decryptedBlob = new Blob([decryptedBuf], { type: mimeType || 'audio/webm' })
+        // Strip codec params (e.g. "audio/webm;codecs=opus" → "audio/webm")
+        const blobMime = (mimeType || 'audio/webm').split(';')[0]
+        const decryptedBlob = new Blob([decryptedBuf], { type: blobMime })
 
         if (isSubscribed) {
           const url = URL.createObjectURL(decryptedBlob)

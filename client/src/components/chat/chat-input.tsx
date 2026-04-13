@@ -65,6 +65,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const emojiContainerRef = useRef<HTMLDivElement>(null)
   const replyTo = useChatStore((s) => s.replyTo)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
@@ -73,11 +74,28 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     startVoiceCapture,
     startVideoCircleCapture,
     stopCapture,
+    previewStream,
   } = useMediaRecorder()
+
+  const videoPreviewRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const el = videoPreviewRef.current
+    if (!el) return
+    if (previewStream && mediaMode === 'circle') {
+      el.srcObject = previewStream
+    } else {
+      el.srcObject = null
+    }
+  }, [previewStream, mediaMode])
 
   useEffect(() => {
     if (!emojiOpen) return
-    const close = () => setEmojiOpen(false)
+    const close = (e: MouseEvent) => {
+      // Don't close if click is inside the emoji picker container
+      if (emojiContainerRef.current?.contains(e.target as Node)) return
+      setEmojiOpen(false)
+    }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [emojiOpen])
@@ -353,6 +371,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
       {emojiOpen ? (
         <div
+          ref={emojiContainerRef}
           className="relative z-10 mb-2 border border-neon-cyan/50 bg-black p-2 shadow-[inset_0_0_12px_rgba(0,255,255,0.08)]"
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -382,6 +401,22 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           >
             <X className="h-4 w-4" />
           </button>
+
+          {/* Circle video preview when recording in circle mode */}
+          {mediaMode === 'circle' && previewStream ? (
+            <div className="relative aspect-square w-16 shrink-0 overflow-hidden rounded-full border-2 border-neon-red bg-black shadow-[0_0_12px_rgba(255,0,0,0.2)]">
+              <video
+                ref={videoPreviewRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-cover"
+              />
+              <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-center font-mono text-[7px] text-neon-red">
+                {formatRecordTime(recordSeconds)}
+              </span>
+            </div>
+          ) : null}
 
           {/* Waveform + timer */}
           <div className="flex flex-1 items-center gap-2 border border-neon-red/40 bg-zinc-950 px-3 py-2">
@@ -478,6 +513,18 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             />
             {isRecordingUI && !recordLocked ? (
               <span className="inline-flex items-center gap-1.5 shrink-0">
+                {/* Inline circle video preview during hold-to-record */}
+                {mediaMode === 'circle' && previewStream ? (
+                  <span className="relative inline-block h-8 w-8 shrink-0 overflow-hidden rounded-full border border-neon-red">
+                    <video
+                      ref={videoPreviewRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="h-full w-full object-cover"
+                    />
+                  </span>
+                ) : null}
                 <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-600 animate-pulse" />
                 <span className="font-mono text-[10px] text-red-400 tabular-nums">
                   {formatRecordTime(recordSeconds)}

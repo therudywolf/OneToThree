@@ -18,6 +18,7 @@ import {
 import { fetchUserProfile, type UserProfile } from '@/lib/api/users'
 import { useTranslation } from '@/hooks/use-translation'
 import { UserAvatar } from '@/components/user-avatar'
+import { sanitizeText, sanitizeUrl } from '@/lib/sanitize'
 
 type Props = {
   userId: string
@@ -272,7 +273,7 @@ export function UserProfileModal({
                         {t('profile.bio')}
                       </p>
                       <p className="font-mono text-[11px] text-neon-cyan/80 whitespace-pre-wrap break-words leading-relaxed">
-                        {profile.bio}
+                        {sanitizeText(profile.bio)}
                       </p>
                     </div>
                   ) : null}
@@ -287,17 +288,19 @@ export function UserProfileModal({
                         {profile.social_links.map((link, idx) => {
                           const Icon =
                             PLATFORM_ICONS[link.platform.toLowerCase()] ?? Globe
+                          const safeUrl = sanitizeUrl(link.url)
+                          if (!safeUrl) return null
                           return (
                             <a
                               key={idx}
-                              href={link.url}
+                              href={safeUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center justify-between border border-neon-cyan/30 bg-black/50 px-3 py-2 font-mono text-[9px] uppercase tracking-wider text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all"
                             >
                               <span className="flex items-center gap-2">
                                 <Icon className="h-3 w-3" />
-                                {link.platform}
+                                {sanitizeText(link.platform)}
                               </span>
                               <span className="text-neon-red">&#8599;</span>
                             </a>

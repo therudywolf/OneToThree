@@ -4,6 +4,7 @@ import React, { useMemo, useState, useCallback } from 'react'
 import emojiRegex from 'emoji-regex'
 import { Copy, Check } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
+import { sanitizeText } from '@/lib/sanitize'
 
 type Props = {
   text: string
@@ -146,6 +147,7 @@ function LinkSpan({ url }: { url: string }) {
 
 export function NoirPlaintext({ text, className = '' }: Props) {
   const processedNodes = useMemo(() => {
+    const safeText = sanitizeText(text)
     const emojiRe = emojiRegex()
 
     // First, split out code blocks
@@ -156,7 +158,7 @@ export function NoirPlaintext({ text, className = '' }: Props) {
     const codeBlocks: Array<{ start: number; end: number; lang?: string; code: string }> = []
     let cbMatch: RegExpExecArray | null
     const cbRe = new RegExp(CODE_BLOCK_RE.source, 'g')
-    while ((cbMatch = cbRe.exec(text)) !== null) {
+    while ((cbMatch = cbRe.exec(safeText)) !== null) {
       codeBlocks.push({
         start: cbMatch.index,
         end: cbMatch.index + cbMatch[0].length,
@@ -267,13 +269,13 @@ export function NoirPlaintext({ text, className = '' }: Props) {
 
     // Process text with code blocks
     if (codeBlocks.length === 0) {
-      return processInlineText(text)
+      return processInlineText(safeText)
     }
 
     for (const cb of codeBlocks) {
       // Plain text before code block
       if (cb.start > lastIdx) {
-        segments.push(...processInlineText(text.slice(lastIdx, cb.start)))
+        segments.push(...processInlineText(safeText.slice(lastIdx, cb.start)))
       }
 
       segments.push(
@@ -283,8 +285,8 @@ export function NoirPlaintext({ text, className = '' }: Props) {
     }
 
     // Remaining text after last code block
-    if (lastIdx < text.length) {
-      segments.push(...processInlineText(text.slice(lastIdx)))
+    if (lastIdx < safeText.length) {
+      segments.push(...processInlineText(safeText.slice(lastIdx)))
     }
 
     return segments

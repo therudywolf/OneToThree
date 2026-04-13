@@ -5,8 +5,7 @@ FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
-# Prefer reproducible `npm ci` when lockfile matches package.json; fall back tolerates lock drift on CI hosts.
-RUN npm ci || npm install
+RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev

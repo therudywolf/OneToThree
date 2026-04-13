@@ -12,6 +12,14 @@ services:
   db:
     image: postgres:16-alpine
     restart: always
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=64MB
+      -c statement_timeout=30000
+      -c idle_in_transaction_session_timeout=60000
+      -c max_connections=50
     dns:
       - 8.8.8.8
       - 1.1.1.1

@@ -15,9 +15,11 @@ import { storageRoutes } from './routes/storage.js'
 import { adminRoutes } from './routes/admin.js'
 import { vaultRoutes } from './routes/vault.js'
 import { wsRoutes } from './routes/ws.js'
+import { sql } from 'drizzle-orm'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { requireSecret } from './lib/read-secret.js'
+import { db } from './db/index.js'
 
 export async function buildApp() {
   /** Behind Caddy/nginx: trust X-Forwarded-* for real client IPs (disable with TRUST_PROXY=0). */
@@ -124,6 +126,16 @@ export async function buildApp() {
   await app.register(wsRoutes, { prefix: '/api' })
 
   app.get('/health', async () => ({ ok: true }))
+
+  app.get('/health/ready', async (request, reply) => {
+    try {
+      await db.execute(sql`SELECT 1`)
+      return { ok: true, db: 'up' }
+    } catch (err) {
+      request.log.error(err, 'health/ready: db check failed')
+      return reply.status(503).send({ ok: false, db: 'down' })
+    }
+  })
 
   if (process.env.API_FILE_LOG === '1') {
     app.addHook('onResponse', (request, reply, done) => {

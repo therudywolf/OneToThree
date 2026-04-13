@@ -62,12 +62,14 @@ export function RecoveryHandler() {
       }
     }
 
-    window.addEventListener('error', handleChunkError)
-    window.addEventListener('unhandledrejection', (evt) => {
+    const handleRejection = (evt: PromiseRejectionEvent) => {
       if (evt.reason?.message?.includes('ChunkLoadError')) {
         handleChunkError(evt.reason)
       }
-    })
+    }
+
+    window.addEventListener('error', handleChunkError)
+    window.addEventListener('unhandledrejection', handleRejection)
 
     // Start the hydration guard
     startHydrationGuard()
@@ -87,7 +89,7 @@ export function RecoveryHandler() {
 
     return () => {
       window.removeEventListener('error', handleChunkError)
-      window.removeEventListener('unhandledrejection', handleChunkError as EventListener)
+      window.removeEventListener('unhandledrejection', handleRejection)
       window.removeEventListener('app-ready', handleAppReady)
       window.removeEventListener('click', clearGuard)
       window.removeEventListener('touchstart', clearGuard)

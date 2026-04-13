@@ -5,8 +5,8 @@
  * Purpose: Dumps Postgres and MinIO assets into a timestamped container.
  */
 
-import { execSync } from 'node:child_process'
-import { mkdirSync, existsSync, rmSync, statSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, existsSync, rmSync, statSync, createWriteStream } from 'node:fs'
 import { join } from 'node:path'
 
 /** [CONFIG] :: Параметры архивации */
@@ -14,25 +14,14 @@ const STASH_ROOT = join(process.cwd(), 'backups')
 const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
 const WORK_DIR = join(STASH_ROOT, `p13-extract-${TIMESTAMP}`)
 
-/** [INTERCEPT_COMMAND] :: Выполнение системных вызовов с логированием */
-function execute(cmd: string, label: string) {
-  console.log(`>> [SYS.BACKUP] ${label}...`)
-  try {
-    execSync(cmd, { stdio: 'inherit', cwd: process.cwd() })
-  } catch (err) {
-    console.error(`>> [FAULT] ${label} FAILED.`)
-    throw err
-  }
-}
-
 /** [NODE_PROBE] :: Поиск активного ID контейнера в стеке */
 function findNode(service: string): string {
   try {
-    const id = execSync(`docker compose ps -q ${service}`, { 
-      encoding: 'utf8', 
-      cwd: process.cwd() 
+    const id = execFileSync('docker', ['compose', 'ps', '-q', service], {
+      encoding: 'utf8',
+      cwd: process.cwd()
     }).trim()
-    
+
     if (!id) throw new Error(`NODE_NOT_FOUND :: ${service} offline`)
     return id
   } catch {
@@ -49,29 +38,42 @@ try {
   const dbNode = findNode('db')
   const dbDumpPath = join(WORK_DIR, 'postgres_dump.sql')
   // Используем pg_dumpall для захвата ролей и всех БД
-  execute(
-    `docker exec ${dbNode} pg_dumpall -U forest > "${dbDumpPath}"`,
-    'EXTRACTING_SQL_ASSETS'
-  )
+  console.log('>> [SYS.BACKUP] EXTRACTING_SQL_ASSETS...')
+  const dumpOut = createWriteStream(dbDumpPath)
+  try {
+    const result = execFileSync('docker', ['exec', dbNode, 'pg_dumpall', '-U', 'forest'])
+    dumpOut.write(result)
+    dumpOut.end()
+  } catch (err) {
+    dumpOut.end()
+    console.error('>> [FAULT] EXTRACTING_SQL_ASSETS FAILED.')
+    throw err
+  }
 
   // [2] STORAGE_CLONE :: Копирование бинарных сегментов из MinIO
   const minioNode = findNode('minio')
   const storageDir = join(WORK_DIR, 'minio_data')
   mkdirSync(storageDir, { recursive: true })
-  execute(
-    `docker cp ${minioNode}:/data/. "${storageDir}"`,
-    'CLONING_STORAGE_SEGMENTS'
-  )
+  console.log('>> [SYS.BACKUP] CLONING_STORAGE_SEGMENTS...')
+  try {
+    execFileSync('docker', ['cp', `${minioNode}:/data/.`, storageDir], { stdio: 'inherit' })
+  } catch (err) {
+    console.error('>> [FAULT] CLONING_STORAGE_SEGMENTS FAILED.')
+    throw err
+  }
 
   // [3] ENCAPSULATION :: Сжатие данных в финальный архив
   const archiveName = `p13-stash-${TIMESTAMP}.tar.gz`
   const archivePath = join(STASH_ROOT, archiveName)
-  
+
   // Упаковываем только содержимое временной папки, чтобы избежать вложенности путей
-  execute(
-    `tar -czf "${archivePath}" -C "${WORK_DIR}" .`,
-    'ENCAPSULATING_STASH'
-  )
+  console.log('>> [SYS.BACKUP] ENCAPSULATING_STASH...')
+  try {
+    execFileSync('tar', ['-czf', archivePath, '-C', WORK_DIR, '.'], { stdio: 'inherit' })
+  } catch (err) {
+    console.error('>> [FAULT] ENCAPSULATING_STASH FAILED.')
+    throw err
+  }
 
   // [4] TERMINATE_WORK_DIR :: Зачистка следов после успешной сборки
   rmSync(WORK_DIR, { recursive: true, force: true })

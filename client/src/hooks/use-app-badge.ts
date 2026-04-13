@@ -33,12 +33,15 @@ export function useAppBadge(userId: string | null) {
       navigator.clearAppBadge?.().catch(() => {})
     }
 
-    document.addEventListener('visibilitychange', () => {
+    const handleVisibility = () => {
       if (document.visibilityState === 'visible') clearOnFocus()
-    })
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
     window.addEventListener('focus', clearOnFocus)
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('focus', clearOnFocus)
     }
   }, [])

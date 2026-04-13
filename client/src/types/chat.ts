@@ -54,6 +54,8 @@ export type DecryptedMessage = {
   burn_at?: string | null
   /** Emoji reactions — map of emoji to array of user IDs who reacted */
   reactions?: Record<string, string[]>
+  /** True if queued for Background Sync (not yet delivered to server) */
+  _pending?: boolean
 }
 
 export type ChannelNode = {

@@ -846,12 +846,15 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               </label>
               <textarea
                 id="profile-bio"
-                className="terminal-input mt-1 min-h-[3rem] w-full resize-y text-[10px]"
-                maxLength={256}
+                className="terminal-input mt-1 min-h-[4rem] w-full resize-y text-[10px]"
+                maxLength={500}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 placeholder={t('profile.bioPlaceholder')}
               />
+              <p className={`mt-0.5 text-right font-mono text-[8px] ${bio.length > 450 ? 'text-neon-red' : 'text-zinc-600'}`}>
+                {bio.length}/500
+              </p>
             </div>
 
             {/* Status text */}

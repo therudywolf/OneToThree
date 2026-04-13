@@ -48,6 +48,26 @@ const en = {
   'call.openChannels': 'Calls',
   'call.mediaPermissionDenied': 'Camera and microphone unavailable. Check browser settings.',
 
+  // [CALL UI]
+  'call.screenSharing': 'Screen Share',
+  'call.startScreenShare': 'Share Screen',
+  'call.stopScreenShare': 'Stop Sharing',
+  'call.connP2P': 'Direct P2P',
+  'call.connRelay': 'Relayed',
+  'call.p2pTooltip': 'Direct peer-to-peer encrypted connection',
+  'call.relayTooltip': 'Data relayed via server (still encrypted, server cannot read content)',
+  'call.quality': 'Quality',
+  'call.qualityAuto': 'Auto',
+  'call.qualityAudioOnly': 'Audio Only',
+  'call.mute': 'Mute',
+  'call.unmute': 'Unmute',
+  'call.videoOn': 'Turn On Camera',
+  'call.videoOff': 'Turn Off Camera',
+  'call.toggleCamera': 'Toggle Camera',
+  'call.switchCamera': 'Switch Camera',
+  'call.toggleLayout': 'Toggle Layout',
+  'call.endCall': 'End Call',
+
   // [LOGIN]
   'login.usernameRequired': 'Username required.',
   'login.passwordRequired': 'Password required.',

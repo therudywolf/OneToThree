@@ -13,13 +13,19 @@ import {
   Minimize2,
   Grid3X3,
   Focus,
-  Zap,
   WifiOff,
+  Lock,
+  Radio,
+  ChevronDown,
+  MonitorOff,
 } from 'lucide-react'
-import { applyPreferredAudioOutput, loadMediaPrefs, saveMediaPrefs } from '@/lib/media-devices'
+import { applyPreferredAudioOutput, loadMediaPrefs } from '@/lib/media-devices'
 import { isAndroidMobile } from '@/lib/android'
+import { isIOSOrIPadOS } from '@/lib/ios'
 import { useCallStore } from '@/store/callStore'
+import type { QualityLevel, PeerConnectionType } from '@/store/callStore'
 import { PortalRoot } from '@/components/portal-root'
+import { useTranslation, type TranslationKey } from '@/hooks/use-translation'
 
 type Props = {
   onEndCall: () => void
@@ -29,6 +35,7 @@ type Props = {
   onSwitchCamera: () => void
   isScreenSharing: boolean
   onToggleScreenShare: () => void
+  onSetQuality: (level: QualityLevel) => void
 }
 
 function formatDuration(ms: number): string {
@@ -62,6 +69,7 @@ function PeerTile({
   isFocused = false,
   onFocusToggle,
   layout = 'grid',
+  connectionType,
 }: {
   peerId: string
   stream: MediaStream
@@ -76,6 +84,7 @@ function PeerTile({
   isFocused?: boolean
   onFocusToggle?: () => void
   layout?: 'grid' | 'focus'
+  connectionType?: PeerConnectionType
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -196,22 +205,48 @@ function PeerTile({
       )}
 
       {/* STATUS OVERLAYS */}
-      {showWarnings && (
-        <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 z-10">
-          {remoteMicMuted && (
-            <span className="border border-neon-red/50 bg-black/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
-              AUDIO_CUT
-            </span>
-          )}
-          {remoteCamOff && hasVideo && (
-            <span className="border border-neon-red/50 bg-black/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
-              FEED_LOST
-            </span>
-          )}
-        </div>
-      )}
+      <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 z-10">
+        {/* P2P / Relay indicator per tile */}
+        {connectionType && connectionType !== 'unknown' && (
+          <span className={`flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider backdrop-blur-md ${
+            connectionType === 'p2p'
+              ? 'border-emerald-500/50 bg-black/90 text-emerald-400'
+              : 'border-amber-500/50 bg-black/90 text-amber-400'
+          }`}>
+            {connectionType === 'p2p' ? <Lock className="h-2.5 w-2.5" /> : <Radio className="h-2.5 w-2.5" />}
+            {connectionType === 'p2p' ? 'P2P' : 'RELAY'}
+          </span>
+        )}
+        {remoteMicMuted && (
+          <span className="border border-neon-red/50 bg-black/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
+            AUDIO_CUT
+          </span>
+        )}
+        {remoteCamOff && hasVideo && (
+          <span className="border border-neon-red/50 bg-black/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
+            FEED_LOST
+          </span>
+        )}
+      </div>
     </div>
   )
+}
+
+const QUALITY_OPTIONS: QualityLevel[] = ['auto', '720p', '480p', '360p', 'audio_only']
+
+function qualityLabel(level: QualityLevel, t: (key: TranslationKey) => string): string {
+  switch (level) {
+    case 'auto': return t('call.qualityAuto')
+    case '720p': return '720p'
+    case '480p': return '480p'
+    case '360p': return '360p'
+    case 'audio_only': return t('call.qualityAudioOnly')
+  }
+}
+
+function connectionTypeLabel(type: PeerConnectionType, t: (key: TranslationKey) => string): { label: string; icon: 'lock' | 'radio' } {
+  if (type === 'relay') return { label: t('call.connRelay'), icon: 'radio' }
+  return { label: t('call.connP2P'), icon: 'lock' }
 }
 
 // --- MAIN OVERLAY ---
@@ -223,25 +258,31 @@ export function ActiveCallOverlay({
   onSwitchCamera,
   isScreenSharing,
   onToggleScreenShare,
+  onSetQuality,
 }: Props) {
+  const { t } = useTranslation()
   const isCalling = useCallStore((s) => s.isCalling)
   const localStream = useCallStore((s) => s.localStream)
   const remoteStreams = useCallStore((s) => s.remoteStreams)
   const remotePeerMedia = useCallStore((s) => s.remotePeerMedia)
   const isReconnecting = useCallStore((s) => s.isReconnecting)
   const connectionQuality = useCallStore((s) => s.connectionQuality)
+  const peerConnectionTypes = useCallStore((s) => s.peerConnectionTypes)
+  const qualityLevel = useCallStore((s) => s.qualityLevel)
 
   const [tick, setTick] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const startRef = useRef<number | null>(null)
   const [screenShareAllowed, setScreenShareAllowed] = useState(true)
+  const [isMobileDevice, setIsMobileDevice] = useState(false)
   const [layout, setLayout] = useState<'grid' | 'focus'>('grid')
   const [focusedPeerId, setFocusedPeerId] = useState<string | null>(null)
   const [showControls, setShowControls] = useState(true)
-  const [isHD, setIsHD] = useState(() => !loadMediaPrefs().lowBandwidth)
+  const [showQualityMenu, setShowQualityMenu] = useState(false)
 
   useEffect(() => {
     setScreenShareAllowed(!isAndroidMobile())
+    setIsMobileDevice(isAndroidMobile() || isIOSOrIPadOS())
   }, [])
 
   useEffect(() => {
@@ -287,10 +328,11 @@ export function ActiveCallOverlay({
     })
   }
 
-  function toggleBandwidth() {
-    const newValue = !isHD
-    setIsHD(newValue)
-    saveMediaPrefs({ lowBandwidth: !newValue })
+  function cycleQuality() {
+    const idx = QUALITY_OPTIONS.indexOf(qualityLevel)
+    const next = QUALITY_OPTIONS[(idx + 1) % QUALITY_OPTIONS.length]
+    onSetQuality(next)
+    setShowQualityMenu(false)
   }
 
   if (!isCalling || !localStream) return null
@@ -309,7 +351,45 @@ export function ActiveCallOverlay({
               SYS.LINK // <span className="text-white">NODES: {tileCount}</span>
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {/* Screen sharing indicator */}
+            {isScreenSharing && (
+              <span className="flex items-center gap-1.5 border border-neon-cyan/50 bg-neon-cyan/10 px-2 py-0.5">
+                <Monitor className="h-3 w-3 text-neon-cyan" />
+                <span className="font-mono text-[9px] uppercase tracking-wider text-neon-cyan">{t('call.screenSharing')}</span>
+              </span>
+            )}
+
+            {/* P2P / Relay indicators per peer */}
+            {Object.entries(peerConnectionTypes).map(([peerId, connType]) => {
+              if (connType === 'unknown') return null
+              const info = connectionTypeLabel(connType, t)
+              return (
+                <span
+                  key={peerId}
+                  className={`flex items-center gap-1 border px-2 py-0.5 ${
+                    connType === 'p2p'
+                      ? 'border-emerald-500/50 bg-emerald-950/50'
+                      : 'border-amber-500/50 bg-amber-950/50'
+                  }`}
+                  title={connType === 'relay' ? t('call.relayTooltip') : t('call.p2pTooltip')}
+                >
+                  {info.icon === 'lock'
+                    ? <Lock className="h-3 w-3 text-emerald-400" />
+                    : <Radio className="h-3 w-3 text-amber-400" />
+                  }
+                  <span className={`font-mono text-[9px] uppercase tracking-wider ${
+                    connType === 'p2p' ? 'text-emerald-400' : 'text-amber-400'
+                  }`}>{info.label}</span>
+                </span>
+              )
+            })}
+
+            {/* Quality badge */}
+            <span className="border border-neutral-700 bg-neutral-900/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400">
+              {qualityLabel(qualityLevel, t)}
+            </span>
+
             {isReconnecting && (
               <span className="flex items-center gap-1.5 border border-amber-500/50 bg-amber-950/50 px-2 py-0.5 animate-pulse">
                 <RefreshCw className="h-3 w-3 text-amber-400 animate-spin" />
@@ -341,6 +421,7 @@ export function ActiveCallOverlay({
                       key={id} peerId={id} stream={stream} label="REMOTE_LINK"
                       remoteMicMuted={remotePeerMedia[id]?.micMuted}
                       remoteCamOff={remotePeerMedia[id]?.cameraOff} layout={layout}
+                      connectionType={peerConnectionTypes[id]}
                     />
                   ))
                 )}
@@ -361,6 +442,7 @@ export function ActiveCallOverlay({
                         remoteMicMuted={remotePeerMedia[id]?.micMuted}
                         remoteCamOff={remotePeerMedia[id]?.cameraOff}
                         onFocusToggle={() => setFocusedPeerId(id)} layout="grid"
+                        connectionType={peerConnectionTypes[id]}
                       />
                     </div>
                   ))}
@@ -376,6 +458,7 @@ export function ActiveCallOverlay({
                   remoteMicMuted={remotePeerMedia[id]?.micMuted}
                   remoteCamOff={remotePeerMedia[id]?.cameraOff}
                   onFocusToggle={() => setFocusedPeerId(id)} layout={layout}
+                  connectionType={peerConnectionTypes[id]}
                 />
               ))}
             </div>
@@ -384,46 +467,73 @@ export function ActiveCallOverlay({
 
         {/* TACTICAL CONTROLS */}
         <div className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-black/90 border border-neutral-800 backdrop-blur-xl shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
-          
-          <button onClick={() => { onToggleMute(); setTick(t => t + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${audioMuted ? 'bg-red-950/30 text-neon-red hover:bg-red-900/50' : 'text-neutral-300 hover:text-white hover:bg-white/5'}`}>
+
+          <button onClick={() => { onToggleMute(); setTick(t_ => t_ + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${audioMuted ? 'bg-red-950/30 text-neon-red hover:bg-red-900/50' : 'text-neutral-300 hover:text-white hover:bg-white/5'}`} title={audioMuted ? t('call.unmute') : t('call.mute')}>
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
 
           {onToggleVideo && (
-            <button onClick={() => { onToggleVideo(); setTick(t => t + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${!hasCameraTrack || videoOff ? 'bg-neutral-900/50 text-neutral-600 hover:bg-neutral-800' : 'text-neutral-300 hover:text-white hover:bg-white/5'}`}>
+            <button onClick={() => { onToggleVideo(); setTick(t_ => t_ + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${!hasCameraTrack || videoOff ? 'bg-neutral-900/50 text-neutral-600 hover:bg-neutral-800' : 'text-neutral-300 hover:text-white hover:bg-white/5'}`} title={videoOff ? t('call.videoOn') : t('call.videoOff')}>
               {!hasCameraTrack || videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
             </button>
           )}
 
-          <button onClick={() => { onToggleCamera(); setTick(t => t + 1); }} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-neon-cyan hover:bg-neon-cyan/5 transition-colors">
+          <button onClick={() => { onToggleCamera(); setTick(t_ => t_ + 1); }} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-neon-cyan hover:bg-neon-cyan/5 transition-colors" title={t('call.toggleCamera')}>
             {videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
           </button>
 
-          {hasCameraTrack && !videoOff && (
-            <button onClick={onSwitchCamera} disabled={isScreenSharing} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-20 transition-colors">
+          {/* Switch camera — mobile only */}
+          {isMobileDevice && hasCameraTrack && !videoOff && (
+            <button onClick={onSwitchCamera} disabled={isScreenSharing} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-20 transition-colors" title={t('call.switchCamera')}>
               <RefreshCw className="h-4 w-4" />
             </button>
           )}
 
+          {/* Screen share — desktop only */}
           {screenShareAllowed && (
-            <button onClick={() => { onToggleScreenShare(); setTick(t => t + 1); }} className={`hidden md:flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${isScreenSharing ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>
-              <Monitor className="h-4 w-4" />
+            <button onClick={() => { onToggleScreenShare(); setTick(t_ => t_ + 1); }} className={`hidden md:flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${isScreenSharing ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`} title={isScreenSharing ? t('call.stopScreenShare') : t('call.startScreenShare')}>
+              {isScreenSharing ? <MonitorOff className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
             </button>
           )}
 
-          <button onClick={toggleBandwidth} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${isHD ? 'text-neon-cyan bg-neon-cyan/5' : 'text-neutral-500 hover:text-neutral-300'}`}>
-            <Zap className="h-4 w-4" />
-          </button>
+          {/* Quality selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowQualityMenu(prev => !prev)}
+              className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+              title={t('call.quality')}
+            >
+              <span className="font-mono text-[10px] font-bold">{qualityLevel === 'auto' ? 'A' : qualityLevel === 'audio_only' ? 'Aud' : qualityLevel}</span>
+              <ChevronDown className="h-3 w-3 ml-0.5" />
+            </button>
+            {showQualityMenu && (
+              <div className="absolute bottom-14 left-1/2 -translate-x-1/2 border border-neutral-700 bg-black/95 backdrop-blur-xl shadow-2xl z-50 min-w-[140px]">
+                {QUALITY_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => { onSetQuality(opt); setShowQualityMenu(false); }}
+                    className={`w-full px-3 py-2 text-left font-mono text-[11px] uppercase tracking-wider transition-colors ${
+                      qualityLevel === opt
+                        ? 'bg-neon-cyan/10 text-neon-cyan'
+                        : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {qualityLabel(opt, t)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-          <button onClick={toggleLayout} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors">
+          <button onClick={toggleLayout} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors" title={t('call.toggleLayout')}>
             {layout === 'grid' ? <Focus className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
           </button>
 
-          <button onClick={onEndCall} className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-black transition-all">
+          <button onClick={onEndCall} className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-black transition-all" title={t('call.endCall')}>
             <PhoneOff className="h-5 w-5" />
           </button>
         </div>
-        
+
         <span className="hidden">{tick}</span>
       </div>
     </PortalRoot>

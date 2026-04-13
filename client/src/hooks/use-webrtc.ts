@@ -104,6 +104,7 @@ export function useWebRTC(userId: string | null) {
     removePeerConnection, setRemoteStream, removeRemoteStream,
     setLocalStream, setIsCalling, clearRemotePeerMedia,
     setReconnecting, setConnectionQuality,
+    setPeerConnectionType, clearPeerConnectionType,
   } = useCallStore()
 
   const flushIceQueue = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
@@ -138,8 +139,9 @@ export function useWebRTC(userId: string | null) {
     removePeerConnection(peerId)
     removeRemoteStream(peerId)
     clearRemotePeerMedia(peerId)
+    clearPeerConnectionType(peerId)
     delete pendingIceRef.current[peerId]
-  }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia])
+  }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearPeerConnectionType])
 
   const revertToOptics = useCallback(() => {
     const orig = originalOpticsRef.current
@@ -309,28 +311,103 @@ export function useWebRTC(userId: string | null) {
     })
   }, [userId, setIncomingCall, purgePeer, flushIceQueue])
 
-  // Connection quality monitoring — polls stats every 5s during active call
+  const applyQualityConstraints = useCallback((level: '720p' | '480p' | '360p' | 'audio_only') => {
+    const local = useCallStore.getState().localStream
+    if (!local) return
+
+    if (level === 'audio_only') {
+      local.getVideoTracks().forEach(t => { t.enabled = false })
+      pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'video', enabled: false }))
+      return
+    }
+
+    const dims = level === '720p'
+      ? { width: 1280, height: 720, frameRate: 30 }
+      : level === '480p'
+        ? { width: 854, height: 480, frameRate: 24 }
+        : { width: 640, height: 360, frameRate: 15 }
+
+    local.getVideoTracks().forEach(t => {
+      t.enabled = true
+      void t.applyConstraints({
+        width: { ideal: dims.width },
+        height: { ideal: dims.height },
+        frameRate: { ideal: dims.frameRate },
+      }).catch(() => {})
+    })
+  }, [])
+
+  const setQuality = useCallback((level: 'auto' | '720p' | '480p' | '360p' | 'audio_only') => {
+    useCallStore.getState().setQualityLevel(level)
+    lowBitrateCountRef.current = 0
+    highBitrateCountRef.current = 0
+
+    if (level === 'auto') return // auto-adapt will handle it
+    applyQualityConstraints(level)
+  }, [applyQualityConstraints])
+
+  // Connection quality monitoring + P2P/relay detection + auto-adapt — polls stats every 5s
+  const lowBitrateCountRef = useRef(0)
+  const highBitrateCountRef = useRef(0)
+
   useEffect(() => {
     const poll = () => {
       const state = useCallStore.getState()
       if (!state.isCalling) {
         setConnectionQuality(null)
+        lowBitrateCountRef.current = 0
+        highBitrateCountRef.current = 0
         return
       }
-      const pcs = Array.from(pcsRef.current.values())
-      if (pcs.length === 0) return
+      const pcsEntries = Array.from(pcsRef.current.entries())
+      if (pcsEntries.length === 0) return
 
       void (async () => {
-        for (const pc of pcs) {
+        for (const [peerId, pc] of pcsEntries) {
           if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') continue
           try {
             const stats = await pc.getStats()
+            const localCandidates = new Map<string, { candidateType: string }>()
+            stats.forEach((report) => {
+              if (report.type === 'local-candidate') {
+                localCandidates.set(report.id, { candidateType: report.candidateType })
+              }
+            })
+
             stats.forEach((report) => {
               if (report.type === 'candidate-pair' && report.state === 'succeeded') {
                 const rtt = report.currentRoundTripTime ?? null
                 const bitrate = report.availableOutgoingBitrate ?? null
                 const poor = (rtt != null && rtt > 0.3) || (bitrate != null && bitrate < 100_000)
                 setConnectionQuality({ rtt, outgoingBitrate: bitrate, poor })
+
+                // P2P vs relay detection
+                const localCandidate = localCandidates.get(report.localCandidateId)
+                if (localCandidate) {
+                  const cType = localCandidate.candidateType
+                  const connType = (cType === 'relay') ? 'relay' as const : 'p2p' as const
+                  setPeerConnectionType(peerId, connType)
+                }
+
+                // Auto-adapt quality
+                if (state.qualityLevel === 'auto' && bitrate != null) {
+                  if (bitrate < 200_000) {
+                    lowBitrateCountRef.current++
+                    highBitrateCountRef.current = 0
+                    if (lowBitrateCountRef.current >= 1) { // 5s (1 poll at 5s interval)
+                      applyQualityConstraints('360p')
+                    }
+                  } else if (bitrate > 800_000) {
+                    highBitrateCountRef.current++
+                    lowBitrateCountRef.current = 0
+                    if (highBitrateCountRef.current >= 2) { // 10s (2 polls at 5s interval)
+                      applyQualityConstraints('720p')
+                    }
+                  } else {
+                    lowBitrateCountRef.current = 0
+                    highBitrateCountRef.current = 0
+                  }
+                }
               }
             })
           } catch { /* stats unavailable */ }
@@ -342,7 +419,7 @@ export function useWebRTC(userId: string | null) {
     return () => {
       if (statsIntervalRef.current) window.clearInterval(statsIntervalRef.current)
     }
-  }, [setConnectionQuality])
+  }, [setConnectionQuality, setPeerConnectionType])
 
   // Health Check / Readiness
   useEffect(() => {
@@ -448,8 +525,98 @@ export function useWebRTC(userId: string | null) {
     toggleMuteMic: toggleMute,
     toggleCamera: toggleOptics,
     toggleVideo: toggleOptics,
-    switchCamera: async () => {},
+    switchCamera: async () => {
+      const local = useCallStore.getState().localStream
+      if (!local || isScreenSharing) return
+
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const videoInputs = devices.filter(d => d.kind === 'videoinput')
+        if (videoInputs.length < 2) return
+
+        const nextMode = facingModeRef.current === 'user' ? 'environment' : 'user'
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: nextMode }, width: { ideal: 1280 } },
+          audio: false,
+        })
+        const newTrack = newStream.getVideoTracks()[0]
+        if (!newTrack) return
+
+        const oldTrack = local.getVideoTracks()[0]
+
+        pcsRef.current.forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+          if (sender) void sender.replaceTrack(newTrack)
+        })
+
+        if (oldTrack) {
+          local.removeTrack(oldTrack)
+          oldTrack.stop()
+        }
+        local.addTrack(newTrack)
+        facingModeRef.current = nextMode
+        setLocalStream(local)
+      } catch (err) {
+        console.error('[SYS.MEDIA] CAMERA_SWITCH_FAULT:', err)
+      }
+    },
     isScreenSharing,
-    toggleScreenShare: async () => {},
+    toggleScreenShare: async () => {
+      if (isScreenSharing) {
+        revertToOptics()
+        return
+      }
+
+      const local = useCallStore.getState().localStream
+      if (!local) return
+
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        })
+
+        const screenVideoTrack = screenStream.getVideoTracks()[0]
+        if (!screenVideoTrack) {
+          screenStream.getTracks().forEach(t => t.stop())
+          return
+        }
+
+        const currentVideoTrack = local.getVideoTracks()[0] ?? null
+        originalOpticsRef.current = currentVideoTrack
+
+        pcsRef.current.forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video')
+          if (sender) void sender.replaceTrack(screenVideoTrack)
+        })
+
+        if (currentVideoTrack) local.removeTrack(currentVideoTrack)
+        local.addTrack(screenVideoTrack)
+        screenFeedRef.current = screenVideoTrack
+        setLocalStream(local)
+        setIsScreenSharing(true)
+
+        screenVideoTrack.onended = () => {
+          revertToOptics()
+        }
+
+        const screenAudioTrack = screenStream.getAudioTracks()[0]
+        if (screenAudioTrack) {
+          pcsRef.current.forEach(pc => {
+            pc.addTrack(screenAudioTrack, screenStream)
+          })
+          const origOnEnded = screenVideoTrack.onended
+          screenVideoTrack.onended = () => {
+            screenAudioTrack.stop()
+            if (typeof origOnEnded === 'function') origOnEnded.call(screenVideoTrack, new Event('ended'))
+          }
+        }
+      } catch (err) {
+        if ((err as Error)?.name !== 'NotAllowedError') {
+          console.error('[SYS.MEDIA] SCREENSHARE_FAULT:', err)
+        }
+      }
+    },
+    setQuality,
   }
 }

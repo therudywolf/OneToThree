@@ -548,6 +548,72 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'groupCall.noParticipants': 'Нет других участников',
   'groupCall.maxParticipants': 'Максимум 8 участников',
   'groupCall.screenShareActive': 'Демонстрация экрана активна',
+
+  // [MESSAGE STATES]
+  'msg.sending': 'Отправка',
+  'msg.sent': 'Отправлено',
+  'msg.delivered': 'Доставлено',
+  'msg.read': 'Прочитано',
+  'msg.failed': 'Ошибка отправки',
+  'msg.retry': 'Повторить',
+  'msg.showMore': 'Показать ещё',
+  'msg.showLess': 'Свернуть',
+  'msg.newMessages': 'Новые сообщения',
+  'msg.newCount': '{count} новых сообщений',
+
+  // [REACTIONS]
+  'reactions.add': 'Добавить реакцию',
+  'reactions.pickerAria': 'Выберите реакцию',
+  'reactions.recentlyUsed': 'Недавно использованные',
+
+  // [MESSAGE ACTIONS]
+  'msgAction.reply': 'Ответить',
+  'msgAction.react': 'Реакция',
+  'msgAction.edit': 'Изменить',
+  'msgAction.deleteForMe': 'Удалить у меня',
+  'msgAction.deleteForAll': 'Удалить у всех',
+  'msgAction.forward': 'Переслать',
+  'msgAction.copy': 'Скопировать текст',
+  'msgAction.pin': 'Закрепить сообщение',
+  'msgAction.unpin': 'Открепить сообщение',
+
+  // [PROFILE - EXPANDED]
+  'profile.mutualGroups': 'Общие группы',
+  'profile.noMutualGroups': 'Нет общих групп',
+  'profile.sharedMedia': 'Общие медиафайлы',
+  'profile.sharedFiles': 'Общие файлы',
+  'profile.message': 'Написать',
+  'profile.voiceCall': 'Голосовой звонок',
+  'profile.videoCall': 'Видеозвонок',
+  'profile.block': 'Заблокировать',
+  'profile.report': 'Пожаловаться',
+  'profile.lastSeen': 'Был(а) в сети',
+  'profile.lastSeenPrivacy': 'Время последнего визита скрыто',
+  'profile.editName': 'Изменить имя',
+  'profile.editBio': 'Изменить описание',
+  'profile.editStatus': 'Изменить статус',
+  'profile.charCount': '{count}/500',
+  'profile.dangerZone': 'Опасная зона',
+  'profile.changePassword': 'Сменить пароль',
+  'profile.deleteAccount': 'Удалить аккаунт',
+  'profile.lastSeenSettings': 'Был(а) в сети',
+  'profile.lastSeenEveryone': 'Все',
+  'profile.lastSeenContacts': 'Контакты',
+  'profile.lastSeenNobody': 'Никто',
+  'profile.viewFullPhoto': 'Посмотреть фото',
+  'profile.loadMore': 'Загрузить ещё',
+
+  // [CODE BLOCKS]
+  'code.copy': 'Копировать',
+  'code.copied': 'Скопировано!',
+
+  // [LINK PREVIEW]
+  'linkPreview.loading': 'Загрузка превью...',
+  'linkPreview.openLink': 'Открыть ссылку',
+
+  // [RESPONSIVE]
+  'responsive.memberPanel': 'Участники',
+  'responsive.closeMemberPanel': 'Закрыть панель участников',
 } as const;
 
 export default ru;

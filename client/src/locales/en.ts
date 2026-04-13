@@ -416,6 +416,43 @@ The administration reserves the right to remove any account without warning.`,
   'settings.autoLock15min': '15 minutes',
   'settings.autoLock30min': '30 minutes',
   'settings.autoLockNever': 'Never',
+
+  // [SECURITY - LOGIN HISTORY]
+  'security.loginHistory': 'Login History',
+  'security.loginHistoryHint': 'Recent login attempts for your account.',
+  'security.loginSuccess': 'Success',
+  'security.loginFailSignature': 'Failed (wrong key)',
+  'security.loginFailTotp': 'Failed (wrong code)',
+  'security.loginFailBanned': 'Blocked (banned)',
+  'security.loginFailDeviceRevoked': 'Blocked (device revoked)',
+  'security.loginNoEvents': 'No login history.',
+
+  // [SECURITY - BLOCK]
+  'block.title': 'Blocked Users',
+  'block.hint': 'Blocked users cannot message you, see your online status, or add you to groups.',
+  'block.empty': 'No blocked users.',
+  'block.unblock': 'Unblock',
+  'block.unblockConfirm': 'Unblock this user?',
+  'block.blockUser': 'Block',
+  'block.blockConfirm': 'Block this user? They will not be notified.',
+  'block.blocked': 'Blocked',
+
+  // [SECURITY - ACCOUNT DELETION]
+  'account.deleteTitle': 'Delete Account',
+  'account.deleteHint': 'Permanently delete your account and all data. This cannot be undone.',
+  'account.deleteConfirmLabel': 'Type your username to confirm',
+  'account.deleteExecute': 'Delete My Account',
+  'account.deleteMismatch': 'Username does not match.',
+  'account.deleteSuccess': 'Account deleted.',
+
+  // [PRIVACY]
+  'privacy.title': 'Privacy',
+  'privacy.readReceipts': 'Read Receipts',
+  'privacy.readReceiptsHint': 'When disabled, others will not see when you read their messages.',
+  'privacy.onlineStatus': 'Online Status',
+  'privacy.onlineStatusHint': 'Control who can see your online/offline status.',
+  'privacy.lastSeenEveryone': 'Everyone',
+  'privacy.lastSeenNobody': 'Nobody',
 } as const;
 
 export default en;

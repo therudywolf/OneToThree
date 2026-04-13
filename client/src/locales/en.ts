@@ -334,12 +334,6 @@ The administration reserves the right to remove any account without warning.`,
 
   'sidebar.members': 'Members',
 
-  'settings.recoveryMnemonicTitle': 'Recovery Phrase (12 words)',
-  'settings.recoveryMnemonicHint': 'Offline only. Do not share. Does not replace your password.',
-  'settings.recoveryMnemonicGenerate': 'Generate',
-  'settings.recoveryMnemonicWarn': 'Write the words on paper and store in a safe place.',
-  'settings.recoveryMnemonicAck': 'I wrote the words down',
-  'settings.recoveryMnemonicDone': 'Hide',
 
   'media.fileExpiredServer': 'File removed from server. Retention period expired.',
 

@@ -280,12 +280,6 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'settings.linkDeviceTitle': 'Привязка нового устройства',
   'settings.linkDeviceHint': 'Сканируйте с нового устройства. Код действует 5 минут.',
 
-  'settings.recoveryMnemonicTitle': 'Мнемоническая фраза (12 слов)',
-  'settings.recoveryMnemonicHint': 'Только офлайн. Не передавайте никому. Не заменяет пароль.',
-  'settings.recoveryMnemonicGenerate': 'Создать',
-  'settings.recoveryMnemonicWarn': 'Запишите слова на бумагу и уберите их в надёжное место.',
-  'settings.recoveryMnemonicAck': 'Я записал(а) слова',
-  'settings.recoveryMnemonicDone': 'Скрыть',
 
   'settings.languageHint': 'Выбор языка',
   'settings.noLocalVault': 'Локальные данные отсутствуют',

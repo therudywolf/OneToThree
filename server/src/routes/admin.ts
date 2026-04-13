@@ -4,6 +4,7 @@
  */
 import { desc, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
+import rateLimit from '@fastify/rate-limit'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { reports, users } from '../db/schema.js'
@@ -42,6 +43,11 @@ const purgeBodySchema = z.object({
 })
 
 export const adminRoutes: FastifyPluginAsync = async (app) => {
+  await app.register(rateLimit, {
+    max: 20,
+    timeWindow: '1 minute',
+  })
+
   app.get('/system-stats', async (request, reply) => {
     const admin = await requireAdmin(request, reply)
     if (!admin) return

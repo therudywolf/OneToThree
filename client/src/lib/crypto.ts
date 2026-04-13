@@ -354,13 +354,20 @@ export async function hashPublicKeyJwk(publicKeyJwk: JsonWebKey): Promise<string
 }
 
 /**
- * Builds a human-readable safety number from public key material.
+ * Builds a human-readable safety number from both parties' public key material.
+ * Keys are sorted by their JSON representation for determinism — both users see the same number.
  * Format: 6 blocks of 5 digits (e.g. 12345 67890 12345 67890 12345 67890).
  */
 export async function generateSafetyNumber(
-  publicKeyJwk: JsonWebKey
+  myKeyJwk: JsonWebKey,
+  theirKeyJwk: JsonWebKey
 ): Promise<string> {
-  const hex = await hashPublicKeyJwk(publicKeyJwk)
+  const keys = [myKeyJwk, theirKeyJwk].sort((a, b) =>
+    JSON.stringify(a) > JSON.stringify(b) ? 1 : -1
+  )
+  const data = new TextEncoder().encode(JSON.stringify(keys))
+  const hash = await getSubtle().digest('SHA-256', data as BufferSource)
+  const hex = uint8ToHex(new Uint8Array(hash))
   const decimal = BigInt(`0x${hex}`).toString(10).padStart(60, '0')
   const normalized = decimal.slice(0, 30)
   const blocks: string[] = []

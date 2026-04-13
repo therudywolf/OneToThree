@@ -10,26 +10,34 @@ import {
   generateSafetyNumber,
 } from '@/lib/crypto'
 
-/** Fixed P-256 public JWK — golden fingerprint computed via Web Crypto SHA-256 + decimal projection. */
-const STATIC_P256_JWK: JsonWebKey = {
+/** Fixed P-256 public JWKs — used for deterministic safety number tests. */
+const STATIC_P256_JWK_A: JsonWebKey = {
   kty: 'EC',
   crv: 'P-256',
   x: 'MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4',
   y: '4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM',
 }
 
+const STATIC_P256_JWK_B: JsonWebKey = {
+  kty: 'EC',
+  crv: 'P-256',
+  x: 'f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU',
+  y: 'x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0',
+}
+
 describe('generateSafetyNumber', () => {
   it('returns 6 blocks of 5 digits (30 digits total) deterministically', async () => {
-    const a = await generateSafetyNumber(STATIC_P256_JWK)
-    const b = await generateSafetyNumber(STATIC_P256_JWK)
+    const a = await generateSafetyNumber(STATIC_P256_JWK_A, STATIC_P256_JWK_B)
+    const b = await generateSafetyNumber(STATIC_P256_JWK_A, STATIC_P256_JWK_B)
     expect(a).toBe(b)
     expect(a).toMatch(/^\d{5} \d{5} \d{5} \d{5} \d{5} \d{5}$/)
     expect(a.replace(/\s/g, '').length).toBe(30)
   })
 
-  it('matches golden fingerprint for canonical sorted JWK JSON', async () => {
-    const n = await generateSafetyNumber(STATIC_P256_JWK)
-    expect(n).toBe('51788 99978 45460 91471 42841 45456')
+  it('produces the same safety number regardless of key order', async () => {
+    const ab = await generateSafetyNumber(STATIC_P256_JWK_A, STATIC_P256_JWK_B)
+    const ba = await generateSafetyNumber(STATIC_P256_JWK_B, STATIC_P256_JWK_A)
+    expect(ab).toBe(ba)
   })
 })
 
@@ -115,13 +123,13 @@ describe('exportPublicKey → JWK', () => {
 
 describe('hashPublicKeyJwk', () => {
   it('returns the same hash for the same input (deterministic)', async () => {
-    const hashA = await hashPublicKeyJwk(STATIC_P256_JWK)
-    const hashB = await hashPublicKeyJwk(STATIC_P256_JWK)
+    const hashA = await hashPublicKeyJwk(STATIC_P256_JWK_A)
+    const hashB = await hashPublicKeyJwk(STATIC_P256_JWK_A)
     expect(hashA).toBe(hashB)
   })
 
   it('returns a 64-character hex string (SHA-256)', async () => {
-    const hash = await hashPublicKeyJwk(STATIC_P256_JWK)
+    const hash = await hashPublicKeyJwk(STATIC_P256_JWK_A)
     expect(hash).toMatch(/^[a-f0-9]{64}$/)
   })
 

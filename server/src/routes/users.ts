@@ -40,7 +40,7 @@ function escapeIlikePattern(fragment: string): string {
 
 const socialLinkSchema = z.object({
   platform: z.string().min(1).max(32),
-  url: z.string().min(1).max(512),
+  url: z.string().url().max(512).startsWith('https://'),
 })
 
 /** Profile patch — handle/nickname rules are enforced on auth; vault is keyed by handle client-side. */
@@ -85,7 +85,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
    * Change vault PIN: client decrypts with old PIN, re-encrypts with new PIN,
    * and sends the new blob. Server stores it (vault is opaque encrypted data).
    */
-  app.post('/me/vault/change-pin', async (request, reply) => {
+  app.post('/me/vault/change-pin', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -426,7 +426,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.get('/search', async (request, reply) => {
+  app.get('/search', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const viewer = await getAuthUser(request, reply)
     if (reply.sent) {
       return
@@ -575,7 +575,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.get('/me/devices', async (request, reply) => {
+  app.get('/me/devices', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -615,7 +615,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.post('/me/devices/clear-revoked', async (request, reply) => {
+  app.post('/me/devices/clear-revoked', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -626,7 +626,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ success: true })
   })
 
-  app.post('/me/devices/revoke-all-others', async (request, reply) => {
+  app.post('/me/devices/revoke-all-others', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -646,7 +646,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ success: true })
   })
 
-  app.delete('/me/devices/others', async (request, reply) => {
+  app.delete('/me/devices/others', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -666,7 +666,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ success: true })
   })
 
-  app.patch('/me/devices/:deviceId/master', async (request, reply) => {
+  app.patch('/me/devices/:deviceId/master', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -728,7 +728,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.delete('/me/devices/:deviceId', async (request, reply) => {
+  app.delete('/me/devices/:deviceId', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -1044,12 +1044,14 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       void deleteObjectIfExists({ client: s3, bucket: avatarBucket, key: avatarRow.avatarKey }).catch(() => {})
     }
 
-    // 5. Delete all user data: devices, push subs, blocks, then the user row
-    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id))
-    await db.delete(devices).where(eq(devices.userId, user.id))
-    await db.delete(userBlocks).where(eq(userBlocks.blockerId, user.id))
-    await db.delete(userBlocks).where(eq(userBlocks.blockedId, user.id))
-    await db.delete(users).where(eq(users.id, user.id))
+    // 5. Delete all user data: devices, push subs, blocks, then the user row (atomic)
+    await db.transaction(async (tx) => {
+      await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id))
+      await tx.delete(devices).where(eq(devices.userId, user.id))
+      await tx.delete(userBlocks).where(eq(userBlocks.blockerId, user.id))
+      await tx.delete(userBlocks).where(eq(userBlocks.blockedId, user.id))
+      await tx.delete(users).where(eq(users.id, user.id))
+    })
 
     clearFmSessionCookie(reply)
     return reply.send({ ok: true })

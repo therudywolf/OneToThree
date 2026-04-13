@@ -26,7 +26,7 @@ const AVATAR_KEY_RE =
 
 /** Allowed file extensions for upload. Blocks executable, script, and archive-bomb types. */
 const ALLOWED_EXTENSIONS = new Set([
-  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif',
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.ico', '.avif',
   '.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v',
   '.mp3', '.ogg', '.wav', '.flac', '.aac', '.m4a', '.opus', '.weba',
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
@@ -77,7 +77,7 @@ const uploadBodySchema = z.object({
   fileName: z.string().min(1).max(512),
   fileType: z.string().min(1).max(256),
   chatId: z.string().uuid(),
-  fileSize: z.number().int().nonnegative().max(MAX_UPLOAD_BYTES).optional(),
+  fileSize: z.number().int().positive().max(MAX_UPLOAD_BYTES),
 })
 
 export const storageRoutes: FastifyPluginAsync = async (app) => {
@@ -104,10 +104,6 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
 
     const { fileName: rawFileName, fileType, chatId, fileSize } = parsed.data
     const fileName = sanitizeFileName(rawFileName)
-
-    if (fileSize !== undefined && fileSize > MAX_UPLOAD_BYTES) {
-      return reply.status(413).send({ error: 'FILE_TOO_LARGE' })
-    }
 
     const ext = extensionFromFileName(fileName)
     // For voice/video messages MediaRecorder may produce files without proper extension
@@ -139,6 +135,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
         bucket,
         key,
         contentType: fileType,
+        contentLength: fileSize,
       })
     )
 

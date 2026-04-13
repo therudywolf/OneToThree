@@ -21,6 +21,7 @@ type Props = {
   peerUserId: string
   peerUsername: string
   peerEcdhPublicKeyJwk: string
+  myEcdhPublicKeyJwk: string
   onClose: () => void
   onTrustChanged?: (verified: boolean) => void
 }
@@ -29,6 +30,7 @@ export function IdentityModal({
   peerUserId,
   peerUsername,
   peerEcdhPublicKeyJwk,
+  myEcdhPublicKeyJwk,
   onClose,
   onTrustChanged,
 }: Props) {
@@ -44,10 +46,11 @@ export function IdentityModal({
     
     void (async () => {
       try {
-        const jwk = JSON.parse(peerEcdhPublicKeyJwk) as JsonWebKey
+        const peerJwk = JSON.parse(peerEcdhPublicKeyJwk) as JsonWebKey
+        const myJwk = JSON.parse(myEcdhPublicKeyJwk) as JsonWebKey
         const [fingerprint, hash] = await Promise.all([
-          generateSafetyNumber(jwk),
-          hashPublicKeyJwk(jwk),
+          generateSafetyNumber(myJwk, peerJwk),
+          hashPublicKeyJwk(peerJwk),
         ])
         
         if (cancelled) return
@@ -68,7 +71,7 @@ export function IdentityModal({
     return () => {
       cancelled = true
     }
-  }, [peerEcdhPublicKeyJwk, peerUserId])
+  }, [peerEcdhPublicKeyJwk, myEcdhPublicKeyJwk, peerUserId])
 
   const toggleTrustProtocol = () => {
     if (!keyHash) return

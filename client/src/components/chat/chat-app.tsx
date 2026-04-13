@@ -23,7 +23,7 @@ import {
 } from '@/lib/api/chats'
 import { lookupUsers } from '@/lib/api/users'
 import { canonicalUserId } from '@/lib/user-id'
-import { hashPublicKeyJwk } from '@/lib/crypto'
+import { exportEcdhPublicJwkFromPrivateKey, hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { useChats } from '@/hooks/use-chats'
 import { usePresenceSync } from '@/hooks/use-presence-sync'
@@ -129,6 +129,11 @@ export function ChatApp({
     ecdhPublicKeyJwk: string
     verified: boolean
   } | null>(null)
+  const [myEcdhPublicKeyJwk, setMyEcdhPublicKeyJwk] = useState<string | null>(null)
+  useEffect(() => {
+    if (!unwrappedPrivateKey) { setMyEcdhPublicKeyJwk(null); return }
+    void exportEcdhPublicJwkFromPrivateKey(unwrappedPrivateKey).then(setMyEcdhPublicKeyJwk)
+  }, [unwrappedPrivateKey])
   const [showGuide, setShowGuide] = useState(() => {
     if (typeof window === 'undefined') return false
     return !localStorage.getItem(`p13:onboarded:${userId}`)
@@ -479,11 +484,12 @@ export function ChatApp({
           onClose={() => setSettingsOpen(false)}
         />
       ) : null}
-      {identityOpen && peerIdentity ? (
+      {identityOpen && peerIdentity && myEcdhPublicKeyJwk ? (
         <IdentityModal
           peerUserId={peerIdentity.userId}
           peerUsername={peerIdentity.username}
           peerEcdhPublicKeyJwk={peerIdentity.ecdhPublicKeyJwk}
+          myEcdhPublicKeyJwk={myEcdhPublicKeyJwk}
           onClose={() => setIdentityOpen(false)}
           onTrustChanged={(verified) =>
             setPeerIdentity((prev) =>

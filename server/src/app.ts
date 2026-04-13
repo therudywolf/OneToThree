@@ -16,6 +16,7 @@ import { adminRoutes } from './routes/admin.js'
 import { vaultRoutes } from './routes/vault.js'
 import { wsRoutes } from './routes/ws.js'
 import { sql } from 'drizzle-orm'
+import { linkPreviewRoutes } from './routes/link-preview.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { requireSecret } from './lib/read-secret.js'
@@ -123,6 +124,7 @@ export async function buildApp() {
   await app.register(pushRoutes, { prefix: '/api/push' })
   await app.register(adminRoutes, { prefix: '/api/admin' })
   await app.register(vaultRoutes, { prefix: '/api/vault' })
+  await app.register(linkPreviewRoutes, { prefix: '/api' })
   await app.register(wsRoutes, { prefix: '/api' })
 
   app.get('/health', async () => ({ ok: true }))

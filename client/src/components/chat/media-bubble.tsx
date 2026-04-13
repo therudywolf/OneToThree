@@ -229,8 +229,9 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
   if (isImage) {
     return (
-      <div className="mt-2 max-w-full overflow-hidden border border-neon-cyan/40 hover:border-neon-cyan/80 transition-colors cursor-pointer"
-        style={{ maxHeight: '300px' }}
+      <div
+        className="mt-2 max-w-full overflow-hidden border border-neon-cyan/40 hover:border-neon-cyan/80 transition-colors cursor-pointer"
+        style={{ maxHeight: '300px', aspectRatio: '16/9', maxWidth: '300px' }}
       >
         <img
           src={objectUrl}
@@ -244,11 +245,15 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             mimeType: effectiveMime,
           })}
           onLoad={(e) => {
-            // Remove any placeholder after load
             const img = e.currentTarget
             img.style.opacity = '1'
+            // Adjust container aspect ratio to actual image ratio
+            const parent = img.parentElement
+            if (parent && img.naturalWidth && img.naturalHeight) {
+              parent.style.aspectRatio = `${img.naturalWidth}/${img.naturalHeight}`
+            }
           }}
-          style={{ opacity: 1, transition: 'opacity 0.2s ease' }}
+          style={{ opacity: 0.01, transition: 'opacity 0.2s ease' }}
         />
       </div>
     )
@@ -464,7 +469,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     }
 
     return (
-      <div className="mt-2 max-w-md border border-neon-cyan/40 bg-black p-1">
+      <div className="mt-2 max-w-md border border-neon-cyan/40 bg-black p-1" style={{ aspectRatio: '16/9' }}>
         <video
           ref={videoRef}
           src={objectUrl}

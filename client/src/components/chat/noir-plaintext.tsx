@@ -70,6 +70,53 @@ function InlineCode({ code }: { code: string }) {
   )
 }
 
+function LinkPreviewCard({ url }: { url: string }) {
+  const [meta, setMeta] = useState<{ title?: string; description?: string; image?: string } | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  React.useEffect(() => {
+    if (loaded) return
+    setLoaded(true)
+    // Attempt to fetch OG meta via a lightweight proxy/api — gracefully degrade
+    const controller = new AbortController()
+    void fetch(`/api/link-preview?url=${encodeURIComponent(url)}`, {
+      signal: controller.signal,
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && (d.title || d.description || d.image)) {
+          setMeta(d as { title?: string; description?: string; image?: string })
+        }
+      })
+      .catch(() => { /* graceful degrade — no preview */ })
+    return () => controller.abort()
+  }, [url, loaded])
+
+  if (!meta) return null
+
+  return (
+    <div className="mt-1 flex gap-2 border border-neon-cyan/20 bg-zinc-950/80 p-2 max-w-xs">
+      {meta.image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={meta.image}
+          alt=""
+          className="h-12 w-12 shrink-0 object-cover border border-neon-cyan/10"
+          loading="lazy"
+        />
+      ) : null}
+      <div className="min-w-0 flex-1">
+        {meta.title ? (
+          <p className="truncate font-mono text-[10px] text-neon-cyan/80">{meta.title}</p>
+        ) : null}
+        {meta.description ? (
+          <p className="line-clamp-2 font-mono text-[8px] text-zinc-500 leading-relaxed">{meta.description}</p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function LinkSpan({ url }: { url: string }) {
   // Trim trailing punctuation that's likely not part of URL
   const cleanUrl = url.replace(/[.,;:!?)]+$/, '')
@@ -82,15 +129,18 @@ function LinkSpan({ url }: { url: string }) {
   })()
 
   return (
-    <a
-      href={cleanUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-neon-cyan/80 underline decoration-neon-cyan/30 underline-offset-2 transition-colors hover:text-neon-cyan hover:decoration-neon-cyan/60"
-      title={domain}
-    >
-      {cleanUrl}
-    </a>
+    <span className="inline">
+      <a
+        href={cleanUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-neon-cyan/80 underline decoration-neon-cyan/30 underline-offset-2 transition-colors hover:text-neon-cyan hover:decoration-neon-cyan/60"
+        title={domain}
+      >
+        {cleanUrl}
+      </a>
+      <LinkPreviewCard url={cleanUrl} />
+    </span>
   )
 }
 

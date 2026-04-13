@@ -254,6 +254,33 @@ export function ChatTerminal({
     return '—'
   }
 
+  // Voice message IDs for prev/next navigation
+  const voiceMessageIds = useMemo(() => {
+    return renderMessages
+      .filter((m) => m.media_type === 'audio' && m.media_path && m.media_iv)
+      .map((m) => m.id)
+  }, [renderMessages])
+
+  const scrollToAndPlayVoice = useCallback((targetId: string) => {
+    const el = ref.current?.querySelector(`[data-message-id="${targetId}"]`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Trigger play on the audio element inside
+      setTimeout(() => {
+        const audio = el.querySelector('audio') as HTMLAudioElement | null
+        if (audio) void audio.play()
+      }, 400)
+    }
+  }, [])
+
+  const navigateVoice = useCallback((currentId: string, direction: 'prev' | 'next') => {
+    const idx = voiceMessageIds.indexOf(currentId)
+    if (idx === -1) return
+    const targetIdx = direction === 'prev' ? idx - 1 : idx + 1
+    const targetId = voiceMessageIds[targetIdx]
+    if (targetId) scrollToAndPlayVoice(targetId)
+  }, [voiceMessageIds, scrollToAndPlayVoice])
+
   const handleMediaClick = (media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
     const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }> = []
 
@@ -590,6 +617,9 @@ export function ChatTerminal({
                         message={m}
                         sharedKey={sharedKey}
                         onMediaClick={handleMediaClick}
+                        onAudioEnd={() => navigateVoice(m.id, 'next')}
+                        onPrevVoice={voiceMessageIds.indexOf(m.id) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
+                        onNextVoice={voiceMessageIds.indexOf(m.id) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
                       />
                     ) : null}
                     {mine && !isGroup ? (
@@ -597,7 +627,13 @@ export function ChatTerminal({
                         className="mt-1 flex items-center justify-end gap-0.5 text-[10px]"
                         aria-hidden
                       >
-                        {m.read_at ? (
+                        {m._pending ? (
+                          <span className="inline-flex items-center gap-1 text-zinc-500">
+                            <svg className="h-3 w-3 animate-spin" viewBox="0 0 16 16" fill="none">
+                              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="8" />
+                            </svg>
+                          </span>
+                        ) : m.read_at ? (
                           <CheckCheck className="h-3.5 w-3.5 text-cyan-400 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]" />
                         ) : (
                           <Check className="h-3 w-3 text-zinc-500" />
@@ -686,12 +722,15 @@ export function ChatTerminal({
                       }}
                     >
                       {group.messages.map((m) => (
-                        <div key={m.id} className="relative">
+                        <div key={m.id} data-message-id={m.id} className="relative">
                           {m.media_path && m.media_iv && m.media_type ? (
                             <MediaMessage
                               message={m}
                               sharedKey={sharedKey}
                               onMediaClick={handleMediaClick}
+                              onAudioEnd={() => navigateVoice(m.id, 'next')}
+                              onPrevVoice={voiceMessageIds.indexOf(m.id) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
+                              onNextVoice={voiceMessageIds.indexOf(m.id) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
                             />
                           ) : null}
                         </div>

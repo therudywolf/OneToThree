@@ -63,7 +63,7 @@ The design protects against:
 ## Security audit findings (2026-04-13)
 
 ### Input Validation & Sanitization
-- **Status:** All API endpoints validated with Zod schemas.
+- **Status:** All API endpoints validated with Zod schemas, including path parameters (UUID validation via `uuidSchema`).
 - **Fix applied:** File upload names are now sanitized (strip path traversal `..`, null bytes, control characters, limit to 255 chars).
 - **Fix applied:** File uploads enforce an extension allowlist (images, video, audio, documents, archives) and MIME type prefix validation.
 - **Fix applied:** Server-side file size enforcement (100 MiB max) via `fileSize` field on upload-url endpoint.
@@ -96,6 +96,7 @@ The design protects against:
 - **Revoke individual session:** `DELETE /users/me/sessions/:sessionId` revokes a single session by device ID and notifies via WebSocket.
 - **Revoke all other sessions:** `DELETE /users/me/sessions` revokes all sessions except the current device.
 - **Login history:** Audit trail in `login_events` table (IP, user agent, outcome, timestamp). Last 20 events exposed via `GET /users/me/login-history`.
+- **Frontend:** Login history (last 10 events) and active sessions list with revocation available in Settings → Security / Devices tabs.
 
 ### Encryption Key Management
 - **Vault key:** Never leaves the client. PBKDF2-derived AES key wraps ECDSA/ECDH private keys.
@@ -109,19 +110,23 @@ The design protects against:
 - **Block system:** `user_blocks` table with bidirectional enforcement.
 - **API:** `POST/DELETE /users/me/block/:targetId`, `GET /users/me/blocked`.
 - **Fix applied:** Block checks now enforced at message send — both WebSocket `chat_message` and REST `POST /messages/send` check `isBlocked()` for direct chats before allowing message delivery.
-- **Enforcement points:** Block checks applied at message send, group invite, and presence lookup (helper: `isBlocked()` in `block-check.ts`).
+- **Fix applied:** Block checks enforced at chat creation — `POST /chats` checks `isBlocked()` between creator and all members for both `direct_e2e` and `group_e2e` chat types.
+- **Enforcement points:** Block checks applied at message send, chat creation, group invite, and presence lookup (helper: `isBlocked()` in `block-check.ts`).
+- **Frontend:** Blocked users list with unblock action available in Settings → Security tab.
 
 ### Privacy Controls
 - **Read receipts toggle:** `disable_read_receipts` field on users table. When enabled, read receipt processing silently skips (no DB write, no sender notification).
 - **Online status visibility:** `hide_presence` field on users table. When enabled, peers see offline status and no last-seen timestamp.
 - **API:** Both settings controllable via `PATCH /users/me` and visible in `GET /users/me/settings`.
+- **Frontend:** Read receipts toggle available in Settings → Security tab. Online status toggle on the main settings tab.
 
 ### Account Deletion
 - **Endpoint:** `DELETE /users/me/account` with username confirmation.
 - **Fix applied:** Messages are now anonymized (content → "[deleted]", media references cleared) instead of cascade-deleted.
 - **Fix applied:** User's media files are deleted from MinIO (best-effort).
 - **Fix applied:** User's avatar is deleted from MinIO.
-- **Scope:** Deletes user, all devices, block records. Messages remain with anonymized content.
+- **Fix applied:** Push subscriptions are now deleted during account deletion (previously orphaned).
+- **Scope:** Deletes user, all devices, push subscriptions, block records. Messages remain with anonymized content.
 
 ### File Upload Security
 - **Presigned URL pattern:** Browser uploads directly to MinIO via presigned PUT; server never handles file bytes.

@@ -196,6 +196,8 @@ services:
       - -n
       - --log-file=stdout
       - --config-file=/etc/coturn/turnserver.conf
+      - --user=${TURN_USERNAME:-turn}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.prod}
+      - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP in .env.prod}
 
   caddy:
     image: caddy:2-alpine

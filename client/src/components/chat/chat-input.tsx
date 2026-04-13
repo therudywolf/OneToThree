@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { Send, Paperclip, Smile, Mic, Video } from 'lucide-react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
 import { useTranslation } from '@/hooks/use-translation'
@@ -21,6 +21,11 @@ function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('audio/')) return 'audio'
   return 'file'
 }
+
+/** Threshold in px the pointer must travel upward to lock recording */
+const LOCK_THRESHOLD_Y = 60
+/** Threshold in px the pointer must travel left to cancel recording */
+const CANCEL_THRESHOLD_X = 80
 
 type Props = {
   sendText: (
@@ -49,6 +54,14 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const [recordSeconds, setRecordSeconds] = useState(0)
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Swipe-to-lock state
+  const [recordLocked, setRecordLocked] = useState(false)
+  const [swipeOffsetY, setSwipeOffsetY] = useState(0)
+  const [swipeOffsetX, setSwipeOffsetX] = useState(0)
+  const [cancelSlide, setCancelSlide] = useState(false)
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
+  const lockAnimRef = useRef(false)
+
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -76,17 +89,17 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     }
   }, [])
 
-  const toggleMediaMode = () => {
-    if (isRecordingRef.current) return
-    setMediaMode((prev) => (prev === 'voice' ? 'circle' : 'voice'))
-  }
-
   const startRecording = async () => {
     if (!cryptoCtx || disabled || isRecordingRef.current) return
 
     isRecordingRef.current = true
     setIsRecordingUI(true)
     setRecordSeconds(0)
+    setRecordLocked(false)
+    setCancelSlide(false)
+    setSwipeOffsetY(0)
+    setSwipeOffsetX(0)
+    lockAnimRef.current = false
     recordTimerRef.current = setInterval(() => {
       setRecordSeconds((s) => s + 1)
     }, 1000)
@@ -103,6 +116,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       console.error('Failed to start recording:', error)
       isRecordingRef.current = false
       setIsRecordingUI(false)
+      setRecordLocked(false)
       if (recordTimerRef.current) {
         clearInterval(recordTimerRef.current)
         recordTimerRef.current = null
@@ -110,11 +124,16 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     }
   }
 
-  const stopRecording = async () => {
+  const stopRecording = useCallback(async (shouldSend = true) => {
     if (!isRecordingRef.current) return
 
     isRecordingRef.current = false
     setIsRecordingUI(false)
+    setRecordLocked(false)
+    setCancelSlide(false)
+    setSwipeOffsetY(0)
+    setSwipeOffsetX(0)
+    pointerStartRef.current = null
     if (recordTimerRef.current) {
       clearInterval(recordTimerRef.current)
       recordTimerRef.current = null
@@ -122,18 +141,25 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
     try {
       const result = await stopCapture()
-      if (result && result.blob.size > 0 && cryptoCtx) {
+      if (shouldSend && result && result.blob.size > 0 && cryptoCtx) {
         await sendMedia(
           result.blob,
           mediaMode === 'voice' ? 'audio' : 'video'
         )
+      } else if (!shouldSend) {
+        // Cancelled — blob discarded
       } else {
         console.warn('Capture stopped but blob is empty or null.')
       }
     } catch (error) {
       console.error('Failed to stop recording:', error)
     }
-  }
+  }, [stopCapture, sendMedia, cryptoCtx, mediaMode])
+
+  const cancelRecording = useCallback(async () => {
+    vibrateShort(30)
+    await stopRecording(false)
+  }, [stopRecording])
 
   const formatRecordTime = (sec: number) => {
     const m = Math.floor(sec / 60)
@@ -239,6 +265,56 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     e.preventDefault()
   }
 
+  // --- Pointer handlers for swipe-to-lock ---
+  const handleRecordPointerDown = (e: React.PointerEvent) => {
+    if (disabled || !cryptoCtx) return
+    e.preventDefault()
+    pointerStartRef.current = { x: e.clientX, y: e.clientY }
+    void startRecording()
+  }
+
+  const handleRecordPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isRecordingRef.current || recordLocked || !pointerStartRef.current) return
+
+    const dy = pointerStartRef.current.y - e.clientY // positive = up
+    const dx = pointerStartRef.current.x - e.clientX // positive = left
+
+    setSwipeOffsetY(Math.max(0, dy))
+    setSwipeOffsetX(Math.max(0, dx))
+
+    // Lock if swiped up enough
+    if (dy > LOCK_THRESHOLD_Y && !lockAnimRef.current) {
+      lockAnimRef.current = true
+      vibrateShort(20)
+      setRecordLocked(true)
+      setSwipeOffsetY(0)
+      setSwipeOffsetX(0)
+      pointerStartRef.current = null
+    }
+
+    // Cancel if swiped left enough
+    if (dx > CANCEL_THRESHOLD_X) {
+      setCancelSlide(true)
+      void cancelRecording()
+    }
+  }, [recordLocked, cancelRecording])
+
+  const handleRecordPointerUp = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
+    if (!isRecordingRef.current) return
+    // If locked, do nothing (user uses stop/cancel buttons)
+    if (recordLocked) return
+    // If not locked, stop and send
+    pointerStartRef.current = null
+    void stopRecording(true)
+  }, [recordLocked, stopRecording])
+
+  // Waveform bars for locked recording UI
+  const waveformBars = Array.from({ length: 20 }, (_, i) => {
+    const base = 0.3 + Math.sin(i * 0.7 + recordSeconds * 2) * 0.3
+    return Math.max(0.15, Math.min(1, base + Math.random() * 0.2))
+  })
+
   return (
     <form
       ref={containerRef}
@@ -292,7 +368,51 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      {/* --- Locked recording controls --- */}
+      {isRecordingUI && recordLocked ? (
+        <div className="flex items-center gap-3 py-1">
+          {/* Cancel button */}
+          <button
+            type="button"
+            onClick={() => void cancelRecording()}
+            className="flex h-9 w-9 shrink-0 items-center justify-center border border-neon-red/70 bg-black text-neon-red transition-colors hover:bg-neon-red/10"
+            title={t('common.cancel')}
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          {/* Waveform + timer */}
+          <div className="flex flex-1 items-center gap-2 border border-neon-red/40 bg-zinc-950 px-3 py-2">
+            <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-red-600 animate-pulse" />
+            <span className="shrink-0 font-mono text-[10px] text-red-400 tabular-nums">
+              {formatRecordTime(recordSeconds)}
+            </span>
+            <div className="flex h-6 flex-1 items-end gap-[1px]">
+              {waveformBars.map((h, i) => (
+                <div
+                  key={i}
+                  className="min-w-[2px] flex-1 rounded-[1px] bg-neon-red/70 transition-all duration-150"
+                  style={{ height: `${Math.round(h * 100)}%` }}
+                />
+              ))}
+            </div>
+            <Lock className="h-3 w-3 shrink-0 text-neon-cyan/60" />
+          </div>
+
+          {/* Stop & send button */}
+          <button
+            type="button"
+            onClick={() => void stopRecording(true)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center border border-neon-cyan bg-black text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            title={t('common.send')}
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
+
+      {/* --- Normal input row (hidden when locked) --- */}
+      <div className={`flex items-center gap-2 ${isRecordingUI && recordLocked ? 'hidden' : ''}`}>
         <button
           type="button"
           className="shrink-0 border border-neon-cyan/50 bg-black px-2 py-1.5 text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40 transition-colors"
@@ -354,17 +474,56 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
               autoComplete="off"
               spellCheck={false}
             />
-            {isRecordingUI ? (
+            {isRecordingUI && !recordLocked ? (
               <span className="inline-flex items-center gap-1.5 shrink-0">
                 <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-600 animate-pulse" />
                 <span className="font-mono text-[10px] text-red-400 tabular-nums">
                   {formatRecordTime(recordSeconds)}
                 </span>
+                {/* Swipe up hint */}
+                {swipeOffsetY > 10 ? (
+                  <Lock className="h-3 w-3 text-neon-cyan animate-bounce" />
+                ) : (
+                  <span className="font-mono text-[8px] text-zinc-500 uppercase">
+                    {t('media.swipeHint')}
+                  </span>
+                )}
               </span>
             ) : null}
           </div>
+          {/* Cancel slide overlay */}
+          {isRecordingUI && !recordLocked && swipeOffsetX > 20 ? (
+            <div
+              className="absolute inset-0 flex items-center justify-center bg-red-950/80 border border-neon-red/50 rounded transition-opacity"
+              style={{ opacity: Math.min(1, swipeOffsetX / CANCEL_THRESHOLD_X) }}
+            >
+              <span className="font-mono text-[10px] text-neon-red uppercase tracking-widest">
+                {t('media.slideCancel')}
+              </span>
+            </div>
+          ) : null}
         </div>
 
+        {/* Mode toggle: small button to switch voice/circle */}
+        <button
+          type="button"
+          className={`shrink-0 border bg-black px-1.5 py-1.5 transition-all disabled:opacity-40 ${
+            mediaMode === 'voice'
+              ? 'border-zinc-600 text-zinc-400 hover:text-neon-red hover:border-neon-red/50'
+              : 'border-neon-red/50 text-neon-red hover:text-neon-cyan hover:border-neon-cyan/50'
+          }`}
+          disabled={disabled || isRecordingUI}
+          onClick={() => setMediaMode((prev) => (prev === 'voice' ? 'circle' : 'voice'))}
+          title={mediaMode === 'voice' ? t('media.switchToCircle') : t('media.switchToVoice')}
+        >
+          {mediaMode === 'voice' ? (
+            <Video className="h-3.5 w-3.5" />
+          ) : (
+            <Mic className="h-3.5 w-3.5" />
+          )}
+        </button>
+
+        {/* Record button: hold to record */}
         <button
           type="button"
           className={`shrink-0 select-none border bg-black px-3 py-2 transition-all disabled:opacity-40 ${
@@ -376,28 +535,15 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           }`}
           disabled={disabled || !cryptoCtx}
           onContextMenu={handleContextMenu}
-          onClick={(e) => {
-            e.preventDefault()
-            if (!isRecordingRef.current) toggleMediaMode()
-          }}
-          onPointerDown={(e) => {
-            if (disabled || !cryptoCtx) return
-            e.preventDefault()
-            void startRecording()
-          }}
-          onPointerUp={(e) => {
-            e.preventDefault()
-            void stopRecording()
-          }}
-          onPointerCancel={(e) => {
-             e.preventDefault()
-             void stopRecording()
-          }}
+          onPointerDown={handleRecordPointerDown}
+          onPointerMove={handleRecordPointerMove}
+          onPointerUp={handleRecordPointerUp}
+          onPointerCancel={handleRecordPointerUp}
           title={mediaMode === 'voice' ? t('media.holdVoice') : t('media.holdCircle')}
           style={{ touchAction: 'none' }}
         >
           {isRecordingUI ? (
-            <span className="inline-block h-3 w-3 rounded-sm bg-red-500" />
+            <Square className="h-3.5 w-3.5 fill-red-500 text-red-500" />
           ) : mediaMode === 'voice' ? (
             <Mic className="h-4 w-4" />
           ) : (

@@ -22,7 +22,8 @@ import { useChatStore } from '@/store/chatStore'
 
 const DEFAULT_STUN: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' }
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
 ]
 
 async function getSignalRelays(): Promise<RTCIceServer[]> {
@@ -299,7 +300,7 @@ export function useWebRTC(userId: string | null) {
     for (const peerId of recipients) {
       if (peerId === userId || pcsRef.current.has(peerId)) continue
       
-      const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
+      const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'all' })
       pcsRef.current.set(peerId, pc)
       addPeerConnection(peerId, pc)
       setupPeerLink(peerId, pc)
@@ -326,7 +327,7 @@ export function useWebRTC(userId: string | null) {
 
     setLocalStream(stream)
     const relays = await getSignalRelays()
-    const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
+    const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'all' })
     
     pcsRef.current.set(inc.peerId, pc)
     addPeerConnection(inc.peerId, pc)

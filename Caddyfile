@@ -6,14 +6,28 @@
 	email alonerudywolf@gmail.com
 }
 
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
 onetothree.ru {
+	import security_headers
 	reverse_proxy web:3000
 }
 
 api.onetothree.ru {
+	import security_headers
 	reverse_proxy api:8080
 }
 
 s3.onetothree.ru {
+	import security_headers
 	reverse_proxy minio:9000
 }

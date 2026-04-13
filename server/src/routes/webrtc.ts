@@ -14,6 +14,7 @@ const DEFAULT_ICE_SERVERS: Array<{
 }> = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
 ]
 
 /**
@@ -42,9 +43,9 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
     const iceServers = [...DEFAULT_ICE_SERVERS]
 
     // Извлекаем боевые учетки нашего релея (coturn)
-    const rawUrl = process.env.TURN_URL?.trim()
-    const rawUser = process.env.TURN_USERNAME?.trim()
-    const rawSecret = process.env.TURN_PASSWORD?.trim()
+    const rawUrl = (process.env.TURN_URL || process.env.NEXT_PUBLIC_TURN_URL)?.trim()
+    const rawUser = (process.env.TURN_USERNAME || process.env.TURN_USER)?.trim()
+    const rawSecret = (process.env.TURN_PASSWORD || process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
 
     if (rawUrl && rawUser && rawSecret) {
       const urls = parseTurnUrls(rawUrl)

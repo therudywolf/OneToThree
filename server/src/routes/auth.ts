@@ -37,6 +37,7 @@ import {
   type QrLinkPayload,
 } from '../lib/qr-link-store.js'
 import { generateJti, denyJti } from '../lib/jwt-denylist.js'
+import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -296,6 +297,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!check.valid) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
+    if (!consumeTotpCode(user.id, parsed.data.code)) {
+      return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
+    }
 
     await db
       .update(users)
@@ -333,6 +337,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     })
     if (!check.valid) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
+    }
+    if (!consumeTotpCode(user.id, parsed.data.code)) {
+      return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
     await db
@@ -385,6 +392,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     })
     if (!check.valid) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
+    }
+    if (!consumeTotpCode(id, parsed.data.code)) {
+      return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
     const canonicalId = normalizeUuid(row.id)

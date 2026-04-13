@@ -12,6 +12,7 @@ import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { useTranslation } from '@/hooks/use-translation'
 import { parseAttachmentEnvelope } from '@/lib/attachment-envelope'
 import type { DecryptedMessage } from '@/types/chat'
+import { SkipBack, SkipForward } from 'lucide-react'
 
 function mimeFromPathAndType(
   mediaPath: string,
@@ -66,9 +67,11 @@ type Props = {
   sharedKey: CryptoKey | null
   onMediaClick?: (media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => void
   onAudioEnd?: () => void
+  onPrevVoice?: () => void
+  onNextVoice?: () => void
 }
 
-export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Props) {
+export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPrevVoice, onNextVoice }: Props) {
   const { t } = useTranslation()
   const mediaPath = message.media_path
   const mediaIv = message.media_iv
@@ -293,6 +296,26 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
           >
             {playbackSpeed}x
           </button>
+          {onPrevVoice ? (
+            <button
+              type="button"
+              onClick={onPrevVoice}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+              title={t('media.prevVoice')}
+            >
+              <SkipBack className="h-3 w-3" />
+            </button>
+          ) : null}
+          {onNextVoice ? (
+            <button
+              type="button"
+              onClick={onNextVoice}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+              title={t('media.nextVoice')}
+            >
+              <SkipForward className="h-3 w-3" />
+            </button>
+          ) : null}
           <div className="flex h-7 flex-1 items-end gap-[1px]">
             {barHeights.map((h, i) => (
               <div

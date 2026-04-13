@@ -315,6 +315,17 @@ Warden Authority: The administration reserves the right to expunge any node with
   'settings.digitalDenCleared': 'Den sterile.',
   'settings.digitalDenBusy': '...',
 
+  'chat.attachFile': 'ATTACH_FILE',
+
+  'sidebar.members': 'MEMBERS',
+
+  'settings.recoveryMnemonicTitle': 'BIP39 Mnemonic (12 words)',
+  'settings.recoveryMnemonicHint': 'Offline only. Do not transmit. Does not replace vault passphrase.',
+  'settings.recoveryMnemonicGenerate': 'GENERATE',
+  'settings.recoveryMnemonicWarn': 'Write words on paper. Close screen immediately after.',
+  'settings.recoveryMnemonicAck': 'Words recorded offline',
+  'settings.recoveryMnemonicDone': 'ERASE_FROM_SCREEN',
+
   'media.fileExpiredServer': 'SEGMENT_EXPIRED_ON_SERVER. Retention policy enforced.',
 } as const;
 

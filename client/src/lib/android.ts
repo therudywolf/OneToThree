@@ -23,6 +23,9 @@ export function isAndroidNode(): boolean {
  * [SCAN_PWA_MODE]
  * Проверка, запущен ли узел как автономная оболочка (Standalone).
  */
+// --- CONSUMER_ALIASES ---
+export const isAndroidMobile = isAndroidNode
+
 export function isStandaloneNode(): boolean {
   if (typeof window === 'undefined') return false
   

@@ -131,12 +131,13 @@ export function AvatarCropModal({
 
         {/* VIEWPORT_CONTAINER */}
         <div className="relative mx-auto max-h-[min(60vh,420px)] overflow-hidden border border-neutral-900 bg-zinc-950">
+          {/* @ts-expect-error react-image-crop class component compat */}
           <ReactCrop
             crop={sequence}
             circularCrop
             aspect={1}
-            onChange={(_, p) => setSequence(p)}
-            onComplete={(c) => setPixelData(c)}
+            onChange={(_: any, p: any) => setSequence(p)}
+            onComplete={(c: any) => setPixelData(c)}
           >
             <img
               ref={opticsRef}

@@ -51,9 +51,9 @@ self.onmessage = async (ev: MessageEvent<BatchIn>) => {
           const iv = base64ToUint8(it.ivBase64)
 
           const plainBuffer = await crypto.subtle.decrypt(
-            { name: 'AES-GCM', iv },
+            { name: 'AES-GCM', iv: iv as BufferSource },
             key,
-            ciphertext
+            ciphertext as BufferSource
           )
           
           return new TextDecoder().decode(plainBuffer)

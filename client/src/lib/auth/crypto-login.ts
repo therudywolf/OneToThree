@@ -121,10 +121,10 @@ export async function cryptoLogin(
     if (!parsed) {
       return { ok: false, error: 'INVALID_VAULT_FORMAT' }
     }
-    if (parsed.kind === 'legacy_ecdh') {
+    if (parsed.kind === 'LEGACY') {
       return { ok: false, error: 'LEGACY_VAULT_REQUIRES_REREGISTER' }
     }
-    ecdsaPrivateJwk = parsed.ecdsaPrivateJwk
+    ecdsaPrivateJwk = parsed.ecdsaJwk
   }
 
   let nonce: string

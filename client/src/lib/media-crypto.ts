@@ -69,11 +69,11 @@ export async function openBinarySegment(
   
   const plain = await getSubtle().decrypt(
     { 
-      name: 'AES-GCM', 
-      iv: vector 
+      name: 'AES-GCM',
+      iv: vector as BufferSource
     },
     sharedKey,
-    payload
+    payload as BufferSource
   )
 
   return new Blob([plain], { type: mimeType })

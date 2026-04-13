@@ -56,6 +56,10 @@ export function revokeNodeTrust(userId: string): void {
 export type TrustStatus = {
   is_verified: boolean
   is_compromised: boolean
+  /** Consumer alias */
+  verified: boolean
+  /** Consumer alias */
+  revokedByKeyChange: boolean
 }
 
 /**
@@ -63,25 +67,30 @@ export type TrustStatus = {
  * Проверка текущего отпечатка на соответствие закрепленному в реестре.
  * Автоматически отзывает доверие при несовпадении (Key Change).
  */
+// --- CONSUMER_ALIASES ---
+export const resolveTrustStatus = resolveNodeIntegrity
+export const revokeVerifiedTrust = revokeNodeTrust
+export const setVerifiedHash = pinNodeSignature
+
 export function resolveNodeIntegrity(userId: string, currentHash: string): TrustStatus {
   const registry = pullRegistry()
   const pinnedSignature = registry[userId]
 
   // [1] Узел ранее не проверялся
   if (!pinnedSignature) {
-    return { is_verified: false, is_compromised: false }
+    return { is_verified: false, is_compromised: false, verified: false, revokedByKeyChange: false }
   }
 
   // [2] Сигнатура совпадает
   if (pinnedSignature === currentHash) {
-    return { is_verified: true, is_compromised: false }
+    return { is_verified: true, is_compromised: false, verified: true, revokedByKeyChange: false }
   }
 
   // [3] FAULT :: Сигнатура изменилась. Автоматический отзыв (Lockdown).
   delete registry[userId]
   commitRegistry(registry)
-  
+
   console.warn(`>> [SYS.TRUST] SIGNATURE_MISMATCH_DETECTED: Node ${userId}`)
-  
-  return { is_verified: false, is_compromised: true }
+
+  return { is_verified: false, is_compromised: true, verified: false, revokedByKeyChange: true }
 }

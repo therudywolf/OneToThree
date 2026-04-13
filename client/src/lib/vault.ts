@@ -49,6 +49,8 @@ export function wipeVaultByLogin(username: string): void {
   localStorage.removeItem(getLoginSlot(username))
 }
 
+export const mirrorVaultLoginToUserId = linkLoginVaultToUser
+export const persistVaultBlob = persistVault
 export const persistVaultBlobByLoginUsername = persistVaultByLogin
 export const readVaultBlobByLoginUsername = readVaultByLogin
 /** [SYNC_LINK] :: Зеркалирование временного сейфа в стабильный узел после логина */
@@ -126,7 +128,7 @@ export async function unwrapPrivateJwkWithPin(
   const salt = fromB64(blob.saltB64)
   const iv = fromB64(blob.ivB64)
   const cipher = fromB64(blob.ciphertextB64)
-  const wrapKey = await deriveWrapKey(pin, salt)
+  const wrapKey = await deriveWrapKey(pin, salt as BufferSource)
 
   const plainBuf = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: iv as BufferSource },

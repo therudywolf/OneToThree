@@ -28,7 +28,7 @@ export function useGroupKeyDistribution(
       !userId ||
       !unwrappedPrivateKey ||
       !cryptoCtx ||
-      cryptoCtx.mode !== 'group'
+      cryptoCtx.mode !== 'SECTOR'
     ) {
       return
     }

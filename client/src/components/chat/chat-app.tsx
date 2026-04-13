@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -237,11 +237,25 @@ export function ChatApp({
   }, [activeChatId, chats, userId])
 
   const { cryptoCtx, ctxError } = useChatCryptoContext()
-  const { triggerBackgroundPush } = usePhantomPush()
+  const { emitPhantomSignal } = usePhantomPush()
   const sharedKey = useChatAesKey(cryptoCtx)
-  useMessages(cryptoCtx, triggerBackgroundPush)
+  useMessages(cryptoCtx, emitPhantomSignal)
   const { sendText } = useSendMessage(cryptoCtx)
-  const { sendMedia } = useSendMediaMessage(cryptoCtx)
+  const { sendMedia: rawSendMedia } = useSendMediaMessage(cryptoCtx)
+  const sendMedia = useCallback(
+    async (
+      blob: Blob,
+      mediaType: 'audio' | 'video' | 'image' | 'file',
+      caption?: string,
+      options?: { fileName?: string; fileType?: string },
+    ) => {
+      await rawSendMedia(blob, mediaType, {
+        label: caption || options?.fileName,
+        mime: options?.fileType,
+      })
+    },
+    [rawSendMedia],
+  )
   useGroupKeyDistribution(cryptoCtx, reload)
 
   useEffect(() => {

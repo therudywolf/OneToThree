@@ -30,7 +30,7 @@ export function RecoveryHandler() {
           if (!sessionStorage.getItem('chunk_reload_triggered')) {
             sessionStorage.setItem('chunk_reload_triggered', 'true')
             console.warn('[recovery] ChunkLoadError detected, reloading once...')
-            window.location.reload(true)
+            window.location.reload()
           } else {
             console.warn('[recovery] ChunkLoadError detected, reload already attempted; skipping loop')
           }

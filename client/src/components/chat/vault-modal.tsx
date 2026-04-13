@@ -45,12 +45,12 @@ export function VaultModal({ userId, displayHandle }: Props) {
         setError('INVALID_VAULT_FORMAT')
         return
       }
-      if (parsed.kind === 'legacy_ecdh') {
-        const key = await importEcdhPrivateKey(parsed.ecdhPrivateJwkString)
+      if (parsed.kind === 'LEGACY') {
+        const key = await importEcdhPrivateKey(parsed.ecdhJwk)
         setUnwrappedPrivateKey(key)
         try {
           await patchMyEcdhPublicKey(
-            exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhPrivateJwkString)
+            exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhJwk)
           )
         } catch {
           /* server may be offline */
@@ -58,11 +58,11 @@ export function VaultModal({ userId, displayHandle }: Props) {
         setPin('')
         return
       }
-      const key = await importEcdhPrivateKey(parsed.ecdhPrivateJwk)
+      const key = await importEcdhPrivateKey(parsed.ecdhJwk)
       setUnwrappedPrivateKey(key)
       try {
         await patchMyEcdhPublicKey(
-          exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhPrivateJwk)
+          exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhJwk)
         )
       } catch {
         /* non-fatal */

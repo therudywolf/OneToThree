@@ -9,6 +9,9 @@ import { useEffect, useCallback } from 'react'
  * Purpose: Emitting signal alerts when the node is in a background (hidden) state.
  */
 
+// --- CONSUMER_ALIAS ---
+export const usePhantomPush = usePhantomIntercept
+
 export function usePhantomIntercept() {
   useEffect(() => {
     /** [PROTOCOL_INIT] :: Запрос полномочий на прерывание в спящем режиме */

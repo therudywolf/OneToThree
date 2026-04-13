@@ -322,6 +322,10 @@ Warden Authority: Администрация оставляет за собой 
   'settings.digitalDenCleared': 'Нора стерильна.',
   'settings.digitalDenBusy': '...',
 
+  'chat.attachFile': 'ПРИКРЕПИТЬ_ФАЙЛ',
+
+  'sidebar.members': 'УЧАСТНИКИ',
+
   'media.fileExpiredServer': 'СЕГМЕНТ_ПРОСРОЧЕН_НА_СЕРВЕРЕ. Политика хранения исполнена.',
 } as const;
 

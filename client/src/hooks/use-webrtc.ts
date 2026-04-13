@@ -237,7 +237,15 @@ export function useWebRTC(userId: string | null) {
       if (msg.type === 'call_leave') purgePeer(msg.from_user_id)
 
       if (msg.type === 'webrtc_signal') {
-        const { fromUserId, signalData: data } = msg
+        const { fromUserId, signalData: rawSignal } = msg
+        const data = rawSignal as {
+          kind: string
+          media?: string
+          enabled?: boolean
+          sdp?: string
+          isVideo?: boolean
+          candidate?: RTCIceCandidateInit
+        }
         if (fromUserId === userId) return
 
         if (data.kind === 'media_state') {

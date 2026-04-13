@@ -8,6 +8,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useMediaRecorder } from '@/hooks/use-media-recorder'
 import { resumeAudioContextAfterGesture } from '@/lib/call-ringtones'
 import { vibrateShort } from '@/lib/vibrate'
+import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import EmojiPicker from 'emoji-picker-react'
 
 function isImageFile(file: File): boolean {
@@ -26,7 +27,7 @@ type Props = {
     caption?: string,
     options?: { fileName?: string; fileType?: string }
   ) => Promise<void>
-  cryptoCtx: Record<string, unknown>
+  cryptoCtx: ChatCryptoContext | null
   disabled?: boolean
 }
 

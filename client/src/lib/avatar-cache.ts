@@ -82,6 +82,11 @@ export function purgeIconTrace(userId: string): void {
 }
 
 /** [STERILIZE_CORTEX] :: Полная очистка визуального реестра */
+// --- CONSUMER_ALIASES ---
+export const getCachedAvatarUrl = interceptIconSignal
+export const invalidateAvatarCache = purgeIconTrace
+export const clearAllAvatarCache = sterilizeIconCortex
+
 export function sterilizeIconCortex(): void {
   for (const url of ICON_REGISTRY.values()) {
     URL.revokeObjectURL(url)

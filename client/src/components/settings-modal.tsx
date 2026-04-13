@@ -28,7 +28,7 @@ function readDiscoverableFromPayload(v: unknown): boolean {
 }
 
 export function SettingsModal({ userId, username, onClose }: Props) {
-  const { locale, setLocale, t } = useTranslation()
+  const { module: locale, setModule: setLocale, t } = useTranslation()
   const { user, updateUser, refresh } = useAuth()
   /** `null` until GET /users/me/settings succeeds — never assume true (shadow default). */
   const [discoverable, setDiscoverable] = useState<boolean | null>(null)

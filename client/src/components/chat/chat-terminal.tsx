@@ -219,7 +219,7 @@ export function ChatTerminal({
     const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }> = []
 
     for (const group of groupedMessages) {
-      if (group.type === 'single') {
+      if (group.type === 'UNIT') {
         const msg = group.message
         if (msg.media_path && msg.media_iv && msg.media_type) {
           const mime = mimeFromPathAndType(msg.media_path, msg.media_type)
@@ -298,12 +298,7 @@ export function ChatTerminal({
         if (!first?.isIntersecting) return
         if (loadingOlder || !hasMoreOlder || !oldestLoaded) return
         setLoadingOlder(true)
-        void getOlderCachedMessages({
-          chatId: activeChatId,
-          beforeCreatedAt: oldestLoaded.created_at,
-          beforeId: oldestLoaded.id,
-          limit: OLDER_PAGE_SIZE,
-        })
+        void getOlderCachedMessages(activeChatId, OLDER_PAGE_SIZE + olderMessages.length)
           .then((rows) => {
             if (!rows.length) {
               setHasMoreOlder(false)
@@ -419,7 +414,7 @@ export function ChatTerminal({
           </div>
         ) : null}
         {groupedMessages.map((group, groupIndex) => {
-          if (group.type === 'single') {
+          if (group.type === 'UNIT') {
             const m = group.message
             const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
             const mine = m.sender_id === userId
@@ -531,10 +526,10 @@ export function ChatTerminal({
                 </div>
               </div>
             )
-          } else {
+          } else if (group.type === 'COLLECTION') {
             // Grouped media messages
-            const mine = group.senderId === userId
-            const senderLabel = labelForSender(group.senderId)
+            const mine = group.originId === userId
+            const senderLabel = labelForSender(group.originId)
             const gridCols = group.messages.length === 1 ? 1 :
                            group.messages.length === 2 ? 2 : 3
             const gridRows = Math.ceil(group.messages.length / gridCols)
@@ -558,9 +553,9 @@ export function ChatTerminal({
                   >
                     {!mine ? (
                       <UserAvatar
-                        userId={group.senderId}
-                        username={labelForSender(group.senderId)}
-                        avatarKey={avatarKeyForSender(group.senderId)}
+                        userId={group.originId}
+                        username={labelForSender(group.originId)}
+                        avatarKey={avatarKeyForSender(group.originId)}
                         size={22}
                       />
                     ) : (
@@ -571,7 +566,7 @@ export function ChatTerminal({
                         size={22}
                       />
                     )}
-                    {roleGlyph(group.senderId)}
+                    {roleGlyph(group.originId)}
                     <span>{senderLabel}</span>
                   </div>
                   <div

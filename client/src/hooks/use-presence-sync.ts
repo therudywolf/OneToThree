@@ -18,6 +18,9 @@ const HEARTBEAT_INTERVAL_MS = 45_000
  * Синхронизация статусов «В сети» через REST (Initial) и WS (Real-time).
  * Поддерживает активность узла в контуре через presence_ping.
  */
+// --- CONSUMER_ALIAS ---
+export const usePresenceSync = usePulseRadar
+
 export function usePulseRadar(userId: string, sectors: ApiChatRow[]) {
   const { mergePeerPresenceBatch, setPeerPresence } = useChatStore()
 

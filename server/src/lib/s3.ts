@@ -88,7 +88,7 @@ export function createS3ClientForPresigning(): S3Client {
   })
 }
 
-let bucketReady: Promise<void> | null = null
+const bucketReadyMap = new Map<string, Promise<void>>()
 
 /** Origins allowed by MinIO bucket CORS for browser PUT/GET to presigned URLs. */
 function browserUploadCorsOrigins(): string[] {
@@ -157,17 +157,19 @@ async function applyBucketCors(
 }
 
 export function ensureBucketExists(client: S3Client, bucket: string): Promise<void> {
-  if (!bucketReady) {
-    bucketReady = (async () => {
-      try {
-        await client.send(new HeadBucketCommand({ Bucket: bucket }))
-      } catch {
-        await client.send(new CreateBucketCommand({ Bucket: bucket }))
-      }
-      await applyBucketCors(client, bucket)
-    })()
-  }
-  return bucketReady
+  const existing = bucketReadyMap.get(bucket)
+  if (existing) return existing
+
+  const promise = (async () => {
+    try {
+      await client.send(new HeadBucketCommand({ Bucket: bucket }))
+    } catch {
+      await client.send(new CreateBucketCommand({ Bucket: bucket }))
+    }
+    await applyBucketCors(client, bucket)
+  })()
+  bucketReadyMap.set(bucket, promise)
+  return promise
 }
 
 const DEFAULT_PRESIGN_TTL_S = 3600

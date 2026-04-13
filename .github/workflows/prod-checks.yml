@@ -2,7 +2,7 @@ name: Production checks
 
 on:
   push:
-    branches: [main]
+    branches: [main, master, ver2]
 
 permissions:
   contents: read

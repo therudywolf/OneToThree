@@ -18,6 +18,7 @@ import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { SettingsAvatarSection } from '@/components/settings-avatar-section'
 import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
+import { patchMyProfile } from '@/lib/api/users'
 
 type Props = { userId: string; username: string; onClose: () => void }
 
@@ -51,6 +52,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [killPhrase, setKillPhrase] = useState('')
   const [killPin, setKillPin] = useState('')
   const [allowNewDeviceLinking, setAllowNewDeviceLinking] = useState(false)
+  const [bio, setBio] = useState('')
+  const [statusText, setStatusText] = useState('')
+  const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([])
+  const [profileBusy, setProfileBusy] = useState(false)
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -61,6 +66,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       const d = (await r.json().catch(() => ({}))) as {
         is_discoverable?: unknown
         hide_presence?: unknown
+        bio?: string | null
+        status_text?: string | null
+        social_links?: Array<{ platform: string; url: string }>
         error?: string
       }
       if (!r.ok) {
@@ -71,6 +79,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setDiscoverable(value)
       updateUser({ is_discoverable: value })
       setHidePresence(typeof d.hide_presence === 'boolean' ? d.hide_presence : false)
+      setBio(d.bio ?? '')
+      setStatusText(d.status_text ?? '')
+      setSocialLinks(Array.isArray(d.social_links) ? d.social_links : [])
     } catch {
       setError(t('settings.loadFailed'))
     }
@@ -648,6 +659,144 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           className={`space-y-3 ${settingsTab !== 'main' ? 'hidden' : ''}`}
         >
           <SettingsAvatarSection userId={userId} username={username} />
+
+          {/* Profile Section */}
+          <div className="space-y-3 border border-neon-cyan/30 p-3">
+            <p className="text-xs uppercase tracking-widest text-neon-cyan">
+              {t('profile.section')}
+            </p>
+
+            {/* Bio */}
+            <div>
+              <label className="terminal-label" htmlFor="profile-bio">
+                {t('profile.bio')}
+              </label>
+              <textarea
+                id="profile-bio"
+                className="terminal-input mt-1 min-h-[3rem] w-full resize-y text-[10px]"
+                maxLength={256}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder={t('profile.bioPlaceholder')}
+              />
+            </div>
+
+            {/* Status text */}
+            <div>
+              <label className="terminal-label" htmlFor="profile-status">
+                {t('profile.statusText')}
+              </label>
+              <div className="mt-1 flex gap-2">
+                <input
+                  id="profile-status"
+                  className="terminal-input flex-1 text-[10px]"
+                  maxLength={128}
+                  value={statusText}
+                  onChange={(e) => setStatusText(e.target.value)}
+                  placeholder={t('profile.statusPlaceholder')}
+                />
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <p className="w-full text-[8px] uppercase tracking-widest text-zinc-600">{t('profile.statusPresets')}:</p>
+                {[
+                  { label: t('profile.online'), value: '' },
+                  { label: t('profile.busy'), value: 'busy' },
+                  { label: t('profile.doNotDisturb'), value: 'do not disturb' },
+                  { label: 'DEAD_INSIDE', value: 'dead_inside' },
+                ].map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => setStatusText(preset.value)}
+                    className={`border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest transition-colors ${
+                      statusText === preset.value
+                        ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                        : 'border-zinc-700 text-zinc-500 hover:border-neon-cyan/50'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Social Links */}
+            <div>
+              <p className="terminal-label">{t('profile.socialLinks')}</p>
+              <div className="mt-1 space-y-2">
+                {socialLinks.map((link, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <select
+                      className="terminal-input w-28 text-[10px]"
+                      value={link.platform}
+                      onChange={(e) => {
+                        const next = [...socialLinks]
+                        next[idx] = { ...next[idx], platform: e.target.value }
+                        setSocialLinks(next)
+                      }}
+                    >
+                      <option value="telegram">Telegram</option>
+                      <option value="github">GitHub</option>
+                      <option value="website">Website</option>
+                    </select>
+                    <input
+                      className="terminal-input flex-1 text-[10px]"
+                      value={link.url}
+                      onChange={(e) => {
+                        const next = [...socialLinks]
+                        next[idx] = { ...next[idx], url: e.target.value }
+                        setSocialLinks(next)
+                      }}
+                      placeholder={t('profile.url')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSocialLinks(socialLinks.filter((_, i) => i !== idx))}
+                      className="shrink-0 border border-neon-red/50 px-2 py-1 font-mono text-[9px] text-neon-red hover:bg-neon-red/10"
+                    >
+                      [X]
+                    </button>
+                  </div>
+                ))}
+                {socialLinks.length < 5 ? (
+                  <button
+                    type="button"
+                    onClick={() => setSocialLinks([...socialLinks, { platform: 'telegram', url: '' }])}
+                    className="w-full border border-neon-cyan/40 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10"
+                  >
+                    + {t('profile.addLink')}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Save button */}
+            <button
+              type="button"
+              disabled={profileBusy}
+              onClick={() => {
+                setProfileBusy(true)
+                setError(null)
+                void patchMyProfile({
+                  bio,
+                  status_text: statusText,
+                  social_links: socialLinks.filter((l) => l.url.trim()),
+                })
+                  .then(() => {
+                    setSaved(true)
+                    setTimeout(() => setSaved(false), 1500)
+                  })
+                  .catch((e) => {
+                    setError(e instanceof Error ? e.message : t('profile.saveFailed'))
+                  })
+                  .finally(() => setProfileBusy(false))
+              }}
+              className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+            >
+              {profileBusy ? '[ ... ]' : `[ ${t('common.saved').toUpperCase()} ]`}
+            </button>
+          </div>
+
           <SettingsPushNotifications userId={userId} />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">

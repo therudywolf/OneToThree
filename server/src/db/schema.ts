@@ -50,6 +50,12 @@ export const users = pgTable('users', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   /** When true, peers see offline / no last-seen; viewer still sees others (asymmetric). */
   hidePresence: boolean('hide_presence').notNull().default(false),
+  /** Short bio / about text. */
+  bio: text('bio'),
+  /** Custom status text (e.g. "busy", "do not disturb", free-form). */
+  statusText: text('status_text'),
+  /** JSON array of {platform,url} social links. */
+  socialLinks: text('social_links'),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

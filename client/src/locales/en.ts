@@ -356,6 +356,28 @@ The administration reserves the right to remove any account without warning.`,
   'sidebar.members': 'Members',
 
 
+  // [PROFILE]
+  'profile.title': 'User Profile',
+  'profile.bio': 'Bio',
+  'profile.bioPlaceholder': 'Write something about yourself...',
+  'profile.statusText': 'Status',
+  'profile.statusPlaceholder': 'What are you up to?',
+  'profile.socialLinks': 'Social Links',
+  'profile.addLink': 'Add Link',
+  'profile.removeLink': 'Remove',
+  'profile.platform': 'Platform',
+  'profile.url': 'URL',
+  'profile.online': 'ONLINE',
+  'profile.offline': 'OFFLINE',
+  'profile.deadInside': 'DEAD_INSIDE',
+  'profile.externalLinks': 'EXTERNAL_LINKS',
+  'profile.tapToClose': 'Tap outside to close',
+  'profile.saveFailed': 'Failed to save profile.',
+  'profile.section': 'Profile',
+  'profile.statusPresets': 'Presets',
+  'profile.busy': 'Busy',
+  'profile.doNotDisturb': 'Do Not Disturb',
+
   'media.fileExpiredServer': 'File removed from server. Retention period expired.',
 
   'offline.banner': 'No connection. Messages will be sent when reconnected.',

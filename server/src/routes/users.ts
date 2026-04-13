@@ -37,12 +37,20 @@ function escapeIlikePattern(fragment: string): string {
   return fragment.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
+const socialLinkSchema = z.object({
+  platform: z.string().min(1).max(32),
+  url: z.string().min(1).max(512),
+})
+
 /** Profile patch — handle/nickname rules are enforced on auth; vault is keyed by handle client-side. */
 const patchMeSchema = z
   .object({
     ecdh_public_key_jwk: z.string().min(8).optional(),
     is_discoverable: z.coerce.boolean().optional(),
     hide_presence: z.coerce.boolean().optional(),
+    bio: z.string().max(256).optional(),
+    status_text: z.string().max(128).optional(),
+    social_links: z.array(socialLinkSchema).max(10).optional(),
   })
   .strict()
 
@@ -199,6 +207,60 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, avatar_key: avatarKey })
   })
 
+  /** Public profile for any user (by username). */
+  app.get('/:username/profile', async (request, reply) => {
+    const auth = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, auth)) return
+
+    const params = z.object({ username: z.string().min(1).max(64) }).safeParse(request.params)
+    if (!params.success) {
+      return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    }
+
+    const [row] = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        avatarKey: users.avatarKey,
+        bio: users.bio,
+        statusText: users.statusText,
+        socialLinks: users.socialLinks,
+        hidePresence: users.hidePresence,
+        lastSeenAt: users.lastSeenAt,
+      })
+      .from(users)
+      .where(eq(users.username, params.data.username))
+      .limit(1)
+
+    if (!row) {
+      return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+    }
+
+    const isSelf = row.id === auth.id
+    const mask = !isSelf && row.hidePresence === true
+
+    let socialLinks: Array<{ platform: string; url: string }> = []
+    if (row.socialLinks) {
+      try {
+        socialLinks = JSON.parse(row.socialLinks) as typeof socialLinks
+      } catch { /* ignore */ }
+    }
+
+    return reply.send({
+      username: row.username,
+      avatar_key: row.avatarKey,
+      bio: row.bio ?? null,
+      status_text: row.statusText ?? null,
+      social_links: socialLinks,
+      online: mask ? false : hasActiveSocket(row.id),
+      last_seen_at: mask
+        ? null
+        : row.lastSeenAt instanceof Date
+          ? row.lastSeenAt.toISOString()
+          : row.lastSeenAt ? String(row.lastSeenAt) : null,
+    })
+  })
+
   app.get('/me/settings', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -206,13 +268,27 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .select({
         isDiscoverable: users.isDiscoverable,
         hidePresence: users.hidePresence,
+        bio: users.bio,
+        statusText: users.statusText,
+        socialLinks: users.socialLinks,
       })
       .from(users)
       .where(eq(users.id, user.id))
       .limit(1)
+
+    let socialLinks: Array<{ platform: string; url: string }> = []
+    if (row?.socialLinks) {
+      try {
+        socialLinks = JSON.parse(row.socialLinks) as typeof socialLinks
+      } catch { /* ignore */ }
+    }
+
     return reply.send({
       is_discoverable: row?.isDiscoverable ?? false,
       hide_presence: row?.hidePresence ?? false,
+      bio: row?.bio ?? null,
+      status_text: row?.statusText ?? null,
+      social_links: socialLinks,
     })
   })
 
@@ -247,6 +323,18 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       updates.hidePresence = parsed.data.hide_presence
     }
 
+    if (parsed.data.bio !== undefined) {
+      updates.bio = parsed.data.bio || null
+    }
+
+    if (parsed.data.status_text !== undefined) {
+      updates.statusText = parsed.data.status_text || null
+    }
+
+    if (parsed.data.social_links !== undefined) {
+      updates.socialLinks = JSON.stringify(parsed.data.social_links)
+    }
+
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
@@ -265,12 +353,25 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .returning({
         isDiscoverable: users.isDiscoverable,
         hidePresence: users.hidePresence,
+        bio: users.bio,
+        statusText: users.statusText,
+        socialLinks: users.socialLinks,
       })
+
+    let socialLinksOut: Array<{ platform: string; url: string }> = []
+    if (after?.socialLinks) {
+      try {
+        socialLinksOut = JSON.parse(after.socialLinks) as typeof socialLinksOut
+      } catch { /* ignore */ }
+    }
 
     return reply.send({
       ok: true,
       is_discoverable: after?.isDiscoverable ?? false,
       hide_presence: after?.hidePresence ?? false,
+      bio: after?.bio ?? null,
+      status_text: after?.statusText ?? null,
+      social_links: socialLinksOut,
     })
   })
 

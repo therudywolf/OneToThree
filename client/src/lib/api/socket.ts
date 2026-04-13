@@ -185,6 +185,12 @@ export type WsInboundMessage =
       type: 'group_call:ended'
       room_id: string
     }
+  | {
+      type: 'reaction_update'
+      message_id: string
+      chat_id: string
+      reactions: Record<string, string[]>
+    }
   | { type: 'error'; error: string }
 
 class FmSocketClient {

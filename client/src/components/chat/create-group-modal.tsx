@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { searchUsers, type SearchUserRow } from '@/lib/api/users'
 import { normalizePeerInput } from '@/lib/peer-input'
 import { useCreateGroup } from '@/hooks/use-create-group'
+import { createPublicOpenChat } from '@/lib/api/chats'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 import type { TranslationKey } from '@/hooks/use-translation'
@@ -49,14 +50,20 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
   const { createGroup, busy, error, clearError, reset } = useCreateGroup(userId)
   
   const [channelName, setChannelName] = useState('')
+  const [isPublic, setIsPublic] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [radarResults, setRadarResults] = useState<SearchUserRow[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [selectedNodes, setSelectedNodes] = useState<SearchUserRow[]>([])
+  const [publicBusy, setPublicBusy] = useState(false)
+  const [publicError, setPublicError] = useState<string | null>(null)
 
   const systemMessage = useMemo(
-    () => (error ? mapSystemError(error, t) : null),
-    [error, t]
+    () => {
+      const e = isPublic ? publicError : error
+      return e ? mapSystemError(e, t) : null
+    },
+    [error, publicError, isPublic, t]
   )
 
   useEffect(() => {
@@ -102,6 +109,27 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
   const handleGenesis = async (e: React.FormEvent) => {
     e.preventDefault()
     clearError()
+    setPublicError(null)
+
+    if (isPublic) {
+      if (!channelName.trim()) return
+      setPublicBusy(true)
+      try {
+        const chat = await createPublicOpenChat({
+          name: channelName.trim(),
+          memberIds: [userId, ...selectedNodes.map((s) => s.id)],
+        })
+        onCreated(chat.id)
+        onClose()
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'PUBLIC_GROUP_CREATE_FAILED'
+        setPublicError(msg)
+      } finally {
+        setPublicBusy(false)
+      }
+      return
+    }
+
     try {
       const sector = await createGroup(
         channelName.trim() || null,
@@ -114,7 +142,10 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
     }
   }
 
-  const canInitialize = selectedNodes.length > 0 && !busy
+  const isBusy = isPublic ? publicBusy : busy
+  const canInitialize = isPublic
+    ? !!channelName.trim() && !publicBusy
+    : selectedNodes.length > 0 && !busy
 
   return (
     <div
@@ -132,7 +163,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
               {t('group.title')}
             </h2>
             <p className="font-mono text-[9px] text-zinc-600">
-              {t('group.hintEcdh')}
+              {isPublic ? t('group.hintPublic') : t('group.hintEcdh')}
             </p>
           </div>
           <button
@@ -145,10 +176,23 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
         </header>
 
         <form onSubmit={(ev) => void handleGenesis(ev)} className="space-y-5">
+          {/* PUBLIC_GROUP_TOGGLE */}
+          <label className="flex cursor-pointer items-center gap-3 border border-neutral-900 bg-zinc-950 p-3 transition-colors hover:border-neutral-800">
+            <input
+              type="checkbox"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+              className="h-3 w-3 accent-neon-cyan"
+            />
+            <span className="text-[9px] uppercase tracking-widest text-zinc-400">
+              {t('group.publicToggle')}
+            </span>
+          </label>
+
           {/* CHANNEL_NAME_INPUT */}
           <div className="space-y-2">
             <label className="text-[9px] uppercase tracking-widest text-zinc-500" htmlFor="grp-name">
-              {t('group.channelName')}
+              {t('group.channelName')}{isPublic ? ' *' : ''}
             </label>
             <input
               id="grp-name"
@@ -156,7 +200,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
               className="w-full border border-neutral-900 bg-zinc-950 px-3 py-2 font-mono text-xs text-white outline-none transition-all focus:border-neon-cyan/50"
               value={channelName}
               onChange={(e) => setChannelName(e.target.value)}
-              placeholder={t('group.optional')}
+              placeholder={isPublic ? t('group.publicNameRequired') : t('group.optional')}
               autoComplete="off"
             />
           </div>
@@ -202,9 +246,11 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
                     }`}
                   >
                     <span>{node.username}</span>
-                    <span className={`text-[9px] ${node.ecdh_public_key_jwk ? 'text-zinc-700' : 'text-neon-red'}`}>
-                      {node.ecdh_public_key_jwk ? 'P256_READY' : t('group.noEcdhBadge')}
-                    </span>
+                    {!isPublic && (
+                      <span className={`text-[9px] ${node.ecdh_public_key_jwk ? 'text-zinc-700' : 'text-neon-red'}`}>
+                        {node.ecdh_public_key_jwk ? 'P256_READY' : t('group.noEcdhBadge')}
+                      </span>
+                    )}
                   </button>
                 )
               })
@@ -234,7 +280,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
               disabled={!canInitialize}
               className="flex-1"
             >
-              {busy ? t('group.creating') : t('group.create')}
+              {isBusy ? t('group.creating') : t('group.create')}
             </TerminalGlitchButton>
             
             <button

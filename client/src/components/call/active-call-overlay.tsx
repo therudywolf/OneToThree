@@ -301,6 +301,15 @@ export function ActiveCallOverlay({
     setIsMobileDevice(isAndroidMobile() || isIOSOrIPadOS())
   }, [])
 
+  // Cleanup: end call if the overlay unmounts while still calling
+  useEffect(() => {
+    return () => {
+      if (useCallStore.getState().isCalling) {
+        onEndCall()
+      }
+    }
+  }, [onEndCall])
+
   useEffect(() => {
     let timeout: NodeJS.Timeout
     const handleMouseMove = () => {

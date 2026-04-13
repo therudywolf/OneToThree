@@ -182,6 +182,27 @@ export const messages = pgTable(
   })
 )
 
+/** Per-message emoji reactions. */
+export const messageReactions = pgTable(
+  'message_reactions',
+  {
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: varchar('emoji', { length: 32 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.messageId, t.userId, t.emoji] }),
+    messageIdx: index('message_reactions_message_id_idx').on(t.messageId),
+  })
+)
+
 /** Per-recipient delivery for store-and-forward (E2EE ciphertext is opaque to the server). */
 export const messageDeliveries = pgTable(
   'message_deliveries',

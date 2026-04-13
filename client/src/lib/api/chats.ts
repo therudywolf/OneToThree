@@ -41,6 +41,21 @@ export type ChatDetailPayload = {
   members: ChatDetailMember[]
 }
 
+export async function fetchOrCreateSelfChat(): Promise<ApiChatRow> {
+  const res = await fetch(`${API_URL}/chats/self`, { credentials: 'include' })
+  const data = (await res.json().catch(() => ({}))) as {
+    chat?: ApiChatRow
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'SELF_CHAT_FAILED')
+  }
+  if (!data.chat?.id) {
+    throw new Error('INVALID_SELF_CHAT_RESPONSE')
+  }
+  return data.chat
+}
+
 export async function fetchChatsList(): Promise<ApiChatRow[]> {
   const res = await fetch(`${API_URL}/chats`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as {
@@ -105,6 +120,33 @@ export async function createGroupE2EChat(params: {
   }
   if (!data.chat?.id) {
     throw new Error('INVALID_GROUP_CREATE_RESPONSE')
+  }
+  return data.chat
+}
+
+export async function createPublicOpenChat(params: {
+  name: string
+  memberIds: string[]
+}): Promise<ApiChatRow> {
+  const res = await fetch(`${API_URL}/chats`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'public_open',
+      name: params.name.trim() || null,
+      member_ids: params.memberIds.map(canonicalUserId),
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    chat?: ApiChatRow
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'PUBLIC_GROUP_CREATE_FAILED')
+  }
+  if (!data.chat?.id) {
+    throw new Error('INVALID_PUBLIC_GROUP_RESPONSE')
   }
   return data.chat
 }

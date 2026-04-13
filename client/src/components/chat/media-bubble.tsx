@@ -119,8 +119,11 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     return () => io.disconnect()
   }, [])
 
+  const isPublicMedia = mediaIv === 'public'
+
   const decrypt = useCallback(async () => {
-    if (!mediaPath || !mediaIv || !sharedKey) return
+    if (!mediaPath || !mediaIv) return
+    if (!isPublicMedia && !sharedKey) return
     setLoadErr(false)
     setObjectUrl(null)
     try {
@@ -142,24 +145,29 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
         setLoadErr(true)
         return
       }
-      const cipher = await res.arrayBuffer()
+
       let plain: ArrayBuffer
 
-      if (envelope) {
-        const wrapPlain = await decryptBinary(
-          sharedKey,
-          base64ToArrayBuffer(envelope.wrapCt),
-          envelope.wrapIv
-        )
-        const fileKey = await importAesGcm256RawKey(wrapPlain, ['decrypt'])
-        const fileIv = new Uint8Array(base64ToArrayBuffer(mediaIv))
-        plain = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: fileIv as BufferSource },
-          fileKey,
-          cipher as BufferSource
-        )
+      if (isPublicMedia) {
+        plain = await res.arrayBuffer()
       } else {
-        plain = await decryptBinary(sharedKey, cipher, mediaIv)
+        const cipher = await res.arrayBuffer()
+        if (envelope) {
+          const wrapPlain = await decryptBinary(
+            sharedKey!,
+            base64ToArrayBuffer(envelope.wrapCt),
+            envelope.wrapIv
+          )
+          const fileKey = await importAesGcm256RawKey(wrapPlain, ['decrypt'])
+          const fileIv = new Uint8Array(base64ToArrayBuffer(mediaIv))
+          plain = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: fileIv as BufferSource },
+            fileKey,
+            cipher as BufferSource
+          )
+        } else {
+          plain = await decryptBinary(sharedKey!, cipher, mediaIv)
+        }
       }
 
       const mime = envelope?.mimeType ?? mimeFromPathAndType(mediaPath, mediaType)
@@ -171,10 +179,11 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     } catch {
       setLoadErr(true)
     }
-  }, [mediaPath, mediaIv, sharedKey, mediaType, message.id, envelope])
+  }, [mediaPath, mediaIv, sharedKey, mediaType, message.id, envelope, isPublicMedia])
 
   useEffect(() => {
-    if (!visible || !mediaPath || !mediaIv || !sharedKey) return
+    if (!visible || !mediaPath || !mediaIv) return
+    if (!isPublicMedia && !sharedKey) return
     void decrypt()
     return () => {
       if (blobUrlRef.current) {
@@ -183,11 +192,11 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
       }
       setObjectUrl(null)
     }
-  }, [visible, decrypt, mediaPath, mediaIv, sharedKey])
+  }, [visible, decrypt, mediaPath, mediaIv, sharedKey, isPublicMedia])
 
   if (!mediaPath || !mediaIv) return null
 
-  if (!sharedKey) {
+  if (!sharedKey && !isPublicMedia) {
     return (
       <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-zinc-500">
         {t('errors.signalLost')}

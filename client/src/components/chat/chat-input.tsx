@@ -144,7 +144,9 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       if (shouldSend && result && result.blob.size > 0 && cryptoCtx) {
         await sendMedia(
           result.blob,
-          mediaMode === 'voice' ? 'audio' : 'video'
+          mediaMode === 'voice' ? 'audio' : 'video',
+          undefined,
+          { fileType: result.mimeType }
         )
       } else if (!shouldSend) {
         // Cancelled — blob discarded

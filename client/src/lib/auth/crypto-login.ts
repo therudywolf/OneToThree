@@ -31,6 +31,8 @@ export type CryptoLoginResult =
 export type CryptoLoginParams = {
   username: string
   password: string
+  /** Separate vault encryption password (registration only). Falls back to `password` when omitted. */
+  vaultPassword?: string
   mode: 'login' | 'register'
 }
 
@@ -84,6 +86,9 @@ export async function cryptoLogin(
     return { ok: false, error: 'PASSWORD_REQUIRED' }
   }
   if (params.mode === 'register' && password.length < 8) {
+    return { ok: false, error: 'PIN_MIN_8' }
+  }
+  if (params.mode === 'register' && params.vaultPassword && params.vaultPassword.length < 8) {
     return { ok: false, error: 'PIN_MIN_8' }
   }
 
@@ -179,7 +184,8 @@ export async function cryptoLogin(
         ecdsaPrivateJwk,
         ecdhPrivateJwkForVault
       )
-      const blob = await wrapPrivateJwkWithPin(inner, password)
+      const vaultPin = params.vaultPassword || password
+      const blob = await wrapPrivateJwkWithPin(inner, vaultPin)
       persistVaultBlobByLoginUsername(canonicalHandle, blob)
     }
 

@@ -103,7 +103,7 @@ export async function buildApp() {
 
   await app.register(jwt, {
     secret: jwtSecret,
-    sign: { algorithm: 'HS256', expiresIn: '7d' },
+    sign: { algorithm: 'HS256', expiresIn: '24h' },
   })
 
   await app.register(websocket)

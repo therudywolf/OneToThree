@@ -35,22 +35,17 @@ Self-hosted end-to-end encrypted messenger. The server stores only ciphertext �
 ```bash
 git clone -b ver2 https://github.com/therudywolf/OneToThree.git
 cd OneToThree
-cp .env.prod.example .env.prod
-nano .env.prod
 ```
 
-Fill in the **6 required fields** (marked `← FILL IN` in the file):
+**No manual `.env.prod` editing needed.** On first run, `./start.sh` will detect that secrets haven't been initialized and launch an interactive setup that:
+1. Generates all passwords and secrets (DB, MinIO, JWT, TURN, VAPID)
+2. Asks for your domain, email, and server IP
+3. Displays credentials **once** (save them!)
+4. Stores secrets in `./secrets/` (chmod 700, never committed to git)
 
-| Variable | What to set |
-|---|---|
-| `POSTGRES_PASSWORD` | Strong random password for the database |
-| `MINIO_ROOT_PASSWORD` | Strong random password for file storage |
-| `CORS_ORIGIN` | Your domain: `https://your-domain.com` |
-| `ACME_EMAIL` | Your email for Let's Encrypt notifications |
-| `TURN_EXTERNAL_IP` | Server public IP: `curl -s ifconfig.me` |
-| `TURN_PASSWORD` | Strong random password for TURN relay |
+Secrets are injected into containers via [Docker secrets](https://docs.docker.com/compose/how-tos/use-secrets/) (`/run/secrets/*`), so no plaintext `.env.prod` with passwords is needed on disk.
 
-Everything else (`JWT_SECRET`, `WEBHOOK_SECRET`, VAPID keys) is **auto-generated** on first run.
+> **Existing deployments:** If you already have a working `.env.prod`, the system is fully backward-compatible. Docker secrets are preferred when available, but the API falls back to env vars seamlessly.
 
 ### 2. Configure DNS
 
@@ -82,14 +77,19 @@ chmod +x ./start.sh
 ./start.sh
 ```
 
-The script will:
-1. Auto-generate missing secrets (`JWT_SECRET`, `WEBHOOK_SECRET`, VAPID keys)
-2. Sync `TURN_PASSWORD` to `NEXT_PUBLIC_TURN_PASSWORD` automatically
-3. Build and start all containers
-4. Wait for health checks to pass
-5. Show the stack status
+On **first run**, the script will:
+1. Run `generate-secrets.sh` — generates all secrets, prompts for domain/IP/email
+2. Display credentials **once** (save them!)
+3. Sync secrets into `.env.prod` for services that need env vars
+4. Build and start all containers
+5. Wait for health checks to pass
+6. Show the stack status
+
+On **subsequent runs**, secrets are read from `./secrets/` and containers start directly.
 
 TLS certificates are obtained automatically from Let's Encrypt. First run takes 2–5 minutes.
+
+> To regenerate all secrets: delete `./secrets/` and re-run `./start.sh`.
 
 ---
 
@@ -180,6 +180,7 @@ Edit `Caddyfile` to replace `onetothree.ru` with your domain, then rebuild:
 - **Auth via ECDSA challenge-response.** No passwords sent to the server.
 - **Media encrypted before upload** to MinIO.
 - **WebRTC signaling is relayed as opaque payloads** — server does not parse SDP.
+- **Secrets via Docker secrets.** Credentials are mounted at `/run/secrets/*` — no plaintext passwords in environment variables or on-disk `.env` files at runtime.
 
 See [SECURITY.md](./SECURITY.md) for the full threat model and [ARCHITECTURE.md](./ARCHITECTURE.md) for data flow details.
 

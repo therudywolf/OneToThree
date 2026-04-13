@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { readSecret } from '../lib/read-secret.js'
 
 /**
  * PROJECT 13 :: WEBRTC_ICE_NEGOTIATOR
@@ -45,7 +46,7 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
     // Извлекаем боевые учетки нашего релея (coturn)
     const rawUrl = (process.env.TURN_URL || process.env.NEXT_PUBLIC_TURN_URL)?.trim()
     const rawUser = (process.env.TURN_USERNAME || process.env.TURN_USER)?.trim()
-    const rawSecret = (process.env.TURN_PASSWORD || process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
+    const rawSecret = readSecret('TURN_PASSWORD') || (process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
 
     if (rawUrl && rawUser && rawSecret) {
       const urls = parseTurnUrls(rawUrl)

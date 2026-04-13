@@ -2,15 +2,15 @@ import webpush from 'web-push'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { pushSubscriptions } from '../db/schema.js'
+import { readSecret } from './read-secret.js'
 
 let vapidConfigured = false
 
 function tryConfigureVapid(): boolean {
   if (vapidConfigured) return true
-  const publicKey = process.env.VAPID_PUBLIC_KEY?.trim()
-  const privateKey = process.env.VAPID_PRIVATE_KEY?.trim()
-  const subject =
-    process.env.VAPID_SUBJECT?.trim() || 'mailto:admin@localhost'
+  const publicKey = readSecret('VAPID_PUBLIC_KEY')
+  const privateKey = readSecret('VAPID_PRIVATE_KEY')
+  const subject = readSecret('VAPID_SUBJECT') || 'mailto:admin@localhost'
   if (!publicKey || !privateKey) {
     return false
   }

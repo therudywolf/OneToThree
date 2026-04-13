@@ -8,14 +8,15 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { readSecret } from './read-secret.js'
 
 function readCredentials(): { accessKeyId: string; secretAccessKey: string } {
   const accessKeyId =
-    process.env.MINIO_ROOT_USER?.trim() ||
+    readSecret('MINIO_ROOT_USER') ||
     process.env.MINIO_ACCESS_KEY?.trim() ||
     ''
   const secretAccessKey =
-    process.env.MINIO_ROOT_PASSWORD?.trim() ||
+    readSecret('MINIO_ROOT_PASSWORD') ||
     process.env.MINIO_SECRET_KEY?.trim() ||
     ''
   if (!accessKeyId || !secretAccessKey) {

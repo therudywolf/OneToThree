@@ -17,6 +17,7 @@ import { vaultRoutes } from './routes/vault.js'
 import { wsRoutes } from './routes/ws.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
+import { requireSecret } from './lib/read-secret.js'
 
 export async function buildApp() {
   /** Behind Caddy/nginx: trust X-Forwarded-* for real client IPs (disable with TRUST_PROXY=0). */
@@ -96,10 +97,10 @@ export async function buildApp() {
 
   await app.register(cookie)
 
-  const jwtSecret = process.env.JWT_SECRET?.trim()
-  if (!jwtSecret || jwtSecret.length < 32) {
+  const jwtSecret = requireSecret('JWT_SECRET')
+  if (jwtSecret.length < 32) {
     throw new Error(
-      'FATAL: JWT_SECRET must be set and at least 32 characters. Generate with: openssl rand -hex 32'
+      'FATAL: JWT_SECRET must be at least 32 characters. Generate with: openssl rand -hex 32'
     )
   }
 

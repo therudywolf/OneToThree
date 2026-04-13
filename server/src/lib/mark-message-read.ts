@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { chatMembers, chats, messages, users } from '../db/schema.js'
 import { sendToUser } from '../ws/registry.js'
@@ -124,7 +124,7 @@ export async function markMessageReadByReader(
 
 /**
  * Batch mark multiple messages as read. Idempotent.
- * Returns array of results (individual success/error per message).
+ * Uses a single UPDATE query instead of N individual queries.
  */
 export async function markMessagesReadByReader(
   readerId: string,
@@ -132,10 +132,62 @@ export async function markMessagesReadByReader(
 ): Promise<MarkReadResult[]> {
   if (!messageIds.length) return []
 
+  // Check if the reader has disabled read receipts
+  const [readerRow] = await db
+    .select({ disableReadReceipts: users.disableReadReceipts })
+    .from(users)
+    .where(eq(users.id, readerId))
+    .limit(1)
+  if (readerRow?.disableReadReceipts) {
+    return messageIds.map((id) => ({ ok: false as const, error: 'READ_RECEIPTS_DISABLED' }))
+  }
+
+  const now = new Date()
+
+  // Batch update: mark all eligible messages as read in one query
+  const updated = await db
+    .update(messages)
+    .set({ readAt: now })
+    .where(
+      and(
+        inArray(messages.id, messageIds),
+        isNull(messages.readAt),
+        ne(messages.senderId, readerId)
+      )
+    )
+    .returning({
+      id: messages.id,
+      chatId: messages.chatId,
+      senderId: messages.senderId,
+      readAt: messages.readAt,
+    })
+
+  const updatedMap = new Map(updated.map((r) => [r.id, r]))
+
   const results: MarkReadResult[] = []
   for (const msgId of messageIds) {
-    const result = await markMessageReadByReader(readerId, msgId)
-    results.push(result)
+    const row = updatedMap.get(msgId)
+    if (row) {
+      const readAtIso = ts(row.readAt)
+      // Notify sender
+      sendToUser(row.senderId, {
+        type: 'message_read_update',
+        chat_id: row.chatId,
+        message_id: row.id,
+        reader_id: readerId,
+        read_at: readAtIso,
+      })
+      results.push({
+        ok: true,
+        chat_id: row.chatId,
+        message_id: row.id,
+        sender_id: row.senderId,
+        reader_id: readerId,
+        read_at: readAtIso,
+      })
+    } else {
+      results.push({ ok: false, error: 'NOT_UPDATED' })
+    }
   }
   return results
 }

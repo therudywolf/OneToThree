@@ -18,7 +18,8 @@ export function useReadReceipts(
   scrollRootRef: RefObject<HTMLDivElement | null>,
   opts?: { enabled?: boolean }
 ) {
-  const { activeChatId, userId, messages } = useChatStore()
+  const activeChatId = useChatStore(s => s.activeChatId)
+  const userId = useChatStore(s => s.userId)
   
   const processedRef = useRef(new Set<string>())
   const syncQueueRef = useRef(new Set<string>())
@@ -82,7 +83,8 @@ export function useReadReceipts(
           if (!msgId || processedRef.current.has(msgId)) continue
 
           // [VERIFICATION] :: Проверка, что сообщение чужое и еще не прочитано
-          const targetNode = messages.find((m) => m.id === msgId)
+          const currentMessages = useChatStore.getState().messages
+          const targetNode = currentMessages.find((m) => m.id === msgId)
           if (!targetNode || targetNode.sender_id === userId) continue
 
           processedRef.current.add(msgId)
@@ -111,5 +113,5 @@ export function useReadReceipts(
       monitor.disconnect()
       observer.disconnect()
     }
-  }, [isEnabled, activeChatId, userId, messages, scrollRootRef])
+  }, [isEnabled, activeChatId, userId, scrollRootRef])
 }

@@ -202,6 +202,23 @@ For detailed update procedures, rollback instructions, and pre-update checklists
 
 This creates a compressed PostgreSQL dump at `backups/db_YYYYMMDD_HHMMSS.sql.gz`.
 
+#### Encrypted backups
+
+Set the `BACKUP_PASSPHRASE` environment variable to enable AES-256-CBC encryption of backup archives:
+
+```bash
+export BACKUP_PASSPHRASE="your-strong-passphrase"
+./start.sh backup
+```
+
+When set, the backup script pipes the archive through `openssl enc -aes-256-cbc -pbkdf2` producing a `.tar.gz.enc` file. To decrypt:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -in backups/p13-stash-*.tar.gz.enc -out backup.tar.gz -pass pass:"your-strong-passphrase"
+```
+
+If `BACKUP_PASSPHRASE` is not set, a warning is printed and the backup is created unencrypted.
+
 ### Restore from backup
 
 ```bash

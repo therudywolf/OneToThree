@@ -8,6 +8,7 @@ import {
   SESSION_COOKIE,
 } from './session-cookie.js'
 import { normalizeUuid } from './uuid.js'
+import { isJtiDenied } from './jwt-denylist.js'
 
 export type AuthUser = {
   id: string
@@ -21,10 +22,12 @@ export type SessionJwtPayload = {
   sub: string
   username: string
   device_id?: string
+  jti?: string
 }
 
 /**
  * Verifies `fm_session` JWT. Does not load the user row — use for ws tickets / decoding only.
+ * Rejects tokens whose jti has been added to the denylist (logout / revocation).
  */
 export async function verifySessionJwt(
   request: FastifyRequest,
@@ -33,7 +36,11 @@ export async function verifySessionJwt(
   const t = token ?? readFmSessionToken(request)
   if (!t) return null
   try {
-    return await request.server.jwt.verify<SessionJwtPayload>(t)
+    const payload = await request.server.jwt.verify<SessionJwtPayload>(t)
+    if (payload.jti && isJtiDenied(payload.jti)) {
+      return null
+    }
+    return payload
   } catch {
     return null
   }

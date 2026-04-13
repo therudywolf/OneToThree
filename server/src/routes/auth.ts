@@ -36,6 +36,7 @@ import {
   saveQrLinkToken,
   type QrLinkPayload,
 } from '../lib/qr-link-store.js'
+import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -48,7 +49,7 @@ const verifyBodySchema = z.object({
   public_key_jwk: z.string().min(1).optional(),
 })
 
-const SESSION_MAX_AGE_S = 60 * 60 * 24 * 7
+const SESSION_MAX_AGE_S = 60 * 60 * 24
 const PENDING_2FA_MAX_AGE_S = 300
 
 const totpCodeSchema = z.string().regex(/^\d{6}$/)
@@ -140,6 +141,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         sub: canonicalId,
         username: row.username,
         device_id: dev.deviceId,
+        jti: generateJti(),
       },
       { expiresIn: SESSION_MAX_AGE_S }
     )
@@ -208,7 +210,21 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       .send({ error: 'GHOST_SESSION_USER_NOT_FOUND' })
   })
 
-  app.post('/logout', async (_request, reply) => {
+  app.post('/logout', async (request, reply) => {
+    const token = readFmSessionToken(request)
+    if (token) {
+      try {
+        const payload = await request.server.jwt.verify<{
+          jti?: string
+          exp?: number
+        }>(token)
+        if (payload.jti && payload.exp) {
+          denyJti(payload.jti, payload.exp)
+        }
+      } catch {
+        // Token already invalid — nothing to revoke.
+      }
+    }
     clearFmSessionCookie(reply)
     return reply.send({ ok: true })
   })
@@ -384,6 +400,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         sub: canonicalId,
         username: row.username,
         device_id: dev.deviceId,
+        jti: generateJti(),
       },
       { expiresIn: SESSION_MAX_AGE_S }
     )
@@ -543,6 +560,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
             sub: canonicalId,
             username,
             device_id: dev.deviceId,
+            jti: generateJti(),
           },
           { expiresIn: SESSION_MAX_AGE_S }
         )

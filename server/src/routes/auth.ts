@@ -212,6 +212,51 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       .send({ error: 'GHOST_SESSION_USER_NOT_FOUND' })
   })
 
+  /**
+   * Refresh token rotation: issues a new JWT and invalidates the old one.
+   * The previous JTI is added to the denylist so the old token cannot be reused.
+   * This limits the window of exposure if a token is intercepted.
+   */
+  app.post('/refresh', async (request, reply) => {
+    const sess = await verifySessionJwt(request)
+    if (!sess?.sub || !sess.username) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED' })
+    }
+
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    // Invalidate the old token
+    const oldToken = readFmSessionToken(request)
+    if (oldToken) {
+      try {
+        const payload = await request.server.jwt.verify<{
+          jti?: string
+          exp?: number
+        }>(oldToken)
+        if (payload.jti && payload.exp) {
+          denyJti(payload.jti, payload.exp)
+        }
+      } catch {
+        // Old token already invalid — proceed with rotation.
+      }
+    }
+
+    // Issue a new token with a fresh JTI
+    const newToken = await reply.jwtSign(
+      {
+        sub: normalizeUuid(user.id),
+        username: user.username,
+        device_id: sess.device_id,
+        jti: generateJti(),
+      },
+      { expiresIn: SESSION_MAX_AGE_S }
+    )
+    commitFmSessionCookie(reply, newToken, SESSION_MAX_AGE_S)
+
+    return reply.send({ ok: true })
+  })
+
   app.post('/logout', async (request, reply) => {
     const token = readFmSessionToken(request)
     if (token) {

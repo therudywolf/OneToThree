@@ -50,8 +50,8 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
 
       const burnAt = meta?.burn_at ?? meta?.burn_mark
 
-      // [2] TRANSPORT_DISPATCH :: Выброс пакета в эфир (WS/REST)
-      const { via, serverMessage } = await sendChatMessageOverTransport({
+      // [2] TRANSPORT_DISPATCH :: Выброс пакета в эфир (WS/REST/QUEUE)
+      const { via, serverMessage, outboxId } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
         content: encrypted_content,
         iv,
@@ -79,6 +79,30 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
         } catch (err) {
           console.error('>> [SYS.CRYPTO] FEEDBACK_DECRYPT_FAILURE:', err)
         }
+      }
+
+      // [4] OFFLINE_QUEUE :: Пакет в очереди на фоновую синхронизацию
+      if (via === 'QUEUED' && outboxId) {
+        // Show a pending placeholder in the chat feed
+        appendMessage({
+          id: `pending-${outboxId}`,
+          chat_id: activeChatId,
+          sender_id: userId,
+          content: encrypted_content,
+          iv,
+          plaintext: content,
+          media_path: null,
+          media_iv: null,
+          media_type: null,
+          media_original_bytes: null,
+          reply_to_id: replyToId ?? null,
+          read_at: null,
+          burn_at: burnAt ?? null,
+          reactions: {},
+          created_at: new Date().toISOString(),
+          _pending: true,
+        } as any)
+        vibrateShort(8)
       }
     },
     [

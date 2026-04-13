@@ -49,6 +49,75 @@ self.addEventListener('push', (event) => {
   )
 })
 
+/* ── Background Sync: Outbox ── */
+const OUTBOX_DB = 'p13-outbox'
+const OUTBOX_STORE = 'pending'
+
+function openOutboxDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(OUTBOX_DB, 1)
+    req.onupgradeneeded = () => {
+      const db = req.result
+      if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
+        db.createObjectStore(OUTBOX_STORE, { keyPath: 'id' })
+      }
+    }
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+function outboxGetAll(db) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OUTBOX_STORE, 'readonly')
+    const store = tx.objectStore(OUTBOX_STORE)
+    const req = store.getAll()
+    req.onsuccess = () => resolve(req.result || [])
+    req.onerror = () => reject(req.error)
+  })
+}
+
+function outboxDelete(db, id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OUTBOX_STORE, 'readwrite')
+    const store = tx.objectStore(OUTBOX_STORE)
+    const req = store.delete(id)
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+  })
+}
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'outbox') {
+    event.waitUntil(
+      (async () => {
+        let db
+        try {
+          db = await openOutboxDb()
+        } catch {
+          return
+        }
+        const entries = await outboxGetAll(db)
+        for (const entry of entries) {
+          try {
+            const res = await fetch('/api/messages/send', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(entry.body),
+            })
+            if (res.ok) {
+              await outboxDelete(db, entry.id)
+            }
+          } catch {
+            // Network still down — sync will be retried by the browser
+          }
+        }
+      })()
+    )
+  }
+})
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const raw = event.notification.data || {}

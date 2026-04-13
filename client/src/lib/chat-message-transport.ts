@@ -10,10 +10,12 @@
 import { postSendChatMessage, type SendChatMessageBody } from '@/lib/api/messages'
 import type { ApiMessageRow } from '@/lib/decrypt-chat-api-message'
 import { getFmSocket } from '@/lib/api/socket'
+import { enqueueOutbox, registerOutboxSync } from '@/lib/outbox'
 
 export type DispatchStatus = {
-  via: 'STREAM' | 'REST'
+  via: 'STREAM' | 'REST' | 'QUEUED'
   serverMessage?: ApiMessageRow
+  outboxId?: string
 }
 
 /**
@@ -43,7 +45,17 @@ export async function sendChatMessageOverTransport(
     const serverMessage = await postSendChatMessage(body)
     return { via: 'REST', serverMessage }
   } catch (err) {
-    console.error('>> [SYS.TRANSPORT] DISPATCH_FAULT:', err)
-    throw err // Прокидываем ошибку выше для UI-индикации
+    // [3] OFFLINE_QUEUE :: Если REST тоже не прошел — кладем в IndexedDB outbox
+    // и регистрируем Background Sync для автоотправки при восстановлении сети
+    try {
+      const outboxId = await enqueueOutbox(body)
+      await registerOutboxSync()
+      console.warn('>> [SYS.TRANSPORT] QUEUED_FOR_SYNC:', outboxId)
+      return { via: 'QUEUED', outboxId }
+    } catch (queueErr) {
+      // IndexedDB недоступен — прокидываем исходную ошибку
+      console.error('>> [SYS.TRANSPORT] DISPATCH_FAULT:', err)
+      throw err
+    }
   }
 }

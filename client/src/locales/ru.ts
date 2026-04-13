@@ -607,6 +607,10 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'profile.lastSeenNobody': 'Никто',
   'profile.viewFullPhoto': 'Посмотреть фото',
   'profile.loadMore': 'Загрузить ещё',
+  'profile.readOnly': 'только чтение',
+  'profile.saveProfile': 'Сохранить профиль',
+  'profile.lastSeenPrivacyHint': 'Настройте, кто видит ваше последнее посещение.',
+  'settings.tabProfile': 'Профиль',
 
   // [CODE BLOCKS]
   'code.copy': 'Копировать',

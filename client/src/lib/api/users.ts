@@ -85,12 +85,14 @@ export async function lookupUsers(userIds: string[]): Promise<UserLookupRow[]> {
 
 export type UserProfile = {
   username: string
+  display_name: string | null
   avatar_key: string | null
   bio: string | null
   status_text: string | null
   social_links: Array<{ platform: string; url: string }>
   online: boolean
   last_seen_at: string | null
+  mutual_groups?: Array<{ id: string; name: string }>
 }
 
 export async function fetchUserProfile(username: string): Promise<UserProfile> {
@@ -108,6 +110,8 @@ export async function fetchUserProfile(username: string): Promise<UserProfile> {
 export type ProfilePatch = {
   bio?: string
   status_text?: string
+  display_name?: string
+  last_seen_privacy?: 'everyone' | 'contacts' | 'nobody'
   social_links?: Array<{ platform: string; url: string }>
 }
 

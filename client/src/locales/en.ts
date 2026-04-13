@@ -607,6 +607,10 @@ The administration reserves the right to remove any account without warning.`,
   'profile.lastSeenNobody': 'Nobody',
   'profile.viewFullPhoto': 'View full photo',
   'profile.loadMore': 'Load more',
+  'profile.readOnly': 'read-only',
+  'profile.saveProfile': 'Save Profile',
+  'profile.lastSeenPrivacyHint': 'Control who can see your last seen time.',
+  'settings.tabProfile': 'Profile',
 
   // [CODE BLOCKS]
   'code.copy': 'Copy',

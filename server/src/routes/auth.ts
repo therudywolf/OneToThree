@@ -231,7 +231,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  app.post('/2fa/setup', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/2fa/setup', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -266,7 +266,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.post('/2fa/verify-setup', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/2fa/verify-setup', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -310,7 +310,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, totp_enabled: true })
   })
 
-  app.post('/2fa/disable', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/2fa/disable', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -351,7 +351,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, totp_enabled: false })
   })
 
-  app.post('/login/2fa', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/login/2fa', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const parsed = login2faBodySchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.status(400).send({ error: 'INVALID_BODY' })
@@ -429,10 +429,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   await app.register(
     async (scoped) => {
+      /**
+       * Auth challenge/verify rate limit: 5 attempts per 15 minutes per IP.
+       * This covers both login and registration since both go through the
+       * challenge-response flow (ECDSA signature). The tight limit mitigates
+       * credential brute-force and account enumeration attacks.
+       */
       await scoped.register(rateLimit, {
-        max: Number(process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX ?? 30),
+        max: Number(process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX ?? 5),
         timeWindow:
-          process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW ?? '1 minute',
+          process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW ?? '15 minutes',
       })
 
       scoped.post('/challenge', async (request, reply) => {

@@ -2,6 +2,7 @@
  * PROJECT 13 :: VAULT_PAYLOAD_EXTRACTOR
  * Level: Core Layer (Secret Encapsulation)
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
+ * Status: CALIBRATED
  */
 
 /** [VAULT_V2] :: Современный стандарт — разделение ECDSA (Auth) и ECDH (E2E) */
@@ -19,6 +20,7 @@ export type ExtractedVault =
 /**
  * [SERIALIZE_VAULT]
  * Упаковка ключей в JSON-стринг перед PIN-шифрованием.
+ * Пишем в формате V2 для максимальной совместимости.
  */
 export function serializeVaultV2(
   ecdsaPrivateJwk: string,
@@ -35,7 +37,10 @@ export function serializeVaultV2(
 /**
  * [EXTRACT_VAULT_PAYLOAD]
  * Десериализация дешифрованного содержимого сейфа.
- * Поддерживает V2 и Legacy (одиночный JWK).
+ * Поддерживает:
+ * 1. Новый V2 (v: 2)
+ * 2. Промежуточный (kind: 'v2')
+ * 3. Legacy (прямой JWK)
  */
 export function extractVaultPayload(raw: string): ExtractedVault | null {
   const signal = raw.trim()
@@ -45,9 +50,9 @@ export function extractVaultPayload(raw: string): ExtractedVault | null {
     const data = JSON.parse(signal) as Record<string, any>
     if (!data || typeof data !== 'object') return null
 
-    // [1] PROTOCOL_V2 :: Обнаружена многоцелевая связка ключей
+    // [1] PROTOCOL_V2 :: Обнаружена многоцелевая связка ключей (v: 2 ИЛИ kind: 'v2')
     if (
-      data.v === 2 &&
+      (data.v === 2 || data.kind === 'v2') &&
       typeof data.ecdsaPrivateJwk === 'string' &&
       typeof data.ecdhPrivateJwk === 'string'
     ) {
@@ -59,7 +64,6 @@ export function extractVaultPayload(raw: string): ExtractedVault | null {
     }
 
     // [2] PROTOCOL_LEGACY :: Прямой JWK (одиночный ECDH)
-    // Проверка сигнатуры JWK: kty=EC, d (private part), crv
     if (
       data.kty === 'EC' &&
       typeof data.d === 'string' &&
@@ -71,52 +75,18 @@ export function extractVaultPayload(raw: string): ExtractedVault | null {
       }
     }
   } catch {
-    // Сигнал искажен или не является JSON-пакетом
+    // Если это не JSON, но похоже на ключ — пробуем отдать как LEGACY
+    if (signal.includes('"kty":"EC"')) {
+       return { kind: 'LEGACY', ecdhJwk: signal }
+    }
     return null
   }
 
   return null
 }
 
-export type ParsedVaultPlaintext =
-  | { kind: 'legacy_ecdh'; ecdhPrivateJwkString: string }
-  | { kind: 'v2'; ecdsaPrivateJwk: string; ecdhPrivateJwk: string }
-
-export function parseVaultPlaintext(raw: string): ParsedVaultPlaintext | null {
-  const signal = raw.trim()
-  if (!signal) return null
-
-  try {
-    const data = JSON.parse(signal) as Record<string, unknown>
-    if (
-      data &&
-      data.kind === 'v2' &&
-      typeof data.ecdsaPrivateJwk === 'string' &&
-      typeof data.ecdhPrivateJwk === 'string'
-    ) {
-      return {
-        kind: 'v2',
-        ecdsaPrivateJwk: data.ecdsaPrivateJwk,
-        ecdhPrivateJwk: data.ecdhPrivateJwk,
-      }
-    }
-  } catch {
-    // Not valid JSON, fall back to legacy format
-  }
-
-  return {
-    kind: 'legacy_ecdh',
-    ecdhPrivateJwkString: signal,
-  }
-}
-
-export function stringifyVaultKeyringV2(
-  ecdsaPrivateJwk: string,
-  ecdhPrivateJwk: string
-): string {
-  return JSON.stringify({
-    kind: 'v2',
-    ecdsaPrivateJwk,
-    ecdhPrivateJwk,
-  })
-}
+/** * [LEGACY_SHIMS] :: Алиасы для старого кода, чтобы не ломать импорты 
+ */
+export const parseVaultPlaintext = extractVaultPayload
+export const stringifyVaultKeyringV2 = serializeVaultV2
+export type ParsedVaultPlaintext = ExtractedVault

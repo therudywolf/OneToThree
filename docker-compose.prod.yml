@@ -6,6 +6,7 @@
 # :: Volume upgrade: if you used `postgres_data`, rename/migrate to `pgdata` or
 #    keep the old volume name by editing the db service volume line below.
 # =============================================================================
+name: forestmessenger
 
 services:
   db:

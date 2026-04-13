@@ -1,3 +1,5 @@
+name: forestmessenger
+
 services:
   db:
     image: postgres:alpine

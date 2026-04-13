@@ -18,7 +18,7 @@ const unsubscribeBodySchema = z.object({
 })
 
 export const pushRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/subscribe', async (request, reply) => {
+  app.post('/subscribe', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 

@@ -185,8 +185,26 @@ const groupCallSpeakingSchema = z.object({
   is_speaking: z.boolean(),
 })
 
-/** Maximum allowed WebSocket message size (1 MB). */
-const MAX_WS_MESSAGE_BYTES = 1024 * 1024
+/** Maximum allowed WebSocket message size (64 KB — sufficient for E2E ciphertext). */
+const MAX_WS_MESSAGE_BYTES = 64 * 1024
+
+/** Per-connection rate limit: max messages per window. */
+const WS_RATE_LIMIT_MAX = 60
+const WS_RATE_LIMIT_WINDOW_MS = 60_000
+
+/** Simple sliding-window rate limiter per WebSocket connection. */
+class WsRateLimiter {
+  private timestamps: number[] = []
+
+  check(): boolean {
+    const now = Date.now()
+    const cutoff = now - WS_RATE_LIMIT_WINDOW_MS
+    this.timestamps = this.timestamps.filter((t) => t > cutoff)
+    if (this.timestamps.length >= WS_RATE_LIMIT_MAX) return false
+    this.timestamps.push(now)
+    return true
+  }
+}
 
 /** Returns the byte length of a raw websocket payload for size validation. */
 function rawByteLength(raw: unknown): number {
@@ -235,6 +253,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
     const correlationId = randomUUID()
     const pending: unknown[] = []
     let authed: AuthUser | null = null
+    const rateLimiter = new WsRateLimiter()
 
     /** Handles a single parsed raw websocket frame for an authenticated user. */
     const handleMessage = (raw: unknown, user: AuthUser) => {
@@ -243,6 +262,12 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           request.log.warn({ correlationId, userId: user.id }, 'ws: message exceeds max size')
           ws.send(JSON.stringify({ type: 'error', error: 'MESSAGE_TOO_LARGE' }))
           ws.close(1009, 'message too large')
+          return
+        }
+
+        if (!rateLimiter.check()) {
+          request.log.warn({ correlationId, userId: user.id }, 'ws: rate limit exceeded')
+          ws.send(JSON.stringify({ type: 'error', error: 'RATE_LIMIT_EXCEEDED' }))
           return
         }
 

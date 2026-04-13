@@ -23,6 +23,34 @@ export async function fetchVaultFromServer(): Promise<
   return { ok: true, data }
 }
 
+export async function changeVaultPinOnServer(body: {
+  encrypted_blob: string
+}): Promise<
+  | { ok: true; vault_version: number; updated_at: string }
+  | { ok: false; error?: string }
+> {
+  const res = await fetch(`${API_URL}/users/me/vault/change-pin`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean
+    vault_version?: number
+    updated_at?: string
+    error?: string
+  }
+  if (!res.ok) {
+    return { ok: false, error: data.error }
+  }
+  return {
+    ok: true,
+    vault_version: data.vault_version ?? 0,
+    updated_at: data.updated_at ?? '',
+  }
+}
+
 export async function syncVaultToServer(body: {
   encrypted_blob: string
   expected_version?: number

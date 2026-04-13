@@ -3,12 +3,12 @@
 # OneToThree (Forest Messenger) — Production Launcher
 # =============================================================================
 # Первый запуск:
-#   1. cp .env.prod.example .env.prod
-#   2. Заполни .env.prod (только помеченные # ← ЗАПОЛНИ)
-#   3. ./start.sh
+#   ./start.sh          — генерирует секреты (покажет пароли один раз), запускает стек
 #
-# Последующие запуски:
-#   ./start.sh          — обновить и перезапустить
+# Сброс и чистый старт:
+#   ./start.sh clean    — удаляет volumes и секреты, готов к свежему деплою
+#
+# Управление:
 #   ./start.sh stop     — остановить
 #   ./start.sh restart  — перезапустить без пересборки
 #   ./start.sh logs     — хвост логов всех сервисов
@@ -126,11 +126,53 @@ case "$CMD" in
     ls -lh "$BACKUP_DIR"/*.sql.gz | tail -5
     exit 0
     ;;
+  clean)
+    COMPOSE_PROJECT=$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/-$//')
+    VOLUMES=(
+      "${COMPOSE_PROJECT}_pgdata"
+      "${COMPOSE_PROJECT}_minio_data"
+      "${COMPOSE_PROJECT}_caddy_data"
+      "${COMPOSE_PROJECT}_caddy_config"
+    )
+    echo ""
+    warn "Это удалит ВСЕ данные: БД, файлы, TLS сертификаты, секреты."
+    echo -ne "  ${YEL}⚠${NC} Введите YES для подтверждения: "
+    read -r CONFIRM
+    if [[ "$CONFIRM" != "YES" ]]; then
+      echo "  Отменено."
+      exit 0
+    fi
+    echo ""
+    log "Останавливаю контейнеры..."
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down 2>/dev/null || true
+    log "Удаляю volumes..."
+    for vol in "${VOLUMES[@]}"; do
+      if docker volume inspect "$vol" >/dev/null 2>&1; then
+        docker volume rm "$vol" >/dev/null 2>&1 && ok "Удалён volume: $vol" || warn "Не удалось удалить volume: $vol"
+      else
+        echo -e "  ${DIM}  Volume $vol не найден — пропуск${NC}"
+      fi
+    done
+    if [[ -d "./secrets" ]]; then
+      log "Удаляю секреты..."
+      rm -rf "./secrets"
+      ok "Удалена папка ./secrets/"
+    fi
+    if [[ -f "$ENV_FILE" ]]; then
+      log "Удаляю ${ENV_FILE}..."
+      rm -f "$ENV_FILE"
+      ok "Удалён ${ENV_FILE}"
+    fi
+    echo ""
+    ok "Готово. Запустите ./start.sh для свежего деплоя."
+    echo ""
+    exit 0
+    ;;
   up|"")
     : # продолжаем ниже
     ;;
   *)
-    echo "Использование: ./start.sh [up|stop|restart|logs|status|update|backup]"
+    echo "Использование: ./start.sh [up|stop|restart|logs|status|update|backup|clean]"
     exit 1
     ;;
 esac
@@ -182,10 +224,41 @@ check_volume "caddy_data"  "TLS сертификаты"
 check_volume "caddy_config" "Caddy config"
 
 # =============================================================================
-# DOCKER SECRETS — генерация при первом запуске
+# ОБНАРУЖЕНИЕ STALE VOLUMES (свежий клон + старые данные)
 # =============================================================================
 SECRETS_DIR="./secrets"
 SECRETS_DONE="$SECRETS_DIR/.initialized"
+
+if [[ ! -f "$SECRETS_DONE" ]]; then
+  STALE_VOLUMES=()
+  for _vol_suffix in pgdata minio_data caddy_data caddy_config; do
+    _full_name="${COMPOSE_PROJECT}_${_vol_suffix}"
+    if docker volume inspect "$_full_name" >/dev/null 2>&1; then
+      STALE_VOLUMES+=("$_full_name")
+    fi
+  done
+  if [[ ${#STALE_VOLUMES[@]} -gt 0 ]]; then
+    echo ""
+    warn "Секреты не инициализированы, но найдены Docker volumes от предыдущего деплоя:"
+    for _sv in "${STALE_VOLUMES[@]}"; do
+      echo -e "    ${YEL}•${NC} $_sv"
+    done
+    echo ""
+    warn "Новые секреты не совпадут со старыми данными в volumes."
+    warn "Рекомендация: ${BLD}./start.sh clean${NC} для полного сброса."
+    echo ""
+    echo -ne "  Продолжить всё равно? (y/N): "
+    read -r CONTINUE_STALE
+    if [[ "$CONTINUE_STALE" != "y" && "$CONTINUE_STALE" != "Y" ]]; then
+      echo "  Отменено. Запустите ${BLD}./start.sh clean${NC} для сброса."
+      exit 0
+    fi
+  fi
+fi
+
+# =============================================================================
+# DOCKER SECRETS — генерация при первом запуске
+# =============================================================================
 
 if [[ ! -f "$SECRETS_DONE" ]]; then
   sep
@@ -316,23 +389,45 @@ VPUB=$(val_for_key VAPID_PUBLIC_KEY)
 VPRIV=$(val_for_key VAPID_PRIVATE_KEY)
 if is_placeholder "$VPUB" || is_placeholder "$VPRIV"; then
   log "Генерирую VAPID ключи..."
-  TMPV=$(mktemp)
-  KEYGEN_OK=false
-  if docker run --rm node:20-alpine sh -c \
-    'npm install -g web-push --silent 2>/dev/null && web-push generate-vapid-keys --json 2>/dev/null' \
-    >"$TMPV" 2>/dev/null; then
-    JSON_LINE=$(grep -o '{.*}' "$TMPV" | tail -1 || true)
-    PUB=$(echo "$JSON_LINE" | grep -o '"publicKey":"[^"]*"' | cut -d'"' -f4 || true)
-    PRIV=$(echo "$JSON_LINE" | grep -o '"privateKey":"[^"]*"' | cut -d'"' -f4 || true)
-    if [[ -n "${PUB:-}" ]] && [[ -n "${PRIV:-}" ]]; then
-      update_key VAPID_PUBLIC_KEY "$PUB"
-      update_key VAPID_PRIVATE_KEY "$PRIV"
-      update_key NEXT_PUBLIC_VAPID_PUBLIC_KEY "$PUB"
-      ok "VAPID ключи сгенерированы."
-      KEYGEN_OK=true
-    fi
+  PUB="" PRIV="" KEYGEN_OK=false
+
+  # Preferred: native openssl (fast, no network)
+  TMPKEY=$(mktemp)
+  if openssl ecparam -name prime256v1 -genkey -noout -out "$TMPKEY" 2>/dev/null; then
+    PRIV=$(openssl ec -in "$TMPKEY" -outform DER 2>/dev/null | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=\n')
+    PUB=$(openssl ec -in "$TMPKEY" -pubout -outform DER 2>/dev/null | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=\n')
   fi
-  rm -f "$TMPV"
+  rm -f "$TMPKEY"
+
+  if [[ -n "${PUB:-}" ]] && [[ -n "${PRIV:-}" ]]; then
+    update_key VAPID_PUBLIC_KEY "$PUB"
+    update_key VAPID_PRIVATE_KEY "$PRIV"
+    update_key NEXT_PUBLIC_VAPID_PUBLIC_KEY "$PUB"
+    ok "VAPID ключи сгенерированы (openssl)."
+    KEYGEN_OK=true
+  fi
+
+  # Fallback: docker node (slow, pulls ~40MB image)
+  if [[ "$KEYGEN_OK" == false ]]; then
+    log "openssl VAPID не удался, пробую Docker fallback..."
+    TMPV=$(mktemp)
+    if docker run --rm node:20-alpine sh -c \
+      'npm install -g web-push --silent 2>/dev/null && web-push generate-vapid-keys --json 2>/dev/null' \
+      >"$TMPV" 2>/dev/null; then
+      JSON_LINE=$(grep -o '{.*}' "$TMPV" | tail -1 || true)
+      PUB=$(echo "$JSON_LINE" | grep -o '"publicKey":"[^"]*"' | cut -d'"' -f4 || true)
+      PRIV=$(echo "$JSON_LINE" | grep -o '"privateKey":"[^"]*"' | cut -d'"' -f4 || true)
+      if [[ -n "${PUB:-}" ]] && [[ -n "${PRIV:-}" ]]; then
+        update_key VAPID_PUBLIC_KEY "$PUB"
+        update_key VAPID_PRIVATE_KEY "$PRIV"
+        update_key NEXT_PUBLIC_VAPID_PUBLIC_KEY "$PUB"
+        ok "VAPID ключи сгенерированы (docker)."
+        KEYGEN_OK=true
+      fi
+    fi
+    rm -f "$TMPV"
+  fi
+
   if [[ "$KEYGEN_OK" == false ]]; then
     warn "VAPID генерация не удалась. Заполните вручную:"
     warn "  npx web-push generate-vapid-keys"
@@ -473,7 +568,7 @@ echo -e "  ${DIM}./start.sh update  — обновить${NC}"
 echo -e "  ${DIM}./start.sh backup  — резервная копия БД${NC}"
 echo ""
 echo -e "  ${DIM}Данные хранятся в Docker volumes и НЕ удаляются при обновлении.${NC}"
-echo -e "  ${DIM}Для полного сброса (ОСТОРОЖНО): docker compose down -v${NC}"
+echo -e "  ${DIM}./start.sh clean   — полный сброс (ОСТОРОЖНО)${NC}"
 
 if [[ "$FIRST_RUN" == true ]]; then
   echo ""

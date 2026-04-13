@@ -67,16 +67,18 @@ export function MediaLightbox({
   }, [isOpen, currentIndex, media.length])
 
   const navigatePrev = () => {
-    if (currentIndex > 0) {
-      onNavigate(currentIndex - 1)
+    const newIndex = media.findIndex((_, idx) => idx < currentIndex && media[idx].url)
+    if (newIndex !== -1) {
+      onNavigate(newIndex)
       setZoom(1)
       setIsZoomed(false)
     }
   }
 
   const navigateNext = () => {
-    if (currentIndex < media.length - 1) {
-      onNavigate(currentIndex + 1)
+    const newIndex = media.findIndex((_, idx) => idx > currentIndex && media[idx].url)
+    if (newIndex !== -1) {
+      onNavigate(newIndex)
       setZoom(1)
       setIsZoomed(false)
     }
@@ -119,7 +121,7 @@ export function MediaLightbox({
       {/* Navigation buttons */}
       {hasMultiple && (
         <>
-          {currentIndex > 0 && (
+          {media.findIndex((_, idx) => idx < currentIndex && media[idx].url) !== -1 && (
             <button
               onClick={navigatePrev}
               className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-none border border-neon-cyan/50 bg-black/80 p-3 text-neon-cyan hover:border-neon-red hover:text-neon-red"
@@ -128,7 +130,7 @@ export function MediaLightbox({
               <ChevronLeft className="h-8 w-8" />
             </button>
           )}
-          {currentIndex < media.length - 1 && (
+          {media.findIndex((_, idx) => idx > currentIndex && media[idx].url) !== -1 && (
             <button
               onClick={navigateNext}
               className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-none border border-neon-cyan/50 bg-black/80 p-3 text-neon-cyan hover:border-neon-red hover:text-neon-red"

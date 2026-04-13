@@ -44,7 +44,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableCode, setTotpDisableCode] = useState('')
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'main' | 'media' | 'devices'>(
+  const [settingsTab, setSettingsTab] = useState<'main' | 'media' | 'devices' | 'security'>(
     'main'
   )
   const [killOpen, setKillOpen] = useState(false)
@@ -338,7 +338,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className={`terminal-panel flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${settingsTab === 'media' || settingsTab === 'devices' ? 'max-w-2xl' : totpSetup ? 'max-w-lg' : 'max-w-md'}`}
+        className={`terminal-panel flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' ? 'max-w-2xl' : totpSetup ? 'max-w-lg' : 'max-w-md'}`}
       >
         <header className="flex shrink-0 items-start justify-between gap-2 border-b border-neon-red/40 pb-3">
           <p className="min-w-0 break-words text-xs uppercase tracking-[0.35em] text-neon-cyan">
@@ -367,6 +367,17 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
           <button
             type="button"
+            onClick={() => setSettingsTab('security')}
+            className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
+              settingsTab === 'security'
+                ? 'border-neon-red bg-neon-red/10 text-neon-red'
+                : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
+            }`}
+          >
+            [ БЕЗОПАСНОСТЬ ]
+          </button>
+          <button
+            type="button"
             onClick={() => setSettingsTab('media')}
             className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
               settingsTab === 'media'
@@ -390,6 +401,262 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         </div>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4">
+
+        {settingsTab === 'security' ? (
+          <div className="space-y-3">
+            <p className="text-xs uppercase tracking-widest text-neon-red">
+              [ ЗОНА БЕЗОПАСНОСТИ ]
+            </p>
+
+            {/* TOTP Section */}
+            <div className="border border-neon-cyan/30 p-3">
+              <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">
+                {t('settings.totpSection')}
+              </p>
+              <p className="mb-3 text-[9px] text-red-800">{t('settings.totpHint')}</p>
+              {user?.totp_enabled === true ? (
+                <div className="space-y-2">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-neon-cyan">
+                    :: {t('settings.totpActive')}
+                  </p>
+                  {!totpDisableOpen ? (
+                    <button
+                      type="button"
+                      disabled={totpBusy}
+                      onClick={() => {
+                        setTotpDisableOpen(true)
+                        setTotpDisableCode('')
+                        setError(null)
+                      }}
+                      className="w-full border border-neon-red/70 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                    >
+                      [ {t('settings.totpDisable')} ]
+                    </button>
+                  ) : (
+                    <div className="space-y-2 border border-neon-red/40 p-2">
+                      <p className="text-[9px] text-red-800">
+                        {t('settings.totpDisableWarn')}
+                      </p>
+                      <label className="terminal-label" htmlFor="totp-disable-code">
+                        {t('settings.totpDisableCode')}
+                      </label>
+                      <input
+                        id="totp-disable-code"
+                        className="terminal-input"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={totpDisableCode}
+                        onChange={(e) =>
+                          setTotpDisableCode(
+                            e.target.value.replace(/\D/g, '').slice(0, 6)
+                          )
+                        }
+                        placeholder="000000"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={totpBusy}
+                          onClick={() => void disableTotp()}
+                          className="flex-1 border border-neon-red bg-black py-1 font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                        >
+                          [ CONFIRM ]
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTotpDisableOpen(false)
+                            setTotpDisableCode('')
+                          }}
+                          className="flex-1 border border-neon-cyan/40 py-1 font-mono text-[10px] text-neon-cyan"
+                        >
+                          [ CANCEL ]
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-red-800">
+                    :: {t('settings.totpInactive')}
+                  </p>
+                  {!totpSetup ? (
+                    <button
+                      type="button"
+                      disabled={totpBusy}
+                      onClick={() => void startTotpSetup()}
+                      className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+                    >
+                      [ {t('settings.totpSetup')} ]
+                    </button>
+                  ) : (
+                    <div className="space-y-3 border border-neon-cyan/30 p-3">
+                      <p className="text-[9px] text-neon-cyan/90">
+                        {t('settings.totpScanQr')}
+                      </p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={totpSetup.qr_data_url}
+                        alt=""
+                        className="mx-auto border border-neon-cyan/40 bg-white p-1"
+                        width={192}
+                        height={192}
+                      />
+                      <p className="text-[9px] text-red-800">
+                        {t('settings.totpSecretManual')}
+                      </p>
+                      <p className="break-all font-mono text-[9px] text-neon-cyan/80 overflow-x-hidden">
+                        {totpSetup.secret}
+                      </p>
+                      <label className="terminal-label" htmlFor="totp-enable-code">
+                        {t('settings.totpEnableCode')}
+                      </label>
+                      <input
+                        id="totp-enable-code"
+                        className="terminal-input"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={totpEnableCode}
+                        onChange={(e) =>
+                          setTotpEnableCode(
+                            e.target.value.replace(/\D/g, '').slice(0, 6)
+                          )
+                        }
+                        placeholder="000000"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={totpBusy}
+                          onClick={() => void confirmTotpSetup()}
+                          className="border border-neon-cyan px-3 py-1 font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+                        >
+                          [ {t('settings.totpConfirm')} ]
+                        </button>
+                        <button
+                          type="button"
+                          disabled={totpBusy}
+                          onClick={() => {
+                            setTotpSetup(null)
+                            setTotpEnableCode('')
+                          }}
+                          className="border border-red-900 px-3 py-1 font-mono text-[10px] uppercase text-red-800 hover:text-neon-red"
+                        >
+                          [ {t('settings.totpCancelSetup')} ]
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Vault Export */}
+            <div className="border border-neon-cyan/30 p-3">
+              <p className="mb-2 text-xs uppercase tracking-widest text-neon-cyan">
+                {t('settings.vaultBackup')}
+              </p>
+              <p className="mb-2 break-words text-[9px] text-zinc-500">
+                {t('settings.vaultBackupHint')}
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
+                <TerminalGlitchButton
+                  type="button"
+                  onClick={exportVault}
+                  className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
+                >
+                  [ ↓ EXPORT VAULT KEY ]
+                </TerminalGlitchButton>
+              </div>
+            </div>
+
+            {/* Device Linking Gate */}
+            <div className="flex flex-col gap-2 border border-neon-cyan/30 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-widest text-neon-cyan">
+                  {t('common.deviceLinking')} · NEW_DEVICE_GATE
+                </p>
+                <p className="break-words text-[9px] text-red-800">
+                  {allowNewDeviceLinking
+                    ? 'ON: New devices can link via QR'
+                    : 'OFF: New device linking blocked (default)'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const newVal = !allowNewDeviceLinking
+                  setAllowNewDeviceLinking(newVal)
+                  localStorage.setItem('p13:allow_new_device_linking', String(newVal))
+                }}
+                className={`shrink-0 border px-3 py-2 font-mono text-[10px] uppercase tracking-widest ${
+                  allowNewDeviceLinking
+                    ? 'border-neon-cyan bg-neon-cyan/20 text-neon-cyan'
+                    : 'border-neon-red bg-neon-red/10 text-neon-red'
+                }`}
+              >
+                [{allowNewDeviceLinking ? 'ON' : 'OFF'}]
+              </button>
+            </div>
+
+            {/* INCINERATE_LOCAL_DATA */}
+            <div className="border-t border-red-600/50 pt-3">
+              <button
+                type="button"
+                onClick={() => setKillOpen((v) => !v)}
+                className="glitch-text mb-2 w-full border border-red-600 bg-black py-2 font-mono text-[10px] uppercase tracking-[0.25em] text-red-500 hover:bg-red-950/40"
+              >
+                [ !! ИНСИНЕРАЦИЯ_ЛИЧНОСТИ !! ]
+              </button>
+              <AnimatePresence initial={false}>
+                {killOpen ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <p className="mb-2 break-words text-[9px] text-red-800">
+                      Мгновенная очистка всех локальных ключей и кэша. Обратного пути нет.
+                    </p>
+                    <label className="terminal-label" htmlFor="kill-phrase">
+                      {t('settings.killPhraseLabel')}
+                    </label>
+                    <input
+                      id="kill-phrase"
+                      className="terminal-input mb-2 text-[10px]"
+                      value={killPhrase}
+                      onChange={(e) => setKillPhrase(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <label className="terminal-label" htmlFor="kill-pin">
+                      {t('settings.killPinLabel')}
+                    </label>
+                    <input
+                      id="kill-pin"
+                      type="password"
+                      className="terminal-input mb-2 text-[10px]"
+                      value={killPin}
+                      onChange={(e) => setKillPin(e.target.value)}
+                      autoComplete="off"
+                    />
+                    <TerminalGlitchButton
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void runGlobalKillSwitch()}
+                      className="w-full !border-red-600 !py-2 !text-[10px] !text-red-500 hover:!bg-red-950/50"
+                    >
+                      [ {t('settings.killExecute')} ]
+                    </TerminalGlitchButton>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
+          </div>
+        ) : null}
 
         {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
         {settingsTab === 'devices' ? (
@@ -478,177 +745,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </button>
           </div>
 
-          <div className="border-t border-neon-cyan/30 pt-3">
-            <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">
-              {t('settings.totpSection')}
-            </p>
-            <p className="mb-3 text-[9px] text-red-800">{t('settings.totpHint')}</p>
-            {user?.totp_enabled === true ? (
-              <div className="space-y-2">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-neon-cyan">
-                  :: {t('settings.totpActive')}
-                </p>
-                {!totpDisableOpen ? (
-                  <button
-                    type="button"
-                    disabled={totpBusy}
-                    onClick={() => {
-                      setTotpDisableOpen(true)
-                      setTotpDisableCode('')
-                      setError(null)
-                    }}
-                    className="w-full border border-neon-red/70 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
-                  >
-                    [ {t('settings.totpDisable')} ]
-                  </button>
-                ) : (
-                  <div className="space-y-2 border border-neon-red/40 p-2">
-                    <p className="text-[9px] text-red-800">
-                      {t('settings.totpDisableWarn')}
-                    </p>
-                    <label className="terminal-label" htmlFor="totp-disable-code">
-                      {t('settings.totpDisableCode')}
-                    </label>
-                    <input
-                      id="totp-disable-code"
-                      className="terminal-input"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={totpDisableCode}
-                      onChange={(e) =>
-                        setTotpDisableCode(
-                          e.target.value.replace(/\D/g, '').slice(0, 6)
-                        )
-                      }
-                      placeholder="000000"
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        disabled={totpBusy}
-                        onClick={() => void disableTotp()}
-                        className="flex-1 border border-neon-red bg-black py-1 font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
-                      >
-                        [ CONFIRM ]
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTotpDisableOpen(false)
-                          setTotpDisableCode('')
-                        }}
-                        className="flex-1 border border-neon-cyan/40 py-1 font-mono text-[10px] text-neon-cyan"
-                      >
-                        [ CANCEL ]
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="font-mono text-[10px] uppercase tracking-wider text-red-800">
-                  :: {t('settings.totpInactive')}
-                </p>
-                {!totpSetup ? (
-                  <button
-                    type="button"
-                    disabled={totpBusy}
-                    onClick={() => void startTotpSetup()}
-                    className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
-                  >
-                    [ {t('settings.totpSetup')} ]
-                  </button>
-                ) : (
-                  <div className="space-y-3 border border-neon-cyan/30 p-3">
-                    <p className="text-[9px] text-neon-cyan/90">
-                      {t('settings.totpScanQr')}
-                    </p>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={totpSetup.qr_data_url}
-                      alt=""
-                      className="mx-auto border border-neon-cyan/40 bg-white p-1"
-                      width={192}
-                      height={192}
-                    />
-                    <p className="text-[9px] text-red-800">
-                      {t('settings.totpSecretManual')}
-                    </p>
-                    <p className="break-all font-mono text-[9px] text-neon-cyan/80 overflow-x-hidden">
-                      {totpSetup.secret}
-                    </p>
-                    <label className="terminal-label" htmlFor="totp-enable-code">
-                      {t('settings.totpEnableCode')}
-                    </label>
-                    <input
-                      id="totp-enable-code"
-                      className="terminal-input"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={totpEnableCode}
-                      onChange={(e) =>
-                        setTotpEnableCode(
-                          e.target.value.replace(/\D/g, '').slice(0, 6)
-                        )
-                      }
-                      placeholder="000000"
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        disabled={totpBusy}
-                        onClick={() => void confirmTotpSetup()}
-                        className="border border-neon-cyan px-3 py-1 font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
-                      >
-                        [ {t('settings.totpConfirm')} ]
-                      </button>
-                      <button
-                        type="button"
-                        disabled={totpBusy}
-                        onClick={() => {
-                          setTotpSetup(null)
-                          setTotpEnableCode('')
-                        }}
-                        className="border border-red-900 px-3 py-1 font-mono text-[10px] uppercase text-red-800 hover:text-neon-red"
-                      >
-                        [ {t('settings.totpCancelSetup')} ]
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <div className="min-w-0">
-              <p className="text-xs uppercase tracking-widest text-neon-cyan">
-                {t('common.deviceLinking')} · NEW_DEVICE_GATE
-              </p>
-              <p className="break-words text-[9px] text-red-800">
-                {allowNewDeviceLinking
-                  ? 'ON: New devices can link via QR'
-                  : 'OFF: New device linking blocked (default)'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                const newVal = !allowNewDeviceLinking
-                setAllowNewDeviceLinking(newVal)
-                localStorage.setItem('p13:allow_new_device_linking', String(newVal))
-              }}
-              className={`shrink-0 border px-3 py-2 font-mono text-[10px] uppercase tracking-widest ${
-                allowNewDeviceLinking
-                  ? 'border-neon-cyan bg-neon-cyan/20 text-neon-cyan'
-                  : 'border-neon-red bg-neon-red/10 text-neon-red'
-              }`}
-            >
-              [{allowNewDeviceLinking ? 'ON' : 'OFF'}]
-            </button>
-          </div>
-
           <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">
@@ -669,24 +765,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </select>
           </div>
 
-          <div className="border-t border-neon-cyan/30 pt-3">
-            <p className="mb-2 text-xs uppercase tracking-widest text-neon-cyan">
-              {t('settings.vaultBackup')}
-            </p>
-            <p className="mb-2 break-words text-[9px] text-zinc-500">
-              {t('settings.vaultBackupHint')}
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
-              <TerminalGlitchButton
-                type="button"
-                onClick={exportVault}
-                className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap sm:flex-1"
-              >
-                [ ↓ EXPORT VAULT KEY ]
-              </TerminalGlitchButton>
-            </div>
-          </div>
-
           <div className="border-t border-neon-red/40 pt-3">
             <p className="mb-1 text-xs uppercase tracking-widest text-neon-red">
               {t('settings.dangerZone')}
@@ -701,61 +779,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             >
               [ {t('settings.purgeLocalCache')} ]
             </TerminalGlitchButton>
-          </div>
-
-          <div className="border-t border-red-600/50 pt-3">
-            <button
-              type="button"
-              onClick={() => setKillOpen((v) => !v)}
-              className="glitch-text mb-2 w-full border border-red-600 bg-black py-2 font-mono text-[10px] uppercase tracking-[0.25em] text-red-500 hover:bg-red-950/40"
-            >
-              [ !!_GLOBAL_KILL_SWITCH_!! ]
-            </button>
-            <AnimatePresence initial={false}>
-              {killOpen ? (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden"
-                >
-                  <p className="mb-2 break-words text-[9px] text-red-800">
-                    {t('settings.killSwitchHint')}
-                  </p>
-                  <label className="terminal-label" htmlFor="kill-phrase">
-                    {t('settings.killPhraseLabel')}
-                  </label>
-                  <input
-                    id="kill-phrase"
-                    className="terminal-input mb-2 text-[10px]"
-                    value={killPhrase}
-                    onChange={(e) => setKillPhrase(e.target.value)}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <label className="terminal-label" htmlFor="kill-pin">
-                    {t('settings.killPinLabel')}
-                  </label>
-                  <input
-                    id="kill-pin"
-                    type="password"
-                    className="terminal-input mb-2 text-[10px]"
-                    value={killPin}
-                    onChange={(e) => setKillPin(e.target.value)}
-                    autoComplete="off"
-                  />
-                  <TerminalGlitchButton
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void runGlobalKillSwitch()}
-                    className="w-full !border-red-600 !py-2 !text-[10px] !text-red-500 hover:!bg-red-950/50"
-                  >
-                    [ {t('settings.killExecute')} ]
-                  </TerminalGlitchButton>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
           </div>
         </div>
 

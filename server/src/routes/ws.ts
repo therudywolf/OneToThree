@@ -262,6 +262,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const leaveParsed = callLeaveSchema.safeParse(json)
         if (leaveParsed.success) {
           const { chat_id } = leaveParsed.data
+          if (!(await isMemberOfChat(chat_id, user.id))) return
           const otherIds = (await getChatMemberIds(chat_id)).filter(
             (id) => id !== user.id
           )
@@ -320,7 +321,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         }
 
         ws.send(JSON.stringify({ type: 'error', error: 'UNKNOWN_MESSAGE_TYPE' }))
-      })()
+      })().catch((err) => {
+        request.log.error({ correlationId, err }, 'ws: unhandled error in message handler')
+      })
     }
 
     ws.on('message', (raw) => {

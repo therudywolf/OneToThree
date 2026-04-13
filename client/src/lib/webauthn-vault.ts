@@ -233,3 +233,5 @@ export async function enrollWebAuthnVaultUnlock(
     ? { ok: true, plaintext: result.plaintext }
     : { ok: false, error: result.error ?? 'ENROLL_FAILED' }
 }
+
+export const deleteWebAuthnMetaDb = purgeBioRegistry

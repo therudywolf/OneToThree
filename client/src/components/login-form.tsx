@@ -22,6 +22,8 @@ export function LoginForm() {
   const [handle, setHandle] = useState('')
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
+  const [vaultPin, setVaultPin] = useState('')
+  const [confirmVaultPin, setConfirmVaultPin] = useState('')
 
   const [mode, setMode] = useState<'ACCESS' | 'GENESIS'>('ACCESS')
   const [stage, setStage] = useState<'IDENTITY' | 'MFA_SYNC'>('IDENTITY')
@@ -100,9 +102,15 @@ export function LoginForm() {
         return
       }
 
+      if (mode === 'GENESIS' && vaultPin !== confirmVaultPin) {
+        setErrorLog(t('login.vaultPasswordMismatch'))
+        return
+      }
+
       const res = await cryptoLogin({
         username: handle,
         password: pin,
+        vaultPassword: mode === 'GENESIS' ? vaultPin : undefined,
         mode: mode === 'ACCESS' ? 'login' : 'register'
       })
 
@@ -234,45 +242,92 @@ export function LoginForm() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-[9px] uppercase tracking-widest text-zinc-500">{t('login.handleLabel')}</label>
+                <label className="terminal-label">{t('login.handleLabel')}</label>
                 <input
                   type="text"
                   required
                   autoFocus
                   value={handle}
                   onChange={(e) => setHandle(e.target.value)}
-                  className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-cyan/50"
+                  className="terminal-input"
                   placeholder={t('login.handlePlaceholder')}
                   autoComplete="username"
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[9px] uppercase tracking-widest text-zinc-500">{t('login.vaultPassphraseLabel')}</label>
-                <input
-                  type="password"
-                  required
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-red/50"
-                  placeholder="••••••••"
-                  autoComplete={mode === 'ACCESS' ? 'current-password' : 'new-password'}
-                />
-              </div>
-
-              {mode === 'GENESIS' && (
-                <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                  <label className="text-[9px] uppercase tracking-widest text-zinc-500">{t('common.confirm')}</label>
+              {mode === 'ACCESS' ? (
+                <div className="space-y-2">
+                  <label className="terminal-label">{t('login.vaultPassphraseLabel')}</label>
                   <input
                     type="password"
                     required
-                    value={confirmPin}
-                    onChange={(e) => setConfirmPin(e.target.value)}
-                    className="w-full bg-zinc-950 border border-neutral-900 p-2.5 font-mono text-xs text-white outline-none focus:border-neon-red/50"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value)}
+                    className="terminal-input"
                     placeholder="••••••••"
-                    autoComplete="new-password"
+                    autoComplete="current-password"
                   />
                 </div>
+              ) : (
+                <>
+                  <div className="space-y-4 border border-neon-cyan/20 p-3 animate-in fade-in slide-in-from-top-1">
+                    <p className="text-[9px] uppercase tracking-widest text-neon-cyan">{t('login.accountPasswordLabel')}</p>
+                    <p className="text-[8px] text-zinc-500">{t('login.accountPasswordHint')}</p>
+                    <div className="space-y-2">
+                      <label className="terminal-label">{t('login.accountPasswordLabel')}</label>
+                      <input
+                        type="password"
+                        required
+                        value={pin}
+                        onChange={(e) => setPin(e.target.value)}
+                        className="terminal-input"
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="terminal-label">{t('common.confirm')}</label>
+                      <input
+                        type="password"
+                        required
+                        value={confirmPin}
+                        onChange={(e) => setConfirmPin(e.target.value)}
+                        className="terminal-input"
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 border border-neon-red/30 p-3 animate-in fade-in slide-in-from-top-1">
+                    <p className="text-[9px] uppercase tracking-widest text-neon-red">{t('login.vaultPasswordLabel')}</p>
+                    <p className="text-[8px] text-zinc-500">{t('login.vaultPasswordHint')}</p>
+                    <div className="space-y-2">
+                      <label className="terminal-label">{t('login.vaultPasswordLabel')}</label>
+                      <input
+                        type="password"
+                        required
+                        value={vaultPin}
+                        onChange={(e) => setVaultPin(e.target.value)}
+                        className="terminal-input"
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="terminal-label">{t('common.confirm')}</label>
+                      <input
+                        type="password"
+                        required
+                        value={confirmVaultPin}
+                        onChange={(e) => setConfirmVaultPin(e.target.value)}
+                        className="terminal-input"
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 

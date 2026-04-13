@@ -1,5 +1,7 @@
 # 🌲 Forest Messenger — Project 13 (OneToThree)
 
+**License: [GNU Affero General Public License v3.0 (AGPL-3.0-only)](./LICENSE)**
+
 ### Clinical-grade zero-trust E2E messenger — self-hosted, open-source, no phone number required
 
 ---

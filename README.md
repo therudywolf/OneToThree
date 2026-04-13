@@ -307,4 +307,10 @@ For the full threat model, cryptographic details, and security audit findings, s
 
 ## License
 
-MIT
+OneToThree is licensed under the **GNU Affero General Public License v3.0** (AGPLv3).
+- ✅ Free to use, modify, and self-host
+- ✅ You can fork and create your own version
+- ⚠️ If you run a modified version as a network service, you **must** publish your source code under AGPLv3
+- ⚠️ Derivative works must also be AGPLv3
+
+See [LICENSE](./LICENSE) for full terms.

@@ -2,6 +2,7 @@
   "name": "project-13-client",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",

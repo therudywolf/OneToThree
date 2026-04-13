@@ -45,6 +45,20 @@ function formatDuration(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
 }
 
+function getQualityDotColor(quality: { rtt: number | null; outgoingBitrate: number | null; poor: boolean } | null): 'green' | 'yellow' | 'red' {
+  if (!quality) return 'green'
+  if (quality.poor) return 'red'
+  if (quality.rtt != null && quality.rtt > 0.15) return 'yellow'
+  if (quality.outgoingBitrate != null && quality.outgoingBitrate < 300_000) return 'yellow'
+  return 'green'
+}
+
+const DOT_COLORS = {
+  green: 'bg-emerald-400',
+  yellow: 'bg-amber-400',
+  red: 'bg-neon-red',
+} as const
+
 function getGridClass(count: number, layoutMode: 'grid' | 'focus'): string {
   if (layoutMode === 'focus') return 'grid-cols-1'
   if (count <= 1) return 'grid-cols-1'
@@ -266,6 +280,7 @@ export function ActiveCallOverlay({
   const remoteStreams = useCallStore((s) => s.remoteStreams)
   const remotePeerMedia = useCallStore((s) => s.remotePeerMedia)
   const isReconnecting = useCallStore((s) => s.isReconnecting)
+  const isConnectionLost = useCallStore((s) => s.isConnectionLost)
   const connectionQuality = useCallStore((s) => s.connectionQuality)
   const peerConnectionTypes = useCallStore((s) => s.peerConnectionTypes)
   const qualityLevel = useCallStore((s) => s.qualityLevel)
@@ -385,18 +400,27 @@ export function ActiveCallOverlay({
               )
             })}
 
+            {/* Connection quality dot */}
+            <span className={`inline-block h-2 w-2 rounded-full ${DOT_COLORS[getQualityDotColor(connectionQuality)]}`} title={t('call.quality')} />
+
             {/* Quality badge */}
             <span className="border border-neutral-700 bg-neutral-900/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400">
               {qualityLabel(qualityLevel, t)}
             </span>
 
-            {isReconnecting && (
-              <span className="flex items-center gap-1.5 border border-amber-500/50 bg-amber-950/50 px-2 py-0.5 animate-pulse">
-                <RefreshCw className="h-3 w-3 text-amber-400 animate-spin" />
-                <span className="font-mono text-[9px] uppercase tracking-wider text-amber-400">RECONNECTING</span>
+            {isConnectionLost && (
+              <span className="flex items-center gap-1.5 border border-neon-red/50 bg-red-950/50 px-2 py-0.5">
+                <WifiOff className="h-3 w-3 text-neon-red" />
+                <span className="font-mono text-[9px] uppercase tracking-wider text-neon-red">{t('call.connectionLost')}</span>
               </span>
             )}
-            {!isReconnecting && connectionQuality?.poor && (
+            {isReconnecting && !isConnectionLost && (
+              <span className="flex items-center gap-1.5 border border-amber-500/50 bg-amber-950/50 px-2 py-0.5 animate-pulse">
+                <RefreshCw className="h-3 w-3 text-amber-400 animate-spin" />
+                <span className="font-mono text-[9px] uppercase tracking-wider text-amber-400">{t('call.reconnecting')}</span>
+              </span>
+            )}
+            {!isReconnecting && !isConnectionLost && connectionQuality?.poor && (
               <span className="flex items-center gap-1.5 border border-orange-500/50 bg-orange-950/50 px-2 py-0.5">
                 <WifiOff className="h-3 w-3 text-orange-400" />
                 <span className="font-mono text-[9px] uppercase tracking-wider text-orange-400">POOR_LINK</span>

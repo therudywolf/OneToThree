@@ -67,6 +67,8 @@ const ru = {
   'call.switchCamera': 'Сменить камеру',
   'call.toggleLayout': 'Сменить вид',
   'call.endCall': 'Завершить звонок',
+  'call.reconnecting': 'Переподключение...',
+  'call.connectionLost': 'Соединение потеряно',
 
   // [LOGIN]
   'login.usernameRequired': 'Введите никнейм.',

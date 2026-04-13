@@ -113,11 +113,14 @@ export function useWebRTC(userId: string | null) {
 
   const statsIntervalRef = useRef<number | null>(null)
 
+  const iceRetryTimersRef = useRef(new Map<string, number>())
+
   const {
     setIncomingCall, reset: resetCallStore, addPeerConnection,
     removePeerConnection, setRemoteStream, removeRemoteStream,
     setLocalStream, setIsCalling, clearRemotePeerMedia,
-    setReconnecting, setConnectionQuality,
+    setReconnecting, setConnectionLost, setIceRetryCount,
+    setConnectionQuality,
     setPeerConnectionType, clearPeerConnectionType,
   } = useCallStore()
 
@@ -216,43 +219,60 @@ export function useWebRTC(userId: string | null) {
     }
 
     pc.oniceconnectionstatechange = () => {
-      const state = pc.iceConnectionState
-      if (state === 'connected' || state === 'completed') {
+      const iceState = pc.iceConnectionState
+      if (iceState === 'connected' || iceState === 'completed') {
         ringStopRef.current?.()
         setReconnecting(false)
+        setConnectionLost(false)
+        setIceRetryCount(0)
         void tuneOpusBitrate(pc)
+        // Clear any pending disconnect/retry timers
         const timer = disconnectTimersRef.current.get(peerId)
-        if (timer) {
-          clearTimeout(timer)
-          disconnectTimersRef.current.delete(peerId)
-        }
-      } else if (state === 'failed') {
-        // Attempt ICE restart before giving up
-        console.warn('[SYS.ICE] Connection failed, attempting ICE restart for', peerId.slice(0, 8))
-        setReconnecting(true)
-        try {
-          pc.restartIce()
-        } catch {
-          purgePeer(peerId)
-          setReconnecting(false)
-        }
-      } else if (state === 'closed') {
-        purgePeer(peerId)
-      } else if (state === 'disconnected') {
-        const timer = window.setTimeout(() => {
-          if (pc.iceConnectionState === 'disconnected') {
-            setReconnecting(true)
-            // Wait additional 5s, then purge if not recovered
-            const purgeTimer = window.setTimeout(() => {
-              if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
-                purgePeer(peerId)
-                setReconnecting(false)
-              }
-            }, 5000)
-            disconnectTimersRef.current.set(`${peerId}_purge`, purgeTimer)
+        if (timer) { clearTimeout(timer); disconnectTimersRef.current.delete(peerId) }
+        const purgeTimer = disconnectTimersRef.current.get(`${peerId}_purge`)
+        if (purgeTimer) { clearTimeout(purgeTimer); disconnectTimersRef.current.delete(`${peerId}_purge`) }
+        const retryTimer = iceRetryTimersRef.current.get(peerId)
+        if (retryTimer) { clearTimeout(retryTimer); iceRetryTimersRef.current.delete(peerId) }
+      } else if (iceState === 'disconnected') {
+        // Wait 3s, then attempt ICE restart with iceRestart offer
+        const timer = window.setTimeout(async () => {
+          if (pc.iceConnectionState !== 'disconnected') return
+          setReconnecting(true)
+          try {
+            pc.restartIce()
+            const offer = await pc.createOffer({ iceRestart: true })
+            await pc.setLocalDescription(offer)
+            transmitSignal(peerId, { kind: 'offer', sdp: offer.sdp ?? '', isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length })
+          } catch {
+            console.warn('[SYS.ICE] ICE restart offer failed for', peerId.slice(0, 8))
           }
-        }, 4000)
+        }, 3000)
         disconnectTimersRef.current.set(peerId, timer)
+      } else if (iceState === 'failed') {
+        const retryCount = useCallStore.getState().iceRetryCount
+        if (retryCount < 3) {
+          console.warn(`[SYS.ICE] Connection failed, retry ${retryCount + 1}/3 for`, peerId.slice(0, 8))
+          setReconnecting(true)
+          setIceRetryCount(retryCount + 1)
+          const retryTimer = window.setTimeout(async () => {
+            try {
+              pc.restartIce()
+              const offer = await pc.createOffer({ iceRestart: true })
+              await pc.setLocalDescription(offer)
+              transmitSignal(peerId, { kind: 'offer', sdp: offer.sdp ?? '', isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length })
+            } catch {
+              console.warn('[SYS.ICE] ICE restart retry failed for', peerId.slice(0, 8))
+            }
+          }, 5000)
+          iceRetryTimersRef.current.set(peerId, retryTimer)
+        } else {
+          // 3 retries exhausted → connection lost
+          console.error('[SYS.ICE] All retries exhausted for', peerId.slice(0, 8))
+          setReconnecting(false)
+          setConnectionLost(true)
+        }
+      } else if (iceState === 'closed') {
+        purgePeer(peerId)
       }
     }
 
@@ -266,7 +286,7 @@ export function useWebRTC(userId: string | null) {
         candidate: ev.candidate ? ev.candidate.toJSON() : null,
       })
     }
-  }, [setRemoteStream, purgePeer, setReconnecting])
+  }, [setRemoteStream, purgePeer, setReconnecting, setConnectionLost, setIceRetryCount])
 
   // Socket Subscription Layer
   useEffect(() => {
@@ -435,6 +455,31 @@ export function useWebRTC(userId: string | null) {
       if (statsIntervalRef.current) window.clearInterval(statsIntervalRef.current)
     }
   }, [setConnectionQuality, setPeerConnectionType])
+
+  // Visibility change: restart ICE on reveal if connection dropped
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== 'visible') return
+      if (!useCallStore.getState().isCalling) return
+      pcsRef.current.forEach((pc, peerId) => {
+        const s = pc.iceConnectionState
+        if (s === 'disconnected' || s === 'failed') {
+          try {
+            pc.restartIce()
+            void (async () => {
+              const offer = await pc.createOffer({ iceRestart: true })
+              await pc.setLocalDescription(offer)
+              transmitSignal(peerId, { kind: 'offer', sdp: offer.sdp ?? '', isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length })
+            })()
+          } catch {
+            console.warn('[SYS.ICE] Visibility-triggered restart failed for', peerId.slice(0, 8))
+          }
+        }
+      })
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
 
   // Health Check / Readiness
   useEffect(() => {

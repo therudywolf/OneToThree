@@ -32,6 +32,7 @@ const ALLOWED_EXTENSIONS = new Set([
   '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
   '.txt', '.csv', '.json', '.xml', '.md', '.rtf',
   '.zip', '.7z', '.tar', '.gz',
+  '.blob', '.bin', '.weba', '.opus',
 ])
 
 /** Allowed MIME type prefixes for upload. */
@@ -109,7 +110,10 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const ext = extensionFromFileName(fileName)
-    if (!isAllowedExtension(ext)) {
+    // For voice/video messages MediaRecorder may produce files without proper extension
+    // Allow if MIME type is audio/* or video/* regardless of extension
+    const isMediaMime = fileType.toLowerCase().startsWith('audio/') || fileType.toLowerCase().startsWith('video/')
+    if (!isAllowedExtension(ext) && !isMediaMime) {
       return reply.status(400).send({ error: 'FILE_TYPE_NOT_ALLOWED' })
     }
     if (!isAllowedMimeType(fileType)) {

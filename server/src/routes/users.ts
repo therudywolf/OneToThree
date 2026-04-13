@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { devices, loginEvents, userBlocks, users } from '../db/schema.js'
+import { devices, loginEvents, messages, userBlocks, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { setPendingAvatarKey, takePendingAvatarKey } from '../lib/avatar-pending.js'
 import {
@@ -19,6 +19,7 @@ import {
   deleteObjectIfExists,
   ensureBucketExists,
   getAvatarsBucketName,
+  getBucketName,
   presignPutObject,
   rewritePresignedUrlToPublicBase,
 } from '../lib/s3.js'
@@ -762,17 +763,105 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  /** Revoke all device rows for this user and clear session cookie (global sign-out). */
+  /** List all active (non-revoked) sessions for the authenticated user. */
+  app.get('/me/sessions', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const sess = await verifySessionJwt(request)
+    const currentDeviceId = sess?.device_id
+      ? normalizeUuid(sess.device_id)
+      : null
+
+    const rows = await db
+      .select({
+        id: devices.id,
+        deviceName: devices.deviceName,
+        isMaster: devices.isMaster,
+        lastActive: devices.lastActive,
+        userAgent: devices.userAgent,
+        ipAddress: devices.ipAddress,
+        revokedAt: devices.revokedAt,
+        createdAt: devices.createdAt,
+      })
+      .from(devices)
+      .where(eq(devices.userId, user.id))
+      .orderBy(desc(devices.lastActive))
+
+    return reply.send({
+      current_device_id: currentDeviceId,
+      sessions: rows.map((r) => ({
+        id: normalizeUuid(r.id),
+        device_name: r.deviceName,
+        is_master: r.isMaster,
+        last_active: r.lastActive.toISOString(),
+        user_agent: r.userAgent,
+        ip_address: r.ipAddress,
+        revoked: r.revokedAt != null,
+        is_current:
+          currentDeviceId !== null &&
+          normalizeUuid(r.id) === currentDeviceId,
+        created_at: r.createdAt.toISOString(),
+      })),
+    })
+  })
+
+  /** Revoke a single session by device ID. */
+  app.delete('/me/sessions/:sessionId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ sessionId: uuidSchema }).safeParse(request.params)
+    if (!params.success) {
+      return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    }
+
+    const sessionId = normalizeUuid(params.data.sessionId)
+
+    const [updated] = await db
+      .update(devices)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(devices.id, sessionId), eq(devices.userId, user.id)))
+      .returning({ id: devices.id })
+
+    if (!updated) {
+      return reply.status(404).send({ error: 'SESSION_NOT_FOUND' })
+    }
+
+    sendToUser(user.id, {
+      type: 'server_notice',
+      notice: 'device_revoked',
+      device_id: sessionId,
+    })
+
+    return reply.send({ ok: true })
+  })
+
+  /** Revoke all sessions except the current one. */
   app.delete('/me/sessions', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    await db
-      .update(devices)
-      .set({ revokedAt: new Date() })
-      .where(eq(devices.userId, user.id))
+    const sess = await verifySessionJwt(request)
+    const currentDeviceId = sess?.device_id
+      ? normalizeUuid(sess.device_id)
+      : null
 
-    clearFmSessionCookie(reply)
+    if (currentDeviceId) {
+      // Revoke all other sessions, keep current
+      await db
+        .update(devices)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(devices.userId, user.id), ne(devices.id, currentDeviceId)))
+    } else {
+      // No current device ID — revoke everything
+      await db
+        .update(devices)
+        .set({ revokedAt: new Date() })
+        .where(eq(devices.userId, user.id))
+      clearFmSessionCookie(reply)
+    }
+
     return reply.send({ ok: true })
   })
 
@@ -891,7 +980,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
   /* ─────────────  Account Deletion  ───────────── */
 
-  /** Permanently delete the authenticated user's account and all associated data. */
+  /** Permanently delete the authenticated user's account and anonymize associated data. */
   app.delete('/me/account', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -907,8 +996,44 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'USERNAME_MISMATCH' })
     }
 
-    // Delete all user data: devices, push subs, blocks, then the user row
-    // (messages and chat_members cascade from foreign keys)
+    // 1. Collect media paths for this user's messages so we can delete from MinIO
+    const mediaRows = await db
+      .select({ mediaPath: messages.mediaPath })
+      .from(messages)
+      .where(and(eq(messages.senderId, user.id), isNotNull(messages.mediaPath)))
+
+    // 2. Anonymize all messages from this user (content → "[deleted]", clear media refs)
+    await db
+      .update(messages)
+      .set({
+        content: '[deleted]',
+        iv: null,
+        mediaPath: null,
+        mediaType: null,
+        mediaIv: null,
+      })
+      .where(eq(messages.senderId, user.id))
+
+    // 3. Delete media files from MinIO (best-effort, don't block deletion)
+    const bucket = getBucketName()
+    for (const row of mediaRows) {
+      if (row.mediaPath) {
+        void deleteObjectIfExists({ client: s3, bucket, key: row.mediaPath }).catch(() => {})
+      }
+    }
+
+    // 4. Also delete user avatars from MinIO
+    const [avatarRow] = await db
+      .select({ avatarKey: users.avatarKey })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+    if (avatarRow?.avatarKey) {
+      const avatarBucket = getAvatarsBucketName()
+      void deleteObjectIfExists({ client: s3, bucket: avatarBucket, key: avatarRow.avatarKey }).catch(() => {})
+    }
+
+    // 5. Delete all user data: devices, push subs, blocks, then the user row
     await db.delete(devices).where(eq(devices.userId, user.id))
     await db.delete(userBlocks).where(eq(userBlocks.blockerId, user.id))
     await db.delete(userBlocks).where(eq(userBlocks.blockedId, user.id))

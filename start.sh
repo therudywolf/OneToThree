@@ -211,23 +211,29 @@ fi
 if [[ ! -f "$ENV_FILE" ]]; then
   [[ -f ".env.prod.example" ]] || die "Не найден .env.prod.example — репозиторий повреждён."
   cp ".env.prod.example" "$ENV_FILE"
-  echo ""
-  warn "Создан ${ENV_FILE} из шаблона."
-  warn "Откройте файл и заполните все строки с пометкой  ← ЗАПОЛНИ"
-  echo ""
-  echo -e "  ${BLD}nano ${ENV_FILE}${NC}   или   ${BLD}vim ${ENV_FILE}${NC}"
-  echo ""
-  echo -e "  Минимум что нужно заполнить:"
-  echo -e "    ${YEL}POSTGRES_PASSWORD${NC}   — пароль базы данных"
-  echo -e "    ${YEL}MINIO_ROOT_PASSWORD${NC} — пароль хранилища"
-  echo -e "    ${YEL}TURN_EXTERNAL_IP${NC}    — IP сервера (curl -s ifconfig.me)"
-  echo -e "    ${YEL}TURN_PASSWORD${NC}       — пароль TURN"
-  echo -e "    ${YEL}NEXT_PUBLIC_TURN_PASSWORD${NC} — тот же пароль TURN"
-  echo -e "    ${YEL}VAPID_SUBJECT${NC}       — ваш email"
-  echo ""
-  echo -e "  Остальное (JWT_SECRET, WEBHOOK_SECRET, VAPID ключи) ${GRN}генерируется автоматически${NC}."
-  echo ""
-  read -r -p "  Нажмите Enter когда заполнили .env.prod (или Ctrl+C для отмены)..." || true
+  # Если секреты уже сгенерированы через generate-secrets.sh —
+  # синхронизация произойдёт ниже автоматически, ручное заполнение не нужно.
+  if [[ ! -f "$SECRETS_DONE" ]]; then
+    echo ""
+    warn "Создан ${ENV_FILE} из шаблона."
+    warn "Откройте файл и заполните все строки с пометкой  ← ЗАПОЛНИ"
+    echo ""
+    echo -e "  ${BLD}nano ${ENV_FILE}${NC}   или   ${BLD}vim ${ENV_FILE}${NC}"
+    echo ""
+    echo -e "  Минимум что нужно заполнить:"
+    echo -e "    ${YEL}POSTGRES_PASSWORD${NC}   — пароль базы данных"
+    echo -e "    ${YEL}MINIO_ROOT_PASSWORD${NC} — пароль хранилища"
+    echo -e "    ${YEL}TURN_EXTERNAL_IP${NC}    — IP сервера (curl -s ifconfig.me)"
+    echo -e "    ${YEL}TURN_PASSWORD${NC}       — пароль TURN"
+    echo -e "    ${YEL}NEXT_PUBLIC_TURN_PASSWORD${NC} — тот же пароль TURN"
+    echo -e "    ${YEL}VAPID_SUBJECT${NC}       — ваш email"
+    echo ""
+    echo -e "  Остальное (JWT_SECRET, WEBHOOK_SECRET, VAPID ключи) ${GRN}генерируется автоматически${NC}."
+    echo ""
+    read -r -p "  Нажмите Enter когда заполнили .env.prod (или Ctrl+C для отмены)..." || true
+  else
+    ok "${ENV_FILE} создан — секреты будут синхронизированы автоматически."
+  fi
 fi
 
 # =============================================================================

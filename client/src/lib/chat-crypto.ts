@@ -15,7 +15,7 @@ import { unwrapGroupKeyFromStoredPayload } from './chat-logic'
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
-export type EncryptionFrame =
+export type ChatCryptoContext =
   | { mode: 'DIRECT'; peerPublicKeyJwk: string }
   | { mode: 'SECTOR'; groupKey: CryptoKey }
 
@@ -30,11 +30,11 @@ type SectorDetailResponse = {
 }
 
 /** [CALIBRATE_FRAME] :: Снятие показаний и построение крипто-контекста для сектора */
-export async function calibrateEncryptionFrame(
+export async function buildChatCryptoContext(
   chatId: string,
   myUserId: string,
   privateKey: CryptoKey
-): Promise<EncryptionFrame | null> {
+): Promise<ChatCryptoContext | null> {
   const response = await fetch(`${API_URL}/chats/${chatId}`, { credentials: 'include' })
   if (!response.ok) return null
 
@@ -82,10 +82,10 @@ export async function calibrateEncryptionFrame(
 }
 
 /** [SEAL_SIGNAL] :: Запечатывание исходящего пакета данных */
-export async function sealSignal(
+export async function encryptOutboundText(
   privateKey: CryptoKey,
   plaintext: string,
-  frame: EncryptionFrame
+  frame: ChatCryptoContext
 ): Promise<{ encrypted_content: string; iv: string }> {
   let result: { ciphertext: string; iv: string }
 
@@ -101,9 +101,9 @@ export async function sealSignal(
 }
 
 /** [UNSEAL_SIGNAL] :: Вскрытие входящего пакета данных */
-export async function unsealSignal(
+export async function decryptInboundText(
   privateKey: CryptoKey,
-  frame: EncryptionFrame,
+  frame: ChatCryptoContext,
   ciphertext: string,
   iv: string
 ): Promise<string> {
@@ -117,16 +117,9 @@ export async function unsealSignal(
 }
 
 /** [EXTRACT_SECTOR_KEY] :: Получение AES-GCM ключа для текущего линка */
-// --- CONSUMER_ALIASES ---
-export type ChatCryptoContext = EncryptionFrame
-export const buildChatCryptoContext = calibrateEncryptionFrame
-export const encryptOutboundText = sealSignal
-export const decryptInboundText = unsealSignal
-export const getAesKeyForChat = getSectorKey
-
-export async function getSectorKey(
+export async function getAesKeyForChat(
   privateKey: CryptoKey,
-  frame: EncryptionFrame
+  frame: ChatCryptoContext
 ): Promise<CryptoKey> {
   if (frame.mode === 'SECTOR') return frame.groupKey
   

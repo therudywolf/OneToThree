@@ -130,7 +130,7 @@ export async function dispatchSectorKeys(
  * [WRAP_SECTOR_KEY_FOR_MEMBER]
  * Упаковка существующего ключа сектора с использованием статического ключа создателя.
  */
-export async function wrapSectorKeyWithCreatorAuth(
+export async function wrapGroupKeyForMemberWithCreatorEcdh(
   creatorPrivateKey: CryptoKey,
   memberPublicKeyJwk: string,
   sectorKey: CryptoKey
@@ -156,7 +156,7 @@ export async function wrapSectorKeyWithCreatorAuth(
  * Вскрытие контейнера и извлечение ключа сектора участником.
  * Поддерживает как эфемероидные, так и авторизованные упаковки.
  */
-export async function extractSectorKey(
+export async function unwrapGroupKeyFromStoredPayload(
   memberPrivateKey: CryptoKey,
   encryptedBase64: string
 ): Promise<CryptoKey> {
@@ -189,5 +189,3 @@ export async function extractSectorKey(
   )
 }
 
-export const wrapGroupKeyForMemberWithCreatorEcdh = wrapSectorKeyWithCreatorAuth
-export const unwrapGroupKeyFromStoredPayload = extractSectorKey

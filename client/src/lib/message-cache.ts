@@ -37,7 +37,7 @@ interface GhostLogsDb extends DBSchema {
 let connection: Promise<IDBPDatabase<GhostLogsDb>> | null = null
 
 /** [WIPE_PROTOCOL] :: Стерилизация локального кэша */
-export async function wipeGhostLogs(): Promise<void> {
+export async function purgeLocalMessageCache(): Promise<void> {
   connection = null
   if (typeof indexedDB === 'undefined') return
   await deleteDB(CORE_NAME)
@@ -126,7 +126,7 @@ async function indexNodeContent(msg: DecryptedMessage): Promise<void> {
 
 // --- PUBLIC_INTERFACE ---
 
-export async function cacheNodes(nodes: DecryptedMessage[]): Promise<void> {
+export async function cacheMessages(nodes: DecryptedMessage[]): Promise<void> {
   if (typeof indexedDB === 'undefined' || nodes.length === 0) return
   const conn = await initConnection()
   const tx = conn.transaction('message_feed', 'readwrite')
@@ -135,14 +135,14 @@ export async function cacheNodes(nodes: DecryptedMessage[]): Promise<void> {
   for (const node of nodes) scheduleTrace(() => indexNodeContent(node))
 }
 
-export async function cacheNode(node: DecryptedMessage): Promise<void> {
+export async function cacheMessage(node: DecryptedMessage): Promise<void> {
   if (typeof indexedDB === 'undefined') return
   const conn = await initConnection()
   await conn.put('message_feed', node)
   scheduleTrace(() => indexNodeContent(node))
 }
 
-export async function pullRecentLogs(chatId: string, limit = 50): Promise<DecryptedMessage[]> {
+export async function getRecentCachedMessages(chatId: string, limit = 50): Promise<DecryptedMessage[]> {
   if (typeof indexedDB === 'undefined') return []
   const conn = await initConnection()
   const range = IDBKeyRange.bound([chatId, '', ''], [chatId, '\uffff', '\uffff'])
@@ -159,14 +159,7 @@ export async function pullRecentLogs(chatId: string, limit = 50): Promise<Decryp
   return logs.reverse()
 }
 
-/** [RADAR_SEARCH] :: Локальный поиск по дешифрованным следам */
-// --- CONSUMER_ALIASES ---
-export const purgeLocalMessageCache = wipeGhostLogs
-export const cacheMessage = cacheNode
-export const cacheMessages = cacheNodes
-export const getRecentCachedMessages = pullRecentLogs
-export const getOlderCachedMessages = pullRecentLogs
-export const searchLocalMessages = searchLocalTrace
+export const getOlderCachedMessages = getRecentCachedMessages
 
 /** Delete a single cached message by id. */
 export async function deleteCachedMessage(messageId: string): Promise<void> {
@@ -177,7 +170,7 @@ export async function deleteCachedMessage(messageId: string): Promise<void> {
   await tx.done
 }
 
-export async function searchLocalTrace(query: string) {
+export async function searchLocalMessages(query: string) {
   if (typeof indexedDB === 'undefined') return []
   const q = query.trim().toLowerCase()
   if (q.length < 2) return []

@@ -13,9 +13,9 @@ export type InboundLinkRequest = {
 }
 
 /** Состояние периферии удаленного узла (оптика/акустика) */
-export type NodeMediaState = { 
-  micMuted: boolean 
-  cameraOff: boolean 
+export type NodeMediaState = {
+  micMuted: boolean
+  cameraOff: boolean
 }
 
 /** Connection quality stats from RTCPeerConnection getStats(). */
@@ -27,55 +27,37 @@ export type ConnectionQuality = {
 
 export type CallProtocolState = {
   // [FEED_LAYER]
-  localFeed: MediaStream | null
-  remoteFeeds: Record<string, MediaStream>
+  localStream: MediaStream | null
+  remoteStreams: Record<string, MediaStream>
 
   // [SIGNAL_LAYER]
-  nodeHints: Record<string, NodeMediaState>
-  signalLinks: Record<string, RTCPeerConnection>
+  remotePeerMedia: Record<string, NodeMediaState>
+  peerConnections: Record<string, RTCPeerConnection>
 
   // [STATUS_LAYER]
-  isLinkActive: boolean
+  isCalling: boolean
   isReconnecting: boolean
   connectionQuality: ConnectionQuality | null
-  inboundRequest: InboundLinkRequest | null
+  incomingCall: InboundLinkRequest | null
 
   // [ACTIONS]
-  setLocalFeed: (feed: MediaStream | null) => void
-  setRemoteFeed: (peerId: string, feed: MediaStream) => void
-  dropRemoteFeed: (peerId: string) => void
+  setLocalStream: (feed: MediaStream | null) => void
+  setRemoteStream: (peerId: string, feed: MediaStream) => void
+  removeRemoteStream: (peerId: string) => void
 
-  updateNodeHint: (peerId: string, patch: Partial<NodeMediaState>) => void
-  purgeNodeHint: (peerId: string) => void
+  setRemotePeerMedia: (peerId: string, patch: Partial<NodeMediaState>) => void
+  clearRemotePeerMedia: (peerId: string) => void
 
-  setInboundRequest: (request: InboundLinkRequest | null) => void
-  setLinkStatus: (active: boolean) => void
+  setIncomingCall: (request: InboundLinkRequest | null) => void
+  setIsCalling: (active: boolean) => void
   setReconnecting: (value: boolean) => void
   setConnectionQuality: (quality: ConnectionQuality | null) => void
 
-  registerSignalLink: (peerId: string, pc: RTCPeerConnection) => void
-  severSignalLink: (peerId: string) => void
-
-  /** Полная деактивация протокола и очистка контура */
-  resetProtocol: () => void
-
-  // --- CONSUMER_ALIASES ---
-  isCalling: boolean
-  localStream: MediaStream | null
-  remoteStreams: Record<string, MediaStream>
-  remotePeerMedia: Record<string, NodeMediaState>
-  incomingCall: InboundLinkRequest | null
-  setIncomingCall: (request: InboundLinkRequest | null) => void
-  reset: () => void
   addPeerConnection: (peerId: string, pc: RTCPeerConnection) => void
   removePeerConnection: (peerId: string) => void
-  setRemoteStream: (peerId: string, feed: MediaStream) => void
-  removeRemoteStream: (peerId: string) => void
-  setLocalStream: (feed: MediaStream | null) => void
-  setIsCalling: (active: boolean) => void
-  clearRemotePeerMedia: (peerId: string) => void
-  setRemotePeerMedia: (peerId: string, patch: Partial<NodeMediaState>) => void
-  peerConnections: Record<string, RTCPeerConnection>
+
+  /** Полная деактивация протокола и очистка контура */
+  reset: () => void
 }
 
 const INITIAL_MEDIA_STATE = (): NodeMediaState => ({
@@ -84,91 +66,49 @@ const INITIAL_MEDIA_STATE = (): NodeMediaState => ({
 })
 
 export const useCallStore = create<CallProtocolState>((set, get) => {
-  const setLocalFeed = (feed: MediaStream | null) => set({ localFeed: feed })
-  const setRemoteFeed = (peerId: string, feed: MediaStream) =>
-    set((state) => ({ remoteFeeds: { ...state.remoteFeeds, [peerId]: feed } }))
-  const dropRemoteFeed = (peerId: string) =>
-    set((state) => { const { [peerId]: _, ...rest } = state.remoteFeeds; return { remoteFeeds: rest } })
-  const updateNodeHint = (peerId: string, patch: Partial<NodeMediaState>) =>
+  const setLocalStream = (feed: MediaStream | null) => set({ localStream: feed })
+  const setRemoteStream = (peerId: string, feed: MediaStream) =>
+    set((state) => ({ remoteStreams: { ...state.remoteStreams, [peerId]: feed } }))
+  const removeRemoteStream = (peerId: string) =>
+    set((state) => { const { [peerId]: _, ...rest } = state.remoteStreams; return { remoteStreams: rest } })
+  const setRemotePeerMedia = (peerId: string, patch: Partial<NodeMediaState>) =>
     set((state) => ({
-      nodeHints: { ...state.nodeHints, [peerId]: { ...(state.nodeHints[peerId] ?? INITIAL_MEDIA_STATE()), ...patch } },
+      remotePeerMedia: { ...state.remotePeerMedia, [peerId]: { ...(state.remotePeerMedia[peerId] ?? INITIAL_MEDIA_STATE()), ...patch } },
     }))
-  const purgeNodeHint = (peerId: string) =>
-    set((state) => { const { [peerId]: _, ...rest } = state.nodeHints; return { nodeHints: rest } })
-  const setInboundRequest = (request: InboundLinkRequest | null) => set({ inboundRequest: request })
-  const setLinkStatus = (active: boolean) => set({ isLinkActive: active })
+  const clearRemotePeerMedia = (peerId: string) =>
+    set((state) => { const { [peerId]: _, ...rest } = state.remotePeerMedia; return { remotePeerMedia: rest } })
+  const setIncomingCall = (request: InboundLinkRequest | null) => set({ incomingCall: request })
+  const setIsCalling = (active: boolean) => set({ isCalling: active })
   const setReconnecting = (value: boolean) => set({ isReconnecting: value })
   const setConnectionQuality = (quality: ConnectionQuality | null) => set({ connectionQuality: quality })
-  const registerSignalLink = (peerId: string, pc: RTCPeerConnection) =>
-    set((state) => ({ signalLinks: { ...state.signalLinks, [peerId]: pc } }))
-  const severSignalLink = (peerId: string) =>
-    set((state) => { const { [peerId]: _, ...rest } = state.signalLinks; return { signalLinks: rest } })
-  const resetProtocol = () =>
-    set({ localFeed: null, remoteFeeds: {}, nodeHints: {}, signalLinks: {}, isLinkActive: false, isReconnecting: false, connectionQuality: null, inboundRequest: null })
+  const addPeerConnection = (peerId: string, pc: RTCPeerConnection) =>
+    set((state) => ({ peerConnections: { ...state.peerConnections, [peerId]: pc } }))
+  const removePeerConnection = (peerId: string) =>
+    set((state) => { const { [peerId]: _, ...rest } = state.peerConnections; return { peerConnections: rest } })
+  const reset = () =>
+    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, connectionQuality: null, incomingCall: null })
 
   return {
-    localFeed: null,
-    remoteFeeds: {},
-    nodeHints: {},
-    signalLinks: {},
-    isLinkActive: false,
-    isReconnecting: false,
-    connectionQuality: null,
-    inboundRequest: null,
-
-    setLocalFeed,
-    setRemoteFeed,
-    dropRemoteFeed,
-    updateNodeHint,
-    purgeNodeHint,
-    setInboundRequest,
-    setLinkStatus,
-    setReconnecting,
-    setConnectionQuality,
-    registerSignalLink,
-    severSignalLink,
-    resetProtocol,
-
-    // Consumer aliases (state)
-    isCalling: false,
     localStream: null,
     remoteStreams: {},
     remotePeerMedia: {},
-    incomingCall: null,
     peerConnections: {},
+    isCalling: false,
+    isReconnecting: false,
+    connectionQuality: null,
+    incomingCall: null,
 
-    // Consumer aliases (actions)
-    setIncomingCall: setInboundRequest,
-    reset: resetProtocol,
-    addPeerConnection: registerSignalLink,
-    removePeerConnection: severSignalLink,
-    setRemoteStream: setRemoteFeed,
-    removeRemoteStream: dropRemoteFeed,
-    setLocalStream: setLocalFeed,
-    setIsCalling: setLinkStatus,
-    clearRemotePeerMedia: purgeNodeHint,
-    setRemotePeerMedia: updateNodeHint,
-  }
-})
-
-// Keep consumer alias state fields in sync
-useCallStore.subscribe((state) => {
-  const needsSync =
-    state.isCalling !== state.isLinkActive ||
-    state.localStream !== state.localFeed ||
-    state.remoteStreams !== state.remoteFeeds ||
-    state.remotePeerMedia !== state.nodeHints ||
-    state.incomingCall !== state.inboundRequest ||
-    state.peerConnections !== state.signalLinks
-
-  if (needsSync) {
-    useCallStore.setState({
-      isCalling: state.isLinkActive,
-      localStream: state.localFeed,
-      remoteStreams: state.remoteFeeds,
-      remotePeerMedia: state.nodeHints,
-      incomingCall: state.inboundRequest,
-      peerConnections: state.signalLinks,
-    }, false)
+    setLocalStream,
+    setRemoteStream,
+    removeRemoteStream,
+    setRemotePeerMedia,
+    clearRemotePeerMedia,
+    setIncomingCall,
+    setIsCalling,
+    setReconnecting,
+    setConnectionQuality,
+    addPeerConnection,
+    removePeerConnection,
+    reset,
   }
 })

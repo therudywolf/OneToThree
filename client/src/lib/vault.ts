@@ -6,11 +6,20 @@
 
 const PBKDF2_ITERATIONS = 210_000
 const VAULT_PREFIX = 'p13:vault'
+export const CURRENT_VAULT_VERSION = 2
 
 export type VaultBlob = {
+  version: number
   saltB64: string
   ivB64: string
   ciphertextB64: string
+}
+
+export class VaultVersionMismatchError extends Error {
+  constructor() {
+    super('VAULT_VERSION_MISMATCH')
+    this.name = 'VaultVersionMismatchError'
+  }
 }
 
 /** [IDENT_RESOLVER] :: Пути к ячейкам памяти */
@@ -19,25 +28,41 @@ const getLoginSlot = (handle: string) => `${VAULT_PREFIX}:login:${handle.trim().
 
 // --- STORAGE_INTERFACE ---
 
+/** Parse raw JSON from localStorage into a VaultBlob, defaulting version to 1 for legacy blobs. */
+function parseVaultBlobJson(raw: string): VaultBlob | null {
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || !parsed.saltB64 || !parsed.ivB64 || !parsed.ciphertextB64) {
+      return null
+    }
+    return {
+      ...parsed,
+      version: typeof parsed.version === 'number' ? parsed.version : 1,
+    } as VaultBlob
+  } catch {
+    return null
+  }
+}
+
 export function readVaultBlob(userId: string): VaultBlob | null {
   if (typeof window === 'undefined') return null
   const raw = localStorage.getItem(getSlot(userId))
   if (!raw) return null
-  try { return JSON.parse(raw) as VaultBlob } catch { return null }
+  return parseVaultBlobJson(raw)
 }
 
-export function readVaultByLogin(username: string): VaultBlob | null {
+export function readVaultBlobByLoginUsername(username: string): VaultBlob | null {
   if (typeof window === 'undefined') return null
   const raw = localStorage.getItem(getLoginSlot(username))
   if (!raw) return null
-  try { return JSON.parse(raw) as VaultBlob } catch { return null }
+  return parseVaultBlobJson(raw)
 }
 
-export function persistVault(userId: string, blob: VaultBlob): void {
+export function persistVaultBlob(userId: string, blob: VaultBlob): void {
   localStorage.setItem(getSlot(userId), JSON.stringify(blob))
 }
 
-export function persistVaultByLogin(username: string, blob: VaultBlob): void {
+export function persistVaultBlobByLoginUsername(username: string, blob: VaultBlob): void {
   localStorage.setItem(getLoginSlot(username), JSON.stringify(blob))
 }
 
@@ -49,14 +74,10 @@ export function wipeVaultByLogin(username: string): void {
   localStorage.removeItem(getLoginSlot(username))
 }
 
-export const mirrorVaultLoginToUserId = linkLoginVaultToUser
-export const persistVaultBlob = persistVault
-export const persistVaultBlobByLoginUsername = persistVaultByLogin
-export const readVaultBlobByLoginUsername = readVaultByLogin
 /** [SYNC_LINK] :: Зеркалирование временного сейфа в стабильный узел после логина */
-export function linkLoginVaultToUser(username: string, userId: string): void {
-  const blob = readVaultByLogin(username)
-  if (blob) persistVault(userId, blob)
+export function mirrorVaultLoginToUserId(username: string, userId: string): void {
+  const blob = readVaultBlobByLoginUsername(username)
+  if (blob) persistVaultBlob(userId, blob)
 }
 
 // --- BINARY_CONVERSION (STERILE_METHOD) ---
@@ -114,6 +135,7 @@ export async function wrapPrivateJwkWithPin(
   )
 
   return {
+    version: CURRENT_VAULT_VERSION,
     saltB64: toB64(salt),
     ivB64: toB64(iv),
     ciphertextB64: toB64(new Uint8Array(cipherBuf)),

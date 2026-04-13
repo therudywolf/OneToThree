@@ -8,10 +8,7 @@
  * [DIGEST_SIGNAL] :: Генерация SHA-256 хэша из бинарного потока.
  * Используется для верификации сегментов данных перед инъекцией в кэш.
  */
-// --- CONSUMER_ALIAS ---
-export const sha256HexBytes = digestSignalHash
-
-export async function digestSignalHash(buf: ArrayBuffer): Promise<string> {
+export async function sha256HexBytes(buf: ArrayBuffer): Promise<string> {
   const subtle = globalThis.crypto?.subtle
   if (!subtle) throw new Error('SYS_FAULT :: CRYPTO_CORE_OFFLINE')
 

@@ -35,7 +35,7 @@ function commitRegistry(next: NodeRegistry): void {
  * [PIN_SIGNATURE]
  * Закрепление отпечатка ключа за конкретным идентификатором узла.
  */
-export function pinNodeSignature(userId: string, signatureHash: string): void {
+export function setVerifiedHash(userId: string, signatureHash: string): void {
   const registry = pullRegistry()
   registry[userId] = signatureHash
   commitRegistry(registry)
@@ -45,7 +45,7 @@ export function pinNodeSignature(userId: string, signatureHash: string): void {
  * [REVOKE_TRUST]
  * Принудительное удаление узла из списка доверенных.
  */
-export function revokeNodeTrust(userId: string): void {
+export function revokeVerifiedTrust(userId: string): void {
   const registry = pullRegistry()
   if (registry[userId]) {
     delete registry[userId]
@@ -67,12 +67,7 @@ export type TrustStatus = {
  * Проверка текущего отпечатка на соответствие закрепленному в реестре.
  * Автоматически отзывает доверие при несовпадении (Key Change).
  */
-// --- CONSUMER_ALIASES ---
-export const resolveTrustStatus = resolveNodeIntegrity
-export const revokeVerifiedTrust = revokeNodeTrust
-export const setVerifiedHash = pinNodeSignature
-
-export function resolveNodeIntegrity(userId: string, currentHash: string): TrustStatus {
+export function resolveTrustStatus(userId: string, currentHash: string): TrustStatus {
   const registry = pullRegistry()
   const pinnedSignature = registry[userId]
 

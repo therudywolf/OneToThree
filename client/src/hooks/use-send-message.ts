@@ -17,7 +17,7 @@ import { useChatStore } from '@/store/chatStore'
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
-export function useTransmissionDispatcher(cryptoCtx: ChatCryptoContext | null) {
+export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
   const { activeChatId, userId, unwrappedPrivateKey, appendMessage } = useChatStore()
 
   /** * [DISPATCH_SEQUENCE] :: Инициация передачи пакета данных 
@@ -93,4 +93,3 @@ export function useTransmissionDispatcher(cryptoCtx: ChatCryptoContext | null) {
   return { dispatchTransmission, sendText: dispatchTransmission }
 }
 
-export const useSendMessage = useTransmissionDispatcher

@@ -14,6 +14,7 @@ import {
 } from '@/lib/crypto'
 import { parseVaultPlaintext, stringifyVaultKeyringV2 } from '@/lib/vault-keyring'
 import {
+  CURRENT_VAULT_VERSION,
   mirrorVaultLoginToUserId,
   persistVaultBlobByLoginUsername,
   readVaultBlobByLoginUsername,
@@ -109,6 +110,9 @@ export async function cryptoLogin(
     const blob = readVaultBlobByLoginUsername(canonicalHandle)
     if (!blob) {
       return { ok: false, error: 'NO_LOCAL_VAULT' }
+    }
+    if (blob.version > CURRENT_VAULT_VERSION) {
+      return { ok: false, error: 'VAULT_VERSION_MISMATCH' }
     }
     let plain: string
     try {

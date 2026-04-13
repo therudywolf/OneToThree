@@ -4,7 +4,7 @@
  * Vibe: Clinical Pure / Terminal Noir
  */
 
-import { getDenUsage } from '@/lib/media-cache'
+import { getDigitalDenUsageBytes } from '@/lib/media-cache'
 
 export const SENSOR_CAM_ID = 'p13_optics_id'
 export const SENSOR_MIC_ID = 'p13_audio_in_id'
@@ -37,7 +37,7 @@ const readBool = (key: string, def: boolean): boolean => {
 }
 
 /** [CALIBRATE] :: Снятие текущих показаний с хранилища */
-export function calibrateSensors(): SensorConfig {
+export function loadMediaPrefs(): SensorConfig {
   return {
     cameraId: readRaw(SENSOR_CAM_ID),
     micId: readRaw(SENSOR_MIC_ID),
@@ -48,7 +48,7 @@ export function calibrateSensors(): SensorConfig {
 }
 
 /** [PERSIST] :: Запись конфигурации в локальный реестр */
-export function persistSensors(map: Partial<SensorConfig>): void {
+export function saveMediaPrefs(map: Partial<SensorConfig>): void {
   if (typeof window === 'undefined') return
   try {
     if (map.cameraId !== undefined) {
@@ -70,12 +70,12 @@ export function persistSensors(map: Partial<SensorConfig>): void {
 }
 
 /** [GENERATE_CONSTRAINTS] :: Формирование протокола захвата */
-export function getCaptureProtocol(opts: {
+export function getUserMediaConstraints(opts: {
   video: boolean
   forceLowBnd?: boolean
   hd?: boolean
 }): MediaStreamConstraints {
-  const cfg = calibrateSensors()
+  const cfg = loadMediaPrefs()
   
   const audioContext: MediaTrackConstraints = {
     deviceId: cfg.micId ? { exact: cfg.micId } : undefined,
@@ -99,9 +99,9 @@ export function getCaptureProtocol(opts: {
 }
 
 /** [ROUTE_OUTPUT] :: Направление потока на выбранный спикер */
-export async function applyAudioOutput(el: HTMLMediaElement | null): Promise<void> {
+export async function applyPreferredAudioOutput(el: HTMLMediaElement | null): Promise<void> {
   if (!el || typeof window === 'undefined') return
-  const { speakerId } = calibrateSensors()
+  const { speakerId } = loadMediaPrefs()
   if (!speakerId || !('setSinkId' in el)) return
   try {
     await (el as any).setSinkId(speakerId)
@@ -145,8 +145,3 @@ export async function cycleOptics(
   }
 }
 
-export const loadMediaPrefs = calibrateSensors
-export const saveMediaPrefs = persistSensors
-export const applyPreferredAudioOutput = applyAudioOutput
-export const getDigitalDenUsageBytes = getDenUsage
-export const getUserMediaConstraints = getCaptureProtocol

@@ -20,7 +20,7 @@ const PENDING_INTERCEPT = new Map<string, Promise<string | null>>()
  * Извлекает и кэширует визуальную сигнатуру узла (userId).
  * Предотвращает дублирование запросов к S3-шлюзу.
  */
-export async function interceptIconSignal(userId: string): Promise<string | null> {
+export async function getCachedAvatarUrl(userId: string): Promise<string | null> {
   // 1. Проверка локального реестра
   const cached = ICON_REGISTRY.get(userId)
   if (cached) return cached
@@ -70,7 +70,7 @@ async function downloadIconSegment(userId: string): Promise<string | null> {
  * Аннигиляция кэшированной иконки для конкретного узла.
  * Вызывать при получении сигнала 'user_updated' через WebSocket.
  */
-export function purgeIconTrace(userId: string): void {
+export function invalidateAvatarCache(userId: string): void {
   const cachedUrl = ICON_REGISTRY.get(userId)
   if (cachedUrl) {
     URL.revokeObjectURL(cachedUrl)
@@ -82,12 +82,7 @@ export function purgeIconTrace(userId: string): void {
 }
 
 /** [STERILIZE_CORTEX] :: Полная очистка визуального реестра */
-// --- CONSUMER_ALIASES ---
-export const getCachedAvatarUrl = interceptIconSignal
-export const invalidateAvatarCache = purgeIconTrace
-export const clearAllAvatarCache = sterilizeIconCortex
-
-export function sterilizeIconCortex(): void {
+export function clearAllAvatarCache(): void {
   for (const url of ICON_REGISTRY.values()) {
     URL.revokeObjectURL(url)
   }

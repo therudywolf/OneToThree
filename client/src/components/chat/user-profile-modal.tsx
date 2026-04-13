@@ -16,6 +16,7 @@ import {
   FileText,
 } from 'lucide-react'
 import { fetchUserProfile, type UserProfile } from '@/lib/api/users'
+import { fetchSharedMedia, type SharedMediaRow } from '@/lib/api/messages'
 import { useTranslation } from '@/hooks/use-translation'
 import { UserAvatar } from '@/components/user-avatar'
 import { sanitizeText, sanitizeUrl } from '@/lib/sanitize'
@@ -52,6 +53,12 @@ export function UserProfileModal({
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<ProfileTab>('info')
   const [avatarFullscreen, setAvatarFullscreen] = useState(false)
+  const [sharedMediaItems, setSharedMediaItems] = useState<SharedMediaRow[]>([])
+  const [sharedFileItems, setSharedFileItems] = useState<SharedMediaRow[]>([])
+  const [mediaLoading, setMediaLoading] = useState(false)
+  const [filesLoading, setFilesLoading] = useState(false)
+  const [mediaLoaded, setMediaLoaded] = useState(false)
+  const [filesLoaded, setFilesLoaded] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -70,6 +77,29 @@ export function UserProfileModal({
       cancelled = true
     }
   }, [username])
+
+  useEffect(() => {
+    if (activeTab === 'media' && !mediaLoaded) {
+      setMediaLoading(true)
+      void fetchSharedMedia(userId, 'media')
+        .then((rows) => {
+          setSharedMediaItems(rows)
+          setMediaLoaded(true)
+        })
+        .catch(() => setSharedMediaItems([]))
+        .finally(() => setMediaLoading(false))
+    }
+    if (activeTab === 'files' && !filesLoaded) {
+      setFilesLoading(true)
+      void fetchSharedMedia(userId, 'files')
+        .then((rows) => {
+          setSharedFileItems(rows)
+          setFilesLoaded(true)
+        })
+        .catch(() => setSharedFileItems([]))
+        .finally(() => setFilesLoading(false))
+    }
+  }, [activeTab, userId, mediaLoaded, filesLoaded])
 
   const statusLabel = profile?.status_text
     ? profile.status_text.toUpperCase()
@@ -336,41 +366,84 @@ export function UserProfileModal({
                 </div>
               ) : activeTab === 'media' ? (
                 <div className="space-y-3">
-                  {/* 3-column photo grid */}
-                  <div className="grid grid-cols-3 gap-1">
-                    {/* Empty state */}
-                  </div>
-                  <div className="flex items-center justify-center py-8">
-                    <div className="text-center">
-                      <ImageIcon className="mx-auto h-8 w-8 text-zinc-700" />
-                      <p className="mt-2 font-mono text-[10px] text-zinc-600">
-                        {t('group.mediaArchiveEmpty')}
+                  {mediaLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <p className="animate-pulse font-mono text-[10px] text-neon-cyan/60">
+                        [ LOADING... ]
                       </p>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="w-full border border-neon-cyan/30 bg-black py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/50 hover:bg-neon-cyan/5 transition-colors hidden"
-                  >
-                    {t('profile.loadMore')}
-                  </button>
+                  ) : sharedMediaItems.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-1">
+                      {sharedMediaItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="relative aspect-square border border-neon-cyan/20 bg-zinc-950 overflow-hidden"
+                        >
+                          <div className="flex h-full w-full items-center justify-center">
+                            <div className="text-center">
+                              {item.media_type === 'video' ? (
+                                <span className="font-mono text-[8px] uppercase text-neon-cyan/50">VIDEO</span>
+                              ) : (
+                                <ImageIcon className="mx-auto h-5 w-5 text-neon-cyan/30" />
+                              )}
+                            </div>
+                          </div>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/80 px-1 py-0.5">
+                            <p className="font-mono text-[7px] text-zinc-500 truncate">
+                              {new Date(item.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="text-center">
+                        <ImageIcon className="mx-auto h-8 w-8 text-zinc-700" />
+                        <p className="mt-2 font-mono text-[10px] text-zinc-600">
+                          {t('group.mediaArchiveEmpty')}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-center py-8">
-                    <div className="text-center">
-                      <FileText className="mx-auto h-8 w-8 text-zinc-700" />
-                      <p className="mt-2 font-mono text-[10px] text-zinc-600">
-                        {t('group.mediaArchiveEmpty')}
+                  {filesLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <p className="animate-pulse font-mono text-[10px] text-neon-cyan/60">
+                        [ LOADING... ]
                       </p>
                     </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="w-full border border-neon-cyan/30 bg-black py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/50 hover:bg-neon-cyan/5 transition-colors hidden"
-                  >
-                    {t('profile.loadMore')}
-                  </button>
+                  ) : sharedFileItems.length > 0 ? (
+                    <div className="space-y-1">
+                      {sharedFileItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 border border-neon-cyan/20 bg-black/50 px-3 py-2"
+                        >
+                          <FileText className="h-4 w-4 text-neon-cyan/40 shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-mono text-[10px] text-neon-cyan/80 truncate">
+                              {item.media_path?.split('/').pop() ?? 'file'}
+                            </p>
+                            <p className="font-mono text-[8px] text-zinc-600">
+                              {new Date(item.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="text-center">
+                        <FileText className="mx-auto h-8 w-8 text-zinc-700" />
+                        <p className="mt-2 font-mono text-[10px] text-zinc-600">
+                          {t('group.mediaArchiveEmpty')}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

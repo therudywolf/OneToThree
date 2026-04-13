@@ -14,6 +14,9 @@ import {
   deleteCachedMessage,
   getOlderCachedMessages,
 } from '@/lib/message-cache'
+import { decryptBinary, base64ToArrayBuffer, importAesGcm256RawKey } from '@/lib/crypto'
+import { getDownloadUrl } from '@/lib/api/storage'
+import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { lookupUsers } from '@/lib/api/users'
 import { NoirPlaintext } from '@/components/chat/noir-plaintext'
 import { CollapsibleText } from '@/components/chat/collapsible-text'
@@ -121,6 +124,7 @@ export function ChatTerminal({
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
+  const lightboxMetaRef = useRef<Map<string, { mediaPath: string; mediaIv: string; plaintext?: string }>>(new Map())
   const [profileTarget, setProfileTarget] = useState<{
     userId: string
     username: string
@@ -409,46 +413,110 @@ export function ChatTerminal({
 
   const handleMediaClick = (media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
     const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }> = []
+    const metaMap = new Map<string, { mediaPath: string; mediaIv: string; plaintext?: string }>()
+
+    const collectMsg = (msg: DecryptedMessage) => {
+      if (msg.media_path && msg.media_iv && msg.media_type) {
+        const mime = mimeFromPathAndType(msg.media_path, msg.media_type)
+        if (msg.media_type === 'image' || msg.media_type === 'video') {
+          allMedia.push({
+            id: msg.id,
+            url: '',
+            type: msg.media_type as 'image' | 'video',
+            mimeType: mime,
+          })
+          metaMap.set(msg.id, {
+            mediaPath: msg.media_path,
+            mediaIv: msg.media_iv,
+            plaintext: msg.plaintext ?? undefined,
+          })
+        }
+      }
+    }
 
     for (const group of groupedMessages) {
       if (group.type === 'UNIT') {
-        const msg = group.message
-        if (msg.media_path && msg.media_iv && msg.media_type) {
-          const mime = mimeFromPathAndType(msg.media_path, msg.media_type)
-          if (msg.media_type === 'image' || msg.media_type === 'video') {
-            allMedia.push({
-              id: msg.id,
-              url: '',
-              type: msg.media_type as 'image' | 'video',
-              mimeType: mime,
-            })
-          }
-        }
+        collectMsg(group.message)
       } else {
-        for (const msg of group.messages) {
-          if (msg.media_path && msg.media_iv && msg.media_type) {
-            const mime = mimeFromPathAndType(msg.media_path, msg.media_type)
-            if (msg.media_type === 'image' || msg.media_type === 'video') {
-              allMedia.push({
-                id: msg.id,
-                url: '',
-                type: msg.media_type as 'image' | 'video',
-                mimeType: mime,
-              })
-            }
-          }
-        }
+        for (const msg of group.messages) collectMsg(msg)
       }
     }
 
     const currentIndex = allMedia.findIndex(m => m.id === media.id)
     if (currentIndex !== -1) {
       allMedia[currentIndex] = media
+      lightboxMetaRef.current = metaMap
       setLightboxMedia(allMedia)
       setLightboxIndex(currentIndex)
       setLightboxOpen(true)
     }
   }
+
+  const handleLightboxLoadMedia = useCallback(async (index: number): Promise<string | null> => {
+    const items = lightboxMedia
+    const item = items[index]
+    if (!item || item.url) return item?.url ?? null
+    const meta = lightboxMetaRef.current.get(item.id)
+    if (!meta) return null
+
+    try {
+      const cached = await getCachedMedia(item.id)
+      if (cached?.blob) {
+        const url = URL.createObjectURL(cached.blob)
+        setLightboxMedia(prev => {
+          const next = [...prev]
+          next[index] = { ...next[index], url }
+          return next
+        })
+        return url
+      }
+
+      const downloadUrl = await getDownloadUrl(meta.mediaPath)
+      const res = await fetch(downloadUrl)
+      if (!res.ok) return null
+
+      let plain: ArrayBuffer
+      const isPublicMedia = meta.mediaIv === 'public'
+      const envelope = meta.plaintext ? parseAttachmentEnvelope(meta.plaintext) : null
+
+      if (isPublicMedia) {
+        plain = await res.arrayBuffer()
+      } else if (!sharedKey) {
+        return null
+      } else {
+        const cipher = await res.arrayBuffer()
+        if (envelope) {
+          const wrapPlain = await decryptBinary(
+            sharedKey,
+            base64ToArrayBuffer(envelope.wrapCt),
+            envelope.wrapIv
+          )
+          const fileKey = await importAesGcm256RawKey(wrapPlain, ['decrypt'])
+          const fileIv = new Uint8Array(base64ToArrayBuffer(meta.mediaIv))
+          plain = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: fileIv as BufferSource },
+            fileKey,
+            cipher as BufferSource
+          )
+        } else {
+          plain = await decryptBinary(sharedKey, cipher, meta.mediaIv)
+        }
+      }
+
+      const mime = envelope?.mimeType ?? item.mimeType
+      const blob = new Blob([plain], { type: mime })
+      await setCachedMedia(item.id, blob, mime)
+      const url = URL.createObjectURL(blob)
+      setLightboxMedia(prev => {
+        const next = [...prev]
+        next[index] = { ...next[index], url }
+        return next
+      })
+      return url
+    } catch {
+      return null
+    }
+  }, [lightboxMedia, sharedKey])
 
   const handleLightboxNavigate = (index: number) => {
     setLightboxIndex(index)
@@ -458,6 +526,7 @@ export function ChatTerminal({
     setLightboxOpen(false)
     setLightboxMedia([])
     setLightboxIndex(0)
+    lightboxMetaRef.current.clear()
   }
 
   function openProfile(senderId: string) {
@@ -915,6 +984,7 @@ export function ChatTerminal({
         currentIndex={lightboxIndex}
         onClose={handleLightboxClose}
         onNavigate={handleLightboxNavigate}
+        onLoadMedia={handleLightboxLoadMedia}
       />
 
       {profileTarget ? (

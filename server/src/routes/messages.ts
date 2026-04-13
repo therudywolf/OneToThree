@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, messageDeliveries, messages } from '../db/schema.js'
+import { chatMembers, chats, messageDeliveries, messages } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import {
@@ -96,6 +96,75 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(500).send({ error: 'INSERT_FAILED' })
     }
     return reply.send({ message: persistedRowToClientJson(persisted.row) })
+  })
+
+  /** Server-side message search within a chat (ILIKE on plaintext content). */
+  app.get('/search', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const q = request.query as { chatId?: string; q?: string; limit?: string }
+    const chatId = q.chatId?.trim()
+    const query = q.q?.trim()
+    const limit = Math.min(Math.max(parseInt(q.limit ?? '20', 10) || 20, 1), 50)
+
+    if (!chatId || !z.string().uuid().safeParse(chatId).success) {
+      return reply.status(400).send({ error: 'INVALID_CHAT_ID' })
+    }
+    if (!query || query.length < 2) {
+      return reply.status(400).send({ error: 'QUERY_TOO_SHORT' })
+    }
+
+    const memberOk = await db
+      .select({ one: chatMembers.userId })
+      .from(chatMembers)
+      .where(
+        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
+      )
+      .limit(1)
+    if (!memberOk.length) {
+      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+    }
+
+    const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+    const pattern = `%${escaped}%`
+
+    const rows = await db
+      .select({
+        id: messages.id,
+        chatId: messages.chatId,
+        senderId: messages.senderId,
+        content: messages.content,
+        iv: messages.iv,
+        mediaPath: messages.mediaPath,
+        mediaType: messages.mediaType,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.chatId, chatId),
+          isNotNull(messages.content),
+          ilike(messages.content, pattern)
+        )
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(limit)
+
+    return reply.send({
+      messages: rows.map((m) => ({
+        id: m.id,
+        chat_id: m.chatId,
+        sender_id: m.senderId,
+        content: m.content,
+        iv: m.iv,
+        media_path: m.mediaPath,
+        media_type: m.mediaType,
+        created_at:
+          m.createdAt instanceof Date
+            ? m.createdAt.toISOString()
+            : String(m.createdAt),
+      })),
+    })
   })
 
   /** Pending ciphertext rows for this user (not yet acknowledged after delivery sync). */
@@ -296,6 +365,89 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         media_path: m.mediaPath,
         media_type: m.mediaType,
         media_iv: m.mediaIv,
+        created_at:
+          m.createdAt instanceof Date
+            ? m.createdAt.toISOString()
+            : String(m.createdAt),
+      })),
+    })
+  })
+
+  /** Shared media between two users across their direct chats. */
+  app.get('/shared-media/:userId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ userId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { userId: targetUserId } = params.data
+    const q = request.query as { type?: string }
+    const filterType = q.type === 'files' ? 'files' : 'media'
+
+    // Find all direct_e2e chats where both users are members
+    const myDirectChats = await db
+      .select({ chatId: chatMembers.chatId })
+      .from(chatMembers)
+      .innerJoin(chats, eq(chats.id, chatMembers.chatId))
+      .where(and(eq(chatMembers.userId, user.id), eq(chats.type, 'direct_e2e')))
+
+    const sharedChatIds: string[] = []
+    for (const { chatId } of myDirectChats) {
+      const peer = await db
+        .select({ one: chatMembers.userId })
+        .from(chatMembers)
+        .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, targetUserId)))
+        .limit(1)
+      if (peer.length) sharedChatIds.push(chatId)
+    }
+
+    if (!sharedChatIds.length) {
+      return reply.send({ messages: [] })
+    }
+
+    const mediaTypeFilter =
+      filterType === 'media'
+        ? or(
+            eq(messages.mediaType, 'image'),
+            eq(messages.mediaType, 'video')
+          )
+        : and(
+            isNotNull(messages.mediaType),
+            sql`${messages.mediaType} NOT IN ('image', 'video', 'audio')`
+          )
+
+    const rows = await db
+      .select({
+        id: messages.id,
+        chatId: messages.chatId,
+        senderId: messages.senderId,
+        mediaPath: messages.mediaPath,
+        mediaType: messages.mediaType,
+        mediaIv: messages.mediaIv,
+        content: messages.content,
+        iv: messages.iv,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .where(
+        and(
+          inArray(messages.chatId, sharedChatIds),
+          isNotNull(messages.mediaPath),
+          mediaTypeFilter
+        )
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(100)
+
+    return reply.send({
+      messages: rows.map((m) => ({
+        id: m.id,
+        chat_id: m.chatId,
+        sender_id: m.senderId,
+        media_path: m.mediaPath,
+        media_type: m.mediaType,
+        media_iv: m.mediaIv,
+        content: m.content,
+        iv: m.iv,
         created_at:
           m.createdAt instanceof Date
             ? m.createdAt.toISOString()

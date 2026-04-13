@@ -83,31 +83,47 @@ export async function decryptApiMessageRows(
     return rows.map((m) => apiRowToDecrypted(m, ''))
   }
 
-  const aesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
   let plaintextByIndex: Map<number, string>
 
-  const useWorker =
-    jobs.length >= BATCH_WORKER_MIN &&
-    typeof Worker !== 'undefined' &&
-    typeof crypto !== 'undefined' &&
-    typeof crypto.subtle?.exportKey === 'function'
+  if (cryptoCtx.mode === 'PUBLIC') {
+    plaintextByIndex = new Map(
+      jobs.map((j) => {
+        try {
+          return [j.index, decodeURIComponent(escape(atob(j.content)))]
+        } catch {
+          return [j.index, j.content]
+        }
+      })
+    )
+  } else {
+    const aesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
+    if (!aesKey) {
+      return rows.map((m) => apiRowToDecrypted(m, ''))
+    }
 
-  if (useWorker) {
-    try {
-      const keyRaw = await crypto.subtle.exportKey('raw', aesKey)
-      const items = jobs.map((j) => ({
-        ciphertextBase64: j.content,
-        ivBase64: j.iv,
-      }))
-      const plaintexts = await decryptTextBatchInWorker(keyRaw, items)
-      plaintextByIndex = new Map(
-        jobs.map((j, k) => [j.index, plaintexts[k] ?? '[DECRYPT_FAIL]'])
-      )
-    } catch {
+    const useWorker =
+      jobs.length >= BATCH_WORKER_MIN &&
+      typeof Worker !== 'undefined' &&
+      typeof crypto !== 'undefined' &&
+      typeof crypto.subtle?.exportKey === 'function'
+
+    if (useWorker) {
+      try {
+        const keyRaw = await crypto.subtle.exportKey('raw', aesKey)
+        const items = jobs.map((j) => ({
+          ciphertextBase64: j.content,
+          ivBase64: j.iv,
+        }))
+        const plaintexts = await decryptTextBatchInWorker(keyRaw, items)
+        plaintextByIndex = new Map(
+          jobs.map((j, k) => [j.index, plaintexts[k] ?? '[DECRYPT_FAIL]'])
+        )
+      } catch {
+        plaintextByIndex = await decryptJobsOnMain(aesKey, jobs)
+      }
+    } else {
       plaintextByIndex = await decryptJobsOnMain(aesKey, jobs)
     }
-  } else {
-    plaintextByIndex = await decryptJobsOnMain(aesKey, jobs)
   }
 
   return rows.map((m, i) =>

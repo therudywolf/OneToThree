@@ -72,7 +72,7 @@ const createChatSchema = z
   })
 
 function isGroupType(t: string): boolean {
-  return t === 'group_e2e'
+  return t === 'group_e2e' || t === 'public_open'
 }
 
 /** If a direct_e2e chat already links exactly these two users, return it (idempotent create). */
@@ -212,6 +212,75 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
+  /** GET /self — returns or creates "Saved Messages" (self-chat) for the current user. */
+  app.get('/self', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    // Look for an existing direct_e2e chat where the only member is the current user
+    const myChats = await db
+      .select({ chatId: chatMembers.chatId })
+      .from(chatMembers)
+      .innerJoin(chats, eq(chats.id, chatMembers.chatId))
+      .where(and(eq(chatMembers.userId, user.id), eq(chats.type, 'direct_e2e')))
+
+    for (const { chatId } of myChats) {
+      const members = await db
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+      if (members.length === 1 && members[0].userId === user.id) {
+        const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1)
+        if (chat) {
+          return reply.send({
+            chat: {
+              id: chat.id,
+              name: chat.name ?? 'Saved Messages',
+              type: chat.type,
+              is_group: false,
+              is_self: true,
+              member_ids: [user.id],
+              my_role: 'owner',
+            },
+          })
+        }
+      }
+    }
+
+    // Create a new self-chat
+    const [created] = await db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(chats)
+        .values({ type: 'direct_e2e', name: 'Saved Messages' })
+        .returning()
+      const chat = inserted[0]
+      if (!chat) throw new Error('INSERT_CHAT_FAILED')
+      await tx.insert(chatMembers).values({
+        chatId: chat.id,
+        userId: user.id,
+        encryptedGroupKey: null,
+        role: 'owner',
+      })
+      return inserted
+    })
+
+    if (!created) {
+      return reply.status(500).send({ error: 'CREATE_FAILED' })
+    }
+
+    return reply.status(201).send({
+      chat: {
+        id: created.id,
+        name: created.name ?? 'Saved Messages',
+        type: created.type,
+        is_group: false,
+        is_self: true,
+        member_ids: [user.id],
+        my_role: 'owner',
+      },
+    })
+  })
+
   app.get('/join/:code', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -228,7 +297,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       .where(eq(chats.inviteCode, trimmed))
       .limit(1)
 
-    if (!chat || chat.type !== 'group_e2e') {
+    if (!chat || (chat.type !== 'group_e2e' && chat.type !== 'public_open')) {
       return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
     }
 
@@ -478,12 +547,16 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    const isPublicOpen = type === 'public_open'
+    const inviteCode = isPublicOpen ? await generateUniqueInviteCode() : null
+
     const [created] = await db.transaction(async (tx) => {
       const inserted = await tx
         .insert(chats)
         .values({
           type,
           name: name ?? null,
+          ...(inviteCode ? { inviteCode } : {}),
         })
         .returning()
       const chat = inserted[0]
@@ -494,7 +567,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           chatId: chat.id,
           userId: uid,
           encryptedGroupKey: null as string | null,
-          role: 'member' as const,
+          role: isPublicOpen && uid === authId ? ('owner' as const) : ('member' as const),
         }))
       )
       return inserted
@@ -513,7 +586,8 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         type: created.type,
         is_group: isGroupType(created.type),
         member_ids: uniqueIds,
-        my_role: 'member' as const,
+        my_role: isPublicOpen ? ('owner' as const) : ('member' as const),
+        invite_code: inviteCode,
       },
     })
   })
@@ -532,7 +606,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     const wantOneTime = parsedBody.data.invite_one_time
 
     const chat = await getChatById(chatId)
-    if (!chat || chat.type !== 'group_e2e') {
+    if (!chat || (chat.type !== 'group_e2e' && chat.type !== 'public_open')) {
       return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
     }
 
@@ -599,7 +673,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ error: 'NOT_A_MEMBER' })
     }
 
-    if (chat.type === 'group_e2e' && myRow.role === 'owner') {
+    if ((chat.type === 'group_e2e' || chat.type === 'public_open') && myRow.role === 'owner') {
       const others = await db
         .select({
           userId: chatMembers.userId,
@@ -707,7 +781,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     const newRole = parsed.data.role as ChatMemberRole
 
     const chat = await getChatById(chatId)
-    if (!chat || chat.type !== 'group_e2e') {
+    if (!chat || !isGroupType(chat.type)) {
       return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
     }
 
@@ -817,7 +891,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     const { chatId, userId: targetUserId } = params.data
 
     const chat = await getChatById(chatId)
-    if (!chat || chat.type !== 'group_e2e') {
+    if (!chat || !isGroupType(chat.type)) {
       return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
     }
 
@@ -923,7 +997,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'NOT_A_MEMBER' })
     }
 
-    if (chat.type === 'group_e2e') {
+    if (isGroupType(chat.type)) {
       const r = await getMemberRole(chatId, user.id)
       if (r !== 'owner') {
         return reply.status(403).send({ error: 'OWNER_ONLY' })
@@ -992,7 +1066,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       .orderBy(asc(chatMembers.joinedAt))
 
     const showInvite =
-      chat.type === 'group_e2e' &&
+      isGroupType(chat.type) &&
       (memberOk[0].myRole === 'owner' || memberOk[0].myRole === 'admin')
 
     return reply.send({

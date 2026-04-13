@@ -27,6 +27,22 @@ import { vibrateShort } from '@/lib/vibrate'
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
+/** Maps common MIME types to file extensions for upload validation. */
+const MIME_TO_EXT: Record<string, string> = {
+  'audio/webm': '.webm', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a',
+  'audio/wav': '.wav', 'audio/mpeg': '.mp3', 'audio/aac': '.aac',
+  'video/webm': '.webm', 'video/mp4': '.mp4', 'video/ogg': '.ogg',
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
+  'image/webp': '.webp', 'application/pdf': '.pdf',
+}
+
+function ensureExtension(name: string, mime: string): string {
+  if (/\.[a-zA-Z0-9]{1,12}$/.test(name)) return name
+  const base = mime.split(';')[0].trim().toLowerCase()
+  const ext = MIME_TO_EXT[base] ?? (base.startsWith('audio/') ? '.webm' : base.startsWith('video/') ? '.webm' : '.bin')
+  return `${name}${ext}`
+}
+
 const getSubtle = (): SubtleCrypto => {
   if (!globalThis.crypto?.subtle) throw new Error('ERR_NO_SUBTLE_CRYPTO')
   return globalThis.crypto.subtle
@@ -73,7 +89,9 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
       if (!activeChatId || !userId || !unwrappedPrivateKey || !cryptoCtx) return
 
       const mimeType = options?.mime?.trim() || rawBlob.type || 'application/octet-stream'
-      const label = options?.label?.trim() || `segment-${Date.now()}`
+      const rawLabel = options?.label?.trim() || `segment-${Date.now()}`
+      // Ensure file name has a proper extension so the server allows the upload
+      const label = ensureExtension(rawLabel, mimeType)
       
       let workBlob: Blob = rawBlob
 
@@ -89,43 +107,77 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
 
       if (isMediaTooLarge(workBlob.size)) throw new Error(MEDIA_TOO_LARGE_CODE)
 
-      // [2] CRYPTOGRAPHIC_LOCKDOWN :: Глубокое шифрование сегмента
-      const sectorAesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
-      const segmentKey = await generateAesGcm256Key()
-      const plainData = await workBlob.arrayBuffer()
-      
-      const segmentIv = crypto.getRandomValues(new Uint8Array(12))
-      
-      // Шифруем сам контент
-      const cipherData = await getSubtle().encrypt(
-        { name: 'AES-GCM', iv: segmentIv },
-        segmentKey,
-        plainData
-      )
+      const isPublicMode = cryptoCtx.mode === 'PUBLIC'
 
-      // Экспортируем и оборачиваем ключ сегмента ключом сектора
-      const rawSegmentKey = await getSubtle().exportKey('raw', segmentKey)
-      const { cipher: wrappedKey, ivBase64: wrapIv } = await encryptBinary(
-        sectorAesKey,
-        rawSegmentKey
-      )
+      let uploadPayload: ArrayBuffer
+      let encrypted_content: string
+      let envelopeIv: string
+      let mediaIvB64: string
 
-      // [3] ENVELOPE_GENERATION :: Формирование мета-инструкции
-      const envelope: AttachmentEnvelopeV1 = {
-        p13: 'attachment',
-        v: 1,
-        fileName: label,
-        fileSize: workBlob.size,
-        mimeType: mimeType,
-        wrapIv,
-        wrapCt: arrayBufferToBase64(wrappedKey),
+      if (isPublicMode) {
+        // PUBLIC mode: no encryption, upload raw data
+        uploadPayload = await workBlob.arrayBuffer()
+        const envelope: AttachmentEnvelopeV1 = {
+          p13: 'attachment',
+          v: 1,
+          fileName: label,
+          fileSize: workBlob.size,
+          mimeType: mimeType,
+          wrapIv: '',
+          wrapCt: '',
+        }
+        const result = await encryptOutboundText(
+          unwrappedPrivateKey,
+          JSON.stringify(envelope),
+          cryptoCtx
+        )
+        encrypted_content = result.encrypted_content
+        envelopeIv = result.iv
+        mediaIvB64 = 'public'
+      } else {
+        // [2] CRYPTOGRAPHIC_LOCKDOWN :: Глубокое шифрование сегмента
+        const sectorAesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
+        if (!sectorAesKey) throw new Error('ERR_MISSING_SECTOR_KEY')
+        const segmentKey = await generateAesGcm256Key()
+        const plainData = await workBlob.arrayBuffer()
+
+        const segmentIv = crypto.getRandomValues(new Uint8Array(12))
+
+        // Шифруем сам контент
+        const cipherData = await getSubtle().encrypt(
+          { name: 'AES-GCM', iv: segmentIv },
+          segmentKey,
+          plainData
+        )
+
+        // Экспортируем и оборачиваем ключ сегмента ключом сектора
+        const rawSegmentKey = await getSubtle().exportKey('raw', segmentKey)
+        const { cipher: wrappedKey, ivBase64: wrapIv } = await encryptBinary(
+          sectorAesKey,
+          rawSegmentKey
+        )
+
+        // [3] ENVELOPE_GENERATION :: Формирование мета-инструкции
+        const envelope: AttachmentEnvelopeV1 = {
+          p13: 'attachment',
+          v: 1,
+          fileName: label,
+          fileSize: workBlob.size,
+          mimeType: mimeType,
+          wrapIv,
+          wrapCt: arrayBufferToBase64(wrappedKey),
+        }
+
+        const result = await encryptOutboundText(
+          unwrappedPrivateKey,
+          JSON.stringify(envelope),
+          cryptoCtx
+        )
+        encrypted_content = result.encrypted_content
+        envelopeIv = result.iv
+        uploadPayload = cipherData
+        mediaIvB64 = arrayBufferToBase64(segmentIv.buffer)
       }
-
-      const { encrypted_content, iv: envelopeIv } = await encryptOutboundText(
-        unwrappedPrivateKey,
-        JSON.stringify(envelope),
-        cryptoCtx
-      )
 
       // [4] TRANSPORT_HANDSHAKE :: Резервирование пути в облаке
       const { uploadUrl, filePath } = await postUploadUrl({
@@ -134,10 +186,8 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
         fileType: mimeType,
       })
 
-      // [5] DATA_INJECTION :: Загрузка шифрованного блоба
-      await injectWithRetry(uploadUrl, mimeType, cipherData)
-
-      const mediaIvB64 = arrayBufferToBase64(segmentIv.buffer)
+      // [5] DATA_INJECTION :: Загрузка блоба
+      await injectWithRetry(uploadUrl, mimeType, uploadPayload)
 
       // [6] SIGNAL_BROADCAST :: Публикация сегмента в фид сектора
       const { via, serverMessage } = await sendChatMessageOverTransport({

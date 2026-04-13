@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus } from 'lucide-react'
+import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
-import { createDirectE2EChat, leaveChat, deleteChat } from '@/lib/api/chats'
+import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
 import { GroupChatSettings } from '@/components/chat/group-chat-settings'
@@ -284,6 +284,25 @@ export function ChatSidebar({
           />
         </div>
       </div>
+
+      {/* Saved Messages */}
+      <button
+        type="button"
+        onClick={async () => {
+          try {
+            const self = await fetchOrCreateSelfChat()
+            setActiveChatId(self.id)
+            onNavigate?.()
+            void reload()
+          } catch {
+            /* ignore */
+          }
+        }}
+        className="flex items-center gap-2 border-b border-neon-cyan/20 px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:bg-neon-cyan/5 hover:text-neon-cyan"
+      >
+        <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
+        {t('sidebar.savedMessages')}
+      </button>
 
       {/* Chat List */}
       <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">

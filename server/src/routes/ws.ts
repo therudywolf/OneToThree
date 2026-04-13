@@ -4,7 +4,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { WebSocket } from 'ws'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, users } from '../db/schema.js'
+import { chatMembers, messageReactions, messages, users } from '../db/schema.js'
 import {
   getAuthUser,
   isUserDeviceSessionValid,
@@ -219,6 +219,13 @@ const groupCallSpeakingSchema = z.object({
   is_speaking: z.boolean(),
 })
 
+const toggleReactionSchema = z.object({
+  type: z.literal('toggle_reaction'),
+  message_id: z.string().uuid(),
+  chat_id: z.string().uuid(),
+  emoji: z.string().min(1).max(32),
+})
+
 /** Maximum allowed WebSocket message size (64 KB — sufficient for E2E ciphertext). */
 const MAX_WS_MESSAGE_BYTES = 64 * 1024
 
@@ -423,6 +430,71 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             type: 'call_leave',
             chat_id,
             from_user_id: user.id,
+          })
+          return
+        }
+
+        const reactionParsed = toggleReactionSchema.safeParse(json)
+        if (reactionParsed.success) {
+          const { message_id, chat_id, emoji } = reactionParsed.data
+          if (!(await isMemberOfChat(chat_id, user.id))) {
+            ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
+            return
+          }
+          // Verify message belongs to this chat
+          const [msg] = await db
+            .select({ id: messages.id })
+            .from(messages)
+            .where(and(eq(messages.id, message_id), eq(messages.chatId, chat_id)))
+            .limit(1)
+          if (!msg) {
+            ws.send(JSON.stringify({ type: 'error', error: 'MESSAGE_NOT_FOUND' }))
+            return
+          }
+          // Toggle: delete if exists, insert if not
+          const [existing] = await db
+            .select({ messageId: messageReactions.messageId })
+            .from(messageReactions)
+            .where(
+              and(
+                eq(messageReactions.messageId, message_id),
+                eq(messageReactions.userId, user.id),
+                eq(messageReactions.emoji, emoji)
+              )
+            )
+            .limit(1)
+          if (existing) {
+            await db
+              .delete(messageReactions)
+              .where(
+                and(
+                  eq(messageReactions.messageId, message_id),
+                  eq(messageReactions.userId, user.id),
+                  eq(messageReactions.emoji, emoji)
+                )
+              )
+          } else {
+            await db
+              .insert(messageReactions)
+              .values({ messageId: message_id, userId: user.id, emoji })
+              .onConflictDoNothing()
+          }
+          // Fetch updated reactions for this message
+          const reactionRows = await db
+            .select({ userId: messageReactions.userId, emoji: messageReactions.emoji })
+            .from(messageReactions)
+            .where(eq(messageReactions.messageId, message_id))
+          const reactions: Record<string, string[]> = {}
+          for (const r of reactionRows) {
+            ;(reactions[r.emoji] ??= []).push(r.userId)
+          }
+          // Broadcast to all chat members
+          const memberIds = await getChatMemberIds(chat_id)
+          broadcastToUsers(memberIds, {
+            type: 'reaction_update',
+            message_id,
+            chat_id,
+            reactions,
           })
           return
         }

@@ -23,6 +23,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
   const clearTypingUserEverywhere = useChatStore((s) => s.clearTypingUserEverywhere)
   const pruneTypingUsers = useChatStore((s) => s.pruneTypingUsers)
   const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
+  const updateMessageReactions = useChatStore((s) => s.updateMessageReactions)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const usernameCacheRef = useRef<Record<string, string>>({})
 
@@ -76,6 +77,12 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
           .getState()
           .messages.find((x) => x.id === msg.message_id)
         if (row) void cacheMessage({ ...row, read_at: msg.read_at })
+        return
+      }
+      if (msg.type === 'reaction_update') {
+        if (msg.chat_id === activeChatId) {
+          updateMessageReactions(msg.message_id, msg.reactions)
+        }
         return
       }
       if (msg.type !== 'chat_message') return
@@ -143,6 +150,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
     setTypingUser,
     unwrappedPrivateKey,
     updateMessageReadAt,
+    updateMessageReactions,
     userId,
   ])
 

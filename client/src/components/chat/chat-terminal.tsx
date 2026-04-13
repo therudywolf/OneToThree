@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } fr
 import { Crown, Star, ArrowDown, Reply } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useChatStore } from '@/store/chatStore'
+import { getFmSocket } from '@/lib/api/socket'
 import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
 import { parseAttachmentEnvelope } from '@/lib/attachment-envelope'
@@ -278,11 +279,16 @@ export function ChatTerminal({
   )
 
   const handleToggleReaction = useCallback(
-    (_emoji: string, _msgId: string) => {
-      // Reaction handling — reactions stored on message.reactions object
-      // For now this is a UI-only placeholder: full WS emission would be in hooks
+    (emoji: string, msgId: string) => {
+      if (!activeChat?.id) return
+      getFmSocket().send({
+        type: 'toggle_reaction',
+        message_id: msgId,
+        chat_id: activeChat.id,
+        emoji,
+      })
     },
-    [],
+    [activeChat?.id],
   )
 
   // Long-press for mobile context menu

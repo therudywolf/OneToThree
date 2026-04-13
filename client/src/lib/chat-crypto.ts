@@ -18,6 +18,7 @@ import { unwrapGroupKeyFromStoredPayload } from './chat-logic'
 export type ChatCryptoContext =
   | { mode: 'DIRECT'; peerPublicKeyJwk: string }
   | { mode: 'SECTOR'; groupKey: CryptoKey }
+  | { mode: 'PUBLIC' }
 
 type SectorDetailResponse = {
   chat: { type: string }
@@ -40,7 +41,7 @@ export async function buildChatCryptoContext(
 
   const { chat, members } = (await response.json()) as SectorDetailResponse
 
-  if (chat.type === 'public_open') return null
+  if (chat.type === 'public_open') return { mode: 'PUBLIC' as const }
 
   // [1] DIRECT_E2E_LINK :: Прямой канал между двумя узлами
   if (chat.type === 'direct_e2e') {
@@ -87,6 +88,10 @@ export async function encryptOutboundText(
   plaintext: string,
   frame: ChatCryptoContext
 ): Promise<{ encrypted_content: string; iv: string }> {
+  if (frame.mode === 'PUBLIC') {
+    return { encrypted_content: btoa(unescape(encodeURIComponent(plaintext))), iv: 'public' }
+  }
+
   let result: { ciphertext: string; iv: string }
 
   if (frame.mode === 'SECTOR') {
@@ -107,6 +112,10 @@ export async function decryptInboundText(
   ciphertext: string,
   iv: string
 ): Promise<string> {
+  if (frame.mode === 'PUBLIC') {
+    return decodeURIComponent(escape(atob(ciphertext)))
+  }
+
   if (frame.mode === 'SECTOR') {
     return decryptMessage(frame.groupKey, ciphertext, iv)
   }
@@ -120,9 +129,10 @@ export async function decryptInboundText(
 export async function getAesKeyForChat(
   privateKey: CryptoKey,
   frame: ChatCryptoContext
-): Promise<CryptoKey> {
+): Promise<CryptoKey | null> {
+  if (frame.mode === 'PUBLIC') return null
   if (frame.mode === 'SECTOR') return frame.groupKey
-  
+
   const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
   return deriveSharedSecret(privateKey, peerPub)
 }

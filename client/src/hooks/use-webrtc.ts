@@ -301,7 +301,13 @@ export function useWebRTC(userId: string | null) {
         setIncomingCall({ peerId: msg.from_user_id, isVideo: msg.is_video, offer: { type: 'offer', sdp: '' } })
       }
 
-      if (msg.type === 'call_leave') purgePeer(msg.from_user_id)
+      if (msg.type === 'call_leave') {
+        purgePeer(msg.from_user_id)
+        // If no peers remain, end the call entirely
+        if (pcsRef.current.size === 0 && useCallStore.getState().isCalling) {
+          severAllLinks()
+        }
+      }
 
       if (msg.type === 'webrtc_signal') {
         const { fromUserId, signalData: rawSignal } = msg
@@ -345,7 +351,7 @@ export function useWebRTC(userId: string | null) {
         }
       }
     })
-  }, [userId, setIncomingCall, purgePeer, flushIceQueue])
+  }, [userId, setIncomingCall, purgePeer, flushIceQueue, severAllLinks])
 
   const applyQualityConstraints = useCallback((level: '720p' | '480p' | '360p' | 'audio_only') => {
     const local = useCallStore.getState().localStream

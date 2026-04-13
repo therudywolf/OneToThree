@@ -60,6 +60,7 @@ export type ChatState = {
   setPeerPresence: (uid: string, status: { online: boolean; last_seen_at: string | null }) => void
   mergePeerPresenceBatch: (rows: { id: string; online: boolean; last_seen_at: string | null }[]) => void
   updateMessageReadAt: (nodeId: string, timestamp: string) => void
+  updateMessageReactions: (nodeId: string, reactions: Record<string, string[]>) => void
   setHistoryDecryptBusy: (busy: boolean) => void
   reset: () => void
 }
@@ -161,6 +162,11 @@ export const useChatStore = create<ChatState>((set, get) => {
       messages: s.messages.map((n) => n.id === nodeId ? { ...n, read_at: timestamp } : n),
     }))
 
+  const updateMessageReactions = (nodeId: string, reactions: Record<string, string[]>) =>
+    set((s) => ({
+      messages: s.messages.map((n) => n.id === nodeId ? { ...n, reactions } : n),
+    }))
+
   const setHistoryDecryptBusy = (busy: boolean) => set({ historyDecryptBusy: busy })
 
   const reset = () =>
@@ -202,6 +208,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     setPeerPresence,
     mergePeerPresenceBatch,
     updateMessageReadAt,
+    updateMessageReactions,
     setHistoryDecryptBusy,
     reset,
   }

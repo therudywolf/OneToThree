@@ -57,3 +57,5 @@ export function useSignalMonitor(): SignalPulse {
 
   return { is_online, is_linked, buffer_depth }
 }
+
+export const useWebSocketNetwork = useSignalMonitor

@@ -77,3 +77,46 @@ export function extractVaultPayload(raw: string): ExtractedVault | null {
 
   return null
 }
+
+export type ParsedVaultPlaintext =
+  | { kind: 'legacy_ecdh'; ecdhPrivateJwkString: string }
+  | { kind: 'v2'; ecdsaPrivateJwk: string; ecdhPrivateJwk: string }
+
+export function parseVaultPlaintext(raw: string): ParsedVaultPlaintext | null {
+  const signal = raw.trim()
+  if (!signal) return null
+
+  try {
+    const data = JSON.parse(signal) as Record<string, unknown>
+    if (
+      data &&
+      data.kind === 'v2' &&
+      typeof data.ecdsaPrivateJwk === 'string' &&
+      typeof data.ecdhPrivateJwk === 'string'
+    ) {
+      return {
+        kind: 'v2',
+        ecdsaPrivateJwk: data.ecdsaPrivateJwk,
+        ecdhPrivateJwk: data.ecdhPrivateJwk,
+      }
+    }
+  } catch {
+    // Not valid JSON, fall back to legacy format
+  }
+
+  return {
+    kind: 'legacy_ecdh',
+    ecdhPrivateJwkString: signal,
+  }
+}
+
+export function stringifyVaultKeyringV2(
+  ecdsaPrivateJwk: string,
+  ecdhPrivateJwk: string
+): string {
+  return JSON.stringify({
+    kind: 'v2',
+    ecdsaPrivateJwk,
+    ecdhPrivateJwk,
+  })
+}

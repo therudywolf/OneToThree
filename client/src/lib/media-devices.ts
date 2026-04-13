@@ -4,6 +4,8 @@
  * Vibe: Clinical Pure / Terminal Noir
  */
 
+import { getDenUsage } from '@/lib/media-cache'
+
 export const SENSOR_CAM_ID = 'p13_optics_id'
 export const SENSOR_MIC_ID = 'p13_audio_in_id'
 export const SENSOR_SPK_ID = 'p13_audio_out_id'
@@ -142,3 +144,8 @@ export async function cycleOptics(
     return null
   }
 }
+
+export const loadMediaPrefs = calibrateSensors
+export const saveMediaPrefs = persistSensors
+export const applyPreferredAudioOutput = applyAudioOutput
+export const getDigitalDenUsageBytes = getDenUsage

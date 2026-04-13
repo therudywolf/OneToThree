@@ -26,3 +26,5 @@ export function emitHapticPulse(pattern: number | number[] = 20): void {
     // Сбой драйвера или блокировка политики безопасности — игнорируем
   }
 }
+
+export const vibrateShort = emitHapticPulse

@@ -49,6 +49,8 @@ export function wipeVaultByLogin(username: string): void {
   localStorage.removeItem(getLoginSlot(username))
 }
 
+export const persistVaultBlobByLoginUsername = persistVaultByLogin
+export const readVaultBlobByLoginUsername = readVaultByLogin
 /** [SYNC_LINK] :: Зеркалирование временного сейфа в стабильный узел после логина */
 export function linkLoginVaultToUser(username: string, userId: string): void {
   const blob = readVaultByLogin(username)
@@ -57,8 +59,12 @@ export function linkLoginVaultToUser(username: string, userId: string): void {
 
 // --- BINARY_CONVERSION (STERILE_METHOD) ---
 
-const toB64 = (bytes: Uint8Array): string => 
-  btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''))
+const toB64 = (bytes: BufferSource): string => {
+  const view = bytes instanceof ArrayBuffer
+    ? new Uint8Array(bytes)
+    : new Uint8Array((bytes as ArrayBufferView).buffer)
+  return btoa(Array.from(view, b => String.fromCharCode(b)).join(''))
+}
 
 const fromB64 = (b64: string): Uint8Array => 
   Uint8Array.from(atob(b64), c => c.charCodeAt(0))
@@ -66,7 +72,7 @@ const fromB64 = (b64: string): Uint8Array =>
 // --- CRYPTO_LOGIC ---
 
 /** [DERIVE_KEY] :: Выжигание ключа из ПИН-кода через PBKDF2 */
-export async function deriveWrapKey(pin: string, salt: Uint8Array): Promise<CryptoKey> {
+export async function deriveWrapKey(pin: string, salt: BufferSource): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(pin),
@@ -93,12 +99,14 @@ export async function wrapPrivateJwkWithPin(
   jwkString: string,
   pin: string
 ): Promise<VaultBlob> {
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const saltSource = crypto.getRandomValues(new Uint8Array(16))
+  const salt = new Uint8Array(saltSource.buffer)
+  const ivSource = crypto.getRandomValues(new Uint8Array(12))
+  const iv = new Uint8Array(ivSource.buffer)
   const wrapKey = await deriveWrapKey(pin, salt)
   
   const cipherBuf = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     wrapKey,
     new TextEncoder().encode(jwkString)
   )
@@ -121,9 +129,9 @@ export async function unwrapPrivateJwkWithPin(
   const wrapKey = await deriveWrapKey(pin, salt)
 
   const plainBuf = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
+    { name: 'AES-GCM', iv: iv as BufferSource },
     wrapKey,
-    cipher
+    cipher as BufferSource
   )
   return new TextDecoder().decode(plainBuf)
 }

@@ -122,3 +122,6 @@ export async function wipeDigitalDen(): Promise<void> {
   if (typeof indexedDB === 'undefined') return
   await den.segments.clear()
 }
+
+export const getCachedMedia = getCachedSegment
+export const setCachedMedia = setCachedSegment

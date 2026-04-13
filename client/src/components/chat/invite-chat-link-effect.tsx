@@ -19,7 +19,7 @@ const genesisLock = new Set<string>()
 
 export function InviteChatLinkEffect({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
-  const { setActiveChatId } = useChatStore()
+  const setActiveChatId = useChatStore(s => s.setActiveChatId)
   const [errorLog, setErrorLog] = useState<string | null>(null)
 
   useEffect(() => {

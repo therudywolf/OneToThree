@@ -14,7 +14,8 @@ const THROTTLE_INTERVAL = 1500 // Интервал между сигналами
 const TERMINATE_DEBOUNCE = 3000 // Задержка перед обрывом сигнала (мс)
 
 export function useTypingIndicator() {
-  const { activeChatId, userId } = useChatStore()
+  const activeChatId = useChatStore(s => s.activeChatId)
+  const userId = useChatStore(s => s.userId)
   
   const isTypingActive = useRef(false)
   const lastSignalTime = useRef(0)

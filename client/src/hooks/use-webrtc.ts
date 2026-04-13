@@ -461,11 +461,33 @@ export function useWebRTC(userId: string | null) {
       })()
     }
 
-    statsIntervalRef.current = window.setInterval(poll, 5000)
+    // Only start polling when there's an active call
+    const isCalling = useCallStore.getState().isCalling
+    if (isCalling) {
+      statsIntervalRef.current = window.setInterval(poll, 5000)
+    }
+
+    // Subscribe to isCalling changes to start/stop interval
+    const unsub = useCallStore.subscribe((state, prevState) => {
+      if (state.isCalling && !prevState.isCalling) {
+        if (statsIntervalRef.current) window.clearInterval(statsIntervalRef.current)
+        statsIntervalRef.current = window.setInterval(poll, 5000)
+      } else if (!state.isCalling && prevState.isCalling) {
+        if (statsIntervalRef.current) {
+          window.clearInterval(statsIntervalRef.current)
+          statsIntervalRef.current = null
+        }
+        setConnectionQuality(null)
+        lowBitrateCountRef.current = 0
+        highBitrateCountRef.current = 0
+      }
+    })
+
     return () => {
+      unsub()
       if (statsIntervalRef.current) window.clearInterval(statsIntervalRef.current)
     }
-  }, [setConnectionQuality, setPeerConnectionType])
+  }, [setConnectionQuality, setPeerConnectionType, applyQualityConstraints])
 
   // Visibility change: restart ICE on reveal if connection dropped
   useEffect(() => {

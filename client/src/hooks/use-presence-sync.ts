@@ -22,7 +22,8 @@ const HEARTBEAT_INTERVAL_MS = 45_000
 export const usePresenceSync = usePulseRadar
 
 export function usePulseRadar(userId: string, sectors: ApiChatRow[]) {
-  const { mergePeerPresenceBatch, setPeerPresence } = useChatStore()
+  const mergePeerPresenceBatch = useChatStore(s => s.mergePeerPresenceBatch)
+  const setPeerPresence = useChatStore(s => s.setPeerPresence)
 
   // [1] PEER_ID_EXTRACTION :: Выделяем идентификаторы пиров из активных линков
   const targetPeerIds = useMemo(() => {

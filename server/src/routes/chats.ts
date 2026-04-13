@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, eq, inArray, max, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, max, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -80,36 +80,45 @@ async function findExistingDirectE2EBetween(
   userA: string,
   userB: string
 ): Promise<{ id: string; name: string | null; type: string } | null> {
-  const aRows = await db
-    .select({ chatId: chatMembers.chatId })
-    .from(chatMembers)
-    .innerJoin(chats, eq(chats.id, chatMembers.chatId))
-    .where(and(eq(chatMembers.userId, userA), eq(chats.type, 'direct_e2e')))
-
-  const bIds = new Set(
-    (
-      await db
-        .select({ chatId: chatMembers.chatId })
-        .from(chatMembers)
-        .where(eq(chatMembers.userId, userB))
-    ).map((r) => r.chatId)
+  const cm1 = db.$with('cm1').as(
+    db.select({ chatId: chatMembers.chatId }).from(chatMembers).where(eq(chatMembers.userId, userA))
+  )
+  const cm2 = db.$with('cm2').as(
+    db.select({ chatId: chatMembers.chatId }).from(chatMembers).where(eq(chatMembers.userId, userB))
   )
 
-  for (const { chatId } of aRows) {
-    if (!bIds.has(chatId)) continue
-    const members = await db
-      .select({ userId: chatMembers.userId })
-      .from(chatMembers)
-      .where(eq(chatMembers.chatId, chatId))
-    if (members.length !== 2) continue
-    const [chat] = await db
-      .select()
-      .from(chats)
-      .where(eq(chats.id, chatId))
-      .limit(1)
-    if (chat) return chat
-  }
-  return null
+  const rows = await db
+    .select({
+      id: chats.id,
+      name: chats.name,
+      type: chats.type,
+    })
+    .from(chats)
+    .innerJoin(chatMembers, eq(chatMembers.chatId, chats.id))
+    .where(
+      and(
+        eq(chats.type, 'direct_e2e'),
+        inArray(
+          chats.id,
+          db
+            .select({ chatId: chatMembers.chatId })
+            .from(chatMembers)
+            .where(eq(chatMembers.userId, userA))
+        ),
+        inArray(
+          chats.id,
+          db
+            .select({ chatId: chatMembers.chatId })
+            .from(chatMembers)
+            .where(eq(chatMembers.userId, userB))
+        )
+      )
+    )
+    .groupBy(chats.id, chats.name, chats.type)
+    .having(sql`count(${chatMembers.userId}) = 2`)
+    .limit(1)
+
+  return rows[0] ?? null
 }
 
 async function generateUniqueInviteCode(): Promise<string> {

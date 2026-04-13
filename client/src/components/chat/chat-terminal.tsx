@@ -597,7 +597,7 @@ export function ChatTerminal({
     )
     io.observe(topSentinelRef.current)
     return () => io.disconnect()
-  }, [activeChatId, hasMoreOlder, loadingOlder, oldestLoaded])
+  }, [activeChatId, hasMoreOlder, loadingOlder, oldestLoaded, olderMessages.length])
 
   if (!activeChatId) {
     return (

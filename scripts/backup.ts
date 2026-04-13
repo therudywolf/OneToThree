@@ -5,9 +5,15 @@
  * Purpose: Dumps Postgres and MinIO assets into a timestamped container.
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 import { mkdirSync, existsSync, rmSync, statSync, createWriteStream } from 'node:fs'
 import { join } from 'node:path'
+
+const BACKUP_PASSPHRASE = process.env.BACKUP_PASSPHRASE?.trim() ?? ''
+if (!BACKUP_PASSPHRASE) {
+  console.warn('>> [SYS.WARNING] BACKUP_PASSPHRASE is not set. Backup will NOT be encrypted.')
+  console.warn('>> Set BACKUP_PASSPHRASE environment variable to enable AES-256-CBC encryption.')
+}
 
 /** [CONFIG] :: Параметры архивации */
 const STASH_ROOT = join(process.cwd(), 'backups')
@@ -75,13 +81,34 @@ try {
     throw err
   }
 
-  // [4] TERMINATE_WORK_DIR :: Зачистка следов после успешной сборки
+  // [4] ENCRYPTION :: Шифрование архива через OpenSSL (если задан пароль)
+  let finalPath = archivePath
+  if (BACKUP_PASSPHRASE) {
+    const encryptedPath = `${archivePath}.enc`
+    console.log('>> [SYS.BACKUP] ENCRYPTING_STASH...')
+    try {
+      execSync(
+        `openssl enc -aes-256-cbc -pbkdf2 -salt -in "${archivePath}" -out "${encryptedPath}" -pass env:BACKUP_PASSPHRASE`,
+        { stdio: 'inherit' }
+      )
+      rmSync(archivePath, { force: true })
+      finalPath = encryptedPath
+    } catch (err) {
+      console.error('>> [FAULT] ENCRYPTION FAILED. Unencrypted archive preserved.')
+      // Keep the unencrypted archive as fallback
+    }
+  }
+
+  // [5] TERMINATE_WORK_DIR :: Зачистка следов после успешной сборки
   rmSync(WORK_DIR, { recursive: true, force: true })
 
-  const finalSize = (statSync(archivePath).size / 1024 / 1024).toFixed(2)
+  const finalSize = (statSync(finalPath).size / 1024 / 1024).toFixed(2)
   console.log(`\n>> [SYS.STASH_COMPLETE]`)
-  console.log(`>> PATH: ${archivePath}`)
+  console.log(`>> PATH: ${finalPath}`)
   console.log(`>> SIZE: ${finalSize} MB`)
+  if (BACKUP_PASSPHRASE) {
+    console.log(`>> ENCRYPTED: YES (AES-256-CBC)`)
+  }
 
 } catch (err) {
   console.error('>> [SYS.STASH_ABORTED] ::', err instanceof Error ? err.message : 'UNKNOWN_FAULT')

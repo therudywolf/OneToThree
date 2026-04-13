@@ -18,7 +18,10 @@ import { useChatStore } from '@/store/chatStore'
  */
 
 export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
-  const { activeChatId, userId, unwrappedPrivateKey, appendMessage } = useChatStore()
+  const activeChatId = useChatStore(s => s.activeChatId)
+  const userId = useChatStore(s => s.userId)
+  const unwrappedPrivateKey = useChatStore(s => s.unwrappedPrivateKey)
+  const appendMessage = useChatStore(s => s.appendMessage)
 
   /** * [DISPATCH_SEQUENCE] :: Инициация передачи пакета данных 
    */

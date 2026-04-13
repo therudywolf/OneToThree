@@ -19,7 +19,7 @@ export default function LoginPage() {
       {/* BACKGROUND_FX :: Стерильный градиент и шум */}
       <div className="pointer-events-none absolute inset-0 z-0">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-900/50 via-black to-black" />
-        <div className="absolute inset-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+        <div className="absolute inset-0 opacity-[0.03] bg-[url('/noise.svg')]" />
       </div>
 
       {/* TACTICAL_CONTROLS :: Переключатель модулей */}

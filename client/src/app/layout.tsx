@@ -71,7 +71,7 @@ export default function RootLayout({
               </div>
 
               {/* [4] NOISE_TEXTURE :: Стерильный визуальный шум */}
-              <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.02] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+              <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.02] bg-[url('/noise.svg')]" />
             </Auth401Interceptor>
           </AuthProvider>
         </ErrorBoundary>

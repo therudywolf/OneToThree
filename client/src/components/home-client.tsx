@@ -46,7 +46,7 @@ export function HomeClient() {
   return (
     <main className="relative min-h-screen bg-black overflow-hidden">
       {/* BACKGROUND_FX :: Стерильный цифровой шум */}
-      <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.03] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
+      <div className="pointer-events-none absolute inset-0 z-0 opacity-[0.03] bg-[url('/noise.svg')]" />
       
       <Suspense fallback={
         <div className="flex min-h-screen items-center justify-center bg-black">

@@ -26,6 +26,7 @@ import { useCallStore } from '@/store/callStore'
 import type { QualityLevel, PeerConnectionType } from '@/store/callStore'
 import { PortalRoot } from '@/components/portal-root'
 import { useTranslation, type TranslationKey } from '@/hooks/use-translation'
+import { RelayToast } from '@/components/call/relay-toast'
 
 type Props = {
   onEndCall: () => void
@@ -284,10 +285,10 @@ export function ActiveCallOverlay({
   const connectionQuality = useCallStore((s) => s.connectionQuality)
   const peerConnectionTypes = useCallStore((s) => s.peerConnectionTypes)
   const qualityLevel = useCallStore((s) => s.qualityLevel)
+  const callStartTime = useCallStore((s) => s.callStartTime)
 
   const [tick, setTick] = useState(0)
   const [elapsed, setElapsed] = useState(0)
-  const startRef = useRef<number | null>(null)
   const [screenShareAllowed, setScreenShareAllowed] = useState(true)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
   const [layout, setLayout] = useState<'grid' | 'focus'>('grid')
@@ -318,17 +319,15 @@ export function ActiveCallOverlay({
   const tileCount = 1 + remoteEntries.length
 
   useEffect(() => {
-    if (!isCalling || !localStream) {
-      startRef.current = null
+    if (!isCalling || !localStream || !callStartTime) {
       setElapsed(0)
       return
     }
-    startRef.current = Date.now()
     const id = window.setInterval(() => {
-      if (startRef.current) setElapsed(Date.now() - startRef.current)
+      setElapsed(Date.now() - callStartTime)
     }, 500)
     return () => window.clearInterval(id)
-  }, [isCalling, localStream])
+  }, [isCalling, localStream, callStartTime])
 
   const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
   const hasCameraTrack = (localStream?.getVideoTracks().length ?? 0) > 0
@@ -354,6 +353,7 @@ export function ActiveCallOverlay({
 
   return (
     <PortalRoot>
+      <RelayToast />
       <div className="fixed inset-0 z-[200] flex flex-col bg-zinc-950 font-mono" role="dialog">
         {/* HEADER BAR */}
         <div className="flex shrink-0 items-center justify-between border-b border-neutral-900 bg-black/50 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md">

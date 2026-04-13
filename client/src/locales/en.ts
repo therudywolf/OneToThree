@@ -69,6 +69,9 @@ const en = {
   'call.endCall': 'End Call',
   'call.reconnecting': 'Reconnecting...',
   'call.connectionLost': 'Connection lost',
+  'call.relayDegradation': 'Connection switched to relay \u2014 still encrypted',
+  'call.activePeer': 'Active call',
+  'call.returnToCall': 'Return to call',
 
   // [LOGIN]
   'login.usernameRequired': 'Username required.',

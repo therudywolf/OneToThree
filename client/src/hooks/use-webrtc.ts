@@ -122,6 +122,7 @@ export function useWebRTC(userId: string | null) {
     setReconnecting, setConnectionLost, setIceRetryCount,
     setConnectionQuality,
     setPeerConnectionType, clearPeerConnectionType,
+    setCallStartTime, setMiniPlayer,
   } = useCallStore()
 
   const flushIceQueue = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
@@ -416,11 +417,15 @@ export function useWebRTC(userId: string | null) {
                 const poor = (rtt != null && rtt > 0.3) || (bitrate != null && bitrate < 100_000)
                 setConnectionQuality({ rtt, outgoingBitrate: bitrate, poor })
 
-                // P2P vs relay detection
+                // P2P vs relay detection + relay degradation toast
                 const localCandidate = localCandidates.get(report.localCandidateId)
                 if (localCandidate) {
                   const cType = localCandidate.candidateType
                   const connType = (cType === 'relay') ? 'relay' as const : 'p2p' as const
+                  const prevType = useCallStore.getState().peerConnectionTypes[peerId]
+                  if (prevType === 'p2p' && connType === 'relay') {
+                    useCallStore.getState().setShowRelayToast(true)
+                  }
                   setPeerConnectionType(peerId, connType)
                 }
 
@@ -504,6 +509,7 @@ export function useWebRTC(userId: string | null) {
 
     setLocalStream(stream)
     setIsCalling(true)
+    setCallStartTime(Date.now())
     const relays = await getSignalRelays()
 
     for (const peerId of recipients) {
@@ -550,6 +556,7 @@ export function useWebRTC(userId: string | null) {
       await pc.setLocalDescription(answer)
       transmitSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
       setIsCalling(true)
+      setCallStartTime(Date.now())
     } catch (err) {
       purgePeer(inc.peerId)
       terminateFeed(stream)

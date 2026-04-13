@@ -12,7 +12,7 @@ import {
   unwrapPrivateJwkWithPin,
   wrapPrivateJwkWithPin,
 } from '@/lib/vault'
-import { emitHapticPulse } from '@/lib/haptics'
+import { emitHapticPulse } from '@/lib/vibrate'
 
 const BIO_META_DB = 'p13-biometric-meta'
 const BIO_META_VER = 1

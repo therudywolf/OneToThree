@@ -36,11 +36,12 @@ mkdir -p "$SECRETS_DIR"
 chmod 700 "$SECRETS_DIR"
 
 # --- Generate secrets ---------------------------------------------------------
-POSTGRES_PASSWORD=$(openssl rand -base64 32)
-MINIO_ROOT_PASSWORD=$(openssl rand -base64 32)
+# Use hex to avoid URL-unsafe chars (/, +, =) that break DATABASE_URL parsing
+POSTGRES_PASSWORD=$(openssl rand -hex 24)
+MINIO_ROOT_PASSWORD=$(openssl rand -hex 24)
 JWT_SECRET=$(openssl rand -hex 32)
 WEBHOOK_SECRET=$(openssl rand -hex 32)
-TURN_PASSWORD=$(openssl rand -base64 24)
+TURN_PASSWORD=$(openssl rand -hex 16)
 
 # --- Manual inputs ------------------------------------------------------------
 echo ""

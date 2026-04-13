@@ -53,17 +53,30 @@ read -rp "  Enter VAPID contact email (e.g. admin@onetothree.ru): " VAPID_SUBJEC
 
 CORS_ORIGIN="https://${DOMAIN}"
 
-# --- VAPID key generation -----------------------------------------------------
+# --- VAPID key generation (EC P-256 / base64url) -----------------------------
 echo ""
 echo -e "${CYN}  Generating VAPID keys...${NC}"
-VAPID_JSON=""
 VAPID_PUBLIC_KEY=""
 VAPID_PRIVATE_KEY=""
-if command -v docker >/dev/null 2>&1; then
-  VAPID_JSON=$(docker run --rm node:20-alpine sh -c \
-    'npm install -g web-push --silent 2>/dev/null && web-push generate-vapid-keys --json 2>/dev/null' 2>/dev/null || true)
-  VAPID_PUBLIC_KEY=$(echo "$VAPID_JSON" | grep -o '"publicKey":"[^"]*"' | cut -d'"' -f4 || true)
-  VAPID_PRIVATE_KEY=$(echo "$VAPID_JSON" | grep -o '"privateKey":"[^"]*"' | cut -d'"' -f4 || true)
+
+# Preferred: native openssl (fast, no network)
+TMPKEY=$(mktemp)
+if openssl ecparam -name prime256v1 -genkey -noout -out "$TMPKEY" 2>/dev/null; then
+  VAPID_PRIVATE_KEY=$(openssl ec -in "$TMPKEY" -outform DER 2>/dev/null | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=\n')
+  VAPID_PUBLIC_KEY=$(openssl ec -in "$TMPKEY" -pubout -outform DER 2>/dev/null | tail -c 65 | base64 | tr '+/' '-_' | tr -d '=\n')
+fi
+rm -f "$TMPKEY"
+
+# Fallback: docker node (slow, pulls ~40MB image)
+if [[ -z "$VAPID_PUBLIC_KEY" || -z "$VAPID_PRIVATE_KEY" ]]; then
+  echo -e "${YEL}  openssl VAPID generation failed, trying Docker fallback...${NC}"
+  VAPID_JSON=""
+  if command -v docker >/dev/null 2>&1; then
+    VAPID_JSON=$(docker run --rm node:20-alpine sh -c \
+      'npm install -g web-push --silent 2>/dev/null && web-push generate-vapid-keys --json 2>/dev/null' 2>/dev/null || true)
+    VAPID_PUBLIC_KEY=$(echo "$VAPID_JSON" | grep -o '"publicKey":"[^"]*"' | cut -d'"' -f4 || true)
+    VAPID_PRIVATE_KEY=$(echo "$VAPID_JSON" | grep -o '"privateKey":"[^"]*"' | cut -d'"' -f4 || true)
+  fi
 fi
 
 if [[ -z "$VAPID_PUBLIC_KEY" || -z "$VAPID_PRIVATE_KEY" ]]; then

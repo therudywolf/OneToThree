@@ -431,6 +431,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (reply.sent) {
       return
     }
+    // FIX 4: Require authentication for user search
+    if (!viewer) return reply.status(401).send({ error: 'UNAUTHORIZED' })
 
     const parsed = searchQuerySchema.safeParse(request.query)
     if (!parsed.success) {

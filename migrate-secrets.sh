@@ -209,7 +209,7 @@ fi
 # Use old password to connect and change to new password
 docker compose -f "$COMPOSE_FILE" --env-file "$OLD_ENV" exec -T db \
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-  -c "ALTER USER ${POSTGRES_USER} WITH PASSWORD '${NEW_PG_PASS}';" \
+  -c "ALTER USER ${POSTGRES_USER} WITH PASSWORD \$\$${NEW_PG_PASS}\$\$;" \
   && log "PostgreSQL password updated ✓" \
   || err "Failed to update PostgreSQL password"
 

@@ -57,7 +57,7 @@ export type GroupCallState = {
   reset: () => void
 }
 
-export const useGroupCallStore = create<GroupCallState>((set) => ({
+export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   isInGroupCall: false,
   roomId: null,
   isVideo: false,
@@ -111,7 +111,22 @@ export const useGroupCallStore = create<GroupCallState>((set) => ({
       const { [roomId]: _, ...rest } = s.activeCallBanner
       return { activeCallBanner: rest }
     }),
-  reset: () =>
+  reset: () => {
+    // FIX 9: Close peer connections and stop media tracks before clearing state
+    const state = get()
+    for (const pc of Object.values(state.peerConnections)) {
+      try { pc.close() } catch {}
+    }
+    if (state.localStream) {
+      for (const track of state.localStream.getTracks()) {
+        try { track.stop() } catch {}
+      }
+    }
+    for (const stream of Object.values(state.remoteStreams)) {
+      for (const track of stream.getTracks()) {
+        try { track.stop() } catch {}
+      }
+    }
     set({
       isInGroupCall: false,
       roomId: null,
@@ -123,5 +138,6 @@ export const useGroupCallStore = create<GroupCallState>((set) => ({
       showParticipantPanel: false,
       showChatPanel: false,
       isMiniPlayer: false,
-    }),
+    })
+  },
 }))

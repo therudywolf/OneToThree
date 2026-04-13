@@ -19,6 +19,7 @@ import { persistChatMessageAndFanOut } from '../lib/chat-message-persist.js'
 import { resolveMediaOriginalBytes } from '../lib/message-send-helpers.js'
 import {
   broadcastOnlineStatusChange,
+  clearPingWriteAt,
   getRelatedUserIds,
   touchLastSeen,
   touchLastSeenPing,
@@ -226,6 +227,13 @@ const toggleReactionSchema = z.object({
   emoji: z.string().min(1).max(32),
 })
 
+/** Safe ws.send that checks readyState and swallows errors on closing sockets. */
+function safeSend(ws: WebSocket, data: string) {
+  if (ws.readyState === ws.OPEN) {
+    try { ws.send(data) } catch {}
+  }
+}
+
 /** Maximum allowed WebSocket message size (64 KB — sufficient for E2E ciphertext). */
 const MAX_WS_MESSAGE_BYTES = 64 * 1024
 
@@ -314,14 +322,14 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       void (async () => {
         if (rawByteLength(raw) > MAX_WS_MESSAGE_BYTES) {
           request.log.warn({ correlationId, userId: user.id }, 'ws: message exceeds max size')
-          ws.send(JSON.stringify({ type: 'error', error: 'MESSAGE_TOO_LARGE' }))
+          safeSend(ws, JSON.stringify({ type: 'error', error: 'MESSAGE_TOO_LARGE' }))
           ws.close(1009, 'message too large')
           return
         }
 
         if (!rateLimiter.check()) {
           request.log.warn({ correlationId, userId: user.id }, 'ws: rate limit exceeded')
-          ws.send(JSON.stringify({ type: 'error', error: 'RATE_LIMIT_EXCEEDED' }))
+          safeSend(ws, JSON.stringify({ type: 'error', error: 'RATE_LIMIT_EXCEEDED' }))
           return
         }
 
@@ -330,7 +338,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           json = JSON.parse(bufferToString(raw))
         } catch {
           request.log.warn({ correlationId, userId: user.id }, 'ws: invalid json frame')
-          ws.send(JSON.stringify({ type: 'error', error: 'INVALID_JSON' }))
+          safeSend(ws, JSON.stringify({ type: 'error', error: 'INVALID_JSON' }))
           return
         }
 
@@ -342,7 +350,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               { correlationId, chatId: p.chat_id, userId: user.id },
               'ws: not a member for chat_message'
             )
-            ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
 
@@ -351,14 +359,14 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           if (memberIds.length === 2) {
             const peerId = memberIds.find((id) => id !== user.id)
             if (peerId && await isBlocked(user.id, peerId)) {
-              ws.send(JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+              safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
               return
             }
           }
 
           const burn = parseOptionalBurnAt(p.burn_at ?? null)
           if (!burn.ok) {
-            ws.send(JSON.stringify({ type: 'error', error: burn.error }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: burn.error }))
             return
           }
 
@@ -383,7 +391,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               { correlationId, chatId: p.chat_id, userId: user.id },
               'ws: insert failed for chat_message'
             )
-            ws.send(JSON.stringify({ type: 'error', error: 'INSERT_FAILED' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'INSERT_FAILED' }))
             return
           }
           return
@@ -400,7 +408,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             .where(eq(chatMembers.userId, user.id))
           const senderChatIds = senderChats.map((r) => r.chatId)
           if (senderChatIds.length === 0) {
-            ws.send(JSON.stringify({ type: 'error', error: 'NO_SHARED_CHAT' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'NO_SHARED_CHAT' }))
             return
           }
           const [targetInShared] = await db
@@ -414,7 +422,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             )
             .limit(1)
           if (!targetInShared) {
-            ws.send(JSON.stringify({ type: 'error', error: 'NO_SHARED_CHAT' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'NO_SHARED_CHAT' }))
             return
           }
 
@@ -440,7 +448,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               { correlationId, chatId: chat_id, userId: user.id },
               'ws: not a member for call_invite'
             )
-            ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
           // FIX 10: Block check — blocked users cannot call
@@ -448,7 +456,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           if (memberIds.length === 2) {
             const peerId = memberIds.find((id) => id !== user.id)
             if (peerId && await isBlocked(user.id, peerId)) {
-              ws.send(JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+              safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
               return
             }
           }
@@ -483,7 +491,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (reactionParsed.success) {
           const { message_id, chat_id, emoji } = reactionParsed.data
           if (!(await isMemberOfChat(chat_id, user.id))) {
-            ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
           // Verify message belongs to this chat
@@ -493,7 +501,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             .where(and(eq(messages.id, message_id), eq(messages.chatId, chat_id)))
             .limit(1)
           if (!msg) {
-            ws.send(JSON.stringify({ type: 'error', error: 'MESSAGE_NOT_FOUND' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'MESSAGE_NOT_FOUND' }))
             return
           }
           // Toggle: delete if exists, insert if not
@@ -548,7 +556,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (readParsed.success) {
           const { chat_id, message_id } = readParsed.data
           if (!(await isMemberOfChat(chat_id, user.id))) return
-          void markMessageReadByReader(user.id, message_id, chat_id)
+          void markMessageReadByReader(user.id, message_id, chat_id).catch(err => request.log.error(err, 'mark read failed'))
           return
         }
 
@@ -557,7 +565,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           // Revalidate session on each heartbeat: check JTI denylist + device revocation
           if (sessionJti && isJtiDenied(sessionJti)) {
             request.log.info({ correlationId, userId: user.id }, 'ws: session revoked (JTI denied)')
-            ws.send(JSON.stringify({ type: 'error', error: 'SESSION_REVOKED' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'SESSION_REVOKED' }))
             ws.close(1008, 'session revoked')
             return
           }
@@ -565,7 +573,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             const deviceOk = await assertDeviceActiveForUser(user.id, sessionDeviceId)
             if (!deviceOk) {
               request.log.info({ correlationId, userId: user.id }, 'ws: device revoked')
-              ws.send(JSON.stringify({ type: 'error', error: 'DEVICE_REVOKED' }))
+              safeSend(ws, JSON.stringify({ type: 'error', error: 'DEVICE_REVOKED' }))
               ws.close(1008, 'device revoked')
               return
             }
@@ -611,7 +619,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (gcJoin.success) {
           const { room_id } = gcJoin.data
           if (!(await isMemberOfChat(room_id, user.id))) {
-            ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
           const participants = joinRoom(room_id, user.id, user.username)
@@ -673,7 +681,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (gcOffer.success) {
           const { room_id, target_user_id, sdp, is_video } = gcOffer.data
           if (!isUserInRoom(room_id, user.id)) {
-            ws.send(JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
             return
           }
           sendToUser(target_user_id, {
@@ -690,7 +698,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (gcAnswer.success) {
           const { room_id, target_user_id, sdp } = gcAnswer.data
           if (!isUserInRoom(room_id, user.id)) {
-            ws.send(JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
             return
           }
           sendToUser(target_user_id, {
@@ -759,7 +767,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           return
         }
 
-        ws.send(JSON.stringify({ type: 'error', error: 'UNKNOWN_MESSAGE_TYPE' }))
+        safeSend(ws, JSON.stringify({ type: 'error', error: 'UNKNOWN_MESSAGE_TYPE' }))
       })().catch((err) => {
         request.log.error({ correlationId, userId: user.id, err: String(err) }, 'ws: unhandled error in message handler')
       })
@@ -787,6 +795,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       const lastSeenIso = await touchLastSeen(user.id)
       const related = await getRelatedUserIds(user.id)
       registerUserSocket(user.id, ws, (uid) => {
+        clearPingWriteAt(uid)
         void (async () => {
           // Clean up group call rooms when user's last socket closes
           const leftRooms = leaveAllRooms(uid)

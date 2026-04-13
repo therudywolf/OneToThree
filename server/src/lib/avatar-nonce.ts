@@ -4,6 +4,14 @@ const TTL_MS = 10 * 60 * 1000
 
 const nonces = new Map<string, { userId: string; exp: number }>()
 
+// Sweep expired nonces every 10 minutes
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, val] of nonces) {
+    if (now > val.exp) nonces.delete(key)
+  }
+}, 10 * 60 * 1000).unref()
+
 /** Issue a one-time nonce for signed avatar uploads. */
 export function issueAvatarNonce(userId: string): string {
   const nonce = randomUUID()

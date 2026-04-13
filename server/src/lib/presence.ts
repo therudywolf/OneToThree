@@ -28,6 +28,19 @@ export async function touchLastSeen(userId: string): Promise<string> {
 
 const pingWriteAt = new Map<string, number>()
 
+/** Remove a user's throttle entry on disconnect to prevent unbounded Map growth. */
+export function clearPingWriteAt(userId: string): void {
+  pingWriteAt.delete(userId)
+}
+
+// Sweep stale entries older than 1 hour every 10 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 60 * 60 * 1000
+  for (const [uid, ts] of pingWriteAt) {
+    if (ts < cutoff) pingWriteAt.delete(uid)
+  }
+}, 10 * 60 * 1000).unref()
+
 /** Throttled last_seen update for heartbeats (reduces DB writes). */
 export async function touchLastSeenPing(
   userId: string,

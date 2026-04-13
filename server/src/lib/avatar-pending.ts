@@ -7,6 +7,14 @@ const pendingAvatarKeys = new Map<
   { key: string; exp: number }
 >()
 
+// Sweep expired pending avatar keys every 10 minutes
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, val] of pendingAvatarKeys) {
+    if (now > val.exp) pendingAvatarKeys.delete(key)
+  }
+}, 10 * 60 * 1000).unref()
+
 export function setPendingAvatarKey(userId: string, key: string): void {
   pendingAvatarKeys.set(userId, { key, exp: Date.now() + TTL_MS })
 }

@@ -60,7 +60,7 @@ export async function sendPushToUser(
     data: { url: payload.url },
   })
 
-  for (const row of rows) {
+  await Promise.allSettled(rows.map(async (row) => {
     const subscription = {
       endpoint: row.endpoint,
       keys: {
@@ -79,5 +79,5 @@ export async function sendPushToUser(
           .where(eq(pushSubscriptions.id, row.id))
       }
     }
-  }
+  }))
 }

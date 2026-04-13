@@ -340,6 +340,16 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'settings.totpDisableWarn': 'Отключение двухфакторной аутентификации снизит безопасность.',
   'settings.totpDisableCode': 'Текущий код',
 
+  'settings.changePinTitle': 'Сменить пароль хранилища',
+  'settings.changePinHint': 'Перешифровать приватные ключи новым паролем.',
+  'settings.changePinAction': 'Сменить пароль',
+  'settings.changePinOld': 'Текущий пароль',
+  'settings.changePinNew': 'Новый пароль',
+  'settings.changePinConfirmLabel': 'Подтвердите новый пароль',
+  'settings.changePinMinLength': 'Новый пароль должен быть не менее 6 символов.',
+  'settings.changePinSameAsOld': 'Новый пароль должен отличаться от текущего.',
+  'settings.changePinSuccess': 'Пароль хранилища изменён.',
+
   'settings.tabGeneral': 'Основное',
   'settings.tabMedia': 'Камера и микрофон',
   'settings.mediaSectionTitle': 'Камера и микрофон',

@@ -79,6 +79,47 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   const s3 = createS3Client()
   const presignS3 = createS3ClientForPresigning()
 
+  /**
+   * Change vault PIN: client decrypts with old PIN, re-encrypts with new PIN,
+   * and sends the new blob. Server stores it (vault is opaque encrypted data).
+   */
+  app.post('/me/vault/change-pin', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const parsed = z
+      .object({ encrypted_blob: z.string().min(1) })
+      .safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const [current] = await db
+      .select({ vaultVersion: users.vaultVersion })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+
+    const curVer = current?.vaultVersion ?? 0
+    const nextVer = curVer + 1
+    const now = new Date()
+
+    await db
+      .update(users)
+      .set({
+        vaultBlob: parsed.data.encrypted_blob,
+        vaultVersion: nextVer,
+        vaultUpdatedAt: now,
+      })
+      .where(eq(users.id, user.id))
+
+    return reply.send({
+      ok: true,
+      vault_version: nextVer,
+      updated_at: now.toISOString(),
+    })
+  })
+
   app.get('/me/avatar-challenge', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

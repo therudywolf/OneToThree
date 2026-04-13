@@ -8,7 +8,11 @@ import { nuclearWipeClient } from '@/lib/client-wipe'
 import {
   readVaultBlob,
   unwrapPrivateJwkWithPin,
+  wrapPrivateJwkWithPin,
+  persistVaultBlob,
+  persistVaultBlobByLoginUsername,
 } from '@/lib/vault'
+import { changeVaultPinOnServer } from '@/lib/api/vault'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { clearAllMediaCache } from '@/lib/media-cache'
 import { SettingsDevicesPanel } from '@/components/settings-devices-panel'
@@ -48,6 +52,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [settingsTab, setSettingsTab] = useState<'main' | 'media' | 'devices' | 'security'>(
     'main'
   )
+  const [changePinOpen, setChangePinOpen] = useState(false)
+  const [changePinOld, setChangePinOld] = useState('')
+  const [changePinNew, setChangePinNew] = useState('')
+  const [changePinConfirm, setChangePinConfirm] = useState('')
+  const [changePinBusy, setChangePinBusy] = useState(false)
+  const [changePinSuccess, setChangePinSuccess] = useState(false)
   const [killOpen, setKillOpen] = useState(false)
   const [killPhrase, setKillPhrase] = useState('')
   const [killPin, setKillPin] = useState('')
@@ -199,6 +209,50 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setError(e instanceof Error ? e.message : t('settings.unknown'))
     } finally {
       setTotpBusy(false)
+    }
+  }
+
+  async function changeVaultPin() {
+    setError(null)
+    if (changePinNew.length < 6) {
+      setError(t('settings.changePinMinLength'))
+      return
+    }
+    if (changePinNew === changePinOld) {
+      setError(t('settings.changePinSameAsOld'))
+      return
+    }
+    if (changePinNew !== changePinConfirm) {
+      setError(t('login.vaultPasswordMismatch'))
+      return
+    }
+    const blob = readVaultBlob(userId)
+    if (!blob) {
+      setError(t('settings.noLocalVault'))
+      return
+    }
+    setChangePinBusy(true)
+    try {
+      const jwkString = await unwrapPrivateJwkWithPin(blob, changePinOld)
+      const newBlob = await wrapPrivateJwkWithPin(jwkString, changePinNew)
+      const result = await changeVaultPinOnServer({
+        encrypted_blob: JSON.stringify(newBlob),
+      })
+      if (!result.ok) {
+        throw new Error(result.error ?? 'CHANGE_PIN_FAILED')
+      }
+      persistVaultBlob(userId, newBlob)
+      persistVaultBlobByLoginUsername(username, newBlob)
+      setChangePinOld('')
+      setChangePinNew('')
+      setChangePinConfirm('')
+      setChangePinOpen(false)
+      setChangePinSuccess(true)
+      setTimeout(() => setChangePinSuccess(false), 2000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setChangePinBusy(false)
     }
   }
 
@@ -561,6 +615,90 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Change Vault PIN */}
+            <div className="border border-neon-cyan/30 p-3">
+              <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">
+                {t('settings.changePinTitle')}
+              </p>
+              <p className="mb-3 text-[9px] text-red-800">{t('settings.changePinHint')}</p>
+              {!changePinOpen ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChangePinOpen(true)
+                    setChangePinOld('')
+                    setChangePinNew('')
+                    setChangePinConfirm('')
+                    setError(null)
+                  }}
+                  className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
+                >
+                  [ {t('settings.changePinAction')} ]
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <label className="terminal-label" htmlFor="change-pin-old">
+                    {t('settings.changePinOld')}
+                  </label>
+                  <input
+                    id="change-pin-old"
+                    type="password"
+                    className="terminal-input text-[10px]"
+                    value={changePinOld}
+                    onChange={(e) => setChangePinOld(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <label className="terminal-label" htmlFor="change-pin-new">
+                    {t('settings.changePinNew')}
+                  </label>
+                  <input
+                    id="change-pin-new"
+                    type="password"
+                    className="terminal-input text-[10px]"
+                    value={changePinNew}
+                    onChange={(e) => setChangePinNew(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <label className="terminal-label" htmlFor="change-pin-confirm">
+                    {t('settings.changePinConfirmLabel')}
+                  </label>
+                  <input
+                    id="change-pin-confirm"
+                    type="password"
+                    className="terminal-input text-[10px]"
+                    value={changePinConfirm}
+                    onChange={(e) => setChangePinConfirm(e.target.value)}
+                    autoComplete="off"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={changePinBusy}
+                      onClick={() => void changeVaultPin()}
+                      className="flex-1 border border-neon-cyan bg-black py-1 font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+                    >
+                      {changePinBusy ? '[ ... ]' : `[ ${t('common.confirm')} ]`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChangePinOpen(false)
+                        setChangePinOld('')
+                        setChangePinNew('')
+                        setChangePinConfirm('')
+                      }}
+                      className="flex-1 border border-zinc-600 py-1 font-mono text-[10px] text-zinc-400"
+                    >
+                      [ {t('common.cancel')} ]
+                    </button>
+                  </div>
+                </div>
+              )}
+              {changePinSuccess ? (
+                <p className="mt-2 text-[10px] text-neon-cyan">:: {t('settings.changePinSuccess')}</p>
+              ) : null}
             </div>
 
             {/* Device Linking Gate */}

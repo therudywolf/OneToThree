@@ -25,8 +25,8 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
     const iceServers = [...DEFAULT_ICE_SERVERS]
 
     const rawUrl = process.env.TURN_URL?.trim()
-    const rawUser = process.env.TURN_USER?.trim()
-    const rawSecret = process.env.TURN_SECRET?.trim()
+    const rawUser = process.env.TURN_USERNAME?.trim()
+    const rawSecret = process.env.TURN_PASSWORD?.trim()
 
     if (rawUrl && rawUser && rawSecret) {
       const urls = parseTurnUrls(rawUrl)

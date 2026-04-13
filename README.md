@@ -1,193 +1,210 @@
-# PROJECT 13 / FOREST MESSENGER
+# Forest Messenger
 
-**One to Three** — a clinical, **E2EE-fortified shadow bunker** for your pack.  
-Self-hosted. Zero-trust lane. The server routes blind; the client encrypts.
+Self-hosted end-to-end encrypted messenger. The server stores only ciphertext — private keys never leave the browser.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  :: NO CLOUD CHAT ::  :: NO PLAINTEXT AT REST ::  :: PWA    │
-│  POSTGRES · MINIO · FASTIFY · NEXT · WEBRTC · CADDY         │
-└─────────────────────────────────────────────────────────────┘
-```
-
-[![Stack](https://img.shields.io/badge/Stack-Monolith-000000?style=flat-square&logo=docker&logoColor=00FFFF)](https://github.com/therudywolf)
-[![E2EE](https://img.shields.io/badge/E2EE-AES--GCM%2BECDH-FF0000?style=flat-square)](./SECURITY.md)
-
-> *The corridor is lit only by cyan spill. Every packet is a sealed envelope.*
+**[Русская документация → README.ru.md](./README.ru.md)**
 
 ---
 
-## Identity
+## Features
 
-| Field | Value |
-|--------|--------|
-| **Codename** | Project 13 (Forest Messenger / One to Three) |
-| **Posture** | Host-level control · browser-held keys · opaque ciphertext on disk |
-| **Operator** | [Rudy Wolf](https://rudywolf.ru) |
+- **E2EE messaging** — AES-GCM-256 per message, ECDH key exchange, keys stored in browser vault
+- **Voice & video calls** — WebRTC with TURN relay, ICE fallback, connection quality monitoring
+- **File sharing** — encrypted media upload to MinIO/S3, client-side decryption
+- **Groups** — encrypted group key distribution per member
+- **Multi-device** — QR-based device linking, device revocation
+- **2FA** — optional TOTP (RFC 6238)
+- **PWA** — installable, offline banner, push notifications via Web Push (VAPID)
+- **Self-hosted** — single Docker Compose stack, automatic TLS via Let's Encrypt (Caddy)
 
----
-
-## Stack (frozen manifest)
-
-| Layer | Technology |
-|--------|------------|
-| **Web** | **Next.js 16** (App Router), React 19, Tailwind (purged: `src/app`, `components`, `hooks`, `lib`) |
-| **API** | **Fastify** + `@fastify/websocket` + **web-push** (VAPID) |
-| **Data** | **PostgreSQL** + **Drizzle ORM** |
-| **Objects** | **MinIO** (S3-compatible presigned PUT/GET) |
-| **Realtime** | **WebRTC** (STUN + custom WS signaling) |
-| **Edge** | **Caddy 2** (reverse proxy + **automatic HTTPS** / Let’s Encrypt) |
-
-Deep references: **[API.md](./API.md)** · **[ARCHITECTURE.md](./ARCHITECTURE.md)** · **[SECURITY.md](./SECURITY.md)** · **[MANIFEST.md](./MANIFEST.md)** (production file map & launch checklist)
+**Stack:** Next.js 16 · Fastify · PostgreSQL · MinIO · WebRTC · Caddy · coturn
 
 ---
 
-## Security architecture (short wire)
+## Quick Start
 
-1. **Vault (browser)** — Passphrase-derived wrapping; **ECDSA P-256** for auth challenges; **ECDH** for session message keys. Server stores **public** signing JWK + opaque `vault_blob` only.
-2. **Messaging** — **AES-GCM-256** payloads; direct chats derive from ECDH; group keys are wrapped per member ciphertext.
-3. **TOTP 2FA** — Optional RFC 6238; server stores encrypted secret flag; no SMS dependency.
-4. **Warden (admin)** — Role-gated `/admin` + `/api/admin/*`; **host-level** moderation (reports, visibility). Does **not** decrypt E2EE message bodies.
-5. **Transport** — `fm_session` HTTP-only cookie; **CORS** locked to explicit origins in production; **`TRUST_PROXY=1`** behind Caddy so **`request.ip`** reflects the real client.
+### Requirements
 
-Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error": "INTERNAL_SERVER_ERROR" }`** — no stack traces to clients.
+- Linux VPS (4+ vCPU, 4+ GB RAM recommended)
+- Docker + Docker Compose v2
+- Domain with DNS pointing to the server
+- Ports **80**, **443**, **3478/tcp+udp**, **49152–65535/udp** open
 
----
-
-## The Monolith launch (production)
-
-### Prerequisites
-
-- **Docker** + **Compose v2** (`docker compose`) on the host (Linux VPS, or **WSL2** / macOS for `./setup.sh`).
-- **openssl** (for `./setup.sh` secret generation).
-- **Public DNS** for **`onetothree.ru`**, **`api.onetothree.ru`**, **`s3.onetothree.ru`** pointing at this host’s public IP, and **ports 80 + 443** reachable from the internet (required for **Let’s Encrypt** via Caddy — see `Caddyfile` for ACME contact email).
-- **`.env.prod`** at repo root: if missing, **`./setup.sh`** creates it from the single template **`.env.prod.example`**. You must set strong **Postgres / MinIO / CORS** values and **`TURN_EXTERNAL_IP`** (run `curl -s ifconfig.me` on the host); **JWT**, **WEBHOOK_SECRET**, and **VAPID** can be auto-generated when left empty.
-
-### Single claw
+### 1. Clone and configure
 
 ```bash
-chmod +x ./setup.sh
-./setup.sh
+git clone -b ver2 https://github.com/therudywolf/OneToThree.git
+cd OneToThree
+cp .env.prod.example .env.prod
+nano .env.prod
 ```
 
-The script:
+Fill in the **6 required fields** (marked `← FILL IN` in the file):
 
-1. Verifies **Docker**, **Compose**, and **openssl**.  
-2. Creates **`.env.prod`** from the template when absent, then prompts you to save required operator secrets.  
-3. **Auto-fills** empty or placeholder **`JWT_SECRET`**, **`WEBHOOK_SECRET`**, and **VAPID** keys (VAPID uses a short **Node** container via Docker; **`NEXT_PUBLIC_VAPID_PUBLIC_KEY`** is synced to the public key).  
-4. Reminds you that **Caddy** will use **automatic TLS** (no manual PEMs).  
-5. Validates **non-empty** `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `CORS_ORIGIN`, `JWT_SECRET`, and **`TURN_EXTERNAL_IP`** (public IP for coturn NAT traversal — run `curl -s ifconfig.me`).  
-6. Runs **`docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`**.  
-7. **`db-migrate`** runs automatically as a **one-shot** after Postgres is **healthy**; **api** waits for migrate + MinIO + DB. Prints a **Noir-style** status block with host hint and log commands.
+| Variable | What to set |
+|---|---|
+| `POSTGRES_PASSWORD` | Strong random password for the database |
+| `MINIO_ROOT_PASSWORD` | Strong random password for file storage |
+| `CORS_ORIGIN` | Your domain: `https://your-domain.com` |
+| `ACME_EMAIL` | Your email for Let's Encrypt notifications |
+| `TURN_EXTERNAL_IP` | Server public IP: `curl -s ifconfig.me` |
+| `TURN_PASSWORD` | Strong random password for TURN relay |
 
-### `docker-compose.prod.yml` (hardened · high-throughput lane)
+Everything else (`JWT_SECRET`, `WEBHOOK_SECRET`, VAPID keys) is **auto-generated** on first run.
 
-- **`restart: always`** on `db`, `minio`, `api`, `web`, `caddy`.  
-- **CPU priority**: **`cpu_shares: 512`** on **web**, **api**, and **db**. **web** / **api** may use up to **`cpus: '4.0'`** each; **db** is capped at **`cpus: '1.0'`** so the lane stays predictable on a 4C host (tunable).  
-- **Memory (typical 4C / 6GB+ class)**: **web** `1536m` limit / `512m` reservation · **api** `1024m` / `256m` · **db** & **minio** `512m` each · **api** `tmpfs` `/tmp` **128m** (signaling-heavy workloads).  
-- **Healthchecks**: Postgres (**`pg_isready -U $POSTGRES_USER -d $POSTGRES_DB`**), MinIO (`mc ready`), API (`GET /health`), Web (Node `fetch` to `/`).  
-- **Caddy** starts only when **web**, **api**, and **minio** report **`service_healthy`**. **Only Caddy** publishes **`80`** and **`443`** to the host; **api**, **db**, **minio**, **web** stay on **`app_network`** (no host ports).  
-- **Volumes** (named, persistent): **`pgdata`** (Postgres), **`minio_data`**, **`caddy_data`** (Caddy **ACME certs + TLS state** under `/data`), **`caddy_config`** (`/config`). Upgrading from an older compose that used `postgres_data`: bind-migrate data into **`pgdata`** or rename the volume once; see comment in `docker-compose.prod.yml`.  
-- **`TRUST_PROXY`** on API (default **`1`** via Compose when unset).
+### 2. Configure DNS
 
-### DNS → Caddy (Automatic Shield)
+Point DNS records to your server IP:
 
-Point **A/AAAA** records for **`onetothree.ru`**, **`api.onetothree.ru`**, **`s3.onetothree.ru`**, and **`turn.onetothree.ru`** at the VPS public IP. **`turn.*` must be "DNS only" (gray cloud) in Cloudflare** — orange proxy blocks UDP/TCP traffic that TURN needs. Set **`TURN_EXTERNAL_IP`** in `.env.prod` to the server's public IP (`curl -s ifconfig.me`). Align **`Caddyfile`** hostnames and **`.env.prod`** (`NEXT_PUBLIC_API_URL`, `CORS_ORIGIN`) with the same names.
+| Record | Type | Value |
+|---|---|---|
+| `your-domain.com` | A | Server IP |
+| `api.your-domain.com` | A | Server IP |
+| `s3.your-domain.com` | A | Server IP |
+| `turn.your-domain.com` | A | Server IP ← **DNS only, no proxy** |
 
-**The Watcher** — after `./setup.sh`, follow Caddy until certificates are issued:
+> **Cloudflare users:** `turn.*` must be set to **"DNS only" (gray cloud)**. The orange proxy blocks UDP traffic that WebRTC calls need. The other records can stay proxied.
+
+### 3. Open firewall ports
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f caddy
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 3478/tcp
+ufw allow 3478/udp
+ufw allow 49152:65535/udp
 ```
 
-Look for *obtaining certificate* / *certificate obtained successfully*. If ACME fails, fix DNS or firewall first; certificates live in the **`caddy_data`** volume (no `./certs` folder required).
+### 4. Launch
+
+```bash
+chmod +x ./start.sh
+./start.sh
+```
+
+The script will:
+1. Auto-generate missing secrets (`JWT_SECRET`, `WEBHOOK_SECRET`, VAPID keys)
+2. Sync `TURN_PASSWORD` to `NEXT_PUBLIC_TURN_PASSWORD` automatically
+3. Build and start all containers
+4. Wait for health checks to pass
+5. Show the stack status
+
+TLS certificates are obtained automatically from Let's Encrypt. First run takes 2–5 minutes.
 
 ---
 
-## Warden bootstrap (first admin)
-
-After the stack is healthy and you have registered the first user (normal signup flow), promote them **inside the DB** (example — adjust container/user names):
+## Managing the Stack
 
 ```bash
+./start.sh              # Start / rebuild
+./start.sh stop         # Stop all containers
+./start.sh restart      # Restart without rebuilding
+./start.sh logs         # Live logs (all services)
+./start.sh status       # Container status
+./start.sh update       # git pull + rebuild (data preserved)
+./start.sh backup       # Dump database → backups/db_TIMESTAMP.sql.gz
+```
+
+### Update to a new version
+
+```bash
+./start.sh update
+```
+
+This runs `git pull` and rebuilds images. **Databases, files, and TLS certificates are preserved** — they live in Docker named volumes and are never touched by `--build`.
+
+> Never run `docker compose down -v` unless you want to erase all data.
+
+---
+
+## First Admin
+
+After the stack is running, register through the normal signup flow, then promote yourself to admin:
+
+```bash
+./start.sh status   # confirm stack is healthy first
+
 docker compose -f docker-compose.prod.yml --env-file .env.prod exec db \
-  psql -U forest -d forest -c "UPDATE users SET role = 'admin' WHERE username = 'your_handle';"
+  psql -U forest -d forest \
+  -c "UPDATE users SET role = 'admin' WHERE username = 'your_handle';"
 ```
 
-Then open **`/admin`** while logged in as that user. Rotate secrets if this command ever appears in shell history on a shared box.
+Then open `/admin` while logged in.
 
 ---
 
-## Digital Den (local media cache)
+## Backup & Restore
 
-| Concern | Behaviour |
-|---------|-----------|
-| **Client** | **Dexie** / IndexedDB **`project13-media-cache`** stores **decrypted** media blobs keyed by `message_id` (device-only; fastest replay). |
-| **Cap** | **~1 GiB** total + **200 entries** max — oldest evicted first so the first **1000+ text messages** do not bloat media storage. |
-| **Server** | **Retention purge** (optional): deletes MinIO objects older than **`MEDIA_RETENTION_DAYS`** and nulls `media_path` on rows. Tune **`MEDIA_RETENTION_DAYS`** in **`.env.prod`** so total object storage stays inside your disk budget (e.g. **40–50GB** — lower days or batch size if uploads are large). **Off-peak** UTC window + small batches + short delays between rows (see **`env.prod.example`**). |
-| **Download policy** | Presigned GET only if a **live** `messages.media_path` row still claims the object — otherwise **`410 FILE_EXPIRED`**. UI: *FILE EXPIRED ON SERVER* / *Срок хранения на сервере истек.* |
+**Create a backup:**
+```bash
+./start.sh backup
+# Saves to: backups/db_YYYYMMDD_HHMMSS.sql.gz
+```
 
-**Settings → SENSORS → DIGITAL DEN:** shows occupancy and **CLEAR LOCAL CACHE**. Nuclear “purge local” in Settings also wipes this store.
+**Restore from backup:**
+```bash
+gunzip -c backups/db_20260101_120000.sql.gz | \
+  docker compose -f docker-compose.prod.yml --env-file .env.prod \
+  exec -T db psql -U forest -d forest
+```
 
 ---
 
-## Developer quick lane (not production)
+## Caddyfile (Custom Domains)
+
+Edit `Caddyfile` to replace `onetothree.ru` with your domain, then rebuild:
 
 ```bash
-npm install
-npm run setup          # merges .env templates, JWT/VAPID hints
-docker compose up --build   # dev stack: Next dev + API on :3000 / :8080
-```
-
-| Script | Purpose |
-|--------|---------|
-| `npm run dev` | Next.js dev (client) |
-| `npm run dev:server` | Fastify with reload |
-| `npm run build` | Production **client + server** |
-| `npm run db:push` | Drizzle schema → Postgres (local) |
-
----
-
-## i18n
-
-- **EN / RU** — login + in-app globe; Settings includes language.  
-- Keys live in **`client/src/locales/en.ts`** and **`ru.ts`** — keep them in sync when adding UI.
-
----
-
-## Repository hygiene
-
-- **Never commit** `.env`, `.env.prod`, `.env.local`, or live TLS keys.  
-- **Tracked:** `server/drizzle/*.sql` migrations.  
-- **Ignored:** `backups/`, `logs/`, volume dirs — see `.gitignore`.
-
----
-
-## Backup
-
-```bash
-npx tsx scripts/backup.ts
+./start.sh restart
 ```
 
 ---
 
-## Troubleshooting (field notes)
+## Troubleshooting
 
-| Symptom | Likely fix |
-|---------|------------|
-| Caddy / ACME fails | Confirm **DNS** → this host, **80/443** open, `logs -f caddy`; check rate limits at Let’s Encrypt. |
-| Web: `Cannot find module '.../server.js'` | **`outputFileTracingRoot`** in `client/next.config.js` must be the **client** dir (not `..`) when the image builds with **`context: ./client`**; production entry is **`/app/server.js`**. Rebuild **web** (`docker compose … build --no-cache web`). |
-| `FILE_EXPIRED` on media | Object purged or row cleared — peer must re-send; local **Digital Den** may still have a copy. |
-| Wrong client IP in logs | Set **`TRUST_PROXY=1`** for API behind Caddy. |
-| CORS / preflight regressions | See **[docs/cors-and-requests-audit.md](./docs/cors-and-requests-audit.md)** and run **`npm run cors:smoke`** with `CORS_SMOKE_API_URL` + `CORS_SMOKE_ORIGIN` against your deployed API. |
-| After login, **307 loop** to `/login` on the web host | Set **`COOKIE_DOMAIN=.your-apex.tld`** in **`.env.prod`** (same parent as **`CORS_ORIGIN`** and **`NEXT_PUBLIC_API_URL`** subdomains). Rebuild **api**; cookie must be **`SameSite=Lax`**, **`Secure`**, and **`Domain`**-scoped (see `server/src/lib/session-cookie.ts`). |
-| `relation "users" does not exist` | Ensure **`db-migrate`** completed; `docker compose … logs db-migrate`. |
+| Symptom | Fix |
+|---|---|
+| Caddy fails to get certificate | Confirm DNS resolves to this server, ports 80/443 are open. Check: `./start.sh logs` → filter caddy |
+| WebRTC calls don't work | Make sure `turn.*` DNS is **not** proxied by Cloudflare. Check `TURN_EXTERNAL_IP` is correct |
+| Login redirect loop `/login` | Set `COOKIE_DOMAIN=.your-domain.com` in `.env.prod`, rebuild api |
+| `relation "users" does not exist` | Migration failed — check: `docker compose logs db-migrate` |
+| Media shows "File expired" | Object was purged by retention policy or peer must re-send |
+| Wrong IPs in logs | Ensure `TRUST_PROXY=1` in `.env.prod` |
+
+---
+
+## Security Model
+
+- **Private keys never leave the browser.** The vault is encrypted with PBKDF2 + AES-GCM locally.
+- **Server stores only ciphertext.** Messages, media, and group keys are opaque blobs.
+- **Auth via ECDSA challenge-response.** No passwords sent to the server.
+- **Media encrypted before upload** to MinIO.
+- **WebRTC signaling is relayed as opaque payloads** — server does not parse SDP.
+
+See [SECURITY.md](./SECURITY.md) for the full threat model and [ARCHITECTURE.md](./ARCHITECTURE.md) for data flow details.
+
+---
+
+## Environment Reference
+
+Full reference: [`.env.prod.example`](./.env.prod.example)
+
+| Variable | Auto-generated | Required |
+|---|---|---|
+| `POSTGRES_PASSWORD` | No | Yes |
+| `MINIO_ROOT_PASSWORD` | No | Yes |
+| `CORS_ORIGIN` | No | Yes |
+| `ACME_EMAIL` | No | Yes |
+| `TURN_EXTERNAL_IP` | No | Yes |
+| `TURN_PASSWORD` | No | Yes |
+| `JWT_SECRET` | Yes | — |
+| `WEBHOOK_SECRET` | Yes | — |
+| `VAPID_PUBLIC_KEY` | Yes | — |
+| `VAPID_PRIVATE_KEY` | Yes | — |
+| `DATABASE_URL` | Yes (from POSTGRES_*) | — |
 
 ---
 
 ## Contact
 
-[Telegram](https://t.me/rudy_wolf) · [X](https://x.com/therudywolf) · [GitHub](https://github.com/therudywolf)
-
----
-
-*Project 13 / Forest Messenger — the monolith stands; the vault stays on your machine.*
+[Telegram](https://t.me/rudy_wolf) · [GitHub](https://github.com/therudywolf)

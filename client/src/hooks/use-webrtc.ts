@@ -43,6 +43,15 @@ async function fetchIceServers(): Promise<RTCIceServer[]> {
         throw new Error('Invalid ICE server entry')
       }
       return item as RTCIceServer
+    }).map((server) => {
+      if (typeof server.urls === 'string' && server.urls.startsWith('turn:')) {
+        server.urls = [server.urls + '?transport=tcp', server.urls + '?transport=udp']
+      } else if (Array.isArray(server.urls)) {
+        server.urls = server.urls.flatMap((url) =>
+          url.startsWith('turn:') ? [url + '?transport=tcp', url + '?transport=udp'] : [url]
+        )
+      }
+      return server
     })
   } catch (err) {
     console.warn(
@@ -654,6 +663,7 @@ export function useWebRTC(userId: string | null) {
     const iceServers = await fetchIceServers()
     const pc = new RTCPeerConnection({ 
       iceServers,
+      iceTransportPolicy: 'relay',
       iceCandidatePoolSize: 10
     })
     pcsRef.current.set(inc.peerId, pc)
@@ -731,6 +741,7 @@ export function useWebRTC(userId: string | null) {
         const iceServers = await fetchIceServers()
         const pc = new RTCPeerConnection({ 
           iceServers,
+          iceTransportPolicy: 'relay',
           iceCandidatePoolSize: 10
         })
         pcsRef.current.set(peerId, pc)

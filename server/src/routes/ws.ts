@@ -27,6 +27,16 @@ import {
   registerUserSocket,
   sendToUser,
 } from '../ws/registry.js'
+import {
+  joinRoom,
+  leaveRoom,
+  leaveAllRooms,
+  getRoomParticipants,
+  getRoomParticipantIds,
+  isUserInRoom,
+  updateParticipantState,
+  isRoomActive,
+} from '../ws/group-call-rooms.js'
 
 /**
  * Resolves authenticated websocket user from session cookie or ws ticket JWT.
@@ -121,6 +131,58 @@ const typingStopSchema = z.object({
 
 const presencePingSchema = z.object({
   type: z.literal('presence_ping'),
+})
+
+// --- Group Call Schemas ---
+const groupCallJoinSchema = z.object({
+  type: z.literal('group_call:join'),
+  room_id: z.string().uuid(),
+  is_video: z.boolean().default(false),
+})
+
+const groupCallLeaveSchema = z.object({
+  type: z.literal('group_call:leave'),
+  room_id: z.string().uuid(),
+})
+
+const groupCallOfferSchema = z.object({
+  type: z.literal('group_call:offer'),
+  room_id: z.string().uuid(),
+  target_user_id: z.string().uuid(),
+  sdp: z.string(),
+  is_video: z.boolean().default(false),
+})
+
+const groupCallAnswerSchema = z.object({
+  type: z.literal('group_call:answer'),
+  room_id: z.string().uuid(),
+  target_user_id: z.string().uuid(),
+  sdp: z.string(),
+})
+
+const groupCallIceSchema = z.object({
+  type: z.literal('group_call:ice'),
+  room_id: z.string().uuid(),
+  target_user_id: z.string().uuid(),
+  candidate: z.unknown(),
+})
+
+const groupCallMuteSchema = z.object({
+  type: z.literal('group_call:mute'),
+  room_id: z.string().uuid(),
+  is_muted: z.boolean(),
+})
+
+const groupCallVideoToggleSchema = z.object({
+  type: z.literal('group_call:video_toggle'),
+  room_id: z.string().uuid(),
+  is_video_off: z.boolean(),
+})
+
+const groupCallSpeakingSchema = z.object({
+  type: z.literal('group_call:speaking'),
+  room_id: z.string().uuid(),
+  is_speaking: z.boolean(),
 })
 
 /** Maximum allowed WebSocket message size (1 MB). */
@@ -339,6 +401,159 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           return
         }
 
+        // --- GROUP CALL SIGNALING ---
+        const gcJoin = groupCallJoinSchema.safeParse(json)
+        if (gcJoin.success) {
+          const { room_id } = gcJoin.data
+          if (!(await isMemberOfChat(room_id, user.id))) {
+            ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
+            return
+          }
+          const participants = joinRoom(room_id, user.id, user.username)
+          // Send current participant list to the joiner
+          sendToUser(user.id, {
+            type: 'group_call:participant_list',
+            room_id,
+            participants,
+          })
+          // Notify all other room participants that someone joined
+          const otherIds = getRoomParticipantIds(room_id).filter(id => id !== user.id)
+          broadcastToUsers(otherIds, {
+            type: 'group_call:member_join',
+            room_id,
+            user_id: user.id,
+            username: user.username,
+          })
+          // Also broadcast to all chat members that a call is active
+          const chatMemberIds = await getChatMemberIds(room_id)
+          const nonCallMembers = chatMemberIds.filter(id => !isUserInRoom(room_id, id))
+          broadcastToUsers(nonCallMembers, {
+            type: 'group_call:active',
+            room_id,
+            participant_count: participants.length,
+          })
+          return
+        }
+
+        const gcLeave = groupCallLeaveSchema.safeParse(json)
+        if (gcLeave.success) {
+          const { room_id } = gcLeave.data
+          const remaining = leaveRoom(room_id, user.id)
+          const otherIds = remaining.map(p => p.userId)
+          broadcastToUsers(otherIds, {
+            type: 'group_call:member_leave',
+            room_id,
+            user_id: user.id,
+          })
+          // Notify chat members about updated call state
+          if (remaining.length === 0) {
+            const chatMemberIds = await getChatMemberIds(room_id)
+            broadcastToUsers(chatMemberIds, {
+              type: 'group_call:ended',
+              room_id,
+            })
+          } else {
+            const chatMemberIds = await getChatMemberIds(room_id)
+            const nonCallMembers = chatMemberIds.filter(id => !isUserInRoom(room_id, id))
+            broadcastToUsers(nonCallMembers, {
+              type: 'group_call:active',
+              room_id,
+              participant_count: remaining.length,
+            })
+          }
+          return
+        }
+
+        const gcOffer = groupCallOfferSchema.safeParse(json)
+        if (gcOffer.success) {
+          const { room_id, target_user_id, sdp, is_video } = gcOffer.data
+          if (!isUserInRoom(room_id, user.id)) {
+            ws.send(JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
+            return
+          }
+          sendToUser(target_user_id, {
+            type: 'group_call:offer',
+            room_id,
+            from_user_id: user.id,
+            sdp,
+            is_video,
+          })
+          return
+        }
+
+        const gcAnswer = groupCallAnswerSchema.safeParse(json)
+        if (gcAnswer.success) {
+          const { room_id, target_user_id, sdp } = gcAnswer.data
+          if (!isUserInRoom(room_id, user.id)) {
+            ws.send(JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
+            return
+          }
+          sendToUser(target_user_id, {
+            type: 'group_call:answer',
+            room_id,
+            from_user_id: user.id,
+            sdp,
+          })
+          return
+        }
+
+        const gcIce = groupCallIceSchema.safeParse(json)
+        if (gcIce.success) {
+          const { room_id, target_user_id, candidate } = gcIce.data
+          if (!isUserInRoom(room_id, user.id)) return
+          sendToUser(target_user_id, {
+            type: 'group_call:ice',
+            room_id,
+            from_user_id: user.id,
+            candidate,
+          })
+          return
+        }
+
+        const gcMute = groupCallMuteSchema.safeParse(json)
+        if (gcMute.success) {
+          const { room_id, is_muted } = gcMute.data
+          if (!isUserInRoom(room_id, user.id)) return
+          updateParticipantState(room_id, user.id, { isMuted: is_muted })
+          const otherIds = getRoomParticipantIds(room_id).filter(id => id !== user.id)
+          broadcastToUsers(otherIds, {
+            type: 'group_call:mute',
+            room_id,
+            user_id: user.id,
+            is_muted,
+          })
+          return
+        }
+
+        const gcVideo = groupCallVideoToggleSchema.safeParse(json)
+        if (gcVideo.success) {
+          const { room_id, is_video_off } = gcVideo.data
+          if (!isUserInRoom(room_id, user.id)) return
+          updateParticipantState(room_id, user.id, { isVideoOff: is_video_off })
+          const otherIds = getRoomParticipantIds(room_id).filter(id => id !== user.id)
+          broadcastToUsers(otherIds, {
+            type: 'group_call:video_toggle',
+            room_id,
+            user_id: user.id,
+            is_video_off,
+          })
+          return
+        }
+
+        const gcSpeaking = groupCallSpeakingSchema.safeParse(json)
+        if (gcSpeaking.success) {
+          const { room_id, is_speaking } = gcSpeaking.data
+          if (!isUserInRoom(room_id, user.id)) return
+          const otherIds = getRoomParticipantIds(room_id).filter(id => id !== user.id)
+          broadcastToUsers(otherIds, {
+            type: 'group_call:speaking',
+            room_id,
+            user_id: user.id,
+            is_speaking,
+          })
+          return
+        }
+
         ws.send(JSON.stringify({ type: 'error', error: 'UNKNOWN_MESSAGE_TYPE' }))
       })().catch((err) => {
         request.log.error({ correlationId, userId: user.id, err: String(err) }, 'ws: unhandled error in message handler')
@@ -365,6 +580,24 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       const related = await getRelatedUserIds(user.id)
       registerUserSocket(user.id, ws, (uid) => {
         void (async () => {
+          // Clean up group call rooms when user's last socket closes
+          const leftRooms = leaveAllRooms(uid)
+          for (const [roomId, remaining] of leftRooms) {
+            const otherIds = remaining.map(p => p.userId)
+            broadcastToUsers(otherIds, {
+              type: 'group_call:member_leave',
+              room_id: roomId,
+              user_id: uid,
+            })
+            if (remaining.length === 0) {
+              const chatMemberIds = await getChatMemberIds(roomId)
+              broadcastToUsers(chatMemberIds, {
+                type: 'group_call:ended',
+                room_id: roomId,
+              })
+            }
+          }
+
           const iso = await touchLastSeen(uid)
           const peers = await getRelatedUserIds(uid)
           await broadcastOnlineStatusChange(peers, {

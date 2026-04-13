@@ -43,7 +43,8 @@ rand_pass() { openssl rand -base64 "$1" | tr -d '/+=' | head -c "$1"; }
 
 read_old() {
   # Read a value from .env.prod.old; returns empty string if not found
-  grep -E "^${1}=" "$OLD_ENV" 2>/dev/null | head -1 | cut -d'=' -f2-
+  # grep exit code 1 (no match) is suppressed — safe with set -e
+  { grep -E "^${1}=" "$OLD_ENV" 2>/dev/null || true; } | head -1 | cut -d'=' -f2-
 }
 
 # --- preflight -------------------------------------------------------------
@@ -62,9 +63,12 @@ log "Reading preserved values from $OLD_ENV …"
 POSTGRES_USER="$(read_old POSTGRES_USER)"
 POSTGRES_DB="$(read_old POSTGRES_DB)"
 CORS_ORIGIN="$(read_old CORS_ORIGIN)"
-ACME_EMAIL="$(read_old VAPID_SUBJECT | sed 's/mailto://')"
+_vapid_subject="$(read_old VAPID_SUBJECT)"
+ACME_EMAIL="${_vapid_subject#mailto:}"
 # Fallback: try reading ACME_EMAIL directly if set
-[[ -z "$ACME_EMAIL" ]] && ACME_EMAIL="$(read_old ACME_EMAIL)"
+if [[ -z "$ACME_EMAIL" ]]; then
+  ACME_EMAIL="$(read_old ACME_EMAIL)"
+fi
 COOKIE_DOMAIN="$(read_old COOKIE_DOMAIN)"
 NEXT_PUBLIC_API_URL="$(read_old NEXT_PUBLIC_API_URL)"
 NEXT_PUBLIC_WS_ORIGIN="$(read_old NEXT_PUBLIC_WS_ORIGIN)"
@@ -193,6 +197,7 @@ log "New $NEW_ENV written (chmod 600)"
 log "Updating PostgreSQL password inside running container …"
 
 DB_CONTAINER="$(docker compose -f "$COMPOSE_FILE" --env-file "$OLD_ENV" ps -q db 2>/dev/null || true)"
+DB_CONTAINER="${DB_CONTAINER:-}"
 
 if [[ -z "$DB_CONTAINER" ]]; then
   warn "DB container not running. Start the stack with the OLD env first:"

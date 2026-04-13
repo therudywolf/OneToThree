@@ -127,45 +127,44 @@ case "$CMD" in
     exit 0
     ;;
   clean)
-    COMPOSE_PROJECT=$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/-$//')
-    VOLUMES=(
-      "${COMPOSE_PROJECT}_pgdata"
-      "${COMPOSE_PROJECT}_minio_data"
-      "${COMPOSE_PROJECT}_caddy_data"
-      "${COMPOSE_PROJECT}_caddy_config"
-    )
     echo ""
-    warn "Это удалит ВСЕ данные: БД, файлы, TLS сертификаты, секреты."
-    echo -ne "  ${YEL}⚠${NC} Введите YES для подтверждения: "
-    read -r CONFIRM
+    warn "Это удалит ВСЕ данные: БД, файлы, TLS сертификаты, секреты, образы."
+    read -rp "  Введите YES для подтверждения: " CONFIRM
     if [[ "$CONFIRM" != "YES" ]]; then
       echo "  Отменено."
       exit 0
     fi
-    echo ""
+
     log "Останавливаю контейнеры..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" --env-file "${ENV_FILE:-.env.prod}" down --remove-orphans 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" --env-file "${ENV_FILE:-.env.prod}" rm -f 2>/dev/null || true
+
     log "Удаляю volumes..."
-    for vol in "${VOLUMES[@]}"; do
+    for vol in forestmessenger_pgdata forestmessenger_minio_data forestmessenger_caddy_data forestmessenger_caddy_config; do
       if docker volume inspect "$vol" >/dev/null 2>&1; then
-        docker volume rm "$vol" >/dev/null 2>&1 && ok "Удалён volume: $vol" || warn "Не удалось удалить volume: $vol"
+        docker volume rm "$vol" && ok "Удалён volume: $vol" || warn "Не удалось удалить: $vol"
       else
-        echo -e "  ${DIM}  Volume $vol не найден — пропуск${NC}"
+        log "Volume $vol не существует, пропускаю."
       fi
     done
+
+    log "Удаляю Docker образы..."
+    docker rmi forestmessenger-api forestmessenger-web forestmessenger-db-migrate 2>/dev/null && ok "Образы удалены." || log "Образы уже удалены или не найдены."
+
+    log "Удаляю секреты..."
     if [[ -d "./secrets" ]]; then
-      log "Удаляю секреты..."
       rm -rf "./secrets"
       ok "Удалена папка ./secrets/"
     fi
+
+    log "Удаляю .env.prod..."
     if [[ -f "$ENV_FILE" ]]; then
-      log "Удаляю ${ENV_FILE}..."
       rm -f "$ENV_FILE"
-      ok "Удалён ${ENV_FILE}"
+      ok "Удалён $ENV_FILE"
     fi
+
     echo ""
     ok "Готово. Запустите ./start.sh для свежего деплоя."
-    echo ""
     exit 0
     ;;
   up|"")

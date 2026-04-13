@@ -7,12 +7,13 @@ import {
   setMasterDevice,
   revokeAllOtherSessions,
   clearRevokedDevices,
+  reauthorizeDevice,
   type DeviceRow,
 } from '@/lib/api/devices'
 import { useAuth } from '@/components/auth/auth-provider'
 import { SettingsLinkDeviceModal } from '@/components/settings-link-device-modal'
 import { useTranslation } from '@/hooks/use-translation'
-import { readVaultBlob } from '@/lib/vault'
+import { readVaultBlob, unwrapPrivateJwkWithPin } from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 
 type Props = { userId: string; active: boolean }
@@ -27,6 +28,10 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [linkQrOpen, setLinkQrOpen] = useState(false)
   const [showVaultExportPrompt, setShowVaultExportPrompt] = useState(false)
+  const [reauthDevice, setReauthDevice] = useState<DeviceRow | null>(null)
+  const [reauthPin, setReauthPin] = useState('')
+  const [reauthError, setReauthError] = useState<string | null>(null)
+  const [reauthBusy, setReauthBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -111,6 +116,37 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       setError(e instanceof Error ? e.message : t('settings.unknown'))
     } finally {
       setBusyAction(null)
+    }
+  }
+
+  async function onReauthorize() {
+    if (!reauthDevice || !reauthPin.trim()) return
+    setReauthBusy(true)
+    setReauthError(null)
+    try {
+      // Verify vault PIN before allowing re-authorization
+      const blob = readVaultBlob(userId)
+      if (!blob) {
+        setReauthError(t('settings.noLocalVault'))
+        setReauthBusy(false)
+        return
+      }
+      await unwrapPrivateJwkWithPin(blob, reauthPin)
+      // PIN verified — proceed with re-authorization
+      await reauthorizeDevice(reauthDevice.id)
+      setReauthDevice(null)
+      setReauthPin('')
+      await load()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : t('settings.unknown')
+      // If unwrap fails, it's a wrong PIN
+      if (msg.includes('decrypt') || msg.includes('unwrap') || msg.includes('OperationError')) {
+        setReauthError(t('settings.killPinBad'))
+      } else {
+        setReauthError(msg)
+      }
+    } finally {
+      setReauthBusy(false)
     }
   }
 
@@ -277,6 +313,18 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                 >
                   {busyId === d.id ? '…' : t('settings.devicesRevoke')}
                 </button>
+              ) : d.revoked ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReauthDevice(d)
+                    setReauthPin('')
+                    setReauthError(null)
+                  }}
+                  className="shrink-0 border border-neon-cyan/50 px-2 py-1 text-[9px] uppercase text-neon-cyan transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-cyan/10 active:scale-95"
+                >
+                  {t('settings.devicesReauthorize')}
+                </button>
               ) : null}
             </div>
           </li>
@@ -290,6 +338,52 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         device_id:{' '}
         <span className="text-neon-cyan/80">{user?.device_id ?? '—'}</span>
       </p>
+
+      {reauthDevice ? (
+        <div className="border border-neon-cyan/50 bg-black/80 p-3 space-y-2">
+          <p className="text-[10px] text-neon-cyan uppercase tracking-widest">
+            {t('settings.devicesReauthorize')}: {reauthDevice.device_name}
+          </p>
+          <p className="text-[9px] text-zinc-400">
+            {t('settings.devicesReauthorizeHint')}
+          </p>
+          <input
+            type="password"
+            value={reauthPin}
+            onChange={(e) => setReauthPin(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void onReauthorize()
+            }}
+            placeholder={t('settings.killPinLabel')}
+            className="w-full border border-neon-cyan/30 bg-black px-2 py-1.5 font-mono text-[10px] text-neon-cyan placeholder-zinc-600 focus:border-neon-cyan focus:outline-none"
+            autoFocus
+          />
+          {reauthError ? (
+            <p className="text-[9px] text-neon-red">[!] {reauthError}</p>
+          ) : null}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void onReauthorize()}
+              disabled={reauthBusy || !reauthPin.trim()}
+              className="flex-1 border border-neon-cyan px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+            >
+              {reauthBusy ? '...' : t('common.confirm')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setReauthDevice(null)
+                setReauthPin('')
+                setReauthError(null)
+              }}
+              className="flex-1 border border-zinc-600 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-400 hover:bg-zinc-800/30"
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {showVaultExportPrompt && (
         <div className="border border-neon-red/50 bg-black/80 p-3">

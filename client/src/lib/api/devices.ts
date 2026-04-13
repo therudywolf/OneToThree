@@ -96,3 +96,28 @@ export async function clearRevokedDevices(): Promise<void> {
     throw new Error(data.error ?? 'CLEAR_REVOKED_FAILED')
   }
 }
+
+export async function reauthorizeDevice(deviceId: string): Promise<void> {
+  if (!deviceId) return
+
+  const res = await fetch(
+    `${API_URL}/users/me/devices/${encodeURIComponent(deviceId)}/reauthorize`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    }
+  )
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    const fallback =
+      res.status === 404
+        ? 'DEVICE_NOT_FOUND'
+        : res.status >= 500
+        ? 'SERVER_ERROR'
+        : res.status === 401
+        ? 'UNAUTHORIZED'
+        : 'REAUTHORIZE_FAILED'
+    throw new Error(data.error ?? `${fallback} (${res.status})`)
+  }
+}

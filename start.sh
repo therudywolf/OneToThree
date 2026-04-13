@@ -516,34 +516,74 @@ fi
 # =============================================================================
 # ОЖИДАНИЕ ГОТОВНОСТИ
 # =============================================================================
-sep
-log "Жду готовности сервисов..."
 
 wait_healthy() {
   local service="$1" label="${2:-$1}" max_wait="${3:-120}"
-  local elapsed=0 interval=5
+  local elapsed=0 interval=3
   printf "  %-14s " "$label"
+
+  # Get container ID for this service
+  local container
+  container=$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$service" 2>/dev/null | head -1)
+
+  if [[ -z "$container" ]]; then
+    echo -e " ${YEL}⚠ не найден${NC}"
+    return 1
+  fi
+
   while true; do
-    STATUS=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
-      ps "$service" 2>/dev/null | grep -oE 'healthy|unhealthy|Up|Exit' | head -1 || true)
-    case "$STATUS" in
-      healthy) echo -e " ${GRN}✓ healthy${NC}"; return 0 ;;
-      unhealthy) echo -e " ${RED}✗ unhealthy${NC}"; return 1 ;;
+    local health_status
+    health_status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "unknown")
+
+    case "$health_status" in
+      healthy)   echo -e " ${GRN}✓ healthy${NC}"; return 0 ;;
+      unhealthy) echo -e " ${RED}✗ unhealthy${NC}"
+                 docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' "$container" 2>/dev/null | tail -3
+                 return 1 ;;
+      running)
+        # Container has no healthcheck — treat running as ok
+        echo -e " ${GRN}✓ running${NC}"; return 0 ;;
+      starting)
+        # Still starting, keep polling
+        ;;
     esac
+
     sleep "$interval"
     elapsed=$((elapsed + interval))
     printf "."
     if [[ "$elapsed" -ge "$max_wait" ]]; then
-      echo -e " ${YEL}⚠ timeout${NC}"
+      # Last check before timeout
+      health_status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "unknown")
+      if [[ "$health_status" == "healthy" || "$health_status" == "running" ]]; then
+        echo -e " ${GRN}✓ ${health_status}${NC}"
+        return 0
+      fi
+      echo -e " ${YEL}⚠ timeout (${health_status})${NC}"
       return 1
     fi
   done
 }
 
-wait_healthy "db"    "PostgreSQL"  60  || true
-wait_healthy "minio" "MinIO"       60  || true
-wait_healthy "api"   "API"         120 || true
-wait_healthy "web"   "Next.js"     180 || true
+# Quick pre-check: if compose up succeeded and all containers healthy, skip polling
+all_healthy=true
+for svc in db minio api web; do
+  cid=$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$svc" 2>/dev/null | head -1)
+  if [[ -n "$cid" ]]; then
+    st=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null)
+    [[ "$st" != "healthy" && "$st" != "running" ]] && all_healthy=false
+  fi
+done
+
+if [[ "$all_healthy" == true ]]; then
+  ok "Все сервисы запущены и здоровы."
+else
+  sep
+  log "Жду готовности сервисов..."
+  wait_healthy "db"    "PostgreSQL"  60  || true
+  wait_healthy "minio" "MinIO"       60  || true
+  wait_healthy "api"   "API"         120 || true
+  wait_healthy "web"   "Next.js"     180 || true
+fi
 
 # =============================================================================
 # ФИНАЛ

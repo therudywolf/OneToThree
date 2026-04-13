@@ -69,6 +69,9 @@ const ru = {
   'call.endCall': 'Завершить звонок',
   'call.reconnecting': 'Переподключение...',
   'call.connectionLost': 'Соединение потеряно',
+  'call.relayDegradation': 'Соединение переключено на сервер \u2014 шифрование сохранено',
+  'call.activePeer': 'Активный звонок',
+  'call.returnToCall': 'Вернуться к звонку',
 
   // [LOGIN]
   'login.usernameRequired': 'Введите никнейм.',

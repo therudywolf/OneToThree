@@ -50,6 +50,11 @@ export type CallProtocolState = {
   peerConnectionTypes: Record<string, PeerConnectionType>
   qualityLevel: QualityLevel
 
+  // [MINI_PLAYER]
+  isMiniPlayer: boolean
+  callStartTime: number | null
+  showRelayToast: boolean
+
   // [ACTIONS]
   setLocalStream: (feed: MediaStream | null) => void
   setRemoteStream: (peerId: string, feed: MediaStream) => void
@@ -71,6 +76,10 @@ export type CallProtocolState = {
   setPeerConnectionType: (peerId: string, type: PeerConnectionType) => void
   clearPeerConnectionType: (peerId: string) => void
   setQualityLevel: (level: QualityLevel) => void
+
+  setMiniPlayer: (value: boolean) => void
+  setCallStartTime: (time: number | null) => void
+  setShowRelayToast: (value: boolean) => void
 
   /** Полная деактивация протокола и очистка контура */
   reset: () => void
@@ -120,8 +129,11 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     try { window.localStorage.setItem(QUALITY_STORAGE_KEY, level) } catch {}
     set({ qualityLevel: level })
   }
+  const setMiniPlayer = (value: boolean) => set({ isMiniPlayer: value })
+  const setCallStartTime = (time: number | null) => set({ callStartTime: time })
+  const setShowRelayToast = (value: boolean) => set({ showRelayToast: value })
   const reset = () =>
-    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {} })
+    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false })
 
   return {
     localStream: null,
@@ -136,6 +148,9 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     incomingCall: null,
     peerConnectionTypes: {},
     qualityLevel: loadQualityLevel(),
+    isMiniPlayer: false,
+    callStartTime: null,
+    showRelayToast: false,
 
     setLocalStream,
     setRemoteStream,
@@ -153,6 +168,9 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     setPeerConnectionType,
     clearPeerConnectionType,
     setQualityLevel,
+    setMiniPlayer,
+    setCallStartTime,
+    setShowRelayToast,
     reset,
   }
 })

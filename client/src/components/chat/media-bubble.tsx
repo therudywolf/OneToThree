@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   base64ToArrayBuffer,
   decryptBinary,
@@ -326,47 +327,104 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd }: Pr
         displayName.toLowerCase().endsWith('.webm'))
 
     if (circleStyle) {
+      const expandedSize = 'min(65vw, 24rem)'
+      const collapsedSize = '240px'
+
       return (
-        <div className="mt-2 max-w-[240px] rounded-sm border border-neon-cyan/20 bg-black/40 p-2">
-          <div
-            className={`relative mx-auto aspect-square w-full overflow-hidden rounded-full border-2 border-neon-cyan shadow-[0_0_15px_rgba(0,255,255,0.15)] transition-transform duration-300 ${
-              videoNoteExpanded ? 'scale-[1.2] z-10' : 'scale-100'
+        <div className="mt-2 relative">
+          {/* Click-outside overlay when expanded */}
+          <AnimatePresence>
+            {videoNoteExpanded && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[80] bg-black/60"
+                onClick={() => setVideoNoteExpanded(false)}
+              />
+            )}
+          </AnimatePresence>
+
+          <motion.div
+            layout
+            animate={{
+              width: videoNoteExpanded ? expandedSize : collapsedSize,
+            }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className={`relative rounded-sm border bg-black/40 p-2 ${
+              videoNoteExpanded
+                ? 'z-[90] border-neon-cyan/60 shadow-[0_0_30px_rgba(0,255,255,0.25)]'
+                : 'border-neon-cyan/20'
             }`}
-            onClick={() => setVideoNoteExpanded(!videoNoteExpanded)}
-            style={{ cursor: 'pointer' }}
           >
-            <video
-              ref={videoRef}
-              src={objectUrl}
-              className="absolute inset-0 h-full w-full object-cover"
-              playsInline
-              muted
-              autoPlay
-              loop
-              controls={false}
-              preload="metadata"
-              onPlay={() => setPlaying(true)}
-              onPause={() => setPlaying(false)}
-            />
-          </div>
-          <div className="mt-3 flex items-center justify-between gap-2 border-t border-neon-cyan/20 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                const el = videoRef.current
-                if (!el) return
-                el.muted = false
-                if (playing) el.pause()
-                else void el.play()
-              }}
-              className="flex h-6 items-center justify-center rounded-none border border-neon-red bg-black px-2 font-mono text-[9px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-cyan hover:bg-neon-cyan hover:text-black"
+            <motion.div
+              layout
+              className={`relative mx-auto aspect-square w-full overflow-hidden rounded-full border-2 transition-shadow duration-300 ${
+                videoNoteExpanded
+                  ? 'border-neon-cyan shadow-[0_0_24px_rgba(0,255,255,0.35)]'
+                  : 'border-neon-cyan shadow-[0_0_15px_rgba(0,255,255,0.15)]'
+              }`}
+              onClick={() => setVideoNoteExpanded(!videoNoteExpanded)}
+              style={{ cursor: 'pointer' }}
             >
-              {playing ? '|| PAUSE' : '▶ UNMUTE'}
-            </button>
-            <span className="font-mono text-[9px] text-neon-cyan/50 tracking-widest">
-              CIRCLE_VID
-            </span>
-          </div>
+              <video
+                ref={videoRef}
+                src={objectUrl}
+                className="absolute inset-0 h-full w-full object-cover"
+                playsInline
+                muted
+                autoPlay
+                loop
+                controls={false}
+                preload="metadata"
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onTimeUpdate={() => {
+                  const el = videoRef.current
+                  if (!el?.duration) return
+                  setCurrentSec(el.currentTime)
+                  setProgress((el.currentTime / el.duration) * 100)
+                  if (!duration) setDuration(el.duration)
+                }}
+              />
+            </motion.div>
+
+            {/* Controls — always visible, expanded shows progress */}
+            <div className="mt-3 flex flex-col gap-2 border-t border-neon-cyan/20 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = videoRef.current
+                    if (!el) return
+                    el.muted = false
+                    if (playing) el.pause()
+                    else void el.play()
+                  }}
+                  className="flex h-6 items-center justify-center rounded-none border border-neon-red bg-black px-2 font-mono text-[9px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-cyan hover:bg-neon-cyan hover:text-black"
+                >
+                  {playing ? '|| PAUSE' : '\u25B6 UNMUTE'}
+                </button>
+                {videoNoteExpanded ? (
+                  <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/70">
+                    {formatTime(currentSec)} / {formatTime(duration)}
+                  </span>
+                ) : (
+                  <span className="font-mono text-[9px] text-neon-cyan/50 tracking-widest">
+                    CIRCLE_VID
+                  </span>
+                )}
+              </div>
+              {videoNoteExpanded ? (
+                <div className="h-[2px] w-full rounded-none bg-zinc-900 overflow-hidden">
+                  <div
+                    className="h-full rounded-none bg-neon-cyan transition-all duration-100 ease-linear"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </motion.div>
         </div>
       )
     }

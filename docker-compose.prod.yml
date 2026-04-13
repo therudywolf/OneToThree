@@ -196,7 +196,14 @@ services:
     command:
       - -n
       - --log-file=stdout
-      - --config-file=/etc/coturn/turnserver.conf
+      - --listening-port=3478
+      - --min-port=49152
+      - --max-port=65535
+      - --fingerprint
+      - --lt-cred-mech
+      - --no-loopback-peers
+      - --no-multicast-peers
+      - --realm=onetothree.ru
       - --user=${TURN_USERNAME:-turn}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.prod}
       - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP in .env.prod}
 

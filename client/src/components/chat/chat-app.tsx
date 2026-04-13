@@ -84,6 +84,13 @@ const GroupCallScreen = dynamic(
     ),
   { ssr: false }
 )
+const CallMiniPlayer = dynamic(
+  () =>
+    import('@/components/call/call-mini-player').then(
+      (m) => m.CallMiniPlayer
+    ),
+  { ssr: false }
+)
 const GroupCallMiniPlayer = dynamic(
   () =>
     import('@/components/call/group-call-mini-player').then(
@@ -430,6 +437,12 @@ export function ChatApp({
         isScreenSharing={isScreenSharing}
         onToggleScreenShare={toggleScreenShare}
         onSetQuality={setQuality}
+      />
+      <CallMiniPlayer
+        onExpand={() => useCallStore.getState().setMiniPlayer(false)}
+        onEndCall={endCall}
+        onToggleMute={toggleMuteMic}
+        peerName={peerIdentity?.username ?? undefined}
       />
       {isInGroupCall && !groupCallIsMiniPlayer && (
         <GroupCallScreen

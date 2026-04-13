@@ -287,6 +287,9 @@ export function ActiveCallOverlay({
   const qualityLevel = useCallStore((s) => s.qualityLevel)
   const callStartTime = useCallStore((s) => s.callStartTime)
 
+  const isMiniPlayer = useCallStore((s) => s.isMiniPlayer)
+  const setMiniPlayer = useCallStore((s) => s.setMiniPlayer)
+
   const [tick, setTick] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [screenShareAllowed, setScreenShareAllowed] = useState(true)
@@ -301,10 +304,11 @@ export function ActiveCallOverlay({
     setIsMobileDevice(isAndroidMobile() || isIOSOrIPadOS())
   }, [])
 
-  // Cleanup: end call if the overlay unmounts while still calling
+  // Cleanup: end call if the overlay unmounts while still calling (but not when minimized)
   useEffect(() => {
     return () => {
-      if (useCallStore.getState().isCalling) {
+      const state = useCallStore.getState()
+      if (state.isCalling && !state.isMiniPlayer) {
         onEndCall()
       }
     }
@@ -358,7 +362,7 @@ export function ActiveCallOverlay({
     setShowQualityMenu(false)
   }
 
-  if (!isCalling || !localStream) return null
+  if (!isCalling || !localStream || isMiniPlayer) return null
 
   return (
     <PortalRoot>
@@ -560,6 +564,10 @@ export function ActiveCallOverlay({
 
           <button onClick={toggleLayout} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors" title={t('call.toggleLayout')}>
             {layout === 'grid' ? <Focus className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
+          </button>
+
+          <button onClick={() => setMiniPlayer(true)} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-neon-cyan hover:bg-neon-cyan/5 transition-colors" title={t('call.returnToCall')}>
+            <Minimize2 className="h-4 w-4" />
           </button>
 
           <button onClick={onEndCall} className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-black transition-all" title={t('call.endCall')}>

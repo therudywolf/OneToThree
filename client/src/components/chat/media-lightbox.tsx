@@ -17,6 +17,7 @@ type MediaLightboxProps = {
   currentIndex: number
   onClose: () => void
   onNavigate: (index: number) => void
+  onLoadMedia?: (index: number) => Promise<string | null>
 }
 
 export function MediaLightbox({
@@ -25,6 +26,7 @@ export function MediaLightbox({
   currentIndex,
   onClose,
   onNavigate,
+  onLoadMedia,
 }: MediaLightboxProps) {
   const { t } = useTranslation()
   const [zoom, setZoom] = useState(1)
@@ -40,30 +42,60 @@ export function MediaLightbox({
     setPanY(0)
   }, [])
 
-  // Memoize navigation callbacks to prevent stale closures in event listeners
-  const navigatePrev = useCallback(() => {
-    for (let i = currentIndex - 1; i >= 0; i--) {
-      if (media[i] && media[i].url) {
-        onNavigate(i)
-        setZoom(1)
-        setIsZoomed(false)
-        resetPan()
-        return
-      }
-    }
-  }, [currentIndex, media, onNavigate, resetPan])
+  const [loadingNav, setLoadingNav] = useState(false)
 
-  const navigateNext = useCallback(() => {
-    for (let i = currentIndex + 1; i < media.length; i++) {
-      if (media[i] && media[i].url) {
-        onNavigate(i)
-        setZoom(1)
-        setIsZoomed(false)
-        resetPan()
-        return
+  // Memoize navigation callbacks to prevent stale closures in event listeners
+  const navigatePrev = useCallback(async () => {
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      if (media[i]) {
+        if (media[i].url) {
+          onNavigate(i)
+          setZoom(1)
+          setIsZoomed(false)
+          resetPan()
+          return
+        }
+        if (onLoadMedia) {
+          setLoadingNav(true)
+          const url = await onLoadMedia(i)
+          setLoadingNav(false)
+          if (url) {
+            onNavigate(i)
+            setZoom(1)
+            setIsZoomed(false)
+            resetPan()
+            return
+          }
+        }
       }
     }
-  }, [currentIndex, media, onNavigate, resetPan])
+  }, [currentIndex, media, onNavigate, resetPan, onLoadMedia])
+
+  const navigateNext = useCallback(async () => {
+    for (let i = currentIndex + 1; i < media.length; i++) {
+      if (media[i]) {
+        if (media[i].url) {
+          onNavigate(i)
+          setZoom(1)
+          setIsZoomed(false)
+          resetPan()
+          return
+        }
+        if (onLoadMedia) {
+          setLoadingNav(true)
+          const url = await onLoadMedia(i)
+          setLoadingNav(false)
+          if (url) {
+            onNavigate(i)
+            setZoom(1)
+            setIsZoomed(false)
+            resetPan()
+            return
+          }
+        }
+      }
+    }
+  }, [currentIndex, media, onNavigate, resetPan, onLoadMedia])
 
   useEffect(() => {
     if (!isOpen) {
@@ -197,8 +229,8 @@ export function MediaLightbox({
 
   const currentMedia = media[currentIndex]
 
-  const hasPrev = media.slice(0, currentIndex).some(m => m && !!m.url)
-  const hasNext = media.slice(currentIndex + 1).some(m => m && !!m.url)
+  const hasPrev = media.slice(0, currentIndex).some(m => m && (!!m.url || !!onLoadMedia))
+  const hasNext = media.slice(currentIndex + 1).some(m => m && (!!m.url || !!onLoadMedia))
   const hasMultiple = hasPrev || hasNext
 
   return (
@@ -267,6 +299,15 @@ export function MediaLightbox({
       {media.length > 1 && (
         <div className="absolute bottom-4 right-4 z-10 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 bg-black/50 px-2 py-1 border border-neon-cyan/20">
           {currentIndex + 1} / {media.length}
+        </div>
+      )}
+
+      {/* Loading indicator */}
+      {loadingNav && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50">
+          <p className="animate-pulse font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
+            [ DECRYPTING... ]
+          </p>
         </div>
       )}
 

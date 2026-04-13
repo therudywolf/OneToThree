@@ -21,6 +21,5 @@ ls -1 server/drizzle/*.sql 2>/dev/null | wc -l | xargs -I{} echo "  {} SQL migra
 echo "[db-migrate] Journal entries:"
 grep -c '"tag"' server/drizzle/meta/_journal.json 2>/dev/null | xargs -I{} echo "  {} entries in _journal.json"
 
-echo "[db-migrate] Running drizzle-kit migrate..."
-node ./node_modules/drizzle-kit/bin.cjs migrate --config drizzle.config.ts
-echo "[db-migrate] Done — migrations applied successfully."
+echo "[db-migrate] Running migrations via drizzle-orm..."
+node ./migrate.mjs

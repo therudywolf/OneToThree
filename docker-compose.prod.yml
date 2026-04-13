@@ -202,6 +202,8 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: always
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
     cpu_shares: 256
     cpus: '1.0'
     mem_limit: 256m

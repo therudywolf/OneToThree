@@ -14,6 +14,7 @@
 #   ./start.sh logs     — хвост логов всех сервисов
 #   ./start.sh status   — состояние контейнеров
 #   ./start.sh update   — git pull + пересборка + перезапуск
+#   ./start.sh backup   — резервная копия БД
 # =============================================================================
 set -euo pipefail
 
@@ -38,95 +39,6 @@ sep()  { echo -e "${DIM}  ──────────────────
 
 ENV_FILE="${ENV_FILE:-.env.prod}"
 COMPOSE_FILE="docker-compose.prod.yml"
-
-# =============================================================================
-# КОМАНДЫ
-# =============================================================================
-CMD="${1:-up}"
-
-case "$CMD" in
-  stop)
-    log "Останавливаю стек..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down
-    ok "Стек остановлен."
-    exit 0
-    ;;
-  restart)
-    log "Перезапускаю без пересборки..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart
-    ok "Перезапущено."
-    exit 0
-    ;;
-  logs)
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f --tail=100
-    exit 0
-    ;;
-  status)
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
-    exit 0
-    ;;
-  update)
-    log "Получаю обновления из git..."
-    git pull origin ver2
-    log "Пересборка и перезапуск..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans
-    ok "Обновление завершено."
-    exit 0
-    ;;
-  up|"")
-    : # продолжаем ниже
-    ;;
-  *)
-    echo "Использование: ./start.sh [up|stop|restart|logs|status|update]"
-    exit 1
-    ;;
-esac
-
-# =============================================================================
-# ПРОВЕРКА ЗАВИСИМОСТЕЙ
-# =============================================================================
-sep
-echo -e "${BLD}  OneToThree — Production Launcher${NC}"
-sep
-
-for cmd in docker openssl curl; do
-  command -v "$cmd" >/dev/null 2>&1 || die "Не найдена команда: $cmd. Установите и повторите."
-done
-
-if docker compose version >/dev/null 2>&1; then
-  DC=(docker compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-  DC=(docker-compose)
-else
-  die "Docker Compose не найден. Установите Docker Desktop или плагин compose."
-fi
-
-docker info >/dev/null 2>&1 || die "Docker демон не запущен. Запустите Docker и повторите."
-
-# =============================================================================
-# ENV ФАЙЛ — создать из шаблона если нет
-# =============================================================================
-if [[ ! -f "$ENV_FILE" ]]; then
-  [[ -f ".env.prod.example" ]] || die "Не найден .env.prod.example — репозиторий повреждён."
-  cp ".env.prod.example" "$ENV_FILE"
-  echo ""
-  warn "Создан ${ENV_FILE} из шаблона."
-  warn "Откройте файл и заполните все строки с пометкой  ← ЗАПОЛНИ"
-  echo ""
-  echo -e "  ${BLD}nano ${ENV_FILE}${NC}   или   ${BLD}vim ${ENV_FILE}${NC}"
-  echo ""
-  echo -e "  Минимум что нужно заполнить:"
-  echo -e "    ${YEL}POSTGRES_PASSWORD${NC}   — пароль базы данных"
-  echo -e "    ${YEL}MINIO_ROOT_PASSWORD${NC} — пароль хранилища"
-  echo -e "    ${YEL}TURN_EXTERNAL_IP${NC}    — IP сервера (curl -s ifconfig.me)"
-  echo -e "    ${YEL}TURN_PASSWORD${NC}       — пароль TURN"
-  echo -e "    ${YEL}NEXT_PUBLIC_TURN_PASSWORD${NC} — тот же пароль TURN"
-  echo -e "    ${YEL}VAPID_SUBJECT${NC}       — ваш email"
-  echo ""
-  echo -e "  Остальное (JWT_SECRET, WEBHOOK_SECRET, VAPID ключи) ${GRN}генерируется автоматически${NC}."
-  echo ""
-  read -r -p "  Нажмите Enter когда заполнили .env.prod (или Ctrl+C для отмены)..." || true
-fi
 
 # =============================================================================
 # УТИЛИТЫ ЧТЕНИЯ/ЗАПИСИ ENV
@@ -164,6 +76,135 @@ is_placeholder() {
   esac
   return 1
 }
+
+# =============================================================================
+# КОМАНДЫ
+# =============================================================================
+CMD="${1:-up}"
+
+case "$CMD" in
+  stop)
+    log "Останавливаю стек..."
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down
+    ok "Стек остановлен."
+    exit 0
+    ;;
+  restart)
+    log "Перезапускаю без пересборки..."
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart
+    ok "Перезапущено."
+    exit 0
+    ;;
+  logs)
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f --tail=100
+    exit 0
+    ;;
+  status)
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
+    exit 0
+    ;;
+  update)
+    log "Получаю обновления из git..."
+    git pull origin ver2
+    log "Пересборка образов (данные в volumes сохраняются)..."
+    # НИКОГДА не используем 'down -v' — это удалит данные
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans
+    ok "Обновление завершено. Данные сохранены."
+    exit 0
+    ;;
+  backup)
+    BACKUP_DIR="${ROOT}/backups"
+    mkdir -p "$BACKUP_DIR"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_FILE="${BACKUP_DIR}/db_${TIMESTAMP}.sql.gz"
+    log "Создаю резервную копию базы данных..."
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
+      exec -T db \
+      pg_dump -U "$(val_for_key POSTGRES_USER)" "$(val_for_key POSTGRES_DB)" \
+      | gzip > "$BACKUP_FILE"
+    ok "Резервная копия: ${BACKUP_FILE}"
+    ls -lh "$BACKUP_DIR"/*.sql.gz | tail -5
+    exit 0
+    ;;
+  up|"")
+    : # продолжаем ниже
+    ;;
+  *)
+    echo "Использование: ./start.sh [up|stop|restart|logs|status|update|backup]"
+    exit 1
+    ;;
+esac
+
+# =============================================================================
+# ПРОВЕРКА ЗАВИСИМОСТЕЙ
+# =============================================================================
+sep
+echo -e "${BLD}  OneToThree — Production Launcher${NC}"
+sep
+
+for cmd in docker openssl curl; do
+  command -v "$cmd" >/dev/null 2>&1 || die "Не найдена команда: $cmd. Установите и повторите."
+done
+
+if docker compose version >/dev/null 2>&1; then
+  DC=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  DC=(docker-compose)
+else
+  die "Docker Compose не найден. Установите Docker Desktop или плагин compose."
+fi
+
+docker info >/dev/null 2>&1 || die "Docker демон не запущен. Запустите Docker и повторите."
+
+# =============================================================================
+# ПРОВЕРКА VOLUMES (данные НЕ удаляются при обновлении)
+# =============================================================================
+sep
+log "Проверяю сохранность данных..."
+
+# Получаем имя проекта (по умолчанию — имя директории)
+COMPOSE_PROJECT=$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/-$//')
+
+check_volume() {
+  local vol_suffix="$1"
+  local label="$2"
+  local full_name="${COMPOSE_PROJECT}_${vol_suffix}"
+  if docker volume inspect "$full_name" >/dev/null 2>&1; then
+    ok "Volume ${label} существует — данные сохранены (${full_name})"
+  else
+    log "Volume ${label} будет создан при первом запуске (${full_name})"
+  fi
+}
+
+check_volume "pgdata"      "PostgreSQL БД"
+check_volume "minio_data"  "MinIO файлы"
+check_volume "caddy_data"  "TLS сертификаты"
+check_volume "caddy_config" "Caddy config"
+
+# =============================================================================
+# ENV ФАЙЛ — создать из шаблона если нет
+# =============================================================================
+if [[ ! -f "$ENV_FILE" ]]; then
+  [[ -f ".env.prod.example" ]] || die "Не найден .env.prod.example — репозиторий повреждён."
+  cp ".env.prod.example" "$ENV_FILE"
+  echo ""
+  warn "Создан ${ENV_FILE} из шаблона."
+  warn "Откройте файл и заполните все строки с пометкой  ← ЗАПОЛНИ"
+  echo ""
+  echo -e "  ${BLD}nano ${ENV_FILE}${NC}   или   ${BLD}vim ${ENV_FILE}${NC}"
+  echo ""
+  echo -e "  Минимум что нужно заполнить:"
+  echo -e "    ${YEL}POSTGRES_PASSWORD${NC}   — пароль базы данных"
+  echo -e "    ${YEL}MINIO_ROOT_PASSWORD${NC} — пароль хранилища"
+  echo -e "    ${YEL}TURN_EXTERNAL_IP${NC}    — IP сервера (curl -s ifconfig.me)"
+  echo -e "    ${YEL}TURN_PASSWORD${NC}       — пароль TURN"
+  echo -e "    ${YEL}NEXT_PUBLIC_TURN_PASSWORD${NC} — тот же пароль TURN"
+  echo -e "    ${YEL}VAPID_SUBJECT${NC}       — ваш email"
+  echo ""
+  echo -e "  Остальное (JWT_SECRET, WEBHOOK_SECRET, VAPID ключи) ${GRN}генерируется автоматически${NC}."
+  echo ""
+  read -r -p "  Нажмите Enter когда заполнили .env.prod (или Ctrl+C для отмены)..." || true
+fi
 
 # =============================================================================
 # АВТОГЕНЕРАЦИЯ СЕКРЕТОВ
@@ -259,6 +300,7 @@ check_required CORS_ORIGIN            "Домен сайта: https://onetothree
 check_required TURN_EXTERNAL_IP       "IP сервера: curl -s ifconfig.me"
 check_required TURN_PASSWORD          "Придумайте пароль для TURN"
 check_required VAPID_SUBJECT          "Ваш email: mailto:you@example.com"
+check_required ACME_EMAIL             "Email для Let's Encrypt: admin@onetothree.ru"
 
 if [[ "$MISSING" -ne 0 ]]; then
   echo ""
@@ -353,6 +395,10 @@ echo ""
 echo -e "  ${DIM}./start.sh logs    — просмотр логов${NC}"
 echo -e "  ${DIM}./start.sh stop    — остановить${NC}"
 echo -e "  ${DIM}./start.sh update  — обновить${NC}"
+echo -e "  ${DIM}./start.sh backup  — резервная копия БД${NC}"
+echo ""
+echo -e "  ${DIM}Данные хранятся в Docker volumes и НЕ удаляются при обновлении.${NC}"
+echo -e "  ${DIM}Для полного сброса (ОСТОРОЖНО): docker compose down -v${NC}"
 
 if [[ "$FIRST_RUN" == true ]]; then
   echo ""

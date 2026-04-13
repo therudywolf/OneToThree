@@ -3,7 +3,7 @@
 # Prerequisites: public DNS A/AAAA for each host below → this machine; ports 80/443 reachable.
 
 {
-	email alonerudywolf@gmail.com
+	email {env.ACME_EMAIL}
 }
 
 (security_headers) {

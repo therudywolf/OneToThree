@@ -1,0 +1,21 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    { "idx": 0, "version": "7", "when": 1700000000000, "tag": "0000_naive_iron_lad", "breakpoints": true },
+    { "idx": 1, "version": "7", "when": 1700000001000, "tag": "0001_ecdh_public_key", "breakpoints": true },
+    { "idx": 2, "version": "7", "when": 1700000002000, "tag": "0002_push_subscriptions", "breakpoints": true },
+    { "idx": 3, "version": "7", "when": 1700000003000, "tag": "0003_messages_indexes", "breakpoints": true },
+    { "idx": 4, "version": "7", "when": 1700000004000, "tag": "0004_odd_phil_sheldon", "breakpoints": true },
+    { "idx": 5, "version": "7", "when": 1700000005000, "tag": "0005_users_is_discoverable_default_false", "breakpoints": true },
+    { "idx": 6, "version": "7", "when": 1700000006000, "tag": "0006_windy_may_parker", "breakpoints": true },
+    { "idx": 7, "version": "7", "when": 1700000007000, "tag": "0007_vault_and_devices", "breakpoints": true },
+    { "idx": 8, "version": "7", "when": 1700000008000, "tag": "0008_chat_invite_roles", "breakpoints": true },
+    { "idx": 9, "version": "7", "when": 1700000009000, "tag": "0009_user_avatar_key", "breakpoints": true },
+    { "idx": 10, "version": "7", "when": 1700000010000, "tag": "0010_presence_read_receipts", "breakpoints": true },
+    { "idx": 11, "version": "7", "when": 1700000011000, "tag": "0011_message_deliveries", "breakpoints": true },
+    { "idx": 12, "version": "7", "when": 1700000012000, "tag": "0012_resource_pulse_survival", "breakpoints": true },
+    { "idx": 13, "version": "7", "when": 1700000013000, "tag": "0013_invite_one_time", "breakpoints": true },
+    { "idx": 14, "version": "7", "when": 1700000014000, "tag": "0014_master_device_flag", "breakpoints": true }
+  ]
+}

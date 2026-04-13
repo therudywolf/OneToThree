@@ -33,9 +33,9 @@ minio_data/
 # Local DB dumps / backup archives (never commit live data)
 backups/
 *.dump
+*.sql.gz
 
-# Drizzle local cache (SQL migrations remain tracked)
-server/drizzle/meta/
+# Drizzle local cache (SQL migrations and meta journal remain tracked)
 
 # Runtime API logs (optional)
 logs/

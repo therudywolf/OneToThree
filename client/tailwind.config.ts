@@ -15,6 +15,15 @@ const config: Config = {
         'neon-red': '#FF0000',
         'neon-cyan': '#00FFFF',
       },
+      screens: {
+        'xs': '360px',
+        'mobile-landscape': { raw: '(min-width: 667px) and (max-height: 480px) and (orientation: landscape)' },
+        'tablet': '768px',
+        'desktop': '1280px',
+        'ultrawide': { raw: '(min-aspect-ratio: 21/9)' },
+        'superwide': { raw: '(min-aspect-ratio: 32/9)' },
+        'tall': { raw: '(min-aspect-ratio: 9/16)' },
+      },
       fontFamily: {
         mono: [
           'ui-monospace',

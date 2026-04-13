@@ -505,7 +505,7 @@ export function ChatTerminal({
       ) : null}
       <div
         ref={ref}
-        className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-4 py-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch]"
+        className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 py-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch] sm:px-4"
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
         {historyDecryptBusy && renderMessages.length === 0 ? (
@@ -587,7 +587,7 @@ export function ChatTerminal({
                   </div>
                 ) : null}
                 <div
-                  className={`max-w-[min(100%,42rem)] min-w-0 ${
+                  className={`msg-bubble-width min-w-0 ${
                     mine ? 'items-end' : 'items-start'
                   } flex flex-col gap-1`}
                 >
@@ -707,7 +707,7 @@ export function ChatTerminal({
                 className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[min(100%,42rem)] min-w-0 ${
+                  className={`msg-bubble-width min-w-0 ${
                     mine ? 'items-end' : 'items-start'
                   } flex flex-col gap-1`}
                 >

@@ -196,3 +196,171 @@ select {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* ===== RESPONSIVE LAYOUT ===== */
+
+/* Mobile: sidebar hidden when chat is open, full-width chat */
+@media (max-width: 767px) {
+  .chat-layout-sidebar {
+    display: none;
+  }
+  .chat-layout-sidebar.sidebar-open {
+    display: flex;
+  }
+  .chat-layout-main {
+    width: 100%;
+  }
+}
+
+/* Tablet: narrow sidebar */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .chat-layout-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+  }
+}
+
+/* Desktop: full sidebar */
+@media (min-width: 1024px) {
+  .chat-layout-sidebar {
+    width: 320px;
+    flex-shrink: 0;
+  }
+}
+
+/* Ultrawide 21:9+: constrain layout, show member panel by default */
+@media (min-aspect-ratio: 21/9) {
+  .chat-ultrawide-container {
+    max-width: 1600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* 32:9 super ultrawide */
+@media (min-aspect-ratio: 32/9) {
+  .chat-ultrawide-container {
+    max-width: 1400px;
+  }
+}
+
+/* Mobile landscape orientation */
+@media (max-height: 480px) and (orientation: landscape) {
+  .chat-header-compact {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+  }
+  .chat-header-compact .header-text-full {
+    display: none;
+  }
+}
+
+/* iOS safe area insets */
+.safe-all {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Dynamic viewport height for Android keyboard */
+.h-dvh-safe {
+  height: 100dvh;
+  height: 100svh;
+}
+
+/* Message bubble width constraints per screen size */
+@media (max-width: 430px) {
+  .msg-bubble-width {
+    max-width: calc(100vw - 2rem);
+  }
+}
+
+@media (min-width: 431px) and (max-width: 767px) {
+  .msg-bubble-width {
+    max-width: min(85vw, 32rem);
+  }
+}
+
+@media (min-width: 768px) {
+  .msg-bubble-width {
+    max-width: min(75vw, 42rem);
+  }
+}
+
+/* Image aspect ratio placeholder to prevent layout shift */
+.media-placeholder {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.media-placeholder::before {
+  content: '';
+  display: block;
+  padding-top: 56.25%; /* 16:9 default */
+}
+
+.media-placeholder > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Code block styling */
+.code-block {
+  position: relative;
+  overflow-x: auto;
+  border: 1px solid rgba(0, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.9);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0;
+  tab-size: 2;
+  -moz-tab-size: 2;
+  color: #00ffff;
+}
+
+.code-block .copy-btn {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.9);
+  color: rgba(0, 255, 255, 0.6);
+  font-family: inherit;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.code-block .copy-btn:hover {
+  border-color: rgba(0, 255, 255, 0.8);
+  color: #00ffff;
+}
+
+/* Scrollbar styling for chat area */
+.chat-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 255, 0.2);
+  border-radius: 0;
+}
+
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 255, 0.4);
+}

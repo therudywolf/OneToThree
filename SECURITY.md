@@ -66,12 +66,17 @@ The design protects against:
 - **Status:** All API endpoints validated with Zod schemas.
 - **Fix applied:** File upload names are now sanitized (strip path traversal `..`, null bytes, control characters, limit to 255 chars).
 - **Fix applied:** File uploads enforce an extension allowlist (images, video, audio, documents, archives) and MIME type prefix validation.
+- **Fix applied:** Server-side file size enforcement (100 MiB max) via `fileSize` field on upload-url endpoint.
+- **Fix applied:** DOMPurify added as defence-in-depth for client-side UGC rendering (bio, messages, social links).
+- **Fix applied:** URL protocol validation on social links (allow only http/https/mailto).
 - **Residual risk:** Client-provided MIME types can be spoofed; server trusts the Content-Type header from presigned PUT. MinIO serves files from an isolated domain (`s3.onetothree.ru`) which mitigates script execution.
+- **Note:** The frontend already avoids `dangerouslySetInnerHTML` — all user content is rendered via safe React text nodes and components. DOMPurify is an additional safety layer.
 
 ### Rate Limiting
 - **Global:** 100 requests/minute per IP (Fastify rate-limit plugin).
-- **Auth challenge:** 30/minute (configurable via `AUTH_CHALLENGE_RATE_LIMIT_MAX`).
-- **Auth QR/TOTP endpoints:** 10/minute each.
+- **Auth challenge/verify:** 5 per 15 minutes per IP (covers login + registration).
+- **Auth QR endpoints:** 10/minute each.
+- **TOTP endpoints (setup, verify, disable, login):** 5/hour each.
 - **Message send (REST):** 30/minute per user.
 - **File upload:** 10/minute per user.
 - **Push subscribe:** 10/minute per user.
@@ -80,50 +85,65 @@ The design protects against:
 ### Authentication Security
 - **JWT claims:** `sub`, `username`, `device_id`, `jti`, `iss` (issuer: `onetothree`), `iat`, `exp`. Issuer verified on decode.
 - **Token revocation:** JTI-based denylist (in-memory, with auto-cleanup of expired entries).
+- **Refresh token rotation:** `POST /api/auth/refresh` issues a new JWT with fresh JTI and invalidates the old token's JTI on the denylist.
 - **Device tracking:** Per-browser stable ID (`X-Client-Device-Id`), revoked devices rejected on every authenticated request.
 - **Timing-safe comparison:** Nonce and public key comparisons use `crypto.timingSafeEqual`.
 - **TOTP replay guard:** Each 6-digit code can only be used once within 60s window.
 - **Password hashing:** N/A — authentication is ECDSA signature-based (no passwords stored server-side).
 
 ### Session Management
-- **Active sessions:** Device list with IP, user agent, last active, revoke capability.
-- **Global sign-out:** Revoke all devices via `DELETE /users/me/sessions`.
+- **Active sessions list:** `GET /users/me/sessions` returns all device sessions with IP, user agent, last active, created_at, revocation status, and current session flag.
+- **Revoke individual session:** `DELETE /users/me/sessions/:sessionId` revokes a single session by device ID and notifies via WebSocket.
+- **Revoke all other sessions:** `DELETE /users/me/sessions` revokes all sessions except the current device.
 - **Login history:** Audit trail in `login_events` table (IP, user agent, outcome, timestamp). Last 20 events exposed via `GET /users/me/login-history`.
 
 ### Encryption Key Management
 - **Vault key:** Never leaves the client. PBKDF2-derived AES key wraps ECDSA/ECDH private keys.
 - **Private key:** Stored encrypted in localStorage vault blob; also synced to server as opaque encrypted data.
 - **IndexedDB:** Media cache (Dexie) stores decrypted blobs; cleared on logout via `wipeAllClientLocalState()`.
+- **Fix applied:** Logout now calls `wipeAllClientLocalState()` to clear all IndexedDB databases (media cache, message cache, WebAuthn metadata), localStorage, and sessionStorage.
 - **Zustand state:** `unwrappedPrivateKey` held only in volatile memory (chat store); cleared on logout/auto-lock.
 - **No private key leakage:** Reviewed all API calls — no endpoint sends private key material to the server.
 
 ### User Blocking
 - **Block system:** `user_blocks` table with bidirectional enforcement.
 - **API:** `POST/DELETE /users/me/block/:targetId`, `GET /users/me/blocked`.
-- **Enforcement points:** Block checks should be applied at message send, group invite, and presence lookup (helper: `isBlocked()` in `block-check.ts`).
+- **Fix applied:** Block checks now enforced at message send — both WebSocket `chat_message` and REST `POST /messages/send` check `isBlocked()` for direct chats before allowing message delivery.
+- **Enforcement points:** Block checks applied at message send, group invite, and presence lookup (helper: `isBlocked()` in `block-check.ts`).
+
+### Privacy Controls
+- **Read receipts toggle:** `disable_read_receipts` field on users table. When enabled, read receipt processing silently skips (no DB write, no sender notification).
+- **Online status visibility:** `hide_presence` field on users table. When enabled, peers see offline status and no last-seen timestamp.
+- **API:** Both settings controllable via `PATCH /users/me` and visible in `GET /users/me/settings`.
 
 ### Account Deletion
-- **Full deletion:** `DELETE /users/me/account` with username confirmation.
-- **Scope:** Deletes user, all devices, block records. Messages and chat memberships cascade via foreign keys.
+- **Endpoint:** `DELETE /users/me/account` with username confirmation.
+- **Fix applied:** Messages are now anonymized (content → "[deleted]", media references cleared) instead of cascade-deleted.
+- **Fix applied:** User's media files are deleted from MinIO (best-effort).
+- **Fix applied:** User's avatar is deleted from MinIO.
+- **Scope:** Deletes user, all devices, block records. Messages remain with anonymized content.
 
 ### File Upload Security
 - **Presigned URL pattern:** Browser uploads directly to MinIO via presigned PUT; server never handles file bytes.
 - **Path validation:** Strict regex enforces `chats/{chatId}/{userId}/{uuid}.ext` format.
 - **Extension allowlist:** Only common image, video, audio, document, and archive extensions permitted.
 - **MIME validation:** Server validates Content-Type prefix against allowed list.
+- **File size limit:** 100 MiB maximum enforced server-side.
 - **Isolated serving:** Files served from `s3.onetothree.ru` (separate domain from app) to prevent script execution in app context.
 - **Virus scanning:** Not implemented. ClamAV can be added as a MinIO post-upload webhook if available.
 
 ### WebSocket Security
 - **Authentication:** WS connections require valid JWT (session cookie or `?ticket=` query param with `scope: 'ws'`).
-- **Message size limit:** 64 KB per WebSocket frame (reduced from 1 MB).
+- **Message size limit:** 64 KB per WebSocket frame.
 - **Per-connection rate limiting:** 60 messages/minute sliding window. Exceeding returns error without disconnection.
 - **Device validation:** WS ticket includes `device_id`; revoked devices are rejected during handshake.
+- **Fix applied:** Session revocation check on every heartbeat (presence_ping ~30s): checks JTI denylist and device revocation status. Revoked sessions are closed with code 1008.
 
 ### Dependency Audit (2026-04-13)
 - **Server (`npm audit`):** 0 vulnerabilities.
 - **Client (`npm audit`):** 0 vulnerabilities.
 - **Root (`npm audit`):** 4 moderate severity — all in `esbuild` via `drizzle-kit` (dev dependency, migration CLI only). Not exploitable at runtime. Fix requires breaking drizzle-kit upgrade.
+- **Unfixable:** `esbuild <=0.24.2` (GHSA-67mh-4wv8-2f99) — moderate severity, development server request relay. Only affects `drizzle-kit` CLI (migration tool), never runs in production. Blocked by breaking change in drizzle-kit.
 
 ## Security caveats
 
@@ -132,6 +152,7 @@ The design protects against:
 - Offline queued websocket messages are still encrypted payloads, but are stored in browser memory until sent.
 - No forward secrecy — compromised long-term ECDH key exposes historical messages.
 - Metadata (who messages whom, timing, sizes) is observable by the server.
+- JTI denylist is in-memory; it resets on server restart. For production, consider Redis-backed denylist.
 
 ## Recommended production controls
 
@@ -142,3 +163,5 @@ The design protects against:
 - Consider adding ClamAV scanning for uploaded files via MinIO webhook.
 - Monitor `login_events` table for brute-force patterns.
 - Implement login event cleanup cron (retain 90 days).
+- Consider migrating JTI denylist to Redis for persistence across restarts.
+- Implement client-side periodic token refresh using `POST /api/auth/refresh`.

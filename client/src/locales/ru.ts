@@ -58,6 +58,7 @@ const ru = {
   'login.unwrapFailed': 'Неверный пароль или повреждённые данные.',
   'login.invalidVaultFormat': 'Повреждённый формат хранилища.',
   'login.legacyVault': 'Устаревший формат. Требуется сброс и повторная регистрация.',
+  'login.vaultVersionMismatch': 'Формат ключа устарел. Требуется новый вход.',
   'login.invalidSigningKey': 'Ошибка инициализации ключа подписи.',
   'login.signFailed': 'Ошибка подписи запроса авторизации.',
   'login.challengeFailed': 'Сервер авторизации недоступен.',

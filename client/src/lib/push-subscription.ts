@@ -14,16 +14,16 @@ function toUint8(b64: string): Uint8Array {
   return new Uint8Array(Array.from(raw, (c) => c.charCodeAt(0)))
 }
 
-export const getSignalKey = () => process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+export const getVapidPublicKey = () => process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
 /** [WARN_LOG] :: Проверка наличия ключа в сборке */
-export function validateVapidSignal(): void {
-  if (typeof window !== 'undefined' && !getSignalKey()) {
+export function warnIfVapidPublicKeyMissing(): void {
+  if (typeof window !== 'undefined' && !getVapidPublicKey()) {
     console.warn('>> [SYS.PUSH] VAPID_KEY_MISSING. Intercept protocol disabled.')
   }
 }
 
-export function isPushSupported(): boolean {
+export function supportsWebPush(): boolean {
   if (typeof window === 'undefined') return false
   return (
     'serviceWorker' in navigator &&
@@ -33,7 +33,7 @@ export function isPushSupported(): boolean {
 }
 
 /** [AUTH_PROBE] :: Проверка текущих прав на прерывание */
-export async function getInterceptAuthority(): Promise<NotificationPermission> {
+export async function getNotificationPermission(): Promise<NotificationPermission> {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'denied'
   return Notification.permission
 }
@@ -45,8 +45,8 @@ export async function requestInterceptAuthority(): Promise<NotificationPermissio
 }
 
 /** [SCAN] :: Поиск существующего перехвата без регистрации нового SW */
-export async function getActiveIntercept(): Promise<PushSubscription | null> {
-  if (!isPushSupported()) return null
+export async function getExistingPushSubscription(): Promise<PushSubscription | null> {
+  if (!supportsWebPush()) return null
   try {
     const reg = await navigator.serviceWorker.getRegistration()
     return reg ? await reg.pushManager.getSubscription() : null
@@ -58,7 +58,7 @@ export async function getActiveIntercept(): Promise<PushSubscription | null> {
 
 /** [SW_INITIALIZE] :: Подготовка оболочки для приема сигналов */
 export async function initPushWorker(): Promise<ServiceWorkerRegistration> {
-  if (!isPushSupported()) throw new Error('WEB_PUSH_UNSUPPORTED')
+  if (!supportsWebPush()) throw new Error('WEB_PUSH_UNSUPPORTED')
 
   let reg = await navigator.serviceWorker.getRegistration()
   
@@ -105,9 +105,9 @@ async function syncInterceptWithCore(sub: PushSubscription): Promise<void> {
 }
 
 /** [ESTABLISH_INTERCEPT] :: Полный цикл активации оповещений */
-export async function establishPushIntercept(): Promise<void> {
-  const vapid = getSignalKey()
-  if (!vapid || !isPushSupported()) throw new Error('SIGNAL_HARDWARE_FAULT')
+export async function subscribeUserPush(): Promise<void> {
+  const vapid = getVapidPublicKey()
+  if (!vapid || !supportsWebPush()) throw new Error('SIGNAL_HARDWARE_FAULT')
 
   try {
     const authority = await requestInterceptAuthority()
@@ -129,16 +129,7 @@ export async function establishPushIntercept(): Promise<void> {
 }
 
 /** [TERMINATE_INTERCEPT] :: Удаление узла из системы оповещений */
-// --- CONSUMER_ALIASES ---
-export const getExistingPushSubscription = getActiveIntercept
-export const getNotificationPermission = getInterceptAuthority
-export const getVapidPublicKey = getSignalKey
-export const subscribeUserPush = establishPushIntercept
-export const supportsWebPush = isPushSupported
-export const unsubscribeUserPush = terminatePushIntercept
-export const warnIfVapidPublicKeyMissing = validateVapidSignal
-
-export async function terminatePushIntercept(): Promise<void> {
+export async function unsubscribeUserPush(): Promise<void> {
   try {
     const reg = await navigator.serviceWorker.getRegistration()
     if (!reg) return

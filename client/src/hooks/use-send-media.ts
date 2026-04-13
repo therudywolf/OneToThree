@@ -60,7 +60,7 @@ async function injectWithRetry(
   throw new Error('STORAGE_INJECTION_FAILED')
 }
 
-export function useBinaryTransmission(cryptoCtx: ChatCryptoContext | null) {
+export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
   const { activeChatId, userId, unwrappedPrivateKey, appendMessage } = useChatStore()
 
   const transmitBinary = useCallback(
@@ -163,4 +163,3 @@ export function useBinaryTransmission(cryptoCtx: ChatCryptoContext | null) {
   return { transmitBinary, sendMedia: transmitBinary }
 }
 
-export const useSendMedia = useBinaryTransmission

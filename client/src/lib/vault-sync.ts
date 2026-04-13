@@ -36,10 +36,7 @@ function setLocalVersion(userId: string, v: number): void {
  * Синхронизация зашифрованного контейнера с сервером после инициализации сессии.
  * Оперирует только непрозрачным шифротекстом.
  */
-// --- CONSUMER_ALIAS ---
-export const runPostLoginVaultSync = executeVaultUplink
-
-export async function executeVaultUplink(userId: string): Promise<void> {
+export async function runPostLoginVaultSync(userId: string): Promise<void> {
   // [0] PRE_FLIGHT_CHECK :: Проверка наличия локального контейнера
   const container = readVaultBlob(userId)
   if (!container || typeof window === 'undefined') return

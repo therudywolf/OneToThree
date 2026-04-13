@@ -8,8 +8,10 @@ import {
 import { patchMyEcdhPublicKey } from '@/lib/api/users'
 import { parseVaultPlaintext } from '@/lib/vault-keyring'
 import {
+  CURRENT_VAULT_VERSION,
   readVaultBlob,
   unwrapPrivateJwkWithPin,
+  VaultVersionMismatchError,
 } from '@/lib/vault'
 import {
   enrollWebAuthnVaultUnlock,
@@ -84,11 +86,18 @@ export function VaultModal({ userId, displayHandle }: Props) {
         setError(t('login.noLocalVault'))
         return
       }
+      if (blob.version > CURRENT_VAULT_VERSION) {
+        throw new VaultVersionMismatchError()
+      }
       const plain = await unwrapPrivateJwkWithPin(blob, pin)
       await applyPlaintext(plain)
       vibrateShort(20)
-    } catch {
-      setError(t('login.unwrapFailed'))
+    } catch (err) {
+      if (err instanceof VaultVersionMismatchError) {
+        setError(t('login.vaultVersionMismatch'))
+      } else {
+        setError(t('login.unwrapFailed'))
+      }
     } finally {
       setBusy(false)
     }

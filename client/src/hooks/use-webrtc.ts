@@ -313,7 +313,7 @@ export function useWebRTC(userId: string | null) {
   useEffect(() => {
     const poll = () => {
       const state = useCallStore.getState()
-      if (!state.isLinkActive) {
+      if (!state.isCalling) {
         setConnectionQuality(null)
         return
       }

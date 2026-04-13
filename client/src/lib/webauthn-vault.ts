@@ -7,7 +7,7 @@
 
 import { openDB, type IDBPDatabase } from 'idb'
 import {
-  persistVault,
+  persistVaultBlob,
   readVaultBlob,
   unwrapPrivateJwkWithPin,
   wrapPrivateJwkWithPin,
@@ -141,7 +141,7 @@ export async function bindBiometricAuthority(
     }
 
     // [5] COMMIT_CHANGES :: Замена локального сейфа и фиксация метки
-    persistVault(nodeId, bioContainer)
+    persistVaultBlob(nodeId, bioContainer)
     const db = await openRegistry()
     await db.put('registry', {
       node_id: nodeId,
@@ -197,7 +197,7 @@ export async function interceptBiometricSignal(nodeId: string): Promise<string> 
 }
 
 /** [PURGE_BIO_REGISTRY] :: Аннигиляция биометрических меток */
-export async function purgeBioRegistry(nodeId?: string): Promise<void> {
+export async function deleteWebAuthnMetaDb(nodeId?: string): Promise<void> {
   if (typeof indexedDB === 'undefined') return
   try {
     const db = await openRegistry()
@@ -234,4 +234,3 @@ export async function enrollWebAuthnVaultUnlock(
     : { ok: false, error: result.error ?? 'ENROLL_FAILED' }
 }
 
-export const deleteWebAuthnMetaDb = purgeBioRegistry

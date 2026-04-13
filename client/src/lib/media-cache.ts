@@ -45,7 +45,7 @@ async function getFingerprint(buf: ArrayBuffer): Promise<string> {
 }
 
 /** [EXTRACT] :: Извлечение сегмента из локальной памяти */
-export async function getCachedSegment(
+export async function getCachedMedia(
   messageId: string
 ): Promise<{ blob: Blob; mimeType: string } | undefined> {
   if (typeof indexedDB === 'undefined') return undefined
@@ -57,7 +57,7 @@ export async function getCachedSegment(
 }
 
 /** [INJECT] :: Сохранение дешифрованного сегмента с проверкой лимитов */
-export async function setCachedSegment(
+export async function setCachedMedia(
   messageId: string,
   blob: Blob,
   mimeType: string
@@ -111,19 +111,15 @@ export async function purgeOldSegments(
 }
 
 /** Снятие показаний о загруженности сектора */
-export async function getDenUsage(): Promise<number> {
+export async function getDigitalDenUsageBytes(): Promise<number> {
   if (typeof indexedDB === 'undefined') return 0
   const rows = await den.segments.toArray()
   return rows.reduce((acc, r) => acc + (r.blob?.size ?? 0), 0)
 }
 
 /** Полная стерилизация кэша */
-export async function wipeDigitalDen(): Promise<void> {
+export async function clearAllMediaCache(): Promise<void> {
   if (typeof indexedDB === 'undefined') return
   await den.segments.clear()
 }
 
-export const getCachedMedia = getCachedSegment
-export const setCachedMedia = setCachedSegment
-export const clearAllMediaCache = wipeDigitalDen
-export const getDigitalDenUsageBytes = getDenUsage

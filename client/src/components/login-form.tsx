@@ -55,6 +55,7 @@ export function LoginForm() {
       VAULT_ALREADY_EXISTS: t('login.vaultExists'),
       UNWRAP_FAILED: t('login.unwrapFailed'),
       INVALID_VAULT_FORMAT: t('login.invalidVaultFormat'),
+      VAULT_VERSION_MISMATCH: t('login.vaultVersionMismatch'),
       TOTP_INVALID: t('login.totpInvalid'),
       DEVICE_REVOKED: t('login.deviceRevoked'),
     }

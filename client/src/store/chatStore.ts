@@ -30,84 +30,59 @@ export type ChatState = {
   // [IDENT_LAYER]
   activeChatId: string | null
   userId: string | null
-  vaultKey: CryptoKey | null
+  unwrappedPrivateKey: CryptoKey | null
 
   // [DATA_LAYER]
-  nodes: DecryptedMessage[]
-  replyFocus: DecryptedMessage | null
+  messages: DecryptedMessage[]
+  replyTo: DecryptedMessage | null
 
   // [PRESENCE_LAYER]
-  inputPulse: TypingMap
-  peerStatus: PeerStatusMap
+  typingUsers: TypingMap
+  peerPresence: PeerStatusMap
 
   // [SYNC_LAYER]
-  readOverrides: Record<string, string>
-  isDecrypting: boolean
+  readAtOverrides: Record<string, string>
+  historyDecryptBusy: boolean
 
   // [ACTIONS]
-  setActiveChat: (id: string | null) => void
-  setNodes: (nodes: DecryptedMessage[]) => void
-  pushNode: (node: DecryptedMessage) => void
-  evictNode: (id: string) => void
-  pruneExpiredNodes: (now?: number) => void
-  setReplyFocus: (node: DecryptedMessage | null) => void
-  setVaultKey: (key: CryptoKey | null) => void
-  setUserId: (id: string | null) => void
-  registerInputPulse: (chatId: string, uid: string, uname: string, ttl?: number) => void
-  clearInputPulse: (chatId: string, uid: string) => void
-  purgeGlobalInputPulse: (uid: string) => void
-  gcInputPulse: (now?: number) => void
-  updatePeerStatus: (uid: string, status: { online: boolean; last_seen_at: string | null }) => void
-  batchUpdateStatus: (rows: { id: string; online: boolean; last_seen_at: string | null }[]) => void
-  markNodeRead: (nodeId: string, timestamp: string) => void
-  setDecryptStatus: (busy: boolean) => void
-  resetProtocol: () => void
-
-  // --- CONSUMER_ALIASES ---
   setActiveChatId: (id: string | null) => void
-  unwrappedPrivateKey: CryptoKey | null
-  messages: DecryptedMessage[]
-  readAtOverrides: Record<string, string>
-  removeMessage: (id: string) => void
-  setReplyTo: (node: DecryptedMessage | null) => void
-  replyTo: DecryptedMessage | null
-  peerPresence: PeerStatusMap
-  typingUsers: TypingMap
-  historyDecryptBusy: boolean
-  pruneBurnedMessages: (now?: number) => void
-  setUnwrappedPrivateKey: (key: CryptoKey | null) => void
-  updateMessageReadAt: (nodeId: string, timestamp: string) => void
-  setPeerPresence: (uid: string, status: { online: boolean; last_seen_at: string | null }) => void
-  mergePeerPresenceBatch: (rows: { id: string; online: boolean; last_seen_at: string | null }[]) => void
+  setMessages: (nodes: DecryptedMessage[]) => void
   appendMessage: (node: DecryptedMessage) => void
+  removeMessage: (id: string) => void
+  pruneBurnedMessages: (now?: number) => void
+  setReplyTo: (node: DecryptedMessage | null) => void
+  setUnwrappedPrivateKey: (key: CryptoKey | null) => void
+  setUserId: (id: string | null) => void
   setTypingUser: (chatId: string, uid: string, uname: string, ttl?: number) => void
   clearTypingUser: (chatId: string, uid: string) => void
   clearTypingUserEverywhere: (uid: string) => void
   pruneTypingUsers: (now?: number) => void
-  setMessages: (nodes: DecryptedMessage[]) => void
+  setPeerPresence: (uid: string, status: { online: boolean; last_seen_at: string | null }) => void
+  mergePeerPresenceBatch: (rows: { id: string; online: boolean; last_seen_at: string | null }[]) => void
+  updateMessageReadAt: (nodeId: string, timestamp: string) => void
   setHistoryDecryptBusy: (busy: boolean) => void
   reset: () => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => {
-  const setActiveChat = (id: string | null) =>
-    set({ activeChatId: id, replyFocus: null, readOverrides: {}, isDecrypting: false })
+  const setActiveChatId = (id: string | null) =>
+    set({ activeChatId: id, replyTo: null, readAtOverrides: {}, historyDecryptBusy: false })
 
-  const setNodes = (nodes: DecryptedMessage[]) =>
-    set({ nodes: enforceMemoryLimit(sortNodes(nodes)) })
+  const setMessages = (nodes: DecryptedMessage[]) =>
+    set({ messages: enforceMemoryLimit(sortNodes(nodes)) })
 
-  const pushNode = (node: DecryptedMessage) =>
+  const appendMessage = (node: DecryptedMessage) =>
     set((s) => {
-      if (s.nodes.some((x) => x.id === node.id)) return s
-      return { nodes: enforceMemoryLimit(sortNodes([...s.nodes, node])) }
+      if (s.messages.some((x) => x.id === node.id)) return s
+      return { messages: enforceMemoryLimit(sortNodes([...s.messages, node])) }
     })
 
-  const evictNode = (id: string) =>
-    set((s) => ({ nodes: s.nodes.filter((n) => n.id !== id) }))
+  const removeMessage = (id: string) =>
+    set((s) => ({ messages: s.messages.filter((n) => n.id !== id) }))
 
-  const pruneExpiredNodes = (now = Date.now()) =>
+  const pruneBurnedMessages = (now = Date.now()) =>
     set((s) => {
-      const expired = s.nodes.filter((n) => {
+      const expired = s.messages.filter((n) => {
         if (!n.burn_at) return false
         const t = new Date(n.burn_at).getTime()
         return Number.isFinite(t) && now > t
@@ -115,171 +90,119 @@ export const useChatStore = create<ChatState>((set, get) => {
       expired.forEach((n) => void deleteCachedMessage(n.id))
       if (expired.length === 0) return s
       const idsToDrop = new Set(expired.map((n) => n.id))
-      return { nodes: s.nodes.filter((n) => !idsToDrop.has(n.id)) }
+      return { messages: s.messages.filter((n) => !idsToDrop.has(n.id)) }
     })
 
-  const setReplyFocus = (node: DecryptedMessage | null) => set({ replyFocus: node })
-  const setVaultKey = (key: CryptoKey | null) => set({ vaultKey: key })
+  const setReplyTo = (node: DecryptedMessage | null) => set({ replyTo: node })
+  const setUnwrappedPrivateKey = (key: CryptoKey | null) => set({ unwrappedPrivateKey: key })
   const setUserId = (id: string | null) => set({ userId: id })
 
-  const registerInputPulse = (chatId: string, uid: string, uname: string, ttl = 3000) =>
+  const setTypingUser = (chatId: string, uid: string, uname: string, ttl = 3000) =>
     set((s) => ({
-      inputPulse: {
-        ...s.inputPulse,
+      typingUsers: {
+        ...s.typingUsers,
         [chatId]: {
-          ...(s.inputPulse[chatId] ?? {}),
+          ...(s.typingUsers[chatId] ?? {}),
           [uid]: { username: uname, expiresAt: Date.now() + ttl },
         },
       },
     }))
 
-  const clearInputPulse = (chatId: string, uid: string) =>
+  const clearTypingUser = (chatId: string, uid: string) =>
     set((s) => {
-      const bucket = { ...(s.inputPulse[chatId] ?? {}) }
+      const bucket = { ...(s.typingUsers[chatId] ?? {}) }
       delete bucket[uid]
-      const nextPulse = { ...s.inputPulse }
-      if (Object.keys(bucket).length === 0) delete nextPulse[chatId]
-      else nextPulse[chatId] = bucket
-      return { inputPulse: nextPulse }
+      const nextTyping = { ...s.typingUsers }
+      if (Object.keys(bucket).length === 0) delete nextTyping[chatId]
+      else nextTyping[chatId] = bucket
+      return { typingUsers: nextTyping }
     })
 
-  const purgeGlobalInputPulse = (uid: string) =>
+  const clearTypingUserEverywhere = (uid: string) =>
     set((s) => {
-      const nextPulse: TypingMap = {}
-      for (const [chatId, users] of Object.entries(s.inputPulse)) {
+      const nextTyping: TypingMap = {}
+      for (const [chatId, users] of Object.entries(s.typingUsers)) {
         const nextUsers = { ...users }
         delete nextUsers[uid]
-        if (Object.keys(nextUsers).length > 0) nextPulse[chatId] = nextUsers
+        if (Object.keys(nextUsers).length > 0) nextTyping[chatId] = nextUsers
       }
-      return { inputPulse: nextPulse }
+      return { typingUsers: nextTyping }
     })
 
-  const gcInputPulse = (now = Date.now()) =>
+  const pruneTypingUsers = (now = Date.now()) =>
     set((s) => {
-      const nextPulse: TypingMap = {}
+      const nextTyping: TypingMap = {}
       let changed = false
-      for (const [chatId, users] of Object.entries(s.inputPulse)) {
+      for (const [chatId, users] of Object.entries(s.typingUsers)) {
         const nextUsers: Record<string, { username: string; expiresAt: number }> = {}
         for (const [uid, state] of Object.entries(users)) {
           if (state.expiresAt > now) nextUsers[uid] = state
           else changed = true
         }
-        if (Object.keys(nextUsers).length > 0) nextPulse[chatId] = nextUsers
+        if (Object.keys(nextUsers).length > 0) nextTyping[chatId] = nextUsers
         else changed = true
       }
-      return changed ? { inputPulse: nextPulse } : s
+      return changed ? { typingUsers: nextTyping } : s
     })
 
-  const updatePeerStatus = (uid: string, status: { online: boolean; last_seen_at: string | null }) =>
-    set((s) => ({ peerStatus: { ...s.peerStatus, [uid]: status } }))
+  const setPeerPresence = (uid: string, status: { online: boolean; last_seen_at: string | null }) =>
+    set((s) => ({ peerPresence: { ...s.peerPresence, [uid]: status } }))
 
-  const batchUpdateStatus = (rows: { id: string; online: boolean; last_seen_at: string | null }[]) =>
+  const mergePeerPresenceBatch = (rows: { id: string; online: boolean; last_seen_at: string | null }[]) =>
     set((s) => {
-      const nextStatus = { ...s.peerStatus }
+      const nextStatus = { ...s.peerPresence }
       rows.forEach((r) => { nextStatus[r.id] = { online: r.online, last_seen_at: r.last_seen_at } })
-      return { peerStatus: nextStatus }
+      return { peerPresence: nextStatus }
     })
 
-  const markNodeRead = (nodeId: string, timestamp: string) =>
+  const updateMessageReadAt = (nodeId: string, timestamp: string) =>
     set((s) => ({
-      readOverrides: { ...s.readOverrides, [nodeId]: timestamp },
-      nodes: s.nodes.map((n) => n.id === nodeId ? { ...n, read_at: timestamp } : n),
+      readAtOverrides: { ...s.readAtOverrides, [nodeId]: timestamp },
+      messages: s.messages.map((n) => n.id === nodeId ? { ...n, read_at: timestamp } : n),
     }))
 
-  const setDecryptStatus = (busy: boolean) => set({ isDecrypting: busy })
+  const setHistoryDecryptBusy = (busy: boolean) => set({ historyDecryptBusy: busy })
 
-  const resetProtocol = () =>
+  const reset = () =>
     set({
       activeChatId: null,
       userId: null,
-      vaultKey: null,
-      nodes: [],
-      replyFocus: null,
-      inputPulse: {},
-      peerStatus: {},
-      readOverrides: {},
-      isDecrypting: false,
+      unwrappedPrivateKey: null,
+      messages: [],
+      replyTo: null,
+      typingUsers: {},
+      peerPresence: {},
+      readAtOverrides: {},
+      historyDecryptBusy: false,
     })
 
   return {
     activeChatId: null,
     userId: null,
-    vaultKey: null,
-    nodes: [],
-    replyFocus: null,
-    inputPulse: {},
-    peerStatus: {},
-    readOverrides: {},
-    isDecrypting: false,
-
-    // Core actions
-    setActiveChat,
-    setNodes,
-    pushNode,
-    evictNode,
-    pruneExpiredNodes,
-    setReplyFocus,
-    setVaultKey,
-    setUserId,
-    registerInputPulse,
-    clearInputPulse,
-    purgeGlobalInputPulse,
-    gcInputPulse,
-    updatePeerStatus,
-    batchUpdateStatus,
-    markNodeRead,
-    setDecryptStatus,
-    resetProtocol,
-
-    // Consumer aliases (actions)
-    setActiveChatId: setActiveChat,
-    removeMessage: evictNode,
-    setReplyTo: setReplyFocus,
-    setUnwrappedPrivateKey: setVaultKey,
-    pruneBurnedMessages: pruneExpiredNodes,
-    updateMessageReadAt: markNodeRead,
-    setPeerPresence: updatePeerStatus,
-    mergePeerPresenceBatch: batchUpdateStatus,
-    appendMessage: pushNode,
-    setTypingUser: registerInputPulse,
-    clearTypingUser: clearInputPulse,
-    clearTypingUserEverywhere: purgeGlobalInputPulse,
-    pruneTypingUsers: gcInputPulse,
-    setMessages: setNodes,
-    setHistoryDecryptBusy: setDecryptStatus,
-    reset: resetProtocol,
-
-    // Consumer aliases (state - initial values, kept in sync via selectors)
     unwrappedPrivateKey: null,
     messages: [],
-    readAtOverrides: {},
     replyTo: null,
-    peerPresence: {},
     typingUsers: {},
+    peerPresence: {},
+    readAtOverrides: {},
     historyDecryptBusy: false,
-  }
-})
 
-// Keep consumer alias state fields in sync after each state change
-useChatStore.subscribe((state) => {
-  const needsSync =
-    state.unwrappedPrivateKey !== state.vaultKey ||
-    state.messages !== state.nodes ||
-    state.readAtOverrides !== state.readOverrides ||
-    state.replyTo !== state.replyFocus ||
-    state.peerPresence !== state.peerStatus ||
-    state.typingUsers !== state.inputPulse ||
-    state.historyDecryptBusy !== state.isDecrypting
-
-  if (needsSync) {
-    useChatStore.setState({
-      unwrappedPrivateKey: state.vaultKey,
-      messages: state.nodes,
-      readAtOverrides: state.readOverrides,
-      replyTo: state.replyFocus,
-      peerPresence: state.peerStatus,
-      typingUsers: state.inputPulse,
-      historyDecryptBusy: state.isDecrypting,
-    }, false)
+    setActiveChatId,
+    setMessages,
+    appendMessage,
+    removeMessage,
+    pruneBurnedMessages,
+    setReplyTo,
+    setUnwrappedPrivateKey,
+    setUserId,
+    setTypingUser,
+    clearTypingUser,
+    clearTypingUserEverywhere,
+    pruneTypingUsers,
+    setPeerPresence,
+    mergePeerPresenceBatch,
+    updateMessageReadAt,
+    setHistoryDecryptBusy,
+    reset,
   }
 })

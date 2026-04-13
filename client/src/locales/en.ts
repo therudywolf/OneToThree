@@ -58,6 +58,7 @@ const en = {
   'login.unwrapFailed': 'Wrong password or corrupted data.',
   'login.invalidVaultFormat': 'Invalid vault format.',
   'login.legacyVault': 'Outdated format. Reset and re-register required.',
+  'login.vaultVersionMismatch': 'Vault format is outdated. Please sign in again.',
   'login.invalidSigningKey': 'Signing key initialization failed.',
   'login.signFailed': 'Auth challenge signature failure.',
   'login.challengeFailed': 'Auth server unreachable.',

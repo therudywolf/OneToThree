@@ -1,6 +1,6 @@
 import { and, eq, isNull, ne } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { chatMembers, chats, messages } from '../db/schema.js'
+import { chatMembers, chats, messages, users } from '../db/schema.js'
 import { sendToUser } from '../ws/registry.js'
 
 export type MarkReadResult =
@@ -29,6 +29,17 @@ export async function markMessageReadByReader(
   messageId: string,
   assertChatId?: string
 ): Promise<MarkReadResult> {
+  // Check if the reader has disabled read receipts
+  const [readerRow] = await db
+    .select({ disableReadReceipts: users.disableReadReceipts })
+    .from(users)
+    .where(eq(users.id, readerId))
+    .limit(1)
+  if (readerRow?.disableReadReceipts) {
+    // Silently succeed — don't record read or notify sender
+    return { ok: false, error: 'READ_RECEIPTS_DISABLED' }
+  }
+
   const [msg] = await db
     .select({
       id: messages.id,

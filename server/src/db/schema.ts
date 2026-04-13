@@ -51,6 +51,8 @@ export const users = pgTable('users', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   /** When true, peers see offline / no last-seen; viewer still sees others (asymmetric). */
   hidePresence: boolean('hide_presence').notNull().default(false),
+  /** When true, don't send read receipts to peers. */
+  disableReadReceipts: boolean('disable_read_receipts').notNull().default(false),
   /** Short bio / about text. */
   bio: text('bio'),
   /** Custom status text (e.g. "busy", "do not disturb", free-form). */

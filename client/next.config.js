@@ -45,7 +45,7 @@ const nextConfig = {
 
     const cspHeader = `
     default-src 'self';
-    script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net blob:;
+    script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net blob:;
     style-src 'self' 'unsafe-inline';
     img-src 'self' blob: data: https://cdn.jsdelivr.net https://s3.onetothree.ru;
     font-src 'self';

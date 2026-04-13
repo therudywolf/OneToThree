@@ -199,7 +199,7 @@ select {
 
 /* ===== RESPONSIVE LAYOUT ===== */
 
-/* Mobile: sidebar hidden when chat is open, full-width chat */
+/* Mobile portrait: 360-430px — full-width chat, sidebar as overlay */
 @media (max-width: 767px) {
   .chat-layout-sidebar {
     display: none;
@@ -210,9 +210,13 @@ select {
   .chat-layout-main {
     width: 100%;
   }
+  /* Bottom nav bar space for mobile */
+  .chat-safe-shell {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
 
-/* Tablet: narrow sidebar */
+/* Tablet: 768-1024px — narrow sidebar at 280px */
 @media (min-width: 768px) and (max-width: 1023px) {
   .chat-layout-sidebar {
     width: 280px;
@@ -220,8 +224,16 @@ select {
   }
 }
 
-/* Desktop: full sidebar */
-@media (min-width: 1024px) {
+/* Desktop: 1024-1279px — wider sidebar */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .chat-layout-sidebar {
+    width: 300px;
+    flex-shrink: 0;
+  }
+}
+
+/* Desktop large: 1280px+ — full 320px sidebar */
+@media (min-width: 1280px) {
   .chat-layout-sidebar {
     width: 320px;
     flex-shrink: 0;
@@ -235,6 +247,10 @@ select {
     margin-left: auto;
     margin-right: auto;
   }
+  /* Show member panel by default on ultrawide */
+  .chat-member-panel {
+    display: flex;
+  }
 }
 
 /* 32:9 super ultrawide */
@@ -244,7 +260,7 @@ select {
   }
 }
 
-/* Mobile landscape orientation */
+/* Mobile landscape orientation (667-932px wide, short height) */
 @media (max-height: 480px) and (orientation: landscape) {
   .chat-header-compact {
     padding-top: 0.25rem;
@@ -253,12 +269,32 @@ select {
   .chat-header-compact .header-text-full {
     display: none;
   }
+  /* Compact chat input in landscape */
+  .chat-layout-main {
+    max-height: 100dvh;
+  }
+}
+
+/* Samsung ultrawide mobile (21:9 ratio, landscape) */
+@media (min-width: 667px) and (max-width: 932px) and (max-height: 480px) and (orientation: landscape) {
+  .chat-layout-sidebar {
+    width: 240px;
+  }
+  .msg-bubble-width {
+    max-width: min(70vw, 28rem);
+  }
+}
+
+/* 16:10 displays (1280x800, 1920x1200) */
+@media (min-width: 1280px) and (min-aspect-ratio: 16/10) and (max-aspect-ratio: 16/9) {
+  .chat-layout-sidebar {
+    width: 320px;
+  }
 }
 
 /* iOS safe area insets */
 .safe-all {
   padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
@@ -270,21 +306,38 @@ select {
 }
 
 /* Message bubble width constraints per screen size */
+/* Mobile portrait: 360-430px */
 @media (max-width: 430px) {
   .msg-bubble-width {
     max-width: calc(100vw - 2rem);
   }
 }
 
+/* Mobile to tablet: 431-767px */
 @media (min-width: 431px) and (max-width: 767px) {
   .msg-bubble-width {
     max-width: min(85vw, 32rem);
   }
 }
 
-@media (min-width: 768px) {
+/* Tablet: 768-1023px */
+@media (min-width: 768px) and (max-width: 1023px) {
   .msg-bubble-width {
-    max-width: min(75vw, 42rem);
+    max-width: min(75vw, 38rem);
+  }
+}
+
+/* Desktop: 1024px+ */
+@media (min-width: 1024px) {
+  .msg-bubble-width {
+    max-width: min(70vw, 42rem);
+  }
+}
+
+/* Ultrawide: 2560px+ */
+@media (min-width: 2560px) {
+  .msg-bubble-width {
+    max-width: min(50vw, 48rem);
   }
 }
 

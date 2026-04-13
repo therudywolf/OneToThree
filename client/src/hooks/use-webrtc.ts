@@ -492,6 +492,15 @@ export function useWebRTC(userId: string | null) {
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
+  // Clean up call on page unload / tab close
+  useEffect(() => {
+    const handleUnload = () => {
+      if (useCallStore.getState().isCalling) severAllLinks()
+    }
+    window.addEventListener('beforeunload', handleUnload)
+    return () => window.removeEventListener('beforeunload', handleUnload)
+  }, [severAllLinks])
+
   // Health Check / Readiness
   useEffect(() => {
     if (!userId) return setPeerReady(false)

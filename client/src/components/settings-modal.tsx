@@ -75,6 +75,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [profileBusy, setProfileBusy] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [lastSeenPrivacy, setLastSeenPrivacy] = useState<'everyone' | 'contacts' | 'nobody'>('everyone')
+  const [disableReadReceipts, setDisableReadReceipts] = useState<boolean | null>(null)
+  const [blockedUsers, setBlockedUsers] = useState<Array<{ user_id: string; username: string; avatar_key: string | null; blocked_at: string }>>([])
+  const [blockedLoading, setBlockedLoading] = useState(false)
+  const [loginHistory, setLoginHistory] = useState<Array<{ id: string; outcome: string; ip_address: string | null; user_agent: string | null; created_at: string }>>([])
+  const [loginHistoryLoading, setLoginHistoryLoading] = useState(false)
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -85,6 +90,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       const d = (await r.json().catch(() => ({}))) as {
         is_discoverable?: unknown
         hide_presence?: unknown
+        disable_read_receipts?: unknown
         bio?: string | null
         status_text?: string | null
         display_name?: string | null
@@ -100,6 +106,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setDiscoverable(value)
       updateUser({ is_discoverable: value })
       setHidePresence(typeof d.hide_presence === 'boolean' ? d.hide_presence : false)
+      setDisableReadReceipts(typeof d.disable_read_receipts === 'boolean' ? d.disable_read_receipts : false)
       setBio(d.bio ?? '')
       setStatusText(d.status_text ?? '')
       setDisplayName(d.display_name ?? '')
@@ -303,6 +310,71 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setError(e instanceof Error ? e.message : t('settings.unknown'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function toggleReadReceipts() {
+    if (disableReadReceipts === null || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const next = !disableReadReceipts
+      const r = await fetch(`${API_URL}/users/me`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disable_read_receipts: next }),
+      })
+      const d = (await r.json().catch(() => ({}))) as {
+        ok?: boolean
+        disable_read_receipts?: unknown
+        error?: string
+      }
+      if (!r.ok) throw new Error(d.error ?? t('settings.toggleFailed'))
+      if (typeof d.disable_read_receipts !== 'boolean') throw new Error(t('settings.toggleFailed'))
+      setDisableReadReceipts(d.disable_read_receipts)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('settings.unknown'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function loadBlockedUsers() {
+    setBlockedLoading(true)
+    try {
+      const r = await fetch(`${API_URL}/users/me/blocked`, { credentials: 'include' })
+      const d = (await r.json().catch(() => ({}))) as {
+        blocked?: Array<{ user_id: string; username: string; avatar_key: string | null; blocked_at: string }>
+      }
+      if (r.ok && d.blocked) setBlockedUsers(d.blocked)
+    } catch { /* ignore */ } finally {
+      setBlockedLoading(false)
+    }
+  }
+
+  async function unblockUser(targetId: string) {
+    try {
+      await fetch(`${API_URL}/users/me/block/${targetId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      setBlockedUsers((prev) => prev.filter((u) => u.user_id !== targetId))
+    } catch { /* ignore */ }
+  }
+
+  async function loadLoginHistory() {
+    setLoginHistoryLoading(true)
+    try {
+      const r = await fetch(`${API_URL}/users/me/login-history`, { credentials: 'include' })
+      const d = (await r.json().catch(() => ({}))) as {
+        events?: Array<{ id: string; outcome: string; ip_address: string | null; user_agent: string | null; created_at: string }>
+      }
+      if (r.ok && d.events) setLoginHistory(d.events)
+    } catch { /* ignore */ } finally {
+      setLoginHistoryLoading(false)
     }
   }
 
@@ -784,6 +856,125 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               >
                 [{allowNewDeviceLinking ? 'ON' : 'OFF'}]
               </button>
+            </div>
+
+            {/* Privacy: Read Receipts Toggle */}
+            <div className="border border-neon-cyan/30 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-widest text-neon-cyan">
+                    {t('privacy.readReceipts')}
+                  </p>
+                  <p className="break-words text-[9px] text-red-800">
+                    {t('privacy.readReceiptsHint')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={disableReadReceipts === true}
+                  disabled={busy || disableReadReceipts === null}
+                  onClick={() => void toggleReadReceipts()}
+                  className={`shrink-0 border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
+                    disableReadReceipts === null
+                      ? 'border-zinc-700 bg-zinc-950 text-zinc-600'
+                      : disableReadReceipts
+                        ? 'border-neon-red bg-neon-red/10 text-neon-red shadow-[0_0_14px_rgba(239,68,68,0.25)]'
+                        : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+                  } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
+                >
+                  {busy ? '[ … ]' : disableReadReceipts === null ? '[ -- ]' : disableReadReceipts ? '[ OFF ]' : '[ ON ]'}
+                </button>
+              </div>
+            </div>
+
+            {/* Privacy: Blocked Users */}
+            <div className="border border-neon-cyan/30 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-neon-cyan">
+                    {t('block.title')}
+                  </p>
+                  <p className="text-[9px] text-red-800">{t('block.hint')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadBlockedUsers()}
+                  disabled={blockedLoading}
+                  className="shrink-0 border border-neon-cyan/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10 disabled:opacity-40"
+                >
+                  {blockedLoading ? '[ ... ]' : '[ LOAD ]'}
+                </button>
+              </div>
+              {blockedUsers.length === 0 ? (
+                <p className="text-[9px] text-zinc-600">{t('block.empty')}</p>
+              ) : (
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {blockedUsers.map((u) => (
+                    <div key={u.user_id} className="flex items-center justify-between border border-zinc-800 px-2 py-1">
+                      <span className="font-mono text-[10px] text-neon-cyan/80 truncate">@{u.username}</span>
+                      <button
+                        type="button"
+                        onClick={() => void unblockUser(u.user_id)}
+                        className="shrink-0 border border-neon-red/50 px-2 py-0.5 font-mono text-[8px] uppercase text-neon-red hover:bg-neon-red/10"
+                      >
+                        {t('block.unblock')}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Login History */}
+            <div className="border border-neon-cyan/30 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-neon-cyan">
+                    {t('security.loginHistory')}
+                  </p>
+                  <p className="text-[9px] text-red-800">{t('security.loginHistoryHint')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadLoginHistory()}
+                  disabled={loginHistoryLoading}
+                  className="shrink-0 border border-neon-cyan/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10 disabled:opacity-40"
+                >
+                  {loginHistoryLoading ? '[ ... ]' : '[ LOAD ]'}
+                </button>
+              </div>
+              {loginHistory.length === 0 ? (
+                <p className="text-[9px] text-zinc-600">{t('security.loginNoEvents')}</p>
+              ) : (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {loginHistory.slice(0, 10).map((ev) => {
+                    const outcomeLabel =
+                      ev.outcome === 'success' ? t('security.loginSuccess')
+                      : ev.outcome === 'fail_signature' ? t('security.loginFailSignature')
+                      : ev.outcome === 'fail_totp' ? t('security.loginFailTotp')
+                      : ev.outcome === 'fail_banned' ? t('security.loginFailBanned')
+                      : ev.outcome === 'fail_device_revoked' ? t('security.loginFailDeviceRevoked')
+                      : ev.outcome
+                    const isSuccess = ev.outcome === 'success'
+                    return (
+                      <div key={ev.id} className="border border-zinc-800 px-2 py-1">
+                        <div className="flex items-center justify-between">
+                          <span className={`font-mono text-[9px] uppercase tracking-wider ${isSuccess ? 'text-neon-cyan' : 'text-neon-red'}`}>
+                            {outcomeLabel}
+                          </span>
+                          <span className="font-mono text-[8px] text-zinc-500">
+                            {new Date(ev.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="font-mono text-[8px] text-zinc-600 truncate">
+                          {ev.ip_address ?? '—'} · {ev.user_agent?.slice(0, 60) ?? '—'}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             {/* INCINERATE_LOCAL_DATA */}

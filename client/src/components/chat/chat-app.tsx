@@ -44,6 +44,8 @@ import { useAutoLock } from '@/hooks/use-auto-lock'
 import { useCallPwa } from '@/hooks/use-call-pwa'
 import { useAppBadge } from '@/hooks/use-app-badge'
 import { MEDIA_PERMISSION_DENIED_CODE } from '@/lib/media-limits'
+import { useGroupCall } from '@/hooks/use-group-call'
+import { useGroupCallStore } from '@/store/groupCallStore'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -72,6 +74,27 @@ const ActiveCallOverlay = dynamic(
   () =>
     import('@/components/call/active-call-overlay').then(
       (m) => m.ActiveCallOverlay
+    ),
+  { ssr: false }
+)
+const GroupCallScreen = dynamic(
+  () =>
+    import('@/components/call/group-call-screen').then(
+      (m) => m.GroupCallScreen
+    ),
+  { ssr: false }
+)
+const GroupCallMiniPlayer = dynamic(
+  () =>
+    import('@/components/call/group-call-mini-player').then(
+      (m) => m.GroupCallMiniPlayer
+    ),
+  { ssr: false }
+)
+const GroupCallBanner = dynamic(
+  () =>
+    import('@/components/call/group-call-banner').then(
+      (m) => m.GroupCallBanner
     ),
   { ssr: false }
 )
@@ -132,6 +155,18 @@ export function ChatApp({
     toggleScreenShare,
     setQuality,
   } = useWebRTC(userId)
+
+  const {
+    isInGroupCall,
+    activeCallBanner,
+    startCall: startGroupCall,
+    endCall: endGroupCall,
+    toggleMute: toggleGroupMute,
+    toggleVideo: toggleGroupVideo,
+    toggleScreenShare: toggleGroupScreenShare,
+  } = useGroupCall(userId)
+
+  const groupCallIsMiniPlayer = useGroupCallStore((s) => s.isMiniPlayer)
 
   // Call-related PWA enhancements: MediaSession, Wake Lock, Orientation Lock
   const callLocalStream = useCallStore((s) => s.localStream)
@@ -351,6 +386,16 @@ export function ChatApp({
     await initiateCall(peers, true)
   }
 
+  async function handleGroupVoiceCall() {
+    if (!activeChatId) return
+    await startGroupCall(activeChatId, false)
+  }
+
+  async function handleGroupVideoCall() {
+    if (!activeChatId) return
+    await startGroupCall(activeChatId, true)
+  }
+
   if (vaultState === 'loading') {
     return <div className="min-h-screen bg-black" aria-hidden />
   }
@@ -385,6 +430,23 @@ export function ChatApp({
         onToggleScreenShare={toggleScreenShare}
         onSetQuality={setQuality}
       />
+      {isInGroupCall && !groupCallIsMiniPlayer && (
+        <GroupCallScreen
+          userId={userId}
+          username={user?.username ?? username}
+          onEndCall={endGroupCall}
+          onToggleMute={toggleGroupMute}
+          onToggleVideo={toggleGroupVideo}
+          onToggleScreenShare={toggleGroupScreenShare}
+        />
+      )}
+      {isInGroupCall && groupCallIsMiniPlayer && (
+        <GroupCallMiniPlayer
+          onExpand={() => useGroupCallStore.getState().setIsMiniPlayer(false)}
+          onEndCall={endGroupCall}
+          onToggleMute={toggleGroupMute}
+        />
+      )}
 
       {showGuide ? (
         <StartGuide
@@ -472,8 +534,14 @@ export function ChatApp({
             <CallHeaderButtons
               disabled={!activeChatId || !!ctxError}
               peerReady={peerReady}
-              onVoiceCall={() => void handleVoiceCall()}
-              onVideoCall={() => void handleVideoCall()}
+              onVoiceCall={() => {
+                if (activeRow?.is_group) void handleGroupVoiceCall()
+                else void handleVoiceCall()
+              }}
+              onVideoCall={() => {
+                if (activeRow?.is_group) void handleGroupVideoCall()
+                else void handleVideoCall()
+              }}
             />
           </div>
         </div>
@@ -531,6 +599,13 @@ export function ChatApp({
             </div>
           ) : null}
           <PushOnboardingBanner />
+          {activeChatId && activeCallBanner[activeChatId] && !isInGroupCall ? (
+            <GroupCallBanner
+              participantCount={activeCallBanner[activeChatId]}
+              onJoinVoice={() => void handleGroupVoiceCall()}
+              onJoinVideo={() => void handleGroupVideoCall()}
+            />
+          ) : null}
           {mediaAccessError ? (
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-3 py-1 font-mono text-[11px] leading-snug text-zinc-500">
               <span className="min-w-0 flex-1">

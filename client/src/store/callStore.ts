@@ -43,6 +43,8 @@ export type CallProtocolState = {
   // [STATUS_LAYER]
   isCalling: boolean
   isReconnecting: boolean
+  isConnectionLost: boolean
+  iceRetryCount: number
   connectionQuality: ConnectionQuality | null
   incomingCall: InboundLinkRequest | null
   peerConnectionTypes: Record<string, PeerConnectionType>
@@ -59,6 +61,8 @@ export type CallProtocolState = {
   setIncomingCall: (request: InboundLinkRequest | null) => void
   setIsCalling: (active: boolean) => void
   setReconnecting: (value: boolean) => void
+  setConnectionLost: (value: boolean) => void
+  setIceRetryCount: (count: number) => void
   setConnectionQuality: (quality: ConnectionQuality | null) => void
 
   addPeerConnection: (peerId: string, pc: RTCPeerConnection) => void
@@ -101,6 +105,8 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
   const setIncomingCall = (request: InboundLinkRequest | null) => set({ incomingCall: request })
   const setIsCalling = (active: boolean) => set({ isCalling: active })
   const setReconnecting = (value: boolean) => set({ isReconnecting: value })
+  const setConnectionLost = (value: boolean) => set({ isConnectionLost: value })
+  const setIceRetryCount = (count: number) => set({ iceRetryCount: count })
   const setConnectionQuality = (quality: ConnectionQuality | null) => set({ connectionQuality: quality })
   const addPeerConnection = (peerId: string, pc: RTCPeerConnection) =>
     set((state) => ({ peerConnections: { ...state.peerConnections, [peerId]: pc } }))
@@ -115,7 +121,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     set({ qualityLevel: level })
   }
   const reset = () =>
-    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, connectionQuality: null, incomingCall: null, peerConnectionTypes: {} })
+    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {} })
 
   return {
     localStream: null,
@@ -124,6 +130,8 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     peerConnections: {},
     isCalling: false,
     isReconnecting: false,
+    isConnectionLost: false,
+    iceRetryCount: 0,
     connectionQuality: null,
     incomingCall: null,
     peerConnectionTypes: {},
@@ -137,6 +145,8 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     setIncomingCall,
     setIsCalling,
     setReconnecting,
+    setConnectionLost,
+    setIceRetryCount,
     setConnectionQuality,
     addPeerConnection,
     removePeerConnection,

@@ -67,6 +67,8 @@ const en = {
   'call.switchCamera': 'Switch Camera',
   'call.toggleLayout': 'Toggle Layout',
   'call.endCall': 'End Call',
+  'call.reconnecting': 'Reconnecting...',
+  'call.connectionLost': 'Connection lost',
 
   // [LOGIN]
   'login.usernameRequired': 'Username required.',

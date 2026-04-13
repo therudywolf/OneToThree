@@ -97,10 +97,13 @@ export function useWebRTC(userId: string | null) {
   const ringStopRef = useRef<(() => void) | null>(null)
   const facingModeRef = useRef<'user' | 'environment'>('user')
 
-  const { 
-    setIncomingCall, reset: resetCallStore, addPeerConnection, 
-    removePeerConnection, setRemoteStream, removeRemoteStream, 
-    setLocalStream, setIsCalling, clearRemotePeerMedia 
+  const statsIntervalRef = useRef<number | null>(null)
+
+  const {
+    setIncomingCall, reset: resetCallStore, addPeerConnection,
+    removePeerConnection, setRemoteStream, removeRemoteStream,
+    setLocalStream, setIsCalling, clearRemotePeerMedia,
+    setReconnecting, setConnectionQuality,
   } = useCallStore()
 
   const flushIceQueue = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
@@ -200,11 +203,37 @@ export function useWebRTC(userId: string | null) {
       const state = pc.iceConnectionState
       if (state === 'connected' || state === 'completed') {
         ringStopRef.current?.()
-      } else if (state === 'failed' || state === 'closed') {
+        setReconnecting(false)
+        const timer = disconnectTimersRef.current.get(peerId)
+        if (timer) {
+          clearTimeout(timer)
+          disconnectTimersRef.current.delete(peerId)
+        }
+      } else if (state === 'failed') {
+        // Attempt ICE restart before giving up
+        console.warn('[SYS.ICE] Connection failed, attempting ICE restart for', peerId.slice(0, 8))
+        setReconnecting(true)
+        try {
+          pc.restartIce()
+        } catch {
+          purgePeer(peerId)
+          setReconnecting(false)
+        }
+      } else if (state === 'closed') {
         purgePeer(peerId)
       } else if (state === 'disconnected') {
         const timer = window.setTimeout(() => {
-          if (pc.iceConnectionState === 'disconnected') purgePeer(peerId)
+          if (pc.iceConnectionState === 'disconnected') {
+            setReconnecting(true)
+            // Wait additional 5s, then purge if not recovered
+            const purgeTimer = window.setTimeout(() => {
+              if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') {
+                purgePeer(peerId)
+                setReconnecting(false)
+              }
+            }, 5000)
+            disconnectTimersRef.current.set(`${peerId}_purge`, purgeTimer)
+          }
         }, 4000)
         disconnectTimersRef.current.set(peerId, timer)
       }
@@ -220,7 +249,7 @@ export function useWebRTC(userId: string | null) {
         candidate: ev.candidate ? ev.candidate.toJSON() : null,
       })
     }
-  }, [setRemoteStream, purgePeer])
+  }, [setRemoteStream, purgePeer, setReconnecting])
 
   // Socket Subscription Layer
   useEffect(() => {
@@ -279,6 +308,41 @@ export function useWebRTC(userId: string | null) {
       }
     })
   }, [userId, setIncomingCall, purgePeer, flushIceQueue])
+
+  // Connection quality monitoring — polls stats every 5s during active call
+  useEffect(() => {
+    const poll = () => {
+      const state = useCallStore.getState()
+      if (!state.isLinkActive) {
+        setConnectionQuality(null)
+        return
+      }
+      const pcs = Array.from(pcsRef.current.values())
+      if (pcs.length === 0) return
+
+      void (async () => {
+        for (const pc of pcs) {
+          if (pc.iceConnectionState !== 'connected' && pc.iceConnectionState !== 'completed') continue
+          try {
+            const stats = await pc.getStats()
+            stats.forEach((report) => {
+              if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                const rtt = report.currentRoundTripTime ?? null
+                const bitrate = report.availableOutgoingBitrate ?? null
+                const poor = (rtt != null && rtt > 0.3) || (bitrate != null && bitrate < 100_000)
+                setConnectionQuality({ rtt, outgoingBitrate: bitrate, poor })
+              }
+            })
+          } catch { /* stats unavailable */ }
+        }
+      })()
+    }
+
+    statsIntervalRef.current = window.setInterval(poll, 5000)
+    return () => {
+      if (statsIntervalRef.current) window.clearInterval(statsIntervalRef.current)
+    }
+  }, [setConnectionQuality])
 
   // Health Check / Readiness
   useEffect(() => {

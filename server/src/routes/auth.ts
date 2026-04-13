@@ -73,7 +73,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   /**
    * Authenticated device issues a short-lived token; show as QR on this device for another to scan.
    */
-  app.post('/qr-generate', async (request, reply) => {
+  app.post('/qr-generate', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -94,7 +94,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   /**
    * New device: redeem token → session cookie (stub; extend with TOTP / rate limits as needed).
    */
-  app.post('/qr-login', async (request, reply) => {
+  app.post('/qr-login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = qrLoginBodySchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.status(400).send({ error: 'INVALID_BODY' })
@@ -213,7 +213,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  app.post('/2fa/setup', async (request, reply) => {
+  app.post('/2fa/setup', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -248,7 +248,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.post('/2fa/verify-setup', async (request, reply) => {
+  app.post('/2fa/verify-setup', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -289,7 +289,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, totp_enabled: true })
   })
 
-  app.post('/2fa/disable', async (request, reply) => {
+  app.post('/2fa/disable', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -327,7 +327,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, totp_enabled: false })
   })
 
-  app.post('/login/2fa', async (request, reply) => {
+  app.post('/login/2fa', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = login2faBodySchema.safeParse(request.body)
     if (!parsed.success) {
       return reply.status(400).send({ error: 'INVALID_BODY' })

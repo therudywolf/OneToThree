@@ -123,6 +123,18 @@ const presencePingSchema = z.object({
   type: z.literal('presence_ping'),
 })
 
+/** Maximum allowed WebSocket message size (1 MB). */
+const MAX_WS_MESSAGE_BYTES = 1024 * 1024
+
+/** Returns the byte length of a raw websocket payload for size validation. */
+function rawByteLength(raw: unknown): number {
+  if (typeof raw === 'string') return Buffer.byteLength(raw, 'utf8')
+  if (Buffer.isBuffer(raw)) return raw.length
+  if (raw instanceof ArrayBuffer) return raw.byteLength
+  if (Array.isArray(raw)) return raw.reduce((acc, b) => acc + (Buffer.isBuffer(b) ? b.length : Buffer.from(b).length), 0)
+  return 0
+}
+
 /** Converts websocket payload variants into UTF-8 text for JSON parsing. */
 function bufferToString(raw: unknown): string {
   if (typeof raw === 'string') return raw
@@ -165,11 +177,18 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
     /** Handles a single parsed raw websocket frame for an authenticated user. */
     const handleMessage = (raw: unknown, user: AuthUser) => {
       void (async () => {
+        if (rawByteLength(raw) > MAX_WS_MESSAGE_BYTES) {
+          request.log.warn({ correlationId, userId: user.id }, 'ws: message exceeds max size')
+          ws.send(JSON.stringify({ type: 'error', error: 'MESSAGE_TOO_LARGE' }))
+          ws.close(1009, 'message too large')
+          return
+        }
+
         let json: unknown
         try {
           json = JSON.parse(bufferToString(raw))
         } catch {
-          request.log.warn({ correlationId }, 'ws: invalid json frame')
+          request.log.warn({ correlationId, userId: user.id }, 'ws: invalid json frame')
           ws.send(JSON.stringify({ type: 'error', error: 'INVALID_JSON' }))
           return
         }
@@ -322,7 +341,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
 
         ws.send(JSON.stringify({ type: 'error', error: 'UNKNOWN_MESSAGE_TYPE' }))
       })().catch((err) => {
-        request.log.error({ correlationId, err }, 'ws: unhandled error in message handler')
+        request.log.error({ correlationId, userId: user.id, err: String(err) }, 'ws: unhandled error in message handler')
       })
     }
 

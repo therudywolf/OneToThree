@@ -10,6 +10,15 @@ async function main() {
   app.log.info(
     `[Project 13] API ready — http://0.0.0.0:${port} (One to Three · zero-trust lane)`
   )
+
+  const signals = ['SIGINT', 'SIGTERM'] as const
+  for (const signal of signals) {
+    process.on(signal, async () => {
+      app.log.info(`Received ${signal}, shutting down gracefully…`)
+      await app.close()
+      process.exit(0)
+    })
+  }
 }
 
 main().catch((err) => {

@@ -2,6 +2,7 @@ import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import jwt from '@fastify/jwt'
+import rateLimit from '@fastify/rate-limit'
 import Fastify from 'fastify'
 import websocket from '@fastify/websocket'
 import { authRoutes } from './routes/auth.js'
@@ -51,6 +52,11 @@ export async function buildApp() {
 
   const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsRaw : true
 
+  await app.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+  })
+
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
@@ -63,7 +69,8 @@ export async function buildApp() {
         baseUri: ["'self'"],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
-        connectSrc: ["'self'", "https://api.onetothree.ru", "wss://api.onetothree.ru", "https://cdn.jsdelivr.net", "https://s3.onetothree.ru"],
+        connectSrc: ["'self'", "wss:", "https:", "https://api.onetothree.ru", "wss://api.onetothree.ru", "https://cdn.jsdelivr.net", "https://s3.onetothree.ru"],
+        mediaSrc: ["'self'", "blob:"],
         workerSrc: ["'self'", "blob:"],
         upgradeInsecureRequests: [],
       },

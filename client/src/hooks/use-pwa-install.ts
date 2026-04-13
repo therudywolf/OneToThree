@@ -57,3 +57,5 @@ export function useShellIntegration() {
     purgeIntegration,
   }
 }
+
+export const usePwaInstall = useShellIntegration

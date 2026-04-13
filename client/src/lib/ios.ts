@@ -38,3 +38,5 @@ export function isPureSafari(): boolean {
 
   return isWebkit && !isChrome && !isFirefox
 }
+
+export const isIOSOrIPadOS = isAppleNode

@@ -48,3 +48,6 @@ export function resetOpticalFilters(): void {
   // Гарантированный сброс блокировок скролла
   purgeInterfaceOverflow()
 }
+
+export const cleanupBackdropOverflow = purgeInterfaceOverflow
+export const ensureBackdropCleanup = monitorStrayPortals

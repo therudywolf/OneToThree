@@ -40,8 +40,12 @@ function openRegistry() {
 
 // --- SIGNAL_CONVERSION (STERILE) ---
 
-const toB64 = (buf: ArrayBuffer): string => 
-  btoa(Array.from(new Uint8Array(buf), b => String.fromCharCode(b)).join(''))
+const toB64 = (buf: BufferSource): string => {
+  const view = buf instanceof ArrayBuffer
+    ? new Uint8Array(buf)
+    : new Uint8Array((buf as ArrayBufferView).buffer)
+  return btoa(Array.from(view, b => String.fromCharCode(b)).join(''))
+}
 
 const fromB64 = (b64: string): ArrayBuffer => 
   Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer
@@ -74,7 +78,7 @@ export async function bindBiometricAuthority(
   nodeId: string,
   handle: string,
   pin: string
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: true; plaintext: string } | { ok: false; error?: string }> {
   if (!isBiometricsAvailable()) return { ok: false, error: 'HARDWARE_CONTEXT_FAULT' }
 
   // [1] ACCESS_VAULT :: Вскрытие Сейфа через ПИН-код для извлечения ключей
@@ -89,19 +93,21 @@ export async function bindBiometricAuthority(
   }
 
   // [2] GENERATE_EPHEMERAL_KEY :: Создание быстрого ПИН-кода для LargeBlob
-  const ephemeralPin = toB64(crypto.getRandomValues(new Uint8Array(32)))
+  const ephemeralPinSource = crypto.getRandomValues(new Uint8Array(32))
+  const ephemeralPin = toB64(new Uint8Array(ephemeralPinSource.buffer))
   const bioContainer = await wrapPrivateJwkWithPin(plainPayload, ephemeralPin)
 
   // [3] HARDWARE_GENESIS :: Запрос создания аппаратного ключа
-  const challenge = crypto.getRandomValues(new Uint8Array(32))
+  const challengeSource = crypto.getRandomValues(new Uint8Array(32))
+  const challenge = new Uint8Array(challengeSource.buffer)
   
   try {
     const cred = (await navigator.credentials.create({
       publicKey: {
-        challenge,
+        challenge: challenge as BufferSource,
         rp: { name: 'Project 13', id: window.location.hostname },
         user: {
-          id: extractUserHandle(nodeId),
+          id: new Uint8Array(extractUserHandle(nodeId).buffer) as BufferSource,
           name: handle,
           displayName: handle,
         },
@@ -143,7 +149,7 @@ export async function bindBiometricAuthority(
     })
 
     emitHapticPulse([30, 50, 30]) // Подтверждение привязки
-    return { ok: true }
+    return { ok: true, plaintext: plainPayload }
 
   } catch (err) {
     console.error('>> [SYS.BIO] BIND_FAULT:', err)
@@ -197,4 +203,33 @@ export async function purgeBioRegistry(nodeId?: string): Promise<void> {
     const db = await openRegistry()
     nodeId ? await db.delete('registry', nodeId) : await db.clear('registry')
   } catch { /* Silence */ }
+}
+
+export async function hasWebAuthnVaultMeta(nodeId: string): Promise<boolean> {
+  const db = await openRegistry()
+  const meta = await db.get('registry', nodeId)
+  return Boolean(meta?.credentialIdB64)
+}
+
+export function largeBlobLikelySupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof PublicKeyCredential !== 'undefined' &&
+    typeof navigator.credentials?.get === 'function'
+  )
+}
+
+export async function unlockVaultWithWebAuthn(nodeId: string): Promise<string> {
+  return interceptBiometricSignal(nodeId)
+}
+
+export async function enrollWebAuthnVaultUnlock(
+  nodeId: string,
+  handle: string,
+  pin: string
+): Promise<{ ok: true; plaintext: string } | { ok: false; error: string }> {
+  const result = await bindBiometricAuthority(nodeId, handle, pin)
+  return result.ok
+    ? { ok: true, plaintext: result.plaintext }
+    : { ok: false, error: result.error ?? 'ENROLL_FAILED' }
 }

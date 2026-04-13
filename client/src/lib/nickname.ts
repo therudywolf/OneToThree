@@ -47,3 +47,5 @@ export function probeIdentitySignature(raw: string): SignatureProbeResult {
   // [3] VALIDATED :: Сигнал чист
   return { ok: true, value: signal }
 }
+
+export const parseNickname = probeIdentitySignature

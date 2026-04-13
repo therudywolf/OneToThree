@@ -186,7 +186,7 @@ services:
   # Orange-cloud proxy does not support the UDP traffic TURN needs; api.* and apex can stay proxied.
   # Set NEXT_PUBLIC_TURN_URL=turn:turn.onetothree.ru:3478 in .env.prod — not the api. host.
   coturn:
-    image: coturn/coturn:latest
+    image: coturn/coturn:4.6
     restart: always
     network_mode: host
     env_file:

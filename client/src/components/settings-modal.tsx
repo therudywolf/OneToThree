@@ -13,6 +13,12 @@ import {
   persistVaultBlobByLoginUsername,
 } from '@/lib/vault'
 import { changeVaultPinOnServer } from '@/lib/api/vault'
+import {
+  AUTO_LOCK_OPTIONS,
+  loadAutoLockTimeout,
+  saveAutoLockTimeout,
+  type AutoLockTimeout,
+} from '@/hooks/use-auto-lock'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { clearAllMediaCache } from '@/lib/media-cache'
 import { SettingsDevicesPanel } from '@/components/settings-devices-panel'
@@ -62,6 +68,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [killPhrase, setKillPhrase] = useState('')
   const [killPin, setKillPin] = useState('')
   const [allowNewDeviceLinking, setAllowNewDeviceLinking] = useState(false)
+  const [autoLockTimeout, setAutoLockTimeoutState] = useState<AutoLockTimeout>(() => loadAutoLockTimeout())
   const [bio, setBio] = useState('')
   const [statusText, setStatusText] = useState('')
   const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([])
@@ -699,6 +706,34 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               {changePinSuccess ? (
                 <p className="mt-2 text-[10px] text-neon-cyan">:: {t('settings.changePinSuccess')}</p>
               ) : null}
+            </div>
+
+            {/* Auto-lock timeout */}
+            <div className="flex flex-col gap-2 border border-neon-cyan/30 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-widest text-neon-cyan">
+                  {t('settings.autoLockTitle')}
+                </p>
+                <p className="break-words text-[9px] text-red-800">
+                  {t('settings.autoLockHint')}
+                </p>
+              </div>
+              <select
+                className="terminal-input h-8 w-full max-w-[10rem] shrink-0 py-1 text-xs uppercase"
+                value={autoLockTimeout}
+                onChange={(e) => {
+                  const val = Number(e.target.value) as AutoLockTimeout
+                  setAutoLockTimeoutState(val)
+                  saveAutoLockTimeout(val)
+                }}
+                aria-label={t('settings.autoLockTitle')}
+              >
+                {AUTO_LOCK_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {t(opt.labelKey as Parameters<typeof t>[0])}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Device Linking Gate */}

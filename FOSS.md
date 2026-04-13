@@ -1,4 +1,4 @@
-# 🌲 Forest Messenger — Project 13 (OneToThree)
+#  One To Three — Project 13 (OneToThree)
 
 **License: [GNU Affero General Public License v3.0 (AGPL-3.0-only)](./LICENSE)**
 
@@ -15,7 +15,7 @@ zero-trust server model. Unlike Signal (centralized, phone-number identity), Tel
 (server-side encryption optional, phone required), or Matrix (federated but complex),
 Forest Messenger is:
 
-| | Forest Messenger | Signal | Telegram | Matrix |
+| | One To Three | Signal | Telegram | Matrix |
 |---|---|---|---|---|
 | Self-hosted | **Yes** — you own the server | No | No | Yes (complex) |
 | Phone number required | **No** — username only | Yes | Yes | No |

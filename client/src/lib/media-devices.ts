@@ -79,9 +79,11 @@ export function getUserMediaConstraints(opts: {
   
   const audioContext: MediaTrackConstraints = {
     deviceId: cfg.micId ? { exact: cfg.micId } : undefined,
-    echoCancellation: cfg.isIsolated,
-    noiseSuppression: cfg.isIsolated,
+    echoCancellation: true,
+    noiseSuppression: true,
     autoGainControl: true,
+    sampleRate: 48000,
+    channelCount: 1,
   }
 
   if (!opts.video) return { audio: audioContext, video: false }
@@ -89,8 +91,8 @@ export function getUserMediaConstraints(opts: {
   const useHd = opts.hd ?? !cfg.lowBandwidth
   const videoContext: MediaTrackConstraints = {
     deviceId: cfg.cameraId ? { exact: cfg.cameraId } : undefined,
-    ...(useHd 
-      ? { width: { ideal: 1280, max: 1920 }, height: { ideal: 720, max: 1080 }, frameRate: { ideal: 30 } }
+    ...(useHd
+      ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
       : { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 15 } }
     )
   }

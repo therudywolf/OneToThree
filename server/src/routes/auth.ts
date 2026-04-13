@@ -38,6 +38,7 @@ import {
 } from '../lib/qr-link-store.js'
 import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
+import { recordLoginEvent } from '../lib/login-event.js'
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -391,9 +392,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       token: parsed.data.code,
     })
     if (!check.valid) {
+      void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
     if (!consumeTotpCode(id, parsed.data.code)) {
+      void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
@@ -401,6 +404,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const dev = await upsertDeviceForSession(request, canonicalId)
     if (!dev.ok) {
       if (dev.error === 'DEVICE_REVOKED') {
+        void recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'fail_device_revoked' })
         return reply.status(403).send({ error: 'DEVICE_REVOKED' })
       }
       return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
@@ -415,6 +419,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       { expiresIn: SESSION_MAX_AGE_S }
     )
     commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
+
+    void recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'success', deviceId: dev.deviceId })
 
     return reply.send({
       user: { id: canonicalId, username: row.username },
@@ -501,12 +507,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         )
         if (!ok) {
           deletePending(username)
+          void recordLoginEvent(request, { userId: existing?.id ?? null, username, outcome: 'fail_signature' })
           return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
         }
 
         deletePending(username)
 
         if (existing?.isBanned) {
+          void recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_banned' })
           return reply.status(401).send({ error: 'BANNED_USER' })
         }
 
@@ -576,6 +584,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         )
 
         commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
+
+        void recordLoginEvent(request, { userId: canonicalId, username, outcome: 'success', deviceId: dev.deviceId })
 
         return reply.send({
           user: { id: canonicalId, username },

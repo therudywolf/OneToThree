@@ -188,3 +188,5 @@ export async function extractSectorKey(
     ['encrypt', 'decrypt']
   )
 }
+
+export const wrapGroupKeyForMemberWithCreatorEcdh = wrapSectorKeyWithCreatorAuth

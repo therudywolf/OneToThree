@@ -125,3 +125,5 @@ export async function wipeDigitalDen(): Promise<void> {
 
 export const getCachedMedia = getCachedSegment
 export const setCachedMedia = setCachedSegment
+export const clearAllMediaCache = wipeDigitalDen
+export const getDigitalDenUsageBytes = getDenUsage

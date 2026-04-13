@@ -160,5 +160,7 @@ export function useBinaryTransmission(cryptoCtx: ChatCryptoContext | null) {
     [activeChatId, userId, unwrappedPrivateKey, cryptoCtx, appendMessage]
   )
 
-  return { transmitBinary }
+  return { transmitBinary, sendMedia: transmitBinary }
 }
+
+export const useSendMedia = useBinaryTransmission

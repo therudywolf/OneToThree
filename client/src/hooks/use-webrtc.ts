@@ -374,8 +374,9 @@ export function useWebRTC(userId: string | null) {
     endCall: severAllLinks,
     toggleMuteMic: toggleMute,
     toggleCamera: toggleOptics,
-    switchCamera: async () => {}, // Placeholder for tactical camera swap
+    toggleVideo: toggleOptics,
+    switchCamera: async () => {},
     isScreenSharing,
-    toggleScreenShare: async () => {}, // Placeholder for tactical screen broadcast
+    toggleScreenShare: async () => {},
   }
 }

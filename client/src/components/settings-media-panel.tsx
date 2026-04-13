@@ -60,7 +60,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
     setCameraId(p.cameraId ?? '')
     setMicId(p.micId ?? '')
     setSpeakerId(p.speakerId ?? '')
-    setNoiseOn(p.noiseSuppression)
+    setNoiseOn(p.isIsolated)
   }, [active])
 
   const refreshDen = useCallback(async () => {
@@ -91,8 +91,8 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
 
     const prefs = loadMediaPrefs()
     const audio: MediaTrackConstraints = {
-      echoCancellation: prefs.noiseSuppression,
-      noiseSuppression: prefs.noiseSuppression,
+      echoCancellation: prefs.isIsolated,
+      noiseSuppression: prefs.isIsolated,
     }
     if (prefs.micId) {
       audio.deviceId = { exact: prefs.micId }
@@ -243,7 +243,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           onClick={() => {
             const next = !noiseOn
             setNoiseOn(next)
-            saveMediaPrefs({ noiseSuppression: next })
+            saveMediaPrefs({ isIsolated: next })
             void startPreview()
           }}
           className={`shrink-0 border-2 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${

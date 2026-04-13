@@ -416,6 +416,43 @@ As-Is: Сервис предоставляется \u00abкак есть\u00bb. 
   'settings.autoLock15min': '15 минут',
   'settings.autoLock30min': '30 минут',
   'settings.autoLockNever': 'Никогда',
+
+  // [SECURITY - LOGIN HISTORY]
+  'security.loginHistory': 'История входов',
+  'security.loginHistoryHint': 'Последние попытки входа в ваш аккаунт.',
+  'security.loginSuccess': 'Успешно',
+  'security.loginFailSignature': 'Ошибка (неверный ключ)',
+  'security.loginFailTotp': 'Ошибка (неверный код)',
+  'security.loginFailBanned': 'Заблокирован (бан)',
+  'security.loginFailDeviceRevoked': 'Заблокирован (устройство отозвано)',
+  'security.loginNoEvents': 'Нет истории входов.',
+
+  // [SECURITY - BLOCK]
+  'block.title': 'Заблокированные пользователи',
+  'block.hint': 'Заблокированные пользователи не могут писать вам, видеть ваш онлайн-статус или добавлять вас в группы.',
+  'block.empty': 'Нет заблокированных пользователей.',
+  'block.unblock': 'Разблокировать',
+  'block.unblockConfirm': 'Разблокировать этого пользователя?',
+  'block.blockUser': 'Заблокировать',
+  'block.blockConfirm': 'Заблокировать этого пользователя? Он не будет уведомлён.',
+  'block.blocked': 'Заблокирован',
+
+  // [SECURITY - ACCOUNT DELETION]
+  'account.deleteTitle': 'Удалить аккаунт',
+  'account.deleteHint': 'Полное удаление аккаунта и всех данных. Необратимо.',
+  'account.deleteConfirmLabel': 'Введите свой никнейм для подтверждения',
+  'account.deleteExecute': 'Удалить мой аккаунт',
+  'account.deleteMismatch': 'Никнейм не совпадает.',
+  'account.deleteSuccess': 'Аккаунт удалён.',
+
+  // [PRIVACY]
+  'privacy.title': 'Конфиденциальность',
+  'privacy.readReceipts': 'Уведомления о прочтении',
+  'privacy.readReceiptsHint': 'Если отключено, другие не увидят, когда вы прочитали их сообщения.',
+  'privacy.onlineStatus': 'Статус онлайн',
+  'privacy.onlineStatusHint': 'Кто может видеть ваш статус онлайн/оффлайн.',
+  'privacy.lastSeenEveryone': 'Все',
+  'privacy.lastSeenNobody': 'Никто',
 } as const;
 
 export default ru;

@@ -210,7 +210,7 @@ export function useMediaRecorder() {
     }
 
     return new Promise((resolve) => {
-      rec.onstop = () => {
+      const cleanup = () => {
         const mime =
           rec.mimeType ||
           (kind === 'audio' ? pickAudioMime() : pickVideoMime())
@@ -222,6 +222,7 @@ export function useMediaRecorder() {
         streamRef.current = null
         setPreviewStream(null)
         setIsRecording(false)
+
         if (!blob.size) {
           resolve(null)
           return
@@ -233,6 +234,17 @@ export function useMediaRecorder() {
         }
         resolve({ blob, mimeType: mime })
       }
+
+      rec.ondataavailable = (e) => {
+        if (e.data?.size) {
+          chunksRef.current.push(e.data)
+        }
+      }
+
+      rec.onstop = () => {
+        window.setTimeout(cleanup, 0)
+      }
+
       try {
         if (rec.state === 'recording') {
           rec.requestData?.()

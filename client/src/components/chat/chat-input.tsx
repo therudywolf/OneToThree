@@ -10,19 +10,6 @@ import { resumeAudioContextAfterGesture } from '@/lib/call-ringtones'
 import { vibrateShort } from '@/lib/vibrate'
 import EmojiPicker from 'emoji-picker-react'
 
-type BurnPreset = 'off' | '1m' | '1h' | '24h'
-
-function burnIsoFromPreset(preset: BurnPreset): string | null {
-  if (preset === 'off') return null
-  const addMs =
-    preset === '1m'
-      ? 60_000
-      : preset === '1h'
-        ? 3_600_000
-        : 86_400_000
-  return new Date(Date.now() + addMs).toISOString()
-}
-
 function isImageFile(file: File): boolean {
   return file.type.startsWith('image/')
 }
@@ -46,21 +33,17 @@ type Props = {
 export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
   const [messageText, setMessageText] = useState('')
-  const [burnPreset, setBurnPreset] = useState<BurnPreset>('off')
   const [emojiOpen, setEmojiOpen] = useState(false)
+  const [mediaMode, setMediaMode] = useState<'voice' | 'circle'>('voice')
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
   const replyTo = useChatStore((s) => s.replyTo)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
-
-  // Media recording state
-  const [mediaMode, setMediaMode] = useState<'voice' | 'video'>('voice')
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
-  const recordingHeldRef = useRef(false)
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const {
     startVoiceCapture,
@@ -78,19 +61,18 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
   const toggleMediaMode = () => {
     if (isRecording) return
-    setMediaMode(prev => prev === 'voice' ? 'video' : 'voice')
+    setMediaMode((prev) => (prev === 'voice' ? 'circle' : 'voice'))
   }
 
   const startRecording = async () => {
-    if (!cryptoCtx || disabled) return
+    if (!cryptoCtx || disabled || isRecording) return
 
     setIsRecording(true)
     setRecordingTime(0)
     vibrateShort(12)
 
-    // Start recording timer
     recordingTimerRef.current = setInterval(() => {
-      setRecordingTime(t => t + 1)
+      setRecordingTime((time) => time + 1)
     }, 1000)
 
     try {
@@ -118,7 +100,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       clearInterval(recordingTimerRef.current)
       recordingTimerRef.current = null
     }
-    
+
     try {
       const result = await stopCapture()
       if (result && cryptoCtx) {
@@ -220,10 +202,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!messageText.trim() || disabled) return
-    const burn_at = burnIsoFromPreset(burnPreset)
-    await sendText(messageText, replyTo?.id ?? null, {
-      burn_at: burn_at ?? undefined,
-    })
+    await sendText(messageText, replyTo?.id ?? null)
     onSubmitOrClear()
     setMessageText('')
     setReplyTo(null)
@@ -285,25 +264,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         </div>
       ) : null}
 
-      <div className="mb-1 flex flex-wrap items-center gap-2 font-mono text-[9px] uppercase tracking-wider text-neon-cyan/90">
-        <span className="text-neon-red/90">{t('chat.burnTimerLabel')}</span>
-        <select
-          value={burnPreset}
-          onChange={(e) => setBurnPreset(e.target.value as BurnPreset)}
-          disabled={disabled}
-          className="max-w-[140px] border border-neon-cyan/40 bg-black px-1 py-0.5 text-[9px] text-neon-cyan"
-          aria-label={t('chat.burnTimerLabel')}
-        >
-          <option value="off">OFF</option>
-          <option value="1m">1m</option>
-          <option value="1h">1h</option>
-          <option value="24h">24h</option>
-        </select>
-      </div>
-
-      {/* Main input row */}
       <div className="flex items-center gap-2">
-        {/* LEFT: Attach button */}
         <button
           type="button"
           className="shrink-0 border border-neon-cyan/50 bg-black px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40"
@@ -314,7 +275,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           📎
         </button>
 
-        {/* LEFT: Emoji button */}
         <button
           type="button"
           className="shrink-0 border border-neon-cyan/50 bg-black px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40"
@@ -330,24 +290,17 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           😊
         </button>
 
-        {/* CENTER: Text input or Recording state */}
-        {isRecording ? (
-          <div className="flex flex-1 items-center justify-between gap-2 border border-neon-red/60 bg-black/80 px-3 py-2">
-            <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-neon-red" />
-            <span className="flex-1 font-mono text-sm text-neon-red">
-              {mediaMode === 'voice' ? '🎤 RECORDING...' : '📹 RECORDING'}
-            </span>
-            <span className="font-mono text-xs text-neon-cyan">
-              {String(Math.floor(recordingTime / 60)).padStart(2, '0')}:{String(recordingTime % 60).padStart(2, '0')}
-            </span>
-            <span className="text-[9px] text-zinc-500 whitespace-nowrap">slide ⬅ cancel</span>
-          </div>
-        ) : (
-          <div className="flex flex-1 items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-1.5">
-            <span className="shrink-0 select-none font-mono text-[9px] text-neon-cyan/70">&gt;_</span>
+        <div className="relative flex-1">
+          <div
+            className={`flex items-center gap-2 rounded border px-3 py-2 ${
+              isRecording
+                ? 'border-neon-red/70 bg-zinc-950'
+                : 'border-neon-cyan/40 bg-black'
+            }`}
+          >
             <textarea
               ref={inputRef}
-              className="terminal-input flex-1 min-h-6 max-h-24 resize-none text-sm bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none"
+              className="terminal-input flex-1 min-h-6 max-h-24 resize-none text-sm bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed"
               value={messageText}
               onChange={(e) => {
                 const next = e.target.value
@@ -355,65 +308,65 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
                 onDraftChanged(next)
               }}
               onPaste={handlePaste}
-              disabled={disabled}
+              disabled={disabled || isRecording}
               aria-label={t('chat.inputPlaceholder')}
-              placeholder={t('chat.inputPlaceholder')}
+              placeholder={
+                isRecording
+                  ? 'RECORDING...'
+                  : t('chat.inputPlaceholder')
+              }
               autoComplete="off"
               spellCheck={false}
             />
+            {isRecording ? (
+              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-600 animate-pulse" />
+            ) : null}
           </div>
-        )}
+        </div>
 
-        {/* RIGHT: Unified media button */}
         <button
           type="button"
-          className={`shrink-0 border bg-black px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest hover:bg-opacity-10 disabled:opacity-40 transition-all ${
-            mediaMode === 'voice'
-              ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan'
-              : 'border-neon-red text-neon-red hover:bg-neon-red'
+          className={`shrink-0 border bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest hover:bg-opacity-10 disabled:opacity-40 transition-all ${
+            isRecording
+              ? 'border-red-600 bg-red-950/20 text-red-300'
+              : mediaMode === 'voice'
+              ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'
+              : 'border-neon-red text-neon-red hover:bg-neon-red/10'
           }`}
           disabled={disabled || !cryptoCtx}
-          onClick={toggleMediaMode}
+          onClick={() => {
+            if (!isRecording) toggleMediaMode()
+          }}
           onMouseDown={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.preventDefault()
-            recordingHeldRef.current = true
             void startRecording()
           }}
           onMouseUp={async () => {
-            if (!recordingHeldRef.current) return
-            recordingHeldRef.current = false
-            await stopRecording()
-          }}
-          onMouseLeave={async () => {
-            if (!recordingHeldRef.current) return
-            recordingHeldRef.current = false
+            if (!isRecording) return
             await stopRecording()
           }}
           onTouchStart={(e) => {
             if (disabled || !cryptoCtx || isRecording) return
             e.preventDefault()
-            recordingHeldRef.current = true
             void startRecording()
           }}
           onTouchEnd={async () => {
-            if (!recordingHeldRef.current) return
-            recordingHeldRef.current = false
+            if (!isRecording) return
             await stopRecording()
           }}
           style={{ touchAction: 'none' }}
-          title={mediaMode === 'voice' ? 'Voice (hold to record)' : 'Video (hold to record)'}
+          title={
+            isRecording
+              ? 'Stop recording'
+              : mediaMode === 'voice'
+              ? 'Voice mode (hold to record, tap to switch)'
+              : 'Circle mode (hold to record, tap to switch)'
+          }
         >
-          {isRecording ? (
-            <span className="inline-block animate-pulse text-base">●</span>
-          ) : mediaMode === 'voice' ? (
-            '🎤'
-          ) : (
-            '📹'
-          )}
+          {isRecording ? '●' : mediaMode === 'voice' ? '🎤' : '📹'}
         </button>
 
-        {/* RIGHT: Send button */}
         <TerminalGlitchButton
           type="submit"
           disabled={disabled || !messageText.trim() || isRecording}

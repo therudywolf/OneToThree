@@ -1,4 +1,4 @@
-# Project 13 Architecture
+# Forest Messenger — Architecture
 
 ## Monorepo layout
 

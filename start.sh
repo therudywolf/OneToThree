@@ -105,7 +105,7 @@ case "$CMD" in
     ;;
   update)
     log "Получаю обновления из git..."
-    git pull origin ver2
+    git pull origin master
     log "Пересборка образов (данные в volumes сохраняются)..."
     # НИКОГДА не используем 'down -v' — это удалит данные
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans

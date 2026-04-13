@@ -1,4 +1,4 @@
-# Project 13 — API Reference
+# Forest Messenger — API Reference
 
 All endpoints are prefixed with `/api`. Authentication is via `fm_session` cookie (JWT).
 

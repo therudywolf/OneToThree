@@ -49,6 +49,7 @@ const patchMeSchema = z
     ecdh_public_key_jwk: z.string().min(8).optional(),
     is_discoverable: z.coerce.boolean().optional(),
     hide_presence: z.coerce.boolean().optional(),
+    disable_read_receipts: z.coerce.boolean().optional(),
     bio: z.string().max(256).optional(),
     status_text: z.string().max(128).optional(),
     social_links: z.array(socialLinkSchema).max(10).optional(),
@@ -310,6 +311,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .select({
         isDiscoverable: users.isDiscoverable,
         hidePresence: users.hidePresence,
+        disableReadReceipts: users.disableReadReceipts,
         bio: users.bio,
         statusText: users.statusText,
         socialLinks: users.socialLinks,
@@ -328,6 +330,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({
       is_discoverable: row?.isDiscoverable ?? false,
       hide_presence: row?.hidePresence ?? false,
+      disable_read_receipts: row?.disableReadReceipts ?? false,
       bio: row?.bio ?? null,
       status_text: row?.statusText ?? null,
       social_links: socialLinks,
@@ -365,6 +368,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       updates.hidePresence = parsed.data.hide_presence
     }
 
+    if (parsed.data.disable_read_receipts !== undefined) {
+      updates.disableReadReceipts = parsed.data.disable_read_receipts
+    }
+
     if (parsed.data.bio !== undefined) {
       updates.bio = parsed.data.bio || null
     }
@@ -395,6 +402,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .returning({
         isDiscoverable: users.isDiscoverable,
         hidePresence: users.hidePresence,
+        disableReadReceipts: users.disableReadReceipts,
         bio: users.bio,
         statusText: users.statusText,
         socialLinks: users.socialLinks,
@@ -411,6 +419,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       ok: true,
       is_discoverable: after?.isDiscoverable ?? false,
       hide_presence: after?.hidePresence ?? false,
+      disable_read_receipts: after?.disableReadReceipts ?? false,
       bio: after?.bio ?? null,
       status_text: after?.statusText ?? null,
       social_links: socialLinksOut,

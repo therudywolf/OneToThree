@@ -21,6 +21,7 @@ import {
   touchLastSeen,
   touchLastSeenPing,
 } from '../lib/presence.js'
+import { isBlocked } from '../lib/block-check.js'
 import {
   broadcastToUsers,
   hasActiveSocket,
@@ -290,6 +291,16 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             )
             ws.send(JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
+          }
+
+          // In direct chats, enforce block check against the other member
+          const memberIds = await getChatMemberIds(p.chat_id)
+          if (memberIds.length === 2) {
+            const peerId = memberIds.find((id) => id !== user.id)
+            if (peerId && await isBlocked(user.id, peerId)) {
+              ws.send(JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+              return
+            }
           }
 
           const burn = parseOptionalBurnAt(p.burn_at ?? null)

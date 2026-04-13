@@ -10,6 +10,7 @@ import {
 } from '../lib/chat-message-persist.js'
 import { parseOptionalBurnAt } from '../lib/burn-at.js'
 import { resolveMediaOriginalBytes } from '../lib/message-send-helpers.js'
+import { isBlocked } from '../lib/block-check.js'
 import { markMessageReadByReader, markMessagesReadByReader } from '../lib/mark-message-read.js'
 import { broadcastToUsers } from '../ws/registry.js'
 
@@ -56,6 +57,18 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       .limit(1)
     if (!memberOk.length) {
       return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+    }
+
+    // In direct chats, enforce block check against the other member
+    const allMembers = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, p.chat_id))
+    if (allMembers.length === 2) {
+      const peerId = allMembers.find((m) => m.userId !== user.id)?.userId
+      if (peerId && await isBlocked(user.id, peerId)) {
+        return reply.status(403).send({ error: 'BLOCKED' })
+      }
     }
 
     const burn = parseOptionalBurnAt(p.burn_at ?? null)

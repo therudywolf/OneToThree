@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, messageDeliveries, messages } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { uuidSchema } from '../lib/zod-uuid.js'
 import {
   persistChatMessageAndFanOut,
   persistedRowToClientJson,
@@ -204,7 +205,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
   app.post('/read/:messageId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { messageId } = request.params as { messageId: string }
+    const params = z.object({ messageId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { messageId } = params.data
     const result = await markMessageReadByReader(user.id, messageId)
     if (!result.ok) {
       const status: Record<string, number> = {
@@ -246,7 +249,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:chatId/media', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId } = request.params as { chatId: string }
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
 
     const memberOk = await db
       .select({ one: chatMembers.userId })
@@ -302,7 +307,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:chatId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId } = request.params as { chatId: string }
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
 
     const memberOk = await db
       .select({ one: chatMembers.userId })
@@ -369,7 +376,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/:messageId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { messageId } = request.params as { messageId: string }
+    const params = z.object({ messageId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { messageId } = params.data
 
     const parsed = deleteMessageSchema.safeParse(request.body ?? {})
     const forEveryone = parsed.success ? parsed.data.for_everyone : false

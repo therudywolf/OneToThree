@@ -10,6 +10,7 @@ import {
   getMemberRole,
   type ChatMemberRole,
 } from '../lib/chat-permissions.js'
+import { isBlocked } from '../lib/block-check.js'
 import { broadcastToUsers } from '../ws/registry.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
@@ -344,6 +345,14 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'UNKNOWN_MEMBER' })
       }
 
+      // Block check: creator cannot add users with whom there is a block relationship
+      for (const uid of uniqueIds) {
+        if (uid === user.id) continue
+        if (await isBlocked(user.id, uid)) {
+          return reply.status(403).send({ error: 'BLOCKED' })
+        }
+      }
+
       const [created] = await db.transaction(async (tx) => {
         const inserted = await tx
           .insert(chats)
@@ -442,6 +451,14 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'UNKNOWN_MEMBER' })
     }
 
+    // Block check for direct and public chats
+    for (const uid of uniqueIds) {
+      if (uid === authId) continue
+      if (await isBlocked(authId, uid)) {
+        return reply.status(403).send({ error: 'BLOCKED' })
+      }
+    }
+
     if (type === 'direct_e2e') {
       const peerId = uniqueIds.find((id) => id !== authId)
       if (peerId) {
@@ -504,7 +521,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:chatId/invite', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId } = request.params as { chatId: string }
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
 
     const parsedBody = invitePostSchema.safeParse(request.body ?? {})
     if (!parsedBody.success) {
@@ -556,7 +575,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.post('/:chatId/leave', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId } = request.params as { chatId: string }
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
 
     const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1)
     if (!chat) {
@@ -675,10 +696,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.patch('/:chatId/members/:userId/role', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId, userId: targetUserId } = request.params as {
-      chatId: string
-      userId: string
-    }
+    const params = z.object({ chatId: uuidSchema, userId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId, userId: targetUserId } = params.data
 
     const parsed = patchRoleSchema.safeParse(request.body)
     if (!parsed.success) {
@@ -792,10 +812,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/:chatId/members/:userId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId, userId: targetUserId } = request.params as {
-      chatId: string
-      userId: string
-    }
+    const params = z.object({ chatId: uuidSchema, userId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId, userId: targetUserId } = params.data
 
     const chat = await getChatById(chatId)
     if (!chat || chat.type !== 'group_e2e') {
@@ -839,10 +858,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.put('/:chatId/members/:userId/wrapped-key', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId, userId: targetUserId } = request.params as {
-      chatId: string
-      userId: string
-    }
+    const params = z.object({ chatId: uuidSchema, userId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId, userId: targetUserId } = params.data
 
     const parsed = wrappedKeySchema.safeParse(request.body)
     if (!parsed.success) {
@@ -885,7 +903,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/:chatId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId } = request.params as { chatId: string }
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
 
     const chat = await getChatById(chatId)
     if (!chat) {
@@ -930,7 +950,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/:chatId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const { chatId } = request.params as { chatId: string }
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
 
     const memberOk = await db
       .select({

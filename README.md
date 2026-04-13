@@ -61,7 +61,7 @@ Global **`setErrorHandler`**: production responses for **5xx** are **`{ "error":
 - **Docker** + **Compose v2** (`docker compose`) on the host (Linux VPS, or **WSL2** / macOS for `./setup.sh`).
 - **openssl** (for `./setup.sh` secret generation).
 - **Public DNS** for **`onetothree.ru`**, **`api.onetothree.ru`**, **`s3.onetothree.ru`** pointing at this host’s public IP, and **ports 80 + 443** reachable from the internet (required for **Let’s Encrypt** via Caddy — see `Caddyfile` for ACME contact email).
-- **`.env.prod`** at repo root: if missing, **`./setup.sh`** creates it from **`.env.prod.example`** (or `env.prod.example`). You must set strong **Postgres / MinIO / CORS** values; **JWT**, **WEBHOOK_SECRET**, and **VAPID** can be auto-generated when left empty.
+- **`.env.prod`** at repo root: if missing, **`./setup.sh`** creates it from the single template **`.env.prod.example`**. You must set strong **Postgres / MinIO / CORS** values and **`TURN_EXTERNAL_IP`** (run `curl -s ifconfig.me` on the host); **JWT**, **WEBHOOK_SECRET**, and **VAPID** can be auto-generated when left empty.
 
 ### Single claw
 
@@ -76,7 +76,7 @@ The script:
 2. Creates **`.env.prod`** from the template when absent, then prompts you to save required operator secrets.  
 3. **Auto-fills** empty or placeholder **`JWT_SECRET`**, **`WEBHOOK_SECRET`**, and **VAPID** keys (VAPID uses a short **Node** container via Docker; **`NEXT_PUBLIC_VAPID_PUBLIC_KEY`** is synced to the public key).  
 4. Reminds you that **Caddy** will use **automatic TLS** (no manual PEMs).  
-5. Validates **non-empty** `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `CORS_ORIGIN`, and `JWT_SECRET`.  
+5. Validates **non-empty** `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `CORS_ORIGIN`, `JWT_SECRET`, and **`TURN_EXTERNAL_IP`** (public IP for coturn NAT traversal — run `curl -s ifconfig.me`).  
 6. Runs **`docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build`**.  
 7. **`db-migrate`** runs automatically as a **one-shot** after Postgres is **healthy**; **api** waits for migrate + MinIO + DB. Prints a **Noir-style** status block with host hint and log commands.
 
@@ -92,7 +92,7 @@ The script:
 
 ### DNS → Caddy (Automatic Shield)
 
-Point **A/AAAA** records for **`onetothree.ru`**, **`api.onetothree.ru`**, and **`s3.onetothree.ru`** at the VPS public IP. Align **`Caddyfile`** hostnames and **`.env.prod`** (`NEXT_PUBLIC_API_URL`, `CORS_ORIGIN`) with the same names.
+Point **A/AAAA** records for **`onetothree.ru`**, **`api.onetothree.ru`**, **`s3.onetothree.ru`**, and **`turn.onetothree.ru`** at the VPS public IP. **`turn.*` must be "DNS only" (gray cloud) in Cloudflare** — orange proxy blocks UDP/TCP traffic that TURN needs. Set **`TURN_EXTERNAL_IP`** in `.env.prod` to the server's public IP (`curl -s ifconfig.me`). Align **`Caddyfile`** hostnames and **`.env.prod`** (`NEXT_PUBLIC_API_URL`, `CORS_ORIGIN`) with the same names.
 
 **The Watcher** — after `./setup.sh`, follow Caddy until certificates are issued:
 

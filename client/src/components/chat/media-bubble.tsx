@@ -12,7 +12,7 @@ import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { useTranslation } from '@/hooks/use-translation'
 import { parseAttachmentEnvelope } from '@/lib/attachment-envelope'
 import type { DecryptedMessage } from '@/types/chat'
-import { SkipBack, SkipForward } from 'lucide-react'
+import { SkipBack, SkipForward, FileText, Download } from 'lucide-react'
 
 function mimeFromPathAndType(
   mediaPath: string,
@@ -229,17 +229,28 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
   if (isImage) {
     return (
-      <img
-        src={objectUrl}
-        alt=""
-        className="mt-2 max-h-64 max-w-full cursor-pointer border border-neon-cyan/40 object-contain hover:border-neon-cyan/80 transition-colors"
-        onClick={() => onMediaClick?.({
-          id: message.id,
-          url: objectUrl,
-          type: 'image',
-          mimeType: effectiveMime,
-        })}
-      />
+      <div className="mt-2 max-w-full overflow-hidden border border-neon-cyan/40 hover:border-neon-cyan/80 transition-colors cursor-pointer"
+        style={{ maxHeight: '300px' }}
+      >
+        <img
+          src={objectUrl}
+          alt=""
+          className="h-auto max-h-[300px] w-auto max-w-full object-contain"
+          loading="lazy"
+          onClick={() => onMediaClick?.({
+            id: message.id,
+            url: objectUrl,
+            type: 'image',
+            mimeType: effectiveMime,
+          })}
+          onLoad={(e) => {
+            // Remove any placeholder after load
+            const img = e.currentTarget
+            img.style.opacity = '1'
+          }}
+          style={{ opacity: 1, transition: 'opacity 0.2s ease' }}
+        />
+      </div>
     )
   }
 
@@ -477,26 +488,31 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   }
 
   /* Generic file */
+  const ext = displayName.split('.').pop()?.toLowerCase() ?? ''
   return (
-    <div className="mt-2 max-w-sm border border-zinc-700 bg-zinc-950/80 p-3 font-mono">
-      <div className="mb-2 text-[10px] uppercase tracking-[0.4em] text-zinc-500">
-        :: file
+    <div className="mt-2 max-w-sm border border-zinc-700 bg-zinc-950/80 font-mono">
+      <div className="flex items-center gap-3 p-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan/30 bg-black">
+          <FileText className="h-5 w-5 text-neon-cyan/60" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs text-zinc-300">{displayName}</p>
+          <div className="flex items-center gap-2 text-[10px] text-zinc-600">
+            {ext ? <span className="uppercase">{ext}</span> : null}
+            {displaySize != null ? (
+              <span>{formatFileSize(displaySize)}</span>
+            ) : null}
+          </div>
+        </div>
+        <a
+          href={objectUrl}
+          download={displayName}
+          className="flex h-8 w-8 shrink-0 items-center justify-center border border-neon-cyan/40 bg-black text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+          title={t('media.download')}
+        >
+          <Download className="h-4 w-4" />
+        </a>
       </div>
-      <p className="mb-1 break-all text-xs text-zinc-300">{displayName}</p>
-      {displaySize != null ? (
-        <p className="mb-3 text-[10px] text-zinc-600">
-          {formatFileSize(displaySize)}
-        </p>
-      ) : (
-        <p className="mb-3 text-[10px] text-zinc-600">—</p>
-      )}
-      <a
-        href={objectUrl}
-        download={displayName}
-        className="inline-block w-full border border-neon-cyan/60 bg-black py-2 text-center text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
-      >
-        {t('media.download')}
-      </a>
     </div>
   )
 }

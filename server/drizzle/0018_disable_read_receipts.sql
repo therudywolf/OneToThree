@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "disable_read_receipts" boolean NOT NULL DEFAULT false;

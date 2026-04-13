@@ -50,6 +50,10 @@ export function scanPeerIdentity(raw: string): string {
 }
 
 /** [CHECK_SIGNATURE] :: Проверка, является ли строка UUID */
+// --- CONSUMER_ALIASES ---
+export const normalizePeerInput = scanPeerIdentity
+export const isUuid = isNodeSignature
+
 export function isNodeSignature(value: string): boolean {
   return SIGNATURE_UUID_RE.test(value)
 }

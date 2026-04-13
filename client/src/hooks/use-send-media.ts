@@ -150,7 +150,7 @@ export function useBinaryTransmission(cryptoCtx: ChatCryptoContext | null) {
         media_original_bytes: workBlob.size,
       })
 
-      if (via === 'rest' && serverMessage) {
+      if (via === 'REST' && serverMessage) {
         const node = await decryptApiMessageRow(unwrappedPrivateKey, cryptoCtx, serverMessage)
         void cacheMessage(node).catch(() => {})
         appendMessage(node)

@@ -160,6 +160,23 @@ export async function pullRecentLogs(chatId: string, limit = 50): Promise<Decryp
 }
 
 /** [RADAR_SEARCH] :: Локальный поиск по дешифрованным следам */
+// --- CONSUMER_ALIASES ---
+export const purgeLocalMessageCache = wipeGhostLogs
+export const cacheMessage = cacheNode
+export const cacheMessages = cacheNodes
+export const getRecentCachedMessages = pullRecentLogs
+export const getOlderCachedMessages = pullRecentLogs
+export const searchLocalMessages = searchLocalTrace
+
+/** Delete a single cached message by id. */
+export async function deleteCachedMessage(messageId: string): Promise<void> {
+  if (typeof indexedDB === 'undefined') return
+  const conn = await initConnection()
+  const tx = conn.transaction('message_feed', 'readwrite')
+  await tx.store.delete(messageId)
+  await tx.done
+}
+
 export async function searchLocalTrace(query: string) {
   if (typeof indexedDB === 'undefined') return []
   const q = query.trim().toLowerCase()

@@ -56,7 +56,7 @@ export type PreparedSectorKeyRow = {
 
 async function sealBytes(key: CryptoKey, plain: Uint8Array) {
   const iv = crypto.getRandomValues(new Uint8Array(GCM_IV_LEN))
-  const buf = await getSubtle().encrypt({ name: 'AES-GCM', iv }, key, plain)
+  const buf = await getSubtle().encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, plain as BufferSource)
   return {
     ciphertext: toB64(new Uint8Array(buf)),
     iv: toB64(iv),
@@ -65,9 +65,9 @@ async function sealBytes(key: CryptoKey, plain: Uint8Array) {
 
 async function unsealBytes(key: CryptoKey, cipherB64: string, ivB64: string) {
   const buf = await getSubtle().decrypt(
-    { name: 'AES-GCM', iv: fromB64(ivB64) },
+    { name: 'AES-GCM', iv: fromB64(ivB64) as BufferSource },
     key,
-    fromB64(cipherB64)
+    fromB64(cipherB64) as BufferSource
   )
   return new Uint8Array(buf)
 }
@@ -190,3 +190,4 @@ export async function extractSectorKey(
 }
 
 export const wrapGroupKeyForMemberWithCreatorEcdh = wrapSectorKeyWithCreatorAuth
+export const unwrapGroupKeyFromStoredPayload = extractSectorKey

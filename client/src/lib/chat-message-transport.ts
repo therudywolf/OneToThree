@@ -21,6 +21,9 @@ export type DispatchStatus = {
  * Маршрутизация зашифрованного пакета. 
  * Приоритет: WebSocket (STREAM) для скорости, иначе REST для надежной фиксации.
  */
+// --- CONSUMER_ALIAS ---
+export const sendChatMessageOverTransport = dispatchChatMessage
+
 export async function dispatchChatMessage(
   body: SendChatMessageBody
 ): Promise<DispatchStatus> {

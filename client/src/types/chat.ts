@@ -36,6 +36,24 @@ export type DecryptedNode = {
 /**
  * Описание коммуникационного канала (Линка)
  */
+/**
+ * Consumer-facing shape of a decrypted message. Matches the fields
+ * produced by decrypt-chat-api-message.ts / message-row.ts at runtime.
+ */
+export type DecryptedMessage = {
+  id: string
+  chat_id: string
+  sender_id: string
+  plaintext: string
+  created_at: string
+  reply_to_id?: string | null
+  media_path?: string | null
+  media_type?: 'audio' | 'video' | 'image' | 'file' | null
+  media_iv?: string | null
+  read_at?: string | null
+  burn_at?: string | null
+}
+
 export type ChannelNode = {
   id: string
   

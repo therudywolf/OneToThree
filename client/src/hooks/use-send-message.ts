@@ -26,7 +26,7 @@ export function useTransmissionDispatcher(cryptoCtx: ChatCryptoContext | null) {
     async (
       body: string,
       replyToId?: string | null,
-      meta?: { burn_mark?: string | null }
+      meta?: { burn_mark?: string | null; burn_at?: string | null }
     ) => {
       const content = body.trim()
 
@@ -48,7 +48,7 @@ export function useTransmissionDispatcher(cryptoCtx: ChatCryptoContext | null) {
         cryptoCtx
       )
 
-      const burnAt = meta?.burn_mark
+      const burnAt = meta?.burn_at ?? meta?.burn_mark
 
       // [2] TRANSPORT_DISPATCH :: Выброс пакета в эфир (WS/REST)
       const { via, serverMessage } = await sendChatMessageOverTransport({
@@ -60,7 +60,7 @@ export function useTransmissionDispatcher(cryptoCtx: ChatCryptoContext | null) {
       })
 
       // [3] FEEDBACK_LOOP :: Если пакет прошел через REST, синхронизируем локальный стор
-      if (via === 'rest' && serverMessage) {
+      if (via === 'REST' && serverMessage) {
         try {
           const node = await decryptApiMessageRow(
             unwrappedPrivateKey,

@@ -55,13 +55,13 @@ export function SettingsPushNotifications({ userId }: Props) {
     setBusy(true)
     try {
       if (hasBrowserSubscription) {
-        await unsubscribeUserPush(userId)
+        await unsubscribeUserPush()
       } else {
         if (!vapidOk) {
           setLocalError(t('settings.pushVapidMissing'))
           return
         }
-        await subscribeUserPush(userId)
+        await subscribeUserPush()
       }
       await refresh()
     } catch (e) {

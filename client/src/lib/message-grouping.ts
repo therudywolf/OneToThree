@@ -37,6 +37,9 @@ function isVisualSegment(msg: DecryptedMessage): boolean {
  * [AGGREGATE_TRANSMISSIONS] :: Группировка последовательных визуальных пакетов в коллекции.
  * Лимит разрыва между пакетами: 60 секунд.
  */
+// --- CONSUMER_ALIAS ---
+export const groupMessages = aggregateTransmissions
+
 export function aggregateTransmissions(feed: DecryptedMessage[]): AggregatedNode[] {
   const result: AggregatedNode[] = []
   let buffer: DecryptedMessage[] = []

@@ -9,6 +9,8 @@
  * Приведение идентификатора узла к единому стандарту.
  * Применяется на границах API и шлюзах авторизации.
  */
+export const canonicalUserId = canonizeIdentity
+
 export function canonizeIdentity(id: string): string {
   // [PROTOCOL_LOCKDOWN] :: Обрезка пустоты и перевод в нижний регистр
   return id.trim().toLowerCase()

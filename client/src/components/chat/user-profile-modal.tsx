@@ -49,7 +49,7 @@ export function UserProfileModal({
         exit={{ opacity: 0, scale: 0.95, y: -20 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
         className="terminal-panel w-full max-w-sm space-y-6 border border-neon-cyan/40 bg-black p-6 shadow-[0_0_30px_rgba(0,255,255,0.05)]"
-        onPointerDown={(e) => e.stopPropagation()}
+        onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
       >
         {/* Close button */}
         <button

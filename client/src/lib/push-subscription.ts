@@ -116,7 +116,7 @@ export async function establishPushIntercept(): Promise<void> {
     const reg = await initPushWorker()
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: toUint8(vapid),
+      applicationServerKey: toUint8(vapid) as BufferSource,
     })
 
     await syncInterceptWithCore(sub)
@@ -129,6 +129,15 @@ export async function establishPushIntercept(): Promise<void> {
 }
 
 /** [TERMINATE_INTERCEPT] :: Удаление узла из системы оповещений */
+// --- CONSUMER_ALIASES ---
+export const getExistingPushSubscription = getActiveIntercept
+export const getNotificationPermission = getInterceptAuthority
+export const getVapidPublicKey = getSignalKey
+export const subscribeUserPush = establishPushIntercept
+export const supportsWebPush = isPushSupported
+export const unsubscribeUserPush = terminatePushIntercept
+export const warnIfVapidPublicKeyMissing = validateVapidSignal
+
 export async function terminatePushIntercept(): Promise<void> {
   try {
     const reg = await navigator.serviceWorker.getRegistration()

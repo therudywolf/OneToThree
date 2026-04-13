@@ -87,13 +87,17 @@ export async function sealSignal(
   plaintext: string,
   frame: EncryptionFrame
 ): Promise<{ encrypted_content: string; iv: string }> {
+  let result: { ciphertext: string; iv: string }
+
   if (frame.mode === 'SECTOR') {
-    return encryptMessage(frame.groupKey, plaintext)
+    result = await encryptMessage(frame.groupKey, plaintext)
+  } else {
+    const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
+    const sharedSecret = await deriveSharedSecret(privateKey, peerPub)
+    result = await encryptMessage(sharedSecret, plaintext)
   }
 
-  const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
-  const sharedSecret = await deriveSharedSecret(privateKey, peerPub)
-  return encryptMessage(sharedSecret, plaintext)
+  return { encrypted_content: result.ciphertext, iv: result.iv }
 }
 
 /** [UNSEAL_SIGNAL] :: Вскрытие входящего пакета данных */
@@ -113,6 +117,13 @@ export async function unsealSignal(
 }
 
 /** [EXTRACT_SECTOR_KEY] :: Получение AES-GCM ключа для текущего линка */
+// --- CONSUMER_ALIASES ---
+export type ChatCryptoContext = EncryptionFrame
+export const buildChatCryptoContext = calibrateEncryptionFrame
+export const encryptOutboundText = sealSignal
+export const decryptInboundText = unsealSignal
+export const getAesKeyForChat = getSectorKey
+
 export async function getSectorKey(
   privateKey: CryptoKey,
   frame: EncryptionFrame

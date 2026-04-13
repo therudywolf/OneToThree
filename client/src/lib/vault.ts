@@ -4,15 +4,20 @@
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
-const PBKDF2_ITERATIONS = 210_000
+/** OWASP 2023 recommendation for PBKDF2-SHA256. */
+const PBKDF2_ITERATIONS = 600_000
+/** Legacy vaults (version <= 2) used 210k iterations. */
+const PBKDF2_ITERATIONS_LEGACY = 210_000
 const VAULT_PREFIX = 'p13:vault'
-export const CURRENT_VAULT_VERSION = 2
+export const CURRENT_VAULT_VERSION = 3
 
 export type VaultBlob = {
   version: number
   saltB64: string
   ivB64: string
   ciphertextB64: string
+  /** Stored since version 3 so the correct iteration count is always available for decryption. */
+  pbkdf2Iterations?: number
 }
 
 export class VaultVersionMismatchError extends Error {
@@ -95,7 +100,7 @@ const fromB64 = (b64: string): Uint8Array =>
 // --- CRYPTO_LOGIC ---
 
 /** [DERIVE_KEY] :: Выжигание ключа из ПИН-кода через PBKDF2 */
-export async function deriveWrapKey(pin: string, salt: BufferSource): Promise<CryptoKey> {
+export async function deriveWrapKey(pin: string, salt: BufferSource, iterations?: number): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(pin),
@@ -107,7 +112,7 @@ export async function deriveWrapKey(pin: string, salt: BufferSource): Promise<Cr
     {
       name: 'PBKDF2',
       salt,
-      iterations: PBKDF2_ITERATIONS,
+      iterations: iterations ?? PBKDF2_ITERATIONS,
       hash: 'SHA-256',
     },
     material,
@@ -139,6 +144,7 @@ export async function wrapPrivateJwkWithPin(
     saltB64: toB64(salt),
     ivB64: toB64(iv),
     ciphertextB64: toB64(new Uint8Array(cipherBuf)),
+    pbkdf2Iterations: PBKDF2_ITERATIONS,
   }
 }
 
@@ -150,7 +156,9 @@ export async function unwrapPrivateJwkWithPin(
   const salt = fromB64(blob.saltB64)
   const iv = fromB64(blob.ivB64)
   const cipher = fromB64(blob.ciphertextB64)
-  const wrapKey = await deriveWrapKey(pin, salt as BufferSource)
+  // Version 3+ stores iteration count; legacy blobs used 210k.
+  const iterations = blob.pbkdf2Iterations ?? PBKDF2_ITERATIONS_LEGACY
+  const wrapKey = await deriveWrapKey(pin, salt as BufferSource, iterations)
 
   const plainBuf = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: iv as BufferSource },

@@ -1,5 +1,7 @@
 'use client'
 
+import { Phone, Video } from 'lucide-react'
+
 type Props = {
   disabled: boolean
   peerReady: boolean
@@ -16,50 +18,62 @@ export function CallHeaderButtons({
   const isOffline = disabled || !peerReady
 
   return (
-    <div className="flex items-center border border-neutral-900 bg-black font-mono shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+    <div className="flex items-center border border-neutral-800 bg-black font-mono shadow-[0_0_15px_rgba(0,0,0,0.5)]">
       {/* Node Status Indicator */}
-      <div className="hidden sm:flex h-9 w-10 items-center justify-center border-r border-neutral-900 bg-zinc-950/50">
-        <span className="relative flex h-1.5 w-1.5">
+      <div className="hidden sm:flex h-10 w-10 items-center justify-center border-r border-neutral-800 bg-zinc-950/50">
+        <span className="relative flex h-2 w-2">
           {!isOffline && (
             <span className="absolute inline-flex h-full w-full animate-ping bg-neon-cyan opacity-75"></span>
           )}
           <span
-            className={`relative inline-flex h-1.5 w-1.5 ${
-              isOffline ? 'bg-neutral-700' : 'bg-neon-cyan shadow-[0_0_5px_rgba(0,255,255,0.8)]'
+            className={`relative inline-flex h-2 w-2 ${
+              isOffline ? 'bg-neutral-700' : 'bg-neon-cyan shadow-[0_0_6px_rgba(0,255,255,0.9)]'
             }`}
           ></span>
         </span>
       </div>
 
-      {/* Audio Link */}
+      {/* Voice Call */}
       <button
         type="button"
         disabled={isOffline}
         onClick={onVoiceCall}
-        className={`touch-manipulation relative flex h-9 items-center justify-center border-r border-neutral-900 px-4 transition-all ${
+        title={isOffline ? 'No connection' : 'Voice call'}
+        className={`touch-manipulation relative flex h-10 min-w-[2.75rem] items-center justify-center gap-2 border-r px-3 transition-all ${
           isOffline
-            ? 'cursor-not-allowed text-neutral-600'
-            : 'text-neon-cyan hover:bg-neon-cyan/10 hover:text-white active:bg-neon-cyan/20'
+            ? 'cursor-not-allowed border-neutral-800 text-neutral-600'
+            : 'border-neon-cyan/50 text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 hover:text-white active:bg-neon-cyan/20'
         }`}
       >
-        <span className="text-[10px] uppercase tracking-[0.25em]">
-          {isOffline ? 'NO_LINK' : 'SYS.AUDIO'}
+        <Phone
+          className={`h-4 w-4 shrink-0 ${isOffline ? 'opacity-30' : ''}`}
+          strokeWidth={isOffline ? 1 : 2}
+          aria-hidden
+        />
+        <span className="hidden text-[10px] uppercase tracking-[0.25em] sm:inline">
+          {isOffline ? 'NO_LINK' : 'AUDIO'}
         </span>
       </button>
 
-      {/* Optics Link */}
+      {/* Video Call */}
       <button
         type="button"
         disabled={isOffline}
         onClick={onVideoCall}
-        className={`touch-manipulation relative flex h-9 items-center justify-center px-4 transition-all ${
+        title={isOffline ? 'No connection' : 'Video call'}
+        className={`touch-manipulation relative flex h-10 min-w-[2.75rem] items-center justify-center gap-2 px-3 transition-all ${
           isOffline
-            ? 'cursor-not-allowed text-neutral-600'
-            : 'text-neon-red hover:bg-neon-red/10 hover:text-white active:bg-neon-red/20'
+            ? 'cursor-not-allowed border border-neutral-800 text-neutral-600'
+            : 'border border-neon-red/50 text-neon-red hover:border-neon-red hover:bg-neon-red/10 hover:text-white active:bg-neon-red/20'
         }`}
       >
-        <span className="text-[10px] uppercase tracking-[0.25em]">
-          {isOffline ? 'NO_LINK' : 'SYS.OPTICS'}
+        <Video
+          className={`h-4 w-4 shrink-0 ${isOffline ? 'opacity-30' : ''}`}
+          strokeWidth={isOffline ? 1 : 2}
+          aria-hidden
+        />
+        <span className="hidden text-[10px] uppercase tracking-[0.25em] sm:inline">
+          {isOffline ? 'NO_LINK' : 'VIDEO'}
         </span>
       </button>
     </div>

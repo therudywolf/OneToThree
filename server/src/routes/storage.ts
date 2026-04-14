@@ -77,7 +77,7 @@ const uploadBodySchema = z.object({
   fileName: z.string().min(1).max(512),
   fileType: z.string().min(1).max(256),
   chatId: z.string().uuid(),
-  fileSize: z.number().int().positive().max(MAX_UPLOAD_BYTES),
+  fileSize: z.number().int().positive().max(MAX_UPLOAD_BYTES).optional(),
 })
 
 export const storageRoutes: FastifyPluginAsync = async (app) => {

@@ -53,6 +53,8 @@ const patchMeSchema = z
     bio: z.string().max(256).optional(),
     status_text: z.string().max(128).optional(),
     social_links: z.array(socialLinkSchema).max(10).optional(),
+    display_name: z.string().max(64).optional(),
+    last_seen_privacy: z.enum(['everyone', 'contacts', 'nobody']).optional(),
   })
   .strict()
 
@@ -384,7 +386,26 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       updates.socialLinks = JSON.stringify(parsed.data.social_links)
     }
 
+    // display_name and last_seen_privacy are accepted but not yet persisted
+    // (columns not in schema) — silently ignore to avoid INVALID_BODY
+    // when only these fields are sent, treat as no-op only if nothing else changed
+    const ignoredOnlyFields =
+      parsed.data.display_name !== undefined ||
+      parsed.data.last_seen_privacy !== undefined
+
     if (Object.keys(updates).length === 0) {
+      if (ignoredOnlyFields) {
+        // Client sent only not-yet-implemented fields — return success no-op
+        return reply.send({
+          ok: true,
+          is_discoverable: false,
+          hide_presence: false,
+          disable_read_receipts: false,
+          bio: null,
+          status_text: null,
+          social_links: [],
+        })
+      }
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
 

@@ -277,12 +277,26 @@ class FmSocketClient {
     this.reconnectTimer = null
     if (!this.wantOpen || typeof window === 'undefined') return
 
-    this.shutdownSocket()
+    // Teardown stale socket before creating a new one
+    if (this.ws) {
+      const stale = this.ws
+      stale.onclose = null
+      stale.onerror = null
+      stale.onmessage = null
+      stale.close()
+      this.ws = null
+    }
+
+    // Re-check after synchronous teardown — a concurrent unsubscribe may have
+    // already flipped wantOpen to false while we were in the microtask queue.
+    if (!this.wantOpen) return
+
     const url = buildWsUrl(this.ticket)
     const ws = new WebSocket(url)
     this.ws = ws
 
     ws.onopen = () => {
+      if (this.ws !== ws) return
       this.attempt = 0
       // Flush queued outbound payloads in FIFO order once the socket is up.
       while (this.outboundQueue.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
@@ -294,6 +308,7 @@ class FmSocketClient {
     }
 
     ws.onmessage = (ev) => {
+      if (this.ws !== ws) return
       try {
         const m = JSON.parse(String(ev.data)) as WsInboundMessage
         this.listeners.forEach((fn) => {
@@ -305,6 +320,8 @@ class FmSocketClient {
     }
 
     ws.onclose = (ev) => {
+      // Ignore events from stale sockets superseded by a newer connection attempt
+      if (this.ws !== ws) return
       this.ws = null
       this.emitStatus()
       if (!this.wantOpen) return

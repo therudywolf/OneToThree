@@ -172,14 +172,31 @@ export function ChatTerminal({
     return () => el.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
 
+  // Track new messages and show indicator if user scrolled up.
+  // Also handles the case where first batch of messages arrives (prevCount === 0).
   useEffect(() => {
-    const diff = messages.length - prevMsgCountRef.current
-    if (diff > 0 && !isNearBottomRef.current) {
+    const prevCount = prevMsgCountRef.current
+    const diff = messages.length - prevCount
+    prevMsgCountRef.current = messages.length
+
+    if (diff <= 0) return
+
+    // First load or user is near bottom — always scroll down instantly
+    if (prevCount === 0 || isNearBottomRef.current) {
+      // Use rAF to ensure DOM has painted the new messages before scrolling
+      requestAnimationFrame(() => {
+        scrollToBottomInstant()
+        isNearBottomRef.current = true
+        setIsNearBottom(true)
+        setHasNewBelow(false)
+        setNewMsgCount(0)
+      })
+    } else {
+      // User scrolled up — show badge instead
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + diff)
     }
-    prevMsgCountRef.current = messages.length
-  }, [messages.length])
+  }, [messages.length, scrollToBottomInstant])
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -248,15 +265,9 @@ export function ChatTerminal({
     setIsNearBottom(true)
     setHasNewBelow(false)
     setNewMsgCount(0)
+    // Reset message counter so first batch always triggers auto-scroll
+    prevMsgCountRef.current = 0
   }, [activeChatId, scrollToBottomInstant])
-
-  // Scroll to bottom when new messages arrive and user is already near bottom.
-  // Uses a ref so this effect never goes stale — no re-registration on every scroll.
-  useEffect(() => {
-    if (isNearBottomRef.current) {
-      scrollToBottomInstant()
-    }
-  }, [messages.length, scrollToBottomInstant])
 
   useEffect(() => {
     setOlderMessages([])

@@ -146,13 +146,23 @@ export function ChatTerminal({
 
   useReadReceipts(ref, { enabled: !isGroup })
 
+  // Helper: instantly scroll container to absolute bottom
+  const scrollToBottomInstant = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [])
+
   const handleScroll = useCallback(() => {
     const el = ref.current
     if (!el) return
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     isNearBottomRef.current = near
     setIsNearBottom(near)
-    if (near) setHasNewBelow(false)
+    if (near) {
+      setHasNewBelow(false)
+      setNewMsgCount(0)
+    }
   }, [])
 
   useEffect(() => {
@@ -167,9 +177,6 @@ export function ChatTerminal({
     if (diff > 0 && !isNearBottomRef.current) {
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + diff)
-    }
-    if (isNearBottomRef.current) {
-      setNewMsgCount(0)
     }
     prevMsgCountRef.current = messages.length
   }, [messages.length])
@@ -233,18 +240,23 @@ export function ChatTerminal({
     }
   }, [senderIdsToResolve])
 
-  // Scroll to bottom when switching chats
+  // Scroll to bottom instantly when switching chats
   useLayoutEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [activeChatId])
+    scrollToBottomInstant()
+    // Mark as near bottom immediately so the next message effect fires correctly
+    isNearBottomRef.current = true
+    setIsNearBottom(true)
+    setHasNewBelow(false)
+    setNewMsgCount(0)
+  }, [activeChatId, scrollToBottomInstant])
 
   // Scroll to bottom when new messages arrive and user is already near bottom.
   // Uses a ref so this effect never goes stale — no re-registration on every scroll.
   useEffect(() => {
     if (isNearBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ block: 'end' })
+      scrollToBottomInstant()
     }
-  }, [messages.length])
+  }, [messages.length, scrollToBottomInstant])
 
   useEffect(() => {
     setOlderMessages([])

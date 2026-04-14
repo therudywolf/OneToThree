@@ -105,7 +105,7 @@ case "$CMD" in
     ;;
   update)
     log "Получаю обновления из git..."
-    git pull origin master
+    git pull origin main
     log "Пересборка образов (данные в volumes сохраняются)..."
     # НИКОГДА не используем 'down -v' — это удалит данные
     # db-migrate пересобирается без кэша — чтобы новые SQL миграции попали в образ

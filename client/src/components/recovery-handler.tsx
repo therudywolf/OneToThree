@@ -1,23 +1,31 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
 
 /**
  * Global recovery handler for:
  * 1. ChunkLoadError (script load failures after network/VPN changes)
- * 2. Hydration Guard (if app stays loading >5s, show Force Reset button)
+ * 2. Hydration Guard (if app stays loading >8s on non-auth pages, show Force Reset)
+ *
+ * FIX: watchdog is suppressed on /login and / (auth pages) to avoid
+ * false-positive "App is not responding" when a new user gets 401 and
+ * is redirected — the redirect itself takes >5s in some slow connections.
  */
 export function RecoveryHandler() {
   const [showForceReset, setShowForceReset] = useState(false)
   const chunkErrorHandledRef = useRef(false)
   const hydrationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const pathname = usePathname()
+
+  // Auth-related paths where watchdog must NOT fire
+  const isAuthPage =
+    pathname === '/login' ||
+    pathname === '/' ||
+    pathname?.startsWith('/login') ||
+    pathname?.startsWith('/join')
 
   useEffect(() => {
-    /**
-     * Handle ChunkLoadError: If a dynamic import or script fails,
-     * trigger a single reload (but not if we already tried once).
-     */
     const handleChunkError = (error: Event) => {
       const event = error as ErrorEvent
       if (
@@ -38,22 +46,6 @@ export function RecoveryHandler() {
       }
     }
 
-    /**
-     * Hydration Guard: If the app doesn't become interactive within 5s,
-     * offer user a Force Reset button to clear Service Worker.
-     */
-    const startHydrationGuard = () => {
-      hydrationTimeoutRef.current = setTimeout(() => {
-        // Check if app is still in a loading state
-        // (this is a simple heuristic; you can enhance with app state checks)
-        setShowForceReset(true)
-        console.warn('[recovery] App appears to be stuck in loading state')
-      }, 5000)
-    }
-
-    /**
-     * Clear the hydration guard if the app becomes interactive.
-     */
     const handleAppReady = () => {
       if (hydrationTimeoutRef.current) {
         clearTimeout(hydrationTimeoutRef.current)
@@ -70,20 +62,28 @@ export function RecoveryHandler() {
 
     window.addEventListener('error', handleChunkError)
     window.addEventListener('unhandledrejection', handleRejection)
-
-    // Start the hydration guard
-    startHydrationGuard()
-
-    // Listen for app readiness (you can emit a custom event from your app)
     window.addEventListener('app-ready', handleAppReady)
 
-    // Also clear on user interaction
+    // Watchdog: only on app pages, not on auth/login routes
+    // Also clear watchdog on any user interaction (redirect counts as navigation, not stuck)
+    let guardStarted = false
+    if (!isAuthPage) {
+      guardStarted = true
+      hydrationTimeoutRef.current = setTimeout(() => {
+        setShowForceReset(true)
+        console.warn('[recovery] App appears to be stuck in loading state')
+      }, 8000) // increased to 8s to tolerate slow initial loads
+    }
+
     const clearGuard = () => {
       if (hydrationTimeoutRef.current) {
         clearTimeout(hydrationTimeoutRef.current)
         hydrationTimeoutRef.current = null
       }
+      // Hide modal if it was shown (e.g. user navigated away)
+      setShowForceReset(false)
     }
+
     window.addEventListener('click', clearGuard, { once: true })
     window.addEventListener('touchstart', clearGuard, { once: true })
 
@@ -95,21 +95,31 @@ export function RecoveryHandler() {
       window.removeEventListener('touchstart', clearGuard)
       if (hydrationTimeoutRef.current) {
         clearTimeout(hydrationTimeoutRef.current)
+        hydrationTimeoutRef.current = null
       }
     }
-  }, [])
+  // Re-run when pathname changes so watchdog resets on navigation
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthPage])
+
+  // Also imperatively kill the modal whenever we land on an auth page
+  useEffect(() => {
+    if (isAuthPage) {
+      setShowForceReset(false)
+      if (hydrationTimeoutRef.current) {
+        clearTimeout(hydrationTimeoutRef.current)
+        hydrationTimeoutRef.current = null
+      }
+    }
+  }, [isAuthPage])
 
   const handleForceReset = async () => {
     console.warn('[recovery] User triggered Force Reset')
     try {
-      // Clear Service Worker
       if (navigator.serviceWorker?.controller) {
         const regs = await navigator.serviceWorker.getRegistrations()
         await Promise.all(regs.map((reg) => reg.unregister()))
       }
-      // Clear localStorage if needed (optional, be careful with auth tokens)
-      // localStorage.clear()
-      // Reload the page
       window.location.reload()
     } catch (e) {
       console.error('[recovery] Force Reset error', e)

@@ -44,6 +44,9 @@ type Props = {
   disabled?: boolean
 }
 
+/** A queued file waiting for preview/send confirmation */
+type QueuedFile = { file: File; mediaType: 'image' | 'video' | 'audio' | 'file' }
+
 export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
   const [messageText, setMessageText] = useState('')
@@ -63,7 +66,14 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
   const lockAnimRef = useRef(false)
 
-  const [previewFile, setPreviewFile] = useState<{ file: File; mediaType: 'image' | 'video' | 'audio' | 'file' } | null>(null)
+  /**
+   * Multi-file queue: when user selects multiple files, we show each
+   * in the preview modal one by one before sending.
+   * FIX: previously only files[0] was ever used.
+   */
+  const [fileQueue, setFileQueue] = useState<QueuedFile[]>([])
+  // The currently previewed item is always fileQueue[0]
+  const previewFile = fileQueue[0] ?? null
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
@@ -95,7 +105,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   useEffect(() => {
     if (!emojiOpen) return
     const close = (e: MouseEvent) => {
-      // Don't close if click is inside the emoji picker container
       if (emojiContainerRef.current?.contains(e.target as Node)) return
       setEmojiOpen(false)
     }
@@ -103,7 +112,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     return () => document.removeEventListener('mousedown', close)
   }, [emojiOpen])
 
-  // Cleanup recording timer on unmount
   useEffect(() => {
     return () => {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current)
@@ -214,11 +222,10 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     if (!e.clipboardData?.files.length) return
-
     const file = e.clipboardData.files[0]
     if (file && isImageFile(file)) {
       e.preventDefault()
-      setPreviewFile({ file, mediaType: 'image' })
+      setFileQueue([{ file, mediaType: 'image' }])
     }
   }
 
@@ -238,33 +245,60 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     e.preventDefault()
     e.stopPropagation()
     containerRef.current?.classList.remove('drag-over')
-
     if (!e.dataTransfer?.files.length) return
-
-    const file = e.dataTransfer.files[0]
-    if (file) {
-      const mediaType = detectMediaType(file)
-      setPreviewFile({ file, mediaType })
-    }
+    // Support multiple dropped files
+    const queued: QueuedFile[] = Array.from(e.dataTransfer.files).map((file) => ({
+      file,
+      mediaType: detectMediaType(file),
+    }))
+    setFileQueue(queued)
   }
 
   const handleAttachClick = () => {
     fileInputRef.current?.click()
   }
 
+  /**
+   * FIX: Collect ALL selected files into the queue instead of only files[0].
+   * The preview modal shows them one by one; after each send the queue shifts.
+   */
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return
-
-    const file = e.target.files[0]
-    if (file) {
-      const mediaType = detectMediaType(file)
-      setPreviewFile({ file, mediaType })
-    }
-
+    const queued: QueuedFile[] = Array.from(e.target.files).map((file) => ({
+      file,
+      mediaType: detectMediaType(file),
+    }))
+    setFileQueue(queued)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
+
+  /**
+   * Called when user confirms a file in the preview modal.
+   * Sends the file and advances to the next one in the queue.
+   */
+  const handlePreviewSend = useCallback(
+    (caption: string) => {
+      const item = fileQueue[0]
+      if (!item) return
+      // Remove from queue immediately so next file shows
+      setFileQueue((prev) => prev.slice(1))
+      void sendMedia(item.file, item.mediaType, caption || undefined, {
+        fileName: item.file.name,
+        fileType: item.file.type,
+      })
+    },
+    [fileQueue, sendMedia],
+  )
+
+  /**
+   * Cancel current preview — also clears the rest of the queue.
+   * (User can re-select if they want to abort a multi-file batch.)
+   */
+  const handlePreviewCancel = useCallback(() => {
+    setFileQueue([])
+  }, [])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -283,7 +317,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     e.preventDefault()
   }
 
-  // --- Pointer handlers for swipe-to-lock ---
   const handleRecordPointerDown = (e: React.PointerEvent) => {
     if (disabled || !cryptoCtx) return
     e.preventDefault()
@@ -294,13 +327,12 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const handleRecordPointerMove = useCallback((e: React.PointerEvent) => {
     if (!isRecordingRef.current || recordLocked || !pointerStartRef.current) return
 
-    const dy = pointerStartRef.current.y - e.clientY // positive = up
-    const dx = pointerStartRef.current.x - e.clientX // positive = left
+    const dy = pointerStartRef.current.y - e.clientY
+    const dx = pointerStartRef.current.x - e.clientX
 
     setSwipeOffsetY(Math.max(0, dy))
     setSwipeOffsetX(Math.max(0, dx))
 
-    // Lock if swiped up enough
     if (dy > LOCK_THRESHOLD_Y && !lockAnimRef.current) {
       lockAnimRef.current = true
       vibrateShort(20)
@@ -310,7 +342,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       pointerStartRef.current = null
     }
 
-    // Cancel if swiped left enough
     if (dx > CANCEL_THRESHOLD_X) {
       setCancelSlide(true)
       void cancelRecording()
@@ -320,18 +351,18 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const handleRecordPointerUp = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
     if (!isRecordingRef.current) return
-    // If locked, do nothing (user uses stop/cancel buttons)
     if (recordLocked) return
-    // If not locked, stop and send
     pointerStartRef.current = null
     void stopRecording(true)
   }, [recordLocked, stopRecording])
 
-  // Waveform bars for locked recording UI
   const waveformBars = Array.from({ length: 20 }, (_, i) => {
     const base = 0.3 + Math.sin(i * 0.7 + recordSeconds * 2) * 0.3
     return Math.max(0.15, Math.min(1, base + Math.random() * 0.2))
   })
+
+  // How many files remain after the current one
+  const queueRemaining = fileQueue.length - 1
 
   return (
     <form
@@ -346,22 +377,18 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <MediaPreviewModal
           file={previewFile.file}
           mediaType={previewFile.mediaType}
-          onSend={(caption) => {
-            const { file, mediaType } = previewFile
-            setPreviewFile(null)
-            void sendMedia(file, mediaType, caption || undefined, {
-              fileName: file.name,
-              fileType: file.type,
-            })
-          }}
-          onCancel={() => setPreviewFile(null)}
+          queueRemaining={queueRemaining}
+          onSend={handlePreviewSend}
+          onCancel={handlePreviewCancel}
         />
       )}
 
+      {/* Hidden file input: multiple selection enabled */}
       <input
         ref={fileInputRef}
         type="file"
         multiple
+        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
         onChange={handleFileSelect}
         className="hidden"
         aria-label={t('chat.attachFile')}
@@ -386,7 +413,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       {emojiOpen ? (
         <div
           ref={emojiContainerRef}
-          className="relative z-10 mb-2 border border-neon-cyan/50 bg-black p-2 shadow-[inset_0_0_12px_rgba(0,255,255,0.08)]"
+          className="relative z-10 mb-2 border border-neon-cyan/50 bg-black p-2 shadow-[inset_0_0_12px_rgba(0,255,255,0.08)]" 
           onMouseDown={(e) => e.stopPropagation()}
         >
           <EmojiPicker
@@ -403,10 +430,9 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         </div>
       ) : null}
 
-      {/* --- Locked recording controls --- */}
+      {/* Locked recording controls */}
       {isRecordingUI && recordLocked ? (
         <div className="flex items-center gap-3 py-1">
-          {/* Cancel button */}
           <button
             type="button"
             onClick={() => void cancelRecording()}
@@ -416,7 +442,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <X className="h-4 w-4" />
           </button>
 
-          {/* Circle video preview when recording in circle mode */}
           {mediaMode === 'circle' && previewStream ? (
             <div className="relative aspect-square w-16 shrink-0 overflow-hidden rounded-full border-2 border-neon-red bg-black shadow-[0_0_12px_rgba(255,0,0,0.2)]">
               <video
@@ -432,7 +457,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             </div>
           ) : null}
 
-          {/* Waveform + timer */}
           <div className="flex flex-1 items-center gap-2 border border-neon-red/40 bg-zinc-950 px-3 py-2">
             <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-red-600 animate-pulse" />
             <span className="shrink-0 font-mono text-[10px] text-red-400 tabular-nums">
@@ -450,7 +474,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <Lock className="h-3 w-3 shrink-0 text-neon-cyan/60" />
           </div>
 
-          {/* Stop & send button */}
           <button
             type="button"
             onClick={() => void stopRecording(true)}
@@ -462,7 +485,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         </div>
       ) : null}
 
-      {/* --- Normal input row (hidden when locked) --- */}
+      {/* Normal input row */}
       <div className={`flex items-center gap-2 ${isRecordingUI && recordLocked ? 'hidden' : ''}`}>
         <button
           type="button"
@@ -528,7 +551,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             />
             {isRecordingUI && !recordLocked ? (
               <span className="inline-flex items-center gap-1.5 shrink-0">
-                {/* Inline circle video preview during hold-to-record */}
                 {mediaMode === 'circle' && previewStream ? (
                   <span className="relative inline-block h-8 w-8 shrink-0 overflow-hidden rounded-full border border-neon-red">
                     <video
@@ -544,7 +566,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
                 <span className="font-mono text-[10px] text-red-400 tabular-nums">
                   {formatRecordTime(recordSeconds)}
                 </span>
-                {/* Swipe up hint */}
                 {swipeOffsetY > 10 ? (
                   <Lock className="h-3 w-3 text-neon-cyan animate-bounce" />
                 ) : (
@@ -555,7 +576,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
               </span>
             ) : null}
           </div>
-          {/* Cancel slide overlay */}
           {isRecordingUI && !recordLocked && swipeOffsetX > 20 ? (
             <div
               className="absolute inset-0 flex items-center justify-center bg-red-950/80 border border-neon-red/50 rounded transition-opacity"
@@ -568,7 +588,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           ) : null}
         </div>
 
-        {/* Mode toggle: small button to switch voice/circle */}
         <button
           type="button"
           className={`shrink-0 border bg-black px-1.5 py-1.5 transition-all disabled:opacity-40 ${
@@ -587,7 +606,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           )}
         </button>
 
-        {/* Record button: hold to record */}
         <button
           type="button"
           className={`shrink-0 select-none border bg-black px-3 py-2 transition-all disabled:opacity-40 ${

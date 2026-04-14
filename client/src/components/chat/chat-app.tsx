@@ -180,7 +180,6 @@ export function ChatApp({
 
   const groupCallIsMiniPlayer = useGroupCallStore((s) => s.isMiniPlayer)
 
-  // Call-related PWA enhancements: MediaSession, Wake Lock, Orientation Lock
   const callLocalStream = useCallStore((s) => s.localStream)
   const callIsVideo = (callLocalStream?.getVideoTracks().length ?? 0) > 0
   useCallPwa({
@@ -266,9 +265,7 @@ export function ChatApp({
         if (!cancelled) setPeerIdentity(null)
       }
     })()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [activeChatId, chats, userId])
 
   useEffect(() => {
@@ -294,12 +291,8 @@ export function ChatApp({
         if (cancelled) return
         setPeerAvatarKey(rows[0]?.avatar_key ?? null)
       })
-      .catch(() => {
-        if (!cancelled) setPeerAvatarKey(null)
-      })
-    return () => {
-      cancelled = true
-    }
+      .catch(() => { if (!cancelled) setPeerAvatarKey(null) })
+    return () => { cancelled = true }
   }, [activeChatId, chats, userId])
 
   const { cryptoCtx, ctxError } = useChatCryptoContext()
@@ -308,6 +301,12 @@ export function ChatApp({
   useMessages(cryptoCtx, emitPhantomSignal)
   const { sendText } = useSendMessage(cryptoCtx)
   const { sendMedia: rawSendMedia } = useSendMediaMessage(cryptoCtx)
+
+  /**
+   * FIX: caption and fileName are now passed separately so caption is never
+   * shadowed by fileName. rawSendMedia receives label=caption when present,
+   * falling back to fileName, while mime always comes from fileType.
+   */
   const sendMedia = useCallback(
     async (
       blob: Blob,
@@ -316,7 +315,7 @@ export function ChatApp({
       options?: { fileName?: string; fileType?: string },
     ) => {
       await rawSendMedia(blob, mediaType, {
-        label: caption || options?.fileName,
+        label: caption?.trim() || options?.fileName,
         mime: options?.fileType,
       })
     },
@@ -372,17 +371,11 @@ export function ChatApp({
       .then((d) => {
         if (cancelled) return
         const next: Record<string, ChatMemberRole> = {}
-        for (const m of d.members) {
-          next[m.user_id] = m.role
-        }
+        for (const m of d.members) next[m.user_id] = m.role
         setMemberRoleByUser(next)
       })
-      .catch(() => {
-        if (!cancelled) setMemberRoleByUser({})
-      })
-    return () => {
-      cancelled = true
-    }
+      .catch(() => { if (!cancelled) setMemberRoleByUser({}) })
+    return () => { cancelled = true }
   }, [activeChatId, activeRow?.is_group, groupDetailTick])
 
   async function handleVoiceCall() {

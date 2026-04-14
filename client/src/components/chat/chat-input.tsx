@@ -67,9 +67,8 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const lockAnimRef = useRef(false)
 
   /**
-   * Multi-file queue: when user selects multiple files, we show each
-   * in the preview modal one by one before sending.
-   * FIX: previously only files[0] was ever used.
+   * Multi-file queue: when user selects / pastes / drops multiple files,
+   * we show each in the preview modal one by one before sending.
    */
   const [fileQueue, setFileQueue] = useState<QueuedFile[]>([])
   // The currently previewed item is always fileQueue[0]
@@ -220,13 +219,19 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     })
   }
 
-  const handlePaste = async (e: React.ClipboardEvent) => {
+  /**
+   * FIX: support multiple pasted files (previously only files[0] was used
+   * and only images were accepted). Now all media files are queued.
+   */
+  const handlePaste = (e: React.ClipboardEvent) => {
     if (!e.clipboardData?.files.length) return
-    const file = e.clipboardData.files[0]
-    if (file && isImageFile(file)) {
-      e.preventDefault()
-      setFileQueue([{ file, mediaType: 'image' }])
-    }
+    const queued: QueuedFile[] = Array.from(e.clipboardData.files).map((file) => ({
+      file,
+      mediaType: detectMediaType(file),
+    }))
+    if (queued.length === 0) return
+    e.preventDefault()
+    setFileQueue(queued)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -241,12 +246,11 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     containerRef.current?.classList.remove('drag-over')
   }
 
-  const handleDrop = async (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     containerRef.current?.classList.remove('drag-over')
     if (!e.dataTransfer?.files.length) return
-    // Support multiple dropped files
     const queued: QueuedFile[] = Array.from(e.dataTransfer.files).map((file) => ({
       file,
       mediaType: detectMediaType(file),
@@ -258,43 +262,44 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     fileInputRef.current?.click()
   }
 
-  /**
-   * FIX: Collect ALL selected files into the queue instead of only files[0].
-   * The preview modal shows them one by one; after each send the queue shifts.
-   */
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  /** Collect ALL selected files into the queue instead of only files[0]. */
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return
     const queued: QueuedFile[] = Array.from(e.target.files).map((file) => ({
       file,
       mediaType: detectMediaType(file),
     }))
     setFileQueue(queued)
+    // Reset so the same files can be re-selected if needed
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
 
   /**
-   * Called when user confirms a file in the preview modal.
-   * Sends the file and advances to the next one in the queue.
+   * FIX: read the current head of the queue inside the functional updater
+   * instead of from the closure, eliminating the stale-closure race condition
+   * that caused the wrong file to be sent when confirming items in rapid
+   * succession.
    */
   const handlePreviewSend = useCallback(
     (caption: string) => {
-      const item = fileQueue[0]
-      if (!item) return
-      // Remove from queue immediately so next file shows
-      setFileQueue((prev) => prev.slice(1))
-      void sendMedia(item.file, item.mediaType, caption || undefined, {
-        fileName: item.file.name,
-        fileType: item.file.type,
+      setFileQueue((prev) => {
+        const item = prev[0]
+        if (!item) return prev
+        void sendMedia(item.file, item.mediaType, caption || undefined, {
+          fileName: item.file.name,
+          fileType: item.file.type,
+        })
+        return prev.slice(1)
       })
     },
-    [fileQueue, sendMedia],
+    [sendMedia],
   )
 
   /**
-   * Cancel current preview — also clears the rest of the queue.
-   * (User can re-select if they want to abort a multi-file batch.)
+   * Cancel current preview — clears the entire remaining queue.
+   * User can re-select if they want to restart a multi-file batch.
    */
   const handlePreviewCancel = useCallback(() => {
     setFileQueue([])

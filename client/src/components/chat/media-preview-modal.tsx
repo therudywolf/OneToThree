@@ -13,27 +13,33 @@ function formatFileSize(bytes: number): string {
 type Props = {
   file: File
   mediaType: 'image' | 'video' | 'audio' | 'file'
+  /** How many more files are waiting after this one (0 = last) */
+  queueRemaining: number
   onSend: (caption: string) => void
   onCancel: () => void
 }
 
-export function MediaPreviewModal({ file, mediaType, onSend, onCancel }: Props) {
+export function MediaPreviewModal({ file, mediaType, queueRemaining, onSend, onCancel }: Props) {
   const { t } = useTranslation()
   const [caption, setCaption] = useState('')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const captionRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
+    // Reset caption when file changes (next item in queue)
+    setCaption('')
     if (mediaType === 'image' || mediaType === 'video') {
       const url = URL.createObjectURL(file)
       setPreviewUrl(url)
       return () => URL.revokeObjectURL(url)
+    } else {
+      setPreviewUrl(null)
     }
   }, [file, mediaType])
 
   useEffect(() => {
     captionRef.current?.focus()
-  }, [])
+  }, [file])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -58,6 +64,11 @@ export function MediaPreviewModal({ file, mediaType, onSend, onCancel }: Props) 
         <header className="mb-4 flex items-center justify-between border-b border-neutral-900 pb-3">
           <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
             {t('mediaPreview.title')}
+            {queueRemaining > 0 && (
+              <span className="ml-2 text-neon-cyan/50">
+                +{queueRemaining} {t('mediaPreview.moreFiles')}
+              </span>
+            )}
           </p>
           <button
             type="button"
@@ -123,7 +134,9 @@ export function MediaPreviewModal({ file, mediaType, onSend, onCancel }: Props) 
             className="flex flex-1 items-center justify-center gap-2 border border-neon-cyan bg-black py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black"
           >
             <Send className="h-3.5 w-3.5" />
-            {t('mediaPreview.send')}
+            {queueRemaining > 0
+              ? t('mediaPreview.sendAndNext')
+              : t('mediaPreview.send')}
           </button>
           <button
             type="button"

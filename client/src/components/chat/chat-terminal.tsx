@@ -132,6 +132,8 @@ export function ChatTerminal({
     avatarKey?: string | null
   } | null>(null)
   const [isNearBottom, setIsNearBottom] = useState(true)
+  // Keep a ref in sync so effects reading it don't go stale
+  const isNearBottomRef = useRef(true)
   const [hasNewBelow, setHasNewBelow] = useState(false)
   const prevMsgCountRef = useRef(0)
   const swipeRef = useRef<{ startX: number; msgId: string } | null>(null)
@@ -148,6 +150,7 @@ export function ChatTerminal({
     const el = ref.current
     if (!el) return
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    isNearBottomRef.current = near
     setIsNearBottom(near)
     if (near) setHasNewBelow(false)
   }, [])
@@ -161,15 +164,15 @@ export function ChatTerminal({
 
   useEffect(() => {
     const diff = messages.length - prevMsgCountRef.current
-    if (diff > 0 && !isNearBottom) {
+    if (diff > 0 && !isNearBottomRef.current) {
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + diff)
     }
-    if (isNearBottom) {
+    if (isNearBottomRef.current) {
       setNewMsgCount(0)
     }
     prevMsgCountRef.current = messages.length
-  }, [messages.length, isNearBottom])
+  }, [messages.length])
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -230,19 +233,18 @@ export function ChatTerminal({
     }
   }, [senderIdsToResolve])
 
+  // Scroll to bottom when switching chats
   useLayoutEffect(() => {
-    // Only auto-scroll to bottom when we're near bottom or chat changed
-    if (isNearBottom || prevMsgCountRef.current === 0) {
-      bottomRef.current?.scrollIntoView({ block: 'end' })
-    }
+    bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [activeChatId])
 
-  // Scroll to bottom on initial load and when near bottom
-  useLayoutEffect(() => {
-    if (isNearBottom) {
+  // Scroll to bottom when new messages arrive and user is already near bottom.
+  // Uses a ref so this effect never goes stale — no re-registration on every scroll.
+  useEffect(() => {
+    if (isNearBottomRef.current) {
       bottomRef.current?.scrollIntoView({ block: 'end' })
     }
-  }, [messages.length, isNearBottom])
+  }, [messages.length])
 
   useEffect(() => {
     setOlderMessages([])
@@ -799,7 +801,7 @@ export function ChatTerminal({
                         {replySnippet(replyMsg)}
                       </div>
                     ) : m.reply_to_id ? (
-                      <div className="mb-1 text-[10px] text-red-900">
+<div className="mb-1 text-[10px] text-red-900">
                         ↳ [{t('chat.originalDeleted')}]
                       </div>
                     ) : null}

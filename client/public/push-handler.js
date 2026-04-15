@@ -10,7 +10,7 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   let payload = {
-    title: 'Project 13',
+    title: 'OneToThree',
     body: 'New message',
     icon: '/wolf-logo.png',
     data: { url: '/' },

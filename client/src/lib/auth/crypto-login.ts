@@ -28,20 +28,43 @@ export type CryptoLoginResult =
 
 export type CryptoLoginParams = {
   username: string
-  /** vault-PIN: единственный пароль. Локально расшифровывает ключ, никуда не уходит. */
-  vaultPin: string
+  /**
+   * account-password: знаешь в голове, вводишь на любом устройстве.
+   * При регистрации — задаётся как account-пароль.
+   * При входе (LOGIN) — передаётся как `password`, используется
+   * только на ШАГ 1 формы ("кто ты").
+   * Сервер его не знает — он видит только ECDSA-подпись.
+   */
+  password: string
+  /**
+   * vault-pin: шифрует ECDSA ключ в localStorage этого браузера.
+   * При регистрации задаётся отдельно.
+   * При входе (LOGIN) — передаётся на ШАГ 2 ("разблокируй устройство").
+   * Если не передан при логине, fallback на password (legacy).
+   */
+  vaultPassword?: string
   mode: 'login' | 'register'
 }
 
 /**
- * SECURITY MODEL
- * ==============
- * Единственный пароль = vault-PIN.
- * Он используется для AES-GCM расшифровки ECDSA приватного ключа в localStorage.
- * Сам пин никогда не покидает устройство — сервер видит только ECDSA подпись.
+ * SECURITY MODEL — TWO FACTORS
+ * =============================
+ * Фактор 1 :: account-password
+ *   — знаешь в голове
+ *   — вводишь на каждом устройстве при входе
+ *   — сервер его не знает, используется только локально для PBKDF2
+ *     в двойном шифровании vault (если включено) или как идентификатор
  *
- * Второй фактор = TOTP (опционально, хранится на телефоне).
- * Это честная 2FA: знание (vault-pin) + владение (TOTP-устройство).
+ * Фактор 2 :: vault-pin
+ *   — шифрует приватный ключ в localStorage
+ *   — AES-GCM(PBKDF2(vault-pin)) → ciphertext
+ *   — сервер не знает, ключ не покидает браузер
+ *
+ * Утечка vault-файла без vault-pin → бесполезно.
+ * Знание vault-pin без vault-файла → бесполезно.
+ * Знание account-password → без vault-файла нет ключа.
+ *
+ * Третий фактор (опционально) :: TOTP — настраивается после входа.
  */
 export async function finalizeLoginWithTotp(params: {
   pendingToken: string
@@ -68,7 +91,7 @@ export async function cryptoLogin(
   params: CryptoLoginParams
 ): Promise<CryptoLoginResult> {
   const username = params.username.trim()
-  const vaultPin = params.vaultPin
+  const password = params.password
 
   if (!username) return { ok: false, error: 'USERNAME_REQUIRED' }
 
@@ -76,8 +99,11 @@ export async function cryptoLogin(
   if (!nick.ok) return { ok: false, error: nick.error }
   const canonicalHandle = nick.value
 
-  if (!vaultPin) return { ok: false, error: 'PASSWORD_REQUIRED' }
-  if (params.mode === 'register' && vaultPin.length < 8) return { ok: false, error: 'PIN_MIN_8' }
+  if (!password) return { ok: false, error: 'PASSWORD_REQUIRED' }
+  if (params.mode === 'register' && password.length < 8) return { ok: false, error: 'PIN_MIN_8' }
+  if (params.mode === 'register' && params.vaultPassword && params.vaultPassword.length < 8) {
+    return { ok: false, error: 'PIN_MIN_8' }
+  }
 
   const hasVault = !!readVaultBlobByLoginUsername(canonicalHandle)
   if (params.mode === 'login' && !hasVault) return { ok: false, error: 'NO_LOCAL_VAULT' }
@@ -97,9 +123,12 @@ export async function cryptoLogin(
     const blob = readVaultBlobByLoginUsername(canonicalHandle)
     if (!blob) return { ok: false, error: 'NO_LOCAL_VAULT' }
     if (blob.version > CURRENT_VAULT_VERSION) return { ok: false, error: 'VAULT_VERSION_MISMATCH' }
+
+    // При входе vault-pin может быть отдельным (vaultPassword) или fallback на password
+    const pinToUnwrap = params.vaultPassword || password
     let plain: string
     try {
-      plain = await unwrapPrivateJwkWithPin(blob, vaultPin)
+      plain = await unwrapPrivateJwkWithPin(blob, pinToUnwrap)
     } catch {
       return { ok: false, error: 'UNWRAP_FAILED' }
     }
@@ -132,7 +161,12 @@ export async function cryptoLogin(
   }
 
   try {
-    const vr = await verifyChallenge({ username: canonicalHandle, nonce, signature, public_key_jwk: publicKeyJwk })
+    const vr = await verifyChallenge({
+      username: canonicalHandle,
+      nonce,
+      signature,
+      public_key_jwk: publicKeyJwk,
+    })
 
     if (vr.kind === '2fa_pending') {
       return { ok: 'needs_2fa', pendingToken: vr.pendingToken, userId: vr.userId }
@@ -141,8 +175,9 @@ export async function cryptoLogin(
     const { user } = vr
 
     if (params.mode === 'register' && ecdhPrivateJwkForVault) {
-      const inner = stringifyVaultKeyringV2(ecdsaPrivateJwk, ecdhPrivateJwkForVault)
-      const blob  = await wrapPrivateJwkWithPin(inner, vaultPin)
+      const inner   = stringifyVaultKeyringV2(ecdsaPrivateJwk, ecdhPrivateJwkForVault)
+      const vaultPin = params.vaultPassword || password
+      const blob     = await wrapPrivateJwkWithPin(inner, vaultPin)
       persistVaultBlobByLoginUsername(canonicalHandle, blob)
     }
 

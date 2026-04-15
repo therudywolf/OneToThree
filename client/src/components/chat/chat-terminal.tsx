@@ -139,16 +139,24 @@ export function ChatTerminal({
   const [swipingMsgId, setSwipingMsgId] = useState<string | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
   const prevScrollHeightRef = useRef(0)
+  const scrollRafRef = useRef<number | null>(null)
 
   const isGroup = activeChat?.is_group ?? false
   const isSelfChat = !isGroup && activeChat != null && activeChat.member_ids.length === 1 && activeChat.member_ids[0] === userId
 
   useReadReceipts(ref, { enabled: !isGroup })
 
+  // Double-RAF: wait for layout + paint before measuring scrollHeight
   const scrollToBottomInstant = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
+    if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current)
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = requestAnimationFrame(() => {
+        const el = ref.current
+        if (!el) return
+        el.scrollTop = el.scrollHeight
+        scrollRafRef.current = null
+      })
+    })
   }, [])
 
   const handleScroll = useCallback(() => {
@@ -178,13 +186,11 @@ export function ChatTerminal({
     if (diff <= 0) return
 
     if (prevCount === 0 || isNearBottomRef.current) {
-      requestAnimationFrame(() => {
-        scrollToBottomInstant()
-        isNearBottomRef.current = true
-        setIsNearBottom(true)
-        setHasNewBelow(false)
-        setNewMsgCount(0)
-      })
+      scrollToBottomInstant()
+      isNearBottomRef.current = true
+      setIsNearBottom(true)
+      setHasNewBelow(false)
+      setNewMsgCount(0)
     } else {
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + diff)
@@ -635,7 +641,7 @@ export function ChatTerminal({
       ) : null}
       <div
         ref={ref}
-        className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 py-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch] sm:px-4"
+        className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch] sm:px-4"
         onClick={() => { if (reactingMsgId) setReactingMsgId(null) }}
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />

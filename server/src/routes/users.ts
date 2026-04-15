@@ -451,7 +451,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  // ─── Stage 5: Fan-out device list ────────────────────────────────────────────
+  // ─── Stage 5: Fan-out — GET /:userId/devices ──────────────────────────────────────
   app.get('/:userId/devices', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     const auth = await getAuthUser(request, reply)
     if (!assertAuthed(reply, auth)) return
@@ -752,31 +752,4 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     clearFmSessionCookie(reply)
     return reply.send({ ok: true })
   })
-}
-
-/**
- * Stage 5: GET /users/:userId/devices — fan-out ECDH device discovery.
- * Registered separately in app.ts to avoid route conflict with /:username/profile.
- * Kept here so all user-related routes stay in one file.
- */
-export const userDevicesRoute: FastifyPluginAsync = async (app) => {
-  app.get(
-    '/:userId/devices',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      const auth = await getAuthUser(request, reply)
-      if (!assertAuthed(reply, auth)) return
-
-      const params = z.object({ userId: uuidSchema }).safeParse(request.params)
-      if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
-      const { userId } = params.data
-
-      const rows = await db
-        .select({ device_id: devices.id, public_key_jwk: devices.ecdhPublicKey })
-        .from(devices)
-        .where(and(eq(devices.userId, userId), isNull(devices.revokedAt), isNotNull(devices.ecdhPublicKey)))
-
-      return reply.send({ devices: rows })
-    }
-  )
 }

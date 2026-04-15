@@ -37,7 +37,7 @@ html {
 
 body {
   @apply min-h-screen bg-void font-mono text-neon-red antialiased;
-  text-shadow: 0 0 1px rgba(255, 0, 0, 0.35);
+  text-shadow: 0 0 1px color-mix(in srgb, var(--neon-red) 35%, transparent);
   overflow-x: hidden;
 }
 
@@ -104,7 +104,7 @@ textarea {
   line-height: 1;
   vertical-align: middle;
   filter: grayscale(100%) sepia(100%) hue-rotate(130deg) saturate(280%)
-    brightness(0.85) drop-shadow(0 0 2px rgba(0, 255, 255, 0.45));
+    brightness(0.85) drop-shadow(0 0 2px color-mix(in srgb, var(--neon-cyan) 45%, transparent));
 }
 
 @supports (height: 100dvh) {
@@ -138,8 +138,8 @@ textarea {
 
   .glitch-text:hover {
     text-shadow:
-      1px 0 0 rgba(255, 0, 0, 0.55),
-      -1px 0 0 rgba(0, 255, 255, 0.45);
+      1px 0 0 color-mix(in srgb, var(--neon-red) 55%, transparent),
+      -1px 0 0 color-mix(in srgb, var(--neon-cyan) 45%, transparent);
     transform: translate(0.5px, -0.5px);
   }
 }
@@ -172,10 +172,10 @@ textarea {
 @keyframes neon-pulse {
   0%,
   100% {
-    box-shadow: 0 0 4px rgba(0, 255, 255, 0.3);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--neon-cyan) 30%, transparent);
   }
   50% {
-    box-shadow: 0 0 16px rgba(0, 255, 255, 0.7);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--neon-cyan) 70%, transparent);
   }
 }
 
@@ -234,7 +234,7 @@ textarea {
 .skeleton-line {
   height: 0.75rem;
   border-radius: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 0, 0, 0.1) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--neon-red) 10%, transparent) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: skeleton-pulse 2s ease-in-out infinite;
 }
@@ -448,7 +448,7 @@ select {
 .code-block {
   position: relative;
   overflow-x: auto;
-  border: 1px solid rgba(0, 255, 255, 0.25);
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 25%, transparent);
   background: rgba(0, 0, 0, 0.9);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
@@ -457,7 +457,7 @@ select {
   margin: 0.5rem 0;
   tab-size: 2;
   -moz-tab-size: 2;
-  color: #00ffff;
+  color: var(--neon-cyan);
 }
 
 .code-block .copy-btn {
@@ -465,9 +465,9 @@ select {
   top: 0.25rem;
   right: 0.25rem;
   padding: 0.25rem 0.5rem;
-  border: 1px solid rgba(0, 255, 255, 0.3);
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 30%, transparent);
   background: rgba(0, 0, 0, 0.9);
-  color: rgba(0, 255, 255, 0.6);
+  color: color-mix(in srgb, var(--neon-cyan) 60%, transparent);
   font-family: inherit;
   font-size: 9px;
   text-transform: uppercase;
@@ -477,8 +477,8 @@ select {
 }
 
 .code-block .copy-btn:hover {
-  border-color: rgba(0, 255, 255, 0.8);
-  color: #00ffff;
+  border-color: color-mix(in srgb, var(--neon-cyan) 80%, transparent);
+  color: var(--neon-cyan);
 }
 
 /* Scrollbar styling for chat area */
@@ -491,10 +491,10 @@ select {
 }
 
 .chat-scroll::-webkit-scrollbar-thumb {
-  background: rgba(0, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--neon-cyan) 20%, transparent);
   border-radius: 0;
 }
 
 .chat-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 255, 255, 0.4);
+  background: color-mix(in srgb, var(--neon-cyan) 40%, transparent);
 }

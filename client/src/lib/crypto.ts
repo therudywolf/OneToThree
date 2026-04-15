@@ -1,6 +1,20 @@
 /**
  * Client-side E2E crypto (Web Crypto API).
  * Use only in browser / secure contexts (`window.crypto.subtle`).
+ *
+ * Stage 1 – Key Isolation (extractable: false)
+ * ------------------------------------------------
+ * Private / secret keys are NEVER left extractable in working memory.
+ * Flow for persistent keys:
+ *   1. generateKey( extractable: true )  – so we can exportKey('jwk')
+ *   2. exportKey('jwk')                 – store in IndexedDB / vault
+ *   3. importKey( extractable: false )  – working CryptoKey for crypto ops
+ *
+ * Ephemeral keys (shared AES-GCM secret from ECDH):
+ *   – always extractable: false, never exported, GC'd after use.
+ *
+ * Public keys and per-file AES wrap keys stay extractable: true
+ * (public keys are meant to be shared; wrap keys need raw export).
  */
 
 /** Default ECDH curve (P-384 is also supported via options). */
@@ -10,11 +24,37 @@ export type GenerateKeyPairOptions = {
   /** Defaults to P-256. */
   curve?: EcdhCurve
   /**
-   * If false, private keys cannot be exported (Web Crypto limitation).
-   * Local JWK storage requires `true` for the private key.
-   * @default true
+   * Controls extractability of the GENERATED key pair.
+   * Use extractable:true only when you need to export the private key to JWK
+   * for IndexedDB / vault storage.  After storing, re-import with
+   * importEcdhPrivateKey() which is always extractable:false.
+   * @default true  (kept for backward compat; prefer generateKeyPairIsolated)
    */
   extractable?: boolean
+}
+
+/**
+ * Result of generateKeyPairIsolated().
+ * privateKey is non-extractable (safe for use in memory).
+ * privateJwk / publicJwk are the raw strings to persist in IndexedDB.
+ */
+export type IsolatedKeyPair = {
+  /** Non-extractable private key ready for deriveSharedSecret / sign. */
+  privateKey: CryptoKey
+  /** JWK string of the private key – store in IndexedDB, never on server. */
+  privateJwk: string
+  /** Extractable public key (safe to publish). */
+  publicKey: CryptoKey
+  /** JWK string of the public key – register on server. */
+  publicJwk: string
+}
+
+/** Same shape for ECDSA key pairs. */
+export type IsolatedEcdsaKeyPair = {
+  privateKey: CryptoKey
+  privateJwk: string
+  publicKey: CryptoKey
+  publicJwk: string
 }
 
 export type EncryptedMessage = {
@@ -72,11 +112,15 @@ function uint8ToHex(bytes: Uint8Array): string {
   return out
 }
 
+// ─── ECDH ────────────────────────────────────────────────────────────────────
+
 /**
- * Generate an ECDH key pair for X25519 is not used here; we use NIST curves per Web Crypto interop.
+ * Generate an ECDH key pair.
  *
- * **Note:** The spec does not allow exporting *non-extractable* keys. If you need
- * {@link exportPrivateKey} for encrypted local storage, keep `extractable: true` (default).
+ * Prefer {@link generateKeyPairIsolated} for new code – it handles the
+ * extractable:true → export → import extractable:false lifecycle automatically.
+ *
+ * This function is kept for backward compatibility (vault flow, tests).
  */
 export async function generateKeyPair(
   options: GenerateKeyPairOptions = {}
@@ -92,6 +136,44 @@ export async function generateKeyPair(
 }
 
 /**
+ * [Stage 1] Generate an ECDH key pair with full key isolation.
+ *
+ * Internally generates extractable:true, exports both keys to JWK strings,
+ * then re-imports the private key as extractable:false so it cannot be
+ * stolen via XSS after this point.
+ *
+ * @returns IsolatedKeyPair – use privateKey for crypto ops,
+ *          persist privateJwk in IndexedDB (encrypted), publicJwk on server.
+ */
+export async function generateKeyPairIsolated(
+  options: Pick<GenerateKeyPairOptions, 'curve'> = {}
+): Promise<IsolatedKeyPair> {
+  const curve = options.curve ?? 'P-256'
+
+  // Step 1: generate extractable so we can export
+  const extractablePair = await getSubtle().generateKey(
+    { name: 'ECDH', namedCurve: curve },
+    true,
+    ['deriveKey', 'deriveBits']
+  )
+
+  // Step 2: export both halves to JWK strings
+  const privateJwkObj = await getSubtle().exportKey('jwk', extractablePair.privateKey)
+  const publicJwkObj  = await getSubtle().exportKey('jwk', extractablePair.publicKey)
+  const privateJwk = JSON.stringify(privateJwkObj)
+  const publicJwk  = JSON.stringify(publicJwkObj)
+
+  // Step 3: re-import private key as non-extractable for in-memory use
+  const privateKey = await _importEcdhPrivateKeyRaw(
+    privateJwkObj as JsonWebKey,
+    curve,
+    false
+  )
+
+  return { privateKey, privateJwk, publicKey: extractablePair.publicKey, publicJwk }
+}
+
+/**
  * Export an ECDH public key as a compact JSON string (JWK) for database storage.
  */
 export async function exportPublicKey(key: CryptoKey): Promise<string> {
@@ -100,7 +182,8 @@ export async function exportPublicKey(key: CryptoKey): Promise<string> {
 }
 
 /**
- * Export an ECDH private key as JWK text for local-only persistence (never send raw to the server).
+ * Export an ECDH private key as JWK text for local-only persistence (never send raw to server).
+ * Only works if the key was generated with extractable:true.
  */
 export async function exportPrivateKey(key: CryptoKey): Promise<string> {
   const jwk = await getSubtle().exportKey('jwk', key)
@@ -146,21 +229,46 @@ export async function exportEcdhPublicJwkFromPrivateKey(
   return JSON.stringify(pub)
 }
 
-/** Import a stored ECDH private JWK (from vault unwrap). */
-export async function importEcdhPrivateKey(jwkString: string): Promise<CryptoKey> {
-  const jwk = JSON.parse(jwkString) as JsonWebKey
-  const namedCurve = namedCurveFromJwk(jwk)
+/**
+ * Internal helper – raw import of ECDH private JWK with explicit extractable flag.
+ */
+async function _importEcdhPrivateKeyRaw(
+  jwk: JsonWebKey,
+  namedCurve: EcdhCurve,
+  extractable: boolean
+): Promise<CryptoKey> {
   return getSubtle().importKey(
     'jwk',
     jwk,
     { name: 'ECDH', namedCurve },
-    true,
+    extractable,
     ['deriveKey', 'deriveBits']
   )
 }
 
 /**
- * Derive a 256-bit AES-GCM key from ECDH (your private key + peer public key).
+ * Import a stored ECDH private JWK from vault / IndexedDB.
+ *
+ * [Stage 1] extractable: false – key cannot be re-exported after import.
+ * This is the intended entry point for loading persisted private keys
+ * into working memory.
+ */
+export async function importEcdhPrivateKey(jwkString: string): Promise<CryptoKey> {
+  const jwk = JSON.parse(jwkString) as JsonWebKey
+  const namedCurve = namedCurveFromJwk(jwk)
+  return _importEcdhPrivateKeyRaw(jwk, namedCurve, false)
+}
+
+/**
+ * Explicit alias – same as importEcdhPrivateKey, documents intent at call site.
+ */
+export const importEcdhPrivateKeyNonExtractable = importEcdhPrivateKey
+
+/**
+ * Derive a 256-bit AES-GCM shared secret from ECDH (your private key + peer public key).
+ *
+ * [Stage 1] extractable: false – the derived key is ephemeral and must never
+ * leave the JS heap. It is used directly for encrypt/decrypt and then GC'd.
  */
 export async function deriveSharedSecret(
   privateKey: CryptoKey,
@@ -170,7 +278,7 @@ export async function deriveSharedSecret(
     { name: 'ECDH', public: publicKey },
     privateKey,
     { name: 'AES-GCM', length: AES_GCM_KEY_LENGTH },
-    true,
+    false,   // ← Stage 1: ephemeral secret, never exported
     ['encrypt', 'decrypt']
   )
 }
@@ -259,7 +367,11 @@ export function base64ToArrayBuffer(b64: string): ArrayBuffer {
   return out
 }
 
-/** Random AES-256-GCM key for per-file ciphertext (export raw for wrapping). */
+/**
+ * Random AES-256-GCM key for per-file ciphertext.
+ * Kept extractable:true – the raw bytes are wrapped (exported) for
+ * envelope key storage, so extractability is required here.
+ */
 export async function generateAesGcm256Key(): Promise<CryptoKey> {
   return getSubtle().generateKey(
     { name: 'AES-GCM', length: AES_GCM_KEY_LENGTH },
@@ -281,11 +393,13 @@ export async function importAesGcm256RawKey(
   )
 }
 
-/* —— ECDSA P-256 (challenge–response auth; distinct from ECDH above) —— */
+// ─── ECDSA P-256 ─────────────────────────────────────────────────────────────
 
 /**
  * Generate an ECDSA P-256 key pair for challenge-response authentication.
- * The private key signs server-issued nonces; the public JWK is stored server-side.
+ *
+ * Prefer {@link generateEcdsaP256KeyPairIsolated} for new code.
+ * This overload is kept for backward compat (vault bootstrap, tests).
  */
 export async function generateEcdsaP256KeyPair(): Promise<CryptoKeyPair> {
   return getSubtle().generateKey(
@@ -293,6 +407,38 @@ export async function generateEcdsaP256KeyPair(): Promise<CryptoKeyPair> {
     true,
     ['sign', 'verify']
   )
+}
+
+/**
+ * [Stage 1] Generate an ECDSA P-256 key pair with full key isolation.
+ *
+ * Same lifecycle as generateKeyPairIsolated:
+ *   generate extractable → export JWK → re-import extractable:false.
+ */
+export async function generateEcdsaP256KeyPairIsolated(): Promise<IsolatedEcdsaKeyPair> {
+  // Step 1: generate extractable
+  const extractablePair = await getSubtle().generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify']
+  )
+
+  // Step 2: export to JWK
+  const privateJwkObj = await getSubtle().exportKey('jwk', extractablePair.privateKey)
+  const publicJwkObj  = await getSubtle().exportKey('jwk', extractablePair.publicKey)
+  const privateJwk = JSON.stringify(privateJwkObj)
+  const publicJwk  = JSON.stringify(publicJwkObj)
+
+  // Step 3: re-import private as non-extractable
+  const privateKey = await getSubtle().importKey(
+    'jwk',
+    privateJwkObj as JsonWebKey,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,   // ← Stage 1: non-extractable
+    ['sign']
+  )
+
+  return { privateKey, privateJwk, publicKey: extractablePair.publicKey, publicJwk }
 }
 
 /** Export ECDSA private key as JWK text for encrypted vault storage. */
@@ -307,7 +453,10 @@ export async function exportEcdsaPublicKeyJwk(key: CryptoKey): Promise<string> {
   return JSON.stringify(jwk)
 }
 
-/** Import an ECDSA private JWK for signing (non-extractable after import). */
+/**
+ * Import an ECDSA private JWK for signing.
+ * [Stage 1] extractable: false – signing key must not be re-exported.
+ */
 export async function importEcdsaPrivateKeyForSign(
   jwkString: string
 ): Promise<CryptoKey> {
@@ -316,7 +465,7 @@ export async function importEcdsaPrivateKeyForSign(
     'jwk',
     jwk,
     { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
+    false,   // already was false, explicit for clarity
     ['sign']
   )
 }

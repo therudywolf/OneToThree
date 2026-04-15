@@ -3,6 +3,13 @@
 import { useEffect, useState } from 'react'
 import { Bell, X } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
+import {
+  supportsWebPush,
+  getVapidPublicKey,
+  subscribeUserPush,
+  getExistingPushSubscription,
+  getNotificationPermission,
+} from '@/lib/push-subscription'
 
 const DISMISS_KEY = 'p13:push-onboarding-dismissed'
 
@@ -10,53 +17,53 @@ export function PushOnboardingBanner() {
   const { t } = useTranslation()
   const [visible, setVisible] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    function sync() {
-      if (typeof window === 'undefined' || !('Notification' in window)) {
-        setVisible(false)
-        return
+
+    async function sync() {
+      if (typeof window === 'undefined') { setVisible(false); return }
+      // Браузер не поддерживает Web Push — прячем баннер
+      if (!supportsWebPush() || !getVapidPublicKey()) { setVisible(false); return }
+
+      const permission = await getNotificationPermission()
+      // Уже blocked — баннер бесполезен
+      if (permission === 'denied') { setVisible(false); return }
+      // Уже есть реальная SW-подписка — баннер не нужен
+      if (permission === 'granted') {
+        const sub = await getExistingPushSubscription()
+        if (sub) { setVisible(false); return }
       }
-      if (Notification.permission !== 'default') {
-        setVisible(false)
-        return
-      }
+
       let dismissed = false
-      try {
-        dismissed = localStorage.getItem(DISMISS_KEY) === '1'
-      } catch {
-        dismissed = false
-      }
+      try { dismissed = localStorage.getItem(DISMISS_KEY) === '1' } catch { /* */ }
       setVisible(!dismissed)
     }
-    sync()
-    window.addEventListener('focus', sync)
-    return () => window.removeEventListener('focus', sync)
+
+    void sync()
+    window.addEventListener('focus', () => void sync())
+    return () => window.removeEventListener('focus', () => void sync())
   }, [])
 
   if (!mounted || !visible) return null
 
   async function onEnable() {
+    setBusy(true)
     try {
-      await Notification.requestPermission()
+      // Полный цикл: permission → SW register → pushManager.subscribe → POST /push/subscribe
+      await subscribeUserPush()
     } catch {
-      /* ignore */
+      // Тихо — детальная ошибка в settings-push-notifications
+    } finally {
+      setBusy(false)
     }
-    try {
-      localStorage.setItem(DISMISS_KEY, '1')
-    } catch {
-      /* ignore */
-    }
+    try { localStorage.setItem(DISMISS_KEY, '1') } catch { /* */ }
     setVisible(false)
   }
 
   function onDismiss() {
-    try {
-      localStorage.setItem(DISMISS_KEY, '1')
-    } catch {
-      /* ignore */
-    }
+    try { localStorage.setItem(DISMISS_KEY, '1') } catch { /* */ }
     setVisible(false)
   }
 
@@ -76,9 +83,10 @@ export function PushOnboardingBanner() {
         <button
           type="button"
           onClick={() => void onEnable()}
-          className="border border-neon-cyan px-3 py-1.5 text-[9px] tracking-widest text-neon-cyan hover:bg-neon-cyan/10"
+          disabled={busy}
+          className="border border-neon-cyan px-3 py-1.5 text-[9px] tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          [ {t('pushOnboarding.enable')} ]
+          {busy ? '[ … ]' : `[ ${t('pushOnboarding.enable')} ]`}
         </button>
         <button
           type="button"

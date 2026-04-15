@@ -48,7 +48,7 @@ export async function requestInterceptAuthority(): Promise<NotificationPermissio
 export async function getExistingPushSubscription(): Promise<PushSubscription | null> {
   if (!supportsWebPush()) return null
   try {
-    const reg = await navigator.serviceWorker.getRegistration()
+    const reg = await navigator.serviceWorker.getRegistration('/')
     return reg ? await reg.pushManager.getSubscription() : null
   } catch (err) {
     console.error('>> [SYS.PUSH] SCAN_FAULT:', err)
@@ -56,15 +56,19 @@ export async function getExistingPushSubscription(): Promise<PushSubscription | 
   }
 }
 
-/** [SW_INITIALIZE] :: Подготовка оболочки для приема сигналов */
+/**
+ * [SW_INITIALIZE] :: Подготовка оболочки для приема сигналов.
+ * ВАЖНО: файл push-handler.js должен лежать в client/public/push-handler.js
+ */
 export async function initPushWorker(): Promise<ServiceWorkerRegistration> {
   if (!supportsWebPush()) throw new Error('WEB_PUSH_UNSUPPORTED')
 
-  let reg = await navigator.serviceWorker.getRegistration()
-  
+  // Ищем уже активный SW на scope '/'
+  let reg = await navigator.serviceWorker.getRegistration('/')
+
   if (!reg) {
     try {
-      reg = await navigator.serviceWorker.register('/sw.js', {
+      reg = await navigator.serviceWorker.register('/push-handler.js', {
         scope: '/',
         updateViaCache: 'none',
       })
@@ -107,31 +111,31 @@ async function syncInterceptWithCore(sub: PushSubscription): Promise<void> {
 /** [ESTABLISH_INTERCEPT] :: Полный цикл активации оповещений */
 export async function subscribeUserPush(): Promise<void> {
   const vapid = getVapidPublicKey()
-  if (!vapid || !supportsWebPush()) throw new Error('SIGNAL_HARDWARE_FAULT')
+  if (!vapid) throw new Error('WEB_PUSH_UNSUPPORTED')
+  if (!supportsWebPush()) throw new Error('WEB_PUSH_UNSUPPORTED')
 
-  try {
-    const authority = await requestInterceptAuthority()
-    if (authority !== 'granted') throw new Error('AUTHORITY_DENIED')
+  const authority = await requestInterceptAuthority()
+  if (authority !== 'granted') throw new Error('NOTIFICATION_DENIED')
 
-    const reg = await initPushWorker()
-    const sub = await reg.pushManager.subscribe({
+  const reg = await initPushWorker()
+
+  // Если уже есть подписка — переиспользуем, просто синхронизируем с сервером
+  let sub = await reg.pushManager.getSubscription()
+
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: toUint8(vapid) as BufferSource,
     })
-
-    await syncInterceptWithCore(sub)
-  } catch (err) {
-    if (!(err instanceof Error && err.message === 'AUTHORITY_DENIED')) {
-      console.error('>> [SYS.PUSH] INTERCEPT_ESTABLISH_FAULT:', err)
-    }
-    throw err
   }
+
+  await syncInterceptWithCore(sub)
 }
 
 /** [TERMINATE_INTERCEPT] :: Удаление узла из системы оповещений */
 export async function unsubscribeUserPush(): Promise<void> {
   try {
-    const reg = await navigator.serviceWorker.getRegistration()
+    const reg = await navigator.serviceWorker.getRegistration('/')
     if (!reg) return
 
     const sub = await reg.pushManager.getSubscription()
@@ -139,7 +143,6 @@ export async function unsubscribeUserPush(): Promise<void> {
 
     const endpoint = sub.toJSON().endpoint
     if (endpoint) {
-      // Пытаемся уведомить сервер (Best-effort)
       await fetch(`${API_URL}/push/unsubscribe`, {
         method: 'DELETE',
         credentials: 'include',

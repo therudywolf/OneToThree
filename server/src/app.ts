@@ -18,6 +18,7 @@ import { storageRoutes } from './routes/storage.js'
 import { adminRoutes } from './routes/admin.js'
 import { vaultRoutes } from './routes/vault.js'
 import { wsRoutes } from './routes/ws.js'
+import { devicesRoutes } from './routes/devices.js'
 import { sql } from 'drizzle-orm'
 import { linkPreviewRoutes } from './routes/link-preview.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
@@ -43,7 +44,6 @@ export async function buildApp() {
   registerGlobalErrorHandler(app)
 
   const isProd = process.env.NODE_ENV === 'production'
-  /** Comma-separated explicit origins; each entry trimmed (e.g. `https://a,https://b`). */
   const corsOriginsRaw =
     process.env.CORS_ORIGIN?.split(',')
       .map((o) => o.trim())
@@ -89,7 +89,6 @@ export async function buildApp() {
   await app.register(cors, {
     origin: corsOrigins,
     credentials: true,
-    /** Browser preflight must list real methods — default omitted PATCH (breaks /users/me, admin, chats). */
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
@@ -129,6 +128,7 @@ export async function buildApp() {
   await app.register(vaultRoutes, { prefix: '/api/vault' })
   await app.register(linkPreviewRoutes, { prefix: '/api' })
   await app.register(wsRoutes, { prefix: '/api' })
+  await app.register(devicesRoutes, { prefix: '/api/devices' })  // Stage 3
 
   app.get('/health', async () => ({ ok: true }))
 

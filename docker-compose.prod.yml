@@ -53,6 +53,25 @@ services:
       retries: 12
       start_period: 20s
 
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --save 60 1 --appendonly yes --loglevel warning
+    cpu_shares: 256
+    cpus: '0.5'
+    mem_limit: 128m
+    mem_reservation: 32m
+    networks:
+      - app_network
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     restart: always
@@ -143,6 +162,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
       CORS_ORIGIN: ${CORS_ORIGIN:-https://onetothree.ru}
       MINIO_ENDPOINT: http://minio:9000
+      REDIS_URL: redis://redis:6379
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       WEBHOOK_SECRET_FILE: /run/secrets/webhook_secret
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
@@ -152,6 +172,8 @@ services:
       db:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully
@@ -295,6 +317,8 @@ secrets:
 
 volumes:
   pgdata:
+    driver: local
+  redis_data:
     driver: local
   minio_data:
     driver: local

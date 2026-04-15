@@ -29,6 +29,7 @@ import { SettingsAvatarSection } from '@/components/settings-avatar-section'
 import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { patchMyProfile } from '@/lib/api/users'
+import { useChatStore } from '@/store/chatStore'
 
 type Props = { userId: string; username: string; onClose: () => void }
 
@@ -80,6 +81,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [blockedLoading, setBlockedLoading] = useState(false)
   const [loginHistory, setLoginHistory] = useState<Array<{ id: string; outcome: string; ip_address: string | null; user_agent: string | null; created_at: string }>>([])
   const [loginHistoryLoading, setLoginHistoryLoading] = useState(false)
+
+  const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
+  const setChatSoundEnabled = useChatStore((s) => s.setChatSoundEnabled)
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -882,7 +886,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         : 'border-zinc-600 bg-zinc-950 text-zinc-400'
                   } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
                 >
-                  {busy ? '[ … ]' : disableReadReceipts === null ? '[ -- ]' : disableReadReceipts ? '[ OFF ]' : '[ ON ]'}
+                  {busy ? '[ \u2026 ]' : disableReadReceipts === null ? '[ -- ]' : disableReadReceipts ? '[ OFF ]' : '[ ON ]'}
                 </button>
               </div>
             </div>
@@ -967,7 +971,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                           </span>
                         </div>
                         <p className="font-mono text-[8px] text-zinc-600 truncate">
-                          {ev.ip_address ?? '—'} · {ev.user_agent?.slice(0, 60) ?? '—'}
+                          {ev.ip_address ?? '\u2014'} \u00b7 {ev.user_agent?.slice(0, 60) ?? '\u2014'}
                         </p>
                       </div>
                     )
@@ -1255,6 +1259,32 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           className={`space-y-3 ${settingsTab !== 'main' ? 'hidden' : ''}`}
         >
           <SettingsPushNotifications userId={userId} />
+
+          {/* Chat Sound Toggle */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs uppercase tracking-widest text-neon-cyan">
+                {t('settings.chatSoundTitle')}
+              </p>
+              <p className="break-words text-[9px] text-red-800">
+                {t('settings.chatSoundHint')}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={chatSoundEnabled}
+              onClick={() => setChatSoundEnabled(!chatSoundEnabled)}
+              className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
+                chatSoundEnabled
+                  ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
+                  : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+              } hover:border-neon-red hover:text-neon-red`}
+            >
+              {chatSoundEnabled ? '[ ON ]' : '[ OFF ]'}
+            </button>
+          </div>
+
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">
@@ -1273,7 +1303,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 }`}
               >
                 {!settingsReady
-                  ? ':: …'
+                  ? ':: \u2026'
                   : discoverableOn
                     ? t('settings.discoverableBadgeOn')
                     : t('settings.discoverableBadgeOff')}
@@ -1285,7 +1315,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               aria-checked={discoverableOn}
               title={
                 !settingsReady
-                  ? '…'
+                  ? '\u2026'
                   : discoverableOn
                     ? t('settings.discoverableTooltipOn')
                     : t('settings.discoverableTooltipOff')
@@ -1300,7 +1330,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     : 'border-zinc-600 bg-zinc-950 text-zinc-400'
               } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
             >
-              {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
+              {busy ? '[ \u2026 ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
             </button>
           </div>
 
@@ -1328,14 +1358,14 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     : 'border-zinc-600 bg-zinc-950 text-zinc-400'
               } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
             >
-              {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : ghostOn ? '[ ON ]' : '[ OFF ]'}
+              {busy ? '[ \u2026 ]' : !settingsReady ? '[ -- ]' : ghostOn ? '[ ON ]' : '[ OFF ]'}
             </button>
           </div>
 
           <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">
-                {t('common.language')} / Язык
+                {t('common.language')} / \u042f\u0437\u044b\u043a
               </p>
               <p className="break-words text-[9px] text-red-800">
                 {t('settings.languageHint')}
@@ -1345,7 +1375,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               className="terminal-input h-8 w-full max-w-[10rem] shrink-0 py-1 text-xs uppercase"
               value={locale}
               onChange={(e) => setLocale(e.target.value === 'ru' ? 'ru' : 'en')}
-              aria-label={`${t('common.language')} / Язык`}
+              aria-label={`${t('common.language')} / \u042f\u0437\u044b\u043a`}
             >
               <option value="en">EN</option>
               <option value="ru">RU</option>

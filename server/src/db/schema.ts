@@ -85,6 +85,15 @@ export const devices = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // --- Stage 3: E2EE device linking ---
+    /** Per-device ECDSA public key JWK. Null until device completes E2EE link confirm. */
+    e2eePublicKey: text('e2ee_public_key'),
+    /** Timestamp when this device completed E2EE linking. */
+    linkedAt: timestamp('linked_at', { withTimezone: true }),
+    /** Human-readable label (e.g. "Chrome on MacBook", "Primary device (migrated)"). */
+    label: text('label'),
+    /** True when this record was auto-created from users.public_key_jwk at first login. */
+    migrated: boolean('migrated').notNull().default(false),
   },
   (t) => ({
     userClientUnique: uniqueIndex('devices_user_client_key_idx').on(
@@ -247,7 +256,7 @@ export const pushSubscriptions = pgTable(
   })
 )
 
-/* ─────────────  SECURITY: Login Events & Blocks  ───────────── */
+/* ─────────────  SECURITY: Login Events & Blocks  ───────────────── */
 
 export const loginEventOutcomeEnum = pgEnum('login_event_outcome', [
   'success',
@@ -299,7 +308,7 @@ export const userBlocks = pgTable(
   })
 )
 
-/* ─────────────  GROUP CHATS (TG + Discord style)  ───────────── */
+/* ─────────────  GROUP CHATS (TG + Discord style)  ───────────────── */
 
 export const groupTypeEnum = pgEnum('group_type', [
   'group',

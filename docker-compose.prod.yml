@@ -116,7 +116,10 @@ services:
     secrets:
       - postgres_password
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
+      # DATABASE_URL is assembled by migrate.sh from POSTGRES_PASSWORD_FILE —
+      # never pass the password as a plaintext env var.
+      POSTGRES_USER: ${POSTGRES_USER:-forest}
+      POSTGRES_DB: ${POSTGRES_DB:-forest}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     depends_on:
       db:
@@ -159,7 +162,10 @@ services:
       HOME: /tmp
       PORT: '8080'
       TRUST_PROXY: ${TRUST_PROXY:-1}
-      DATABASE_URL: postgres://${POSTGRES_USER:-forest}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-forest}
+      # DATABASE_URL is assembled by server/src/db/index.ts via readSecret('POSTGRES_PASSWORD') —
+      # never pass the password as a plaintext env var.
+      POSTGRES_USER: ${POSTGRES_USER:-forest}
+      POSTGRES_DB: ${POSTGRES_DB:-forest}
       CORS_ORIGIN: ${CORS_ORIGIN:-https://onetothree.ru}
       MINIO_ENDPOINT: http://minio:9000
       REDIS_URL: redis://redis:6379

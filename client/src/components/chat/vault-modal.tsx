@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-// [BIO_DISABLED] import { Fingerprint, ScanFace } from 'lucide-react'
+import { Fingerprint, ScanFace } from 'lucide-react'
 import {
   exportEcdhPublicJwkFromPrivateKeyString,
   importEcdhPrivateKey,
@@ -14,27 +14,26 @@ import {
   unwrapPrivateJwkWithPin,
   VaultVersionMismatchError,
 } from '@/lib/vault'
-// [BIO_DISABLED]
-// import {
-//   enrollWebAuthnVaultUnlock,
-//   hasWebAuthnVaultMeta,
-//   largeBlobLikelySupported,
-//   unlockVaultWithWebAuthn,
-// } from '@/lib/webauthn-vault'
+import {
+  enrollWebAuthnVaultUnlock,
+  hasWebAuthnVaultMeta,
+  largeBlobLikelySupported,
+  unlockVaultWithWebAuthn,
+} from '@/lib/webauthn-vault'
 import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { vibrateShort } from '@/lib/vibrate'
 import { useTranslation } from '@/hooks/use-translation'
-// [BIO_DISABLED] import { isIOSOrIPadOS } from '@/lib/ios'
+import { isIOSOrIPadOS } from '@/lib/ios'
 
-// [BIO_DISABLED] Biometric icon hook — kept for future re-enable
-// function useBiometricIcon() {
-//   const [isApple, setIsApple] = useState(false)
-//   useEffect(() => {
-//     setIsApple(isIOSOrIPadOS())
-//   }, [])
-//   return isApple ? ScanFace : Fingerprint
-// }
+/** Detect if the device likely uses Face ID (iOS) vs fingerprint (Android/other) */
+function useBiometricIcon() {
+  const [isApple, setIsApple] = useState(false)
+  useEffect(() => {
+    setIsApple(isIOSOrIPadOS())
+  }, [])
+  return isApple ? ScanFace : Fingerprint
+}
 
 type Props = {
   userId: string
@@ -44,22 +43,17 @@ type Props = {
 export function VaultModal({ userId, displayHandle }: Props) {
   const { t } = useTranslation()
   const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
-  // [BIO_DISABLED] const BiometricIcon = useBiometricIcon()
+  const BiometricIcon = useBiometricIcon()
 
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // [BIO_DISABLED] biometric enrollment state
-  // const [bioEnrolled, setBioEnrolled] = useState(false)
-  // const [showPinFallback, setShowPinFallback] = useState(false)
+  const [bioEnrolled, setBioEnrolled] = useState(false)
+  const [showPinFallback, setShowPinFallback] = useState(false)
 
-  // [BIO_DISABLED] biometric meta check
-  // useEffect(() => {
-  //   void hasWebAuthnVaultMeta(userId).then(setBioEnrolled)
-  // }, [userId])
-
-  // suppress unused warning while bio is disabled
-  void useEffect
+  useEffect(() => {
+    void hasWebAuthnVaultMeta(userId).then(setBioEnrolled)
+  }, [userId])
 
   const applyPlaintext = useCallback(
     async (plain: string) => {
@@ -122,45 +116,54 @@ export function VaultModal({ userId, displayHandle }: Props) {
     }
   }
 
-  // [BIO_DISABLED] biometric unlock handlers — kept for future re-enable
-  // async function handleBiometricUnlock() {
-  //   setError(null)
-  //   setBusy(true)
-  //   try {
-  //     const plain = await unlockVaultWithWebAuthn(userId)
-  //     await applyPlaintext(plain)
-  //     vibrateShort(25)
-  //   } catch (e) {
-  //     setError(e instanceof Error ? e.message : t('errors.generic'))
-  //   } finally {
-  //     setBusy(false)
-  //   }
-  // }
+  async function handleBiometricUnlock() {
+    setError(null)
+    setBusy(true)
+    try {
+      const plain = await unlockVaultWithWebAuthn(userId)
+      await applyPlaintext(plain)
+      vibrateShort(25)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('errors.generic'))
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  // async function handleEnrollBiometrics() {
-  //   setError(null)
-  //   if (!pin.trim()) {
-  //     setError(t('login.passwordRequired'))
-  //     return
-  //   }
-  //   setBusy(true)
-  //   try {
-  //     const r = await enrollWebAuthnVaultUnlock(userId, displayHandle, pin)
-  //     if (!r.ok) {
-  //       setError(r.error)
-  //       return
-  //     }
-  //     await applyPlaintext(r.plaintext)
-  //     setBioEnrolled(true)
-  //     vibrateShort([15, 30, 15])
-  //   } catch (e) {
-  //     setError(e instanceof Error ? e.message : t('errors.generic'))
-  //   } finally {
-  //     setBusy(false)
-  //   }
-  // }
+  async function handleEnrollBiometrics() {
+    setError(null)
+    if (!pin.trim()) {
+      setError(t('login.passwordRequired'))
+      return
+    }
+    setBusy(true)
+    try {
+      const r = await enrollWebAuthnVaultUnlock(userId, displayHandle, pin)
+      if (!r.ok) {
+        setError(r.error)
+        return
+      }
+      await applyPlaintext(r.plaintext)
+      setBioEnrolled(true)
+      vibrateShort([15, 30, 15])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('errors.generic'))
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  // [BIO_DISABLED] const showBioSetup = largeBlobLikelySupported() && !bioEnrolled && !busy
+  const showBioSetup =
+    largeBlobLikelySupported() && !bioEnrolled && !busy
+
+  // Suppress unused-var warnings while bio buttons are hidden from UI
+  void BiometricIcon
+  void bioEnrolled
+  void showPinFallback
+  void setShowPinFallback
+  void handleBiometricUnlock
+  void handleEnrollBiometrics
+  void showBioSetup
 
   return (
     <div
@@ -182,12 +185,6 @@ export function VaultModal({ userId, displayHandle }: Props) {
           </p>
         </header>
 
-        {/* [BIO_DISABLED] biometric unlock screen — re-enable when bio flow is restored
-        {bioEnrolled && !showPinFallback ? (
-          <div className="space-y-5">
-            ...biometric UI...
-          </div>
-        ) : ( */}
         <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-5">
           <div>
             <label className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-neon-cyan/70" htmlFor="vault-pin">
@@ -209,21 +206,10 @@ export function VaultModal({ userId, displayHandle }: Props) {
               {error}
             </p>
           ) : null}
-          <div className="flex flex-col gap-3">
-            <TerminalGlitchButton type="submit" disabled={busy} className="w-full">
-              {t('login.signIn')}
-            </TerminalGlitchButton>
-            {/* [BIO_DISABLED] biometric fallback / enroll buttons
-            {bioEnrolled && showPinFallback ? (
-              <button ...biometric back button... />
-            ) : null}
-            {showBioSetup && !bioEnrolled ? (
-              <button ...enroll biometrics button... />
-            ) : null}
-            */}
-          </div>
+          <TerminalGlitchButton type="submit" disabled={busy} className="w-full">
+            {t('login.signIn')}
+          </TerminalGlitchButton>
         </form>
-        {/* )} */}
       </div>
     </div>
   )

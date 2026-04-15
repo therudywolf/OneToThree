@@ -2,8 +2,8 @@ import { and, asc, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from '
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, chats, messageDeliveries, messages } from '../db/schema.js'
-import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { chatMembers, chats, devices, messageDeliveries, messages } from '../db/schema.js'
+import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import {
   persistChatMessageAndFanOut,
@@ -19,6 +19,7 @@ const deleteMessageSchema = z.object({
   for_everyone: z.boolean().default(false),
 })
 
+// Stage 4 legacy schema (single ciphertext)
 const sendMessageBodySchema = z.object({
   chat_id: z.string().uuid(),
   content: z.string().nullable().optional(),
@@ -29,6 +30,18 @@ const sendMessageBodySchema = z.object({
   reply_to_id: z.string().uuid().nullable().optional(),
   media_original_bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   burn_at: z.string().nullable().optional(),
+  // Stage 5: per-device fan-out ciphertexts
+  ciphertexts: z
+    .array(
+      z.object({
+        device_id: z.string().uuid(),
+        ciphertext: z.string().min(1),
+        iv: z.string().min(1),
+      })
+    )
+    .min(1)
+    .max(50)
+    .optional(),
 })
 
 const deliveredAckSchema = z.object({
@@ -40,42 +53,43 @@ const batchReadSchema = z.object({
 })
 
 export const messagesRoutes: FastifyPluginAsync = async (app) => {
-  /** Encrypted store-and-forward when WebSocket is unavailable (same payload as WS `chat_message`). */
+  /**
+   * Stage 5: POST /send
+   * Accepts both legacy (single content+iv) and fan-out (ciphertexts[]) modes.
+   * When ciphertexts[] is present, writes message_deliveries rows per device.
+   */
   app.post('/send', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+
     const parsed = sendMessageBodySchema.safeParse(request.body ?? {})
     if (!parsed.success) {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
     const p = parsed.data
+
     const memberOk = await db
       .select({ one: chatMembers.userId })
       .from(chatMembers)
-      .where(
-        and(eq(chatMembers.chatId, p.chat_id), eq(chatMembers.userId, user.id))
-      )
+      .where(and(eq(chatMembers.chatId, p.chat_id), eq(chatMembers.userId, user.id)))
       .limit(1)
     if (!memberOk.length) {
       return reply.status(403).send({ error: 'NOT_A_MEMBER' })
     }
 
-    // In direct chats, enforce block check against the other member
     const allMembers = await db
       .select({ userId: chatMembers.userId })
       .from(chatMembers)
       .where(eq(chatMembers.chatId, p.chat_id))
     if (allMembers.length === 2) {
       const peerId = allMembers.find((m) => m.userId !== user.id)?.userId
-      if (peerId && await isBlocked(user.id, peerId)) {
+      if (peerId && (await isBlocked(user.id, peerId))) {
         return reply.status(403).send({ error: 'BLOCKED' })
       }
     }
 
     const burn = parseOptionalBurnAt(p.burn_at ?? null)
-    if (!burn.ok) {
-      return reply.status(400).send({ error: burn.error })
-    }
+    if (!burn.ok) return reply.status(400).send({ error: burn.error })
 
     const persisted = await persistChatMessageAndFanOut({
       chatId: p.chat_id,
@@ -86,15 +100,45 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       mediaPath: p.media_path ?? null,
       mediaType: p.media_type ?? null,
       mediaIv: p.media_iv ?? null,
-      mediaOriginalBytes: resolveMediaOriginalBytes(
-        p.media_path ?? null,
-        p.media_original_bytes
-      ),
+      mediaOriginalBytes: resolveMediaOriginalBytes(p.media_path ?? null, p.media_original_bytes),
       burnAt: burn.date,
     })
-    if (!persisted.ok) {
-      return reply.status(500).send({ error: 'INSERT_FAILED' })
+    if (!persisted.ok) return reply.status(500).send({ error: 'INSERT_FAILED' })
+
+    const messageId = persisted.row.id
+
+    // Stage 5 fan-out: write per-device delivery slots
+    if (p.ciphertexts && p.ciphertexts.length > 0) {
+      // Resolve device_id → userId from DB (security: verify devices belong to chat members)
+      const memberUserIds = allMembers.map((m) => m.userId)
+
+      const deviceRows = await db
+        .select({ id: devices.id, userId: devices.userId })
+        .from(devices)
+        .where(
+          and(
+            inArray(devices.userId, memberUserIds),
+            isNull(devices.revokedAt)
+          )
+        )
+
+      const deviceOwnerMap = new Map(deviceRows.map((d) => [d.id, d.userId]))
+
+      const deliveryInserts = p.ciphertexts
+        .filter((slot) => deviceOwnerMap.has(slot.device_id))
+        .map((slot) => ({
+          messageId,
+          deviceId: slot.device_id,
+          userId: deviceOwnerMap.get(slot.device_id)!,
+          ciphertext: slot.ciphertext,
+          iv: slot.iv,
+        }))
+
+      if (deliveryInserts.length > 0) {
+        await db.insert(messageDeliveries).values(deliveryInserts).onConflictDoNothing()
+      }
     }
+
     return reply.send({ message: persistedRowToClientJson(persisted.row) })
   })
 
@@ -117,13 +161,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const memberOk = await db
       .select({ one: chatMembers.userId })
       .from(chatMembers)
-      .where(
-        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
-      )
+      .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id)))
       .limit(1)
-    if (!memberOk.length) {
-      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
-    }
+    if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
 
     const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
     const pattern = `%${escaped}%`
@@ -140,13 +180,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         createdAt: messages.createdAt,
       })
       .from(messages)
-      .where(
-        and(
-          eq(messages.chatId, chatId),
-          isNotNull(messages.content),
-          ilike(messages.content, pattern)
-        )
-      )
+      .where(and(eq(messages.chatId, chatId), isNotNull(messages.content), ilike(messages.content, pattern)))
       .orderBy(desc(messages.createdAt))
       .limit(limit)
 
@@ -159,18 +193,22 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         iv: m.iv,
         media_path: m.mediaPath,
         media_type: m.mediaType,
-        created_at:
-          m.createdAt instanceof Date
-            ? m.createdAt.toISOString()
-            : String(m.createdAt),
+        created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
       })),
     })
   })
 
-  /** Pending ciphertext rows for this user (not yet acknowledged after delivery sync). */
+  /**
+   * Stage 5: GET /sync/pending
+   * Now also returns per-device ciphertext slot for the caller's current device.
+   */
   app.get('/sync/pending', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+
+    const sess = await verifySessionJwt(request)
+    const callerDeviceId = sess?.device_id ?? null
+
     const q = request.query as { chat_id?: string }
     const chatId = q.chat_id?.trim()
     if (chatId && !z.string().uuid().safeParse(chatId).success) {
@@ -183,10 +221,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
           isNull(messageDeliveries.deliveredAt),
           eq(messages.chatId, chatId)
         )
-      : and(
-          eq(messageDeliveries.userId, user.id),
-          isNull(messageDeliveries.deliveredAt)
-        )
+      : and(eq(messageDeliveries.userId, user.id), isNull(messageDeliveries.deliveredAt))
 
     const rows = await db
       .select({
@@ -202,18 +237,16 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         burnAt: messages.burnAt,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
+        // Stage 5: per-device slot
+        deliveryDeviceId: messageDeliveries.deviceId,
+        deliveryCiphertext: messageDeliveries.ciphertext,
+        deliveryIv: messageDeliveries.iv,
       })
       .from(messages)
-      .innerJoin(
-        messageDeliveries,
-        eq(messages.id, messageDeliveries.messageId)
-      )
+      .innerJoin(messageDeliveries, eq(messages.id, messageDeliveries.messageId))
       .innerJoin(
         chatMembers,
-        and(
-          eq(chatMembers.chatId, messages.chatId),
-          eq(chatMembers.userId, user.id)
-        )
+        and(eq(chatMembers.chatId, messages.chatId), eq(chatMembers.userId, user.id))
       )
       .where(memberFilter)
       .orderBy(asc(messages.createdAt))
@@ -225,27 +258,20 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         chat_id: m.chatId,
         sender_id: m.senderId,
         reply_to_id: m.replyToId,
+        // Legacy shared-key fields (may be null in fan-out mode)
         content: m.content,
         iv: m.iv,
         media_path: m.mediaPath,
         media_type: m.mediaType,
         media_iv: m.mediaIv,
-        read_at:
-          m.readAt == null
-            ? null
-            : m.readAt instanceof Date
-              ? m.readAt.toISOString()
-              : String(m.readAt),
-        burn_at:
-          m.burnAt == null
-            ? null
-            : m.burnAt instanceof Date
-              ? m.burnAt.toISOString()
-              : String(m.burnAt),
-        created_at:
-          m.createdAt instanceof Date
-            ? m.createdAt.toISOString()
-            : String(m.createdAt),
+        read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
+        burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
+        created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+        // Stage 5: slot addressed to caller's device (null if legacy or wrong device)
+        device_ciphertext:
+          m.deliveryDeviceId === callerDeviceId ? (m.deliveryCiphertext ?? null) : null,
+        device_iv:
+          m.deliveryDeviceId === callerDeviceId ? (m.deliveryIv ?? null) : null,
       })),
     })
   })
@@ -254,23 +280,15 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const parsed = deliveredAckSchema.safeParse(request.body ?? {})
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
     const ids = parsed.data.message_ids
     await db
       .update(messageDeliveries)
       .set({ deliveredAt: new Date() })
-      .where(
-        and(
-          eq(messageDeliveries.userId, user.id),
-          inArray(messageDeliveries.messageId, ids)
-        )
-      )
+      .where(and(eq(messageDeliveries.userId, user.id), inArray(messageDeliveries.messageId, ids)))
     return reply.send({ ok: true })
   })
 
-  /** Mark a direct message as read (REST; mirrors WebSocket `message_read`). */
   app.post('/read/:messageId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -287,21 +305,16 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         NOT_READABLE: 400,
         CHAT_MISMATCH: 400,
       }
-      return reply
-        .status(status[result.error] ?? 400)
-        .send({ error: result.error })
+      return reply.status(status[result.error] ?? 400).send({ error: result.error })
     }
     return reply.send({ ok: true, read_at: result.read_at })
   })
 
-  /** Batch mark multiple messages as read (optimize scrolling through many messages). */
   app.post('/batch-read', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const parsed = batchReadSchema.safeParse(request.body ?? {})
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
     const messageIds = parsed.data.message_ids
     const results = await markMessagesReadByReader(user.id, messageIds)
     const successful = results.filter((r) => r.ok)
@@ -310,11 +323,10 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       ok: true,
       marked_count: successful.length,
       failed_count: failed.length,
-      results: results,
+      results,
     })
   })
 
-  /** Voice/audio/video index for media archive (newest first). */
   app.get('/:chatId/media', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -325,13 +337,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const memberOk = await db
       .select({ one: chatMembers.userId })
       .from(chatMembers)
-      .where(
-        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
-      )
+      .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id)))
       .limit(1)
-    if (!memberOk.length) {
-      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
-    }
+    if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
 
     const rows = await db
       .select({
@@ -348,10 +356,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         and(
           eq(messages.chatId, chatId),
           isNotNull(messages.mediaPath),
-          or(
-            eq(messages.mediaType, 'audio'),
-            eq(messages.mediaType, 'video')
-          )
+          or(eq(messages.mediaType, 'audio'), eq(messages.mediaType, 'video'))
         )
       )
       .orderBy(desc(messages.createdAt))
@@ -365,15 +370,11 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         media_path: m.mediaPath,
         media_type: m.mediaType,
         media_iv: m.mediaIv,
-        created_at:
-          m.createdAt instanceof Date
-            ? m.createdAt.toISOString()
-            : String(m.createdAt),
+        created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
       })),
     })
   })
 
-  /** Shared media between two users across their direct chats. */
   app.get('/shared-media/:userId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -383,7 +384,6 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const q = request.query as { type?: string }
     const filterType = q.type === 'files' ? 'files' : 'media'
 
-    // Find all direct_e2e chats where both users are members
     const myDirectChats = await db
       .select({ chatId: chatMembers.chatId })
       .from(chatMembers)
@@ -400,16 +400,11 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       if (peer.length) sharedChatIds.push(chatId)
     }
 
-    if (!sharedChatIds.length) {
-      return reply.send({ messages: [] })
-    }
+    if (!sharedChatIds.length) return reply.send({ messages: [] })
 
     const mediaTypeFilter =
       filterType === 'media'
-        ? or(
-            eq(messages.mediaType, 'image'),
-            eq(messages.mediaType, 'video')
-          )
+        ? or(eq(messages.mediaType, 'image'), eq(messages.mediaType, 'video'))
         : and(
             isNotNull(messages.mediaType),
             sql`${messages.mediaType} NOT IN ('image', 'video', 'audio')`
@@ -428,13 +423,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         createdAt: messages.createdAt,
       })
       .from(messages)
-      .where(
-        and(
-          inArray(messages.chatId, sharedChatIds),
-          isNotNull(messages.mediaPath),
-          mediaTypeFilter
-        )
-      )
+      .where(and(inArray(messages.chatId, sharedChatIds), isNotNull(messages.mediaPath), mediaTypeFilter))
       .orderBy(desc(messages.createdAt))
       .limit(100)
 
@@ -448,10 +437,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         media_iv: m.mediaIv,
         content: m.content,
         iv: m.iv,
-        created_at:
-          m.createdAt instanceof Date
-            ? m.createdAt.toISOString()
-            : String(m.createdAt),
+        created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
       })),
     })
   })
@@ -466,13 +452,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const memberOk = await db
       .select({ one: chatMembers.userId })
       .from(chatMembers)
-      .where(
-        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
-      )
+      .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id)))
       .limit(1)
-    if (!memberOk.length) {
-      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
-    }
+    if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
 
     const rows = await db
       .select({
@@ -505,22 +487,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         media_path: m.mediaPath,
         media_type: m.mediaType,
         media_iv: m.mediaIv,
-        read_at:
-          m.readAt == null
-            ? null
-            : m.readAt instanceof Date
-              ? m.readAt.toISOString()
-              : String(m.readAt),
-        burn_at:
-          m.burnAt == null
-            ? null
-            : m.burnAt instanceof Date
-              ? m.burnAt.toISOString()
-              : String(m.burnAt),
-        created_at:
-          m.createdAt instanceof Date
-            ? m.createdAt.toISOString()
-            : String(m.createdAt),
+        read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
+        burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
+        created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
       })),
     })
   })
@@ -536,11 +505,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const forEveryone = parsed.success ? parsed.data.for_everyone : false
 
     const [msg] = await db
-      .select({
-        id: messages.id,
-        chatId: messages.chatId,
-        senderId: messages.senderId,
-      })
+      .select({ id: messages.id, chatId: messages.chatId, senderId: messages.senderId })
       .from(messages)
       .where(eq(messages.id, messageId))
       .limit(1)
@@ -550,39 +515,23 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const memberOk = await db
       .select({ one: chatMembers.userId })
       .from(chatMembers)
-      .where(
-        and(
-          eq(chatMembers.chatId, msg.chatId),
-          eq(chatMembers.userId, user.id)
-        )
-      )
+      .where(and(eq(chatMembers.chatId, msg.chatId), eq(chatMembers.userId, user.id)))
       .limit(1)
-    if (!memberOk.length) {
-      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
-    }
+    if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
 
     if (forEveryone) {
-      if (msg.senderId !== user.id) {
-        return reply.status(403).send({ error: 'NOT_SENDER' })
-      }
+      if (msg.senderId !== user.id) return reply.status(403).send({ error: 'NOT_SENDER' })
       await db.delete(messages).where(eq(messages.id, messageId))
-
       const members = await db
         .select({ userId: chatMembers.userId })
         .from(chatMembers)
         .where(eq(chatMembers.chatId, msg.chatId))
       broadcastToUsers(
         members.map((m) => m.userId),
-        {
-          type: 'message_deleted',
-          message_id: messageId,
-          chat_id: msg.chatId,
-        }
+        { type: 'message_deleted', message_id: messageId, chat_id: msg.chatId }
       )
     } else {
-      await db.delete(messages).where(
-        and(eq(messages.id, messageId), eq(messages.senderId, user.id))
-      )
+      await db.delete(messages).where(and(eq(messages.id, messageId), eq(messages.senderId, user.id)))
     }
 
     return reply.send({ ok: true })

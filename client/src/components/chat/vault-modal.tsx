@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Fingerprint, ScanFace } from 'lucide-react'
+// [BIO_DISABLED] import { Fingerprint, ScanFace } from 'lucide-react'
 import {
   exportEcdhPublicJwkFromPrivateKeyString,
   importEcdhPrivateKey,
@@ -14,26 +14,27 @@ import {
   unwrapPrivateJwkWithPin,
   VaultVersionMismatchError,
 } from '@/lib/vault'
-import {
-  enrollWebAuthnVaultUnlock,
-  hasWebAuthnVaultMeta,
-  largeBlobLikelySupported,
-  unlockVaultWithWebAuthn,
-} from '@/lib/webauthn-vault'
+// [BIO_DISABLED]
+// import {
+//   enrollWebAuthnVaultUnlock,
+//   hasWebAuthnVaultMeta,
+//   largeBlobLikelySupported,
+//   unlockVaultWithWebAuthn,
+// } from '@/lib/webauthn-vault'
 import { useChatStore } from '@/store/chatStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { vibrateShort } from '@/lib/vibrate'
 import { useTranslation } from '@/hooks/use-translation'
-import { isIOSOrIPadOS } from '@/lib/ios'
+// [BIO_DISABLED] import { isIOSOrIPadOS } from '@/lib/ios'
 
-/** Detect if the device likely uses Face ID (iOS) vs fingerprint (Android/other) */
-function useBiometricIcon() {
-  const [isApple, setIsApple] = useState(false)
-  useEffect(() => {
-    setIsApple(isIOSOrIPadOS())
-  }, [])
-  return isApple ? ScanFace : Fingerprint
-}
+// [BIO_DISABLED] Biometric icon hook — kept for future re-enable
+// function useBiometricIcon() {
+//   const [isApple, setIsApple] = useState(false)
+//   useEffect(() => {
+//     setIsApple(isIOSOrIPadOS())
+//   }, [])
+//   return isApple ? ScanFace : Fingerprint
+// }
 
 type Props = {
   userId: string
@@ -43,17 +44,22 @@ type Props = {
 export function VaultModal({ userId, displayHandle }: Props) {
   const { t } = useTranslation()
   const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
-  const BiometricIcon = useBiometricIcon()
+  // [BIO_DISABLED] const BiometricIcon = useBiometricIcon()
 
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [bioEnrolled, setBioEnrolled] = useState(false)
-  const [showPinFallback, setShowPinFallback] = useState(false)
+  // [BIO_DISABLED] biometric enrollment state
+  // const [bioEnrolled, setBioEnrolled] = useState(false)
+  // const [showPinFallback, setShowPinFallback] = useState(false)
 
-  useEffect(() => {
-    void hasWebAuthnVaultMeta(userId).then(setBioEnrolled)
-  }, [userId])
+  // [BIO_DISABLED] biometric meta check
+  // useEffect(() => {
+  //   void hasWebAuthnVaultMeta(userId).then(setBioEnrolled)
+  // }, [userId])
+
+  // suppress unused warning while bio is disabled
+  void useEffect
 
   const applyPlaintext = useCallback(
     async (plain: string) => {
@@ -116,45 +122,45 @@ export function VaultModal({ userId, displayHandle }: Props) {
     }
   }
 
-  async function handleBiometricUnlock() {
-    setError(null)
-    setBusy(true)
-    try {
-      const plain = await unlockVaultWithWebAuthn(userId)
-      await applyPlaintext(plain)
-      vibrateShort(25)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('errors.generic'))
-    } finally {
-      setBusy(false)
-    }
-  }
+  // [BIO_DISABLED] biometric unlock handlers — kept for future re-enable
+  // async function handleBiometricUnlock() {
+  //   setError(null)
+  //   setBusy(true)
+  //   try {
+  //     const plain = await unlockVaultWithWebAuthn(userId)
+  //     await applyPlaintext(plain)
+  //     vibrateShort(25)
+  //   } catch (e) {
+  //     setError(e instanceof Error ? e.message : t('errors.generic'))
+  //   } finally {
+  //     setBusy(false)
+  //   }
+  // }
 
-  async function handleEnrollBiometrics() {
-    setError(null)
-    if (!pin.trim()) {
-      setError(t('login.passwordRequired'))
-      return
-    }
-    setBusy(true)
-    try {
-      const r = await enrollWebAuthnVaultUnlock(userId, displayHandle, pin)
-      if (!r.ok) {
-        setError(r.error)
-        return
-      }
-      await applyPlaintext(r.plaintext)
-      setBioEnrolled(true)
-      vibrateShort([15, 30, 15])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('errors.generic'))
-    } finally {
-      setBusy(false)
-    }
-  }
+  // async function handleEnrollBiometrics() {
+  //   setError(null)
+  //   if (!pin.trim()) {
+  //     setError(t('login.passwordRequired'))
+  //     return
+  //   }
+  //   setBusy(true)
+  //   try {
+  //     const r = await enrollWebAuthnVaultUnlock(userId, displayHandle, pin)
+  //     if (!r.ok) {
+  //       setError(r.error)
+  //       return
+  //     }
+  //     await applyPlaintext(r.plaintext)
+  //     setBioEnrolled(true)
+  //     vibrateShort([15, 30, 15])
+  //   } catch (e) {
+  //     setError(e instanceof Error ? e.message : t('errors.generic'))
+  //   } finally {
+  //     setBusy(false)
+  //   }
+  // }
 
-  const showBioSetup =
-    largeBlobLikelySupported() && !bioEnrolled && !busy
+  // [BIO_DISABLED] const showBioSetup = largeBlobLikelySupported() && !bioEnrolled && !busy
 
   return (
     <div
@@ -176,90 +182,48 @@ export function VaultModal({ userId, displayHandle }: Props) {
           </p>
         </header>
 
+        {/* [BIO_DISABLED] biometric unlock screen — re-enable when bio flow is restored
         {bioEnrolled && !showPinFallback ? (
           <div className="space-y-5">
-            <p className="border-l-2 border-neon-cyan/50 bg-neon-cyan/5 pl-3 py-2 font-mono text-[9px] uppercase leading-relaxed tracking-widest text-neon-cyan/80">
-              {t('vault.biometricAvailable')}
-            </p>
-            <TerminalGlitchButton
-              type="button"
-              disabled={busy}
-              onClick={() => void handleBiometricUnlock()}
-              className="w-full"
-            >
-              <span className="inline-flex items-center gap-2">
-                <BiometricIcon className="h-4 w-4" />
-                {t('vault.unlockBiometric')}
-              </span>
-            </TerminalGlitchButton>
-            <button
-              type="button"
-              onClick={() => setShowPinFallback(true)}
-              className="w-full border border-zinc-700 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-zinc-500 transition-colors hover:border-neon-cyan/50 hover:text-neon-cyan/70"
-            >
-              {t('vault.usePinInstead')}
-            </button>
-            {error ? (
-              <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
-                {error}
-              </p>
-            ) : null}
+            ...biometric UI...
           </div>
-        ) : (
-          <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-5">
-            <div>
-              <label className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-neon-cyan/70" htmlFor="vault-pin">
-                {t('login.vaultPassphraseLabel')}
-              </label>
-              <input
-                id="vault-pin"
-                type="password"
-                autoComplete="current-password"
-                autoFocus
-                className="w-full border border-neon-cyan/30 bg-black px-3 py-2 font-mono text-neon-cyan transition-colors focus:border-neon-cyan focus:bg-neon-cyan/5 focus:outline-none"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                required
-              />
-            </div>
-            {error ? (
-              <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
-                {error}
-              </p>
+        ) : ( */}
+        <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-5">
+          <div>
+            <label className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-neon-cyan/70" htmlFor="vault-pin">
+              {t('login.vaultPassphraseLabel')}
+            </label>
+            <input
+              id="vault-pin"
+              type="password"
+              autoComplete="current-password"
+              autoFocus
+              className="w-full border border-neon-cyan/30 bg-black px-3 py-2 font-mono text-neon-cyan transition-colors focus:border-neon-cyan focus:bg-neon-cyan/5 focus:outline-none"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              required
+            />
+          </div>
+          {error ? (
+            <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex flex-col gap-3">
+            <TerminalGlitchButton type="submit" disabled={busy} className="w-full">
+              {t('login.signIn')}
+            </TerminalGlitchButton>
+            {/* [BIO_DISABLED] biometric fallback / enroll buttons
+            {bioEnrolled && showPinFallback ? (
+              <button ...biometric back button... />
             ) : null}
-            <div className="flex flex-col gap-3">
-              <TerminalGlitchButton type="submit" disabled={busy} className="w-full">
-                {t('login.signIn')}
-              </TerminalGlitchButton>
-              {bioEnrolled && showPinFallback ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => { setShowPinFallback(false); setError(null) }}
-                  className="w-full border border-neon-cyan/50 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <BiometricIcon className="h-3.5 w-3.5" />
-                    {t('vault.unlockBiometric')}
-                  </span>
-                </button>
-              ) : null}
-              {showBioSetup && !bioEnrolled ? (
-                <button
-                  type="button"
-                  disabled={busy || !pin.trim()}
-                  onClick={() => void handleEnrollBiometrics()}
-                  className="w-full border border-neon-red/50 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <BiometricIcon className="h-3.5 w-3.5" />
-                    {t('vault.enableBiometric')}
-                  </span>
-                </button>
-              ) : null}
-            </div>
-          </form>
-        )}
+            {showBioSetup && !bioEnrolled ? (
+              <button ...enroll biometrics button... />
+            ) : null}
+            */}
+          </div>
+        </form>
+        {/* )} */}
       </div>
     </div>
   )

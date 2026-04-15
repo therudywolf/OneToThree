@@ -165,7 +165,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
     const url = URL.createObjectURL(file)
     const a = document.createElement('a')
     a.href = url
-    a.download = `forest_vault_key.json`
+    a.download = `13vault.key`
     a.click()
     URL.revokeObjectURL(url)
     setShowVaultExportPrompt(false)

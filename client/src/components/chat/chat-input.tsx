@@ -364,7 +364,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       {isRecordingUI && recordLocked ? (
         <div className="flex items-center gap-3 py-1">
           <button type="button" onClick={() => void cancelRecording()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center border border-neon-red/70 bg-black text-neon-red transition-colors hover:bg-neon-red/10"
+            className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-red/70 bg-black text-neon-red transition-colors hover:bg-neon-red/10"
             title={t('common.cancel')}>
             <X className="h-4 w-4" />
           </button>
@@ -385,7 +385,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <Lock className="h-3 w-3 shrink-0 text-neon-cyan/60" />
           </div>
           <button type="button" onClick={() => void stopRecording(true)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center border border-neon-cyan bg-black text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan bg-black text-neon-cyan transition-colors hover:bg-neon-cyan/10"
             title={t('common.send')}>
             <Send className="h-4 w-4" />
           </button>
@@ -476,12 +476,12 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             ) : null}
           </div>
 
-          {/* Emoji button — desktop only */}
+          {/* Emoji button — desktop only, inside relative wrapper, picker opens above */}
           {!isRecordingUI ? (
             <div ref={emojiContainerRef} className="hidden md:block">
               <button
                 type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center text-neon-cyan/30 hover:text-neon-cyan/70 transition-colors disabled:opacity-20"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-neon-cyan/30 hover:text-neon-cyan/70 transition-colors disabled:opacity-20"
                 disabled={disabled}
                 onClick={() => setEmojiOpen((o) => !o)}
                 tabIndex={-1}
@@ -490,7 +490,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
                 <Smile className="h-4 w-4" />
               </button>
               {emojiOpen && (
-                <div className="absolute bottom-full right-0 z-50 mb-1 border border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.08)]">
+                <div className="absolute bottom-[calc(100%+0.5rem)] right-0 z-[60] border border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.12)]">
                   <EmojiPicker
                     onEmojiClick={(emojiData) => { insertEmoji(emojiData.emoji); setEmojiOpen(false) }}
                     skinTonesDisabled
@@ -518,8 +518,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <button
           type="button"
           className={`shrink-0 select-none border bg-black transition-all disabled:opacity-40
-            h-10 w-10 flex items-center justify-center
-            md:h-auto md:w-auto md:px-3 md:py-2
+            flex h-10 w-10 items-center justify-center
             ${
               isRecordingUI
                 ? 'border-red-600 bg-red-950/20 text-red-300'
@@ -551,13 +550,11 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           )}
         </button>
 
-        {/* Send — desktop always visible; mobile only when input has text */}
+        {/* Send — always h-10 w-10, mobile shows only when text present */}
         <button
           type="submit"
           disabled={disabled || !messageText.trim() || isRecordingUI}
-          className={`shrink-0 border border-neon-cyan bg-black text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors
-            h-10 w-10 flex items-center justify-center
-            md:h-auto md:w-auto md:px-3 md:py-2
+          className={`shrink-0 flex h-10 w-10 items-center justify-center border border-neon-cyan bg-black text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors
             ${showSendOnMobile ? 'flex' : 'hidden md:flex'}
           `}
           title={t('common.send')}

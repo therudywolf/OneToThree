@@ -303,9 +303,9 @@ export function ChatApp({
   const { sendMedia: rawSendMedia } = useSendMediaMessage(cryptoCtx)
 
   /**
-   * FIX: caption and fileName are now passed separately so caption is never
-   * shadowed by fileName. rawSendMedia receives label=caption when present,
-   * falling back to fileName, while mime always comes from fileType.
+   * caption is stored inside the encrypted AttachmentEnvelopeV1 alongside
+   * fileName / mimeType. label (= fileName fallback) is kept separate so
+   * caption is never silently shadowed by the filename.
    */
   const sendMedia = useCallback(
     async (
@@ -315,8 +315,9 @@ export function ChatApp({
       options?: { fileName?: string; fileType?: string },
     ) => {
       await rawSendMedia(blob, mediaType, {
-        label: caption?.trim() || options?.fileName,
+        label: options?.fileName,
         mime: options?.fileType,
+        caption: caption?.trim() || undefined,
       })
     },
     [rawSendMedia],

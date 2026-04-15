@@ -1,13 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Добавляем вот этот блок:
   typescript: {
-    // !! ВНИМАНИЕ !!
-    // Это позволит Docker-сборке пройти, даже если Курсор оставил кривые типы.
     ignoreBuildErrors: true,
   },
-  /** Hide the Next.js dev badge (often shows Webpack/Turbopack) in the corner during `next dev`. */
   devIndicators: false,
   compiler: {
     removeConsole:
@@ -16,13 +12,7 @@ const nextConfig = {
         : false,
   },
   output: 'standalone',
-  /** Client-only in Docker (`context: ./client`); `..` would resolve to `/` in the image and break standalone paths. */
   outputFileTracingRoot: __dirname,
-  /**
-   * Proxy API to Fastify so the browser talks to :3000/api/* and session cookies are host-scoped
-   * to the Next origin (required for `src/proxy.ts` + httpOnly auth cookie).
-   * In Docker, set API_INTERNAL_URL=http://api:8080 on the web service.
-   */
   async rewrites() {
     const internal =
       process.env.API_INTERNAL_URL?.trim() ||
@@ -37,12 +27,6 @@ const nextConfig = {
     ]
   },
   async headers() {
-    // Do not use API_INTERNAL_URL here — browser cannot resolve Docker service hostnames.
-    const publicApi =
-      process.env.NEXT_PUBLIC_API_URL?.trim() ||
-      'http://localhost:8080 http://127.0.0.1:8080'
-    const isProd = process.env.NODE_ENV === 'production'
-
     const cspHeader = `
     default-src 'self';
     script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net blob:;
@@ -53,6 +37,7 @@ const nextConfig = {
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
+    media-src 'self' blob:;
     connect-src 'self' https://api.onetothree.ru wss://api.onetothree.ru https://cdn.jsdelivr.net https://s3.onetothree.ru;
     worker-src 'self' blob:;
     upgrade-insecure-requests;
@@ -105,7 +90,6 @@ try {
     ],
   })
 } catch {
-  // next-pwa may fail with newer Next.js versions; fall through without PWA
   withPWA = (config) => config
 }
 

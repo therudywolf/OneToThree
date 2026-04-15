@@ -11,9 +11,13 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        void: '#000000',
-        'neon-red': '#FF0000',
-        'neon-cyan': '#00FFFF',
+        // CHROMATIC_PROTOCOL :: tokens wired to CSS vars
+        // ThemeApplicator stamps data-theme on <html>;
+        // globals.css overrides the vars per theme.
+        // Tailwind must reference var() so runtime swaps work.
+        void: 'var(--void)',
+        'neon-red': 'var(--neon-red)',
+        'neon-cyan': 'var(--neon-cyan)',
       },
       screens: {
         'xs': '360px',

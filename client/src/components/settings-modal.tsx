@@ -30,6 +30,7 @@ import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { patchMyProfile } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
+import { useThemeStore, THEMES, type ThemeId } from '@/store/themeStore'
 
 type Props = { userId: string; username: string; onClose: () => void }
 
@@ -84,6 +85,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
   const setChatSoundEnabled = useChatStore((s) => s.setChatSoundEnabled)
+
+  const { theme, setTheme } = useThemeStore()
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -1284,6 +1287,36 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               {chatSoundEnabled ? '[ ON ]' : '[ OFF ]'}
             </button>
           </div>
+
+          {/* ===== CHROMATIC_PROTOCOL :: THEME PICKER ===== */}
+          <div className="space-y-2 border-t border-neon-cyan/20 pt-3">
+            <p className="text-xs uppercase tracking-widest text-neon-cyan">
+              // CHROMATIC_PROTOCOL :: VISUAL THEME
+            </p>
+            <div className="grid grid-cols-1 gap-1.5">
+              {THEMES.map((t_cfg) => (
+                <button
+                  key={t_cfg.id}
+                  type="button"
+                  onClick={() => setTheme(t_cfg.id as ThemeId)}
+                  className={`flex items-center gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                    theme === t_cfg.id
+                      ? 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
+                      : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                  }`}
+                >
+                  <span className="flex shrink-0 gap-1">
+                    <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.bg }} />
+                    <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.primary }} />
+                    <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.accent }} />
+                  </span>
+                  {t_cfg.label}
+                  {theme === t_cfg.id && <span className="ml-auto text-neon-cyan">\u25c6</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* ===== END CHROMATIC_PROTOCOL ===== */}
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">

@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: '13',
+    title: 'onetothree',
     statusBarStyle: 'black-translucent',
   },
   other: {

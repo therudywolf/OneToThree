@@ -12,7 +12,7 @@ import {
 } from '@/lib/trust-store'
 
 /**
- * PROJECT 13 :: NODE_INTEGRITY_CHECK
+ * ONETOTHREE :: NODE_INTEGRITY_CHECK
  * Level: Identity Layer (Zero-Trust Validation)
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
@@ -157,7 +157,7 @@ export function IdentityModal({
         {/* FOOTER_MARK */}
         <footer className="mt-8 pt-4 border-t border-neutral-900/50">
           <p className="text-center text-[8px] uppercase tracking-widest text-neutral-800">
-            Project_13 // Zero-Knowledge Verification
+            ONETOTHREE // Zero-Knowledge Verification
           </p>
         </footer>
       </div>

@@ -12,7 +12,7 @@ import {
 import 'react-image-crop/dist/ReactCrop.css'
 
 /**
- * PROJECT 13 :: OPTICS_CALIBRATOR
+ * ONETOTHREE :: OPTICS_CALIBRATOR
  * Level: Interface Layer (Identity Segmenting)
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
@@ -173,7 +173,7 @@ export function AvatarCropModal({
         {/* FOOTER_MARK */}
         <footer className="mt-8 pt-4 border-t border-neutral-900/50">
           <p className="text-center text-[8px] uppercase tracking-widest text-neutral-800">
-            Project_13 // Identity_Calibrator_v4
+            ONETOTHREE // Identity_Calibrator_v4
           </p>
         </footer>
       </div>

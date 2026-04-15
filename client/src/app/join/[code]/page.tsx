@@ -8,7 +8,7 @@ import { joinChatByInviteCode } from '@/lib/api/chats'
 import { useTranslation } from '@/hooks/use-translation'
 
 /**
- * PROJECT 13 :: PACK_INTEGRATION_NODE
+ * ONETOTHREE :: PACK_INTEGRATION_NODE
  * Level: Public Layer (Join Protocol)
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
@@ -104,7 +104,7 @@ export default function JoinPackPage() {
         {/* FOOTER_MARK */}
         <footer className="mt-8 pt-4 border-t border-neutral-900/50">
           <p className="text-center text-[8px] uppercase tracking-widest text-neutral-800">
-            Project_13 // One_To_Three
+            ONETOTHREE // One_To_Three
           </p>
         </footer>
       </div>

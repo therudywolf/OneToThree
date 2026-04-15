@@ -302,11 +302,6 @@ export function ChatApp({
   const { sendText } = useSendMessage(cryptoCtx)
   const { sendMedia: rawSendMedia } = useSendMediaMessage(cryptoCtx)
 
-  /**
-   * caption is stored inside the encrypted AttachmentEnvelopeV1 alongside
-   * fileName / mimeType. label (= fileName fallback) is kept separate so
-   * caption is never silently shadowed by the filename.
-   */
   const sendMedia = useCallback(
     async (
       blob: Blob,
@@ -484,8 +479,7 @@ export function ChatApp({
           peerUsername={peerIdentity.username}
           peerEcdhPublicKeyJwk={peerIdentity.ecdhPublicKeyJwk}
           myEcdhPublicKeyJwk={myEcdhPublicKeyJwk}
-          onClose={() => setIdentityOpen(false)
-          }
+          onClose={() => setIdentityOpen(false)}
           onTrustChanged={(verified) =>
             setPeerIdentity((prev) =>
               prev ? { ...prev, verified } : prev
@@ -504,67 +498,69 @@ export function ChatApp({
       ) : null}
 
       {/* ─── HEADER ──────────────────────────────────────────────────────────── */}
-      <header className="chat-header-compact flex shrink-0 items-center gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:flex-wrap md:justify-between md:gap-2 md:px-3">
+      <header className="chat-header-compact flex shrink-0 items-center gap-2 border-b border-neon-cyan/40 bg-black px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] font-mono">
 
-        {/* LEFT: burger (mobile) + title + peer info */}
-        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
-          {/* Burger — mobile only */}
-          <button
-            type="button"
-            className="touch-manipulation flex shrink-0 md:hidden min-h-11 min-w-11 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan hover:border-neon-red hover:text-neon-red"
-            aria-label={t('call.openChannels')}
-            onClick={() => setMobileSidebarOpen(true)}
-          >
-            <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden />
-          </button>
+        {/* Burger — mobile only */}
+        <button
+          type="button"
+          className="touch-manipulation flex shrink-0 md:hidden h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan hover:border-neon-red hover:text-neon-red"
+          aria-label={t('call.openChannels')}
+          onClick={() => setMobileSidebarOpen(true)}
+        >
+          <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden />
+        </button>
 
-          {/* Title */}
-          <span className="min-w-0 shrink truncate">
-            PROJECT_13 :: E2E :: @{user?.username ?? username}
-          </span>
+        {/* Desktop: PROJECT title (hidden on mobile) */}
+        <span className="hidden md:block shrink-0 text-[10px] uppercase tracking-[0.35em] text-neon-cyan/60 whitespace-nowrap">
+          PROJECT_13 :: @{user?.username ?? username}
+        </span>
 
-          {/* Peer / self badge */}
+        {/* CENTER: peer nick — always visible, takes remaining space */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {isSelfChat ? (
             <div className="flex min-w-0 items-center gap-1.5 border border-amber-500/40 bg-black px-2 py-1 text-[10px] tracking-[0.2em] text-amber-400">
-              <Star className="h-3.5 w-3.5 fill-amber-400" />
-              <span>{t('sidebar.savedMessages')}</span>
+              <Star className="h-3.5 w-3.5 fill-amber-400 shrink-0" />
+              <span className="truncate">{t('sidebar.savedMessages')}</span>
             </div>
           ) : peerIdentity ? (
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+              {/* Peer nick button */}
               <button
                 type="button"
                 onClick={() => setHeaderProfileOpen(true)}
-                className="touch-manipulation inline-flex min-h-11 min-w-0 max-w-full items-center gap-1 border border-neon-cyan/40 bg-black px-2 py-2 text-[10px] tracking-[0.2em] text-neon-cyan hover:border-neon-red hover:text-neon-red md:min-h-0 md:py-1"
+                className="touch-manipulation inline-flex min-w-0 items-center gap-1.5 border border-neon-cyan/40 bg-black px-2 py-1 text-[11px] font-bold tracking-wider text-neon-cyan hover:border-neon-red hover:text-neon-red transition-colors"
               >
                 {peerIdentity.verified ? (
-                  <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan" />
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" />
                 ) : null}
-                <span className="truncate">{peerIdentity.username}</span>
+                <span className="truncate max-w-[140px] md:max-w-xs">@{peerIdentity.username}</span>
               </button>
+              {/* Presence */}
               {peerPresenceRow ? (
-                <span className="inline-flex items-center gap-1.5 font-mono text-[9px] normal-case tracking-normal text-neon-cyan/75">
+                <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[9px] normal-case tracking-normal">
                   {peerPresenceRow.online ? (
                     <>
-                      <span
-                        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.85)]"
-                        title="Online"
-                      />
-                      <span>online</span>
+                      <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.85)]" />
+                      <span className="text-neon-cyan/75">online</span>
                     </>
                   ) : (
-                    <span className="text-red-900/90">
-                      Last seen: {formatLastSeen(peerPresenceRow.last_seen_at)}
+                    <span className="text-red-900/90 whitespace-nowrap">
+                      {formatLastSeen(peerPresenceRow.last_seen_at)}
                     </span>
                   )}
                 </span>
               ) : null}
             </div>
-          ) : null}
+          ) : (
+            /* No active chat — show app title on mobile too */
+            <span className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan/50 truncate">
+              PROJECT_13
+            </span>
+          )}
         </div>
 
-        {/* RIGHT: call buttons + settings/admin */}
-        <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
-          {/* Call buttons — visible on all breakpoints */}
+        {/* RIGHT: call buttons + settings (desktop only, admin moved to sidebar) */}
+        <div className="flex shrink-0 items-center gap-1.5">
           <CallHeaderButtons
             disabled={!activeChatId || !!ctxError}
             peerReady={peerReady}
@@ -578,32 +574,14 @@ export function ChatApp({
             }}
           />
 
-          {/* Admin — icon on mobile, text on desktop */}
-          {user?.role === 'admin' ? (
-            <Link
-              href="/admin"
-              aria-label={t('common.adminWarden')}
-              className="touch-manipulation flex min-h-11 min-w-11 items-center justify-center border border-red-900 bg-black text-red-800 hover:border-neon-red hover:text-neon-red md:min-h-0 md:min-w-0 md:px-2 md:py-1"
-            >
-              {/* icon — mobile */}
-              <ShieldAlert className="h-4 w-4 md:hidden" aria-hidden />
-              {/* text — desktop */}
-              <span className="hidden md:inline font-mono text-[10px] uppercase tracking-widest">
-                [ {t('common.adminWarden')} ]
-              </span>
-            </Link>
-          ) : null}
-
           {/* Settings — icon on mobile, text on desktop */}
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
             aria-label={t('common.openSettings')}
-            className="touch-manipulation flex min-h-11 min-w-11 items-center justify-center border border-neon-cyan/60 bg-black text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red md:min-h-0 md:min-w-0 md:px-2 md:py-1"
+            className="touch-manipulation flex h-10 w-10 md:h-auto md:w-auto items-center justify-center border border-neon-cyan/60 bg-black px-2 text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red md:py-1"
           >
-            {/* icon — mobile */}
             <Settings className="h-4 w-4 md:hidden" aria-hidden />
-            {/* text — desktop */}
             <span className="hidden md:inline font-mono text-[10px] uppercase tracking-widest">
               [ {t('common.openSettings')} ]
             </span>
@@ -628,6 +606,8 @@ export function ChatApp({
         >
           <ChatSidebar
             userId={userId}
+            username={user?.username ?? username}
+            isAdmin={user?.role === 'admin'}
             sharedKey={sharedKey}
             onPackSettingsChanged={() => setGroupDetailTick((n) => n + 1)}
             onNavigate={() => setMobileSidebarOpen(false)}

@@ -209,7 +209,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     setFileQueue(Array.from(e.dataTransfer.files).map((file) => ({ file, mediaType: detectMediaType(file) })))
   }
 
-  // Always open file picker directly — no category menu
   const handleAttachClick = () => {
     if (fileInputRef.current) {
       fileInputRef.current.click()
@@ -222,14 +221,17 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  // Fix: sendMedia called outside setState updater to avoid side-effect-in-render
   const handlePreviewSend = useCallback((caption: string) => {
     setFileQueue((prev) => {
       const item = prev[0]
       if (!item) return prev
-      void sendMedia(item.file, item.mediaType, caption || undefined, { fileName: item.file.name, fileType: item.file.type })
       return prev.slice(1)
     })
-  }, [sendMedia])
+    const item = fileQueue[0]
+    if (!item) return
+    void sendMedia(item.file, item.mediaType, caption || undefined, { fileName: item.file.name, fileType: item.file.type })
+  }, [sendMedia, fileQueue])
 
   const handlePreviewCancel = useCallback(() => setFileQueue([]), [])
   const handleRemoveFromQueue = useCallback((index: number) => {
@@ -248,6 +250,21 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       inputRef.current.focus()
     }
   }
+
+  // Explicit send handler for mobile — bypasses form submit entirely
+  const handleSendClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    if (!messageText.trim() || disabled) return
+    void sendText(messageText, replyTo?.id ?? null).then(() => {
+      onSubmitOrClear()
+      setMessageText('')
+      setReplyTo(null)
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto'
+        inputRef.current.focus()
+      }
+    })
+  }, [messageText, disabled, sendText, replyTo, onSubmitOrClear, setReplyTo])
 
   const handleContextMenu = (e: React.MouseEvent) => e.preventDefault()
 
@@ -512,7 +529,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           )}
         </button>
 
-        {/* Send button */}
+        {/* Send button — onClick added for mobile Safari form-submit reliability */}
         <button
           type="submit"
           disabled={disabled || !messageText.trim() || isRecordingUI}
@@ -520,6 +537,8 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             ${showSendOnMobile ? 'flex' : 'hidden md:flex'}
           `}
           title={t('common.send')}
+          onClick={handleSendClick}
+          onTouchEnd={handleSendClick}
         >
           <Send className="h-4 w-4" />
         </button>

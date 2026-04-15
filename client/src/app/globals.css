@@ -6,6 +6,15 @@
   --neon-red: #ff0000;
   --neon-cyan: #00ffff;
   --void: #000000;
+  --surface: #0a0a0a;
+  --on-surface: #e0e0e0;
+  --shadow-rgb: 0, 255, 255;
+  --crt-opacity: 0.18;
+  --crt-vignette-opacity: 0.45;
+  --scanline-dark: rgba(0, 0, 0, 0.18);
+  --font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --border-radius: 0px;
+  --text-shadow-intensity: 0.35;
 }
 
 /* ===== CHROMATIC PROTOCOLS ===== */
@@ -14,21 +23,185 @@
   --void: #0d0208;
   --neon-red: #FCE700;
   --neon-cyan: #FF003C;
+  --surface: #140310;
+  --on-surface: #ffe680;
+  --shadow-rgb: 255, 0, 60;
+  --crt-opacity: 0.15;
 }
 [data-theme="matrix"] {
   --void: #000000;
   --neon-red: #00FF41;
   --neon-cyan: #003B00;
+  --surface: #001200;
+  --on-surface: #00cc33;
+  --shadow-rgb: 0, 255, 65;
+  --crt-opacity: 0.20;
 }
 [data-theme="dracula"] {
   --void: #282A36;
   --neon-red: #FF79C6;
   --neon-cyan: #8BE9FD;
+  --surface: #21222C;
+  --on-surface: #f8f8f2;
+  --shadow-rgb: 139, 233, 253;
+  --crt-opacity: 0.12;
 }
 [data-theme="midnight"] {
   --void: #0A0E1A;
   --neon-red: #4FC3F7;
   --neon-cyan: #E0F7FA;
+  --surface: #0d1221;
+  --on-surface: #b3e5fc;
+  --shadow-rgb: 224, 247, 250;
+  --crt-opacity: 0.14;
+}
+[data-theme="synthwave"] {
+  --void: #0D0221;
+  --neon-red: #F92AAD;
+  --neon-cyan: #A537FD;
+  --surface: #160335;
+  --on-surface: #ffd6f7;
+  --shadow-rgb: 165, 55, 253;
+  --crt-opacity: 0.16;
+  --text-shadow-intensity: 0.50;
+}
+[data-theme="hacker"] {
+  --void: #0C0C00;
+  --neon-red: #FFB300;
+  --neon-cyan: #FF6D00;
+  --surface: #111100;
+  --on-surface: #ffe082;
+  --shadow-rgb: 255, 179, 0;
+  --crt-opacity: 0.22;
+}
+
+/* ===== MD3 DARK — Google Material You, темная ===== */
+[data-theme="md3dark"] {
+  --void: #0F0F11;
+  --neon-red: #A8C7FA;
+  --neon-cyan: #7BCEFF;
+  --surface: #1A1C1E;
+  --on-surface: #E2E2E6;
+  --shadow-rgb: 168, 199, 250;
+  --crt-opacity: 0;
+  --crt-vignette-opacity: 0;
+  --border-radius: 16px;
+  --text-shadow-intensity: 0;
+  --font-family: 'Google Sans', 'Roboto', system-ui, sans-serif;
+}
+/* MD3 dark — скруглённые углы и шрифт */
+[data-theme="md3dark"] body {
+  font-family: var(--font-family) !important;
+  text-shadow: none !important;
+}
+[data-theme="md3dark"] .terminal-panel {
+  border-radius: 28px !important;
+  border-color: color-mix(in srgb, var(--neon-cyan) 20%, transparent) !important;
+  background: var(--surface) !important;
+  box-shadow: 0 2px 16px rgba(var(--shadow-rgb), 0.12), 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 12%, transparent) !important;
+}
+[data-theme="md3dark"] .terminal-input {
+  border-radius: 12px !important;
+  border-color: color-mix(in srgb, var(--neon-cyan) 35%, transparent) !important;
+  background: color-mix(in srgb, var(--void) 80%, var(--surface)) !important;
+}
+[data-theme="md3dark"] .terminal-label {
+  letter-spacing: 0.03em !important;
+  text-transform: none !important;
+  font-weight: 500;
+}
+[data-theme="md3dark"] .msg-bubble-mine {
+  border-radius: 18px 18px 4px 18px !important;
+}
+[data-theme="md3dark"] .msg-bubble-peer {
+  border-radius: 18px 18px 18px 4px !important;
+}
+[data-theme="md3dark"] .glitch-text:hover {
+  text-shadow: none !important;
+  transform: none !important;
+}
+[data-theme="md3dark"] .crt-overlay {
+  display: none;
+}
+[data-theme="md3dark"] .crt-vignette {
+  box-shadow: none !important;
+}
+[data-theme="md3dark"] .code-block {
+  border-radius: 12px !important;
+  border-color: color-mix(in srgb, var(--neon-cyan) 20%, transparent) !important;
+  background: color-mix(in srgb, var(--void) 90%, transparent) !important;
+}
+
+/* ===== MD3 LIGHT — Google Material You, светлая ===== */
+[data-theme="md3light"] {
+  --void: #FAFCFF;
+  --neon-red: #0062A1;
+  --neon-cyan: #00639B;
+  --surface: #FFFFFF;
+  --on-surface: #1A1C1E;
+  --shadow-rgb: 0, 98, 161;
+  --crt-opacity: 0;
+  --crt-vignette-opacity: 0;
+  --border-radius: 16px;
+  --text-shadow-intensity: 0;
+  --font-family: 'Google Sans', 'Roboto', system-ui, sans-serif;
+}
+[data-theme="md3light"] body {
+  font-family: var(--font-family) !important;
+  text-shadow: none !important;
+  color: var(--on-surface);
+}
+[data-theme="md3light"] html {
+  background-color: var(--void);
+}
+[data-theme="md3light"] .terminal-panel {
+  border-radius: 28px !important;
+  border-color: color-mix(in srgb, var(--neon-cyan) 25%, transparent) !important;
+  background: var(--surface) !important;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 15%, transparent) !important;
+}
+[data-theme="md3light"] .terminal-input {
+  border-radius: 12px !important;
+  border-color: color-mix(in srgb, var(--neon-cyan) 40%, transparent) !important;
+  background: color-mix(in srgb, var(--void) 70%, var(--neon-cyan) 5%) !important;
+  color: var(--on-surface) !important;
+}
+[data-theme="md3light"] .terminal-label {
+  letter-spacing: 0.03em !important;
+  text-transform: none !important;
+  font-weight: 500;
+  color: var(--neon-cyan) !important;
+}
+[data-theme="md3light"] .msg-bubble-mine {
+  border-radius: 18px 18px 4px 18px !important;
+}
+[data-theme="md3light"] .msg-bubble-peer {
+  border-radius: 18px 18px 18px 4px !important;
+}
+[data-theme="md3light"] .glitch-text:hover {
+  text-shadow: none !important;
+  transform: none !important;
+}
+[data-theme="md3light"] .crt-overlay {
+  display: none;
+}
+[data-theme="md3light"] .crt-vignette {
+  box-shadow: none !important;
+}
+[data-theme="md3light"] .code-block {
+  border-radius: 12px !important;
+  background: color-mix(in srgb, var(--neon-cyan) 6%, var(--surface)) !important;
+  border-color: color-mix(in srgb, var(--neon-cyan) 25%, transparent) !important;
+  color: var(--neon-red) !important;
+}
+/* Светлая тема: кастомный скроллбар */
+[data-theme="md3light"] .chat-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--neon-cyan) 30%, transparent);
+}
+/* Светлая: backdrop для модальных окон */
+[data-theme="md3light"] .fixed.bg-black\/90 {
+  background: rgba(26, 28, 30, 0.6) !important;
+  backdrop-filter: blur(8px);
 }
 
 html {
@@ -37,7 +210,7 @@ html {
 
 body {
   @apply min-h-screen bg-void font-mono text-neon-red antialiased;
-  text-shadow: 0 0 1px color-mix(in srgb, var(--neon-red) 35%, transparent);
+  text-shadow: 0 0 1px color-mix(in srgb, var(--neon-red) var(--text-shadow-intensity, 35%), transparent);
   overflow-x: hidden;
 }
 
@@ -68,12 +241,13 @@ textarea {
   z-index: 50;
   background: repeating-linear-gradient(
     0deg,
-    rgba(0, 0, 0, 0.18) 0px,
-    rgba(0, 0, 0, 0.18) 1px,
+    var(--scanline-dark, rgba(0, 0, 0, 0.18)) 0px,
+    var(--scanline-dark, rgba(0, 0, 0, 0.18)) 1px,
     transparent 1px,
     transparent 3px
   );
   mix-blend-mode: multiply;
+  opacity: var(--crt-opacity, 0.18);
 }
 
 .crt-overlay::after {
@@ -83,18 +257,18 @@ textarea {
   background: radial-gradient(
     ellipse at center,
     transparent 0%,
-    rgba(0, 0, 0, 0.45) 100%
+    rgba(0, 0, 0, var(--crt-vignette-opacity, 0.45)) 100%
   );
   pointer-events: none;
 }
 
 /* Subtle vignette on content shell */
 .crt-vignette {
-  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.85);
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, calc(var(--crt-vignette-opacity, 0.45) * 1.9));
 }
 
 .crt-terminal-vignette {
-  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.9);
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, calc(var(--crt-vignette-opacity, 0.45) * 2));
 }
 
 /** Neon / noir terminal look for emoji glyphs inside chat bubbles */

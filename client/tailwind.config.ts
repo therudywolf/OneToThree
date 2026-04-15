@@ -18,6 +18,8 @@ const config: Config = {
         void: 'var(--void)',
         'neon-red': 'var(--neon-red)',
         'neon-cyan': 'var(--neon-cyan)',
+        surface: 'var(--surface)',
+        'on-surface': 'var(--on-surface)',
       },
       screens: {
         'xs': '360px',

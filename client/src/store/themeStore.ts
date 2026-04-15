@@ -15,6 +15,10 @@ export type ThemeId =
   | 'matrix'
   | 'dracula'
   | 'midnight'
+  | 'synthwave'
+  | 'hacker'
+  | 'md3dark'
+  | 'md3light'
 
 export interface ThemeConfig {
   id: ThemeId
@@ -25,11 +29,15 @@ export interface ThemeConfig {
 }
 
 export const THEMES: ThemeConfig[] = [
-  { id: 'default',       label: 'VOID // DEFAULT',  bg: '#000000', primary: '#FF0000', accent: '#00FFFF' },
-  { id: 'cyberpunk2077', label: 'CYBERPUNK 2077',   bg: '#0D0208', primary: '#FCE700', accent: '#FF003C' },
-  { id: 'matrix',        label: 'MATRIX // GREEN',  bg: '#000000', primary: '#00FF41', accent: '#003B00' },
-  { id: 'dracula',       label: 'DRACULA',          bg: '#282A36', primary: '#FF79C6', accent: '#8BE9FD' },
-  { id: 'midnight',      label: 'MIDNIGHT BLUE',    bg: '#0A0E1A', primary: '#4FC3F7', accent: '#E0F7FA' },
+  { id: 'default',       label: 'VOID // DEFAULT',    bg: '#000000', primary: '#FF0000', accent: '#00FFFF' },
+  { id: 'cyberpunk2077', label: 'CYBERPUNK 2077',     bg: '#0D0208', primary: '#FCE700', accent: '#FF003C' },
+  { id: 'matrix',        label: 'MATRIX // GREEN',    bg: '#000000', primary: '#00FF41', accent: '#003B00' },
+  { id: 'dracula',       label: 'DRACULA',            bg: '#282A36', primary: '#FF79C6', accent: '#8BE9FD' },
+  { id: 'midnight',      label: 'MIDNIGHT BLUE',      bg: '#0A0E1A', primary: '#4FC3F7', accent: '#E0F7FA' },
+  { id: 'synthwave',     label: 'SYNTHWAVE // RETRO', bg: '#0D0221', primary: '#F92AAD', accent: '#A537FD' },
+  { id: 'hacker',        label: 'HACKER // AMBER',    bg: '#0C0C00', primary: '#FFB300', accent: '#FF6D00' },
+  { id: 'md3dark',       label: 'MD3 // DARK',        bg: '#0F0F11', primary: '#A8C7FA', accent: '#C3C7CF' },
+  { id: 'md3light',      label: 'MD3 // LIGHT',       bg: '#FAFCFF', primary: '#0062A1', accent: '#535F70' },
 ]
 
 type ChromaticState = {

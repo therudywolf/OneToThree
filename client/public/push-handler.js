@@ -1,6 +1,17 @@
 /* Imported by Workbox service worker (next-pwa). Handles push + notification clicks. */
 /** Required for installability: explicit fetch handler (network-first pass-through). */
 self.addEventListener('fetch', (event) => {
+  // Skip S3/MinIO presigned requests — let browser handle them directly.
+  // Intercepting binary PUT uploads through SW causes ERR_ABORTED on voice/video messages.
+  const url = new URL(event.request.url)
+  if (
+    event.request.method === 'PUT' ||
+    url.searchParams.has('X-Amz-Signature') ||
+    url.searchParams.has('X-Amz-Algorithm')
+  ) {
+    return
+  }
+
   event.respondWith(
     fetch(event.request).catch(() => {
       return Response.error()

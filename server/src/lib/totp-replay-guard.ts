@@ -1,46 +1,39 @@
 /**
  * Prevents TOTP code replay within the same 30-second window.
- * Each (userId, code) pair is tracked and rejected if seen again before expiry.
+ *
+ * Stage 2: backed by Redis when REDIS_URL is set.
+ * Key schema: `totp:used:<userId>:<code>` EX 60
+ *
+ * Redis strategy: SET NX EX — atomic "set if not exists".
+ * Returns false (replay) if key already exists, true if fresh.
+ *
+ * Fallback (no REDIS_URL): in-process Map, single-node only.
  */
 
-interface UsedEntry {
-  expiresAt: number
-}
+import { getRedis } from './redis.js'
 
-/** Map key: `${userId}:${code}` */
-const usedCodes = new Map<string, UsedEntry>()
-
+const KEY_PREFIX = 'totp:used:'
 /** TOTP window is 30s; keep entries for 60s to cover clock skew. */
-const TTL_MS = 60_000
-const CLEANUP_INTERVAL_MS = 60_000
-let cleanupTimer: ReturnType<typeof setInterval> | null = null
+const TTL_S = 60
 
-function startCleanup() {
-  if (cleanupTimer) return
-  cleanupTimer = setInterval(() => {
-    const now = Date.now()
-    for (const [key, entry] of usedCodes) {
-      if (entry.expiresAt <= now) {
-        usedCodes.delete(key)
-      }
-    }
-  }, CLEANUP_INTERVAL_MS)
-  if (cleanupTimer && typeof cleanupTimer === 'object' && 'unref' in cleanupTimer) {
-    cleanupTimer.unref()
-  }
-}
+interface UsedEntry { expiresAt: number }
+const mem = new Map<string, UsedEntry>()
 
 /**
  * Mark a TOTP code as used for a given user.
  * @returns `true` if the code was fresh (first use), `false` if it was already used (replay).
  */
-export function consumeTotpCode(userId: string, code: string): boolean {
-  const key = `${userId}:${code}`
-  const existing = usedCodes.get(key)
-  if (existing && existing.expiresAt > Date.now()) {
-    return false // replay
+export async function consumeTotpCode(userId: string, code: string): Promise<boolean> {
+  const r = getRedis()
+  if (r) {
+    // SET NX EX — returns 'OK' on first use, null on replay
+    const result = await r.set(`${KEY_PREFIX}${userId}:${code}`, '1', 'EX', TTL_S, 'NX')
+    return result === 'OK'
   }
-  usedCodes.set(key, { expiresAt: Date.now() + TTL_MS })
-  startCleanup()
+  // in-memory fallback
+  const key = `${userId}:${code}`
+  const existing = mem.get(key)
+  if (existing && existing.expiresAt > Date.now()) return false
+  mem.set(key, { expiresAt: Date.now() + TTL_S * 1000 })
   return true
 }

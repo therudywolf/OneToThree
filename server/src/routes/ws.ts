@@ -563,7 +563,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const pingParsed = presencePingSchema.safeParse(json)
         if (pingParsed.success) {
           // Revalidate session on each heartbeat: check JTI denylist + device revocation
-          if (sessionJti && isJtiDenied(sessionJti)) {
+          if (sessionJti && await isJtiDenied(sessionJti)) {
             request.log.info({ correlationId, userId: user.id }, 'ws: session revoked (JTI denied)')
             safeSend(ws, JSON.stringify({ type: 'error', error: 'SESSION_REVOKED' }))
             ws.close(1008, 'session revoked')

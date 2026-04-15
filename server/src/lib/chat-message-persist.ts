@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { chatMembers, messageDeliveries, messages } from '../db/schema.js'
+import { chatMembers, messages } from '../db/schema.js'
 import { sendPushToUser } from './push.js'
 import {
   broadcastToUsers,
@@ -78,8 +78,12 @@ async function getChatMemberIds(chatId: string): Promise<string[]> {
 }
 
 /**
- * Inserts ciphertext into `messages`, creates per-recipient `message_deliveries` rows,
- * fan-outs over WebSocket, and notifies offline members via Web Push.
+ * Inserts ciphertext into `messages`, fan-outs over WebSocket, and notifies
+ * offline members via Web Push.
+ *
+ * NOTE: `message_deliveries` rows (per-device E2EE slots) are NOT created here.
+ * They are created by the dedicated E2EE fan-out route (POST /devices/:id/messages).
+ * This keeps legacy/group_e2e shared-key chats working without a deviceId.
  */
 export async function persistChatMessageAndFanOut(
   input: PersistChatMessageInput
@@ -119,24 +123,6 @@ export async function persistChatMessageAndFanOut(
       })
 
     if (!inserted) return null
-
-    const members = await tx
-      .select({ userId: chatMembers.userId })
-      .from(chatMembers)
-      .where(eq(chatMembers.chatId, input.chatId))
-
-    const recipients = members
-      .map((m) => m.userId)
-      .filter((uid) => uid !== input.senderId)
-
-    if (recipients.length > 0) {
-      await tx.insert(messageDeliveries).values(
-        recipients.map((userId) => ({
-          messageId: inserted.id,
-          userId,
-        }))
-      )
-    }
 
     return inserted as PersistedMessageRow
   })

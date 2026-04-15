@@ -295,6 +295,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       setRecordLocked(true)
       setSwipeOffsetY(0); setSwipeOffsetX(0)
       pointerStartRef.current = null
+      try { (e.target as Element).releasePointerCapture(e.pointerId) } catch { /* ignore */ }
     }
     if (dx > CANCEL_THRESHOLD_X) { setCancelSlide(true); void cancelRecording() }
   }, [recordLocked, cancelRecording])

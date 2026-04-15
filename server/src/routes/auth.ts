@@ -215,7 +215,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   /**
    * Refresh token rotation: issues a new JWT and invalidates the old one.
    * The previous JTI is added to the denylist so the old token cannot be reused.
-   * This limits the window of exposure if a token is intercepted.
    */
   app.post('/refresh', async (request, reply) => {
     const sess = await verifySessionJwt(request)
@@ -235,14 +234,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           exp?: number
         }>(oldToken)
         if (payload.jti && payload.exp) {
-          denyJti(payload.jti, payload.exp)
+          await denyJti(payload.jti, payload.exp)  // Stage 2: async
         }
       } catch {
         // Old token already invalid — proceed with rotation.
       }
     }
 
-    // Issue a new token with a fresh JTI
     const newToken = await reply.jwtSign(
       {
         sub: normalizeUuid(user.id),
@@ -274,7 +272,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           exp?: number
         }>(token)
         if (payload.jti && payload.exp) {
-          denyJti(payload.jti, payload.exp)
+          await denyJti(payload.jti, payload.exp)  // Stage 2: async
         }
       } catch {
         // Token already invalid — nothing to revoke.
@@ -351,7 +349,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!check.valid) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
-    if (!consumeTotpCode(user.id, parsed.data.code)) {
+    if (!await consumeTotpCode(user.id, parsed.data.code)) {  // Stage 2: async
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
@@ -392,7 +390,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!check.valid) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
-    if (!consumeTotpCode(user.id, parsed.data.code)) {
+    if (!await consumeTotpCode(user.id, parsed.data.code)) {  // Stage 2: async
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
@@ -448,7 +446,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
-    if (!consumeTotpCode(id, parsed.data.code)) {
+    if (!await consumeTotpCode(id, parsed.data.code)) {  // Stage 2: async
       void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
@@ -482,12 +480,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   await app.register(
     async (scoped) => {
-      /**
-       * Auth challenge/verify rate limit: 5 attempts per 15 minutes per IP.
-       * This covers both login and registration since both go through the
-       * challenge-response flow (ECDSA signature). The tight limit mitigates
-       * credential brute-force and account enumeration attacks.
-       */
       await scoped.register(rateLimit, {
         max: Number(process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX ?? 5),
         timeWindow:
@@ -506,7 +498,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         const username = nick.value
 
         const nonce = randomUUID()
-        setChallenge(username, nonce)
+        await setChallenge(username, nonce)  // Stage 2: async
         return reply.send({ nonce })
       })
 
@@ -524,13 +516,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         }
         const username = nick.value
 
-        const pending = getPending(username)
+        const pending = await getPending(username)  // Stage 2: async
         if (!pending) {
           return reply.status(401).send({ error: 'NO_CHALLENGE' })
         }
 
         if (!safeEqualNonce(pending.nonce, nonce)) {
-          deletePending(username)
+          await deletePending(username)  // Stage 2: async
           return reply.status(401).send({ error: 'NONCE_MISMATCH' })
         }
 
@@ -547,13 +539,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           if (public_key_jwk?.trim()) {
             const incoming = public_key_jwk.trim()
             if (!safeEqualUtf8(incoming, existing.publicKeyJwk)) {
-              deletePending(username)
+              await deletePending(username)  // Stage 2: async
               return reply.status(400).send({ error: 'PUBLIC_KEY_CONFLICT' })
             }
           }
         } else {
           if (!public_key_jwk?.trim()) {
-            deletePending(username)
+            await deletePending(username)  // Stage 2: async
             return reply.status(400).send({ error: 'PUBLIC_KEY_REQUIRED' })
           }
           publicKeyJwkStr = public_key_jwk.trim()
@@ -565,12 +557,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           publicKeyJwkStr
         )
         if (!ok) {
-          deletePending(username)
+          await deletePending(username)  // Stage 2: async
           void recordLoginEvent(request, { userId: existing?.id ?? null, username, outcome: 'fail_signature' })
           return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
         }
 
-        deletePending(username)
+        await deletePending(username)  // Stage 2: async
 
         if (existing?.isBanned) {
           void recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_banned' })

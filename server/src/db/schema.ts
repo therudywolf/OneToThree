@@ -88,6 +88,8 @@ export const devices = pgTable(
     // --- Stage 3: E2EE device linking ---
     /** Per-device ECDSA public key JWK. Null until device completes E2EE link confirm. */
     e2eePublicKey: text('e2ee_public_key'),
+    /** Per-device ECDH public key JWK for fan-out message encryption (Stage 5). */
+    ecdhPublicKey: text('ecdh_public_key'),
     /** Timestamp when this device completed E2EE linking. */
     linkedAt: timestamp('linked_at', { withTimezone: true }),
     /** Human-readable label (e.g. "Chrome on MacBook", "Primary device (migrated)"). */
@@ -166,6 +168,12 @@ export const messages = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     replyToId: uuid('reply_to_id'),
+    /**
+     * Legacy / group_e2e shared-key ciphertext (single blob).
+     * For direct_e2e fan-out (Stage 5) the ciphertext lives in
+     * message_deliveries.ciphertext, keyed per device.
+     * Kept nullable so old rows and group chats still work.
+     */
     content: text('content'),
     iv: text('iv'),
     mediaPath: text('media_path'),
@@ -212,25 +220,46 @@ export const messageReactions = pgTable(
   })
 )
 
-/** Per-recipient delivery for store-and-forward (E2EE ciphertext is opaque to the server). */
+/**
+ * Per-device delivery slot for E2EE fan-out (Stage 5).
+ *
+ * Each row holds one ciphertext blob encrypted specifically for
+ * the ECDH public key of `device_id`. The server never sees plaintext.
+ *
+ * Primary key: (message_id, device_id) — one slot per device per message.
+ * user_id is a denormalized fast-path for "fetch my pending messages".
+ */
 export const messageDeliveries = pgTable(
   'message_deliveries',
   {
     messageId: uuid('message_id')
       .notNull()
       .references(() => messages.id, { onDelete: 'cascade' }),
+    /** Device this slot is addressed to. */
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
+    /** Denormalized owner — fast filter without joining devices. */
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    /** Set when the recipient client acknowledges display (REST) or equivalent sync. */
+    /**
+     * ECDH-derived AES-GCM ciphertext for this device.
+     * Null for legacy rows (pre-Stage-5) or group_e2e (content lives in messages.content).
+     */
+    ciphertext: text('ciphertext'),
+    /** AES-GCM IV paired with ciphertext above. Null for legacy rows. */
+    iv: text('iv'),
+    /** Set when the recipient client acknowledges display. */
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.messageId, t.userId] }),
+    pk: primaryKey({ columns: [t.messageId, t.deviceId] }),
     userPendingIdx: index('message_deliveries_user_pending_idx').on(
       t.userId,
       t.deliveredAt
     ),
+    deviceIdx: index('message_deliveries_device_id_idx').on(t.deviceId),
   })
 )
 

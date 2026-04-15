@@ -23,6 +23,17 @@ const enforceMemoryLimit = (nodes: DecryptedMessage[]): DecryptedMessage[] => {
   return nodes.slice(nodes.length - RAM_CACHE_LIMIT)
 }
 
+const CHAT_SOUND_KEY = 'p13:chat_sound_enabled'
+
+function loadChatSoundEnabled(): boolean {
+  try {
+    const v = localStorage.getItem(CHAT_SOUND_KEY)
+    return v === null ? true : v === 'true'
+  } catch {
+    return true
+  }
+}
+
 type PeerStatusMap = Record<string, { online: boolean; last_seen_at: string | null }>
 type TypingMap = Record<string, Record<string, { username: string; expiresAt: number }>>
 
@@ -44,6 +55,9 @@ export type ChatState = {
   readAtOverrides: Record<string, string>
   historyDecryptBusy: boolean
 
+  // [SOUND]
+  chatSoundEnabled: boolean
+
   // [ACTIONS]
   setActiveChatId: (id: string | null) => void
   setMessages: (nodes: DecryptedMessage[]) => void
@@ -62,6 +76,7 @@ export type ChatState = {
   updateMessageReadAt: (nodeId: string, timestamp: string) => void
   updateMessageReactions: (nodeId: string, reactions: Record<string, string[]>) => void
   setHistoryDecryptBusy: (busy: boolean) => void
+  setChatSoundEnabled: (enabled: boolean) => void
   reset: () => void
 }
 
@@ -169,6 +184,11 @@ export const useChatStore = create<ChatState>((set, _get) => {
 
   const setHistoryDecryptBusy = (busy: boolean) => set({ historyDecryptBusy: busy })
 
+  const setChatSoundEnabled = (enabled: boolean) => {
+    try { localStorage.setItem(CHAT_SOUND_KEY, String(enabled)) } catch { /* ignore */ }
+    set({ chatSoundEnabled: enabled })
+  }
+
   const reset = () =>
     set({
       activeChatId: null,
@@ -192,6 +212,7 @@ export const useChatStore = create<ChatState>((set, _get) => {
     peerPresence: {},
     readAtOverrides: {},
     historyDecryptBusy: false,
+    chatSoundEnabled: loadChatSoundEnabled(),
 
     setActiveChatId,
     setMessages,
@@ -210,6 +231,7 @@ export const useChatStore = create<ChatState>((set, _get) => {
     updateMessageReadAt,
     updateMessageReactions,
     setHistoryDecryptBusy,
+    setChatSoundEnabled,
     reset,
   }
 })

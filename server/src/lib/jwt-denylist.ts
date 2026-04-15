@@ -1,37 +1,22 @@
 import { randomUUID } from 'node:crypto'
+import { getRedis } from './redis.js'
 
 /**
- * In-memory JWT jti (JWT ID) denylist.
- * Tokens added here are rejected on every authenticated request until they expire.
- * Expired entries are periodically cleaned up to prevent unbounded growth.
+ * JWT jti denylist.
+ *
+ * Stage 2: backed by Redis when REDIS_URL is set.
+ * Key schema: `jti:denylist:<jti>` with TTL = remaining token lifetime.
+ *
+ * Fallback (no REDIS_URL): in-process Map, single-node only.
+ * Cleanup interval removed — Redis TTL handles expiry; Map path prunes on read.
  */
 
 interface DenylistEntry {
-  /** Absolute expiry timestamp in milliseconds. */
   expiresAt: number
 }
 
-const denylist = new Map<string, DenylistEntry>()
-
-/** Cleanup interval: every 10 minutes. */
-const CLEANUP_INTERVAL_MS = 10 * 60 * 1000
-let cleanupTimer: ReturnType<typeof setInterval> | null = null
-
-function startCleanup() {
-  if (cleanupTimer) return
-  cleanupTimer = setInterval(() => {
-    const now = Date.now()
-    for (const [jti, entry] of denylist) {
-      if (entry.expiresAt <= now) {
-        denylist.delete(jti)
-      }
-    }
-  }, CLEANUP_INTERVAL_MS)
-  // Allow the process to exit without waiting for this timer.
-  if (cleanupTimer && typeof cleanupTimer === 'object' && 'unref' in cleanupTimer) {
-    cleanupTimer.unref()
-  }
-}
+const mem = new Map<string, DenylistEntry>()
+const KEY_PREFIX = 'jti:denylist:'
 
 /** Generate a unique jti for a new token. */
 export function generateJti(): string {
@@ -40,20 +25,32 @@ export function generateJti(): string {
 
 /**
  * Deny a jti so that any token carrying it is rejected.
- * @param jti The JWT ID to deny.
- * @param expiresAt Absolute expiry time in seconds (Unix epoch) from the JWT `exp` claim.
+ * @param jti   The JWT ID to deny.
+ * @param expiresAt  Unix epoch seconds from the JWT `exp` claim.
  */
-export function denyJti(jti: string, expiresAt: number): void {
-  denylist.set(jti, { expiresAt: expiresAt * 1000 })
-  startCleanup()
+export async function denyJti(jti: string, expiresAt: number): Promise<void> {
+  const r = getRedis()
+  if (r) {
+    const ttlSec = Math.max(1, expiresAt - Math.floor(Date.now() / 1000))
+    await r.set(`${KEY_PREFIX}${jti}`, '1', 'EX', ttlSec)
+    return
+  }
+  // in-memory fallback
+  mem.set(jti, { expiresAt: expiresAt * 1000 })
 }
 
 /** Check whether a jti has been denied (revoked). */
-export function isJtiDenied(jti: string): boolean {
-  const entry = denylist.get(jti)
+export async function isJtiDenied(jti: string): Promise<boolean> {
+  const r = getRedis()
+  if (r) {
+    const exists = await r.exists(`${KEY_PREFIX}${jti}`)
+    return exists === 1
+  }
+  // in-memory fallback
+  const entry = mem.get(jti)
   if (!entry) return false
   if (entry.expiresAt <= Date.now()) {
-    denylist.delete(jti)
+    mem.delete(jti)
     return false
   }
   return true

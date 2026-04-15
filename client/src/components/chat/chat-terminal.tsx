@@ -144,8 +144,12 @@ export function ChatTerminal({
 
   useReadReceipts(ref, { enabled: !isGroup })
 
+  // FIX: use scrollTop = scrollHeight instead of scrollIntoView so scroll
+  // lands correctly even when media hasn't loaded its final height yet.
   const scrollToBottomInstant = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
+    const el = ref.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
   }, [])
 
   const handleScroll = useCallback(() => {
@@ -186,8 +190,11 @@ export function ChatTerminal({
     }
   }, [messages.length, scrollToBottomInstant])
 
+  // FIX: use scrollTop = scrollHeight for consistent scroll-to-bottom.
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    const el = ref.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
     setHasNewBelow(false)
     setNewMsgCount(0)
   }, [])
@@ -222,10 +229,9 @@ export function ChatTerminal({
   }, [isGroup, activeChatId, renderMessages, userId])
 
   useEffect(() => {
-    if (!senderIdsToResolve.length) {
-      setSenderMeta({})
-      return
-    }
+    // FIX: clear immediately so stale data from previous chat is not shown
+    setSenderMeta({})
+    if (!senderIdsToResolve.length) return
     let cancelled = false
     void lookupUsers(senderIdsToResolve)
       .then((rows) => {
@@ -245,20 +251,19 @@ export function ChatTerminal({
     }
   }, [senderIdsToResolve])
 
+  // FIX: merged into single useLayoutEffect so olderMessages is reset
+  // synchronously before scroll, preventing jump to wrong position.
   useLayoutEffect(() => {
+    setOlderMessages([])
+    setHasMoreOlder(true)
+    setLoadingOlder(false)
+    prevMsgCountRef.current = 0
     scrollToBottomInstant()
     isNearBottomRef.current = true
     setIsNearBottom(true)
     setHasNewBelow(false)
     setNewMsgCount(0)
-    prevMsgCountRef.current = 0
   }, [activeChatId, scrollToBottomInstant])
-
-  useEffect(() => {
-    setOlderMessages([])
-    setHasMoreOlder(true)
-    setLoadingOlder(false)
-  }, [activeChatId])
 
   const handleMessageAction = useCallback(
     (action: string, msg: DecryptedMessage) => {

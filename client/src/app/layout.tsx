@@ -7,6 +7,7 @@ import { Auth401Interceptor } from '@/components/auth/auth-401-interceptor'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { SilenceConsole as _SilenceConsole } from '@/components/silence-console'
 import { RecoveryHandler } from '@/components/recovery-handler'
+import { ThemeApplicator } from '@/components/theme-applicator'
 import './globals.css'
 
 /**
@@ -57,6 +58,9 @@ export default function RootLayout({
     <html lang="en" className="bg-zinc-950 selection:bg-neon-red selection:text-black">
       <body className="relative min-h-dvh overflow-x-hidden bg-black font-mono antialiased supports-[height:100dvh]:min-h-[100dvh]">
         
+        {/* [0] CHROMATIC_PROTOCOL :: theme data-attr applicator */}
+        <ThemeApplicator />
+
         {/* [1] SYSTEM_DIAGNOSTICS_LAYER */}
         {/* <SilenceConsole /> // Disabled for active signal debugging */}
         <RecoveryHandler />

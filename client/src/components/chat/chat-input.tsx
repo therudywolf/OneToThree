@@ -305,6 +305,11 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     setFileQueue([])
   }, [])
 
+  /** Remove a specific file from the queue by index. */
+  const handleRemoveFromQueue = useCallback((index: number) => {
+    setFileQueue((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!messageText.trim() || disabled) return
@@ -366,9 +371,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     return Math.max(0.15, Math.min(1, base + Math.random() * 0.2))
   })
 
-  // How many files remain after the current one
-  const queueRemaining = fileQueue.length - 1
-
   return (
     <form
       ref={containerRef}
@@ -382,7 +384,8 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <MediaPreviewModal
           file={previewFile.file}
           mediaType={previewFile.mediaType}
-          queueRemaining={queueRemaining}
+          queue={fileQueue}
+          onRemoveFromQueue={handleRemoveFromQueue}
           onSend={handlePreviewSend}
           onCancel={handlePreviewCancel}
         />

@@ -4,11 +4,9 @@ import {
   verifyChallenge,
 } from '@/lib/api/auth'
 import {
-  exportEcdsaPrivateKeyJwk,
   exportEcdsaPublicKeyJwk,
-  exportPrivateKey,
-  generateEcdsaP256KeyPair,
-  generateKeyPair,
+  generateEcdsaP256KeyPairIsolated,
+  generateKeyPairIsolated,
   importEcdsaPrivateKeyForSign,
   signUtf8WithEcdsaP256,
 } from '@/lib/crypto'
@@ -68,6 +66,10 @@ export async function finalizeLoginWithTotp(params: {
 /**
  * Challenge–response against Fastify: vault check → challenge → unwrap/sign → verify.
  * Registration generates ECDSA (auth) + ECDH (E2E); vault is written only after verify succeeds.
+ *
+ * Stage 1 key isolation: both key pairs are generated via isolated helpers that
+ * re-import the private key as extractable:false before returning, closing the
+ * XSS exfiltration window on the in-memory CryptoKey object.
  */
 export async function cryptoLogin(
   params: CryptoLoginParams
@@ -106,11 +108,13 @@ export async function cryptoLogin(
   let ecdhPrivateJwkForVault: string | undefined
 
   if (params.mode === 'register') {
-    const ecdsaPair = await generateEcdsaP256KeyPair()
-    const ecdhPair = await generateKeyPair({ curve: 'P-256' })
-    ecdsaPrivateJwk = await exportEcdsaPrivateKeyJwk(ecdsaPair.privateKey)
-    ecdhPrivateJwkForVault = await exportPrivateKey(ecdhPair.privateKey)
-    publicKeyJwk = await exportEcdsaPublicKeyJwk(ecdsaPair.publicKey)
+    // Stage 1: isolated helpers — privateKey is non-extractable in memory after this point
+    const ecdsaPair = await generateEcdsaP256KeyPairIsolated()
+    const ecdhPair  = await generateKeyPairIsolated({ curve: 'P-256' })
+
+    ecdsaPrivateJwk      = ecdsaPair.privateJwk
+    ecdhPrivateJwkForVault = ecdhPair.privateJwk
+    publicKeyJwk         = await exportEcdsaPublicKeyJwk(ecdsaPair.publicKey)
   } else {
     const blob = readVaultBlobByLoginUsername(canonicalHandle)
     if (!blob) {
@@ -149,6 +153,7 @@ export async function cryptoLogin(
 
   let signingKey: CryptoKey
   try {
+    // importEcdsaPrivateKeyForSign always imports as extractable:false
     signingKey = await importEcdsaPrivateKeyForSign(ecdsaPrivateJwk)
   } catch {
     return { ok: false, error: 'INVALID_SIGNING_KEY' }

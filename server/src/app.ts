@@ -12,7 +12,7 @@ import { authRoutes } from './routes/auth.js'
 import { chatsRoutes } from './routes/chats.js'
 import { messagesRoutes } from './routes/messages.js'
 import { pushRoutes } from './routes/push.js'
-import { userRoutes } from './routes/users.js'
+import { userRoutes, userDevicesRoute } from './routes/users.js'
 import { webrtcRoutes } from './routes/webrtc.js'
 import { storageRoutes } from './routes/storage.js'
 import { adminRoutes } from './routes/admin.js'
@@ -119,6 +119,8 @@ export async function buildApp() {
 
   await app.register(authRoutes, { prefix: '/api/auth' })
   await app.register(userRoutes, { prefix: '/api/users' })
+  // Stage 5: GET /api/users/:userId/devices — fan-out ECDH public key discovery
+  await app.register(userDevicesRoute, { prefix: '/api/users' })
   await app.register(webrtcRoutes, { prefix: '/api' })
   await app.register(chatsRoutes, { prefix: '/api/chats' })
   await app.register(messagesRoutes, { prefix: '/api/messages' })

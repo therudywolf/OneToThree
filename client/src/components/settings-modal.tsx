@@ -889,7 +889,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         : 'border-zinc-600 bg-zinc-950 text-zinc-400'
                   } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
                 >
-                  {busy ? '[ \u2026 ]' : disableReadReceipts === null ? '[ -- ]' : disableReadReceipts ? '[ OFF ]' : '[ ON ]'}
+                  {busy ? '[ … ]' : disableReadReceipts === null ? '[ -- ]' : disableReadReceipts ? '[ OFF ]' : '[ ON ]'}
                 </button>
               </div>
             </div>
@@ -974,7 +974,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                           </span>
                         </div>
                         <p className="font-mono text-[8px] text-zinc-600 truncate">
-                          {ev.ip_address ?? '\u2014'} \u00b7 {ev.user_agent?.slice(0, 60) ?? '\u2014'}
+                          {ev.ip_address ?? '—'} · {ev.user_agent?.slice(0, 60) ?? '—'}
                         </p>
                       </div>
                     )
@@ -1311,7 +1311,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.accent }} />
                   </span>
                   {t_cfg.label}
-                  {theme === t_cfg.id && <span className="ml-auto text-neon-cyan">\u25c6</span>}
+                  {theme === t_cfg.id && <span className="ml-auto text-neon-cyan">◆</span>}
                 </button>
               ))}
             </div>
@@ -1336,7 +1336,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 }`}
               >
                 {!settingsReady
-                  ? ':: \u2026'
+                  ? ':: …'
                   : discoverableOn
                     ? t('settings.discoverableBadgeOn')
                     : t('settings.discoverableBadgeOff')}
@@ -1348,7 +1348,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               aria-checked={discoverableOn}
               title={
                 !settingsReady
-                  ? '\u2026'
+                  ? '…'
                   : discoverableOn
                     ? t('settings.discoverableTooltipOn')
                     : t('settings.discoverableTooltipOff')
@@ -1363,7 +1363,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     : 'border-zinc-600 bg-zinc-950 text-zinc-400'
               } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
             >
-              {busy ? '[ \u2026 ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
+              {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
             </button>
           </div>
 
@@ -1391,14 +1391,14 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     : 'border-zinc-600 bg-zinc-950 text-zinc-400'
               } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}
             >
-              {busy ? '[ \u2026 ]' : !settingsReady ? '[ -- ]' : ghostOn ? '[ ON ]' : '[ OFF ]'}
+              {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : ghostOn ? '[ ON ]' : '[ OFF ]'}
             </button>
           </div>
 
           <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <p className="text-xs uppercase tracking-widest text-neon-cyan">
-                {t('common.language')} / \u042f\u0437\u044b\u043a
+                {t('common.language')} / Язык
               </p>
               <p className="break-words text-[9px] text-red-800">
                 {t('settings.languageHint')}
@@ -1408,7 +1408,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               className="terminal-input h-8 w-full max-w-[10rem] shrink-0 py-1 text-xs uppercase"
               value={locale}
               onChange={(e) => setLocale(e.target.value === 'ru' ? 'ru' : 'en')}
-              aria-label={`${t('common.language')} / \u042f\u0437\u044b\u043a`}
+              aria-label={`${t('common.language')} / Язык`}
             >
               <option value="en">EN</option>
               <option value="ru">RU</option>

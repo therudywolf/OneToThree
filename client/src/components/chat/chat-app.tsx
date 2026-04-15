@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star } from 'lucide-react'
+import { Menu, ShieldCheck, Star, Settings, ShieldAlert } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -484,7 +484,8 @@ export function ChatApp({
           peerUsername={peerIdentity.username}
           peerEcdhPublicKeyJwk={peerIdentity.ecdhPublicKeyJwk}
           myEcdhPublicKeyJwk={myEcdhPublicKeyJwk}
-          onClose={() => setIdentityOpen(false)}
+          onClose={() => setIdentityOpen(false)
+          }
           onTrustChanged={(verified) =>
             setPeerIdentity((prev) =>
               prev ? { ...prev, verified } : prev
@@ -501,8 +502,13 @@ export function ChatApp({
           onMessage={() => setHeaderProfileOpen(false)}
         />
       ) : null}
-      <header className="chat-header-compact flex shrink-0 flex-col gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-2 md:px-3 md:py-2">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 md:gap-3">
+
+      {/* ─── HEADER ──────────────────────────────────────────────────────────── */}
+      <header className="chat-header-compact flex shrink-0 items-center gap-2 border-b border-neon-cyan/40 px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] font-mono text-[10px] uppercase tracking-[0.35em] text-neon-cyan md:flex-wrap md:justify-between md:gap-2 md:px-3">
+
+        {/* LEFT: burger (mobile) + title + peer info */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
+          {/* Burger — mobile only */}
           <button
             type="button"
             className="touch-manipulation flex shrink-0 md:hidden min-h-11 min-w-11 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan hover:border-neon-red hover:text-neon-red"
@@ -511,9 +517,13 @@ export function ChatApp({
           >
             <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden />
           </button>
+
+          {/* Title */}
           <span className="min-w-0 shrink truncate">
             PROJECT_13 :: E2E :: @{user?.username ?? username}
           </span>
+
+          {/* Peer / self badge */}
           {isSelfChat ? (
             <div className="flex min-w-0 items-center gap-1.5 border border-amber-500/40 bg-black px-2 py-1 text-[10px] tracking-[0.2em] text-amber-400">
               <Star className="h-3.5 w-3.5 fill-amber-400" />
@@ -550,39 +560,58 @@ export function ChatApp({
               ) : null}
             </div>
           ) : null}
-          <div className="flex w-full min-w-0 flex-[1_1_100%] md:flex-[0_1_auto] md:w-auto">
-            <CallHeaderButtons
-              disabled={!activeChatId || !!ctxError}
-              peerReady={peerReady}
-              onVoiceCall={() => {
-                if (activeRow?.is_group) void handleGroupVoiceCall()
-                else void handleVoiceCall()
-              }}
-              onVideoCall={() => {
-                if (activeRow?.is_group) void handleGroupVideoCall()
-                else void handleVideoCall()
-              }}
-            />
-          </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 md:shrink-0">
+
+        {/* RIGHT: call buttons + settings/admin */}
+        <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+          {/* Call buttons — visible on all breakpoints */}
+          <CallHeaderButtons
+            disabled={!activeChatId || !!ctxError}
+            peerReady={peerReady}
+            onVoiceCall={() => {
+              if (activeRow?.is_group) void handleGroupVoiceCall()
+              else void handleVoiceCall()
+            }}
+            onVideoCall={() => {
+              if (activeRow?.is_group) void handleGroupVideoCall()
+              else void handleVideoCall()
+            }}
+          />
+
+          {/* Admin — icon on mobile, text on desktop */}
           {user?.role === 'admin' ? (
             <Link
               href="/admin"
-              className="border border-red-900 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-red-800 hover:border-neon-red hover:text-neon-red"
+              aria-label={t('common.adminWarden')}
+              className="touch-manipulation flex min-h-11 min-w-11 items-center justify-center border border-red-900 bg-black text-red-800 hover:border-neon-red hover:text-neon-red md:min-h-0 md:min-w-0 md:px-2 md:py-1"
             >
-              [ {t('common.adminWarden')} ]
+              {/* icon — mobile */}
+              <ShieldAlert className="h-4 w-4 md:hidden" aria-hidden />
+              {/* text — desktop */}
+              <span className="hidden md:inline font-mono text-[10px] uppercase tracking-widest">
+                [ {t('common.adminWarden')} ]
+              </span>
             </Link>
           ) : null}
+
+          {/* Settings — icon on mobile, text on desktop */}
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="touch-manipulation min-h-11 min-w-11 border border-neon-cyan/60 bg-black px-2 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red md:min-h-0 md:min-w-0 md:py-1"
+            aria-label={t('common.openSettings')}
+            className="touch-manipulation flex min-h-11 min-w-11 items-center justify-center border border-neon-cyan/60 bg-black text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red md:min-h-0 md:min-w-0 md:px-2 md:py-1"
           >
-            [ {t('common.openSettings')} ]
+            {/* icon — mobile */}
+            <Settings className="h-4 w-4 md:hidden" aria-hidden />
+            {/* text — desktop */}
+            <span className="hidden md:inline font-mono text-[10px] uppercase tracking-widest">
+              [ {t('common.openSettings')} ]
+            </span>
           </button>
         </div>
       </header>
+
+      {/* ─── MAIN LAYOUT ─────────────────────────────────────────────────────── */}
       <div className="chat-ultrawide-container relative flex min-h-0 min-w-0 flex-1 overflow-hidden overscroll-none">
         {mobileSidebarOpen ? (
           <button

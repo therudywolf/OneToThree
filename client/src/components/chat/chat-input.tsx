@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Image, FileVideo, FileAudio, FileText } from 'lucide-react'
+import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
 import { useTranslation } from '@/hooks/use-translation'
@@ -45,8 +45,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
   const [messageText, setMessageText] = useState('')
   const [emojiOpen, setEmojiOpen] = useState(false)
-  const [attachOpen, setAttachOpen] = useState(false)
-  const [mediaMode, setMediaMode] = useState<'voice' | 'circle'>('voice')
 
   const isRecordingRef = useRef(false)
   const [isRecordingUI, setIsRecordingUI] = useState(false)
@@ -59,6 +57,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const [, setCancelSlide] = useState(false)
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null)
   const lockAnimRef = useRef(false)
+  const [mediaMode, setMediaMode] = useState<'voice' | 'circle'>('voice')
 
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isHoldRef = useRef(false)
@@ -70,7 +69,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const containerRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emojiContainerRef = useRef<HTMLDivElement>(null)
-  const attachContainerRef = useRef<HTMLDivElement>(null)
   const replyTo = useChatStore((s) => s.replyTo)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
@@ -103,16 +101,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [emojiOpen])
-
-  useEffect(() => {
-    if (!attachOpen) return
-    const close = (e: MouseEvent) => {
-      if (attachContainerRef.current?.contains(e.target as Node)) return
-      setAttachOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [attachOpen])
 
   useEffect(() => {
     return () => {
@@ -221,19 +209,10 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     setFileQueue(Array.from(e.dataTransfer.files).map((file) => ({ file, mediaType: detectMediaType(file) })))
   }
 
-  const triggerFileInput = (accept: string) => {
-    if (fileInputRef.current) {
-      fileInputRef.current.accept = accept
-      fileInputRef.current.click()
-    }
-    setAttachOpen(false)
-  }
-
+  // Always open file picker directly — no category menu
   const handleAttachClick = () => {
-    if (window.matchMedia('(pointer: coarse)').matches) {
-      triggerFileInput('image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt')
-    } else {
-      setAttachOpen((o) => !o)
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
     }
   }
 
@@ -318,7 +297,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     return Math.max(0.15, Math.min(1, base + Math.random() * 0.2))
   })
 
-  // On mobile: show mic when empty, show send when text present
   const showSendOnMobile = messageText.trim().length > 0
 
   return (
@@ -396,8 +374,37 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       {/* Normal input row */}
       <div className={`flex items-center gap-2 ${isRecordingUI && recordLocked ? 'hidden' : ''}`}>
 
-        {/* Attach — always visible */}
-        <div ref={attachContainerRef} className="relative shrink-0">
+        {/* Emoji button — left side, next to attach */}
+        {!isRecordingUI ? (
+          <div ref={emojiContainerRef} className="relative shrink-0">
+            <button
+              type="button"
+              className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan/70 hover:text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors"
+              disabled={disabled}
+              onClick={() => setEmojiOpen((o) => !o)}
+              tabIndex={-1}
+              title={t('emoji.pickerToggle')}
+            >
+              <Smile className="h-4 w-4" />
+            </button>
+            {emojiOpen && (
+              <div className="absolute bottom-full left-0 z-[60] mb-1 border border-neon-cyan/50 shadow-[0_0_16px_rgba(0,255,255,0.12)]">
+                <EmojiPicker
+                  onEmojiClick={(emojiData) => { insertEmoji(emojiData.emoji); setEmojiOpen(false) }}
+                  skinTonesDisabled
+                  searchDisabled
+                  previewConfig={{ showPreview: false }}
+                  width={300}
+                  height={350}
+                  theme={Theme.DARK}
+                />
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {/* Attach — always opens file picker directly */}
+        <div className="relative shrink-0">
           <button
             type="button"
             className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40 transition-colors"
@@ -407,24 +414,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           >
             <Paperclip className="h-4 w-4" />
           </button>
-
-          {attachOpen && (
-            <div className="absolute bottom-full left-0 z-50 mb-1 flex flex-col border border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.08)] min-w-[160px]">
-              <button type="button" className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-neon-cyan/80 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors text-left" onClick={() => triggerFileInput('image/*')}>
-                <Image className="h-3.5 w-3.5 shrink-0" />{t('chat.attachImage') ?? 'Image'}
-              </button>
-              <button type="button" className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-neon-cyan/80 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors text-left" onClick={() => triggerFileInput('video/*')}>
-                <FileVideo className="h-3.5 w-3.5 shrink-0" />{t('chat.attachVideo') ?? 'Video'}
-              </button>
-              <button type="button" className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-neon-cyan/80 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors text-left" onClick={() => triggerFileInput('audio/*')}>
-                <FileAudio className="h-3.5 w-3.5 shrink-0" />{t('chat.attachAudio') ?? 'Audio'}
-              </button>
-              <div className="border-t border-neon-cyan/20" />
-              <button type="button" className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-neon-cyan/80 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors text-left" onClick={() => triggerFileInput('.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt')}>
-                <FileText className="h-3.5 w-3.5 shrink-0" />{t('chat.attachDocument') ?? 'Document'}
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Input field */}
@@ -435,7 +424,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <textarea
               ref={inputRef}
               rows={1}
-              className="terminal-input flex-1 min-h-6 max-h-24 resize-none bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed md:pr-8"
+              className="terminal-input flex-1 min-h-6 max-h-24 resize-none bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed"
               style={{ fontSize: 'max(16px, 1em)' }}
               value={messageText}
               onChange={(e) => {
@@ -477,35 +466,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             ) : null}
           </div>
 
-          {/* Emoji button — desktop only, inside relative wrapper, picker opens above */}
-          {!isRecordingUI ? (
-            <div ref={emojiContainerRef} className="hidden md:block">
-              <button
-                type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-neon-cyan/60 hover:text-neon-cyan transition-colors disabled:opacity-20 z-10"
-                disabled={disabled}
-                onClick={() => setEmojiOpen((o) => !o)}
-                tabIndex={-1}
-                title={t('emoji.pickerToggle')}
-              >
-                <Smile className="h-4 w-4" />
-              </button>
-              {emojiOpen && (
-                <div className="absolute bottom-[calc(100%+0.5rem)] right-0 z-[60] border border-neon-cyan/50 shadow-[0_0_16px_rgba(0,255,255,0.12)]">
-                  <EmojiPicker
-                    onEmojiClick={(emojiData) => { insertEmoji(emojiData.emoji); setEmojiOpen(false) }}
-                    skinTonesDisabled
-                    searchDisabled
-                    previewConfig={{ showPreview: false }}
-                    width={300}
-                    height={350}
-                    theme={Theme.DARK}
-                  />
-                </div>
-              )}
-            </div>
-          ) : null}
-
           {isRecordingUI && !recordLocked && swipeOffsetX > 20 ? (
             <div
               className="absolute inset-0 flex items-center justify-center bg-red-950/80 border border-neon-red/50 rounded transition-opacity"
@@ -516,7 +476,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           ) : null}
         </div>
 
-        {/* Record button — desktop always visible; mobile only when input is empty */}
+        {/* Record button */}
         <button
           type="button"
           className={`shrink-0 select-none border bg-black transition-all disabled:opacity-40
@@ -552,7 +512,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           )}
         </button>
 
-        {/* Send — always h-10 w-10, mobile shows only when text present */}
+        {/* Send button */}
         <button
           type="submit"
           disabled={disabled || !messageText.trim() || isRecordingUI}

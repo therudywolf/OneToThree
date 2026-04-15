@@ -121,3 +121,74 @@ export async function reauthorizeDevice(deviceId: string): Promise<void> {
     throw new Error(data.error ?? `${fallback} (${res.status})`)
   }
 }
+
+// ─── Stage 4: Device Linking ─────────────────────────────────────────────────
+
+export type LinkInitParams = {
+  nonce: string
+  signature: string
+  totp_code?: string
+}
+
+export type LinkInitResult = {
+  link_token: string
+  expires_in: number
+}
+
+/**
+ * Step 1 (old device): re-authenticate and obtain a one-time link_token.
+ * The caller must sign `nonce` with the current device's ECDSA private key.
+ */
+export async function linkInit(params: LinkInitParams): Promise<LinkInitResult> {
+  const res = await fetch(`${API_URL}/devices/link/init`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  const data = (await res.json().catch(() => ({}))) as LinkInitResult & { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'LINK_INIT_FAILED')
+  return { link_token: data.link_token, expires_in: data.expires_in }
+}
+
+export type LinkConfirmParams = {
+  link_token: string
+  /** Stable client device key from the NEW device (getOrCreateClientDeviceId()). */
+  new_device_client_key: string
+  /** New device's ECDSA P-256 public key JWK stringified. */
+  new_device_pubkey: string
+  /** Old device signature over SHA-256(new_device_client_key + "." + new_device_pubkey + "." + link_token), base64url. */
+  signature: string
+  device_name?: string
+  user_agent?: string
+}
+
+export type LinkConfirmResult = {
+  ok: true
+  user_id: string
+}
+
+/**
+ * Step 2 (old device signs, new device calls this):
+ * Sends the confirmation to the server; server verifies the old-device signature,
+ * creates the new device row, and returns user_id so the new device can finalize auth.
+ */
+export async function linkConfirm(params: LinkConfirmParams): Promise<LinkConfirmResult> {
+  const body: Record<string, string> = {
+    link_token: params.link_token,
+    new_device_client_key: params.new_device_client_key,
+    new_device_pubkey: params.new_device_pubkey,
+    signature: params.signature,
+  }
+  if (params.device_name) body.device_name = params.device_name
+  if (params.user_agent) body.user_agent = params.user_agent
+
+  const res = await fetch(`${API_URL}/devices/link/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json().catch(() => ({}))) as LinkConfirmResult & { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'LINK_CONFIRM_FAILED')
+  return { ok: true, user_id: data.user_id }
+}

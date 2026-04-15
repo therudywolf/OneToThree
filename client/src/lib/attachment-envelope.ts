@@ -15,6 +15,8 @@ export type AttachmentEnvelopeV1 = {
   wrapIv: string
   /** Base64 ciphertext of the 32-byte raw AES-GCM file key. */
   wrapCt: string
+  /** Optional user-provided caption shown below the media bubble. */
+  caption?: string
 }
 
 export function parseAttachmentEnvelope(
@@ -43,6 +45,9 @@ export function parseAttachmentEnvelope(
       mimeType: o.mimeType.slice(0, 256),
       wrapIv: o.wrapIv,
       wrapCt: o.wrapCt,
+      ...(typeof o.caption === 'string' && o.caption.trim()
+        ? { caption: o.caption.slice(0, 512) }
+        : {}),
     }
   } catch {
     return null

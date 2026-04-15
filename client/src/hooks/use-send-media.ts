@@ -86,7 +86,7 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
     async (
       rawBlob: Blob,
       segmentClass: 'audio' | 'video' | 'image' | 'file',
-      options?: { label?: string; mime?: string }
+      options?: { label?: string; mime?: string; caption?: string }
     ) => {
       // [0] PRE_FLIGHT_CHECK
       if (!activeChatId || !userId || !unwrappedPrivateKey || !cryptoCtx) return
@@ -95,6 +95,7 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
       const rawLabel = options?.label?.trim() || `segment-${Date.now()}`
       // Ensure file name has a proper extension so the server allows the upload
       const label = ensureExtension(rawLabel, mimeType)
+      const caption = options?.caption?.trim() || undefined
       
       let workBlob: Blob = rawBlob
 
@@ -128,6 +129,7 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
           mimeType: mimeType,
           wrapIv: '',
           wrapCt: '',
+          ...(caption ? { caption } : {}),
         }
         const result = await encryptOutboundText(
           unwrappedPrivateKey,
@@ -169,6 +171,7 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
           mimeType: mimeType,
           wrapIv,
           wrapCt: arrayBufferToBase64(wrappedKey),
+          ...(caption ? { caption } : {}),
         }
 
         const result = await encryptOutboundText(
@@ -215,4 +218,3 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
 
   return { transmitBinary, sendMedia: transmitBinary }
 }
-

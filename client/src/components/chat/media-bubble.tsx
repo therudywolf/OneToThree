@@ -71,6 +71,15 @@ type Props = {
   onNextVoice?: () => void
 }
 
+/** Caption rendered below any media bubble */
+function MediaCaption({ text }: { text: string }) {
+  return (
+    <p className="mt-1.5 font-mono text-[12px] leading-snug text-neon-cyan/80 break-words max-w-sm">
+      {text}
+    </p>
+  )
+}
+
 export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPrevVoice, onNextVoice }: Props) {
   const { t } = useTranslation()
   const mediaPath = message.media_path
@@ -81,6 +90,8 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     () => parseAttachmentEnvelope(message.plaintext),
     [message.plaintext]
   )
+
+  const caption = envelope?.caption ?? null
 
   const effectiveMime = useMemo(() => {
     const raw = envelope?.mimeType ?? mimeFromPathAndType(mediaPath ?? '', mediaType)
@@ -242,150 +253,152 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
   if (isImage) {
     return (
-      <div
-        className="mt-2 max-w-full overflow-hidden border border-neon-cyan/40 hover:border-neon-cyan/80 transition-colors cursor-pointer"
-        style={{ maxHeight: '300px', aspectRatio: '16/9', maxWidth: '300px' }}
-      >
-        <img
-          src={objectUrl}
-          alt=""
-          className="h-auto max-h-[300px] w-auto max-w-full object-contain"
-          loading="lazy"
-          onClick={() => onMediaClick?.({
-            id: message.id,
-            url: objectUrl,
-            type: 'image',
-            mimeType: effectiveMime,
-          })}
-          onLoad={(e) => {
-            const img = e.currentTarget
-            img.style.opacity = '1'
-            // Adjust container aspect ratio to actual image ratio
-            const parent = img.parentElement
-            if (parent && img.naturalWidth && img.naturalHeight) {
-              parent.style.aspectRatio = `${img.naturalWidth}/${img.naturalHeight}`
-            }
-          }}
-          style={{ opacity: 0.01, transition: 'opacity 0.2s ease' }}
-        />
+      <div>
+        <div
+          className="mt-2 max-w-full overflow-hidden border border-neon-cyan/40 hover:border-neon-cyan/80 transition-colors cursor-pointer"
+          style={{ maxHeight: '300px', aspectRatio: '16/9', maxWidth: '300px' }}
+        >
+          <img
+            src={objectUrl}
+            alt=""
+            className="h-auto max-h-[300px] w-auto max-w-full object-contain"
+            loading="lazy"
+            onClick={() => onMediaClick?.({
+              id: message.id,
+              url: objectUrl,
+              type: 'image',
+              mimeType: effectiveMime,
+            })}
+            onLoad={(e) => {
+              const img = e.currentTarget
+              img.style.opacity = '1'
+              const parent = img.parentElement
+              if (parent && img.naturalWidth && img.naturalHeight) {
+                parent.style.aspectRatio = `${img.naturalWidth}/${img.naturalHeight}`
+              }
+            }}
+            style={{ opacity: 0.01, transition: 'opacity 0.2s ease' }}
+          />
+        </div>
+        {caption ? <MediaCaption text={caption} /> : null}
       </div>
     )
   }
 
   if (isAudio) {
     return (
-      <div className="mt-2 max-w-sm rounded-none border border-neon-cyan/40 bg-black p-2 shadow-[0_0_10px_rgba(0,255,255,0.05)]">
-        <audio
-          ref={audioRef}
-          src={objectUrl}
-          preload="auto"
-          className="hidden"
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          onEnded={() => {
-            setPlaying(false)
-            setProgress(0)
-            setCurrentSec(0)
-            onAudioEnd?.()
-          }}
-          onLoadedMetadata={() => {
-            const el = audioRef.current
-            if (!el) return
-            if (Number.isFinite(el.duration) && el.duration > 0) {
-              setDuration(el.duration)
-            } else {
-              // WebM from MediaRecorder often lacks duration metadata.
-              // Seek to a large time to force the browser to resolve real duration.
-              el.currentTime = 1e10
-            }
-          }}
-          onDurationChange={() => {
-            const el = audioRef.current
-            if (!el) return
-            if (Number.isFinite(el.duration) && el.duration > 0) {
-              setDuration(el.duration)
-              // If we seeked to force duration, reset back to start
-              if (el.currentTime > el.duration) {
-                el.currentTime = 0
-              }
-            }
-          }}
-          onTimeUpdate={() => {
-            const el = audioRef.current
-            if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return
-            setCurrentSec(el.currentTime)
-            setProgress((el.currentTime / el.duration) * 100)
-          }}
-        />
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
+      <div>
+        <div className="mt-2 max-w-sm rounded-none border border-neon-cyan/40 bg-black p-2 shadow-[0_0_10px_rgba(0,255,255,0.05)]">
+          <audio
+            ref={audioRef}
+            src={objectUrl}
+            preload="auto"
+            className="hidden"
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onEnded={() => {
+              setPlaying(false)
+              setProgress(0)
+              setCurrentSec(0)
+              onAudioEnd?.()
+            }}
+            onLoadedMetadata={() => {
               const el = audioRef.current
               if (!el) return
-              if (playing) el.pause()
-              else void el.play()
-            }}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-black font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-black"
-          >
-            {playing ? '||' : '▶'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const newSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1
-              setPlaybackSpeed(newSpeed)
-              if (audioRef.current) {
-                audioRef.current.playbackRate = newSpeed
+              if (Number.isFinite(el.duration) && el.duration > 0) {
+                setDuration(el.duration)
+              } else {
+                el.currentTime = 1e10
               }
             }}
-            className="flex h-7 w-8 shrink-0 items-center justify-center rounded-none border border-neon-cyan/30 bg-black font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
-          >
-            {playbackSpeed}x
-          </button>
-          {onPrevVoice ? (
-            <button
-              type="button"
-              onClick={onPrevVoice}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
-              title={t('media.prevVoice')}
-            >
-              <SkipBack className="h-3 w-3" />
-            </button>
-          ) : null}
-          {onNextVoice ? (
-            <button
-              type="button"
-              onClick={onNextVoice}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
-              title={t('media.nextVoice')}
-            >
-              <SkipForward className="h-3 w-3" />
-            </button>
-          ) : null}
-          <div className="flex h-7 flex-1 items-end gap-[1px]">
-            {barHeights.map((h, i) => (
-              <div
-                key={i}
-                className="min-w-[2px] flex-1 rounded-[1px] bg-neon-cyan"
-                style={{
-                  height: `${Math.round(h * 100)}%`,
-                  opacity: playing ? 0.6 + (i % 5) * 0.08 : 0.2,
-                  transition: 'opacity 0.2s',
-                }}
-              />
-            ))}
-          </div>
-          <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/70">
-            {formatTime(currentSec)} / {formatTime(duration)}
-          </span>
-        </div>
-        <div className="mt-2 h-[2px] w-full rounded-none bg-zinc-900 overflow-hidden">
-          <div
-            className="h-full rounded-none bg-neon-cyan transition-all duration-100 ease-linear"
-            style={{ width: `${progress}%` }}
+            onDurationChange={() => {
+              const el = audioRef.current
+              if (!el) return
+              if (Number.isFinite(el.duration) && el.duration > 0) {
+                setDuration(el.duration)
+                if (el.currentTime > el.duration) {
+                  el.currentTime = 0
+                }
+              }
+            }}
+            onTimeUpdate={() => {
+              const el = audioRef.current
+              if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return
+              setCurrentSec(el.currentTime)
+              setProgress((el.currentTime / el.duration) * 100)
+            }}
           />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const el = audioRef.current
+                if (!el) return
+                if (playing) el.pause()
+                else void el.play()
+              }}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-black font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-black"
+            >
+              {playing ? '||' : '▶'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const newSpeed = playbackSpeed === 1 ? 1.5 : playbackSpeed === 1.5 ? 2 : 1
+                setPlaybackSpeed(newSpeed)
+                if (audioRef.current) {
+                  audioRef.current.playbackRate = newSpeed
+                }
+              }}
+              className="flex h-7 w-8 shrink-0 items-center justify-center rounded-none border border-neon-cyan/30 bg-black font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
+            >
+              {playbackSpeed}x
+            </button>
+            {onPrevVoice ? (
+              <button
+                type="button"
+                onClick={onPrevVoice}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+                title={t('media.prevVoice')}
+              >
+                <SkipBack className="h-3 w-3" />
+              </button>
+            ) : null}
+            {onNextVoice ? (
+              <button
+                type="button"
+                onClick={onNextVoice}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+                title={t('media.nextVoice')}
+              >
+                <SkipForward className="h-3 w-3" />
+              </button>
+            ) : null}
+            <div className="flex h-7 flex-1 items-end gap-[1px]">
+              {barHeights.map((h, i) => (
+                <div
+                  key={i}
+                  className="min-w-[2px] flex-1 rounded-[1px] bg-neon-cyan"
+                  style={{
+                    height: `${Math.round(h * 100)}%`,
+                    opacity: playing ? 0.6 + (i % 5) * 0.08 : 0.2,
+                    transition: 'opacity 0.2s',
+                  }}
+                />
+              ))}
+            </div>
+            <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/70">
+              {formatTime(currentSec)} / {formatTime(duration)}
+            </span>
+          </div>
+          <div className="mt-2 h-[2px] w-full rounded-none bg-zinc-900 overflow-hidden">
+            <div
+              className="h-full rounded-none bg-neon-cyan transition-all duration-100 ease-linear"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
+        {caption ? <MediaCaption text={caption} /> : null}
       </div>
     )
   }
@@ -402,7 +415,6 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
       return (
         <div className="mt-2 relative">
-          {/* Click-outside overlay when expanded */}
           <AnimatePresence>
             {videoNoteExpanded && (
               <motion.div
@@ -475,7 +487,6 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               />
             </motion.div>
 
-            {/* Controls — always visible, expanded shows progress */}
             <div className="mt-3 flex flex-col gap-2 border-t border-neon-cyan/20 pt-2">
               <div className="flex items-center justify-between gap-2">
                 <button
@@ -511,30 +522,34 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               ) : null}
             </div>
           </motion.div>
+          {caption ? <MediaCaption text={caption} /> : null}
         </div>
       )
     }
 
     return (
-      <div className="mt-2 max-w-md border border-neon-cyan/40 bg-black p-1" style={{ aspectRatio: '16/9' }}>
-        <video
-          ref={videoRef}
-          src={objectUrl}
-          className="aspect-video w-full cursor-pointer bg-black object-contain"
-          playsInline
-          muted
-          autoPlay={false}
-          controls
-          preload="metadata"
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          onClick={() => onMediaClick?.({
-            id: message.id,
-            url: objectUrl,
-            type: 'video',
-            mimeType: effectiveMime,
-          })}
-        />
+      <div>
+        <div className="mt-2 max-w-md border border-neon-cyan/40 bg-black p-1" style={{ aspectRatio: '16/9' }}>
+          <video
+            ref={videoRef}
+            src={objectUrl}
+            className="aspect-video w-full cursor-pointer bg-black object-contain"
+            playsInline
+            muted
+            autoPlay={false}
+            controls
+            preload="metadata"
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onClick={() => onMediaClick?.({
+              id: message.id,
+              url: objectUrl,
+              type: 'video',
+              mimeType: effectiveMime,
+            })}
+          />
+        </div>
+        {caption ? <MediaCaption text={caption} /> : null}
       </div>
     )
   }
@@ -542,29 +557,32 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   /* Generic file */
   const ext = displayName.split('.').pop()?.toLowerCase() ?? ''
   return (
-    <div className="mt-2 max-w-sm border border-zinc-700 bg-zinc-950/80 font-mono">
-      <div className="flex items-center gap-3 p-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan/30 bg-black">
-          <FileText className="h-5 w-5 text-neon-cyan/60" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs text-zinc-300">{displayName}</p>
-          <div className="flex items-center gap-2 text-[10px] text-zinc-600">
-            {ext ? <span className="uppercase">{ext}</span> : null}
-            {displaySize != null ? (
-              <span>{formatFileSize(displaySize)}</span>
-            ) : null}
+    <div>
+      <div className="mt-2 max-w-sm border border-zinc-700 bg-zinc-950/80 font-mono">
+        <div className="flex items-center gap-3 p-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan/30 bg-black">
+            <FileText className="h-5 w-5 text-neon-cyan/60" />
           </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs text-zinc-300">{displayName}</p>
+            <div className="flex items-center gap-2 text-[10px] text-zinc-600">
+              {ext ? <span className="uppercase">{ext}</span> : null}
+              {displaySize != null ? (
+                <span>{formatFileSize(displaySize)}</span>
+              ) : null}
+            </div>
+          </div>
+          <a
+            href={objectUrl}
+            download={displayName}
+            className="flex h-8 w-8 shrink-0 items-center justify-center border border-neon-cyan/40 bg-black text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+            title={t('media.download')}
+          >
+            <Download className="h-4 w-4" />
+          </a>
         </div>
-        <a
-          href={objectUrl}
-          download={displayName}
-          className="flex h-8 w-8 shrink-0 items-center justify-center border border-neon-cyan/40 bg-black text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
-          title={t('media.download')}
-        >
-          <Download className="h-4 w-4" />
-        </a>
       </div>
+      {caption ? <MediaCaption text={caption} /> : null}
     </div>
   )
 }

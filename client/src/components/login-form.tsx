@@ -13,31 +13,29 @@ import { useTranslation } from '@/hooks/use-translation'
 import { PostRegisterVaultPrompt } from '@/components/post-register-vault-prompt'
 
 /**
- * STAGES (режим ACCESS / вход):
- *   IDENTITY     — никнейм + account-password ("кто ты")
- *   VAULT_UNLOCK — vault-pin ("разблокируй это устройство")
- *   MFA_SYNC     — TOTP (если включён)
+ * AUTH MODEL (honest)
+ * ===================
+ * Единственный секрет = vault-password.
+ * AES-GCM(PBKDF2(vault-password)) → ECDSA ключ → localStorage.
+ * vault-файл переносим: импорт .key → тот же пароль работает.
+ * Сервер пароль не знает. Второй фактор = TOTP.
  *
- * Режим GENESIS / регистрация:
- *   IDENTITY — один экран, два блока: учётные данные + защита устройства
+ * Стадии:
+ *   IDENTITY — никнейм + vault-password (+ повтор при регистрации)
+ *   MFA_SYNC — TOTP если включён
  */
 
-type FormStage = 'IDENTITY' | 'VAULT_UNLOCK' | 'MFA_SYNC'
-type FormMode  = 'ACCESS' | 'GENESIS'
+type FormStage = 'IDENTITY' | 'MFA_SYNC'
+type FormMode  = 'ACCESS'   | 'GENESIS'
 
 export function LoginForm() {
   const { t } = useTranslation()
   const router = useRouter()
   const { user, loading: authLoading, refresh } = useAuth()
 
-  // Учётные данные (шаг 1)
-  const [handle, setHandle]       = useState('')
-  const [password, setPassword]   = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-
-  // Vault-pin (шаг 2 при входе / блок 2 при регистрации)
-  const [vaultPin, setVaultPin]           = useState('')
-  const [confirmVaultPin, setConfirmVaultPin] = useState('')
+  const [handle, setHandle]         = useState('')
+  const [vaultPassword, setVaultPassword] = useState('')
+  const [confirmVaultPassword, setConfirmVaultPassword] = useState('')
 
   const [mode, setMode]   = useState<FormMode>('ACCESS')
   const [stage, setStage] = useState<FormStage>('IDENTITY')
@@ -76,25 +74,23 @@ export function LoginForm() {
 
   const mapFault = (code: string): string => {
     const registry: Record<string, string> = {
-      USERNAME_REQUIRED:    t('login.usernameRequired'),
-      PASSWORD_REQUIRED:    t('login.passwordRequired'),
-      PIN_MIN_8:            t('login.pinMin8'),
-      NO_LOCAL_VAULT:       t('login.noLocalVault'),
-      VAULT_ALREADY_EXISTS: t('login.vaultExists'),
-      UNWRAP_FAILED:        t('login.unwrapFailed'),
-      INVALID_VAULT_FORMAT: t('login.invalidVaultFormat'),
+      USERNAME_REQUIRED:      t('login.usernameRequired'),
+      PASSWORD_REQUIRED:      t('login.passwordRequired'),
+      PIN_MIN_8:              t('login.pinMin8'),
+      NO_LOCAL_VAULT:         t('login.noLocalVault'),
+      VAULT_ALREADY_EXISTS:   t('login.vaultExists'),
+      UNWRAP_FAILED:          t('login.unwrapFailed'),
+      INVALID_VAULT_FORMAT:   t('login.invalidVaultFormat'),
       VAULT_VERSION_MISMATCH: t('login.vaultVersionMismatch'),
-      TOTP_INVALID:         t('login.totpInvalid'),
-      DEVICE_REVOKED:       t('login.deviceRevoked'),
+      TOTP_INVALID:           t('login.totpInvalid'),
+      DEVICE_REVOKED:         t('login.deviceRevoked'),
     }
     return registry[code] ?? code.replace(/_/g, ' ')
   }
 
   const resetForm = () => {
-    setPassword('')
-    setConfirmPassword('')
-    setVaultPin('')
-    setConfirmVaultPin('')
+    setVaultPassword('')
+    setConfirmVaultPassword('')
     setErrorLog(null)
     setInfoLog(null)
   }
@@ -122,79 +118,49 @@ export function LoginForm() {
     input.click()
   }
 
-  /**
-   * ШАГ 1 (ACCESS): проверяем что vault есть, переходим к VAULT_UNLOCK.
-   * GENESIS: полная регистрация сразу.
-   */
-  const execIdentityStep = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (lock.current || isBusy) return
-    setErrorLog(null)
-    setInfoLog(null)
-
-    // Регистрация — всё в одном шаге
-    if (mode === 'GENESIS') {
-      if (password !== confirmPassword) { setErrorLog(t('login.passwordMismatch')); return }
-      if (vaultPin !== confirmVaultPin) { setErrorLog(t('login.vaultPasswordMismatch')); return }
-      lock.current = true
-      setIsBusy(true)
-      try {
-        const res = await cryptoLogin({
-          username: handle,
-          password,
-          vaultPassword: vaultPin,
-          mode: 'register',
-        })
-        if (res.ok === 'needs_2fa') { setPendingToken(res.pendingToken); setStage('MFA_SYNC'); return }
-        if (!res.ok) {
-          if (res.error === 'USERNAME_TAKEN' || res.error === 'PUBLIC_KEY_CONFLICT') {
-            setInfoLog(t('login.accountExists')); return
-          }
-          setErrorLog(mapFault(res.error)); return
-        }
-        await refresh()
-        setShowVaultPrompt(true)
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : ''
-        if (msg === 'USERNAME_TAKEN' || msg === 'PUBLIC_KEY_CONFLICT') {
-          setInfoLog(t('login.accountExists')); return
-        }
-        setErrorLog(msg || 'SYS_FAULT')
-      } finally {
-        setIsBusy(false)
-        lock.current = false
-      }
-      return
-    }
-
-    // Вход — переходим к шагу 2 (vault-pin)
-    if (!handle.trim()) { setErrorLog(t('login.usernameRequired')); return }
-    if (!password)       { setErrorLog(t('login.passwordRequired')); return }
-    setStage('VAULT_UNLOCK')
-  }
-
-  /**
-   * ШАГ 2 (ACCESS): vault-pin → unwrap → ECDSA → сервер.
-   */
-  const execVaultUnlock = async (e: React.FormEvent) => {
+  const execAuthProtocol = async (e: React.FormEvent) => {
     e.preventDefault()
     if (lock.current || isBusy) return
     lock.current = true
     setErrorLog(null)
+    setInfoLog(null)
     setIsBusy(true)
     try {
+      if (mode === 'GENESIS' && vaultPassword !== confirmVaultPassword) {
+        setErrorLog(t('login.passwordMismatch'))
+        return
+      }
       const res = await cryptoLogin({
         username: handle,
-        password,
-        vaultPassword: vaultPin,
-        mode: 'login',
+        vaultPassword,
+        mode: mode === 'ACCESS' ? 'login' : 'register',
       })
-      if (res.ok === 'needs_2fa') { setPendingToken(res.pendingToken); setStage('MFA_SYNC'); return }
-      if (!res.ok) { setErrorLog(mapFault(res.error)); return }
+      if (res.ok === 'needs_2fa') {
+        setPendingToken(res.pendingToken)
+        setStage('MFA_SYNC')
+        return
+      }
+      if (!res.ok) {
+        if (res.error === 'USERNAME_TAKEN' || res.error === 'PUBLIC_KEY_CONFLICT') {
+          setInfoLog(t('login.accountExists'))
+          return
+        }
+        setErrorLog(mapFault(res.error))
+        return
+      }
       await refresh()
+      if (mode === 'GENESIS') {
+        setShowVaultPrompt(true)
+        return
+      }
       router.refresh()
-    } catch (err) {
-      setErrorLog(err instanceof Error ? err.message : 'SYS_FAULT')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : ''
+      if (msg === 'USERNAME_TAKEN' || msg === 'PUBLIC_KEY_CONFLICT') {
+        setInfoLog(t('login.accountExists'))
+        return
+      }
+      setErrorLog(msg || 'SYS_FAULT')
     } finally {
       setIsBusy(false)
       lock.current = false
@@ -216,7 +182,7 @@ export function LoginForm() {
       if (!r.ok) { setErrorLog(mapFault(r.error)); return }
       await refresh()
       router.refresh()
-    } catch (err) {
+    } catch (err: unknown) {
       setErrorLog(err instanceof Error ? err.message : 'MFA_FAULT')
     } finally {
       setIsBusy(false)
@@ -270,7 +236,7 @@ export function LoginForm() {
               <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
                 {t('login.totpSubmit')}
               </TerminalGlitchButton>
-              <button type="button" onClick={() => setStage('VAULT_UNLOCK')}
+              <button type="button" onClick={() => setStage('IDENTITY')}
                 className="w-full text-[9px] uppercase tracking-widest text-zinc-700 hover:text-neon-red">
                 {t('common.back')}
               </button>
@@ -278,91 +244,19 @@ export function LoginForm() {
           </motion.form>
         )}
 
-        {/* ── ШАГ 2: РАЗБЛОКИРУЙ УСТРОЙСТВО ── */}
-        {stage === 'VAULT_UNLOCK' && mode === 'ACCESS' && (
-          <motion.form
-            key="vault-unlock"
-            onSubmit={execVaultUnlock}
-            className="relative w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl"
-            initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
-
-            <header className="mb-6 border-b border-neutral-900 pb-4">
-              <p className="text-[8px] uppercase tracking-widest text-zinc-600">[ 2 / 2 ]</p>
-              <p className="mt-1 text-[10px] uppercase tracking-[0.4em] text-neon-cyan">РАЗБЛОКИРУЙ УСТРОЙСТВО</p>
-              <p className="mt-1 text-[8px] text-zinc-600">{handle}</p>
-            </header>
-
-            <div className="space-y-6">
-              <div className="border border-neon-red/20 bg-zinc-950/50 p-3 space-y-1">
-                <p className="text-[8px] text-zinc-500 leading-relaxed">
-                  Vault-пароль шифрует твой приватный ключ <span className="text-zinc-300">только в этом браузере</span>.
-                  Сервер его не знает. Без него ключ не расшифровать.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="terminal-label">VAULT-ПАРОЛЬ</label>
-                <input
-                  type="password" required autoFocus
-                  value={vaultPin}
-                  onChange={(e) => setVaultPin(e.target.value)}
-                  className="terminal-input"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                />
-              </div>
-
-              {errorLog && (
-                <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono">{errorLog}</div>
-              )}
-
-              <div className="flex flex-col gap-3">
-                <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
-                  {isBusy ? '...' : '[ РАЗБЛОКИРОВАТЬ ]'}
-                </TerminalGlitchButton>
-                <button
-                  type="button"
-                  onClick={() => { setStage('IDENTITY'); setVaultPin(''); setErrorLog(null) }}
-                  className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors"
-                >
-                  {t('common.back')}
-                </button>
-              </div>
-
-              <div className="border-t border-neutral-900 pt-4">
-                <button type="button" onClick={handleVaultImport}
-                  className="w-full border border-neutral-800 bg-zinc-950 py-2 text-[9px] uppercase tracking-widest text-zinc-500 hover:border-neon-cyan hover:text-neon-cyan transition-all">
-                  {t('login.vaultRecoveryImport')}
-                </button>
-                {vaultLinkOk && (
-                  <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">{t('login.vaultRecoveryOk')}</p>
-                )}
-              </div>
-            </div>
-          </motion.form>
-        )}
-
-        {/* ── ШАГ 1 / РЕГИСТРАЦИЯ ── */}
+        {/* ── IDENTITY / GENESIS ── */}
         {stage === 'IDENTITY' && (
           <motion.form
             key="identity"
-            onSubmit={execIdentityStep}
-            className={`relative w-full border border-neutral-900 bg-black p-8 shadow-2xl transition-all duration-500 ${
-              mode === 'GENESIS' ? 'max-w-xl' : 'max-w-sm'
-            }`}
+            onSubmit={execAuthProtocol}
+            className="relative w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           >
             <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
 
             <header className="mb-8 border-b border-neutral-900 pb-4">
-              {mode === 'ACCESS' && (
-                <p className="text-[8px] uppercase tracking-widest text-zinc-600">[ 1 / 2 ]</p>
-              )}
-              <p className="mt-1 text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
-                {mode === 'ACCESS' ? 'КТО ТЫ' : t('login.register')}
+              <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
+                {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
               </p>
               <p className="mt-1 text-[8px] text-zinc-600 tracking-widest">E2E // ECDSA P-256 // ZERO-TRUST</p>
             </header>
@@ -392,103 +286,53 @@ export function LoginForm() {
                 />
               </div>
 
-              {/* БЛОК 1 :: УЧЁТНЫЕ ДАННЫЕ */}
-              {mode === 'GENESIS' ? (
-                <>
-                  <div className="space-y-4 border border-neon-cyan/20 p-4 animate-in fade-in slide-in-from-top-1">
-                    <div>
-                      <p className="text-[9px] uppercase tracking-widest text-neon-cyan mb-1">
-                        [ БЛОК 1 :: УЧЁТНЫЕ ДАННЫЕ ]
-                      </p>
-                      <p className="text-[8px] text-zinc-500 leading-relaxed">
-                        Вводишь при каждом входе на <span className="text-zinc-300">любом устройстве</span>.
-                        Сервер его не знает — используется только для ECDSA-подписи локально.
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="terminal-label">{t('login.accountPasswordLabel')}</label>
-                      <input
-                        type="password" required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="terminal-input"
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="terminal-label">{t('common.confirm')}</label>
-                      <input
-                        type="password" required
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="terminal-input"
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    {password.length > 0 && password.length < 8 && (
-                      <p className="text-[9px] text-neon-red">[!] {t('login.pinMin8')}</p>
-                    )}
+              {/* Vault-password */}
+              <div className="space-y-2">
+                {mode === 'GENESIS' && (
+                  <div className="border-l-2 border-neon-cyan/40 pl-3 space-y-1 mb-3">
+                    <p className="text-[8px] text-zinc-400 leading-relaxed">
+                      Пароль шифрует твой приватный ключ локально.
+                      Сервер его не знает и восстановить не может.
+                    </p>
+                    <p className="text-[8px] text-zinc-600">
+                      Если экспортируешь vault-файл на другое устройство — тот же пароль разблокирует его.
+                      Запомни или сохрани — без него нет доступа к аккаунту.
+                    </p>
                   </div>
+                )}
+                <label className="terminal-label">
+                  {mode === 'ACCESS' ? t('login.vaultPassphraseLabel') : 'VAULT-ПАРОЛЬ'}
+                </label>
+                <input
+                  type="password" required
+                  value={vaultPassword}
+                  onChange={(e) => setVaultPassword(e.target.value)}
+                  className="terminal-input"
+                  placeholder="••••••••"
+                  autoComplete={mode === 'ACCESS' ? 'current-password' : 'new-password'}
+                />
+              </div>
 
-                  {/* БЛОК 2 :: ЗАЩИТА УСТРОЙСТВА */}
-                  <div className="space-y-4 border border-neon-red/30 p-4 animate-in fade-in slide-in-from-top-1">
-                    <div>
-                      <p className="text-[9px] uppercase tracking-widest text-neon-red mb-1">
-                        [ БЛОК 2 :: ЗАЩИТА ЭТОГО УСТРОЙСТВА ]
-                      </p>
-                      <p className="text-[8px] text-zinc-500 leading-relaxed">
-                        Только для <span className="text-zinc-300">этого браузера</span>.
-                        Шифрует твой приватный ключ локально. Сервер не знает, восстановить невозможно.
-                      </p>
-                      <p className="mt-1 text-[8px] text-zinc-600 border-l-2 border-neon-red/30 pl-2">
-                        Может совпадать с учётным паролем — или быть отдельным. Второй вариант безопаснее.
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="terminal-label">VAULT-ПАРОЛЬ</label>
-                      <input
-                        type="password" required
-                        value={vaultPin}
-                        onChange={(e) => setVaultPin(e.target.value)}
-                        className="terminal-input"
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="terminal-label">{t('common.confirm')}</label>
-                      <input
-                        type="password" required
-                        value={confirmVaultPin}
-                        onChange={(e) => setConfirmVaultPin(e.target.value)}
-                        className="terminal-input"
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    {vaultPin.length > 0 && vaultPin.length < 8 && (
-                      <p className="text-[9px] text-neon-red">[!] {t('login.pinMin8')}</p>
-                    )}
-                  </div>
-                </>
-              ) : (
-                /* ACCESS: только account-пароль на шаге 1 */
+              {/* Повтор пароля при регистрации */}
+              {mode === 'GENESIS' && (
                 <div className="space-y-2">
-                  <label className="terminal-label">{t('login.accountPasswordLabel')}</label>
-                  <p className="text-[8px] text-zinc-600">
-                    Пароль учётки — вводишь на любом устройстве.
-                  </p>
+                  <label className="terminal-label">{t('common.confirm')}</label>
                   <input
                     type="password" required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    value={confirmVaultPassword}
+                    onChange={(e) => setConfirmVaultPassword(e.target.value)}
                     className="terminal-input"
                     placeholder="••••••••"
-                    autoComplete="current-password"
+                    autoComplete="new-password"
                   />
                 </div>
+              )}
+
+              {/* Предупреждение о длине */}
+              {mode === 'GENESIS' && vaultPassword.length > 0 && vaultPassword.length < 8 && (
+                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] text-zinc-400">
+                  <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
+                </p>
               )}
 
               {staleSession && !errorLog && !infoLog && (
@@ -514,9 +358,8 @@ export function LoginForm() {
 
               <div className="flex flex-col gap-4 pt-4">
                 <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
-                  {mode === 'ACCESS' ? '[ ДАЛЕЕ →  ]' : (isBusy ? '...' : t('login.register'))}
+                  {mode === 'ACCESS' ? t('login.signIn') : (isBusy ? '...' : t('login.register'))}
                 </TerminalGlitchButton>
-
                 <button type="button"
                   onClick={() => { setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS'); resetForm() }}
                   className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors">

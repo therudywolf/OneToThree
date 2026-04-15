@@ -29,42 +29,25 @@ export type CryptoLoginResult =
 export type CryptoLoginParams = {
   username: string
   /**
-   * account-password: знаешь в голове, вводишь на любом устройстве.
-   * При регистрации — задаётся как account-пароль.
-   * При входе (LOGIN) — передаётся как `password`, используется
-   * только на ШАГ 1 формы ("кто ты").
-   * Сервер его не знает — он видит только ECDSA-подпись.
+   * vault-password: единственный пароль.
+   * AES-GCM(PBKDF2(vault-password, 600k)) → ECDSA private key → localStorage.
+   * Сервер его не знает никогда — только ECDSA-подпись уходит наружу.
+   * Один vault-файл можно перенести на любое устройство — пароль работает везде.
+   * Второй фактор — TOTP (настраивается отдельно после входа).
    */
-  password: string
-  /**
-   * vault-pin: шифрует ECDSA ключ в localStorage этого браузера.
-   * При регистрации задаётся отдельно.
-   * При входе (LOGIN) — передаётся на ШАГ 2 ("разблокируй устройство").
-   * Если не передан при логине, fallback на password (legacy).
-   */
-  vaultPassword?: string
+  vaultPassword: string
   mode: 'login' | 'register'
 }
 
 /**
- * SECURITY MODEL — TWO FACTORS
- * =============================
- * Фактор 1 :: account-password
- *   — знаешь в голове
- *   — вводишь на каждом устройстве при входе
- *   — сервер его не знает, используется только локально для PBKDF2
- *     в двойном шифровании vault (если включено) или как идентификатор
- *
- * Фактор 2 :: vault-pin
- *   — шифрует приватный ключ в localStorage
- *   — AES-GCM(PBKDF2(vault-pin)) → ciphertext
- *   — сервер не знает, ключ не покидает браузер
- *
- * Утечка vault-файла без vault-pin → бесполезно.
- * Знание vault-pin без vault-файла → бесполезно.
- * Знание account-password → без vault-файла нет ключа.
- *
- * Третий фактор (опционально) :: TOTP — настраивается после входа.
+ * SECURITY MODEL
+ * ==============
+ * Единственный секрет: vault-password.
+ * Расшифровывает ECDSA ключ в localStorage.
+ * Работает на любом устройстве если есть vault-файл.
+ * Утек файла без пароля → бесполезно.
+ * Знание пароля без файла → бесполезно.
+ * TOTP — второй фактор, настраивается отдельно после входа.
  */
 export async function finalizeLoginWithTotp(params: {
   pendingToken: string
@@ -90,24 +73,23 @@ export async function finalizeLoginWithTotp(params: {
 export async function cryptoLogin(
   params: CryptoLoginParams
 ): Promise<CryptoLoginResult> {
-  const username = params.username.trim()
-  const password = params.password
+  const username      = params.username.trim()
+  const vaultPassword = params.vaultPassword
 
-  if (!username) return { ok: false, error: 'USERNAME_REQUIRED' }
+  if (!username)      return { ok: false, error: 'USERNAME_REQUIRED' }
+  if (!vaultPassword) return { ok: false, error: 'PASSWORD_REQUIRED' }
 
   const nick = parseNickname(username)
   if (!nick.ok) return { ok: false, error: nick.error }
   const canonicalHandle = nick.value
 
-  if (!password) return { ok: false, error: 'PASSWORD_REQUIRED' }
-  if (params.mode === 'register' && password.length < 8) return { ok: false, error: 'PIN_MIN_8' }
-  if (params.mode === 'register' && params.vaultPassword && params.vaultPassword.length < 8) {
+  if (params.mode === 'register' && vaultPassword.length < 8) {
     return { ok: false, error: 'PIN_MIN_8' }
   }
 
   const hasVault = !!readVaultBlobByLoginUsername(canonicalHandle)
-  if (params.mode === 'login' && !hasVault) return { ok: false, error: 'NO_LOCAL_VAULT' }
-  if (params.mode === 'register' && hasVault) return { ok: false, error: 'VAULT_ALREADY_EXISTS' }
+  if (params.mode === 'login'    && !hasVault) return { ok: false, error: 'NO_LOCAL_VAULT' }
+  if (params.mode === 'register' &&  hasVault) return { ok: false, error: 'VAULT_ALREADY_EXISTS' }
 
   let ecdsaPrivateJwk: string
   let publicKeyJwk: string | undefined
@@ -123,17 +105,14 @@ export async function cryptoLogin(
     const blob = readVaultBlobByLoginUsername(canonicalHandle)
     if (!blob) return { ok: false, error: 'NO_LOCAL_VAULT' }
     if (blob.version > CURRENT_VAULT_VERSION) return { ok: false, error: 'VAULT_VERSION_MISMATCH' }
-
-    // При входе vault-pin может быть отдельным (vaultPassword) или fallback на password
-    const pinToUnwrap = params.vaultPassword || password
     let plain: string
     try {
-      plain = await unwrapPrivateJwkWithPin(blob, pinToUnwrap)
+      plain = await unwrapPrivateJwkWithPin(blob, vaultPassword)
     } catch {
       return { ok: false, error: 'UNWRAP_FAILED' }
     }
     const parsed = parseVaultPlaintext(plain)
-    if (!parsed) return { ok: false, error: 'INVALID_VAULT_FORMAT' }
+    if (!parsed)                  return { ok: false, error: 'INVALID_VAULT_FORMAT' }
     if (parsed.kind === 'LEGACY') return { ok: false, error: 'LEGACY_VAULT_REQUIRES_REREGISTER' }
     ecdsaPrivateJwk = parsed.ecdsaJwk
   }
@@ -175,9 +154,8 @@ export async function cryptoLogin(
     const { user } = vr
 
     if (params.mode === 'register' && ecdhPrivateJwkForVault) {
-      const inner   = stringifyVaultKeyringV2(ecdsaPrivateJwk, ecdhPrivateJwkForVault)
-      const vaultPin = params.vaultPassword || password
-      const blob     = await wrapPrivateJwkWithPin(inner, vaultPin)
+      const inner = stringifyVaultKeyringV2(ecdsaPrivateJwk, ecdhPrivateJwkForVault)
+      const blob  = await wrapPrivateJwkWithPin(inner, vaultPassword)
       persistVaultBlobByLoginUsername(canonicalHandle, blob)
     }
 

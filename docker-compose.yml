@@ -23,6 +23,21 @@ services:
       retries: 10
       start_period: 10s
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.5
+    command: redis-server --save "" --appendonly no --maxmemory 96mb --maxmemory-policy allkeys-lru
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   minio:
     image: minio/minio:latest
     restart: unless-stopped
@@ -80,6 +95,7 @@ services:
       PORT: "8080"
       CORS_ORIGIN: http://localhost:3000
       DATABASE_URL: postgres://forest:forest@db:5432/forest
+      REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (at least 32 chars; generate with: openssl rand -hex 32)}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
@@ -96,6 +112,8 @@ services:
       db:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       db-migrate:
         condition: service_completed_successfully

@@ -106,13 +106,20 @@ case "$CMD" in
   update)
     log "Получаю обновления из git..."
     git pull origin main
-    log "Пересборка образов (данные в volumes сохраняются)..."
-    # НИКОГДА не используем 'down -v' — это удалит данные
-    # db-migrate пересобирается без кэша — чтобы новые SQL миграции попали в образ
+
+    log "Пересборка образа миграций (без кэша)..."
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans
-    log "Применяю новые миграции БД..."
+
+    log "Запускаю инфраструктуру (БД, Redis, MinIO)..."
+    # НИКОГДА не используем 'down -v' — это удалит данные
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d db redis minio
+
+    log "Жду готовности БД..."
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
+
+    log "Пересборка и запуск app-сервисов..."
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans
+
     ok "Обновление завершено. Данные сохранены."
     exit 0
     ;;
@@ -144,7 +151,7 @@ case "$CMD" in
     docker compose -f "$COMPOSE_FILE" --env-file "${ENV_FILE:-.env.prod}" rm -f 2>/dev/null || true
 
     log "Удаляю volumes..."
-    for vol in forestmessenger_pgdata forestmessenger_minio_data forestmessenger_caddy_data forestmessenger_caddy_config; do
+    for vol in forestmessenger_pgdata forestmessenger_redis_data forestmessenger_minio_data forestmessenger_caddy_data forestmessenger_caddy_config; do
       if docker volume inspect "$vol" >/dev/null 2>&1; then
         docker volume rm "$vol" && ok "Удалён volume: $vol" || warn "Не удалось удалить: $vol"
       else
@@ -221,9 +228,10 @@ check_volume() {
   fi
 }
 
-check_volume "pgdata"      "PostgreSQL БД"
-check_volume "minio_data"  "MinIO файлы"
-check_volume "caddy_data"  "TLS сертификаты"
+check_volume "pgdata"       "ПостгреС БД"
+check_volume "redis_data"   "Redis"
+check_volume "minio_data"   "MinIO файлы"
+check_volume "caddy_data"   "TLS сертификаты"
 check_volume "caddy_config" "Caddy config"
 
 # =============================================================================
@@ -234,7 +242,7 @@ SECRETS_DONE="$SECRETS_DIR/.initialized"
 
 if [[ ! -f "$SECRETS_DONE" ]]; then
   STALE_VOLUMES=()
-  for _vol_suffix in pgdata minio_data caddy_data caddy_config; do
+  for _vol_suffix in pgdata redis_data minio_data caddy_data caddy_config; do
     _full_name="${COMPOSE_PROJECT}_${_vol_suffix}"
     if docker volume inspect "$_full_name" >/dev/null 2>&1; then
       STALE_VOLUMES+=("$_full_name")
@@ -287,8 +295,6 @@ fi
 if [[ ! -f "$ENV_FILE" ]]; then
   [[ -f ".env.prod.example" ]] || die "Не найден .env.prod.example — репозиторий повреждён."
   cp ".env.prod.example" "$ENV_FILE"
-  # Если секреты уже сгенерированы через generate-secrets.sh —
-  # синхронизация произойдёт ниже автоматически, ручное заполнение не нужно.
   if [[ ! -f "$SECRETS_DONE" ]]; then
     echo ""
     warn "Создан ${ENV_FILE} из шаблона."
@@ -315,8 +321,6 @@ fi
 # =============================================================================
 # СИНХРОНИЗАЦИЯ СЕКРЕТОВ В .env.prod ИЗ ./secrets/
 # =============================================================================
-# Если Docker secrets инициализированы, автозаполняем .env.prod для backward compat
-# (coturn, web build args, and other services that still read from env file).
 if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
   sync_secret_to_env() {
     local secret_file="$1" env_key="$2"
@@ -394,7 +398,6 @@ if is_placeholder "$VPUB" || is_placeholder "$VPRIV"; then
   log "Генерирую VAPID ключи..."
   PUB="" PRIV="" KEYGEN_OK=false
 
-  # Preferred: native openssl (fast, no network)
   TMPKEY=$(mktemp)
   if openssl ecparam -name prime256v1 -genkey -noout -out "$TMPKEY" 2>/dev/null; then
     PRIV=$(openssl ec -in "$TMPKEY" -outform DER 2>/dev/null | tail -c +8 | head -c 32 | base64 | tr '+/' '-_' | tr -d '=\n')
@@ -410,7 +413,6 @@ if is_placeholder "$VPUB" || is_placeholder "$VPRIV"; then
     KEYGEN_OK=true
   fi
 
-  # Fallback: docker node (slow, pulls ~40MB image)
   if [[ "$KEYGEN_OK" == false ]]; then
     log "openssl VAPID не удался, пробую Docker fallback..."
     TMPV=$(mktemp)
@@ -462,7 +464,7 @@ check_required() {
   val=$(val_for_key "$key")
   if is_placeholder "$val"; then
     err "  ${key} не заполнен"
-    [[ -n "$hint" ]] && echo -e "    ${DIM}↳ ${hint}${NC}"
+    [[ -n "$hint" ]] && echo -e "    ${DIM}↓ ${hint}${NC}"
     MISSING=1
   fi
 }
@@ -526,7 +528,6 @@ wait_healthy() {
   local elapsed=0 interval=3
   printf "  %-14s " "$label"
 
-  # Get container ID for this service
   local container
   container=$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$service" 2>/dev/null | head -1)
 
@@ -545,10 +546,8 @@ wait_healthy() {
                  docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' "$container" 2>/dev/null | tail -3
                  return 1 ;;
       running)
-        # Container has no healthcheck — treat running as ok
         echo -e " ${GRN}✓ running${NC}"; return 0 ;;
       starting)
-        # Still starting, keep polling
         ;;
     esac
 
@@ -556,7 +555,6 @@ wait_healthy() {
     elapsed=$((elapsed + interval))
     printf "."
     if [[ "$elapsed" -ge "$max_wait" ]]; then
-      # Last check before timeout
       health_status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "unknown")
       if [[ "$health_status" == "healthy" || "$health_status" == "running" ]]; then
         echo -e " ${GRN}✓ ${health_status}${NC}"
@@ -568,9 +566,8 @@ wait_healthy() {
   done
 }
 
-# Quick pre-check: if compose up succeeded and all containers healthy, skip polling
 all_healthy=true
-for svc in db minio api web; do
+for svc in db redis minio api web; do
   cid=$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$svc" 2>/dev/null | head -1)
   if [[ -n "$cid" ]]; then
     st=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null)
@@ -583,10 +580,11 @@ if [[ "$all_healthy" == true ]]; then
 else
   sep
   log "Жду готовности сервисов..."
-  wait_healthy "db"    "PostgreSQL"  60  || true
-  wait_healthy "minio" "MinIO"       60  || true
-  wait_healthy "api"   "API"         120 || true
-  wait_healthy "web"   "Next.js"     180 || true
+  wait_healthy "db"    "ПостгреС"     60  || true
+  wait_healthy "redis" "Redis"        60  || true
+  wait_healthy "minio" "MinIO"        60  || true
+  wait_healthy "api"   "API"          120 || true
+  wait_healthy "web"   "Next.js"      180 || true
 fi
 
 # =============================================================================

@@ -166,6 +166,40 @@ textarea {
   }
 }
 
+/* ===== BUBBLE ENTRANCE ANIMATIONS ===== */
+
+@keyframes bubble-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes bubble-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.msg-bubble-mine {
+  animation: bubble-in-right 0.18s ease-out both;
+}
+
+.msg-bubble-peer {
+  animation: bubble-in-left 0.18s ease-out both;
+}
+
+/* ================================ */
+
 .animate-glitch-flicker {
   animation: glitch-flicker 3s ease-in-out infinite;
 }
@@ -306,10 +340,22 @@ select {
 }
 
 /* Message bubble width constraints per screen size */
+
+/* chat-scroll: must clip horizontal overflow so wide bubbles
+   don't create a horizontal scrollbar that pushes content below the input */
+.chat-scroll {
+  overflow-x: hidden;
+}
+
 /* Mobile portrait: 360-430px */
 @media (max-width: 430px) {
+  /* own messages: full width minus container padding */
   .msg-bubble-width {
     max-width: calc(100vw - 2rem);
+  }
+  /* peer messages: subtract avatar (22px) + gap (6px) + container padding */
+  .msg-bubble-peer-width {
+    max-width: calc(100vw - 2rem - 2.5rem);
   }
 }
 
@@ -318,12 +364,18 @@ select {
   .msg-bubble-width {
     max-width: min(85vw, 32rem);
   }
+  .msg-bubble-peer-width {
+    max-width: min(calc(85vw - 2.5rem), 32rem);
+  }
 }
 
 /* Tablet: 768-1023px */
 @media (min-width: 768px) and (max-width: 1023px) {
   .msg-bubble-width {
     max-width: min(75vw, 38rem);
+  }
+  .msg-bubble-peer-width {
+    max-width: min(calc(75vw - 2.5rem), 38rem);
   }
 }
 
@@ -332,12 +384,18 @@ select {
   .msg-bubble-width {
     max-width: min(70vw, 42rem);
   }
+  .msg-bubble-peer-width {
+    max-width: min(calc(70vw - 2.5rem), 42rem);
+  }
 }
 
 /* Ultrawide: 2560px+ */
 @media (min-width: 2560px) {
   .msg-bubble-width {
     max-width: min(50vw, 48rem);
+  }
+  .msg-bubble-peer-width {
+    max-width: min(calc(50vw - 2.5rem), 48rem);
   }
 }
 

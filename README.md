@@ -179,7 +179,7 @@ When you run `./start.sh` for the first time, here is what happens step by step:
 ```
 
 This command:
-1. Pulls the latest code from git (`git pull origin master`)
+1. Pulls the latest code from git (`git pull origin main`)
 2. Rebuilds Docker images
 3. Restarts containers with `--remove-orphans`
 4. Database migrations run automatically via the `db-migrate` container on startup
@@ -214,7 +214,7 @@ export BACKUP_PASSPHRASE="your-strong-passphrase"
 When set, the backup script pipes the archive through `openssl enc -aes-256-cbc -pbkdf2` producing a `.tar.gz.enc` file. To decrypt:
 
 ```bash
-openssl enc -d -aes-256-cbc -pbkdf2 -in backups/p13-stash-*.tar.gz.enc -out backup.tar.gz -pass pass:"your-strong-passphrase"
+openssl enc -d -aes-256-cbc -pbkdf2 -in backups/backup-*.tar.gz.enc -out backup.tar.gz -pass pass:"your-strong-passphrase"
 ```
 
 If `BACKUP_PASSPHRASE` is not set, a warning is printed and the backup is created unencrypted.

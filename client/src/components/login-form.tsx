@@ -13,6 +13,7 @@ import {
 } from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
+import { PostRegisterVaultPrompt } from '@/components/post-register-vault-prompt'
 
 export function LoginForm() {
   const { t } = useTranslation()
@@ -34,8 +35,9 @@ export function LoginForm() {
   const [isBusy, setIsBusy] = useState(false)
   const [vaultLinkOk, setVaultLinkOk] = useState(false)
   const [staleSession, setStaleSession] = useState(false)
-  /** When set, shows a blue info banner instead of a red error. */
   const [infoLog, setInfoLog] = useState<string | null>(null)
+  /** После успешной регистрации — показываем промпт резервного ключа */
+  const [showVaultPrompt, setShowVaultPrompt] = useState(false)
 
   const lock = useRef(false)
 
@@ -43,14 +45,11 @@ export function LoginForm() {
     ensureClientDeviceId()
   }, [])
 
-  // Detect stale session: AuthProvider redirects here with ?expired=1 on 401
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('expired') === '1') {
       setStaleSession(true)
-      // Clear stale cookie
       clearSessionApi().catch(() => {})
-      // Clean up URL without reload
       const clean = new URL(window.location.href)
       clean.searchParams.delete('expired')
       window.history.replaceState({}, '', clean.pathname + clean.search)
@@ -58,12 +57,12 @@ export function LoginForm() {
   }, [])
 
   useEffect(() => {
-    if (!authLoading && user) {
+    if (!authLoading && user && !showVaultPrompt) {
       const params = new URLSearchParams(window.location.search)
       const inviteCode = params.get('code')?.trim()
       router.replace(inviteCode ? `/join/${encodeURIComponent(inviteCode)}` : '/')
     }
-  }, [authLoading, user, router])
+  }, [authLoading, user, router, showVaultPrompt])
 
   const mapFault = (code: string): string => {
     const registry: Record<string, string> = {
@@ -148,6 +147,13 @@ export function LoginForm() {
       }
 
       await refresh()
+
+      // После GENESIS — показываем промпт резервного ключа до редиректа
+      if (mode === 'GENESIS') {
+        setShowVaultPrompt(true)
+        return
+      }
+
       router.refresh()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ''
@@ -198,250 +204,261 @@ export function LoginForm() {
   )
 
   return (
-    <AnimatePresence mode="wait">
-      {stage === 'MFA_SYNC' ? (
-        <motion.form
-          key="mfa"
-          onSubmit={execMfaSync}
-          className="relative w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl"
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-        >
-          <header className="mb-8 border-b border-neutral-900 pb-4">
-            <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">{t('login.totpTitle')}</p>
-          </header>
+    <>
+      {showVaultPrompt && (
+        <PostRegisterVaultPrompt
+          onDismiss={() => {
+            setShowVaultPrompt(false)
+            router.refresh()
+          }}
+        />
+      )}
 
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-zinc-500">{t('login.totpCodeLabel')}</label>
-              <input
-                id="totp"
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={totpCode}
-                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                className="w-full bg-zinc-950 border border-neutral-900 p-3 font-mono text-xl tracking-[0.6em] text-neon-cyan text-center outline-none focus:border-neon-cyan/50"
-                placeholder="000000"
-                autoComplete="one-time-code"
-              />
-            </div>
+      <AnimatePresence mode="wait">
+        {stage === 'MFA_SYNC' ? (
+          <motion.form
+            key="mfa"
+            onSubmit={execMfaSync}
+            className="relative w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            <header className="mb-8 border-b border-neutral-900 pb-4">
+              <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">{t('login.totpTitle')}</p>
+            </header>
 
-            <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
-              {t('login.totpSubmit')}
-            </TerminalGlitchButton>
-
-            <button
-              type="button"
-              onClick={() => setStage('IDENTITY')}
-              className="w-full text-[9px] uppercase tracking-widest text-zinc-700 hover:text-neon-red"
-            >
-              {t('common.back')}
-            </button>
-          </div>
-        </motion.form>
-      ) : (
-        <motion.form
-          key="identity"
-          onSubmit={execAuthProtocol}
-          className={`relative w-full border border-neutral-900 bg-black p-8 shadow-2xl transition-all duration-500 ${mode === 'GENESIS' ? 'max-w-xl' : 'max-w-sm'}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        >
-          <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
-
-          <header className="mb-8 border-b border-neutral-900 pb-4">
-            <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
-              {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
-            </p>
-            <p className="mt-1 text-[8px] text-zinc-600 tracking-widest">E2E // ECDSA P-256 // ZERO-TRUST</p>
-          </header>
-
-          <div className="space-y-6">
-            {mode === 'GENESIS' && (
-              <div className="mb-6 border border-zinc-900 bg-zinc-950/50 p-4">
-                <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">{t('login.tosRegisterTitle')}</p>
-                <div className="max-h-32 overflow-y-auto text-[9px] leading-relaxed text-zinc-500 pr-2 custom-scrollbar">
-                  {t('login.tosRegisterBody')}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="space-y-2">
-                <label className="terminal-label">{t('login.handleLabel')}</label>
+                <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-zinc-500">{t('login.totpCodeLabel')}</label>
                 <input
+                  id="totp"
                   type="text"
-                  required
-                  autoFocus
-                  value={handle}
-                  onChange={(e) => setHandle(e.target.value)}
-                  className="terminal-input"
-                  placeholder={t('login.handlePlaceholder')}
-                  autoComplete="username"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-zinc-950 border border-neutral-900 p-3 font-mono text-xl tracking-[0.6em] text-neon-cyan text-center outline-none focus:border-neon-cyan/50"
+                  placeholder="000000"
+                  autoComplete="one-time-code"
                 />
               </div>
 
-              {mode === 'ACCESS' ? (
-                <div className="space-y-2">
-                  <label className="terminal-label">{t('login.vaultPassphraseLabel')}</label>
-                  <input
-                    type="password"
-                    required
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    className="terminal-input"
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-4 border border-neon-cyan/20 p-3 animate-in fade-in slide-in-from-top-1">
-                    <p className="text-[9px] uppercase tracking-widest text-neon-cyan">{t('login.accountPasswordLabel')}</p>
-                    <p className="text-[8px] text-zinc-500">{t('login.accountPasswordHint')}</p>
-                    <p className="text-[8px] text-zinc-600 border-l-2 border-neon-cyan/30 pl-2">{t('login.accountPasswordExplain')}</p>
-                    <div className="space-y-2">
-                      <label className="terminal-label">{t('login.accountPasswordLabel')}</label>
-                      <input
-                        type="password"
-                        required
-                        value={pin}
-                        onChange={(e) => setPin(e.target.value)}
-                        className="terminal-input"
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="terminal-label">{t('common.confirm')}</label>
-                      <input
-                        type="password"
-                        required
-                        value={confirmPin}
-                        onChange={(e) => setConfirmPin(e.target.value)}
-                        className="terminal-input"
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 border border-neon-red/30 p-3 animate-in fade-in slide-in-from-top-1">
-                    <p className="text-[9px] uppercase tracking-widest text-neon-red">{t('login.vaultPasswordLabel')}</p>
-                    <p className="text-[8px] text-zinc-500">{t('login.vaultPasswordHint')}</p>
-                    <p className="text-[8px] text-zinc-600 border-l-2 border-neon-red/30 pl-2">{t('login.vaultPasswordExplain')}</p>
-                    <div className="space-y-2">
-                      <label className="terminal-label">{t('login.vaultPasswordLabel')}</label>
-                      <input
-                        type="password"
-                        required
-                        value={vaultPin}
-                        onChange={(e) => setVaultPin(e.target.value)}
-                        className="terminal-input"
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="terminal-label">{t('common.confirm')}</label>
-                      <input
-                        type="password"
-                        required
-                        value={confirmVaultPin}
-                        onChange={(e) => setConfirmVaultPin(e.target.value)}
-                        className="terminal-input"
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {mode === 'GENESIS' && pin.length > 0 && pin.length < 8 && (
-              <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
-                <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
-              </p>
-            )}
-            {mode === 'GENESIS' && vaultPin.length > 0 && vaultPin.length < 8 && (
-              <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
-                <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
-              </p>
-            )}
-
-            {staleSession && !errorLog && !infoLog && (
-              <div className="border border-neon-cyan/40 bg-neon-cyan/5 p-2 text-[9px] text-neon-cyan font-mono">
-                {t('login.sessionExpired')}
-              </div>
-            )}
-
-            {infoLog && (
-              <div className="border border-neon-cyan/40 bg-neon-cyan/5 p-2 text-[9px] text-neon-cyan font-mono flex items-center justify-between gap-2">
-                <span>{infoLog}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('ACCESS')
-                    setInfoLog(null)
-                  }}
-                  className="shrink-0 border border-neon-cyan/50 px-2 py-0.5 text-[8px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 transition-colors"
-                >
-                  {t('login.accountExistsAction')}
-                </button>
-              </div>
-            )}
-
-            {errorLog && (
-              <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono">
-                {errorLog}
-              </div>
-            )}
-
-            <div className="flex flex-col gap-4 pt-4">
               <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
-                {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
+                {t('login.totpSubmit')}
               </TerminalGlitchButton>
 
               <button
                 type="button"
-                onClick={() => {
-                  setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS')
-                  setErrorLog(null)
-                  setInfoLog(null)
-                }}
-                className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors"
+                onClick={() => setStage('IDENTITY')}
+                className="w-full text-[9px] uppercase tracking-widest text-zinc-700 hover:text-neon-red"
               >
-                {mode === 'ACCESS' ? t('login.newDevice') : t('login.existingVault')}
+                {t('common.back')}
               </button>
             </div>
+          </motion.form>
+        ) : (
+          <motion.form
+            key="identity"
+            onSubmit={execAuthProtocol}
+            className={`relative w-full border border-neutral-900 bg-black p-8 shadow-2xl transition-all duration-500 ${mode === 'GENESIS' ? 'max-w-xl' : 'max-w-sm'}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
 
-            {mode === 'ACCESS' && (
-              <div className="mt-6 border-t border-neutral-900 pt-6 space-y-3">
+            <header className="mb-8 border-b border-neutral-900 pb-4">
+              <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
+                {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
+              </p>
+              <p className="mt-1 text-[8px] text-zinc-600 tracking-widest">E2E // ECDSA P-256 // ZERO-TRUST</p>
+            </header>
+
+            <div className="space-y-6">
+              {mode === 'GENESIS' && (
+                <div className="mb-6 border border-zinc-900 bg-zinc-950/50 p-4">
+                  <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">{t('login.tosRegisterTitle')}</p>
+                  <div className="max-h-32 overflow-y-auto text-[9px] leading-relaxed text-zinc-500 pr-2 custom-scrollbar">
+                    {t('login.tosRegisterBody')}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="terminal-label">{t('login.handleLabel')}</label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={handle}
+                    onChange={(e) => setHandle(e.target.value)}
+                    className="terminal-input"
+                    placeholder={t('login.handlePlaceholder')}
+                    autoComplete="username"
+                  />
+                </div>
+
+                {mode === 'ACCESS' ? (
+                  <div className="space-y-2">
+                    <label className="terminal-label">{t('login.vaultPassphraseLabel')}</label>
+                    <input
+                      type="password"
+                      required
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value)}
+                      className="terminal-input"
+                      placeholder="••••••••"
+                      autoComplete="current-password"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-4 border border-neon-cyan/20 p-3 animate-in fade-in slide-in-from-top-1">
+                      <p className="text-[9px] uppercase tracking-widest text-neon-cyan">{t('login.accountPasswordLabel')}</p>
+                      <p className="text-[8px] text-zinc-500">{t('login.accountPasswordHint')}</p>
+                      <p className="text-[8px] text-zinc-600 border-l-2 border-neon-cyan/30 pl-2">{t('login.accountPasswordExplain')}</p>
+                      <div className="space-y-2">
+                        <label className="terminal-label">{t('login.accountPasswordLabel')}</label>
+                        <input
+                          type="password"
+                          required
+                          value={pin}
+                          onChange={(e) => setPin(e.target.value)}
+                          className="terminal-input"
+                          placeholder="••••••••"
+                          autoComplete="new-password"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="terminal-label">{t('common.confirm')}</label>
+                        <input
+                          type="password"
+                          required
+                          value={confirmPin}
+                          onChange={(e) => setConfirmPin(e.target.value)}
+                          className="terminal-input"
+                          placeholder="••••••••"
+                          autoComplete="new-password"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 border border-neon-red/30 p-3 animate-in fade-in slide-in-from-top-1">
+                      <p className="text-[9px] uppercase tracking-widest text-neon-red">{t('login.vaultPasswordLabel')}</p>
+                      <p className="text-[8px] text-zinc-500">{t('login.vaultPasswordHint')}</p>
+                      <p className="text-[8px] text-zinc-600 border-l-2 border-neon-red/30 pl-2">{t('login.vaultPasswordExplain')}</p>
+                      <div className="space-y-2">
+                        <label className="terminal-label">{t('login.vaultPasswordLabel')}</label>
+                        <input
+                          type="password"
+                          required
+                          value={vaultPin}
+                          onChange={(e) => setVaultPin(e.target.value)}
+                          className="terminal-input"
+                          placeholder="••••••••"
+                          autoComplete="new-password"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="terminal-label">{t('common.confirm')}</label>
+                        <input
+                          type="password"
+                          required
+                          value={confirmVaultPin}
+                          onChange={(e) => setConfirmVaultPin(e.target.value)}
+                          className="terminal-input"
+                          placeholder="••••••••"
+                          autoComplete="new-password"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {mode === 'GENESIS' && pin.length > 0 && pin.length < 8 && (
+                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
+                  <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
+                </p>
+              )}
+              {mode === 'GENESIS' && vaultPin.length > 0 && vaultPin.length < 8 && (
+                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
+                  <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
+                </p>
+              )}
+
+              {staleSession && !errorLog && !infoLog && (
+                <div className="border border-neon-cyan/40 bg-neon-cyan/5 p-2 text-[9px] text-neon-cyan font-mono">
+                  {t('login.sessionExpired')}
+                </div>
+              )}
+
+              {infoLog && (
+                <div className="border border-neon-cyan/40 bg-neon-cyan/5 p-2 text-[9px] text-neon-cyan font-mono flex items-center justify-between gap-2">
+                  <span>{infoLog}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('ACCESS')
+                      setInfoLog(null)
+                    }}
+                    className="shrink-0 border border-neon-cyan/50 px-2 py-0.5 text-[8px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 transition-colors"
+                  >
+                    {t('login.accountExistsAction')}
+                  </button>
+                </div>
+              )}
+
+              {errorLog && (
+                <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono">
+                  {errorLog}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-4 pt-4">
+                <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
+                  {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
+                </TerminalGlitchButton>
+
                 <button
                   type="button"
-                  onClick={handleVaultImport}
-                  className="w-full border border-neutral-800 bg-zinc-950 py-2 text-[9px] uppercase tracking-widest text-zinc-500 hover:border-neon-cyan hover:text-neon-cyan transition-all"
-                >
-                  {t('login.vaultRecoveryImport')}
-                </button>
-                {vaultLinkOk && <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">{t('login.vaultRecoveryOk')}</p>}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await clearSessionApi().catch(() => {})
-                    window.location.reload()
+                  onClick={() => {
+                    setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS')
+                    setErrorLog(null)
+                    setInfoLog(null)
                   }}
-                  className="w-full text-[8px] uppercase tracking-widest text-zinc-600 hover:text-zinc-400 transition-colors"
+                  className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors"
                 >
-                  {t('login.clearSession')}
+                  {mode === 'ACCESS' ? t('login.newDevice') : t('login.existingVault')}
                 </button>
               </div>
-            )}
-          </div>
-        </motion.form>
-      )}
-    </AnimatePresence>
+
+              {mode === 'ACCESS' && (
+                <div className="mt-6 border-t border-neutral-900 pt-6 space-y-3">
+                  <button
+                    type="button"
+                    onClick={handleVaultImport}
+                    className="w-full border border-neutral-800 bg-zinc-950 py-2 text-[9px] uppercase tracking-widest text-zinc-500 hover:border-neon-cyan hover:text-neon-cyan transition-all"
+                  >
+                    {t('login.vaultRecoveryImport')}
+                  </button>
+                  {vaultLinkOk && <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">{t('login.vaultRecoveryOk')}</p>}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await clearSessionApi().catch(() => {})
+                      window.location.reload()
+                    }}
+                    className="w-full text-[8px] uppercase tracking-widest text-zinc-600 hover:text-zinc-400 transition-colors"
+                  >
+                    {t('login.clearSession')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </motion.form>
+        )}
+      </AnimatePresence>
+    </>
   )
 }

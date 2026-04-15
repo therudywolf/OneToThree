@@ -124,7 +124,6 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
     setReauthBusy(true)
     setReauthError(null)
     try {
-      // Verify vault PIN before allowing re-authorization
       const blob = readVaultBlob(userId)
       if (!blob) {
         setReauthError(t('settings.noLocalVault'))
@@ -132,14 +131,12 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         return
       }
       await unwrapPrivateJwkWithPin(blob, reauthPin)
-      // PIN verified — proceed with re-authorization
       await reauthorizeDevice(reauthDevice.id)
       setReauthDevice(null)
       setReauthPin('')
       await load()
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('settings.unknown')
-      // If unwrap fails, it's a wrong PIN
       if (msg.includes('decrypt') || msg.includes('unwrap') || msg.includes('OperationError')) {
         setReauthError(t('settings.killPinBad'))
       } else {
@@ -186,12 +183,32 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       {linkQrOpen ? (
         <SettingsLinkDeviceModal onClose={() => setLinkQrOpen(false)} />
       ) : null}
+
       <div>
         <p className="text-xs uppercase tracking-[0.25em] text-neon-cyan">
           {t('settings.devicesSectionTitle')}
         </p>
         <p className="mt-1 break-words text-[9px] text-red-800">
           {t('settings.devicesHint')}
+        </p>
+      </div>
+
+      {/* Объяснение QR-входа */}
+      <div className="border border-neon-cyan/10 bg-zinc-950/60 p-3 space-y-1">
+        <p className="text-[9px] uppercase tracking-widest text-neon-cyan/70">[ ДОБАВИТЬ УСТРОЙСТВО :: QR ]</p>
+        <p className="text-[9px] text-zinc-500 leading-relaxed">
+          Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер и отсканируй его камерой или через приложение. Новое устройство автоматически получит сессию без ввода пароля. QR действителен <span className="text-zinc-300">5 минут</span> и одноразовый.
+        </p>
+      </div>
+
+      {/* Объяснение резервного ключа */}
+      <div className="border border-neon-red/20 bg-zinc-950/60 p-3 space-y-1">
+        <p className="text-[9px] uppercase tracking-widest text-neon-red/80">[ РЕЗЕРВНАЯ КОПИЯ КЛЮЧА ]</p>
+        <p className="text-[9px] text-zinc-500 leading-relaxed">
+          Твой приватный ключ хранится <span className="text-zinc-300">только локально</span> в этом браузере. Сервер его не знает и восстановить не может. Скачай резервную копию и храни в безопасном месте — без неё при потере браузера аккаунт будет недоступен навсегда.
+        </p>
+        <p className="text-[9px] text-zinc-600">
+          Файл зашифрован твоим vault-паролем — без него он бесполезен.
         </p>
       </div>
 

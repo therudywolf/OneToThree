@@ -107,6 +107,12 @@ export function MediaPreviewModal({
     }
   }
 
+  const handleSend = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onSend(caption.trim())
+  }
+
   const queueRemaining = queue.length - 1
 
   return (
@@ -170,7 +176,8 @@ export function MediaPreviewModal({
           />
           <button
             type="button"
-            onClick={() => onSend(caption.trim())}
+            onClick={handleSend}
+            onTouchEnd={handleSend}
             className="flex items-center justify-center gap-1.5 border border-neon-cyan bg-black py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black"
           >
             <Send className="h-3 w-3" />

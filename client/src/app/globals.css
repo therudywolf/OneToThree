@@ -89,7 +89,6 @@
   --text-shadow-intensity: 0;
   --font-family: 'Google Sans', 'Roboto', system-ui, sans-serif;
 }
-/* MD3 dark — скруглённые углы и шрифт */
 [data-theme="md3dark"] body {
   font-family: var(--font-family) !important;
   text-shadow: none !important;
@@ -131,6 +130,54 @@
   border-color: color-mix(in srgb, var(--neon-cyan) 20%, transparent) !important;
   background: color-mix(in srgb, var(--void) 90%, transparent) !important;
 }
+
+/* ===== MD3 DARK — hardcoded Tailwind overrides ===== */
+/* bg-black / bg-zinc-* не привязаны к токенам — переопределяем здесь */
+[data-theme="md3dark"] .bg-black {
+  background-color: var(--void) !important;
+}
+[data-theme="md3dark"] .bg-zinc-950 {
+  background-color: color-mix(in srgb, var(--void) 70%, var(--surface)) !important;
+}
+[data-theme="md3dark"] .bg-zinc-900 {
+  background-color: var(--surface) !important;
+}
+[data-theme="md3dark"] .bg-zinc-800 {
+  background-color: color-mix(in srgb, var(--surface) 70%, var(--neon-cyan) 8%) !important;
+}
+[data-theme="md3dark"] .bg-zinc-700 {
+  background-color: color-mix(in srgb, var(--surface) 50%, var(--on-surface) 15%) !important;
+}
+/* Текст */
+[data-theme="md3dark"] .text-zinc-400,
+[data-theme="md3dark"] .text-zinc-500,
+[data-theme="md3dark"] .text-zinc-600 {
+  color: color-mix(in srgb, var(--on-surface) 55%, transparent) !important;
+}
+[data-theme="md3dark"] .text-zinc-300,
+[data-theme="md3dark"] .text-zinc-200 {
+  color: color-mix(in srgb, var(--on-surface) 80%, transparent) !important;
+}
+[data-theme="md3dark"] .text-white {
+  color: var(--on-surface) !important;
+}
+/* Бордеры */
+[data-theme="md3dark"] .border-zinc-800,
+[data-theme="md3dark"] .border-zinc-700 {
+  border-color: color-mix(in srgb, var(--neon-cyan) 18%, transparent) !important;
+}
+[data-theme="md3dark"] .border-neutral-800,
+[data-theme="md3dark"] .border-neutral-900 {
+  border-color: color-mix(in srgb, var(--neon-cyan) 14%, transparent) !important;
+}
+/* Hover-состояния */
+[data-theme="md3dark"] .hover\:bg-zinc-800:hover {
+  background-color: color-mix(in srgb, var(--surface) 80%, var(--neon-cyan) 10%) !important;
+}
+[data-theme="md3dark"] .hover\:bg-zinc-900:hover {
+  background-color: color-mix(in srgb, var(--surface) 90%, var(--neon-cyan) 5%) !important;
+}
+/* red-950 используется в recording UI — оставляем как есть, это акцент */
 
 /* ===== MD3 LIGHT — Google Material You, светлая ===== */
 [data-theme="md3light"] {
@@ -194,14 +241,66 @@
   border-color: color-mix(in srgb, var(--neon-cyan) 25%, transparent) !important;
   color: var(--neon-red) !important;
 }
-/* Светлая тема: кастомный скроллбар */
 [data-theme="md3light"] .chat-scroll::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--neon-cyan) 30%, transparent);
 }
-/* Светлая: backdrop для модальных окон */
 [data-theme="md3light"] .fixed.bg-black\/90 {
   background: rgba(26, 28, 30, 0.6) !important;
   backdrop-filter: blur(8px);
+}
+
+/* ===== MD3 LIGHT — hardcoded Tailwind overrides ===== */
+[data-theme="md3light"] .bg-black {
+  background-color: var(--void) !important;
+}
+[data-theme="md3light"] .bg-zinc-950 {
+  background-color: color-mix(in srgb, var(--void) 60%, var(--neon-cyan) 4%) !important;
+}
+[data-theme="md3light"] .bg-zinc-900 {
+  background-color: color-mix(in srgb, var(--void) 40%, var(--neon-cyan) 6%) !important;
+}
+[data-theme="md3light"] .bg-zinc-800 {
+  background-color: color-mix(in srgb, var(--void) 20%, var(--neon-cyan) 10%) !important;
+}
+[data-theme="md3light"] .bg-zinc-700 {
+  background-color: color-mix(in srgb, var(--surface) 30%, var(--neon-cyan) 15%) !important;
+}
+/* Текст — инвертируем тёмные zinc на читаемые в светлой теме */
+[data-theme="md3light"] .text-zinc-400,
+[data-theme="md3light"] .text-zinc-500,
+[data-theme="md3light"] .text-zinc-600 {
+  color: color-mix(in srgb, var(--on-surface) 60%, transparent) !important;
+}
+[data-theme="md3light"] .text-zinc-300,
+[data-theme="md3light"] .text-zinc-200 {
+  color: color-mix(in srgb, var(--on-surface) 80%, transparent) !important;
+}
+[data-theme="md3light"] .text-white {
+  color: var(--on-surface) !important;
+}
+/* placeholder-текст */
+[data-theme="md3light"] .placeholder-neon-cyan\/40::placeholder {
+  color: color-mix(in srgb, var(--neon-cyan) 40%, transparent) !important;
+}
+/* Бордеры */
+[data-theme="md3light"] .border-zinc-800,
+[data-theme="md3light"] .border-zinc-700 {
+  border-color: color-mix(in srgb, var(--neon-cyan) 30%, transparent) !important;
+}
+[data-theme="md3light"] .border-neutral-800,
+[data-theme="md3light"] .border-neutral-900 {
+  border-color: color-mix(in srgb, var(--neon-cyan) 22%, transparent) !important;
+}
+/* Hover */
+[data-theme="md3light"] .hover\:bg-zinc-800:hover {
+  background-color: color-mix(in srgb, var(--void) 30%, var(--neon-cyan) 12%) !important;
+}
+[data-theme="md3light"] .hover\:bg-zinc-900:hover {
+  background-color: color-mix(in srgb, var(--void) 50%, var(--neon-cyan) 8%) !important;
+}
+/* Scrollbar */
+[data-theme="md3light"] .scrollbar-thumb-neon-cyan\/20::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--neon-cyan) 25%, transparent);
 }
 
 html {

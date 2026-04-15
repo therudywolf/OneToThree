@@ -131,13 +131,7 @@ const en = {
   'login.vaultRecoveryOk': 'Key loaded. Enter your password to decrypt.',
   'login.vaultImportHandleMissing': 'No username in backup file. Enter manually before importing.',
   'login.tosRegisterTitle': 'Terms of Service',
-  'login.tosRegisterBody': `Non-Custodial: We physically cannot access your keys. If you lose your password, your history is gone permanently.
-
-Liability: This is a private service. You operate at your own risk. We do not moderate content. You are solely responsible for your data.
-
-As-Is: Service provided without warranty. Data loss is possible.
-
-The administration reserves the right to remove any account without warning.`,
+  'login.tosRegisterBody': `Non-Custodial: We physically cannot access your keys. If you lose your password, your history is gone permanently.\n\nLiability: This is a private service. You operate at your own risk. We do not moderate content. You are solely responsible for your data.\n\nAs-Is: Service provided without warranty. Data loss is possible.\n\nThe administration reserves the right to remove any account without warning.`,
   'login.signIn': 'Sign In',
   'login.register': 'Register',
   'login.sessionExpired': 'Session expired. Please sign in again.',
@@ -677,6 +671,10 @@ The administration reserves the right to remove any account without warning.`,
   'settings.changeAccountPasswordMismatch': 'New passwords do not match.',
   'settings.changeAccountPasswordMinLength': 'New password must be at least 8 characters.',
   'settings.changeAccountPasswordSame': 'New password must differ from current.',
+
+  // [SETTINGS - CHAT SOUND]
+  'settings.chatSoundTitle': 'Chat Sound',
+  'settings.chatSoundHint': 'Play a sound when a new message arrives while this tab is active.',
 } as const;
 
 export default en;

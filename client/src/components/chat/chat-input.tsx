@@ -9,7 +9,7 @@ import { useMediaRecorder } from '@/hooks/use-media-recorder'
 import { resumeAudioContextAfterGesture } from '@/lib/call-ringtones'
 import { vibrateShort } from '@/lib/vibrate'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
-import EmojiPicker from 'emoji-picker-react'
+import EmojiPicker, { Theme } from 'emoji-picker-react'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 
 function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
@@ -482,7 +482,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <div ref={emojiContainerRef} className="hidden md:block">
               <button
                 type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-neon-cyan/30 hover:text-neon-cyan/70 transition-colors disabled:opacity-20 z-10"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-neon-cyan/60 hover:text-neon-cyan transition-colors disabled:opacity-20 z-10"
                 disabled={disabled}
                 onClick={() => setEmojiOpen((o) => !o)}
                 tabIndex={-1}
@@ -491,7 +491,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
                 <Smile className="h-4 w-4" />
               </button>
               {emojiOpen && (
-                <div className="absolute bottom-[calc(100%+0.5rem)] right-0 z-[60] border border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.12)]">
+                <div className="absolute bottom-[calc(100%+0.5rem)] right-0 z-[60] border border-neon-cyan/50 shadow-[0_0_16px_rgba(0,255,255,0.12)]">
                   <EmojiPicker
                     onEmojiClick={(emojiData) => { insertEmoji(emojiData.emoji); setEmojiOpen(false) }}
                     skinTonesDisabled
@@ -499,6 +499,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
                     previewConfig={{ showPreview: false }}
                     width={300}
                     height={350}
+                    theme={Theme.DARK}
                   />
                 </div>
               )}

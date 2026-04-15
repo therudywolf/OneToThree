@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
-import otplib from 'otplib'
 import QRCode from 'qrcode'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -40,7 +40,9 @@ import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
 
-const { authenticator } = otplib
+const _require = createRequire(import.meta.url)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { authenticator } = _require('otplib') as any
 
 const challengeBodySchema = z.object({
   username: z.string(),

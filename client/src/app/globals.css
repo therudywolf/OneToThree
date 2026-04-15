@@ -8,6 +8,29 @@
   --void: #000000;
 }
 
+/* ===== CHROMATIC PROTOCOLS ===== */
+
+[data-theme="cyberpunk2077"] {
+  --void: #0d0208;
+  --neon-red: #FCE700;
+  --neon-cyan: #FF003C;
+}
+[data-theme="matrix"] {
+  --void: #000000;
+  --neon-red: #00FF41;
+  --neon-cyan: #003B00;
+}
+[data-theme="dracula"] {
+  --void: #282A36;
+  --neon-red: #FF79C6;
+  --neon-cyan: #8BE9FD;
+}
+[data-theme="midnight"] {
+  --void: #0A0E1A;
+  --neon-red: #4FC3F7;
+  --neon-cyan: #E0F7FA;
+}
+
 html {
   background-color: var(--void);
 }

@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next'
 
 /**
- * PROJECT 13 :: PWA_MANIFEST_DESCRIPTOR
+ * OneToThree :: PWA_MANIFEST_DESCRIPTOR
  * Level: Interface Layer (OS Integration)
  * Vibe: Clinical Pure / Zero-Trust Perimeter
  */
@@ -9,8 +9,8 @@ import type { MetadataRoute } from 'next'
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: 'p13_core_node',
-    name: 'Project 13 (One to Three)',
-    short_name: 'P13',
+    name: 'OneToThree',
+    short_name: '13',
     description: 'Clinical-grade zero-trust E2E transmission node',
     lang: 'ru', // Переводим основной дескриптор на наш язык
     start_url: '/',

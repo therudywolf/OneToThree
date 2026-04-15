@@ -10,13 +10,13 @@ import { RecoveryHandler } from '@/components/recovery-handler'
 import './globals.css'
 
 /**
- * PROJECT 13 :: CORE_SHELL_CONTAINMENT
+ * OneToThree :: CORE_SHELL_CONTAINMENT
  * Level: Root Layer (Zero-Trust Perimeter)
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
 export const metadata: Metadata = {
-  title: 'Project 13 (One to Three)',
+  title: 'OneToThree',
   description: 'Clinical-grade zero-trust E2E transmission node',
   manifest: '/manifest.webmanifest',
   icons: {
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: 'Project 13',
+    title: '13',
     statusBarStyle: 'black-translucent',
   },
   other: {

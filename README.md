@@ -1,4 +1,4 @@
-# Forest Messenger
+# OneToThree
 
 Self-hosted end-to-end encrypted messenger. The server stores only ciphertext — private keys never leave the browser.
 
@@ -292,7 +292,7 @@ For full architecture details, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## Security
 
-Forest Messenger uses a **zero-trust server model**:
+OneToThree uses a **zero-trust server model**:
 
 - **Private keys never leave the browser.** The key vault is encrypted locally with PBKDF2 (600k iterations) + AES-GCM-256.
 - **Server stores only ciphertext.** Messages, media, and group keys are opaque encrypted blobs.

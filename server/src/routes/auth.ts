@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import QRCode from 'qrcode'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { users } from '../db/schema.js'
+import { devices, users } from '../db/schema.js'
 import {
   deletePending,
   getPending,
@@ -77,9 +77,6 @@ const qrLoginBodySchema = z.object({
 const QR_LINK_TTL_S = 300
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
-  /**
-   * Authenticated device issues a short-lived token; show as QR on this device for another to scan.
-   */
   app.post('/qr-generate', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -98,9 +95,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  /**
-   * New device: redeem token → session cookie (stub; extend with TOTP / rate limits as needed).
-   */
   app.post('/qr-login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const parsed = qrLoginBodySchema.safeParse(request.body)
     if (!parsed.success) {
@@ -123,40 +117,23 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       .where(eq(users.id, entry.sub))
       .limit(1)
 
-    if (!row) {
-      return reply.status(401).send({ error: 'USER_NOT_FOUND' })
-    }
-    if (row.isBanned) {
-      return reply.status(401).send({ error: 'BANNED_USER' })
-    }
-    if (row.isTotpEnabled) {
-      return reply.status(501).send({ error: 'QR_LOGIN_REQUIRES_TOTP_STUB' })
-    }
+    if (!row) return reply.status(401).send({ error: 'USER_NOT_FOUND' })
+    if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
+    if (row.isTotpEnabled) return reply.status(501).send({ error: 'QR_LOGIN_REQUIRES_TOTP_STUB' })
 
     const canonicalId = normalizeUuid(row.id)
     const dev = await upsertDeviceForSession(request, canonicalId)
     if (!dev.ok) {
-      if (dev.error === 'DEVICE_REVOKED') {
-        return reply.status(403).send({ error: 'DEVICE_REVOKED' })
-      }
+      if (dev.error === 'DEVICE_REVOKED') return reply.status(403).send({ error: 'DEVICE_REVOKED' })
       return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
     }
 
     const token = await reply.jwtSign(
-      {
-        sub: canonicalId,
-        username: row.username,
-        device_id: dev.deviceId,
-        jti: generateJti(),
-      },
+      { sub: canonicalId, username: row.username, device_id: dev.deviceId, jti: generateJti() },
       { expiresIn: SESSION_MAX_AGE_S }
     )
     commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
-
-    return reply.send({
-      ok: true,
-      user: { id: canonicalId, username: row.username },
-    })
+    return reply.send({ ok: true, user: { id: canonicalId, username: row.username } })
   })
 
   app.get('/ws-ticket', async (request, reply) => {
@@ -180,10 +157,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (user) {
       const [totpRow] = await db
-        .select({
-          isTotpEnabled: users.isTotpEnabled,
-          avatarKey: users.avatarKey,
-        })
+        .select({ isTotpEnabled: users.isTotpEnabled, avatarKey: users.avatarKey })
         .from(users)
         .where(eq(users.id, user.id))
         .limit(1)
@@ -200,27 +174,19 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         },
       })
     }
-    if (reply.sent) {
-      return
-    }
-    if (!hadCookie) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (reply.sent) return
+    if (!hadCookie) return reply.status(401).send({ error: 'UNAUTHORIZED' })
     try {
       await request.server.jwt.verify(readFmSessionToken(request) ?? '')
     } catch {
       return reply.status(401).send({ error: 'UNAUTHORIZED' })
     }
-    return reply
-      .status(401)
-      .send({ error: 'GHOST_SESSION_USER_NOT_FOUND' })
+    return reply.status(401).send({ error: 'GHOST_SESSION_USER_NOT_FOUND' })
   })
 
   app.post('/refresh', async (request, reply) => {
     const sess = await verifySessionJwt(request)
-    if (!sess?.sub || !sess.username) {
-      return reply.status(401).send({ error: 'UNAUTHORIZED' })
-    }
+    if (!sess?.sub || !sess.username) return reply.status(401).send({ error: 'UNAUTHORIZED' })
 
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -228,29 +194,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const oldToken = readFmSessionToken(request)
     if (oldToken) {
       try {
-        const payload = await request.server.jwt.verify<{
-          jti?: string
-          exp?: number
-        }>(oldToken)
-        if (payload.jti && payload.exp) {
-          await denyJti(payload.jti, payload.exp)
-        }
-      } catch {
-        // Old token already invalid
-      }
+        const payload = await request.server.jwt.verify<{ jti?: string; exp?: number }>(oldToken)
+        if (payload.jti && payload.exp) await denyJti(payload.jti, payload.exp)
+      } catch { /* already invalid */ }
     }
 
     const newToken = await reply.jwtSign(
-      {
-        sub: normalizeUuid(user.id),
-        username: user.username,
-        device_id: sess.device_id,
-        jti: generateJti(),
-      },
+      { sub: normalizeUuid(user.id), username: user.username, device_id: sess.device_id, jti: generateJti() },
       { expiresIn: SESSION_MAX_AGE_S }
     )
     commitFmSessionCookie(reply, newToken, SESSION_MAX_AGE_S)
-
     return reply.send({ ok: true })
   })
 
@@ -263,16 +216,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const token = readFmSessionToken(request)
     if (token) {
       try {
-        const payload = await request.server.jwt.verify<{
-          jti?: string
-          exp?: number
-        }>(token)
-        if (payload.jti && payload.exp) {
-          await denyJti(payload.jti, payload.exp)
-        }
-      } catch {
-        // Token already invalid
-      }
+        const payload = await request.server.jwt.verify<{ jti?: string; exp?: number }>(token)
+        if (payload.jti && payload.exp) await denyJti(payload.jti, payload.exp)
+      } catch { /* already invalid */ }
     }
     clearFmSessionCookie(reply)
     return reply.send({ ok: true })
@@ -282,21 +228,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    const [row] = await db
-      .select({ isTotpEnabled: users.isTotpEnabled })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
-    if (row?.isTotpEnabled) {
-      return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
-    }
+    const [row] = await db.select({ isTotpEnabled: users.isTotpEnabled }).from(users).where(eq(users.id, user.id)).limit(1)
+    if (row?.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
 
     const secret = authenticator.generateSecret()
     await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id))
 
     const otpauthUrl = authenticator.keyuri(user.username, 'Project13', secret)
     const qrDataUrl = await QRCode.toDataURL(otpauthUrl)
-
     return reply.send({ secret, qr_data_url: qrDataUrl, otpauth_url: otpauthUrl })
   })
 
@@ -309,19 +248,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const [row] = await db
       .select({ totpSecret: users.totpSecret, isTotpEnabled: users.isTotpEnabled })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
+      .from(users).where(eq(users.id, user.id)).limit(1)
 
     if (!row?.totpSecret) return reply.status(400).send({ error: 'TOTP_SETUP_REQUIRED' })
     if (row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
 
-    if (!authenticator.check(parsed.data.code, row.totpSecret)) {
-      return reply.status(401).send({ error: 'TOTP_INVALID' })
-    }
-    if (!await consumeTotpCode(user.id, parsed.data.code)) {
-      return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
-    }
+    if (!authenticator.check(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
+    if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
     await db.update(users).set({ isTotpEnabled: true }).where(eq(users.id, user.id))
     return reply.send({ ok: true, totp_enabled: true })
@@ -336,20 +269,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const [row] = await db
       .select({ totpSecret: users.totpSecret, isTotpEnabled: users.isTotpEnabled })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
+      .from(users).where(eq(users.id, user.id)).limit(1)
 
-    if (!row?.isTotpEnabled || !row.totpSecret) {
-      return reply.status(400).send({ error: 'TOTP_NOT_ENABLED' })
-    }
-
-    if (!authenticator.check(parsed.data.code, row.totpSecret)) {
-      return reply.status(401).send({ error: 'TOTP_INVALID' })
-    }
-    if (!await consumeTotpCode(user.id, parsed.data.code)) {
-      return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
-    }
+    if (!row?.isTotpEnabled || !row.totpSecret) return reply.status(400).send({ error: 'TOTP_NOT_ENABLED' })
+    if (!authenticator.check(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
+    if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
     await db.update(users).set({ totpSecret: null, isTotpEnabled: false }).where(eq(users.id, user.id))
     return reply.send({ ok: true, totp_enabled: false })
@@ -361,11 +285,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     let payload: { sub: string; username: string; scope?: string }
     try {
-      payload = await request.server.jwt.verify<{
-        sub: string
-        username: string
-        scope?: string
-      }>(parsed.data.pending_token)
+      payload = await request.server.jwt.verify<{ sub: string; username: string; scope?: string }>(parsed.data.pending_token)
     } catch {
       return reply.status(401).send({ error: 'INVALID_PENDING_TOKEN' })
     }
@@ -377,12 +297,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const id = normalizeUuid(payload.sub)
     const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1)
 
-    if (!row?.totpSecret || !row.isTotpEnabled) {
-      return reply.status(400).send({ error: 'TOTP_NOT_CONFIGURED' })
-    }
-    if (row.isBanned) {
-      return reply.status(401).send({ error: 'BANNED_USER' })
-    }
+    if (!row?.totpSecret || !row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_NOT_CONFIGURED' })
+    if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
 
     if (!authenticator.check(parsed.data.code, row.totpSecret)) {
       void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
@@ -403,17 +319,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
     }
     const token = await reply.jwtSign(
-      {
-        sub: canonicalId,
-        username: row.username,
-        device_id: dev.deviceId,
-        jti: generateJti(),
-      },
+      { sub: canonicalId, username: row.username, device_id: dev.deviceId, jti: generateJti() },
       { expiresIn: SESSION_MAX_AGE_S }
     )
     commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
     void recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'success', deviceId: dev.deviceId })
-
     return reply.send({ user: { id: canonicalId, username: row.username } })
   })
 
@@ -429,9 +339,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
         const nick = parseNickname(parsed.data.username)
         if (!nick.ok) return reply.status(400).send({ error: nick.error })
-        const username = nick.value
         const nonce = randomUUID()
-        await setChallenge(username, nonce)
+        await setChallenge(nick.value, nonce)
         return reply.send({ nonce })
       })
 
@@ -452,20 +361,59 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(401).send({ error: 'NONCE_MISMATCH' })
         }
 
+        // Load existing user
         const existingRows = await db.select().from(users).where(eq(users.username, username)).limit(1)
         const existing = existingRows[0]
 
+        // Read x-client-device-id from headers (may be absent on first registration)
+        const clientDeviceKey = (request.headers['x-client-device-id'] as string | undefined)?.trim() ?? null
+
         let publicKeyJwkStr: string
+
         if (existing) {
-          publicKeyJwkStr = existing.publicKeyJwk
-          if (public_key_jwk?.trim()) {
-            const incoming = public_key_jwk.trim()
-            if (!safeEqualUtf8(incoming, existing.publicKeyJwk)) {
-              await deletePending(username)
-              return reply.status(400).send({ error: 'PUBLIC_KEY_CONFLICT' })
+          // ── Existing user: determine which key to verify against ──────────────
+
+          // 1. If we know the device, look up its per-device e2eePublicKey
+          let knownDeviceKey: string | null = null
+          if (clientDeviceKey) {
+            const [deviceRow] = await db
+              .select({ e2eePublicKey: devices.e2eePublicKey, revokedAt: devices.revokedAt })
+              .from(devices)
+              .where(and(eq(devices.userId, existing.id), eq(devices.clientDeviceKey, clientDeviceKey)))
+              .limit(1)
+
+            if (deviceRow) {
+              if (deviceRow.revokedAt) {
+                await deletePending(username)
+                void recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_device_revoked' })
+                return reply.status(403).send({ error: 'DEVICE_REVOKED' })
+              }
+              // Device is known and active — use its e2eePublicKey if available,
+              // otherwise fall back to users.publicKeyJwk (migrated/master device).
+              knownDeviceKey = deviceRow.e2eePublicKey ?? null
+            }
+          }
+
+          if (knownDeviceKey) {
+            // Known linked device: verify against per-device key, ignore public_key_jwk
+            publicKeyJwkStr = knownDeviceKey
+          } else {
+            // Unknown device OR device without e2eePublicKey yet (master / migrated):
+            // fall back to users.publicKeyJwk.
+            // PUBLIC_KEY_CONFLICT fires only when the caller sends a *different* key
+            // and there is no known device record to justify it.
+            publicKeyJwkStr = existing.publicKeyJwk
+            if (public_key_jwk?.trim()) {
+              const incoming = public_key_jwk.trim()
+              if (!safeEqualUtf8(incoming, existing.publicKeyJwk)) {
+                // Caller claims a new key but we have no device record that owns it.
+                await deletePending(username)
+                return reply.status(400).send({ error: 'PUBLIC_KEY_CONFLICT' })
+              }
             }
           }
         } else {
+          // ── New user registration ─────────────────────────────────────────────
           if (!public_key_jwk?.trim()) {
             await deletePending(username)
             return reply.status(400).send({ error: 'PUBLIC_KEY_REQUIRED' })
@@ -473,6 +421,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           publicKeyJwkStr = public_key_jwk.trim()
         }
 
+        // Verify ECDSA signature
         const ok = verifyNonceSignatureEcdsaP256(nonce, signature, publicKeyJwkStr)
         if (!ok) {
           await deletePending(username)
@@ -487,6 +436,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(401).send({ error: 'BANNED_USER' })
         }
 
+        // Insert new user if needed
         let userId: string
         if (existing) {
           userId = existing.id
@@ -529,7 +479,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         )
         commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
         void recordLoginEvent(request, { userId: canonicalId, username, outcome: 'success', deviceId: dev.deviceId })
-
         return reply.send({ user: { id: canonicalId, username } })
       })
     }

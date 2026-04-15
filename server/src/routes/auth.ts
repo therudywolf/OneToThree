@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
-import { authenticator } from 'otplib/preset-default'
+import otplib from 'otplib'
 import QRCode from 'qrcode'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -39,6 +39,8 @@ import {
 import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
+
+const { authenticator } = otplib
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -212,10 +214,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       .send({ error: 'GHOST_SESSION_USER_NOT_FOUND' })
   })
 
-  /**
-   * Refresh token rotation: issues a new JWT and invalidates the old one.
-   * The previous JTI is added to the denylist so the old token cannot be reused.
-   */
   app.post('/refresh', async (request, reply) => {
     const sess = await verifySessionJwt(request)
     if (!sess?.sub || !sess.username) {
@@ -225,7 +223,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    // Invalidate the old token
     const oldToken = readFmSessionToken(request)
     if (oldToken) {
       try {
@@ -234,10 +231,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           exp?: number
         }>(oldToken)
         if (payload.jti && payload.exp) {
-          await denyJti(payload.jti, payload.exp)  // Stage 2: async
+          await denyJti(payload.jti, payload.exp)
         }
       } catch {
-        // Old token already invalid — proceed with rotation.
+        // Old token already invalid
       }
     }
 
@@ -255,9 +252,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  /**
-   * Clear session cookie without requiring auth. Used by login page to drop stale cookies.
-   */
   app.post('/clear-session', async (_request, reply) => {
     clearFmSessionCookie(reply)
     return reply.send({ ok: true })
@@ -272,10 +266,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           exp?: number
         }>(token)
         if (payload.jti && payload.exp) {
-          await denyJti(payload.jti, payload.exp)  // Stage 2: async
+          await denyJti(payload.jti, payload.exp)
         }
       } catch {
-        // Token already invalid — nothing to revoke.
+        // Token already invalid
       }
     }
     clearFmSessionCookie(reply)
@@ -287,9 +281,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!assertAuthed(reply, user)) return
 
     const [row] = await db
-      .select({
-        isTotpEnabled: users.isTotpEnabled,
-      })
+      .select({ isTotpEnabled: users.isTotpEnabled })
       .from(users)
       .where(eq(users.id, user.id))
       .limit(1)
@@ -298,19 +290,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const secret = authenticator.generateSecret()
-    await db
-      .update(users)
-      .set({ totpSecret: secret })
-      .where(eq(users.id, user.id))
+    await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id))
 
     const otpauthUrl = authenticator.keyuri(user.username, 'Project13', secret)
     const qrDataUrl = await QRCode.toDataURL(otpauthUrl)
 
-    return reply.send({
-      secret,
-      qr_data_url: qrDataUrl,
-      otpauth_url: otpauthUrl,
-    })
+    return reply.send({ secret, qr_data_url: qrDataUrl, otpauth_url: otpauthUrl })
   })
 
   app.post('/2fa/verify-setup', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
@@ -318,39 +303,25 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!assertAuthed(reply, user)) return
 
     const parsed = verifySetupBodySchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
     const [row] = await db
-      .select({
-        totpSecret: users.totpSecret,
-        isTotpEnabled: users.isTotpEnabled,
-      })
+      .select({ totpSecret: users.totpSecret, isTotpEnabled: users.isTotpEnabled })
       .from(users)
       .where(eq(users.id, user.id))
       .limit(1)
 
-    if (!row?.totpSecret) {
-      return reply.status(400).send({ error: 'TOTP_SETUP_REQUIRED' })
-    }
-    if (row.isTotpEnabled) {
-      return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
-    }
+    if (!row?.totpSecret) return reply.status(400).send({ error: 'TOTP_SETUP_REQUIRED' })
+    if (row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
 
-    const isValid = authenticator.check(parsed.data.code, row.totpSecret)
-    if (!isValid) {
+    if (!authenticator.check(parsed.data.code, row.totpSecret)) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
-    if (!await consumeTotpCode(user.id, parsed.data.code)) {  // Stage 2: async
+    if (!await consumeTotpCode(user.id, parsed.data.code)) {
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
-    await db
-      .update(users)
-      .set({ isTotpEnabled: true })
-      .where(eq(users.id, user.id))
-
+    await db.update(users).set({ isTotpEnabled: true }).where(eq(users.id, user.id))
     return reply.send({ ok: true, totp_enabled: true })
   })
 
@@ -359,15 +330,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!assertAuthed(reply, user)) return
 
     const parsed = disable2faBodySchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
     const [row] = await db
-      .select({
-        totpSecret: users.totpSecret,
-        isTotpEnabled: users.isTotpEnabled,
-      })
+      .select({ totpSecret: users.totpSecret, isTotpEnabled: users.isTotpEnabled })
       .from(users)
       .where(eq(users.id, user.id))
       .limit(1)
@@ -376,27 +342,20 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'TOTP_NOT_ENABLED' })
     }
 
-    const isValid = authenticator.check(parsed.data.code, row.totpSecret)
-    if (!isValid) {
+    if (!authenticator.check(parsed.data.code, row.totpSecret)) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
-    if (!await consumeTotpCode(user.id, parsed.data.code)) {  // Stage 2: async
+    if (!await consumeTotpCode(user.id, parsed.data.code)) {
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
-    await db
-      .update(users)
-      .set({ totpSecret: null, isTotpEnabled: false })
-      .where(eq(users.id, user.id))
-
+    await db.update(users).set({ totpSecret: null, isTotpEnabled: false }).where(eq(users.id, user.id))
     return reply.send({ ok: true, totp_enabled: false })
   })
 
   app.post('/login/2fa', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const parsed = login2faBodySchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
     let payload: { sub: string; username: string; scope?: string }
     try {
@@ -414,26 +373,20 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const id = normalizeUuid(payload.sub)
-    const [row] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, id))
-      .limit(1)
+    const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1)
 
     if (!row?.totpSecret || !row.isTotpEnabled) {
       return reply.status(400).send({ error: 'TOTP_NOT_CONFIGURED' })
     }
-
     if (row.isBanned) {
       return reply.status(401).send({ error: 'BANNED_USER' })
     }
 
-    const isValid = authenticator.check(parsed.data.code, row.totpSecret)
-    if (!isValid) {
+    if (!authenticator.check(parsed.data.code, row.totpSecret)) {
       void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
-    if (!await consumeTotpCode(id, parsed.data.code)) {  // Stage 2: async
+    if (!await consumeTotpCode(id, parsed.data.code)) {
       void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
@@ -457,67 +410,47 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       { expiresIn: SESSION_MAX_AGE_S }
     )
     commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
-
     void recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'success', deviceId: dev.deviceId })
 
-    return reply.send({
-      user: { id: canonicalId, username: row.username },
-    })
+    return reply.send({ user: { id: canonicalId, username: row.username } })
   })
 
   await app.register(
     async (scoped) => {
       await scoped.register(rateLimit, {
         max: Number(process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX ?? 5),
-        timeWindow:
-          process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW ?? '15 minutes',
+        timeWindow: process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW ?? '15 minutes',
       })
 
       scoped.post('/challenge', async (request, reply) => {
         const parsed = challengeBodySchema.safeParse(request.body)
-        if (!parsed.success) {
-          return reply.status(400).send({ error: 'INVALID_BODY' })
-        }
+        if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
         const nick = parseNickname(parsed.data.username)
-        if (!nick.ok) {
-          return reply.status(400).send({ error: nick.error })
-        }
+        if (!nick.ok) return reply.status(400).send({ error: nick.error })
         const username = nick.value
-
         const nonce = randomUUID()
-        await setChallenge(username, nonce)  // Stage 2: async
+        await setChallenge(username, nonce)
         return reply.send({ nonce })
       })
 
       scoped.post('/verify', async (request, reply) => {
         const parsed = verifyBodySchema.safeParse(request.body)
-        if (!parsed.success) {
-          return reply.status(400).send({ error: 'INVALID_BODY' })
-        }
+        if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
-        const { username: rawUser, nonce, signature, public_key_jwk } =
-          parsed.data
+        const { username: rawUser, nonce, signature, public_key_jwk } = parsed.data
         const nick = parseNickname(rawUser)
-        if (!nick.ok) {
-          return reply.status(400).send({ error: nick.error })
-        }
+        if (!nick.ok) return reply.status(400).send({ error: nick.error })
         const username = nick.value
 
-        const pending = await getPending(username)  // Stage 2: async
-        if (!pending) {
-          return reply.status(401).send({ error: 'NO_CHALLENGE' })
-        }
+        const pending = await getPending(username)
+        if (!pending) return reply.status(401).send({ error: 'NO_CHALLENGE' })
 
         if (!safeEqualNonce(pending.nonce, nonce)) {
-          await deletePending(username)  // Stage 2: async
+          await deletePending(username)
           return reply.status(401).send({ error: 'NONCE_MISMATCH' })
         }
 
-        const existingRows = await db
-          .select()
-          .from(users)
-          .where(eq(users.username, username))
-          .limit(1)
+        const existingRows = await db.select().from(users).where(eq(users.username, username)).limit(1)
         const existing = existingRows[0]
 
         let publicKeyJwkStr: string
@@ -526,30 +459,26 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           if (public_key_jwk?.trim()) {
             const incoming = public_key_jwk.trim()
             if (!safeEqualUtf8(incoming, existing.publicKeyJwk)) {
-              await deletePending(username)  // Stage 2: async
+              await deletePending(username)
               return reply.status(400).send({ error: 'PUBLIC_KEY_CONFLICT' })
             }
           }
         } else {
           if (!public_key_jwk?.trim()) {
-            await deletePending(username)  // Stage 2: async
+            await deletePending(username)
             return reply.status(400).send({ error: 'PUBLIC_KEY_REQUIRED' })
           }
           publicKeyJwkStr = public_key_jwk.trim()
         }
 
-        const ok = verifyNonceSignatureEcdsaP256(
-          nonce,
-          signature,
-          publicKeyJwkStr
-        )
+        const ok = verifyNonceSignatureEcdsaP256(nonce, signature, publicKeyJwkStr)
         if (!ok) {
-          await deletePending(username)  // Stage 2: async
+          await deletePending(username)
           void recordLoginEvent(request, { userId: existing?.id ?? null, username, outcome: 'fail_signature' })
           return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
         }
 
-        await deletePending(username)  // Stage 2: async
+        await deletePending(username)
 
         if (existing?.isBanned) {
           void recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_banned' })
@@ -564,70 +493,42 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           try {
             inserted = await db
               .insert(users)
-              .values({
-                username,
-                publicKeyJwk: publicKeyJwkStr,
-              })
+              .values({ username, publicKeyJwk: publicKeyJwkStr })
               .returning({ id: users.id })
           } catch (e: unknown) {
             const err = e as { code?: string }
-            if (err.code === '23505') {
-              return reply.status(409).send({ error: 'USERNAME_TAKEN' })
-            }
+            if (err.code === '23505') return reply.status(409).send({ error: 'USERNAME_TAKEN' })
             throw e
           }
           const row = inserted[0]
-          if (!row) {
-            return reply.status(500).send({ error: 'INSERT_FAILED' })
-          }
+          if (!row) return reply.status(500).send({ error: 'INSERT_FAILED' })
           userId = row.id
         }
 
         const canonicalId = normalizeUuid(userId)
 
         if (existing?.isTotpEnabled) {
-          if (!existing.totpSecret) {
-            return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
-          }
+          if (!existing.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
           const pendingToken = await reply.jwtSign(
-            {
-              sub: canonicalId,
-              username,
-              scope: '2fa_pending',
-            },
+            { sub: canonicalId, username, scope: '2fa_pending' },
             { expiresIn: PENDING_2FA_MAX_AGE_S }
           )
-          return reply.send({
-            requires2FA: true,
-            userId: canonicalId,
-            pendingToken,
-          })
+          return reply.send({ requires2FA: true, userId: canonicalId, pendingToken })
         }
 
         const dev = await upsertDeviceForSession(request, canonicalId)
         if (!dev.ok) {
-          if (dev.error === 'DEVICE_REVOKED') {
-            return reply.status(403).send({ error: 'DEVICE_REVOKED' })
-          }
+          if (dev.error === 'DEVICE_REVOKED') return reply.status(403).send({ error: 'DEVICE_REVOKED' })
           return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
         }
         const token = await reply.jwtSign(
-          {
-            sub: canonicalId,
-            username,
-            device_id: dev.deviceId,
-            jti: generateJti(),
-          },
+          { sub: canonicalId, username, device_id: dev.deviceId, jti: generateJti() },
           { expiresIn: SESSION_MAX_AGE_S }
         )
-
         commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
-
         void recordLoginEvent(request, { userId: canonicalId, username, outcome: 'success', deviceId: dev.deviceId })
 
-        return reply.send({
-          user: { id: canonicalId, username },
-        })
+        return reply.send({ user: { id: canonicalId, username } })
       })
     }
   )

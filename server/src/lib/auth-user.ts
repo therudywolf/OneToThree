@@ -37,7 +37,8 @@ export async function verifySessionJwt(
   if (!t) return null
   try {
     const payload = await request.server.jwt.verify<SessionJwtPayload>(t)
-    if (payload.jti && isJtiDenied(payload.jti)) {
+    // Stage 2: isJtiDenied is now async (Redis-backed)
+    if (payload.jti && await isJtiDenied(payload.jti)) {
       return null
     }
     return payload

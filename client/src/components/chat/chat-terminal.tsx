@@ -118,7 +118,6 @@ export function ChatTerminal({
     y: number
     isMine: boolean
   } | null>(null)
-  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null)
   const [reactingMsgId, setReactingMsgId] = useState<string | null>(null)
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [newMsgCount, setNewMsgCount] = useState(0)
@@ -717,8 +716,6 @@ export function ChatTerminal({
                     isMine: mine,
                   })
                 }}
-                onMouseEnter={() => setHoveredMsgId(m.id)}
-                onMouseLeave={() => setHoveredMsgId(null)}
                 onTouchStart={(e) => {
                   handleTouchStart(m, e)
                   handleSwipeStart(m.id, e)
@@ -748,11 +745,6 @@ export function ChatTerminal({
                       : 'msg-bubble-peer-width msg-bubble-peer items-start'
                   } flex flex-col gap-1`}
                 >
-                  {hoveredMsgId === m.id ? (
-                    <div className={`absolute -top-8 z-10 hidden md:block ${mine ? 'right-0' : 'left-0'}`}>
-                      <QuickReactBar onReact={(emoji) => handleToggleReaction(emoji, m.id)} />
-                    </div>
-                  ) : null}
                   <div
                     className={`flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-widest ${
                       mine

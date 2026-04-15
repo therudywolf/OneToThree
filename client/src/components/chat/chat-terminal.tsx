@@ -132,7 +132,6 @@ export function ChatTerminal({
     avatarKey?: string | null
   } | null>(null)
   const [isNearBottom, setIsNearBottom] = useState(true)
-  // Keep a ref in sync so effects reading it don't go stale
   const isNearBottomRef = useRef(true)
   const [hasNewBelow, setHasNewBelow] = useState(false)
   const prevMsgCountRef = useRef(0)
@@ -146,7 +145,6 @@ export function ChatTerminal({
 
   useReadReceipts(ref, { enabled: !isGroup })
 
-  // Helper: instantly scroll container to absolute bottom
   const scrollToBottomInstant = useCallback(() => {
     const el = ref.current
     if (!el) return
@@ -172,8 +170,6 @@ export function ChatTerminal({
     return () => el.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
 
-  // Track new messages and show indicator if user scrolled up.
-  // Also handles the case where first batch of messages arrives (prevCount === 0).
   useEffect(() => {
     const prevCount = prevMsgCountRef.current
     const diff = messages.length - prevCount
@@ -181,9 +177,7 @@ export function ChatTerminal({
 
     if (diff <= 0) return
 
-    // First load or user is near bottom — always scroll down instantly
     if (prevCount === 0 || isNearBottomRef.current) {
-      // Use rAF to ensure DOM has painted the new messages before scrolling
       requestAnimationFrame(() => {
         scrollToBottomInstant()
         isNearBottomRef.current = true
@@ -192,7 +186,6 @@ export function ChatTerminal({
         setNewMsgCount(0)
       })
     } else {
-      // User scrolled up — show badge instead
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + diff)
     }
@@ -257,15 +250,12 @@ export function ChatTerminal({
     }
   }, [senderIdsToResolve])
 
-  // Scroll to bottom instantly when switching chats
   useLayoutEffect(() => {
     scrollToBottomInstant()
-    // Mark as near bottom immediately so the next message effect fires correctly
     isNearBottomRef.current = true
     setIsNearBottom(true)
     setHasNewBelow(false)
     setNewMsgCount(0)
-    // Reset message counter so first batch always triggers auto-scroll
     prevMsgCountRef.current = 0
   }, [activeChatId, scrollToBottomInstant])
 
@@ -325,7 +315,6 @@ export function ChatTerminal({
     [activeChat?.id],
   )
 
-  // Long-press for mobile context menu
   const handleTouchStart = useCallback(
     (msg: DecryptedMessage, e: React.TouchEvent) => {
       const touch = e.touches[0]
@@ -350,7 +339,6 @@ export function ChatTerminal({
     }
   }, [])
 
-  // Swipe-to-reply handlers (mobile)
   const handleSwipeStart = useCallback((msgId: string, e: React.TouchEvent) => {
     const touch = e.touches[0]
     if (!touch) return
@@ -378,11 +366,9 @@ export function ChatTerminal({
     setSwipeOffset(0)
   }, [swipeOffset, renderMessages, setReplyTo])
 
-  // Context menu close is handled by MessageActions component internally
-
   const msgById = (id: string) => renderMessages.find((m) => m.id === id)
   const oldestLoaded = renderMessages[0] ?? null
-  
+
   function labelForSender(senderId: string): string {
     if (senderId === userId) {
       return currentUsername.trim() || 'YOU'
@@ -409,7 +395,6 @@ export function ChatTerminal({
     return '—'
   }
 
-  // Voice message IDs for prev/next navigation
   const voiceMessageIds = useMemo(() => {
     return renderMessages
       .filter((m) => m.media_type === 'audio' && m.media_path && m.media_iv)
@@ -420,7 +405,6 @@ export function ChatTerminal({
     const el = ref.current?.querySelector(`[data-message-id="${targetId}"]`)
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      // Trigger play on the audio element inside
       setTimeout(() => {
         const audio = el.querySelector('audio') as HTMLAudioElement | null
         if (audio) void audio.play()
@@ -608,7 +592,6 @@ export function ChatTerminal({
             if (rows.length < OLDER_PAGE_SIZE) {
               setHasMoreOlder(false)
             }
-            // Preserve scroll position after older messages are inserted
             requestAnimationFrame(() => {
               if (scrollEl) {
                 const newHeight = scrollEl.scrollHeight
@@ -712,7 +695,9 @@ export function ChatTerminal({
               <div
                 key={m.id}
                 data-message-id={m.id}
-                className={`group/msg relative mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'} transition-transform duration-150`}
+                className={`group/msg relative mb-3 flex w-full ${
+                  mine ? 'justify-end' : 'justify-start'
+                } transition-transform duration-150`}
                 style={{
                   transform: swipingMsgId === m.id ? `translateX(${swipeOffset}px)` : undefined,
                 }}
@@ -752,7 +737,6 @@ export function ChatTerminal({
                   handleSwipeEnd()
                 }}
               >
-                {/* Swipe-to-reply indicator (mobile) */}
                 {swipingMsgId === m.id && swipeOffset > 10 ? (
                   <div
                     className="absolute left-0 top-1/2 z-10 -translate-x-full -translate-y-1/2 flex items-center justify-center md:hidden"
@@ -762,11 +746,12 @@ export function ChatTerminal({
                   </div>
                 ) : null}
                 <div
-                  className={`msg-bubble-width min-w-0 relative ${
-                    mine ? 'items-end' : 'items-start'
+                  className={`min-w-0 relative ${
+                    mine
+                      ? 'msg-bubble-width msg-bubble-mine items-end'
+                      : 'msg-bubble-peer-width msg-bubble-peer items-start'
                   } flex flex-col gap-1`}
                 >
-                  {/* Hover quick-react bar (desktop only) — positioned relative to bubble */}
                   {hoveredMsgId === m.id ? (
                     <div className={`absolute -top-8 z-10 hidden md:block ${mine ? 'right-0' : 'left-0'}`}>
                       <QuickReactBar onReact={(emoji) => handleToggleReaction(emoji, m.id)} />
@@ -824,7 +809,7 @@ export function ChatTerminal({
                         {replySnippet(replyMsg)}
                       </div>
                     ) : m.reply_to_id ? (
-<div className="mb-1 text-[10px] text-red-900">
+                      <div className="mb-1 text-[10px] text-red-900">
                         ↳ [{t('chat.originalDeleted')}]
                       </div>
                     ) : null}
@@ -880,7 +865,6 @@ export function ChatTerminal({
               </div>
             )
           } else if (group.type === 'COLLECTION') {
-            // Grouped media messages
             const mine = group.originId === userId
             const senderLabel = labelForSender(group.originId)
             const gridCols = group.messages.length === 1 ? 1 :
@@ -893,8 +877,10 @@ export function ChatTerminal({
                 className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`msg-bubble-width min-w-0 ${
-                    mine ? 'items-end' : 'items-start'
+                  className={`min-w-0 ${
+                    mine
+                      ? 'msg-bubble-width msg-bubble-mine items-end'
+                      : 'msg-bubble-peer-width msg-bubble-peer items-start'
                   } flex flex-col gap-1`}
                 >
                   <div
@@ -993,7 +979,6 @@ export function ChatTerminal({
         </button>
       ) : null}
 
-      {/* ONLY THE UNIFIED CHAT INPUT REMAINS */}
       <div className="shrink-0 bg-black">
         <ChatInput
           sendText={sendText}

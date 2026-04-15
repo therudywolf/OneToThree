@@ -15,8 +15,16 @@ import { SettingsLinkDeviceModal } from '@/components/settings-link-device-modal
 import { useTranslation } from '@/hooks/use-translation'
 import { readVaultBlob, unwrapPrivateJwkWithPin } from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
+import { VaultPinGate } from '@/components/vault-pin-gate'
 
 type Props = { userId: string; active: boolean }
+
+// Pending — какое действие ждёт подтверждения
+type PendingAction =
+  | { type: 'revoke'; device: DeviceRow }
+  | { type: 'revoke-all' }
+  | { type: 'export-vault' }
+  | null
 
 export function SettingsDevicesPanel({ userId, active }: Props) {
   const { t } = useTranslation()
@@ -32,6 +40,8 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
   const [reauthPin, setReauthPin] = useState('')
   const [reauthError, setReauthError] = useState<string | null>(null)
   const [reauthBusy, setReauthBusy] = useState(false)
+  /** Действие ожидающее подтверждения vault-пина */
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -50,26 +60,57 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
     if (active) void load()
   }, [active, userId, load])
 
-  async function onRevoke(d: DeviceRow) {
-    if (d.revoked) return
-    if (!window.confirm(`${t('settings.devicesRevokeConfirm')} (${d.device_name})`)) {
+  // Выполняется после успешного ввода vault-пина
+  async function executePending() {
+    if (!pendingAction) return
+    const action = pendingAction
+    setPendingAction(null)
+
+    if (action.type === 'export-vault') {
+      exportVaultNow()
       return
     }
-    setBusyId(d.id)
-    setError(null)
-    try {
-      await revokeDevice(d.id)
-      await load()
-      await refresh()
-      if (d.is_current) {
-        await logout()
-        window.location.href = '/login'
+
+    if (action.type === 'revoke-all') {
+      setBusyAction('terminate-all')
+      setError(null)
+      try {
+        await revokeAllOtherSessions()
+        await load()
+        await refresh()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t('settings.unknown'))
+      } finally {
+        setBusyAction(null)
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
-    } finally {
-      setBusyId(null)
+      return
     }
+
+    if (action.type === 'revoke') {
+      const d = action.device
+      setBusyId(d.id)
+      setError(null)
+      try {
+        await revokeDevice(d.id)
+        await load()
+        await refresh()
+        if (d.is_current) {
+          await logout()
+          window.location.href = '/login'
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t('settings.unknown'))
+      } finally {
+        setBusyId(null)
+      }
+    }
+  }
+
+  async function onRevoke(d: DeviceRow) {
+    if (d.revoked) return
+    if (!window.confirm(`${t('settings.devicesRevokeConfirm')} (${d.device_name})`)) return
+    // Сначала — подтверждение vault-пина
+    setPendingAction({ type: 'revoke', device: d })
   }
 
   async function onSetMaster(d: DeviceRow) {
@@ -90,20 +131,9 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
   }
 
   async function onRevokeAllOthers() {
-    if (!window.confirm(t('settings.devicesRevokeConfirm'))) {
-      return
-    }
-    setBusyAction('terminate-all')
-    setError(null)
-    try {
-      await revokeAllOtherSessions()
-      await load()
-      await refresh()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
-    } finally {
-      setBusyAction(null)
-    }
+    if (!window.confirm(t('settings.devicesRevokeConfirm'))) return
+    // Сначала — подтверждение vault-пина
+    setPendingAction({ type: 'revoke-all' })
   }
 
   async function onClearRevoked() {
@@ -147,7 +177,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
     }
   }
 
-  function exportVault() {
+  function exportVaultNow() {
     const blob = readVaultBlob(userId)
     if (!blob) {
       setError(t('settings.noLocalVault'))
@@ -168,6 +198,11 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
     setShowVaultExportPrompt(false)
   }
 
+  function exportVault() {
+    // Запрашиваем vault-пин перед экспортом
+    setPendingAction({ type: 'export-vault' })
+  }
+
   function handleLinkDeviceClick() {
     const blob = readVaultBlob(userId)
     if (!blob) {
@@ -178,11 +213,28 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
     setLinkQrOpen(true)
   }
 
+  const pendingLabel = (() => {
+    if (!pendingAction) return ''
+    if (pendingAction.type === 'export-vault') return 'Для экспорта резервного ключа введи vault-пароль.'
+    if (pendingAction.type === 'revoke-all') return 'Для завершения всех других сессий введи vault-пароль.'
+    if (pendingAction.type === 'revoke') return `Для отзыва устройства «${pendingAction.device.device_name}» введи vault-пароль.`
+    return ''
+  })()
+
   return (
     <div className="space-y-4 border-t border-neon-cyan/30 pt-3">
       {linkQrOpen ? (
         <SettingsLinkDeviceModal onClose={() => setLinkQrOpen(false)} />
       ) : null}
+
+      {/* VaultPinGate — блокирует выполнение до подтверждения */}
+      {pendingAction && (
+        <VaultPinGate
+          actionLabel={pendingLabel}
+          onVerified={() => void executePending()}
+          onCancel={() => setPendingAction(null)}
+        />
+      )}
 
       <div>
         <p className="text-xs uppercase tracking-[0.25em] text-neon-cyan">
@@ -205,10 +257,10 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       <div className="border border-neon-red/20 bg-zinc-950/60 p-3 space-y-1">
         <p className="text-[9px] uppercase tracking-widest text-neon-red/80">[ РЕЗЕРВНАЯ КОПИЯ КЛЮЧА ]</p>
         <p className="text-[9px] text-zinc-500 leading-relaxed">
-          Твой приватный ключ хранится <span className="text-zinc-300">только локально</span> в этом браузере. Сервер его не знает и восстановить не может. Скачай резервную копию и храни в безопасном месте — без неё при потере браузера аккаунт будет недоступен навсегда.
+          Твой приватный ключ хранится <span className="text-zinc-300">только локально</span> в этом браузере. Сервер его не знает и восстановить не может. Скачай резервную копию и храни в надёжном месте — без неё при потере браузера аккаунт будет недоступен навсегда.
         </p>
         <p className="text-[9px] text-zinc-600">
-          Файл зашифрован твоим vault-паролем — без него он бесполезен.
+          Файл зашифрован твоим vault-паролем — без него он бесполезен для посторонних.
         </p>
       </div>
 

@@ -5,16 +5,20 @@ import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useState } from 'react'
 import { postQrGenerate } from '@/lib/api/auth-qr'
 import { useTranslation } from '@/hooks/use-translation'
+import { VaultPinGate } from '@/components/vault-pin-gate'
 
 type Props = { onClose: () => void }
 
 export function SettingsLinkDeviceModal({ onClose }: Props) {
   const { t } = useTranslation()
+  const [verified, setVerified] = useState(false)
   const [linkToken, setLinkToken] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
+  // Генерируем QR только после подтверждения vault-пароля
   useEffect(() => {
+    if (!verified) return
     let cancelled = false
     void (async () => {
       setLoading(true)
@@ -30,10 +34,8 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         if (!cancelled) setLoading(false)
       }
     })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    return () => { cancelled = true }
+  }, [verified])
 
   return (
     <div
@@ -60,28 +62,40 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
             [X]
           </button>
         </div>
-        <p className="mt-3 break-words text-[9px] leading-relaxed text-red-800">
-          {t('settings.linkDeviceHint')}
-        </p>
-        <div className="mt-4 flex min-h-[200px] flex-1 items-center justify-center border border-neon-cyan/25 bg-black p-4">
-          {loading ? (
-            <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-              [ LOADING... ]
-            </span>
-          ) : err ? (
-            <p className="break-all font-mono text-[10px] text-neon-red">[!] {err}</p>
-          ) : linkToken ? (
-            <QRCodeSVG
-              value={linkToken}
-              size={200}
-              bgColor="#000000"
-              fgColor="#22d3ee"
-              level="M"
-              className="max-w-full"
+
+        {!verified ? (
+          <div className="mt-4">
+            <VaultPinGate
+              actionLabel="Для генерации QR-кода привязки устройства требуется подтверждение vault-пароля."
+              onVerified={() => setVerified(true)}
+              onCancel={onClose}
             />
-          ) : null}
-        </div>
-        {/* FIX 5: Raw token display removed — QR code only */}
+          </div>
+        ) : (
+          <>
+            <p className="mt-3 break-words text-[9px] leading-relaxed text-red-800">
+              {t('settings.linkDeviceHint')}
+            </p>
+            <div className="mt-4 flex min-h-[200px] flex-1 items-center justify-center border border-neon-cyan/25 bg-black p-4">
+              {loading ? (
+                <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                  [ LOADING... ]
+                </span>
+              ) : err ? (
+                <p className="break-all font-mono text-[10px] text-neon-red">[!] {err}</p>
+              ) : linkToken ? (
+                <QRCodeSVG
+                  value={linkToken}
+                  size={200}
+                  bgColor="#000000"
+                  fgColor="#22d3ee"
+                  level="M"
+                  className="max-w-full"
+                />
+              ) : null}
+            </div>
+          </>
+        )}
       </motion.div>
     </div>
   )

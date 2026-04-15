@@ -25,6 +25,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
   const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
   const updateMessageReactions = useChatStore((s) => s.updateMessageReactions)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
+  const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
   const usernameCacheRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
@@ -88,7 +89,9 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
       if (msg.type !== 'chat_message') return
       const m = msg.message
       if (userId && m.sender_id !== userId) {
-        playNotificationSound()
+        if (chatSoundEnabled) {
+          playNotificationSound()
+        }
         if (triggerBackgroundPush) {
           triggerBackgroundPush('Project 13: Новая активность', 'Получено новое зашифрованное сообщение');
         }
@@ -142,6 +145,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
   }, [
     activeChatId,
     appendMessage,
+    chatSoundEnabled,
     clearTypingUser,
     clearTypingUserEverywhere,
     cryptoCtx,

@@ -3,7 +3,7 @@
 import { LogoutButton } from '@/components/logout-button'
 
 /**
- * PROJECT 13 :: VAULT_SENTINEL
+ * ONETOTHREE :: VAULT_SENTINEL
  * Level: Identity Layer (Keyring Lockdown)
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
@@ -51,7 +51,7 @@ export function NoLocalVault() {
         {/* FOOTER_MARK */}
         <footer className="mt-8 pt-4 border-t border-neutral-900/50">
           <p className="text-center text-[8px] uppercase tracking-widest text-neutral-800">
-            Project_13 // Vault_Link_Severed
+            ONETOTHREE // Vault_Link_Severed
           </p>
         </footer>
       </div>

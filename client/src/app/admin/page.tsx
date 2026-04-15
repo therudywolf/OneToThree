@@ -18,7 +18,7 @@ import {
 } from '@/lib/api/admin'
 
 /**
- * PROJECT 13 :: ALPHA_WARDEN_CONSOLE
+ * ONETOTHREE :: ALPHA_WARDEN_CONSOLE
  * Level: Authority Layer (Master Override)
  * Vibe: Clinical Steel / Neon Noir / Dead Inside
  */
@@ -132,7 +132,7 @@ export default function AdminPage() {
           <div className="h-10 w-1 border border-neon-red bg-neon-red/20 shadow-[0_0_10px_rgba(255,0,0,0.3)]" />
           <div>
             <p className="text-[9px] uppercase tracking-[0.4em] text-neutral-600">ALPHA_WARDEN_CONSOLE</p>
-            <h1 className="text-xl font-bold tracking-tighter text-white">PROJECT_13 // OVERRIDE</h1>
+            <h1 className="text-xl font-bold tracking-tighter text-white">ONETOTHREE // OVERRIDE</h1>
           </div>
         </div>
         
@@ -317,7 +317,7 @@ export default function AdminPage() {
       {/* FOOTER_DECOR */}
       <footer className="mt-16 text-center">
         <p className="text-[8px] uppercase tracking-[0.5em] text-neutral-800">
-          SYS.ADMIN // NODAL_CONTROL_V4.0 // Project_13
+          SYS.ADMIN // NODAL_CONTROL_V4.0 // ONETOTHREE
         </p>
       </footer>
     </div>

@@ -17,7 +17,7 @@ test.describe('auth / registration', () => {
     expect(loginVault!.length).toBeGreaterThan(20)
 
     await expect(
-      page.getByText(new RegExp(`PROJECT_13 :: E2E :: @${handle}`))
+      page.getByText(new RegExp(`ONETOTHREE :: E2E :: @${handle}`))
     ).toBeVisible({
       timeout: 30_000,
     })

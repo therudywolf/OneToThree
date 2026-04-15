@@ -7,7 +7,7 @@ import { LocaleToggle } from '@/components/locale-toggle'
 import { WelcomeScreen } from '@/components/onboarding/welcome-screen'
 
 /**
- * PROJECT 13 :: GATEWAY_NODE
+ * ONETOTHREE :: GATEWAY_NODE
  * Level: Public Layer (Entry Point)
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
@@ -50,7 +50,7 @@ export default function LoginPage() {
         </div>
         
         <h1 className="text-xl font-bold uppercase tracking-[0.5em] text-white md:text-2xl">
-          PROJECT_13
+          ONETOTHREE
         </h1>
         
         <div className="mt-4 flex items-center gap-3">

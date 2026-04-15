@@ -435,7 +435,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <textarea
               ref={inputRef}
               rows={1}
-              className="terminal-input flex-1 min-h-6 max-h-24 resize-none bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed md:pr-7"
+              className="terminal-input flex-1 min-h-6 max-h-24 resize-none bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed md:pr-8"
               style={{ fontSize: 'max(16px, 1em)' }}
               value={messageText}
               onChange={(e) => {
@@ -482,7 +482,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <div ref={emojiContainerRef} className="hidden md:block">
               <button
                 type="button"
-                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-neon-cyan/30 hover:text-neon-cyan/70 transition-colors disabled:opacity-20"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center text-neon-cyan/30 hover:text-neon-cyan/70 transition-colors disabled:opacity-20 z-10"
                 disabled={disabled}
                 onClick={() => setEmojiOpen((o) => !o)}
                 tabIndex={-1}

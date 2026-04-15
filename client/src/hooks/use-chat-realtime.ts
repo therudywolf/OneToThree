@@ -89,7 +89,9 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
       if (msg.type !== 'chat_message') return
       const m = msg.message
       if (userId && m.sender_id !== userId) {
-        if (chatSoundEnabled) {
+        // Play sound only if chatSoundEnabled AND window is NOT focused
+        // (while focused the user sees the chat, no need to interrupt)
+        if (chatSoundEnabled && !document.hasFocus()) {
           playNotificationSound()
         }
         if (triggerBackgroundPush) {

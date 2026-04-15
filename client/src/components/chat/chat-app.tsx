@@ -643,6 +643,12 @@ export function ChatApp({
               </button>
             </div>
           ) : null}
+          {scratchers.length > 0 ? (
+            <div className="shrink-0 border-b border-neon-cyan/25 bg-black px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90">
+              [ @{scratchers[0].username} IS SCRATCHING
+              <span className="animate-pulse">...</span> ]
+            </div>
+          ) : null}
           <ChatTerminal
             userId={userId}
             sharedKey={sharedKey}
@@ -657,12 +663,6 @@ export function ChatApp({
             sendMedia={sendMedia}
             composeDisabled={!activeChatId || !!ctxError}
           />
-          {scratchers.length > 0 ? (
-            <div className="shrink-0 border-b border-neon-cyan/25 bg-black px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90">
-              [ @{scratchers[0].username} IS SCRATCHING
-              <span className="animate-pulse">...</span> ]
-            </div>
-          ) : null}
         </div>
       </div>
     </div>

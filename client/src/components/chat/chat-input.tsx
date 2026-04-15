@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square } from 'lucide-react'
+import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Image, FileVideo, FileAudio, FileText } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
 import { useTranslation } from '@/hooks/use-translation'
@@ -49,6 +49,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
   const [messageText, setMessageText] = useState('')
   const [emojiOpen, setEmojiOpen] = useState(false)
+  const [attachOpen, setAttachOpen] = useState(false)
   const [mediaMode, setMediaMode] = useState<'voice' | 'circle'>('voice')
 
   const isRecordingRef = useRef(false)
@@ -78,7 +79,9 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputAcceptRef = useRef<string>('')
   const emojiContainerRef = useRef<HTMLDivElement>(null)
+  const attachContainerRef = useRef<HTMLDivElement>(null)
   const replyTo = useChatStore((s) => s.replyTo)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
@@ -102,6 +105,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     }
   }, [previewStream, mediaMode])
 
+  // Close emoji picker on outside click
   useEffect(() => {
     if (!emojiOpen) return
     const close = (e: MouseEvent) => {
@@ -111,6 +115,17 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [emojiOpen])
+
+  // Close attach menu on outside click
+  useEffect(() => {
+    if (!attachOpen) return
+    const close = (e: MouseEvent) => {
+      if (attachContainerRef.current?.contains(e.target as Node)) return
+      setAttachOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [attachOpen])
 
   useEffect(() => {
     return () => {
@@ -256,8 +271,22 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     setFileQueue(queued)
   }
 
+  const triggerFileInput = (accept: string) => {
+    fileInputAcceptRef.current = accept
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = accept
+      fileInputRef.current.click()
+    }
+    setAttachOpen(false)
+  }
+
   const handleAttachClick = () => {
-    fileInputRef.current?.click()
+    // On mobile — open file picker directly (all types). On desktop — toggle menu.
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      triggerFileInput('image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt')
+    } else {
+      setAttachOpen((o) => !o)
+    }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -428,26 +457,6 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         </div>
       ) : null}
 
-      {emojiOpen ? (
-        <div
-          ref={emojiContainerRef}
-          className="relative z-10 mb-2 border border-neon-cyan/50 bg-black p-2 shadow-[inset_0_0_12px_rgba(0,255,255,0.08)]"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <EmojiPicker
-            onEmojiClick={(emojiData) => {
-              insertEmoji(emojiData.emoji)
-              setEmojiOpen(false)
-            }}
-            skinTonesDisabled
-            searchDisabled
-            previewConfig={{ showPreview: false }}
-            width={300}
-            height={350}
-          />
-        </div>
-      ) : null}
-
       {/* Locked recording controls */}
       {isRecordingUI && recordLocked ? (
         <div className="flex items-center gap-3 py-1">
@@ -505,18 +514,60 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
       {/* Normal input row */}
       <div className={`flex items-center gap-2 ${isRecordingUI && recordLocked ? 'hidden' : ''}`}>
-        {/* Attach — always visible */}
-        <button
-          type="button"
-          className="shrink-0 border border-neon-cyan/50 bg-black px-2 py-1.5 text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40 transition-colors"
-          disabled={disabled || isRecordingUI}
-          onClick={handleAttachClick}
-          title={t('chat.attachFile')}
-        >
-          <Paperclip className="h-4 w-4" />
-        </button>
 
-        {/* Input field with emoji button inside (desktop only) */}
+        {/* Attach button — with dropdown menu on desktop */}
+        <div ref={attachContainerRef} className="relative shrink-0">
+          <button
+            type="button"
+            className="border border-neon-cyan/50 bg-black px-2 py-1.5 text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40 transition-colors"
+            disabled={disabled || isRecordingUI}
+            onClick={handleAttachClick}
+            title={t('chat.attachFile')}
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+
+          {/* Desktop attach dropdown — opens above the button */}
+          {attachOpen && (
+            <div className="absolute bottom-full left-0 z-50 mb-1 flex flex-col border border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.08)] min-w-[160px]">
+              <button
+                type="button"
+                className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-neon-cyan/80 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors text-left"
+                onClick={() => triggerFileInput('image/*')}
+              >
+                <Image className="h-3.5 w-3.5 shrink-0" />
+                {t('chat.attachImage') ?? 'Image'}
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-neon-cyan/80 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors text-left"
+                onClick={() => triggerFileInput('video/*')}
+              >
+                <FileVideo className="h-3.5 w-3.5 shrink-0" />
+                {t('chat.attachVideo') ?? 'Video'}
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-neon-cyan/80 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors text-left"
+                onClick={() => triggerFileInput('audio/*')}
+              >
+                <FileAudio className="h-3.5 w-3.5 shrink-0" />
+                {t('chat.attachAudio') ?? 'Audio'}
+              </button>
+              <div className="border-t border-neon-cyan/20" />
+              <button
+                type="button"
+                className="flex items-center gap-2 px-3 py-2 font-mono text-[11px] text-neon-cyan/80 hover:bg-neon-cyan/10 hover:text-neon-cyan transition-colors text-left"
+                onClick={() => triggerFileInput('.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt')}
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0" />
+                {t('chat.attachDocument') ?? 'Document'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Input field with emoji picker popup */}
         <div className="relative flex-1">
           <div
             className={`flex items-center gap-2 rounded border px-3 py-2 ${
@@ -587,20 +638,35 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
           {/* Emoji button — desktop only, floats inside input on the right */}
           {!isRecordingUI ? (
-            <button
-              type="button"
-              className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 items-center justify-center text-neon-cyan/30 hover:text-neon-cyan/70 transition-colors disabled:opacity-20"
-              disabled={disabled}
-              onClick={() => setEmojiOpen((o) => !o)}
-              onMouseDown={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-              }}
-              tabIndex={-1}
-              title={t('emoji.pickerToggle')}
-            >
-              <Smile className="h-4 w-4" />
-            </button>
+            <div ref={emojiContainerRef} className="hidden md:block">
+              <button
+                type="button"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center text-neon-cyan/30 hover:text-neon-cyan/70 transition-colors disabled:opacity-20"
+                disabled={disabled}
+                onClick={() => setEmojiOpen((o) => !o)}
+                tabIndex={-1}
+                title={t('emoji.pickerToggle')}
+              >
+                <Smile className="h-4 w-4" />
+              </button>
+
+              {/* Emoji picker popup — positioned above the input, anchored to the right */}
+              {emojiOpen && (
+                <div className="absolute bottom-full right-0 z-50 mb-1 border border-neon-cyan/50 bg-black shadow-[0_0_16px_rgba(0,255,255,0.08)]">
+                  <EmojiPicker
+                    onEmojiClick={(emojiData) => {
+                      insertEmoji(emojiData.emoji)
+                      setEmojiOpen(false)
+                    }}
+                    skinTonesDisabled
+                    searchDisabled
+                    previewConfig={{ showPreview: false }}
+                    width={300}
+                    height={350}
+                  />
+                </div>
+              )}
+            </div>
           ) : null}
 
           {/* Cancel slide overlay */}

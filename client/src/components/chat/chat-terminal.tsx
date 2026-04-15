@@ -34,6 +34,8 @@ import { UserProfileModal } from '@/components/chat/user-profile-modal'
 import { groupMessages } from '@/lib/message-grouping'
 import { MessageSkeleton } from '@/components/ui/skeleton'
 import { formatMessageTimestamp } from '@/lib/timestamp-format'
+import { ForwardModal } from '@/components/chat/forward-modal'
+import { ThreadPanel } from '@/components/chat/thread-panel'
 
 const OLDER_PAGE_SIZE = 25
 const OLDER_RAM_CAP = 200
@@ -139,13 +141,16 @@ export function ChatTerminal({
   const [swipeOffset, setSwipeOffset] = useState(0)
   const prevScrollHeightRef = useRef(0)
 
+  // Forward modal
+  const [forwardMsg, setForwardMsg] = useState<DecryptedMessage | null>(null)
+  // Thread panel
+  const [threadRoot, setThreadRoot] = useState<DecryptedMessage | null>(null)
+
   const isGroup = activeChat?.is_group ?? false
   const isSelfChat = !isGroup && activeChat != null && activeChat.member_ids.length === 1 && activeChat.member_ids[0] === userId
 
   useReadReceipts(ref, { enabled: !isGroup })
 
-  // FIX: use scrollTop = scrollHeight instead of scrollIntoView so scroll
-  // lands correctly even when media hasn't loaded its final height yet.
   const scrollToBottomInstant = useCallback(() => {
     const el = ref.current
     if (!el) return
@@ -190,7 +195,6 @@ export function ChatTerminal({
     }
   }, [messages.length, scrollToBottomInstant])
 
-  // FIX: use scrollTop = scrollHeight for consistent scroll-to-bottom.
   const scrollToBottom = useCallback(() => {
     const el = ref.current
     if (!el) return
@@ -229,7 +233,6 @@ export function ChatTerminal({
   }, [isGroup, activeChatId, renderMessages, userId])
 
   useEffect(() => {
-    // FIX: clear immediately so stale data from previous chat is not shown
     setSenderMeta({})
     if (!senderIdsToResolve.length) return
     let cancelled = false
@@ -251,8 +254,6 @@ export function ChatTerminal({
     }
   }, [senderIdsToResolve])
 
-  // FIX: merged into single useLayoutEffect so olderMessages is reset
-  // synchronously before scroll, preventing jump to wrong position.
   useLayoutEffect(() => {
     setOlderMessages([])
     setHasMoreOlder(true)
@@ -297,10 +298,42 @@ export function ChatTerminal({
         case 'react':
           setReactingMsgId(msg.id)
           break
+        case 'forward':
+          setForwardMsg(msg)
+          break
+        case 'thread':
+          setThreadRoot(msg)
+          break
+        case 'pin':
+          // pin is handled server-side; no-op here for now
+          break
       }
     },
     [userId, setReplyTo, removeMessage],
   )
+
+  // Forward handler: sends msg.plaintext to the selected chat
+  const handleForward = useCallback(async (chatId: string, text: string) => {
+    // We need a sendText bound to targetChatId, not the current one.
+    // Strategy: switch activeChatId temporarily is risky — use socket directly.
+    // Simpler: call the API via useSendMessage is not accessible here.
+    // We delegate by emitting via socket with target chat_id context.
+    // Since sendText is bound to current activeChatId, we call fetchChatsList
+    // and use the same E2E path. For plain-text forward we use the same socket.
+    // NOTE: forward is fire-and-forget; encryption context for target chat differs.
+    // Simplest safe path: POST to /messages with target chat_id via raw API.
+    const { API_URL } = await import('@/lib/api/auth')
+    const res = await fetch(`${API_URL}/messages/forward`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_message_id: forwardMsg?.id, target_chat_id: chatId }),
+    })
+    if (!res.ok) {
+      const d = (await res.json().catch(() => ({}))) as { error?: string }
+      throw new Error(d.error ?? 'FORWARD_FAILED')
+    }
+  }, [forwardMsg?.id])
 
   const handleToggleReaction = useCallback(
     (emoji: string, msgId: string) => {
@@ -633,6 +666,29 @@ export function ChatTerminal({
           onClose={() => setCtxMenu(null)}
         />
       ) : null}
+
+      {/* Forward modal */}
+      {forwardMsg ? (
+        <ForwardModal
+          message={forwardMsg}
+          onClose={() => setForwardMsg(null)}
+          onForward={handleForward}
+        />
+      ) : null}
+
+      {/* Thread panel — slides in from right */}
+      {threadRoot ? (
+        <ThreadPanel
+          rootMessage={threadRoot}
+          allMessages={renderMessages}
+          currentUserId={userId}
+          onClose={() => setThreadRoot(null)}
+          onReply={(msg) => setReplyTo(msg)}
+          locale={locale}
+          labelForSender={labelForSender}
+        />
+      ) : null}
+
       <div
         ref={ref}
         className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch] sm:px-4"
@@ -795,7 +851,13 @@ export function ChatTerminal({
                     }`}
                   >
                     {replyMsg ? (
-                      <div className="mb-1 border-l border-neon-cyan/30 pl-2 text-[10px] text-neon-cyan/60">
+                      <div
+                        className="mb-1 cursor-pointer border-l border-neon-cyan/30 pl-2 text-[10px] text-neon-cyan/60 hover:text-neon-cyan/90"
+                        onClick={() => setThreadRoot(replyMsg)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === 'Enter' && setThreadRoot(replyMsg)}
+                      >
                         <span className="text-red-800">
                           ↳ {labelForSender(replyMsg.sender_id)}:
                         </span>{' '}

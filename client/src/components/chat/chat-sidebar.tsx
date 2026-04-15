@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star } from 'lucide-react'
+import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star, ShieldAlert } from 'lucide-react'
+import Link from 'next/link'
 import { useChatStore } from '@/store/chatStore'
 import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
@@ -56,11 +57,15 @@ function orderedSidebarChats(
 
 export function ChatSidebar({
   userId,
+  username,
+  isAdmin,
   sharedKey,
   onPackSettingsChanged,
   onNavigate,
 }: {
   userId: string
+  username?: string
+  isAdmin?: boolean
   sharedKey: CryptoKey | null
   onPackSettingsChanged?: () => void
   onNavigate?: () => void
@@ -150,7 +155,6 @@ export function ChatSidebar({
     }
   }, [localGhostQuery])
 
-  // Filter out self-chat from the list — it already has a dedicated "Saved Messages" button
   const nonSelfChats = sidebarChats.filter(
     (c) => !(
       !c.is_group &&
@@ -516,6 +520,18 @@ export function ChatSidebar({
 
       {/* Global Actions */}
       <div className="border-t border-neon-cyan/40 bg-black p-3 space-y-2">
+
+        {/* Admin link — only for admins, mobile-first placement */}
+        {isAdmin ? (
+          <Link
+            href="/admin"
+            className="flex items-center gap-2 w-full border border-red-900/60 bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red"
+          >
+            <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>[ WARDEN ]</span>
+          </Link>
+        ) : null}
+
         <div className="flex gap-2">
           <button
             type="button"

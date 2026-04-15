@@ -497,7 +497,7 @@ export function ChatApp({
         />
       ) : null}
 
-      {/* ─── HEADER ──────────────────────────────────────────────────────────── */}
+      {/* ─── HEADER ────────────────────────────────────────────────────────────────────────── */}
       <header className="chat-header-compact flex shrink-0 items-center gap-2 border-b border-neon-cyan/40 bg-black px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] font-mono">
 
         {/* Burger — mobile only */}
@@ -559,37 +559,41 @@ export function ChatApp({
           )}
         </div>
 
-        {/* RIGHT: call buttons + settings */}
+        {/* RIGHT: calls block + separator + settings icon */}
         <div className="flex shrink-0 items-center gap-1.5">
-          <CallHeaderButtons
-            disabled={!activeChatId || !!ctxError}
-            peerReady={peerReady}
-            onVoiceCall={() => {
-              if (activeRow?.is_group) void handleGroupVoiceCall()
-              else void handleVoiceCall()
-            }}
-            onVideoCall={() => {
-              if (activeRow?.is_group) void handleGroupVideoCall()
-              else void handleVideoCall()
-            }}
-          />
 
-          {/* Settings — icon on mobile, text on desktop */}
+          {/* Calls block — visually grouped */}
+          <div className="flex items-center gap-1 border border-neon-cyan/20 bg-black p-0.5">
+            <CallHeaderButtons
+              disabled={!activeChatId || !!ctxError}
+              peerReady={peerReady}
+              onVoiceCall={() => {
+                if (activeRow?.is_group) void handleGroupVoiceCall()
+                else void handleVoiceCall()
+              }}
+              onVideoCall={() => {
+                if (activeRow?.is_group) void handleGroupVideoCall()
+                else void handleVideoCall()
+              }}
+            />
+          </div>
+
+          {/* Vertical separator */}
+          <span className="h-6 w-px shrink-0 bg-neon-cyan/20" aria-hidden />
+
+          {/* Settings — gear icon always, no text label */}
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
             aria-label={t('common.openSettings')}
-            className="touch-manipulation flex h-10 w-10 md:h-auto md:w-auto items-center justify-center border border-neon-cyan/60 bg-black px-2 text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red md:py-1"
+            className="touch-manipulation flex h-10 w-10 items-center justify-center border border-neon-cyan/60 bg-black text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
           >
-            <Settings className="h-4 w-4 md:hidden" aria-hidden />
-            <span className="hidden md:inline font-mono text-[10px] uppercase tracking-widest">
-              [ {t('common.openSettings')} ]
-            </span>
+            <Settings className="h-4 w-4" aria-hidden />
           </button>
         </div>
       </header>
 
-      {/* ─── MAIN LAYOUT ─────────────────────────────────────────────────────── */}
+      {/* ─── MAIN LAYOUT ────────────────────────────────────────────────────────────────────────── */}
       <div className="chat-ultrawide-container relative flex min-h-0 min-w-0 flex-1 overflow-hidden overscroll-none">
         {mobileSidebarOpen ? (
           <button

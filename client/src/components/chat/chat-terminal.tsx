@@ -139,24 +139,14 @@ export function ChatTerminal({
   const [swipingMsgId, setSwipingMsgId] = useState<string | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
   const prevScrollHeightRef = useRef(0)
-  const scrollRafRef = useRef<number | null>(null)
 
   const isGroup = activeChat?.is_group ?? false
   const isSelfChat = !isGroup && activeChat != null && activeChat.member_ids.length === 1 && activeChat.member_ids[0] === userId
 
   useReadReceipts(ref, { enabled: !isGroup })
 
-  // Double-RAF: wait for layout + paint before measuring scrollHeight
   const scrollToBottomInstant = useCallback(() => {
-    if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current)
-    scrollRafRef.current = requestAnimationFrame(() => {
-      scrollRafRef.current = requestAnimationFrame(() => {
-        const el = ref.current
-        if (!el) return
-        el.scrollTop = el.scrollHeight
-        scrollRafRef.current = null
-      })
-    })
+    bottomRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' })
   }, [])
 
   const handleScroll = useCallback(() => {

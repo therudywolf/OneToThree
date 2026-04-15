@@ -674,7 +674,39 @@ const ru = {
 
   // [SETTINGS - CHAT SOUND]
   'settings.chatSoundTitle': 'Звук в чате',
-  'settings.chatSoundHint': 'Воспроизводить звук при новом сообщении, если вкладка активна.',
+  'settings.chatSoundHint': 'Воспроизводить звук при новом сообщении, пока окно открыто и активно.',
+
+  // [VAULT GATE]
+  'vaultGate.exportTitle': 'Экспорт ключа хранилища',
+  'vaultGate.exportHint': 'Введите пароль хранилища для скачивания зашифрованной резервной копии.',
+  'vaultGate.exportAction': 'Экспортировать',
+  'vaultGate.exportSuccess': 'Ключ успешно экспортирован.',
+  'vaultGate.totpSetupLabel': 'Введите пароль хранилища для настройки двухфакторной аутентификации.',
+  'vaultGate.totpDisableLabel': 'Введите пароль хранилища для отключения двухфакторной аутентификации.',
+  'vaultGate.deviceLinkingLabel': 'Введите пароль хранилища для включения привязки устройств.',
+  'vaultGate.changePinLabel': 'Введите текущий пароль хранилища для его смены.',
+  'vaultGate.changeAccountPasswordLabel': 'Введите пароль хранилища для смены пароля аккаунта.',
+  'vaultGate.title': 'Подтверждение личности',
+  'vaultGate.passwordLabel': 'Пароль хранилища',
+  'vaultGate.submit': 'Подтвердить',
+  'vaultGate.wrongPassword': 'Неверный пароль хранилища.',
+
+  // [FORWARD]
+  'forward.title': 'Переслать сообщение',
+  'forward.searchPlaceholder': 'Поиск чатов...',
+  'forward.noChats': 'Чаты не найдены.',
+  'forward.send': 'Переслать',
+  'forward.success': 'Сообщение переслано.',
+  'forward.failed': 'Не удалось переслать сообщение.',
+
+  // [THREAD]
+  'thread.title': 'Обсуждение',
+  'thread.reply': 'Ответить в обсуждении',
+  'thread.noReplies': 'Нет ответов.',
+  'thread.replyCount': '{count} ответов',
+  'thread.inputPlaceholder': 'Ответить...',
+  'thread.close': 'Закрыть обсуждение',
+  'thread.openThread': 'Открыть обсуждение',
 } as const;
 
 export default ru;

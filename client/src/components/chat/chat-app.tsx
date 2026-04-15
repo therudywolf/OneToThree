@@ -510,9 +510,9 @@ export function ChatApp({
           <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden />
         </button>
 
-        {/* Desktop: PROJECT title (hidden on mobile) */}
+        {/* Desktop: app title (hidden on mobile) */}
         <span className="hidden md:block shrink-0 text-[10px] uppercase tracking-[0.35em] text-neon-cyan/60 whitespace-nowrap">
-          PROJECT_13 :: @{user?.username ?? username}
+          ONETOTHREE :: E2E :: @{user?.username ?? username}
         </span>
 
         {/* CENTER: peer nick — always visible, takes remaining space */}
@@ -552,14 +552,14 @@ export function ChatApp({
               ) : null}
             </div>
           ) : (
-            /* No active chat — show app title on mobile too */
+            /* No active chat — show app title */
             <span className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan/50 truncate">
-              PROJECT_13
+              ONETOTHREE
             </span>
           )}
         </div>
 
-        {/* RIGHT: call buttons + settings (desktop only, admin moved to sidebar) */}
+        {/* RIGHT: call buttons + settings */}
         <div className="flex shrink-0 items-center gap-1.5">
           <CallHeaderButtons
             disabled={!activeChatId || !!ctxError}

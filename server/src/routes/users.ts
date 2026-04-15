@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { HeadObjectCommand } from '@aws-sdk/client-s3'
-import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -594,6 +594,40 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         avatar_key: u.avatarKey,
       })),
     })
+  })
+
+  // ─── Stage 5: Fan-out device list ────────────────────────────────────────────
+  /**
+   * GET /users/:userId/devices
+   * Returns active (non-revoked) devices that have an ECDH public key.
+   * Used by the sender to encrypt a per-device ciphertext before posting.
+   * Rate-limited: 60 req/min (preflight before every message send).
+   */
+  app.get('/:userId/devices', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const auth = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, auth)) return
+
+    const params = z.object({ userId: uuidSchema }).safeParse(request.params)
+    if (!params.success) {
+      return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    }
+    const { userId } = params.data
+
+    const rows = await db
+      .select({
+        device_id: devices.id,
+        public_key_jwk: devices.ecdhPublicKey,
+      })
+      .from(devices)
+      .where(
+        and(
+          eq(devices.userId, userId),
+          isNull(devices.revokedAt),
+          isNotNull(devices.ecdhPublicKey)
+        )
+      )
+
+    return reply.send({ devices: rows })
   })
 
   app.get('/me/devices', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {

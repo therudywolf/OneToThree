@@ -1,99 +1,22 @@
-import { eq } from 'drizzle-orm'
+/**
+ * Stage 6: Vault routes DEPRECATED.
+ * GET /vault/fetch and POST /vault/sync are removed.
+ * Server-side vault_blob storage is amputated.
+ *
+ * This file is kept as a registered (empty) plugin so app.ts
+ * compiles without changes. Routes return 410 GONE.
+ */
 import type { FastifyPluginAsync } from 'fastify'
-import { z } from 'zod'
-import { db } from '../db/index.js'
-import { users } from '../db/schema.js'
-import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
-import { normalizeUuid } from '../lib/uuid.js'
-import { sendToUser } from '../ws/registry.js'
-
-const syncBodySchema = z.object({
-  encrypted_blob: z.string().min(1),
-  expected_version: z.number().int().nonnegative().optional(),
-})
 
 export const vaultRoutes: FastifyPluginAsync = async (app) => {
-  app.get('/fetch', async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
+  const gone = {
+    error: 'VAULT_SERVER_SYNC_REMOVED',
+    message:
+      'Server-side vault sync was removed in Stage 6. ' +
+      'Keys are stored exclusively in local IndexedDB.',
+  }
 
-    const [row] = await db
-      .select({
-        vaultBlob: users.vaultBlob,
-        vaultVersion: users.vaultVersion,
-        vaultUpdatedAt: users.vaultUpdatedAt,
-      })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
-
-    if (!row?.vaultBlob) {
-      return reply.status(404).send({ error: 'VAULT_NOT_FOUND' })
-    }
-
-    return reply.send({
-      encrypted_blob: row.vaultBlob,
-      vault_version: row.vaultVersion,
-      updated_at: row.vaultUpdatedAt?.toISOString() ?? null,
-    })
-  })
-
-  app.post('/sync', async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
-
-    const parsed = syncBodySchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
-
-    const { encrypted_blob, expected_version: expected } = parsed.data
-
-    const [current] = await db
-      .select({
-        vaultVersion: users.vaultVersion,
-      })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
-
-    const curVer = current?.vaultVersion ?? 0
-    if (expected !== undefined && expected !== curVer) {
-      return reply.status(409).send({
-        error: 'VAULT_VERSION_CONFLICT',
-        vault_version: curVer,
-      })
-    }
-
-    const nextVer = curVer + 1
-    const now = new Date()
-
-    await db
-      .update(users)
-      .set({
-        vaultBlob: encrypted_blob,
-        vaultVersion: nextVer,
-        vaultUpdatedAt: now,
-      })
-      .where(eq(users.id, user.id))
-
-    const sess = await verifySessionJwt(request)
-    const fromDevice = sess?.device_id
-      ? normalizeUuid(sess.device_id)
-      : null
-
-    sendToUser(user.id, {
-      type: 'server_notice',
-      notice: 'vault_synced',
-      vault_version: nextVer,
-      from_device_id: fromDevice,
-      at: now.toISOString(),
-    })
-
-    return reply.send({
-      ok: true,
-      vault_version: nextVer,
-      updated_at: now.toISOString(),
-    })
-  })
+  // Return 410 Gone so old clients get a clear signal, not a silent 404
+  app.get('/fetch', async (_req, reply) => reply.status(410).send(gone))
+  app.post('/sync', async (_req, reply) => reply.status(410).send(gone))
 }

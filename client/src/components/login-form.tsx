@@ -7,43 +7,45 @@ import { useAuth } from '@/components/auth/auth-provider'
 import { cryptoLogin, finalizeLoginWithTotp } from '@/lib/auth/crypto-login'
 import { ensureClientDeviceId, clearSessionApi } from '@/lib/api/auth'
 import { parseNickname } from '@/lib/nickname'
-import {
-  persistVaultBlobByLoginUsername,
-  type VaultBlob,
-} from '@/lib/vault'
+import { persistVaultBlobByLoginUsername, type VaultBlob } from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { PostRegisterVaultPrompt } from '@/components/post-register-vault-prompt'
 
+/**
+ * AUTH MODEL
+ * ==========
+ * Один пароль — vault-PIN.
+ * Локально расшифровывает ECDSA ключ. Никуда не уходит.
+ * Второй фактор — TOTP (если включён).
+ *
+ * Поля при входе:    никнейм + vault-PIN
+ * Поля при регистрации: никнейм + vault-PIN + повтор
+ */
 export function LoginForm() {
   const { t } = useTranslation()
   const router = useRouter()
   const { user, loading: authLoading, refresh } = useAuth()
 
-  const [handle, setHandle] = useState('')
-  const [pin, setPin] = useState('')
+  const [handle, setHandle]         = useState('')
+  const [pin, setPin]               = useState('')
   const [confirmPin, setConfirmPin] = useState('')
-  const [vaultPin, setVaultPin] = useState('')
-  const [confirmVaultPin, setConfirmVaultPin] = useState('')
 
-  const [mode, setMode] = useState<'ACCESS' | 'GENESIS'>('ACCESS')
+  const [mode, setMode]   = useState<'ACCESS' | 'GENESIS'>('ACCESS')
   const [stage, setStage] = useState<'IDENTITY' | 'MFA_SYNC'>('IDENTITY')
 
   const [pendingToken, setPendingToken] = useState<string | null>(null)
-  const [totpCode, setTotpCode] = useState('')
-  const [errorLog, setErrorLog] = useState<string | null>(null)
-  const [isBusy, setIsBusy] = useState(false)
-  const [vaultLinkOk, setVaultLinkOk] = useState(false)
+  const [totpCode, setTotpCode]         = useState('')
+  const [errorLog, setErrorLog]         = useState<string | null>(null)
+  const [infoLog, setInfoLog]           = useState<string | null>(null)
+  const [isBusy, setIsBusy]             = useState(false)
+  const [vaultLinkOk, setVaultLinkOk]   = useState(false)
   const [staleSession, setStaleSession] = useState(false)
-  const [infoLog, setInfoLog] = useState<string | null>(null)
-  /** После успешной регистрации — показываем промпт резервного ключа */
   const [showVaultPrompt, setShowVaultPrompt] = useState(false)
 
   const lock = useRef(false)
 
-  useEffect(() => {
-    ensureClientDeviceId()
-  }, [])
+  useEffect(() => { ensureClientDeviceId() }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -66,16 +68,16 @@ export function LoginForm() {
 
   const mapFault = (code: string): string => {
     const registry: Record<string, string> = {
-      USERNAME_REQUIRED: t('login.usernameRequired'),
-      PASSWORD_REQUIRED: t('login.passwordRequired'),
-      PIN_MIN_8: t('login.pinMin8'),
-      NO_LOCAL_VAULT: t('login.noLocalVault'),
+      USERNAME_REQUIRED:   t('login.usernameRequired'),
+      PASSWORD_REQUIRED:   t('login.passwordRequired'),
+      PIN_MIN_8:           t('login.pinMin8'),
+      NO_LOCAL_VAULT:      t('login.noLocalVault'),
       VAULT_ALREADY_EXISTS: t('login.vaultExists'),
-      UNWRAP_FAILED: t('login.unwrapFailed'),
+      UNWRAP_FAILED:       t('login.unwrapFailed'),
       INVALID_VAULT_FORMAT: t('login.invalidVaultFormat'),
       VAULT_VERSION_MISMATCH: t('login.vaultVersionMismatch'),
-      TOTP_INVALID: t('login.totpInvalid'),
-      DEVICE_REVOKED: t('login.deviceRevoked'),
+      TOTP_INVALID:        t('login.totpInvalid'),
+      DEVICE_REVOKED:      t('login.deviceRevoked'),
     }
     return registry[code] ?? code.replace(/_/g, ' ')
   }
@@ -91,10 +93,8 @@ export function LoginForm() {
       try {
         const data = JSON.parse(await file.text()) as { username?: string; vault?: VaultBlob }
         if (!data.vault?.ciphertextB64) throw new Error('INVALID_STRUCTURE')
-
         const nick = parseNickname(data.username?.trim() || handle.trim())
         if (!nick.ok) throw new Error(nick.error)
-
         persistVaultBlobByLoginUsername(nick.value, data.vault)
         setHandle(nick.value)
         setVaultLinkOk(true)
@@ -119,16 +119,10 @@ export function LoginForm() {
         return
       }
 
-      if (mode === 'GENESIS' && vaultPin !== confirmVaultPin) {
-        setErrorLog(t('login.vaultPasswordMismatch'))
-        return
-      }
-
       const res = await cryptoLogin({
         username: handle,
-        password: pin,
-        vaultPassword: mode === 'GENESIS' ? vaultPin : undefined,
-        mode: mode === 'ACCESS' ? 'login' : 'register'
+        vaultPin: pin,
+        mode: mode === 'ACCESS' ? 'login' : 'register',
       })
 
       if (res.ok === 'needs_2fa') {
@@ -148,7 +142,6 @@ export function LoginForm() {
 
       await refresh()
 
-      // После GENESIS — показываем промпт резервного ключа до редиректа
       if (mode === 'GENESIS') {
         setShowVaultPrompt(true)
         return
@@ -172,11 +165,9 @@ export function LoginForm() {
     e.preventDefault()
     if (lock.current || isBusy || !pendingToken) return
     const digits = totpCode.replace(/\D/g, '').slice(0, 6)
-
     lock.current = true
     setErrorLog(null)
     setIsBusy(true)
-
     try {
       const r = await finalizeLoginWithTotp({
         pendingToken,
@@ -224,12 +215,15 @@ export function LoginForm() {
             animate={{ opacity: 1, scale: 1 }}
           >
             <header className="mb-8 border-b border-neutral-900 pb-4">
-              <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">{t('login.totpTitle')}</p>
+              <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
+                {t('login.totpTitle')}
+              </p>
             </header>
-
             <div className="space-y-6">
               <div className="space-y-2">
-                <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-zinc-500">{t('login.totpCodeLabel')}</label>
+                <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-zinc-500">
+                  {t('login.totpCodeLabel')}
+                </label>
                 <input
                   id="totp"
                   type="text"
@@ -242,11 +236,9 @@ export function LoginForm() {
                   autoComplete="one-time-code"
                 />
               </div>
-
               <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
                 {t('login.totpSubmit')}
               </TerminalGlitchButton>
-
               <button
                 type="button"
                 onClick={() => setStage('IDENTITY')}
@@ -260,7 +252,7 @@ export function LoginForm() {
           <motion.form
             key="identity"
             onSubmit={execAuthProtocol}
-            className={`relative w-full border border-neutral-900 bg-black p-8 shadow-2xl transition-all duration-500 ${mode === 'GENESIS' ? 'max-w-xl' : 'max-w-sm'}`}
+            className="relative w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
@@ -274,134 +266,97 @@ export function LoginForm() {
             </header>
 
             <div className="space-y-6">
+              {/* TOS при регистрации */}
               {mode === 'GENESIS' && (
-                <div className="mb-6 border border-zinc-900 bg-zinc-950/50 p-4">
-                  <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">{t('login.tosRegisterTitle')}</p>
+                <div className="border border-zinc-900 bg-zinc-950/50 p-4">
+                  <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">
+                    {t('login.tosRegisterTitle')}
+                  </p>
                   <div className="max-h-32 overflow-y-auto text-[9px] leading-relaxed text-zinc-500 pr-2 custom-scrollbar">
                     {t('login.tosRegisterBody')}
                   </div>
                 </div>
               )}
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="terminal-label">{t('login.handleLabel')}</label>
-                  <input
-                    type="text"
-                    required
-                    autoFocus
-                    value={handle}
-                    onChange={(e) => setHandle(e.target.value)}
-                    className="terminal-input"
-                    placeholder={t('login.handlePlaceholder')}
-                    autoComplete="username"
-                  />
-                </div>
-
-                {mode === 'ACCESS' ? (
-                  <div className="space-y-2">
-                    <label className="terminal-label">{t('login.vaultPassphraseLabel')}</label>
-                    <input
-                      type="password"
-                      required
-                      value={pin}
-                      onChange={(e) => setPin(e.target.value)}
-                      className="terminal-input"
-                      placeholder="••••••••"
-                      autoComplete="current-password"
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <div className="space-y-4 border border-neon-cyan/20 p-3 animate-in fade-in slide-in-from-top-1">
-                      <p className="text-[9px] uppercase tracking-widest text-neon-cyan">{t('login.accountPasswordLabel')}</p>
-                      <p className="text-[8px] text-zinc-500">{t('login.accountPasswordHint')}</p>
-                      <p className="text-[8px] text-zinc-600 border-l-2 border-neon-cyan/30 pl-2">{t('login.accountPasswordExplain')}</p>
-                      <div className="space-y-2">
-                        <label className="terminal-label">{t('login.accountPasswordLabel')}</label>
-                        <input
-                          type="password"
-                          required
-                          value={pin}
-                          onChange={(e) => setPin(e.target.value)}
-                          className="terminal-input"
-                          placeholder="••••••••"
-                          autoComplete="new-password"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="terminal-label">{t('common.confirm')}</label>
-                        <input
-                          type="password"
-                          required
-                          value={confirmPin}
-                          onChange={(e) => setConfirmPin(e.target.value)}
-                          className="terminal-input"
-                          placeholder="••••••••"
-                          autoComplete="new-password"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-4 border border-neon-red/30 p-3 animate-in fade-in slide-in-from-top-1">
-                      <p className="text-[9px] uppercase tracking-widest text-neon-red">{t('login.vaultPasswordLabel')}</p>
-                      <p className="text-[8px] text-zinc-500">{t('login.vaultPasswordHint')}</p>
-                      <p className="text-[8px] text-zinc-600 border-l-2 border-neon-red/30 pl-2">{t('login.vaultPasswordExplain')}</p>
-                      <div className="space-y-2">
-                        <label className="terminal-label">{t('login.vaultPasswordLabel')}</label>
-                        <input
-                          type="password"
-                          required
-                          value={vaultPin}
-                          onChange={(e) => setVaultPin(e.target.value)}
-                          className="terminal-input"
-                          placeholder="••••••••"
-                          autoComplete="new-password"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="terminal-label">{t('common.confirm')}</label>
-                        <input
-                          type="password"
-                          required
-                          value={confirmVaultPin}
-                          onChange={(e) => setConfirmVaultPin(e.target.value)}
-                          className="terminal-input"
-                          placeholder="••••••••"
-                          autoComplete="new-password"
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
+              {/* Никнейм */}
+              <div className="space-y-2">
+                <label className="terminal-label">{t('login.handleLabel')}</label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  className="terminal-input"
+                  placeholder={t('login.handlePlaceholder')}
+                  autoComplete="username"
+                />
               </div>
 
+              {/* Vault-PIN */}
+              <div className="space-y-2">
+                {mode === 'GENESIS' && (
+                  <>
+                    <p className="text-[8px] text-zinc-500 leading-relaxed">
+                      Пароль шифрует твои ключи локально. Сервер его не знает и восстановить не может.
+                      Запомни или сохрани — без него доступ к аккаунту потерян.
+                    </p>
+                    <p className="text-[8px] text-zinc-600 border-l-2 border-neon-cyan/30 pl-2">
+                      Второй фактор защиты — TOTP (настраивается отдельно после входа).
+                    </p>
+                  </>
+                )}
+                <label className="terminal-label">
+                  {mode === 'ACCESS' ? t('login.vaultPassphraseLabel') : 'VAULT-ПАРОЛЬ'}
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  className="terminal-input"
+                  placeholder="••••••••"
+                  autoComplete={mode === 'ACCESS' ? 'current-password' : 'new-password'}
+                />
+              </div>
+
+              {/* Повтор только при регистрации */}
+              {mode === 'GENESIS' && (
+                <div className="space-y-2">
+                  <label className="terminal-label">{t('common.confirm')}</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPin}
+                    onChange={(e) => setConfirmPin(e.target.value)}
+                    className="terminal-input"
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                  />
+                </div>
+              )}
+
+              {/* Предупреждение о длине */}
               {mode === 'GENESIS' && pin.length > 0 && pin.length < 8 && (
                 <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
                   <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
                 </p>
               )}
-              {mode === 'GENESIS' && vaultPin.length > 0 && vaultPin.length < 8 && (
-                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] leading-relaxed text-zinc-400 uppercase tracking-tighter">
-                  <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
-                </p>
-              )}
 
+              {/* Сессия истекла */}
               {staleSession && !errorLog && !infoLog && (
                 <div className="border border-neon-cyan/40 bg-neon-cyan/5 p-2 text-[9px] text-neon-cyan font-mono">
                   {t('login.sessionExpired')}
                 </div>
               )}
 
+              {/* Аккаунт уже существует */}
               {infoLog && (
                 <div className="border border-neon-cyan/40 bg-neon-cyan/5 p-2 text-[9px] text-neon-cyan font-mono flex items-center justify-between gap-2">
                   <span>{infoLog}</span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setMode('ACCESS')
-                      setInfoLog(null)
-                    }}
+                    onClick={() => { setMode('ACCESS'); setInfoLog(null) }}
                     className="shrink-0 border border-neon-cyan/50 px-2 py-0.5 text-[8px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 transition-colors"
                   >
                     {t('login.accountExistsAction')}
@@ -409,6 +364,7 @@ export function LoginForm() {
                 </div>
               )}
 
+              {/* Ошибка */}
               {errorLog && (
                 <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono">
                   {errorLog}
@@ -426,6 +382,8 @@ export function LoginForm() {
                     setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS')
                     setErrorLog(null)
                     setInfoLog(null)
+                    setPin('')
+                    setConfirmPin('')
                   }}
                   className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors"
                 >
@@ -433,6 +391,7 @@ export function LoginForm() {
                 </button>
               </div>
 
+              {/* Импорт vault-файла и сброс сессии */}
               {mode === 'ACCESS' && (
                 <div className="mt-6 border-t border-neutral-900 pt-6 space-y-3">
                   <button
@@ -442,7 +401,11 @@ export function LoginForm() {
                   >
                     {t('login.vaultRecoveryImport')}
                   </button>
-                  {vaultLinkOk && <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">{t('login.vaultRecoveryOk')}</p>}
+                  {vaultLinkOk && (
+                    <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">
+                      {t('login.vaultRecoveryOk')}
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={async () => {

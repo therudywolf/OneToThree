@@ -296,7 +296,7 @@ const en = {
   'settings.pushUnsupported': 'Notifications not supported on this device.',
   'settings.pushNoSw': 'Service Worker not found. Production build with HTTPS required.',
   'settings.pushVapidMissing': 'Server not configured for push notifications.',
-  'settings.pushGrantNoSubHint': 'Permission granted. Tap "Enable Notifications" to finish.',
+  'settings.pushGrantNoSubHint': 'Permission granted. Tap \u201cEnable Notifications\u201d to finish.',
   'settings.loadFailed': 'Failed to load settings.',
   'settings.vaultBackup': 'Backup Key',
   'settings.vaultBackupHint': 'Encrypted file. Keep it in a safe place.',
@@ -673,8 +673,40 @@ const en = {
   'settings.changeAccountPasswordSame': 'New password must differ from current.',
 
   // [SETTINGS - CHAT SOUND]
-  'settings.chatSoundTitle': 'Chat Sound',
-  'settings.chatSoundHint': 'Play a sound when a new message arrives while this tab is active.',
+  'settings.chatSoundTitle': 'In-Chat Sound',
+  'settings.chatSoundHint': 'Play a sound for new messages while the window is open and focused.',
+
+  // [VAULT GATE]
+  'vaultGate.exportTitle': 'Export Vault Key',
+  'vaultGate.exportHint': 'Enter your vault password to download the encrypted backup.',
+  'vaultGate.exportAction': 'Export',
+  'vaultGate.exportSuccess': 'Key exported successfully.',
+  'vaultGate.totpSetupLabel': 'Enter vault password to set up two-factor authentication.',
+  'vaultGate.totpDisableLabel': 'Enter vault password to disable two-factor authentication.',
+  'vaultGate.deviceLinkingLabel': 'Enter vault password to enable device linking.',
+  'vaultGate.changePinLabel': 'Enter current vault password to change it.',
+  'vaultGate.changeAccountPasswordLabel': 'Enter vault password to change your account password.',
+  'vaultGate.title': 'Confirm Identity',
+  'vaultGate.passwordLabel': 'Vault password',
+  'vaultGate.submit': 'Confirm',
+  'vaultGate.wrongPassword': 'Wrong vault password.',
+
+  // [FORWARD]
+  'forward.title': 'Forward Message',
+  'forward.searchPlaceholder': 'Search chats...',
+  'forward.noChats': 'No chats found.',
+  'forward.send': 'Forward',
+  'forward.success': 'Message forwarded.',
+  'forward.failed': 'Failed to forward message.',
+
+  // [THREAD]
+  'thread.title': 'Thread',
+  'thread.reply': 'Reply in thread',
+  'thread.noReplies': 'No replies yet.',
+  'thread.replyCount': '{count} replies',
+  'thread.inputPlaceholder': 'Reply...',
+  'thread.close': 'Close thread',
+  'thread.openThread': 'Open thread',
 } as const;
 
 export default en;

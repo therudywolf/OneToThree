@@ -10,9 +10,9 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     id: 'p13_core_node',
     name: 'OneToThree',
-    short_name: '13',
+    short_name: 'OneToThree',
     description: 'Clinical-grade zero-trust E2E transmission node',
-    lang: 'ru', // Переводим основной дескриптор на наш язык
+    lang: 'ru',
     start_url: '/',
     scope: '/',
     display: 'standalone',
@@ -21,10 +21,10 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: '#000000',
     orientation: 'portrait-primary',
     categories: ['social', 'utilities', 'security'],
-    
+
     /**
      * RESOURCE_ASSETS
-     * Иконки должны удовлетворять обоим типам: 'any' для точности 
+     * Иконки должны удовлетворять обоим типам: 'any' для точности
      * и 'maskable' для адаптивных систем (Android).
      */
     icons: [

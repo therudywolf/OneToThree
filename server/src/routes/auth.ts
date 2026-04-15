@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
-import { generateSecret, generateURI, verifySync } from 'otplib'
+import { authenticator } from 'otplib'
 import QRCode from 'qrcode'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -297,17 +297,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
     }
 
-    const secret = generateSecret()
+    const secret = authenticator.generateSecret()
     await db
       .update(users)
       .set({ totpSecret: secret })
       .where(eq(users.id, user.id))
 
-    const otpauthUrl = generateURI({
-      issuer: 'Project13',
-      label: user.username,
-      secret,
-    })
+    const otpauthUrl = authenticator.keyuri(user.username, 'Project13', secret)
     const qrDataUrl = await QRCode.toDataURL(otpauthUrl)
 
     return reply.send({
@@ -342,11 +338,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
     }
 
-    const check = verifySync({
-      secret: row.totpSecret,
-      token: parsed.data.code,
-    })
-    if (!check.valid) {
+    const isValid = authenticator.check(parsed.data.code, row.totpSecret)
+    if (!isValid) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
     if (!await consumeTotpCode(user.id, parsed.data.code)) {  // Stage 2: async
@@ -383,11 +376,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'TOTP_NOT_ENABLED' })
     }
 
-    const check = verifySync({
-      secret: row.totpSecret,
-      token: parsed.data.code,
-    })
-    if (!check.valid) {
+    const isValid = authenticator.check(parsed.data.code, row.totpSecret)
+    if (!isValid) {
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
     if (!await consumeTotpCode(user.id, parsed.data.code)) {  // Stage 2: async
@@ -438,11 +428,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(401).send({ error: 'BANNED_USER' })
     }
 
-    const check = verifySync({
-      secret: row.totpSecret,
-      token: parsed.data.code,
-    })
-    if (!check.valid) {
+    const isValid = authenticator.check(parsed.data.code, row.totpSecret)
+    if (!isValid) {
       void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }

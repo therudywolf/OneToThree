@@ -42,13 +42,15 @@ const createChatSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.type === 'direct_e2e') {
+      // Allow 1 member (self-chat) or 2 members (direct chat)
       if (
         !data.member_ids ||
-        (data.member_ids.length !== 1 && data.member_ids.length !== 2)
+        data.member_ids.length < 1 ||
+        data.member_ids.length > 2
       ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'DIRECT_REQUIRES_TWO_MEMBERS',
+          message: 'DIRECT_REQUIRES_ONE_OR_TWO_MEMBERS',
           path: ['member_ids'],
         })
       }
@@ -119,6 +121,45 @@ async function findExistingDirectE2EBetween(
     .limit(1)
 
   return rows[0] ?? null
+}
+
+/** Find or create a self-chat (Saved Messages) for the given user. Returns the chat row. */
+async function getOrCreateSelfChat(userId: string) {
+  const myChats = await db
+    .select({ chatId: chatMembers.chatId })
+    .from(chatMembers)
+    .innerJoin(chats, eq(chats.id, chatMembers.chatId))
+    .where(and(eq(chatMembers.userId, userId), eq(chats.type, 'direct_e2e')))
+
+  for (const { chatId } of myChats) {
+    const members = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, chatId))
+    if (members.length === 1 && members[0].userId === userId) {
+      const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1)
+      if (chat) return { chat, created: false }
+    }
+  }
+
+  const [created] = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(chats)
+      .values({ type: 'direct_e2e', name: 'Saved Messages' })
+      .returning()
+    const chat = inserted[0]
+    if (!chat) throw new Error('INSERT_CHAT_FAILED')
+    await tx.insert(chatMembers).values({
+      chatId: chat.id,
+      userId,
+      encryptedGroupKey: null,
+      role: 'owner',
+    })
+    return inserted
+  })
+
+  if (!created) throw new Error('CREATE_FAILED')
+  return { chat: created, created: true }
 }
 
 async function generateUniqueInviteCode(): Promise<string> {
@@ -226,62 +267,13 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    // Look for an existing direct_e2e chat where the only member is the current user
-    const myChats = await db
-      .select({ chatId: chatMembers.chatId })
-      .from(chatMembers)
-      .innerJoin(chats, eq(chats.id, chatMembers.chatId))
-      .where(and(eq(chatMembers.userId, user.id), eq(chats.type, 'direct_e2e')))
+    const { chat, created } = await getOrCreateSelfChat(user.id)
 
-    for (const { chatId } of myChats) {
-      const members = await db
-        .select({ userId: chatMembers.userId })
-        .from(chatMembers)
-        .where(eq(chatMembers.chatId, chatId))
-      if (members.length === 1 && members[0].userId === user.id) {
-        const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1)
-        if (chat) {
-          return reply.send({
-            chat: {
-              id: chat.id,
-              name: chat.name ?? 'Saved Messages',
-              type: chat.type,
-              is_group: false,
-              is_self: true,
-              member_ids: [user.id],
-              my_role: 'owner',
-            },
-          })
-        }
-      }
-    }
-
-    // Create a new self-chat
-    const [created] = await db.transaction(async (tx) => {
-      const inserted = await tx
-        .insert(chats)
-        .values({ type: 'direct_e2e', name: 'Saved Messages' })
-        .returning()
-      const chat = inserted[0]
-      if (!chat) throw new Error('INSERT_CHAT_FAILED')
-      await tx.insert(chatMembers).values({
-        chatId: chat.id,
-        userId: user.id,
-        encryptedGroupKey: null,
-        role: 'owner',
-      })
-      return inserted
-    })
-
-    if (!created) {
-      return reply.status(500).send({ error: 'CREATE_FAILED' })
-    }
-
-    return reply.status(201).send({
+    return reply.status(created ? 201 : 200).send({
       chat: {
-        id: created.id,
-        name: created.name ?? 'Saved Messages',
-        type: created.type,
+        id: chat.id,
+        name: chat.name ?? 'Saved Messages',
+        type: chat.type,
         is_group: false,
         is_self: true,
         member_ids: [user.id],
@@ -482,10 +474,23 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       const mids = member_ids
       if (mids.length === 1) {
         const peer = mids[0]
-        if (!peer || peer === authId) {
-          return reply
-            .status(400)
-            .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
+        // Self-chat: single member_id equals current user → redirect to Saved Messages
+        if (!peer) {
+          return reply.status(400).send({ error: 'INVALID_BODY' })
+        }
+        if (peer === authId) {
+          const { chat, created } = await getOrCreateSelfChat(authId)
+          return reply.status(201).send({
+            chat: {
+              id: chat.id,
+              name: chat.name ?? 'Saved Messages',
+              type: chat.type,
+              is_group: false,
+              is_self: true,
+              member_ids: [authId],
+              my_role: 'owner' as const,
+            },
+          })
         }
         uniqueIds = [authId, peer]
       } else if (mids.length === 2) {
@@ -496,9 +501,19 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         }
         const peer = mids.find((id) => id !== authId)
         if (!peer) {
-          return reply
-            .status(400)
-            .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
+          // Both ids are authId — treat as self-chat
+          const { chat } = await getOrCreateSelfChat(authId)
+          return reply.status(201).send({
+            chat: {
+              id: chat.id,
+              name: chat.name ?? 'Saved Messages',
+              type: chat.type,
+              is_group: false,
+              is_self: true,
+              member_ids: [authId],
+              my_role: 'owner' as const,
+            },
+          })
         }
         uniqueIds = [authId, peer]
       } else {

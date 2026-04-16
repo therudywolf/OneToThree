@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import QRCode from 'qrcode'
-import { authenticator } from 'otplib'
+import { authenticator } from 'otplib/preset-default'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { devices, users } from '../db/schema.js'
@@ -367,9 +367,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         let publicKeyJwkStr: string
 
         if (existing) {
-          // ── Existing user: determine which key to verify against ──────────────
-
-          // 1. If we know the device, look up its per-device e2eePublicKey
           let knownDeviceKey: string | null = null
           if (clientDeviceKey) {
             const [deviceRow] = await db
@@ -384,32 +381,23 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
                 void recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_device_revoked' })
                 return reply.status(403).send({ error: 'DEVICE_REVOKED' })
               }
-              // Device is known and active — use its e2eePublicKey if available,
-              // otherwise fall back to users.publicKeyJwk (migrated/master device).
               knownDeviceKey = deviceRow.e2eePublicKey ?? null
             }
           }
 
           if (knownDeviceKey) {
-            // Known linked device: verify against per-device key, ignore public_key_jwk
             publicKeyJwkStr = knownDeviceKey
           } else {
-            // Unknown device OR device without e2eePublicKey yet (master / migrated):
-            // fall back to users.publicKeyJwk.
-            // PUBLIC_KEY_CONFLICT fires only when the caller sends a *different* key
-            // and there is no known device record to justify it.
             publicKeyJwkStr = existing.publicKeyJwk
             if (public_key_jwk?.trim()) {
               const incoming = public_key_jwk.trim()
               if (!safeEqualUtf8(incoming, existing.publicKeyJwk)) {
-                // Caller claims a new key but we have no device record that owns it.
                 await deletePending(username)
                 return reply.status(400).send({ error: 'PUBLIC_KEY_CONFLICT' })
               }
             }
           }
         } else {
-          // ── New user registration ─────────────────────────────────────────────
           if (!public_key_jwk?.trim()) {
             await deletePending(username)
             return reply.status(400).send({ error: 'PUBLIC_KEY_REQUIRED' })
@@ -417,7 +405,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           publicKeyJwkStr = public_key_jwk.trim()
         }
 
-        // Verify ECDSA signature
         const ok = verifyNonceSignatureEcdsaP256(nonce, signature, publicKeyJwkStr)
         if (!ok) {
           await deletePending(username)
@@ -432,7 +419,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(401).send({ error: 'BANNED_USER' })
         }
 
-        // Insert new user if needed
         let userId: string
         if (existing) {
           userId = existing.id

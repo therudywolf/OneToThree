@@ -47,7 +47,8 @@ interface Authenticator {
 }
 
 const _require = createRequire(import.meta.url)
-const { authenticator } = _require('otplib/presets/default') as { authenticator: Authenticator }
+const otplib = _require('otplib') as { authenticator: Authenticator } | { default: { authenticator: Authenticator } }
+const authenticator: Authenticator = ('default' in otplib ? otplib.default : otplib).authenticator
 
 const challengeBodySchema = z.object({
   username: z.string(),

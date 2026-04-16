@@ -40,8 +40,14 @@ import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
 
+interface Authenticator {
+  generateSecret(length?: number): string
+  keyuri(user: string, service: string, secret: string): string
+  check(token: string, secret: string): boolean
+}
+
 const _require = createRequire(import.meta.url)
-const { authenticator } = _require('otplib') as typeof import('otplib')
+const { authenticator } = _require('otplib') as { authenticator: Authenticator }
 
 const challengeBodySchema = z.object({
   username: z.string(),

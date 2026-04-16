@@ -1,9 +1,8 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createRequire } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import QRCode from 'qrcode'
-import { authenticator } from 'otplib/preset-default'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { devices, users } from '../db/schema.js'
@@ -39,6 +38,9 @@ import {
 import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
+
+const _require = createRequire(import.meta.url)
+const { authenticator } = _require('otplib') as typeof import('otplib')
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -357,11 +359,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(401).send({ error: 'NONCE_MISMATCH' })
         }
 
-        // Load existing user
         const existingRows = await db.select().from(users).where(eq(users.username, username)).limit(1)
         const existing = existingRows[0]
 
-        // Read x-client-device-id from headers (may be absent on first registration)
         const clientDeviceKey = (request.headers['x-client-device-id'] as string | undefined)?.trim() ?? null
 
         let publicKeyJwkStr: string

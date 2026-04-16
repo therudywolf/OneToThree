@@ -107,7 +107,7 @@ export function MediaPreviewModal({
     }
   }
 
-  const handleSend = (e: React.MouseEvent | React.TouchEvent) => {
+  const handleSend = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     onSend(caption.trim())
@@ -174,10 +174,10 @@ export function MediaPreviewModal({
             autoComplete="off"
             spellCheck={false}
           />
+          {/* type=button + single onClick only, no onTouchEnd */}
           <button
             type="button"
             onClick={handleSend}
-            onTouchEnd={handleSend}
             className="flex items-center justify-center gap-1.5 border border-neon-cyan bg-black py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black"
           >
             <Send className="h-3 w-3" />

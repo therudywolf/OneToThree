@@ -26,9 +26,13 @@ const mem = new Map<string, UsedEntry>()
 export async function consumeTotpCode(userId: string, code: string): Promise<boolean> {
   const r = getRedis()
   if (r) {
-    // SET NX EX — returns 'OK' on first use, null on replay
-    const result = await r.set(`${KEY_PREFIX}${userId}:${code}`, '1', 'EX', TTL_S, 'NX')
-    return result === 'OK'
+    try {
+      // SET NX EX — returns 'OK' on first use, null on replay
+      const result = await r.set(`${KEY_PREFIX}${userId}:${code}`, '1', 'EX', TTL_S, 'NX')
+      return result === 'OK'
+    } catch {
+      // Redis unavailable — fall through to in-memory fallback
+    }
   }
   // in-memory fallback
   const key = `${userId}:${code}`

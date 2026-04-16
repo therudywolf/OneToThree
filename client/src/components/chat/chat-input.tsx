@@ -251,8 +251,8 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     }
   }
 
-  // Explicit send handler for mobile — bypasses form submit entirely
-  const handleSendClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  // Explicit send handler for mobile — single onClick, no onTouchEnd to avoid double-fire
+  const handleSendClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     if (!messageText.trim() || disabled) return
     void sendText(messageText, replyTo?.id ?? null).then(() => {
@@ -529,16 +529,15 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           )}
         </button>
 
-        {/* Send button — onClick added for mobile Safari form-submit reliability */}
+        {/* Send button — type=button, single onClick only, no onTouchEnd */}
         <button
-          type="submit"
+          type="button"
           disabled={disabled || !messageText.trim() || isRecordingUI}
           className={`shrink-0 flex h-10 w-10 items-center justify-center border border-neon-cyan bg-black text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors
             ${showSendOnMobile ? 'flex' : 'hidden md:flex'}
           `}
           title={t('common.send')}
           onClick={handleSendClick}
-          onTouchEnd={handleSendClick}
         >
           <Send className="h-4 w-4" />
         </button>

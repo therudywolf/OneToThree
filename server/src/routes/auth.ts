@@ -1,4 +1,5 @@
-import { randomUUID, createRequire } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'

@@ -92,6 +92,9 @@ case "$CMD" in
   install)
     CMD="up"
     ;;
+  uninstall)
+    CMD="clean"
+    ;;
   quick)
     CMD="up"
     ;;
@@ -120,7 +123,12 @@ case "$CMD" in
     ;;
   update)
     log "Получаю обновления из git..."
-    git pull origin main
+    CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [[ -z "$CURRENT_BRANCH" || "$CURRENT_BRANCH" == "HEAD" ]]; then
+      die "Не удалось определить текущую git-ветку. Выполните update вручную."
+    fi
+    git fetch --all --prune
+    git pull --ff-only origin "$CURRENT_BRANCH"
 
     log "Пересборка образа миграций (без кэша)..."
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
@@ -134,6 +142,11 @@ case "$CMD" in
 
     log "Пересборка и запуск app-сервисов..."
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans
+
+    log "Проверяю состояние сервисов после обновления..."
+    if ! docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >/dev/null 2>&1; then
+      die "Сервисы не отвечают после update. Проверьте ./start.sh logs"
+    fi
 
     ok "Обновление завершено. Данные сохранены."
     exit 0
@@ -335,7 +348,7 @@ case "$CMD" in
     : # продолжаем ниже
     ;;
   *)
-    echo "Использование: ./start.sh [install|up|quick|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|backup|clean]"
+    echo "Использование: ./start.sh [install|up|quick|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|backup|clean|uninstall]"
     exit 1
     ;;
 esac
@@ -367,8 +380,8 @@ docker info >/dev/null 2>&1 || die "Docker демон не запущен. За�
 sep
 log "Проверяю сохранность данных..."
 
-# Получаем имя проекта (по умолчанию — имя директории)
-COMPOSE_PROJECT=$(basename "$ROOT" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/-$//')
+# Имя compose-проекта: фиксируем на forestmessenger, как в docker-compose.prod.yml
+COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-forestmessenger}"
 
 check_volume() {
   local vol_suffix="$1"

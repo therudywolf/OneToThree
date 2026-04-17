@@ -158,18 +158,8 @@ self.addEventListener('notificationclick', (event) => {
 
   // Handle incoming call actions
   if (isCallNotification && action === 'decline') {
-    // Signal decline to server
-    const chatId = raw.chat_id
-    if (chatId) {
-      event.waitUntil(
-        fetch('/api/calls/decline', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chat_id: chatId }),
-        }).catch(function () { /* best-effort */ })
-      )
-    }
+    // Best-effort local dismiss: there is no dedicated /api/calls/decline endpoint.
+    // Call state will be synchronized by websocket when app resumes.
     return
   }
 

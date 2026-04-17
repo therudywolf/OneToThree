@@ -14,7 +14,7 @@ type Props = {
   currentUserId: string
   onClose: () => void
   onReply: (msg: DecryptedMessage) => void
-  locale: string
+  locale: 'ru' | 'en'
   labelForSender: (id: string) => string
 }
 

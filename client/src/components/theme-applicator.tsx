@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useThemeStore } from '@/store/themeStore'
+import { THEME_BY_ID, useThemeStore } from '@/store/themeStore'
 
 /**
  * PROJECT 13 :: CHROMATIC_APPLICATOR
@@ -13,10 +13,13 @@ export function ThemeApplicator() {
 
   useEffect(() => {
     const html = document.documentElement
-    if (theme === 'default') {
-      html.removeAttribute('data-theme')
-    } else {
-      html.setAttribute('data-theme', theme)
+    const themeConfig = THEME_BY_ID[theme] ?? THEME_BY_ID.default
+    html.setAttribute('data-theme', theme)
+    html.style.colorScheme = themeConfig.scheme
+
+    const themeMeta = document.querySelector('meta[name="theme-color"]')
+    if (themeMeta) {
+      themeMeta.setAttribute('content', themeConfig.themeColor)
     }
   }, [theme])
 

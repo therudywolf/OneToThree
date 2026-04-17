@@ -83,6 +83,11 @@ is_placeholder() {
   return 1
 }
 
+build_turn_urls() {
+  local host="$1"
+  echo "turn:${host}:3478,turn:${host}:3478?transport=tcp,turns:${host}:443?transport=tcp,turns:${host}:5349?transport=tcp"
+}
+
 # =============================================================================
 # КОМАНДЫ
 # =============================================================================
@@ -471,6 +476,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
     echo -e "    ${YEL}TURN_EXTERNAL_IP${NC}    — IP сервера (curl -s ifconfig.me)"
     echo -e "    ${YEL}TURN_PASSWORD${NC}       — пароль TURN"
     echo -e "    ${YEL}NEXT_PUBLIC_TURN_PASSWORD${NC} — тот же пароль TURN"
+    echo -e "    ${YEL}NEXT_PUBLIC_TURN_URLS${NC} — список fallback URL (turn/turns)"
     echo -e "    ${YEL}VAPID_SUBJECT${NC}       — ваш email"
     echo ""
     echo -e "  Остальное (JWT_SECRET, WEBHOOK_SECRET, VAPID ключи) ${GRN}генерируется автоматически${NC}."
@@ -522,6 +528,8 @@ if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
       update_key MINIO_PUBLIC_URL "https://s3.${DOMAIN_VAL}"
       update_key MINIO_CORS_ORIGINS "https://${DOMAIN_VAL},https://www.${DOMAIN_VAL}"
       update_key NEXT_PUBLIC_TURN_URL "turn:turn.${DOMAIN_VAL}:3478"
+      update_key NEXT_PUBLIC_TURN_URLS "$(build_turn_urls "turn.${DOMAIN_VAL}")"
+      update_key TURN_URLS "$(build_turn_urls "turn.${DOMAIN_VAL}")"
       ok "Доменные переменные синхронизированы для ${DOMAIN_VAL}."
     fi
   fi
@@ -556,6 +564,20 @@ TURN_PUB_USER=$(val_for_key NEXT_PUBLIC_TURN_USERNAME)
 if [[ -n "$TURN_USER" ]] && ! is_placeholder "$TURN_USER" && is_placeholder "$TURN_PUB_USER"; then
   update_key NEXT_PUBLIC_TURN_USERNAME "$TURN_USER"
   ok "NEXT_PUBLIC_TURN_USERNAME синхронизирован."
+fi
+TURN_PUB_URL=$(val_for_key NEXT_PUBLIC_TURN_URL)
+TURN_PUB_URLS=$(val_for_key NEXT_PUBLIC_TURN_URLS)
+if [[ -n "$TURN_PUB_URL" ]] && ! is_placeholder "$TURN_PUB_URL" && is_placeholder "$TURN_PUB_URLS"; then
+  TURN_HOST_ONLY=$(echo "$TURN_PUB_URL" | sed -E 's|^turns?:/*||' | cut -d'?' -f1 | cut -d':' -f1)
+  if [[ -n "$TURN_HOST_ONLY" ]]; then
+    update_key NEXT_PUBLIC_TURN_URLS "$(build_turn_urls "$TURN_HOST_ONLY")"
+    ok "NEXT_PUBLIC_TURN_URLS синхронизирован."
+  fi
+fi
+TURN_URLS_VAL=$(val_for_key TURN_URLS)
+if is_placeholder "$TURN_URLS_VAL" && ! is_placeholder "$TURN_PUB_URLS"; then
+  update_key TURN_URLS "$TURN_PUB_URLS"
+  ok "TURN_URLS синхронизирован из NEXT_PUBLIC_TURN_URLS."
 fi
 
 VPUB=$(val_for_key VAPID_PUBLIC_KEY)
@@ -616,6 +638,15 @@ if echo "$DB_URL" | grep -q "CHANGE_ME"; then
   fi
 fi
 
+TURN_EXT=$(val_for_key TURN_EXTERNAL_IP)
+if is_placeholder "$TURN_EXT"; then
+  TURN_AUTO="$(curl -s --max-time 5 ifconfig.me 2>/dev/null || true)"
+  if [[ -n "$TURN_AUTO" ]]; then
+    update_key TURN_EXTERNAL_IP "$TURN_AUTO"
+    ok "TURN_EXTERNAL_IP автоопределён (${TURN_AUTO})."
+  fi
+fi
+
 # =============================================================================
 # ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ
 # =============================================================================
@@ -638,7 +669,7 @@ check_required() {
 check_required POSTGRES_PASSWORD      "Придумайте надёжный пароль для базы данных"
 check_required MINIO_ROOT_PASSWORD    "Придумайте надёжный пароль для хранилища файлов"
 check_required CORS_ORIGIN            "Домен сайта: https://onetothree.ru"
-check_required TURN_EXTERNAL_IP       "IP сервера: curl -s ifconfig.me"
+check_required TURN_EXTERNAL_IP       "Внешний IP TURN-реле (обычно определяется автоматически)"
 check_required TURN_PASSWORD          "Придумайте пароль для TURN"
 check_required VAPID_SUBJECT          "Ваш email: mailto:you@example.com"
 check_required ACME_EMAIL             "Email для Let's Encrypt: admin@onetothree.ru"
@@ -659,14 +690,19 @@ CORS=$(val_for_key CORS_ORIGIN)
 DOMAIN=$(echo "$CORS" | sed 's|https\?://||' | cut -d'/' -f1)
 API_URL=$(val_for_key NEXT_PUBLIC_API_URL)
 TURN_URL=$(val_for_key NEXT_PUBLIC_TURN_URL)
-TURN_HOST=$(echo "$TURN_URL" | sed 's|turn:||' | cut -d: -f1)
+TURN_URLS=$(val_for_key NEXT_PUBLIC_TURN_URLS)
+TURN_SAMPLE="${TURN_URL}"
+if [[ -n "$TURN_URLS" ]] && ! is_placeholder "$TURN_URLS"; then
+  TURN_SAMPLE="$(echo "$TURN_URLS" | cut -d',' -f1)"
+fi
+TURN_HOST=$(echo "$TURN_SAMPLE" | sed -E 's|^turns?:/*||' | cut -d'?' -f1 | cut -d: -f1)
 API_HOST=$(echo "$API_URL" | sed 's|https\?://||' | cut -d/ -f1)
 
 if [[ "$TURN_HOST" == "$API_HOST" ]]; then
   warn "TURN и API — один хост (${API_HOST})."
   warn "Если за Cloudflare — звонки не будут работать."
   warn "Создайте отдельную DNS запись turn.${DOMAIN} с 'DNS only' (серое облако)."
-  warn "И установите NEXT_PUBLIC_TURN_URL=turn:turn.${DOMAIN}:3478"
+  warn "И установите NEXT_PUBLIC_TURN_URLS с fallback-цепочкой (turn+turns)."
 else
   ok "TURN хост (${TURN_HOST}) отделён от API (${API_HOST}) — корректно."
 fi

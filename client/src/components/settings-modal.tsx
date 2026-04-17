@@ -105,7 +105,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     try {
       const r = await fetch(`${API_URL}/users/me/settings`, { credentials: 'include' })
       const d = (await r.json().catch(() => ({}))) as {
-        is_discoverable?: unknown; hide_presence?: unknown; disable_read_receipts?: unknown
+        is_discoverable?: unknown; hide_presence?: unknown; disable_read_receipts?: unknown; allow_device_linking?: unknown
         bio?: string | null; status_text?: string | null; display_name?: string | null
         last_seen_privacy?: string | null
         social_links?: Array<{ platform: string; url: string }>; error?: string
@@ -116,6 +116,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       updateUser({ is_discoverable: value })
       setHidePresence(typeof d.hide_presence === 'boolean' ? d.hide_presence : false)
       setDisableReadReceipts(typeof d.disable_read_receipts === 'boolean' ? d.disable_read_receipts : false)
+      setAllowNewDeviceLinking(typeof d.allow_device_linking === 'boolean' ? d.allow_device_linking : false)
       setBio(d.bio ?? '')
       setStatusText(d.status_text ?? '')
       setDisplayName(d.display_name ?? '')
@@ -131,11 +132,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   useEffect(() => { void loadSettingsFromApi() }, [userId, loadSettingsFromApi])
 
   useEffect(() => {
-    const stored = localStorage.getItem('p13:allow_new_device_linking')
-    setAllowNewDeviceLinking(stored === 'true')
-  }, [userId])
-
-  useEffect(() => {
     void (async () => {
       try {
         const { user: u } = await fetchMe()
@@ -145,16 +141,13 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   }, [userId, updateUser])
 
   // ── Vault gate handler ──────────────────────────────────────────────────────
-  function handleVaultGateVerified() {
+  function handleVaultGateVerified(_pin: string) {
     const target = vaultGate
     setVaultGate(null)
     if (target === 'export')           { execExportVault(); return }
     if (target === 'totp_setup')       { void startTotpSetup(); return }
     if (target === 'totp_disable')     { setTotpDisableOpen(true); return }
-    if (target === 'device_linking_on') {
-      setAllowNewDeviceLinking(true)
-      localStorage.setItem('p13:allow_new_device_linking', 'true')
-    }
+    if (target === 'device_linking_on') { void setDeviceLinking(true); return }
   }
 
   function gateActionLabel(target: VaultGateTarget): string {
@@ -310,6 +303,24 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       if (typeof d.is_discoverable !== 'boolean') throw new Error(t('settings.toggleFailed'))
       setDiscoverable(d.is_discoverable)
       updateUser({ is_discoverable: d.is_discoverable })
+      setSaved(true); setTimeout(() => setSaved(false), 1500)
+    } catch (e) { setError(e instanceof Error ? e.message : t('settings.unknown')) }
+    finally { setBusy(false) }
+  }
+
+  async function setDeviceLinking(next: boolean) {
+    if (busy) return
+    setBusy(true); setError(null)
+    try {
+      const r = await fetch(`${API_URL}/users/me`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allow_device_linking: next }),
+      })
+      const d = (await r.json().catch(() => ({}))) as { ok?: boolean; allow_device_linking?: unknown; error?: string }
+      if (!r.ok) throw new Error(d.error ?? t('settings.toggleFailed'))
+      if (typeof d.allow_device_linking !== 'boolean') throw new Error(t('settings.toggleFailed'))
+      setAllowNewDeviceLinking(d.allow_device_linking)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
     } catch (e) { setError(e instanceof Error ? e.message : t('settings.unknown')) }
     finally { setBusy(false) }
@@ -605,8 +616,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       setVaultGate('device_linking_on')
                     } else {
                       // Выключение — безопасно, без пароля
-                      setAllowNewDeviceLinking(false)
-                      localStorage.setItem('p13:allow_new_device_linking', 'false')
+                      void setDeviceLinking(false)
                     }
                   }}
                   className={`shrink-0 border px-3 py-2 font-mono text-[10px] uppercase tracking-widest ${

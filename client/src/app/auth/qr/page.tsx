@@ -8,7 +8,7 @@ import { complete2faLogin } from '@/lib/api/auth'
 function QrLoginInner() {
   const router = useRouter()
   const params = useSearchParams()
-  const token = params.get('token')
+  const token = params.get('link_token') ?? params.get('token')
   const didRun = useRef(false)
   const [status, setStatus] = useState<'pending' | 'totp' | 'ok' | 'error'>('pending')
   const [errorMsg, setErrorMsg] = useState('')

@@ -14,7 +14,7 @@ import { unwrapPrivateJwkWithPin } from '@/lib/vault'
 type Props = {
   /** Текст над полем — что именно подтверждает пользователь */
   actionLabel: string
-  onVerified: () => void
+  onVerified: (pin: string) => void
   onCancel: () => void
 }
 
@@ -39,7 +39,7 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
 
       await unwrapPrivateJwkWithPin(blob, pin)
       // Успех — ключ расшифровался
-      onVerified()
+      onVerified(pin)
     } catch (e) {
       const msg = e instanceof Error ? e.message : ''
       if (

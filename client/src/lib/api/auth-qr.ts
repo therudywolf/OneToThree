@@ -16,7 +16,7 @@ function browserOrigin(): string {
 export function buildQrLoginUrl(token: string): string {
   const base = browserOrigin()
   if (!base) return token
-  return `${base}/auth/qr?token=${encodeURIComponent(token)}`
+  return `${base}/auth/qr?link_token=${encodeURIComponent(token)}`
 }
 
 export function extractQrLoginToken(raw: string): string | null {
@@ -27,7 +27,10 @@ export function extractQrLoginToken(raw: string): string | null {
   }
   try {
     const parsed = new URL(value)
-    const token = parsed.searchParams.get('token')?.trim() ?? ''
+    const token =
+      parsed.searchParams.get('link_token')?.trim() ??
+      parsed.searchParams.get('token')?.trim() ??
+      ''
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) {
       return token
     }
@@ -37,13 +40,19 @@ export function extractQrLoginToken(raw: string): string | null {
   return null
 }
 
-export async function postQrGenerate(): Promise<{
+export async function postQrGenerate(params: {
+  nonce: string
+  signature: string
+  totp_code?: string
+}): Promise<{
   link_token: string
   expires_in: number
 }> {
   const res = await fetch(`${API_URL}/auth/qr-generate`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    body: JSON.stringify(params),
   })
   const data = (await res.json().catch(() => ({}))) as {
     link_token?: string
@@ -71,7 +80,7 @@ export async function postQrLogin(token: string): Promise<
       'Content-Type': 'application/json',
       ...authDeviceHeaders(),
     }),
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ link_token: token }),
   })
   const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean

@@ -18,6 +18,8 @@
     "test:server": "npm run test -w project-13-server",
     "test:unit:client": "npm run test:unit -w project-13-client",
     "test:e2e": "npm run test:e2e -w project-13-client",
+    "test:p0:auth": "bash ./scripts/p0-auth-suite.sh",
+    "test:stages:all": "bash ./scripts/stage-all-suite.sh",
     "test:all": "npm run typecheck && npm run lint && npm run test:server && npm run test:unit:client && npm run test:e2e",
     "docker:up": "docker compose up --build",
     "docker:up:d": "docker compose up --build -d",

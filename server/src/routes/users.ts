@@ -49,6 +49,7 @@ const patchMeSchema = z
     is_discoverable: z.coerce.boolean().optional(),
     hide_presence: z.coerce.boolean().optional(),
     disable_read_receipts: z.coerce.boolean().optional(),
+    allow_device_linking: z.coerce.boolean().optional(),
     bio: z.string().max(256).optional(),
     status_text: z.string().max(128).optional(),
     social_links: z.array(socialLinkSchema).max(10).optional(),
@@ -282,6 +283,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         isDiscoverable: users.isDiscoverable,
         hidePresence: users.hidePresence,
         disableReadReceipts: users.disableReadReceipts,
+        allowDeviceLinking: users.allowDeviceLinking,
         bio: users.bio,
         statusText: users.statusText,
         socialLinks: users.socialLinks,
@@ -299,6 +301,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       is_discoverable: row?.isDiscoverable ?? false,
       hide_presence: row?.hidePresence ?? false,
       disable_read_receipts: row?.disableReadReceipts ?? false,
+      allow_device_linking: row?.allowDeviceLinking ?? false,
       bio: row?.bio ?? null,
       status_text: row?.statusText ?? null,
       social_links: socialLinks,
@@ -325,6 +328,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (parsed.data.is_discoverable !== undefined) updates.isDiscoverable = parsed.data.is_discoverable
     if (parsed.data.hide_presence !== undefined) updates.hidePresence = parsed.data.hide_presence
     if (parsed.data.disable_read_receipts !== undefined) updates.disableReadReceipts = parsed.data.disable_read_receipts
+    if (parsed.data.allow_device_linking !== undefined) updates.allowDeviceLinking = parsed.data.allow_device_linking
     if (parsed.data.bio !== undefined) updates.bio = parsed.data.bio || null
     if (parsed.data.status_text !== undefined) updates.statusText = parsed.data.status_text || null
     if (parsed.data.social_links !== undefined) updates.socialLinks = JSON.stringify(parsed.data.social_links)
@@ -332,7 +336,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const ignoredOnlyFields = parsed.data.display_name !== undefined || parsed.data.last_seen_privacy !== undefined
     if (Object.keys(updates).length === 0) {
       if (ignoredOnlyFields) {
-        return reply.send({ ok: true, is_discoverable: false, hide_presence: false, disable_read_receipts: false, bio: null, status_text: null, social_links: [] })
+        return reply.send({ ok: true, is_discoverable: false, hide_presence: false, disable_read_receipts: false, allow_device_linking: false, bio: null, status_text: null, social_links: [] })
       }
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
@@ -345,6 +349,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         isDiscoverable: users.isDiscoverable,
         hidePresence: users.hidePresence,
         disableReadReceipts: users.disableReadReceipts,
+        allowDeviceLinking: users.allowDeviceLinking,
         bio: users.bio,
         statusText: users.statusText,
         socialLinks: users.socialLinks,
@@ -360,6 +365,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       is_discoverable: after?.isDiscoverable ?? false,
       hide_presence: after?.hidePresence ?? false,
       disable_read_receipts: after?.disableReadReceipts ?? false,
+      allow_device_linking: after?.allowDeviceLinking ?? false,
       bio: after?.bio ?? null,
       status_text: after?.statusText ?? null,
       social_links: socialLinksOut,

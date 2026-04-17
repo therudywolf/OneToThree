@@ -231,7 +231,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       {pendingAction && (
         <VaultPinGate
           actionLabel={pendingLabel}
-          onVerified={() => void executePending()}
+          onVerified={(_pin) => void executePending()}
           onCancel={() => setPendingAction(null)}
         />
       )}
@@ -249,7 +249,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       <div className="border border-neon-cyan/10 bg-zinc-950/60 p-3 space-y-1">
         <p className="text-[9px] uppercase tracking-widest text-neon-cyan/70">[ ДОБАВИТЬ УСТРОЙСТВО :: QR ]</p>
         <p className="text-[9px] text-zinc-500 leading-relaxed">
-          Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер и отсканируй его камерой или через приложение. Новое устройство автоматически получит сессию без ввода пароля. QR действителен <span className="text-zinc-300">5 минут</span> и одноразовый.
+          Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер и отсканируй его камерой или через приложение. Новое устройство получит сессию, а для аккаунтов с 2FA дополнительно потребуется TOTP-код. QR действителен <span className="text-zinc-300">5 минут</span> и одноразовый.
         </p>
       </div>
 

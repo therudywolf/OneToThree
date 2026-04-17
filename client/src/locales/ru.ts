@@ -175,6 +175,8 @@ const ru = {
   'sidebar.purgeChatConfirm': 'Удалить историю чата?',
   'sidebar.pin': 'Закрепить',
   'sidebar.unpin': 'Открепить',
+  'sidebar.favorite': 'В избранное',
+  'sidebar.unfavorite': 'Убрать из избранного',
   'sidebar.pinAria': 'Закрепить сверху',
   'sidebar.unpinAria': 'Открепить',
   'sidebar.online': 'В сети',

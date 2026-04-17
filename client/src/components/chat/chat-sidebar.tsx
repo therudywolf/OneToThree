@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star, ShieldAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useChatStore } from '@/store/chatStore'
-import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat } from '@/lib/api/chats'
+import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
 import { GroupChatSettings } from '@/components/chat/group-chat-settings'
@@ -50,9 +50,14 @@ function orderedSidebarChats(
   pinnedOrder: string[]
 ): ApiChatRow[] {
   const pinnedSet = new Set(pinnedOrder)
-  const pinned = chats.filter((c) => pinnedSet.has(c.id)).sort(sortChatsByLatest)
-  const unpinned = chats.filter((c) => !pinnedSet.has(c.id)).sort(sortChatsByLatest)
-  return [...pinned, ...unpinned]
+  const favorites = chats.filter((c) => c.is_favorite).sort(sortChatsByLatest)
+  const pinned = chats
+    .filter((c) => !c.is_favorite && pinnedSet.has(c.id))
+    .sort(sortChatsByLatest)
+  const unpinned = chats
+    .filter((c) => !c.is_favorite && !pinnedSet.has(c.id))
+    .sort(sortChatsByLatest)
+  return [...favorites, ...pinned, ...unpinned]
 }
 
 export function ChatSidebar({
@@ -170,6 +175,15 @@ export function ChatSidebar({
     setPinnedIds((prev) =>
       prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId]
     )
+  }
+
+  async function toggleFavorite(chatId: string, current: boolean) {
+    try {
+      await setChatFavorite(chatId, !current)
+      await reload()
+    } catch (e) {
+      setCreateErr(e instanceof Error ? e.message : 'ERR')
+    }
   }
 
   function mapSidebarError(code: string): string {
@@ -445,6 +459,21 @@ export function ChatSidebar({
                 }`}
               >
                 <Pin className="h-3.5 w-3.5" aria-hidden />
+              </button>
+              <button
+                type="button"
+                title={c.is_favorite ? t('sidebar.unfavorite') : t('sidebar.favorite')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  void toggleFavorite(c.id, Boolean(c.is_favorite))
+                }}
+                className={`shrink-0 border-l border-neon-cyan/10 px-3 transition-colors ${
+                  c.is_favorite
+                    ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20'
+                    : 'text-zinc-700 hover:bg-amber-400/10 hover:text-amber-300 opacity-0 group-hover:opacity-100'
+                }`}
+              >
+                <Star className={`h-3.5 w-3.5 ${c.is_favorite ? 'fill-amber-400' : ''}`} aria-hidden />
               </button>
             </div>
           )

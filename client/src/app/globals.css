@@ -7,17 +7,41 @@
   --neon-cyan: #00ffff;
   --void: #000000;
   --surface: #0a0a0a;
+  --surface-elevated: #111111;
   --on-surface: #e0e0e0;
+  --text-primary: var(--neon-red);
+  --text-muted: color-mix(in srgb, var(--on-surface) 55%, transparent);
+  --border-strong: color-mix(in srgb, var(--neon-cyan) 45%, transparent);
+  --accent: var(--neon-cyan);
+  --danger: #ff3b30;
+  --success: #00d26a;
   --shadow-rgb: 0, 255, 255;
   --crt-opacity: 0.18;
   --crt-vignette-opacity: 0.45;
   --scanline-dark: rgba(0, 0, 0, 0.18);
   --font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --border-radius: 0px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --motion-fast: 120ms;
+  --motion-base: 220ms;
+  --motion-slow: 360ms;
   --text-shadow-intensity: 0.35;
 }
 
 /* ===== CHROMATIC PROTOCOLS ===== */
+[data-theme="default"] {
+  --void: #000000;
+  --surface: #0a0a0a;
+  --surface-elevated: #111111;
+  --text-primary: #ff0000;
+  --text-muted: color-mix(in srgb, #e0e0e0 55%, transparent);
+}
 
 [data-theme="cyberpunk2077"] {
   --void: #0d0208;
@@ -81,7 +105,11 @@
   --neon-red: #A8C7FA;
   --neon-cyan: #7BCEFF;
   --surface: #1A1C1E;
+  --surface-elevated: #24282b;
   --on-surface: #E2E2E6;
+  --text-primary: #E2E2E6;
+  --text-muted: color-mix(in srgb, var(--on-surface) 62%, transparent);
+  --border-strong: color-mix(in srgb, var(--neon-cyan) 28%, transparent);
   --shadow-rgb: 168, 199, 250;
   --crt-opacity: 0;
   --crt-vignette-opacity: 0;
@@ -185,7 +213,11 @@
   --neon-red: #0062A1;
   --neon-cyan: #00639B;
   --surface: #FFFFFF;
+  --surface-elevated: #f4f7fb;
   --on-surface: #1A1C1E;
+  --text-primary: #1A1C1E;
+  --text-muted: color-mix(in srgb, var(--on-surface) 62%, transparent);
+  --border-strong: color-mix(in srgb, var(--neon-cyan) 30%, transparent);
   --shadow-rgb: 0, 98, 161;
   --crt-opacity: 0;
   --crt-vignette-opacity: 0;
@@ -309,6 +341,7 @@ html {
 
 body {
   @apply min-h-screen bg-void font-mono text-neon-red antialiased;
+  color: var(--text-primary);
   text-shadow: 0 0 1px color-mix(in srgb, var(--neon-red) var(--text-shadow-intensity, 35%), transparent);
   overflow-x: hidden;
 }
@@ -392,10 +425,16 @@ textarea {
 @layer components {
   .terminal-panel {
     @apply rounded-none border border-neon-cyan bg-void p-6 shadow-[0_0_12px_rgba(0,255,255,0.15)];
+    border-color: var(--border-strong);
+    background: var(--surface);
   }
 
   .terminal-input {
     @apply w-full rounded-none border border-neon-cyan bg-void px-3 py-2 font-mono text-neon-red placeholder:text-red-900/80 focus:border-neon-red focus:outline-none focus:ring-0;
+    border-color: var(--border-strong);
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+    transition: border-color var(--motion-fast) ease, background-color var(--motion-base) ease;
   }
 
   .terminal-label {

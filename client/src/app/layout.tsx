@@ -39,8 +39,11 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#000000',
-  colorScheme: 'dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FAFCFF' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+  ],
+  colorScheme: 'dark light',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -55,8 +58,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-zinc-950 selection:bg-neon-red selection:text-black">
-      <body className="relative min-h-dvh overflow-x-hidden bg-black font-mono antialiased supports-[height:100dvh]:min-h-[100dvh]">
+    <html lang="en" data-theme="default" className="bg-void selection:bg-neon-red selection:text-black">
+      <body className="relative min-h-dvh overflow-x-hidden bg-void font-mono antialiased supports-[height:100dvh]:min-h-[100dvh]">
         
         {/* [0] CHROMATIC_PROTOCOL :: theme data-attr applicator */}
         <ThemeApplicator />

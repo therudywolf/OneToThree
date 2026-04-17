@@ -131,7 +131,7 @@ export function AvatarCropModal({
 
         {/* VIEWPORT_CONTAINER */}
         <div className="relative mx-auto max-h-[min(60vh,420px)] overflow-hidden border border-neutral-900 bg-zinc-950">
-          {/* @ts-expect-error react-image-crop class component compat */}
+          {/* @ts-ignore react-image-crop typing/runtime compat in this workspace */}
           <ReactCrop
             crop={sequence}
             circularCrop

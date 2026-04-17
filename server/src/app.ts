@@ -60,12 +60,16 @@ export async function buildApp() {
     process.env.CORS_ORIGIN?.split(',')
       .map((o) => o.trim())
       .filter(Boolean) ?? []
+  const redisUrl = process.env.REDIS_URL?.trim() ?? ''
 
   if (isProd) {
     if (corsOriginsRaw.length === 0 || corsOriginsRaw.some((o) => o === '*')) {
       throw new Error(
         'CORS_ORIGIN must be set to explicit origin(s) in production (never use *)'
       )
+    }
+    if (!redisUrl) {
+      throw new Error('REDIS_URL must be set in production (security-critical state storage)')
     }
   }
 
@@ -138,6 +142,10 @@ export async function buildApp() {
   })
 
   await app.register(websocket)
+
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('X-Request-Id', request.id)
+  })
 
   await app.register(authRoutes, { prefix: '/api/auth' })
   await app.register(userRoutes, { prefix: '/api/users' })

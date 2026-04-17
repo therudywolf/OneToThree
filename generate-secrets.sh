@@ -46,16 +46,49 @@ BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 INTERNAL_API_SIGNING_KEY=$(openssl rand -hex 32)
 CLUSTER_JOIN_TOKEN=$(openssl rand -hex 24)
 
+resolve_turn_external_ip() {
+  local domain="$1"
+  local turn_host="turn.${domain}"
+  local ip=""
+
+  if command -v getent >/dev/null 2>&1; then
+    ip=$(getent ahostsv4 "$turn_host" 2>/dev/null | awk '{print $1; exit}' || true)
+  fi
+  if [[ -z "$ip" ]] && command -v dig >/dev/null 2>&1; then
+    ip=$(dig +short A "$turn_host" 2>/dev/null | head -n1 || true)
+  fi
+  if [[ -z "$ip" ]] && command -v nslookup >/dev/null 2>&1; then
+    ip=$(nslookup "$turn_host" 2>/dev/null | awk '/^Address: /{print $2}' | head -n1 || true)
+  fi
+  if [[ -z "$ip" ]]; then
+    ip=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || true)
+  fi
+
+  echo "$ip"
+}
+
 # --- Manual inputs ------------------------------------------------------------
 echo ""
 echo -e "${BLD}  Configure your deployment:${NC}"
 echo ""
 read -rp "  Enter your domain (e.g. onetothree.ru): " DOMAIN
 read -rp "  Enter ACME email for TLS certs: " ACME_EMAIL
-read -rp "  Enter TURN server external IP (curl -s ifconfig.me): " TURN_EXTERNAL_IP
 read -rp "  Enter VAPID contact email (e.g. admin@onetothree.ru): " VAPID_SUBJECT
 
 CORS_ORIGIN="https://${DOMAIN}"
+TURN_EXTERNAL_IP="$(resolve_turn_external_ip "$DOMAIN")"
+
+if [[ -z "$TURN_EXTERNAL_IP" ]]; then
+  echo -e "${RED}  Could not auto-detect TURN external IP.${NC}"
+  read -rp "  Enter TURN server external IP manually: " TURN_EXTERNAL_IP
+fi
+
+if [[ -z "$TURN_EXTERNAL_IP" ]]; then
+  echo -e "${RED}TURN external IP is required${NC}" >&2
+  exit 1
+fi
+
+echo -e "${CYN}  TURN external IP: ${TURN_EXTERNAL_IP}${NC}"
 
 # --- VAPID key generation (EC P-256 / base64url) -----------------------------
 echo ""

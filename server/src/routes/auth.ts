@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
@@ -39,31 +38,7 @@ import {
 import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
-
-interface Authenticator {
-  generateSecret(length?: number): string
-  keyuri(user: string, service: string, secret: string): string
-  check(token: string, secret: string): Promise<boolean>
-}
-
-const _require = createRequire(import.meta.url)
-const otplib = _require('otplib') as {
-  generateSecret(length?: number): string
-  generateURI(input: { accountName: string; issuer: string; secret: string }): string
-  verify(input: { token: string; secret: string }): Promise<{ valid: boolean }>
-}
-const authenticator: Authenticator = {
-  generateSecret(length?: number) {
-    return otplib.generateSecret(length)
-  },
-  keyuri(user: string, service: string, secret: string) {
-    return otplib.generateURI({ accountName: user, issuer: service, secret })
-  },
-  async check(token: string, secret: string) {
-    const result = await otplib.verify({ token, secret })
-    return result.valid
-  },
-}
+import { generateTotpSecret, generateTotpUri, verifyTotp } from '../lib/totp.js'
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -90,10 +65,26 @@ const login2faBodySchema = z.object({
 const disable2faBodySchema = z.object({
   code: totpCodeSchema,
 })
-
-const qrLoginBodySchema = z.object({
-  token: z.string().uuid(),
+const qrGenerateBodySchema = z.object({
+  nonce: z.string().min(1),
+  signature: z.string().min(1),
+  totp_code: totpCodeSchema.optional(),
 })
+
+const qrLoginBodySchema = z
+  .object({
+    token: z.string().uuid().optional(),
+    link_token: z.string().uuid().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.token && !value.link_token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['token'],
+        message: 'token or link_token is required',
+      })
+    }
+  })
 
 const QR_LINK_TTL_S = 300
 type Pending2faResponse = {
@@ -120,6 +111,42 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
+    const parsed = qrGenerateBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    const { nonce, signature, totp_code } = parsed.data
+
+    const [row] = await db
+      .select({
+        publicKeyJwk: users.publicKeyJwk,
+        isTotpEnabled: users.isTotpEnabled,
+        totpSecret: users.totpSecret,
+        allowDeviceLinking: users.allowDeviceLinking,
+      })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+    if (!row) return reply.status(401).send({ error: 'USER_NOT_FOUND' })
+    if (!row.allowDeviceLinking) {
+      return reply.status(403).send({ error: 'DEVICE_LINKING_DISABLED' })
+    }
+
+    const sigOk = verifyNonceSignatureEcdsaP256(nonce, signature, row.publicKeyJwk)
+    if (!sigOk) {
+      return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
+    }
+
+    if (row.isTotpEnabled) {
+      if (!totp_code) return reply.status(400).send({ error: 'TOTP_REQUIRED' })
+      if (!row.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
+      const totpOk = await verifyTotp(totp_code, row.totpSecret)
+      if (!totpOk) return reply.status(401).send({ error: 'TOTP_INVALID' })
+      if (!await consumeTotpCode(user.id, totp_code)) {
+        return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
+      }
+    }
+
     const token = randomUUID()
     const payload: QrLinkPayload = {
       sub: normalizeUuid(user.id),
@@ -140,7 +167,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const entry = await consumeQrLinkToken(parsed.data.token)
+    const qrToken = parsed.data.link_token ?? parsed.data.token
+    if (!qrToken) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const entry = await consumeQrLinkToken(qrToken)
     if (!entry) {
       return reply.status(401).send({ error: 'INVALID_OR_EXPIRED_TOKEN' })
     }
@@ -274,10 +306,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const [row] = await db.select({ isTotpEnabled: users.isTotpEnabled }).from(users).where(eq(users.id, user.id)).limit(1)
     if (row?.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
 
-    const secret = authenticator.generateSecret()
+    const secret = generateTotpSecret()
     await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id))
 
-    const otpauthUrl = authenticator.keyuri(user.username, 'Project13', secret)
+    const otpauthUrl = generateTotpUri(user.username, 'Project13', secret)
     const qrDataUrl = await QRCode.toDataURL(otpauthUrl)
     return reply.send({ secret, qr_data_url: qrDataUrl, otpauth_url: otpauthUrl })
   })
@@ -296,7 +328,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!row?.totpSecret) return reply.status(400).send({ error: 'TOTP_SETUP_REQUIRED' })
     if (row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
 
-    if (!await authenticator.check(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
+    if (!await verifyTotp(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
     if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
     await db.update(users).set({ isTotpEnabled: true }).where(eq(users.id, user.id))
@@ -315,7 +347,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       .from(users).where(eq(users.id, user.id)).limit(1)
 
     if (!row?.isTotpEnabled || !row.totpSecret) return reply.status(400).send({ error: 'TOTP_NOT_ENABLED' })
-    if (!await authenticator.check(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
+    if (!await verifyTotp(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
     if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
     await db.update(users).set({ totpSecret: null, isTotpEnabled: false }).where(eq(users.id, user.id))
@@ -343,7 +375,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!row?.totpSecret || !row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_NOT_CONFIGURED' })
     if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
 
-    if (!await authenticator.check(parsed.data.code, row.totpSecret)) {
+    if (!await verifyTotp(parsed.data.code, row.totpSecret)) {
       void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }

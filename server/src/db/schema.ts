@@ -53,6 +53,8 @@ export const users = pgTable('users', {
   hidePresence: boolean('hide_presence').notNull().default(false),
   /** When true, don't send read receipts to peers. */
   disableReadReceipts: boolean('disable_read_receipts').notNull().default(false),
+  /** Server-side gate for issuing new device-link tokens. */
+  allowDeviceLinking: boolean('allow_device_linking').notNull().default(false),
   /** Short bio / about text. */
   bio: text('bio'),
   /** Custom status text (e.g. "busy", "do not disturb", free-form). */
@@ -154,6 +156,27 @@ export const chatMembers = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.chatId, t.userId] }),
+  })
+)
+
+/** Per-user list of favorited chats for fast sidebar access. */
+export const chatFavorites = pgTable(
+  'chat_favorites',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chats.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.chatId] }),
+    userIdx: index('chat_favorites_user_id_idx').on(t.userId),
+    chatIdx: index('chat_favorites_chat_id_idx').on(t.chatId),
   })
 )
 

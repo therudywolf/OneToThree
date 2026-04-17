@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { ensureClientDeviceId } from '@/lib/api/auth'
-import { postQrLogin } from '@/lib/api/auth-qr'
+import { extractQrLoginToken, postQrLogin } from '@/lib/api/auth-qr'
 import { useTranslation } from '@/hooks/use-translation'
 import jsQR from 'jsqr'
 
@@ -94,9 +94,8 @@ export function LoginQrDevicePanel() {
     })
 
     if (code?.data) {
-      const token = code.data.trim()
-      // Validate it looks like a UUID token
-      if (token.length >= 32) {
+      const token = extractQrLoginToken(code.data)
+      if (token) {
         stopScanner()
         setSignalToken(token)
         // Auto-submit the scanned token
@@ -109,7 +108,8 @@ export function LoginQrDevicePanel() {
   }
 
   const executeBindingWithToken = async (raw: string) => {
-    if (raw.length < 32) {
+    const token = extractQrLoginToken(raw)
+    if (!token) {
       setErrorLog(t('login.qrTokenInvalid'))
       return
     }
@@ -119,7 +119,7 @@ export function LoginQrDevicePanel() {
 
     try {
       ensureClientDeviceId()
-      await postQrLogin(raw)
+      await postQrLogin(token)
       await refresh()
       router.replace('/')
       router.refresh()

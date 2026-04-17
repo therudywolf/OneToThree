@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useState } from 'react'
-import { postQrGenerate } from '@/lib/api/auth-qr'
+import { buildQrLoginUrl, postQrGenerate } from '@/lib/api/auth-qr'
 import { useTranslation } from '@/hooks/use-translation'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 
@@ -15,6 +15,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   const [linkToken, setLinkToken] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const qrValue = linkToken ? buildQrLoginUrl(linkToken) : null
 
   // Генерируем QR только после подтверждения vault-пароля
   useEffect(() => {
@@ -83,9 +84,9 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                 </span>
               ) : err ? (
                 <p className="break-all font-mono text-[10px] text-neon-red">[!] {err}</p>
-              ) : linkToken ? (
+              ) : qrValue ? (
                 <QRCodeSVG
-                  value={linkToken}
+                  value={qrValue}
                   size={200}
                   bgColor="#000000"
                   fgColor="#22d3ee"

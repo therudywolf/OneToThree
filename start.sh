@@ -3,7 +3,8 @@
 # OneToThree (Forest Messenger) — Production Launcher
 # =============================================================================
 # Первый запуск:
-#   ./start.sh          — генерирует секреты (покажет пароли один раз), запускает стек
+#   ./start.sh install  — генерирует секреты (покажет пароли один раз), запускает стек
+#   ./start.sh          — то же самое, короткий путь
 #
 # Сброс и чистый старт:
 #   ./start.sh clean    — удаляет volumes и секреты, готов к свежему деплою
@@ -41,6 +42,9 @@ ENV_FILE="${ENV_FILE:-.env.prod}"
 COMPOSE_FILE="docker-compose.prod.yml"
 MESH_ENV_FILE="${MESH_ENV_FILE:-.env.mesh}"
 MESH_COMPOSE_FILE="docker-compose.mesh.yml"
+SECRETS_DIR="${ROOT}/secrets"
+SECRETS_DONE="${SECRETS_DIR}/.initialized"
+SECRETS_BACKUP_DIR="${ROOT}/secrets-backups"
 
 # =============================================================================
 # УТИЛИТЫ ЧТЕНИЯ/ЗАПИСИ ENV
@@ -85,6 +89,9 @@ is_placeholder() {
 CMD="${1:-up}"
 
 case "$CMD" in
+  install)
+    CMD="up"
+    ;;
   quick)
     CMD="up"
     ;;
@@ -145,6 +152,81 @@ case "$CMD" in
     ls -lh "$BACKUP_DIR"/*.sql.gz | tail -5
     exit 0
     ;;
+  backup-secrets)
+    [[ -f "$SECRETS_DONE" ]] || die "Секреты ещё не инициализированы. Сначала выполните ./start.sh install"
+    mkdir -p "$SECRETS_BACKUP_DIR"
+    chmod 700 "$SECRETS_BACKUP_DIR"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    TMP_DIR=$(mktemp -d)
+    ARCHIVE_BASENAME="deployment_secrets_${TIMESTAMP}"
+    TAR_PATH="${TMP_DIR}/${ARCHIVE_BASENAME}.tar"
+    OUT_PATH="${SECRETS_BACKUP_DIR}/${ARCHIVE_BASENAME}.tar.enc"
+
+    log "Готовлю зашифрованный backup секретов..."
+    cp -R "$SECRETS_DIR" "${TMP_DIR}/secrets"
+    [[ -f "$ENV_FILE" ]] && cp "$ENV_FILE" "${TMP_DIR}/.env.prod"
+    [[ -f "$MESH_ENV_FILE" ]] && cp "$MESH_ENV_FILE" "${TMP_DIR}/.env.mesh"
+
+    BACKUP_ITEMS=("secrets")
+    [[ -f "${TMP_DIR}/.env.prod" ]] && BACKUP_ITEMS+=(".env.prod")
+    [[ -f "${TMP_DIR}/.env.mesh" ]] && BACKUP_ITEMS+=(".env.mesh")
+    tar -C "$TMP_DIR" -cf "$TAR_PATH" "${BACKUP_ITEMS[@]}"
+
+    read -rsp "  Пароль для шифрования backup: " BACKUP_PASSPHRASE
+    echo ""
+    [[ -n "$BACKUP_PASSPHRASE" ]] || die "Пустой пароль не допускается."
+    read -rsp "  Повторите пароль: " BACKUP_PASSPHRASE_CONFIRM
+    echo ""
+    [[ "$BACKUP_PASSPHRASE" == "$BACKUP_PASSPHRASE_CONFIRM" ]] || die "Пароли не совпадают."
+
+    openssl enc -aes-256-cbc -pbkdf2 -iter 250000 -salt \
+      -in "$TAR_PATH" \
+      -out "$OUT_PATH" \
+      -pass "pass:${BACKUP_PASSPHRASE}"
+
+    chmod 600 "$OUT_PATH"
+    rm -rf "$TMP_DIR"
+    unset BACKUP_PASSPHRASE BACKUP_PASSPHRASE_CONFIRM
+
+    ok "Зашифрованный backup создан: ${OUT_PATH}"
+    echo -e "  Храните его отдельно от сервера и отдельно от пароля к нему."
+    exit 0
+    ;;
+  restore-secrets)
+    ARCHIVE_PATH="${2:-}"
+    [[ -n "$ARCHIVE_PATH" ]] || die "Укажите путь: ./start.sh restore-secrets <path-to-backup.tar.enc>"
+    [[ -f "$ARCHIVE_PATH" ]] || die "Файл не найден: $ARCHIVE_PATH"
+
+    warn "Восстановление перезапишет локальные ./secrets и может обновить ${ENV_FILE}/${MESH_ENV_FILE}."
+    read -rp "  Продолжить? (type RESTORE): " CONFIRM_RESTORE
+    [[ "$CONFIRM_RESTORE" == "RESTORE" ]] || die "Восстановление отменено."
+
+    TMP_DIR=$(mktemp -d)
+    TAR_PATH="${TMP_DIR}/restore.tar"
+    read -rsp "  Пароль для расшифровки backup: " RESTORE_PASSPHRASE
+    echo ""
+    [[ -n "$RESTORE_PASSPHRASE" ]] || die "Пустой пароль не допускается."
+
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 250000 \
+      -in "$ARCHIVE_PATH" \
+      -out "$TAR_PATH" \
+      -pass "pass:${RESTORE_PASSPHRASE}" \
+      || die "Не удалось расшифровать backup. Проверьте пароль и файл."
+
+    tar -C "$TMP_DIR" -xf "$TAR_PATH"
+    rm -rf "$SECRETS_DIR"
+    mv "${TMP_DIR}/secrets" "$SECRETS_DIR"
+    chmod 700 "$SECRETS_DIR"
+    find "$SECRETS_DIR" -type f -exec chmod 600 {} \;
+    [[ -f "${TMP_DIR}/.env.prod" ]] && cp "${TMP_DIR}/.env.prod" "$ENV_FILE"
+    [[ -f "${TMP_DIR}/.env.mesh" ]] && cp "${TMP_DIR}/.env.mesh" "$MESH_ENV_FILE"
+    rm -rf "$TMP_DIR"
+    unset RESTORE_PASSPHRASE
+
+    ok "Секреты восстановлены."
+    echo -e "  Перед запуском проверьте DNS/IP параметры в ${ENV_FILE} и ${MESH_ENV_FILE}."
+    exit 0
+    ;;
   clean)
     echo ""
     warn "Это удалит ВСЕ данные: БД, файлы, TLS сертификаты, секреты, образы."
@@ -190,6 +272,8 @@ case "$CMD" in
     sep
     echo -e "${BLD}  OneToThree — Mesh Helper Launcher${NC}"
     sep
+    warn "Текущая реализация mesh поднимает relay-role helper (TURN) как первый scale-out slice."
+    warn "Финальная цель — role-based cluster mesh для relay/api/worker/db-replica ролей."
 
     command -v docker >/dev/null 2>&1 || die "Не найдена команда: docker."
     if docker compose version >/dev/null 2>&1; then
@@ -205,6 +289,7 @@ case "$CMD" in
       [[ -f ".env.mesh.example" ]] || die "Не найден .env.mesh.example"
       cp ".env.mesh.example" "$MESH_ENV_FILE"
       warn "Создан ${MESH_ENV_FILE}. Заполните TURN_REALM, TURN_EXTERNAL_IP и TURN_PASSWORD."
+      warn "Для полного cluster mesh используйте cluster_join_token и internal_api_signing_key из ./secrets."
       echo -e "  Затем повторите: ${BLD}./start.sh mesh${NC}"
       exit 0
     fi
@@ -250,7 +335,7 @@ case "$CMD" in
     : # продолжаем ниже
     ;;
   *)
-    echo "Использование: ./start.sh [up|quick|mesh|stop|restart|logs|status|update|backup|clean]"
+    echo "Использование: ./start.sh [install|up|quick|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|backup|clean]"
     exit 1
     ;;
 esac
@@ -305,9 +390,6 @@ check_volume "caddy_config" "Caddy config"
 # =============================================================================
 # ОБНАРУЖЕНИЕ STALE VOLUMES (свежий клон + старые данные)
 # =============================================================================
-SECRETS_DIR="./secrets"
-SECRETS_DONE="$SECRETS_DIR/.initialized"
-
 if [[ ! -f "$SECRETS_DONE" ]]; then
   STALE_VOLUMES=()
   for _vol_suffix in pgdata redis_data minio_data caddy_data caddy_config; do
@@ -410,6 +492,9 @@ if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
   sync_secret_to_env "webhook_secret"       "WEBHOOK_SECRET"
   sync_secret_to_env "turn_password"        "TURN_PASSWORD"
   sync_secret_to_env "turn_password"        "NEXT_PUBLIC_TURN_PASSWORD"
+  sync_secret_to_env "cluster_join_token"   "CLUSTER_JOIN_TOKEN"
+  sync_secret_to_env "internal_api_signing_key" "INTERNAL_API_SIGNING_KEY"
+  sync_secret_to_env "backup_encryption_key" "BACKUP_ENCRYPTION_KEY"
   sync_secret_to_env "cors_origin"          "CORS_ORIGIN"
   sync_secret_to_env "acme_email"           "ACME_EMAIL"
   sync_secret_to_env "turn_external_ip"     "TURN_EXTERNAL_IP"
@@ -675,6 +760,7 @@ echo -e "  ${DIM}./start.sh logs    — просмотр логов${NC}"
 echo -e "  ${DIM}./start.sh stop    — остановить${NC}"
 echo -e "  ${DIM}./start.sh update  — обновить${NC}"
 echo -e "  ${DIM}./start.sh backup  — резервная копия БД${NC}"
+echo -e "  ${DIM}./start.sh backup-secrets — зашифрованный backup секретов${NC}"
 echo ""
 echo -e "  ${DIM}Данные хранятся в Docker volumes и НЕ удаляются при обновлении.${NC}"
 echo -e "  ${DIM}./start.sh clean   — полный сброс (ОСТОРОЖНО)${NC}"

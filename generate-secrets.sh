@@ -42,6 +42,9 @@ MINIO_ROOT_PASSWORD=$(openssl rand -hex 24)
 JWT_SECRET=$(openssl rand -hex 32)
 WEBHOOK_SECRET=$(openssl rand -hex 32)
 TURN_PASSWORD=$(openssl rand -hex 16)
+BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
+INTERNAL_API_SIGNING_KEY=$(openssl rand -hex 32)
+CLUSTER_JOIN_TOKEN=$(openssl rand -hex 24)
 
 # --- Manual inputs ------------------------------------------------------------
 echo ""
@@ -73,8 +76,7 @@ if [[ -z "$VAPID_PUBLIC_KEY" || -z "$VAPID_PRIVATE_KEY" ]]; then
   echo -e "${YEL}  openssl VAPID generation failed, trying Docker fallback...${NC}"
   VAPID_JSON=""
   if command -v docker >/dev/null 2>&1; then
-    VAPID_JSON=$(docker run --rm node:20-alpine sh -c \
-      'npm install -g web-push --silent 2>/dev/null && web-push generate-vapid-keys --json 2>/dev/null' 2>/dev/null || true)
+    VAPID_JSON=$(docker run --rm node:20-alpine sh -c 'npm install -g web-push --silent 2>/dev/null && web-push generate-vapid-keys --json 2>/dev/null' 2>/dev/null || true)
     VAPID_PUBLIC_KEY=$(echo "$VAPID_JSON" | grep -o '"publicKey":"[^"]*"' | cut -d'"' -f4 || true)
     VAPID_PRIVATE_KEY=$(echo "$VAPID_JSON" | grep -o '"privateKey":"[^"]*"' | cut -d'"' -f4 || true)
   fi
@@ -92,6 +94,9 @@ echo -n "$MINIO_ROOT_PASSWORD"  > "$SECRETS_DIR/minio_root_password"
 echo -n "$JWT_SECRET"           > "$SECRETS_DIR/jwt_secret"
 echo -n "$WEBHOOK_SECRET"       > "$SECRETS_DIR/webhook_secret"
 echo -n "$TURN_PASSWORD"        > "$SECRETS_DIR/turn_password"
+echo -n "$BACKUP_ENCRYPTION_KEY" > "$SECRETS_DIR/backup_encryption_key"
+echo -n "$INTERNAL_API_SIGNING_KEY" > "$SECRETS_DIR/internal_api_signing_key"
+echo -n "$CLUSTER_JOIN_TOKEN"   > "$SECRETS_DIR/cluster_join_token"
 echo -n "$ACME_EMAIL"           > "$SECRETS_DIR/acme_email"
 echo -n "$TURN_EXTERNAL_IP"     > "$SECRETS_DIR/turn_external_ip"
 echo -n "$CORS_ORIGIN"          > "$SECRETS_DIR/cors_origin"
@@ -115,6 +120,9 @@ echo -e "║ ${YEL}MINIO_PASSWORD${NC}     : ${MINIO_ROOT_PASSWORD}"
 echo -e "║ ${YEL}JWT_SECRET${NC}         : ${JWT_SECRET}"
 echo -e "║ ${YEL}WEBHOOK_SECRET${NC}     : ${WEBHOOK_SECRET}"
 echo -e "║ ${YEL}TURN_PASSWORD${NC}      : ${TURN_PASSWORD}"
+echo -e "║ ${YEL}BACKUP_ENCRYPTION_KEY${NC}: ${BACKUP_ENCRYPTION_KEY}"
+echo -e "║ ${YEL}INTERNAL_API_SIGNING_KEY${NC}: ${INTERNAL_API_SIGNING_KEY}"
+echo -e "║ ${YEL}CLUSTER_JOIN_TOKEN${NC}  : ${CLUSTER_JOIN_TOKEN}"
 if [[ -n "$VAPID_PUBLIC_KEY" ]]; then
   echo -e "║ ${YEL}VAPID_PUBLIC_KEY${NC}  : ${VAPID_PUBLIC_KEY}"
   echo -e "║ ${YEL}VAPID_PRIVATE_KEY${NC} : ${VAPID_PRIVATE_KEY}"
@@ -123,6 +131,7 @@ echo -e "${BLD}╚════════════════════�
 echo ""
 echo -e "  Secrets stored in ${CYN}${SECRETS_DIR}/${NC} and used by Docker."
 echo -e "  The secrets directory is in .gitignore — ${BLD}never committed${NC}."
+echo -e "  Make an encrypted copy with ${BLD}./start.sh backup-secrets${NC} before first production rollout."
 echo ""
 
 touch "$SECRETS_DONE"

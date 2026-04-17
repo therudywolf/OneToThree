@@ -7,6 +7,10 @@ process.env.JWT_SECRET =
 process.env.DATABASE_URL =
   process.env.DATABASE_URL?.trim() ||
   'postgres://forest:forest@127.0.0.1:5432/forest'
+process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX =
+  process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX?.trim() || '1000'
+process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW =
+  process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW?.trim() || '1 minute'
 
 process.env.MINIO_ENDPOINT =
   process.env.MINIO_ENDPOINT?.trim() || 'http://127.0.0.1:9000'

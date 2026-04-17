@@ -3,14 +3,18 @@
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { postQrLogin } from '@/lib/api/auth-qr'
+import { complete2faLogin } from '@/lib/api/auth'
 
 function QrLoginInner() {
   const router = useRouter()
   const params = useSearchParams()
   const token = params.get('token')
   const didRun = useRef(false)
-  const [status, setStatus] = useState<'pending' | 'ok' | 'error'>('pending')
+  const [status, setStatus] = useState<'pending' | 'totp' | 'ok' | 'error'>('pending')
   const [errorMsg, setErrorMsg] = useState('')
+  const [pendingToken, setPendingToken] = useState<string | null>(null)
+  const [totpCode, setTotpCode] = useState('')
+  const [verifyingTotp, setVerifyingTotp] = useState(false)
 
   useEffect(() => {
     if (didRun.current) return
@@ -23,7 +27,12 @@ function QrLoginInner() {
     }
 
     void postQrLogin(token)
-      .then(() => {
+      .then((result) => {
+        if (result.ok === 'needs_2fa') {
+          setPendingToken(result.pendingToken)
+          setStatus('totp')
+          return
+        }
         setStatus('ok')
         setTimeout(() => router.replace('/'), 1200)
       })
@@ -35,12 +44,41 @@ function QrLoginInner() {
           BANNED_USER: 'Аккаунт заблокирован.',
           DEVICE_REVOKED: 'Это устройство было отозвано.',
           CLIENT_DEVICE_ID_REQUIRED: 'Ошибка идентификации устройства — попробуй снова.',
-          QR_LOGIN_REQUIRES_TOTP_STUB: 'Для аккаунтов с TOTP QR-вход пока не завершён на сервере.',
+          TOTP_STATE_INVALID: 'На сервере повреждено состояние TOTP у этого аккаунта.',
           QR_LOGIN_FAILED: 'QR-вход не удался.',
         }
         setErrorMsg(codeMap[code] ?? 'Нет соединения с сервером.')
       })
   }, [token, router])
+
+  async function submitTotp() {
+    if (!pendingToken || verifyingTotp) return
+    const code = totpCode.replace(/\D/g, '').slice(0, 6)
+    if (code.length !== 6) {
+      setErrorMsg('Введите ровно 6 цифр.')
+      return
+    }
+    setVerifyingTotp(true)
+    setErrorMsg('')
+    try {
+      await complete2faLogin(pendingToken, code)
+      setStatus('ok')
+      setTimeout(() => router.replace('/'), 1200)
+    } catch (err: unknown) {
+      const codeText = err instanceof Error ? err.message : 'TOTP_VERIFY_FAILED'
+      const codeMap: Record<string, string> = {
+        INVALID_PENDING_TOKEN: 'Шаг подтверждения просрочен. Отсканируй QR заново.',
+        TOTP_INVALID: 'Неверный или просроченный код.',
+        TOTP_ALREADY_USED: 'Этот код уже использован. Дождись нового.',
+        TOTP_NOT_CONFIGURED: 'На сервере не настроен TOTP для этого аккаунта.',
+        CLIENT_DEVICE_ID_REQUIRED: 'Не удалось зарегистрировать это устройство.',
+        DEVICE_REVOKED: 'Это устройство отозвано и не может войти.',
+      }
+      setErrorMsg(codeMap[codeText] ?? 'Ошибка проверки TOTP.')
+    } finally {
+      setVerifyingTotp(false)
+    }
+  }
 
   const s = {
     page: {
@@ -59,6 +97,18 @@ function QrLoginInner() {
     ok: { fontSize: '1rem', color: '#00ff88' },
     err: { fontSize: '0.85rem', color: '#ff4444', maxWidth: '320px', textAlign: 'center' as const, lineHeight: 1.6 },
     hint: { fontSize: '0.7rem', color: '#555', maxWidth: '320px', textAlign: 'center' as const, lineHeight: 1.6, marginTop: '0.5rem' },
+    input: {
+      width: '220px',
+      padding: '0.75rem 1rem',
+      background: '#111',
+      color: '#00ffcc',
+      border: '1px solid #00ffcc55',
+      letterSpacing: '0.35em',
+      textAlign: 'center' as const,
+      fontFamily: 'monospace',
+      fontSize: '1rem',
+      outline: 'none',
+    },
     link: {
       marginTop: '1.5rem',
       fontSize: '0.7rem',
@@ -90,6 +140,35 @@ function QrLoginInner() {
         <>
           <div style={s.ok}>[ OK :: СЕССИЯ ПОЛУЧЕНА ]</div>
           <div style={s.hint}>Перенаправление на главную...</div>
+        </>
+      )}
+
+      {status === 'totp' && (
+        <>
+          <div style={s.ok}>[ TOTP :: ПОДТВЕРЖДЕНИЕ ]</div>
+          <div style={s.hint}>
+            Этот аккаунт защищён двухфакторной аутентификацией. Введи 6-значный код из приложения-аутентификатора.
+          </div>
+          <input
+            style={s.input}
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={totpCode}
+            onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder="000000"
+          />
+          <a
+            href="#submit"
+            style={{ ...s.link, opacity: verifyingTotp ? 0.6 : 1 }}
+            onClick={(e) => {
+              e.preventDefault()
+              void submitTotp()
+            }}
+          >
+            {verifyingTotp ? '[ ПРОВЕРКА... ]' : '[ ПОДТВЕРДИТЬ ]'}
+          </a>
+          {errorMsg ? <div style={s.err}>{errorMsg}</div> : null}
         </>
       )}
 

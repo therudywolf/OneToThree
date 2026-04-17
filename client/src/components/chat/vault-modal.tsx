@@ -170,7 +170,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
       className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 px-4 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
-      aria-label={t('login.vaultPassphraseLabel')}
+      aria-label="Key vault"
     >
       <div className="w-full max-w-sm space-y-6 border border-neon-cyan/40 bg-black p-6 shadow-[0_0_30px_rgba(0,255,255,0.05)]">
         <header className="border-b border-neon-cyan/30 pb-4">
@@ -206,7 +206,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
               {error}
             </p>
           ) : null}
-          <TerminalGlitchButton type="submit" disabled={busy} className="w-full">
+          <TerminalGlitchButton type="submit" disabled={busy} aria-label="UNLOCK" className="w-full">
             {t('login.signIn')}
           </TerminalGlitchButton>
         </form>

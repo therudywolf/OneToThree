@@ -30,9 +30,9 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    /** `output: standalone` — `next start` is unreliable; run the generated Node server. */
+    /** Next 16 standalone startup is flaky in local Windows E2E; use the supported start command. */
     command:
-      'npm run build && node .next/standalone/server.js',
+      'npm run build && npm run start -- --hostname 127.0.0.1 --port 3000',
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,

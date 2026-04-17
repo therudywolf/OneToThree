@@ -57,14 +57,12 @@ function orderedSidebarChats(
 
 export function ChatSidebar({
   userId,
-  username,
   isAdmin,
   sharedKey,
   onPackSettingsChanged,
   onNavigate,
 }: {
   userId: string
-  username?: string
   isAdmin?: boolean
   sharedKey: CryptoKey | null
   onPackSettingsChanged?: () => void

@@ -66,9 +66,7 @@ export function RecoveryHandler() {
 
     // Watchdog: only on app pages, not on auth/login routes
     // Also clear watchdog on any user interaction (redirect counts as navigation, not stuck)
-    let guardStarted = false
     if (!isAuthPage) {
-      guardStarted = true
       hydrationTimeoutRef.current = setTimeout(() => {
         setShowForceReset(true)
         console.warn('[recovery] App appears to be stuck in loading state')
@@ -98,8 +96,6 @@ export function RecoveryHandler() {
         hydrationTimeoutRef.current = null
       }
     }
-  // Re-run when pathname changes so watchdog resets on navigation
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthPage])
 
   // Also imperatively kill the modal whenever we land on an auth page

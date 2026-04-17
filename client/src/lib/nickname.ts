@@ -5,8 +5,8 @@
  * * CRITICAL: Sync with uplink logic [server/src/lib/nickname.ts]
  */
 
-/** [SIGNATURE_PATTERN] :: Только латиница, цифры и системные разделители. 3-20 символов. */
-export const IDENTITY_SIGNATURE_PATTERN = /^[a-zA-Z0-9_.-]{3,20}$/
+/** [SIGNATURE_PATTERN] :: Только латиница, цифры и системные разделители. 3-32 символа. */
+export const IDENTITY_SIGNATURE_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/
 
 /** [PROTECTED_SIGNATURES] :: Зарезервированные системные идентификаторы (Warden Level) */
 export const PROTECTED_SIGNATURES = new Set([

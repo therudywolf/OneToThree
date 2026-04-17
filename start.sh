@@ -39,6 +39,8 @@ sep()  { echo -e "${DIM}  ──────────────────
 
 ENV_FILE="${ENV_FILE:-.env.prod}"
 COMPOSE_FILE="docker-compose.prod.yml"
+MESH_ENV_FILE="${MESH_ENV_FILE:-.env.mesh}"
+MESH_COMPOSE_FILE="docker-compose.mesh.yml"
 
 # =============================================================================
 # УТИЛИТЫ ЧТЕНИЯ/ЗАПИСИ ENV
@@ -81,6 +83,12 @@ is_placeholder() {
 # КОМАНДЫ
 # =============================================================================
 CMD="${1:-up}"
+
+case "$CMD" in
+  quick)
+    CMD="up"
+    ;;
+esac
 
 case "$CMD" in
   stop)
@@ -178,11 +186,71 @@ case "$CMD" in
     ok "Готово. Запустите ./start.sh для свежего деплоя."
     exit 0
     ;;
+  mesh)
+    sep
+    echo -e "${BLD}  OneToThree — Mesh Helper Launcher${NC}"
+    sep
+
+    command -v docker >/dev/null 2>&1 || die "Не найдена команда: docker."
+    if docker compose version >/dev/null 2>&1; then
+      MESH_DC=(docker compose)
+    elif command -v docker-compose >/dev/null 2>&1; then
+      MESH_DC=(docker-compose)
+    else
+      die "Docker Compose не найден."
+    fi
+    docker info >/dev/null 2>&1 || die "Docker демон не запущен."
+
+    if [[ ! -f "$MESH_ENV_FILE" ]]; then
+      [[ -f ".env.mesh.example" ]] || die "Не найден .env.mesh.example"
+      cp ".env.mesh.example" "$MESH_ENV_FILE"
+      warn "Создан ${MESH_ENV_FILE}. Заполните TURN_REALM, TURN_EXTERNAL_IP и TURN_PASSWORD."
+      echo -e "  Затем повторите: ${BLD}./start.sh mesh${NC}"
+      exit 0
+    fi
+
+    mesh_val_for_key() {
+      local key="$1"
+      local line val
+      line=$(grep -E "^[[:space:]]*${key}=" "$MESH_ENV_FILE" 2>/dev/null | tail -n1 || true)
+      [[ -z "$line" ]] && { echo ""; return; }
+      val="${line#*=}"
+      val="${val//$'\r'/}"
+      val="${val#\"}" val="${val%\"}"
+      echo "$val"
+    }
+
+    mesh_check_required() {
+      local key="$1" hint="$2"
+      local v
+      v="$(mesh_val_for_key "$key")"
+      if is_placeholder "$v"; then
+        die "В ${MESH_ENV_FILE} не заполнен ${key}. ${hint}"
+      fi
+    }
+
+    [[ -f "$MESH_COMPOSE_FILE" ]] || die "Не найден ${MESH_COMPOSE_FILE}"
+
+    mesh_check_required TURN_REALM "Например: turn.example.com или ваш основной домен."
+    mesh_check_required TURN_EXTERNAL_IP "Укажите публичный IP helper-ноды."
+    mesh_check_required TURN_PASSWORD "Укажите тот же TURN password, который знают клиенты."
+    mesh_check_required TURN_USERNAME "Обычно достаточно оставить turn."
+
+    log "Запускаю helper-node mesh (TURN relay)..."
+    "${MESH_DC[@]}" -f "$MESH_COMPOSE_FILE" --env-file "$MESH_ENV_FILE" up -d
+    ok "Helper-node mesh запущен."
+    echo ""
+    echo -e "  ${BLD}Проверьте:${NC}"
+    echo -e "    1. DNS helper TURN hostname указывает на эту ноду"
+    echo -e "    2. Порты 3478/tcp+udp и 49152-65535/udp открыты"
+    echo -e "    3. На основном сервере/клиенте TURN URL смотрит на helper-ноду"
+    exit 0
+    ;;
   up|"")
     : # продолжаем ниже
     ;;
   *)
-    echo "Использование: ./start.sh [up|stop|restart|logs|status|update|backup|clean]"
+    echo "Использование: ./start.sh [up|quick|mesh|stop|restart|logs|status|update|backup|clean]"
     exit 1
     ;;
 esac

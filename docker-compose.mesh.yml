@@ -1,0 +1,23 @@
+name: forestmessenger-mesh
+
+services:
+  coturn-helper:
+    image: coturn/coturn:4.6
+    restart: always
+    network_mode: host
+    env_file:
+      - .env.mesh
+    volumes:
+      - ./docker/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command:
+      - -n
+      - --log-file=stdout
+      - --listening-port=3478
+      - --min-port=49152
+      - --max-port=65535
+      - --fingerprint
+      - --lt-cred-mech
+      - --no-multicast-peers
+      - --realm=${TURN_REALM:?set TURN_REALM in .env.mesh}
+      - --user=${TURN_USERNAME:-turn}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.mesh}
+      - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP in .env.mesh}

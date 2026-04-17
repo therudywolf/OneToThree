@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ensureClientDeviceId } from '@/lib/api/auth'
+import { postQrLogin } from '@/lib/api/auth-qr'
 
 function QrLoginInner() {
   const router = useRouter()
@@ -22,37 +22,23 @@ function QrLoginInner() {
       return
     }
 
-    // Гарантируем что у нового браузера есть client_device_id до запроса
-    const clientDeviceId = ensureClientDeviceId()
-
-    fetch('/api/auth/qr-login', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-client-device-id': clientDeviceId,
-      },
-      body: JSON.stringify({ token }),
-    })
-      .then(async (res) => {
-        if (res.ok) {
-          setStatus('ok')
-          setTimeout(() => router.replace('/'), 1200)
-        } else {
-          const body = await res.json().catch(() => ({}))
-          setStatus('error')
-          const codeMap: Record<string, string> = {
-            INVALID_OR_EXPIRED_TOKEN: 'QR-код истёк или уже использован. Попроси новый.',
-            BANNED_USER: 'Аккаунт заблокирован.',
-            DEVICE_REVOKED: 'Это устройство было отозвано.',
-            CLIENT_DEVICE_ID_REQUIRED: 'Ошибка идентификации устройства — попробуй снова.',
-          }
-          setErrorMsg(codeMap[body?.error] ?? body?.error ?? `HTTP ${res.status}`)
-        }
+    void postQrLogin(token)
+      .then(() => {
+        setStatus('ok')
+        setTimeout(() => router.replace('/'), 1200)
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         setStatus('error')
-        setErrorMsg('Нет соединения с сервером.')
+        const code = err instanceof Error ? err.message : 'QR_LOGIN_FAILED'
+        const codeMap: Record<string, string> = {
+          INVALID_OR_EXPIRED_TOKEN: 'QR-код истёк или уже использован. Попроси новый.',
+          BANNED_USER: 'Аккаунт заблокирован.',
+          DEVICE_REVOKED: 'Это устройство было отозвано.',
+          CLIENT_DEVICE_ID_REQUIRED: 'Ошибка идентификации устройства — попробуй снова.',
+          QR_LOGIN_REQUIRES_TOTP_STUB: 'Для аккаунтов с TOTP QR-вход пока не завершён на сервере.',
+          QR_LOGIN_FAILED: 'QR-вход не удался.',
+        }
+        setErrorMsg(codeMap[code] ?? 'Нет соединения с сервером.')
       })
   }, [token, router])
 

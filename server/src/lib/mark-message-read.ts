@@ -139,7 +139,7 @@ export async function markMessagesReadByReader(
     .where(eq(users.id, readerId))
     .limit(1)
   if (readerRow?.disableReadReceipts) {
-    return messageIds.map((id) => ({ ok: false as const, error: 'READ_RECEIPTS_DISABLED' }))
+    return messageIds.map((_id) => ({ ok: false as const, error: 'READ_RECEIPTS_DISABLED' }))
   }
 
   const now = new Date()

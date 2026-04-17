@@ -54,8 +54,13 @@ function extensionFromFileName(fileName: string): string {
 
 /** Strips path traversal, null bytes, and control chars from filenames. */
 function sanitizeFileName(raw: string): string {
-  return raw
-    .replace(/[\x00-\x1f]/g, '')       // strip control chars
+  const withoutControlChars = Array.from(raw)
+    .filter((char) => {
+      const code = char.charCodeAt(0)
+      return code !== 0 && code >= 0x20
+    })
+    .join('')
+  return withoutControlChars
     .replace(/\.\./g, '')              // strip path traversal
     .replace(/[/\\]/g, '_')            // replace path separators
     .slice(0, 255)                     // limit length

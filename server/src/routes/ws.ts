@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { WebSocket } from 'ws'
@@ -35,17 +35,19 @@ import {
   joinRoom,
   leaveRoom,
   leaveAllRooms,
-  getRoomParticipants,
   getRoomParticipantIds,
   isUserInRoom,
   updateParticipantState,
-  isRoomActive,
 } from '../ws/group-call-rooms.js'
 
 type WsAuthResult = {
   user: AuthUser
   jti?: string
   device_id?: string
+}
+
+type HeartbeatSocket = WebSocket & {
+  __isAlive?: boolean
 }
 
 /**
@@ -230,7 +232,11 @@ const toggleReactionSchema = z.object({
 /** Safe ws.send that checks readyState and swallows errors on closing sockets. */
 function safeSend(ws: WebSocket, data: string) {
   if (ws.readyState === ws.OPEN) {
-    try { ws.send(data) } catch {}
+    try {
+      ws.send(data)
+    } catch {
+      // Ignore sends racing with socket shutdown.
+    }
   }
 }
 
@@ -310,12 +316,19 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
     // FIX 1: Handle websocket errors to prevent ECONNRESET crashes
     ws.on('error', (err) => {
       request.log.error({ err, userId: authed?.id }, 'websocket error')
-      try { ws.terminate() } catch {}
+      try {
+        ws.terminate()
+      } catch {
+        // Socket is already closing.
+      }
     })
 
     // FIX 2: Mark connection alive for heartbeat
-    ;(ws as any).__isAlive = true
-    ws.on('pong', () => { (ws as any).__isAlive = true })
+    const heartbeatWs = ws as HeartbeatSocket
+    heartbeatWs.__isAlive = true
+    ws.on('pong', () => {
+      heartbeatWs.__isAlive = true
+    })
 
     /** Handles a single parsed raw websocket frame for an authenticated user. */
     const handleMessage = (raw: unknown, user: AuthUser) => {

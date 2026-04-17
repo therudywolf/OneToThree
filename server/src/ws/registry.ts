@@ -2,17 +2,22 @@ import type { WebSocket } from 'ws'
 
 const userSockets = new Map<string, Set<WebSocket>>()
 
+type HeartbeatSocket = WebSocket & {
+  __isAlive?: boolean
+}
+
 // FIX 2: Heartbeat — detect and terminate dead connections
 const PING_INTERVAL = 30_000
 setInterval(() => {
   for (const [, sockets] of userSockets) {
     for (const ws of sockets) {
-      if ((ws as any).__isAlive === false) {
+      const heartbeatWs = ws as HeartbeatSocket
+      if (heartbeatWs.__isAlive === false) {
         ws.terminate()
         sockets.delete(ws)
         continue
       }
-      ;(ws as any).__isAlive = false
+      heartbeatWs.__isAlive = false
       ws.ping()
     }
   }

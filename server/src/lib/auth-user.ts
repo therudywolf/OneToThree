@@ -5,7 +5,6 @@ import { devices, users } from '../db/schema.js'
 import {
   clearFmSessionCookie,
   readFmSessionToken,
-  SESSION_COOKIE,
 } from './session-cookie.js'
 import { normalizeUuid } from './uuid.js'
 import { isJtiDenied } from './jwt-denylist.js'

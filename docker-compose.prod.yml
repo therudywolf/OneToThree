@@ -174,6 +174,7 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
       TURN_PASSWORD_FILE: /run/secrets/turn_password
+      TURN_URLS: ${TURN_URLS:-}
     depends_on:
       db:
         condition: service_healthy
@@ -212,6 +213,7 @@ services:
         NEXT_PUBLIC_WS_ORIGIN: ${NEXT_PUBLIC_WS_ORIGIN:-https://api.onetothree.ru}
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
         NEXT_PUBLIC_TURN_URL: ${NEXT_PUBLIC_TURN_URL:-}
+        NEXT_PUBLIC_TURN_URLS: ${NEXT_PUBLIC_TURN_URLS:-}
         NEXT_PUBLIC_TURN_USERNAME: ${NEXT_PUBLIC_TURN_USERNAME:-}
         NEXT_PUBLIC_TURN_PASSWORD: ${NEXT_PUBLIC_TURN_PASSWORD:-}
     restart: always
@@ -253,7 +255,7 @@ services:
   # CRITICAL (Cloudflare): If the zone uses Cloudflare, create a dedicated hostname (e.g.
   # turn.onetothree.ru) pointing at this server's IP and set it to "DNS only" (gray cloud).
   # Orange-cloud proxy does not support the UDP traffic TURN needs; api.* and apex can stay proxied.
-  # Set NEXT_PUBLIC_TURN_URL=turn:turn.onetothree.ru:3478 in .env.prod — not the api. host.
+  # Set NEXT_PUBLIC_TURN_URLS in .env.prod with fallback chain (turn+turns), not api.* host.
   coturn:
     image: coturn/coturn:4.6
     restart: always

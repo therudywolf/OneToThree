@@ -23,7 +23,7 @@ import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { verifyNonceSignatureEcdsaP256 } from '../lib/ecdsa-verify.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { saveLinkToken, consumeLinkToken } from '../lib/link-token-store.js'
-import { verifySync } from 'otplib'
+import { verifyTotpSync } from '../lib/totp.js'
 
 const LINK_TOKEN_TTL_S = 300
 
@@ -87,6 +87,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
           publicKeyJwk: users.publicKeyJwk,
           isTotpEnabled: users.isTotpEnabled,
           totpSecret: users.totpSecret,
+          allowDeviceLinking: users.allowDeviceLinking,
         })
         .from(users)
         .where(eq(users.id, user.id))
@@ -94,6 +95,9 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
 
       if (!row) {
         return reply.status(401).send({ error: 'USER_NOT_FOUND' })
+      }
+      if (!row.allowDeviceLinking) {
+        return reply.status(403).send({ error: 'DEVICE_LINKING_DISABLED' })
       }
 
       const sigOk = verifyNonceSignatureEcdsaP256(nonce, signature, row.publicKeyJwk)
@@ -108,8 +112,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         if (!row.totpSecret) {
           return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
         }
-        const check = verifySync({ secret: row.totpSecret, token: totp_code })
-        if (!check.valid) {
+        if (!verifyTotpSync(totp_code, row.totpSecret)) {
           return reply.status(401).send({ error: 'TOTP_INVALID' })
         }
         if (!await consumeTotpCode(user.id, totp_code)) {

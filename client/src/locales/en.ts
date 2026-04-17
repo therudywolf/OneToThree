@@ -175,6 +175,8 @@ const en = {
   'sidebar.purgeChatConfirm': 'Delete chat history?',
   'sidebar.pin': 'Pin',
   'sidebar.unpin': 'Unpin',
+  'sidebar.favorite': 'Favorite',
+  'sidebar.unfavorite': 'Unfavorite',
   'sidebar.pinAria': 'Pin to top',
   'sidebar.unpinAria': 'Unpin',
   'sidebar.online': 'Online',

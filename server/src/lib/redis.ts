@@ -11,6 +11,7 @@
 import { Redis } from 'ioredis'
 
 let _client: Redis | null | undefined
+let _warnedNoRedis = false
 
 /** Lazy singleton. Returns null when REDIS_URL is not configured. */
 export function getRedis(): Redis | null {
@@ -18,6 +19,15 @@ export function getRedis(): Redis | null {
 
   const url = process.env.REDIS_URL?.trim()
   if (!url) {
+    if (!_warnedNoRedis) {
+      _warnedNoRedis = true
+      process.stderr.write(
+        `${JSON.stringify({
+          level: 'warn',
+          msg: '[redis] REDIS_URL is not set; using in-memory fallbacks (single-process only)',
+        })}\n`
+      )
+    }
     _client = null
     return null
   }
@@ -58,4 +68,5 @@ export function _resetRedisForTests(): void {
     try { void _client.quit() } catch { /* ignore */ }
   }
   _client = undefined
+  _warnedNoRedis = false
 }

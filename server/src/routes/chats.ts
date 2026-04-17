@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, eq, inArray, max, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, max, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, chats, messages, users } from '../db/schema.js'
+import { chatFavorites, chatMembers, chats, messages, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import {
   getChatById,
@@ -175,23 +175,52 @@ function canKick(actor: ChatMemberRole, target: ChatMemberRole): boolean {
   return false
 }
 
+type UserChatRow = {
+  id: string
+  name: string | null
+  type: string
+  encryptedGroupKey: string | null
+  inviteCode: string | null
+  myRole: ChatMemberRole
+  isFavorite: boolean
+}
+
+async function loadUserChats(userId: string): Promise<UserChatRow[]> {
+  const rows = await db
+    .select({
+      id: chats.id,
+      name: chats.name,
+      type: chats.type,
+      encryptedGroupKey: chatMembers.encryptedGroupKey,
+      inviteCode: chats.inviteCode,
+      myRole: chatMembers.role,
+      favoriteUserId: chatFavorites.userId,
+    })
+    .from(chats)
+    .innerJoin(chatMembers, eq(chatMembers.chatId, chats.id))
+    .leftJoin(
+      chatFavorites,
+      and(eq(chatFavorites.chatId, chats.id), eq(chatFavorites.userId, userId))
+    )
+    .where(eq(chatMembers.userId, userId))
+
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    encryptedGroupKey: r.encryptedGroupKey,
+    inviteCode: r.inviteCode,
+    myRole: r.myRole,
+    isFavorite: Boolean(r.favoriteUserId),
+  }))
+}
+
 export const chatsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    const rows = await db
-      .select({
-        id: chats.id,
-        name: chats.name,
-        type: chats.type,
-        encryptedGroupKey: chatMembers.encryptedGroupKey,
-        inviteCode: chats.inviteCode,
-        myRole: chatMembers.role,
-      })
-      .from(chats)
-      .innerJoin(chatMembers, eq(chatMembers.chatId, chats.id))
-      .where(eq(chatMembers.userId, user.id))
+    const rows = await loadUserChats(user.id)
 
     const chatIds = rows.map((r) => r.id)
     const memberRows =
@@ -247,6 +276,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           is_group: isGroup,
           member_ids: memberMap.get(c.id) ?? [],
           encrypted_group_key: c.encryptedGroupKey,
+          is_favorite: c.isFavorite,
           last_message_at: lastMessageAtByChat.get(c.id) ?? null,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
@@ -273,6 +303,115 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         my_role: 'owner',
       },
     })
+  })
+
+  /** GET /favorites — current user's favorite chats sorted by favorite time desc. */
+  app.get('/favorites', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const rows = await db
+      .select({
+        id: chats.id,
+        name: chats.name,
+        type: chats.type,
+        encryptedGroupKey: chatMembers.encryptedGroupKey,
+        inviteCode: chats.inviteCode,
+        myRole: chatMembers.role,
+        favoriteAt: chatFavorites.createdAt,
+      })
+      .from(chatFavorites)
+      .innerJoin(chats, eq(chats.id, chatFavorites.chatId))
+      .innerJoin(
+        chatMembers,
+        and(eq(chatMembers.chatId, chats.id), eq(chatMembers.userId, user.id))
+      )
+      .where(eq(chatFavorites.userId, user.id))
+      .orderBy(desc(chatFavorites.createdAt))
+
+    const chatIds = rows.map((r) => r.id)
+    const memberRows =
+      chatIds.length === 0
+        ? []
+        : await db
+            .select({
+              chatId: chatMembers.chatId,
+              userId: chatMembers.userId,
+            })
+            .from(chatMembers)
+            .where(inArray(chatMembers.chatId, chatIds))
+
+    const memberMap = new Map<string, string[]>()
+    for (const m of memberRows) {
+      const list = memberMap.get(m.chatId) ?? []
+      list.push(m.userId)
+      memberMap.set(m.chatId, list)
+    }
+
+    return reply.send({
+      chats: rows.map((c) => {
+        const isGroup = isGroupType(c.type)
+        const showInvite =
+          isGroup &&
+          (c.myRole === 'owner' || c.myRole === 'admin') &&
+          c.inviteCode
+        return {
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          is_group: isGroup,
+          member_ids: memberMap.get(c.id) ?? [],
+          encrypted_group_key: c.encryptedGroupKey,
+          is_favorite: true,
+          favorited_at:
+            c.favoriteAt instanceof Date
+              ? c.favoriteAt.toISOString()
+              : c.favoriteAt != null
+              ? String(c.favoriteAt)
+              : null,
+          my_role: c.myRole,
+          invite_code: showInvite ? c.inviteCode : null,
+        }
+      }),
+    })
+  })
+
+  app.post('/:chatId/favorite', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
+
+    const [membership] = await db
+      .select({ one: chatMembers.userId })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id)))
+      .limit(1)
+    if (!membership) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+
+    await db
+      .insert(chatFavorites)
+      .values({ userId: user.id, chatId })
+      .onConflictDoNothing()
+
+    broadcastToUsers([user.id], { type: 'chats_updated' })
+    return reply.send({ ok: true, is_favorite: true })
+  })
+
+  app.delete('/:chatId/favorite', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
+
+    await db
+      .delete(chatFavorites)
+      .where(and(eq(chatFavorites.chatId, chatId), eq(chatFavorites.userId, user.id)))
+
+    broadcastToUsers([user.id], { type: 'chats_updated' })
+    return reply.send({ ok: true, is_favorite: false })
   })
 
   app.get('/join/:code', async (request, reply) => {

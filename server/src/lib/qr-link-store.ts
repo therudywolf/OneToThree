@@ -1,4 +1,4 @@
-import { Redis } from 'ioredis'
+import { getRedis } from './redis.js'
 
 export type QrLinkPayload = {
   sub: string
@@ -8,41 +8,6 @@ export type QrLinkPayload = {
 
 const KEY_PREFIX = 'fm:qr:link:'
 const mem = new Map<string, QrLinkPayload>()
-
-let redisClient: Redis | null | undefined
-
-function redisUrl(): string | null {
-  const u = process.env.REDIS_URL?.trim()
-  return u || null
-}
-
-function getRedis(): Redis | null {
-  if (redisClient !== undefined) return redisClient
-  const url = redisUrl()
-  if (!url) {
-    redisClient = null
-    return null
-  }
-  try {
-    redisClient = new Redis(url, {
-      maxRetriesPerRequest: 2,
-      enableReadyCheck: true,
-    })
-    redisClient.on('error', (err: Error) => {
-      process.stderr.write(
-        `${JSON.stringify({
-          level: 'warn',
-          msg: '[qr-link-store] redis error',
-          err: String(err),
-        })}\n`
-      )
-    })
-    return redisClient
-  } catch {
-    redisClient = null
-    return null
-  }
-}
 
 /**
  * Persist a one-time QR link token. Uses Redis when `REDIS_URL` is set (multi-instance safe); otherwise in-memory Map.
@@ -92,12 +57,4 @@ export async function consumeQrLinkToken(
 /** Test / shutdown hook */
 export function _resetQrLinkStoreForTests(): void {
   mem.clear()
-  if (redisClient) {
-    try {
-      void redisClient.quit()
-    } catch {
-      /* ignore */
-    }
-    redisClient = undefined
-  }
 }

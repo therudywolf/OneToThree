@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
@@ -8,11 +7,7 @@ import { db } from '../db/index.js'
 import { users } from '../db/schema.js'
 import { saveQrLinkToken, _resetQrLinkStoreForTests } from '../lib/qr-link-store.js'
 import { eq } from 'drizzle-orm'
-
-const _require = createRequire(import.meta.url)
-const otplib = _require('otplib') as {
-  generateSecret(length?: number): string
-}
+import { generateTotpSecret } from '../lib/totp.js'
 
 /**
  * Contract checks for QR device-link endpoints (no DB for unauthenticated paths).
@@ -53,6 +48,14 @@ describe('auth QR routes', () => {
     expect(res.body.error).toBe('INVALID_OR_EXPIRED_TOKEN')
   })
 
+  it('POST /api/auth/qr-login accepts link_token alias', async () => {
+    const res = await request(app!.server)
+      .post('/api/auth/qr-login')
+      .send({ link_token: randomUUID() })
+      .expect(401)
+    expect(res.body.error).toBe('INVALID_OR_EXPIRED_TOKEN')
+  })
+
   it('POST /api/auth/qr-login returns 2FA pending payload for TOTP-protected users', async () => {
     const username = `qr${Date.now().toString(36)}`
     const [created] = await db
@@ -60,7 +63,7 @@ describe('auth QR routes', () => {
       .values({
         username,
         publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
-        totpSecret: otplib.generateSecret(),
+        totpSecret: generateTotpSecret(),
         isTotpEnabled: true,
       })
       .returning({ id: users.id })

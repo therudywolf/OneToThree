@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { ensureClientDeviceId } from '@/lib/api/auth'
-import { extractQrLoginToken, postQrLogin } from '@/lib/api/auth-qr'
+import { buildQrLoginUrl, extractQrLoginToken, postQrLogin } from '@/lib/api/auth-qr'
 import { useTranslation } from '@/hooks/use-translation'
 import jsQR from 'jsqr'
 
@@ -119,7 +119,11 @@ export function LoginQrDevicePanel() {
 
     try {
       ensureClientDeviceId()
-      await postQrLogin(token)
+      const result = await postQrLogin(token)
+      if (result.ok === 'needs_2fa') {
+        router.push(buildQrLoginUrl(token))
+        return
+      }
       await refresh()
       router.replace('/')
       router.refresh()

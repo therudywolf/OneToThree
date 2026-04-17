@@ -9,6 +9,8 @@ export type ApiChatRow = {
   type: string
   is_group: boolean
   member_ids: string[]
+  is_favorite?: boolean
+  favorited_at?: string | null
   /** Present for group_e2e: wrapped group key for the current user. */
   encrypted_group_key?: string | null
   /** ISO timestamp of the newest message in this chat, if any. */
@@ -66,6 +68,29 @@ export async function fetchChatsList(): Promise<ApiChatRow[]> {
     throw new Error(data.error ?? 'CHATS_FETCH_FAILED')
   }
   return data.chats ?? []
+}
+
+export async function fetchFavoriteChatsList(): Promise<ApiChatRow[]> {
+  const res = await fetch(`${API_URL}/chats/favorites`, { credentials: 'include' })
+  const data = (await res.json().catch(() => ({}))) as {
+    chats?: ApiChatRow[]
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'FAVORITES_FETCH_FAILED')
+  }
+  return data.chats ?? []
+}
+
+export async function setChatFavorite(chatId: string, favorite: boolean): Promise<void> {
+  const res = await fetch(`${API_URL}/chats/${chatId}/favorite`, {
+    method: favorite ? 'POST' : 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(data.error ?? (favorite ? 'FAVORITE_SET_FAILED' : 'FAVORITE_CLEAR_FAILED'))
+  }
 }
 
 export async function createDirectE2EChat(

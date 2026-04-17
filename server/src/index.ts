@@ -4,6 +4,7 @@
 import 'dotenv/config'
 import { buildApp } from './app.js'
 import { scheduleMediaRetentionPurge } from './lib/media-retention-purge.js'
+import { closeRedis } from './lib/redis.js'
 
 async function main() {
   const app = await buildApp()
@@ -19,6 +20,7 @@ async function main() {
     process.on(signal, async () => {
       app.log.info(`Received ${signal}, shutting down gracefully…`)
       await app.close()
+      await closeRedis()
       process.exit(0)
     })
   }

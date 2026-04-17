@@ -19,6 +19,58 @@ const DEFAULT_STUN: RTCIceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
 ]
 
+function hasTransportParam(url: string): boolean {
+  return /[?&]transport=/i.test(url)
+}
+
+function withTransport(url: string, transport: 'udp' | 'tcp'): string {
+  if (hasTransportParam(url)) return url
+  return `${url}${url.includes('?') ? '&' : '?'}transport=${transport}`
+}
+
+function extractTurnHost(url: string): string | null {
+  const stripped = url.replace(/^turns?:\/\//i, '').replace(/^turns?:/i, '')
+  const authority = stripped.split('/')[0]?.split('?')[0] ?? ''
+  if (!authority) return null
+  if (authority.startsWith('[')) {
+    const end = authority.indexOf(']')
+    if (end > 0) return authority.slice(0, end + 1)
+    return null
+  }
+  return authority.split(':')[0] ?? null
+}
+
+function normalizeTurnUrl(url: string): string[] {
+  if (url.startsWith('turns:')) {
+    return [hasTransportParam(url) ? url : withTransport(url, 'tcp')]
+  }
+  if (!url.startsWith('turn:')) return [url]
+  if (hasTransportParam(url)) return [url]
+  const list = [withTransport(url, 'udp'), withTransport(url, 'tcp')]
+  const host = extractTurnHost(url)
+  if (host) {
+    list.push(`turns:${host}:443?transport=tcp`)
+    list.push(`turns:${host}:5349?transport=tcp`)
+  }
+  return list
+}
+
+function normalizeIceServers(servers: RTCIceServer[]): RTCIceServer[] {
+  return servers.map((server) => {
+    const baseUrls = Array.isArray(server.urls) ? server.urls : [server.urls]
+    const urls = Array.from(new Set(baseUrls.flatMap((u) => normalizeTurnUrl(String(u)))))
+    return { ...server, urls }
+  })
+}
+
+function parseEnvTurnUrls(): string[] {
+  const raw = (process.env.NEXT_PUBLIC_TURN_URLS || process.env.NEXT_PUBLIC_TURN_URL || '').trim()
+  return raw
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+}
+
 async function getIceServers(): Promise<RTCIceServer[]> {
   try {
     const res = await fetch('/api/turn', {
@@ -30,20 +82,20 @@ async function getIceServers(): Promise<RTCIceServer[]> {
     const payload = (await res.json()) as { iceServers?: RTCIceServer[] }
     if (!payload.iceServers) throw new Error('MALFORMED_RELAY_PAYLOAD')
 
-    return payload.iceServers.map((server) => ({
-      ...server,
-      urls: Array.isArray(server.urls)
-        ? server.urls.flatMap((u) =>
-            u.startsWith('turn:')
-              ? [`${u}?transport=tcp`, `${u}?transport=udp`]
-              : [u]
-          )
-        : typeof server.urls === 'string' && server.urls.startsWith('turn:')
-          ? [`${server.urls}?transport=tcp`, `${server.urls}?transport=udp`]
-          : server.urls,
-    }))
+    return normalizeIceServers(payload.iceServers)
   } catch (err) {
-    console.warn('[GC.ICE] Relay nodes unreachable, using default STUN.', err)
+    console.warn('[GC.ICE] Relay nodes unreachable, using fallback ICE plan.', err)
+    const envUrls = parseEnvTurnUrls()
+    if (envUrls.length > 0) {
+      return normalizeIceServers([
+        ...DEFAULT_STUN,
+        {
+          urls: envUrls,
+          username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+          credential: process.env.NEXT_PUBLIC_TURN_PASSWORD,
+        },
+      ])
+    }
     return DEFAULT_STUN
   }
 }

@@ -609,7 +609,6 @@ export function ChatApp({
         >
           <ChatSidebar
             userId={userId}
-            username={user?.username ?? username}
             isAdmin={user?.role === 'admin'}
             sharedKey={sharedKey}
             onPackSettingsChanged={() => setGroupDetailTick((n) => n + 1)}

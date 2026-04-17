@@ -4,7 +4,6 @@ import {
   randomUUID,
   type KeyObject,
 } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
@@ -12,12 +11,7 @@ import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import { users } from '../db/schema.js'
 import { eq } from 'drizzle-orm'
-
-const _require = createRequire(import.meta.url)
-const otplib = _require('otplib') as {
-  generateSecret(length?: number): string
-  generate(input: { secret: string }): Promise<string>
-}
+import { generateTotpCode, generateTotpSecret } from '../lib/totp.js'
 
 /** Valid nickname: 3–20 chars, [a-zA-Z0-9_.-] only */
 function uniqueUser(prefix: string) {
@@ -140,7 +134,7 @@ describe('auth routes', () => {
 
   it('POST /login/2fa finalizes a pending TOTP login', async () => {
     const username = uniqueUser('totp')
-    const secret = otplib.generateSecret()
+    const secret = generateTotpSecret()
     const [created] = await db
       .insert(users)
       .values({
@@ -158,7 +152,7 @@ describe('auth routes', () => {
       scope: '2fa_pending',
     }, { expiresIn: 300 })
 
-    const code = await otplib.generate({ secret })
+    const code = await generateTotpCode(secret)
     const res = await request(app!.server)
       .post('/api/auth/login/2fa')
       .set('X-Client-Device-Id', 'vitest-device-login-2fa')

@@ -183,7 +183,32 @@ Goal:
 - simple bootstrap UX but room for future scale
 
 Recommendation:
-- implement single-node first-class UX plus helper-node mesh mode
+- useful as the first narrow implementation only
+
+### Option 4: Full Role-Based Cluster Mesh
+
+Description:
+- primary node remains the control plane
+- extra nodes can join with explicit roles
+- roles can be enabled independently depending on capacity needs
+
+Roles:
+- `relay`: TURN / media relay
+- `api`: stateless API + WebSocket node
+- `worker`: background processing / fanout / cleanup / push helper
+- `edge-storage`: future storage helper / CDN-facing helper layer
+- `db-replica`: PostgreSQL replica for read scaling / backup / failover workflows
+
+Goal:
+- `./start.sh mesh` on a second server
+- choose role(s)
+- bootstrap from the primary
+- receive shared config and trust material
+- immediately start helping with real load
+
+Recommendation:
+- this is the real target for your scaling story
+- the relay-only helper is just the first implementation slice, not the final design
 
 ## 5. Final Product Target
 
@@ -287,3 +312,42 @@ Menu/layout rules:
 16. mesh helper deployment
 17. production observability
 
+## 11. Full Mesh Target
+
+The final production platform should support:
+
+### Primary node responsibilities
+- source of configuration truth
+- admin panel
+- migrations
+- secret issuance for helper nodes
+- cluster membership registry
+
+### API mesh
+- multiple stateless API/WS nodes behind one public entry
+- shared Redis
+- shared DB
+- shared media storage
+- sticky-free session handling where possible
+
+### Database strategy
+- single primary first
+- optional replicas later
+- read scaling for search/profile/list endpoints
+- backup/failover story documented
+
+### Storage strategy
+- shared object storage endpoint
+- no per-node media islands
+- eventual room for separate media edge nodes
+
+### Worker strategy
+- isolate cleanup, fanout retries, push work, media maintenance, audit aggregation
+
+### What `start.sh mesh` must eventually do
+- register helper node against primary
+- pull signed cluster config
+- provision role-specific env
+- start only needed services
+- expose health and role diagnostics
+- support update/rejoin/leave flows

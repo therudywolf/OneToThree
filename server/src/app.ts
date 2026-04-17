@@ -26,6 +26,18 @@ import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { requireSecret } from './lib/read-secret.js'
 import { db } from './db/index.js'
 
+function normalizeHttpOrigin(raw: string | undefined): string | null {
+  const value = raw?.trim()
+  if (!value) return null
+  try {
+    const u = new URL(value)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    return u.origin
+  } catch {
+    return null
+  }
+}
+
 export async function buildApp() {
   /** Behind Caddy/nginx: trust X-Forwarded-* for real client IPs (disable with TRUST_PROXY=0). */
   const tp = process.env.TRUST_PROXY?.trim().toLowerCase()
@@ -58,6 +70,16 @@ export async function buildApp() {
   }
 
   const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsRaw : true
+  const apiOrigin = normalizeHttpOrigin(process.env.NEXT_PUBLIC_API_URL)
+  const storageOrigin = normalizeHttpOrigin(process.env.MINIO_PUBLIC_URL)
+  const connectSrc = new Set<string>(["'self'", 'wss:', 'https:', 'https://cdn.jsdelivr.net'])
+  const imgSrc = new Set<string>(["'self'", 'blob:', 'data:', 'https://cdn.jsdelivr.net'])
+  for (const origin of corsOriginsRaw) connectSrc.add(origin)
+  if (apiOrigin) connectSrc.add(apiOrigin)
+  if (storageOrigin) {
+    connectSrc.add(storageOrigin)
+    imgSrc.add(storageOrigin)
+  }
 
   await app.register(rateLimit, {
     max: 100,
@@ -70,13 +92,13 @@ export async function buildApp() {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "blob:"],
         styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "blob:", "data:", "https://cdn.jsdelivr.net", "https://s3.onetothree.ru"],
+        imgSrc: Array.from(imgSrc),
         fontSrc: ["'self'"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
-        connectSrc: ["'self'", "wss:", "https:", "https://api.onetothree.ru", "wss://api.onetothree.ru", "https://cdn.jsdelivr.net", "https://s3.onetothree.ru"],
+        connectSrc: Array.from(connectSrc),
         mediaSrc: ["'self'", "blob:"],
         workerSrc: ["'self'", "blob:"],
         upgradeInsecureRequests: [],

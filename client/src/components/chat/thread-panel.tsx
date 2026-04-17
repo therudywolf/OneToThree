@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { X, CornerDownRight } from 'lucide-react'
+import { CornerDownRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'

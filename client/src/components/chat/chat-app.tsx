@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star, Settings, ShieldAlert } from 'lucide-react'
+import { Menu, ShieldCheck, Star, Settings } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -585,7 +584,7 @@ export function ChatApp({
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            aria-label={t('common.openSettings')}
+            aria-label="CFG"
             className="touch-manipulation flex h-10 w-10 items-center justify-center border border-neon-cyan/60 bg-black text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
           >
             <Settings className="h-4 w-4" aria-hidden />

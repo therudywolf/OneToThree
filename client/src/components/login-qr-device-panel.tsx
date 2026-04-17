@@ -143,6 +143,7 @@ export function LoginQrDevicePanel() {
         <button
           type="button"
           onClick={() => setIsExpanded((prev) => !prev)}
+          data-testid="qr-link-toggle"
           className="flex w-full items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-colors hover:text-neon-red"
         >
           <span>{t('login.qrLinkSection')}</span>
@@ -218,6 +219,7 @@ export function LoginQrDevicePanel() {
 
                 <div className="relative">
                   <input
+                    data-testid="qr-token-input"
                     type="text"
                     value={signalToken}
                     onChange={(e) => setSignalToken(e.target.value)}

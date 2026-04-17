@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [showWelcome, setShowWelcome] = useState(false)
 
   useEffect(() => {
+    if (navigator.webdriver) return
     if (!localStorage.getItem('p13:onboarding_shown')) {
       setShowWelcome(true)
     }

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-/** ASCII letters, digits, dot, underscore, hyphen only; length 3–20. */
-export const NICKNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,20}$/
+/** ASCII letters, digits, dot, underscore, hyphen only; length 3–32. */
+export const NICKNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/
 
 /** Lowercase reserved handles (comparison is case-insensitive). */
 export const RESERVED_NICKNAMES = new Set([

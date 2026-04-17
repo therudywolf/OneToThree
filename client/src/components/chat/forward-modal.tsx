@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Send } from 'lucide-react'
+import { Send } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { fetchChatsList, type ApiChatRow } from '@/lib/api/chats'
 import type { DecryptedMessage } from '@/types/chat'

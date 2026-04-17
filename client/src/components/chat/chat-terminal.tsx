@@ -132,7 +132,6 @@ export function ChatTerminal({
     username: string
     avatarKey?: string | null
   } | null>(null)
-  const [isNearBottom, setIsNearBottom] = useState(true)
   const isNearBottomRef = useRef(true)
   const [hasNewBelow, setHasNewBelow] = useState(false)
   const prevMsgCountRef = useRef(0)
@@ -162,7 +161,6 @@ export function ChatTerminal({
     if (!el) return
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     isNearBottomRef.current = near
-    setIsNearBottom(near)
     if (near) {
       setHasNewBelow(false)
       setNewMsgCount(0)
@@ -186,7 +184,6 @@ export function ChatTerminal({
     if (prevCount === 0 || isNearBottomRef.current) {
       scrollToBottomInstant()
       isNearBottomRef.current = true
-      setIsNearBottom(true)
       setHasNewBelow(false)
       setNewMsgCount(0)
     } else {
@@ -261,7 +258,6 @@ export function ChatTerminal({
     prevMsgCountRef.current = 0
     scrollToBottomInstant()
     isNearBottomRef.current = true
-    setIsNearBottom(true)
     setHasNewBelow(false)
     setNewMsgCount(0)
   }, [activeChatId, scrollToBottomInstant])
@@ -313,7 +309,7 @@ export function ChatTerminal({
   )
 
   // Forward handler: sends msg.plaintext to the selected chat
-  const handleForward = useCallback(async (chatId: string, text: string) => {
+  const handleForward = useCallback(async (chatId: string, _text: string) => {
     // We need a sendText bound to targetChatId, not the current one.
     // Strategy: switch activeChatId temporarily is risky — use socket directly.
     // Simpler: call the API via useSendMessage is not accessible here.

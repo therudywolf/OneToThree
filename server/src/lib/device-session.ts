@@ -75,7 +75,7 @@ export async function upsertDeviceForSession(
 
   const isFirstDevice = Number(existingDevices.count) === 0
 
-  const [row] = await db
+  const [inserted] = await db
     .insert(devices)
     .values({
       userId: uid,
@@ -85,10 +85,40 @@ export async function upsertDeviceForSession(
       userAgent: ua,
       ipAddress: ip,
     })
+    .onConflictDoNothing({
+      target: [devices.userId, devices.clientDeviceKey],
+    })
     .returning({ id: devices.id })
 
-  if (!row) {
+  if (inserted?.id) {
+    return { ok: true, deviceId: normalizeUuid(inserted.id) }
+  }
+
+  // Race-safe fallback: another concurrent request may have inserted the row.
+  const [afterConflict] = await db
+    .select({
+      id: devices.id,
+      revokedAt: devices.revokedAt,
+    })
+    .from(devices)
+    .where(
+      and(eq(devices.userId, uid), eq(devices.clientDeviceKey, clientKey))
+    )
+    .limit(1)
+
+  if (!afterConflict?.id || afterConflict.revokedAt) {
     return { ok: false, error: 'DEVICE_REVOKED' }
   }
-  return { ok: true, deviceId: normalizeUuid(row.id) }
+
+  await db
+    .update(devices)
+    .set({
+      lastActive: new Date(),
+      deviceName,
+      userAgent: ua,
+      ipAddress: ip,
+    })
+    .where(eq(devices.id, afterConflict.id))
+
+  return { ok: true, deviceId: normalizeUuid(afterConflict.id) }
 }

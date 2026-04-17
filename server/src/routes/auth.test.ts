@@ -1,12 +1,23 @@
 import {
   createSign,
   generateKeyPairSync,
+  randomUUID,
   type KeyObject,
 } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../app.js'
+import { db } from '../db/index.js'
+import { users } from '../db/schema.js'
+import { eq } from 'drizzle-orm'
+
+const _require = createRequire(import.meta.url)
+const otplib = _require('otplib') as {
+  generateSecret(length?: number): string
+  generate(input: { secret: string }): Promise<string>
+}
 
 /** Valid nickname: 3–20 chars, [a-zA-Z0-9_.-] only */
 function uniqueUser(prefix: string) {
@@ -19,6 +30,10 @@ function signNonceDerB64(nonce: string, privateKey: KeyObject) {
   sign.update(nonce, 'utf8')
   sign.end()
   return sign.sign(privateKey).toString('base64')
+}
+
+async function removeUser(username: string) {
+  await db.delete(users).where(eq(users.username, username))
 }
 
 describe('auth routes', () => {
@@ -74,6 +89,7 @@ describe('auth routes', () => {
 
     const res = await request(app.server)
       .post('/api/auth/verify')
+      .set('X-Client-Device-Id', 'vitest-device-verify')
       .send({
         username,
         nonce,
@@ -89,6 +105,8 @@ describe('auth routes', () => {
     expect(fm).toMatch(/Max-Age=\d+/)
     expect(fm).not.toMatch(/Max-Age=0\b/)
     expect(fm).not.toMatch(/Thu, 01 Jan 1970/)
+
+    await removeUser(username)
   })
 
   it('POST /verify with invalid signature returns 401', async () => {
@@ -106,6 +124,7 @@ describe('auth routes', () => {
 
     const res = await request(app.server)
       .post('/api/auth/verify')
+      .set('X-Client-Device-Id', 'vitest-device-invalid-signature')
       .send({
         username,
         nonce,
@@ -115,5 +134,41 @@ describe('auth routes', () => {
       .expect(401)
 
     expect(res.body.error).toBeTruthy()
+
+    await removeUser(username)
+  })
+
+  it('POST /login/2fa finalizes a pending TOTP login', async () => {
+    const username = uniqueUser('totp')
+    const secret = otplib.generateSecret()
+    const [created] = await db
+      .insert(users)
+      .values({
+        username,
+        publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+        totpSecret: secret,
+        isTotpEnabled: true,
+      })
+      .returning({ id: users.id, username: users.username })
+
+    expect(created).toBeTruthy()
+    const pendingToken = await app!.jwt.sign({
+      sub: created.id,
+      username: created.username,
+      scope: '2fa_pending',
+    }, { expiresIn: 300 })
+
+    const code = await otplib.generate({ secret })
+    const res = await request(app!.server)
+      .post('/api/auth/login/2fa')
+      .set('X-Client-Device-Id', 'vitest-device-login-2fa')
+      .send({ pending_token: pendingToken, code })
+      .expect(200)
+
+    expect(res.body.user?.username).toBe(username)
+    const setCookie = res.headers['set-cookie'] as string[] | undefined
+    expect(setCookie?.some((cookie) => cookie.startsWith('fm_session='))).toBe(true)
+
+    await removeUser(username)
   })
 })

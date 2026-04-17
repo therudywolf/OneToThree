@@ -60,10 +60,10 @@ export async function postQrGenerate(): Promise<{
 }
 
 /** New device: redeem QR token → session cookie (requires X-Client-Device-Id). */
-export async function postQrLogin(token: string): Promise<{
-  ok: boolean
-  user: { id: string; username: string }
-}> {
+export async function postQrLogin(token: string): Promise<
+  | { ok: true; user: { id: string; username: string } }
+  | { ok: 'needs_2fa'; pendingToken: string; userId: string }
+> {
   const res = await fetch(`${API_URL}/auth/qr-login`, {
     method: 'POST',
     credentials: 'include',
@@ -76,10 +76,22 @@ export async function postQrLogin(token: string): Promise<{
   const data = (await res.json().catch(() => ({}))) as {
     ok?: boolean
     user?: { id: string; username: string }
+    requires2FA?: boolean
+    pendingToken?: string
+    userId?: string
     error?: string
   }
-  if (res.status === 501) {
-    throw new Error(data.error ?? 'QR_LOGIN_REQUIRES_TOTP_STUB')
+  if (
+    res.ok &&
+    data.requires2FA === true &&
+    typeof data.pendingToken === 'string' &&
+    typeof data.userId === 'string'
+  ) {
+    return {
+      ok: 'needs_2fa',
+      pendingToken: data.pendingToken,
+      userId: data.userId,
+    }
   }
   if (!res.ok || !data.user) {
     throw new Error(data.error ?? 'QR_LOGIN_FAILED')

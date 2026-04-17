@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { and, eq } from 'drizzle-orm'
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import QRCode from 'qrcode'
 import { z } from 'zod'
@@ -43,12 +43,27 @@ import { recordLoginEvent } from '../lib/login-event.js'
 interface Authenticator {
   generateSecret(length?: number): string
   keyuri(user: string, service: string, secret: string): string
-  check(token: string, secret: string): boolean
+  check(token: string, secret: string): Promise<boolean>
 }
 
 const _require = createRequire(import.meta.url)
-const otplib = _require('otplib') as { authenticator: Authenticator } | { default: { authenticator: Authenticator } }
-const authenticator: Authenticator = ('default' in otplib ? otplib.default : otplib).authenticator
+const otplib = _require('otplib') as {
+  generateSecret(length?: number): string
+  generateURI(input: { accountName: string; issuer: string; secret: string }): string
+  verify(input: { token: string; secret: string }): Promise<{ valid: boolean }>
+}
+const authenticator: Authenticator = {
+  generateSecret(length?: number) {
+    return otplib.generateSecret(length)
+  },
+  keyuri(user: string, service: string, secret: string) {
+    return otplib.generateURI({ accountName: user, issuer: service, secret })
+  },
+  async check(token: string, secret: string) {
+    const result = await otplib.verify({ token, secret })
+    return result.valid
+  },
+}
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -81,6 +96,24 @@ const qrLoginBodySchema = z.object({
 })
 
 const QR_LINK_TTL_S = 300
+type Pending2faResponse = {
+  requires2FA: true
+  userId: string
+  pendingToken: string
+}
+
+async function buildPending2faResponse(
+  reply: FastifyReply,
+  userId: string,
+  username: string
+): Promise<Pending2faResponse> {
+  const canonicalId = normalizeUuid(userId)
+  const pendingToken = await reply.jwtSign(
+    { sub: canonicalId, username, scope: '2fa_pending' },
+    { expiresIn: PENDING_2FA_MAX_AGE_S }
+  )
+  return { requires2FA: true, userId: canonicalId, pendingToken }
+}
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.post('/qr-generate', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
@@ -117,6 +150,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         id: users.id,
         username: users.username,
         isTotpEnabled: users.isTotpEnabled,
+        totpSecret: users.totpSecret,
         isBanned: users.isBanned,
       })
       .from(users)
@@ -125,7 +159,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     if (!row) return reply.status(401).send({ error: 'USER_NOT_FOUND' })
     if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
-    if (row.isTotpEnabled) return reply.status(501).send({ error: 'QR_LOGIN_REQUIRES_TOTP_STUB' })
+    if (row.isTotpEnabled) {
+      if (!row.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
+      return reply.send(await buildPending2faResponse(reply, row.id, row.username))
+    }
 
     const canonicalId = normalizeUuid(row.id)
     const dev = await upsertDeviceForSession(request, canonicalId)
@@ -259,7 +296,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!row?.totpSecret) return reply.status(400).send({ error: 'TOTP_SETUP_REQUIRED' })
     if (row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
 
-    if (!authenticator.check(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
+    if (!await authenticator.check(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
     if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
     await db.update(users).set({ isTotpEnabled: true }).where(eq(users.id, user.id))
@@ -278,7 +315,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       .from(users).where(eq(users.id, user.id)).limit(1)
 
     if (!row?.isTotpEnabled || !row.totpSecret) return reply.status(400).send({ error: 'TOTP_NOT_ENABLED' })
-    if (!authenticator.check(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
+    if (!await authenticator.check(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
     if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
     await db.update(users).set({ totpSecret: null, isTotpEnabled: false }).where(eq(users.id, user.id))
@@ -306,7 +343,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!row?.totpSecret || !row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_NOT_CONFIGURED' })
     if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
 
-    if (!authenticator.check(parsed.data.code, row.totpSecret)) {
+    if (!await authenticator.check(parsed.data.code, row.totpSecret)) {
       void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
@@ -451,11 +488,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
         if (existing?.isTotpEnabled) {
           if (!existing.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
-          const pendingToken = await reply.jwtSign(
-            { sub: canonicalId, username, scope: '2fa_pending' },
-            { expiresIn: PENDING_2FA_MAX_AGE_S }
-          )
-          return reply.send({ requires2FA: true, userId: canonicalId, pendingToken })
+          return reply.send(await buildPending2faResponse(reply, canonicalId, username))
         }
 
         const dev = await upsertDeviceForSession(request, canonicalId)

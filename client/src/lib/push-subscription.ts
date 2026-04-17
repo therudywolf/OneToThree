@@ -68,13 +68,23 @@ export async function initPushWorker(): Promise<ServiceWorkerRegistration> {
 
   if (!reg) {
     try {
-      reg = await navigator.serviceWorker.register('/push-handler.js', {
+      // next-pwa registers /sw.js; it imports /push-handler.js (see next.config.js).
+      // Registering /push-handler.js directly creates parallel workers and unstable push behavior.
+      reg = await navigator.serviceWorker.register('/sw.js', {
         scope: '/',
         updateViaCache: 'none',
       })
     } catch (err) {
-      console.error('>> [SYS.PUSH] WORKER_GENESIS_FAULT:', err)
-      throw new Error('SERVICE_WORKER_REGISTER_FAILED')
+      console.warn('>> [SYS.PUSH] /sw.js registration failed, trying legacy push-handler.js', err)
+      try {
+        reg = await navigator.serviceWorker.register('/push-handler.js', {
+          scope: '/',
+          updateViaCache: 'none',
+        })
+      } catch (legacyErr) {
+        console.error('>> [SYS.PUSH] WORKER_GENESIS_FAULT:', legacyErr)
+        throw new Error('SERVICE_WORKER_REGISTER_FAILED')
+      }
     }
   } else {
     // Принудительное обновление для синхронизации слоев

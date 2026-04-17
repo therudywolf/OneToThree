@@ -9,7 +9,7 @@ import { create } from 'zustand'
 export type InboundLinkRequest = {
   peerId: string
   isVideo?: boolean
-  offer: RTCSessionDescriptionInit
+  offer?: RTCSessionDescriptionInit | null
 }
 
 /** Состояние периферии удаленного узла (оптика/акустика) */

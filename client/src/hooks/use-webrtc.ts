@@ -301,7 +301,7 @@ export function useWebRTC(userId: string | null) {
       if (msg.type === 'call_invite') {
         const state = useCallStore.getState()
         if (state.isCalling || state.incomingCall) return
-        setIncomingCall({ peerId: msg.from_user_id, isVideo: msg.is_video, offer: { type: 'offer', sdp: '' } })
+        setIncomingCall({ peerId: msg.from_user_id, isVideo: msg.is_video, offer: null })
       }
 
       if (msg.type === 'call_leave') {
@@ -539,7 +539,7 @@ export function useWebRTC(userId: string | null) {
     }
   }, [userId, severAllLinks])
 
-  const establishLink = useCallback(async (recipients: string[], isVideo: boolean) => {
+  const establishLink = useCallback(async (recipients: string[], isVideo: boolean, chatId?: string) => {
     let stream: MediaStream
     try {
       const prefs = loadMediaPrefs()
@@ -565,6 +565,13 @@ export function useWebRTC(userId: string | null) {
     }
 
     if (pcsRef.current.size > 0) {
+      if (chatId) {
+        getFmSocket().send({
+          type: 'call_invite',
+          chat_id: chatId,
+          is_video: isVideo,
+        })
+      }
       ringStopRef.current = startOutgoingRingtone()
       // 30s timeout: if no peer reaches 'connected', hang up
       connectTimeoutRef.current = window.setTimeout(() => {
@@ -605,13 +612,15 @@ export function useWebRTC(userId: string | null) {
     stream.getTracks().forEach(t => pc.addTrack(t, stream))
 
     try {
-      await pc.setRemoteDescription(inc.offer)
-      await flushIceQueue(inc.peerId, pc)
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
-      transmitSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
       setIsCalling(true)
       setCallStartTime(Date.now())
+      if (inc.offer?.sdp) {
+        await pc.setRemoteDescription(inc.offer)
+        await flushIceQueue(inc.peerId, pc)
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        transmitSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
+      }
     } catch {
       purgePeer(inc.peerId)
       terminateFeed(stream)

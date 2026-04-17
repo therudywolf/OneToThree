@@ -377,14 +377,14 @@ export function ChatApp({
     if (!activeChatId) return
     const peers = await fetchPeerIdsForChat(activeChatId, userId)
     if (peers.length === 0) return
-    await initiateCall(peers, false)
+    await initiateCall(peers, false, activeChatId)
   }
 
   async function handleVideoCall() {
     if (!activeChatId) return
     const peers = await fetchPeerIdsForChat(activeChatId, userId)
     if (peers.length === 0) return
-    await initiateCall(peers, true)
+    await initiateCall(peers, true, activeChatId)
   }
 
   async function handleGroupVoiceCall() {

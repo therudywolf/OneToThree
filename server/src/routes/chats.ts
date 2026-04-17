@@ -82,13 +82,6 @@ async function findExistingDirectE2EBetween(
   userA: string,
   userB: string
 ): Promise<{ id: string; name: string | null; type: string } | null> {
-  const cm1 = db.$with('cm1').as(
-    db.select({ chatId: chatMembers.chatId }).from(chatMembers).where(eq(chatMembers.userId, userA))
-  )
-  const cm2 = db.$with('cm2').as(
-    db.select({ chatId: chatMembers.chatId }).from(chatMembers).where(eq(chatMembers.userId, userB))
-  )
-
   const rows = await db
     .select({
       id: chats.id,
@@ -479,7 +472,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(400).send({ error: 'INVALID_BODY' })
         }
         if (peer === authId) {
-          const { chat, created } = await getOrCreateSelfChat(authId)
+          const { chat } = await getOrCreateSelfChat(authId)
           return reply.status(201).send({
             chat: {
               id: chat.id,

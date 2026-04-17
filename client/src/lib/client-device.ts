@@ -23,6 +23,15 @@ export function getOrCreateClientDeviceId(): string {
   }
 }
 
+/** Read the stable device id when possible; lazily creates it in the browser. */
+export function getClientDeviceId(): string | null {
+  try {
+    return getOrCreateClientDeviceId()
+  } catch {
+    return null
+  }
+}
+
 /** Human-readable device label (may include non-Latin-1 from OS/UA); sent UTF-8-safe via headers. */
 export function getDeviceDisplayLabel(): string {
   if (typeof navigator === 'undefined') return 'Unknown'

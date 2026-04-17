@@ -8,6 +8,7 @@
 import { API_URL } from '@/lib/api/auth'
 import { buildFanoutSlots } from './fanout-crypto'
 import { getClientDeviceId } from './client-device'
+import type { ApiMessageRow } from './decrypt-chat-api-message'
 
 export type SendMessageOptions = {
   chatId: string
@@ -30,8 +31,26 @@ export type SendMessageOptions = {
 }
 
 export type SendResult =
-  | { ok: true; message: Record<string, unknown> }
+  | { ok: true; message: ApiMessageRow }
   | { ok: false; error: string }
+
+export type SendChatMessageTransportInput = {
+  chat_id: string
+  content?: string | null
+  iv?: string | null
+  media_path?: string | null
+  media_type?: string | null
+  media_iv?: string | null
+  reply_to_id?: string | null
+  media_original_bytes?: number
+  burn_at?: string | null
+}
+
+export type SendChatMessageTransportResult = {
+  via: 'REST' | 'QUEUED'
+  serverMessage?: ApiMessageRow
+  outboxId?: string
+}
 
 /**
  * Send a message via REST fallback (when WS unavailable).
@@ -84,10 +103,42 @@ export async function sendMessageRest(opts: SendMessageOptions): Promise<SendRes
       const err = (await res.json().catch(() => ({}))) as { error?: string }
       return { ok: false, error: err.error ?? 'SEND_FAILED' }
     }
-    const data = (await res.json()) as { message: Record<string, unknown> }
+    const data = (await res.json()) as { message: ApiMessageRow }
     return { ok: true, message: data.message }
   } catch {
     return { ok: false, error: 'NETWORK_ERROR' }
+  }
+}
+
+/**
+ * Current transport dispatcher.
+ * For now we route through the REST send contract so hooks have one stable path.
+ * This keeps message sending alive while WS/outbox transport is being rebuilt.
+ */
+export async function sendChatMessageOverTransport(
+  input: SendChatMessageTransportInput
+): Promise<SendChatMessageTransportResult> {
+  const result = await sendMessageRest({
+    chatId: input.chat_id,
+    plaintext: '',
+    content: input.content ?? null,
+    iv: input.iv ?? null,
+    mediaPath: input.media_path ?? null,
+    mediaType: input.media_type ?? null,
+    mediaIv: input.media_iv ?? null,
+    replyToId: input.reply_to_id ?? null,
+    mediaOriginalBytes: input.media_original_bytes,
+    burnAt: input.burn_at ?? null,
+    mode: 'legacy',
+  })
+
+  if (!result.ok) {
+    throw new Error(result.error)
+  }
+
+  return {
+    via: 'REST',
+    serverMessage: result.message,
   }
 }
 

@@ -11,15 +11,34 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // CHROMATIC_PROTOCOL :: tokens wired to CSS vars
-        // ThemeApplicator stamps data-theme on <html>;
-        // globals.css overrides the vars per theme.
-        // Tailwind must reference var() so runtime swaps work.
+        // CHROMATIC_PROTOCOL :: all tokens wired to CSS vars set by ThemeApplicator
+        // No hardcoded values — runtime swap via var() only.
         void: 'var(--void)',
+        surface: 'var(--surface)',
+        'surface-elevated': 'var(--surface-elevated)',
+        'on-surface': 'var(--on-surface)',
+        'text-primary': 'var(--text-primary)',
+        'text-muted': 'var(--text-muted)',
         'neon-red': 'var(--neon-red)',
         'neon-cyan': 'var(--neon-cyan)',
-        surface: 'var(--surface)',
-        'on-surface': 'var(--on-surface)',
+        'accent-2': 'var(--accent-2)',
+        'border-strong': 'var(--border-strong)',
+        danger: 'var(--danger)',
+        success: 'var(--success)',
+      },
+      fontFamily: {
+        // font-theme references the CSS var set by ThemeApplicator per theme
+        theme: ['var(--font-family)'],
+        mono: [
+          'ui-monospace',
+          'SFMono-Regular',
+          'Menlo',
+          'Monaco',
+          'Consolas',
+          'Liberation Mono',
+          'Courier New',
+          'monospace',
+        ],
       },
       screens: {
         'xs': '360px',
@@ -32,18 +51,6 @@ const config: Config = {
         'superwide': { raw: '(min-aspect-ratio: 32/9)' },
         'tall': { raw: '(min-aspect-ratio: 9/16)' },
         'ratio-16-10': { raw: '(min-aspect-ratio: 16/10) and (max-aspect-ratio: 16/9)' },
-      },
-      fontFamily: {
-        mono: [
-          'ui-monospace',
-          'SFMono-Regular',
-          'Menlo',
-          'Monaco',
-          'Consolas',
-          'Liberation Mono',
-          'Courier New',
-          'monospace',
-        ],
       },
       borderRadius: {
         none: '0',

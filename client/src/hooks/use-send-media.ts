@@ -76,7 +76,10 @@ async function injectWithRetry(
   throw new Error('STORAGE_INJECTION_FAILED')
 }
 
-export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
+export function useSendMedia(
+  cryptoCtx: ChatCryptoContext | null,
+  directPeerUserId: string | null
+) {
   const activeChatId = useChatStore(s => s.activeChatId)
   const userId = useChatStore(s => s.userId)
   const unwrappedPrivateKey = useChatStore(s => s.unwrappedPrivateKey)
@@ -198,6 +201,10 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
       // [6] SIGNAL_BROADCAST :: Публикация сегмента в фид сектора
       const { via, serverMessage } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
+        transport_mode: cryptoCtx.mode,
+        sender_private_key: unwrappedPrivateKey,
+        my_user_id: userId,
+        peer_user_id: directPeerUserId ?? undefined,
         content: encrypted_content,
         iv: envelopeIv,
         media_path: filePath,
@@ -213,7 +220,7 @@ export function useSendMedia(cryptoCtx: ChatCryptoContext | null) {
         vibrateShort(20) // Подтверждение успешного диспатча
       }
     },
-    [activeChatId, userId, unwrappedPrivateKey, cryptoCtx, appendMessage]
+    [activeChatId, userId, unwrappedPrivateKey, directPeerUserId, cryptoCtx, appendMessage]
   )
 
   return { transmitBinary, sendMedia: transmitBinary }

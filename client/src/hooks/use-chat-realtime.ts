@@ -1,19 +1,23 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { acknowledgeMessagesDelivered } from '@/lib/api/messages'
+import { acknowledgeMessagesDelivered, fetchPendingDeliveries } from '@/lib/api/messages'
 import { getFmSocket } from '@/lib/api/socket'
 import {
   decryptInboundText,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
+import { decryptApiMessageRows } from '@/lib/decrypt-chat-api-message'
 import { cacheMessage, deleteCachedMessage } from '@/lib/message-cache'
 import { playNotificationSound } from '@/lib/call-ringtones'
 import { lookupUsers } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
 
-export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBackgroundPush?: (title: string, body: string) => void) {
+export function useChatRealtime(
+  cryptoCtx: ChatCryptoContext | null,
+  triggerBackgroundPush?: (title: string, body: string, targetUrl?: string) => void
+) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const appendMessage = useChatStore((s) => s.appendMessage)
   const removeMessage = useChatStore((s) => s.removeMessage)
@@ -24,9 +28,11 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
   const pruneTypingUsers = useChatStore((s) => s.pruneTypingUsers)
   const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
   const updateMessageReactions = useChatStore((s) => s.updateMessageReactions)
+  const trackInboundUnread = useChatStore((s) => s.trackInboundUnread)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
   const usernameCacheRef = useRef<Record<string, string>>({})
+  const pendingPullRef = useRef(false)
 
   useEffect(() => {
     if (!activeChatId) {
@@ -89,18 +95,64 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
       if (msg.type !== 'chat_message') return
       const m = msg.message
       if (userId && m.sender_id !== userId) {
+        trackInboundUnread({
+          chatId: m.chat_id,
+          senderId: m.sender_id,
+          replyToId: m.reply_to_id ?? null,
+          isForegroundVisible: document.visibilityState === 'visible',
+          isActiveChat: m.chat_id === useChatStore.getState().activeChatId,
+        })
+      }
+      if (userId && m.sender_id !== userId) {
         // Play sound only if chatSoundEnabled AND window is NOT focused
         // (while focused the user sees the chat, no need to interrupt)
         if (chatSoundEnabled && !document.hasFocus()) {
           playNotificationSound()
         }
         if (triggerBackgroundPush) {
-          triggerBackgroundPush('Project 13: Новая активность', 'Получено новое зашифрованное сообщение');
+          triggerBackgroundPush(
+            'Project 13: Новая активность',
+            'Получено новое зашифрованное сообщение',
+            `/?chat=${encodeURIComponent(m.chat_id)}`
+          )
         }
       }
       if (!cryptoCtx || !unwrappedPrivateKey) return
       if (m.chat_id !== activeChatId) return
       void (async () => {
+        if ((m.content == null || m.content === '') && m.sender_id !== userId) {
+          if (pendingPullRef.current) return
+          pendingPullRef.current = true
+          try {
+            const pending = await fetchPendingDeliveries(activeChatId)
+            if (pending.length === 0) return
+            const rows = await decryptApiMessageRows(
+              unwrappedPrivateKey,
+              cryptoCtx,
+              pending
+            )
+            const ids: string[] = []
+            for (let i = 0; i < rows.length; i++) {
+              const row = rows[i]
+              if (!row) continue
+              await cacheMessage(row).catch(() => {
+                /* best-effort */
+              })
+              appendMessage(row)
+              const id = pending[i]?.id
+              if (id) ids.push(id)
+            }
+            if (ids.length > 0) {
+              await acknowledgeMessagesDelivered(ids).catch(() => {
+                /* best-effort */
+              })
+            }
+          } finally {
+            pendingPullRef.current = false
+          }
+          return
+        }
+
         let plaintext = ''
         if (m.content != null && m.iv != null && m.content !== '') {
           try {
@@ -154,6 +206,7 @@ export function useChatRealtime(cryptoCtx: ChatCryptoContext | null, triggerBack
     pruneTypingUsers,
     removeMessage,
     setTypingUser,
+    trackInboundUnread,
     unwrappedPrivateKey,
     updateMessageReadAt,
     updateMessageReactions,

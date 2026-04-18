@@ -18,7 +18,10 @@ import type { DecryptedMessage } from '@/types/chat'
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
-export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
+export function useSendMessage(
+  cryptoCtx: ChatCryptoContext | null,
+  directPeerUserId: string | null
+) {
   const activeChatId = useChatStore(s => s.activeChatId)
   const userId = useChatStore(s => s.userId)
   const unwrappedPrivateKey = useChatStore(s => s.unwrappedPrivateKey)
@@ -57,6 +60,10 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
       // [2] TRANSPORT_DISPATCH :: Выброс пакета в эфир (WS/REST/QUEUE)
       const { via, serverMessage, outboxId } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
+        transport_mode: cryptoCtx.mode,
+        sender_private_key: unwrappedPrivateKey,
+        my_user_id: userId,
+        peer_user_id: directPeerUserId ?? undefined,
         content: encrypted_content,
         iv,
         reply_to_id: replyToId ?? null,
@@ -113,6 +120,7 @@ export function useSendMessage(cryptoCtx: ChatCryptoContext | null) {
       activeChatId,
       userId,
       unwrappedPrivateKey,
+      directPeerUserId,
       cryptoCtx,
       appendMessage,
     ]

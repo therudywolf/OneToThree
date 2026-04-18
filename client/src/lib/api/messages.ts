@@ -5,6 +5,11 @@ export type SendChatMessageBody = {
   chat_id: string
   content: string | null
   iv: string | null
+  ciphertexts?: Array<{
+    device_id: string
+    ciphertext: string
+    iv: string
+  }>
   reply_to_id?: string | null
   media_path?: string | null
   media_type?: string | null

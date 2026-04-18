@@ -3,6 +3,8 @@
 @tailwind utilities;
 
 :root {
+  --p13-keyboard-inset: 0px;
+  --p13-vh: 1vh;
   --neon-red: #ff0000;
   --neon-cyan: #00ffff;
   --void: #000000;
@@ -32,6 +34,12 @@
   --motion-base: 220ms;
   --motion-slow: 360ms;
   --text-shadow-intensity: 0.35;
+}
+
+html,
+body {
+  min-height: 100dvh;
+  min-height: calc(var(--p13-vh, 1vh) * 100);
 }
 
 /* ===== CHROMATIC PROTOCOLS ===== */

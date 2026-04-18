@@ -45,6 +45,8 @@ import { useAppBadge } from '@/hooks/use-app-badge'
 import { MEDIA_PERMISSION_DENIED_CODE } from '@/lib/media-limits'
 import { useGroupCall } from '@/hooks/use-group-call'
 import { useGroupCallStore } from '@/store/groupCallStore'
+import { useMobileViewport } from '@/hooks/use-mobile-viewport'
+import { useNotificationOpen } from '@/hooks/use-notification-open'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -116,6 +118,7 @@ export function ChatApp({
   const { user, logout } = useAuth()
   const searchParams = useSearchParams()
   const setUserId = useChatStore((s) => s.setUserId)
+  const setSelfUsername = useChatStore((s) => s.setSelfUsername)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const activeChatId = useChatStore((s) => s.activeChatId)
@@ -138,6 +141,8 @@ export function ChatApp({
     return !localStorage.getItem(`p13:onboarded:${userId}`)
   })
   useAutoLock()
+  useMobileViewport()
+  useNotificationOpen()
   useAppBadge(userId)
   const vaultState = useCryptoVault(userId, user?.username ?? username)
   const { chats, reload } = useChats(userId)
@@ -190,7 +195,8 @@ export function ChatApp({
 
   useLayoutEffect(() => {
     setUserId(userId)
-  }, [userId, setUserId])
+    setSelfUsername(user?.username ?? username ?? null)
+  }, [setSelfUsername, setUserId, user?.username, userId, username])
 
   useEffect(() => {
     if (!unwrappedPrivateKey || !userId) return
@@ -298,8 +304,9 @@ export function ChatApp({
   const { emitPhantomSignal } = usePhantomPush()
   const sharedKey = useChatAesKey(cryptoCtx)
   useMessages(cryptoCtx, emitPhantomSignal)
-  const { sendText } = useSendMessage(cryptoCtx)
-  const { sendMedia: rawSendMedia } = useSendMediaMessage(cryptoCtx)
+  const directPeerUserId = peerIdentity?.userId ?? null
+  const { sendText } = useSendMessage(cryptoCtx, directPeerUserId)
+  const { sendMedia: rawSendMedia } = useSendMediaMessage(cryptoCtx, directPeerUserId)
 
   const sendMedia = useCallback(
     async (

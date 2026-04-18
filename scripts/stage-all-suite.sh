@@ -58,10 +58,16 @@ DATABASE_URL="${DATABASE_URL}" npm --prefix "${ROOT_DIR}/server" run test -- \
   src/lib/session-cookie.test.ts \
   src/lib/zod-uuid.test.ts \
   src/routes/auth.test.ts \
+  src/routes/auth-recovery.test.ts \
   src/routes/auth-qr-routes.test.ts \
   src/routes/devices-link.test.ts \
+  src/routes/messages-device-delivery.test.ts \
   src/routes/messages-flow.test.ts \
+  src/routes/messages-history-policy.test.ts \
   src/routes/chats-favorites.test.ts \
+  src/routes/webrtc.test.ts \
+  src/routes/push.test.ts \
+  src/routes/users-security-stepup.test.ts \
   src/routes/users-avatar-routes.test.ts
 
 echo "[stage-all] client unit tests..."

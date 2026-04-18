@@ -180,6 +180,20 @@ self.addEventListener('notificationclick', (event) => {
       for (var i = 0; i < clientList.length; i++) {
         var client = clientList[i]
         if (!client.url.startsWith(self.location.origin)) continue
+        try {
+          client.postMessage({
+            type: 'notification_click',
+            url: absUrl,
+            data: raw,
+          })
+        } catch {
+          /* best-effort */
+        }
+        try {
+          await client.focus()
+        } catch {
+          /* continue */
+        }
         if ('navigate' in client && typeof client.navigate === 'function') {
           try {
             await client.navigate(absUrl)

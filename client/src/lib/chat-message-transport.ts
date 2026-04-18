@@ -1,13 +1,17 @@
 'use client'
 
 /**
- * Stage 5 :: CHAT MESSAGE TRANSPORT
- * Handles both legacy (single ciphertext) and fan-out (per-device) modes.
+ * Stage 3 :: CHAT MESSAGE TRANSPORT (unified contract dispatcher)
+ * DIRECT  -> per-device fan-out slots
+ * SECTOR  -> shared-key legacy ciphertext
+ * PUBLIC  -> plaintext-b64 legacy payload
  */
 
 import { API_URL } from '@/lib/api/auth'
+import type { SendChatMessageBody } from '@/lib/api/messages'
 import { buildFanoutSlots } from './fanout-crypto'
 import { getClientDeviceId } from './client-device'
+import { enqueueOutbox, registerOutboxSync } from './outbox'
 import type { ApiMessageRow } from './decrypt-chat-api-message'
 
 export type SendMessageOptions = {
@@ -26,7 +30,7 @@ export type SendMessageOptions = {
   replyToId?: string | null
   mediaOriginalBytes?: number
   burnAt?: string | null
-  /** 'fanout' = Stage 5 per-device, 'legacy' = single ciphertext */
+  /** 'fanout' = per-device slots, 'legacy' = single ciphertext payload */
   mode: 'fanout' | 'legacy'
 }
 
@@ -36,6 +40,10 @@ export type SendResult =
 
 export type SendChatMessageTransportInput = {
   chat_id: string
+  transport_mode: 'DIRECT' | 'SECTOR' | 'PUBLIC'
+  sender_private_key?: CryptoKey
+  my_user_id?: string
+  peer_user_id?: string
   content?: string | null
   iv?: string | null
   media_path?: string | null
@@ -80,7 +88,7 @@ export async function sendMessageRest(opts: SendMessageOptions): Promise<SendRes
       excludeDeviceId
     )
     if (ciphertexts.length === 0) {
-      // No linked devices found; fall back to legacy single-ciphertext
+      // Device registry unavailable or empty: keep a single-ciphertext fallback
       body.content = opts.content ?? null
       body.iv = opts.iv ?? null
     } else {
@@ -110,42 +118,81 @@ export async function sendMessageRest(opts: SendMessageOptions): Promise<SendRes
   }
 }
 
-/**
- * Current transport dispatcher.
- * For now we route through the REST send contract so hooks have one stable path.
- * This keeps message sending alive while WS/outbox transport is being rebuilt.
- */
-export async function sendChatMessageOverTransport(
-  input: SendChatMessageTransportInput
-): Promise<SendChatMessageTransportResult> {
-  const result = await sendMessageRest({
-    chatId: input.chat_id,
-    plaintext: '',
-    content: input.content ?? null,
-    iv: input.iv ?? null,
-    mediaPath: input.media_path ?? null,
-    mediaType: input.media_type ?? null,
-    mediaIv: input.media_iv ?? null,
-    replyToId: input.reply_to_id ?? null,
-    mediaOriginalBytes: input.media_original_bytes,
-    burnAt: input.burn_at ?? null,
-    mode: 'legacy',
-  })
-
-  if (!result.ok) {
-    throw new Error(result.error)
-  }
-
-  return {
-    via: 'REST',
-    serverMessage: result.message,
+async function postUnifiedSend(
+  body: Record<string, unknown>
+): Promise<{ ok: true; message: ApiMessageRow } | { ok: false; error: string; network: boolean }> {
+  try {
+    const res = await fetch(`${API_URL}/messages/send`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = (await res.json().catch(() => ({}))) as {
+      message?: ApiMessageRow
+      error?: string
+    }
+    if (!res.ok || !data.message) {
+      return { ok: false, error: data.error ?? 'SEND_FAILED', network: false }
+    }
+    return { ok: true, message: data.message }
+  } catch {
+    return { ok: false, error: 'NETWORK_ERROR', network: true }
   }
 }
 
+export async function sendChatMessageOverTransport(
+  input: SendChatMessageTransportInput
+): Promise<SendChatMessageTransportResult> {
+  const body: Record<string, unknown> = {
+    chat_id: input.chat_id,
+    content: input.content ?? null,
+    iv: input.iv ?? null,
+    media_path: input.media_path ?? null,
+    media_type: input.media_type ?? null,
+    media_iv: input.media_iv ?? null,
+    reply_to_id: input.reply_to_id ?? null,
+    media_original_bytes: input.media_original_bytes,
+    burn_at: input.burn_at ?? null,
+  }
+
+  if (input.transport_mode === 'DIRECT') {
+    if (input.sender_private_key && input.my_user_id && input.peer_user_id) {
+      const excludeDeviceId = getClientDeviceId() ?? undefined
+      const ciphertexts = await buildFanoutSlots(
+        input.sender_private_key,
+        input.my_user_id,
+        input.peer_user_id,
+        input.content ?? '',
+        excludeDeviceId
+      )
+      if (ciphertexts.length > 0) {
+        body.ciphertexts = ciphertexts
+      }
+    }
+  }
+
+  const sent = await postUnifiedSend(body)
+  if (sent.ok) {
+    return {
+      via: 'REST',
+      serverMessage: sent.message,
+    }
+  }
+
+  if (sent.network) {
+    const outboxId = await enqueueOutbox(body as SendChatMessageBody)
+    void registerOutboxSync().catch(() => {
+      /* best effort */
+    })
+    return { via: 'QUEUED', outboxId }
+  }
+
+  throw new Error(sent.error)
+}
+
 /**
- * Resolve the device_ciphertext from a pending sync row for the current device.
- * Returns null if the message has no fan-out slot for this device (legacy row or
- * this device wasn't in the recipient list).
+ * Resolve per-device slot payload when provided by API.
  */
 export function extractDeviceSlot(
   row: { device_ciphertext?: string | null; device_iv?: string | null }

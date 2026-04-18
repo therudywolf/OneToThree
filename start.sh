@@ -88,6 +88,30 @@ build_turn_urls() {
   echo "turn:${host}:3478,turn:${host}:3478?transport=tcp,turns:${host}:443?transport=tcp,turns:${host}:5349?transport=tcp"
 }
 
+looks_like_ip() {
+  local value="$1"
+  [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$value" == *:* ]]
+}
+
+detect_public_ip() {
+  local candidate
+  local endpoints=(
+    "https://ifconfig.me/ip"
+    "https://api.ipify.org"
+    "https://ipv4.icanhazip.com"
+  )
+
+  for endpoint in "${endpoints[@]}"; do
+    candidate="$(curl -fsS --max-time 5 "$endpoint" 2>/dev/null | tr -d '\r' | head -n1 | tr -d '[:space:]' || true)"
+    if looks_like_ip "$candidate"; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 # =============================================================================
 # КОМАНДЫ
 # =============================================================================
@@ -640,11 +664,18 @@ fi
 
 TURN_EXT=$(val_for_key TURN_EXTERNAL_IP)
 if is_placeholder "$TURN_EXT"; then
-  TURN_AUTO="$(curl -s --max-time 5 ifconfig.me 2>/dev/null || true)"
+  TURN_AUTO="$(detect_public_ip || true)"
   if [[ -n "$TURN_AUTO" ]]; then
     update_key TURN_EXTERNAL_IP "$TURN_AUTO"
     ok "TURN_EXTERNAL_IP автоопределён (${TURN_AUTO})."
+  else
+    warn "Не удалось автоопределить TURN_EXTERNAL_IP. Заполните его вручную в ${ENV_FILE}."
   fi
+fi
+
+TURN_EXT=$(val_for_key TURN_EXTERNAL_IP)
+if [[ -n "$TURN_EXT" ]] && ! is_placeholder "$TURN_EXT" && ! looks_like_ip "$TURN_EXT"; then
+  die "TURN_EXTERNAL_IP должен быть IP-адресом, а не '${TURN_EXT}'."
 fi
 
 # =============================================================================
@@ -777,6 +808,9 @@ for svc in db redis minio api web; do
   fi
 done
 
+CADDY_TLS_WARNING=false
+CADDY_TLS_LOG_MATCHES=""
+
 if [[ "$all_healthy" == true ]]; then
   ok "Все сервисы запущены и здоровы."
 else
@@ -789,6 +823,16 @@ else
   wait_healthy "web"   "Next.js"      180 || true
 fi
 
+if "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q caddy >/dev/null 2>&1; then
+  CADDY_CID=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q caddy 2>/dev/null | head -1)
+  if [[ -n "${CADDY_CID:-}" ]]; then
+    CADDY_TLS_LOG_MATCHES=$(docker logs "$CADDY_CID" --tail 200 2>&1 | grep -E "challenge failed|could not get certificate from issuer|Cannot negotiate ALPN protocol|Invalid response from http://.*521" || true)
+    if [[ -n "$CADDY_TLS_LOG_MATCHES" ]]; then
+      CADDY_TLS_WARNING=true
+    fi
+  fi
+fi
+
 # =============================================================================
 # ФИНАЛ
 # =============================================================================
@@ -796,14 +840,20 @@ sep
 "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
 sep
 
-SERVER_IP=$(val_for_key TURN_EXTERNAL_IP)
+TURN_RELAY_IP=$(val_for_key TURN_EXTERNAL_IP)
 
 echo ""
-echo -e "${GRN}${BLD}  ✓ Forest Messenger запущен${NC}"
+if [[ "$CADDY_TLS_WARNING" == true ]]; then
+  echo -e "${YEL}${BLD}  ⚠ Forest Messenger запущен, но HTTPS/TLS не подтверждён${NC}"
+else
+  echo -e "${GRN}${BLD}  ✓ Forest Messenger запущен${NC}"
+fi
 echo ""
 echo -e "  ${BLD}Сайт:${NC}    ${CYN}${CORS}${NC}"
 echo -e "  ${BLD}API:${NC}     ${CYN}${API_URL}${NC}"
-echo -e "  ${BLD}Сервер:${NC}  ${DIM}${SERVER_IP}${NC}"
+if [[ -n "$TURN_RELAY_IP" ]]; then
+  echo -e "  ${BLD}TURN relay IP:${NC} ${DIM}${TURN_RELAY_IP}${NC}"
+fi
 echo ""
 echo -e "  ${DIM}./start.sh logs    — просмотр логов${NC}"
 echo -e "  ${DIM}./start.sh stop    — остановить${NC}"
@@ -818,5 +868,10 @@ if [[ "$FIRST_RUN" == true ]]; then
   echo ""
   echo -e "  ${YEL}Первый запуск: TLS сертификат получается автоматически (Let's Encrypt).${NC}"
   echo -e "  ${YEL}Убедитесь что порты 80/443 открыты и DNS указывает на этот сервер.${NC}"
+fi
+if [[ "$CADDY_TLS_WARNING" == true ]]; then
+  echo ""
+  echo -e "  ${YEL}Caddy сообщает об ошибках получения TLS-сертификата.${NC}"
+  echo -e "  ${YEL}Проверьте DNS/Cloudflare и доступность 80/443, затем посмотрите: ./start.sh logs${NC}"
 fi
 echo ""

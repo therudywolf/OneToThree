@@ -323,7 +323,11 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="sticky bottom-0 z-10 shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-black p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200"
+      className="sticky bottom-0 z-10 shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-black p-2 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200"
+      style={{
+        paddingBottom:
+          'calc(max(0.5rem, env(safe-area-inset-bottom)) + var(--p13-keyboard-inset, 0px))',
+      }}
     >
       {previewFile && (
         <MediaPreviewModal

@@ -42,8 +42,9 @@ export function PushOnboardingBanner() {
     }
 
     void sync()
-    window.addEventListener('focus', () => void sync())
-    return () => window.removeEventListener('focus', () => void sync())
+    const onFocus = () => void sync()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
   }, [])
 
   if (!mounted || !visible) return null

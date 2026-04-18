@@ -55,6 +55,10 @@ export const users = pgTable('users', {
   disableReadReceipts: boolean('disable_read_receipts').notNull().default(false),
   /** Server-side gate for issuing new device-link tokens. */
   allowDeviceLinking: boolean('allow_device_linking').notNull().default(false),
+  /** Recovery key material (server stores only KDF salt+hash, never plaintext key). */
+  recoveryKeySalt: text('recovery_key_salt'),
+  recoveryKeyHash: text('recovery_key_hash'),
+  recoveryKeySetAt: timestamp('recovery_key_set_at', { withTimezone: true }),
   /** Short bio / about text. */
   bio: text('bio'),
   /** Custom status text (e.g. "busy", "do not disturb", free-form). */
@@ -94,6 +98,10 @@ export const devices = pgTable(
     ecdhPublicKey: text('ecdh_public_key'),
     /** Timestamp when this device completed E2EE linking. */
     linkedAt: timestamp('linked_at', { withTimezone: true }),
+    /** Explicit user approval for backfilling old history to this device. */
+    historySyncEnabledAt: timestamp('history_sync_enabled_at', {
+      withTimezone: true,
+    }),
     /** Human-readable label (e.g. "Chrome on MacBook", "Primary device (migrated)"). */
     label: text('label'),
     /** True when this record was auto-created from users.public_key_jwk at first login. */

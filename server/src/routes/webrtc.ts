@@ -17,6 +17,7 @@ const DEFAULT_ICE_SERVERS: Array<{
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
 ]
+const MAX_TURN_URL_CANDIDATES = 24
 
 function parseTurnUrls(raw: string | undefined): string[] {
   if (!raw) return []
@@ -24,6 +25,10 @@ function parseTurnUrls(raw: string | undefined): string[] {
     .split(',')
     .map((u) => u.trim())
     .filter(Boolean)
+}
+
+function isAllowedIceUrl(url: string): boolean {
+  return /^stun:|^turn:|^turns:/i.test(url.trim())
 }
 
 function hasTransportParam(url: string): boolean {
@@ -102,18 +107,28 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
     const rawUser = (process.env.TURN_USERNAME || process.env.TURN_USER)?.trim()
     const rawSecret = readSecret('TURN_PASSWORD') || (process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
     const includeTlsFallback = (process.env.TURN_ENABLE_TLS_FALLBACK ?? '1') !== '0'
-    const tlsPorts = parseTurnUrls(process.env.TURN_TLS_PORTS ?? '443,5349')
+    const parsedTlsPorts = parseTurnUrls(process.env.TURN_TLS_PORTS ?? '443,5349')
       .map((n) => Number.parseInt(n, 10))
       .filter((n) => Number.isFinite(n) && n > 0 && n <= 65535)
+    const tlsPorts = parsedTlsPorts.length > 0 ? parsedTlsPorts : [443, 5349]
 
     if (rawUser && rawSecret) {
+      const allCandidates = rawUrls
+        .flatMap((v) => parseTurnUrls(v))
+        .flatMap((u) => toOrderedTurnCandidates(u, tlsPorts, includeTlsFallback))
       const urls = Array.from(
         new Set(
-          rawUrls
-            .flatMap((v) => parseTurnUrls(v))
-            .flatMap((u) => toOrderedTurnCandidates(u, tlsPorts, includeTlsFallback))
+          allCandidates.filter(isAllowedIceUrl)
         )
-      )
+      ).slice(0, MAX_TURN_URL_CANDIDATES)
+
+      const droppedCount = allCandidates.length - urls.length
+      if (droppedCount > 0) {
+        app.log.warn(
+          { droppedCount, userId: user.id },
+          'ICE_CONFIG_SANITIZED :: INVALID_OR_EXTRA_CANDIDATES_DROPPED'
+        )
+      }
       
       if (urls.length > 0) {
         iceServers.push({

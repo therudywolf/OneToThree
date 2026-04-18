@@ -36,11 +36,37 @@ function loadChatSoundEnabled(): boolean {
 
 type PeerStatusMap = Record<string, { online: boolean; last_seen_at: string | null }>
 type TypingMap = Record<string, Record<string, { username: string; expiresAt: number }>>
+type ThreadUnreadMap = Record<string, number>
+type ChatUnreadState = {
+  total: number
+  mentions: number
+  threads: ThreadUnreadMap
+}
+type UnreadByChat = Record<string, ChatUnreadState>
+
+function emptyUnreadState(): ChatUnreadState {
+  return { total: 0, mentions: 0, threads: {} }
+}
+
+function countUnreadTotal(unreadByChat: UnreadByChat): number {
+  return Object.values(unreadByChat).reduce((acc, x) => acc + (x.total || 0), 0)
+}
+
+function hasMentionByReplyToOwnMessage(params: {
+  replyToId: string | null
+  messages: DecryptedMessage[]
+  userId: string | null
+}): boolean {
+  if (!params.replyToId || !params.userId) return false
+  const replied = params.messages.find((m) => m.id === params.replyToId)
+  return Boolean(replied && replied.sender_id === params.userId)
+}
 
 export type ChatState = {
   // [IDENT_LAYER]
   activeChatId: string | null
   userId: string | null
+  selfUsername: string | null
   unwrappedPrivateKey: CryptoKey | null
 
   // [DATA_LAYER]
@@ -54,12 +80,15 @@ export type ChatState = {
   // [SYNC_LAYER]
   readAtOverrides: Record<string, string>
   historyDecryptBusy: boolean
+  unreadByChat: UnreadByChat
+  unreadTotal: number
 
   // [SOUND]
   chatSoundEnabled: boolean
 
   // [ACTIONS]
   setActiveChatId: (id: string | null) => void
+  setSelfUsername: (value: string | null) => void
   setMessages: (nodes: DecryptedMessage[]) => void
   appendMessage: (node: DecryptedMessage) => void
   removeMessage: (id: string) => void
@@ -75,6 +104,16 @@ export type ChatState = {
   mergePeerPresenceBatch: (rows: { id: string; online: boolean; last_seen_at: string | null }[]) => void
   updateMessageReadAt: (nodeId: string, timestamp: string) => void
   updateMessageReactions: (nodeId: string, reactions: Record<string, string[]>) => void
+  markChatRead: (chatId: string) => void
+  markThreadRead: (chatId: string, threadId: string) => void
+  clearAllUnread: () => void
+  trackInboundUnread: (params: {
+    chatId: string
+    senderId: string
+    replyToId?: string | null
+    isForegroundVisible: boolean
+    isActiveChat: boolean
+  }) => void
   setHistoryDecryptBusy: (busy: boolean) => void
   setChatSoundEnabled: (enabled: boolean) => void
   reset: () => void
@@ -82,7 +121,20 @@ export type ChatState = {
 
 export const useChatStore = create<ChatState>((set, _get) => {
   const setActiveChatId = (id: string | null) =>
-    set({ activeChatId: id, replyTo: null, readAtOverrides: {}, historyDecryptBusy: false })
+    set((s) => {
+      if (!id) return { activeChatId: id, replyTo: null, readAtOverrides: {}, historyDecryptBusy: false }
+      if (!s.unreadByChat[id]) return { activeChatId: id, replyTo: null, readAtOverrides: {}, historyDecryptBusy: false }
+      const nextUnread = { ...s.unreadByChat }
+      delete nextUnread[id]
+      return {
+        activeChatId: id,
+        replyTo: null,
+        readAtOverrides: {},
+        historyDecryptBusy: false,
+        unreadByChat: nextUnread,
+        unreadTotal: countUnreadTotal(nextUnread),
+      }
+    })
 
   const setMessages = (nodes: DecryptedMessage[]) =>
     set({ messages: enforceMemoryLimit(sortNodes(nodes)) })
@@ -112,6 +164,7 @@ export const useChatStore = create<ChatState>((set, _get) => {
   const setReplyTo = (node: DecryptedMessage | null) => set({ replyTo: node })
   const setUnwrappedPrivateKey = (key: CryptoKey | null) => set({ unwrappedPrivateKey: key })
   const setUserId = (id: string | null) => set({ userId: id })
+  const setSelfUsername = (value: string | null) => set({ selfUsername: value })
 
   const setTypingUser = (chatId: string, uid: string, uname: string, ttl = 3000) =>
     set((s) => ({
@@ -182,6 +235,67 @@ export const useChatStore = create<ChatState>((set, _get) => {
       messages: s.messages.map((n) => n.id === nodeId ? { ...n, reactions } : n),
     }))
 
+  const markChatRead = (chatId: string) =>
+    set((s) => {
+      if (!s.unreadByChat[chatId]) return s
+      const nextUnread = { ...s.unreadByChat }
+      delete nextUnread[chatId]
+      return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
+    })
+
+  const markThreadRead = (chatId: string, threadId: string) =>
+    set((s) => {
+      const chatUnread = s.unreadByChat[chatId]
+      if (!chatUnread) return s
+      const dec = chatUnread.threads[threadId] ?? 0
+      if (dec <= 0) return s
+      const nextThreads = { ...chatUnread.threads }
+      delete nextThreads[threadId]
+      const nextChat = {
+        ...chatUnread,
+        total: Math.max(0, chatUnread.total - dec),
+        threads: nextThreads,
+      }
+      const nextUnread = { ...s.unreadByChat, [chatId]: nextChat }
+      if (nextChat.total <= 0) delete nextUnread[chatId]
+      return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
+    })
+
+  const clearAllUnread = () => set({ unreadByChat: {}, unreadTotal: 0 })
+
+  const trackInboundUnread = (params: {
+    chatId: string
+    senderId: string
+    replyToId?: string | null
+    isForegroundVisible: boolean
+    isActiveChat: boolean
+  }) =>
+    set((s) => {
+      if (!s.userId) return s
+      if (params.senderId === s.userId) return s
+      if (params.isForegroundVisible && params.isActiveChat) return s
+
+      const chatUnread = s.unreadByChat[params.chatId] ?? emptyUnreadState()
+      const nextThreads = { ...chatUnread.threads }
+      if (params.replyToId) {
+        nextThreads[params.replyToId] = (nextThreads[params.replyToId] ?? 0) + 1
+      }
+
+      const mentionByReply = hasMentionByReplyToOwnMessage({
+        replyToId: params.replyToId ?? null,
+        messages: s.messages,
+        userId: s.userId,
+      })
+      const nextChat: ChatUnreadState = {
+        total: chatUnread.total + 1,
+        mentions: chatUnread.mentions + (mentionByReply ? 1 : 0),
+        threads: nextThreads,
+      }
+
+      const nextUnread = { ...s.unreadByChat, [params.chatId]: nextChat }
+      return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
+    })
+
   const setHistoryDecryptBusy = (busy: boolean) => set({ historyDecryptBusy: busy })
 
   const setChatSoundEnabled = (enabled: boolean) => {
@@ -193,6 +307,7 @@ export const useChatStore = create<ChatState>((set, _get) => {
     set({
       activeChatId: null,
       userId: null,
+      selfUsername: null,
       unwrappedPrivateKey: null,
       messages: [],
       replyTo: null,
@@ -200,11 +315,14 @@ export const useChatStore = create<ChatState>((set, _get) => {
       peerPresence: {},
       readAtOverrides: {},
       historyDecryptBusy: false,
+      unreadByChat: {},
+      unreadTotal: 0,
     })
 
   return {
     activeChatId: null,
     userId: null,
+    selfUsername: null,
     unwrappedPrivateKey: null,
     messages: [],
     replyTo: null,
@@ -212,9 +330,12 @@ export const useChatStore = create<ChatState>((set, _get) => {
     peerPresence: {},
     readAtOverrides: {},
     historyDecryptBusy: false,
+    unreadByChat: {},
+    unreadTotal: 0,
     chatSoundEnabled: loadChatSoundEnabled(),
 
     setActiveChatId,
+    setSelfUsername,
     setMessages,
     appendMessage,
     removeMessage,
@@ -230,6 +351,10 @@ export const useChatStore = create<ChatState>((set, _get) => {
     mergePeerPresenceBatch,
     updateMessageReadAt,
     updateMessageReactions,
+    markChatRead,
+    markThreadRead,
+    clearAllUnread,
+    trackInboundUnread,
     setHistoryDecryptBusy,
     setChatSoundEnabled,
     reset,

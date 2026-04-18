@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000'
+const shouldManageWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER !== '1'
 
 /**
  * Prereq: Fastify API on 8080 (see playwright.global-setup.ts), Postgres + MinIO + `npm run db:push:docker`.
@@ -28,23 +29,31 @@ export default defineConfig({
     /** Production build registers next-pwa SW; it can intercept `/api/*` and bypass Playwright `page.route`. */
     serviceWorkers: 'block',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
-    /** Next 16 standalone startup is flaky in local Windows E2E; use the supported start command. */
-    command:
-      'npm run build && npm run start -- --hostname 127.0.0.1 --port 3000',
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 300_000,
-    cwd: '.',
-    env: {
-      ...process.env,
-      PORT: process.env.PORT ?? '3000',
-      HOSTNAME: process.env.HOSTNAME ?? '127.0.0.1',
-      /** Fastify for `rewrites()` in next.config.js — browser still calls `/api` on :3000. */
-      API_INTERNAL_URL: process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8080',
-      /** Empty → client `API_URL` is `/api` (same origin as Next). */
-      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? '',
-    },
-  },
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'mobile-android', use: { ...devices['Pixel 7'] } },
+    { name: 'mobile-ios', use: { ...devices['iPhone 14'] } },
+  ],
+  ...(shouldManageWebServer
+    ? {
+        webServer: {
+          /** Next 16 standalone startup is flaky in local Windows E2E; use the supported start command. */
+          command:
+            'npm run build && npm run start -- --hostname 127.0.0.1 --port 3000',
+          url: baseURL,
+          reuseExistingServer: !process.env.CI,
+          timeout: 300_000,
+          cwd: '.',
+          env: {
+            ...process.env,
+            PORT: process.env.PORT ?? '3000',
+            HOSTNAME: process.env.HOSTNAME ?? '127.0.0.1',
+            /** Fastify for `rewrites()` in next.config.js — browser still calls `/api` on :3000. */
+            API_INTERNAL_URL: process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:8080',
+            /** Empty → client `API_URL` is `/api` (same origin as Next). */
+            NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? '',
+          },
+        },
+      }
+    : {}),
 })

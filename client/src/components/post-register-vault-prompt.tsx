@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { readVaultBlob } from '@/lib/vault'
 
@@ -14,12 +15,19 @@ export function PostRegisterVaultPrompt({
   onDismiss: () => void
 }) {
   const { user } = useAuth()
+  const [exportState, setExportState] = useState<'idle' | 'done' | 'error'>('idle')
 
   function exportVault() {
     const userId = user?.id
-    if (!userId) return
+    if (!userId) {
+      setExportState('error')
+      return
+    }
     const blob = readVaultBlob(userId)
-    if (!blob) return
+    if (!blob) {
+      setExportState('error')
+      return
+    }
     const payload = JSON.stringify(
       { userId, vault: blob, exported_at: new Date().toISOString() },
       null,
@@ -32,7 +40,7 @@ export function PostRegisterVaultPrompt({
     a.download = `13vault-${userId.slice(0, 8)}.key`
     a.click()
     URL.revokeObjectURL(url)
-    onDismiss()
+    setExportState('done')
   }
 
   return (
@@ -80,6 +88,36 @@ export function PostRegisterVaultPrompt({
           Файл зашифрован твоим vault-паролем. Без него он бесполезен для посторонних.
         </p>
 
+        {exportState === 'done' && (
+          <div
+            style={{
+              border: '1px solid rgba(0,255,204,0.35)',
+              background: 'rgba(0,255,204,0.08)',
+              color: '#a8fff1',
+              fontSize: '0.72rem',
+              lineHeight: 1.6,
+              padding: '0.75rem',
+            }}
+          >
+            Резервная копия выгружена. Проверь папку загрузок и только потом продолжай вход.
+          </div>
+        )}
+
+        {exportState === 'error' && (
+          <div
+            style={{
+              border: '1px solid rgba(255,68,68,0.4)',
+              background: 'rgba(255,68,68,0.08)',
+              color: '#ff9f9f',
+              fontSize: '0.72rem',
+              lineHeight: 1.6,
+              padding: '0.75rem',
+            }}
+          >
+            Не удалось собрать резервную копию. Не продолжай вход, пока не повторишь экспорт.
+          </div>
+        )}
+
         <button
           onClick={exportVault}
           style={{
@@ -99,6 +137,23 @@ export function PostRegisterVaultPrompt({
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         >
           [ СКАЧАТЬ РЕЗЕРВНУЮ КОПИЮ ]
+        </button>
+
+        <button
+          onClick={onDismiss}
+          style={{
+            border: '1px solid #00ffcc',
+            background: exportState === 'done' ? 'rgba(0,255,204,0.08)' : 'transparent',
+            color: '#00ffcc',
+            fontFamily: 'monospace',
+            fontSize: '0.72rem',
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            padding: '0.7rem',
+            cursor: 'pointer',
+          }}
+        >
+          [ Я сохранил копию, продолжить ]
         </button>
 
         <button

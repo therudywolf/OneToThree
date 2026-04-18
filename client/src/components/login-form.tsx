@@ -65,12 +65,13 @@ export function LoginForm() {
   }, [])
 
   useEffect(() => {
+    if (showVaultPrompt) return
     if (!authLoading && user) {
       const params = new URLSearchParams(window.location.search)
       const inviteCode = params.get('code')?.trim()
       router.replace(inviteCode ? `/join/${encodeURIComponent(inviteCode)}` : '/')
     }
-  }, [authLoading, user, router])
+  }, [authLoading, user, router, showVaultPrompt])
 
   const mapFault = (code: string): string => {
     const registry: Record<string, string> = {

@@ -350,6 +350,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       if (!stepUp.ok) return sendStepUpError(reply, stepUp)
     }
 
+    const sess = await verifySessionJwt(request)
+    const currentDeviceId = sess?.device_id ? normalizeUuid(sess.device_id) : null
+
     const [after] = await db
       .update(users)
       .set(updates)
@@ -363,6 +366,16 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         statusText: users.statusText,
         socialLinks: users.socialLinks,
       })
+
+    if (parsed.data.ecdh_public_key_jwk !== undefined && currentDeviceId) {
+      await db
+        .update(devices)
+        .set({
+          ecdhPublicKey: parsed.data.ecdh_public_key_jwk,
+          lastActive: new Date(),
+        })
+        .where(and(eq(devices.id, currentDeviceId), eq(devices.userId, user.id)))
+    }
 
     let socialLinksOut: Array<{ platform: string; url: string }> = []
     if (after?.socialLinks) {

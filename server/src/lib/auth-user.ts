@@ -82,7 +82,8 @@ export async function isUserDeviceSessionValid(
  * Banned users: clears session cookie and sends `{ error: 'BANNED_USER' }` when `reply` is set.
  * Revoked device: clears cookie and sends `{ error: 'DEVICE_REVOKED' }`.
  *
- * Stage 3: fires auto-migration (fire-and-forget) on successful resolution.
+ * Stage 3: ensures legacy sessions are backfilled into the device registry
+ * before the request continues, so downstream routes see a stable device model.
  */
 export async function getAuthUser(
   request: FastifyRequest,
@@ -132,8 +133,8 @@ export async function getAuthUser(
     return null
   }
 
-  // Stage 3: transparently seed device registry for legacy users (fire-and-forget)
-  void maybeAutoMigrateDevice(normalizeUuid(row.id), row.publicKeyJwk)
+  // Stage 3: seed device registry for legacy users before route logic continues.
+  await maybeAutoMigrateDevice(normalizeUuid(row.id), row.publicKeyJwk)
 
   return {
     id: normalizeUuid(row.id),

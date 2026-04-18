@@ -26,6 +26,8 @@
     { "idx": 21, "version": "7", "when": 1700000021000, "tag": "0021_devices_e2ee_link_columns", "breakpoints": true },
     { "idx": 22, "version": "7", "when": 1700000022000, "tag": "0022_allow_device_linking", "breakpoints": true },
     { "idx": 23, "version": "7", "when": 1700000023000, "tag": "0023_devices_ecdh_public_key", "breakpoints": true },
-    { "idx": 24, "version": "7", "when": 1700000024000, "tag": "0024_chat_favorites", "breakpoints": true }
+    { "idx": 24, "version": "7", "when": 1700000024000, "tag": "0024_chat_favorites", "breakpoints": true },
+    { "idx": 25, "version": "7", "when": 1700000025000, "tag": "0025_recovery_and_history_sync", "breakpoints": true },
+    { "idx": 26, "version": "7", "when": 1700000026000, "tag": "0026_message_deliveries_device_slots", "breakpoints": true }
   ]
 }

@@ -123,6 +123,7 @@ export async function buildApp() {
       'X-Device-Name',
       'X-Nonce',
       'X-Signature',
+      'X-TOTP-Code',
     ],
   })
 

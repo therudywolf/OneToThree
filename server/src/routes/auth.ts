@@ -39,6 +39,8 @@ import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
 import { generateTotpSecret, generateTotpUri, verifyTotp } from '../lib/totp.js'
+import { generateRecoveryMaterial, verifyRecoveryKey } from '../lib/recovery-key.js'
+import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
 
 const challengeBodySchema = z.object({
   username: z.string(),
@@ -65,26 +67,18 @@ const login2faBodySchema = z.object({
 const disable2faBodySchema = z.object({
   code: totpCodeSchema,
 })
+const recoveryVerifyBodySchema = z.object({
+  recovery_key: z.string().min(12).max(256),
+})
 const qrGenerateBodySchema = z.object({
   nonce: z.string().min(1),
   signature: z.string().min(1),
   totp_code: totpCodeSchema.optional(),
 })
 
-const qrLoginBodySchema = z
-  .object({
-    token: z.string().uuid().optional(),
-    link_token: z.string().uuid().optional(),
-  })
-  .superRefine((value, ctx) => {
-    if (!value.token && !value.link_token) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['token'],
-        message: 'token or link_token is required',
-      })
-    }
-  })
+const qrLoginBodySchema = z.object({
+  link_token: z.string().uuid(),
+})
 
 const QR_LINK_TTL_S = 300
 type Pending2faResponse = {
@@ -167,12 +161,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const qrToken = parsed.data.link_token ?? parsed.data.token
-    if (!qrToken) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
-
-    const entry = await consumeQrLinkToken(qrToken)
+    const entry = await consumeQrLinkToken(parsed.data.link_token)
     if (!entry) {
       return reply.status(401).send({ error: 'INVALID_OR_EXPIRED_TOKEN' })
     }
@@ -354,6 +343,59 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, totp_enabled: false })
   })
 
+  app.post('/recovery/setup', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+
+    const material = generateRecoveryMaterial()
+    const now = new Date()
+    await db
+      .update(users)
+      .set({
+        recoveryKeySalt: material.salt,
+        recoveryKeyHash: material.hash,
+        recoveryKeySetAt: now,
+      })
+      .where(eq(users.id, user.id))
+
+    return reply.send({
+      ok: true,
+      recovery_key: material.recoveryKey,
+      recovery_key_set_at: now.toISOString(),
+    })
+  })
+
+  app.post('/recovery/verify', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const parsed = recoveryVerifyBodySchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+
+    const [row] = await db
+      .select({
+        recoveryKeySalt: users.recoveryKeySalt,
+        recoveryKeyHash: users.recoveryKeyHash,
+      })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+
+    if (!row?.recoveryKeySalt || !row.recoveryKeyHash) {
+      return reply.status(400).send({ error: 'RECOVERY_NOT_CONFIGURED' })
+    }
+
+    const ok = verifyRecoveryKey(parsed.data.recovery_key, row.recoveryKeyHash, row.recoveryKeySalt)
+    if (!ok) return reply.status(401).send({ error: 'RECOVERY_KEY_INVALID' })
+
+    return reply.send({ ok: true })
+  })
+
   app.post('/login/2fa', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
     const parsed = login2faBodySchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
@@ -376,11 +418,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
 
     if (!await verifyTotp(parsed.data.code, row.totpSecret)) {
-      void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
+      await recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
     if (!await consumeTotpCode(id, parsed.data.code)) {
-      void recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
+      await recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
@@ -388,7 +430,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const dev = await upsertDeviceForSession(request, canonicalId)
     if (!dev.ok) {
       if (dev.error === 'DEVICE_REVOKED') {
-        void recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'fail_device_revoked' })
+        await recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'fail_device_revoked' })
         return reply.status(403).send({ error: 'DEVICE_REVOKED' })
       }
       return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
@@ -398,7 +440,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       { expiresIn: SESSION_MAX_AGE_S }
     )
     commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
-    void recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'success', deviceId: dev.deviceId })
+    await recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'success', deviceId: dev.deviceId })
     return reply.send({ user: { id: canonicalId, username: row.username } })
   })
 
@@ -455,7 +497,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
             if (deviceRow) {
               if (deviceRow.revokedAt) {
                 await deletePending(username)
-                void recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_device_revoked' })
+                await recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_device_revoked' })
                 return reply.status(403).send({ error: 'DEVICE_REVOKED' })
               }
               knownDeviceKey = deviceRow.e2eePublicKey ?? null
@@ -485,14 +527,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         const ok = verifyNonceSignatureEcdsaP256(nonce, signature, publicKeyJwkStr)
         if (!ok) {
           await deletePending(username)
-          void recordLoginEvent(request, { userId: existing?.id ?? null, username, outcome: 'fail_signature' })
+          await recordLoginEvent(request, { userId: existing?.id ?? null, username, outcome: 'fail_signature' })
           return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
         }
 
         await deletePending(username)
 
         if (existing?.isBanned) {
-          void recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_banned' })
+          await recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_banned' })
           return reply.status(401).send({ error: 'BANNED_USER' })
         }
 
@@ -533,7 +575,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           { expiresIn: SESSION_MAX_AGE_S }
         )
         commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
-        void recordLoginEvent(request, { userId: canonicalId, username, outcome: 'success', deviceId: dev.deviceId })
+        await recordLoginEvent(request, { userId: canonicalId, username, outcome: 'success', deviceId: dev.deviceId })
         return reply.send({ user: { id: canonicalId, username } })
       })
     }

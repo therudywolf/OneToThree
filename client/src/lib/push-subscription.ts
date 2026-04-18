@@ -6,6 +6,62 @@
 
 import { API_URL } from '@/lib/api/auth'
 
+const RETRY_DELAYS_MS = [250, 800, 1600] as const
+
+type PushHttpError = Error & { status?: number }
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms)
+  })
+}
+
+function shouldRetryPushError(err: unknown): boolean {
+  const status =
+    typeof err === 'object' &&
+    err !== null &&
+    'status' in err &&
+    typeof (err as { status?: unknown }).status === 'number'
+      ? ((err as { status: number }).status)
+      : null
+  if (status !== null) {
+    return isRetryablePushHttpStatus(status)
+  }
+  const msg = err instanceof Error ? err.message : ''
+  if (!msg) return true
+  if (
+    msg === 'WEB_PUSH_UNSUPPORTED' ||
+    msg === 'NOTIFICATION_DENIED' ||
+    msg === 'INVALID_PUSH_DATA'
+  ) {
+    return false
+  }
+  return true
+}
+
+export function isRetryablePushHttpStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500
+}
+
+async function withRetry<T>(
+  action: () => Promise<T>,
+  shouldRetry: (err: unknown) => boolean = shouldRetryPushError
+): Promise<T> {
+  let lastErr: unknown
+  for (let i = 0; i <= RETRY_DELAYS_MS.length; i++) {
+    try {
+      return await action()
+    } catch (err) {
+      lastErr = err
+      if (i >= RETRY_DELAYS_MS.length || !shouldRetry(err)) {
+        throw err
+      }
+      await wait(RETRY_DELAYS_MS[i]!)
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('RETRY_EXHAUSTED')
+}
+
 /** [SIGNAL_ENCODING] :: Подготовка VAPID-ключа для браузерного PushManager */
 function toUint8(b64: string): Uint8Array {
   const padding = '='.repeat((4 - (b64.length % 4)) % 4)
@@ -70,29 +126,54 @@ export async function initPushWorker(): Promise<ServiceWorkerRegistration> {
     try {
       // next-pwa registers /sw.js; it imports /push-handler.js (see next.config.js).
       // Registering /push-handler.js directly creates parallel workers and unstable push behavior.
-      reg = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/',
-        updateViaCache: 'none',
-      })
-    } catch (err) {
-      console.warn('>> [SYS.PUSH] /sw.js registration failed, trying legacy push-handler.js', err)
-      try {
-        reg = await navigator.serviceWorker.register('/push-handler.js', {
+      reg = await withRetry(() =>
+        navigator.serviceWorker.register('/sw.js', {
           scope: '/',
           updateViaCache: 'none',
         })
+      )
+    } catch (err) {
+      console.warn('>> [SYS.PUSH] /sw.js registration failed, trying legacy push-handler.js', err)
+      try {
+        reg = await withRetry(() =>
+          navigator.serviceWorker.register('/push-handler.js', {
+            scope: '/',
+            updateViaCache: 'none',
+          })
+        )
       } catch (legacyErr) {
         console.error('>> [SYS.PUSH] WORKER_GENESIS_FAULT:', legacyErr)
         throw new Error('SERVICE_WORKER_REGISTER_FAILED')
       }
     }
-  } else {
+  } else if (reg) {
     // Принудительное обновление для синхронизации слоев
-    await reg.update().catch(() => {})
+    const existingReg = reg
+    await withRetry(() => existingReg.update()).catch(() => {})
+  }
+
+  if (!reg) {
+    throw new Error('SERVICE_WORKER_REGISTER_FAILED')
   }
 
   await navigator.serviceWorker.ready
   return reg
+}
+
+async function parsePushFault(res: Response): Promise<{ error?: string }> {
+  return res.json().catch(() => ({})) as Promise<{ error?: string }>
+}
+
+async function requestPushSync(path: '/push/subscribe' | '/push/unsubscribe', init: RequestInit): Promise<void> {
+  await withRetry(async () => {
+    const res = await fetch(`${API_URL}${path}`, init)
+    if (res.ok) return
+
+    const fault = await parsePushFault(res)
+    const err = new Error(fault.error ?? `PUSH_REQUEST_FAILED_${res.status}`) as PushHttpError
+    err.status = res.status
+    throw err
+  })
 }
 
 /** [SYNC_CORE] :: Передача данных перехвата на основной сервер */
@@ -101,21 +182,17 @@ async function syncInterceptWithCore(sub: PushSubscription): Promise<void> {
   if (!data.endpoint || !data.keys?.p256dh || !data.keys?.auth) {
     throw new Error('INVALID_PUSH_DATA')
   }
+  const keys = data.keys
 
-  const res = await fetch(`${API_URL}/push/subscribe`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      endpoint: data.endpoint,
-      keys: { p256dh: data.keys.p256dh, auth: data.keys.auth },
-    }),
-  })
-
-  if (!res.ok) {
-    const fault = await res.json().catch(() => ({}))
-    throw new Error(fault.error ?? 'PUSH_SYNC_FAILED')
-  }
+  await requestPushSync('/push/subscribe', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: data.endpoint,
+        keys: { p256dh: keys.p256dh, auth: keys.auth },
+      }),
+    })
 }
 
 /** [ESTABLISH_INTERCEPT] :: Полный цикл активации оповещений */
@@ -133,10 +210,12 @@ export async function subscribeUserPush(): Promise<void> {
   let sub = await reg.pushManager.getSubscription()
 
   if (!sub) {
-    sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: toUint8(vapid) as BufferSource,
-    })
+    sub = await withRetry(() =>
+      reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: toUint8(vapid) as BufferSource,
+      })
+    )
   }
 
   await syncInterceptWithCore(sub)
@@ -153,17 +232,22 @@ export async function unsubscribeUserPush(): Promise<void> {
 
     const endpoint = sub.toJSON().endpoint
     if (endpoint) {
-      await fetch(`${API_URL}/push/unsubscribe`, {
-        method: 'DELETE',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint }),
-      }).catch(() => {})
+      await requestPushSync('/push/unsubscribe', {
+          method: 'DELETE',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint }),
+        }).catch(() => {})
     }
 
-    await sub.unsubscribe()
+    await withRetry(() => sub.unsubscribe())
   } catch (err) {
     console.error('>> [SYS.PUSH] TERMINATE_FAULT:', err)
     throw err
   }
+}
+
+export const __testOnly = {
+  requestPushSync,
+  shouldRetryPushError,
 }

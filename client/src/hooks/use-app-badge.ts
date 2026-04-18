@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { getFmSocket } from '@/lib/api/socket'
+import { useEffect } from 'react'
 import { useChatStore } from '@/store/chatStore'
 
 /**
@@ -22,58 +21,49 @@ function isBadgingSupported(): boolean {
 
 export function useAppBadge(userId: string | null) {
   const activeChatId = useChatStore((s) => s.activeChatId)
-  const unreadRef = useRef(0)
+  const unreadTotal = useChatStore((s) => s.unreadTotal)
+  const markChatRead = useChatStore((s) => s.markChatRead)
 
-  // Clear badge when app comes to foreground or user opens a chat
   useEffect(() => {
-    if (!isBadgingSupported()) return
+    if (typeof document === 'undefined') return
 
-    const clearOnFocus = () => {
-      unreadRef.current = 0
-      navigator.clearAppBadge?.().catch(() => {})
+    const syncVisibleRead = () => {
+      if (document.visibilityState === 'visible' && activeChatId) {
+        markChatRead(activeChatId)
+      }
     }
 
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') clearOnFocus()
-    }
-
-    document.addEventListener('visibilitychange', handleVisibility)
-    window.addEventListener('focus', clearOnFocus)
+    syncVisibleRead()
+    document.addEventListener('visibilitychange', syncVisibleRead)
+    window.addEventListener('focus', syncVisibleRead)
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibility)
-      window.removeEventListener('focus', clearOnFocus)
+      document.removeEventListener('visibilitychange', syncVisibleRead)
+      window.removeEventListener('focus', syncVisibleRead)
     }
-  }, [])
+  }, [activeChatId, markChatRead])
 
-  // Reset badge count when user opens any chat
   useEffect(() => {
-    if (!activeChatId || !isBadgingSupported()) return
-    unreadRef.current = Math.max(0, unreadRef.current - 1)
-    if (unreadRef.current <= 0) {
-      unreadRef.current = 0
+    if (!userId || !activeChatId) return
+    markChatRead(activeChatId)
+  }, [activeChatId, markChatRead, userId])
+
+  useEffect(() => {
+    if (!isBadgingSupported()) return
+    if (!userId || unreadTotal <= 0) {
       navigator.clearAppBadge?.().catch(() => {})
-    } else {
-      navigator.setAppBadge?.(unreadRef.current).catch(() => {})
+      return
     }
-  }, [activeChatId])
+    navigator.setAppBadge?.(unreadTotal).catch(() => {})
+  }, [unreadTotal, userId])
 
-  // Listen for incoming messages and increment badge
   useEffect(() => {
-    if (!userId || !isBadgingSupported()) return
-
-    const socket = getFmSocket()
-    return socket.subscribe((msg) => {
-      if (msg.type !== 'chat_message') return
-      const m = msg.message
-      // Only badge for messages from others
-      if (m.sender_id === userId) return
-
-      // Only badge if app is not focused or chat is not active
-      if (document.visibilityState === 'visible' && m.chat_id === useChatStore.getState().activeChatId) return
-
-      unreadRef.current++
-      navigator.setAppBadge?.(unreadRef.current).catch(() => {})
-    })
-  }, [userId])
+    if (typeof document === 'undefined') return
+    const titleBase = 'OneToThree'
+    if (!userId || unreadTotal <= 0) {
+      document.title = titleBase
+      return
+    }
+    document.title = `(${unreadTotal > 99 ? '99+' : unreadTotal}) ${titleBase}`
+  }, [unreadTotal, userId])
 }

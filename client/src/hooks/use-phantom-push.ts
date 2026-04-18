@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useCallback } from 'react'
 
 /**
  * PROJECT 13 :: PHANTOM_INTERCEPT_HOOK
@@ -13,17 +13,10 @@ import { useEffect, useCallback } from 'react'
 export const usePhantomPush = usePhantomIntercept
 
 export function usePhantomIntercept() {
-  useEffect(() => {
-    /** [PROTOCOL_INIT] :: Запрос полномочий на прерывание в спящем режиме */
-    if ('Notification' in window && Notification.permission === 'default') {
-      void Notification.requestPermission()
-    }
-  }, [])
-
   /** * [EMIT_SIGNAL] :: Генерация системного уведомления.
    * Срабатывает только если вкладка скрыта (document.hidden).
    */
-  const emitPhantomSignal = useCallback((label: string, content: string) => {
+  const emitPhantomSignal = useCallback((label: string, content: string, targetUrl?: string) => {
     const isPhantom = document.hidden
     const hasAuthority = 'Notification' in window && Notification.permission === 'granted'
 
@@ -38,6 +31,16 @@ export function usePhantomIntercept() {
 
       signal.onclick = function () {
         /** [FOCUS_LOCK] :: Возврат к активному терминалу при перехвате */
+        if (targetUrl) {
+          try {
+            const nextUrl = new URL(targetUrl, window.location.origin).href
+            if (window.location.href !== nextUrl) {
+              window.location.assign(nextUrl)
+            }
+          } catch {
+            /* ignore malformed local notification url */
+          }
+        }
         window.focus()
         this.close()
       }

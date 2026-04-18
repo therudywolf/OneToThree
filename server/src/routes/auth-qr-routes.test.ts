@@ -35,20 +35,12 @@ describe('auth QR routes', () => {
   it('POST /api/auth/qr-login returns 400 for invalid body', async () => {
     const res = await request(app!.server)
       .post('/api/auth/qr-login')
-      .send({ token: 'not-a-uuid' })
+      .send({ link_token: 'not-a-uuid' })
       .expect(400)
     expect(res.body.error).toBe('INVALID_BODY')
   })
 
   it('POST /api/auth/qr-login returns 401 for unknown or expired token', async () => {
-    const res = await request(app!.server)
-      .post('/api/auth/qr-login')
-      .send({ token: randomUUID() })
-      .expect(401)
-    expect(res.body.error).toBe('INVALID_OR_EXPIRED_TOKEN')
-  })
-
-  it('POST /api/auth/qr-login accepts link_token alias', async () => {
     const res = await request(app!.server)
       .post('/api/auth/qr-login')
       .send({ link_token: randomUUID() })
@@ -78,7 +70,7 @@ describe('auth QR routes', () => {
     const res = await request(app!.server)
       .post('/api/auth/qr-login')
       .set('X-Client-Device-Id', 'vitest-qr-device')
-      .send({ token })
+      .send({ link_token: token })
       .expect(200)
 
     expect(res.body.requires2FA).toBe(true)

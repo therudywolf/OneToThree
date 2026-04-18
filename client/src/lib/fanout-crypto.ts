@@ -32,8 +32,21 @@ export type DeviceSlot = {
 export async function fetchUserDevices(userId: string): Promise<DeviceSlot[]> {
   const res = await fetch(`${API_URL}/users/${userId}/devices`, { credentials: 'include' })
   if (!res.ok) return []
-  const { devices } = (await res.json()) as { devices: DeviceSlot[] }
-  return devices
+  const { devices } = (await res.json()) as {
+    devices?: Array<{
+      device_id?: string
+      ecdh_public_key?: string | null
+      public_key_jwk?: string | null
+      label?: string
+    }>
+  }
+  return (devices ?? [])
+    .map((d) => ({
+      device_id: d.device_id ?? '',
+      ecdh_public_key: (d.ecdh_public_key ?? d.public_key_jwk ?? '').trim(),
+      label: d.label,
+    }))
+    .filter((d) => d.device_id.length > 0 && d.ecdh_public_key.length > 0)
 }
 
 export type FanoutSlot = {

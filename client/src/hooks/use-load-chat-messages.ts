@@ -50,7 +50,9 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
       const data = (await res.json()) as { messages?: ApiMessageRow[] }
       const rows = data.messages ?? []
       const cipherCount = rows.filter(
-        (m) => m.content != null && m.iv != null && m.content !== ''
+        (m) =>
+          (m.device_ciphertext != null && m.device_iv != null && m.device_ciphertext !== '') ||
+          (m.content != null && m.iv != null && m.content !== '')
       ).length
       const showDecryptBusy = cipherCount >= BATCH_WORKER_MIN
       if (showDecryptBusy) setHistoryDecryptBusy(true)

@@ -27,8 +27,8 @@ export async function recordLoginEvent(
       userAgent: (request.headers['user-agent'] ?? '').slice(0, 512) || null,
       deviceId: opts.deviceId ?? null,
     })
-  } catch {
+  } catch (err) {
     // Non-critical: never fail the login flow for audit logging.
-    request.log.warn('Failed to record login event')
+    request.log.warn({ err, audit_user_id: opts.userId }, 'Failed to record login event')
   }
 }

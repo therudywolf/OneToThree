@@ -28,6 +28,8 @@ import { normalizeUuid } from '../lib/uuid.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import { clearFmSessionCookie } from '../lib/session-cookie.js'
 import { hasActiveSocket, sendToUser } from '../ws/registry.js'
+import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
+import { verifyRecoveryKey } from '../lib/recovery-key.js'
 
 const searchQuerySchema = z.object({
   q: z.string().min(1).max(128),
@@ -77,6 +79,9 @@ const avatarPresignBodySchema = z.object({
 
 const avatarCommitBodySchema = z.object({
   avatar_key: z.string().min(1).max(512),
+})
+const historySyncBodySchema = z.object({
+  recovery_key: z.string().min(12).max(256),
 })
 
 export const userRoutes: FastifyPluginAsync = async (app) => {
@@ -340,6 +345,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       }
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
+    if (parsed.data.allow_device_linking !== undefined) {
+      const stepUp = await requireTotpStepUp(request, user.id)
+      if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+    }
 
     const [after] = await db
       .update(users)
@@ -505,6 +514,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   app.post('/me/devices/clear-revoked', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
     await db.delete(devices).where(and(eq(devices.userId, user.id), isNotNull(devices.revokedAt)))
     return reply.send({ success: true })
   })
@@ -512,6 +523,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   app.post('/me/devices/revoke-all-others', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
 
     const sess = await verifySessionJwt(request)
     const currentDeviceId = sess?.device_id ? normalizeUuid(sess.device_id) : null
@@ -524,6 +537,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/me/devices/others', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
 
     const sess = await verifySessionJwt(request)
     const currentDeviceId = sess?.device_id ? normalizeUuid(sess.device_id) : null
@@ -536,6 +551,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   app.patch('/me/devices/:deviceId/master', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
 
     const params = z.object({ deviceId: uuidSchema }).safeParse(request.params)
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
@@ -568,6 +585,53 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         last_active: r.lastActive.toISOString(), user_agent: r.userAgent, ip_address: r.ipAddress,
         revoked: r.revokedAt != null, is_current: currentDeviceId !== null && normalizeUuid(r.id) === currentDeviceId,
       })),
+    })
+  })
+
+  app.post('/me/devices/:deviceId/history-sync', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+
+    const params = z.object({ deviceId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const parsed = historySyncBodySchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const [userRow] = await db
+      .select({ recoveryKeySalt: users.recoveryKeySalt, recoveryKeyHash: users.recoveryKeyHash })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+    if (!userRow?.recoveryKeySalt || !userRow.recoveryKeyHash) {
+      return reply.status(400).send({ error: 'RECOVERY_NOT_CONFIGURED' })
+    }
+    const recOk = verifyRecoveryKey(
+      parsed.data.recovery_key,
+      userRow.recoveryKeyHash,
+      userRow.recoveryKeySalt
+    )
+    if (!recOk) return reply.status(401).send({ error: 'RECOVERY_KEY_INVALID' })
+
+    const targetDeviceId = normalizeUuid(params.data.deviceId)
+    const [existingDevice] = await db
+      .select({ id: devices.id })
+      .from(devices)
+      .where(and(eq(devices.id, targetDeviceId), eq(devices.userId, user.id)))
+      .limit(1)
+    if (!existingDevice) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
+
+    const now = new Date()
+    await db
+      .update(devices)
+      .set({ historySyncEnabledAt: now })
+      .where(and(eq(devices.id, targetDeviceId), eq(devices.userId, user.id)))
+
+    return reply.send({
+      ok: true,
+      device_id: targetDeviceId,
+      history_sync_enabled_at: now.toISOString(),
     })
   })
 

@@ -23,7 +23,9 @@ async function pullPendingForChat(
   const rows = await fetchPendingDeliveries(chatId)
   if (rows.length === 0) return
   const cipherCount = rows.filter(
-    (m) => m.content != null && m.iv != null && m.content !== ''
+    (m) =>
+      (m.device_ciphertext != null && m.device_iv != null && m.device_ciphertext !== '') ||
+      (m.content != null && m.iv != null && m.content !== '')
   ).length
   const showBusy = cipherCount >= BATCH_WORKER_MIN
   if (showBusy) setDecryptBusy?.(true)

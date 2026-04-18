@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify'
 import { and, eq, inArray } from 'drizzle-orm'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
-import { chatMembers, chats, messages, users } from '../db/schema.js'
+import { chatMembers, chats, devices, messages, users } from '../db/schema.js'
 
 describe('messages flow routes', () => {
   let app: FastifyInstance | undefined
@@ -19,7 +19,7 @@ describe('messages flow routes', () => {
     if (app) await app.close()
   })
 
-  it('sends and fetches direct message between members', async () => {
+  it('sends and fetches direct message between members using device fan-out contract', async () => {
     const u1Name = `m1${Date.now().toString(36)}`
     const u2Name = `m2${Date.now().toString(36)}`
     const [u1] = await db
@@ -47,16 +47,43 @@ describe('messages flow routes', () => {
       { chatId: chat.id, userId: u2.id, encryptedGroupKey: null, role: 'member' },
     ])
 
-    const u1Token = await app!.jwt.sign({ sub: u1.id, username: u1.username, jti: randomUUID() })
-    const u2Token = await app!.jwt.sign({ sub: u2.id, username: u2.username, jti: randomUUID() })
+    const [u1Device] = await db
+      .insert(devices)
+      .values({
+        userId: u1.id,
+        clientDeviceKey: `flow-u1-${randomUUID()}`,
+        deviceName: 'Flow U1',
+        e2eePublicKey: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+      })
+      .returning({ id: devices.id })
+
+    const [u2Device] = await db
+      .insert(devices)
+      .values({
+        userId: u2.id,
+        clientDeviceKey: `flow-u2-${randomUUID()}`,
+        deviceName: 'Flow U2',
+        e2eePublicKey: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+      })
+      .returning({ id: devices.id })
+
+    const u1Token = await app!.jwt.sign({ sub: u1.id, username: u1.username, device_id: u1Device.id, jti: randomUUID() })
+    const u2Token = await app!.jwt.sign({ sub: u2.id, username: u2.username, device_id: u2Device.id, jti: randomUUID() })
 
     const sent = await request(app!.server)
       .post('/api/messages/send')
       .set('Cookie', `fm_session=${u1Token}`)
       .send({
         chat_id: chat.id,
-        content: 'hello-stage-flow',
-        iv: 'iv-test',
+        content: null,
+        iv: null,
+        ciphertexts: [
+          {
+            device_id: u2Device.id,
+            ciphertext: 'hello-stage-flow',
+            iv: 'iv-test',
+          },
+        ],
       })
       .expect(200)
 
@@ -70,7 +97,7 @@ describe('messages flow routes', () => {
 
     const rows = listForPeer.body?.messages ?? []
     const row = rows.find((m: { id: string }) => m.id === messageId)
-    expect(row?.content).toBe('hello-stage-flow')
+    expect(row?.device_ciphertext).toBe('hello-stage-flow')
     expect(row?.sender_id).toBe(u1.id)
 
     const search = await request(app!.server)
@@ -78,9 +105,10 @@ describe('messages flow routes', () => {
       .set('Cookie', `fm_session=${u2Token}`)
       .query({ chatId: chat.id, q: 'stage-flow' })
       .expect(200)
-    expect((search.body?.messages ?? []).some((m: { id: string }) => m.id === messageId)).toBe(true)
+    expect((search.body?.messages ?? []).some((m: { id: string }) => m.id === messageId)).toBe(false)
 
     await db.delete(messages).where(and(eq(messages.chatId, chat.id), inArray(messages.senderId, [u1.id, u2.id])))
+    await db.delete(devices).where(inArray(devices.id, [u1Device.id, u2Device.id]))
     await db.delete(chatMembers).where(eq(chatMembers.chatId, chat.id))
     await db.delete(chats).where(eq(chats.id, chat.id))
     await db.delete(users).where(inArray(users.id, [u1.id, u2.id]))

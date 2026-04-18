@@ -20,6 +20,8 @@ export type ApiMessageRow = {
   media_path?: string | null
   media_type?: string | null
   media_iv?: string | null
+  device_ciphertext?: string | null
+  device_iv?: string | null
   read_at?: string | null
   burn_at?: string | null
   created_at: string
@@ -75,8 +77,10 @@ export async function decryptApiMessageRows(
 ): Promise<DecryptedMessage[]> {
   const jobs: { index: number; content: string; iv: string }[] = []
   rows.forEach((m, i) => {
-    if (m.content != null && m.iv != null && m.content !== '') {
-      jobs.push({ index: i, content: m.content, iv: m.iv })
+    const c = m.device_ciphertext ?? m.content
+    const iv = m.device_iv ?? m.iv
+    if (c != null && iv != null && c !== '') {
+      jobs.push({ index: i, content: c, iv })
     }
   })
   if (jobs.length === 0) {
@@ -137,13 +141,15 @@ export async function decryptApiMessageRow(
   m: ApiMessageRow
 ): Promise<DecryptedMessage> {
   let plaintext = ''
-  if (m.content != null && m.iv != null && m.content !== '') {
+  const c = m.device_ciphertext ?? m.content
+  const iv = m.device_iv ?? m.iv
+  if (c != null && iv != null && c !== '') {
     try {
       plaintext = await decryptInboundText(
         unwrappedPrivateKey,
         cryptoCtx,
-        m.content,
-        m.iv
+        c,
+        iv
       )
     } catch {
       plaintext = '[DECRYPT_FAIL]'

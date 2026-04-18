@@ -250,3 +250,42 @@ export async function fetchWsTicket(): Promise<string> {
   }
   return data.ticket
 }
+
+export async function setupRecoveryKey(totpCode?: string): Promise<{ recovery_key: string; recovery_key_set_at: string }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const code = totpCode?.trim()
+  if (code) headers['X-TOTP-Code'] = code
+  const res = await fetch(`${API_URL}/auth/recovery/setup`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: sanitizeFetchHeaderRecord(headers),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    recovery_key?: string
+    recovery_key_set_at?: string
+    error?: string
+  }
+  if (!res.ok || !data.recovery_key || !data.recovery_key_set_at) {
+    throw new Error(data.error ?? 'RECOVERY_SETUP_FAILED')
+  }
+  return {
+    recovery_key: data.recovery_key,
+    recovery_key_set_at: data.recovery_key_set_at,
+  }
+}
+
+export async function verifyRecoveryKey(recoveryKey: string, totpCode?: string): Promise<void> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const code = totpCode?.trim()
+  if (code) headers['X-TOTP-Code'] = code
+  const res = await fetch(`${API_URL}/auth/recovery/verify`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: sanitizeFetchHeaderRecord(headers),
+    body: JSON.stringify({ recovery_key: recoveryKey }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'RECOVERY_VERIFY_FAILED')
+  }
+}

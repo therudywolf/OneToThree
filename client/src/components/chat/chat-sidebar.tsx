@@ -60,23 +60,28 @@ function orderedSidebarChats(
   return [...favorites, ...pinned, ...unpinned]
 }
 
+type ChatSidebarProps = {
+  userId: string
+  /** Backward-compat for older callers; sidebar no longer needs it directly. */
+  username?: string
+  isAdmin?: boolean
+  sharedKey: CryptoKey | null
+  onPackSettingsChanged?: () => void
+  onNavigate?: () => void
+}
+
 export function ChatSidebar({
   userId,
   isAdmin,
   sharedKey,
   onPackSettingsChanged,
   onNavigate,
-}: {
-  userId: string
-  isAdmin?: boolean
-  sharedKey: CryptoKey | null
-  onPackSettingsChanged?: () => void
-  onNavigate?: () => void
-}) {
+}: ChatSidebarProps) {
   const { t } = useTranslation()
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const peerPresence = useChatStore((s) => s.peerPresence)
+  const unreadByChat = useChatStore((s) => s.unreadByChat)
   const { chats, reload, initialLoading } = useChats(userId)
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)
@@ -366,6 +371,10 @@ export function ChatSidebar({
 
         {sidebarChatsFiltered.map((c) => {
           const isPinned = pinnedIds.includes(c.id)
+          const unread = unreadByChat[c.id]
+          const unreadTotal = unread?.total ?? 0
+          const mentionTotal = unread?.mentions ?? 0
+          const threadTotal = unread ? Object.values(unread.threads).reduce((acc, v) => acc + v, 0) : 0
           const peerId = !c.is_group
             ? c.member_ids.find((id) => id !== userId)
             : null
@@ -443,6 +452,23 @@ export function ChatSidebar({
                        </span>
                     ) : null}
                   </span>
+                  {unreadTotal > 0 ? (
+                    <span className="ml-auto inline-flex items-center gap-1 self-center">
+                      {threadTotal > 0 ? (
+                        <span className="rounded border border-neon-cyan/50 bg-neon-cyan/10 px-1 py-[1px] text-[8px] font-bold text-neon-cyan">
+                          T{threadTotal}
+                        </span>
+                      ) : null}
+                      {mentionTotal > 0 ? (
+                        <span className="rounded border border-amber-400/50 bg-amber-400/10 px-1 py-[1px] text-[8px] font-bold text-amber-300">
+                          @{mentionTotal}
+                        </span>
+                      ) : null}
+                      <span className="rounded border border-neon-cyan/60 bg-black px-1.5 py-[1px] text-[9px] font-bold text-neon-cyan">
+                        {unreadTotal > 99 ? '99+' : unreadTotal}
+                      </span>
+                    </span>
+                  ) : null}
                 </span>
               </button>
               <button

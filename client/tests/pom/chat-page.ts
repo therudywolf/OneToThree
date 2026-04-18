@@ -69,6 +69,31 @@ export class ChatPage {
     await this.waitForChatReady(passphrase)
   }
 
+  async openExistingDirectChatByPeerId(peerId: string, passphrase?: string): Promise<void> {
+    const chatId = await this.page.evaluate(async (targetPeerId) => {
+      const response = await fetch('/api/chats', {
+        credentials: 'include',
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error((data as { error?: string }).error ?? `CHATS_FETCH_${response.status}`)
+      }
+      const data = await response.json().catch(() => ({})) as {
+        chats?: Array<{ id: string; type?: string; member_ids?: string[] }>
+      }
+      const chat = (data.chats ?? []).find((row) => {
+        return row.type === 'direct_e2e' && Array.isArray(row.member_ids) && row.member_ids.includes(targetPeerId)
+      })
+      if (!chat?.id) {
+        throw new Error('CHAT_NOT_FOUND')
+      }
+      return chat.id
+    }, peerId)
+
+    await this.page.goto(`/?chat=${chatId}`)
+    await this.waitForChatReady(passphrase)
+  }
+
   async sendChatMessage(plain: string): Promise<void> {
     const form = this.txForm()
     await form.locator('textarea').fill(plain)
@@ -104,13 +129,12 @@ export class ChatPage {
   }
 
   async sendPreview(caption?: string): Promise<void> {
+    const modal = this.page.getByTestId('media-preview-modal')
+    await expect(modal).toBeVisible({ timeout: 30_000 })
     if (caption) {
-      const area = this.page.getByPlaceholder(/caption/i)
+      const area = modal.getByPlaceholder(/caption/i)
       await area.fill(caption)
     }
-    await this.page
-      .getByRole('button', { name: /^(send|отправить)$/i })
-      .last()
-      .click()
+    await modal.getByTestId('media-preview-send').click()
   }
 }

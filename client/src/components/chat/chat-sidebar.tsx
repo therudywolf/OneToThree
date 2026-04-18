@@ -271,7 +271,7 @@ export function ChatSidebar({
   }, [chats, userId])
 
   return (
-    <aside className="flex h-full w-full min-w-0 flex-col border-r border-neon-cyan/40 bg-black md:w-72 md:shrink-0 shadow-[4px_0_24px_rgba(0,255,255,0.03)]">
+    <aside className="flex h-full w-full min-w-0 flex-col border-r border-neon-cyan/30 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_92%,transparent),color-mix(in_srgb,var(--void)_84%,transparent))] backdrop-blur-xl md:w-[21.5rem] md:shrink-0 shadow-[8px_0_40px_rgba(0,0,0,0.32),1px_0_0_rgba(255,255,255,0.02)]">
       {groupModalOpen ? (
         <CreateGroupModal
           userId={userId}
@@ -285,27 +285,34 @@ export function ChatSidebar({
       ) : null}
 
       {/* Header */}
-      <div className="border-b border-neon-cyan/40 bg-zinc-950/50 p-3 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan font-bold">
-          {t('sidebar.channels')}
-        </span>
-        <span className="flex h-2 w-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_8px_rgba(0,255,255,0.8)]" />
+      <div className="border-b border-neon-cyan/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface)_96%,transparent),color-mix(in_srgb,var(--surface-elevated)_88%,transparent))] px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <span className="block text-[10px] font-bold uppercase tracking-[0.32em] text-neon-cyan">
+              {t('sidebar.channels')}
+            </span>
+            <p className="text-[10px] leading-relaxed text-zinc-500">
+              Favorites, direct routes and encrypted groups live here.
+            </p>
+          </div>
+          <span className="mt-1 flex h-2.5 w-2.5 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_10px_rgba(0,255,255,0.85)]" />
+        </div>
       </div>
 
       {/* Search */}
-      <div className="border-b border-neon-cyan/25 bg-black px-3 py-2">
+      <div className="border-b border-neon-cyan/15 bg-black/25 px-4 py-3">
         <label className="sr-only" htmlFor="ghost-search">
           {t('sidebar.localGhostSearch')}
         </label>
-        <div className="relative flex items-center">
+        <div className="relative flex items-center overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           {isSearching ? (
-            <Loader2 className="absolute left-2 h-3.5 w-3.5 text-neon-cyan/50 animate-spin" />
+            <Loader2 className="absolute left-3 h-3.5 w-3.5 animate-spin text-neon-cyan/50" />
           ) : (
-            <Search className="absolute left-2 h-3.5 w-3.5 text-neon-cyan/50" />
+            <Search className="absolute left-3 h-3.5 w-3.5 text-neon-cyan/50" />
           )}
           <input
             id="ghost-search"
-            className="w-full bg-transparent border-b border-neon-cyan/30 py-1 pl-7 text-[10px] text-neon-cyan placeholder:text-neon-cyan/30 focus:border-neon-cyan focus:outline-none transition-colors"
+            className="w-full bg-transparent px-3 py-2 pl-9 text-[11px] text-neon-cyan placeholder:text-neon-cyan/30 focus:outline-none"
             placeholder={t('sidebar.localGhostSearch')}
             value={localGhostQuery}
             onChange={(e) => setLocalGhostQuery(e.target.value)}
@@ -328,16 +335,16 @@ export function ChatSidebar({
             /* ignore */
           }
         }}
-        className="flex items-center gap-2 border-b border-neon-cyan/20 px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:bg-neon-cyan/5 hover:text-neon-cyan"
+        className="mx-3 mt-3 flex items-center gap-2 rounded-2xl border border-amber-400/20 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:border-amber-300/35 hover:bg-amber-300/10 hover:text-neon-cyan"
       >
         <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
         {t('sidebar.savedMessages')}
       </button>
 
       {/* Chat List */}
-      <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+      <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-3 pb-3 pt-3 [-webkit-overflow-scrolling:touch]">
         {initialLoading ? (
-          <div className="space-y-1 py-2">
+          <div className="space-y-2 py-1">
             {Array.from({ length: 5 }, (_, i) => (
               <ChatRowSkeleton key={i} />
             ))}
@@ -364,9 +371,9 @@ export function ChatSidebar({
         {ghostHitChatIds !== null &&
         localGhostQuery.trim().length >= 2 &&
         sidebarChatsFiltered.length === 0 ? (
-          <p className="px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red border border-neon-red/30 mx-2 mt-2 bg-red-950/20">
-            {t('sidebar.ghostNoHits')}
-          </p>
+            <p className="mx-1 mt-2 rounded-2xl border border-neon-red/30 bg-red-950/20 px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red">
+              {t('sidebar.ghostNoHits')}
+            </p>
         ) : null}
 
         {sidebarChatsFiltered.map((c) => {
@@ -393,13 +400,15 @@ export function ChatSidebar({
           return (
             <div
               key={c.id}
-              className={`group flex w-full items-stretch border-b border-neon-cyan/20 transition-colors ${
-                activeChatId === c.id ? 'bg-neon-cyan/10' : 'bg-black hover:bg-neon-cyan/5'
-              } ${isPinned ? 'border-l-2 border-l-neon-cyan' : 'border-l-2 border-l-transparent'}`}
+              className={`group mb-2 flex w-full items-stretch overflow-hidden rounded-2xl border transition-all ${
+                activeChatId === c.id
+                  ? 'border-neon-cyan/35 bg-[linear-gradient(180deg,rgba(0,255,255,0.12),rgba(0,255,255,0.04))] shadow-[0_12px_28px_rgba(0,255,255,0.08)]'
+                  : 'border-white/5 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] hover:border-neon-cyan/20 hover:bg-neon-cyan/[0.06]'
+              } ${isPinned ? 'ring-1 ring-inset ring-neon-cyan/20' : ''}`}
             >
               <button
                 type="button"
-                className="min-w-0 flex-1 px-3 py-2 text-left font-mono text-xs outline-none"
+                className="min-w-0 flex-1 px-3 py-3 text-left font-mono text-xs outline-none"
                 aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {
                   setActiveChatId(c.id)
@@ -426,18 +435,23 @@ export function ChatSidebar({
                     ) : null}
                   </div>
 
-                  <span className="flex min-w-0 flex-col gap-[1px]">
+                  <span className="flex min-w-0 flex-1 flex-col gap-1">
                     <span className="inline-flex items-center gap-1.5">
                       {!c.is_group && trustedPeerIds.has(peerId ?? '') ? (
                         <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
                       ) : null}
-                      <span className={`truncate ${activeChatId === c.id ? 'text-neon-cyan font-bold' : 'text-neon-cyan/80'}`}>
+                      <span className={`truncate text-[12px] ${activeChatId === c.id ? 'font-semibold text-neon-cyan' : 'text-neon-cyan/85'}`}>
                         {listTitle}
                       </span>
+                      {isPinned ? (
+                        <span className="rounded-full border border-neon-cyan/25 bg-neon-cyan/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.24em] text-neon-cyan/80">
+                          Pin
+                        </span>
+                      ) : null}
                     </span>
 
                     {pres && !pres.online ? (
-                      <span className="text-[9px] text-zinc-600 truncate">
+                      <span className="truncate text-[10px] text-zinc-500">
                         {t('sidebar.lastSeen')}:{' '}
                         {pres.last_seen_at
                           ? new Date(pres.last_seen_at).toLocaleString(
@@ -447,7 +461,7 @@ export function ChatSidebar({
                           : '—'}
                       </span>
                     ) : c.is_group ? (
-                       <span className="text-[9px] text-zinc-600 truncate">
+                      <span className="truncate text-[10px] text-zinc-500">
                          {c.member_ids.length} {t('sidebar.members')}
                        </span>
                     ) : null}
@@ -478,10 +492,10 @@ export function ChatSidebar({
                   e.stopPropagation()
                   togglePin(c.id)
                 }}
-                className={`shrink-0 border-l border-neon-cyan/10 px-3 transition-colors ${
+                className={`shrink-0 border-l border-white/5 px-3 transition-colors ${
                   isPinned
-                    ? 'text-neon-cyan bg-neon-cyan/5 hover:bg-neon-red/10 hover:text-neon-red'
-                    : 'text-zinc-700 hover:bg-neon-cyan/10 hover:text-neon-cyan opacity-0 group-hover:opacity-100'
+                    ? 'bg-neon-cyan/5 text-neon-cyan hover:bg-neon-red/10 hover:text-neon-red'
+                    : 'text-zinc-700 opacity-0 hover:bg-neon-cyan/10 hover:text-neon-cyan group-hover:opacity-100'
                 }`}
               >
                 <Pin className="h-3.5 w-3.5" aria-hidden />
@@ -493,7 +507,7 @@ export function ChatSidebar({
                   e.stopPropagation()
                   void toggleFavorite(c.id, Boolean(c.is_favorite))
                 }}
-                className={`shrink-0 border-l border-neon-cyan/10 px-3 transition-colors ${
+                className={`shrink-0 border-l border-white/5 px-3 transition-colors ${
                   c.is_favorite
                     ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20'
                     : 'text-zinc-700 hover:bg-amber-400/10 hover:text-amber-300 opacity-0 group-hover:opacity-100'
@@ -508,7 +522,7 @@ export function ChatSidebar({
 
       {/* Active Chat Controls */}
       {activeChatId ? (
-        <div className="border-t border-neon-cyan/40 bg-zinc-950/30 p-2 space-y-1">
+        <div className="border-t border-neon-cyan/20 bg-black/20 p-3 space-y-2">
           {chats.find((c) => c.id === activeChatId)?.is_group ? (
             <GroupChatSettings
               chatId={activeChatId}
@@ -572,7 +586,7 @@ export function ChatSidebar({
       ) : null}
 
       {/* Global Actions */}
-      <div className="border-t border-neon-cyan/40 bg-black p-3 space-y-2">
+      <div className="border-t border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))] p-3 space-y-3">
 
         {/* Admin link — only for admins, mobile-first placement */}
         {isAdmin ? (

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import {
   encryptOutboundText,
   type ChatCryptoContext,
@@ -26,6 +26,7 @@ export function useSendMessage(
   const userId = useChatStore(s => s.userId)
   const unwrappedPrivateKey = useChatStore(s => s.unwrappedPrivateKey)
   const appendMessage = useChatStore(s => s.appendMessage)
+  const lastDispatchRef = useRef<{ key: string; at: number }>({ key: '', at: 0 })
 
   /** * [DISPATCH_SEQUENCE] :: Инициация передачи пакета данных 
    */
@@ -36,6 +37,15 @@ export function useSendMessage(
       meta?: { burn_mark?: string | null; burn_at?: string | null }
     ) => {
       const content = body.trim()
+      const dispatchKey = `${activeChatId ?? 'none'}::${replyToId ?? 'none'}::${content}`
+      const now = Date.now()
+      if (
+        dispatchKey === lastDispatchRef.current.key &&
+        now - lastDispatchRef.current.at < 2000
+      ) {
+        return
+      }
+      lastDispatchRef.current = { key: dispatchKey, at: now }
 
       // [0] PRE_FLIGHT_CHECK :: Проверка целостности контура
       if (

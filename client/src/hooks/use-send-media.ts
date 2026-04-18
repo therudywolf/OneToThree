@@ -37,6 +37,8 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/webp': '.webp', 'application/pdf': '.pdf',
 }
 
+const IMAGE_COMPRESSION_THRESHOLD_BYTES = 256 * 1024
+
 function ensureExtension(name: string, mime: string): string {
   if (/\.[a-zA-Z0-9]{1,12}$/.test(name)) return name
   const base = mime.split(';')[0].trim().toLowerCase()
@@ -104,13 +106,17 @@ export function useSendMedia(
       let workBlob: Blob = rawBlob
 
       // [1] SEGMENT_CALIBRATION :: Сжатие оптики, если это изображение
-      if (segmentClass === 'image') {
+      if (segmentClass === 'image' && rawBlob.size > IMAGE_COMPRESSION_THRESHOLD_BYTES) {
         const source = rawBlob instanceof File ? rawBlob : new File([rawBlob], label, { type: mimeType })
-        workBlob = await imageCompression(source, {
-          maxWidthOrHeight: 1920,
-          useWebWorker: true,
-          initialQuality: 0.8,
-        })
+        try {
+          workBlob = await imageCompression(source, {
+            maxWidthOrHeight: 1920,
+            useWebWorker: true,
+            initialQuality: 0.8,
+          })
+        } catch {
+          workBlob = rawBlob
+        }
       }
 
       if (isMediaTooLarge(workBlob.size)) throw new Error(MEDIA_TOO_LARGE_CODE)

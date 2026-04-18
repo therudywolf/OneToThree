@@ -128,7 +128,7 @@ export function MediaPreviewModal({
 
   return (
     // Inline panel — no overlay, sits above the input row inside the form
-    <div className="mb-2 border border-neon-cyan/30 bg-zinc-950">
+    <div data-testid="media-preview-modal" className="mb-2 border border-neon-cyan/30 bg-zinc-950">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-neutral-900 px-3 py-1.5">
         <span className="font-mono text-[9px] uppercase tracking-[0.4em] text-neon-cyan/70">
@@ -204,6 +204,8 @@ export function MediaPreviewModal({
             type="button"
             onClick={() => void handleSend()}
             disabled={sending}
+            data-testid="media-preview-send"
+            aria-label="Send attachment"
             className="flex items-center justify-center gap-1.5 border border-neon-cyan bg-black py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black disabled:cursor-wait disabled:opacity-50"
           >
             <Send className="h-3 w-3" />

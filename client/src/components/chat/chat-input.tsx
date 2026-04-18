@@ -64,6 +64,9 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
   const [fileQueue, setFileQueue] = useState<QueuedFile[]>([])
   const previewFile = fileQueue[0] ?? null
+  const sendingTextRef = useRef(false)
+  const [sendingText, setSendingText] = useState(false)
+  const sendingMediaRef = useRef(false)
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
@@ -223,12 +226,17 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
   const handlePreviewSend = useCallback(async (caption: string) => {
     const item = fileQueue[0]
-    if (!item) return
-    await sendMedia(item.file, item.mediaType, caption || undefined, {
-      fileName: item.file.name,
-      fileType: item.file.type,
-    })
-    setFileQueue((prev) => prev.slice(1))
+    if (!item || sendingMediaRef.current) return
+    sendingMediaRef.current = true
+    try {
+      await sendMedia(item.file, item.mediaType, caption || undefined, {
+        fileName: item.file.name,
+        fileType: item.file.type,
+      })
+      setFileQueue((prev) => prev.slice(1))
+    } finally {
+      sendingMediaRef.current = false
+    }
   }, [sendMedia, fileQueue])
 
   const handlePreviewCancel = useCallback(() => setFileQueue([]), [])
@@ -238,22 +246,11 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!messageText.trim() || disabled) return
-    await sendText(messageText, replyTo?.id ?? null)
-    onSubmitOrClear()
-    setMessageText('')
-    setReplyTo(null)
-    if (inputRef.current) {
-      inputRef.current.style.height = 'auto'
-      inputRef.current.focus()
-    }
-  }
-
-  // Explicit send handler for mobile — single onClick, no onTouchEnd to avoid double-fire
-  const handleSendClick = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    if (!messageText.trim() || disabled) return
-    void sendText(messageText, replyTo?.id ?? null).then(() => {
+    if (!messageText.trim() || disabled || sendingTextRef.current) return
+    sendingTextRef.current = true
+    setSendingText(true)
+    try {
+      await sendText(messageText, replyTo?.id ?? null)
       onSubmitOrClear()
       setMessageText('')
       setReplyTo(null)
@@ -261,7 +258,32 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         inputRef.current.style.height = 'auto'
         inputRef.current.focus()
       }
-    })
+    } finally {
+      sendingTextRef.current = false
+      setSendingText(false)
+    }
+  }
+
+  // Explicit send handler for mobile — single onClick, no onTouchEnd to avoid double-fire
+  const handleSendClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    if (!messageText.trim() || disabled || sendingTextRef.current) return
+    sendingTextRef.current = true
+    setSendingText(true)
+    void sendText(messageText, replyTo?.id ?? null)
+      .then(() => {
+        onSubmitOrClear()
+        setMessageText('')
+        setReplyTo(null)
+        if (inputRef.current) {
+          inputRef.current.style.height = 'auto'
+          inputRef.current.focus()
+        }
+      })
+      .finally(() => {
+        sendingTextRef.current = false
+        setSendingText(false)
+      })
   }, [messageText, disabled, sendText, replyTo, onSubmitOrClear, setReplyTo])
 
   const handleContextMenu = (e: React.MouseEvent) => e.preventDefault()
@@ -456,12 +478,12 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
-                  if (messageText.trim() && !disabled) void onSubmit(e as unknown as React.FormEvent)
+                  if (messageText.trim() && !disabled && !sendingTextRef.current) void onSubmit(e as unknown as React.FormEvent)
                 }
                 if (e.key === 'Escape' && replyTo) setReplyTo(null)
               }}
               onPaste={handlePaste}
-              disabled={disabled || isRecordingUI}
+              disabled={disabled || isRecordingUI || sendingText}
               placeholder={isRecordingUI ? t('media.recording') : t('chat.inputPlaceholder')}
               autoComplete="off"
               spellCheck={false}
@@ -534,7 +556,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         {/* Send button — type=button, single onClick only, no onTouchEnd */}
         <button
           type="button"
-          disabled={disabled || !messageText.trim() || isRecordingUI}
+          disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
           className={`shrink-0 flex h-10 w-10 items-center justify-center border border-neon-cyan bg-black text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors
             ${showSendOnMobile ? 'flex' : 'hidden md:flex'}
           `}

@@ -112,6 +112,59 @@ detect_public_ip() {
   return 1
 }
 
+append_service_once() {
+  local service="$1"
+  local existing
+  for existing in "${UPDATE_SERVICES[@]:-}"; do
+    [[ "$existing" == "$service" ]] && return 0
+  done
+  UPDATE_SERVICES+=("$service")
+}
+
+detect_update_services() {
+  local diff_range="$1"
+  local changed_file
+  UPDATE_SERVICES=()
+
+  while IFS= read -r changed_file; do
+    [[ -z "$changed_file" ]] && continue
+    case "$changed_file" in
+      client/*)
+        append_service_once web
+        ;;
+      server/drizzle/*|docker/db-migrate/*|drizzle.config.ts)
+        append_service_once api
+        append_service_once db-migrate
+        ;;
+      server/*)
+        append_service_once api
+        ;;
+      Caddyfile|deploy/*)
+        append_service_once caddy
+        ;;
+      docker/coturn/*)
+        append_service_once coturn
+        ;;
+      package.json|package-lock.json)
+        append_service_once api
+        append_service_once web
+        append_service_once db-migrate
+        ;;
+      docker-compose.prod.yml)
+        append_service_once api
+        append_service_once web
+        append_service_once coturn
+        append_service_once caddy
+        append_service_once db-migrate
+        ;;
+    esac
+  done < <(git diff --name-only "$diff_range" || true)
+
+  if [[ ${#UPDATE_SERVICES[@]} -eq 0 ]]; then
+    UPDATE_SERVICES=(api web caddy coturn)
+  fi
+}
+
 # =============================================================================
 # КОМАНДЫ
 # =============================================================================
@@ -153,24 +206,35 @@ case "$CMD" in
   update)
     log "Получаю обновления из git..."
     CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    PREVIOUS_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
     if [[ -z "$CURRENT_BRANCH" || "$CURRENT_BRANCH" == "HEAD" ]]; then
       die "Не удалось определить текущую git-ветку. Выполните update вручную."
     fi
     git fetch --all --prune
     git pull --ff-only origin "$CURRENT_BRANCH"
+    CURRENT_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
+    detect_update_services "${PREVIOUS_HEAD}..${CURRENT_HEAD}"
 
-    log "Пересборка образа миграций (без кэша)..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
+    if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -qx 'db-migrate'; then
+      log "Пересборка образа миграций (без кэша)..."
+      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
+    else
+      log "Миграции не менялись — образ db-migrate не пересобираю."
+    fi
 
     log "Запускаю инфраструктуру (БД, Redis, MinIO)..."
     # НИКОГДА не используем 'down -v' — это удалит данные
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d db redis minio
 
-    log "Жду готовности БД..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
+    if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -qx 'db-migrate'; then
+      log "Жду готовности БД и применяю миграции..."
+      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
+    else
+      log "Схема БД не менялась — шаг миграций пропущен."
+    fi
 
-    log "Пересборка и запуск app-сервисов..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans
+    log "Пересборка и запуск только затронутых сервисов: ${UPDATE_SERVICES[*]}"
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans "${UPDATE_SERVICES[@]}"
 
     log "Проверяю состояние сервисов после обновления..."
     if ! docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >/dev/null 2>&1; then

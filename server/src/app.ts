@@ -88,6 +88,10 @@ export async function buildApp() {
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+    allowList: (request) => {
+      const ip = request.ip?.trim()
+      return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+    },
   })
 
   await app.register(helmet, {

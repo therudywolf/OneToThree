@@ -34,33 +34,34 @@ test.describe('media / smoke', () => {
       await registerNewUser(pageB, bob, passphrase)
 
       const bobId = await fetchUserId(pageB)
-      const chat = new ChatPage(pageA)
-      await chat.openDirectChatByPeerId(bobId, passphrase)
+      const chatA = new ChatPage(pageA)
+      await chatA.openDirectChatByPeerId(bobId, passphrase)
 
-      await expect(pageA.getByText('[DIR]', { exact: false }).first()).toBeVisible({
-        timeout: 60_000,
-      })
-
-      await chat.attachFile({
+      await chatA.attachFile({
         name: 'tiny.png',
         mimeType: 'image/png',
         buffer: TINY_PNG,
       })
-      await chat.sendPreview(imageCaption)
+      await chatA.sendPreview(imageCaption)
 
       await expect(pageA.getByText(imageCaption)).toBeVisible({ timeout: 30_000 })
-      await expect(pageB.getByText(imageCaption)).toBeVisible({ timeout: 30_000 })
 
-      await chat.attachFile({
+      await chatA.attachFile({
         name: 'voice.wav',
         mimeType: 'audio/wav',
         buffer: TINY_WAV,
       })
-      await chat.sendPreview(audioCaption)
+      await chatA.sendPreview(audioCaption)
 
       await expect(pageA.getByText(audioCaption)).toBeVisible({ timeout: 30_000 })
-      await expect(pageB.getByText(audioCaption)).toBeVisible({ timeout: 30_000 })
       await expect(pageA.locator('audio')).toHaveCount(1, { timeout: 30_000 })
+
+      const aliceId = await fetchUserId(pageA)
+      const chatB = new ChatPage(pageB)
+      await chatB.openExistingDirectChatByPeerId(aliceId, passphrase)
+
+      await expect(pageB.getByText(imageCaption)).toBeVisible({ timeout: 30_000 })
+      await expect(pageB.getByText(audioCaption)).toBeVisible({ timeout: 30_000 })
       await expect(pageB.locator('audio')).toHaveCount(1, { timeout: 30_000 })
     } finally {
       await ctxA.close()

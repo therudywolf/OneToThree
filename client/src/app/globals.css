@@ -432,6 +432,7 @@ body {
   color: var(--text-primary);
   text-shadow: 0 0 1px color-mix(in srgb, var(--neon-red) var(--text-shadow-intensity, 35%), transparent);
   overflow-x: hidden;
+  background-attachment: fixed;
 }
 
 /* iOS Safari: avoid auto-zoom on focus for inputs (Phase 25) */
@@ -527,6 +528,14 @@ textarea {
       background-color var(--motion-base) ease;
   }
 
+  .terminal-panel:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 22px 68px rgba(0, 0, 0, 0.34),
+      0 0 0 1px color-mix(in srgb, var(--border-strong) 82%, transparent),
+      0 0 34px rgba(var(--shadow-rgb), 0.16);
+  }
+
   .terminal-input {
     @apply w-full rounded-none border border-neon-cyan bg-void px-3 py-2 font-mono text-neon-red placeholder:text-red-900/80 focus:border-neon-red focus:outline-none focus:ring-0;
     border-radius: var(--radius-md);
@@ -565,6 +574,23 @@ textarea {
     animation-duration: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0ms !important;
+  }
+
+  .p13-surface {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-elevated) 86%, transparent));
+    border: 1px solid color-mix(in srgb, var(--border-strong) 74%, transparent);
+    box-shadow:
+      0 16px 44px rgba(0, 0, 0, 0.24),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(18px);
+  }
+
+  .p13-chip {
+    border: 1px solid color-mix(in srgb, var(--border-strong) 45%, transparent);
+    background: color-mix(in srgb, var(--surface-elevated) 90%, transparent);
+    color: var(--on-surface);
+    border-radius: 999px;
   }
 }
 

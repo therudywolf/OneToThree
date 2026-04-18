@@ -30,7 +30,14 @@ import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { patchMyProfile } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
-import { useThemeStore, THEMES, type ThemeId } from '@/store/themeStore'
+import {
+  ACCENT_PRESETS,
+  resolveThemeAppearance,
+  useThemeStore,
+  THEMES,
+  type ThemeId,
+  type MotionMode,
+} from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 
 type Props = { userId: string; username: string; onClose: () => void }
@@ -98,7 +105,21 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
   const setChatSoundEnabled = useChatStore((s) => s.setChatSoundEnabled)
-  const { theme, setTheme } = useThemeStore()
+  const {
+    theme,
+    setTheme,
+    accentPreset,
+    setAccentPreset,
+    primaryColorOverride,
+    setPrimaryColorOverride,
+    accentColorOverride,
+    setAccentColorOverride,
+    backgroundColorOverride,
+    setBackgroundColorOverride,
+    motionMode,
+    setMotionMode,
+    resetAppearance,
+  } = useThemeStore()
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -397,6 +418,14 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const discoverableOn = discoverable === true
   const ghostOn = hidePresence === true
   const settingsBtn = 'border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
+  const resolvedTheme = resolveThemeAppearance({
+    theme,
+    accentPreset,
+    primaryColorOverride,
+    accentColorOverride,
+    backgroundColorOverride,
+    motionMode,
+  })
 
   return (
     <div
@@ -872,22 +901,159 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               </button>
             </div>
             <div className="space-y-2 border-t border-neon-cyan/20 pt-3">
-              <p className="text-xs uppercase tracking-widest text-neon-cyan">// CHROMATIC_PROTOCOL :: VISUAL THEME</p>
-              <div className="grid grid-cols-1 gap-1.5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.appearanceTitle')}</p>
+                  <p className="mt-1 text-[9px] text-red-800">{t('settings.appearanceHint')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => resetAppearance()}
+                  className="shrink-0 border border-neon-cyan/30 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10"
+                >
+                  {t('settings.appearanceReset')}
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
                 {THEMES.map((t_cfg) => (
                   <button key={t_cfg.id} type="button" onClick={() => setTheme(t_cfg.id as ThemeId)}
                     className={`flex items-center gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
                       theme === t_cfg.id ? 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
                     }`}>
                     <span className="flex shrink-0 gap-1">
-                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.bg }} />
-                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.primary }} />
-                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.accent }} />
+                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.preview[0] }} />
+                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.preview[1] }} />
+                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.preview[2] }} />
                     </span>
                     {t_cfg.label}
                     {theme === t_cfg.id && <span className="ml-auto text-neon-cyan">◆</span>}
                   </button>
                 ))}
+              </div>
+
+              <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-black/30 p-3">
+                <div className="flex flex-wrap gap-2">
+                  {ACCENT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setAccentPreset(preset.id)}
+                      className={`flex items-center gap-2 border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-widest transition-colors ${
+                        accentPreset === preset.id
+                          ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
+                          : 'border-zinc-700 text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan'
+                      }`}
+                    >
+                      {preset.id !== 'theme' ? (
+                        <span className="flex gap-1">
+                          <span className="h-2.5 w-2.5 rounded-full border border-white/10" style={{ background: preset.primary }} />
+                          <span className="h-2.5 w-2.5 rounded-full border border-white/10" style={{ background: preset.accent }} />
+                        </span>
+                      ) : (
+                        <span className="h-2.5 w-2.5 rounded-full border border-white/10 bg-transparent" />
+                      )}
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  {[
+                    {
+                      key: 'primary',
+                      label: t('settings.appearancePrimary'),
+                      value: primaryColorOverride ?? resolvedTheme.tokens.primary,
+                      onChange: setPrimaryColorOverride,
+                    },
+                    {
+                      key: 'accent',
+                      label: t('settings.appearanceAccent'),
+                      value: accentColorOverride ?? resolvedTheme.tokens.accent,
+                      onChange: setAccentColorOverride,
+                    },
+                    {
+                      key: 'background',
+                      label: t('settings.appearanceBackground'),
+                      value: backgroundColorOverride ?? resolvedTheme.tokens.background,
+                      onChange: setBackgroundColorOverride,
+                    },
+                  ].map((item) => (
+                    <label key={item.key} className="space-y-1">
+                      <span className="terminal-label">{item.label}</span>
+                      <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-neon-cyan/20 bg-black/40 px-2 py-2">
+                        <input
+                          type="color"
+                          value={item.value}
+                          onChange={(e) => item.onChange(e.target.value)}
+                          className="h-8 w-10 cursor-pointer border border-neon-cyan/30 bg-transparent"
+                        />
+                        <input
+                          type="text"
+                          value={item.value}
+                          onChange={(e) => item.onChange(e.target.value)}
+                          className="terminal-input h-8 px-2 py-1 text-[10px]"
+                          spellCheck={false}
+                        />
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest text-neon-cyan">{t('settings.appearanceMotion')}</p>
+                    <p className="text-[9px] text-zinc-500">{t('settings.appearanceMotionHint')}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    {([
+                      ['full', t('settings.appearanceMotionFull')],
+                      ['reduced', t('settings.appearanceMotionReduced')],
+                    ] as const).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setMotionMode(mode as MotionMode)}
+                        className={`border px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest ${
+                          motionMode === mode
+                            ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                            : 'border-zinc-700 text-zinc-400 hover:border-neon-cyan/40 hover:text-neon-cyan'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div
+                  className="mt-3 overflow-hidden border p-3"
+                  style={{
+                    borderColor: resolvedTheme.tokens.border,
+                    borderRadius: resolvedTheme.tokens.panelRadius,
+                    background: `linear-gradient(135deg, ${resolvedTheme.tokens.surface} 0%, ${resolvedTheme.tokens.elevated} 100%)`,
+                    boxShadow: `0 0 24px rgba(${resolvedTheme.tokens.shadowRgb}, 0.14)`,
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="h-10 w-10 rounded-full border border-white/10" style={{ background: resolvedTheme.tokens.primary }} />
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-[11px] uppercase tracking-widest" style={{ color: resolvedTheme.tokens.text }}>
+                        {resolvedTheme.label}
+                      </p>
+                      <p className="text-[10px]" style={{ color: resolvedTheme.tokens.muted }}>
+                        {t('settings.appearancePreviewHint')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <div className="flex-1 rounded-full px-3 py-2 text-[10px] font-semibold" style={{ background: resolvedTheme.tokens.primary, color: resolvedTheme.tokens.background }}>
+                      PRIMARY
+                    </div>
+                    <div className="flex-1 rounded-full border px-3 py-2 text-[10px] font-semibold" style={{ borderColor: resolvedTheme.tokens.border, color: resolvedTheme.tokens.accent }}>
+                      ACCENT
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

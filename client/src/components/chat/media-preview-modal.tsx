@@ -22,7 +22,7 @@ type Props = {
   queue: QueuedFile[]
   /** Called when user removes a specific index from the queue */
   onRemoveFromQueue: (index: number) => void
-  onSend: (caption: string) => void
+  onSend: (caption: string) => Promise<void>
   onCancel: () => void
 }
 
@@ -81,11 +81,13 @@ export function MediaPreviewModal({
   const { t } = useTranslation()
   const [caption, setCaption] = useState('')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
   const captionRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     setCaption('')
-    if (mediaType === 'image' || mediaType === 'video') {
+    if (mediaType === 'image' || mediaType === 'video' || mediaType === 'audio') {
       const url = URL.createObjectURL(file)
       setPreviewUrl(url)
       return () => URL.revokeObjectURL(url)
@@ -98,19 +100,28 @@ export function MediaPreviewModal({
   }, [file])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (sending) return
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      onSend(caption.trim())
+      void handleSend()
     }
     if (e.key === 'Escape') {
       onCancel()
     }
   }
 
-  const handleSend = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    onSend(caption.trim())
+  const handleSend = async () => {
+    if (sending) return
+    setSendError(null)
+    setSending(true)
+    try {
+      await onSend(caption.trim())
+      setCaption('')
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : t('mediaPreview.sendFailed'))
+    } finally {
+      setSending(false)
+    }
   }
 
   const queueRemaining = queue.length - 1
@@ -146,6 +157,15 @@ export function MediaPreviewModal({
             <img src={previewUrl} alt={file.name} className="h-full w-full object-cover" />
           ) : mediaType === 'video' && previewUrl ? (
             <video src={previewUrl} className="h-full w-full object-cover" muted playsInline />
+          ) : mediaType === 'audio' ? (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-neon-cyan/40 text-neon-cyan">
+                ♪
+              </div>
+              <span className="text-center font-mono text-[8px] text-zinc-500 break-all leading-tight line-clamp-2">
+                {file.name}
+              </span>
+            </div>
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-1 p-1">
               <FileText className="h-7 w-7 text-neon-cyan/40" />
@@ -161,6 +181,9 @@ export function MediaPreviewModal({
 
         {/* Caption + send */}
         <div className="flex flex-1 flex-col gap-1.5 min-w-0">
+          {mediaType === 'audio' && previewUrl ? (
+            <audio src={previewUrl} controls preload="metadata" className="h-10 w-full opacity-80" />
+          ) : null}
           <textarea
             ref={captionRef}
             value={caption}
@@ -173,15 +196,22 @@ export function MediaPreviewModal({
             placeholder={t('mediaPreview.captionPlaceholder')}
             autoComplete="off"
             spellCheck={false}
+            disabled={sending}
           />
+          {sendError ? <p className="text-[9px] text-neon-red">{sendError}</p> : null}
           {/* type=button + single onClick only, no onTouchEnd */}
           <button
             type="button"
-            onClick={handleSend}
-            className="flex items-center justify-center gap-1.5 border border-neon-cyan bg-black py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black"
+            onClick={() => void handleSend()}
+            disabled={sending}
+            className="flex items-center justify-center gap-1.5 border border-neon-cyan bg-black py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black disabled:cursor-wait disabled:opacity-50"
           >
             <Send className="h-3 w-3" />
-            {queueRemaining > 0 ? t('mediaPreview.sendAndNext') : t('mediaPreview.send')}
+            {sending
+              ? t('mediaPreview.sending')
+              : queueRemaining > 0
+                ? t('mediaPreview.sendAndNext')
+                : t('mediaPreview.send')}
           </button>
         </div>
       </div>

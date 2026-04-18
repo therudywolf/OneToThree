@@ -280,6 +280,16 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             style={{ opacity: 0.01, transition: 'opacity 0.2s ease' }}
           />
         </div>
+        <div className="mt-2 flex justify-end">
+          <a
+            href={objectUrl}
+            download={displayName}
+            className="flex h-8 items-center gap-1 border border-neon-cyan/30 bg-black px-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+          >
+            <Download className="h-3 w-3" />
+            {t('media.download')}
+          </a>
+        </div>
         {caption ? <MediaCaption text={caption} /> : null}
       </div>
     )
@@ -390,6 +400,14 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/70">
               {formatTime(currentSec)} / {formatTime(duration)}
             </span>
+            <a
+              href={objectUrl}
+              download={displayName}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/70 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+              title={t('media.download')}
+            >
+              <Download className="h-3 w-3" />
+            </a>
           </div>
           <div className="mt-2 h-[2px] w-full rounded-none bg-zinc-900 overflow-hidden">
             <div
@@ -548,6 +566,16 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               mimeType: effectiveMime,
             })}
           />
+        </div>
+        <div className="mt-2 flex justify-end">
+          <a
+            href={objectUrl}
+            download={displayName}
+            className="flex h-8 items-center gap-1 border border-neon-cyan/30 bg-black px-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+          >
+            <Download className="h-3 w-3" />
+            {t('media.download')}
+          </a>
         </div>
         {caption ? <MediaCaption text={caption} /> : null}
       </div>

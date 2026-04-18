@@ -20,6 +20,7 @@ import { postUploadUrl } from '@/lib/api/storage'
 import { isMediaTooLarge, MEDIA_TOO_LARGE_CODE } from '@/lib/media-limits'
 import { useChatStore } from '@/store/chatStore'
 import { vibrateShort } from '@/lib/vibrate'
+import type { DecryptedMessage } from '@/types/chat'
 
 /**
  * PROJECT 13 :: BINARY_TRANSMISSION_PROTOCOL
@@ -202,7 +203,7 @@ export function useSendMedia(
       await injectWithRetry(uploadUrl, mimeType, uploadPayload)
 
       // [6] SIGNAL_BROADCAST :: Публикация сегмента в фид сектора
-      const { via, serverMessage } = await sendChatMessageOverTransport({
+      const { via, serverMessage, outboxId } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
         transport_mode: cryptoCtx.mode,
         plaintext: transportPlaintext,
@@ -222,6 +223,26 @@ export function useSendMedia(
         void cacheMessage(node).catch(() => {})
         appendMessage(node)
         vibrateShort(20) // Подтверждение успешного диспатча
+        return
+      }
+
+      if (via === 'QUEUED' && outboxId) {
+        appendMessage({
+          id: `pending-${outboxId}`,
+          chat_id: activeChatId,
+          sender_id: userId,
+          plaintext: transportPlaintext,
+          media_path: filePath,
+          media_type: segmentClass,
+          media_iv: mediaIvB64,
+          reply_to_id: null,
+          read_at: null,
+          burn_at: null,
+          reactions: {},
+          created_at: new Date().toISOString(),
+          _pending: true,
+        } as DecryptedMessage)
+        vibrateShort(10)
       }
     },
     [activeChatId, userId, unwrappedPrivateKey, directPeerUserId, cryptoCtx, appendMessage]

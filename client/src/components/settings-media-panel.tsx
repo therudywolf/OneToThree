@@ -27,6 +27,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   const [micId, setMicId] = useState('')
   const [speakerId, setSpeakerId] = useState('')
   const [noiseOn, setNoiseOn] = useState(true)
+  const [lowBandwidth, setLowBandwidth] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [denBytes, setDenBytes] = useState<number | null>(null)
@@ -60,6 +61,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
     setMicId(p.micId ?? '')
     setSpeakerId(p.speakerId ?? '')
     setNoiseOn(p.isIsolated)
+    setLowBandwidth(p.lowBandwidth)
   }, [active])
 
   const refreshDen = useCallback(async () => {
@@ -252,6 +254,32 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           }`}
         >
           {noiseOn ? '[ ON ]' : '[ OFF ]'}
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 border border-neon-cyan/20 px-2 py-2">
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-neon-cyan">
+            {t('settings.mediaLowBandwidth')}
+          </p>
+          <p className="text-[9px] text-zinc-500">{t('settings.mediaLowBandwidthHint')}</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={lowBandwidth}
+          onClick={() => {
+            const next = !lowBandwidth
+            setLowBandwidth(next)
+            saveMediaPrefs({ lowBandwidth: next })
+          }}
+          className={`shrink-0 border-2 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${
+            lowBandwidth
+              ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+              : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+          }`}
+        >
+          {lowBandwidth ? '[ ON ]' : '[ OFF ]'}
         </button>
       </div>
 

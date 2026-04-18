@@ -221,16 +221,14 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  // Fix: sendMedia called outside setState updater to avoid side-effect-in-render
-  const handlePreviewSend = useCallback((caption: string) => {
-    setFileQueue((prev) => {
-      const item = prev[0]
-      if (!item) return prev
-      return prev.slice(1)
-    })
+  const handlePreviewSend = useCallback(async (caption: string) => {
     const item = fileQueue[0]
     if (!item) return
-    void sendMedia(item.file, item.mediaType, caption || undefined, { fileName: item.file.name, fileType: item.file.type })
+    await sendMedia(item.file, item.mediaType, caption || undefined, {
+      fileName: item.file.name,
+      fileType: item.file.type,
+    })
+    setFileQueue((prev) => prev.slice(1))
   }, [sendMedia, fileQueue])
 
   const handlePreviewCancel = useCallback(() => setFileQueue([]), [])

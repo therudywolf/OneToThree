@@ -61,6 +61,7 @@ export function useSendMessage(
       const { via, serverMessage, outboxId } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
         transport_mode: cryptoCtx.mode,
+        plaintext: content,
         sender_private_key: unwrappedPrivateKey,
         my_user_id: userId,
         peer_user_id: directPeerUserId ?? undefined,

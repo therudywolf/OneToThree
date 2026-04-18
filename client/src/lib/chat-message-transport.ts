@@ -41,6 +41,7 @@ export type SendResult =
 export type SendChatMessageTransportInput = {
   chat_id: string
   transport_mode: 'DIRECT' | 'SECTOR' | 'PUBLIC'
+  plaintext?: string
   sender_private_key?: CryptoKey
   my_user_id?: string
   peer_user_id?: string
@@ -157,19 +158,27 @@ export async function sendChatMessageOverTransport(
   }
 
   if (input.transport_mode === 'DIRECT') {
-    if (input.sender_private_key && input.my_user_id && input.peer_user_id) {
-      const excludeDeviceId = getClientDeviceId() ?? undefined
-      const ciphertexts = await buildFanoutSlots(
-        input.sender_private_key,
-        input.my_user_id,
-        input.peer_user_id,
-        input.content ?? '',
-        excludeDeviceId
-      )
-      if (ciphertexts.length > 0) {
-        body.ciphertexts = ciphertexts
-      }
+    if (!input.plaintext?.length) {
+      throw new Error('DIRECT_PLAINTEXT_REQUIRED')
     }
+    if (!input.sender_private_key || !input.my_user_id || !input.peer_user_id) {
+      throw new Error('DIRECT_FANOUT_KEYS_REQUIRED')
+    }
+
+    const excludeDeviceId = getClientDeviceId() ?? undefined
+    const ciphertexts = await buildFanoutSlots(
+      input.sender_private_key,
+      input.my_user_id,
+      input.peer_user_id,
+      input.plaintext,
+      excludeDeviceId
+    )
+    if (ciphertexts.length === 0) {
+      throw new Error('DIRECT_FANOUT_UNAVAILABLE')
+    }
+    body.ciphertexts = ciphertexts
+    body.content = null
+    body.iv = null
   }
 
   const sent = await postUnifiedSend(body)

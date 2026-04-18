@@ -120,6 +120,7 @@ export function useSendMedia(
       let encrypted_content: string
       let envelopeIv: string
       let mediaIvB64: string
+      let transportPlaintext: string
 
       if (isPublicMode) {
         // PUBLIC mode: no encryption, upload raw data
@@ -134,9 +135,10 @@ export function useSendMedia(
           wrapCt: '',
           ...(caption ? { caption } : {}),
         }
+        transportPlaintext = JSON.stringify(envelope)
         const result = await encryptOutboundText(
           unwrappedPrivateKey,
-          JSON.stringify(envelope),
+          transportPlaintext,
           cryptoCtx
         )
         encrypted_content = result.encrypted_content
@@ -176,10 +178,11 @@ export function useSendMedia(
           wrapCt: arrayBufferToBase64(wrappedKey),
           ...(caption ? { caption } : {}),
         }
+        transportPlaintext = JSON.stringify(envelope)
 
         const result = await encryptOutboundText(
           unwrappedPrivateKey,
-          JSON.stringify(envelope),
+          transportPlaintext,
           cryptoCtx
         )
         encrypted_content = result.encrypted_content
@@ -202,6 +205,7 @@ export function useSendMedia(
       const { via, serverMessage } = await sendChatMessageOverTransport({
         chat_id: activeChatId,
         transport_mode: cryptoCtx.mode,
+        plaintext: transportPlaintext,
         sender_private_key: unwrappedPrivateKey,
         my_user_id: userId,
         peer_user_id: directPeerUserId ?? undefined,

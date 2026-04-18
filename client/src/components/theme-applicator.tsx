@@ -4,9 +4,10 @@ import { useEffect } from 'react'
 import { resolveThemeAppearance, useThemeStore } from '@/store/themeStore'
 
 /**
- * PROJECT 13 :: CHROMATIC_APPLICATOR
- * Reads theme from store, stamps data-theme on <html>.
- * CSS vars in globals.css do the actual color swap.
+ * CHROMATIC_APPLICATOR
+ * Single source of truth for theme application.
+ * Reads themeStore, resolves tokens, stamps them on <html> via inline CSS vars.
+ * No [data-theme] CSS blocks needed — ThemeApplicator owns everything.
  */
 export function ThemeApplicator() {
   const theme = useThemeStore((s) => s.theme)
@@ -26,9 +27,13 @@ export function ThemeApplicator() {
       backgroundColorOverride,
       motionMode,
     })
+
+    // --- color scheme & data-theme ---
     html.setAttribute('data-theme', resolved.id)
     html.setAttribute('data-motion', resolved.motionMode)
     html.style.colorScheme = resolved.scheme
+
+    // --- core color tokens ---
     html.style.setProperty('--void', resolved.tokens.background)
     html.style.setProperty('--surface', resolved.tokens.surface)
     html.style.setProperty('--surface-elevated', resolved.tokens.elevated)
@@ -42,26 +47,33 @@ export function ThemeApplicator() {
     html.style.setProperty('--danger', resolved.tokens.danger)
     html.style.setProperty('--success', resolved.tokens.success)
     html.style.setProperty('--shadow-rgb', resolved.tokens.shadowRgb)
+
+    // --- CRT effect ---
     html.style.setProperty('--crt-opacity', resolved.tokens.crtOpacity)
     html.style.setProperty('--crt-vignette-opacity', resolved.tokens.crtVignetteOpacity)
+
+    // --- typography ---
     html.style.setProperty('--font-family', resolved.tokens.fontFamily)
+    const isMd3 = resolved.id === 'md3dark' || resolved.id === 'md3light'
+    html.style.setProperty('--text-shadow-intensity', isMd3 ? '0%' : '35%')
+
+    // --- shape ---
     html.style.setProperty('--border-radius', resolved.tokens.panelRadius)
     html.style.setProperty('--radius-md', resolved.tokens.controlRadius)
+
+    // --- background glow ---
     html.style.setProperty('--page-glow', resolved.tokens.pageGlow)
     html.style.setProperty('--page-glow-secondary', resolved.tokens.pageGlowSecondary)
-    html.style.setProperty(
-      '--motion-fast',
-      resolved.motionMode === 'reduced' ? '0ms' : '120ms'
-    )
-    html.style.setProperty(
-      '--motion-base',
-      resolved.motionMode === 'reduced' ? '0ms' : '220ms'
-    )
-    html.style.setProperty(
-      '--motion-slow',
-      resolved.motionMode === 'reduced' ? '0ms' : '360ms'
-    )
 
+    // --- motion ---
+    const fast = resolved.motionMode === 'reduced' ? '0ms' : '120ms'
+    const base = resolved.motionMode === 'reduced' ? '0ms' : '220ms'
+    const slow = resolved.motionMode === 'reduced' ? '0ms' : '360ms'
+    html.style.setProperty('--motion-fast', fast)
+    html.style.setProperty('--motion-base', base)
+    html.style.setProperty('--motion-slow', slow)
+
+    // --- meta theme-color ---
     const themeMeta = document.querySelector('meta[name="theme-color"]')
     if (themeMeta) {
       themeMeta.setAttribute('content', resolved.themeColor)

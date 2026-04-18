@@ -11,7 +11,7 @@ test.describe('auth / registration', () => {
     await registerNewUser(page, handle, passphrase)
 
     const loginVault = await page.evaluate((h) => {
-      return localStorage.getItem(`forest:vault:login:${h}`)
+      return localStorage.getItem(`p13:vault:login:${h.toLowerCase()}`)
     }, handle)
     expect(loginVault).toBeTruthy()
     expect(loginVault!.length).toBeGreaterThan(20)

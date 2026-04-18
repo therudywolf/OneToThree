@@ -216,6 +216,7 @@ services:
         NEXT_PUBLIC_TURN_URLS: ${NEXT_PUBLIC_TURN_URLS:-}
         NEXT_PUBLIC_TURN_USERNAME: ${NEXT_PUBLIC_TURN_USERNAME:-}
         NEXT_PUBLIC_TURN_PASSWORD: ${NEXT_PUBLIC_TURN_PASSWORD:-}
+        MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://s3.onetothree.ru}
     restart: always
     dns:
       - 8.8.8.8

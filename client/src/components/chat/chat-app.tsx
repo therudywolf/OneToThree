@@ -134,7 +134,9 @@ export function ChatApp({
   const [myEcdhPublicKeyJwk, setMyEcdhPublicKeyJwk] = useState<string | null>(null)
   useEffect(() => {
     if (!unwrappedPrivateKey) { setMyEcdhPublicKeyJwk(null); return }
-    void exportEcdhPublicJwkFromPrivateKey(unwrappedPrivateKey).then(setMyEcdhPublicKeyJwk)
+    void exportEcdhPublicJwkFromPrivateKey(unwrappedPrivateKey)
+      .then(setMyEcdhPublicKeyJwk)
+      .catch(() => setMyEcdhPublicKeyJwk(null))
   }, [unwrappedPrivateKey])
   const [showGuide, setShowGuide] = useState(() => {
     if (typeof window === 'undefined') return false

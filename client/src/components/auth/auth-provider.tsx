@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { AuthHttpError, fetchMe, logoutApi } from '@/lib/api/auth'
 import { wipeAllClientLocalState } from '@/lib/client-wipe'
 import { invalidateAvatarCache, clearAllAvatarCache } from '@/lib/avatar-cache'
@@ -51,11 +51,13 @@ export function useAuth(): AuthContextValue {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   /** Only the latest `refresh()` may update state (avoids race: initial /me after login sets cookie). */
   const refreshGeneration = useRef(0)
   const redirectedRef = useRef(false)
+  const bootstrappedRef = useRef(false)
 
   const refresh = useCallback(async () => {
     const myId = ++refreshGeneration.current
@@ -75,7 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[auth] refresh failed', e.status)
         }
         // Handle 401: redirect to login
-        if (e.status === 401 && !redirectedRef.current) {
+        if (
+          e.status === 401 &&
+          !redirectedRef.current &&
+          pathname !== '/login' &&
+          pathname !== '/auth/qr'
+        ) {
           redirectedRef.current = true
           console.warn('[auth] Session expired (401) — redirecting to login')
           setUser(null)
@@ -96,9 +103,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false)
       }
     }
-  }, [router])
+  }, [pathname, router])
 
   useEffect(() => {
+    if (bootstrappedRef.current) return
+    bootstrappedRef.current = true
     setLoading(true)
     void refresh()
   }, [refresh])

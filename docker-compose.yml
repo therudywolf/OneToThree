@@ -93,11 +93,14 @@ services:
       NODE_ENV: production
       HOME: /tmp
       PORT: "8080"
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: http://localhost:3000,http://127.0.0.1:3000
       DATABASE_URL: postgres://forest:forest@db:5432/forest
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (at least 32 chars; generate with: openssl rand -hex 32)}
+      AUTH_CHALLENGE_RATE_LIMIT_MAX: ${AUTH_CHALLENGE_RATE_LIMIT_MAX:-100}
+      AUTH_CHALLENGE_RATE_LIMIT_WINDOW: ${AUTH_CHALLENGE_RATE_LIMIT_WINDOW:-1 minute}
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in .env (at least 32 chars; generate with: openssl rand -hex 32)}"
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_URL: http://127.0.0.1:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_secret_change_me}
       MINIO_BUCKET: project13-media
@@ -135,6 +138,7 @@ services:
       context: ./client
       dockerfile: Dockerfile.dev
     restart: unless-stopped
+    user: "0:0"
     mem_limit: 2g
     cpus: 2.0
     ports:
@@ -154,7 +158,7 @@ services:
       - sh
       - -c
       - |
-        npm install
+        npm ci
         exec npm run dev -- --hostname 0.0.0.0 --port 3000
     depends_on:
       api:

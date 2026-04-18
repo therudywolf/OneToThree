@@ -51,7 +51,7 @@ test.describe('chat / core & crypto', () => {
 
     const bobId = await fetchUserId(pageB)
     const chat = new ChatPage(pageA)
-    await chat.openDirectChatByPeerId(bobId)
+    await chat.openDirectChatByPeerId(bobId, passphrase)
 
     await expect(pageA.getByText('[DIR]', { exact: false }).first()).toBeVisible({
       timeout: 60_000,
@@ -153,18 +153,14 @@ test.describe('chat / core & crypto', () => {
     await registerNewUser(pageB, bob, passphrase)
 
     const bobId = await fetchUserId(pageB)
-    await pageA.getByPlaceholder('peer uuid or username').fill(bobId)
-    await pageA.getByRole('button', { name: '[ OPEN ]' }).click()
+    const chat = new ChatPage(pageA)
+    await chat.openDirectChatByPeerId(bobId, passphrase)
 
     await expect(pageA.getByText('[DIR]', { exact: false }).first()).toBeVisible({
       timeout: 60_000,
     })
 
-    const txForm = pageA.locator('form').filter({
-      has: pageA.getByRole('button', { name: /TX/ }),
-    })
-    await txForm.locator('input.terminal-input').fill(plain)
-    await pageA.getByRole('button', { name: /TX/ }).click()
+    await chat.sendChatMessage(plain)
 
     await expect(pageA.getByText(plain)).toBeVisible({ timeout: 15_000 })
     await expect(pageB.getByText(plain)).toBeVisible({ timeout: 15_000 })

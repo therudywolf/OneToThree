@@ -219,7 +219,15 @@ export function useSendMedia(
       })
 
       if (via === 'REST' && serverMessage) {
-        const node = await decryptApiMessageRow(unwrappedPrivateKey, cryptoCtx, serverMessage)
+        const decrypted = await decryptApiMessageRow(unwrappedPrivateKey, cryptoCtx, serverMessage)
+        const node =
+          cryptoCtx.mode === 'DIRECT' &&
+          (decrypted.plaintext === '' || decrypted.plaintext === '[DECRYPT_FAIL]')
+            ? {
+                ...decrypted,
+                plaintext: transportPlaintext,
+              }
+            : decrypted
         void cacheMessage(node).catch(() => {})
         appendMessage(node)
         vibrateShort(20) // Подтверждение успешного диспатча

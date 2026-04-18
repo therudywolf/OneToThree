@@ -120,6 +120,11 @@ export function useChatRealtime(
       if (!cryptoCtx || !unwrappedPrivateKey) return
       if (m.chat_id !== activeChatId) return
       void (async () => {
+        if ((m.content == null || m.content === '') && m.sender_id === userId) {
+          // Direct fan-out websocket events do not carry the sender's self-slot.
+          // The active sender tab already appends the REST-confirmed row locally.
+          return
+        }
         if ((m.content == null || m.content === '') && m.sender_id !== userId) {
           if (pendingPullRef.current) return
           pendingPullRef.current = true

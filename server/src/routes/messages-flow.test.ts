@@ -27,6 +27,7 @@ describe('messages flow routes', () => {
       .values({
         username: u1Name,
         publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+        ecdhPublicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
       })
       .returning({ id: users.id, username: users.username })
     const [u2] = await db
@@ -34,6 +35,7 @@ describe('messages flow routes', () => {
       .values({
         username: u2Name,
         publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+        ecdhPublicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
       })
       .returning({ id: users.id, username: users.username })
 
@@ -79,6 +81,11 @@ describe('messages flow routes', () => {
         iv: null,
         ciphertexts: [
           {
+            device_id: u1Device.id,
+            ciphertext: 'hello-self-stage-flow',
+            iv: 'iv-self',
+          },
+          {
             device_id: u2Device.id,
             ciphertext: 'hello-stage-flow',
             iv: 'iv-test',
@@ -88,6 +95,9 @@ describe('messages flow routes', () => {
       .expect(200)
 
     expect(sent.body?.message?.id).toBeTruthy()
+    expect(sent.body?.message?.device_ciphertext).toBe('hello-self-stage-flow')
+    expect(sent.body?.message?.device_iv).toBe('iv-self')
+    expect(sent.body?.message?.sender_ecdh_public_key_jwk).toBeTruthy()
     const messageId = sent.body.message.id as string
 
     const listForPeer = await request(app!.server)
@@ -99,6 +109,7 @@ describe('messages flow routes', () => {
     const row = rows.find((m: { id: string }) => m.id === messageId)
     expect(row?.device_ciphertext).toBe('hello-stage-flow')
     expect(row?.sender_id).toBe(u1.id)
+    expect(row?.sender_ecdh_public_key_jwk).toBeTruthy()
 
     const search = await request(app!.server)
       .get('/api/messages/search')

@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } f
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, chats, devices, messageDeliveries, messages } from '../db/schema.js'
+import { chatMembers, chats, devices, messageDeliveries, messages, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import {
@@ -75,6 +75,8 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
   app.post('/send', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+    const sess = await verifySessionJwt(request)
+    const callerDeviceId = sess?.device_id ?? null
 
     const parsed = sendMessageBodySchema.safeParse(request.body ?? {})
     if (!parsed.success) {
@@ -160,6 +162,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
           userId: deviceOwnerMap.get(slot.device_id)!,
           ciphertext: slot.ciphertext,
           iv: slot.iv,
+          deliveredAt: callerDeviceId && slot.device_id === callerDeviceId ? new Date() : null,
         }))
 
       if (deliveryInserts.length > 0) {
@@ -167,7 +170,24 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    return reply.send({ message: persistedRowToClientJson(persisted.row) })
+    const callerSlot =
+      callerDeviceId && p.ciphertexts?.length
+        ? p.ciphertexts.find((slot) => slot.device_id === callerDeviceId) ?? null
+        : null
+    const [senderKeyRow] = await db
+      .select({ ecdhPublicKeyJwk: users.ecdhPublicKeyJwk })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+
+    return reply.send({
+      message: {
+        ...persistedRowToClientJson(persisted.row),
+        device_ciphertext: callerSlot?.ciphertext ?? null,
+        device_iv: callerSlot?.iv ?? null,
+        sender_ecdh_public_key_jwk: senderKeyRow?.ecdhPublicKeyJwk ?? null,
+      },
+    })
   })
 
   /** Server-side message search within a chat (ILIKE on plaintext content). */
@@ -283,9 +303,11 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         deliveryDeviceId: messageDeliveries.deviceId,
         deliveryCiphertext: messageDeliveries.ciphertext,
         deliveryIv: messageDeliveries.iv,
+        senderEcdhPublicKeyJwk: users.ecdhPublicKeyJwk,
       })
       .from(messages)
       .innerJoin(messageDeliveries, eq(messages.id, messageDeliveries.messageId))
+      .innerJoin(users, eq(users.id, messages.senderId))
       .innerJoin(
         chatMembers,
         and(eq(chatMembers.chatId, messages.chatId), eq(chatMembers.userId, user.id))
@@ -312,6 +334,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         // Stage 5: slot addressed to caller's device (null if legacy or wrong device)
         device_ciphertext: m.deliveryCiphertext ?? null,
         device_iv: m.deliveryIv ?? null,
+        sender_ecdh_public_key_jwk: m.senderEcdhPublicKeyJwk ?? null,
       })),
     })
   })
@@ -532,8 +555,10 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         createdAt: messages.createdAt,
         deliveryCiphertext: messageDeliveries.ciphertext,
         deliveryIv: messageDeliveries.iv,
+        senderEcdhPublicKeyJwk: users.ecdhPublicKeyJwk,
       })
       .from(messages)
+      .innerJoin(users, eq(users.id, messages.senderId))
       .leftJoin(
         messageDeliveries,
         callerDeviceId
@@ -560,6 +585,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         media_iv: m.mediaIv,
         device_ciphertext: m.deliveryCiphertext ?? null,
         device_iv: m.deliveryIv ?? null,
+        sender_ecdh_public_key_jwk: m.senderEcdhPublicKeyJwk ?? null,
         read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
         burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
         created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),

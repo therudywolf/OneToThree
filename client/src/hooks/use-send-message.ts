@@ -74,11 +74,19 @@ export function useSendMessage(
       // [3] FEEDBACK_LOOP :: Если пакет прошел через REST, синхронизируем локальный стор
       if (via === 'REST' && serverMessage) {
         try {
-          const node = await decryptApiMessageRow(
+          const decrypted = await decryptApiMessageRow(
             unwrappedPrivateKey,
             cryptoCtx,
             serverMessage
           )
+          const node =
+            cryptoCtx.mode === 'DIRECT' &&
+            (decrypted.plaintext === '' || decrypted.plaintext === '[DECRYPT_FAIL]')
+              ? {
+                  ...decrypted,
+                  plaintext: content,
+                }
+              : decrypted
 
           // Кэшируем узел в локальном хранилище (Best-effort)
           void cacheMessage(node).catch(() => {})

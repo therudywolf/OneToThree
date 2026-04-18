@@ -4,6 +4,7 @@ import {
   getAesKeyForChat,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
+import { decryptFanoutSlot } from '@/lib/fanout-crypto'
 import {
   BATCH_WORKER_MIN,
   decryptTextBatchInWorker,
@@ -22,6 +23,7 @@ export type ApiMessageRow = {
   media_iv?: string | null
   device_ciphertext?: string | null
   device_iv?: string | null
+  sender_ecdh_public_key_jwk?: string | null
   read_at?: string | null
   burn_at?: string | null
   created_at: string
@@ -67,6 +69,31 @@ async function decryptJobsOnMain(
   return map
 }
 
+async function decryptRowPlaintext(
+  unwrappedPrivateKey: CryptoKey,
+  cryptoCtx: ChatCryptoContext,
+  row: ApiMessageRow
+): Promise<string> {
+  const c = row.device_ciphertext ?? row.content
+  const iv = row.device_iv ?? row.iv
+  if (c == null || iv == null || c === '') return ''
+
+  if (
+    cryptoCtx.mode === 'DIRECT' &&
+    row.device_ciphertext &&
+    row.sender_ecdh_public_key_jwk
+  ) {
+    return decryptFanoutSlot(
+      unwrappedPrivateKey,
+      row.sender_ecdh_public_key_jwk,
+      row.device_ciphertext,
+      iv
+    )
+  }
+
+  return decryptInboundText(unwrappedPrivateKey, cryptoCtx, c, iv)
+}
+
 /**
  * Decrypt many API rows with one ECDH derive + batched AES-GCM (worker for large backlogs).
  */
@@ -75,6 +102,21 @@ export async function decryptApiMessageRows(
   cryptoCtx: ChatCryptoContext,
   rows: ApiMessageRow[]
 ): Promise<DecryptedMessage[]> {
+  if (cryptoCtx.mode === 'DIRECT') {
+    return Promise.all(
+      rows.map(async (m) => {
+        try {
+          return apiRowToDecrypted(
+            m,
+            await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m)
+          )
+        } catch {
+          return apiRowToDecrypted(m, '[DECRYPT_FAIL]')
+        }
+      })
+    )
+  }
+
   const jobs: { index: number; content: string; iv: string }[] = []
   rows.forEach((m, i) => {
     const c = m.device_ciphertext ?? m.content
@@ -141,16 +183,12 @@ export async function decryptApiMessageRow(
   m: ApiMessageRow
 ): Promise<DecryptedMessage> {
   let plaintext = ''
-  const c = m.device_ciphertext ?? m.content
-  const iv = m.device_iv ?? m.iv
-  if (c != null && iv != null && c !== '') {
+  if (
+    (m.device_ciphertext != null && m.device_iv != null && m.device_ciphertext !== '') ||
+    (m.content != null && m.iv != null && m.content !== '')
+  ) {
     try {
-      plaintext = await decryptInboundText(
-        unwrappedPrivateKey,
-        cryptoCtx,
-        c,
-        iv
-      )
+      plaintext = await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m)
     } catch {
       plaintext = '[DECRYPT_FAIL]'
     }

@@ -79,17 +79,17 @@ export async function encryptFanout(
 /**
  * Build full fan-out slot list for a direct_e2e message:
  *   - all active devices of the recipient
- *   - all active devices of the sender (except the sending device, to avoid self-encrypt-self-decrypt issues)
+ *   - all active devices of the sender, including the current device
  *
  * `myUserId` and `peerUserId` are the two participants.
- * `excludeDeviceId` is the sender's current device (already has plaintext, skip it).
+ * `excludeDeviceId` is kept for backward compatibility and ignored.
  */
 export async function buildFanoutSlots(
   senderPrivateKey: CryptoKey,
   myUserId: string,
   peerUserId: string,
   plaintext: string,
-  excludeDeviceId?: string
+  _excludeDeviceId?: string
 ): Promise<FanoutSlot[]> {
   const [myDevices, peerDevices] = await Promise.all([
     fetchUserDevices(myUserId),
@@ -98,8 +98,8 @@ export async function buildFanoutSlots(
 
   const allDevices = [
     ...peerDevices,
-    // Own other devices for outbox sync (exclude sender's current device)
-    ...myDevices.filter((d) => d.device_id !== excludeDeviceId),
+    // Own devices too, so the sender can decrypt their own history after reload.
+    ...myDevices,
   ]
 
   if (allDevices.length === 0) return []

@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth/auth-provider'
 
 /**
@@ -12,6 +12,7 @@ import { useAuth } from '@/components/auth/auth-provider'
  */
 export function use401Handler() {
   const router = useRouter()
+  const pathname = usePathname()
   const { logout } = useAuth()
   const hasRedirectedRef = useRef(false)
 
@@ -21,14 +22,31 @@ export function use401Handler() {
   useEffect(() => {
     if (typeof window === 'undefined' || !originalFetch.current) return
 
+    const isAuthRoute = pathname === '/login' || pathname === '/auth/qr'
+
     // Override the global fetch to intercept responses
     window.fetch = async (
       ...args: Parameters<typeof fetch>
     ): Promise<Response> => {
+      const requestUrl =
+        typeof args[0] === 'string'
+          ? args[0]
+          : args[0] instanceof Request
+            ? args[0].url
+            : String(args[0])
+      const normalizedUrl = requestUrl.toLowerCase()
+      const isAuthBootstrapRequest =
+        normalizedUrl.includes('/api/auth/me') ||
+        normalizedUrl.includes('/api/auth/logout')
       const response = await originalFetch.current!.apply(window, args)
 
       // Handle 401 Unauthorized
-      if (response.status === 401 && !hasRedirectedRef.current) {
+      if (
+        response.status === 401 &&
+        !hasRedirectedRef.current &&
+        !isAuthRoute &&
+        !isAuthBootstrapRequest
+      ) {
         hasRedirectedRef.current = true
         console.warn('[auth] 401 Unauthorized — clearing session and redirecting to login')
 
@@ -62,5 +80,5 @@ export function use401Handler() {
         window.fetch = originalFetch.current
       }
     }
-  }, [logout, router])
+  }, [logout, pathname, router])
 }

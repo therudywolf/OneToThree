@@ -28,8 +28,21 @@ export async function registerNewUser(
   await page.locator('#password').fill(passphrase)
   await page.locator('#confirmPassword').fill(passphrase)
   await page.getByRole('button', { name: /REGISTER/i }).click()
+
+  const backupDialog = page.getByText(/РЕЗЕРВНАЯ КОПИЯ КЛЮЧА/i)
+  await expect(backupDialog).toBeVisible({ timeout: 60_000 })
+
+  const downloadPromise = page.waitForEvent('download').catch(() => null)
+  await page.getByRole('button', { name: /СКАЧАТЬ РЕЗЕРВНУЮ КОПИЮ/i }).click()
+  await downloadPromise
+  await page.getByRole('button', { name: /Я СОХРАНИЛ КОПИЮ, ПРОДОЛЖИТЬ/i }).click()
+
   await page.waitForURL('/', { timeout: 60_000 })
   await unlockVaultModal(page, passphrase)
+  const userId = await fetchUserId(page)
+  await page.evaluate((id) => {
+    localStorage.setItem(`p13:onboarded:${id}`, '1')
+  }, userId)
 }
 
 /** Same-origin `/api` so `fm_session` from the page origin (e.g. :3000) is sent. */

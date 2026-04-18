@@ -9,18 +9,23 @@ import { resolveThemeAppearance, useThemeStore } from '@/store/themeStore'
  * CSS vars in globals.css do the actual color swap.
  */
 export function ThemeApplicator() {
-  const appearance = useThemeStore((s) => ({
-    theme: s.theme,
-    accentPreset: s.accentPreset,
-    primaryColorOverride: s.primaryColorOverride,
-    accentColorOverride: s.accentColorOverride,
-    backgroundColorOverride: s.backgroundColorOverride,
-    motionMode: s.motionMode,
-  }))
+  const theme = useThemeStore((s) => s.theme)
+  const accentPreset = useThemeStore((s) => s.accentPreset)
+  const primaryColorOverride = useThemeStore((s) => s.primaryColorOverride)
+  const accentColorOverride = useThemeStore((s) => s.accentColorOverride)
+  const backgroundColorOverride = useThemeStore((s) => s.backgroundColorOverride)
+  const motionMode = useThemeStore((s) => s.motionMode)
 
   useEffect(() => {
     const html = document.documentElement
-    const resolved = resolveThemeAppearance(appearance)
+    const resolved = resolveThemeAppearance({
+      theme,
+      accentPreset,
+      primaryColorOverride,
+      accentColorOverride,
+      backgroundColorOverride,
+      motionMode,
+    })
     html.setAttribute('data-theme', resolved.id)
     html.setAttribute('data-motion', resolved.motionMode)
     html.style.colorScheme = resolved.scheme
@@ -61,7 +66,14 @@ export function ThemeApplicator() {
     if (themeMeta) {
       themeMeta.setAttribute('content', resolved.themeColor)
     }
-  }, [appearance])
+  }, [
+    accentColorOverride,
+    accentPreset,
+    backgroundColorOverride,
+    motionMode,
+    primaryColorOverride,
+    theme,
+  ])
 
   return null
 }

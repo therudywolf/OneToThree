@@ -52,16 +52,41 @@ export const viewport: Viewport = {
   interactiveWidget: 'resizes-content',
 }
 
+// Blocking script: reads localStorage before first paint, stamps data-theme on <html>.
+// Eliminates FOUC — runs synchronously before any CSS or React hydration.
+const themeInitScript = `
+(function() {
+  try {
+    var raw = localStorage.getItem('fm_chromatic_config');
+    if (!raw) return;
+    var cfg = JSON.parse(raw);
+    var theme = cfg && cfg.state && cfg.state.theme;
+    var motion = cfg && cfg.state && cfg.state.motionMode;
+    var validThemes = ['default','cyberpunk2077','matrix','dracula','midnight','synthwave','hacker','pixel','nord','md3dark','md3light'];
+    if (theme && validThemes.indexOf(theme) !== -1) {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    if (motion === 'reduced') {
+      document.documentElement.setAttribute('data-motion', 'reduced');
+    }
+  } catch(e) {}
+})();
+`.trim()
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" data-theme="default" className="bg-void selection:bg-neon-red selection:text-black">
+    <html lang="en" data-theme="default" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-black">
+      <head>
+        {/* CHROMATIC_INIT :: blocking theme bootstrap — must be first in <head> */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="relative min-h-dvh overflow-x-hidden bg-void font-mono antialiased supports-[height:100dvh]:min-h-[100dvh]">
         
-        {/* [0] CHROMATIC_PROTOCOL :: theme data-attr applicator */}
+        {/* [0] CHROMATIC_PROTOCOL :: theme CSS vars applicator (post-hydration fine-grained sync) */}
         <ThemeApplicator />
 
         {/* [1] SYSTEM_DIAGNOSTICS_LAYER */}

@@ -1,3 +1,20 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/\\\\b(?:bg|text|border|ring|fill|stroke|from|to|via|placeholder|divide|outline|accent|caret|shadow)-(?:black|white|zinc|neutral|slate|gray|red|amber|yellow|green|emerald|lime|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|orange|teal|stone)(?:-\\\\d{2,3})?\\\\b/]",
+        "message": "Use theme tokens (bg-void, text-text-primary, text-text-muted, border-border-strong, text-danger, text-success, text-neon-cyan, text-neon-red, text-accent-2) instead of hardcoded Tailwind palette colors. See scripts/audit-security-lint.mjs and client/tailwind.config.ts."
+      },
+      {
+        "selector": "TemplateElement[value.raw=/\\\\b(?:bg|text|border|ring|fill|stroke|from|to|via|placeholder|divide|outline|accent|caret|shadow)-(?:black|white|zinc|neutral|slate|gray|red|amber|yellow|green|emerald|lime|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|orange|teal|stone)(?:-\\\\d{2,3})?\\\\b/]",
+        "message": "Use theme tokens instead of hardcoded Tailwind palette colors in template literals."
+      },
+      {
+        "selector": "Literal[value=/\\\\[(?:#[0-9a-fA-F]{3,8}|rgba?\\\\([^)]+\\\\)|hsla?\\\\([^)]+\\\\))\\\\]/]",
+        "message": "Arbitrary CSS color values (e.g. bg-[#fff], shadow-[rgba(...)]) are forbidden — use CSS vars (e.g. var(--neon-cyan)) or theme tokens."
+      }
+    ]
+  }
 }

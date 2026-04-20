@@ -74,7 +74,9 @@ export function ChatTerminal({
   cryptoCtx,
   sendText,
   sendMedia,
+  sendAlbum,
   composeDisabled = false,
+  typingLabel = null,
 }: {
   userId: string
   sharedKey: CryptoKey | null
@@ -94,9 +96,19 @@ export function ChatTerminal({
     blob: Blob,
     mediaType: 'audio' | 'video' | 'image' | 'file',
     caption?: string,
-    options?: { fileName?: string; fileType?: string }
+    options?: { fileName?: string; fileType?: string; kind?: import('@/lib/attachment-envelope').AttachmentKind }
+  ) => Promise<void>
+  sendAlbum?: (
+    items: Array<{
+      blob: Blob
+      segmentClass: 'audio' | 'video' | 'image' | 'file'
+      options?: { label?: string; mime?: string; kind?: import('@/lib/attachment-envelope').AttachmentKind }
+    }>,
+    caption?: string
   ) => Promise<void>
   composeDisabled?: boolean
+  /** Who is currently typing (if any). Rendered as floating overlay above chat scroll area. */
+  typingLabel?: string | null
 }) {
   const { t, module: locale } = useTranslation()
   const messages = useChatStore((s) => s.messages)
@@ -153,6 +165,8 @@ export function ChatTerminal({
   const scrollToBottomInstant = useCallback(() => {
     const el = ref.current
     if (!el) return
+    // Use scrollTo rather than scrollIntoView to avoid jumping parent containers
+    // when the compose bar or typing overlay mutates layout.
     el.scrollTop = el.scrollHeight
   }, [])
 
@@ -173,6 +187,33 @@ export function ChatTerminal({
     el.addEventListener('scroll', handleScroll, { passive: true })
     return () => el.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
+
+  // Autoscroll on content growth (images loading, media decrypting, typing bar
+  // toggling) via ResizeObserver. Only pulls the viewport to bottom when the
+  // user is already near-bottom — we never overwrite an explicit scroll-up.
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    let raf = 0
+    const ro = new ResizeObserver(() => {
+      if (!isNearBottomRef.current) return
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        if (!ref.current) return
+        ref.current.scrollTop = ref.current.scrollHeight
+      })
+    })
+    // Observe the scroll container itself AND its first child (the content
+    // column) so growth inside the list (late-loading media) triggers the
+    // handler even when the container height stays constant.
+    ro.observe(el)
+    const firstChild = el.firstElementChild
+    if (firstChild) ro.observe(firstChild)
+    return () => {
+      ro.disconnect()
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
 
   useEffect(() => {
     const prevCount = prevMsgCountRef.current
@@ -638,12 +679,12 @@ export function ChatTerminal({
 
   if (!activeChatId) {
     return (
-      <div className="crt-terminal-vignette flex flex-1 items-center justify-center bg-black font-mono text-xs text-red-800">
+      <div className="crt-terminal-vignette flex flex-1 items-center justify-center bg-void font-mono text-xs text-danger">
         <div className="max-w-xs space-y-3 border border-neon-cyan/20 px-6 py-4 text-center">
           <p className="text-sm tracking-[0.2em] text-neon-cyan/50">
             {t('chat.emptyTitle')}
           </p>
-          <p className="text-[10px] uppercase tracking-widest text-red-900">
+          <p className="text-[10px] uppercase tracking-widest text-danger">
             {t('chat.emptySubtitle')}
           </p>
         </div>
@@ -652,7 +693,7 @@ export function ChatTerminal({
   }
 
   return (
-    <div className="crt-terminal-vignette relative flex min-h-0 flex-1 flex-col overflow-hidden bg-black">
+    <div className="crt-terminal-vignette relative flex min-h-0 flex-1 flex-col overflow-hidden bg-void">
       {ctxMenu ? (
         <MessageActions
           message={ctxMenu.msg}
@@ -685,9 +726,20 @@ export function ChatTerminal({
         />
       ) : null}
 
+      {/* Floating typing indicator — absolutely positioned so it does not
+          reflow the message list when it toggles on/off. */}
+      {typingLabel ? (
+        <div
+          className="pointer-events-none absolute left-1/2 top-2 z-[5] max-w-[calc(100%-1rem)] -translate-x-1/2 border border-neon-cyan/25 bg-void/80 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90 backdrop-blur-sm"
+          aria-live="polite"
+        >
+          [ @{typingLabel} IS SCRATCHING
+          <span className="animate-pulse">...</span> ]
+        </div>
+      ) : null}
       <div
         ref={ref}
-        className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 font-mono text-sm text-neon-red [-webkit-overflow-scrolling:touch] sm:px-4"
+        className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 font-mono text-sm [-webkit-overflow-scrolling:touch] sm:px-4"
         onClick={() => { if (reactingMsgId) setReactingMsgId(null) }}
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
@@ -708,7 +760,7 @@ export function ChatTerminal({
           <div className="flex h-full min-h-[12rem] items-center justify-center">
             <div className="space-y-3 border border-neon-cyan/20 px-6 py-4 text-center">
               {isSelfChat ? (
-                <p className="font-mono text-xs tracking-[0.25em] text-amber-400">
+                <p className="font-mono text-xs tracking-[0.25em] text-accent-2">
                   {t('sidebar.savedMessages')}
                 </p>
               ) : !isGroup && directPeerUsername ? (
@@ -731,7 +783,7 @@ export function ChatTerminal({
               <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/50">
                 {t('chat.noLogsTitle')}
               </p>
-              <p className="text-[9px] uppercase tracking-widest text-red-900">
+              <p className="text-[9px] uppercase tracking-widest text-danger">
                 {isGroup ? t('chat.emptyGroupHint') : t('chat.noLogsHint')}
               </p>
             </div>
@@ -843,7 +895,7 @@ export function ChatTerminal({
                     className={`w-full rounded-none border px-3 py-2 ${
                       mine
                         ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
-                        : 'border-neon-cyan/25 bg-black/80 text-neon-red'
+                        : 'border-neon-cyan/25 bg-void/80 text-neon-red'
                     }`}
                   >
                     {replyMsg ? (
@@ -854,17 +906,17 @@ export function ChatTerminal({
                         tabIndex={0}
                         onKeyDown={(e) => e.key === 'Enter' && setThreadRoot(replyMsg)}
                       >
-                        <span className="text-red-800">
+                        <span className="text-danger">
                           ↳ {labelForSender(replyMsg.sender_id)}:
                         </span>{' '}
                         {replySnippet(replyMsg)}
                       </div>
                     ) : m.reply_to_id ? (
-                      <div className="mb-1 text-[10px] text-red-900">
+                      <div className="mb-1 text-[10px] text-danger">
                         ↳ [{t('chat.originalDeleted')}]
                       </div>
                     ) : null}
-                    <div className="mb-1 text-[9px] text-red-800/90">
+                    <div className="mb-1 text-[9px] text-danger/90">
                       {formatMessageTimestamp(m.created_at, locale)}
                     </div>
                     {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
@@ -975,10 +1027,10 @@ export function ChatTerminal({
                     className={`w-full rounded-none border px-3 py-2 ${
                       mine
                         ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
-                        : 'border-neon-cyan/25 bg-black/80 text-neon-red'
+                        : 'border-neon-cyan/25 bg-void/80 text-neon-red'
                     }`}
                   >
-                    <div className="mb-1 text-[9px] text-red-800/90">
+                    <div className="mb-1 text-[9px] text-danger/90">
                       {formatMessageTimestamp(group.timestamp.toISOString(), locale)}
                     </div>
                     <div
@@ -1021,7 +1073,7 @@ export function ChatTerminal({
         <button
           type="button"
           onClick={scrollToBottom}
-          className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 inline-flex items-center gap-1.5 border border-neon-cyan/60 bg-black/90 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.15)] transition-colors hover:bg-neon-cyan/10"
+          className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 inline-flex items-center gap-1.5 border border-neon-cyan/60 bg-void/90 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.15)] transition-colors hover:bg-neon-cyan/10"
         >
           <ArrowDown className="h-3 w-3" />
           {newMsgCount > 0
@@ -1030,10 +1082,11 @@ export function ChatTerminal({
         </button>
       ) : null}
 
-      <div className="shrink-0 bg-black">
+      <div className="shrink-0 bg-void">
         <ChatInput
           sendText={sendText}
           sendMedia={sendMedia}
+          sendAlbum={sendAlbum}
           cryptoCtx={cryptoCtx}
           disabled={composeDisabled}
         />

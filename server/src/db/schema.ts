@@ -17,12 +17,31 @@ export const chatTypeEnum = pgEnum('chat_type', [
   'direct_e2e',
   'group_e2e',
   'public_open',
+  // Phase 5.1 — Telegram-style broadcast: single author, many subscribers.
+  'channel',
 ])
 
 export const chatMemberRoleEnum = pgEnum('chat_member_role', [
   'owner',
   'admin',
   'member',
+])
+
+// Phase 5.1 — distinct role model for channels. Subscribers never post;
+// editors can post but cannot edit channel metadata; owners can do both.
+export const channelRoleEnum = pgEnum('channel_role', [
+  'subscriber',
+  'editor',
+  'owner',
+])
+
+// Phase 5.2 — sticker pack format. `tgs` ≡ gzipped Lottie JSON (Telegram);
+// `lottie` ≡ plain Lottie JSON; `static` ≡ WebP/PNG; `webm` ≡ animated video.
+export const stickerFormatEnum = pgEnum('sticker_format', [
+  'tgs',
+  'lottie',
+  'static',
+  'webm',
 ])
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
@@ -158,6 +177,11 @@ export const chatMembers = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     encryptedGroupKey: text('encrypted_group_key'),
     role: chatMemberRoleEnum('role').notNull().default('member'),
+    /**
+     * Phase 5.1 — `channel_role` is non-null only for `chat.type = 'channel'`.
+     * For other chat types it must stay NULL (CHECK enforced at migration).
+     */
+    channelRole: channelRoleEnum('channel_role'),
     joinedAt: timestamp('joined_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -212,6 +236,18 @@ export const messages = pgTable(
     mediaIv: text('media_iv'),
     /** Plaintext byte length of uploaded blob (for admin storage audit). */
     mediaOriginalBytes: bigint('media_original_bytes', { mode: 'number' }),
+    /**
+     * Phase 3 — transport protocol version:
+     *   1 = legacy static ECDH + AES-GCM (pre-Ratchet, current default).
+     *   2 = Double Ratchet over X3DH (new messages once both peers publish bundles).
+     * Allows the receive path to dispatch to the correct decryptor.
+     */
+    protocolVersion: integer('protocol_version').notNull().default(1),
+    /**
+     * Double Ratchet header (v2 only). Carries `dhPub`, `previousChainLength`,
+     * and `counter` as base64url fields. Null for v1.
+     */
+    drHeader: text('dr_header'),
     /** Burn-after-read: hide locally after this time (server metadata). */
     burnAt: timestamp('burn_at', { withTimezone: true }),
     /** Direct E2E: set when the peer reads (first read wins). Null in group chats. */
@@ -485,6 +521,135 @@ export const groupMessages = pgTable(
       t.createdAt
     ),
     senderIdx: index('group_messages_sender_idx').on(t.senderId),
+  })
+)
+
+/* ──────────────────────────────────────────────────────────────────────────
+ *  Double Ratchet / X3DH key directory
+ *  Added in protocol_version=2. See MIGRATION_NOTES.md — phase 3.2.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * One Ed25519 + X25519 pair per user. The X25519 public key is the "identity
+ * exchange" key used by X3DH (DH2). The Ed25519 key signs signed pre-keys
+ * and message envelopes. Clients are expected to publish exactly one active
+ * identity per account — rotation means user-visible "new identity" warning.
+ */
+export const identityKeys = pgTable(
+  'identity_keys',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Base64url Ed25519 public signing key (32 bytes). */
+    signingPublicKey: text('signing_public_key').notNull(),
+    /** Base64url X25519 public exchange key (32 bytes). */
+    exchangePublicKey: text('exchange_public_key').notNull(),
+    /** Monotonic — `curl POST /keys/identity` bumps this and invalidates prekeys. */
+    generation: integer('generation').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId] }),
+  })
+)
+
+/**
+ * Signed pre-keys rotate every N days. Only one record is "current" —
+ * clients overwrite the previous row on rotation. The `signature` field
+ * is Ed25519(signingPrivateKey, exchangePublicKey).
+ */
+export const signedPrekeys = pgTable(
+  'signed_prekeys',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    preKeyId: integer('pre_key_id').notNull(),
+    publicKey: text('public_key').notNull(),
+    signature: text('signature').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.preKeyId] }),
+    userCreatedIdx: index('signed_prekeys_user_created_idx').on(
+      t.userId,
+      t.createdAt
+    ),
+  })
+)
+
+/**
+ * One-time pre-keys are consumed atomically by the first X3DH request that
+ * references them. The server deletes the row as part of the bundle fetch
+ * transaction; clients replenish the pool as part of key-management cadence.
+ */
+export const oneTimePrekeys = pgTable(
+  'onetime_prekeys',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    preKeyId: integer('pre_key_id').notNull(),
+    publicKey: text('public_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.preKeyId] }),
+    userIdx: index('onetime_prekeys_user_idx').on(t.userId),
+  })
+)
+
+/**
+ * Phase 5.2 — sticker directory. Packs are user-owned but can be shared:
+ * `owner_id` is the uploader, `is_public` exposes the pack on discovery.
+ * Individual stickers store a MinIO key (`media_key`) and a per-sticker
+ * thumbhash for fast rendering before the asset downloads.
+ */
+export const stickerPacks = pgTable(
+  'sticker_packs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    title: varchar('title', { length: 128 }).notNull(),
+    shortName: varchar('short_name', { length: 64 }).notNull(),
+    format: stickerFormatEnum('format').notNull(),
+    isPublic: boolean('is_public').notNull().default(false),
+    /** Matches Telegram pack `short_name` when imported via Bot API. */
+    tgSource: text('tg_source'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    shortNameUnique: uniqueIndex('sticker_packs_short_name_unique').on(t.shortName),
+    ownerIdx: index('sticker_packs_owner_idx').on(t.ownerId),
+  })
+)
+
+export const stickers = pgTable(
+  'stickers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    packId: uuid('pack_id')
+      .notNull()
+      .references(() => stickerPacks.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull().default(0),
+    /** Unicode emoji(s) the sticker is associated with (comma-joined). */
+    emoji: varchar('emoji', { length: 32 }).notNull().default(''),
+    mediaKey: text('media_key').notNull(),
+    thumbhash: text('thumbhash'),
+    width: integer('width'),
+    height: integer('height'),
+    durationMs: integer('duration_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    packPositionIdx: index('stickers_pack_position_idx').on(t.packId, t.position),
   })
 )
 

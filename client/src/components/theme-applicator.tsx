@@ -11,6 +11,7 @@ import { resolveThemeAppearance, useThemeStore } from '@/store/themeStore'
  */
 export function ThemeApplicator() {
   const theme = useThemeStore((s) => s.theme)
+  const shellMode = useThemeStore((s) => s.shellMode)
   const accentPreset = useThemeStore((s) => s.accentPreset)
   const primaryColorOverride = useThemeStore((s) => s.primaryColorOverride)
   const accentColorOverride = useThemeStore((s) => s.accentColorOverride)
@@ -21,6 +22,7 @@ export function ThemeApplicator() {
     const html = document.documentElement
     const resolved = resolveThemeAppearance({
       theme,
+      shellMode,
       accentPreset,
       primaryColorOverride,
       accentColorOverride,
@@ -28,8 +30,13 @@ export function ThemeApplicator() {
       motionMode,
     })
 
-    // --- color scheme & data-theme ---
+    // --- color scheme & data-* identifiers ---
+    // [data-theme]   = legacy full-combo id (kept for backwards-compat CSS).
+    // [data-palette] = new palette dimension (colors only).
+    // [data-shell]   = new shell dimension (typography + shape + CRT).
     html.setAttribute('data-theme', resolved.id)
+    html.setAttribute('data-palette', resolved.id)
+    html.setAttribute('data-shell', resolved.shell.id)
     html.setAttribute('data-motion', resolved.motionMode)
     html.style.colorScheme = resolved.scheme
 
@@ -52,10 +59,12 @@ export function ThemeApplicator() {
     html.style.setProperty('--crt-opacity', resolved.tokens.crtOpacity)
     html.style.setProperty('--crt-vignette-opacity', resolved.tokens.crtVignetteOpacity)
 
-    // --- typography ---
+    // --- typography & shell chrome ---
     html.style.setProperty('--font-family', resolved.tokens.fontFamily)
-    const isMd3 = resolved.id === 'md3dark' || resolved.id === 'md3light'
-    html.style.setProperty('--text-shadow-intensity', isMd3 ? '0%' : '35%')
+    html.style.setProperty(
+      '--text-shadow-intensity',
+      resolved.shell.textShadowIntensity
+    )
 
     // --- shape ---
     html.style.setProperty('--border-radius', resolved.tokens.panelRadius)
@@ -73,17 +82,56 @@ export function ThemeApplicator() {
     html.style.setProperty('--motion-base', base)
     html.style.setProperty('--motion-slow', slow)
 
-    // --- meta theme-color ---
-    const themeMeta = document.querySelector('meta[name="theme-color"]')
-    if (themeMeta) {
-      themeMeta.setAttribute('content', resolved.themeColor)
+    // --- meta theme-color (dynamic, per palette) ---
+    // Ensure a meta exists (SSR may or may not have emitted one).
+    let themeMeta = document.querySelector(
+      'meta[name="theme-color"]'
+    ) as HTMLMetaElement | null
+    if (!themeMeta) {
+      themeMeta = document.createElement('meta')
+      themeMeta.name = 'theme-color'
+      document.head.appendChild(themeMeta)
     }
+    themeMeta.setAttribute('content', resolved.themeColor)
+
+    // Separate light/dark variants improve Android Chrome + iOS Safari handling.
+    const apply = (media: string) => {
+      let m = document.querySelector(
+        `meta[name="theme-color"][media="${media}"]`
+      ) as HTMLMetaElement | null
+      if (!m) {
+        m = document.createElement('meta')
+        m.name = 'theme-color'
+        m.setAttribute('media', media)
+        document.head.appendChild(m)
+      }
+      m.setAttribute('content', resolved.themeColor)
+    }
+    apply('(prefers-color-scheme: light)')
+    apply('(prefers-color-scheme: dark)')
+
+    // iOS PWA standalone status bar.
+    let appleStatus = document.querySelector(
+      'meta[name="apple-mobile-web-app-status-bar-style"]'
+    ) as HTMLMetaElement | null
+    if (!appleStatus) {
+      appleStatus = document.createElement('meta')
+      appleStatus.name = 'apple-mobile-web-app-status-bar-style'
+      document.head.appendChild(appleStatus)
+    }
+    // `black-translucent` gives the smoothest edge-to-edge feel; for light
+    // schemes we fall back to `default` to keep the status bar readable.
+    appleStatus.setAttribute(
+      'content',
+      resolved.scheme === 'light' ? 'default' : 'black-translucent'
+    )
   }, [
     accentColorOverride,
     accentPreset,
     backgroundColorOverride,
     motionMode,
     primaryColorOverride,
+    shellMode,
     theme,
   ])
 

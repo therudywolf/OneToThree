@@ -55,8 +55,8 @@ function getQualityDotColor(quality: { rtt: number | null; outgoingBitrate: numb
 }
 
 const DOT_COLORS = {
-  green: 'bg-emerald-400',
-  yellow: 'bg-amber-400',
+  green: 'bg-success/20',
+  yellow: 'bg-accent-2/15',
   red: 'bg-neon-red',
 } as const
 
@@ -153,8 +153,8 @@ function PeerTile({
   const _showWarnings = isRemote && (remoteMicMuted || remoteCamOff)
 
   const containerClass = layout === 'grid'
-    ? 'relative w-full h-full bg-black border border-neutral-900 group'
-    : 'relative w-full h-full bg-black group'
+    ? 'relative w-full h-full bg-void border border-border-strong group'
+    : 'relative w-full h-full bg-void group'
 
   const videoClass = layout === 'grid'
     ? 'w-full h-full object-cover filter contrast-125 grayscale-[20%]'
@@ -165,14 +165,14 @@ function PeerTile({
 
   return (
     <div
-      className={`relative bg-black transition-all duration-200 ${
+      className={`relative bg-void transition-all duration-200 ${
         isFullscreen
           ? 'fixed inset-0 z-[210] border-2 border-neon-red'
           : isFocused
             ? 'border border-neon-cyan ring-1 ring-neon-cyan/30'
             : isLocalPIP 
               ? localPIPClass 
-              : 'border border-neutral-800 hover:border-neutral-700'
+              : 'border border-border-strong hover:border-border-strong'
       }`}
       style={isDragging && position ? {
         position: 'fixed', left: `${position.x}px`, top: `${position.y}px`, width: '150px', height: '200px', zIndex: 199
@@ -180,15 +180,15 @@ function PeerTile({
       onClick={handleInteraction}
     >
       {/* NODE HEADER */}
-      <div className="absolute top-0 left-0 w-full z-10 flex items-center justify-between border-b border-white/5 bg-black/80 backdrop-blur-sm px-2 py-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-white/70">
-          <span className={isRemote ? 'text-neon-cyan' : 'text-zinc-500'}>[{label}]</span> :: {peerId.slice(0, 8)}
+      <div className="absolute top-0 left-0 w-full z-10 flex items-center justify-between border-b border-border-strong/5 bg-void/80 backdrop-blur-sm px-2 py-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-text-primary/70">
+          <span className={isRemote ? 'text-neon-cyan' : 'text-text-muted'}>[{label}]</span> :: {peerId.slice(0, 8)}
         </p>
         {isRemote && onFullscreenToggle && (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onFullscreenToggle(); }}
-            className="text-white/50 hover:text-neon-cyan transition-colors"
+            className="text-text-primary/50 hover:text-neon-cyan transition-colors"
           >
             {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
           </button>
@@ -209,12 +209,12 @@ function PeerTile({
           />
         </div>
       ) : (
-        <div className="flex w-full h-full items-center justify-center bg-zinc-950 inset-0 absolute">
+        <div className="flex w-full h-full items-center justify-center bg-void inset-0 absolute">
           <div className="space-y-2 text-center">
-            <div className="mx-auto h-10 w-10 border border-neutral-800 bg-neutral-900 flex items-center justify-center">
+            <div className="mx-auto h-10 w-10 border border-border-strong bg-void flex items-center justify-center">
               <span className="block w-2 h-2 bg-neon-red animate-pulse" />
             </div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-600">OPTICS_OFFLINE</p>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted/70">OPTICS_OFFLINE</p>
           </div>
         </div>
       )}
@@ -225,20 +225,20 @@ function PeerTile({
         {connectionType && connectionType !== 'unknown' && (
           <span className={`flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider backdrop-blur-md ${
             connectionType === 'p2p'
-              ? 'border-emerald-500/50 bg-black/90 text-emerald-400'
-              : 'border-amber-500/50 bg-black/90 text-amber-400'
+              ? 'border-success/40 bg-void/90 text-success'
+              : 'border-accent-2/40 bg-void/90 text-accent-2'
           }`}>
             {connectionType === 'p2p' ? <Lock className="h-2.5 w-2.5" /> : <Radio className="h-2.5 w-2.5" />}
             {connectionType === 'p2p' ? 'P2P' : 'RELAY'}
           </span>
         )}
         {remoteMicMuted && (
-          <span className="border border-neon-red/50 bg-black/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
+          <span className="border border-neon-red/50 bg-void/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
             AUDIO_CUT
           </span>
         )}
         {remoteCamOff && hasVideo && (
-          <span className="border border-neon-red/50 bg-black/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
+          <span className="border border-neon-red/50 bg-void/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
             FEED_LOST
           </span>
         )}
@@ -367,16 +367,16 @@ export function ActiveCallOverlay({
   return (
     <PortalRoot>
       <RelayToast />
-      <div className="fixed inset-0 z-[200] flex flex-col bg-zinc-950 font-mono" role="dialog">
+      <div className="fixed inset-0 z-[200] flex flex-col bg-void font-mono" role="dialog">
         {/* HEADER BAR */}
-        <div className="flex shrink-0 items-center justify-between border-b border-neutral-900 bg-black/50 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md">
+        <div className="flex shrink-0 items-center justify-between border-b border-border-strong bg-void/50 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md">
           <div className="flex items-center gap-3">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full bg-neon-cyan opacity-75"></span>
               <span className="relative inline-flex h-2 w-2 bg-neon-cyan"></span>
             </span>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">
-              SYS.LINK // <span className="text-white">NODES: {tileCount}</span>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+              SYS.LINK // <span className="text-text-primary">NODES: {tileCount}</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -397,17 +397,17 @@ export function ActiveCallOverlay({
                   key={peerId}
                   className={`flex items-center gap-1 border px-2 py-0.5 ${
                     connType === 'p2p'
-                      ? 'border-emerald-500/50 bg-emerald-950/50'
-                      : 'border-amber-500/50 bg-amber-950/50'
+                      ? 'border-success/40 bg-success/20'
+                      : 'border-accent-2/40 bg-accent-2/15'
                   }`}
                   title={connType === 'relay' ? t('call.relayTooltip') : t('call.p2pTooltip')}
                 >
                   {info.icon === 'lock'
-                    ? <Lock className="h-3 w-3 text-emerald-400" />
-                    : <Radio className="h-3 w-3 text-amber-400" />
+                    ? <Lock className="h-3 w-3 text-success" />
+                    : <Radio className="h-3 w-3 text-accent-2" />
                   }
                   <span className={`font-mono text-[9px] uppercase tracking-wider ${
-                    connType === 'p2p' ? 'text-emerald-400' : 'text-amber-400'
+                    connType === 'p2p' ? 'text-success' : 'text-accent-2'
                   }`}>{info.label}</span>
                 </span>
               )
@@ -417,26 +417,26 @@ export function ActiveCallOverlay({
             <span className={`inline-block h-2 w-2 rounded-full ${DOT_COLORS[getQualityDotColor(connectionQuality)]}`} title={t('call.quality')} />
 
             {/* Quality badge */}
-            <span className="border border-neutral-700 bg-neutral-900/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-400">
+            <span className="border border-border-strong bg-void/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
               {qualityLabel(qualityLevel, t)}
             </span>
 
             {isConnectionLost && (
-              <span className="flex items-center gap-1.5 border border-neon-red/50 bg-red-950/50 px-2 py-0.5">
+              <span className="flex items-center gap-1.5 border border-neon-red/50 bg-danger/30 px-2 py-0.5">
                 <WifiOff className="h-3 w-3 text-neon-red" />
                 <span className="font-mono text-[9px] uppercase tracking-wider text-neon-red">{t('call.connectionLost')}</span>
               </span>
             )}
             {isReconnecting && !isConnectionLost && (
-              <span className="flex items-center gap-1.5 border border-amber-500/50 bg-amber-950/50 px-2 py-0.5 animate-pulse">
-                <RefreshCw className="h-3 w-3 text-amber-400 animate-spin" />
-                <span className="font-mono text-[9px] uppercase tracking-wider text-amber-400">{t('call.reconnecting')}</span>
+              <span className="flex items-center gap-1.5 border border-accent-2/40 bg-accent-2/15 px-2 py-0.5 animate-pulse">
+                <RefreshCw className="h-3 w-3 text-accent-2 animate-spin" />
+                <span className="font-mono text-[9px] uppercase tracking-wider text-accent-2">{t('call.reconnecting')}</span>
               </span>
             )}
             {!isReconnecting && !isConnectionLost && connectionQuality?.poor && (
-              <span className="flex items-center gap-1.5 border border-orange-500/50 bg-orange-950/50 px-2 py-0.5">
-                <WifiOff className="h-3 w-3 text-orange-400" />
-                <span className="font-mono text-[9px] uppercase tracking-wider text-orange-400">POOR_LINK</span>
+              <span className="flex items-center gap-1.5 border border-accent-2/40 bg-accent-2/15 px-2 py-0.5">
+                <WifiOff className="h-3 w-3 text-accent-2" />
+                <span className="font-mono text-[9px] uppercase tracking-wider text-accent-2">POOR_LINK</span>
               </span>
             )}
             <p className="text-xs text-neon-cyan/70 tracking-wider">
@@ -446,7 +446,7 @@ export function ActiveCallOverlay({
         </div>
 
         {/* STREAMS CONTAINER */}
-        <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-2 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 to-black">
+        <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-2 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void">
           {layout === 'focus' && focusedPeerId ? (
             <div className="relative flex-1 h-full flex flex-col">
               <div className="relative flex-1 w-full min-h-[50vh]">
@@ -471,7 +471,7 @@ export function ActiveCallOverlay({
 
               {/* FOCUS THUMBNAILS */}
               {focusedPeerId === 'LOCAL_UNIT' && remoteEntries.length > 0 && (
-                <div className="mt-2 flex gap-2 overflow-x-auto border-t border-neutral-900 pt-2 px-2">
+                <div className="mt-2 flex gap-2 overflow-x-auto border-t border-border-strong pt-2 px-2">
                   {remoteEntries.map(([id, stream]) => (
                     <div key={id} className="flex-shrink-0 w-40 h-28 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
                       <PeerTile
@@ -503,32 +503,32 @@ export function ActiveCallOverlay({
         </div>
 
         {/* TACTICAL CONTROLS */}
-        <div className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-black/90 border border-neutral-800 backdrop-blur-xl shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
+        <div className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-void/90 border border-border-strong backdrop-blur-xl shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`}>
 
-          <button onClick={() => { onToggleMute(); setTick(t_ => t_ + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${audioMuted ? 'bg-red-950/30 text-neon-red hover:bg-red-900/50' : 'text-neutral-300 hover:text-white hover:bg-white/5'}`} title={audioMuted ? t('call.unmute') : t('call.mute')}>
+          <button onClick={() => { onToggleMute(); setTick(t_ => t_ + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${audioMuted ? 'bg-danger/30 text-neon-red hover:bg-danger/30' : 'text-text-primary hover:text-text-primary hover:bg-surface/5'}`} title={audioMuted ? t('call.unmute') : t('call.mute')}>
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
 
           {onToggleVideo && (
-            <button onClick={() => { onToggleVideo(); setTick(t_ => t_ + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${!hasCameraTrack || videoOff ? 'bg-neutral-900/50 text-neutral-600 hover:bg-neutral-800' : 'text-neutral-300 hover:text-white hover:bg-white/5'}`} title={videoOff ? t('call.videoOn') : t('call.videoOff')}>
+            <button onClick={() => { onToggleVideo(); setTick(t_ => t_ + 1); }} className={`flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${!hasCameraTrack || videoOff ? 'bg-void/50 text-text-muted/70 hover:bg-elevated' : 'text-text-primary hover:text-text-primary hover:bg-surface/5'}`} title={videoOff ? t('call.videoOn') : t('call.videoOff')}>
               {!hasCameraTrack || videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
             </button>
           )}
 
-          <button onClick={() => { onToggleCamera(); setTick(t_ => t_ + 1); }} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-neon-cyan hover:bg-neon-cyan/5 transition-colors" title={t('call.toggleCamera')}>
+          <button onClick={() => { onToggleCamera(); setTick(t_ => t_ + 1); }} className="flex h-12 w-14 items-center justify-center border-r border-border-strong text-text-muted hover:text-neon-cyan hover:bg-neon-cyan/5 transition-colors" title={t('call.toggleCamera')}>
             {videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
           </button>
 
           {/* Switch camera — mobile only */}
           {isMobileDevice && hasCameraTrack && !videoOff && (
-            <button onClick={onSwitchCamera} disabled={isScreenSharing} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 disabled:opacity-20 transition-colors" title={t('call.switchCamera')}>
+            <button onClick={onSwitchCamera} disabled={isScreenSharing} className="flex h-12 w-14 items-center justify-center border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5 disabled:opacity-20 transition-colors" title={t('call.switchCamera')}>
               <RefreshCw className="h-4 w-4" />
             </button>
           )}
 
           {/* Screen share — desktop only */}
           {screenShareAllowed && (
-            <button onClick={() => { onToggleScreenShare(); setTick(t_ => t_ + 1); }} className={`hidden md:flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${isScreenSharing ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`} title={isScreenSharing ? t('call.stopScreenShare') : t('call.startScreenShare')}>
+            <button onClick={() => { onToggleScreenShare(); setTick(t_ => t_ + 1); }} className={`hidden md:flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${isScreenSharing ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-surface/5'}`} title={isScreenSharing ? t('call.stopScreenShare') : t('call.startScreenShare')}>
               {isScreenSharing ? <MonitorOff className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
             </button>
           )}
@@ -537,14 +537,14 @@ export function ActiveCallOverlay({
           <div className="relative">
             <button
               onClick={() => setShowQualityMenu(prev => !prev)}
-              className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+              className="flex h-12 w-14 items-center justify-center border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5 transition-colors"
               title={t('call.quality')}
             >
               <span className="font-mono text-[10px] font-bold">{qualityLevel === 'auto' ? 'A' : qualityLevel === 'audio_only' ? 'Aud' : qualityLevel}</span>
               <ChevronDown className="h-3 w-3 ml-0.5" />
             </button>
             {showQualityMenu && (
-              <div className="absolute bottom-14 left-1/2 -translate-x-1/2 border border-neutral-700 bg-black/95 backdrop-blur-xl shadow-2xl z-50 min-w-[140px]">
+              <div className="absolute bottom-14 left-1/2 -translate-x-1/2 border border-border-strong bg-void/95 backdrop-blur-xl shadow-2xl z-50 min-w-[140px]">
                 {QUALITY_OPTIONS.map((opt) => (
                   <button
                     key={opt}
@@ -552,7 +552,7 @@ export function ActiveCallOverlay({
                     className={`w-full px-3 py-2 text-left font-mono text-[11px] uppercase tracking-wider transition-colors ${
                       qualityLevel === opt
                         ? 'bg-neon-cyan/10 text-neon-cyan'
-                        : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                        : 'text-text-muted hover:text-text-primary hover:bg-surface/5'
                     }`}
                   >
                     {qualityLabel(opt, t)}
@@ -562,15 +562,15 @@ export function ActiveCallOverlay({
             )}
           </div>
 
-          <button onClick={toggleLayout} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors" title={t('call.toggleLayout')}>
+          <button onClick={toggleLayout} className="flex h-12 w-14 items-center justify-center border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5 transition-colors" title={t('call.toggleLayout')}>
             {layout === 'grid' ? <Focus className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
           </button>
 
-          <button onClick={() => setMiniPlayer(true)} className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-neon-cyan hover:bg-neon-cyan/5 transition-colors" title={t('call.returnToCall')}>
+          <button onClick={() => setMiniPlayer(true)} className="flex h-12 w-14 items-center justify-center border-r border-border-strong text-text-muted hover:text-neon-cyan hover:bg-neon-cyan/5 transition-colors" title={t('call.returnToCall')}>
             <Minimize2 className="h-4 w-4" />
           </button>
 
-          <button onClick={onEndCall} className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-black transition-all" title={t('call.endCall')}>
+          <button onClick={onEndCall} className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-text-primary transition-all" title={t('call.endCall')}>
             <PhoneOff className="h-5 w-5" />
           </button>
         </div>

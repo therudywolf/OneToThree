@@ -58,7 +58,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 px-3"
+        className="fixed inset-0 z-[130] flex items-center justify-center bg-void/80 px-3"
       >
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -93,7 +93,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
           {loading ? (
             <p className="text-center font-mono text-[9px] text-neon-cyan/50 py-4">{t('common.loading')}</p>
           ) : filtered.length === 0 ? (
-            <p className="text-center font-mono text-[9px] text-zinc-600 py-4">{t('forward.noChats')}</p>
+            <p className="text-center font-mono text-[9px] text-text-muted/70 py-4">{t('forward.noChats')}</p>
           ) : (
             <div className="max-h-52 space-y-1 overflow-y-auto">
               {filtered.map((c) => {

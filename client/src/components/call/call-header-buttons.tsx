@@ -18,16 +18,16 @@ export function CallHeaderButtons({
   const isOffline = disabled || !peerReady
 
   return (
-    <div className="flex items-center border border-neutral-800 bg-black font-mono shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+    <div className="flex items-center border border-border-strong bg-void font-mono shadow-[0_0_15px_rgba(0,0,0,0.5)]">
       {/* Node Status Indicator */}
-      <div className="hidden sm:flex h-10 w-10 items-center justify-center border-r border-neutral-800 bg-zinc-950/50">
+      <div className="hidden sm:flex h-10 w-10 items-center justify-center border-r border-border-strong bg-void/50">
         <span className="relative flex h-2 w-2">
           {!isOffline && (
             <span className="absolute inline-flex h-full w-full animate-ping bg-neon-cyan opacity-75"></span>
           )}
           <span
             className={`relative inline-flex h-2 w-2 ${
-              isOffline ? 'bg-neutral-700' : 'bg-neon-cyan shadow-[0_0_6px_rgba(0,255,255,0.9)]'
+              isOffline ? 'bg-elevated' : 'bg-neon-cyan shadow-[0_0_6px_rgba(0,255,255,0.9)]'
             }`}
           ></span>
         </span>
@@ -41,8 +41,8 @@ export function CallHeaderButtons({
         title={isOffline ? 'No connection' : 'Voice call'}
         className={`touch-manipulation relative flex h-10 min-w-[2.75rem] items-center justify-center gap-2 border-r px-3 transition-all ${
           isOffline
-            ? 'cursor-not-allowed border-neutral-800 text-neutral-600'
-            : 'border-neon-cyan/50 text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 hover:text-white active:bg-neon-cyan/20'
+            ? 'cursor-not-allowed border-border-strong text-text-muted/70'
+            : 'border-neon-cyan/50 text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 hover:text-text-primary active:bg-neon-cyan/20'
         }`}
       >
         <Phone
@@ -63,8 +63,8 @@ export function CallHeaderButtons({
         title={isOffline ? 'No connection' : 'Video call'}
         className={`touch-manipulation relative flex h-10 min-w-[2.75rem] items-center justify-center gap-2 px-3 transition-all ${
           isOffline
-            ? 'cursor-not-allowed border border-neutral-800 text-neutral-600'
-            : 'border border-neon-red/50 text-neon-red hover:border-neon-red hover:bg-neon-red/10 hover:text-white active:bg-neon-red/20'
+            ? 'cursor-not-allowed border border-border-strong text-text-muted/70'
+            : 'border border-neon-red/50 text-neon-red hover:border-neon-red hover:bg-neon-red/10 hover:text-text-primary active:bg-neon-red/20'
         }`}
       >
         <Video

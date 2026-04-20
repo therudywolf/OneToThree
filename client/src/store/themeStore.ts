@@ -18,6 +18,61 @@ export type ThemeId =
 
 export type MotionMode = 'full' | 'reduced'
 
+/**
+ * Shell mode = typography + shape + "CRT" chrome for the entire UI.
+ * Independent of the palette (colors). Two shells are shipped:
+ *   - 'terminal'  — monospace, sharp corners, CRT overlay (legacy).
+ *   - 'md3'       — Material Design 3: Google Sans / Roboto, rounded corners, no CRT.
+ */
+export type ShellModeId = 'terminal' | 'md3'
+
+export type ShellPreset = {
+  id: ShellModeId
+  label: string
+  hint: string
+  fontFamily: string
+  panelRadius: string
+  controlRadius: string
+  crtOpacity: string
+  crtVignetteOpacity: string
+  /** CSS percentage string, e.g. '35%' or '0%' for MD3. */
+  textShadowIntensity: string
+}
+
+export const SHELL_PRESETS: ShellPreset[] = [
+  {
+    id: 'terminal',
+    label: 'TERMINAL',
+    hint: 'Monospace / CRT / sharp corners',
+    fontFamily: "'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace",
+    panelRadius: '14px',
+    controlRadius: '10px',
+    crtOpacity: '0.16',
+    crtVignetteOpacity: '0.4',
+    textShadowIntensity: '35%',
+  },
+  {
+    id: 'md3',
+    label: 'MATERIAL 3',
+    hint: 'Google Sans / rounded / flat',
+    fontFamily: "'Google Sans', 'Roboto', system-ui, sans-serif",
+    panelRadius: '28px',
+    controlRadius: '18px',
+    crtOpacity: '0',
+    crtVignetteOpacity: '0',
+    textShadowIntensity: '0%',
+  },
+]
+
+export const SHELL_PRESET_BY_ID: Record<ShellModeId, ShellPreset> =
+  SHELL_PRESETS.reduce(
+    (acc, preset) => {
+      acc[preset.id] = preset
+      return acc
+    },
+    {} as Record<ShellModeId, ShellPreset>
+  )
+
 export type ThemeTokens = {
   background: string
   surface: string
@@ -398,22 +453,35 @@ export type ResolvedThemeAppearance = {
   preview: [string, string, string]
   tokens: ThemeTokens
   motionMode: MotionMode
+  shell: ShellPreset
 }
 
 type ChromaticState = {
   theme: ThemeId
+  shellMode: ShellModeId
   accentPreset: AccentPresetId
   primaryColorOverride: string | null
   accentColorOverride: string | null
   backgroundColorOverride: string | null
   motionMode: MotionMode
   setTheme: (id: ThemeId) => void
+  setShellMode: (mode: ShellModeId) => void
   setAccentPreset: (id: AccentPresetId) => void
   setPrimaryColorOverride: (value: string | null) => void
   setAccentColorOverride: (value: string | null) => void
   setBackgroundColorOverride: (value: string | null) => void
   setMotionMode: (mode: MotionMode) => void
   resetAppearance: () => void
+}
+
+/**
+ * Best-effort mapping from legacy `theme` value (that used to encode both
+ * palette and shell) to the new `shellMode`. Used only for migration of
+ * older persisted state that predates the shell/palette split.
+ */
+function inferShellFromLegacyTheme(theme: ThemeId | undefined): ShellModeId {
+  if (theme === 'md3dark' || theme === 'md3light') return 'md3'
+  return 'terminal'
 }
 
 export function resolveThemeAppearance(input: Pick<
@@ -424,8 +492,11 @@ export function resolveThemeAppearance(input: Pick<
   | 'accentColorOverride'
   | 'backgroundColorOverride'
   | 'motionMode'
->): ResolvedThemeAppearance {
+> & { shellMode?: ShellModeId }): ResolvedThemeAppearance {
   const base = THEME_BY_ID[input.theme] ?? THEME_BY_ID.default
+  const shellId: ShellModeId =
+    input.shellMode ?? inferShellFromLegacyTheme(input.theme)
+  const shell = SHELL_PRESET_BY_ID[shellId] ?? SHELL_PRESET_BY_ID.terminal
   const preset =
     input.accentPreset !== 'theme'
       ? ACCENT_PRESET_BY_ID[input.accentPreset]
@@ -471,6 +542,12 @@ export function resolveThemeAppearance(input: Pick<
     shadowRgb: rgbTriplet(accent),
     pageGlow: mixColors(primary, background, base.scheme === 'light' ? 0.68 : 0.26),
     pageGlowSecondary: mixColors(accent, background, base.scheme === 'light' ? 0.72 : 0.22),
+    // Shell preset owns typography + shape + CRT:
+    fontFamily: shell.fontFamily,
+    panelRadius: shell.panelRadius,
+    controlRadius: shell.controlRadius,
+    crtOpacity: shell.crtOpacity,
+    crtVignetteOpacity: shell.crtVignetteOpacity,
   }
 
   return {
@@ -481,6 +558,7 @@ export function resolveThemeAppearance(input: Pick<
     preview: [background, primary, accent],
     tokens,
     motionMode: input.motionMode,
+    shell,
   }
 }
 
@@ -488,12 +566,14 @@ export const useThemeStore = create<ChromaticState>()(
   persist(
     (set) => ({
       theme: 'default',
+      shellMode: 'terminal',
       accentPreset: 'theme',
       primaryColorOverride: null,
       accentColorOverride: null,
       backgroundColorOverride: null,
       motionMode: 'full',
       setTheme: (id) => set({ theme: id }),
+      setShellMode: (mode) => set({ shellMode: mode }),
       setAccentPreset: (id) => {
         const preset = ACCENT_PRESET_BY_ID[id]
         set({
@@ -528,15 +608,28 @@ export const useThemeStore = create<ChromaticState>()(
     }),
     {
       name: 'fm_chromatic_config',
+      version: 2,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         theme: state.theme,
+        shellMode: state.shellMode,
         accentPreset: state.accentPreset,
         primaryColorOverride: state.primaryColorOverride,
         accentColorOverride: state.accentColorOverride,
         backgroundColorOverride: state.backgroundColorOverride,
         motionMode: state.motionMode,
       }),
+      migrate: (persisted, fromVersion) => {
+        if (!persisted || typeof persisted !== 'object') return persisted
+        if (fromVersion < 2) {
+          const state = persisted as Partial<ChromaticState>
+          if (state.shellMode === undefined) {
+            state.shellMode = inferShellFromLegacyTheme(state.theme)
+          }
+          return state
+        }
+        return persisted
+      },
     }
   )
 )

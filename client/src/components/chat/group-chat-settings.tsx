@@ -129,7 +129,7 @@ export function GroupChatSettings({
 
   if (!protocol) {
     return (
-      <div className="border-t border-neutral-900 bg-black/20 p-4 font-mono text-[10px] text-red-900">
+      <div className="border-t border-border-strong bg-void/20 p-4 font-mono text-[10px] text-danger">
         {errorLog ? errorLog : t('common.loading')}
       </div>
     )
@@ -138,14 +138,14 @@ export function GroupChatSettings({
   const activeLink = protocol.invite_code ? `${window.location.origin}/join/${protocol.invite_code}` : null
 
   return (
-    <div className="flex flex-col border-t border-neutral-900 bg-black font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+    <div className="flex flex-col border-t border-border-strong bg-void font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
       
       {/* TACTICAL_TABS */}
-      <div className="flex border-b border-neutral-900">
+      <div className="flex border-b border-border-strong">
         <button
           onClick={() => setActiveTab('nodes')}
           className={`flex-1 flex items-center justify-center gap-2 py-3 transition-all ${
-            activeTab === 'nodes' ? 'bg-zinc-900 text-neon-cyan' : 'hover:bg-zinc-900/50'
+            activeTab === 'nodes' ? 'bg-void text-neon-cyan' : 'hover:bg-void/50'
           }`}
         >
           <ShieldAlert className="h-3 w-3" />
@@ -154,7 +154,7 @@ export function GroupChatSettings({
         <button
           onClick={() => setActiveTab('vault')}
           className={`flex-1 flex items-center justify-center gap-2 py-3 transition-all ${
-            activeTab === 'vault' ? 'bg-zinc-900 text-neon-cyan' : 'hover:bg-zinc-900/50'
+            activeTab === 'vault' ? 'bg-void text-neon-cyan' : 'hover:bg-void/50'
           }`}
         >
           <Database className="h-3 w-3" />
@@ -167,7 +167,7 @@ export function GroupChatSettings({
 
         {activeTab === 'vault' ? (
           <div className="animate-in fade-in slide-in-from-bottom-1">
-            <p className="mb-4 text-zinc-600 normal-case tracking-normal">{t('group.mediaArchiveTitle')}</p>
+            <p className="mb-4 text-text-muted/70 normal-case tracking-normal">{t('group.mediaArchiveTitle')}</p>
             <MediaArchivePanel chatId={chatId} sharedKey={sharedKey} />
           </div>
         ) : (
@@ -176,7 +176,7 @@ export function GroupChatSettings({
             {/* INTEGRATION_LINK_SECTION */}
             {canManage && (
               <div className="space-y-3">
-                <label className="flex cursor-pointer items-center gap-3 border border-neutral-900 bg-zinc-950 p-3 transition-colors hover:border-neutral-800">
+                <label className="flex cursor-pointer items-center gap-3 border border-border-strong bg-void p-3 transition-colors hover:border-border-strong">
                   <input
                     type="checkbox"
                     checked={oneTimeLink}
@@ -184,30 +184,30 @@ export function GroupChatSettings({
                     disabled={isBusy}
                     className="h-3 w-3 accent-neon-cyan"
                   />
-                  <span className="text-[9px] text-zinc-400">{t('group.oneTimeInvite')}</span>
+                  <span className="text-[9px] text-text-muted">{t('group.oneTimeInvite')}</span>
                 </label>
                 
                 <button
                   disabled={isBusy}
                   onClick={() => void generateIntegrationLink()}
-                  className="w-full border border-neon-cyan/40 bg-black py-2 text-[9px] font-bold text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black disabled:opacity-20"
+                  className="w-full border border-neon-cyan/40 bg-void py-2 text-[9px] font-bold text-neon-cyan transition-all hover:bg-neon-cyan hover:text-text-primary disabled:opacity-20"
                 >
                   {t('group.copyInviteLink')}
                 </button>
 
                 {activeLink ? (
-                  <div className="border border-neutral-900 bg-zinc-950 p-2 break-all font-mono text-[9px] lowercase text-zinc-500">
+                  <div className="border border-border-strong bg-void p-2 break-all font-mono text-[9px] lowercase text-text-muted">
                     {activeLink}
                   </div>
                 ) : (
-                  <p className="text-red-900 lowercase">{t('group.inviteGenerateHint')}</p>
+                  <p className="text-danger lowercase">{t('group.inviteGenerateHint')}</p>
                 )}
               </div>
             )}
 
             {/* NODE_REGISTRY */}
             <div className="space-y-2">
-              <p className="text-[9px] text-zinc-700 tracking-[0.4em] mb-3">{t('sidebar.members')}</p>
+              <p className="text-[9px] text-text-muted/70 tracking-[0.4em] mb-3">{t('sidebar.members')}</p>
               <div className="max-h-60 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
                 {protocol.members.map((m) => {
                   const isSelf = canonicalUserId(m.user_id) === canonicalUserId(userId)
@@ -219,7 +219,7 @@ export function GroupChatSettings({
                   const showTransfer = !isSelf && canOwner && targetRole !== 'owner'
 
                   return (
-                    <div key={m.user_id} className="flex items-center gap-3 border border-neutral-950 bg-black p-2 transition-colors hover:bg-zinc-900/30">
+                    <div key={m.user_id} className="flex items-center gap-3 border border-border-strong bg-void p-2 transition-colors hover:bg-void/30">
                       <UserAvatar
                         userId={m.user_id}
                         username={m.username}
@@ -229,23 +229,23 @@ export function GroupChatSettings({
                       <div className="flex min-w-0 flex-1 flex-col">
                         <div className="flex items-center gap-1">
                           <AuthorityBadge role={m.role} />
-                          <span className="truncate text-white">{m.username}</span>
+                          <span className="truncate text-text-primary">{m.username}</span>
                         </div>
-                        <span className="text-[8px] text-zinc-600">[{m.role}]</span>
+                        <span className="text-[8px] text-text-muted/70">[{m.role}]</span>
                       </div>
 
                       <div className="flex gap-1">
                         {showGrantAdmin && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-cyan">{t('group.makeAdmin')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className="border border-border-strong px-2 py-1 text-[8px] hover:text-neon-cyan">{t('group.makeAdmin')}</button>
                         )}
                         {showRevokeAdmin && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-red">{t('group.demoteMember')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className="border border-border-strong px-2 py-1 text-[8px] hover:text-neon-red">{t('group.demoteMember')}</button>
                         )}
                         {showTransfer && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className="border border-neutral-900 px-2 py-1 text-[8px] hover:text-neon-cyan">{t('group.transferOwner')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className="border border-border-strong px-2 py-1 text-[8px] hover:text-neon-cyan">{t('group.transferOwner')}</button>
                         )}
                         {showExpunge && (
-                          <button onClick={() => void expungeNode(m.user_id)} className="border border-neutral-900 px-2 py-1 text-[8px] text-red-900 hover:border-neon-red hover:text-neon-red">{t('group.kick')}</button>
+                          <button onClick={() => void expungeNode(m.user_id)} className="border border-border-strong px-2 py-1 text-[8px] text-danger hover:border-neon-red hover:text-neon-red">{t('group.kick')}</button>
                         )}
                       </div>
                     </div>

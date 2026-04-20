@@ -23,7 +23,7 @@ export function LocaleToggle({ className = '' }: { className?: string }) {
       onClick={cycleProtocol}
       className={`
         touch-manipulation inline-flex items-center justify-center gap-2 
-        border border-neutral-900 bg-black px-3 py-1.5 
+        border border-border-strong bg-void px-3 py-1.5 
         font-mono text-[10px] uppercase tracking-[0.2em] 
         text-neon-cyan transition-all duration-200
         hover:border-neon-red hover:text-neon-red 

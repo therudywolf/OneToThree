@@ -2,32 +2,222 @@
   "version": "7",
   "dialect": "postgresql",
   "entries": [
-    { "idx": 0, "version": "7", "when": 1700000000000, "tag": "0000_naive_iron_lad", "breakpoints": true },
-    { "idx": 1, "version": "7", "when": 1700000001000, "tag": "0001_ecdh_public_key", "breakpoints": true },
-    { "idx": 2, "version": "7", "when": 1700000002000, "tag": "0002_push_subscriptions", "breakpoints": true },
-    { "idx": 3, "version": "7", "when": 1700000003000, "tag": "0003_messages_indexes", "breakpoints": true },
-    { "idx": 4, "version": "7", "when": 1700000004000, "tag": "0004_odd_phil_sheldon", "breakpoints": true },
-    { "idx": 5, "version": "7", "when": 1700000005000, "tag": "0005_users_is_discoverable_default_false", "breakpoints": true },
-    { "idx": 6, "version": "7", "when": 1700000006000, "tag": "0006_windy_may_parker", "breakpoints": true },
-    { "idx": 7, "version": "7", "when": 1700000007000, "tag": "0007_vault_and_devices", "breakpoints": true },
-    { "idx": 8, "version": "7", "when": 1700000008000, "tag": "0008_chat_invite_roles", "breakpoints": true },
-    { "idx": 9, "version": "7", "when": 1700000009000, "tag": "0009_user_avatar_key", "breakpoints": true },
-    { "idx": 10, "version": "7", "when": 1700000010000, "tag": "0010_presence_read_receipts", "breakpoints": true },
-    { "idx": 11, "version": "7", "when": 1700000011000, "tag": "0011_message_deliveries", "breakpoints": true },
-    { "idx": 12, "version": "7", "when": 1700000012000, "tag": "0012_resource_pulse_survival", "breakpoints": true },
-    { "idx": 13, "version": "7", "when": 1700000013000, "tag": "0013_invite_one_time", "breakpoints": true },
-    { "idx": 14, "version": "7", "when": 1700000014000, "tag": "0014_master_device_flag", "breakpoints": true },
-    { "idx": 15, "version": "7", "when": 1700000015000, "tag": "0015_user_profile_fields", "breakpoints": true },
-    { "idx": 16, "version": "7", "when": 1700000016000, "tag": "0016_security_audit_tables", "breakpoints": true },
-    { "idx": 17, "version": "7", "when": 1700000017000, "tag": "0017_groups_channels", "breakpoints": true },
-    { "idx": 18, "version": "7", "when": 1700000018000, "tag": "0018_disable_read_receipts", "breakpoints": true },
-    { "idx": 19, "version": "7", "when": 1700000019000, "tag": "0019_message_reactions", "breakpoints": true },
-    { "idx": 20, "version": "7", "when": 1700000020000, "tag": "0020_media_and_trgm_indexes", "breakpoints": true },
-    { "idx": 21, "version": "7", "when": 1700000021000, "tag": "0021_devices_e2ee_link_columns", "breakpoints": true },
-    { "idx": 22, "version": "7", "when": 1700000022000, "tag": "0022_allow_device_linking", "breakpoints": true },
-    { "idx": 23, "version": "7", "when": 1700000023000, "tag": "0023_devices_ecdh_public_key", "breakpoints": true },
-    { "idx": 24, "version": "7", "when": 1700000024000, "tag": "0024_chat_favorites", "breakpoints": true },
-    { "idx": 25, "version": "7", "when": 1700000025000, "tag": "0025_recovery_and_history_sync", "breakpoints": true },
-    { "idx": 26, "version": "7", "when": 1700000026000, "tag": "0026_message_deliveries_device_slots", "breakpoints": true }
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1700000000000,
+      "tag": "0000_naive_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1700000001000,
+      "tag": "0001_ecdh_public_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1700000002000,
+      "tag": "0002_push_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1700000003000,
+      "tag": "0003_messages_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1700000004000,
+      "tag": "0004_odd_phil_sheldon",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1700000005000,
+      "tag": "0005_users_is_discoverable_default_false",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1700000006000,
+      "tag": "0006_windy_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1700000007000,
+      "tag": "0007_vault_and_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1700000008000,
+      "tag": "0008_chat_invite_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1700000009000,
+      "tag": "0009_user_avatar_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1700000010000,
+      "tag": "0010_presence_read_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1700000011000,
+      "tag": "0011_message_deliveries",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1700000012000,
+      "tag": "0012_resource_pulse_survival",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1700000013000,
+      "tag": "0013_invite_one_time",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1700000014000,
+      "tag": "0014_master_device_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1700000015000,
+      "tag": "0015_user_profile_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1700000016000,
+      "tag": "0016_security_audit_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1700000017000,
+      "tag": "0017_groups_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1700000018000,
+      "tag": "0018_disable_read_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1700000019000,
+      "tag": "0019_message_reactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1700000020000,
+      "tag": "0020_media_and_trgm_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1700000021000,
+      "tag": "0021_devices_e2ee_link_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1700000022000,
+      "tag": "0022_allow_device_linking",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1700000023000,
+      "tag": "0023_devices_ecdh_public_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1700000024000,
+      "tag": "0024_chat_favorites",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1700000025000,
+      "tag": "0025_recovery_and_history_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1700000026000,
+      "tag": "0026_message_deliveries_device_slots",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1776688520443,
+      "tag": "0027_add_ratchet_prekeys",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1776688530000,
+      "tag": "0028_messages_protocol_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1776688540000,
+      "tag": "0029_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1776688550000,
+      "tag": "0030_stickers",
+      "breakpoints": true
+    }
   ]
 }

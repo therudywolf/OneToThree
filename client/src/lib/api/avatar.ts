@@ -19,11 +19,13 @@ async function putAvatarWithRetry(
   while (attempt < retries) {
     attempt++
     try {
-      console.log(
-        '[AVATAR UPLOAD] Attempting PUT to MinIO:',
-        uploadUrl.split('?')[0],
-        `(attempt ${attempt}/${retries})`
-      )
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug(
+          '[AVATAR UPLOAD] Attempting PUT to MinIO:',
+          uploadUrl.split('?')[0],
+          `(attempt ${attempt}/${retries})`
+        )
+      }
       const put = await fetch(uploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'image/jpeg' },
@@ -44,7 +46,9 @@ async function putAvatarWithRetry(
     }
     if (attempt < retries) {
       const delay = 350 * attempt
-      console.log(`[AVATAR UPLOAD] Retrying in ${delay}ms...`)
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug(`[AVATAR UPLOAD] Retrying in ${delay}ms…`)
+      }
       await new Promise((r) => setTimeout(r, delay))
     }
   }

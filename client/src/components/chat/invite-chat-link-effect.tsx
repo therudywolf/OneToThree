@@ -90,7 +90,7 @@ export function InviteChatLinkEffect({ userId }: { userId: string }) {
       className="pointer-events-none fixed left-4 right-4 top-20 z-[200] flex justify-center"
       role="alert"
     >
-      <div className="border border-neon-red bg-black/90 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-red shadow-[0_0_15px_rgba(255,0,0,0.2)] backdrop-blur-md">
+      <div className="border border-neon-red bg-void/90 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-red shadow-[0_0_15px_rgba(255,0,0,0.2)] backdrop-blur-md">
         <span className="mr-2 animate-pulse font-bold">[!]</span>
         {errorLog}
       </div>

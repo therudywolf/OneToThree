@@ -125,7 +125,7 @@ export function MessageActions({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.12, ease: 'easeOut' }}
-        className="fixed z-[120] min-w-[12rem] border border-neon-cyan/60 bg-black py-1 shadow-[0_0_24px_rgba(0,255,255,0.1)]"
+        className="fixed z-[120] min-w-[12rem] border border-neon-cyan/60 bg-void py-1 shadow-[0_0_24px_rgba(0,255,255,0.1)]"
         role="menu"
         aria-label={t('chat.contextMenuAria')}
         style={{ left: x, top: y }}
@@ -141,7 +141,7 @@ export function MessageActions({
                 role="menuitem"
                 className={`flex w-full items-center gap-2.5 px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-colors ${
                   action.danger
-                    ? 'text-red-700 hover:bg-neon-red/10 hover:text-neon-red'
+                    ? 'text-danger hover:bg-neon-red/10 hover:text-neon-red'
                     : 'text-neon-cyan hover:bg-neon-cyan/10'
                 }`}
                 onClick={(e) => {
@@ -172,7 +172,7 @@ type QuickReactProps = {
 
 export function QuickReactBar({ onReact }: QuickReactProps) {
   return (
-    <div className="flex items-center gap-0.5 border border-neon-cyan/40 bg-black px-1 py-0.5 shadow-[0_0_12px_rgba(0,255,255,0.08)]">
+    <div className="flex items-center gap-0.5 border border-neon-cyan/40 bg-void px-1 py-0.5 shadow-[0_0_12px_rgba(0,255,255,0.08)]">
       {QUICK_REACTIONS.map((emoji) => (
         <button
           key={emoji}

@@ -34,7 +34,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
           <span className="font-mono text-[10px] uppercase tracking-wider text-neon-cyan">
             {t('groupCall.activeCall')}
           </span>
-          <span className="flex items-center gap-1 font-mono text-[10px] text-neutral-400">
+          <span className="flex items-center gap-1 font-mono text-[10px] text-text-muted">
             <Users className="h-3 w-3" />
             {participantCount}
           </span>

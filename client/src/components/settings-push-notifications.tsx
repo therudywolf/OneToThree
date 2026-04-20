@@ -95,25 +95,25 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
         {pushActive ? (
           <Bell className="h-4 w-4 shrink-0 text-neon-cyan" aria-hidden />
         ) : (
-          <BellOff className="h-4 w-4 shrink-0 text-red-800" aria-hidden />
+          <BellOff className="h-4 w-4 shrink-0 text-danger" aria-hidden />
         )}
       </div>
-      <p className="mb-2 text-[9px] text-red-800">{t('settings.notificationsHint')}</p>
+      <p className="mb-2 text-[9px] text-danger">{t('settings.notificationsHint')}</p>
 
       {!pushSupported ? (
-        <p className="font-mono text-[10px] uppercase tracking-wider text-red-800">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-danger">
           :: {t('settings.pushUnsupported')}
         </p>
       ) : null}
 
       {permission === 'denied' ? (
-        <p className="border border-neon-red/50 bg-black px-2 py-2 font-mono text-[10px] uppercase tracking-wide text-neon-red">
+        <p className="border border-neon-red/50 bg-void px-2 py-2 font-mono text-[10px] uppercase tracking-wide text-neon-red">
           :: {t('settings.pushBlocked')}
         </p>
       ) : null}
 
       {!vapidOk ? (
-        <p className="text-[9px] text-red-800">{t('settings.pushVapidMissing')}</p>
+        <p className="text-[9px] text-danger">{t('settings.pushVapidMissing')}</p>
       ) : null}
 
       {permission === 'granted' && hasBrowserSubscription ? (
@@ -125,7 +125,7 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
             type="button"
             disabled={busy}
             onClick={() => void onToggleEnable()}
-            className="shrink-0 border border-neon-red/70 bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red transition-colors hover:bg-neon-red/10 disabled:cursor-not-allowed disabled:opacity-40"
+            className="shrink-0 border border-neon-red/70 bg-void px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red transition-colors hover:bg-neon-red/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy ? '[ … ]' : t('settings.pushDisable')}
           </button>
@@ -137,14 +137,14 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
           type="button"
           disabled={busy || !vapidOk}
           onClick={() => void onToggleEnable()}
-          className="w-full border border-neon-cyan/70 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full border border-neon-cyan/70 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red disabled:cursor-not-allowed disabled:opacity-40"
         >
           {busy ? '[ … ]' : t('settings.pushEnable')}
         </button>
       ) : null}
 
       {permission === 'granted' && !hasBrowserSubscription && vapidOk && pushSupported ? (
-        <p className="mt-1 text-[9px] text-zinc-500">
+        <p className="mt-1 text-[9px] text-text-muted">
           {t('settings.pushGrantNoSubHint')}
         </p>
       ) : null}

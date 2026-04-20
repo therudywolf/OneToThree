@@ -167,12 +167,12 @@ export function VaultModal({ userId, displayHandle }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 px-4 backdrop-blur-md"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-void/95 px-4 backdrop-blur-md"
       role="dialog"
       aria-modal="true"
       aria-label="Key vault"
     >
-      <div className="w-full max-w-sm space-y-6 border border-neon-cyan/40 bg-black p-6 shadow-[0_0_30px_rgba(0,255,255,0.05)]">
+      <div className="w-full max-w-sm space-y-6 border border-neon-cyan/40 bg-void p-6 shadow-[0_0_30px_rgba(0,255,255,0.05)]">
         <header className="border-b border-neon-cyan/30 pb-4">
           <p className="font-mono text-sm uppercase tracking-[0.35em] text-neon-cyan animate-pulse">
             {t('login.vaultPassphraseLabel')}
@@ -180,7 +180,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
           <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
             {displayHandle}
           </p>
-          <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-red-900">
+          <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-danger">
             E2E // {t('login.pinMin8')}
           </p>
         </header>
@@ -195,14 +195,14 @@ export function VaultModal({ userId, displayHandle }: Props) {
               type="password"
               autoComplete="current-password"
               autoFocus
-              className="w-full border border-neon-cyan/30 bg-black px-3 py-2 font-mono text-neon-cyan transition-colors focus:border-neon-cyan focus:bg-neon-cyan/5 focus:outline-none"
+              className="w-full border border-neon-cyan/30 bg-void px-3 py-2 font-mono text-neon-cyan transition-colors focus:border-neon-cyan focus:bg-neon-cyan/5 focus:outline-none"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               required
             />
           </div>
           {error ? (
-            <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
+            <p className="border-l-2 border-neon-red bg-danger/30 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
               {error}
             </p>
           ) : null}

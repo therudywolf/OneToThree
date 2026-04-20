@@ -149,27 +149,27 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-zinc-950/90 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-void/90 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-lg border border-neutral-900 bg-black p-6 shadow-2xl">
+      <div className="relative w-full max-w-lg border border-border-strong bg-void p-6 shadow-2xl">
         {/* TOP_DECOR */}
         <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50" />
 
-        <header className="mb-6 flex items-start justify-between border-b border-neutral-900 pb-4">
+        <header className="mb-6 flex items-start justify-between border-b border-border-strong pb-4">
           <div className="space-y-1">
             <h2 className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
               {t('group.title')}
             </h2>
-            <p className="font-mono text-[9px] text-zinc-600">
+            <p className="font-mono text-[9px] text-text-muted/70">
               {isPublic ? t('group.hintPublic') : t('group.hintEcdh')}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-zinc-700 transition-colors hover:text-neon-red"
+            className="text-text-muted/70 transition-colors hover:text-neon-red"
           >
             [X]
           </button>
@@ -177,7 +177,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
 
         <form onSubmit={(ev) => void handleGenesis(ev)} className="space-y-5">
           {/* PUBLIC_GROUP_TOGGLE */}
-          <div className="border border-neutral-900 bg-zinc-950 p-3 transition-colors hover:border-neutral-800">
+          <div className="border border-border-strong bg-void p-3 transition-colors hover:border-border-strong">
             <label className="flex cursor-pointer items-center gap-3">
               <input
                 type="checkbox"
@@ -185,24 +185,24 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
                 onChange={(e) => setIsPublic(e.target.checked)}
                 className="h-3 w-3 accent-neon-cyan"
               />
-              <span className="text-[9px] uppercase tracking-widest text-zinc-400">
+              <span className="text-[9px] uppercase tracking-widest text-text-muted">
                 {t('group.publicToggle')}
               </span>
             </label>
-            <p className="mt-2 pl-6 text-[8px] leading-relaxed text-zinc-600">
+            <p className="mt-2 pl-6 text-[8px] leading-relaxed text-text-muted/70">
               {isPublic ? t('group.publicHintChecked') : t('group.publicHintUnchecked')}
             </p>
           </div>
 
           {/* CHANNEL_NAME_INPUT */}
           <div className="space-y-2">
-            <label className="text-[9px] uppercase tracking-widest text-zinc-500" htmlFor="grp-name">
+            <label className="text-[9px] uppercase tracking-widest text-text-muted" htmlFor="grp-name">
               {t('group.channelName')}{isPublic ? ' *' : ''}
             </label>
             <input
               id="grp-name"
               autoFocus
-              className="w-full border border-neutral-900 bg-zinc-950 px-3 py-2 font-mono text-xs text-white outline-none transition-all focus:border-neon-cyan/50"
+              className="w-full border border-border-strong bg-void px-3 py-2 font-mono text-xs text-text-primary outline-none transition-all focus:border-neon-cyan/50"
               value={channelName}
               onChange={(e) => setChannelName(e.target.value)}
               placeholder={isPublic ? t('group.publicNameRequired') : t('group.optional')}
@@ -212,13 +212,13 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
 
           {/* RADAR_SEARCH_INPUT */}
           <div className="space-y-2">
-            <label className="text-[9px] uppercase tracking-widest text-zinc-500" htmlFor="grp-radar">
+            <label className="text-[9px] uppercase tracking-widest text-text-muted" htmlFor="grp-radar">
               {t('group.searchLabel')}
             </label>
             <div className="relative">
               <input
                 id="grp-radar"
-                className="w-full border border-neutral-900 bg-zinc-950 px-3 py-2 font-mono text-xs text-white outline-none transition-all focus:border-neon-red/50"
+                className="w-full border border-border-strong bg-void px-3 py-2 font-mono text-xs text-text-primary outline-none transition-all focus:border-neon-red/50"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('group.searchPlaceholder')}
@@ -233,9 +233,9 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </div>
 
           {/* RADAR_RESULTS */}
-          <div className="max-h-32 overflow-y-auto border border-neutral-900 bg-black/40">
+          <div className="max-h-32 overflow-y-auto border border-border-strong bg-void/40">
             {radarResults.length === 0 ? (
-              <p className="p-4 text-center font-mono text-[10px] text-zinc-800">
+              <p className="p-4 text-center font-mono text-[10px] text-text-muted/50">
                 {t('group.noHits')}
               </p>
             ) : (
@@ -246,13 +246,13 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
                     key={node.id}
                     type="button"
                     onClick={() => toggleNode(node)}
-                    className={`flex w-full items-center justify-between border-b border-neutral-900 px-4 py-2.5 text-left font-mono text-xs transition-colors last:border-b-0 hover:bg-white/[0.03] ${
-                      isSelected ? 'text-neon-cyan' : 'text-zinc-500'
+                    className={`flex w-full items-center justify-between border-b border-border-strong px-4 py-2.5 text-left font-mono text-xs transition-colors last:border-b-0 hover:bg-surface/[0.03] ${
+                      isSelected ? 'text-neon-cyan' : 'text-text-muted'
                     }`}
                   >
                     <span>{node.username}</span>
                     {!isPublic && (
-                      <span className={`text-[9px] ${node.ecdh_public_key_jwk ? 'text-zinc-700' : 'text-neon-red'}`}>
+                      <span className={`text-[9px] ${node.ecdh_public_key_jwk ? 'text-text-muted/70' : 'text-neon-red'}`}>
                         {node.ecdh_public_key_jwk ? 'P256_READY' : t('group.noEcdhBadge')}
                       </span>
                     )}
@@ -263,8 +263,8 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </div>
 
           {/* SELECTION_SUMMARY */}
-          <div className="border-l border-neutral-800 pl-3">
-            <p className="text-[9px] uppercase tracking-widest text-zinc-700">{t('group.selectedLabel')}</p>
+          <div className="border-l border-border-strong pl-3">
+            <p className="text-[9px] uppercase tracking-widest text-text-muted/70">{t('group.selectedLabel')}</p>
             <p className="mt-1 font-mono text-[10px] text-neon-cyan truncate">
               {selectedNodes.length === 0
                 ? t('group.selectHint')
@@ -291,7 +291,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="border border-neutral-800 bg-black px-6 font-mono text-[10px] uppercase tracking-widest text-zinc-600 transition-all hover:border-neon-red hover:text-neon-red"
+              className="border border-border-strong bg-void px-6 font-mono text-[10px] uppercase tracking-widest text-text-muted/70 transition-all hover:border-neon-red hover:text-neon-red"
             >
               [ {t('group.cancel')} ]
             </button>

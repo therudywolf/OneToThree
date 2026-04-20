@@ -20,7 +20,7 @@ export function OfflineBanner() {
           transition={{ duration: 0.25 }}
           className="overflow-hidden"
         >
-          <div className="animate-pulse border-b border-neon-red bg-red-950/80 px-3 py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.3em] text-neon-red">
+          <div className="animate-pulse border-b border-neon-red bg-danger/30 px-3 py-1.5 text-center font-mono text-[10px] uppercase tracking-[0.3em] text-neon-red">
             {!is_online
               ? t('offline.banner')
               : is_linked

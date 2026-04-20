@@ -10,9 +10,10 @@ import {
 import { getDownloadUrl } from '@/lib/api/storage'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { useTranslation } from '@/hooks/use-translation'
-import { parseAttachmentEnvelope } from '@/lib/attachment-envelope'
+import { classifyAttachment, parseAlbumEnvelope, parseAttachmentEnvelope } from '@/lib/attachment-envelope'
 import type { DecryptedMessage } from '@/types/chat'
 import { SkipBack, SkipForward, FileText, Download } from 'lucide-react'
+import { AlbumBubble } from '@/components/chat/album-bubble'
 
 function mimeFromPathAndType(
   mediaPath: string,
@@ -86,9 +87,14 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   const mediaIv = message.media_iv
   const mediaType = message.media_type
 
-  const envelope = useMemo(
-    () => parseAttachmentEnvelope(message.plaintext),
+  const albumEnvelope = useMemo(
+    () => parseAlbumEnvelope(message.plaintext),
     [message.plaintext]
+  )
+
+  const envelope = useMemo(
+    () => (albumEnvelope ? null : parseAttachmentEnvelope(message.plaintext)),
+    [albumEnvelope, message.plaintext]
   )
 
   const caption = envelope?.caption ?? null
@@ -98,6 +104,20 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     // Strip codec params for reliable browser playback
     return raw.split(';')[0]
   }, [envelope, mediaPath, mediaType])
+
+  // Classify the attachment using explicit envelope.kind (v1.1+) with MIME / filename fallback
+  // for legacy messages. This replaces the old "endsWith('.webm')" heuristic that
+  // erroneously turned every WebM video into a circle preview.
+  const attachmentKind = useMemo(
+    () =>
+      classifyAttachment({
+        envelope,
+        mediaType,
+        mimeType: effectiveMime,
+        fileName: envelope?.fileName ?? mediaPath ?? null,
+      }),
+    [envelope, mediaType, effectiveMime, mediaPath]
+  )
 
   const blobUrlRef = useRef<string | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
@@ -209,11 +229,22 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     }
   }, [visible, decrypt, mediaPath, mediaIv, sharedKey, isPublicMedia])
 
+  if (albumEnvelope) {
+    return (
+      <AlbumBubble
+        messageId={message.id}
+        envelope={albumEnvelope}
+        sharedKey={sharedKey}
+        onMediaClick={onMediaClick}
+      />
+    )
+  }
+
   if (!mediaPath || !mediaIv) return null
 
   if (!sharedKey && !isPublicMedia) {
     return (
-      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-zinc-500">
+      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-text-muted">
         {t('errors.signalLost')}
       </div>
     )
@@ -221,7 +252,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
   if (loadErr) {
     return (
-      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-zinc-500">
+      <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-text-muted">
         {t('errors.signalLost')}
       </div>
     )
@@ -284,7 +315,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
           <a
             href={objectUrl}
             download={displayName}
-            className="flex h-8 items-center gap-1 border border-neon-cyan/30 bg-black px-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+            className="flex h-8 items-center gap-1 border border-neon-cyan/30 bg-void px-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
           >
             <Download className="h-3 w-3" />
             {t('media.download')}
@@ -298,7 +329,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   if (isAudio) {
     return (
       <div>
-        <div className="mt-2 max-w-sm rounded-none border border-neon-cyan/40 bg-black p-2 shadow-[0_0_10px_rgba(0,255,255,0.05)]">
+        <div className="mt-2 max-w-sm rounded-none border border-neon-cyan/40 bg-void p-2 shadow-[0_0_10px_rgba(0,255,255,0.05)]">
           <audio
             ref={audioRef}
             src={objectUrl}
@@ -347,7 +378,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                 if (playing) el.pause()
                 else void el.play()
               }}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-black font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-black"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-void font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-text-primary"
             >
               {playing ? '||' : '▶'}
             </button>
@@ -360,7 +391,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                   audioRef.current.playbackRate = newSpeed
                 }
               }}
-              className="flex h-7 w-8 shrink-0 items-center justify-center rounded-none border border-neon-cyan/30 bg-black font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
+              className="flex h-7 w-8 shrink-0 items-center justify-center rounded-none border border-neon-cyan/30 bg-void font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
             >
               {playbackSpeed}x
             </button>
@@ -368,7 +399,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               <button
                 type="button"
                 onClick={onPrevVoice}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-void text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
                 title={t('media.prevVoice')}
               >
                 <SkipBack className="h-3 w-3" />
@@ -378,7 +409,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               <button
                 type="button"
                 onClick={onNextVoice}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-void text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
                 title={t('media.nextVoice')}
               >
                 <SkipForward className="h-3 w-3" />
@@ -403,13 +434,13 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             <a
               href={objectUrl}
               download={displayName}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-black text-neon-cyan/70 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-void text-neon-cyan/70 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
               title={t('media.download')}
             >
               <Download className="h-3 w-3" />
             </a>
           </div>
-          <div className="mt-2 h-[2px] w-full rounded-none bg-zinc-900 overflow-hidden">
+          <div className="mt-2 h-[2px] w-full rounded-none bg-void overflow-hidden">
             <div
               className="h-full rounded-none bg-neon-cyan transition-all duration-100 ease-linear"
               style={{ width: `${progress}%` }}
@@ -422,10 +453,14 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   }
 
   if (isVideo) {
+    // Render as a video-note circle only when the sender explicitly flagged it
+    // (envelope.kind === 'video_circle') or when the legacy filename heuristic
+    // matches. Generic uploaded WebM videos now render as normal video players.
     const circleStyle =
-      effectiveMime === 'video/webm' &&
-      (displayName.toLowerCase().includes('video-') ||
-        displayName.toLowerCase().endsWith('.webm'))
+      attachmentKind === 'video_circle' ||
+      (!envelope?.kind &&
+        effectiveMime === 'video/webm' &&
+        /^video-(note|circle)-/i.test(displayName))
 
     if (circleStyle) {
       const expandedSize = 'min(65vw, 24rem)'
@@ -439,7 +474,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[80] bg-black/60"
+                className="fixed inset-0 z-[80] bg-void/60"
                 onClick={() => setVideoNoteExpanded(false)}
               />
             )}
@@ -451,7 +486,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               width: videoNoteExpanded ? expandedSize : collapsedSize,
             }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className={`relative rounded-sm border bg-black/40 p-2 ${
+            className={`relative rounded-sm border bg-void/40 p-2 ${
               videoNoteExpanded
                 ? 'z-[90] border-neon-cyan/60 shadow-[0_0_30px_rgba(0,255,255,0.25)]'
                 : 'border-neon-cyan/20'
@@ -516,7 +551,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                     if (playing) el.pause()
                     else void el.play()
                   }}
-                  className="flex h-6 items-center justify-center rounded-none border border-neon-red bg-black px-2 font-mono text-[9px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-cyan hover:bg-neon-cyan hover:text-black"
+                  className="flex h-6 items-center justify-center rounded-none border border-neon-red bg-void px-2 font-mono text-[9px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-cyan hover:bg-neon-cyan hover:text-text-primary"
                 >
                   {playing ? '|| PAUSE' : '\u25B6 UNMUTE'}
                 </button>
@@ -531,7 +566,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                 )}
               </div>
               {videoNoteExpanded ? (
-                <div className="h-[2px] w-full rounded-none bg-zinc-900 overflow-hidden">
+                <div className="h-[2px] w-full rounded-none bg-void overflow-hidden">
                   <div
                     className="h-full rounded-none bg-neon-cyan transition-all duration-100 ease-linear"
                     style={{ width: `${progress}%` }}
@@ -547,11 +582,11 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
     return (
       <div>
-        <div className="mt-2 max-w-md border border-neon-cyan/40 bg-black p-1" style={{ aspectRatio: '16/9' }}>
+        <div className="mt-2 max-w-md border border-neon-cyan/40 bg-void p-1" style={{ aspectRatio: '16/9' }}>
           <video
             ref={videoRef}
             src={objectUrl}
-            className="aspect-video w-full cursor-pointer bg-black object-contain"
+            className="aspect-video w-full cursor-pointer bg-void object-contain"
             playsInline
             muted
             autoPlay={false}
@@ -571,7 +606,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
           <a
             href={objectUrl}
             download={displayName}
-            className="flex h-8 items-center gap-1 border border-neon-cyan/30 bg-black px-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+            className="flex h-8 items-center gap-1 border border-neon-cyan/30 bg-void px-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
           >
             <Download className="h-3 w-3" />
             {t('media.download')}
@@ -586,14 +621,14 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   const ext = displayName.split('.').pop()?.toLowerCase() ?? ''
   return (
     <div>
-      <div className="mt-2 max-w-sm border border-zinc-700 bg-zinc-950/80 font-mono">
+      <div className="mt-2 max-w-sm border border-border-strong bg-void/80 font-mono">
         <div className="flex items-center gap-3 p-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan/30 bg-black">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan/30 bg-void">
             <FileText className="h-5 w-5 text-neon-cyan/60" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs text-zinc-300">{displayName}</p>
-            <div className="flex items-center gap-2 text-[10px] text-zinc-600">
+            <p className="truncate text-xs text-text-primary">{displayName}</p>
+            <div className="flex items-center gap-2 text-[10px] text-text-muted/70">
               {ext ? <span className="uppercase">{ext}</span> : null}
               {displaySize != null ? (
                 <span>{formatFileSize(displaySize)}</span>
@@ -603,7 +638,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
           <a
             href={objectUrl}
             download={displayName}
-            className="flex h-8 w-8 shrink-0 items-center justify-center border border-neon-cyan/40 bg-black text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+            className="flex h-8 w-8 shrink-0 items-center justify-center border border-neon-cyan/40 bg-void text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
             title={t('media.download')}
           >
             <Download className="h-4 w-4" />

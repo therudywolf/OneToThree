@@ -71,7 +71,7 @@ export function UserAvatar({
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full border border-neon-cyan/70 bg-black font-mono text-[0.55em] font-bold uppercase leading-none text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.12)] ${className}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-full border border-neon-cyan/70 bg-void font-mono text-[0.55em] font-bold uppercase leading-none text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.12)] ${className}`}
       style={{ width: px, height: px }}
       aria-hidden
     >

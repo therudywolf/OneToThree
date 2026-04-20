@@ -70,7 +70,7 @@ export function PushOnboardingBanner() {
 
   return (
     <div
-      className="flex shrink-0 items-center justify-between gap-3 border-b border-neon-cyan/35 bg-zinc-950/90 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-neon-cyan/90 shadow-[inset_0_1px_0_rgba(34,211,238,0.15)]"
+      className="flex shrink-0 items-center justify-between gap-3 border-b border-neon-cyan/35 bg-void/90 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-neon-cyan/90 shadow-[inset_0_1px_0_rgba(34,211,238,0.15)]"
       role="status"
     >
       <div className="flex min-w-0 items-center gap-2">
@@ -92,7 +92,7 @@ export function PushOnboardingBanner() {
         <button
           type="button"
           onClick={onDismiss}
-          className="border border-red-900/70 p-1.5 text-red-800 hover:border-neon-red hover:text-neon-red"
+          className="border border-danger/40 p-1.5 text-danger hover:border-neon-red hover:text-neon-red"
           aria-label={t('common.dismiss')}
         >
           <X className="h-3.5 w-3.5" strokeWidth={1.5} />

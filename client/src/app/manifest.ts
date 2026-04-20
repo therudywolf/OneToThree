@@ -13,14 +13,47 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'OneToThree',
     description: 'Clinical-grade zero-trust E2E transmission node',
     lang: 'ru',
-    start_url: '/',
+    dir: 'ltr',
+    start_url: '/?source=pwa',
     scope: '/',
     display: 'standalone',
-    display_override: ['standalone', 'window-controls-overlay', 'browser'],
+    display_override: ['window-controls-overlay', 'standalone', 'browser'],
     background_color: '#000000',
     theme_color: '#000000',
-    orientation: 'portrait-primary',
+    orientation: 'any',
     categories: ['social', 'utilities', 'security'],
+    prefer_related_applications: false,
+    launch_handler: {
+      client_mode: ['navigate-existing', 'auto'],
+    },
+    shortcuts: [
+      {
+        name: 'New chat',
+        short_name: 'Chat',
+        description: 'Open the main chat surface',
+        url: '/?action=new-chat',
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        ],
+      },
+      {
+        name: 'My devices',
+        short_name: 'Devices',
+        description: 'Linked devices management',
+        url: '/?panel=devices',
+        icons: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        ],
+      },
+    ],
+    screenshots: [
+      {
+        src: '/og.png',
+        sizes: '1200x630',
+        type: 'image/png',
+        label: 'OneToThree home screen',
+      },
+    ],
 
     /**
      * RESOURCE_ASSETS

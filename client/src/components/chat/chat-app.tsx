@@ -546,12 +546,12 @@ export function ChatApp({
       ) : null}
 
       {/* ─── HEADER ────────────────────────────────────────────────────────────────────────── */}
-      <header className="chat-header-compact flex shrink-0 items-center gap-2 border-b border-neon-cyan/40 bg-void px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] font-mono">
+      <header className="p13-header chat-header-compact flex shrink-0 items-center gap-2 px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))]">
 
         {/* Burger — mobile only */}
         <button
           type="button"
-          className="touch-manipulation flex shrink-0 md:hidden h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-void text-neon-cyan hover:border-neon-red hover:text-neon-red"
+          className="p13-icon-btn touch-manipulation md:hidden"
           aria-label={t('call.openChannels')}
           onClick={() => setMobileSidebarOpen(true)}
         >
@@ -655,7 +655,7 @@ export function ChatApp({
               }}
               aria-label={t('chatSearch.title')}
               title={t('chatSearch.title')}
-              className="touch-manipulation flex h-10 w-10 items-center justify-center border border-neon-cyan/60 bg-void text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+              className="p13-icon-btn touch-manipulation"
             >
               <Search className="h-4 w-4" aria-hidden />
             </button>
@@ -666,7 +666,7 @@ export function ChatApp({
             type="button"
             onClick={() => setSettingsOpen(true)}
             aria-label="CFG"
-            className="touch-manipulation flex h-10 w-10 items-center justify-center border border-neon-cyan/60 bg-void text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+            className="p13-icon-btn touch-manipulation"
           >
             <Settings className="h-4 w-4" aria-hidden />
           </button>

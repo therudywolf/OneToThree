@@ -517,7 +517,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="chat-compose-shell sticky bottom-0 z-10 shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-void p-2 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200"
+      className="p13-composer chat-compose-shell sticky bottom-0 z-10 shrink-0 touch-manipulation p-2 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))]"
       style={{
         paddingBottom:
           'calc(max(0.5rem, env(safe-area-inset-bottom)) + var(--p13-keyboard-inset, 0px))',
@@ -609,7 +609,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           <div ref={emojiContainerRef} className="relative shrink-0">
             <button
               type="button"
-              className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-void text-neon-cyan/70 hover:text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors"
+              className="p13-icon-btn"
               disabled={disabled}
               onClick={() => {
                 // On xl+ viewports open the shared right-dock emoji slot
@@ -650,7 +650,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         <div className="relative shrink-0">
           <button
             type="button"
-            className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40 transition-colors"
+            className="p13-icon-btn"
             disabled={disabled || isRecordingUI}
             onClick={handleAttachClick}
             title={t('chat.attachFile')}
@@ -661,13 +661,15 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
 
         {/* Input field */}
         <div className="relative flex-1">
-          <div className={`flex items-center gap-2 rounded border px-3 py-2 ${
-            isRecordingUI ? 'border-neon-red/70 bg-void' : 'border-neon-cyan/40 bg-void'
-          }`}>
+          <div
+            className={`p13-composer-input relative ${
+              isRecordingUI ? 'ring-1 ring-danger/40' : ''
+            }`}
+          >
             <textarea
               ref={inputRef}
               rows={1}
-              className="terminal-input flex-1 min-h-6 max-h-24 resize-none bg-transparent text-neon-cyan placeholder-neon-cyan/40 focus:outline-none disabled:cursor-not-allowed"
+              className="flex-1 min-h-6 max-h-24 resize-none bg-transparent border-0 outline-none text-[color:var(--on-surface)] placeholder:text-[color:var(--text-muted)] disabled:cursor-not-allowed"
               style={{ fontSize: 'max(16px, 1em)' }}
               value={messageText}
               onChange={(e) => {
@@ -722,17 +724,13 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         {/* Record button */}
         <button
           type="button"
-          className={`shrink-0 select-none border bg-void transition-all disabled:opacity-40
-            flex h-10 w-10 items-center justify-center
-            ${
-              isRecordingUI
-                ? 'border-danger/40 bg-danger/30 text-danger/60'
-                : mediaMode === 'voice'
-                ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'
-                : 'border-neon-red text-neon-red hover:bg-neon-red/10'
-            }
-            ${showSendOnMobile ? 'hidden md:flex' : 'flex'}
-          `}
+          className={`p13-icon-btn shrink-0 select-none ${
+            isRecordingUI
+              ? 'p13-icon-btn--danger'
+              : mediaMode === 'voice'
+              ? 'p13-icon-btn--primary'
+              : 'p13-icon-btn--danger'
+          } ${showSendOnMobile ? 'hidden md:inline-flex' : ''}`}
           disabled={disabled || !cryptoCtx}
           onContextMenu={handleContextMenu}
           onPointerDown={handleRecordPointerDown}
@@ -759,9 +757,9 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         <button
           type="button"
           disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
-          className={`shrink-0 flex h-10 w-10 items-center justify-center border border-neon-cyan bg-void text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors
-            ${showSendOnMobile ? 'flex' : 'hidden md:flex'}
-          `}
+          className={`p13-icon-btn p13-icon-btn--primary shrink-0 ${
+            showSendOnMobile ? 'inline-flex' : 'hidden md:inline-flex'
+          }`}
           title={t('common.send')}
           onClick={handleSendClick}
         >

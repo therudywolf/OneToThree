@@ -187,6 +187,7 @@ type UserChatRow = {
   inviteCode: string | null
   myRole: ChatMemberRole
   isFavorite: boolean
+  mutedUntil: string | null | undefined
 }
 
 async function loadUserChats(userId: string): Promise<UserChatRow[]> {

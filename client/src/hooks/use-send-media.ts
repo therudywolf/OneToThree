@@ -285,6 +285,7 @@ export function useSendMedia(
           chatId: ctx.activeChatId,
           fileName: prepared.label,
           fileType: prepared.mimeType,
+          fileSize: prepared.workSize,
         })
         await injectWithRetry(uploadUrl, prepared.mimeType, prepared.uploadPayload)
 
@@ -393,6 +394,7 @@ export function useSendMedia(
               chatId: ctx.activeChatId,
               fileName: p.label,
               fileType: p.mimeType,
+              fileSize: p.workSize,
             })
             await injectWithRetry(uploadUrl, p.mimeType, p.uploadPayload)
             return { ...p, filePath }

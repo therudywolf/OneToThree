@@ -10,6 +10,7 @@ export async function postUploadUrl(body: {
   fileName: string
   fileType: string
   chatId: string
+  fileSize: number
 }): Promise<UploadUrlResponse> {
   const res = await fetch(`${API_URL}/storage/upload-url`, {
     method: 'POST',

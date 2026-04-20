@@ -853,7 +853,11 @@ export function ChatTerminal({
         const scrollEl = ref.current
         if (scrollEl) prevScrollHeightRef.current = scrollEl.scrollHeight
         setLoadingOlder(true)
-        void getOlderCachedMessages(activeChatId, OLDER_PAGE_SIZE + olderMessages.length)
+        void getOlderCachedMessages(
+          activeChatId,
+          { created_at: oldestLoaded.created_at, id: oldestLoaded.id },
+          OLDER_PAGE_SIZE
+        )
           .then((rows) => {
             if (!rows.length) {
               setHasMoreOlder(false)
@@ -880,7 +884,14 @@ export function ChatTerminal({
     )
     io.observe(topSentinelRef.current)
     return () => io.disconnect()
-  }, [activeChatId, hasMoreOlder, loadingOlder, oldestLoaded, olderMessages.length])
+  }, [
+    activeChatId,
+    hasMoreOlder,
+    loadingOlder,
+    oldestLoaded?.id,
+    oldestLoaded?.created_at,
+    olderMessages.length,
+  ])
 
   if (!activeChatId) {
     return (

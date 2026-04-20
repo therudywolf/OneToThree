@@ -11,6 +11,7 @@
 
 import { openDB, deleteDB } from 'idb'
 import type { IDBPDatabase, DBSchema } from 'idb'
+import { API_URL } from '@/lib/api/auth'
 import type { SendChatMessageBody } from '@/lib/api/messages'
 
 const DB_NAME = 'p13-outbox'
@@ -101,5 +102,38 @@ export async function registerOutboxSync(): Promise<void> {
     }
   } catch {
     // Background Sync not supported or permission denied — silent
+  }
+}
+
+let flushingOutbox = false
+
+/**
+ * Retry pending outbox sends after transport comes back (WebSocket `open`,
+ * `window` `online`). Stops at the first failing send.
+ */
+export async function flushOutboxPending(): Promise<void> {
+  if (flushingOutbox || typeof indexedDB === 'undefined') return
+  flushingOutbox = true
+  try {
+    const entries = await readOutbox()
+    for (const entry of entries) {
+      try {
+        const res = await fetch(`${API_URL}/messages/send`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry.body),
+        })
+        if (res.ok) {
+          await removeOutboxEntry(entry.id)
+        } else {
+          break
+        }
+      } catch {
+        break
+      }
+    }
+  } finally {
+    flushingOutbox = false
   }
 }

@@ -156,6 +156,11 @@ export const chats = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name'),
     type: chatTypeEnum('type').notNull(),
+    /**
+     * Increments when membership changes require clients to rotate the shared
+     * group key (e.g. member kicked). Server does not hold the key material.
+     */
+    keyEpoch: integer('key_epoch').notNull().default(0),
     /** Random slug for group invite links; unique when set. */
     inviteCode: text('invite_code'),
     /** When true, first successful join by a new member clears `invite_code`. */

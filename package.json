@@ -26,6 +26,7 @@
     "test:all": "npm run typecheck && npm run lint && npm run test:server && npm run test:unit:client && npm run test:e2e",
     "audit:security": "node scripts/audit-security-lint.mjs",
     "audit:security:strict": "cross-env STRICT=1 node scripts/audit-security-lint.mjs",
+    "review:security-pdf": "node scripts/print-security-review.mjs",
     "docker:up": "docker compose up --build",
     "docker:up:d": "docker compose up --build -d",
     "docker:down": "docker compose down",

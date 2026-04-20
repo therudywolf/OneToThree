@@ -1,5 +1,6 @@
 'use client'
 
+import { flushOutboxPending } from '@/lib/outbox'
 import { fetchWsTicket } from './auth'
 
 let warnedMissingWsEnv = false
@@ -70,6 +71,7 @@ export type WsInboundMessage =
     }
   | { type: 'webrtc_signal'; fromUserId: string; signalData: unknown }
   | { type: 'chats_updated' }
+  | { type: 'group_key_epoch'; chat_id: string; key_epoch: number }
   | { type: 'message_deleted'; message_id: string; chat_id: string }
   | {
       type: 'message_pin_changed'
@@ -210,8 +212,18 @@ class FmSocketClient {
   private ticket: string | null = null
   private wantOpen = false
   private outboundQueue: string[] = []
+  private onlineOutboxListenerAttached = false
+
+  private ensureOnlineOutboxFlush(): void {
+    if (this.onlineOutboxListenerAttached || typeof window === 'undefined') return
+    this.onlineOutboxListenerAttached = true
+    window.addEventListener('online', () => {
+      void flushOutboxPending()
+    })
+  }
 
   subscribe(fn: (m: WsInboundMessage) => void): () => void {
+    this.ensureOnlineOutboxFlush()
     this.listeners.add(fn)
     this.refCount++
     this.wantOpen = true
@@ -311,6 +323,7 @@ class FmSocketClient {
         if (!raw) break
         this.ws.send(raw)
       }
+      void flushOutboxPending()
       this.emitStatus()
     }
 

@@ -45,6 +45,22 @@ jobs:
       - name: npm audit (high or above fails the job)
         run: npm audit --audit-level=high
 
+  # Design-token / theme string audits: informational until tokens are aligned.
+  audit-security-design-tokens:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: audit-security-lint with STRICT=1 (non-blocking)
+        env:
+          STRICT: "1"
+        run: node scripts/audit-security-lint.mjs
+
   typecheck:
     runs-on: ubuntu-latest
     steps:

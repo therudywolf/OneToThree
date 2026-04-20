@@ -27,6 +27,8 @@ export type ApiChatRow = {
   my_role?: ChatMemberRole
   /** Group: invite slug when you may manage links. */
   invite_code?: string | null
+  /** Server bump when group membership requires key rotation (group_e2e). */
+  key_epoch?: number
 }
 
 /** Client-side helper: is this chat currently muted? */

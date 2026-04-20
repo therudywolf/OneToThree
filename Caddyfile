@@ -30,7 +30,10 @@ api.onetothree.ru {
 
 s3.onetothree.ru {
 	import security_headers
-	reverse_proxy minio:9000
+	reverse_proxy minio:9000 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
 }
 
 # TURN hostname — Caddy only holds a certificate here so the operator cron

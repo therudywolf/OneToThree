@@ -21,13 +21,19 @@ type DockState = {
   profileUserId: string | null
   emojiOnPick: ((emoji: string) => void) | null
   searchScopeChatId: string | null
+  /**
+   * Callback wired by the chat view that the search panel invokes to scroll
+   * and highlight a clicked result. Reset on close to avoid stale closures
+   * leaking between different chats.
+   */
+  searchOnJump: ((messageId: string) => void) | null
   pinnedChatId: string | null
   /** Cross-slot payload: last message the user long-pressed/right-clicked. */
   lastCtxMessage: DecryptedMessage | null
 
   openProfile: (userId: string) => void
   openEmoji: (onPick: (emoji: string) => void) => void
-  openSearch: (chatId: string) => void
+  openSearch: (chatId: string, onJump?: (messageId: string) => void) => void
   openPinned: (chatId: string) => void
   close: () => void
   toggle: (slot: DockSlot) => void
@@ -38,6 +44,7 @@ export const useDockStore = create<DockState>((set, get) => ({
   profileUserId: null,
   emojiOnPick: null,
   searchScopeChatId: null,
+  searchOnJump: null,
   pinnedChatId: null,
   lastCtxMessage: null,
 
@@ -45,8 +52,8 @@ export const useDockStore = create<DockState>((set, get) => ({
     set({ slot: 'profile', profileUserId: userId }),
   openEmoji: (onPick) =>
     set({ slot: 'emoji', emojiOnPick: onPick }),
-  openSearch: (chatId) =>
-    set({ slot: 'search', searchScopeChatId: chatId }),
+  openSearch: (chatId, onJump) =>
+    set({ slot: 'search', searchScopeChatId: chatId, searchOnJump: onJump ?? null }),
   openPinned: (chatId) =>
     set({ slot: 'pinned', pinnedChatId: chatId }),
   close: () =>
@@ -55,6 +62,7 @@ export const useDockStore = create<DockState>((set, get) => ({
       profileUserId: null,
       emojiOnPick: null,
       searchScopeChatId: null,
+      searchOnJump: null,
       pinnedChatId: null,
     }),
   toggle: (slot) => {

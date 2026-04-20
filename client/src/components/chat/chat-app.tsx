@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star, Settings } from 'lucide-react'
+import { Menu, ShieldCheck, Star, Settings, Search } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -32,6 +32,8 @@ import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
 import { DockPanel } from '@/components/chat/dock-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
+import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
+import { scrollToMessage } from '@/lib/chat-scroll'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
@@ -157,6 +159,7 @@ export function ChatApp({
   const [groupDetailTick, setGroupDetailTick] = useState(0)
   const [peerAvatarKey, setPeerAvatarKey] = useState<string | null>(null)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [headerProfileOpen, setHeaderProfileOpen] = useState(false)
 
   const {
@@ -522,6 +525,26 @@ export function ChatApp({
         />
       ) : null}
 
+      {/* Mobile per-chat search overlay. On xl+ we render the same panel in
+          the right dock (see DockPanel / `openSearch`); on narrower screens
+          we use a full-height sheet so the chat stays reachable behind it. */}
+      {mobileSearchOpen ? (
+        <div
+          className="fixed inset-0 z-[120] flex flex-col bg-void/95 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-sm xl:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('chatSearch.title')}
+        >
+          <ChatSearchPanel
+            onClose={() => setMobileSearchOpen(false)}
+            onJumpToMessage={(id) => {
+              setMobileSearchOpen(false)
+              scrollToMessage(id)
+            }}
+          />
+        </div>
+      ) : null}
+
       {/* ─── HEADER ────────────────────────────────────────────────────────────────────────── */}
       <header className="chat-header-compact flex shrink-0 items-center gap-2 border-b border-neon-cyan/40 bg-void px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] font-mono">
 
@@ -614,6 +637,29 @@ export function ChatApp({
 
           {/* Vertical separator */}
           <span className="h-6 w-px shrink-0 bg-neon-cyan/20" aria-hidden />
+
+          {/* Per-chat search — opens dock search slot on xl+, or toggles an
+              inline overlay on narrower viewports. Gated on an active chat. */}
+          {activeChatId ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!activeChatId) return
+                if (matchesDockViewport()) {
+                  useDockStore.getState().openSearch(activeChatId, (id) => {
+                    scrollToMessage(id)
+                  })
+                } else {
+                  setMobileSearchOpen(true)
+                }
+              }}
+              aria-label={t('chatSearch.title')}
+              title={t('chatSearch.title')}
+              className="touch-manipulation flex h-10 w-10 items-center justify-center border border-neon-cyan/60 bg-void text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+            >
+              <Search className="h-4 w-4" aria-hidden />
+            </button>
+          ) : null}
 
           {/* Settings — gear icon always, no text label */}
           <button

@@ -93,13 +93,15 @@ export function MessageActions({
     // The composer-side infra (`editingMessage` in chatStore, edit banner)
     // is already in place so toggling `show: true` will light it up.
     { key: 'edit', label: t('msgAction.edit'), icon: Pencil, show: false },
-    // Forward hidden until server-side /messages/forward endpoint is implemented.
-    // Keep the type union intact — feature is off, not gone.
+    // Forward: client-side re-encryption under the target chat's crypto context
+    // (see `handleForward` in chat-terminal.tsx). No dedicated server endpoint —
+    // the standard `/messages/send` pipeline handles it because forwarding is
+    // just "send this plaintext to another chat". Enabled for non-empty text.
     {
       key: 'forward',
       label: t('msgAction.forward'),
       icon: Forward,
-      show: false,
+      show: !!message.plaintext,
     },
     {
       key: 'pin',

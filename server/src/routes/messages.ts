@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -433,21 +434,17 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const q = request.query as { type?: string }
     const filterType = q.type === 'files' ? 'files' : 'media'
 
-    const myDirectChats = await db
-      .select({ chatId: chatMembers.chatId })
-      .from(chatMembers)
-      .innerJoin(chats, eq(chats.id, chatMembers.chatId))
-      .where(and(eq(chatMembers.userId, user.id), eq(chats.type, 'direct_e2e')))
-
-    const sharedChatIds: string[] = []
-    for (const { chatId } of myDirectChats) {
-      const peer = await db
-        .select({ one: chatMembers.userId })
-        .from(chatMembers)
-        .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, targetUserId)))
-        .limit(1)
-      if (peer.length) sharedChatIds.push(chatId)
-    }
+    // Shared direct_e2e chats between `user.id` and `targetUserId` — single
+    // query instead of the previous O(chats) per-chat members fetch.
+    const meCm = alias(chatMembers, 'me_cm')
+    const themCm = alias(chatMembers, 'them_cm')
+    const sharedRows = await db
+      .select({ chatId: chats.id })
+      .from(chats)
+      .innerJoin(meCm, and(eq(meCm.chatId, chats.id), eq(meCm.userId, user.id)))
+      .innerJoin(themCm, and(eq(themCm.chatId, chats.id), eq(themCm.userId, targetUserId)))
+      .where(eq(chats.type, 'direct_e2e'))
+    const sharedChatIds = sharedRows.map((r) => r.chatId)
 
     if (!sharedChatIds.length) return reply.send({ messages: [] })
 

@@ -316,14 +316,40 @@ class FmSocketClient {
 
     ws.onmessage = (ev) => {
       if (this.ws !== ws) return
+      let parsed: unknown
       try {
-        const m = JSON.parse(String(ev.data)) as WsInboundMessage
-        this.listeners.forEach((fn) => {
-          fn(m)
-        })
-      } catch {
-        /* ignore */
+        parsed = JSON.parse(String(ev.data))
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[fm-socket] dropped non-JSON frame', err)
+        }
+        return
       }
+      // Minimal shape guard: must be a plain object with a string `type`.
+      // Full per-event Zod schemas would be ideal but add ~25 schemas; this
+      // cheap guard already eliminates the silent-failure class where a
+      // malformed frame triggers undefined behavior in downstream consumers.
+      if (
+        !parsed ||
+        typeof parsed !== 'object' ||
+        Array.isArray(parsed) ||
+        typeof (parsed as { type?: unknown }).type !== 'string'
+      ) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[fm-socket] dropped malformed frame (no string `type`)', parsed)
+        }
+        return
+      }
+      const m = parsed as WsInboundMessage
+      this.listeners.forEach((fn) => {
+        try {
+          fn(m)
+        } catch (err) {
+          if (process.env.NODE_ENV !== 'production') {
+            console.error('[fm-socket] listener threw on frame', (m as { type: string }).type, err)
+          }
+        }
+      })
     }
 
     ws.onclose = (ev) => {

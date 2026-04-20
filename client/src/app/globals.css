@@ -923,6 +923,18 @@ select {
   visibility: hidden;
 }
 
+/* Temporary spotlight on a message the user jumped to (reply, search result).
+ * Added and removed by `scrollToMessage` in `lib/chat-scroll.ts`. Kept out of
+ * component styles because the selector targets an arbitrary `[data-message-id]`
+ * element, not a specific React component. */
+[data-highlight-flash="true"] {
+  animation: chat-msg-flash 1.8s ease-out;
+}
+@keyframes chat-msg-flash {
+  0%   { box-shadow: 0 0 0 2px color-mix(in srgb, var(--neon-cyan, #22d3ee) 60%, transparent); background-color: color-mix(in srgb, var(--neon-cyan, #22d3ee) 18%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; background-color: transparent; }
+}
+
 /* Unread marker divider inside the message stream. */
 .chat-unread-divider {
   position: sticky;

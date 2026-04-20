@@ -2,7 +2,6 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Crown, Star, ArrowDown, Reply } from 'lucide-react'
-import { useVirtualizer as _useVirtualizer } from '@tanstack/react-virtual'
 import { useChatStore } from '@/store/chatStore'
 import { getFmSocket } from '@/lib/api/socket'
 import { MediaMessage } from '@/components/chat/media-message'
@@ -139,6 +138,19 @@ export function ChatTerminal({
   const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const lightboxMetaRef = useRef<Map<string, { mediaPath: string; mediaIv: string; plaintext?: string }>>(new Map())
+  const lightboxMediaRef = useRef<typeof lightboxMedia>([])
+  useEffect(() => {
+    lightboxMediaRef.current = lightboxMedia
+  }, [lightboxMedia])
+  useEffect(() => {
+    return () => {
+      for (const item of lightboxMediaRef.current) {
+        if (item.url && item.url.startsWith('blob:')) {
+          try { URL.revokeObjectURL(item.url) } catch { /* noop */ }
+        }
+      }
+    }
+  }, [])
   const [profileTarget, setProfileTarget] = useState<{
     userId: string
     username: string
@@ -516,28 +528,46 @@ export function ChatTerminal({
     [userId, setReplyTo, removeMessage],
   )
 
-  // Forward handler: sends msg.plaintext to the selected chat
-  const handleForward = useCallback(async (chatId: string, _text: string) => {
-    // We need a sendText bound to targetChatId, not the current one.
-    // Strategy: switch activeChatId temporarily is risky — use socket directly.
-    // Simpler: call the API via useSendMessage is not accessible here.
-    // We delegate by emitting via socket with target chat_id context.
-    // Since sendText is bound to current activeChatId, we call fetchChatsList
-    // and use the same E2E path. For plain-text forward we use the same socket.
-    // NOTE: forward is fire-and-forget; encryption context for target chat differs.
-    // Simplest safe path: POST to /messages with target chat_id via raw API.
-    const { API_URL } = await import('@/lib/api/auth')
-    const res = await fetch(`${API_URL}/messages/forward`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_message_id: forwardMsg?.id, target_chat_id: chatId }),
-    })
-    if (!res.ok) {
-      const d = (await res.json().catch(() => ({}))) as { error?: string }
-      throw new Error(d.error ?? 'FORWARD_FAILED')
-    }
-  }, [forwardMsg?.id])
+  // Forward handler: re-encrypts msg.plaintext under the target chat's crypto
+  // context and sends it as a normal message. E2E-safe: the server never sees
+  // the plaintext and cannot "move" ciphertext between chats because each chat
+  // has its own key material. This is purely a client-side operation.
+  const privateKeyForForward = useChatStore((s) => s.unwrappedPrivateKey)
+  const handleForward = useCallback(
+    async (chatId: string, text: string) => {
+      if (!userId) throw new Error('FORWARD_NOT_AUTHED')
+      if (!privateKeyForForward) throw new Error('FORWARD_VAULT_LOCKED')
+      if (!text.trim()) throw new Error('FORWARD_EMPTY')
+
+      const [{ buildChatCryptoContextWithMeta, encryptOutboundText }, { sendChatMessageOverTransport }] =
+        await Promise.all([
+          import('@/lib/chat-crypto'),
+          import('@/lib/chat-message-transport'),
+        ])
+
+      const meta = await buildChatCryptoContextWithMeta(chatId, userId, privateKeyForForward)
+      if (!meta) throw new Error('FORWARD_CTX_FAIL')
+
+      const { encrypted_content, iv } = await encryptOutboundText(
+        privateKeyForForward,
+        text,
+        meta.ctx
+      )
+
+      await sendChatMessageOverTransport({
+        chat_id: chatId,
+        transport_mode: meta.ctx.mode,
+        plaintext: text,
+        sender_private_key: privateKeyForForward,
+        my_user_id: userId,
+        peer_user_id: meta.peerUserId ?? undefined,
+        content: encrypted_content,
+        iv,
+        reply_to_id: null,
+      })
+    },
+    [userId, privateKeyForForward]
+  )
 
   const handleToggleReaction = useCallback(
     (emoji: string, msgId: string) => {
@@ -770,7 +800,14 @@ export function ChatTerminal({
 
   const handleLightboxClose = () => {
     setLightboxOpen(false)
-    setLightboxMedia([])
+    setLightboxMedia((prev) => {
+      for (const item of prev) {
+        if (item.url && item.url.startsWith('blob:')) {
+          try { URL.revokeObjectURL(item.url) } catch { /* noop */ }
+        }
+      }
+      return []
+    })
     setLightboxIndex(0)
     lightboxMetaRef.current.clear()
   }

@@ -97,6 +97,62 @@ export async function buildChatCryptoContext(
   return null
 }
 
+/**
+ * [FORWARD_FRAME] :: Like `buildChatCryptoContext` but also returns the peer
+ * user id (for DIRECT) and chat type, so callers that need to construct a
+ * transport payload to the chat (e.g. message forward) don't have to fetch
+ * `/chats/:id` twice.
+ */
+export async function buildChatCryptoContextWithMeta(
+  chatId: string,
+  myUserId: string,
+  privateKey: CryptoKey
+): Promise<{
+  ctx: ChatCryptoContext
+  peerUserId: string | null
+  chatType: string
+} | null> {
+  const response = await fetch(`${API_URL}/chats/${chatId}`, { credentials: 'include' })
+  if (!response.ok) return null
+  const { chat, members } = (await response.json()) as SectorDetailResponse
+
+  if (chat.type === 'public_open') {
+    return { ctx: { mode: 'PUBLIC' }, peerUserId: null, chatType: chat.type }
+  }
+
+  if (chat.type === 'direct_e2e') {
+    if (members.length === 1 && members[0].user_id === myUserId) {
+      const me = members[0]
+      if (!me.ecdh_public_key_jwk) throw new Error('ERR_MISSING_SELF_SIGNAL')
+      return {
+        ctx: { mode: 'SELF', selfPublicKeyJwk: me.ecdh_public_key_jwk },
+        peerUserId: null,
+        chatType: chat.type,
+      }
+    }
+    const peer = members.find((m) => m.user_id !== myUserId)
+    if (!peer?.ecdh_public_key_jwk) throw new Error('ERR_MISSING_PEER_SIGNAL')
+    return {
+      ctx: { mode: 'DIRECT', peerPublicKeyJwk: peer.ecdh_public_key_jwk },
+      peerUserId: peer.user_id,
+      chatType: chat.type,
+    }
+  }
+
+  if (chat.type === 'group_e2e') {
+    const me = members.find((m) => m.user_id === myUserId)
+    if (!me?.encrypted_group_key) throw new Error('ERR_MISSING_SECTOR_KEY')
+    const sectorKey = await unwrapGroupKeyFromStoredPayload(privateKey, me.encrypted_group_key)
+    return {
+      ctx: { mode: 'SECTOR', groupKey: sectorKey },
+      peerUserId: null,
+      chatType: chat.type,
+    }
+  }
+
+  return null
+}
+
 /** [SEAL_SIGNAL] :: Запечатывание исходящего пакета данных */
 export async function encryptOutboundText(
   privateKey: CryptoKey,

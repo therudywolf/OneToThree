@@ -118,21 +118,25 @@ async function findExistingDirectE2EBetween(
 
 /** Find or create a self-chat (Saved Messages) for the given user. Returns the chat row. */
 async function getOrCreateSelfChat(userId: string) {
-  const myChats = await db
-    .select({ chatId: chatMembers.chatId })
-    .from(chatMembers)
-    .innerJoin(chats, eq(chats.id, chatMembers.chatId))
+  // Single-query self-chat lookup: pick direct_e2e chats where the user is a
+  // member AND the chat has exactly one member total (i.e. just the user).
+  // Replaces the previous N+1 loop (one members-query per direct chat).
+  const selfChats = await db
+    .select({
+      id: chats.id,
+      name: chats.name,
+      type: chats.type,
+      inviteCode: chats.inviteCode,
+      inviteOneTime: chats.inviteOneTime,
+    })
+    .from(chats)
+    .innerJoin(chatMembers, eq(chats.id, chatMembers.chatId))
     .where(and(eq(chatMembers.userId, userId), eq(chats.type, 'direct_e2e')))
-
-  for (const { chatId } of myChats) {
-    const members = await db
-      .select({ userId: chatMembers.userId })
-      .from(chatMembers)
-      .where(eq(chatMembers.chatId, chatId))
-    if (members.length === 1 && members[0].userId === userId) {
-      const [chat] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1)
-      if (chat) return { chat, created: false }
-    }
+    .groupBy(chats.id, chats.name, chats.type, chats.inviteCode, chats.inviteOneTime)
+    .having(sql`count(${chatMembers.userId}) = 1`)
+    .limit(1)
+  if (selfChats[0]) {
+    return { chat: selfChats[0], created: false }
   }
 
   const [created] = await db.transaction(async (tx) => {
@@ -195,6 +199,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
       inviteCode: chats.inviteCode,
       myRole: chatMembers.role,
       favoriteUserId: chatFavorites.userId,
+      mutedUntil: chatMembers.mutedUntil,
     })
     .from(chats)
     .innerJoin(chatMembers, eq(chatMembers.chatId, chats.id))
@@ -212,6 +217,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
     inviteCode: r.inviteCode,
     myRole: r.myRole,
     isFavorite: Boolean(r.favoriteUserId),
+    mutedUntil: r.mutedUntil instanceof Date ? r.mutedUntil.toISOString() : r.mutedUntil,
   }))
 }
 
@@ -277,6 +283,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           member_ids: memberMap.get(c.id) ?? [],
           encrypted_group_key: c.encryptedGroupKey,
           is_favorite: c.isFavorite,
+          muted_until: c.mutedUntil ?? null,
           last_message_at: lastMessageAtByChat.get(c.id) ?? null,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
@@ -412,6 +419,52 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
     broadcastToUsers([user.id], { type: 'chats_updated' })
     return reply.send({ ok: true, is_favorite: false })
+  })
+
+  /**
+   * PATCH /:chatId/mute — toggle per-user mute for a chat. Accepts:
+   *   { muted_until: string | null }  — ISO 8601 timestamp or null to unmute.
+   *   { muted_until: 'forever' }      — shortcut: set far-future (year 9999).
+   * Notification suppression is purely a client-side concern; the server
+   * just persists the flag and echoes it via `chats_updated`.
+   */
+  const muteBodySchema = z.object({
+    muted_until: z.union([z.string().datetime(), z.literal('forever'), z.null()]),
+  })
+  app.patch('/:chatId/mute', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const body = muteBodySchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+    const { chatId } = params.data
+    const { muted_until } = body.data
+
+    const [membership] = await db
+      .select({ one: chatMembers.userId })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id)))
+      .limit(1)
+    if (!membership) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+
+    const mutedUntilValue: Date | null =
+      muted_until === null
+        ? null
+        : muted_until === 'forever'
+          ? new Date('9999-12-31T23:59:59Z')
+          : new Date(muted_until)
+
+    await db
+      .update(chatMembers)
+      .set({ mutedUntil: mutedUntilValue })
+      .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id)))
+
+    broadcastToUsers([user.id], { type: 'chats_updated' })
+    return reply.send({
+      ok: true,
+      muted_until: mutedUntilValue ? mutedUntilValue.toISOString() : null,
+    })
   })
 
   app.get('/join/:code', async (request, reply) => {

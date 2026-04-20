@@ -72,6 +72,9 @@ export type ChatState = {
   // [DATA_LAYER]
   messages: DecryptedMessage[]
   replyTo: DecryptedMessage | null
+  /** Message staged for inline edit — composer loads its plaintext into the
+   * input box and switches send into "edit" mode. Setting to null cancels. */
+  editingMessage: DecryptedMessage | null
 
   // [PRESENCE_LAYER]
   typingUsers: TypingMap
@@ -94,6 +97,7 @@ export type ChatState = {
   removeMessage: (id: string) => void
   pruneBurnedMessages: (now?: number) => void
   setReplyTo: (node: DecryptedMessage | null) => void
+  setEditingMessage: (node: DecryptedMessage | null) => void
   setUnwrappedPrivateKey: (key: CryptoKey | null) => void
   setUserId: (id: string | null) => void
   setTypingUser: (chatId: string, uid: string, uname: string, ttl?: number) => void
@@ -162,6 +166,8 @@ export const useChatStore = create<ChatState>((set, _get) => {
     })
 
   const setReplyTo = (node: DecryptedMessage | null) => set({ replyTo: node })
+  const setEditingMessage = (node: DecryptedMessage | null) =>
+    set({ editingMessage: node })
   const setUnwrappedPrivateKey = (key: CryptoKey | null) => set({ unwrappedPrivateKey: key })
   const setUserId = (id: string | null) => set({ userId: id })
   const setSelfUsername = (value: string | null) => set({ selfUsername: value })
@@ -311,6 +317,7 @@ export const useChatStore = create<ChatState>((set, _get) => {
       unwrappedPrivateKey: null,
       messages: [],
       replyTo: null,
+      editingMessage: null,
       typingUsers: {},
       peerPresence: {},
       readAtOverrides: {},
@@ -326,6 +333,7 @@ export const useChatStore = create<ChatState>((set, _get) => {
     unwrappedPrivateKey: null,
     messages: [],
     replyTo: null,
+    editingMessage: null,
     typingUsers: {},
     peerPresence: {},
     readAtOverrides: {},
@@ -341,6 +349,7 @@ export const useChatStore = create<ChatState>((set, _get) => {
     removeMessage,
     pruneBurnedMessages,
     setReplyTo,
+    setEditingMessage,
     setUnwrappedPrivateKey,
     setUserId,
     setTypingUser,

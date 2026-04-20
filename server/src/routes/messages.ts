@@ -526,6 +526,8 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         mediaIv: messages.mediaIv,
         burnAt: messages.burnAt,
         readAt: messages.readAt,
+        isPinned: messages.isPinned,
+        pinnedAt: messages.pinnedAt,
         createdAt: messages.createdAt,
         protocolVersion: messages.protocolVersion,
         drHeader: messages.drHeader,
@@ -565,12 +567,70 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         sender_ecdh_public_key_jwk: m.senderEcdhPublicKeyJwk ?? null,
         read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
         burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
+        is_pinned: m.isPinned,
+        pinned_at: m.pinnedAt == null ? null : m.pinnedAt instanceof Date ? m.pinnedAt.toISOString() : String(m.pinnedAt),
         created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
         protocol_version: m.protocolVersion,
         dr_header: m.drHeader,
         dr_init: m.drInit,
       })),
     })
+  })
+
+  /**
+   * POST /messages/:messageId/pin
+   * Toggles `is_pinned` for a 1-to-1 chat message. Any chat member can
+   * pin/unpin — there is no "admin" concept in direct_e2e chats. Broadcast
+   * `message_pin_changed` to everyone in the chat so their UIs update the
+   * pinned-header and the in-bubble badge.
+   */
+  app.post('/:messageId/pin', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ messageId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { messageId } = params.data
+
+    const [msg] = await db
+      .select({
+        id: messages.id,
+        chatId: messages.chatId,
+        isPinned: messages.isPinned,
+      })
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1)
+    if (!msg) return reply.status(404).send({ error: 'MESSAGE_NOT_FOUND' })
+
+    const memberOk = await db
+      .select({ one: chatMembers.userId })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, msg.chatId), eq(chatMembers.userId, user.id)))
+      .limit(1)
+    if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+
+    const nextPinned = !msg.isPinned
+    await db
+      .update(messages)
+      .set({ isPinned: nextPinned, pinnedAt: nextPinned ? new Date() : null })
+      .where(eq(messages.id, messageId))
+
+    const members = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, msg.chatId))
+    broadcastToUsers(
+      members.map((m) => m.userId),
+      {
+        type: 'message_pin_changed',
+        chat_id: msg.chatId,
+        message_id: messageId,
+        is_pinned: nextPinned,
+        by_user_id: user.id,
+      }
+    )
+
+    return reply.send({ ok: true, is_pinned: nextPinned })
   })
 
   app.delete('/:messageId', async (request, reply) => {

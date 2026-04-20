@@ -72,6 +72,13 @@ export type WsInboundMessage =
   | { type: 'chats_updated' }
   | { type: 'message_deleted'; message_id: string; chat_id: string }
   | {
+      type: 'message_pin_changed'
+      chat_id: string
+      message_id: string
+      is_pinned: boolean
+      by_user_id: string
+    }
+  | {
       type: 'call_invite'
       chat_id: string
       from_user_id: string

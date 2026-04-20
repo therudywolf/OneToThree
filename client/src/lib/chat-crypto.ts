@@ -17,6 +17,12 @@ import { unwrapGroupKeyFromStoredPayload } from './chat-logic'
 
 export type ChatCryptoContext =
   | { mode: 'DIRECT'; peerPublicKeyJwk: string }
+  /**
+   * SELF mode: Saved Messages / self-chat (one member = me). We key off
+   * our OWN public JWK — ECDH(priv, pub) gives a deterministic secret that
+   * only we can reproduce but is fully self-contained (no peer required).
+   */
+  | { mode: 'SELF'; selfPublicKeyJwk: string }
   | { mode: 'SECTOR'; groupKey: CryptoKey }
   | { mode: 'PUBLIC' }
 
@@ -45,6 +51,15 @@ export async function buildChatCryptoContext(
 
   // [1] DIRECT_E2E_LINK :: Прямой канал между двумя узлами
   if (chat.type === 'direct_e2e') {
+    // Self-chat (Saved Messages): exactly one member, which is me. Use my own
+    // public key — ECDH(myPriv, myPub) derives a deterministic, per-user AES
+    // key; the server never sees plaintext because we still encrypt client-side.
+    if (members.length === 1 && members[0].user_id === myUserId) {
+      const me = members[0]
+      if (!me.ecdh_public_key_jwk) throw new Error('ERR_MISSING_SELF_SIGNAL')
+      return { mode: 'SELF', selfPublicKeyJwk: me.ecdh_public_key_jwk }
+    }
+
     const peer = members.find((m) => m.user_id !== myUserId)
     if (!peer?.ecdh_public_key_jwk) throw new Error('ERR_MISSING_PEER_SIGNAL')
 
@@ -96,6 +111,10 @@ export async function encryptOutboundText(
 
   if (frame.mode === 'SECTOR') {
     result = await encryptMessage(frame.groupKey, plaintext)
+  } else if (frame.mode === 'SELF') {
+    const myPub = await importEcdhPublicKey(frame.selfPublicKeyJwk)
+    const sharedSecret = await deriveSharedSecret(privateKey, myPub)
+    result = await encryptMessage(sharedSecret, plaintext)
   } else {
     const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
     const sharedSecret = await deriveSharedSecret(privateKey, peerPub)
@@ -118,6 +137,12 @@ export async function decryptInboundText(
 
   if (frame.mode === 'SECTOR') {
     return decryptMessage(frame.groupKey, ciphertext, iv)
+  }
+
+  if (frame.mode === 'SELF') {
+    const myPub = await importEcdhPublicKey(frame.selfPublicKeyJwk)
+    const sharedSecret = await deriveSharedSecret(privateKey, myPub)
+    return decryptMessage(sharedSecret, ciphertext, iv)
   }
 
   const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
@@ -143,6 +168,8 @@ export async function encryptOutboundTextV2(
   iv: string
   dr_header: string | null
 }> {
+  // Double Ratchet does not apply to Saved Messages (single participant)
+  // — fall straight through to the symmetric v1 path.
   if (frame.mode === 'DIRECT' && ctx.peerUserId) {
     try {
       const { encryptForPeer } = await import('@/lib/ratchet/session-manager')
@@ -201,6 +228,11 @@ export async function getAesKeyForChat(
 ): Promise<CryptoKey | null> {
   if (frame.mode === 'PUBLIC') return null
   if (frame.mode === 'SECTOR') return frame.groupKey
+
+  if (frame.mode === 'SELF') {
+    const myPub = await importEcdhPublicKey(frame.selfPublicKeyJwk)
+    return deriveSharedSecret(privateKey, myPub)
+  }
 
   const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
   return deriveSharedSecret(privateKey, peerPub)

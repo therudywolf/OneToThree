@@ -380,17 +380,76 @@ export function ChatTerminal({
     }
   }, [senderIdsToResolve])
 
+  // Pinned for first-unread anchor. Frozen at the moment the chat opens
+  // so that incoming messages don't keep shifting the marker down.
+  const [firstUnreadAnchorId, setFirstUnreadAnchorId] = useState<string | null>(null)
+  const firstUnreadIdRef = useRef<string | null>(null)
+
   useLayoutEffect(() => {
     setOlderMessages([])
     setHasMoreOlder(true)
     setLoadingOlder(false)
     lastMsgKeyRef.current = null
     firstMessagesRenderRef.current = true
-    scrollToBottomInstant()
+    firstUnreadIdRef.current = null
+    setFirstUnreadAnchorId(null)
     isNearBottomRef.current = true
     setHasNewBelow(false)
     setNewMsgCount(0)
+
+    // Hide the scroll container for one synchronous paint so we can position
+    // without the user seeing a flight-from-middle-to-bottom animation. We
+    // flip it back to visible inside a rAF once we've committed a scrollTop.
+    const el = ref.current
+    if (el) {
+      el.setAttribute('data-stabilizing', 'true')
+      // Apply snap BEFORE the paint. The second rAF un-hides it after layout.
+      el.scrollTop = el.scrollHeight
+      requestAnimationFrame(() => {
+        if (!ref.current) return
+        ref.current.scrollTop = ref.current.scrollHeight
+        requestAnimationFrame(() => {
+          if (!ref.current) return
+          ref.current.scrollTop = ref.current.scrollHeight
+          ref.current.setAttribute('data-stabilizing', 'false')
+        })
+      })
+    } else {
+      scrollToBottomInstant()
+    }
   }, [activeChatId, scrollToBottomInstant])
+
+  // On first batch of loaded messages for this chat, compute the first-unread
+  // anchor (oldest message not read by me) if there is one. This lets us
+  // draw an "Unread messages" divider Telegram-style. We freeze the anchor
+  // on first real render and don't move it afterwards.
+  useEffect(() => {
+    if (firstUnreadIdRef.current !== null) return // already anchored
+    if (!activeChatId || !userId) return
+    if (messages.length === 0) return
+
+    // Scan chronologically for the first peer message the user hasn't read.
+    for (const m of messages) {
+      if (m.sender_id === userId) continue
+      if (m.read_at) continue
+      firstUnreadIdRef.current = m.id
+      setFirstUnreadAnchorId(m.id)
+      // Try to scroll the anchor into view at 1/3 from top — Telegram-style.
+      requestAnimationFrame(() => {
+        const el = ref.current
+        const anchor = el?.querySelector(`[data-message-id="${m.id}"]`) as HTMLElement | null
+        if (!el || !anchor) return
+        const target =
+          anchor.offsetTop - el.clientHeight / 3
+        el.scrollTop = Math.max(0, target)
+      })
+      break
+    }
+    // Explicit "no unread" marker so we don't keep scanning.
+    if (!firstUnreadIdRef.current) {
+      firstUnreadIdRef.current = ''
+    }
+  }, [messages, activeChatId, userId])
 
   const handleMessageAction = useCallback(
     (action: string, msg: DecryptedMessage) => {
@@ -430,9 +489,28 @@ export function ChatTerminal({
         case 'thread':
           setThreadRoot(msg)
           break
-        case 'pin':
-          // pin is handled server-side; no-op here for now
+        case 'edit':
+          // Stage the message for editing via ChatInput's `editingMessage`
+          // prop (consumed via the chat store). Keeps the composer generic
+          // and lets it decide how to populate the text field.
+          useChatStore.setState({ editingMessage: msg })
           break
+        case 'pin': {
+          // Pin/unpin via REST. The server broadcasts the updated pinned
+          // list over WS which the chatStore reduces.
+          void (async () => {
+            try {
+              const { API_URL } = await import('@/lib/api/auth')
+              await fetch(`${API_URL}/messages/${msg.id}/pin`, {
+                method: 'POST',
+                credentials: 'include',
+              })
+            } catch {
+              /* best effort; toast handled by higher level */
+            }
+          })()
+          break
+        }
       }
     },
     [userId, setReplyTo, removeMessage],
@@ -787,6 +865,7 @@ export function ChatTerminal({
         <MessageActions
           message={ctxMenu.msg}
           isMine={ctxMenu.isMine}
+          isPinned={ctxMenu.msg.is_pinned === true}
           position={{ x: ctxMenu.x, y: ctxMenu.y }}
           onAction={(action) => handleMessageAction(action, ctxMenu.msg)}
           onClose={() => setCtxMenu(null)}
@@ -828,6 +907,7 @@ export function ChatTerminal({
       ) : null}
       <div
         ref={ref}
+        data-stabilizing="true"
         className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 font-mono text-sm [-webkit-overflow-scrolling:touch] sm:px-4"
         onClick={() => { if (reactingMsgId) setReactingMsgId(null) }}
       >
@@ -884,7 +964,9 @@ export function ChatTerminal({
             const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
             const mine = m.sender_id === userId
             const senderLabel = labelForSender(m.sender_id)
-            return (
+            const showUnreadDivider =
+              !!firstUnreadAnchorId && m.id === firstUnreadAnchorId
+            const body = (
               <div
                 key={m.id}
                 data-message-id={m.id}
@@ -1056,6 +1138,14 @@ export function ChatTerminal({
                 </div>
               </div>
             )
+            return showUnreadDivider ? (
+              <div key={m.id} className="contents">
+                <div className="chat-unread-divider">
+                  {t('chat.unreadMessages') || 'UNREAD MESSAGES'}
+                </div>
+                {body}
+              </div>
+            ) : body
           } else if (group.type === 'COLLECTION') {
             const mine = group.originId === userId
             const senderLabel = labelForSender(group.originId)

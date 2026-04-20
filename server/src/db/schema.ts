@@ -260,6 +260,10 @@ export const messages = pgTable(
     burnAt: timestamp('burn_at', { withTimezone: true }),
     /** Direct E2E: set when the peer reads (first read wins). Null in group chats. */
     readAt: timestamp('read_at', { withTimezone: true }),
+    /** Pinned in chat header. Any member can pin/unpin. */
+    isPinned: boolean('is_pinned').notNull().default(false),
+    /** Timestamp of the most recent pin toggle (null if never pinned). */
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -271,6 +275,7 @@ export const messages = pgTable(
     ),
     senderIdx: index('messages_sender_id_idx').on(t.senderId),
     replyIdx: index('messages_reply_to_id_idx').on(t.replyToId),
+    pinnedIdx: index('messages_chat_pinned_idx').on(t.chatId, t.isPinned),
   })
 )
 

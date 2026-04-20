@@ -30,6 +30,8 @@ import { useGroupKeyDistribution } from '@/hooks/use-group-key-distribution'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
+import { DockPanel } from '@/components/chat/dock-panel'
+import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
@@ -550,7 +552,16 @@ export function ChatApp({
               {/* Peer nick button */}
               <button
                 type="button"
-                onClick={() => setHeaderProfileOpen(true)}
+                onClick={() => {
+                  // Prefer the right-dock profile slot on xl+ viewports so
+                  // the chat stays visible; fall back to the legacy modal
+                  // on narrower screens. See `DOCK_BREAKPOINT` in dockStore.
+                  if (matchesDockViewport() && peerIdentity) {
+                    useDockStore.getState().openProfile(peerIdentity.userId)
+                  } else {
+                    setHeaderProfileOpen(true)
+                  }
+                }}
                 className="touch-manipulation inline-flex min-w-0 items-center gap-1.5 border border-neon-cyan/40 bg-void px-2 py-1 text-[11px] font-bold tracking-wider text-neon-cyan hover:border-neon-red hover:text-neon-red transition-colors"
               >
                 {peerIdentity.verified ? (
@@ -696,7 +707,20 @@ export function ChatApp({
             typingLabel={scratchers.length > 0 ? scratchers[0].username : null}
           />
         </div>
+        {/* Right dock — visible only at xl+ (see DOCK_BREAKPOINT). On smaller
+            screens the `useDockStore` consumers should open modals instead. */}
+        <DockPanelXlOnly />
       </div>
+    </div>
+  )
+}
+
+function DockPanelXlOnly() {
+  const slot = useDockStore((s) => s.slot)
+  if (!slot) return null
+  return (
+    <div className="hidden xl:flex xl:min-h-0 xl:shrink-0">
+      <DockPanel />
     </div>
   )
 }

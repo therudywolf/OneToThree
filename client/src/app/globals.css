@@ -410,56 +410,139 @@ textarea {
 }
 
 /* ===== SHELL MODE OVERRIDES =====
- * ThemeApplicator stamps `data-shell="terminal" | "md3"` on <html> and sets
- * CSS variables (--font-family, --radius-md, --border-radius, CRT opacities).
- * The chat components themselves, however, pepper the JSX with hardcoded
- * Tailwind classes like `font-mono`, `rounded-none`, `tracking-widest` that
- * override those tokens.  These global selectors remap such classes to the
- * shell-aware tokens so switching "TERMINAL → MATERIAL 3" actually reshapes
- * the chat list, bubbles, sidebar, and compose bar — not just the settings
- * modal.  Keep specificity minimal: one attribute + one class each.
+ *
+ * Two independent visual shells share every palette and piece of JSX:
+ *
+ *   [data-shell="terminal"] — cyberpunk 2077 / cathode-ray: monospace,
+ *     sharp corners, neon glow, CRT scanlines, dense uppercase labels.
+ *   [data-shell="md3"]      — Material Design 3: Google Sans, rounded
+ *     squircles, soft elevation, sentence-case, no CRT.
+ *
+ * Because chat JSX still uses Tailwind literals like `font-mono`, `rounded-none`,
+ * `border-neon-cyan/30` across ~200 lines, we remap those utilities globally
+ * per shell.  This is the ONLY way switching shell actually reshapes every
+ * surface (sidebar rows, bubbles, header, composer, modals) without rewriting
+ * each component.
+ *
+ * Keep specificity minimal: one attribute + one class.  No !important outside
+ * Tailwind-override cases.
  */
+
+/* ---------- TERMINAL shell: cyberpunk identity ---------- */
+
+[data-shell="terminal"] body {
+  font-family: var(--font-family);
+  text-shadow: 0 0 1px color-mix(in srgb, var(--neon-cyan) calc(var(--text-shadow-intensity, 0.35) * 100%), transparent);
+}
+
+/* Sharpen all rounded Tailwind utilities back to zero under terminal. This
+ * matters when a component lazy-imports MD3 tokens via CSS variables. */
+[data-shell="terminal"] .rounded-lg,
+[data-shell="terminal"] .rounded-xl,
+[data-shell="terminal"] .rounded-2xl,
+[data-shell="terminal"] .rounded-3xl,
+[data-shell="terminal"] .rounded-full {
+  border-radius: 0 !important;
+}
+
+/* Composer pill → square frame under terminal. */
+[data-shell="terminal"] .chat-compose-shell {
+  border-radius: 0 !important;
+  background: var(--void) !important;
+  border-top: 1px solid color-mix(in srgb, var(--neon-cyan) 40%, transparent) !important;
+}
+
+/* Sidebar row → sharp left stripe under terminal. */
+[data-shell="terminal"] .chat-list-item,
+[data-shell="terminal"] [data-chat-list-item] {
+  border-radius: 0 !important;
+  border-left: 2px solid transparent !important;
+}
+[data-shell="terminal"] .chat-list-item[data-active="true"],
+[data-shell="terminal"] [data-chat-list-item][data-active="true"] {
+  border-left-color: var(--neon-cyan) !important;
+  background: color-mix(in srgb, var(--neon-cyan) 8%, transparent) !important;
+}
+
+/* Enhance bubble presence with subtle scanline + glow. */
+[data-shell="terminal"] .msg-bubble-mine > div:not(.border-l),
+[data-shell="terminal"] .chat-bubble-mine {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 38%, transparent),
+    0 0 14px color-mix(in srgb, var(--neon-cyan) 20%, transparent),
+    0 0 2px color-mix(in srgb, var(--neon-cyan) 45%, transparent);
+}
+[data-shell="terminal"] .msg-bubble-peer > div:not(.border-l),
+[data-shell="terminal"] .chat-bubble-peer {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--neon-red) 28%, transparent),
+    0 0 12px color-mix(in srgb, var(--neon-red) 14%, transparent);
+}
+
+/* ---------- MD3 shell: Material identity ---------- */
+
+[data-shell="md3"] body {
+  font-family: var(--font-family);
+  text-shadow: none;
+}
+
+/* Collapse the mono-caps-tracked typography of the terminal shell into the
+ * calm Material weight system.  This covers 95% of chat JSX literals. */
 [data-shell="md3"] .font-mono {
   font-family: var(--font-family) !important;
   letter-spacing: 0 !important;
-}
-
-[data-shell="md3"] .rounded-none {
-  border-radius: var(--radius-md) !important;
-}
-
-[data-shell="md3"] .tracking-widest,
-[data-shell="md3"] .tracking-\[0\.2em\],
-[data-shell="md3"] .tracking-\[0\.25em\],
-[data-shell="md3"] .tracking-\[0\.3em\] {
-  letter-spacing: 0.01em !important;
-  text-transform: none !important;
 }
 
 [data-shell="md3"] .uppercase {
   text-transform: none !important;
 }
 
-/* Bubbles / panels: soften shadows, remove CRT frame. */
+[data-shell="md3"] .tracking-widest,
+[data-shell="md3"] .tracking-wider,
+[data-shell="md3"] .tracking-wide,
+[data-shell="md3"] .tracking-\[0\.2em\],
+[data-shell="md3"] .tracking-\[0\.25em\],
+[data-shell="md3"] .tracking-\[0\.3em\],
+[data-shell="md3"] .tracking-\[0\.35em\],
+[data-shell="md3"] .tracking-\[0\.4em\],
+[data-shell="md3"] .tracking-\[0\.5em\] {
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+}
+
+/* Corner radius remapping for all Tailwind literals used across the chat
+ * module.  When shell flips terminal→md3 these all become squircles. */
+[data-shell="md3"] .rounded-none {
+  border-radius: var(--radius-md, 14px) !important;
+}
+[data-shell="md3"] button.rounded-none,
+[data-shell="md3"] a.rounded-none {
+  border-radius: var(--radius-md, 14px) !important;
+}
+
+/* CRT-flavored effects off. */
+[data-shell="md3"] .crt-overlay,
 [data-shell="md3"] .crt-terminal-vignette {
+  display: none !important;
   box-shadow: none !important;
 }
 
-/* Compose bar & sidebar borders use the softer radius in MD3. */
-[data-shell="md3"] .border-neon-cyan\/40,
-[data-shell="md3"] .border-neon-cyan\/25,
-[data-shell="md3"] .border-neon-cyan\/20 {
-  border-color: color-mix(
-    in srgb,
-    var(--border-strong) 80%,
-    transparent
-  ) !important;
+/* Border-neon literals → palette border (palette preserved, shape softened). */
+[data-shell="md3"] .border-neon-cyan,
+[data-shell="md3"] [class*="border-neon-cyan/"] {
+  border-color: color-mix(in srgb, var(--neon-cyan) 28%, transparent) !important;
+}
+[data-shell="md3"] .border-neon-red,
+[data-shell="md3"] [class*="border-neon-red/"] {
+  border-color: color-mix(in srgb, var(--neon-red) 24%, transparent) !important;
 }
 
-/* Telegram-style asymmetric bubble radius — applies under ANY theme when the
- * MD3 shell is active, not only the explicit md3dark/md3light palettes. This
- * is what makes the chat list actually FEEL like MD3 when a user combines
- * cyberpunk colours with the Material shell. */
+/* Neon-surface gradients → flat Material surfaces. */
+[data-shell="md3"] .bg-void {
+  background-color: var(--surface) !important;
+}
+
+/* Material message bubbles. */
 [data-shell="md3"] .msg-bubble-mine {
   border-radius: 18px 18px 4px 18px !important;
   border-color: color-mix(in srgb, var(--neon-cyan) 32%, transparent) !important;
@@ -468,25 +551,78 @@ textarea {
   border-radius: 18px 18px 18px 4px !important;
   border-color: color-mix(in srgb, var(--neon-cyan) 22%, transparent) !important;
 }
-
-/* Action/compose buttons: under MD3 the square terminal buttons become
- * rounded-squircle tokens ("button shapes" in M3 parlance). */
-[data-shell="md3"] button.rounded-none,
-[data-shell="md3"] a.rounded-none {
-  border-radius: var(--radius-md, 12px) !important;
+[data-shell="md3"] .msg-bubble-mine > div:not(.border-l) {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.10) !important;
+}
+[data-shell="md3"] .msg-bubble-peer > div:not(.border-l) {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.10) !important;
 }
 
-/* Sidebar list items get the pill rounding that MD3 navigation uses. */
+/* Sidebar list: Material list tile with pill rounding, no left stripe. */
 [data-shell="md3"] .chat-list-item,
 [data-shell="md3"] [data-chat-list-item] {
-  border-radius: 16px !important;
+  border-radius: 20px !important;
+  border-color: transparent !important;
+  border-left-color: transparent !important;
+  background: transparent !important;
+  margin-left: 8px !important;
+  margin-right: 8px !important;
+}
+[data-shell="md3"] .chat-list-item:hover,
+[data-shell="md3"] [data-chat-list-item]:hover {
+  background: color-mix(in srgb, var(--on-surface) 6%, transparent) !important;
+}
+[data-shell="md3"] .chat-list-item[data-active="true"],
+[data-shell="md3"] [data-chat-list-item][data-active="true"] {
+  background: color-mix(in srgb, var(--neon-cyan) 16%, transparent) !important;
 }
 
-/* The terminal shell gets explicit sharp-corner + mono-first typography so
- * switching BACK from MD3 to terminal never leaves stale rounded radii or
- * sans-serif inherited font-family behind. */
-[data-shell="terminal"] body {
-  font-family: var(--font-family);
+/* Compose bar: pill input + floating send under MD3. */
+[data-shell="md3"] .chat-compose-shell {
+  border-top: 1px solid color-mix(in srgb, var(--on-surface) 8%, transparent) !important;
+  background: color-mix(in srgb, var(--surface) 96%, var(--void)) !important;
+}
+[data-shell="md3"] .chat-compose-input {
+  border-radius: 26px !important;
+  background: color-mix(in srgb, var(--on-surface) 4%, transparent) !important;
+  border: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent) !important;
+}
+
+/* Header bar: Material app bar (flat with a subtle divider). */
+[data-shell="md3"] .chat-header-compact {
+  border-bottom: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent) !important;
+  background: color-mix(in srgb, var(--surface) 96%, var(--void)) !important;
+}
+
+/* Terminal panels in MD3 become Material cards. */
+[data-shell="md3"] .terminal-panel {
+  border-radius: 28px !important;
+  border-color: color-mix(in srgb, var(--on-surface) 8%, transparent) !important;
+  background: var(--surface) !important;
+  box-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.10),
+    0 1px 3px rgba(0, 0, 0, 0.06) !important;
+}
+[data-shell="md3"] .terminal-panel:hover {
+  transform: none !important;
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.12),
+    0 2px 6px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Inputs. */
+[data-shell="md3"] .terminal-input,
+[data-shell="md3"] input.terminal-input,
+[data-shell="md3"] textarea.terminal-input {
+  border-radius: 12px !important;
+  border-color: color-mix(in srgb, var(--on-surface) 20%, transparent) !important;
+  background: color-mix(in srgb, var(--on-surface) 3%, transparent) !important;
+}
+
+/* Reaction / quick pickers. */
+[data-shell="md3"] .terminal-pill,
+[data-shell="md3"] [data-shell-pill] {
+  border-radius: 999px !important;
 }
 
 /* CRT scanline overlay */
@@ -754,6 +890,68 @@ select {
   margin-right: 0;
 }
 
+/* Right dock (Telegram-macOS-style panel). Renders only on >=1280 px when
+ * the app explicitly opens a dock slot (stickers, profile, search, emoji). */
+.chat-dock-panel {
+  flex-shrink: 0;
+  border-left: 1px solid color-mix(in srgb, var(--border-strong) 50%, transparent);
+  background: var(--surface);
+  width: 360px;
+  min-width: 360px;
+  display: none;
+}
+@media (min-width: 1280px) {
+  .chat-dock-panel[data-dock-open="true"] {
+    display: flex;
+  }
+}
+@media (min-width: 1600px) {
+  .chat-dock-panel {
+    width: 400px;
+    min-width: 400px;
+  }
+}
+[data-shell="md3"] .chat-dock-panel {
+  border-left: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+
+/* First-paint stabilization: the scroll container renders with
+ * visibility:hidden until chat-terminal runs its synchronous
+ * scroll-positioning useLayoutEffect.  This ELIMINATES the
+ * "chat flies down from the middle" visible jump on chat switch. */
+.chat-scroll[data-stabilizing="true"] {
+  visibility: hidden;
+}
+
+/* Unread marker divider inside the message stream. */
+.chat-unread-divider {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 16px auto;
+  max-width: min(100%, 56rem);
+  padding: 6px 16px;
+  text-align: center;
+  background: color-mix(in srgb, var(--neon-cyan) 18%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--neon-cyan) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--neon-cyan) 40%, transparent);
+  color: var(--neon-cyan);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-family: var(--font-family);
+}
+[data-shell="md3"] .chat-unread-divider {
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in srgb, var(--neon-cyan) 14%, transparent);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 18px;
+}
+
 /* The scroll column (messages list) is the inner frame. We center it
  * and cap the reading width so the chat feels like Telegram on a 4K
  * monitor instead of spilling bubbles across 2000 px. */
@@ -770,22 +968,8 @@ select {
   }
 }
 
-/* ===== CYBERPUNK CHAT DENSITY =====
- * Bubble accents under the TERMINAL shell get a neon glow + subtle
- * scanline shimmer so the interface actually reads as cyberpunk instead
- * of "dark bootstrap". MD3 shell keeps the calm Material look via the
- * data-shell="md3" overrides above. */
-[data-shell="terminal"] .msg-bubble-mine > div:not(.border-l) {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 35%, transparent),
-    0 0 12px color-mix(in srgb, var(--neon-cyan) 18%, transparent),
-    0 0 2px color-mix(in srgb, var(--neon-cyan) 40%, transparent);
-}
-[data-shell="terminal"] .msg-bubble-peer > div:not(.border-l) {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--neon-red) 25%, transparent),
-    0 0 10px color-mix(in srgb, var(--neon-red) 12%, transparent);
-}
+/* Cyberpunk chat bubble glow is defined above in the unified shell block —
+ * this legacy duplicate removed intentionally. */
 
 @media (min-aspect-ratio: 21/9) {
   .chat-member-panel {

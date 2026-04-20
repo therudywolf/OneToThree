@@ -88,12 +88,18 @@ export function MessageActions({
       icon: Copy,
       show: !!message.plaintext,
     },
-    { key: 'edit', label: t('msgAction.edit'), icon: Pencil, show: isMine },
+    // Edit hidden until the server `PATCH /messages/:id` endpoint exists and
+    // the client knows how to re-encrypt under the current chat transport.
+    // The composer-side infra (`editingMessage` in chatStore, edit banner)
+    // is already in place so toggling `show: true` will light it up.
+    { key: 'edit', label: t('msgAction.edit'), icon: Pencil, show: false },
+    // Forward hidden until server-side /messages/forward endpoint is implemented.
+    // Keep the type union intact — feature is off, not gone.
     {
       key: 'forward',
       label: t('msgAction.forward'),
       icon: Forward,
-      show: true,
+      show: false,
     },
     {
       key: 'pin',

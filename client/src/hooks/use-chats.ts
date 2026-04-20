@@ -62,5 +62,11 @@ export function useChats(userId: string | null) {
     }
   }, [userId, reload])
 
-  return { chats, reload, initialLoading }
+  const patchChat = useCallback((chatId: string, patch: Partial<ApiChatRow>) => {
+    setChats((prev) =>
+      prev.map((c) => (c.id === chatId ? { ...c, ...patch } : c))
+    )
+  }, [])
+
+  return { chats, reload, initialLoading, patchChat }
 }

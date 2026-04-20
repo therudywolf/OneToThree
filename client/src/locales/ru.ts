@@ -161,6 +161,8 @@ const ru = {
   'sidebar.localGhostSearch': 'Поиск в сообщениях...',
   'sidebar.ghostNoHits': 'Ничего не найдено.',
   'sidebar.channels': 'Чаты',
+  'sidebar.channelsSubtitle':
+    'Избранное, личные чаты и зашифрованные группы — личный диалог открывается полем ниже.',
   'sidebar.openDirect': 'Открыть диалог',
   'sidebar.peerPlaceholder': 'Никнейм или ID',
   'sidebar.copyInviteSuccess': 'Ссылка скопирована',

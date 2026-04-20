@@ -83,7 +83,7 @@ export function ChatSidebar({
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const peerPresence = useChatStore((s) => s.peerPresence)
   const unreadByChat = useChatStore((s) => s.unreadByChat)
-  const { chats, reload, initialLoading } = useChats(userId)
+  const { chats, reload, initialLoading, patchChat } = useChats(userId)
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState<string | null>(null)
@@ -178,10 +178,16 @@ export function ChatSidebar({
   }
 
   async function toggleFavorite(chatId: string, current: boolean) {
+    const next = !current
+    patchChat(chatId, {
+      is_favorite: next,
+      favorited_at: next ? new Date().toISOString() : null,
+    })
     try {
-      await setChatFavorite(chatId, !current)
+      await setChatFavorite(chatId, next)
       await reload()
     } catch (e) {
+      await reload()
       setCreateErr(e instanceof Error ? e.message : 'ERR')
     }
   }
@@ -298,7 +304,7 @@ export function ChatSidebar({
               {t('sidebar.channels')}
             </span>
             <p className="text-[10px] leading-relaxed text-text-muted">
-              Favorites, direct routes and encrypted groups live here.
+              {t('sidebar.channelsSubtitle')}
             </p>
           </div>
           <span className="mt-1 flex h-2.5 w-2.5 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_10px_rgba(0,255,255,0.85)]" />

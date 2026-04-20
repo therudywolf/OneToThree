@@ -191,6 +191,32 @@ detect_update_services() {
   fi
 }
 
+# Ensure docker-compose secret files exist for features that may not be
+# configured yet (LiveKit, Cloudflare Calls TURN).  Empty stubs are fine — the
+# server's readSecret() treats empty-file-contents as "not set" and falls back
+# gracefully (CF TURN → coturn → STUN-only; LiveKit → no SFU).  This has to
+# run BEFORE any `docker compose up` so the bind-mounts into the api/web
+# containers succeed, hence it lives ahead of the command dispatcher rather
+# than in the later setup section (which `update` never reaches because of
+# its early `exit 0`).
+ensure_secret_stub() {
+  local name="$1"
+  local path="$SECRETS_DIR/$name"
+  if [[ ! -d "$SECRETS_DIR" ]]; then
+    mkdir -p "$SECRETS_DIR"
+    chmod 700 "$SECRETS_DIR"
+  fi
+  if [[ ! -f "$path" ]]; then
+    : > "$path"
+    chmod 600 "$path"
+    warn "Создан пустой secret stub: $path (заполните позже при необходимости)"
+  fi
+}
+ensure_secret_stub "livekit_api_key"
+ensure_secret_stub "livekit_api_secret"
+ensure_secret_stub "cloudflare_turn_key_id"
+ensure_secret_stub "cloudflare_turn_api_token"
+
 # =============================================================================
 # КОМАНДЫ
 # =============================================================================
@@ -579,23 +605,8 @@ else
   ok "Docker secrets уже инициализированы ($SECRETS_DIR/)."
 fi
 
-# Ensure docker-compose secret files exist even for features not yet configured.
-# Empty files are fine — the server's readSecret() treats them as "not set" and
-# falls back gracefully (e.g. CF TURN → coturn → STUN-only).  This makes
-# ./start.sh update idempotent across version upgrades.
-ensure_secret_stub() {
-  local name="$1"
-  local path="$SECRETS_DIR/$name"
-  if [[ ! -f "$path" ]]; then
-    : > "$path"
-    chmod 600 "$path"
-    warn "Создан пустой secret stub: $path (оператор может заполнить позже)"
-  fi
-}
-ensure_secret_stub "livekit_api_key"
-ensure_secret_stub "livekit_api_secret"
-ensure_secret_stub "cloudflare_turn_key_id"
-ensure_secret_stub "cloudflare_turn_api_token"
+# ensure_secret_stub is defined above the command dispatcher — see the
+# definition near the start of this file so it runs for every subcommand.
 
 # =============================================================================
 # ENV ФАЙЛ — создать из шаблона если нет

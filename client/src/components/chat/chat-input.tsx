@@ -17,7 +17,6 @@ import {
   MEDIA_TOO_LARGE_CODE,
 } from '@/lib/media-limits'
 import dynamic from 'next/dynamic'
-import { Theme } from 'emoji-picker-react'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 
@@ -640,7 +639,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                   previewConfig={{ showPreview: false }}
                   width={300}
                   height={350}
-                  theme={Theme.DARK}
+                  theme={'dark' as const}
                 />
               </div>
             )}

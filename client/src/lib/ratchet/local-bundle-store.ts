@@ -129,6 +129,16 @@ function deserializeBundle(json: string): LocalIdentityBundle {
   }
 }
 
+// TS lib.dom since 5.7 distinguishes `Uint8Array<ArrayBufferLike>` (what
+// `new Uint8Array(n)` produces) from the stricter `BufferSource` that
+// SubtleCrypto wants.  Copy into a fresh, non-shared ArrayBuffer to satisfy
+// the narrower overload.  Same helper as `double-ratchet.ts`.
+function toArrayBuffer(src: Uint8Array): ArrayBuffer {
+  const out = new ArrayBuffer(src.byteLength)
+  new Uint8Array(out).set(src)
+  return out
+}
+
 async function wrap(
   unwrapKey: CryptoKey,
   payload: string
@@ -136,7 +146,11 @@ async function wrap(
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const enc = new TextEncoder()
   const ct = new Uint8Array(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, unwrapKey, enc.encode(payload))
+    await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: toArrayBuffer(iv) },
+      unwrapKey,
+      toArrayBuffer(enc.encode(payload))
+    )
   )
   return { iv: encodeBase64Url(iv), ciphertext: encodeBase64Url(ct) }
 }
@@ -149,7 +163,11 @@ async function unwrap(
   const ivBytes = decodeBase64Url(iv)
   const ctBytes = decodeBase64Url(ciphertext)
   const plain = new Uint8Array(
-    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, unwrapKey, ctBytes)
+    await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: toArrayBuffer(ivBytes) },
+      unwrapKey,
+      toArrayBuffer(ctBytes)
+    )
   )
   return new TextDecoder().decode(plain)
 }

@@ -63,6 +63,18 @@ function b64urlDecode(value: string): Uint8Array {
   return out
 }
 
+/**
+ * TS 5.7+ lib.dom splits `Uint8Array<ArrayBufferLike>` (the default ctor
+ * return) from the stricter `BufferSource` overloads that SubtleCrypto and
+ * friends require.  Copy into a fresh, non-shared ArrayBuffer so the stricter
+ * overload matches deterministically.
+ */
+function bytesToArrayBuffer(src: Uint8Array): ArrayBuffer {
+  const out = new ArrayBuffer(src.byteLength)
+  new Uint8Array(out).set(src)
+  return out
+}
+
 interface SerializedKeyPair {
   privateKey: string
   publicKey: string
@@ -188,7 +200,11 @@ async function saveSession(
   if (sessionWrapKey) {
     const iv = crypto.getRandomValues(new Uint8Array(12))
     const ct = new Uint8Array(
-      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sessionWrapKey, ENCODER.encode(json))
+      await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: bytesToArrayBuffer(iv) },
+        sessionWrapKey,
+        bytesToArrayBuffer(ENCODER.encode(json))
+      )
     )
     // Layout: [WRAP_MAGIC(1) | iv(12) | ciphertext+tag].
     const wrapped = new Uint8Array(1 + 12 + ct.length)
@@ -218,7 +234,11 @@ async function loadSession(
       const iv = view.slice(1, 13)
       const ct = view.slice(13)
       const plain = new Uint8Array(
-        await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, sessionWrapKey, ct)
+        await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: bytesToArrayBuffer(iv) },
+          sessionWrapKey,
+          bytesToArrayBuffer(ct)
+        )
       )
       return JSON.parse(DECODER.decode(plain)) as SerializedSession
     }

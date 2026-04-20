@@ -560,6 +560,24 @@ else
   ok "Docker secrets уже инициализированы ($SECRETS_DIR/)."
 fi
 
+# Ensure docker-compose secret files exist even for features not yet configured.
+# Empty files are fine — the server's readSecret() treats them as "not set" and
+# falls back gracefully (e.g. CF TURN → coturn → STUN-only).  This makes
+# ./start.sh update idempotent across version upgrades.
+ensure_secret_stub() {
+  local name="$1"
+  local path="$SECRETS_DIR/$name"
+  if [[ ! -f "$path" ]]; then
+    : > "$path"
+    chmod 600 "$path"
+    warn "Создан пустой secret stub: $path (оператор может заполнить позже)"
+  fi
+}
+ensure_secret_stub "livekit_api_key"
+ensure_secret_stub "livekit_api_secret"
+ensure_secret_stub "cloudflare_turn_key_id"
+ensure_secret_stub "cloudflare_turn_api_token"
+
 # =============================================================================
 # ENV ФАЙЛ — создать из шаблона если нет
 # =============================================================================

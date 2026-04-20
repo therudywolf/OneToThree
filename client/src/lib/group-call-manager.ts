@@ -12,6 +12,7 @@
 import { getFmSocket } from '@/lib/api/socket'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import type { GroupCallParticipant as _GroupCallParticipant } from '@/store/groupCallStore'
+import { getIceServers } from '@/lib/ice-servers'
 
 const DEFAULT_STUN: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -71,33 +72,21 @@ function parseEnvTurnUrls(): string[] {
     .filter(Boolean)
 }
 
-async function getIceServers(): Promise<RTCIceServer[]> {
-  try {
-    const res = await fetch('/api/turn', {
-      method: 'GET',
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    })
-    if (!res.ok) throw new Error(`RELAY_FETCH_FAIL: ${res.status}`)
-    const payload = (await res.json()) as { iceServers?: RTCIceServer[] }
-    if (!payload.iceServers) throw new Error('MALFORMED_RELAY_PAYLOAD')
-
-    return normalizeIceServers(payload.iceServers)
-  } catch (err) {
-    console.warn('[GC.ICE] Relay nodes unreachable, using fallback ICE plan.', err)
-    const envUrls = parseEnvTurnUrls()
-    if (envUrls.length > 0) {
-      return normalizeIceServers([
-        ...DEFAULT_STUN,
-        {
-          urls: envUrls,
-          username: process.env.NEXT_PUBLIC_TURN_USERNAME,
-          credential: process.env.NEXT_PUBLIC_TURN_PASSWORD,
-        },
-      ])
-    }
-    return DEFAULT_STUN
+async function resolveIceServers(): Promise<RTCIceServer[]> {
+  const servers = await getIceServers()
+  if (servers.length > 0) return normalizeIceServers(servers)
+  const envUrls = parseEnvTurnUrls()
+  if (envUrls.length > 0) {
+    return normalizeIceServers([
+      ...DEFAULT_STUN,
+      {
+        urls: envUrls,
+        username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+        credential: process.env.NEXT_PUBLIC_TURN_PASSWORD,
+      },
+    ])
   }
+  return DEFAULT_STUN
 }
 
 function terminateFeed(stream: MediaStream | null) {
@@ -121,7 +110,7 @@ let cachedIceServers: RTCIceServer[] | null = null
 
 async function ensureIceServers(): Promise<RTCIceServer[]> {
   if (cachedIceServers) return cachedIceServers
-  cachedIceServers = await getIceServers()
+  cachedIceServers = await resolveIceServers()
   return cachedIceServers
 }
 

@@ -5,7 +5,10 @@ FROM node:20-alpine AS builder
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund \
+  || (echo '[deps] lockfile drift detected, regenerating...' \
+      && npm install --package-lock-only --no-audit --no-fund \
+      && npm ci --no-audit --no-fund)
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev

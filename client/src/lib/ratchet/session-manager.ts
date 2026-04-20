@@ -86,12 +86,28 @@ interface SerializedRatchetState {
   maxSkip: number
 }
 
+interface SerializedInitPayload {
+  initiatorIdentityExchange: string
+  initiatorIdentitySigning: string
+  initiatorEphemeralPublic: string
+  /** Responder's signedPreKey id that was consumed during X3DH. */
+  signedPrekeyId: number
+  /** Responder's one-time prekey id (or null if none was available). */
+  oneTimePrekeyId: number | null
+}
+
 interface SerializedSession {
   version: number
   peerIdentityExchange: string
   peerIdentitySigning: string
   ownIdentityExchange: string
   ratchet: SerializedRatchetState
+  /**
+   * Populated by the initiator after `bootstrapSession`. Attached to the
+   * first outbound message so the responder can run X3DH; cleared after
+   * the first successful `encryptForPeer`.
+   */
+  pendingInit?: SerializedInitPayload
 }
 
 function encodeKeyPair(pair: KeyPair): SerializedKeyPair {
@@ -144,14 +160,47 @@ function deserializeRatchet(s: SerializedRatchetState): RatchetState {
   }
 }
 
+/**
+ * Vault-derived AES-GCM key for wrapping session records at rest.  Set by the
+ * host application on vault unlock (see `setSessionWrapKey`) and cleared on
+ * logout.  When unset, session records are stored plaintext (v1 behaviour) —
+ * callers should treat this as a "legacy" mode and upgrade when possible.
+ */
+let sessionWrapKey: CryptoKey | null = null
+
+export function setSessionWrapKey(key: CryptoKey | null): void {
+  sessionWrapKey = key
+}
+
+export function hasSessionWrapKey(): boolean {
+  return sessionWrapKey !== null
+}
+
+const WRAP_MAGIC = 0xF0 // leading byte marker "wrapped v1"
+const PLAIN_MAGIC = 0x7B // '{' — JSON plaintext sentinel (legacy)
+
 async function saveSession(
   ownerId: string,
   peerId: string,
   session: SerializedSession
 ): Promise<void> {
   const json = JSON.stringify(session)
+  if (sessionWrapKey) {
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const ct = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, sessionWrapKey, ENCODER.encode(json))
+    )
+    // Layout: [WRAP_MAGIC(1) | iv(12) | ciphertext+tag].
+    const wrapped = new Uint8Array(1 + 12 + ct.length)
+    wrapped[0] = WRAP_MAGIC
+    wrapped.set(iv, 1)
+    wrapped.set(ct, 13)
+    const copy = new ArrayBuffer(wrapped.byteLength)
+    new Uint8Array(copy).set(wrapped)
+    await putSessionRecord(ownerId, peerId, copy, PROTOCOL_VERSION)
+    return
+  }
   const buf = ENCODER.encode(json)
-  // Wrap bytes into a fresh ArrayBuffer so we can satisfy the store's API.
   const copy = new ArrayBuffer(buf.byteLength)
   new Uint8Array(copy).set(buf)
   await putSessionRecord(ownerId, peerId, copy, PROTOCOL_VERSION)
@@ -165,7 +214,18 @@ async function loadSession(
   if (!record) return null
   const view = new Uint8Array(record.payload)
   try {
-    return JSON.parse(DECODER.decode(view)) as SerializedSession
+    if (view.length > 0 && view[0] === WRAP_MAGIC && sessionWrapKey) {
+      const iv = view.slice(1, 13)
+      const ct = view.slice(13)
+      const plain = new Uint8Array(
+        await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, sessionWrapKey, ct)
+      )
+      return JSON.parse(DECODER.decode(plain)) as SerializedSession
+    }
+    if (view.length > 0 && view[0] === PLAIN_MAGIC) {
+      return JSON.parse(DECODER.decode(view)) as SerializedSession
+    }
+    return null
   } catch {
     return null
   }
@@ -281,6 +341,13 @@ export async function bootstrapSession(
     peerIdentitySigning: b64urlEncode(bundle.identitySigning),
     ownIdentityExchange: b64urlEncode(ownIdentity.exchange.publicKey),
     ratchet: serializeRatchet(ratchet),
+    pendingInit: {
+      initiatorIdentityExchange: b64urlEncode(ownIdentity.exchange.publicKey),
+      initiatorIdentitySigning: b64urlEncode(ownIdentity.signing.publicKey),
+      initiatorEphemeralPublic: b64urlEncode(ephemeral.publicKey),
+      signedPrekeyId: bundle.signedPreKey.id,
+      oneTimePrekeyId: bundle.oneTimePreKey?.id ?? null,
+    },
   }
   await saveSession(ownerId, peerId, session)
   return session
@@ -329,6 +396,17 @@ export async function acceptSession(
   return session
 }
 
+export interface DrInitWirePayload {
+  /** p13 envelope marker so the server/client can route v2 messages. */
+  p13: 'dr-init'
+  v: 1
+  initiatorIdentityExchange: string
+  initiatorIdentitySigning: string
+  initiatorEphemeralPublic: string
+  signedPrekeyId: number
+  oneTimePrekeyId: number | null
+}
+
 export interface DrWireMessage {
   protocolVersion: 2
   /** Base64url-encoded JSON `{ dhPub, prevN, n }`. */
@@ -337,6 +415,8 @@ export interface DrWireMessage {
   iv: string
   /** Base64url-encoded AES-GCM ciphertext||tag. */
   encrypted_content: string
+  /** Only present on the very first outbound message of a session. */
+  drInit?: DrInitWirePayload
 }
 
 function encodeHeader(header: RatchetHeader): string {
@@ -374,13 +454,31 @@ export async function encryptForPeer(
   const ratchet = deserializeRatchet(session.ratchet)
   const msg: RatchetMessage = await encryptRatchet(ratchet, ENCODER.encode(plaintext))
   session.ratchet = serializeRatchet(ratchet)
-  await saveSession(ownerId, peerId, session)
-  return {
+
+  const wire: DrWireMessage = {
     protocolVersion: 2,
     drHeader: encodeHeader(msg.header),
     iv: DR_IV_SENTINEL,
     encrypted_content: b64urlEncode(msg.ciphertext),
   }
+  if (session.pendingInit) {
+    wire.drInit = {
+      p13: 'dr-init',
+      v: 1,
+      initiatorIdentityExchange: session.pendingInit.initiatorIdentityExchange,
+      initiatorIdentitySigning: session.pendingInit.initiatorIdentitySigning,
+      initiatorEphemeralPublic: session.pendingInit.initiatorEphemeralPublic,
+      signedPrekeyId: session.pendingInit.signedPrekeyId,
+      oneTimePrekeyId: session.pendingInit.oneTimePrekeyId,
+    }
+    // Once the responder has seen the X3DH metadata (via subsequent
+    // receive-side ratchet advance), further sends don't need it.  We clear
+    // eagerly rather than tracking an ACK so offline-queue scenarios don't
+    // leak the ephemeral metadata repeatedly.
+    delete session.pendingInit
+  }
+  await saveSession(ownerId, peerId, session)
+  return wire
 }
 
 export async function decryptFromPeer(

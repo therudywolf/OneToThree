@@ -16,6 +16,15 @@ export type SendChatMessageBody = {
   media_iv?: string | null
   media_original_bytes?: number | null
   burn_at?: string | null
+  /**
+   * Phase 6 — Double Ratchet transport.
+   * Omit or set to 1 for legacy static-ECDH; set to 2 for DR.
+   */
+  protocol_version?: 1 | 2
+  /** Base64url `{ dhPub, prevN, n }`. Required when protocol_version=2. */
+  dr_header?: string | null
+  /** JSON X3DH handshake payload. Only on the first v2 message of a session. */
+  dr_init?: string | null
 }
 
 /** REST store-and-forward when the WebSocket is not connected. */

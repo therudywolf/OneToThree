@@ -42,6 +42,12 @@ const sendMessageBodySchema = z.object({
     .min(1)
     .max(50)
     .optional(),
+  // Phase 6: Double Ratchet v2 transport fields.
+  // protocol_version=2 messages carry a drHeader (always) and drInit (first
+  // message of a new session only).  Legacy v1 clients send neither.
+  protocol_version: z.union([z.literal(1), z.literal(2)]).optional(),
+  dr_header: z.string().min(1).max(4096).nullable().optional(),
+  dr_init: z.string().min(1).max(8192).nullable().optional(),
 })
 
 const deliveredAckSchema = z.object({
@@ -132,6 +138,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       mediaIv: p.media_iv ?? null,
       mediaOriginalBytes: resolveMediaOriginalBytes(p.media_path ?? null, p.media_original_bytes),
       burnAt: burn.date,
+      protocolVersion: p.protocol_version ?? 1,
+      drHeader: p.dr_header ?? null,
+      drInit: p.dr_init ?? null,
     })
     if (!persisted.ok) return reply.status(500).send({ error: 'INSERT_FAILED' })
 
@@ -258,6 +267,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         burnAt: messages.burnAt,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
+        protocolVersion: messages.protocolVersion,
+        drHeader: messages.drHeader,
+        drInit: messages.drInit,
         // Stage 5: per-device slot
         deliveryDeviceId: messageDeliveries.deviceId,
         deliveryCiphertext: messageDeliveries.ciphertext,
@@ -290,6 +302,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
         burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
         created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+        protocol_version: m.protocolVersion,
+        dr_header: m.drHeader,
+        dr_init: m.drInit,
         // Stage 5: slot addressed to caller's device (null if legacy or wrong device)
         device_ciphertext: m.deliveryCiphertext ?? null,
         device_iv: m.deliveryIv ?? null,
@@ -512,6 +527,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         burnAt: messages.burnAt,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
+        protocolVersion: messages.protocolVersion,
+        drHeader: messages.drHeader,
+        drInit: messages.drInit,
         deliveryCiphertext: messageDeliveries.ciphertext,
         deliveryIv: messageDeliveries.iv,
         senderEcdhPublicKeyJwk: users.ecdhPublicKeyJwk,
@@ -548,6 +566,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
         burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
         created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+        protocol_version: m.protocolVersion,
+        dr_header: m.drHeader,
+        dr_init: m.drInit,
       })),
     })
   })

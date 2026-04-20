@@ -53,7 +53,7 @@ lk.onetothree.ru {
 	import security_headers
 	reverse_proxy host.docker.internal:7880 {
 		transport http {
-			versions h1 h2
+			versions 1.1 2
 			keepalive 2m
 		}
 		header_up Host {host}

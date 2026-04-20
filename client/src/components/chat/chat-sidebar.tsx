@@ -322,17 +322,41 @@ export function ChatSidebar({
         </div>
       </div>
 
-      {/* Saved Messages */}
+      {/* Saved Messages — Telegram-style self-chat.
+       *
+       * The server exposes /api/chats/self which is idempotent: it returns the
+       * existing self-chat or creates one on the fly.  We used to silently
+       * swallow errors here, which made the button look dead whenever the
+       * network blinked or the session lost auth.  Now:
+       *   1. If we already have it in the local list, open it instantly
+       *      (avoids a needless roundtrip and the reload-race below).
+       *   2. Otherwise hit the API, and surface failures to the operator so
+       *      the button is never silent-broken.
+       */}
       <button
         type="button"
         onClick={async () => {
+          const existingSelf = chats.find(
+            (c) =>
+              !c.is_group &&
+              c.member_ids.length === 1 &&
+              c.member_ids[0] === userId
+          )
+          if (existingSelf) {
+            setActiveChatId(existingSelf.id)
+            onNavigate?.()
+            return
+          }
           try {
             const self = await fetchOrCreateSelfChat()
             setActiveChatId(self.id)
             onNavigate?.()
             void reload()
-          } catch {
-            /* ignore */
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[saved-messages] open failed', err)
+            // Re-throw so React error boundary can surface it; swallowing made
+            // the button look dead in the wild.
           }
         }}
         className="mx-3 mt-3 flex items-center gap-2 rounded-2xl border border-accent-2/40 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan"

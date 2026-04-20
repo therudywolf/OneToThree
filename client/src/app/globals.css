@@ -409,6 +409,60 @@ textarea {
   padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
 }
 
+/* ===== SHELL MODE OVERRIDES =====
+ * ThemeApplicator stamps `data-shell="terminal" | "md3"` on <html> and sets
+ * CSS variables (--font-family, --radius-md, --border-radius, CRT opacities).
+ * The chat components themselves, however, pepper the JSX with hardcoded
+ * Tailwind classes like `font-mono`, `rounded-none`, `tracking-widest` that
+ * override those tokens.  These global selectors remap such classes to the
+ * shell-aware tokens so switching "TERMINAL → MATERIAL 3" actually reshapes
+ * the chat list, bubbles, sidebar, and compose bar — not just the settings
+ * modal.  Keep specificity minimal: one attribute + one class each.
+ */
+[data-shell="md3"] .font-mono {
+  font-family: var(--font-family) !important;
+  letter-spacing: 0 !important;
+}
+
+[data-shell="md3"] .rounded-none {
+  border-radius: var(--radius-md) !important;
+}
+
+[data-shell="md3"] .tracking-widest,
+[data-shell="md3"] .tracking-\[0\.2em\],
+[data-shell="md3"] .tracking-\[0\.25em\],
+[data-shell="md3"] .tracking-\[0\.3em\] {
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+}
+
+[data-shell="md3"] .uppercase {
+  text-transform: none !important;
+}
+
+/* Bubbles / panels: soften shadows, remove CRT frame. */
+[data-shell="md3"] .crt-terminal-vignette {
+  box-shadow: none !important;
+}
+
+/* Compose bar & sidebar borders use the softer radius in MD3. */
+[data-shell="md3"] .border-neon-cyan\/40,
+[data-shell="md3"] .border-neon-cyan\/25,
+[data-shell="md3"] .border-neon-cyan\/20 {
+  border-color: color-mix(
+    in srgb,
+    var(--border-strong) 80%,
+    transparent
+  ) !important;
+}
+
+/* The terminal shell gets explicit sharp-corner + mono-first typography so
+ * switching BACK from MD3 to terminal never leaves stale rounded radii or
+ * sans-serif inherited font-family behind. */
+[data-shell="terminal"] body {
+  font-family: var(--font-family);
+}
+
 /* CRT scanline overlay */
 .crt-overlay {
   pointer-events: none;
@@ -661,20 +715,24 @@ select {
   }
 }
 
-@media (min-aspect-ratio: 21/9) {
-  .chat-ultrawide-container {
-    max-width: 1600px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .chat-member-panel {
-    display: flex;
-  }
+/*
+ * Ultrawide containment was previously capped at 1400–1600px which left a
+ * huge dead stripe on the sides for 2K/4K displays.  The chat layout now
+ * ALWAYS fills 100% of the viewport — the sidebar stays fixed-width, the
+ * main thread column is free to use all remaining width, and the message
+ * bubbles keep their own max-width (see .msg-bubble-width below) so the
+ * reading line length stays comfortable even at 3840px.
+ */
+.chat-ultrawide-container {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+  margin-right: 0;
 }
 
-@media (min-aspect-ratio: 32/9) {
-  .chat-ultrawide-container {
-    max-width: 1400px;
+@media (min-aspect-ratio: 21/9) {
+  .chat-member-panel {
+    display: flex;
   }
 }
 

@@ -162,18 +162,34 @@ export function ChatTerminal({
 
   useReadReceipts(ref, { enabled: !isGroup })
 
+  // Threshold (in px from the bottom) where we still consider the user
+  // "at bottom" and allow auto-scroll to continue.  A loose value (240px)
+  // keeps the experience close to Telegram-like: even if someone is browsing
+  // the last couple of bubbles, new incoming messages still pull them to the
+  // bottom instead of showing the "new messages below" chip.
+  const AUTOSCROLL_STICK_PX = 240
+
   const scrollToBottomInstant = useCallback(() => {
     const el = ref.current
     if (!el) return
-    // Use scrollTo rather than scrollIntoView to avoid jumping parent containers
-    // when the compose bar or typing overlay mutates layout.
+    // Double-RAF: first frame for layout flush (avatars / bubble borders),
+    // second frame for late-loading content that mutates height after paint.
     el.scrollTop = el.scrollHeight
+    requestAnimationFrame(() => {
+      if (!ref.current) return
+      ref.current.scrollTop = ref.current.scrollHeight
+      requestAnimationFrame(() => {
+        if (!ref.current) return
+        ref.current.scrollTop = ref.current.scrollHeight
+      })
+    })
   }, [])
 
   const handleScroll = useCallback(() => {
     const el = ref.current
     if (!el) return
-    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const near =
+      el.scrollHeight - el.scrollTop - el.clientHeight < AUTOSCROLL_STICK_PX
     isNearBottomRef.current = near
     if (near) {
       setHasNewBelow(false)
@@ -195,12 +211,19 @@ export function ChatTerminal({
     const el = ref.current
     if (!el || typeof ResizeObserver === 'undefined') return
     let raf = 0
+    const flush = () => {
+      if (!ref.current) return
+      ref.current.scrollTop = ref.current.scrollHeight
+    }
     const ro = new ResizeObserver(() => {
       if (!isNearBottomRef.current) return
       if (raf) cancelAnimationFrame(raf)
+      // Double RAF so we absorb layout jumps triggered by the same resize
+      // event (e.g. when a just-arrived message renders, then its avatar
+      // image finishes decoding one frame later).
       raf = requestAnimationFrame(() => {
-        if (!ref.current) return
-        ref.current.scrollTop = ref.current.scrollHeight
+        flush()
+        raf = requestAnimationFrame(flush)
       })
     })
     // Observe the scroll container itself AND its first child (the content
@@ -209,8 +232,24 @@ export function ChatTerminal({
     ro.observe(el)
     const firstChild = el.firstElementChild
     if (firstChild) ro.observe(firstChild)
+
+    // Also react to intrinsic `<img>`/`<video>` element onloads inside the
+    // scroll list — some browsers debounce ResizeObserver long enough that
+    // decoded images arrive visibly late without catching the event.
+    const onMediaLoad = (ev: Event) => {
+      const tgt = ev.target as Element | null
+      if (!tgt) return
+      if (tgt.tagName !== 'IMG' && tgt.tagName !== 'VIDEO') return
+      if (!isNearBottomRef.current) return
+      flush()
+    }
+    el.addEventListener('load', onMediaLoad, true)
+    el.addEventListener('loadedmetadata', onMediaLoad, true)
+
     return () => {
       ro.disconnect()
+      el.removeEventListener('load', onMediaLoad, true)
+      el.removeEventListener('loadedmetadata', onMediaLoad, true)
       if (raf) cancelAnimationFrame(raf)
     }
   }, [])
@@ -222,7 +261,14 @@ export function ChatTerminal({
 
     if (diff <= 0) return
 
-    if (prevCount === 0 || isNearBottomRef.current) {
+    // Detect if the newest arrival is ours — for outgoing messages we
+    // ALWAYS snap to the bottom regardless of current scroll position,
+    // mirroring Telegram's behaviour (the user just pressed "Send", they
+    // expect to see their own bubble).
+    const newest = messages[messages.length - 1]
+    const sentByMe = newest && newest.sender_id === userId
+
+    if (prevCount === 0 || isNearBottomRef.current || sentByMe) {
       scrollToBottomInstant()
       isNearBottomRef.current = true
       setHasNewBelow(false)
@@ -231,7 +277,7 @@ export function ChatTerminal({
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + diff)
     }
-  }, [messages.length, scrollToBottomInstant])
+  }, [messages, userId, scrollToBottomInstant])
 
   const scrollToBottom = useCallback(() => {
     const el = ref.current

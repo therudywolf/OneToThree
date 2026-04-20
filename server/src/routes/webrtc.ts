@@ -109,12 +109,7 @@ function buildEphemeralCoturnCredentials(
 }
 
 function collectCoturnIceServers(userId: string): IceServerConfig[] {
-  const rawUrls = [
-    process.env.TURN_URLS,
-    process.env.TURN_URL,
-    process.env.NEXT_PUBLIC_TURN_URLS,
-    process.env.NEXT_PUBLIC_TURN_URL,
-  ]
+  const rawUrls = [process.env.TURN_URLS, process.env.TURN_URL]
   const authSecret =
     readSecret('TURN_AUTH_SECRET')?.trim() || process.env.TURN_AUTH_SECRET?.trim()
 

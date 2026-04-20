@@ -4,9 +4,14 @@
 process.env.JWT_SECRET =
   process.env.JWT_SECRET?.trim() ||
   'vitest-jwt-secret-must-be-32-chars-min!!'
-process.env.DATABASE_URL =
-  process.env.DATABASE_URL?.trim() ||
-  'postgres://forest:forest@127.0.0.1:5432/forest'
+{
+  const base =
+    process.env.DATABASE_URL?.trim() ||
+    'postgres://forest:forest@127.0.0.1:5432/forest'
+  const sep = base.includes('?') ? '&' : '?'
+  // Fail fast when Postgres is down (e.g. Docker test without db service).
+  process.env.DATABASE_URL = `${base}${sep}connect_timeout=2`
+}
 process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX =
   process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX?.trim() || '1000'
 process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW =

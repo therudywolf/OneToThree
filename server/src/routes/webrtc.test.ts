@@ -51,8 +51,6 @@ describe('webrtc turn route', () => {
     const prev = {
       TURN_URLS: process.env.TURN_URLS,
       TURN_URL: process.env.TURN_URL,
-      NEXT_PUBLIC_TURN_URLS: process.env.NEXT_PUBLIC_TURN_URLS,
-      NEXT_PUBLIC_TURN_URL: process.env.NEXT_PUBLIC_TURN_URL,
       TURN_USERNAME: process.env.TURN_USERNAME,
       TURN_USER: process.env.TURN_USER,
       TURN_SECRET: process.env.TURN_SECRET,
@@ -85,8 +83,6 @@ describe('webrtc turn route', () => {
     } finally {
       process.env.TURN_URLS = prev.TURN_URLS
       process.env.TURN_URL = prev.TURN_URL
-      process.env.NEXT_PUBLIC_TURN_URLS = prev.NEXT_PUBLIC_TURN_URLS
-      process.env.NEXT_PUBLIC_TURN_URL = prev.NEXT_PUBLIC_TURN_URL
       process.env.TURN_USERNAME = prev.TURN_USERNAME
       process.env.TURN_USER = prev.TURN_USER
       process.env.TURN_SECRET = prev.TURN_SECRET

@@ -241,23 +241,25 @@ case "$CMD" in
     CURRENT_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
     detect_update_services "${PREVIOUS_HEAD}..${CURRENT_HEAD}"
 
+    # We always rebuild db-migrate (cheap — most layers are cached) and always
+    # run it (drizzle's hash table deduplicates applied migrations, so repeat
+    # runs on a caught-up schema are a no-op).  This guarantees that pending
+    # migrations from any prior failed/skipped update are caught up
+    # deterministically on every `./start.sh update`.
     if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -qx 'db-migrate'; then
       log "Пересборка образа миграций (без кэша)..."
       docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
     else
-      log "Миграции не менялись — образ db-migrate не пересобираю."
+      log "Пересобираю образ миграций (кэшированно) — на всякий случай."
+      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build db-migrate
     fi
 
     log "Запускаю инфраструктуру (БД, Redis, MinIO)..."
     # НИКОГДА не используем 'down -v' — это удалит данные
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d db redis minio
 
-    if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -qx 'db-migrate'; then
-      log "Жду готовности БД и применяю миграции..."
-      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
-    else
-      log "Схема БД не менялась — шаг миграций пропущен."
-    fi
+    log "Жду готовности БД и применяю миграции (идемпотентно)..."
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
 
     log "Пересборка и запуск только затронутых сервисов: ${UPDATE_SERVICES[*]}"
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans "${UPDATE_SERVICES[@]}"

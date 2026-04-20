@@ -330,16 +330,10 @@ services:
       - ./docker/livekit/entrypoint.sh:/usr/local/bin/forest-entrypoint.sh:ro
     entrypoint: ['/usr/local/bin/forest-entrypoint.sh']
     command: ['--config', '/etc/livekit.yaml']
+    # Image is distroless/minimal: no bash; idle mode has no listener on :7880.
+    # Rely on restart policy; group calls fall back to P2P/TURN when SFU is down.
     healthcheck:
-      test:
-        [
-          'CMD-SHELL',
-          'timeout 3 bash -c ">/dev/tcp/127.0.0.1/7880" || exit 1',
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
+      disable: true
 
   caddy:
     image: caddy:2-alpine

@@ -31,10 +31,19 @@ export function scanPeerIdentity(raw: string): string {
 
   // [2] URL_INTERCEPT :: Поиск инвайт-токена в ссылке
   try {
-    // Проверяем, есть ли в строке признаки линка или query-параметра
-    if (signal.includes('invite=') || /^https?:\/\//i.test(signal)) {
-      const urlTarget = signal.startsWith('http') ? signal : `https://p13.io/?${signal.replace(/^\?/, '')}`
-      const probe = new URL(urlTarget)
+    if (
+      signal.includes('invite=') ||
+      /^https?:\/\//i.test(signal) ||
+      signal.startsWith('/') ||
+      signal.startsWith('?')
+    ) {
+      const base =
+        typeof window !== 'undefined' && window.location?.origin
+          ? `${window.location.origin}/`
+          : 'https://onetothree.ru/'
+      const probe = /^https?:\/\//i.test(signal)
+        ? new URL(signal)
+        : new URL(signal, base)
       const token = probe.searchParams.get('invite')?.trim()
 
       if (token && SIGNATURE_UUID_RE.test(token)) {

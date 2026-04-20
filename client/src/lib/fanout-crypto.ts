@@ -118,6 +118,33 @@ export async function buildFanoutSlots(
   return encryptFanout(senderPrivateKey, allDevices, plaintext)
 }
 
+/** Sentinel IV that marks a device slot as carrying a DR v2 ciphertext. */
+export const DR_SLOT_SENTINEL = 'dr:v2'
+
+/**
+ * Build fan-out delivery slots for a Double Ratchet v2 message.
+ * Unlike v1, the DR ciphertext is the SAME for all devices — the slot only
+ * identifies WHICH device the message is addressed to.  Decryption uses the
+ * DR session key, not a per-device ECDH secret.
+ */
+export async function buildDrFanoutSlots(
+  myUserId: string,
+  peerUserId: string,
+  drCiphertext: string
+): Promise<FanoutSlot[]> {
+  const [myDevices, peerDevices] = await Promise.all([
+    fetchUserDevices(myUserId),
+    fetchUserDevices(peerUserId),
+  ])
+  const allDevices = dedupeDevicesById([...peerDevices, ...myDevices])
+  if (allDevices.length === 0) return []
+  return allDevices.map((dev) => ({
+    device_id: dev.device_id,
+    ciphertext: drCiphertext,
+    iv: DR_SLOT_SENTINEL,
+  }))
+}
+
 /**
  * Decrypt a single device_ciphertext from a pending sync row.
  * Called by the receiver with their own ECDH private key and the sender's ECDH public key.

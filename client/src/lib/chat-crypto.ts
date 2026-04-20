@@ -223,6 +223,7 @@ export async function encryptOutboundTextV2(
   encrypted_content: string
   iv: string
   dr_header: string | null
+  dr_init: string | null
 }> {
   // Double Ratchet does not apply to Saved Messages (single participant)
   // — fall straight through to the symmetric v1 path.
@@ -235,6 +236,7 @@ export async function encryptOutboundTextV2(
         encrypted_content: wire.encrypted_content,
         iv: wire.iv,
         dr_header: wire.drHeader,
+        dr_init: wire.drInit ? JSON.stringify(wire.drInit) : null,
       }
     } catch (err) {
       if (
@@ -243,11 +245,11 @@ export async function encryptOutboundTextV2(
       ) {
         throw err
       }
-      // No DR session yet — fall through to legacy v1 path.
+      // No DR session yet (peer has no bundle) — fall through to v1.
     }
   }
   const legacy = await encryptOutboundText(privateKey, plaintext, frame)
-  return { protocol_version: 1, ...legacy, dr_header: null }
+  return { protocol_version: 1, ...legacy, dr_header: null, dr_init: null }
 }
 
 /** [V2_UNSEAL] :: Decrypt a message whose frame is tagged v1 or v2. */

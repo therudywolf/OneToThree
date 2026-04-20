@@ -8,9 +8,10 @@ import { useMessageDeliverySync } from '@/hooks/use-message-delivery-sync'
 /** REST history + WebSocket live updates. Read receipts are wired in `ChatTerminal`. */
 export function useMessages(
   cryptoCtx: ChatCryptoContext | null,
-  triggerBackgroundPush?: (title: string, body: string, targetUrl?: string) => void
+  triggerBackgroundPush?: (title: string, body: string, targetUrl?: string) => void,
+  directPeerUserId?: string | null
 ) {
   useLoadChatMessages(cryptoCtx)
   useMessageDeliverySync(cryptoCtx)
-  useChatRealtime(cryptoCtx, triggerBackgroundPush)
+  useChatRealtime(cryptoCtx, triggerBackgroundPush, directPeerUserId)
 }

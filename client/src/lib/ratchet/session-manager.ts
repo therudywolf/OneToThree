@@ -188,6 +188,31 @@ export function hasSessionWrapKey(): boolean {
   return sessionWrapKey !== null
 }
 
+/** In-memory DR identity set after vault unlock. Cleared on logout. */
+let _ownIdentity: IdentityKeyPair | null = null
+let _ownSignedPreKey: KeyPair | null = null
+let _ownSignedPreKeyId = 1
+
+/**
+ * Called by vault unlock to register the local DR identity.
+ * The identity keys are derived deterministically from the vault ECDH key,
+ * so this just stores the in-memory reference for session bootstrap.
+ */
+export function setOwnDrIdentity(
+  identity: IdentityKeyPair,
+  signedPreKey: KeyPair,
+  signedPreKeyId: number
+): void {
+  _ownIdentity = identity
+  _ownSignedPreKey = signedPreKey
+  _ownSignedPreKeyId = signedPreKeyId
+}
+
+export function clearOwnDrIdentity(): void {
+  _ownIdentity = null
+  _ownSignedPreKey = null
+}
+
 const WRAP_MAGIC = 0xF0 // leading byte marker "wrapped v1"
 const PLAIN_MAGIC = 0x7B // '{' — JSON plaintext sentinel (legacy)
 
@@ -469,8 +494,17 @@ export async function encryptForPeer(
   peerId: string,
   plaintext: string
 ): Promise<DrWireMessage> {
-  const session = await loadSession(ownerId, peerId)
-  if (!session) throw new Error('RATCHET_NO_SESSION')
+  let session = await loadSession(ownerId, peerId)
+  if (!session) {
+    // Auto-bootstrap: fetch peer bundle and run X3DH on first message.
+    // Falls back to RATCHET_NO_SESSION if identity or peer bundle unavailable.
+    if (!_ownIdentity) throw new Error('RATCHET_NO_SESSION')
+    try {
+      session = await bootstrapSession(ownerId, _ownIdentity, peerId)
+    } catch {
+      throw new Error('RATCHET_NO_SESSION')
+    }
+  }
   const ratchet = deserializeRatchet(session.ratchet)
   const msg: RatchetMessage = await encryptRatchet(ratchet, ENCODER.encode(plaintext))
   session.ratchet = serializeRatchet(ratchet)
@@ -501,11 +535,40 @@ export async function encryptForPeer(
   return wire
 }
 
+/**
+ * Accept an incoming X3DH init from the wire payload.
+ * Safe to call even if a session already exists (no-op in that case).
+ */
+export async function acceptIncomingInit(
+  ownerId: string,
+  peerId: string,
+  init: DrInitWirePayload
+): Promise<void> {
+  const existing = await loadSession(ownerId, peerId)
+  if (existing) return
+  if (!_ownIdentity || !_ownSignedPreKey) throw new Error('RATCHET_NO_IDENTITY')
+  if (init.signedPrekeyId !== _ownSignedPreKeyId) throw new Error('RATCHET_UNKNOWN_SPK')
+  await acceptSession(ownerId, _ownIdentity, peerId, _ownSignedPreKey, null, {
+    initiatorIdentityExchange: b64urlDecode(init.initiatorIdentityExchange),
+    initiatorIdentitySigning: b64urlDecode(init.initiatorIdentitySigning),
+    initiatorEphemeralPublic: b64urlDecode(init.initiatorEphemeralPublic),
+  })
+}
+
 export async function decryptFromPeer(
   ownerId: string,
   peerId: string,
   wire: DrWireMessage
 ): Promise<string> {
+  // If the wire carries a session init and we have no session yet, accept it.
+  if (wire.drInit) {
+    try {
+      await acceptIncomingInit(ownerId, peerId, wire.drInit)
+    } catch {
+      // acceptIncomingInit failing is non-fatal; fall through and see if
+      // a session exists anyway (e.g. race with another device).
+    }
+  }
   const session = await loadSession(ownerId, peerId)
   if (!session) throw new Error('RATCHET_NO_SESSION')
   const ratchet = deserializeRatchet(session.ratchet)
@@ -544,3 +607,5 @@ export {
 
 /* c8 ignore next */
 export const __onlyForTypescriptUnusedImports__ = generateEd25519KeyPair
+
+export type { KeyPair }

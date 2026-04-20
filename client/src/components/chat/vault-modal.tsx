@@ -8,6 +8,9 @@ import {
 } from '@/lib/crypto'
 import { patchMyEcdhPublicKey } from '@/lib/api/users'
 import { parseVaultPlaintext } from '@/lib/vault-keyring'
+import { deriveDrBundleFromEcdhJwk, deriveSessionWrapKey } from '@/lib/ratchet/identity-from-vault'
+import { setOwnDrIdentity, setSessionWrapKey, encodeBase64Url } from '@/lib/ratchet/session-manager'
+import { publishIdentity, publishSignedPrekey } from '@/lib/api/keys'
 import {
   CURRENT_VAULT_VERSION,
   readVaultBlob,
@@ -62,31 +65,43 @@ export function VaultModal({ userId, displayHandle }: Props) {
         setError(t('login.invalidVaultFormat'))
         return
       }
-      if (parsed.kind === 'LEGACY') {
-        const key = await importEcdhPrivateKey(parsed.ecdhJwk)
-        setUnwrappedPrivateKey(key)
-        try {
-          await patchMyEcdhPublicKey(
-            exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhJwk)
-          )
-        } catch {
-          /* server may be offline */
-        }
-        setPin('')
-        return
-      }
-      const key = await importEcdhPrivateKey(parsed.ecdhJwk)
+      const ecdhJwk = parsed.kind === 'V2' ? parsed.ecdhJwk : parsed.ecdhJwk
+      const key = await importEcdhPrivateKey(ecdhJwk)
       setUnwrappedPrivateKey(key)
+
+      // Upload ECDH public key so fan-out can find this device.
       try {
-        await patchMyEcdhPublicKey(
-          exportEcdhPublicJwkFromPrivateKeyString(parsed.ecdhJwk)
-        )
-      } catch {
-        /* non-fatal */
-      }
+        await patchMyEcdhPublicKey(exportEcdhPublicJwkFromPrivateKeyString(ecdhJwk))
+      } catch { /* non-fatal: server may be offline */ }
+
+      // Derive DR identity from vault ECDH key and activate it in-memory.
+      try {
+        const bundle = deriveDrBundleFromEcdhJwk(ecdhJwk)
+        const wrapKey = await deriveSessionWrapKey(bundle.identity)
+        setSessionWrapKey(wrapKey)
+        setOwnDrIdentity(bundle.identity, bundle.signedPreKey, bundle.signedPreKeyId)
+
+        // Publish key bundle to server once per account (generation 1 = stable).
+        // The server ignores duplicate publishes with the same generation.
+        const publishedKey = `p13:dr-published:${userId}`
+        if (!localStorage.getItem(publishedKey)) {
+          await publishIdentity({
+            signing_public_key: encodeBase64Url(bundle.identity.signing.publicKey),
+            exchange_public_key: encodeBase64Url(bundle.identity.exchange.publicKey),
+            generation: 1,
+          })
+          await publishSignedPrekey({
+            pre_key_id: bundle.signedPreKeyId,
+            public_key: encodeBase64Url(bundle.signedPreKey.publicKey),
+            signature: encodeBase64Url(bundle.signedPreKeySignature),
+          })
+          localStorage.setItem(publishedKey, '1')
+        }
+      } catch { /* DR setup is non-fatal; v1 fanout still works */ }
+
       setPin('')
     },
-    [setUnwrappedPrivateKey, t]
+    [setUnwrappedPrivateKey, t, userId]
   )
 
   async function handleUnlock(e: React.FormEvent) {

@@ -9,7 +9,7 @@
 
 import { API_URL } from '@/lib/api/auth'
 import type { SendChatMessageBody } from '@/lib/api/messages'
-import { buildFanoutSlots } from './fanout-crypto'
+import { buildDrFanoutSlots, buildFanoutSlots } from './fanout-crypto'
 import { getClientDeviceId } from './client-device'
 import { enqueueOutbox, registerOutboxSync } from './outbox'
 import type { ApiMessageRow } from './decrypt-chat-api-message'
@@ -53,6 +53,10 @@ export type SendChatMessageTransportInput = {
   reply_to_id?: string | null
   media_original_bytes?: number
   burn_at?: string | null
+  /** DR v2 fields — populated by encryptOutboundTextV2 */
+  protocol_version?: 1 | 2
+  dr_header?: string | null
+  dr_init?: string | null
 }
 
 export type SendChatMessageTransportResult = {
@@ -158,27 +162,41 @@ export async function sendChatMessageOverTransport(
   }
 
   if (input.transport_mode === 'DIRECT') {
-    if (!input.plaintext?.length) {
-      throw new Error('DIRECT_PLAINTEXT_REQUIRED')
-    }
-    if (!input.sender_private_key || !input.my_user_id || !input.peer_user_id) {
+    if (!input.my_user_id || !input.peer_user_id) {
       throw new Error('DIRECT_FANOUT_KEYS_REQUIRED')
     }
 
-    const excludeDeviceId = getClientDeviceId() ?? undefined
-    const ciphertexts = await buildFanoutSlots(
-      input.sender_private_key,
-      input.my_user_id,
-      input.peer_user_id,
-      input.plaintext,
-      excludeDeviceId
-    )
-    if (ciphertexts.length === 0) {
-      throw new Error('DIRECT_FANOUT_UNAVAILABLE')
+    // v2: replicate DR ciphertext to all device slots (same bytes per slot).
+    if (input.protocol_version === 2 && input.dr_header && input.content) {
+      const ciphertexts = await buildDrFanoutSlots(
+        input.my_user_id,
+        input.peer_user_id,
+        input.content
+      )
+      if (ciphertexts.length === 0) throw new Error('DIRECT_FANOUT_UNAVAILABLE')
+      body.ciphertexts = ciphertexts
+      body.protocol_version = 2
+      body.dr_header = input.dr_header
+      if (input.dr_init) body.dr_init = input.dr_init
+      body.content = null
+      body.iv = null
+    } else {
+      // v1: per-device ECDH fan-out.
+      if (!input.plaintext?.length) throw new Error('DIRECT_PLAINTEXT_REQUIRED')
+      if (!input.sender_private_key) throw new Error('DIRECT_FANOUT_KEYS_REQUIRED')
+      const excludeDeviceId = getClientDeviceId() ?? undefined
+      const ciphertexts = await buildFanoutSlots(
+        input.sender_private_key,
+        input.my_user_id,
+        input.peer_user_id,
+        input.plaintext,
+        excludeDeviceId
+      )
+      if (ciphertexts.length === 0) throw new Error('DIRECT_FANOUT_UNAVAILABLE')
+      body.ciphertexts = ciphertexts
+      body.content = null
+      body.iv = null
     }
-    body.ciphertexts = ciphertexts
-    body.content = null
-    body.iv = null
   } else if (input.transport_mode === 'SELF') {
     // Saved Messages: same contract as DIRECT — server requires per-device slots.
     if (!input.plaintext?.length) {

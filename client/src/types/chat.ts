@@ -50,6 +50,7 @@ export type DecryptedMessage = {
   media_path?: string | null
   media_type?: 'audio' | 'video' | 'image' | 'file' | null
   media_iv?: string | null
+  media_original_bytes?: number | null
   read_at?: string | null
   burn_at?: string | null
   /** Emoji reactions — map of emoji to array of user IDs who reacted */

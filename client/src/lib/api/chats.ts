@@ -9,6 +9,8 @@ export type ApiChatRow = {
   type: string
   is_group: boolean
   member_ids: string[]
+  /** True for Saved Messages (single-member direct_e2e with only the current user). */
+  is_self?: boolean
   is_favorite?: boolean
   favorited_at?: string | null
   /**
@@ -25,10 +27,6 @@ export type ApiChatRow = {
   my_role?: ChatMemberRole
   /** Group: invite slug when you may manage links. */
   invite_code?: string | null
-  /** When `type === 'channel'`: subscriber | editor | owner (from server). */
-  channel_role?: 'subscriber' | 'editor' | 'owner' | null
-  /** Linked discussion group chat id (Telegram-style), if configured. */
-  discussion_chat_id?: string | null
 }
 
 /** Client-side helper: is this chat currently muted? */
@@ -46,8 +44,6 @@ export type ChatDetailMember = {
   avatar_key?: string | null
   encrypted_group_key: string | null
   role: ChatMemberRole
-  /** Present when parent chat `type === 'channel'`. */
-  channel_role?: 'subscriber' | 'editor' | 'owner' | null
 }
 
 export type ChatDetailPayload = {
@@ -59,8 +55,6 @@ export type ChatDetailPayload = {
     invite_code: string | null
     invite_one_time: boolean | null
     my_role: ChatMemberRole
-    channel_role?: 'subscriber' | 'editor' | 'owner' | null
-    discussion_chat_id?: string | null
   }
   members: ChatDetailMember[]
 }
@@ -332,48 +326,6 @@ export async function patchChatMemberRole(
   if (!r.ok) {
     const d = (await r.json().catch(() => ({}))) as { error?: string }
     throw new Error(d.error ?? 'ROLE_PATCH_FAILED')
-  }
-}
-
-export async function patchDiscussionChat(
-  channelChatId: string,
-  discussionChatId: string | null
-): Promise<{ discussion_chat_id: string | null }> {
-  const r = await fetch(`${API_URL}/chats/${channelChatId}/discussion`, {
-    method: 'PATCH',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ discussion_chat_id: discussionChatId }),
-  })
-  const d = (await r.json().catch(() => ({}))) as {
-    error?: string
-    discussion_chat_id?: string | null
-  }
-  if (!r.ok) {
-    throw new Error(d.error ?? 'DISCUSSION_PATCH_FAILED')
-  }
-  return { discussion_chat_id: d.discussion_chat_id ?? null }
-}
-
-export type ChannelFeedRole = 'subscriber' | 'editor' | 'owner'
-
-export async function patchChannelMemberFeedRole(
-  channelChatId: string,
-  targetUserId: string,
-  channel_role: ChannelFeedRole
-): Promise<void> {
-  const r = await fetch(
-    `${API_URL}/chats/${channelChatId}/members/${canonicalUserId(targetUserId)}/channel-role`,
-    {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel_role }),
-    }
-  )
-  if (!r.ok) {
-    const d = (await r.json().catch(() => ({}))) as { error?: string }
-    throw new Error(d.error ?? 'CHANNEL_ROLE_PATCH_FAILED')
   }
 }
 

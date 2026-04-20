@@ -77,11 +77,6 @@ function isGroupType(t: string): boolean {
   return t === 'group_e2e' || t === 'public_open'
 }
 
-/** List/detail `is_group` + invite UI: includes Telegram-style channels. */
-function isGroupOrChannel(t: string): boolean {
-  return isGroupType(t) || t === 'channel'
-}
-
 /** If a direct_e2e chat already links exactly these two users, return it (idempotent create). */
 async function findExistingDirectE2EBetween(
   userA: string,
@@ -192,9 +187,6 @@ type UserChatRow = {
   inviteCode: string | null
   myRole: ChatMemberRole
   isFavorite: boolean
-  mutedUntil: string | null | undefined
-  channelRole: 'subscriber' | 'editor' | 'owner' | null
-  discussionChatId: string | null
 }
 
 async function loadUserChats(userId: string): Promise<UserChatRow[]> {
@@ -208,8 +200,6 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
       myRole: chatMembers.role,
       favoriteUserId: chatFavorites.userId,
       mutedUntil: chatMembers.mutedUntil,
-      channelRole: chatMembers.channelRole,
-      discussionChatId: chats.discussionChatId,
     })
     .from(chats)
     .innerJoin(chatMembers, eq(chatMembers.chatId, chats.id))
@@ -228,8 +218,6 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
     myRole: r.myRole,
     isFavorite: Boolean(r.favoriteUserId),
     mutedUntil: r.mutedUntil instanceof Date ? r.mutedUntil.toISOString() : r.mutedUntil,
-    channelRole: r.channelRole ?? null,
-    discussionChatId: r.discussionChatId ?? null,
   }))
 }
 
@@ -282,7 +270,13 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
     return reply.send({
       chats: rows.map((c) => {
-        const isGroup = isGroupOrChannel(c.type)
+        const isGroup = isGroupType(c.type)
+        const memberIds = memberMap.get(c.id) ?? []
+        const isSelf =
+          !isGroup &&
+          c.type === 'direct_e2e' &&
+          memberIds.length === 1 &&
+          memberIds[0] === user.id
         const showInvite =
           isGroup &&
           (c.myRole === 'owner' || c.myRole === 'admin') &&
@@ -292,15 +286,14 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           name: c.name,
           type: c.type,
           is_group: isGroup,
-          member_ids: memberMap.get(c.id) ?? [],
+          member_ids: memberIds,
           encrypted_group_key: c.encryptedGroupKey,
           is_favorite: c.isFavorite,
+          is_self: isSelf,
           muted_until: c.mutedUntil ?? null,
           last_message_at: lastMessageAtByChat.get(c.id) ?? null,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
-          channel_role: c.channelRole,
-          discussion_chat_id: c.discussionChatId,
         }
       }),
     })
@@ -340,8 +333,6 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         inviteCode: chats.inviteCode,
         myRole: chatMembers.role,
         favoriteAt: chatFavorites.createdAt,
-        channelRole: chatMembers.channelRole,
-        discussionChatId: chats.discussionChatId,
       })
       .from(chatFavorites)
       .innerJoin(chats, eq(chats.id, chatFavorites.chatId))
@@ -373,7 +364,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
     return reply.send({
       chats: rows.map((c) => {
-        const isGroup = isGroupOrChannel(c.type)
+        const isGroup = isGroupType(c.type)
         const showInvite =
           isGroup &&
           (c.myRole === 'owner' || c.myRole === 'admin') &&
@@ -394,8 +385,6 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
               : null,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
-          channel_role: c.channelRole ?? null,
-          discussion_chat_id: c.discussionChatId ?? null,
         }
       }),
     })
@@ -1008,7 +997,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     const newRole = parsed.data.role as ChatMemberRole
 
     const chat = await getChatById(chatId)
-    if (!chat || !isGroupOrChannel(chat.type)) {
+    if (!chat || !isGroupType(chat.type)) {
       return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
     }
 
@@ -1118,7 +1107,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     const { chatId, userId: targetUserId } = params.data
 
     const chat = await getChatById(chatId)
-    if (!chat || !isGroupOrChannel(chat.type)) {
+    if (!chat || !isGroupType(chat.type)) {
       return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
     }
 
@@ -1224,7 +1213,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'NOT_A_MEMBER' })
     }
 
-    if (isGroupOrChannel(chat.type)) {
+    if (isGroupType(chat.type)) {
       const r = await getMemberRole(chatId, user.id)
       if (r !== 'owner') {
         return reply.status(403).send({ error: 'OWNER_ONLY' })
@@ -1248,161 +1237,6 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  const patchDiscussionSchema = z.object({
-    discussion_chat_id: z.string().uuid().nullable(),
-  })
-
-  /**
-   * PATCH /:chatId/discussion — link or unlink a Telegram-style discussion group
-   * (group_e2e / public_open). Channel owners only.
-   */
-  app.patch('/:chatId/discussion', async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
-    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
-    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
-    const body = patchDiscussionSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
-    const { chatId } = params.data
-    const { discussion_chat_id: targetDiscussionId } = body.data
-
-    const chat = await getChatById(chatId)
-    if (!chat) return reply.status(404).send({ error: 'CHAT_NOT_FOUND' })
-    if (chat.type !== 'channel') {
-      return reply.status(400).send({ error: 'CHANNEL_ONLY' })
-    }
-
-    const actorRole = await getMemberRole(chatId, user.id)
-    if (actorRole !== 'owner') {
-      return reply.status(403).send({ error: 'OWNER_ONLY' })
-    }
-
-    if (targetDiscussionId === null) {
-      await db
-        .update(chats)
-        .set({ discussionChatId: null })
-        .where(eq(chats.id, chatId))
-      const memberIds = (
-        await db
-          .select({ userId: chatMembers.userId })
-          .from(chatMembers)
-          .where(eq(chatMembers.chatId, chatId))
-      ).map((r) => r.userId)
-      broadcastToUsers(memberIds, { type: 'chats_updated' })
-      return reply.send({ ok: true, discussion_chat_id: null })
-    }
-
-    if (targetDiscussionId === chatId) {
-      return reply.status(400).send({ error: 'INVALID_DISCUSSION_TARGET' })
-    }
-
-    const [target] = await db
-      .select()
-      .from(chats)
-      .where(eq(chats.id, targetDiscussionId))
-      .limit(1)
-    if (!target) {
-      return reply.status(404).send({ error: 'DISCUSSION_CHAT_NOT_FOUND' })
-    }
-    if (target.type !== 'group_e2e' && target.type !== 'public_open') {
-      return reply.status(400).send({ error: 'DISCUSSION_MUST_BE_GROUP' })
-    }
-
-    const [actorInTarget] = await db
-      .select({ one: chatMembers.userId })
-      .from(chatMembers)
-      .where(
-        and(
-          eq(chatMembers.chatId, targetDiscussionId),
-          eq(chatMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-    if (!actorInTarget) {
-      return reply.status(403).send({ error: 'NOT_IN_DISCUSSION_CHAT' })
-    }
-
-    if (target.discussionChatId === chatId) {
-      return reply.status(400).send({ error: 'DISCUSSION_CYCLE' })
-    }
-
-    await db
-      .update(chats)
-      .set({ discussionChatId: targetDiscussionId })
-      .where(eq(chats.id, chatId))
-
-    const memberIds = (
-      await db
-        .select({ userId: chatMembers.userId })
-        .from(chatMembers)
-        .where(eq(chatMembers.chatId, chatId))
-    ).map((r) => r.userId)
-    broadcastToUsers(memberIds, { type: 'chats_updated' })
-    return reply.send({ ok: true, discussion_chat_id: targetDiscussionId })
-  })
-
-  const patchChannelRoleBody = z.object({
-    channel_role: z.enum(['subscriber', 'editor', 'owner']),
-  })
-
-  /**
-   * PATCH /:chatId/members/:userId/channel-role — channel feed roles (subscriber /
-   * editor / owner). Channel pack owner (member.role) only.
-   */
-  app.patch(
-    '/:chatId/members/:userId/channel-role',
-    async (request, reply) => {
-      const user = await getAuthUser(request, reply)
-      if (!assertAuthed(reply, user)) return
-      const params = z
-        .object({ chatId: uuidSchema, userId: uuidSchema })
-        .safeParse(request.params)
-      if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
-      const parsed = patchChannelRoleBody.safeParse(request.body)
-      if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
-      const { chatId, userId: targetUserId } = params.data
-      const { channel_role: nextChannelRole } = parsed.data
-
-      const chat = await getChatById(chatId)
-      if (!chat) return reply.status(404).send({ error: 'CHAT_NOT_FOUND' })
-      if (chat.type !== 'channel') {
-        return reply.status(400).send({ error: 'CHANNEL_ONLY' })
-      }
-
-      const actorPackRole = await getMemberRole(chatId, user.id)
-      if (actorPackRole !== 'owner') {
-        return reply.status(403).send({ error: 'OWNER_ONLY' })
-      }
-
-      const [targetRow] = await db
-        .select({ role: chatMembers.role })
-        .from(chatMembers)
-        .where(
-          and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, targetUserId))
-        )
-        .limit(1)
-      if (!targetRow) {
-        return reply.status(404).send({ error: 'NOT_A_MEMBER' })
-      }
-
-      await db
-        .update(chatMembers)
-        .set({ channelRole: nextChannelRole })
-        .where(
-          and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, targetUserId))
-        )
-
-      const memberIds = (
-        await db
-          .select({ userId: chatMembers.userId })
-          .from(chatMembers)
-          .where(eq(chatMembers.chatId, chatId))
-      ).map((r) => r.userId)
-      broadcastToUsers(memberIds, { type: 'chats_updated' })
-      return reply.send({ ok: true, channel_role: nextChannelRole })
-    }
-  )
-
   app.get('/:chatId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -1414,7 +1248,6 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       .select({
         myRole: chatMembers.role,
         encryptedGroupKey: chatMembers.encryptedGroupKey,
-        channelRole: chatMembers.channelRole,
       })
       .from(chatMembers)
       .where(
@@ -1442,7 +1275,6 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         avatarKey: users.avatarKey,
         encryptedGroupKey: chatMembers.encryptedGroupKey,
         role: chatMembers.role,
-        channelRole: chatMembers.channelRole,
       })
       .from(chatMembers)
       .innerJoin(users, eq(users.id, chatMembers.userId))
@@ -1450,7 +1282,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       .orderBy(asc(chatMembers.joinedAt))
 
     const showInvite =
-      isGroupOrChannel(chat.type) &&
+      isGroupType(chat.type) &&
       (memberOk[0].myRole === 'owner' || memberOk[0].myRole === 'admin')
 
     return reply.send({
@@ -1458,12 +1290,10 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         id: chat.id,
         name: chat.name,
         type: chat.type,
-        is_group: isGroupOrChannel(chat.type),
+        is_group: isGroupType(chat.type),
         invite_code: showInvite ? chat.inviteCode : null,
         invite_one_time: showInvite ? chat.inviteOneTime : null,
         my_role: memberOk[0].myRole,
-        channel_role: memberOk[0].channelRole ?? null,
-        discussion_chat_id: chat.discussionChatId ?? null,
       },
       members: members.map((m) => ({
         user_id: m.userId,
@@ -1472,7 +1302,6 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         avatar_key: m.avatarKey,
         encrypted_group_key: m.encryptedGroupKey,
         role: m.role,
-        channel_role: m.channelRole ?? null,
       })),
     })
   })

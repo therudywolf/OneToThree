@@ -20,6 +20,7 @@ import { postUploadUrl } from '@/lib/api/storage'
 import { isMediaTooLarge, MEDIA_TOO_LARGE_CODE } from '@/lib/media-limits'
 import { useChatStore } from '@/store/chatStore'
 import { vibrateShort } from '@/lib/vibrate'
+import { explainSendError } from '@/lib/explain-send-error'
 import { toastError } from '@/store/toastStore'
 import type { DecryptedMessage } from '@/types/chat'
 
@@ -149,30 +150,6 @@ function requireSendContext(ctx: {
     unwrappedPrivateKey: ctx.unwrappedPrivateKey,
     cryptoCtx: ctx.cryptoCtx,
   }
-}
-
-function explainSendError(err: unknown): string {
-  if (err instanceof Error) {
-    switch (err.message) {
-      case 'SEND_NO_ACTIVE_CHAT':
-        return 'Chat session lost — reopen the chat.'
-      case 'SEND_NO_USER_ID':
-        return 'Not signed in.'
-      case 'SEND_VAULT_LOCKED':
-        return 'Vault locked — unlock PIN to send attachments.'
-      case 'SEND_CRYPTO_NOT_READY':
-        return 'E2E context not ready, try again in a moment.'
-      case 'ERR_MISSING_SECTOR_KEY':
-        return 'Sector key missing — cannot encrypt attachment.'
-      case MEDIA_TOO_LARGE_CODE:
-        return 'File too large.'
-      default:
-        return err.message.startsWith('STORAGE_PUT_')
-          ? 'Upload server rejected the file.'
-          : `Send failed: ${err.message}`
-    }
-  }
-  return 'Send failed.'
 }
 
 type EncryptedBlob = {
@@ -329,7 +306,7 @@ export function useSendMedia(
         if (via === 'REST' && serverMessage) {
           const decrypted = await decryptApiMessageRow(ctx.unwrappedPrivateKey, ctx.cryptoCtx, serverMessage)
           const node =
-            ctx.cryptoCtx.mode === 'DIRECT' &&
+            (ctx.cryptoCtx.mode === 'DIRECT' || ctx.cryptoCtx.mode === 'SELF') &&
             (decrypted.plaintext === '' || decrypted.plaintext === '[DECRYPT_FAIL]')
               ? { ...decrypted, plaintext: transportPlaintext }
               : decrypted
@@ -465,7 +442,7 @@ export function useSendMedia(
         if (via === 'REST' && serverMessage) {
           const decrypted = await decryptApiMessageRow(ctx.unwrappedPrivateKey, ctx.cryptoCtx, serverMessage)
           const node =
-            ctx.cryptoCtx.mode === 'DIRECT' &&
+            (ctx.cryptoCtx.mode === 'DIRECT' || ctx.cryptoCtx.mode === 'SELF') &&
             (decrypted.plaintext === '' || decrypted.plaintext === '[DECRYPT_FAIL]')
               ? { ...decrypted, plaintext: transportPlaintext }
               : decrypted

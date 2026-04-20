@@ -16,6 +16,7 @@ import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { isUuid, normalizePeerInput } from '@/lib/peer-input'
 import { canonicalUserId } from '@/lib/user-id'
+import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
 import type { ApiChatRow } from '@/lib/api/chats'
 import { searchLocalMessages } from '@/lib/message-cache'
 
@@ -163,37 +164,12 @@ export function ChatSidebar({
     }
   }, [localGhostQuery])
 
-  const nonSelfChats = sidebarChats.filter(
-    (c) => !(
-      !c.is_group &&
-      c.member_ids.length === 1 &&
-      c.member_ids[0] === userId
-    )
-  )
+  const nonSelfChats = sidebarChats.filter((c) => !isSavedMessagesChat(c, userId))
 
-  /** When ghost search is active, match message hits *or* chat title / peer username
-   *  so the sidebar does not go empty if the local cache has no decrypted hits yet. */
   const sidebarChatsFiltered =
     ghostHitChatIds === null
       ? nonSelfChats
-      : (() => {
-          const q = localGhostQuery.trim().toLowerCase()
-          return nonSelfChats.filter((c) => {
-            if (ghostHitChatIds.has(c.id)) return true
-            const peerId = !c.is_group
-              ? c.member_ids.find((id) => id !== userId)
-              : null
-            const resolved = peerId ? peerLookupByUserId[peerId] : undefined
-            const title = (
-              c.name?.trim() ||
-              resolved?.username?.trim() ||
-              ''
-            ).toLowerCase()
-            if (title && title.includes(q)) return true
-            if (peerId && peerId.toLowerCase().includes(q)) return true
-            return false
-          })
-        })()
+      : nonSelfChats.filter((c) => ghostHitChatIds.has(c.id))
 
   function togglePin(chatId: string) {
     setPinnedIds((prev) =>
@@ -366,12 +342,7 @@ export function ChatSidebar({
       <button
         type="button"
         onClick={async () => {
-          const existingSelf = chats.find(
-            (c) =>
-              !c.is_group &&
-              c.member_ids.length === 1 &&
-              c.member_ids[0] === userId
-          )
+          const existingSelf = chats.find((c) => isSavedMessagesChat(c, userId))
           if (existingSelf) {
             setActiveChatId(existingSelf.id)
             onNavigate?.()

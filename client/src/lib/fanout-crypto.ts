@@ -77,6 +77,18 @@ export async function encryptFanout(
 }
 
 /**
+ * Dedupe by device_id when myUserId === peerUserId (Saved Messages) so each
+ * device is encrypted once.
+ */
+function dedupeDevicesById(devices: DeviceSlot[]): DeviceSlot[] {
+  const map = new Map<string, DeviceSlot>()
+  for (const d of devices) {
+    if (!map.has(d.device_id)) map.set(d.device_id, d)
+  }
+  return [...map.values()]
+}
+
+/**
  * Build full fan-out slot list for a direct_e2e message:
  *   - all active devices of the recipient
  *   - all active devices of the sender, including the current device
@@ -96,11 +108,11 @@ export async function buildFanoutSlots(
     fetchUserDevices(peerUserId),
   ])
 
-  const allDevices = [
+  const allDevices = dedupeDevicesById([
     ...peerDevices,
     // Own devices too, so the sender can decrypt their own history after reload.
     ...myDevices,
-  ]
+  ])
 
   if (allDevices.length === 0) return []
   return encryptFanout(senderPrivateKey, allDevices, plaintext)

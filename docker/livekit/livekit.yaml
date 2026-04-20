@@ -38,8 +38,10 @@ logging:
   json: false
   sample: true
 
-redis:
-  address: 127.0.0.1:6379
+# Redis omitted on purpose: single-node LiveKit uses in-process state. Pointing
+# redis at 127.0.0.1:6379 on host networking fails when Redis only listens on
+# the Docker bridge (compose `redis` service). For multi-node, set redis.address
+# to a reachable host:port and deploy a shared Redis.
 
 # Room defaults.
 room:

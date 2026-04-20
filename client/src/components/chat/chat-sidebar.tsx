@@ -171,10 +171,29 @@ export function ChatSidebar({
     )
   )
 
+  /** When ghost search is active, match message hits *or* chat title / peer username
+   *  so the sidebar does not go empty if the local cache has no decrypted hits yet. */
   const sidebarChatsFiltered =
     ghostHitChatIds === null
       ? nonSelfChats
-      : nonSelfChats.filter((c) => ghostHitChatIds.has(c.id))
+      : (() => {
+          const q = localGhostQuery.trim().toLowerCase()
+          return nonSelfChats.filter((c) => {
+            if (ghostHitChatIds.has(c.id)) return true
+            const peerId = !c.is_group
+              ? c.member_ids.find((id) => id !== userId)
+              : null
+            const resolved = peerId ? peerLookupByUserId[peerId] : undefined
+            const title = (
+              c.name?.trim() ||
+              resolved?.username?.trim() ||
+              ''
+            ).toLowerCase()
+            if (title && title.includes(q)) return true
+            if (peerId && peerId.toLowerCase().includes(q)) return true
+            return false
+          })
+        })()
 
   function togglePin(chatId: string) {
     setPinnedIds((prev) =>

@@ -279,6 +279,17 @@ const ru = {
   'group.transferOwner': 'Передать владение группой',
   'group.kick': 'Удалить из группы',
   'group.kickConfirm': 'Удалить этого пользователя из группы?',
+  'group.discussionTitle': 'Чат обсуждения',
+  'group.discussionHint':
+    'Привяжите групповой чат, куда будут собираться комментарии к этому каналу.',
+  'group.discussionSelectPlaceholder': '— Не выбрано —',
+  'group.discussionSave': 'Сохранить',
+  'group.discussionClear': 'Сбросить',
+  'group.discussionOpen': 'Открыть обсуждение',
+  'group.channelFeedRole': 'Роль в ленте',
+  'group.roleSubscriber': 'Подписчик',
+  'group.roleEditor': 'Редактор',
+  'group.roleOwner': 'Владелец',
 
   'join.working': 'Подключение...',
   'join.failed': 'Ошибка подключения',

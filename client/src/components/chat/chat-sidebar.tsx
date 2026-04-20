@@ -360,7 +360,6 @@ export function ChatSidebar({
             onNavigate?.()
             void reload()
           } catch (err) {
-            // eslint-disable-next-line no-console
             console.error('[saved-messages] open failed', err)
             // Re-throw so React error boundary can surface it; swallowing made
             // the button look dead in the wild.

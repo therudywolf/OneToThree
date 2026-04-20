@@ -95,7 +95,6 @@ const MIN_RECORDING_DURATION_MS = 150
 function debugVoice(...args: unknown[]) {
   if (typeof window === 'undefined') return
   if (process.env.NODE_ENV === 'production') return
-  // eslint-disable-next-line no-console
   console.debug('[voice]', ...args)
 }
 

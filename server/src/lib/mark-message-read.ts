@@ -101,7 +101,15 @@ export async function markMessageReadByReader(
       .where(eq(messages.id, messageId))
       .limit(1)
     if (!row?.readAt) return { ok: false, error: 'NOT_READABLE' }
-    readAtIso = ts(row.readAt)
+    // Idempotent retry: already marked read — do not notify sender again (avoids duplicate receipts).
+    return {
+      ok: true,
+      chat_id: msg.chatId,
+      message_id: msg.id,
+      sender_id: msg.senderId,
+      reader_id: readerId,
+      read_at: ts(row.readAt),
+    }
   }
 
   sendToUser(msg.senderId, {

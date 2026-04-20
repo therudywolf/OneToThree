@@ -307,7 +307,7 @@ async function getChatMemberIds(chatId: string): Promise<string[]> {
 
 export const wsRoutes: FastifyPluginAsync = async (app) => {
   /** WebSocket endpoint handling chat events, read receipts, and WebRTC signaling. */
-  app.get('/ws', { websocket: true }, (ws: WebSocket, request) => {
+  app.get('/ws', { websocket: true }, (ws: WebSocket, request: FastifyRequest) => {
     const correlationId = randomUUID()
     const pending: unknown[] = []
     let authed: AuthUser | null = null

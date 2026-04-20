@@ -61,11 +61,22 @@ const themeInitScript = `
     var raw = localStorage.getItem('fm_chromatic_config');
     if (!raw) return;
     var cfg = JSON.parse(raw);
-    var theme = cfg && cfg.state && cfg.state.theme;
-    var motion = cfg && cfg.state && cfg.state.motionMode;
+    var state = cfg && cfg.state;
+    if (!state) return;
+    var theme = state.theme;
+    var shell = state.shellMode;
+    var motion = state.motionMode;
     var validThemes = ['default','cyberpunk2077','matrix','dracula','midnight','synthwave','hacker','pixel','nord','md3dark','md3light'];
+    var validShells = ['terminal','md3'];
     if (theme && validThemes.indexOf(theme) !== -1) {
       document.documentElement.setAttribute('data-theme', theme);
+    }
+    if (shell && validShells.indexOf(shell) !== -1) {
+      document.documentElement.setAttribute('data-shell', shell);
+    } else if (theme === 'md3dark' || theme === 'md3light') {
+      document.documentElement.setAttribute('data-shell', 'md3');
+    } else if (theme) {
+      document.documentElement.setAttribute('data-shell', 'terminal');
     }
     if (motion === 'reduced') {
       document.documentElement.setAttribute('data-motion', 'reduced');

@@ -295,7 +295,9 @@ case "$CMD" in
       die "Сервисы не отвечают после update. Проверьте ./start.sh logs"
     fi
 
-    if [[ "${#UPDATE_HINTS[@]:-0}" -gt 0 ]]; then
+    # `${#arr[@]:-0}` is not valid bash — length and default-value cannot be
+    # combined on the same expansion.  Check unbound/unset first.
+    if [[ -n "${UPDATE_HINTS+x}" && ${#UPDATE_HINTS[@]} -gt 0 ]]; then
       for hint in "${UPDATE_HINTS[@]}"; do
         warn "$hint"
       done

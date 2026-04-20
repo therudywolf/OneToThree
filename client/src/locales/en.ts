@@ -279,6 +279,17 @@ const en = {
   'group.transferOwner': 'Transfer Ownership',
   'group.kick': 'Remove from Group',
   'group.kickConfirm': 'Remove this user from the group?',
+  'group.discussionTitle': 'Discussion chat',
+  'group.discussionHint':
+    'Link a group chat where comments for this channel are collected.',
+  'group.discussionSelectPlaceholder': '— None —',
+  'group.discussionSave': 'Save link',
+  'group.discussionClear': 'Clear',
+  'group.discussionOpen': 'Open discussion',
+  'group.channelFeedRole': 'Feed role',
+  'group.roleSubscriber': 'Subscriber',
+  'group.roleEditor': 'Editor',
+  'group.roleOwner': 'Owner',
 
   'join.working': 'Connecting...',
   'join.failed': 'Connection failed',

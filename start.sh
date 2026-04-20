@@ -127,6 +127,20 @@ detect_update_services() {
   UPDATE_SERVICES=()
   UPDATE_HINTS=()
 
+  # Special case: HEAD did not move (operator pre-pulled manually, or we are
+  # re-running update after a failed build).  In that case we cannot trust
+  # `git diff` to describe what the deployment needs — it will be empty.
+  # Fall back to a FULL safe rebuild including db-migrate (migrations are
+  # idempotent via drizzle's hash tracking, so re-running them is a no-op
+  # when the schema is already at HEAD).
+  local prev_head="${diff_range%%..*}"
+  local curr_head="${diff_range##*..}"
+  if [[ -n "$prev_head" && "$prev_head" == "$curr_head" ]]; then
+    UPDATE_SERVICES=(api web caddy coturn livekit db-migrate)
+    UPDATE_HINTS+=("git HEAD не изменился — запускаю полный rebuild (включая db-migrate, миграции идемпотентны).")
+    return
+  fi
+
   while IFS= read -r changed_file; do
     [[ -z "$changed_file" ]] && continue
     case "$changed_file" in
@@ -170,7 +184,10 @@ detect_update_services() {
   done < <(git diff --name-only "$diff_range" || true)
 
   if [[ ${#UPDATE_SERVICES[@]} -eq 0 ]]; then
-    UPDATE_SERVICES=(api web caddy coturn livekit)
+    # No recognized files touched.  Default to a safe full rebuild including
+    # db-migrate so an operator re-running `update` after partial failures
+    # always ends up in a consistent state.
+    UPDATE_SERVICES=(api web caddy coturn livekit db-migrate)
   fi
 }
 

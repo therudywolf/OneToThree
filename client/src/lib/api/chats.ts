@@ -37,6 +37,9 @@ export function isChatMuted(chat: Pick<ApiChatRow, 'muted_until'>): boolean {
   return t > Date.now()
 }
 
+/** Channel feed permission (server `channel_role` enum). */
+export type ChannelFeedRole = 'subscriber' | 'editor' | 'owner'
+
 export type ChatDetailMember = {
   user_id: string
   username: string
@@ -44,6 +47,7 @@ export type ChatDetailMember = {
   avatar_key?: string | null
   encrypted_group_key: string | null
   role: ChatMemberRole
+  channel_role?: ChannelFeedRole | null
 }
 
 export type ChatDetailPayload = {
@@ -55,6 +59,7 @@ export type ChatDetailPayload = {
     invite_code: string | null
     invite_one_time: boolean | null
     my_role: ChatMemberRole
+    discussion_chat_id?: string | null
   }
   members: ChatDetailMember[]
 }
@@ -326,6 +331,43 @@ export async function patchChatMemberRole(
   if (!r.ok) {
     const d = (await r.json().catch(() => ({}))) as { error?: string }
     throw new Error(d.error ?? 'ROLE_PATCH_FAILED')
+  }
+}
+
+/** Link a discussion group chat to a channel (or clear). Server route may be absent until deployed. */
+export async function patchDiscussionChat(
+  chatId: string,
+  discussionChatId: string | null
+): Promise<void> {
+  const r = await fetch(`${API_URL}/chats/${chatId}/discussion`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ discussion_chat_id: discussionChatId }),
+  })
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'DISCUSSION_PATCH_FAILED')
+  }
+}
+
+export async function patchChannelMemberFeedRole(
+  chatId: string,
+  targetUserId: string,
+  role: ChannelFeedRole
+): Promise<void> {
+  const r = await fetch(
+    `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}/channel-role`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel_role: role }),
+    }
+  )
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'CHANNEL_ROLE_PATCH_FAILED')
   }
 }
 

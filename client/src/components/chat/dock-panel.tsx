@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import { Theme } from 'emoji-picker-react'
 import { useDockStore } from '@/store/dockStore'
 import { useTranslation } from '@/hooks/use-translation'
 import { useLocaleStore } from '@/store/localeStore'
@@ -20,11 +21,6 @@ const LazyEmojiPicker = dynamic(
     ),
   }
 )
-// Theme enum import is light, keep it synchronous (~1KB).
-const EmojiTheme = {
-  DARK: 'dark' as const,
-  AUTO: 'auto' as const,
-}
 
 /**
  * DockPanel — right-side slide-in panel on xl+ screens. Hosts profile,
@@ -118,7 +114,7 @@ export function DockPanel() {
               previewConfig={{ showPreview: false }}
               width="100%"
               height={420}
-              theme={isTerminal ? EmojiTheme.DARK : EmojiTheme.AUTO}
+              theme={isTerminal ? Theme.DARK : Theme.LIGHT}
             />
           </div>
         ) : null}

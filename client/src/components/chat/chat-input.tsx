@@ -144,6 +144,36 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     }
   }, [])
 
+  // Global pointerup fallback. Even with setPointerCapture, some browsers
+  // (Safari desktop on release builds, Chromium when dev-tools fires an
+  // implicit pointercancel) fail to deliver pointerup back to the mic
+  // button. We therefore install a window-level listener while recording
+  // is active, so releasing the mouse/finger ANYWHERE in the window still
+  // stops + sends the recording instead of leaving it running forever.
+  useEffect(() => {
+    if (!isRecordingUI || recordLocked) return
+    const onGlobalUp = () => {
+      if (holdTimerRef.current) {
+        clearTimeout(holdTimerRef.current)
+        holdTimerRef.current = null
+      }
+      if (isRecordingRef.current && !recordLocked) {
+        void stopRecording(true)
+      }
+    }
+    window.addEventListener('pointerup', onGlobalUp)
+    window.addEventListener('pointercancel', onGlobalUp)
+    window.addEventListener('mouseup', onGlobalUp)
+    return () => {
+      window.removeEventListener('pointerup', onGlobalUp)
+      window.removeEventListener('pointercancel', onGlobalUp)
+      window.removeEventListener('mouseup', onGlobalUp)
+    }
+    // stopRecording changes identity between renders; we only want to
+    // (re-)install the listener when the RECORDING state flips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRecordingUI, recordLocked])
+
   const startRecording = async () => {
     if (!cryptoCtx || disabled || isRecordingRef.current) return
     isRecordingRef.current = true
@@ -354,6 +384,25 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const handleRecordPointerDown = (e: React.PointerEvent) => {
     if (disabled || !cryptoCtx) return
     e.preventDefault()
+    // If user TAPS the mic button while already recording (unlocked mode),
+    // treat the tap as "stop + send". Telegram on desktop does the same —
+    // click once to start, click again to stop.  Before, we only reacted to
+    // pointerup, which meant a click without hold did nothing useful.
+    if (isRecordingRef.current && !recordLocked) {
+      void stopRecording(true)
+      return
+    }
+    // Capture the pointer so pointerup still fires on this button even if
+    // the cursor leaves the 40×40 hit box (very common on desktop). Without
+    // this, pointerup goes to whatever element is under the cursor and the
+    // recording stays alive forever — exactly the "висит стоп, отправить
+    // не могу" symptom.
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId)
+    } catch {
+      /* Safari < 16 throws on setPointerCapture for non-primary pointers —
+         we rely on the window-level fallback below. */
+    }
     isHoldRef.current = false
     pointerStartRef.current = { x: e.clientX, y: e.clientY }
     holdTimerRef.current = setTimeout(() => {

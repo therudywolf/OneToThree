@@ -14,6 +14,7 @@ import { useLocaleStore } from '@/store/localeStore'
 type TranslationShape = typeof en
 type Dictionary = Record<keyof TranslationShape, string>
 export type TranslationKey = keyof TranslationShape
+export type TranslateFn = (key: TranslationKey) => string
 
 const segmentMap: Record<'en' | 'ru', Dictionary> = {
   en,

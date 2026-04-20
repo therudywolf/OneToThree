@@ -161,6 +161,8 @@ const en = {
   'sidebar.localGhostSearch': 'Search messages...',
   'sidebar.ghostNoHits': 'No results found.',
   'sidebar.channels': 'Chats',
+  'sidebar.channelsSubtitle':
+    'Favorites, direct messages, and encrypted groups — open a DM below.',
   'sidebar.openDirect': 'New conversation',
   'sidebar.peerPlaceholder': 'Username or ID',
   'sidebar.copyInviteSuccess': 'Link copied',

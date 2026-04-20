@@ -80,15 +80,24 @@ body {
   --text-muted: color-mix(in srgb, var(--neon-cyan) 55%, transparent);
 }
 
+/* Night City: aligned with themeStore `cyberpunk2077` for first-paint / SSR */
 [data-theme="cyberpunk2077"] {
-  --void: #0d0208;
-  --neon-red: #FCE700;
-  --neon-cyan: #FF003C;
-  --surface: #140310;
-  --on-surface: #ffe680;
+  --void: #12090c;
+  --surface: #1b1014;
+  --surface-elevated: #24151d;
+  --neon-red: #ffe55c;
+  --neon-cyan: #ff3b7a;
+  --accent-2: #ff89af;
+  --on-surface: #fff2b3;
   --text-primary: var(--on-surface);
-  --shadow-rgb: 255, 0, 60;
-  --crt-opacity: 0.15;
+  --text-muted: color-mix(in srgb, var(--on-surface) 52%, #473227);
+  --border-strong: #473227;
+  --shadow-rgb: 255, 59, 122;
+  --page-glow: #452600;
+  --page-glow-secondary: #4a0830;
+  --crt-opacity: 0.12;
+  --crt-vignette-opacity: 0.32;
+  --text-shadow-intensity: 0.42;
 }
 [data-theme="matrix"] {
   --void: #000000;

@@ -1,10 +1,10 @@
-import dns from 'node:dns/promises'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
-
-const BLOCKED_IP =
-  /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.|::1|fc00:|fe80:)/
+import {
+  assertHostnameSafeForFetch,
+  requestGetPinned,
+} from '../lib/link-preview-ssrf.js'
 
 const MAX_REDIRECTS = 8
 
@@ -22,21 +22,14 @@ const querySchema = z.object({
     }, 'INVALID_URL'),
 })
 
-async function assertResolvedHostSafe(hostname: string): Promise<void> {
-  const resolved = await dns.lookup(hostname)
-  if (BLOCKED_IP.test(resolved.address)) {
-    throw new Error('SSRF_BLOCKED')
-  }
-}
-
 /**
- * Fetch with `redirect: manual` and re-check DNS after each hop so redirects
- * cannot bypass SSRF checks (e.g. public IP → 302 → http://127.0.0.1/).
+ * Fetch with manual redirects, DNS allowlist on every hop, and TCP pinned to the
+ * resolved public IP so DNS rebinding cannot bypass checks after validation.
  */
 async function fetchWithSafeRedirects(
   startUrl: string,
   signal: AbortSignal
-): Promise<Response> {
+): Promise<{ ok: boolean; contentType: string; text: () => Promise<string> }> {
   let current = startUrl
   for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
     let u: URL
@@ -48,24 +41,28 @@ async function fetchWithSafeRedirects(
     if (u.protocol !== 'https:' && u.protocol !== 'http:') {
       throw new Error('INVALID_URL')
     }
-    await assertResolvedHostSafe(u.hostname)
 
-    const res = await fetch(current, {
-      redirect: 'manual',
-      signal,
-      headers: { 'User-Agent': 'OneToThree-LinkPreview/1.0' },
-    })
+    const pinned = await assertHostnameSafeForFetch(u.hostname)
+    const res = await requestGetPinned(u, pinned, signal)
 
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get('location')
-      if (!loc) {
+    if (res.statusCode >= 300 && res.statusCode < 400) {
+      const loc = res.headers.location
+      if (!loc || typeof loc !== 'string') {
+        res.dispose()
         throw new Error('UPSTREAM_ERROR')
       }
       current = new URL(loc, current).href
+      res.dispose()
       continue
     }
 
-    return res
+    const ok = res.statusCode >= 200 && res.statusCode < 300
+    const contentType = (res.headers['content-type'] as string | undefined) ?? ''
+    return {
+      ok,
+      contentType,
+      text: res.bodyText,
+    }
   }
   throw new Error('TOO_MANY_REDIRECTS')
 }
@@ -88,7 +85,7 @@ export const linkPreviewRoutes: FastifyPluginAsync = async (app) => {
       try {
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 5000)
-        let res: Response
+        let res: Awaited<ReturnType<typeof fetchWithSafeRedirects>>
         try {
           res = await fetchWithSafeRedirects(url, controller.signal)
         } finally {
@@ -99,8 +96,7 @@ export const linkPreviewRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(502).send({ error: 'UPSTREAM_ERROR' })
         }
 
-        const contentType = res.headers.get('content-type') ?? ''
-        if (!contentType.includes('text/html')) {
+        if (!res.contentType.includes('text/html')) {
           return reply.status(400).send({ error: 'NOT_HTML' })
         }
 
@@ -129,6 +125,12 @@ export const linkPreviewRoutes: FastifyPluginAsync = async (app) => {
         }
         if (msg === 'INVALID_URL' || msg === 'TOO_MANY_REDIRECTS') {
           return reply.status(400).send({ error: 'INVALID_URL' })
+        }
+        if (msg === 'AbortError') {
+          return reply.status(502).send({ error: 'FETCH_FAILED' })
+        }
+        if (msg === 'BODY_TOO_LARGE') {
+          return reply.status(502).send({ error: 'UPSTREAM_ERROR' })
         }
         return reply.status(502).send({ error: 'FETCH_FAILED' })
       }

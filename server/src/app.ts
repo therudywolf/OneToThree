@@ -40,23 +40,8 @@ function normalizeHttpOrigin(raw: string | undefined): string | null {
   }
 }
 
-export async function buildApp() {
-  /** Behind Caddy/nginx: trust X-Forwarded-* for real client IPs (disable with TRUST_PROXY=0). */
-  const tp = process.env.TRUST_PROXY?.trim().toLowerCase()
-  const trustProxy =
-    tp === '0' || tp === 'false'
-      ? false
-      : tp === '1' ||
-          tp === 'true' ||
-          process.env.NODE_ENV === 'production'
-
-  const app = Fastify({
-    logger: true,
-    trustProxy,
-  })
-
-  registerGlobalErrorHandler(app)
-
+/** Enforces CORS + Redis in production — extracted for unit tests (no Fastify init). */
+export function assertProdSecurityEnv(): void {
   const isProd = process.env.NODE_ENV === 'production'
   const corsOriginsRaw =
     process.env.CORS_ORIGIN?.split(',')
@@ -74,11 +59,36 @@ export async function buildApp() {
       throw new Error('REDIS_URL must be set in production (security-critical state storage)')
     }
   }
+}
+
+export async function buildApp() {
+  /** Behind Caddy/nginx: trust X-Forwarded-* for real client IPs (disable with TRUST_PROXY=0). */
+  const tp = process.env.TRUST_PROXY?.trim().toLowerCase()
+  const trustProxy =
+    tp === '0' || tp === 'false'
+      ? false
+      : tp === '1' ||
+          tp === 'true' ||
+          process.env.NODE_ENV === 'production'
+
+  const app = Fastify({
+    logger: true,
+    trustProxy,
+  })
+
+  registerGlobalErrorHandler(app)
+
+  assertProdSecurityEnv()
+
+  const corsOriginsRaw =
+    process.env.CORS_ORIGIN?.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean) ?? []
 
   const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsRaw : true
   const apiOrigin = normalizeHttpOrigin(process.env.NEXT_PUBLIC_API_URL)
   const storageOrigin = normalizeHttpOrigin(process.env.MINIO_PUBLIC_URL)
-  const connectSrc = new Set<string>(["'self'", 'wss:', 'https:', 'https://cdn.jsdelivr.net'])
+  const connectSrc = new Set<string>(["'self'", 'wss:', 'https:', 'https://cdn.jsdelivr.net/npm/'])
   const imgSrc = new Set<string>(["'self'", 'blob:', 'data:', 'https://cdn.jsdelivr.net'])
   for (const origin of corsOriginsRaw) connectSrc.add(origin)
   if (apiOrigin) connectSrc.add(apiOrigin)
@@ -87,6 +97,8 @@ export async function buildApp() {
     imgSrc.add(storageOrigin)
   }
 
+  // Localhost bypass: only safe when the API is not reachable from untrusted clients
+  // with spoofed X-Forwarded-For (edge proxy must strip/forbid client-supplied forwards).
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
@@ -100,7 +112,7 @@ export async function buildApp() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "blob:"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net/npm/", "blob:"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: Array.from(imgSrc),
         fontSrc: ["'self'"],

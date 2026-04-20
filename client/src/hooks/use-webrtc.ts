@@ -71,36 +71,11 @@ function normalizeIceServers(servers: RTCIceServer[]): RTCIceServer[] {
   })
 }
 
-function parseEnvTurnUrls(): string[] {
-  const raw = (process.env.NEXT_PUBLIC_TURN_URLS || process.env.NEXT_PUBLIC_TURN_URL || '').trim()
-  return raw
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean)
-}
-
 async function getSignalRelays(): Promise<RTCIceServer[]> {
-  // Primary path: centralized `/api/ice-servers` resolver, which already
-  // prefers Cloudflare Calls TURN (orange-cloud compatible) and falls back
-  // to self-hosted coturn / bare STUN.  Never throws.
+  // ICE/TURN credentials must come from `/api/ice-servers` (Cloudflare short-lived
+  // or coturn HMAC); never embed TURN passwords in the client bundle.
   const servers = await getIceServers()
-  if (servers.length > 0) return normalizeIceServers(servers)
-
-  // Last-ditch local fallback: use build-time NEXT_PUBLIC_TURN_* if someone
-  // still ships them in the image.  Kept for backward compatibility with
-  // legacy deploys; new deployments should rely on the server resolver.
-  const envUrls = parseEnvTurnUrls()
-  if (envUrls.length > 0) {
-    return normalizeIceServers([
-      ...DEFAULT_STUN,
-      {
-        urls: envUrls,
-        username: process.env.NEXT_PUBLIC_TURN_USERNAME,
-        credential: process.env.NEXT_PUBLIC_TURN_PASSWORD,
-      },
-    ])
-  }
-  return DEFAULT_STUN
+  return normalizeIceServers(servers)
 }
 
 function terminateFeed(stream: MediaStream | null) {

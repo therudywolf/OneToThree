@@ -64,29 +64,9 @@ function normalizeIceServers(servers: RTCIceServer[]): RTCIceServer[] {
   })
 }
 
-function parseEnvTurnUrls(): string[] {
-  const raw = (process.env.NEXT_PUBLIC_TURN_URLS || process.env.NEXT_PUBLIC_TURN_URL || '').trim()
-  return raw
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean)
-}
-
 async function resolveIceServers(): Promise<RTCIceServer[]> {
   const servers = await getIceServers()
-  if (servers.length > 0) return normalizeIceServers(servers)
-  const envUrls = parseEnvTurnUrls()
-  if (envUrls.length > 0) {
-    return normalizeIceServers([
-      ...DEFAULT_STUN,
-      {
-        urls: envUrls,
-        username: process.env.NEXT_PUBLIC_TURN_USERNAME,
-        credential: process.env.NEXT_PUBLIC_TURN_PASSWORD,
-      },
-    ])
-  }
-  return DEFAULT_STUN
+  return normalizeIceServers(servers)
 }
 
 function terminateFeed(stream: MediaStream | null) {

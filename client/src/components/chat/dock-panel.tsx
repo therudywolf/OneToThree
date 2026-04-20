@@ -8,7 +8,6 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useLocaleStore } from '@/store/localeStore'
 import { ShellSurface, ShellText, ShellIconButton, useShell } from '@/components/ui/shell'
 import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
-import { Theme } from 'emoji-picker-react'
 
 const LazyEmojiPicker = dynamic(
   () => import('emoji-picker-react').then((m) => m.default),
@@ -21,6 +20,11 @@ const LazyEmojiPicker = dynamic(
     ),
   }
 )
+// Theme enum import is light, keep it synchronous (~1KB).
+const EmojiTheme = {
+  DARK: 'dark' as const,
+  AUTO: 'auto' as const,
+}
 
 /**
  * DockPanel — right-side slide-in panel on xl+ screens. Hosts profile,
@@ -114,7 +118,7 @@ export function DockPanel() {
               previewConfig={{ showPreview: false }}
               width="100%"
               height={420}
-              theme={isTerminal ? Theme.DARK : Theme.AUTO}
+              theme={isTerminal ? EmojiTheme.DARK : EmojiTheme.AUTO}
             />
           </div>
         ) : null}

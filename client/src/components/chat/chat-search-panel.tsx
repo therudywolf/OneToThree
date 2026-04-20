@@ -26,8 +26,7 @@ export function ChatSearchPanel({ onJumpToMessage, onClose, locale }: Props) {
   const { t } = useTranslation()
   const { isTerminal } = useShell()
   const localeFromStore = useLocaleStore((s) => s.module)
-  const effectiveLocale: 'en' | 'ru' =
-    (locale ?? localeFromStore) === 'ru' ? 'ru' : 'en'
+  const effectiveLocale = locale ?? localeFromStore
   const inputRef = useRef<HTMLInputElement>(null)
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const { query, results, search, clear } = useLocalSearch()

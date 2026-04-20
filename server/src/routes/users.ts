@@ -128,7 +128,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   app.get('/me/avatar-challenge', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const nonce = issueAvatarNonce(user.id)
+    const nonce = await issueAvatarNonce(user.id)
     return reply.send({ nonce })
   })
 
@@ -150,7 +150,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
     const { digest } = parsed.data
 
-    if (!validateAvatarNonce(user.id, nonce)) {
+    if (!(await validateAvatarNonce(user.id, nonce))) {
       return reply.status(401).send({ error: 'INVALID_NONCE' })
     }
 
@@ -168,7 +168,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(401).send({ error: 'INVALID_SIGNATURE' })
     }
 
-    if (!takeAvatarNonce(user.id, nonce)) {
+    if (!(await takeAvatarNonce(user.id, nonce))) {
       return reply.status(401).send({ error: 'INVALID_NONCE' })
     }
 

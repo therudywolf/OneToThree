@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import type { FastifyPluginAsync } from 'fastify'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { readSecret } from '../lib/read-secret.js'
@@ -88,16 +89,39 @@ function toOrderedTurnCandidates(base: string, tlsPorts: number[], includeTls: b
   return list
 }
 
-function collectCoturnIceServers(): IceServerConfig[] {
+/**
+ * Coturn with `--use-auth-secret --static-auth-secret=…` expects time-limited
+ * credentials: `username = expiryUnix:userId`, `credential = base64(HMAC-SHA1(secret, username))`.
+ * Use `TURN_AUTH_SECRET` / `TURN_AUTH_SECRET_FILE` (same value as coturn's static-auth-secret).
+ *
+ * Legacy long-term TURN user/password: set `TURN_USERNAME` and `TURN_PASSWORD` / `TURN_SECRET`
+ * (password only — do not set `TURN_AUTH_SECRET` unless you intend HMAC mode).
+ */
+function buildEphemeralCoturnCredentials(
+  authSecret: string,
+  userId: string,
+  ttlSec: number
+): { username: string; credential: string } {
+  const exp = Math.floor(Date.now() / 1000) + ttlSec
+  const username = `${exp}:${userId}`
+  const credential = createHmac('sha1', authSecret).update(username).digest('base64')
+  return { username, credential }
+}
+
+function collectCoturnIceServers(userId: string): IceServerConfig[] {
   const rawUrls = [
     process.env.TURN_URLS,
     process.env.TURN_URL,
     process.env.NEXT_PUBLIC_TURN_URLS,
     process.env.NEXT_PUBLIC_TURN_URL,
   ]
+  const authSecret =
+    readSecret('TURN_AUTH_SECRET')?.trim() || process.env.TURN_AUTH_SECRET?.trim()
+
   const rawUser = (process.env.TURN_USERNAME || process.env.TURN_USER)?.trim()
-  const rawSecret = readSecret('TURN_PASSWORD') || (process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
-  if (!rawUser || !rawSecret) return []
+  const rawPassword =
+    readSecret('TURN_PASSWORD')?.trim() ||
+    (process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
 
   const includeTlsFallback = (process.env.TURN_ENABLE_TLS_FALLBACK ?? '1') !== '0'
   const parsedTlsPorts = parseTurnUrls(process.env.TURN_TLS_PORTS ?? '443,5349')
@@ -111,7 +135,18 @@ function collectCoturnIceServers(): IceServerConfig[] {
   const urls = Array.from(new Set(allCandidates.filter(isAllowedIceUrl))).slice(0, MAX_TURN_URL_CANDIDATES)
   if (urls.length === 0) return []
 
-  return [{ urls, username: rawUser, credential: rawSecret }]
+  if (authSecret) {
+    const ttlRaw = Number.parseInt(process.env.TURN_CREDENTIAL_TTL_SEC ?? '86400', 10)
+    const ttlSec = Number.isFinite(ttlRaw) && ttlRaw > 60 && ttlRaw <= 86400 * 7 ? ttlRaw : 86400
+    const { username, credential } = buildEphemeralCoturnCredentials(authSecret, userId, ttlSec)
+    return [{ urls, username, credential }]
+  }
+
+  if (rawUser && rawPassword) {
+    return [{ urls, username: rawUser, credential: rawPassword }]
+  }
+
+  return []
 }
 
 export const webrtcRoutes: FastifyPluginAsync = async (app) => {
@@ -153,7 +188,7 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if (source === 'stun-only') {
-      const coturn = collectCoturnIceServers()
+      const coturn = collectCoturnIceServers(user.id)
       if (coturn.length > 0) {
         iceServers.push(...coturn)
         source = 'coturn'
@@ -203,7 +238,7 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
       }
     }
     if (source === 'stun-only') {
-      const coturn = collectCoturnIceServers()
+      const coturn = collectCoturnIceServers(user.id)
       if (coturn.length > 0) {
         iceServers.push(...coturn)
         source = 'coturn'

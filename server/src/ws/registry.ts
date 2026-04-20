@@ -1,5 +1,9 @@
 import type { WebSocket } from 'ws'
 
+/**
+ * Process-local WebSocket registry. Multiple API instances without sticky sessions
+ * need a shared fan-out (e.g. Redis pub/sub) — not implemented here.
+ */
 const userSockets = new Map<string, Set<WebSocket>>()
 
 type HeartbeatSocket = WebSocket & {

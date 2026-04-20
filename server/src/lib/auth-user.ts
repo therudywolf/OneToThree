@@ -29,6 +29,14 @@ export type SessionJwtPayload = {
  * Verifies `fm_session` JWT. Does not load the user row — use for ws tickets / decoding only.
  * Rejects tokens whose jti has been added to the denylist (logout / revocation).
  */
+function legacyJwtWithoutDeviceRejected(): boolean {
+  const raw = process.env.LEGACY_JWT_NO_DEVICE_REJECT_AFTER_ISO?.trim()
+  if (!raw) return false
+  const ms = Date.parse(raw)
+  if (!Number.isFinite(ms)) return false
+  return Date.now() >= ms
+}
+
 export async function verifySessionJwt(
   request: FastifyRequest,
   token?: string
@@ -39,6 +47,9 @@ export async function verifySessionJwt(
     const payload = await request.server.jwt.verify<SessionJwtPayload>(t)
     // Stage 2: isJtiDenied is now async (Redis-backed)
     if (payload.jti && await isJtiDenied(payload.jti)) {
+      return null
+    }
+    if (!payload.device_id && legacyJwtWithoutDeviceRejected()) {
       return null
     }
     return payload

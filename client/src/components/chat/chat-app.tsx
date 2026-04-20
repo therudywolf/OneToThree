@@ -7,6 +7,7 @@ import { Menu, ShieldCheck, Star, Settings, Search } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
+import { useShallow } from 'zustand/shallow'
 import { useChatStore } from '@/store/chatStore'
 import { useCallStore } from '@/store/callStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
@@ -357,8 +358,12 @@ export function ChatApp({
 
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
   const isSelfChat = activeRow != null && isSavedMessagesChat(activeRow, userId)
-  const typingUsers = useChatStore((s) => s.typingUsers)
-  const peerPresence = useChatStore((s) => s.peerPresence)
+  const { typingUsers, peerPresence } = useChatStore(
+    useShallow((s) => ({
+      typingUsers: s.typingUsers,
+      peerPresence: s.peerPresence,
+    }))
+  )
 
   const directPeerIdForPresence =
     activeRow && !activeRow.is_group

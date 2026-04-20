@@ -2,7 +2,7 @@ name: forestmessenger
 
 services:
   db:
-    image: postgres:alpine
+    image: postgres:16.6-alpine
     restart: unless-stopped
     mem_limit: 512m
     cpus: 1.0
@@ -24,7 +24,7 @@ services:
       start_period: 10s
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     restart: unless-stopped
     mem_limit: 128m
     cpus: 0.5
@@ -39,7 +39,7 @@ services:
       start_period: 5s
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
     mem_limit: 512m
     cpus: 1.0

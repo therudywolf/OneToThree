@@ -82,7 +82,8 @@ const uploadBodySchema = z.object({
   fileName: z.string().min(1).max(512),
   fileType: z.string().min(1).max(256),
   chatId: z.string().uuid(),
-  fileSize: z.number().int().positive().max(MAX_UPLOAD_BYTES).optional(),
+  /** Required so presigned PUT can enforce Content-Length (SigV4 body size). */
+  fileSize: z.number().int().positive().max(MAX_UPLOAD_BYTES),
 })
 
 export const storageRoutes: FastifyPluginAsync = async (app) => {
@@ -109,6 +110,11 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
 
     const { fileName: rawFileName, fileType, chatId, fileSize } = parsed.data
     const fileName = sanitizeFileName(rawFileName)
+
+    const mimeLower = fileType.toLowerCase().split(';')[0].trim()
+    if (mimeLower === 'image/svg+xml') {
+      return reply.status(400).send({ error: 'SVG_XML_NOT_ALLOWED' })
+    }
 
     const ext = extensionFromFileName(fileName)
     // For voice/video messages MediaRecorder may produce files without proper extension

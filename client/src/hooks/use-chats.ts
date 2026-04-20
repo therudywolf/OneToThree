@@ -45,6 +45,13 @@ export function useChats(userId: string | null) {
     if (!userId) return
     const socket = getFmSocket()
     const off = socket.subscribe((m) => {
+      if (m.type === 'group_key_epoch') {
+        const { chat_id, key_epoch } = m
+        setChats((prev) =>
+          prev.map((c) => (c.id === chat_id ? { ...c, key_epoch } : c))
+        )
+        return
+      }
       if (m.type === 'chats_updated') {
         if (debouncedReloadRef.current) clearTimeout(debouncedReloadRef.current)
         debouncedReloadRef.current = setTimeout(() => {

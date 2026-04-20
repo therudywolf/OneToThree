@@ -183,6 +183,7 @@ type UserChatRow = {
   id: string
   name: string | null
   type: string
+  keyEpoch: number
   encryptedGroupKey: string | null
   inviteCode: string | null
   myRole: ChatMemberRole
@@ -196,6 +197,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
       id: chats.id,
       name: chats.name,
       type: chats.type,
+      keyEpoch: chats.keyEpoch,
       encryptedGroupKey: chatMembers.encryptedGroupKey,
       inviteCode: chats.inviteCode,
       myRole: chatMembers.role,
@@ -214,6 +216,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
     id: r.id,
     name: r.name,
     type: r.type,
+    keyEpoch: r.keyEpoch ?? 0,
     encryptedGroupKey: r.encryptedGroupKey,
     inviteCode: r.inviteCode,
     myRole: r.myRole,
@@ -295,6 +298,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           last_message_at: lastMessageAtByChat.get(c.id) ?? null,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
+          key_epoch: c.keyEpoch,
         }
       }),
     })
@@ -330,6 +334,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         id: chats.id,
         name: chats.name,
         type: chats.type,
+        keyEpoch: chats.keyEpoch,
         encryptedGroupKey: chatMembers.encryptedGroupKey,
         inviteCode: chats.inviteCode,
         myRole: chatMembers.role,
@@ -386,6 +391,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
               : null,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
+          key_epoch: c.keyEpoch ?? 0,
         }
       }),
     })
@@ -1135,6 +1141,16 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         )
       )
 
+    let nextKeyEpoch: number | null = null
+    if (chat.type === 'group_e2e') {
+      const bumped = await db
+        .update(chats)
+        .set({ keyEpoch: sql`${chats.keyEpoch} + 1` })
+        .where(eq(chats.id, chatId))
+        .returning({ keyEpoch: chats.keyEpoch })
+      nextKeyEpoch = bumped[0]?.keyEpoch ?? null
+    }
+
     const memberIds = (
       await db
         .select({ userId: chatMembers.userId })
@@ -1142,7 +1158,15 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         .where(eq(chatMembers.chatId, chatId))
     ).map((r) => r.userId)
 
-    broadcastToUsers([...memberIds, targetUserId], { type: 'chats_updated' })
+    const notifyIds = [...memberIds, targetUserId]
+    broadcastToUsers(notifyIds, { type: 'chats_updated' })
+    if (nextKeyEpoch != null) {
+      broadcastToUsers(notifyIds, {
+        type: 'group_key_epoch',
+        chat_id: chatId,
+        key_epoch: nextKeyEpoch,
+      })
+    }
     return reply.send({ ok: true })
   })
 

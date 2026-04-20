@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
@@ -163,6 +163,49 @@ describe('webrtc turn route', () => {
       process.env.TURN_URLS = prev.TURN_URLS
       process.env.TURN_USERNAME = prev.TURN_USERNAME
       process.env.TURN_SECRET = prev.TURN_SECRET
+      process.env.TURN_ENABLE_TLS_FALLBACK = prev.TURN_ENABLE_TLS_FALLBACK
+      await db.delete(users).where(eq(users.id, userId))
+    }
+  })
+
+  it('GET /api/turn issues Coturn REST ephemeral creds when TURN_AUTH_SECRET is set', async () => {
+    const { cookie, userId } = await createSessionCookie('ephem')
+    const prev = {
+      TURN_URLS: process.env.TURN_URLS,
+      TURN_USERNAME: process.env.TURN_USERNAME,
+      TURN_SECRET: process.env.TURN_SECRET,
+      TURN_AUTH_SECRET: process.env.TURN_AUTH_SECRET,
+      TURN_CREDENTIAL_TTL_SEC: process.env.TURN_CREDENTIAL_TTL_SEC,
+      TURN_ENABLE_TLS_FALLBACK: process.env.TURN_ENABLE_TLS_FALLBACK,
+    }
+    process.env.TURN_URLS = 'turn:turn.example.test:3478'
+    process.env.TURN_AUTH_SECRET = 'static-auth-secret-for-coturn'
+    delete process.env.TURN_USERNAME
+    delete process.env.TURN_SECRET
+    process.env.TURN_CREDENTIAL_TTL_SEC = '7200'
+    process.env.TURN_ENABLE_TLS_FALLBACK = '0'
+
+    try {
+      const res = await request(app!.server)
+        .get('/api/turn')
+        .set('Cookie', cookie)
+        .expect(200)
+
+      const relay = (res.body.iceServers as Array<{ urls: string[]; username?: string; credential?: string }>).find(
+        (s) => Array.isArray(s.urls) && s.urls.includes('turn:turn.example.test:3478?transport=udp')
+      )
+      expect(relay).toBeTruthy()
+      expect(relay!.username).toMatch(/^\d+:[0-9a-f-]{36}$/)
+      const expected = createHmac('sha1', 'static-auth-secret-for-coturn')
+        .update(relay!.username!)
+        .digest('base64')
+      expect(relay!.credential).toBe(expected)
+    } finally {
+      process.env.TURN_URLS = prev.TURN_URLS
+      process.env.TURN_USERNAME = prev.TURN_USERNAME
+      process.env.TURN_SECRET = prev.TURN_SECRET
+      process.env.TURN_AUTH_SECRET = prev.TURN_AUTH_SECRET
+      process.env.TURN_CREDENTIAL_TTL_SEC = prev.TURN_CREDENTIAL_TTL_SEC
       process.env.TURN_ENABLE_TLS_FALLBACK = prev.TURN_ENABLE_TLS_FALLBACK
       await db.delete(users).where(eq(users.id, userId))
     }

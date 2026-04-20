@@ -159,7 +159,30 @@ export async function getRecentCachedMessages(chatId: string, limit = 50): Promi
   return logs.reverse()
 }
 
-export const getOlderCachedMessages = getRecentCachedMessages
+/**
+ * Messages strictly older than `before` in this chat (by index key order).
+ */
+export async function getOlderCachedMessages(
+  chatId: string,
+  before: { created_at: string; id: string },
+  limit = 50
+): Promise<DecryptedMessage[]> {
+  if (typeof indexedDB === 'undefined') return []
+  const conn = await initConnection()
+  const lower: [string, string, string] = [chatId, '', '']
+  const upper: [string, string, string] = [chatId, before.created_at, before.id]
+  const range = IDBKeyRange.bound(lower, upper, false, true)
+  const tx = conn.transaction('message_feed', 'readonly')
+  const idx = tx.store.index('bySectorCreated')
+
+  const logs: DecryptedMessage[] = []
+  let cursor = await idx.openCursor(range, 'prev')
+  while (cursor && logs.length < limit) {
+    logs.push(cursor.value)
+    cursor = await cursor.continue()
+  }
+  return logs.reverse()
+}
 
 /** Delete a single cached message by id. */
 export async function deleteCachedMessage(messageId: string): Promise<void> {

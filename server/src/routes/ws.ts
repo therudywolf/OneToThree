@@ -445,6 +445,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             return
           }
 
+          if (await isBlocked(user.id, targetUserId)) {
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+            return
+          }
+
           // WARNING: This relay must stay opaque. Never introspect or mutate SDP/ICE fields,
           // otherwise zero-trust call signaling can be accidentally broken.
           sendToUser(targetUserId, {
@@ -513,7 +518,6 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
-          // Verify message belongs to this chat
           const [msg] = await db
             .select({ id: messages.id })
             .from(messages)
@@ -523,21 +527,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'MESSAGE_NOT_FOUND' }))
             return
           }
-          // Toggle: delete if exists, insert if not
-          const [existing] = await db
-            .select({ messageId: messageReactions.messageId })
-            .from(messageReactions)
-            .where(
-              and(
-                eq(messageReactions.messageId, message_id),
-                eq(messageReactions.userId, user.id),
-                eq(messageReactions.emoji, emoji)
-              )
-            )
-            .limit(1)
-          if (existing) {
-            await db
-              .delete(messageReactions)
+
+          const reactions = await db.transaction(async (tx) => {
+            const [existing] = await tx
+              .select({ messageId: messageReactions.messageId })
+              .from(messageReactions)
               .where(
                 and(
                   eq(messageReactions.messageId, message_id),
@@ -545,22 +539,34 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
                   eq(messageReactions.emoji, emoji)
                 )
               )
-          } else {
-            await db
-              .insert(messageReactions)
-              .values({ messageId: message_id, userId: user.id, emoji })
-              .onConflictDoNothing()
-          }
-          // Fetch updated reactions for this message
-          const reactionRows = await db
-            .select({ userId: messageReactions.userId, emoji: messageReactions.emoji })
-            .from(messageReactions)
-            .where(eq(messageReactions.messageId, message_id))
-          const reactions: Record<string, string[]> = {}
-          for (const r of reactionRows) {
-            ;(reactions[r.emoji] ??= []).push(r.userId)
-          }
-          // Broadcast to all chat members
+              .limit(1)
+            if (existing) {
+              await tx
+                .delete(messageReactions)
+                .where(
+                  and(
+                    eq(messageReactions.messageId, message_id),
+                    eq(messageReactions.userId, user.id),
+                    eq(messageReactions.emoji, emoji)
+                  )
+                )
+            } else {
+              await tx
+                .insert(messageReactions)
+                .values({ messageId: message_id, userId: user.id, emoji })
+                .onConflictDoNothing()
+            }
+            const reactionRows = await tx
+              .select({ userId: messageReactions.userId, emoji: messageReactions.emoji })
+              .from(messageReactions)
+              .where(eq(messageReactions.messageId, message_id))
+            const out: Record<string, string[]> = {}
+            for (const r of reactionRows) {
+              ;(out[r.emoji] ??= []).push(r.userId)
+            }
+            return out
+          })
+
           const memberIds = await getChatMemberIds(chat_id)
           broadcastToUsers(memberIds, {
             type: 'reaction_update',

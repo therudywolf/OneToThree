@@ -65,6 +65,18 @@ export interface RatchetInitBob {
 }
 
 const DEFAULT_MAX_SKIP = 1000
+/**
+ * Upper bound on total skipped message keys across every bucket in a single
+ * session.  Without this a malicious peer could open many DH chains, each
+ * with up to `maxSkip` skipped keys, and exhaust client memory.
+ */
+const GLOBAL_SKIP_CAP = 3_000
+
+function totalSkipped(state: RatchetState): number {
+  let n = 0
+  for (const bucket of state.skipped.values()) n += bucket.size
+  return n
+}
 
 function bytesToB64(bytes: Uint8Array): string {
   let binary = ''
@@ -253,6 +265,9 @@ function cacheSkipped(
   while (state.recvCounter < upTo) {
     if (bucket.size >= state.maxSkip) {
       throw new Error('RATCHET_SKIP_LIMIT')
+    }
+    if (totalSkipped(state) >= GLOBAL_SKIP_CAP) {
+      throw new Error('RATCHET_GLOBAL_SKIP_LIMIT')
     }
     const { messageKey, nextChainKey } = kdfMessageKey(state.recvChain)
     state.recvChain = nextChainKey

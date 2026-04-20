@@ -13,6 +13,7 @@ import {
 } from '@/lib/media-limits'
 import { useCallStore } from '@/store/callStore'
 import { useChatStore } from '@/store/chatStore'
+import { getIceServers } from '@/lib/ice-servers'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
@@ -79,34 +80,27 @@ function parseEnvTurnUrls(): string[] {
 }
 
 async function getSignalRelays(): Promise<RTCIceServer[]> {
-  try {
-    const res = await fetch('/api/turn', {
-      method: 'GET',
-      credentials: 'include',
-      headers: { 'Accept': 'application/json' },
-    })
+  // Primary path: centralized `/api/ice-servers` resolver, which already
+  // prefers Cloudflare Calls TURN (orange-cloud compatible) and falls back
+  // to self-hosted coturn / bare STUN.  Never throws.
+  const servers = await getIceServers()
+  if (servers.length > 0) return normalizeIceServers(servers)
 
-    if (!res.ok) throw new Error(`RELAY_FETCH_FAIL: ${res.status}`)
-
-    const payload = (await res.json()) as { iceServers?: RTCIceServer[] }
-    if (!payload.iceServers) throw new Error('MALFORMED_RELAY_PAYLOAD')
-
-    return normalizeIceServers(payload.iceServers)
-  } catch (err) {
-    console.warn('[SYS.ICE] Relay nodes unreachable, using fallback ICE plan.', err)
-    const envUrls = parseEnvTurnUrls()
-    if (envUrls.length > 0) {
-      return normalizeIceServers([
-        ...DEFAULT_STUN,
-        {
-          urls: envUrls,
-          username: process.env.NEXT_PUBLIC_TURN_USERNAME,
-          credential: process.env.NEXT_PUBLIC_TURN_PASSWORD,
-        },
-      ])
-    }
-    return DEFAULT_STUN
+  // Last-ditch local fallback: use build-time NEXT_PUBLIC_TURN_* if someone
+  // still ships them in the image.  Kept for backward compatibility with
+  // legacy deploys; new deployments should rely on the server resolver.
+  const envUrls = parseEnvTurnUrls()
+  if (envUrls.length > 0) {
+    return normalizeIceServers([
+      ...DEFAULT_STUN,
+      {
+        urls: envUrls,
+        username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+        credential: process.env.NEXT_PUBLIC_TURN_PASSWORD,
+      },
+    ])
   }
+  return DEFAULT_STUN
 }
 
 function terminateFeed(stream: MediaStream | null) {

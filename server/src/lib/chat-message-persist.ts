@@ -21,6 +21,9 @@ export type PersistedMessageRow = {
   burnAt: Date | null
   readAt: Date | null
   createdAt: Date
+  protocolVersion: number
+  drHeader: string | null
+  drInit: string | null
 }
 
 export type PersistChatMessageInput = {
@@ -34,6 +37,12 @@ export type PersistChatMessageInput = {
   mediaIv?: string | null
   mediaOriginalBytes?: number | null
   burnAt?: Date | null
+  /** Protocol version (1 = legacy static ECDH, 2 = Double Ratchet). */
+  protocolVersion?: number
+  /** Base64url header for v2; ignored for v1. */
+  drHeader?: string | null
+  /** JSON X3DH init payload for v2 first message; ignored for v1. */
+  drInit?: string | null
 }
 
 function rowToWireMessage(row: PersistedMessageRow) {
@@ -66,6 +75,9 @@ function rowToWireMessage(row: PersistedMessageRow) {
     burn_at: burnAt,
     read_at: readAt,
     created_at: createdAt,
+    protocol_version: row.protocolVersion,
+    dr_header: row.drHeader,
+    dr_init: row.drInit,
   }
 }
 
@@ -92,6 +104,7 @@ export async function persistChatMessageAndFanOut(
   | { ok: false; error: 'INSERT_FAILED' }
 > {
   const row = await db.transaction(async (tx) => {
+    const protocolVersion = input.protocolVersion ?? 1
     const [inserted] = await tx
       .insert(messages)
       .values({
@@ -105,6 +118,9 @@ export async function persistChatMessageAndFanOut(
         mediaIv: input.mediaIv ?? null,
         mediaOriginalBytes: input.mediaOriginalBytes ?? null,
         burnAt: input.burnAt ?? null,
+        protocolVersion,
+        drHeader: protocolVersion === 2 ? input.drHeader ?? null : null,
+        drInit: protocolVersion === 2 ? input.drInit ?? null : null,
       })
       .returning({
         id: messages.id,
@@ -120,6 +136,9 @@ export async function persistChatMessageAndFanOut(
         burnAt: messages.burnAt,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
+        protocolVersion: messages.protocolVersion,
+        drHeader: messages.drHeader,
+        drInit: messages.drInit,
       })
 
     if (!inserted) return null

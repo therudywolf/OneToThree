@@ -49,6 +49,12 @@ CLUSTER_JOIN_TOKEN=$(openssl rand -hex 24)
 LIVEKIT_API_KEY="APIforest_$(openssl rand -hex 10)"
 LIVEKIT_API_SECRET=$(openssl rand -hex 32)
 
+# Cloudflare Calls TURN — operator provides these from the CF dashboard (free tier).
+# See: https://developers.cloudflare.com/calls/turn/generate-credentials/
+# Leave blank to keep self-hosted coturn as the TURN source instead.
+CLOUDFLARE_TURN_KEY_ID=""
+CLOUDFLARE_TURN_API_TOKEN=""
+
 resolve_turn_external_ip() {
   local domain="$1"
   local turn_host="turn.${domain}"
@@ -77,6 +83,15 @@ echo ""
 read -rp "  Enter your domain (e.g. onetothree.ru): " DOMAIN
 read -rp "  Enter ACME email for TLS certs: " ACME_EMAIL
 read -rp "  Enter VAPID contact email (e.g. admin@onetothree.ru): " VAPID_SUBJECT
+
+echo ""
+echo -e "${BLD}  Cloudflare Calls TURN (optional, orange-cloud compatible):${NC}"
+echo -e "  Leave both blank to keep self-hosted coturn as the TURN source."
+echo -e "  Dashboard → Calls → TURN → create app to obtain Key ID + API Token."
+read -rp "  CLOUDFLARE_TURN_KEY_ID (blank to skip): " CLOUDFLARE_TURN_KEY_ID
+if [[ -n "$CLOUDFLARE_TURN_KEY_ID" ]]; then
+  read -rp "  CLOUDFLARE_TURN_API_TOKEN: " CLOUDFLARE_TURN_API_TOKEN
+fi
 
 CORS_ORIGIN="https://${DOMAIN}"
 TURN_EXTERNAL_IP="$(resolve_turn_external_ip "$DOMAIN")"
@@ -135,6 +150,11 @@ echo -n "$INTERNAL_API_SIGNING_KEY" > "$SECRETS_DIR/internal_api_signing_key"
 echo -n "$CLUSTER_JOIN_TOKEN"   > "$SECRETS_DIR/cluster_join_token"
 echo -n "$LIVEKIT_API_KEY"      > "$SECRETS_DIR/livekit_api_key"
 echo -n "$LIVEKIT_API_SECRET"   > "$SECRETS_DIR/livekit_api_secret"
+# CF TURN files always exist so docker-compose `secrets:` mount succeeds.
+# Empty content -> api/ice-servers treats CF as "not configured" and falls
+# back to coturn/STUN automatically.
+echo -n "$CLOUDFLARE_TURN_KEY_ID"    > "$SECRETS_DIR/cloudflare_turn_key_id"
+echo -n "$CLOUDFLARE_TURN_API_TOKEN" > "$SECRETS_DIR/cloudflare_turn_api_token"
 echo -n "$ACME_EMAIL"           > "$SECRETS_DIR/acme_email"
 echo -n "$TURN_EXTERNAL_IP"     > "$SECRETS_DIR/turn_external_ip"
 echo -n "$CORS_ORIGIN"          > "$SECRETS_DIR/cors_origin"
@@ -163,6 +183,10 @@ echo -e "║ ${YEL}INTERNAL_API_SIGNING_KEY${NC}: ${INTERNAL_API_SIGNING_KEY}"
 echo -e "║ ${YEL}CLUSTER_JOIN_TOKEN${NC}  : ${CLUSTER_JOIN_TOKEN}"
 echo -e "║ ${YEL}LIVEKIT_API_KEY${NC}    : ${LIVEKIT_API_KEY}"
 echo -e "║ ${YEL}LIVEKIT_API_SECRET${NC} : ${LIVEKIT_API_SECRET}"
+if [[ -n "$CLOUDFLARE_TURN_KEY_ID" ]]; then
+  echo -e "║ ${YEL}CF_TURN_KEY_ID${NC}     : ${CLOUDFLARE_TURN_KEY_ID}"
+  echo -e "║ ${YEL}CF_TURN_API_TOKEN${NC}  : ${CLOUDFLARE_TURN_API_TOKEN:0:10}…"
+fi
 if [[ -n "$VAPID_PUBLIC_KEY" ]]; then
   echo -e "║ ${YEL}VAPID_PUBLIC_KEY${NC}  : ${VAPID_PUBLIC_KEY}"
   echo -e "║ ${YEL}VAPID_PRIVATE_KEY${NC} : ${VAPID_PRIVATE_KEY}"

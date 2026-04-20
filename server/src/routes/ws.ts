@@ -129,6 +129,9 @@ const chatMessageInSchema = z.object({
   reply_to_id: z.string().uuid().nullable().optional(),
   media_original_bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   burn_at: z.string().nullable().optional(),
+  protocol_version: z.union([z.literal(1), z.literal(2)]).optional(),
+  dr_header: z.string().min(1).max(4096).nullable().optional(),
+  dr_init: z.string().min(1).max(8192).nullable().optional(),
 })
 
 const webrtcSignalSchema = z.object({
@@ -397,6 +400,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               p.media_original_bytes
             ),
             burnAt: burn.date,
+            protocolVersion: p.protocol_version ?? 1,
+            drHeader: p.dr_header ?? null,
+            drInit: p.dr_init ?? null,
           })
 
           if (!persisted.ok) {

@@ -248,6 +248,14 @@ export const messages = pgTable(
      * and `counter` as base64url fields. Null for v1.
      */
     drHeader: text('dr_header'),
+    /**
+     * Double Ratchet init payload (v2, first message only). Carries the X3DH
+     * handshake material the responder needs to derive the initial shared
+     * secret: initiator identity keys, ephemeral public, and the consumed
+     * signed / one-time prekey ids.  Null for all subsequent v2 messages and
+     * every v1 message.
+     */
+    drInit: text('dr_init'),
     /** Burn-after-read: hide locally after this time (server metadata). */
     burnAt: timestamp('burn_at', { withTimezone: true }),
     /** Direct E2E: set when the peer reads (first read wins). Null in group chats. */

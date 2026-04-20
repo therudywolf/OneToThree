@@ -13,9 +13,11 @@ export function readSecret(envVar: string): string | undefined {
   const filePath = process.env[`${envVar}_FILE`]?.trim()
   if (filePath) {
     try {
-      return fs.readFileSync(filePath, 'utf8').trim()
+      const fromFile = fs.readFileSync(filePath, 'utf8').trim()
+      if (fromFile.length > 0) return fromFile
+      // Empty file -> treat as "not configured" and fall through to env.
     } catch {
-      // File not readable — fall through to env var
+      // File not readable -> fall through to env var.
     }
   }
   return process.env[envVar]?.trim() || undefined

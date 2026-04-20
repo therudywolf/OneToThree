@@ -22,3 +22,10 @@ export async function getChatById(chatId: string) {
   const [c] = await db.select().from(chats).where(eq(chats.id, chatId)).limit(1)
   return c ?? null
 }
+
+/** Channel: only editors and owners may create messages in the channel feed. */
+export function channelRoleAllowsPost(
+  channelRole: 'subscriber' | 'editor' | 'owner' | null
+): boolean {
+  return channelRole === 'editor' || channelRole === 'owner'
+}

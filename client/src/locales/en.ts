@@ -199,6 +199,9 @@ const en = {
   'chat.emptySubtitle': 'Choose a chat from the list',
   'chat.noLogsTitle': 'No Messages',
   'chat.noLogsHint': 'Send the first message.',
+  'chat.e2eDirectLabel': 'End-to-end encrypted',
+  'chat.channelReadOnly':
+    'Read-only: only channel editors can post here. Use the linked discussion if available.',
   'chat.unreadMessages': 'Unread messages',
   'chat.replyBanner': 'Reply to',
   'chat.inputPlaceholder': 'Type a message...',
@@ -279,6 +282,17 @@ const en = {
   'group.transferOwner': 'Transfer Ownership',
   'group.kick': 'Remove from Group',
   'group.kickConfirm': 'Remove this user from the group?',
+  'group.discussionTitle': 'Discussion group',
+  'group.discussionHint':
+    'Link a group chat where subscribers can comment on channel posts.',
+  'group.discussionSelectPlaceholder': '— none —',
+  'group.discussionOpen': 'Open discussion',
+  'group.discussionSave': 'Save link',
+  'group.discussionClear': 'Unlink',
+  'group.channelFeedRole': 'Channel role',
+  'group.roleSubscriber': 'Subscriber',
+  'group.roleEditor': 'Editor',
+  'group.roleOwner': 'Owner',
 
   'join.working': 'Connecting...',
   'join.failed': 'Connection failed',

@@ -200,6 +200,9 @@ const ru = {
   'chat.noLogsTitle': 'Нет сообщений',
   'chat.unreadMessages': 'Непрочитанные сообщения',
   'chat.noLogsHint': 'Напишите первое сообщение.',
+  'chat.e2eDirectLabel': 'Сквозное шифрование',
+  'chat.channelReadOnly':
+    'Только чтение: писать в канал могут редакторы. Обсуждение — в привязанной группе.',
   'chat.replyBanner': 'Ответ на',
   'chat.inputPlaceholder': 'Введите сообщение...',
   'chat.burnTimerLabel': 'Удалить через',
@@ -279,6 +282,17 @@ const ru = {
   'group.transferOwner': 'Передать владение группой',
   'group.kick': 'Удалить из группы',
   'group.kickConfirm': 'Удалить этого пользователя из группы?',
+  'group.discussionTitle': 'Группа обсуждения',
+  'group.discussionHint':
+    'Привяжи групповой чат, где подписчики обсуждают посты канала.',
+  'group.discussionSelectPlaceholder': '— нет —',
+  'group.discussionOpen': 'Открыть обсуждение',
+  'group.discussionSave': 'Сохранить',
+  'group.discussionClear': 'Отвязать',
+  'group.channelFeedRole': 'Роль в канале',
+  'group.roleSubscriber': 'Подписчик',
+  'group.roleEditor': 'Редактор',
+  'group.roleOwner': 'Владелец',
 
   'join.working': 'Подключение...',
   'join.failed': 'Ошибка подключения',

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star, Settings, Search } from 'lucide-react'
+import { Menu, ShieldCheck, Star, Settings, Search, Lock, MessagesSquare } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -51,6 +51,7 @@ import { useGroupCall } from '@/hooks/use-group-call'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { useMobileViewport } from '@/hooks/use-mobile-viewport'
 import { useNotificationOpen } from '@/hooks/use-notification-open'
+import { canPostInChat } from '@/lib/chat-permissions'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -355,6 +356,9 @@ export function ChatApp({
   }, [])
 
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
+  /** Voice/video group calls: not broadcast channels. */
+  const isGroupCallSurface =
+    Boolean(activeRow?.is_group && activeRow.type !== 'channel')
   const isSelfChat = activeRow != null && !activeRow.is_group && activeRow.member_ids.length === 1 && activeRow.member_ids[0] === userId
   const typingUsers = useChatStore((s) => s.typingUsers)
   const peerPresence = useChatStore((s) => s.peerPresence)
@@ -607,7 +611,24 @@ export function ChatApp({
                   )}
                 </span>
               ) : null}
+              {peerIdentity &&
+              activeRow?.type === 'direct_e2e' &&
+              !isSelfChat &&
+              !ctxError ? (
+                <span
+                  className="hidden min-w-0 sm:inline-flex items-center gap-1 rounded border border-neon-cyan/25 bg-void/80 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.2em] text-neon-cyan/70"
+                  title={t('chat.e2eDirectLabel')}
+                >
+                  <Lock className="h-3 w-3 shrink-0 text-neon-cyan/80" aria-hidden />
+                  <span className="truncate">{t('chat.e2eDirectLabel')}</span>
+                </span>
+              ) : null}
             </div>
+          ) : activeRow?.is_group ? (
+            <span className="max-w-[min(100%,20rem)] truncate border border-neon-cyan/35 bg-void px-2 py-1 text-[11px] font-bold tracking-wider text-neon-cyan/85">
+              {activeRow.type === 'channel' ? '#' : ''}
+              {activeRow.name || t('sidebar.groupUntitled')}
+            </span>
           ) : (
             /* No active chat — show app title */
             <span className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan/50 truncate">
@@ -625,11 +646,11 @@ export function ChatApp({
               disabled={!activeChatId || !!ctxError}
               peerReady={peerReady}
               onVoiceCall={() => {
-                if (activeRow?.is_group) void handleGroupVoiceCall()
+                if (isGroupCallSurface) void handleGroupVoiceCall()
                 else void handleVoiceCall()
               }}
               onVideoCall={() => {
-                if (activeRow?.is_group) void handleGroupVideoCall()
+                if (isGroupCallSurface) void handleGroupVideoCall()
                 else void handleVideoCall()
               }}
             />
@@ -640,6 +661,20 @@ export function ChatApp({
 
           {/* Per-chat search — opens dock search slot on xl+, or toggles an
               inline overlay on narrower viewports. Gated on an active chat. */}
+          {activeChatId && activeRow?.type === 'channel' && activeRow.discussion_chat_id ? (
+            <button
+              type="button"
+              onClick={() => {
+                const id = activeRow.discussion_chat_id
+                if (id) useChatStore.getState().setActiveChatId(id)
+              }}
+              title={t('group.discussionOpen')}
+              aria-label={t('group.discussionOpen')}
+              className="p13-icon-btn touch-manipulation"
+            >
+              <MessagesSquare className="h-4 w-4" aria-hidden />
+            </button>
+          ) : null}
           {activeChatId ? (
             <button
               type="button"
@@ -702,6 +737,14 @@ export function ChatApp({
               {t('errors.signalLost')}
             </div>
           ) : null}
+          {activeRow?.type === 'channel' && !canPostInChat(activeRow) ? (
+            <div
+              className="shrink-0 border-b border-neon-cyan/20 bg-void/90 px-3 py-1.5 font-mono text-[10px] leading-snug text-neon-cyan/75"
+              role="status"
+            >
+              {t('chat.channelReadOnly')}
+            </div>
+          ) : null}
           {historyDecryptBusy ? (
             <div
               className="shrink-0 border-b border-neon-cyan/25 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/60"
@@ -749,7 +792,9 @@ export function ChatApp({
             sendText={sendText}
             sendMedia={sendMedia}
             sendAlbum={sendAlbum}
-            composeDisabled={!activeChatId || !!ctxError}
+            composeDisabled={
+              !activeChatId || !!ctxError || !canPostInChat(activeRow)
+            }
             typingLabel={scratchers.length > 0 ? scratchers[0].username : null}
           />
         </div>

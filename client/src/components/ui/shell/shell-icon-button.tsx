@@ -34,7 +34,8 @@ export const ShellIconButton = forwardRef<HTMLButtonElement, Props>(
   ) {
     const { isTerminal } = useShell()
 
-    const base = 'inline-flex shrink-0 items-center justify-center transition-[background-color,color,border-color,box-shadow] duration-150 disabled:opacity-40 disabled:pointer-events-none outline-none focus-visible:ring-2 focus-visible:ring-offset-0'
+    const base =
+      'inline-flex shrink-0 items-center justify-center transition-[background-color,color,border-color,box-shadow,transform] duration-150 active:scale-[0.96] disabled:opacity-40 disabled:pointer-events-none disabled:active:scale-100 outline-none focus-visible:ring-2 focus-visible:ring-offset-0'
     const shape = isTerminal
       ? 'rounded-none border'
       : 'rounded-full border-0'

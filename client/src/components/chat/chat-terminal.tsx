@@ -944,10 +944,10 @@ export function ChatTerminal({
                   } flex flex-col gap-1`}
                 >
                   <div
-                    className={`flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-widest ${
+                    className={`flex items-center gap-2 px-1 font-mono text-[11px] uppercase tracking-widest ${
                       mine
-                        ? 'flex-row-reverse justify-end text-right text-neon-cyan/70'
-                        : 'justify-start text-left text-neon-cyan/80'
+                        ? 'flex-row-reverse justify-end text-right text-neon-cyan/80'
+                        : 'justify-start text-left text-neon-cyan/90'
                     }`}
                   >
                     <button
@@ -960,14 +960,14 @@ export function ChatTerminal({
                           userId={m.sender_id}
                           username={labelForSender(m.sender_id)}
                           avatarKey={avatarKeyForSender(m.sender_id)}
-                          size={22}
+                          size={28}
                         />
                       ) : (
                         <UserAvatar
                           userId={userId}
                           username={currentUsername || 'YOU'}
                           avatarKey={myAvatarKey}
-                          size={22}
+                          size={28}
                         />
                       )}
                     </button>
@@ -981,10 +981,10 @@ export function ChatTerminal({
                     </button>
                   </div>
                   <div
-                    className={`w-full rounded-none border px-3 py-2 ${
+                    className={`w-full rounded-none border px-4 py-3 leading-relaxed ${
                       mine
-                        ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
-                        : 'border-neon-cyan/25 bg-void/80 text-neon-red'
+                        ? 'border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan'
+                        : 'border-neon-red/30 bg-void/80 text-neon-red'
                     }`}
                   >
                     {replyMsg ? (
@@ -1005,7 +1005,7 @@ export function ChatTerminal({
                         ↳ [{t('chat.originalDeleted')}]
                       </div>
                     ) : null}
-                    <div className="mb-1 text-[9px] text-danger/90">
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-danger/90">
                       {formatMessageTimestamp(m.created_at, locale)}
                     </div>
                     {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (

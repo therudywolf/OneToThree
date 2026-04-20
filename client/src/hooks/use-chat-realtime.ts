@@ -3,11 +3,9 @@
 import { useEffect, useRef } from 'react'
 import { acknowledgeMessagesDelivered, fetchPendingDeliveries } from '@/lib/api/messages'
 import { getFmSocket } from '@/lib/api/socket'
-import {
-  decryptInboundText,
-  type ChatCryptoContext,
-} from '@/lib/chat-crypto'
-import { decryptApiMessageRows } from '@/lib/decrypt-chat-api-message'
+import type { ChatCryptoContext } from '@/lib/chat-crypto'
+import { decryptApiMessageRows, type DrContext } from '@/lib/decrypt-chat-api-message'
+import { DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
 import { cacheMessage, deleteCachedMessage } from '@/lib/message-cache'
 import { playNotificationSound } from '@/lib/call-ringtones'
 import { isChatIdMuted } from '@/lib/muted-chats'
@@ -17,7 +15,8 @@ import type { DecryptedMessage } from '@/types/chat'
 
 export function useChatRealtime(
   cryptoCtx: ChatCryptoContext | null,
-  triggerBackgroundPush?: (title: string, body: string, targetUrl?: string) => void
+  triggerBackgroundPush?: (title: string, body: string, targetUrl?: string) => void,
+  directPeerUserId?: string | null
 ) {
   const activeChatId = useChatStore((s) => s.activeChatId)
   const appendMessage = useChatStore((s) => s.appendMessage)
@@ -137,10 +136,17 @@ export function useChatRealtime(
       }
       if (!cryptoCtx || !unwrappedPrivateKey) return
       if (m.chat_id !== activeChatId) return
+
+      // Build DR context when we know both sides of the conversation.
+      const drCtx: DrContext | undefined =
+        userId && directPeerUserId
+          ? { ownerUserId: userId, peerUserId: directPeerUserId }
+          : undefined
+
       void (async () => {
         if ((m.content == null || m.content === '') && m.sender_id === userId) {
-          // Direct fan-out websocket events do not carry the sender's self-slot.
-          // The active sender tab already appends the REST-confirmed row locally.
+          // Fan-out WS events do not carry the sender's own slot.
+          // The active sender tab already appended the REST-confirmed row.
           return
         }
         if ((m.content == null || m.content === '') && m.sender_id !== userId) {
@@ -152,23 +158,20 @@ export function useChatRealtime(
             const rows = await decryptApiMessageRows(
               unwrappedPrivateKey,
               cryptoCtx,
-              pending
+              pending,
+              drCtx
             )
             const ids: string[] = []
             for (let i = 0; i < rows.length; i++) {
               const row = rows[i]
               if (!row) continue
-              await cacheMessage(row).catch(() => {
-                /* best-effort */
-              })
+              await cacheMessage(row).catch(() => { /* best-effort */ })
               appendMessage(row)
               const id = pending[i]?.id
               if (id) ids.push(id)
             }
             if (ids.length > 0) {
-              await acknowledgeMessagesDelivered(ids).catch(() => {
-                /* best-effort */
-              })
+              await acknowledgeMessagesDelivered(ids).catch(() => { /* best-effort */ })
             }
           } finally {
             pendingPullRef.current = false
@@ -176,19 +179,35 @@ export function useChatRealtime(
           return
         }
 
+        // Legacy/group path: message has content on the wire.
         let plaintext = ''
         if (m.content != null && m.iv != null && m.content !== '') {
           try {
-            plaintext = await decryptInboundText(
-              unwrappedPrivateKey,
-              cryptoCtx,
-              m.content,
-              m.iv
-            )
+            // v2 DR on non-fanout path (rare: WS broadcast of DR message)
+            if (m.protocol_version === 2 && m.iv === DR_SLOT_SENTINEL && m.dr_header && drCtx) {
+              const { decryptFromPeer } = await import('@/lib/ratchet/session-manager')
+              plaintext = await decryptFromPeer(drCtx.ownerUserId, drCtx.peerUserId, {
+                protocolVersion: 2,
+                drHeader: m.dr_header,
+                iv: DR_SLOT_SENTINEL,
+                encrypted_content: m.content,
+                drInit: m.dr_init ? JSON.parse(m.dr_init) : undefined,
+              })
+            } else {
+              const { decryptInboundText } = await import('@/lib/chat-crypto')
+              plaintext = await decryptInboundText(unwrappedPrivateKey, cryptoCtx, m.content, m.iv)
+            }
           } catch {
             plaintext = '[DECRYPT_FAIL]'
           }
         }
+
+        const mediaType =
+          m.media_type === 'audio' || m.media_type === 'video' ||
+          m.media_type === 'image' || m.media_type === 'file'
+            ? m.media_type
+            : null
+
         const row: DecryptedMessage = {
           id: m.id,
           chat_id: m.chat_id,
@@ -198,22 +217,17 @@ export function useChatRealtime(
           created_at: m.created_at,
           read_at: m.read_at ?? null,
           media_path: m.media_path,
-          media_type:
-            m.media_type === 'audio' ||
-            m.media_type === 'video' ||
-            m.media_type === 'image' ||
-            m.media_type === 'file'
-              ? m.media_type
-              : null,
+          media_type: mediaType,
           media_iv: m.media_iv,
+          media_original_bytes: (m as { media_original_bytes?: number | null }).media_original_bytes ?? null,
           burn_at: m.burn_at ?? null,
+          is_pinned: (m as { is_pinned?: boolean }).is_pinned ?? false,
+          reactions: (m as { reactions?: Record<string, string[]> }).reactions ?? {},
         }
         await cacheMessage(row)
         appendMessage(row)
         if (userId && m.sender_id !== userId) {
-          void acknowledgeMessagesDelivered([m.id]).catch(() => {
-            /* best-effort */
-          })
+          void acknowledgeMessagesDelivered([m.id]).catch(() => { /* best-effort */ })
         }
       })()
     })
@@ -226,6 +240,7 @@ export function useChatRealtime(
     clearTypingUser,
     clearTypingUserEverywhere,
     cryptoCtx,
+    directPeerUserId,
     pruneTypingUsers,
     removeMessage,
     setTypingUser,

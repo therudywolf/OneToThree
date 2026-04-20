@@ -3,6 +3,7 @@
 import { useCallback, useRef } from 'react'
 import {
   encryptOutboundText,
+  encryptOutboundTextV2,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
 import { explainSendError } from '@/lib/explain-send-error'
@@ -71,10 +72,26 @@ export function useSendMessage(
 
       let encrypted_content: string
       let iv: string
+      let protocol_version: 1 | 2 = 1
+      let dr_header: string | null = null
+      let dr_init: string | null = null
+
       try {
-        const enc = await encryptOutboundText(unwrappedPrivateKey, content, cryptoCtx)
-        encrypted_content = enc.encrypted_content
-        iv = enc.iv
+        if (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') {
+          const enc = await encryptOutboundTextV2(unwrappedPrivateKey, content, cryptoCtx, {
+            ownerUserId: userId,
+            peerUserId: directPeerUserId ?? null,
+          })
+          encrypted_content = enc.encrypted_content
+          iv = enc.iv
+          protocol_version = enc.protocol_version
+          dr_header = enc.dr_header
+          dr_init = enc.dr_init
+        } else {
+          const enc = await encryptOutboundText(unwrappedPrivateKey, content, cryptoCtx)
+          encrypted_content = enc.encrypted_content
+          iv = enc.iv
+        }
       } catch (err) {
         toastError(explainSendError(err), { title: 'SEND FAILED' })
         return
@@ -96,6 +113,9 @@ export function useSendMessage(
           peer_user_id: directPeerUserId ?? undefined,
           content: encrypted_content,
           iv,
+          protocol_version,
+          dr_header,
+          dr_init,
           reply_to_id: replyToId ?? null,
           ...(burnAt ? { burn_at: burnAt } : {}),
         })

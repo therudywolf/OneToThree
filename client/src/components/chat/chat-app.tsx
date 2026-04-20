@@ -312,8 +312,8 @@ export function ChatApp({
   const { cryptoCtx, ctxError } = useChatCryptoContext()
   const { emitPhantomSignal } = usePhantomPush()
   const sharedKey = useChatAesKey(cryptoCtx)
-  useMessages(cryptoCtx, emitPhantomSignal)
   const directPeerUserId = peerIdentity?.userId ?? null
+  useMessages(cryptoCtx, emitPhantomSignal, directPeerUserId)
   const { sendText } = useSendMessage(cryptoCtx, directPeerUserId)
   const { sendMedia: rawSendMedia, sendAlbum: rawSendAlbum } = useSendMediaMessage(cryptoCtx, directPeerUserId)
 

@@ -4,7 +4,7 @@ import {
   getAesKeyForChat,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
-import { decryptFanoutSlot } from '@/lib/fanout-crypto'
+import { decryptFanoutSlot, DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
 import {
   BATCH_WORKER_MIN,
   decryptTextBatchInWorker,
@@ -21,13 +21,19 @@ export type ApiMessageRow = {
   media_path?: string | null
   media_type?: string | null
   media_iv?: string | null
+  media_original_bytes?: number | null
   device_ciphertext?: string | null
   device_iv?: string | null
   sender_ecdh_public_key_jwk?: string | null
   read_at?: string | null
   burn_at?: string | null
   is_pinned?: boolean
+  reactions?: Record<string, string[]>
   created_at: string
+  /** DR v2 fields */
+  protocol_version?: 1 | 2 | null
+  dr_header?: string | null
+  dr_init?: string | null
 }
 
 function apiRowToDecrypted(
@@ -51,10 +57,14 @@ function apiRowToDecrypted(
         ? m.media_type
         : null,
     media_iv: m.media_iv,
+    media_original_bytes: m.media_original_bytes ?? null,
     burn_at: m.burn_at ?? null,
     is_pinned: m.is_pinned ?? false,
+    reactions: m.reactions ?? {},
   }
 }
+
+type DrContext = { ownerUserId: string; peerUserId: string }
 
 async function decryptJobsOnMain(
   aesKey: CryptoKey,
@@ -74,12 +84,31 @@ async function decryptJobsOnMain(
 async function decryptRowPlaintext(
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
-  row: ApiMessageRow
+  row: ApiMessageRow,
+  drCtx?: DrContext
 ): Promise<string> {
   const c = row.device_ciphertext ?? row.content
   const iv = row.device_iv ?? row.iv
   if (c == null || iv == null || c === '') return ''
 
+  // v2 DR: device slot carries the DR ciphertext directly (sentinel IV).
+  if (
+    row.protocol_version === 2 &&
+    iv === DR_SLOT_SENTINEL &&
+    row.dr_header &&
+    drCtx
+  ) {
+    const { decryptFromPeer } = await import('@/lib/ratchet/session-manager')
+    return decryptFromPeer(drCtx.ownerUserId, drCtx.peerUserId, {
+      protocolVersion: 2,
+      drHeader: row.dr_header,
+      iv: DR_SLOT_SENTINEL,
+      encrypted_content: c,
+      drInit: row.dr_init ? (JSON.parse(row.dr_init) as import('@/lib/ratchet/session-manager').DrInitWirePayload) : undefined,
+    })
+  }
+
+  // v1 fan-out: per-device ECDH slot.
   if (
     cryptoCtx.mode === 'DIRECT' &&
     row.device_ciphertext &&
@@ -98,11 +127,13 @@ async function decryptRowPlaintext(
 
 /**
  * Decrypt many API rows with one ECDH derive + batched AES-GCM (worker for large backlogs).
+ * Pass `drCtx` for chats that may carry DR v2 messages.
  */
 export async function decryptApiMessageRows(
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
-  rows: ApiMessageRow[]
+  rows: ApiMessageRow[],
+  drCtx?: DrContext
 ): Promise<DecryptedMessage[]> {
   if (cryptoCtx.mode === 'DIRECT') {
     return Promise.all(
@@ -110,7 +141,7 @@ export async function decryptApiMessageRows(
         try {
           return apiRowToDecrypted(
             m,
-            await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m)
+            await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx)
           )
         } catch {
           return apiRowToDecrypted(m, '[DECRYPT_FAIL]')
@@ -182,7 +213,8 @@ export async function decryptApiMessageRows(
 export async function decryptApiMessageRow(
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
-  m: ApiMessageRow
+  m: ApiMessageRow,
+  drCtx?: DrContext
 ): Promise<DecryptedMessage> {
   let plaintext = ''
   if (
@@ -190,10 +222,12 @@ export async function decryptApiMessageRow(
     (m.content != null && m.iv != null && m.content !== '')
   ) {
     try {
-      plaintext = await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m)
+      plaintext = await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx)
     } catch {
       plaintext = '[DECRYPT_FAIL]'
     }
   }
   return apiRowToDecrypted(m, plaintext)
 }
+
+export type { DrContext }

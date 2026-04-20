@@ -456,6 +456,32 @@ textarea {
   ) !important;
 }
 
+/* Telegram-style asymmetric bubble radius — applies under ANY theme when the
+ * MD3 shell is active, not only the explicit md3dark/md3light palettes. This
+ * is what makes the chat list actually FEEL like MD3 when a user combines
+ * cyberpunk colours with the Material shell. */
+[data-shell="md3"] .msg-bubble-mine {
+  border-radius: 18px 18px 4px 18px !important;
+  border-color: color-mix(in srgb, var(--neon-cyan) 32%, transparent) !important;
+}
+[data-shell="md3"] .msg-bubble-peer {
+  border-radius: 18px 18px 18px 4px !important;
+  border-color: color-mix(in srgb, var(--neon-cyan) 22%, transparent) !important;
+}
+
+/* Action/compose buttons: under MD3 the square terminal buttons become
+ * rounded-squircle tokens ("button shapes" in M3 parlance). */
+[data-shell="md3"] button.rounded-none,
+[data-shell="md3"] a.rounded-none {
+  border-radius: var(--radius-md, 12px) !important;
+}
+
+/* Sidebar list items get the pill rounding that MD3 navigation uses. */
+[data-shell="md3"] .chat-list-item,
+[data-shell="md3"] [data-chat-list-item] {
+  border-radius: 16px !important;
+}
+
 /* The terminal shell gets explicit sharp-corner + mono-first typography so
  * switching BACK from MD3 to terminal never leaves stale rounded radii or
  * sans-serif inherited font-family behind. */

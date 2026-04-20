@@ -204,50 +204,74 @@ export function ChatTerminal({
     return () => el.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
 
-  // Autoscroll on content growth (images loading, media decrypting, typing bar
-  // toggling) via ResizeObserver. Only pulls the viewport to bottom when the
-  // user is already near-bottom — we never overwrite an explicit scroll-up.
+  // Autoscroll on content growth. Three independent signals feed the same
+  // debounced flush:
+  //   1. MutationObserver on the scroll container — catches new <MessageRow>
+  //      children being mounted (the actual "new message" event).
+  //   2. ResizeObserver on *all* direct children — catches a bubble growing
+  //      vertically after its image finishes decoding.
+  //   3. Bubbled <img>/<video> load / loadedmetadata — the cheapest signal
+  //      for late-decoding media on older Safari where the observers lag.
+  //
+  // In every case we only scroll when the user was already pinned near the
+  // bottom — we NEVER override an explicit scroll-up by the user.
   useEffect(() => {
     const el = ref.current
-    if (!el || typeof ResizeObserver === 'undefined') return
+    if (!el) return
+
     let raf = 0
     const flush = () => {
       if (!ref.current) return
       ref.current.scrollTop = ref.current.scrollHeight
     }
-    const ro = new ResizeObserver(() => {
+    const schedule = () => {
       if (!isNearBottomRef.current) return
       if (raf) cancelAnimationFrame(raf)
-      // Double RAF so we absorb layout jumps triggered by the same resize
-      // event (e.g. when a just-arrived message renders, then its avatar
-      // image finishes decoding one frame later).
+      // Double RAF absorbs layout jumps chained off the same frame
+      // (bubble mounts → its avatar image decodes one frame later).
       raf = requestAnimationFrame(() => {
         flush()
         raf = requestAnimationFrame(flush)
       })
-    })
-    // Observe the scroll container itself AND its first child (the content
-    // column) so growth inside the list (late-loading media) triggers the
-    // handler even when the container height stays constant.
-    ro.observe(el)
-    const firstChild = el.firstElementChild
-    if (firstChild) ro.observe(firstChild)
+    }
 
-    // Also react to intrinsic `<img>`/`<video>` element onloads inside the
-    // scroll list — some browsers debounce ResizeObserver long enough that
-    // decoded images arrive visibly late without catching the event.
+    let ro: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(schedule)
+      ro.observe(el)
+      // Observe every current direct child so media re-layout inside a
+      // specific bubble fires the handler even if the container height
+      // stays constant.
+      Array.from(el.children).forEach((child) => ro!.observe(child))
+    }
+
+    // MutationObserver picks up newly appended message rows — unlike
+    // ResizeObserver this fires IMMEDIATELY on mount, before media decode.
+    const mo = new MutationObserver((records) => {
+      for (const rec of records) {
+        rec.addedNodes.forEach((node) => {
+          if (node instanceof Element && ro) {
+            ro.observe(node)
+          }
+        })
+      }
+      schedule()
+    })
+    mo.observe(el, { childList: true, subtree: false })
+
+    // Late media decode fallback.
     const onMediaLoad = (ev: Event) => {
       const tgt = ev.target as Element | null
       if (!tgt) return
       if (tgt.tagName !== 'IMG' && tgt.tagName !== 'VIDEO') return
-      if (!isNearBottomRef.current) return
-      flush()
+      schedule()
     }
     el.addEventListener('load', onMediaLoad, true)
     el.addEventListener('loadedmetadata', onMediaLoad, true)
 
     return () => {
-      ro.disconnect()
+      ro?.disconnect()
+      mo.disconnect()
       el.removeEventListener('load', onMediaLoad, true)
       el.removeEventListener('loadedmetadata', onMediaLoad, true)
       if (raf) cancelAnimationFrame(raf)

@@ -26,6 +26,7 @@ export type ApiMessageRow = {
   sender_ecdh_public_key_jwk?: string | null
   read_at?: string | null
   burn_at?: string | null
+  is_pinned?: boolean
   created_at: string
 }
 
@@ -51,6 +52,7 @@ function apiRowToDecrypted(
         : null,
     media_iv: m.media_iv,
     burn_at: m.burn_at ?? null,
+    is_pinned: m.is_pinned ?? false,
   }
 }
 

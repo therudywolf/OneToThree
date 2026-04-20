@@ -40,7 +40,7 @@ export type SendResult =
 
 export type SendChatMessageTransportInput = {
   chat_id: string
-  transport_mode: 'DIRECT' | 'SECTOR' | 'PUBLIC'
+  transport_mode: 'DIRECT' | 'SELF' | 'SECTOR' | 'PUBLIC'
   plaintext?: string
   sender_private_key?: CryptoKey
   my_user_id?: string

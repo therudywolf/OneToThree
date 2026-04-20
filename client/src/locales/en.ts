@@ -195,6 +195,7 @@ const en = {
   'chat.emptySubtitle': 'Choose a chat from the list',
   'chat.noLogsTitle': 'No Messages',
   'chat.noLogsHint': 'Send the first message.',
+  'chat.unreadMessages': 'Unread messages',
   'chat.replyBanner': 'Reply to',
   'chat.inputPlaceholder': 'Type a message...',
   'chat.burnTimerLabel': 'Delete after',
@@ -224,6 +225,14 @@ const en = {
 
   'emoji.pickerToggle': 'Emoji',
   'emoji.pickerAria': 'Insert emoji',
+  'emoji.pickerTitle': 'Emoji',
+
+  'dock.panelAria': 'Side panel',
+  'dock.profileTitle': 'Profile',
+  'dock.searchTitle': 'Search in chat',
+  'dock.pinnedTitle': 'Pinned messages',
+  'dock.searchComingSoon': 'In-chat search coming soon…',
+  'dock.pinnedComingSoon': 'Pinned message list coming soon…',
 
   // [GROUP]
   'group.dialogAria': 'Create encrypted group',
@@ -664,6 +673,13 @@ const en = {
   'welcome.featureNoTracking': 'No tracking',
   'welcome.licenseLink': 'License (MIT)',
   'welcome.continue': 'Continue',
+  'welcome.back': 'Back',
+  'welcome.shellTitle': 'Shell',
+  'welcome.shellSubtitle': 'Two independent visual languages — Cyberpunk terminal and Material 3.',
+  'welcome.paletteTitle': 'Palette',
+  'welcome.paletteSubtitle': 'Color is you. Palette can be changed in settings later.',
+  'welcome.readyTitle': 'Ready to launch',
+  'welcome.readySubtitle': 'Your messenger is configured. Everything can be changed later in settings.',
 
   // [ACCOUNT PASSWORD EXPLANATIONS]
   'login.accountPasswordExplain': 'Checked by the server. Used to authenticate your identity.',

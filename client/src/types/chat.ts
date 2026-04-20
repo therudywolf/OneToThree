@@ -54,6 +54,8 @@ export type DecryptedMessage = {
   burn_at?: string | null
   /** Emoji reactions — map of emoji to array of user IDs who reacted */
   reactions?: Record<string, string[]>
+  /** Server-side "pinned in chat" flag; toggled via POST /messages/:id/pin. */
+  is_pinned?: boolean
   /** True if queued for Background Sync (not yet delivered to server) */
   _pending?: boolean
 }

@@ -194,6 +194,7 @@ const ru = {
   'chat.emptyTitle': 'Выберите чат',
   'chat.emptySubtitle': 'Выберите чат из списка слева',
   'chat.noLogsTitle': 'Нет сообщений',
+  'chat.unreadMessages': 'Непрочитанные сообщения',
   'chat.noLogsHint': 'Напишите первое сообщение.',
   'chat.replyBanner': 'Ответ на',
   'chat.inputPlaceholder': 'Введите сообщение...',
@@ -224,6 +225,14 @@ const ru = {
 
   'emoji.pickerToggle': 'Эмодзи',
   'emoji.pickerAria': 'Вставить эмодзи',
+  'emoji.pickerTitle': 'Эмодзи',
+
+  'dock.panelAria': 'Боковая панель',
+  'dock.profileTitle': 'Профиль',
+  'dock.searchTitle': 'Поиск в чате',
+  'dock.pinnedTitle': 'Закреплённые',
+  'dock.searchComingSoon': 'Поиск по чату скоро появится…',
+  'dock.pinnedComingSoon': 'Закреплённые сообщения скоро появятся…',
 
   // [GROUP]
   'group.dialogAria': 'Создание зашифрованной группы',
@@ -664,6 +673,13 @@ const ru = {
   'welcome.featureNoTracking': 'Без отслеживания',
   'welcome.licenseLink': 'Лицензия (MIT)',
   'welcome.continue': 'Продолжить',
+  'welcome.back': 'Назад',
+  'welcome.shellTitle': 'Оболочка',
+  'welcome.shellSubtitle': 'Два независимых визуальных языка — Cyberpunk-терминал и Material 3.',
+  'welcome.paletteTitle': 'Палитра',
+  'welcome.paletteSubtitle': 'Цвет — это вы. Палитру всегда можно поменять в настройках.',
+  'welcome.readyTitle': 'Готово к использованию',
+  'welcome.readySubtitle': 'Ваш мессенджер настроен. Все изменения можно поменять позже в настройках.',
 
   // [ACCOUNT PASSWORD EXPLANATIONS]
   'login.accountPasswordExplain': 'Проверяется сервером. Используется для подтверждения вашей личности.',

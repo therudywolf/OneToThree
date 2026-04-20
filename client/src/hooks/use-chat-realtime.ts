@@ -92,6 +92,17 @@ export function useChatRealtime(
         }
         return
       }
+      if (msg.type === 'message_pin_changed') {
+        if (msg.chat_id !== activeChatId) return
+        useChatStore.setState((s) => ({
+          messages: s.messages.map((row) =>
+            row.id === msg.message_id
+              ? { ...row, is_pinned: msg.is_pinned }
+              : row
+          ),
+        }))
+        return
+      }
       if (msg.type !== 'chat_message') return
       const m = msg.message
       if (userId && m.sender_id !== userId) {

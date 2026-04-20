@@ -18,6 +18,7 @@ import {
 } from '@/lib/media-limits'
 import EmojiPicker, { Theme } from 'emoji-picker-react'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
+import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 
 function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
@@ -89,7 +90,26 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const emojiContainerRef = useRef<HTMLDivElement>(null)
   const replyTo = useChatStore((s) => s.replyTo)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
+  const editingMessage = useChatStore((s) => s.editingMessage)
+  const setEditingMessage = useChatStore((s) => s.setEditingMessage)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
+
+  // When a message is staged for editing, load its plaintext into the
+  // composer and switch submit into "save edit" mode.
+  useEffect(() => {
+    if (editingMessage?.plaintext) {
+      setMessageText(editingMessage.plaintext)
+      requestAnimationFrame(() => {
+        const el = inputRef.current
+        if (!el) return
+        el.focus()
+        el.style.height = 'auto'
+        el.style.height = `${Math.min(el.scrollHeight, 96)}px`
+        const pos = editingMessage.plaintext!.length
+        try { el.setSelectionRange(pos, pos) } catch { /* noop */ }
+      })
+    }
+  }, [editingMessage])
 
   const {
     startVoiceCapture,
@@ -343,10 +363,15 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     sendingTextRef.current = true
     setSendingText(true)
     try {
-      await sendText(messageText, replyTo?.id ?? null)
+      if (editingMessage) {
+        await submitEdit(editingMessage.id, messageText)
+      } else {
+        await sendText(messageText, replyTo?.id ?? null)
+      }
       onSubmitOrClear()
       setMessageText('')
       setReplyTo(null)
+      setEditingMessage(null)
       if (inputRef.current) {
         inputRef.current.style.height = 'auto'
         inputRef.current.focus()
@@ -357,17 +382,42 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     }
   }
 
+  // Edit existing message over REST. Server re-encrypts with the same session
+  // key on its side if needed. We optimistically update via the chat store
+  // when the server accepts.
+  async function submitEdit(messageId: string, newText: string) {
+    try {
+      const { API_URL } = await import('@/lib/api/auth')
+      const res = await fetch(`${API_URL}/messages/${messageId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plaintext: newText }),
+      })
+      if (!res.ok) {
+        const { error } = (await res.json().catch(() => ({}))) as { error?: string }
+        toastError(error ?? 'EDIT_FAILED', { title: 'EDIT' })
+      }
+    } catch {
+      toastError('Network error during edit.', { title: 'EDIT' })
+    }
+  }
+
   // Explicit send handler for mobile — single onClick, no onTouchEnd to avoid double-fire
   const handleSendClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     if (!messageText.trim() || disabled || sendingTextRef.current) return
     sendingTextRef.current = true
     setSendingText(true)
-    void sendText(messageText, replyTo?.id ?? null)
+    const task = editingMessage
+      ? submitEdit(editingMessage.id, messageText)
+      : sendText(messageText, replyTo?.id ?? null)
+    void task
       .then(() => {
         onSubmitOrClear()
         setMessageText('')
         setReplyTo(null)
+        setEditingMessage(null)
         if (inputRef.current) {
           inputRef.current.style.height = 'auto'
           inputRef.current.focus()
@@ -377,7 +427,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         sendingTextRef.current = false
         setSendingText(false)
       })
-  }, [messageText, disabled, sendText, replyTo, onSubmitOrClear, setReplyTo])
+  }, [messageText, disabled, sendText, replyTo, onSubmitOrClear, setReplyTo, editingMessage, setEditingMessage])
 
   const handleContextMenu = (e: React.MouseEvent) => e.preventDefault()
 
@@ -455,7 +505,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="sticky bottom-0 z-10 shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-void p-2 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200"
+      className="chat-compose-shell sticky bottom-0 z-10 shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-void p-2 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200"
       style={{
         paddingBottom:
           'calc(max(0.5rem, env(safe-area-inset-bottom)) + var(--p13-keyboard-inset, 0px))',
@@ -482,13 +532,28 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         aria-label={t('chat.attachFile')}
       />
 
-      {replyTo ? (
+      {replyTo && !editingMessage ? (
         <div className="mb-2 flex items-center gap-2 border-l-2 border-neon-cyan/50 pl-2">
           <p className="min-w-0 flex-1 truncate font-mono text-[10px] text-neon-cyan/70">
             ↳ {t('chat.replyBanner')}:{' '}
             {replyTo.plaintext ? replyTo.plaintext.slice(0, 80) : '[MEDIA]'}
           </p>
           <button type="button" onClick={() => setReplyTo(null)} className="shrink-0 font-mono text-[10px] text-danger hover:text-neon-red">[X]</button>
+        </div>
+      ) : null}
+
+      {editingMessage ? (
+        <div className="mb-2 flex items-center gap-2 border-l-2 border-[color-mix(in_srgb,var(--accent)_60%,transparent)] pl-2">
+          <p className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
+            {t('msgAction.edit')}: {editingMessage.plaintext?.slice(0, 80) ?? '…'}
+          </p>
+          <button
+            type="button"
+            onClick={() => { setEditingMessage(null); setMessageText('') }}
+            className="shrink-0 font-mono text-[10px] text-danger hover:text-neon-red"
+          >
+            [X]
+          </button>
         </div>
       ) : null}
 
@@ -534,7 +599,20 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
               type="button"
               className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-void text-neon-cyan/70 hover:text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors"
               disabled={disabled}
-              onClick={() => setEmojiOpen((o) => !o)}
+              onClick={() => {
+                // On xl+ viewports open the shared right-dock emoji slot
+                // so the picker persists as the user scrolls/searches.
+                if (matchesDockViewport()) {
+                  const store = useDockStore.getState()
+                  if (store.slot === 'emoji') {
+                    store.close()
+                  } else {
+                    store.openEmoji((emoji) => insertEmoji(emoji))
+                  }
+                  return
+                }
+                setEmojiOpen((o) => !o)
+              }}
               tabIndex={-1}
               title={t('emoji.pickerToggle')}
             >

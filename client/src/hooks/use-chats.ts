@@ -1,8 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchChatsList, type ApiChatRow } from '@/lib/api/chats'
 import { getFmSocket } from '@/lib/api/socket'
+import { setMutedChatsSnapshot } from '@/lib/muted-chats'
+
+// Coalesce bursty `chats_updated` events into a single refetch. The server can
+// emit this for every membership/message-touch in a busy group; without a
+// debounce the sidebar re-fetches a full list once per frame and decrypts it.
+const CHATS_RELOAD_DEBOUNCE_MS = 350
 
 export function useChats(userId: string | null) {
   const [chats, setChats] = useState<ApiChatRow[]>([])
@@ -11,13 +17,20 @@ export function useChats(userId: string | null) {
   const reload = useCallback(async () => {
     if (!userId) {
       setChats([])
+      setMutedChatsSnapshot([])
       setInitialLoading(false)
       return
     }
     try {
-      setChats(await fetchChatsList())
+      const rows = await fetchChatsList()
+      setChats(rows)
+      // Mirror mute state to the non-reactive cache used by the realtime
+      // notification path so it doesn't have to re-subscribe on every list
+      // update.
+      setMutedChatsSnapshot(rows)
     } catch {
       setChats([])
+      setMutedChatsSnapshot([])
     } finally {
       setInitialLoading(false)
     }
@@ -27,14 +40,26 @@ export function useChats(userId: string | null) {
     void reload()
   }, [reload])
 
+  const debouncedReloadRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!userId) return
     const socket = getFmSocket()
-    return socket.subscribe((m) => {
+    const off = socket.subscribe((m) => {
       if (m.type === 'chats_updated') {
-        void reload()
+        if (debouncedReloadRef.current) clearTimeout(debouncedReloadRef.current)
+        debouncedReloadRef.current = setTimeout(() => {
+          debouncedReloadRef.current = null
+          void reload()
+        }, CHATS_RELOAD_DEBOUNCE_MS)
       }
     })
+    return () => {
+      off()
+      if (debouncedReloadRef.current) {
+        clearTimeout(debouncedReloadRef.current)
+        debouncedReloadRef.current = null
+      }
+    }
   }, [userId, reload])
 
   return { chats, reload, initialLoading }

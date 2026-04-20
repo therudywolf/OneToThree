@@ -17,6 +17,8 @@ const en = {
   'common.adminWarden': 'Admin Panel',
   'common.deviceLinking': 'My Devices',
   'common.cancel': 'Cancel',
+  'common.close': 'Close',
+  'common.clear': 'Clear',
   'common.confirm': 'Confirm',
   'common.send': 'Send',
   'common.loading': 'Loading...',
@@ -177,6 +179,8 @@ const en = {
   'sidebar.unpin': 'Unpin',
   'sidebar.favorite': 'Favorite',
   'sidebar.unfavorite': 'Unfavorite',
+  'sidebar.mute': 'Mute chat',
+  'sidebar.unmute': 'Unmute chat',
   'sidebar.pinAria': 'Pin to top',
   'sidebar.unpinAria': 'Unpin',
   'sidebar.online': 'Online',
@@ -233,6 +237,11 @@ const en = {
   'dock.pinnedTitle': 'Pinned messages',
   'dock.searchComingSoon': 'In-chat search coming soon…',
   'dock.pinnedComingSoon': 'Pinned message list coming soon…',
+
+  'chatSearch.title': 'Search in chat',
+  'chatSearch.placeholder': 'Search messages…',
+  'chatSearch.hint': 'Type at least 2 characters to search.',
+  'chatSearch.empty': 'No matching messages.',
 
   // [GROUP]
   'group.dialogAria': 'Create encrypted group',

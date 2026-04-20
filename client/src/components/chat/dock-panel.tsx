@@ -5,8 +5,26 @@ import { X } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useDockStore } from '@/store/dockStore'
 import { useTranslation } from '@/hooks/use-translation'
-import EmojiPicker, { Theme } from 'emoji-picker-react'
+import { useLocaleStore } from '@/store/localeStore'
 import { ShellSurface, ShellText, ShellIconButton, useShell } from '@/components/ui/shell'
+import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
+
+const LazyEmojiPicker = dynamic(
+  () => import('emoji-picker-react').then((m) => m.default),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[420px] items-center justify-center font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
+        loading…
+      </div>
+    ),
+  }
+)
+// Theme enum import is light, keep it synchronous (~1KB).
+const EmojiTheme = {
+  DARK: 'dark' as const,
+  AUTO: 'auto' as const,
+}
 
 /**
  * DockPanel — right-side slide-in panel on xl+ screens. Hosts profile,
@@ -26,10 +44,12 @@ const UserProfileModal = dynamic(
 export function DockPanel() {
   const { t } = useTranslation()
   const { isTerminal } = useShell()
+  const locale = useLocaleStore((s) => s.module)
   const slot = useDockStore((s) => s.slot)
   const close = useDockStore((s) => s.close)
   const profileUserId = useDockStore((s) => s.profileUserId)
   const emojiOnPick = useDockStore((s) => s.emojiOnPick)
+  const searchOnJump = useDockStore((s) => s.searchOnJump)
 
   useEffect(() => {
     if (!slot) return
@@ -90,23 +110,26 @@ export function DockPanel() {
 
         {slot === 'emoji' ? (
           <div className="p-2">
-            <EmojiPicker
-              onEmojiClick={(data) => {
+            <LazyEmojiPicker
+              onEmojiClick={(data: { emoji: string }) => {
                 emojiOnPick?.(data.emoji)
               }}
               skinTonesDisabled
               previewConfig={{ showPreview: false }}
               width="100%"
               height={420}
-              theme={isTerminal ? Theme.DARK : Theme.AUTO}
+              theme={isTerminal ? EmojiTheme.DARK : EmojiTheme.AUTO}
             />
           </div>
         ) : null}
 
         {slot === 'search' ? (
-          <div className="p-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
-            {t('dock.searchComingSoon')}
-          </div>
+          <ChatSearchPanel
+            locale={locale}
+            onJumpToMessage={(id) => {
+              searchOnJump?.(id)
+            }}
+          />
         ) : null}
 
         {slot === 'pinned' ? (

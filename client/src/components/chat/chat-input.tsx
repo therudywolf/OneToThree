@@ -16,9 +16,21 @@ import {
   MEDIA_PERMISSION_DENIED_CODE,
   MEDIA_TOO_LARGE_CODE,
 } from '@/lib/media-limits'
-import EmojiPicker, { Theme } from 'emoji-picker-react'
+import dynamic from 'next/dynamic'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
+
+const LazyEmojiPicker = dynamic(
+  () => import('emoji-picker-react').then((m) => m.default),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[350px] w-[300px] items-center justify-center font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
+        loading…
+      </div>
+    ),
+  }
+)
 
 function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
@@ -620,14 +632,14 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
             </button>
             {emojiOpen && (
               <div className="absolute bottom-full left-0 z-[60] mb-1 border border-neon-cyan/50 shadow-[0_0_16px_rgba(0,255,255,0.12)]">
-                <EmojiPicker
-                  onEmojiClick={(emojiData) => { insertEmoji(emojiData.emoji); setEmojiOpen(false) }}
+                <LazyEmojiPicker
+                  onEmojiClick={(emojiData: { emoji: string }) => { insertEmoji(emojiData.emoji); setEmojiOpen(false) }}
                   skinTonesDisabled
                   searchDisabled
                   previewConfig={{ showPreview: false }}
                   width={300}
                   height={350}
-                  theme={Theme.DARK}
+                  theme={'dark' as const}
                 />
               </div>
             )}

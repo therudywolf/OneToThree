@@ -17,6 +17,8 @@ const ru = {
   'common.adminWarden': 'Администратор',
   'common.deviceLinking': 'Мои устройства',
   'common.cancel': 'Отмена',
+  'common.close': 'Закрыть',
+  'common.clear': 'Очистить',
   'common.confirm': 'Подтвердить',
   'common.send': 'Отправить',
   'common.loading': 'Загрузка...',
@@ -177,6 +179,8 @@ const ru = {
   'sidebar.unpin': 'Открепить',
   'sidebar.favorite': 'В избранное',
   'sidebar.unfavorite': 'Убрать из избранного',
+  'sidebar.mute': 'Выключить уведомления',
+  'sidebar.unmute': 'Включить уведомления',
   'sidebar.pinAria': 'Закрепить сверху',
   'sidebar.unpinAria': 'Открепить',
   'sidebar.online': 'В сети',
@@ -233,6 +237,11 @@ const ru = {
   'dock.pinnedTitle': 'Закреплённые',
   'dock.searchComingSoon': 'Поиск по чату скоро появится…',
   'dock.pinnedComingSoon': 'Закреплённые сообщения скоро появятся…',
+
+  'chatSearch.title': 'Поиск в чате',
+  'chatSearch.placeholder': 'Поиск сообщений…',
+  'chatSearch.hint': 'Введите минимум 2 символа для поиска.',
+  'chatSearch.empty': 'Нет подходящих сообщений.',
 
   // [GROUP]
   'group.dialogAria': 'Создание зашифрованной группы',

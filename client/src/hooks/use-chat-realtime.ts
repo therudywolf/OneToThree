@@ -10,6 +10,7 @@ import {
 import { decryptApiMessageRows } from '@/lib/decrypt-chat-api-message'
 import { cacheMessage, deleteCachedMessage } from '@/lib/message-cache'
 import { playNotificationSound } from '@/lib/call-ringtones'
+import { isChatIdMuted } from '@/lib/muted-chats'
 import { lookupUsers } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
@@ -115,17 +116,23 @@ export function useChatRealtime(
         })
       }
       if (userId && m.sender_id !== userId) {
-        // Play sound only if chatSoundEnabled AND window is NOT focused
-        // (while focused the user sees the chat, no need to interrupt)
-        if (chatSoundEnabled && !document.hasFocus()) {
-          playNotificationSound()
-        }
-        if (triggerBackgroundPush) {
-          triggerBackgroundPush(
-            'Project 13: Новая активность',
-            'Получено новое зашифрованное сообщение',
-            `/?chat=${encodeURIComponent(m.chat_id)}`
-          )
+        // Per-chat mute: suppress both the local chime and the background
+        // push trigger entirely. Unread tracking above still runs so counters
+        // update — muting is a notification concern, not a read-state one.
+        const muted = isChatIdMuted(m.chat_id)
+        if (!muted) {
+          // Play sound only if chatSoundEnabled AND window is NOT focused
+          // (while focused the user sees the chat, no need to interrupt)
+          if (chatSoundEnabled && !document.hasFocus()) {
+            playNotificationSound()
+          }
+          if (triggerBackgroundPush) {
+            triggerBackgroundPush(
+              'Project 13: Новая активность',
+              'Получено новое зашифрованное сообщение',
+              `/?chat=${encodeURIComponent(m.chat_id)}`
+            )
+          }
         }
       }
       if (!cryptoCtx || !unwrappedPrivateKey) return

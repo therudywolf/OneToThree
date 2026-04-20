@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star, ShieldAlert } from 'lucide-react'
+import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star, ShieldAlert, Bell, BellOff } from 'lucide-react'
 import Link from 'next/link'
 import { useChatStore } from '@/store/chatStore'
-import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite } from '@/lib/api/chats'
+import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite, setChatMute, isChatMuted } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
 import { GroupChatSettings } from '@/components/chat/group-chat-settings'
@@ -185,6 +185,17 @@ export function ChatSidebar({
   async function toggleFavorite(chatId: string, current: boolean) {
     try {
       await setChatFavorite(chatId, !current)
+      await reload()
+    } catch (e) {
+      setCreateErr(e instanceof Error ? e.message : 'ERR')
+    }
+  }
+
+  async function toggleMute(chatId: string, currentlyMuted: boolean) {
+    try {
+      // Toggle semantics: if currently muted, clear; otherwise mute "forever"
+      // (client-local UX — a future upgrade can open a timer picker).
+      await setChatMute(chatId, currentlyMuted ? null : 'forever')
       await reload()
     } catch (e) {
       setCreateErr(e instanceof Error ? e.message : 'ERR')
@@ -539,6 +550,31 @@ export function ChatSidebar({
               >
                 <Star className={`h-3.5 w-3.5 ${c.is_favorite ? 'fill-accent-2' : ''}`} aria-hidden />
               </button>
+              {(() => {
+                const muted = isChatMuted(c)
+                return (
+                  <button
+                    type="button"
+                    title={muted ? t('sidebar.unmute') : t('sidebar.mute')}
+                    aria-pressed={muted}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void toggleMute(c.id, muted)
+                    }}
+                    className={`shrink-0 border-l border-border-strong/5 px-3 transition-colors ${
+                      muted
+                        ? 'text-text-muted bg-text-muted/10 hover:bg-neon-red/10 hover:text-neon-red'
+                        : 'text-text-muted/70 hover:bg-neon-cyan/10 hover:text-neon-cyan opacity-0 group-hover:opacity-100'
+                    }`}
+                  >
+                    {muted ? (
+                      <BellOff className="h-3.5 w-3.5" aria-hidden />
+                    ) : (
+                      <Bell className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                  </button>
+                )
+              })()}
             </div>
           )
         })}

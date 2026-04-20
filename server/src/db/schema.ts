@@ -185,9 +185,19 @@ export const chatMembers = pgTable(
     joinedAt: timestamp('joined_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /**
+     * Per-user mute of this chat. When set to a future timestamp, clients hide
+     * push/ring notifications for this chat until it elapses. NULL = not muted.
+     * Server-side broadcast still fires; suppression is a client concern.
+     */
+    mutedUntil: timestamp('muted_until', { withTimezone: true }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.chatId, t.userId] }),
+    // PK is (chat_id, user_id); filtering by user_id alone (e.g. "list all
+    // chats for user X") does not use the PK efficiently. Explicit index
+    // ensures `loadUserChats` stays O(log N) as membership grows.
+    userIdx: index('chat_members_user_idx').on(t.userId),
   })
 )
 

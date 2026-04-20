@@ -11,6 +11,12 @@ export type ApiChatRow = {
   member_ids: string[]
   is_favorite?: boolean
   favorited_at?: string | null
+  /**
+   * ISO timestamp until which this chat is muted for the current user, or
+   * null if not muted. A value in the past means the mute has expired and
+   * the client should treat the chat as un-muted.
+   */
+  muted_until?: string | null
   /** Present for group_e2e: wrapped group key for the current user. */
   encrypted_group_key?: string | null
   /** ISO timestamp of the newest message in this chat, if any. */
@@ -19,6 +25,14 @@ export type ApiChatRow = {
   my_role?: ChatMemberRole
   /** Group: invite slug when you may manage links. */
   invite_code?: string | null
+}
+
+/** Client-side helper: is this chat currently muted? */
+export function isChatMuted(chat: Pick<ApiChatRow, 'muted_until'>): boolean {
+  if (!chat.muted_until) return false
+  const t = Date.parse(chat.muted_until)
+  if (!Number.isFinite(t)) return false
+  return t > Date.now()
 }
 
 export type ChatDetailMember = {
@@ -91,6 +105,28 @@ export async function setChatFavorite(chatId: string, favorite: boolean): Promis
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     throw new Error(data.error ?? (favorite ? 'FAVORITE_SET_FAILED' : 'FAVORITE_CLEAR_FAILED'))
   }
+}
+
+/**
+ * Per-user chat mute toggle. Pass `null` to clear the mute, an ISO string to
+ * set an explicit expiry, or `'forever'` for an effectively-permanent mute.
+ */
+export async function setChatMute(
+  chatId: string,
+  mutedUntil: string | 'forever' | null
+): Promise<{ muted_until: string | null }> {
+  const res = await fetch(`${API_URL}/chats/${chatId}/mute`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ muted_until: mutedUntil }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: string
+    muted_until?: string | null
+  }
+  if (!res.ok) throw new Error(data.error ?? 'MUTE_FAILED')
+  return { muted_until: data.muted_until ?? null }
 }
 
 export async function createDirectE2EChat(

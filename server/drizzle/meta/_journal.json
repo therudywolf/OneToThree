@@ -215,8 +215,15 @@
     {
       "idx": 30,
       "version": "7",
+      "when": 1776688545000,
+      "tag": "0030_channels_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
       "when": 1776688550000,
-      "tag": "0030_stickers",
+      "tag": "0031_stickers",
       "breakpoints": true
     }
   ]

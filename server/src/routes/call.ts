@@ -4,10 +4,13 @@
  * Tokens are HS256 JWTs with LiveKit's canonical `video` grant:
  *   { iss: apiKey, sub: userId, nbf, exp, video: { room, roomJoin: true, canPublish: true, canSubscribe: true } }
  *
- * Configuration (`.env.prod`):
- *   LIVEKIT_API_KEY    — LiveKit server API key (starts with "APIxxx").
- *   LIVEKIT_API_SECRET — LiveKit server API secret (32–64 chars).
- *   LIVEKIT_URL        — public WSS URL, e.g. wss://lk.onetothree.ru
+ * Configuration is read via the Docker-secrets-first pattern:
+ *
+ *   LIVEKIT_API_KEY_FILE     → /run/secrets/livekit_api_key      (preferred)
+ *   LIVEKIT_API_SECRET_FILE  → /run/secrets/livekit_api_secret   (preferred)
+ *   LIVEKIT_API_KEY          → plaintext env fallback (dev only)
+ *   LIVEKIT_API_SECRET       → plaintext env fallback (dev only)
+ *   LIVEKIT_URL              → public WSS URL, not a secret, plain env.
  *
  * If any of the three is missing the route returns 503 so the client can
  * fall back to the mesh WebRTC path. This intentional fail-open keeps the
@@ -17,6 +20,7 @@ import { createHmac } from 'node:crypto'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { readSecret } from '../lib/read-secret.js'
 
 const tokenBodySchema = z.object({
   room: z
@@ -59,8 +63,8 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'BAD_BODY' })
     }
 
-    const apiKey = process.env.LIVEKIT_API_KEY?.trim()
-    const apiSecret = process.env.LIVEKIT_API_SECRET?.trim()
+    const apiKey = readSecret('LIVEKIT_API_KEY')
+    const apiSecret = readSecret('LIVEKIT_API_SECRET')
     const livekitUrl = process.env.LIVEKIT_URL?.trim()
     if (!apiKey || !apiSecret || !livekitUrl) {
       return reply.status(503).send({ error: 'LIVEKIT_NOT_CONFIGURED' })
@@ -99,10 +103,10 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
   app.get('/call/config', async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
+    const cfgKey = readSecret('LIVEKIT_API_KEY')
+    const cfgSecret = readSecret('LIVEKIT_API_SECRET')
     return reply.send({
-      livekit_enabled: Boolean(
-        process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET && process.env.LIVEKIT_URL
-      ),
+      livekit_enabled: Boolean(cfgKey && cfgSecret && process.env.LIVEKIT_URL),
       livekit_url: process.env.LIVEKIT_URL ?? null,
     })
   })

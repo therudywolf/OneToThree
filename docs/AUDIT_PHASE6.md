@@ -107,11 +107,64 @@ ACTION (next PR): добавить `playwright.config.ts`, сценарии:
 | 4.1 — coturn hardening | done | требует TLS-sync cron |
 | 4.2 — LiveKit SFU + /api/call/token | done | нужно задеплоить livekit-server |
 | 4.3 — LiveKit Insertable Streams E2EE | архитектура | клиентский SDK не установлен |
-| 5.1 — channels schema | done | миграция `0029` |
-| 5.2 — stickers schema | done | миграция `0030`, UI отдельно |
+| 5.1 — channels schema | done | миграции `0029` + `0030_channels_members` |
+| 5.2 — stickers schema | done | миграция `0031_stickers`, UI отдельно |
 | 6 — polish | частично | см. ACTION выше |
+| PR A — post-audit fixes | done | нет (см. раздел ниже) |
 
 Всё, что ниже "частично", требует либо инфраструктурной работы
 (cron + firewall + DNS), либо отдельной клиентской итерации (Call UI,
 sticker picker, Playwright). Они документированы в MIGRATION_NOTES и в
 этом файле.
+
+---
+
+## PR A — post-audit fixes (2026-04)
+
+Статический аудит после фаз 0–6 вскрыл 7 отклонений. PR A закрывает все
+«unblock prod»-пункты, PR B отслеживает оставшиеся DR-гапы отдельно.
+
+### Закрыто в PR A
+
+1. **Нарушение «уходим от `.env`»** (L1 / SECURITY) —
+   `server/src/routes/call.ts` теперь читает `LIVEKIT_API_KEY` /
+   `LIVEKIT_API_SECRET` через `readSecret()`. Утечка `.env.prod` больше
+   не позволяет форджить LiveKit-токены.
+2. **`start.sh update` не знал про новые артефакты** (L1 / OPERATIONS)
+   — `detect_update_services` понимает `docker/livekit/*` и выводит
+   warning для `docker/coturn/tls/*`; дефолтный список расширен до
+   `(api web caddy coturn livekit)`. `LIVEKIT_URL` /
+   `NEXT_PUBLIC_LIVEKIT_URL` автосинхронизируются от `$DOMAIN`.
+3. **Миграция `0029_channels.sql` падала внутри drizzle-tx** (L1 / DB)
+   — разбита на два файла: `0029_channels.sql` (только
+   `ALTER TYPE ADD VALUE`) и `0030_channels_members.sql` (роль, колонка,
+   CHECK, индекс). `0030_stickers` перенумерован в `0031_stickers`,
+   `_journal.json` обновлён.
+4. **coturn конфиг содержал литеральный `${TURN_REALM}`** (L2) —
+   строка удалена, realm задаётся через CLI-флаг в `docker-compose`.
+5. **Caddy→LiveKit не работал на Linux** (L2) — `caddy` сервис получил
+   `host.docker.internal:host-gateway`.
+6. **`livekit.yaml` не резолвил `${VAR}`** (L2) — блок `keys:` убран;
+   LiveKit стартует под `docker/livekit/entrypoint.sh`, который
+   собирает `LIVEKIT_KEYS` из mounted Docker secrets.
+7. **`generate-secrets.sh`** теперь генерирует
+   `secrets/livekit_api_key` (`APIforest_*`) и
+   `secrets/livekit_api_secret` (hex-64).
+
+### Открытые долги → PR B (DR runtime)
+
+- `bootstrapSession` / `publishLocalBundle` не вызываются из runtime —
+  `encryptOutboundTextV2` всегда падает в catch и downgrade'ит в v1.
+  Фича **не активна**, даже колонки `protocol_version` / `dr_header`
+  пока не сериализуются сервером. Планируется глобальный флаг
+  `NEXT_PUBLIC_DR_ENABLED` (default `false`), envelope `p13:'dr-init'`
+  и обработчик на `POST /messages`.
+- Session state в IndexedDB — plaintext JSON приватных ключей. Нужно
+  завернуть в AES-GCM с ключом `HKDF(vaultSecret, 'forest/ratchet/session-wrap')`.
+- Skipped-keys DoS: per-bucket cap `maxSkip=1000` уже есть, но нет
+  глобального cap. Ввести `totalSkippedKeys = 3000` across buckets.
+- Минорные наблюдения: TOCTOU в `POST /api/keys/identity`, IDOR-probing
+  через 404 на `/api/keys/bundle/:userId`, trust registry в
+  localStorage без vault-wrap, legacy `unescape` в base64 utils.
+
+Эти пункты трекаются отдельным плано́м и не блокируют prod-rollout.

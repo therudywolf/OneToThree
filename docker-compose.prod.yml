@@ -155,6 +155,8 @@ services:
       - postgres_password
       - minio_root_password
       - turn_password
+      - livekit_api_key
+      - livekit_api_secret
     env_file:
       - .env.prod
     environment:
@@ -175,6 +177,10 @@ services:
       MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
       TURN_PASSWORD_FILE: /run/secrets/turn_password
       TURN_URLS: ${TURN_URLS:-}
+      # LiveKit SFU — api/call/token reads these via readSecret().
+      LIVEKIT_API_KEY_FILE: /run/secrets/livekit_api_key
+      LIVEKIT_API_SECRET_FILE: /run/secrets/livekit_api_secret
+      LIVEKIT_URL: ${LIVEKIT_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -298,18 +304,24 @@ services:
   # ICE/TCP fallback on :7881. Caddy terminates TLS for the WSS signaling
   # endpoint at wss://lk.onetothree.ru and proxies it to livekit:7880.
   #
-  # Configuration file (docker/livekit/livekit.yaml) pulls keys/secrets from
-  # the environment — do NOT bake them into the image. Set LIVEKIT_API_KEY
-  # and LIVEKIT_API_SECRET in .env.prod; the matching HS256 secret signs the
-  # tokens issued by /api/call/token.
+  # LiveKit v1.8 does not expand ${VAR} inside livekit.yaml, so the
+  # entrypoint wrapper builds the LIVEKIT_KEYS env from the mounted Docker
+  # secrets before exec'ing the server binary.  This keeps the api key /
+  # secret out of .env.prod entirely.
   livekit:
     image: livekit/livekit-server:v1.8
     restart: always
     network_mode: host
-    env_file:
-      - .env.prod
+    secrets:
+      - livekit_api_key
+      - livekit_api_secret
+    environment:
+      LIVEKIT_API_KEY_FILE: /run/secrets/livekit_api_key
+      LIVEKIT_API_SECRET_FILE: /run/secrets/livekit_api_secret
     volumes:
       - ./docker/livekit/livekit.yaml:/etc/livekit.yaml:ro
+      - ./docker/livekit/entrypoint.sh:/usr/local/bin/forest-entrypoint.sh:ro
+    entrypoint: ['/usr/local/bin/forest-entrypoint.sh']
     command: ['--config', '/etc/livekit.yaml']
     healthcheck:
       test:
@@ -355,6 +367,10 @@ services:
       - 'api.onetothree.ru:host-gateway'
       - 's3.onetothree.ru:host-gateway'
       - 'turn.onetothree.ru:host-gateway'
+      # lk.onetothree.ru is reverse-proxied to livekit (host network, :7880)
+      # through host.docker.internal — required on Linux VPS, no-op on Docker
+      # Desktop where it's auto-provided.
+      - 'host.docker.internal:host-gateway'
 
 secrets:
   postgres_password:
@@ -367,6 +383,10 @@ secrets:
     file: ./secrets/webhook_secret
   turn_password:
     file: ./secrets/turn_password
+  livekit_api_key:
+    file: ./secrets/livekit_api_key
+  livekit_api_secret:
+    file: ./secrets/livekit_api_secret
 
 volumes:
   pgdata:

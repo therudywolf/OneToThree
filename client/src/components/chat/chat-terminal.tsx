@@ -32,7 +32,7 @@ import { MediaLightbox } from '@/components/chat/media-lightbox'
 import { UserProfileModal } from '@/components/chat/user-profile-modal'
 import { groupMessages } from '@/lib/message-grouping'
 import { MessageSkeleton } from '@/components/ui/skeleton'
-import { formatMessageTimestamp } from '@/lib/timestamp-format'
+import { formatMessageTimestamp, formatDateDivider, calendarDayKey } from '@/lib/timestamp-format'
 import { ForwardModal } from '@/components/chat/forward-modal'
 import { ThreadPanel } from '@/components/chat/thread-panel'
 
@@ -995,7 +995,51 @@ export function ChatTerminal({
             </div>
           </div>
         ) : null}
-        {groupedMessages.map((group, groupIndex) => {
+        {(() => {
+          // TG-macOS message grouping pass.
+          //
+          // Two layers happen here in a single O(n) walk:
+          //   1. Calendar day-dividers — injected above the first group
+          //      whenever `calendarDayKey(anchor)` changes.
+          //   2. Consecutive same-sender run grouping — a group is part of
+          //      the "same run" as the previous one iff:
+          //        * same sender id
+          //        * no date divider separates them
+          //        * <= 5min gap from previous group's anchor timestamp
+          //      For followups we tighten vertical margin and hide the
+          //      avatar+name row, matching TG-macOS / iOS Messages.
+          const RUN_WINDOW_MS = 5 * 60 * 1000
+          let lastDayKey: string | null = null
+          let prevSenderId: string | null = null
+          let prevTimestampMs = 0
+          return groupedMessages.map((group, groupIndex) => {
+          const anchorIso =
+            group.type === 'UNIT'
+              ? group.message.created_at
+              : group.timestamp.toISOString()
+          const senderId =
+            group.type === 'UNIT' ? group.message.sender_id : group.originId
+          const anchorMs = new Date(anchorIso).getTime()
+          const dayKey = calendarDayKey(anchorIso)
+          const showDateDivider = dayKey !== '' && dayKey !== lastDayKey
+          const isRunContinuation =
+            !showDateDivider &&
+            prevSenderId === senderId &&
+            anchorMs - prevTimestampMs <= RUN_WINDOW_MS
+          lastDayKey = dayKey
+          prevSenderId = senderId
+          prevTimestampMs = anchorMs
+
+          const dateDivider = showDateDivider ? (
+            <div
+              key={`date-${dayKey}`}
+              className="p13-date-divider"
+              aria-hidden
+            >
+              <span>{formatDateDivider(anchorIso, locale)}</span>
+            </div>
+          ) : null
+
           if (group.type === 'UNIT') {
             const m = group.message
             const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
@@ -1007,7 +1051,10 @@ export function ChatTerminal({
               <div
                 key={m.id}
                 data-message-id={m.id}
-                className={`group/msg relative mb-3 flex w-full ${
+                data-run-continuation={isRunContinuation ? 'true' : 'false'}
+                className={`group/msg relative flex w-full ${
+                  isRunContinuation ? 'mb-0.5' : 'mb-3'
+                } ${
                   mine ? 'justify-end' : 'justify-start'
                 } transition-transform duration-150`}
                 style={{
@@ -1060,10 +1107,11 @@ export function ChatTerminal({
                     mine
                       ? 'msg-bubble-width msg-bubble-mine items-end'
                       : 'msg-bubble-peer-width msg-bubble-peer items-start'
-                  } flex flex-col gap-1`}
+                  } flex flex-col ${isRunContinuation ? 'gap-0' : 'gap-1'}`}
                 >
+                  {isRunContinuation ? null : (
                   <div
-                    className={`flex items-center gap-2 px-1 font-mono text-[11px] uppercase tracking-widest ${
+                    className={`p13-label flex items-center gap-2 px-1 text-[11px] ${
                       mine
                         ? 'flex-row-reverse justify-end text-right text-neon-cyan/80'
                         : 'justify-start text-left text-neon-cyan/90'
@@ -1099,11 +1147,10 @@ export function ChatTerminal({
                       {senderLabel}
                     </button>
                   </div>
+                  )}
                   <div
-                    className={`w-full rounded-none border px-4 py-3 leading-relaxed ${
-                      mine
-                        ? 'border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan'
-                        : 'border-neon-red/30 bg-void/80 text-neon-red'
+                    className={`p13-bubble w-full leading-relaxed ${
+                      mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
                     }`}
                   >
                     {replyMsg ? (
@@ -1124,7 +1171,7 @@ export function ChatTerminal({
                         ↳ [{t('chat.originalDeleted')}]
                       </div>
                     ) : null}
-                    <div className="mb-1 text-[10px] uppercase tracking-wider text-danger/90">
+                    <div className="p13-label mb-1 text-[10px] opacity-70">
                       {formatMessageTimestamp(m.created_at, locale)}
                     </div>
                     {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
@@ -1175,14 +1222,17 @@ export function ChatTerminal({
                 </div>
               </div>
             )
-            return showUnreadDivider ? (
+            return (
               <div key={m.id} className="contents">
-                <div className="chat-unread-divider">
-                  {t('chat.unreadMessages') || 'UNREAD MESSAGES'}
-                </div>
+                {dateDivider}
+                {showUnreadDivider ? (
+                  <div className="chat-unread-divider">
+                    {t('chat.unreadMessages') || 'UNREAD MESSAGES'}
+                  </div>
+                ) : null}
                 {body}
               </div>
-            ) : body
+            )
           } else if (group.type === 'COLLECTION') {
             const mine = group.originId === userId
             const senderLabel = labelForSender(group.originId)
@@ -1191,19 +1241,24 @@ export function ChatTerminal({
             const gridRows = Math.ceil(group.messages.length / gridCols)
 
             return (
+              <div key={`group-${groupIndex}`} className="contents">
+                {dateDivider}
               <div
-                key={`group-${groupIndex}`}
-                className={`group mb-3 flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+                data-run-continuation={isRunContinuation ? 'true' : 'false'}
+                className={`group flex w-full ${
+                  isRunContinuation ? 'mb-0.5' : 'mb-3'
+                } ${mine ? 'justify-end' : 'justify-start'}`}
               >
                 <div
                   className={`min-w-0 ${
                     mine
                       ? 'msg-bubble-width msg-bubble-mine items-end'
                       : 'msg-bubble-peer-width msg-bubble-peer items-start'
-                  } flex flex-col gap-1`}
+                  } flex flex-col ${isRunContinuation ? 'gap-0' : 'gap-1'}`}
                 >
+                  {isRunContinuation ? null : (
                   <div
-                    className={`flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-widest ${
+                    className={`p13-label flex items-center gap-1.5 px-1 text-[10px] ${
                       mine
                         ? 'flex-row-reverse justify-end text-right text-neon-cyan/70'
                         : 'justify-start text-left text-neon-cyan/80'
@@ -1239,14 +1294,13 @@ export function ChatTerminal({
                       {senderLabel}
                     </button>
                   </div>
+                  )}
                   <div
-                    className={`w-full rounded-none border px-3 py-2 ${
-                      mine
-                        ? 'border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'
-                        : 'border-neon-cyan/25 bg-void/80 text-neon-red'
+                    className={`p13-bubble w-full ${
+                      mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
                     }`}
                   >
-                    <div className="mb-1 text-[9px] text-danger/90">
+                    <div className="p13-label mb-1 text-[9px] opacity-70">
                       {formatMessageTimestamp(group.timestamp.toISOString(), locale)}
                     </div>
                     <div
@@ -1279,9 +1333,11 @@ export function ChatTerminal({
                   </div>
                 </div>
               </div>
+              </div>
             )
           }
-        })}
+        })
+        })()}
         <div ref={bottomRef} className="h-px w-full shrink-0" aria-hidden />
       </div>
 

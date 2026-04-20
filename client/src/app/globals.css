@@ -181,12 +181,7 @@ body {
   text-transform: none !important;
   font-weight: 500;
 }
-[data-theme="md3dark"] .msg-bubble-mine {
-  border-radius: 18px 18px 4px 18px !important;
-}
-[data-theme="md3dark"] .msg-bubble-peer {
-  border-radius: 18px 18px 18px 4px !important;
-}
+/* Legacy MD3-dark bubble radius removed — handled by `.p13-bubble--*`. */
 [data-theme="md3dark"] .glitch-text:hover {
   text-shadow: none !important;
   transform: none !important;
@@ -247,12 +242,7 @@ body {
   font-weight: 500;
   color: var(--neon-cyan) !important;
 }
-[data-theme="md3light"] .msg-bubble-mine {
-  border-radius: 18px 18px 4px 18px !important;
-}
-[data-theme="md3light"] .msg-bubble-peer {
-  border-radius: 18px 18px 18px 4px !important;
-}
+/* Legacy MD3-light bubble radius removed — handled by `.p13-bubble--*`. */
 [data-theme="md3light"] .glitch-text:hover {
   text-shadow: none !important;
   transform: none !important;
@@ -464,20 +454,8 @@ textarea {
   background: color-mix(in srgb, var(--neon-cyan) 8%, transparent) !important;
 }
 
-/* Enhance bubble presence with subtle scanline + glow. */
-[data-shell="terminal"] .msg-bubble-mine > div:not(.border-l),
-[data-shell="terminal"] .chat-bubble-mine {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 38%, transparent),
-    0 0 14px color-mix(in srgb, var(--neon-cyan) 20%, transparent),
-    0 0 2px color-mix(in srgb, var(--neon-cyan) 45%, transparent);
-}
-[data-shell="terminal"] .msg-bubble-peer > div:not(.border-l),
-[data-shell="terminal"] .chat-bubble-peer {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--neon-red) 28%, transparent),
-    0 0 12px color-mix(in srgb, var(--neon-red) 14%, transparent);
-}
+/* Legacy bubble glow removed — replaced by tokenised `.p13-bubble--*`
+ * box-shadow pipeline (see P13 STRICT DUAL-SHELL TOKEN SYSTEM below). */
 
 /* ---------- MD3 shell: Material identity ---------- */
 
@@ -542,21 +520,8 @@ textarea {
   background-color: var(--surface) !important;
 }
 
-/* Material message bubbles. */
-[data-shell="md3"] .msg-bubble-mine {
-  border-radius: 18px 18px 4px 18px !important;
-  border-color: color-mix(in srgb, var(--neon-cyan) 32%, transparent) !important;
-}
-[data-shell="md3"] .msg-bubble-peer {
-  border-radius: 18px 18px 18px 4px !important;
-  border-color: color-mix(in srgb, var(--neon-cyan) 22%, transparent) !important;
-}
-[data-shell="md3"] .msg-bubble-mine > div:not(.border-l) {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.10) !important;
-}
-[data-shell="md3"] .msg-bubble-peer > div:not(.border-l) {
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.10) !important;
-}
+/* Legacy MD3 bubble radius / shadow rules removed — now driven by
+ * tokens under `.p13-bubble--mine` / `.p13-bubble--peer`. */
 
 /* Sidebar list: Material list tile with pill rounding, no left stripe. */
 [data-shell="md3"] .chat-list-item,
@@ -1150,3 +1115,498 @@ select {
 .chat-scroll::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--neon-cyan) 40%, transparent);
 }
+
+/* ==============================================================
+ * P13 STRICT DUAL-SHELL TOKEN SYSTEM
+ * --------------------------------------------------------------
+ * Two visually independent languages are keyed entirely off
+ *   [data-shell="terminal"]  — Cyberpunk 2077 / brutalist / glow
+ *   [data-shell="md3"]       — Material Design 3 / tonal / soft
+ *
+ * All `.p13-*` semantic classes consume these tokens. Switching
+ * shell replaces the VISUAL LANGUAGE, not just a colour — bubble
+ * shape (clip-path chamfer vs squircle), fill model (stroke+glow
+ * vs solid tonal), row chrome (left-stripe vs pill), input
+ * (sharp frame vs filled underline), typography (mono-uppercase
+ * vs sans-sentence-case), and animation vocabulary all fork here.
+ *
+ * Palette hues (`--neon-cyan`, `--neon-red`, `--void`, etc.) are
+ * owned by `ThemeApplicator` at runtime. We do not redefine them.
+ * We only define STRUCTURE / GEOMETRY / MOTION / FILL per shell.
+ * ============================================================== */
+
+/* ---------- Terminal (Cyberpunk) shell ------------------------ */
+[data-shell="terminal"] {
+  /* geometry */
+  --p13-radius-msg: 0px;
+  --p13-radius-panel: 0px;
+  --p13-radius-input: 0px;
+  --p13-radius-pill: 0px;
+  /* Asymmetric chamfered corners — mine cuts top-right + bottom-left,
+   * peer cuts top-left + bottom-right so the two chat sides read as
+   * distinct geometry without extra chrome. */
+  --p13-clip-bubble-mine: polygon(
+    0 0,
+    calc(100% - 14px) 0,
+    100% 14px,
+    100% 100%,
+    14px 100%,
+    0 calc(100% - 14px)
+  );
+  --p13-clip-bubble-peer: polygon(
+    14px 0,
+    100% 0,
+    100% calc(100% - 14px),
+    calc(100% - 14px) 100%,
+    0 100%,
+    0 14px
+  );
+  --p13-clip-btn: polygon(
+    0 0,
+    calc(100% - 8px) 0,
+    100% 8px,
+    100% 100%,
+    8px 100%,
+    0 calc(100% - 8px)
+  );
+
+  /* surfaces */
+  --p13-surface-1: var(--void);
+  --p13-surface-2: color-mix(in srgb, var(--void) 84%, var(--neon-cyan) 5%);
+  --p13-text-secondary: color-mix(in srgb, var(--on-surface) 62%, transparent);
+
+  /* bubble: deep-black fill + neon glow box-shadow + 0px radius */
+  --p13-bubble-mine-bg: color-mix(in srgb, var(--void) 86%, var(--neon-cyan) 14%);
+  --p13-bubble-mine-fg: var(--neon-cyan);
+  --p13-bubble-mine-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 55%, transparent),
+    0 0 22px color-mix(in srgb, var(--neon-cyan) 28%, transparent),
+    0 0 4px color-mix(in srgb, var(--neon-cyan) 50%, transparent);
+  --p13-bubble-peer-bg: color-mix(in srgb, var(--void) 88%, #000 6%);
+  --p13-bubble-peer-fg: var(--neon-red);
+  --p13-bubble-peer-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--neon-red) 42%, transparent),
+    0 0 18px color-mix(in srgb, var(--neon-red) 22%, transparent);
+
+  /* composer */
+  --p13-composer-bg: var(--void);
+  --p13-composer-border-top: 1px solid color-mix(in srgb, var(--neon-cyan) 42%, transparent);
+  --p13-composer-input-bg: var(--void);
+  --p13-composer-input-border: 1px solid color-mix(in srgb, var(--neon-cyan) 45%, transparent);
+  --p13-composer-input-focus:
+    0 0 0 1px var(--neon-cyan),
+    0 0 16px color-mix(in srgb, var(--neon-cyan) 30%, transparent);
+  --p13-composer-input-radius: 0px;
+  --p13-composer-input-padding: 8px 12px;
+
+  /* sidebar row */
+  --p13-row-bg: transparent;
+  --p13-row-hover-bg: color-mix(in srgb, var(--neon-cyan) 6%, transparent);
+  --p13-row-active-bg: color-mix(in srgb, var(--neon-cyan) 10%, transparent);
+  --p13-row-active-stripe: var(--neon-cyan);
+  --p13-row-margin: 0;
+  --p13-row-radius: 0;
+  --p13-row-pad: 10px 12px 10px 14px;
+
+  /* header */
+  --p13-header-bg: var(--void);
+  --p13-header-border: 1px solid color-mix(in srgb, var(--neon-cyan) 40%, transparent);
+  --p13-header-pad: 6px 8px;
+
+  /* icon button */
+  --p13-icon-btn-bg: var(--void);
+  --p13-icon-btn-border: 1px solid color-mix(in srgb, var(--neon-cyan) 55%, transparent);
+  --p13-icon-btn-fg: var(--neon-cyan);
+  --p13-icon-btn-hover-bg: color-mix(in srgb, var(--neon-cyan) 12%, transparent);
+  --p13-icon-btn-radius: 0px;
+  --p13-icon-btn-clip: var(--p13-clip-btn);
+
+  /* badge / pill */
+  --p13-badge-bg: color-mix(in srgb, var(--neon-cyan) 12%, var(--void));
+  --p13-badge-border: 1px solid color-mix(in srgb, var(--neon-cyan) 55%, transparent);
+  --p13-badge-fg: var(--neon-cyan);
+  --p13-badge-radius: 0;
+
+  /* typography vocabulary */
+  --p13-font-body: var(--font-family);
+  --p13-font-accent: var(--font-family);
+  --p13-label-transform: uppercase;
+  --p13-label-spacing: 0.22em;
+  --p13-label-weight: 400;
+  --p13-body-spacing: 0;
+
+  /* animation vocabulary */
+  --p13-msg-enter-mine: p13-term-msg-in-right;
+  --p13-msg-enter-peer: p13-term-msg-in-left;
+  --p13-msg-enter-duration: 150ms;
+  --p13-msg-enter-ease: steps(5, end);
+  --p13-btn-press-transform: translateY(1px);
+  --p13-hover-lift: translateY(0);
+  --p13-row-indicator-width: 2px;
+
+  /* first-paint text-shadow for CRT vibe (palette hue agnostic) */
+  --p13-body-text-shadow: 0 0 1px color-mix(in srgb, var(--neon-cyan) calc(var(--text-shadow-intensity, 0.35) * 100%), transparent);
+}
+
+/* ---------- MD3 shell ---------------------------------------- */
+[data-shell="md3"] {
+  /* geometry — Material squircles */
+  --p13-radius-msg: 22px;
+  --p13-radius-panel: 28px;
+  --p13-radius-input: 26px;
+  --p13-radius-pill: 999px;
+  --p13-clip-bubble-mine: none;
+  --p13-clip-bubble-peer: none;
+  --p13-clip-btn: none;
+
+  /* surfaces */
+  --p13-surface-1: var(--surface);
+  --p13-surface-2: var(--surface-elevated);
+  --p13-text-secondary: color-mix(in srgb, var(--on-surface) 65%, transparent);
+
+  /* bubble: solid tonal fill, soft elevation, NO stroke, NO neon */
+  --p13-bubble-mine-bg: var(--neon-red); /* = tokens.primary */
+  --p13-bubble-mine-fg: #FFFFFF;          /* overridden per-theme below */
+  --p13-bubble-mine-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+  --p13-bubble-peer-bg: color-mix(in srgb, var(--on-surface) 10%, var(--surface));
+  --p13-bubble-peer-fg: var(--on-surface);
+  --p13-bubble-peer-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.10),
+    0 1px 3px rgba(0, 0, 0, 0.06);
+
+  /* composer — filled tonal input with focus underline */
+  --p13-composer-bg: color-mix(in srgb, var(--surface) 94%, var(--void));
+  --p13-composer-border-top: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+  --p13-composer-input-bg: color-mix(in srgb, var(--on-surface) 6%, transparent);
+  --p13-composer-input-border: 0 none;
+  --p13-composer-input-focus:
+    inset 0 -2px 0 0 var(--neon-cyan);
+  --p13-composer-input-radius: 26px;
+  --p13-composer-input-padding: 10px 16px;
+
+  /* sidebar row — pill selection */
+  --p13-row-bg: transparent;
+  --p13-row-hover-bg: color-mix(in srgb, var(--on-surface) 6%, transparent);
+  --p13-row-active-bg: color-mix(in srgb, var(--neon-cyan) 22%, transparent);
+  --p13-row-active-stripe: transparent;
+  --p13-row-margin: 2px 8px;
+  --p13-row-radius: 20px;
+  --p13-row-pad: 10px 14px;
+
+  /* header — flat app bar */
+  --p13-header-bg: color-mix(in srgb, var(--surface) 92%, var(--void));
+  --p13-header-border: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+  --p13-header-pad: 8px 12px;
+
+  /* icon button — circular touch target, no stroke */
+  --p13-icon-btn-bg: transparent;
+  --p13-icon-btn-border: 0 none;
+  --p13-icon-btn-fg: var(--on-surface);
+  --p13-icon-btn-hover-bg: color-mix(in srgb, var(--on-surface) 10%, transparent);
+  --p13-icon-btn-radius: 50%;
+  --p13-icon-btn-clip: none;
+
+  /* badge — filled pill */
+  --p13-badge-bg: var(--neon-cyan);
+  --p13-badge-border: 0 none;
+  --p13-badge-fg: var(--surface);
+  --p13-badge-radius: 999px;
+
+  /* typography */
+  --p13-font-body: var(--font-family);
+  --p13-font-accent: var(--font-family);
+  --p13-label-transform: none;
+  --p13-label-spacing: 0.01em;
+  --p13-label-weight: 500;
+  --p13-body-spacing: 0;
+
+  /* animation vocabulary — material spring */
+  --p13-msg-enter-mine: p13-md3-msg-in;
+  --p13-msg-enter-peer: p13-md3-msg-in;
+  --p13-msg-enter-duration: 260ms;
+  --p13-msg-enter-ease: cubic-bezier(0.2, 0, 0, 1);
+  --p13-btn-press-transform: scale(0.94);
+  --p13-hover-lift: translateY(-1px);
+  --p13-row-indicator-width: 0;
+
+  --p13-body-text-shadow: none;
+}
+
+/* Theme-aware foreground on the primary bubble (MD3 only). We pick
+ * the on-primary color based on the resolved scheme so primary bubbles
+ * always read cleanly regardless of palette. */
+[data-theme="md3dark"][data-shell="md3"] {
+  --p13-bubble-mine-fg: #11131A;
+}
+[data-theme="md3light"][data-shell="md3"] {
+  --p13-bubble-mine-fg: #FFFFFF;
+}
+[data-theme="nord"][data-shell="md3"] {
+  --p13-bubble-mine-fg: #ECEFF4;
+}
+[data-theme="pixel"][data-shell="md3"] {
+  --p13-bubble-mine-fg: #FFFFFF;
+}
+[data-theme="dracula"][data-shell="md3"] {
+  --p13-bubble-mine-fg: #282A36;
+}
+[data-theme="midnight"][data-shell="md3"] {
+  --p13-bubble-mine-fg: #0A0E1A;
+}
+
+/* ============================================================
+ * P13 SEMANTIC COMPONENTS — consume the tokens above
+ * ============================================================ */
+
+/* --- Message bubble ---------------------------------------- */
+.p13-bubble {
+  display: block;
+  position: relative;
+  padding: 10px 14px 8px;
+  font-family: var(--p13-font-body);
+  letter-spacing: var(--p13-body-spacing);
+  line-height: 1.48;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  color: var(--on-surface);
+  background: transparent;
+  border: 0;
+  border-radius: var(--p13-radius-msg);
+  box-shadow: none;
+  clip-path: none;
+  transition:
+    transform var(--motion-fast) ease,
+    box-shadow var(--motion-base) ease,
+    background-color var(--motion-base) ease;
+}
+
+/* Specificity-boosted via [data-shell] parent selector so that legacy
+ * [data-shell="…"] .msg-bubble-* > div:not(.border-l) glow rules from the
+ * previous shell-override system no longer win. */
+[data-shell] .p13-bubble--mine {
+  background: var(--p13-bubble-mine-bg);
+  color: var(--p13-bubble-mine-fg);
+  box-shadow: var(--p13-bubble-mine-shadow);
+  clip-path: var(--p13-clip-bubble-mine);
+  animation: var(--p13-msg-enter-mine) var(--p13-msg-enter-duration) var(--p13-msg-enter-ease) both;
+  border: 0 !important;
+}
+[data-shell] .p13-bubble--peer {
+  background: var(--p13-bubble-peer-bg);
+  color: var(--p13-bubble-peer-fg);
+  box-shadow: var(--p13-bubble-peer-shadow);
+  clip-path: var(--p13-clip-bubble-peer);
+  animation: var(--p13-msg-enter-peer) var(--p13-msg-enter-duration) var(--p13-msg-enter-ease) both;
+  border: 0 !important;
+}
+
+/* MD3 bubble tail: asymmetric corner makes mine/peer feel anchored
+ * to a side without extra chrome (same trick as iOS Messages / TG). */
+[data-shell="md3"] .p13-bubble--mine {
+  border-radius: var(--p13-radius-msg) var(--p13-radius-msg) 6px var(--p13-radius-msg);
+}
+[data-shell="md3"] .p13-bubble--peer {
+  border-radius: var(--p13-radius-msg) var(--p13-radius-msg) var(--p13-radius-msg) 6px;
+}
+
+/* Terminal padding a touch tighter horizontally so the chamfer cuts
+ * don't eat the first glyph. */
+[data-shell="terminal"] .p13-bubble {
+  padding: 12px 18px 10px;
+}
+
+/* --- Composer ---------------------------------------------- */
+.p13-composer {
+  background: var(--p13-composer-bg);
+  border-top: var(--p13-composer-border-top);
+  transition:
+    background-color var(--motion-base) ease,
+    border-color var(--motion-base) ease;
+}
+
+.p13-composer-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--p13-composer-input-padding);
+  background: var(--p13-composer-input-bg);
+  border: var(--p13-composer-input-border);
+  border-radius: var(--p13-composer-input-radius);
+  color: var(--on-surface);
+  transition:
+    box-shadow var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
+}
+.p13-composer-input:focus-within {
+  box-shadow: var(--p13-composer-input-focus);
+}
+
+/* --- Icon button ------------------------------------------- */
+.p13-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  width: 40px;
+  padding: 0;
+  background: var(--p13-icon-btn-bg);
+  border: var(--p13-icon-btn-border);
+  color: var(--p13-icon-btn-fg);
+  cursor: pointer;
+  border-radius: var(--p13-icon-btn-radius);
+  clip-path: var(--p13-icon-btn-clip);
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    transform var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+.p13-icon-btn:hover:not(:disabled) {
+  background: var(--p13-icon-btn-hover-bg);
+}
+.p13-icon-btn:active:not(:disabled) {
+  transform: var(--p13-btn-press-transform);
+}
+.p13-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.p13-icon-btn--primary {
+  color: var(--neon-cyan);
+}
+[data-shell="md3"] .p13-icon-btn--primary {
+  background: var(--neon-cyan);
+  color: var(--p13-bubble-mine-fg);
+}
+[data-shell="md3"] .p13-icon-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--neon-cyan) 88%, #fff);
+}
+.p13-icon-btn--danger {
+  color: var(--danger);
+}
+
+/* --- Sidebar row ------------------------------------------- */
+.p13-sidebar-row {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  margin: var(--p13-row-margin);
+  background: var(--p13-row-bg);
+  border-radius: var(--p13-row-radius);
+  border-left: var(--p13-row-indicator-width) solid transparent;
+  position: relative;
+  transition:
+    background-color var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+.p13-sidebar-row:hover {
+  background: var(--p13-row-hover-bg);
+}
+.p13-sidebar-row[data-active="true"] {
+  background: var(--p13-row-active-bg);
+  border-left-color: var(--p13-row-active-stripe);
+}
+[data-shell="terminal"] .p13-sidebar-row[data-active="true"] {
+  box-shadow: inset 2px 0 14px color-mix(in srgb, var(--neon-cyan) 32%, transparent);
+}
+
+/* --- Header ------------------------------------------------ */
+.p13-header {
+  background: var(--p13-header-bg);
+  border-bottom: var(--p13-header-border);
+  padding: var(--p13-header-pad);
+}
+
+/* --- Label ------------------------------------------------- */
+.p13-label {
+  font-family: var(--p13-font-accent);
+  font-weight: var(--p13-label-weight);
+  text-transform: var(--p13-label-transform);
+  letter-spacing: var(--p13-label-spacing);
+}
+
+/* --- Badge ------------------------------------------------- */
+.p13-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  background: var(--p13-badge-bg);
+  border: var(--p13-badge-border);
+  color: var(--p13-badge-fg);
+  border-radius: var(--p13-badge-radius);
+}
+
+/* --- Animations: two vocabularies --------------------------- */
+@keyframes p13-term-msg-in-right {
+  0%   { opacity: 0; transform: translateX(10px); filter: brightness(1.8); }
+  35%  { opacity: 0.65; filter: brightness(1.15); }
+  100% { opacity: 1; transform: translateX(0); filter: brightness(1); }
+}
+@keyframes p13-term-msg-in-left {
+  0%   { opacity: 0; transform: translateX(-10px); filter: brightness(1.8); }
+  35%  { opacity: 0.65; filter: brightness(1.15); }
+  100% { opacity: 1; transform: translateX(0); filter: brightness(1); }
+}
+@keyframes p13-md3-msg-in {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* TG-macOS-style date-group divider (floats at the top of each day's
+ * run of messages, becomes a sticky header while that day is scrolling). */
+.p13-date-divider {
+  display: flex;
+  justify-content: center;
+  margin: 14px auto 8px;
+  pointer-events: none;
+}
+.p13-date-divider > span {
+  padding: 3px 12px;
+  font-size: 11px;
+  font-family: var(--p13-font-accent);
+  font-weight: var(--p13-label-weight);
+  text-transform: var(--p13-label-transform);
+  letter-spacing: var(--p13-label-spacing);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: color-mix(in srgb, var(--on-surface) 75%, transparent);
+  border-radius: var(--p13-radius-pill);
+  backdrop-filter: blur(8px);
+}
+[data-shell="terminal"] .p13-date-divider > span {
+  background: color-mix(in srgb, var(--void) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 40%, transparent);
+  border-radius: 0;
+  color: color-mix(in srgb, var(--neon-cyan) 85%, transparent);
+  text-shadow: 0 0 2px color-mix(in srgb, var(--neon-cyan) 40%, transparent);
+}
+
+/* Reduced motion: strip the entry animations for the new bubbles too. */
+[data-motion='reduced'] .p13-bubble--mine,
+[data-motion='reduced'] .p13-bubble--peer {
+  animation: none !important;
+}
+
+/* TG-macOS consecutive-message run styling.
+ * The wrapper gets `data-run-continuation="true"` when the message belongs
+ * to the same sender run as the previous one. In MD3 we fuse bubbles by
+ * reducing the inside corner radius (mirrors iMessage / TG macOS). In
+ * terminal we skip the replay animation so the run reads as one burst. */
+[data-shell="md3"] [data-run-continuation="true"] .p13-bubble--mine {
+  border-radius: var(--p13-radius-msg) 6px 6px var(--p13-radius-msg);
+}
+[data-shell="md3"] [data-run-continuation="true"] .p13-bubble--peer {
+  border-radius: 6px var(--p13-radius-msg) var(--p13-radius-msg) 6px;
+}
+[data-run-continuation="true"] .p13-bubble--mine,
+[data-run-continuation="true"] .p13-bubble--peer {
+  animation: none;
+}
+

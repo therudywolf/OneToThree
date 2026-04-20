@@ -435,11 +435,11 @@ export function ChatSidebar({
           return (
             <div
               key={c.id}
-              className={`group mb-2 flex w-full items-stretch overflow-hidden rounded-2xl border transition-all ${
-                activeChatId === c.id
-                  ? 'border-neon-cyan/35 bg-[linear-gradient(180deg,rgba(0,255,255,0.12),rgba(0,255,255,0.04))] shadow-[0_12px_28px_rgba(0,255,255,0.08)]'
-                  : 'border-border-strong/5 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] hover:border-neon-cyan/20 hover:bg-neon-cyan/[0.06]'
-              } ${isPinned ? 'ring-1 ring-inset ring-neon-cyan/20' : ''}`}
+              data-chat-list-item
+              data-active={activeChatId === c.id ? 'true' : 'false'}
+              className={`p13-sidebar-row chat-list-item group overflow-hidden ${
+                isPinned ? 'ring-1 ring-inset ring-[color:var(--neon-cyan)]/20' : ''
+              }`}
             >
               <button
                 type="button"

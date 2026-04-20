@@ -125,6 +125,7 @@ detect_update_services() {
   local diff_range="$1"
   local changed_file
   UPDATE_SERVICES=()
+  UPDATE_HINTS=()
 
   while IFS= read -r changed_file; do
     [[ -z "$changed_file" ]] && continue
@@ -142,8 +143,15 @@ detect_update_services() {
       Caddyfile|deploy/*)
         append_service_once caddy
         ;;
+      docker/coturn/tls/*|scripts/sync-turn-certs.sh)
+        UPDATE_HINTS+=("TURN TLS-материалы изменились — выполните ./scripts/sync-turn-certs.sh и перезапустите coturn.")
+        append_service_once coturn
+        ;;
       docker/coturn/*)
         append_service_once coturn
+        ;;
+      docker/livekit/*)
+        append_service_once livekit
         ;;
       package.json|package-lock.json)
         append_service_once api
@@ -155,13 +163,14 @@ detect_update_services() {
         append_service_once web
         append_service_once coturn
         append_service_once caddy
+        append_service_once livekit
         append_service_once db-migrate
         ;;
     esac
   done < <(git diff --name-only "$diff_range" || true)
 
   if [[ ${#UPDATE_SERVICES[@]} -eq 0 ]]; then
-    UPDATE_SERVICES=(api web caddy coturn)
+    UPDATE_SERVICES=(api web caddy coturn livekit)
   fi
 }
 
@@ -239,6 +248,12 @@ case "$CMD" in
     log "Проверяю состояние сервисов после обновления..."
     if ! docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >/dev/null 2>&1; then
       die "Сервисы не отвечают после update. Проверьте ./start.sh logs"
+    fi
+
+    if [[ "${#UPDATE_HINTS[@]:-0}" -gt 0 ]]; then
+      for hint in "${UPDATE_HINTS[@]}"; do
+        warn "$hint"
+      done
     fi
 
     ok "Обновление завершено. Данные сохранены."
@@ -618,6 +633,8 @@ if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
       update_key NEXT_PUBLIC_TURN_URL "turn:turn.${DOMAIN_VAL}:3478"
       update_key NEXT_PUBLIC_TURN_URLS "$(build_turn_urls "turn.${DOMAIN_VAL}")"
       update_key TURN_URLS "$(build_turn_urls "turn.${DOMAIN_VAL}")"
+      update_key LIVEKIT_URL "wss://lk.${DOMAIN_VAL}"
+      update_key NEXT_PUBLIC_LIVEKIT_URL "wss://lk.${DOMAIN_VAL}"
       ok "Доменные переменные синхронизированы для ${DOMAIN_VAL}."
     fi
   fi

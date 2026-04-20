@@ -24,9 +24,10 @@ rtc:
   # firewalls. LiveKit multiplexes the TCP port with its signaling.
   ice_lite: false
 
-# API keys are injected via env vars — never hard-code them here.
-keys:
-  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+# NOTE: `keys:` is intentionally omitted.  LiveKit v1.8 reads this YAML
+# literally (no ${VAR} substitution), so keys are injected at runtime via
+# the LIVEKIT_KEYS environment variable — see docker/livekit/entrypoint.sh,
+# which composes it from the mounted Docker secrets.
 
 logging:
   level: info

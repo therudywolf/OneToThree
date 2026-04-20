@@ -45,6 +45,9 @@ TURN_PASSWORD=$(openssl rand -hex 16)
 BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 INTERNAL_API_SIGNING_KEY=$(openssl rand -hex 32)
 CLUSTER_JOIN_TOKEN=$(openssl rand -hex 24)
+# LiveKit: API key must be prefixed "API" (LiveKit convention), secret is hex-64.
+LIVEKIT_API_KEY="APIforest_$(openssl rand -hex 10)"
+LIVEKIT_API_SECRET=$(openssl rand -hex 32)
 
 resolve_turn_external_ip() {
   local domain="$1"
@@ -130,6 +133,8 @@ echo -n "$TURN_PASSWORD"        > "$SECRETS_DIR/turn_password"
 echo -n "$BACKUP_ENCRYPTION_KEY" > "$SECRETS_DIR/backup_encryption_key"
 echo -n "$INTERNAL_API_SIGNING_KEY" > "$SECRETS_DIR/internal_api_signing_key"
 echo -n "$CLUSTER_JOIN_TOKEN"   > "$SECRETS_DIR/cluster_join_token"
+echo -n "$LIVEKIT_API_KEY"      > "$SECRETS_DIR/livekit_api_key"
+echo -n "$LIVEKIT_API_SECRET"   > "$SECRETS_DIR/livekit_api_secret"
 echo -n "$ACME_EMAIL"           > "$SECRETS_DIR/acme_email"
 echo -n "$TURN_EXTERNAL_IP"     > "$SECRETS_DIR/turn_external_ip"
 echo -n "$CORS_ORIGIN"          > "$SECRETS_DIR/cors_origin"
@@ -156,6 +161,8 @@ echo -e "║ ${YEL}TURN_PASSWORD${NC}      : ${TURN_PASSWORD}"
 echo -e "║ ${YEL}BACKUP_ENCRYPTION_KEY${NC}: ${BACKUP_ENCRYPTION_KEY}"
 echo -e "║ ${YEL}INTERNAL_API_SIGNING_KEY${NC}: ${INTERNAL_API_SIGNING_KEY}"
 echo -e "║ ${YEL}CLUSTER_JOIN_TOKEN${NC}  : ${CLUSTER_JOIN_TOKEN}"
+echo -e "║ ${YEL}LIVEKIT_API_KEY${NC}    : ${LIVEKIT_API_KEY}"
+echo -e "║ ${YEL}LIVEKIT_API_SECRET${NC} : ${LIVEKIT_API_SECRET}"
 if [[ -n "$VAPID_PUBLIC_KEY" ]]; then
   echo -e "║ ${YEL}VAPID_PUBLIC_KEY${NC}  : ${VAPID_PUBLIC_KEY}"
   echo -e "║ ${YEL}VAPID_PRIVATE_KEY${NC} : ${VAPID_PRIVATE_KEY}"

@@ -195,15 +195,18 @@
 - Документация сохранена здесь, чтобы не потерять инвариант «sender key
   не выходит из комнаты».
 
-## Фаза 5.1 — `chat_type = 'channel'`
+## Фаза 5.1 — `chat_type = 'channel'` (две миграции)
 
 - Новый тип чата с единственным постящим автором (Telegram-style broadcast).
-- `chat_type` enum пополнен значением `'channel'` (миграция
-  `0029_channels.sql`).
-- Новый enum `channel_role` (`subscriber | editor | owner`) и колонка
-  `chat_members.channel_role` (nullable для не-channel чатов).
-- CHECK-констрейнт `chat_members_channel_role_consistency` гарантирует,
-  что `channel_role` задаётся только для `chat.type = 'channel'`.
+- **Важно**: PostgreSQL запрещает использовать свежедобавленное значение
+  enum внутри той же транзакции (даже для `NOT VALID` CHECK). drizzle-orm
+  оборачивает каждую `.sql`-миграцию в `BEGIN/COMMIT`, поэтому добавление
+  значения и CHECK разбиты по двум файлам:
+  - `0029_channels.sql` — только `ALTER TYPE chat_type ADD VALUE 'channel'`.
+  - `0030_channels_members.sql` — `channel_role` enum, колонка на
+    `chat_members`, CHECK-констрейнт и discovery-индекс.
+- CHECK `chat_members_channel_role_consistency` гарантирует, что
+  `channel_role` задаётся только для `chat.type = 'channel'`.
 - Индекс `chats_channel_public_idx` для discovery UI.
 - Клиентская UI-часть (отдельный create-modal, discovery feed) остаётся
   в phase 6, когда параллельно переписывается chat creation flow.
@@ -211,13 +214,55 @@
 ## Фаза 5.2 — стикеры
 
 - Новый enum `sticker_format` (`tgs`/`lottie`/`static`/`webm`) и таблицы
-  `sticker_packs`, `stickers` (миграция `0030_stickers.sql`).
+  `sticker_packs`, `stickers` (миграция `0031_stickers.sql` — сдвинута
+  с `0030` из-за разбиения channel-миграций выше).
 - `sticker_packs.tg_source` хранит Telegram `short_name` для импорта
   через Bot API (опционально — токен Bot API задаётся оператором).
 - Envelope `p13: 'sticker'` уже определён в `attachment-envelope.ts`; UI
   `<StickerPicker>` и Lottie/TGS-плеер (`dotlottie-web` / `lottie-web`)
   устанавливаются отдельно (dev-UX фаза). Совместимость: legacy-клиенты
   видят fallback «стикер (требуется обновление)».
+
+## Post-audit (PR A) — inline операционные фиксы
+
+Эти изменения не трогают схему БД, но перечисляются тут как единое место
+истории инвариантов.
+
+- **`server/src/routes/call.ts`** теперь читает `LIVEKIT_API_KEY` /
+  `LIVEKIT_API_SECRET` через `readSecret()` (Docker secrets
+  first), а не напрямую из `process.env`. Совместимость: в dev-режиме
+  plain-env всё ещё работает, в проде — монтируется через
+  `/run/secrets/livekit_api_*`.
+- **`docker-compose.prod.yml`**: сервис `api` получил mount секретов
+  `livekit_api_key`, `livekit_api_secret` + переменные `*_FILE`. Сервис
+  `livekit` запускается под `docker/livekit/entrypoint.sh`, который
+  собирает `LIVEKIT_KEYS` из секретов и делает `exec /livekit-server`.
+  Сервис `caddy` получил `host.docker.internal:host-gateway` —
+  необходимо на Linux VPS, где Docker Desktop не авто-мапит этот хост.
+- **`docker/livekit/livekit.yaml`**: убран блок `keys:` с
+  `${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}` — LiveKit v1.8 не делает
+  env-substitution, так что вместо него ключи попадают через
+  `LIVEKIT_KEYS` из entrypoint'а.
+- **`docker/coturn/turnserver.conf`**: убран `realm=${TURN_REALM:-…}`
+  (coturn не делает substitution; realm задаётся CLI-флагом в
+  compose-`command:`).
+- **`generate-secrets.sh`**: теперь генерит `secrets/livekit_api_key`
+  (`APIforest_*`) и `secrets/livekit_api_secret` (hex-64). Существующие
+  инсталляции: удалите `./secrets/.initialized` и заново инициализируйте
+  LiveKit-ключи либо допишите файлы вручную.
+- **`start.sh update`**: `detect_update_services` теперь распознаёт
+  `docker/livekit/*` → перезапуск `livekit`, и выводит warning о
+  необходимости вручную синхронизировать TURN TLS
+  (`scripts/sync-turn-certs.sh`) при изменениях `docker/coturn/tls/*`.
+  Дефолтный список сервисов при «пустом» диффе расширен до
+  `(api web caddy coturn livekit)`.
+- **`start.sh`** доменная синхронизация дополнительно заполняет
+  `LIVEKIT_URL=wss://lk.<domain>` и `NEXT_PUBLIC_LIVEKIT_URL` — клиенту
+  не нужно иметь секреты, ему нужен только публичный URL.
+
+Откат: каждый пункт изолирован и может быть отменён возвратом файла из
+git. Ключи из `secrets/livekit_api_*` безопасны к удалению — при
+отсутствии файла api-эндпоинт отдаёт 503, клиент падает на mesh WebRTC.
 
 ---
 

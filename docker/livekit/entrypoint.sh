@@ -33,13 +33,22 @@ read_secret() {
   return 1
 }
 
-if ! LIVEKIT_API_KEY_VAL="$(read_secret LIVEKIT_API_KEY_FILE LIVEKIT_API_KEY)"; then
-  echo "[livekit-entrypoint] FATAL: LIVEKIT_API_KEY not provided (set LIVEKIT_API_KEY_FILE or LIVEKIT_API_KEY)" >&2
-  exit 64
-fi
-if ! LIVEKIT_API_SECRET_VAL="$(read_secret LIVEKIT_API_SECRET_FILE LIVEKIT_API_SECRET)"; then
-  echo "[livekit-entrypoint] FATAL: LIVEKIT_API_SECRET not provided (set LIVEKIT_API_SECRET_FILE or LIVEKIT_API_SECRET)" >&2
-  exit 64
+LIVEKIT_API_KEY_VAL="$(read_secret LIVEKIT_API_KEY_FILE LIVEKIT_API_KEY || true)"
+LIVEKIT_API_SECRET_VAL="$(read_secret LIVEKIT_API_SECRET_FILE LIVEKIT_API_SECRET || true)"
+
+# Graceful "unconfigured" mode: when the operator has not yet generated
+# LiveKit keys (empty or missing secret files), do NOT restart-loop — park
+# the container in an idle sleep so compose reports it as Up but it never
+# tries to read tokens.  Operator can later `echo "key" > secrets/livekit_api_key`
+# (and the secret_stub in start.sh) and `docker restart forestmessenger-livekit-1`
+# to bring the SFU online.  The messenger itself falls back to coturn or
+# Cloudflare Calls TURN for 1-to-1 calls in this mode.
+if [ -z "${LIVEKIT_API_KEY_VAL}" ] || [ -z "${LIVEKIT_API_SECRET_VAL}" ]; then
+  echo "[livekit-entrypoint] LiveKit keys not configured — parking container in idle mode." >&2
+  echo "[livekit-entrypoint] To enable the SFU: write your key to secrets/livekit_api_key," >&2
+  echo "[livekit-entrypoint] your 32+ char secret to secrets/livekit_api_secret, then" >&2
+  echo "[livekit-entrypoint] \`docker restart forestmessenger-livekit-1\`." >&2
+  exec sleep infinity
 fi
 
 if [ "${#LIVEKIT_API_SECRET_VAL}" -lt 32 ] 2>/dev/null; then

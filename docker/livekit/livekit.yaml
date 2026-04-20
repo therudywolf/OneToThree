@@ -22,7 +22,11 @@ rtc:
   use_external_ip: true
   # ICE over TCP helps when only :443 outbound works on strict corporate
   # firewalls. LiveKit multiplexes the TCP port with its signaling.
-  ice_lite: false
+  #
+  # NB: `ice_lite` was removed from `config.RTCConfig` in LiveKit v1.8 —
+  # including it causes `could not parse config: yaml: unmarshal errors:
+  # field ice_lite not found`. Modern LiveKit always behaves as the full ICE
+  # agent; there is no longer a knob to flip. Leaving a comment for posterity.
 
 # NOTE: `keys:` is intentionally omitted.  LiveKit v1.8 reads this YAML
 # literally (no ${VAR} substitution), so keys are injected at runtime via

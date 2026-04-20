@@ -146,7 +146,15 @@ export function ChatTerminal({
   } | null>(null)
   const isNearBottomRef = useRef(true)
   const [hasNewBelow, setHasNewBelow] = useState(false)
-  const prevMsgCountRef = useRef(0)
+  // NOTE: we intentionally do NOT drive auto-scroll by `messages.length` —
+  // the chat store is a ring buffer capped at RAM_CACHE_LIMIT (50). Once
+  // the cap is hit, the length stays constant even as new messages arrive
+  // (the oldest is evicted on every append), so a length-based diff would
+  // silently stop autoscrolling after the 50th message. We track identity
+  // of the tail instead (id + created_at) which changes on every real
+  // arrival.
+  const lastMsgKeyRef = useRef<string | null>(null)
+  const firstMessagesRenderRef = useRef(true)
   const swipeRef = useRef<{ startX: number; msgId: string } | null>(null)
   const [swipingMsgId, setSwipingMsgId] = useState<string | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
@@ -279,27 +287,37 @@ export function ChatTerminal({
   }, [])
 
   useEffect(() => {
-    const prevCount = prevMsgCountRef.current
-    const diff = messages.length - prevCount
-    prevMsgCountRef.current = messages.length
+    if (messages.length === 0) {
+      lastMsgKeyRef.current = null
+      return
+    }
 
-    if (diff <= 0) return
-
-    // Detect if the newest arrival is ours — for outgoing messages we
-    // ALWAYS snap to the bottom regardless of current scroll position,
-    // mirroring Telegram's behaviour (the user just pressed "Send", they
-    // expect to see their own bubble).
     const newest = messages[messages.length - 1]
-    const sentByMe = newest && newest.sender_id === userId
+    // Identity key is (id, created_at) — survives the ring-buffer eviction
+    // where length stays constant while the tail rotates.
+    const key = `${newest.id}:${newest.created_at}`
+    const prevKey = lastMsgKeyRef.current
+    lastMsgKeyRef.current = key
 
-    if (prevCount === 0 || isNearBottomRef.current || sentByMe) {
+    // First render of this chat — useLayoutEffect below already snapped
+    // us to the bottom. Don't fight it.
+    if (firstMessagesRenderRef.current) {
+      firstMessagesRenderRef.current = false
+      return
+    }
+
+    if (prevKey === key) return // same tail → nothing new
+
+    const sentByMe = newest.sender_id === userId
+
+    if (isNearBottomRef.current || sentByMe) {
       scrollToBottomInstant()
       isNearBottomRef.current = true
       setHasNewBelow(false)
       setNewMsgCount(0)
     } else {
       setHasNewBelow(true)
-      setNewMsgCount((prev) => prev + diff)
+      setNewMsgCount((prev) => prev + 1)
     }
   }, [messages, userId, scrollToBottomInstant])
 
@@ -366,7 +384,8 @@ export function ChatTerminal({
     setOlderMessages([])
     setHasMoreOlder(true)
     setLoadingOlder(false)
-    prevMsgCountRef.current = 0
+    lastMsgKeyRef.current = null
+    firstMessagesRenderRef.current = true
     scrollToBottomInstant()
     isNearBottomRef.current = true
     setHasNewBelow(false)

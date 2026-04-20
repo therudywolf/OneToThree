@@ -34,17 +34,23 @@
     "db:push:docker": "node --env-file=docker.db.env ./node_modules/drizzle-kit/bin.cjs push --config drizzle.config.ts",
     "db:studio": "node ./node_modules/drizzle-kit/bin.cjs studio --config drizzle.config.ts",
     "typecheck": "npm run typecheck -w project-13-client && npm run typecheck -w project-13-server",
+    "check:locales": "node scripts/check-locale-keys.mjs",
     "backup": "npx tsx scripts/backup.ts",
     "cors:smoke": "node scripts/cors-preflight-smoke.mjs"
   },
   "devDependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/websocket": "^11.2.0",
     "dotenv": "^16.6.1",
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
+    "fastify": "5.8.5",
     "web-push": "^3.6.7"
   },
   "overrides": {
     "serialize-javascript": "^7.0.5",
-    "glob": "^10.4.6"
+    "glob": "^10.4.6",
+    "esbuild": "^0.25.12"
   }
 }

@@ -6,7 +6,7 @@ import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import jwt from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
-import Fastify from 'fastify'
+import Fastify, { type FastifyRequest } from 'fastify'
 import websocket from '@fastify/websocket'
 import { authRoutes } from './routes/auth.js'
 import { chatsRoutes } from './routes/chats.js'
@@ -90,7 +90,7 @@ export async function buildApp() {
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
-    allowList: (request) => {
+    allowList: (request: FastifyRequest) => {
       const ip = request.ip?.trim()
       return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
     },

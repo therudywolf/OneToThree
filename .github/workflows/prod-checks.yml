@@ -31,7 +31,19 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - run: npm run lint -w project-13-client
+      - run: npm run lint
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: npm audit (high or above fails the job)
+        run: npm audit --audit-level=high
 
   typecheck:
     runs-on: ubuntu-latest
@@ -72,3 +84,5 @@ jobs:
       - run: npm ci
       - run: npm run db:push
       - run: npm run test:server
+      - run: npm run test:unit -w project-13-client
+      - run: npm run check:locales

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { Check, ChevronRight, Globe, Moon, Sun, Zap } from 'lucide-react'
 import { useTranslation, type TranslateFn } from '@/hooks/use-translation'
 import { useLocaleStore, type LocaleSegment } from '@/store/localeStore'
@@ -26,7 +26,13 @@ type Step = 'language' | 'shell' | 'palette' | 'ready'
  */
 export function WelcomeScreen({ onContinue }: Props) {
   const { t } = useTranslation()
+  const titleId = useId()
+  const panelRef = useRef<HTMLDivElement>(null)
   const [step, setStep] = useState<Step>('language')
+
+  useEffect(() => {
+    panelRef.current?.focus()
+  }, [])
 
   const localeModule = useLocaleStore((s) => s.module)
   const setLocale = useLocaleStore((s) => s.setModule)
@@ -62,7 +68,23 @@ export function WelcomeScreen({ onContinue }: Props) {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[color-mix(in_srgb,var(--void)_94%,transparent)] px-4 backdrop-blur-md">
-      <div className={`relative w-full max-w-2xl ${cardShape} p-8`}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onContinue()
+          }
+        }}
+        className={`relative w-full max-w-2xl outline-none ${cardShape} p-8`}
+      >
+        <h2 id={titleId} className="sr-only">
+          {t('welcome.title')}
+        </h2>
         {isTerminal ? (
           <div className="absolute -top-px left-0 right-0 h-px bg-gradient-to-r from-transparent via-[var(--neon-cyan)] to-transparent opacity-60" />
         ) : null}

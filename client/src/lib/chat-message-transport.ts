@@ -179,6 +179,28 @@ export async function sendChatMessageOverTransport(
     body.ciphertexts = ciphertexts
     body.content = null
     body.iv = null
+  } else if (input.transport_mode === 'SELF') {
+    // Saved Messages: same contract as DIRECT — server requires per-device slots.
+    if (!input.plaintext?.length) {
+      throw new Error('SELF_PLAINTEXT_REQUIRED')
+    }
+    if (!input.sender_private_key || !input.my_user_id) {
+      throw new Error('SELF_FANOUT_KEYS_REQUIRED')
+    }
+    const excludeDeviceId = getClientDeviceId() ?? undefined
+    const ciphertexts = await buildFanoutSlots(
+      input.sender_private_key,
+      input.my_user_id,
+      input.my_user_id,
+      input.plaintext,
+      excludeDeviceId
+    )
+    if (ciphertexts.length === 0) {
+      throw new Error('SELF_FANOUT_UNAVAILABLE')
+    }
+    body.ciphertexts = ciphertexts
+    body.content = null
+    body.iv = null
   }
 
   const sent = await postUnifiedSend(body)

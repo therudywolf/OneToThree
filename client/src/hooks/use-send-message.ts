@@ -5,11 +5,16 @@ import {
   encryptOutboundText,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
+import { explainSendError } from '@/lib/explain-send-error'
 import { sendChatMessageOverTransport } from '@/lib/chat-message-transport'
-import { decryptApiMessageRow } from '@/lib/decrypt-chat-api-message'
+import {
+  decryptApiMessageRow,
+  type ApiMessageRow,
+} from '@/lib/decrypt-chat-api-message'
 import { cacheMessage } from '@/lib/message-cache'
 import { vibrateShort } from '@/lib/vibrate'
 import { useChatStore } from '@/store/chatStore'
+import { toastError } from '@/store/toastStore'
 import type { DecryptedMessage } from '@/types/chat'
 
 /**
@@ -48,38 +53,59 @@ export function useSendMessage(
       lastDispatchRef.current = { key: dispatchKey, at: now }
 
       // [0] PRE_FLIGHT_CHECK :: Проверка целостности контура
-      if (
-        !content ||
-        !activeChatId ||
-        !userId ||
-        !unwrappedPrivateKey ||
-        !cryptoCtx
-      ) {
+      if (!content) return
+      if (!activeChatId || !userId) {
+        toastError(explainSendError(new Error(!activeChatId ? 'SEND_NO_ACTIVE_CHAT' : 'SEND_NO_USER_ID')), {
+          title: 'SEND FAILED',
+        })
+        return
+      }
+      if (!unwrappedPrivateKey) {
+        toastError(explainSendError(new Error('SEND_VAULT_LOCKED')), { title: 'SEND FAILED' })
+        return
+      }
+      if (!cryptoCtx) {
+        toastError(explainSendError(new Error('SEND_CRYPTO_NOT_READY')), { title: 'SEND FAILED' })
         return
       }
 
-      // [1] CRYPTO_ENCAPSULATION :: Шифрование полезной нагрузки
-      const { encrypted_content, iv } = await encryptOutboundText(
-        unwrappedPrivateKey,
-        content,
-        cryptoCtx
-      )
+      let encrypted_content: string
+      let iv: string
+      try {
+        const enc = await encryptOutboundText(unwrappedPrivateKey, content, cryptoCtx)
+        encrypted_content = enc.encrypted_content
+        iv = enc.iv
+      } catch (err) {
+        toastError(explainSendError(err), { title: 'SEND FAILED' })
+        return
+      }
 
       const burnAt = meta?.burn_at ?? meta?.burn_mark
 
       // [2] TRANSPORT_DISPATCH :: Выброс пакета в эфир (WS/REST/QUEUE)
-      const { via, serverMessage, outboxId } = await sendChatMessageOverTransport({
-        chat_id: activeChatId,
-        transport_mode: cryptoCtx.mode,
-        plaintext: content,
-        sender_private_key: unwrappedPrivateKey,
-        my_user_id: userId,
-        peer_user_id: directPeerUserId ?? undefined,
-        content: encrypted_content,
-        iv,
-        reply_to_id: replyToId ?? null,
-        ...(burnAt ? { burn_at: burnAt } : {}),
-      })
+      let via: 'REST' | 'QUEUED'
+      let serverMessage: ApiMessageRow | undefined
+      let outboxId: string | undefined
+      try {
+        const result = await sendChatMessageOverTransport({
+          chat_id: activeChatId,
+          transport_mode: cryptoCtx.mode,
+          plaintext: content,
+          sender_private_key: unwrappedPrivateKey,
+          my_user_id: userId,
+          peer_user_id: directPeerUserId ?? undefined,
+          content: encrypted_content,
+          iv,
+          reply_to_id: replyToId ?? null,
+          ...(burnAt ? { burn_at: burnAt } : {}),
+        })
+        via = result.via
+        serverMessage = result.serverMessage
+        outboxId = result.outboxId
+      } catch (err) {
+        toastError(explainSendError(err), { title: 'SEND FAILED' })
+        return
+      }
 
       // [3] FEEDBACK_LOOP :: Если пакет прошел через REST, синхронизируем локальный стор
       if (via === 'REST' && serverMessage) {
@@ -90,7 +116,7 @@ export function useSendMessage(
             serverMessage
           )
           const node =
-            cryptoCtx.mode === 'DIRECT' &&
+            (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') &&
             (decrypted.plaintext === '' || decrypted.plaintext === '[DECRYPT_FAIL]')
               ? {
                   ...decrypted,

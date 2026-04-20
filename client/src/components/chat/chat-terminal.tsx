@@ -33,6 +33,7 @@ import { UserProfileModal } from '@/components/chat/user-profile-modal'
 import { groupMessages } from '@/lib/message-grouping'
 import { MessageSkeleton } from '@/components/ui/skeleton'
 import { formatMessageTimestamp, formatDateDivider, calendarDayKey } from '@/lib/timestamp-format'
+import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
 import { ForwardModal } from '@/components/chat/forward-modal'
 import { ThreadPanel } from '@/components/chat/thread-panel'
 
@@ -178,7 +179,7 @@ export function ChatTerminal({
   const [threadRoot, setThreadRoot] = useState<DecryptedMessage | null>(null)
 
   const isGroup = activeChat?.is_group ?? false
-  const isSelfChat = !isGroup && activeChat != null && activeChat.member_ids.length === 1 && activeChat.member_ids[0] === userId
+  const isSelfChat = activeChat != null && isSavedMessagesChat(activeChat, userId)
 
   useReadReceipts(ref, { enabled: !isGroup })
 

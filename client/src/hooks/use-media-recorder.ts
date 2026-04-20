@@ -293,7 +293,7 @@ export function useMediaRecorder() {
     if (durMs < MIN_RECORDING_DURATION_MS) {
       debugVoice('stopCapture: recording too short, discarding', { durMs })
       try {
-        if (rec.state !== 'inactive') rec.stop()
+        rec.stop()
       } catch {
         /* ignore — we're discarding anyway */
       }
@@ -390,13 +390,10 @@ export function useMediaRecorder() {
       }
 
       try {
-        if (rec.state !== 'inactive') {
-          rec.requestData?.()
-          rec.stop()
-        } else {
-          clearTimeout(watchdog)
-          finish(null)
-        }
+        // We already short-circuit above when rec.state === 'inactive',
+        // so rec is guaranteed 'paused' | 'recording' here.
+        rec.requestData?.()
+        rec.stop()
       } catch (err) {
         debugVoice('stopCapture: rec.stop() threw', err)
         clearTimeout(watchdog)

@@ -78,27 +78,41 @@ const getSubtle = (): SubtleCrypto => {
 }
 
 /** PUT payload with retry. */
+/**
+ * Upload an already-encrypted payload to the presigned PUT URL with retry
+ * and — critically — a per-attempt timeout.  Without the AbortSignal the
+ * underlying fetch() can sit forever on a stalled connection, which is
+ * exactly what "voice send hangs" looks like to the user.  30 s per
+ * attempt × 3 attempts gives a hard 90 s ceiling; below that we still
+ * surface a real error through the `SEND FAILED` toast.
+ */
 async function injectWithRetry(
   url: string,
   mime: string,
   payload: ArrayBuffer,
   maxAttempts = 3
 ): Promise<void> {
+  const PER_ATTEMPT_TIMEOUT_MS = 30000
   let attempt = 0
   let lastError: unknown
   while (attempt < maxAttempts) {
     attempt++
+    const ac = new AbortController()
+    const timeoutId = setTimeout(() => ac.abort(new Error('STORAGE_PUT_TIMEOUT')), PER_ATTEMPT_TIMEOUT_MS)
     try {
       const response = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': mime },
         body: payload,
+        signal: ac.signal,
       })
+      clearTimeout(timeoutId)
       if (response.ok) return
       const log = await response.text().catch(() => '')
       lastError = new Error(`STORAGE_PUT_${response.status}: ${log.slice(0, 256)}`)
       console.error(`>> [SYS.STORAGE] PUT_FAULT [${response.status}]:`, log.slice(0, 256))
     } catch (err) {
+      clearTimeout(timeoutId)
       lastError = err
       console.error('>> [SYS.STORAGE] INJECTION_INTERRUPTED:', err)
     }

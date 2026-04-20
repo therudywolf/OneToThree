@@ -1,3 +1,4 @@
+import type { AnyPgColumn } from 'drizzle-orm/pg-core'
 import {
   bigint,
   boolean,
@@ -160,9 +161,18 @@ export const chats = pgTable(
     inviteCode: text('invite_code'),
     /** When true, first successful join by a new member clears `invite_code`. */
     inviteOneTime: boolean('invite_one_time').notNull().default(false),
+    /**
+     * Optional linked group chat (type group_e2e or public_open) used as the
+     * “discussion group” for channel post comments (Telegram-style).
+     */
+    discussionChatId: uuid('discussion_chat_id').references(
+      (): AnyPgColumn => chats.id,
+      { onDelete: 'set null' }
+    ),
   },
   (t) => ({
     inviteCodeUnique: uniqueIndex('chats_invite_code_unique').on(t.inviteCode),
+    discussionIdx: index('chats_discussion_chat_id_idx').on(t.discussionChatId),
   })
 )
 

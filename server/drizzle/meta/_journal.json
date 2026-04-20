@@ -232,6 +232,13 @@
       "when": 1776688560000,
       "tag": "0032_messages_dr_init",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1776688570000,
+      "tag": "0033_chats_discussion_link",
+      "breakpoints": true
     }
   ]
 }

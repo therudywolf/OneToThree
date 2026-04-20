@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { Check, ChevronRight, Globe, Moon, Sun, Zap } from 'lucide-react'
-import { useTranslation } from '@/hooks/use-translation'
+import { useTranslation, type TranslationKey } from '@/hooks/use-translation'
 import { useLocaleStore, type LocaleSegment } from '@/store/localeStore'
 import {
   useThemeStore,
@@ -228,7 +228,7 @@ function ShellStep({
 }: {
   current: ShellModeId
   onPick: (s: ShellModeId) => void
-  t: (k: string) => string
+  t: (k: TranslationKey) => string
   titleClass: string
   subClass: string
   isTerminal: boolean
@@ -323,7 +323,7 @@ function PaletteStep({
   palettes: typeof THEMES
   current: ThemeId
   onPick: (id: ThemeId) => void
-  t: (k: string) => string
+  t: (k: TranslationKey) => string
   titleClass: string
   subClass: string
   isTerminal: boolean
@@ -400,7 +400,7 @@ function ReadyStep({
   isTerminal,
   onContinue,
 }: {
-  t: (k: string) => string
+  t: (k: TranslationKey) => string
   titleClass: string
   subClass: string
   isTerminal: boolean

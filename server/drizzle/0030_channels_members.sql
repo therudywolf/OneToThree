@@ -56,6 +56,14 @@ CREATE TRIGGER "chat_members_channel_role_guard_ins"
 --> statement-breakpoint
 
 -- Index for channel discovery listings.
+--
+-- We deliberately do NOT use a partial index (`WHERE "type" = 'channel'`)
+-- here: drizzle-orm applies all pending migrations inside a single
+-- transaction, and PostgreSQL raises `unsafe use of new value "channel"`
+-- (errcode 55P04) when a DDL statement references an enum value that was
+-- added in the same transaction (see 0029_channels.sql). A full btree index
+-- on `(type)` is equally effective for `WHERE type = 'channel'` lookups
+-- because `chat_type` has a very small cardinality; the optimizer uses the
+-- full index for the equality predicate without issue.
 CREATE INDEX IF NOT EXISTS "chats_channel_public_idx"
-  ON "chats" ("type")
-  WHERE "type" = 'channel';
+  ON "chats" ("type");

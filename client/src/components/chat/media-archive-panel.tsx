@@ -49,7 +49,7 @@ export function MediaArchivePanel({
 
   if (err) {
     return (
-      <p className="border-l-2 border-neon-red bg-red-950/20 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
+      <p className="border-l-2 border-neon-red bg-danger/30 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
         [!] {err}
       </p>
     )
@@ -57,7 +57,7 @@ export function MediaArchivePanel({
 
   if (rows.length === 0) {
     return (
-      <p className="border border-zinc-800 bg-black/50 px-3 py-3 text-center font-mono text-[10px] uppercase tracking-widest text-zinc-600">
+      <p className="border border-border-strong bg-void/50 px-3 py-3 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted/70">
         {t('group.mediaArchiveEmpty') || 'ARCHIVE_EMPTY'}
       </p>
     )
@@ -79,7 +79,7 @@ export function MediaArchivePanel({
           <div
             key={r.id}
             className={`border transition-colors duration-200 ${
-              isOpen ? 'border-neon-cyan/50 bg-black' : 'border-neon-cyan/20 bg-black/60 hover:border-neon-cyan/40'
+              isOpen ? 'border-neon-cyan/50 bg-void' : 'border-neon-cyan/20 bg-void/60 hover:border-neon-cyan/40'
             }`}
           >
             <button
@@ -88,7 +88,7 @@ export function MediaArchivePanel({
               onClick={() => setOpenId(isOpen ? null : r.id)}
             >
               <span className="flex items-center gap-2 truncate text-neon-cyan/90">
-                <span className="inline-block min-w-[60px] text-zinc-500">
+                <span className="inline-block min-w-[60px] text-text-muted">
                   [{mt}]
                 </span>
                 <span className="truncate">{dateStr}</span>
@@ -99,7 +99,7 @@ export function MediaArchivePanel({
             </button>
             
             {isOpen && r.media_path && r.media_iv && r.media_type ? (
-              <div className="border-t border-neon-cyan/20 bg-zinc-950/30 p-3">
+              <div className="border-t border-neon-cyan/20 bg-void/30 p-3">
                 <MediaBubble
                   message={{
                     id: r.id,

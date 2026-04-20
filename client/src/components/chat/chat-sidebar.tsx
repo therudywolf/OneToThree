@@ -291,7 +291,7 @@ export function ChatSidebar({
             <span className="block text-[10px] font-bold uppercase tracking-[0.32em] text-neon-cyan">
               {t('sidebar.channels')}
             </span>
-            <p className="text-[10px] leading-relaxed text-zinc-500">
+            <p className="text-[10px] leading-relaxed text-text-muted">
               Favorites, direct routes and encrypted groups live here.
             </p>
           </div>
@@ -300,11 +300,11 @@ export function ChatSidebar({
       </div>
 
       {/* Search */}
-      <div className="border-b border-neon-cyan/15 bg-black/25 px-4 py-3">
+      <div className="border-b border-neon-cyan/15 bg-void/25 px-4 py-3">
         <label className="sr-only" htmlFor="ghost-search">
           {t('sidebar.localGhostSearch')}
         </label>
-        <div className="relative flex items-center overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="relative flex items-center overflow-hidden rounded-2xl border border-border-strong/5 bg-surface/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           {isSearching ? (
             <Loader2 className="absolute left-3 h-3.5 w-3.5 animate-spin text-neon-cyan/50" />
           ) : (
@@ -335,9 +335,9 @@ export function ChatSidebar({
             /* ignore */
           }
         }}
-        className="mx-3 mt-3 flex items-center gap-2 rounded-2xl border border-amber-400/20 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:border-amber-300/35 hover:bg-amber-300/10 hover:text-neon-cyan"
+        className="mx-3 mt-3 flex items-center gap-2 rounded-2xl border border-accent-2/40 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan"
       >
-        <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
+        <Star className="h-3.5 w-3.5 text-accent-2 fill-accent-2" />
         {t('sidebar.savedMessages')}
       </button>
 
@@ -351,16 +351,16 @@ export function ChatSidebar({
           </div>
         ) : chats.length === 0 ? (
           <div className="px-4 py-8 text-center space-y-3">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted/70">
               {t('sidebar.noActiveRoutes')}
             </p>
-            <p className="text-[9px] text-zinc-700">
+            <p className="text-[9px] text-text-muted/70">
               {t('chat.startChatHint')}
             </p>
             <button
               type="button"
               onClick={() => setGroupModalOpen(true)}
-              className="inline-flex items-center gap-1.5 border border-neon-cyan/50 bg-black px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+              className="inline-flex items-center gap-1.5 border border-neon-cyan/50 bg-void px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
             >
               <MessageSquarePlus className="h-3 w-3" />
               {t('chat.newChat')}
@@ -371,7 +371,7 @@ export function ChatSidebar({
         {ghostHitChatIds !== null &&
         localGhostQuery.trim().length >= 2 &&
         sidebarChatsFiltered.length === 0 ? (
-            <p className="mx-1 mt-2 rounded-2xl border border-neon-red/30 bg-red-950/20 px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red">
+            <p className="mx-1 mt-2 rounded-2xl border border-neon-red/30 bg-danger/30 px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red">
               {t('sidebar.ghostNoHits')}
             </p>
         ) : null}
@@ -403,7 +403,7 @@ export function ChatSidebar({
               className={`group mb-2 flex w-full items-stretch overflow-hidden rounded-2xl border transition-all ${
                 activeChatId === c.id
                   ? 'border-neon-cyan/35 bg-[linear-gradient(180deg,rgba(0,255,255,0.12),rgba(0,255,255,0.04))] shadow-[0_12px_28px_rgba(0,255,255,0.08)]'
-                  : 'border-white/5 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] hover:border-neon-cyan/20 hover:bg-neon-cyan/[0.06]'
+                  : 'border-border-strong/5 bg-[linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))] hover:border-neon-cyan/20 hover:bg-neon-cyan/[0.06]'
               } ${isPinned ? 'ring-1 ring-inset ring-neon-cyan/20' : ''}`}
             >
               <button
@@ -425,13 +425,13 @@ export function ChatSidebar({
                         size={28}
                       />
                     ) : c.is_group ? (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center border border-neon-cyan/50 bg-black font-mono text-[10px] text-neon-cyan">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center border border-neon-cyan/50 bg-void font-mono text-[10px] text-neon-cyan">
                         GRP
                       </div>
                     ) : null}
 
                     {!c.is_group && pres?.online ? (
-                       <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-black bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                       <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-border-strong bg-neon-cyan/15 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
                     ) : null}
                   </div>
 
@@ -451,7 +451,7 @@ export function ChatSidebar({
                     </span>
 
                     {pres && !pres.online ? (
-                      <span className="truncate text-[10px] text-zinc-500">
+                      <span className="truncate text-[10px] text-text-muted">
                         {t('sidebar.lastSeen')}:{' '}
                         {pres.last_seen_at
                           ? new Date(pres.last_seen_at).toLocaleString(
@@ -461,7 +461,7 @@ export function ChatSidebar({
                           : '—'}
                       </span>
                     ) : c.is_group ? (
-                      <span className="truncate text-[10px] text-zinc-500">
+                      <span className="truncate text-[10px] text-text-muted">
                          {c.member_ids.length} {t('sidebar.members')}
                        </span>
                     ) : null}
@@ -474,11 +474,11 @@ export function ChatSidebar({
                         </span>
                       ) : null}
                       {mentionTotal > 0 ? (
-                        <span className="rounded border border-amber-400/50 bg-amber-400/10 px-1 py-[1px] text-[8px] font-bold text-amber-300">
+                        <span className="rounded border border-accent-2/40 bg-accent-2/15 px-1 py-[1px] text-[8px] font-bold text-accent-2">
                           @{mentionTotal}
                         </span>
                       ) : null}
-                      <span className="rounded border border-neon-cyan/60 bg-black px-1.5 py-[1px] text-[9px] font-bold text-neon-cyan">
+                      <span className="rounded border border-neon-cyan/60 bg-void px-1.5 py-[1px] text-[9px] font-bold text-neon-cyan">
                         {unreadTotal > 99 ? '99+' : unreadTotal}
                       </span>
                     </span>
@@ -492,10 +492,10 @@ export function ChatSidebar({
                   e.stopPropagation()
                   togglePin(c.id)
                 }}
-                className={`shrink-0 border-l border-white/5 px-3 transition-colors ${
+                className={`shrink-0 border-l border-border-strong/5 px-3 transition-colors ${
                   isPinned
                     ? 'bg-neon-cyan/5 text-neon-cyan hover:bg-neon-red/10 hover:text-neon-red'
-                    : 'text-zinc-700 opacity-0 hover:bg-neon-cyan/10 hover:text-neon-cyan group-hover:opacity-100'
+                    : 'text-text-muted/70 opacity-0 hover:bg-neon-cyan/10 hover:text-neon-cyan group-hover:opacity-100'
                 }`}
               >
                 <Pin className="h-3.5 w-3.5" aria-hidden />
@@ -507,13 +507,13 @@ export function ChatSidebar({
                   e.stopPropagation()
                   void toggleFavorite(c.id, Boolean(c.is_favorite))
                 }}
-                className={`shrink-0 border-l border-white/5 px-3 transition-colors ${
+                className={`shrink-0 border-l border-border-strong/5 px-3 transition-colors ${
                   c.is_favorite
-                    ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20'
-                    : 'text-zinc-700 hover:bg-amber-400/10 hover:text-amber-300 opacity-0 group-hover:opacity-100'
+                    ? 'text-accent-2 bg-accent-2/15 hover:bg-accent-2/15'
+                    : 'text-text-muted/70 hover:bg-accent-2/15 hover:text-accent-2 opacity-0 group-hover:opacity-100'
                 }`}
               >
-                <Star className={`h-3.5 w-3.5 ${c.is_favorite ? 'fill-amber-400' : ''}`} aria-hidden />
+                <Star className={`h-3.5 w-3.5 ${c.is_favorite ? 'fill-accent-2' : ''}`} aria-hidden />
               </button>
             </div>
           )
@@ -522,7 +522,7 @@ export function ChatSidebar({
 
       {/* Active Chat Controls */}
       {activeChatId ? (
-        <div className="border-t border-neon-cyan/20 bg-black/20 p-3 space-y-2">
+        <div className="border-t border-neon-cyan/20 bg-void/20 p-3 space-y-2">
           {chats.find((c) => c.id === activeChatId)?.is_group ? (
             <GroupChatSettings
               chatId={activeChatId}
@@ -550,7 +550,7 @@ export function ChatSidebar({
                     .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
                     .finally(() => setBusy(false))
                 }}
-                className="flex-1 border border-red-900/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                className="flex-1 border border-danger/40 bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
               >
                 {t('sidebar.leaveGroup')}
               </button>
@@ -575,7 +575,7 @@ export function ChatSidebar({
                       .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
                       .finally(() => setBusy(false))
                   }}
-                  className="flex-1 border border-red-900/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                  className="flex-1 border border-danger/40 bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
                 >
                   {t('sidebar.deleteChat')}
                 </button>
@@ -592,7 +592,7 @@ export function ChatSidebar({
         {isAdmin ? (
           <Link
             href="/admin"
-            className="flex items-center gap-2 w-full border border-red-900/60 bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red"
+            className="flex items-center gap-2 w-full border border-danger/40 bg-void px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red"
           >
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
             <span>[ WARDEN ]</span>
@@ -612,14 +612,14 @@ export function ChatSidebar({
                 setCreateErr(link)
               }
             }}
-            className="flex-1 border border-neon-cyan/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className="flex-1 border border-neon-cyan/50 bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
           >
             {t('sidebar.copyMyInvite')}
           </button>
           <button
             type="button"
             onClick={() => setGroupModalOpen(true)}
-            className="flex-1 border border-neon-cyan/50 bg-black py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className="flex-1 border border-neon-cyan/50 bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
           >
             {t('sidebar.createGroupE2e')}
           </button>
@@ -648,7 +648,7 @@ export function ChatSidebar({
               type="button"
               onClick={() => void openDirect()}
               disabled={creating || !peerInput.trim()}
-              className="shrink-0 border border-neon-cyan bg-black px-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-black disabled:opacity-40 disabled:hover:bg-black disabled:hover:text-neon-cyan"
+              className="shrink-0 border border-neon-cyan bg-void px-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-text-primary disabled:opacity-40 disabled:hover:bg-void disabled:hover:text-neon-cyan"
             >
               {t('sidebar.openPeer')}
             </button>

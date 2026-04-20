@@ -50,11 +50,11 @@ export function CallMiniPlayer({ onExpand, onEndCall, onToggleMute, peerName }: 
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="fixed bottom-24 right-4 z-[190] flex items-center gap-2 bg-black/95 border border-neutral-700 backdrop-blur-xl shadow-2xl px-3 py-2 cursor-pointer"
+      className="fixed bottom-24 right-4 z-[190] flex items-center gap-2 bg-void/95 border border-border-strong backdrop-blur-xl shadow-2xl px-3 py-2 cursor-pointer"
       onClick={onExpand}
     >
       {/* Avatar placeholder */}
-      <div className="h-7 w-7 rounded-full border-2 border-neon-cyan/50 bg-neutral-900 flex items-center justify-center flex-shrink-0">
+      <div className="h-7 w-7 rounded-full border-2 border-neon-cyan/50 bg-void flex items-center justify-center flex-shrink-0">
         <span className="font-mono text-[8px] uppercase text-neon-cyan">
           {displayName.slice(0, 2)}
         </span>
@@ -62,7 +62,7 @@ export function CallMiniPlayer({ onExpand, onEndCall, onToggleMute, peerName }: 
 
       {/* Name + timer */}
       <div className="flex flex-col min-w-0">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-white truncate max-w-[80px]">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-text-primary truncate max-w-[80px]">
           {displayName}
         </span>
         <span className="font-mono text-[9px] text-neon-cyan/70 tracking-wider">
@@ -71,10 +71,10 @@ export function CallMiniPlayer({ onExpand, onEndCall, onToggleMute, peerName }: 
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-1 pl-1 border-l border-neutral-800 ml-1">
+      <div className="flex items-center gap-1 pl-1 border-l border-border-strong ml-1">
         <button
           onClick={(e) => { e.stopPropagation(); onToggleMute() }}
-          className={`p-1.5 transition-colors ${audioMuted ? 'text-neon-red' : 'text-neutral-400 hover:text-white'}`}
+          className={`p-1.5 transition-colors ${audioMuted ? 'text-neon-red' : 'text-text-muted hover:text-text-primary'}`}
           title={audioMuted ? t('call.unmute') : t('call.mute')}
         >
           {audioMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}

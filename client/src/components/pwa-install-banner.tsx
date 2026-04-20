@@ -51,7 +51,7 @@ export function PwaInstallBanner() {
 
   return (
     <div
-      className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[85] border-t border-neon-cyan/50 bg-black/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_32px_rgba(0,0,0,0.85)] backdrop-blur-sm md:px-6"
+      className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[85] border-t border-neon-cyan/50 bg-void/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_32px_rgba(0,0,0,0.85)] backdrop-blur-sm md:px-6"
       role="region"
       aria-label="Install application"
     >
@@ -91,7 +91,7 @@ export function PwaInstallBanner() {
             <button
               type="button"
               onClick={() => void promptInstall()}
-              className="border border-neon-cyan bg-black px-4 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.2)] hover:bg-neon-cyan/10"
+              className="border border-neon-cyan bg-void px-4 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.2)] hover:bg-neon-cyan/10"
             >
               [ INSTALL ]
             </button>
@@ -99,7 +99,7 @@ export function PwaInstallBanner() {
           <button
             type="button"
             onClick={dismiss}
-            className="border border-red-900/80 p-2 text-red-800 hover:border-neon-red hover:text-neon-red"
+            className="border border-danger/40 p-2 text-danger hover:border-neon-red hover:text-neon-red"
             aria-label="Dismiss"
           >
             <X className="h-4 w-4" strokeWidth={1.5} />

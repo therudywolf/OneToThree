@@ -30,15 +30,15 @@ export function RelayToast() {
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -40, opacity: 0 }}
           transition={{ duration: 0.25, ease: 'easeOut' }}
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-[220] flex items-center gap-2 bg-amber-950/90 border border-amber-500/50 backdrop-blur-xl shadow-2xl px-4 py-2 max-w-sm"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[220] flex items-center gap-2 bg-accent-2/15 border border-accent-2/40 backdrop-blur-xl shadow-2xl px-4 py-2 max-w-sm"
         >
-          <Radio className="h-4 w-4 text-amber-400 flex-shrink-0" />
-          <span className="font-mono text-[10px] uppercase tracking-wider text-amber-300">
+          <Radio className="h-4 w-4 text-accent-2 flex-shrink-0" />
+          <span className="font-mono text-[10px] uppercase tracking-wider text-accent-2">
             {t('call.relayDegradation')}
           </span>
           <button
             onClick={() => setShowRelayToast(false)}
-            className="ml-2 p-0.5 text-amber-400/60 hover:text-amber-300 transition-colors flex-shrink-0"
+            className="ml-2 p-0.5 text-accent-2/60 hover:text-accent-2 transition-colors flex-shrink-0"
             title={t('common.dismiss')}
           >
             <X className="h-3 w-3" />

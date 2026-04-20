@@ -308,22 +308,37 @@ export function ChatApp({
   useMessages(cryptoCtx, emitPhantomSignal)
   const directPeerUserId = peerIdentity?.userId ?? null
   const { sendText } = useSendMessage(cryptoCtx, directPeerUserId)
-  const { sendMedia: rawSendMedia } = useSendMediaMessage(cryptoCtx, directPeerUserId)
+  const { sendMedia: rawSendMedia, sendAlbum: rawSendAlbum } = useSendMediaMessage(cryptoCtx, directPeerUserId)
 
   const sendMedia = useCallback(
     async (
       blob: Blob,
       mediaType: 'audio' | 'video' | 'image' | 'file',
       caption?: string,
-      options?: { fileName?: string; fileType?: string },
+      options?: { fileName?: string; fileType?: string; kind?: import('@/lib/attachment-envelope').AttachmentKind },
     ) => {
       await rawSendMedia(blob, mediaType, {
         label: options?.fileName,
         mime: options?.fileType,
         caption: caption?.trim() || undefined,
+        ...(options?.kind ? { kind: options.kind } : {}),
       })
     },
     [rawSendMedia],
+  )
+
+  const sendAlbum = useCallback(
+    async (
+      items: Array<{
+        blob: Blob
+        segmentClass: 'audio' | 'video' | 'image' | 'file'
+        options?: { label?: string; mime?: string; kind?: import('@/lib/attachment-envelope').AttachmentKind }
+      }>,
+      caption?: string,
+    ) => {
+      await rawSendAlbum(items, caption)
+    },
+    [rawSendAlbum],
   )
   useGroupKeyDistribution(cryptoCtx, reload)
 
@@ -407,7 +422,7 @@ export function ChatApp({
   }
 
   if (vaultState === 'loading') {
-    return <div className="min-h-screen bg-black" aria-hidden />
+    return <div className="min-h-screen bg-void" aria-hidden />
   }
 
   if (vaultState === 'missing') {
@@ -424,7 +439,7 @@ export function ChatApp({
   }
 
   return (
-    <div className="chat-safe-shell safe-all flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-black supports-[height:100dvh]:h-[100dvh]">
+    <div className="chat-safe-shell safe-all flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-void supports-[height:100dvh]:h-[100dvh]">
       <InviteChatLinkEffect userId={userId} />
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
@@ -506,12 +521,12 @@ export function ChatApp({
       ) : null}
 
       {/* ─── HEADER ────────────────────────────────────────────────────────────────────────── */}
-      <header className="chat-header-compact flex shrink-0 items-center gap-2 border-b border-neon-cyan/40 bg-black px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] font-mono">
+      <header className="chat-header-compact flex shrink-0 items-center gap-2 border-b border-neon-cyan/40 bg-void px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] font-mono">
 
         {/* Burger — mobile only */}
         <button
           type="button"
-          className="touch-manipulation flex shrink-0 md:hidden h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan hover:border-neon-red hover:text-neon-red"
+          className="touch-manipulation flex shrink-0 md:hidden h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-void text-neon-cyan hover:border-neon-red hover:text-neon-red"
           aria-label={t('call.openChannels')}
           onClick={() => setMobileSidebarOpen(true)}
         >
@@ -526,8 +541,8 @@ export function ChatApp({
         {/* CENTER: peer nick — always visible, takes remaining space */}
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {isSelfChat ? (
-            <div className="flex min-w-0 items-center gap-1.5 border border-amber-500/40 bg-black px-2 py-1 text-[10px] tracking-[0.2em] text-amber-400">
-              <Star className="h-3.5 w-3.5 fill-amber-400 shrink-0" />
+            <div className="flex min-w-0 items-center gap-1.5 border border-accent-2/40 bg-void px-2 py-1 text-[10px] tracking-[0.2em] text-accent-2">
+              <Star className="h-3.5 w-3.5 fill-accent-2 shrink-0" />
               <span className="truncate">{t('sidebar.savedMessages')}</span>
             </div>
           ) : peerIdentity ? (
@@ -536,7 +551,7 @@ export function ChatApp({
               <button
                 type="button"
                 onClick={() => setHeaderProfileOpen(true)}
-                className="touch-manipulation inline-flex min-w-0 items-center gap-1.5 border border-neon-cyan/40 bg-black px-2 py-1 text-[11px] font-bold tracking-wider text-neon-cyan hover:border-neon-red hover:text-neon-red transition-colors"
+                className="touch-manipulation inline-flex min-w-0 items-center gap-1.5 border border-neon-cyan/40 bg-void px-2 py-1 text-[11px] font-bold tracking-wider text-neon-cyan hover:border-neon-red hover:text-neon-red transition-colors"
               >
                 {peerIdentity.verified ? (
                   <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" />
@@ -548,11 +563,11 @@ export function ChatApp({
                 <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[9px] normal-case tracking-normal">
                   {peerPresenceRow.online ? (
                     <>
-                      <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.85)]" />
+                      <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neon-cyan/15 shadow-[0_0_8px_rgba(34,211,238,0.85)]" />
                       <span className="text-neon-cyan/75">online</span>
                     </>
                   ) : (
-                    <span className="text-red-900/90 whitespace-nowrap">
+                    <span className="text-danger/90 whitespace-nowrap">
                       {formatLastSeen(peerPresenceRow.last_seen_at)}
                     </span>
                   )}
@@ -571,7 +586,7 @@ export function ChatApp({
         <div className="flex shrink-0 items-center gap-1.5">
 
           {/* Calls block — visually grouped */}
-          <div className="flex items-center gap-1 border border-neon-cyan/20 bg-black p-0.5">
+          <div className="flex items-center gap-1 border border-neon-cyan/20 bg-void p-0.5">
             <CallHeaderButtons
               disabled={!activeChatId || !!ctxError}
               peerReady={peerReady}
@@ -594,7 +609,7 @@ export function ChatApp({
             type="button"
             onClick={() => setSettingsOpen(true)}
             aria-label="CFG"
-            className="touch-manipulation flex h-10 w-10 items-center justify-center border border-neon-cyan/60 bg-black text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+            className="touch-manipulation flex h-10 w-10 items-center justify-center border border-neon-cyan/60 bg-void text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
           >
             <Settings className="h-4 w-4" aria-hidden />
           </button>
@@ -606,13 +621,13 @@ export function ChatApp({
         {mobileSidebarOpen ? (
           <button
             type="button"
-            className="fixed inset-0 z-40 touch-none bg-black/75 md:hidden"
+            className="fixed inset-0 z-40 touch-none bg-void/75 md:hidden"
             aria-label="Close channel list"
             onClick={() => setMobileSidebarOpen(false)}
           />
         ) : null}
         <div
-          className={`chat-layout-sidebar fixed inset-y-0 left-0 z-50 flex h-full max-h-[100dvh] w-[min(20rem,92vw)] flex-col border-r border-neon-cyan/40 bg-black shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-auto md:max-h-none md:w-auto md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${
+          className={`chat-layout-sidebar fixed inset-y-0 left-0 z-50 flex h-full max-h-[100dvh] w-[min(20rem,92vw)] flex-col border-r border-neon-cyan/40 bg-void shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-auto md:max-h-none md:w-auto md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
         >
@@ -626,7 +641,7 @@ export function ChatApp({
         </div>
         <div className="chat-layout-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain">
           {ctxError ? (
-            <div className="shrink-0 border-b border-zinc-800 px-3 py-1 font-mono text-xs text-zinc-500">
+            <div className="shrink-0 border-b border-border-strong px-3 py-1 font-mono text-xs text-text-muted">
               {t('errors.signalLost')}
             </div>
           ) : null}
@@ -647,7 +662,7 @@ export function ChatApp({
             />
           ) : null}
           {mediaAccessError ? (
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-3 py-1 font-mono text-[11px] leading-snug text-zinc-500">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border-strong px-3 py-1 font-mono text-[11px] leading-snug text-text-muted">
               <span className="min-w-0 flex-1">
                 <span className="mr-2 text-neon-red">[!]</span>
                 {mediaAccessError === MEDIA_PERMISSION_DENIED_CODE
@@ -657,17 +672,11 @@ export function ChatApp({
               <button
                 type="button"
                 onClick={clearMediaAccessError}
-                className="shrink-0 font-mono text-[10px] text-zinc-600 hover:text-zinc-400"
+                className="shrink-0 font-mono text-[10px] text-text-muted/70 hover:text-text-muted"
                 aria-label="Dismiss"
               >
                 [X]
               </button>
-            </div>
-          ) : null}
-          {scratchers.length > 0 ? (
-            <div className="shrink-0 border-b border-neon-cyan/25 bg-black px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90">
-              [ @{scratchers[0].username} IS SCRATCHING
-              <span className="animate-pulse">...</span> ]
             </div>
           ) : null}
           <ChatTerminal
@@ -682,7 +691,9 @@ export function ChatApp({
             cryptoCtx={cryptoCtx}
             sendText={sendText}
             sendMedia={sendMedia}
+            sendAlbum={sendAlbum}
             composeDisabled={!activeChatId || !!ctxError}
+            typingLabel={scratchers.length > 0 ? scratchers[0].username : null}
           />
         </div>
       </div>

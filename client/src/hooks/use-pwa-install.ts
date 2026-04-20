@@ -40,7 +40,7 @@ export function useShellIntegration() {
       const { outcome } = await integrationEvent.userChoice
       
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`>> [SYS.PWA] INTEGRATION_OUTCOME: ${outcome.toUpperCase()}`)
+        console.debug(`>> [SYS.PWA] INTEGRATION_OUTCOME: ${outcome.toUpperCase()}`)
       }
     } catch (err) {
       console.error('>> [SYS.PWA] INTEGRATION_FAULT:', err)

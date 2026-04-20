@@ -32,3 +32,33 @@ s3.onetothree.ru {
 	import security_headers
 	reverse_proxy minio:9000
 }
+
+# TURN hostname — Caddy only holds a certificate here so the operator cron
+# script (`scripts/sync-turn-certs.sh`) can copy it over to coturn for the
+# turns:// listener on 5349. HTTP probes on 80/443 for this host return 404.
+#
+# In Cloudflare this subdomain MUST be gray-cloud (DNS only); otherwise
+# UDP relay from the client will be dropped.
+turn.onetothree.ru {
+	tls {
+		issuer acme
+	}
+	respond "TURN endpoint — use turn:turn.onetothree.ru:3478 or turns:turn.onetothree.ru:5349" 404
+}
+
+# LiveKit SFU signaling (WebSocket over TLS). The LiveKit server listens on
+# host port 7880; Caddy terminates TLS and proxies WebSocket upgrades through.
+# In Cloudflare this subdomain MUST be gray-cloud (DNS only) — SFU media is UDP.
+lk.onetothree.ru {
+	import security_headers
+	reverse_proxy host.docker.internal:7880 {
+		transport http {
+			versions h1 h2
+			keepalive 2m
+		}
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up Upgrade {header.Upgrade}
+		header_up Connection {header.Connection}
+	}
+}

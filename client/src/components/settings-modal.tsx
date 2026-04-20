@@ -35,7 +35,9 @@ import {
   resolveThemeAppearance,
   useThemeStore,
   THEMES,
+  SHELL_PRESETS,
   type ThemeId,
+  type ShellModeId,
   type MotionMode,
 } from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
@@ -108,6 +110,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const {
     theme,
     setTheme,
+    shellMode,
+    setShellMode,
     accentPreset,
     setAccentPreset,
     primaryColorOverride,
@@ -420,6 +424,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const settingsBtn = 'border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
   const resolvedTheme = resolveThemeAppearance({
     theme,
+    shellMode,
     accentPreset,
     primaryColorOverride,
     accentColorOverride,
@@ -429,7 +434,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-black/90 px-3 py-6 sm:px-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-void/90 px-3 py-6 sm:px-4"
       role="dialog" aria-modal="true" aria-label={t('common.settings')}
     >
       <motion.div
@@ -461,7 +466,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   ? tab === 'security'
                     ? 'border-neon-red bg-neon-red/10 text-neon-red'
                     : 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-                  : 'border-zinc-700 bg-black text-zinc-500 hover:border-neon-cyan/50'
+                  : 'border-border-strong bg-void text-text-muted hover:border-neon-cyan/50'
               }`}>
               {tab === 'main'     ? `[ ${t('settings.tabGeneral')} ]`
               : tab === 'profile' ? `[ ${t('profile.section')} ]`
@@ -498,19 +503,19 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               {/* TOTP */}
               <div className="border border-neon-cyan/30 p-3">
                 <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">{t('settings.totpSection')}</p>
-                <p className="mb-3 text-[9px] text-red-800">{t('settings.totpHint')}</p>
+                <p className="mb-3 text-[9px] text-danger">{t('settings.totpHint')}</p>
                 {user?.totp_enabled === true ? (
                   <div className="space-y-2">
                     <p className="font-mono text-[10px] uppercase tracking-wider text-neon-cyan">:: {t('settings.totpActive')}</p>
                     {!totpDisableOpen ? (
                       <button type="button" disabled={totpBusy}
                         onClick={() => { setError(null); setVaultGate('totp_disable') }}
-                        className="w-full border border-neon-red/70 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
+                        className="w-full border border-neon-red/70 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
                         [ {t('settings.totpDisable')} ]
                       </button>
                     ) : (
                       <div className="space-y-2 border border-neon-red/40 p-2">
-                        <p className="text-[9px] text-red-800">{t('settings.totpDisableWarn')}</p>
+                        <p className="text-[9px] text-danger">{t('settings.totpDisableWarn')}</p>
                         <label className="terminal-label" htmlFor="totp-disable-code">{t('settings.totpDisableCode')}</label>
                         <input id="totp-disable-code" className="terminal-input" inputMode="numeric" maxLength={6}
                           value={totpDisableCode}
@@ -519,7 +524,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         />
                         <div className="flex gap-2">
                           <button type="button" disabled={totpBusy} onClick={() => void disableTotp()}
-                            className="flex-1 border border-neon-red bg-black py-1 font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
+                            className="flex-1 border border-neon-red bg-void py-1 font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
                             {t('common.confirm')}
                           </button>
                           <button type="button" onClick={() => { setTotpDisableOpen(false); setTotpDisableCode('') }}
@@ -532,18 +537,18 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <p className="font-mono text-[10px] uppercase tracking-wider text-red-800">:: {t('settings.totpInactive')}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-danger">:: {t('settings.totpInactive')}</p>
                     {!totpSetup ? (
                       <button type="button" disabled={totpBusy}
                         onClick={() => { setError(null); setVaultGate('totp_setup') }}
-                        className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
+                        className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
                         [ {t('settings.totpSetup')} ]
                       </button>
                     ) : (
                       <div className="space-y-3 border border-neon-cyan/30 p-3">
                         <p className="text-[9px] text-neon-cyan/90">{t('settings.totpScanQr')}</p>
-                        <img src={totpSetup.qr_data_url} alt="" className="mx-auto border border-neon-cyan/40 bg-white p-1" width={192} height={192} />
-                        <p className="text-[9px] text-red-800">{t('settings.totpSecretManual')}</p>
+                        <img src={totpSetup.qr_data_url} alt="" className="mx-auto border border-neon-cyan/40 bg-surface p-1" width={192} height={192} />
+                        <p className="text-[9px] text-danger">{t('settings.totpSecretManual')}</p>
                         <p className="break-all font-mono text-[9px] text-neon-cyan/80 overflow-x-hidden">{totpSetup.secret}</p>
                         <label className="terminal-label" htmlFor="totp-enable-code">{t('settings.totpEnableCode')}</label>
                         <input id="totp-enable-code" className="terminal-input" inputMode="numeric" maxLength={6}
@@ -558,7 +563,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                           </button>
                           <button type="button" disabled={totpBusy}
                             onClick={() => { setTotpSetup(null); setTotpEnableCode('') }}
-                            className="border border-red-900 px-3 py-1 font-mono text-[10px] uppercase text-red-800 hover:text-neon-red">
+                            className="border border-danger/40 px-3 py-1 font-mono text-[10px] uppercase text-danger hover:text-neon-red">
                             [ {t('settings.totpCancelSetup')} ]
                           </button>
                         </div>
@@ -571,11 +576,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               {/* Change Vault PIN */}
               <div className="border border-neon-cyan/30 p-3">
                 <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">{t('settings.changePinTitle')}</p>
-                <p className="mb-3 text-[9px] text-red-800">{t('settings.changePinHint')}</p>
+                <p className="mb-3 text-[9px] text-danger">{t('settings.changePinHint')}</p>
                 {!changePinOpen ? (
                   <button type="button"
                     onClick={() => { setChangePinOpen(true); setChangePinOld(''); setChangePinNew(''); setChangePinConfirm(''); setError(null) }}
-                    className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
+                    className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
                     [ {t('settings.changePinAction')} ]
                   </button>
                 ) : (
@@ -588,12 +593,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     <input id="change-pin-confirm" type="password" className="terminal-input text-[10px]" value={changePinConfirm} onChange={(e) => setChangePinConfirm(e.target.value)} autoComplete="off" />
                     <div className="flex gap-2">
                       <button type="button" disabled={changePinBusy} onClick={() => void changeVaultPin()}
-                        className="flex-1 border border-neon-cyan bg-black py-1 font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
+                        className="flex-1 border border-neon-cyan bg-void py-1 font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
                         {changePinBusy ? '[ ... ]' : `[ ${t('common.confirm')} ]`}
                       </button>
                       <button type="button"
                         onClick={() => { setChangePinOpen(false); setChangePinOld(''); setChangePinNew(''); setChangePinConfirm('') }}
-                        className="flex-1 border border-zinc-600 py-1 font-mono text-[10px] text-zinc-400">
+                        className="flex-1 border border-border-strong/60 py-1 font-mono text-[10px] text-text-muted">
                         [ {t('common.cancel')} ]
                       </button>
                     </div>
@@ -605,10 +610,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               {/* Export Vault Key — GATED */}
               <div className="border border-neon-cyan/30 p-3">
                 <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">{t('settings.exportVaultTitle')}</p>
-                <p className="mb-3 text-[9px] text-red-800">{t('settings.exportVaultHint')}</p>
+                <p className="mb-3 text-[9px] text-danger">{t('settings.exportVaultHint')}</p>
                 <button type="button"
                   onClick={() => { setError(null); setVaultGate('export') }}
-                  className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
+                  className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
                   [ {t('settings.exportVaultAction')} ]
                 </button>
               </div>
@@ -617,7 +622,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               <div className="flex flex-col gap-2 border border-neon-cyan/30 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.autoLockTitle')}</p>
-                  <p className="break-words text-[9px] text-red-800">{t('settings.autoLockHint')}</p>
+                  <p className="break-words text-[9px] text-danger">{t('settings.autoLockHint')}</p>
                 </div>
                 <select
                   className="terminal-input h-8 w-full max-w-[10rem] shrink-0 py-1 text-xs uppercase"
@@ -635,7 +640,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               <div className="flex flex-col gap-2 border border-neon-cyan/30 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="min-w-0">
                   <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('common.deviceLinking')}</p>
-                  <p className="break-words text-[9px] text-red-800">{allowNewDeviceLinking ? 'ON' : 'OFF'}</p>
+                  <p className="break-words text-[9px] text-danger">{allowNewDeviceLinking ? 'ON' : 'OFF'}</p>
                 </div>
                 <button type="button"
                   onClick={() => {
@@ -662,15 +667,15 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                   <div className="min-w-0">
                     <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('privacy.readReceipts')}</p>
-                    <p className="break-words text-[9px] text-red-800">{t('privacy.readReceiptsHint')}</p>
+                    <p className="break-words text-[9px] text-danger">{t('privacy.readReceiptsHint')}</p>
                   </div>
                   <button type="button" role="switch" aria-checked={disableReadReceipts === true}
                     disabled={busy || disableReadReceipts === null}
                     onClick={() => void toggleReadReceipts()}
                     className={`shrink-0 border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
-                      disableReadReceipts === null ? 'border-zinc-700 bg-zinc-950 text-zinc-600'
+                      disableReadReceipts === null ? 'border-border-strong bg-void text-text-muted/70'
                       : disableReadReceipts ? 'border-neon-red bg-neon-red/10 text-neon-red shadow-[0_0_14px_rgba(239,68,68,0.25)]'
-                      : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+                      : 'border-border-strong/60 bg-void text-text-muted'
                     } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}>
                     {busy ? '[ … ]' : disableReadReceipts === null ? '[ -- ]' : disableReadReceipts ? '[ OFF ]' : '[ ON ]'}
                   </button>
@@ -682,7 +687,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('block.title')}</p>
-                    <p className="text-[9px] text-red-800">{t('block.hint')}</p>
+                    <p className="text-[9px] text-danger">{t('block.hint')}</p>
                   </div>
                   <button type="button" onClick={() => void loadBlockedUsers()} disabled={blockedLoading}
                     className="shrink-0 border border-neon-cyan/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10 disabled:opacity-40">
@@ -690,11 +695,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   </button>
                 </div>
                 {blockedUsers.length === 0 ? (
-                  <p className="text-[9px] text-zinc-600">{t('block.empty')}</p>
+                  <p className="text-[9px] text-text-muted/70">{t('block.empty')}</p>
                 ) : (
                   <div className="space-y-1 max-h-40 overflow-y-auto">
                     {blockedUsers.map((u) => (
-                      <div key={u.user_id} className="flex items-center justify-between border border-zinc-800 px-2 py-1">
+                      <div key={u.user_id} className="flex items-center justify-between border border-border-strong px-2 py-1">
                         <span className="font-mono text-[10px] text-neon-cyan/80 truncate">@{u.username}</span>
                         <button type="button" onClick={() => void unblockUser(u.user_id)}
                           className="shrink-0 border border-neon-red/50 px-2 py-0.5 font-mono text-[8px] uppercase text-neon-red hover:bg-neon-red/10">
@@ -711,7 +716,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('security.loginHistory')}</p>
-                    <p className="text-[9px] text-red-800">{t('security.loginHistoryHint')}</p>
+                    <p className="text-[9px] text-danger">{t('security.loginHistoryHint')}</p>
                   </div>
                   <button type="button" onClick={() => void loadLoginHistory()} disabled={loginHistoryLoading}
                     className="shrink-0 border border-neon-cyan/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10 disabled:opacity-40">
@@ -719,7 +724,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   </button>
                 </div>
                 {loginHistory.length === 0 ? (
-                  <p className="text-[9px] text-zinc-600">{t('security.loginNoEvents')}</p>
+                  <p className="text-[9px] text-text-muted/70">{t('security.loginNoEvents')}</p>
                 ) : (
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {loginHistory.slice(0, 10).map((ev) => {
@@ -732,12 +737,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         : ev.outcome
                       const isSuccess = ev.outcome === 'success'
                       return (
-                        <div key={ev.id} className="border border-zinc-800 px-2 py-1">
+                        <div key={ev.id} className="border border-border-strong px-2 py-1">
                           <div className="flex items-center justify-between">
                             <span className={`font-mono text-[9px] uppercase tracking-wider ${isSuccess ? 'text-neon-cyan' : 'text-neon-red'}`}>{outcomeLabel}</span>
-                            <span className="font-mono text-[8px] text-zinc-500">{new Date(ev.created_at).toLocaleString()}</span>
+                            <span className="font-mono text-[8px] text-text-muted">{new Date(ev.created_at).toLocaleString()}</span>
                           </div>
-                          <p className="font-mono text-[8px] text-zinc-600 truncate">
+                          <p className="font-mono text-[8px] text-text-muted/70 truncate">
                             {ev.ip_address ?? '—'} · {ev.user_agent?.slice(0, 60) ?? '—'}
                           </p>
                         </div>
@@ -748,16 +753,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               </div>
 
               {/* Kill Switch */}
-              <div className="border-t border-red-600/50 pt-3">
+              <div className="border-t border-danger/40 pt-3">
                 <button type="button" onClick={() => setKillOpen((v) => !v)}
-                  className="glitch-text mb-2 w-full border border-red-600 bg-black py-2 font-mono text-[10px] uppercase tracking-[0.25em] text-red-500 hover:bg-red-950/40">
+                  className="glitch-text mb-2 w-full border border-danger/40 bg-void py-2 font-mono text-[10px] uppercase tracking-[0.25em] text-danger/80 hover:bg-danger/30">
                   {t('settings.killExecute')}
                 </button>
                 <AnimatePresence initial={false}>
                   {killOpen && (
                     <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
-                      <p className="mb-2 break-words text-[9px] text-red-800">{t('settings.killSwitchHint')}</p>
+                      <p className="mb-2 break-words text-[9px] text-danger">{t('settings.killSwitchHint')}</p>
                       <label className="terminal-label" htmlFor="kill-phrase">{t('settings.killPhraseLabel')}</label>
                       <input id="kill-phrase" className="terminal-input mb-2 text-[10px]" value={killPhrase}
                         onChange={(e) => setKillPhrase(e.target.value)} autoComplete="off" spellCheck={false} />
@@ -765,7 +770,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <input id="kill-pin" type="password" className="terminal-input mb-2 text-[10px]" value={killPin}
                         onChange={(e) => setKillPin(e.target.value)} autoComplete="off" />
                       <TerminalGlitchButton type="button" disabled={busy} onClick={() => void runGlobalKillSwitch()}
-                        className="w-full !border-red-600 !py-2 !text-[10px] !text-red-500 hover:!bg-red-950/50">
+                        className="w-full !border-danger/40 !py-2 !text-[10px] !text-danger/80 hover:!bg-danger/30">
                         [ {t('settings.killExecute')} ]
                       </TerminalGlitchButton>
                     </motion.div>
@@ -793,21 +798,21 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 <p className="terminal-label">@{t('common.peerInputAria')}</p>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm text-neon-cyan/70">@{username}</span>
-                  <span className="font-mono text-[8px] uppercase tracking-widest text-zinc-600">({t('profile.readOnly')})</span>
+                  <span className="font-mono text-[8px] uppercase tracking-widest text-text-muted/70">({t('profile.readOnly')})</span>
                 </div>
               </div>
               <div className="border border-neon-cyan/30 p-3 space-y-2">
                 <label className="terminal-label" htmlFor="profile-bio-tab">{t('profile.bio')}</label>
                 <textarea id="profile-bio-tab" className="terminal-input mt-1 min-h-[5rem] w-full resize-y text-[10px]"
                   maxLength={500} value={bio} onChange={(e) => setBio(e.target.value)} placeholder={t('profile.bioPlaceholder')} />
-                <p className={`text-right font-mono text-[8px] ${bio.length > 450 ? 'text-neon-red' : 'text-zinc-600'}`}>{bio.length}/500</p>
+                <p className={`text-right font-mono text-[8px] ${bio.length > 450 ? 'text-neon-red' : 'text-text-muted/70'}`}>{bio.length}/500</p>
               </div>
               <div className="border border-neon-cyan/30 p-3 space-y-2">
                 <label className="terminal-label" htmlFor="profile-status-tab">{t('profile.statusText')}</label>
                 <input id="profile-status-tab" className="terminal-input text-[10px]" maxLength={128}
                   value={statusText} onChange={(e) => setStatusText(e.target.value)} placeholder={t('profile.statusPlaceholder')} />
                 <div className="flex flex-wrap gap-1 mt-1">
-                  <p className="w-full text-[8px] uppercase tracking-widest text-zinc-600">{t('profile.statusPresets')}:</p>
+                  <p className="w-full text-[8px] uppercase tracking-widest text-text-muted/70">{t('profile.statusPresets')}:</p>
                   {[
                     { label: t('profile.online'), value: '' },
                     { label: t('profile.busy'), value: 'busy' },
@@ -816,19 +821,19 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   ].map((preset) => (
                     <button key={preset.value} type="button" onClick={() => setStatusText(preset.value)}
                       className={`border px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest transition-colors ${
-                        statusText === preset.value ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan' : 'border-zinc-700 text-zinc-500 hover:border-neon-cyan/50'
+                        statusText === preset.value ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan' : 'border-border-strong text-text-muted hover:border-neon-cyan/50'
                       }`}>{preset.label}</button>
                   ))}
                 </div>
               </div>
               <div className="border border-neon-cyan/30 p-3 space-y-2">
                 <p className="terminal-label">{t('profile.lastSeenSettings')}</p>
-                <p className="text-[9px] text-red-800">{t('profile.lastSeenPrivacyHint')}</p>
+                <p className="text-[9px] text-danger">{t('profile.lastSeenPrivacyHint')}</p>
                 <div className="flex flex-wrap gap-2">
                   {(['everyone', 'contacts', 'nobody'] as const).map((opt) => (
                     <button key={opt} type="button" onClick={() => setLastSeenPrivacy(opt)}
                       className={`border px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest transition-colors ${
-                        lastSeenPrivacy === opt ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan' : 'border-zinc-700 text-zinc-500 hover:border-neon-cyan/50'
+                        lastSeenPrivacy === opt ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan' : 'border-border-strong text-text-muted hover:border-neon-cyan/50'
                       }`}>{t(`profile.lastSeen${opt.charAt(0).toUpperCase() + opt.slice(1)}` as Parameters<typeof t>[0])}</button>
                   ))}
                 </div>
@@ -853,7 +858,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   ))}
                   {socialLinks.length < 5 && (
                     <button type="button" onClick={() => setSocialLinks([...socialLinks, { platform: 'telegram', url: '' }])}
-                      className="w-full border border-neon-cyan/40 bg-black py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10">
+                      className="w-full border border-neon-cyan/40 bg-void py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10">
                       + {t('profile.addLink')}
                     </button>
                   )}
@@ -867,17 +872,17 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     .catch((e) => { setError(e instanceof Error ? e.message : t('profile.saveFailed')) })
                     .finally(() => setProfileBusy(false))
                 }}
-                className="w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
+                className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
                 {profileBusy ? '[ ... ]' : `[ ${t('profile.saveProfile')} ]`}
               </button>
               <div className="border-t border-neon-red/40 pt-3 space-y-3">
                 <p className="text-xs uppercase tracking-widest text-neon-red">{t('profile.dangerZone')}</p>
                 <button type="button" onClick={() => setSettingsTab('security')}
-                  className="w-full border border-neon-red/50 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red/70 hover:bg-neon-red/10 hover:text-neon-red transition-colors">
+                  className="w-full border border-neon-red/50 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red/70 hover:bg-neon-red/10 hover:text-neon-red transition-colors">
                   [ {t('profile.changePassword')} ]
                 </button>
                 <button type="button" onClick={() => { setKillOpen(true); setSettingsTab('security') }}
-                  className="w-full border border-red-600 bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-red-500 hover:bg-red-950/40 transition-colors">
+                  className="w-full border border-danger/40 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-danger/80 hover:bg-danger/30 transition-colors">
                   [ {t('profile.deleteAccount')} ]
                 </button>
               </div>
@@ -890,12 +895,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
                 <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.chatSoundTitle')}</p>
-                <p className="break-words text-[9px] text-red-800">{t('settings.chatSoundHint')}</p>
+                <p className="break-words text-[9px] text-danger">{t('settings.chatSoundHint')}</p>
               </div>
               <button type="button" role="switch" aria-checked={chatSoundEnabled}
                 onClick={() => setChatSoundEnabled(!chatSoundEnabled)}
                 className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
-                  chatSoundEnabled ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]' : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+                  chatSoundEnabled ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]' : 'border-border-strong/60 bg-void text-text-muted'
                 } hover:border-neon-red hover:text-neon-red`}>
                 {chatSoundEnabled ? '[ ON ]' : '[ OFF ]'}
               </button>
@@ -904,7 +909,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.appearanceTitle')}</p>
-                  <p className="mt-1 text-[9px] text-red-800">{t('settings.appearanceHint')}</p>
+                  <p className="mt-1 text-[9px] text-danger">{t('settings.appearanceHint')}</p>
                 </div>
                 <button
                   type="button"
@@ -914,6 +919,35 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   {t('settings.appearanceReset')}
                 </button>
               </div>
+              <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/30 p-3">
+                <p className="mb-2 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
+                  {t('settings.appearanceShellTitle')}
+                </p>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  {SHELL_PRESETS.map((sp) => (
+                    <button
+                      key={sp.id}
+                      type="button"
+                      onClick={() => setShellMode(sp.id as ShellModeId)}
+                      className={`flex items-start gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                        shellMode === sp.id
+                          ? 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
+                          : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                      }`}
+                    >
+                      <span className="flex flex-col">
+                        <span>{sp.label}</span>
+                        <span className="text-[8px] text-text-muted">{sp.hint}</span>
+                      </span>
+                      {shellMode === sp.id && <span className="ml-auto text-neon-cyan">◆</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <p className="mt-1 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
+                {t('settings.appearancePaletteTitle')}
+              </p>
               <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
                 {THEMES.map((t_cfg) => (
                   <button key={t_cfg.id} type="button" onClick={() => setTheme(t_cfg.id as ThemeId)}
@@ -921,9 +955,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       theme === t_cfg.id ? 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
                     }`}>
                     <span className="flex shrink-0 gap-1">
-                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.preview[0] }} />
-                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.preview[1] }} />
-                      <span className="h-3 w-3 border border-white/10" style={{ background: t_cfg.preview[2] }} />
+                      <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[0] }} />
+                      <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[1] }} />
+                      <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[2] }} />
                     </span>
                     {t_cfg.label}
                     {theme === t_cfg.id && <span className="ml-auto text-neon-cyan">◆</span>}
@@ -931,7 +965,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 ))}
               </div>
 
-              <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-black/30 p-3">
+              <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/30 p-3">
                 <div className="flex flex-wrap gap-2">
                   {ACCENT_PRESETS.map((preset) => (
                     <button
@@ -941,16 +975,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       className={`flex items-center gap-2 border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-widest transition-colors ${
                         accentPreset === preset.id
                           ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
-                          : 'border-zinc-700 text-zinc-400 hover:border-neon-cyan/50 hover:text-neon-cyan'
+                          : 'border-border-strong text-text-muted hover:border-neon-cyan/50 hover:text-neon-cyan'
                       }`}
                     >
                       {preset.id !== 'theme' ? (
                         <span className="flex gap-1">
-                          <span className="h-2.5 w-2.5 rounded-full border border-white/10" style={{ background: preset.primary }} />
-                          <span className="h-2.5 w-2.5 rounded-full border border-white/10" style={{ background: preset.accent }} />
+                          <span className="h-2.5 w-2.5 rounded-full border border-border-strong/10" style={{ background: preset.primary }} />
+                          <span className="h-2.5 w-2.5 rounded-full border border-border-strong/10" style={{ background: preset.accent }} />
                         </span>
                       ) : (
-                        <span className="h-2.5 w-2.5 rounded-full border border-white/10 bg-transparent" />
+                        <span className="h-2.5 w-2.5 rounded-full border border-border-strong/10 bg-transparent" />
                       )}
                       {preset.label}
                     </button>
@@ -980,7 +1014,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   ].map((item) => (
                     <label key={item.key} className="space-y-1">
                       <span className="terminal-label">{item.label}</span>
-                      <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-neon-cyan/20 bg-black/40 px-2 py-2">
+                      <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/40 px-2 py-2">
                         <input
                           type="color"
                           value={item.value}
@@ -1002,7 +1036,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
                     <p className="text-[10px] uppercase tracking-widest text-neon-cyan">{t('settings.appearanceMotion')}</p>
-                    <p className="text-[9px] text-zinc-500">{t('settings.appearanceMotionHint')}</p>
+                    <p className="text-[9px] text-text-muted">{t('settings.appearanceMotionHint')}</p>
                   </div>
                   <div className="flex gap-2">
                     {([
@@ -1016,7 +1050,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         className={`border px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest ${
                           motionMode === mode
                             ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-                            : 'border-zinc-700 text-zinc-400 hover:border-neon-cyan/40 hover:text-neon-cyan'
+                            : 'border-border-strong text-text-muted hover:border-neon-cyan/40 hover:text-neon-cyan'
                         }`}
                       >
                         {label}
@@ -1035,7 +1069,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   }}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="h-10 w-10 rounded-full border border-white/10" style={{ background: resolvedTheme.tokens.primary }} />
+                    <span className="h-10 w-10 rounded-full border border-border-strong/10" style={{ background: resolvedTheme.tokens.primary }} />
                     <div className="min-w-0">
                       <p className="truncate font-mono text-[11px] uppercase tracking-widest" style={{ color: resolvedTheme.tokens.text }}>
                         {resolvedTheme.label}
@@ -1059,9 +1093,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
                 <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.discoverable')}</p>
-                <p className="break-words text-[9px] text-red-800">{t('settings.discoverableHint')}</p>
+                <p className="break-words text-[9px] text-danger">{t('settings.discoverableHint')}</p>
                 <p className={`mt-1 font-mono text-[9px] uppercase tracking-wider ${
-                  !settingsReady ? 'text-zinc-600' : discoverableOn ? 'text-neon-cyan' : 'text-zinc-500'
+                  !settingsReady ? 'text-text-muted/70' : discoverableOn ? 'text-neon-cyan' : 'text-text-muted'
                 }`}>
                   {!settingsReady ? ':: …' : discoverableOn ? t('settings.discoverableBadgeOn') : t('settings.discoverableBadgeOff')}
                 </p>
@@ -1069,9 +1103,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               <button type="button" role="switch" aria-checked={discoverableOn}
                 disabled={busy || !settingsReady} onClick={() => void toggleDiscoverable()}
                 className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
-                  !settingsReady ? 'border-zinc-700 bg-zinc-950 text-zinc-600'
+                  !settingsReady ? 'border-border-strong bg-void text-text-muted/70'
                   : discoverableOn ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
-                  : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+                  : 'border-border-strong/60 bg-void text-text-muted'
                 } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}>
                 {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
               </button>
@@ -1079,14 +1113,14 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
                 <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.ghostPresence')}</p>
-                <p className="break-words text-[9px] text-red-800">{t('settings.ghostPresenceHint')}</p>
+                <p className="break-words text-[9px] text-danger">{t('settings.ghostPresenceHint')}</p>
               </div>
               <button type="button" role="switch" aria-checked={ghostOn}
                 disabled={busy || !settingsReady} onClick={() => void toggleHidePresence()}
                 className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
-                  !settingsReady ? 'border-zinc-700 bg-zinc-950 text-zinc-600'
+                  !settingsReady ? 'border-border-strong bg-void text-text-muted/70'
                   : ghostOn ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
-                  : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+                  : 'border-border-strong/60 bg-void text-text-muted'
                 } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}>
                 {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : ghostOn ? '[ ON ]' : '[ OFF ]'}
               </button>
@@ -1094,7 +1128,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('common.language')} / Язык</p>
-                <p className="break-words text-[9px] text-red-800">{t('settings.languageHint')}</p>
+                <p className="break-words text-[9px] text-danger">{t('settings.languageHint')}</p>
               </div>
               <select className="terminal-input h-8 w-full max-w-[10rem] shrink-0 py-1 text-xs uppercase"
                 value={locale} onChange={(e) => setLocale(e.target.value === 'ru' ? 'ru' : 'en')}
@@ -1105,7 +1139,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </div>
             <div className="border-t border-neon-red/40 pt-3">
               <p className="mb-1 text-xs uppercase tracking-widest text-neon-red">{t('settings.dangerZone')}</p>
-              <p className="mb-2 break-words text-[9px] text-zinc-500">{t('settings.purgeHint')}</p>
+              <p className="mb-2 break-words text-[9px] text-text-muted">{t('settings.purgeHint')}</p>
               <TerminalGlitchButton type="button" onClick={() => void purgeLocalCache()}
                 className="w-full !border-neon-red !px-2 !py-2 !text-[10px] !text-neon-red hover:!bg-neon-red/10">
                 [ {t('settings.purgeLocalCache')} ]
@@ -1121,7 +1155,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         {saved && (
           <p className="shrink-0 text-[10px] text-neon-cyan">:: {t('common.saved')}</p>
         )}
-        <div className="mt-2 shrink-0 border-t border-red-900/50 px-0.5 pt-3">
+        <div className="mt-2 shrink-0 border-t border-danger/40 px-0.5 pt-3">
           <LogoutButton variant="critical" />
         </div>
       </motion.div>

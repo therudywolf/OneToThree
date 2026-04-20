@@ -8,6 +8,7 @@ import { ErrorBoundary } from '@/components/error-boundary'
 import { SilenceConsole as _SilenceConsole } from '@/components/silence-console'
 import { RecoveryHandler } from '@/components/recovery-handler'
 import { ThemeApplicator } from '@/components/theme-applicator'
+import { ToastHost } from '@/components/toast-host'
 import './globals.css'
 
 /**
@@ -79,7 +80,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" data-theme="default" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-black">
+    <html lang="en" data-theme="default" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
       <head>
         {/* CHROMATIC_INIT :: blocking theme bootstrap — must be first in <head> */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
@@ -107,6 +108,9 @@ export default function RootLayout({
 
               {/* [4] NOISE_TEXTURE :: Стерильный визуальный шум */}
               <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.02] bg-[url('/noise.svg')]" />
+
+              {/* [5] NOTIFICATION_LAYER :: System-wide toast host */}
+              <ToastHost />
             </Auth401Interceptor>
           </AuthProvider>
         </ErrorBoundary>

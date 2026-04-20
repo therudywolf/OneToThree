@@ -92,25 +92,25 @@ export function IdentityModal({
 
   return (
     <div
-      className="fixed inset-0 z-[140] flex items-center justify-center bg-zinc-950/90 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[140] flex items-center justify-center bg-void/90 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-md border border-neutral-900 bg-black p-6 shadow-2xl">
+      <div className="relative w-full max-w-md border border-border-strong bg-void p-6 shadow-2xl">
         {/* TOP_DECOR_LINE */}
         <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
 
-        <header className="mb-6 flex items-center justify-between border-b border-neutral-900 pb-4">
+        <header className="mb-6 flex items-center justify-between border-b border-border-strong pb-4">
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 ${isTrusted ? 'bg-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.5)]' : 'animate-pulse bg-neon-red'}`} />
-            <p className="text-[10px] uppercase tracking-[0.4em] text-neutral-500">
+            <p className="text-[10px] uppercase tracking-[0.4em] text-text-muted">
               SYS.INTEGRITY // {peerUsername}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="text-zinc-700 transition-colors hover:text-neon-red"
+            className="text-text-muted/70 transition-colors hover:text-neon-red"
           >
             [X]
           </button>
@@ -119,15 +119,15 @@ export function IdentityModal({
         <div className="space-y-6">
           {/* FINGERPRINT_SECTION */}
           <div className="space-y-3">
-            <p className="text-[9px] uppercase tracking-widest text-zinc-600">
+            <p className="text-[9px] uppercase tracking-widest text-text-muted/70">
               NODE_FINGERPRINT
             </p>
-            <div className="relative border border-neutral-900 bg-zinc-950 px-4 py-3">
+            <div className="relative border border-border-strong bg-void px-4 py-3">
               <pre className="overflow-x-auto font-mono text-sm tracking-[0.3em] text-neon-cyan custom-scrollbar">
                 {isScanning ? 'SCANNING_ELECTROMAGNETIC_TRAIL...' : nodeFingerprint}
               </pre>
             </div>
-            <p className="text-[9px] leading-relaxed text-zinc-600">
+            <p className="text-[9px] leading-relaxed text-text-muted/70">
               {">"} Сверь этот код с контактом через защищенный внешний канал.
             </p>
           </div>
@@ -146,8 +146,8 @@ export function IdentityModal({
             onClick={toggleTrustProtocol}
             className={`w-full border py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] transition-all ${
               isTrusted 
-                ? 'border-neon-red text-neon-red hover:bg-neon-red hover:text-black' 
-                : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-black'
+                ? 'border-neon-red text-neon-red hover:bg-neon-red hover:text-text-primary' 
+                : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'
             } disabled:opacity-20`}
           >
             {isTrusted ? '[ SEVER_TRUST_LINK ]' : '[ VALIDATE_IDENTITY ]'}
@@ -155,8 +155,8 @@ export function IdentityModal({
         </div>
 
         {/* FOOTER_MARK */}
-        <footer className="mt-8 pt-4 border-t border-neutral-900/50">
-          <p className="text-center text-[8px] uppercase tracking-widest text-neutral-800">
+        <footer className="mt-8 pt-4 border-t border-border-strong/50">
+          <p className="text-center text-[8px] uppercase tracking-widest text-text-muted/50">
             ONETOTHREE // Zero-Knowledge Verification
           </p>
         </footer>

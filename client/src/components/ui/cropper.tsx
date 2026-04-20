@@ -114,23 +114,23 @@ export function AvatarCropModal({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/95 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-void/95 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-md border border-neutral-900 bg-black p-6 shadow-2xl">
+      <div className="relative w-full max-w-md border border-border-strong bg-void p-6 shadow-2xl">
         {/* TOP_DECOR_LINE */}
         <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50" />
 
-        <header className="mb-6 flex items-center gap-2 border-b border-neutral-900 pb-4">
+        <header className="mb-6 flex items-center gap-2 border-b border-border-strong pb-4">
           <span className="h-2 w-2 animate-pulse bg-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.4)]" />
-          <p className="text-[10px] uppercase tracking-[0.4em] text-neutral-500">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-text-muted">
             SYS.OPTICS // {isProcessing ? 'PROCESSING' : 'CALIBRATION'}
           </p>
         </header>
 
         {/* VIEWPORT_CONTAINER */}
-        <div className="relative mx-auto max-h-[min(60vh,420px)] overflow-hidden border border-neutral-900 bg-zinc-950">
+        <div className="relative mx-auto max-h-[min(60vh,420px)] overflow-hidden border border-border-strong bg-void">
           {/* @ts-ignore react-image-crop typing/runtime compat in this workspace */}
           <ReactCrop
             crop={sequence}
@@ -155,7 +155,7 @@ export function AvatarCropModal({
             type="button"
             disabled={isProcessing}
             onClick={onCancel}
-            className="flex-1 border border-neutral-800 bg-black py-2.5 font-mono text-[10px] uppercase tracking-widest text-zinc-600 transition-all hover:border-neon-red hover:text-neon-red disabled:opacity-20"
+            className="flex-1 border border-border-strong bg-void py-2.5 font-mono text-[10px] uppercase tracking-widest text-text-muted/70 transition-all hover:border-neon-red hover:text-neon-red disabled:opacity-20"
           >
             [ ABORT_SEQ ]
           </button>
@@ -164,15 +164,15 @@ export function AvatarCropModal({
             type="button"
             disabled={isProcessing || !pixelData}
             onClick={() => void commitData()}
-            className="flex-1 border border-neon-cyan bg-black py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan/10 hover:shadow-[0_0_15px_rgba(0,255,255,0.1)] disabled:opacity-20"
+            className="flex-1 border border-neon-cyan bg-void py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan/10 hover:shadow-[0_0_15px_rgba(0,255,255,0.1)] disabled:opacity-20"
           >
             {isProcessing ? 'EXTRACTING...' : '>> COMMIT_SEGMENT'}
           </button>
         </div>
 
         {/* FOOTER_MARK */}
-        <footer className="mt-8 pt-4 border-t border-neutral-900/50">
-          <p className="text-center text-[8px] uppercase tracking-widest text-neutral-800">
+        <footer className="mt-8 pt-4 border-t border-border-strong/50">
+          <p className="text-center text-[8px] uppercase tracking-widest text-text-muted/50">
             ONETOTHREE // Identity_Calibrator_v4
           </p>
         </footer>

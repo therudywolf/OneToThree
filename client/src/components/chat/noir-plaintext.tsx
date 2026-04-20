@@ -65,7 +65,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 
 function InlineCode({ code }: { code: string }) {
   return (
-    <code className="border border-neon-cyan/20 bg-zinc-900/70 px-1 py-0.5 font-mono text-[11px] text-neon-cyan/80">
+    <code className="border border-neon-cyan/20 bg-void/70 px-1 py-0.5 font-mono text-[11px] text-neon-cyan/80">
       {code}
     </code>
   )
@@ -96,7 +96,7 @@ function LinkPreviewCard({ url }: { url: string }) {
   if (!meta) return null
 
   return (
-    <div className="mt-1 flex gap-2 border border-neon-cyan/20 bg-zinc-950/80 p-2 max-w-xs">
+    <div className="mt-1 flex gap-2 border border-neon-cyan/20 bg-void/80 p-2 max-w-xs">
       {meta.image ? (
         <img
           src={meta.image}
@@ -110,7 +110,7 @@ function LinkPreviewCard({ url }: { url: string }) {
           <p className="truncate font-mono text-[10px] text-neon-cyan/80">{meta.title}</p>
         ) : null}
         {meta.description ? (
-          <p className="line-clamp-2 font-mono text-[8px] text-zinc-500 leading-relaxed">{meta.description}</p>
+          <p className="line-clamp-2 font-mono text-[8px] text-text-muted leading-relaxed">{meta.description}</p>
         ) : null}
       </div>
     </div>

@@ -11,20 +11,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // CHROMATIC_PROTOCOL :: all tokens wired to CSS vars set by ThemeApplicator
+        // CHROMATIC_PROTOCOL :: all tokens wired to CSS vars set by ThemeApplicator.
         // No hardcoded values — runtime swap via var() only.
         void: 'var(--void)',
         surface: 'var(--surface)',
         'surface-elevated': 'var(--surface-elevated)',
+        elevated: 'var(--surface-elevated)',
         'on-surface': 'var(--on-surface)',
         'text-primary': 'var(--text-primary)',
         'text-muted': 'var(--text-muted)',
+        muted: 'var(--text-muted)',
+        primary: 'var(--neon-red)',
+        accent: 'var(--neon-cyan)',
         'neon-red': 'var(--neon-red)',
         'neon-cyan': 'var(--neon-cyan)',
         'accent-2': 'var(--accent-2)',
         'border-strong': 'var(--border-strong)',
+        border: 'var(--border-strong)',
         danger: 'var(--danger)',
         success: 'var(--success)',
+        // Semantic overlays for hover/press states — tied to tokens, not palette.
+        overlay: 'color-mix(in srgb, var(--on-surface) 6%, transparent)',
+        'overlay-strong': 'color-mix(in srgb, var(--on-surface) 12%, transparent)',
       },
       fontFamily: {
         // font-theme references the CSS var set by ThemeApplicator per theme

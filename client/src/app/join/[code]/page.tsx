@@ -59,17 +59,17 @@ export default function JoinPackPage() {
   }, [loading, user, code, router])
 
   return (
-    <main className="relative flex min-h-dvh flex-col items-center justify-center bg-zinc-950 px-4 font-mono">
+    <main className="relative flex min-h-dvh flex-col items-center justify-center bg-void px-4 font-mono">
       
       {/* BACKGROUND_EFFECT */}
-      <div className="pointer-events-none absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-zinc-800 via-black to-black" />
+      <div className="pointer-events-none absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-elevated via-void to-void" />
 
-      <div className="relative z-10 w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl">
+      <div className="relative z-10 w-full max-w-sm border border-border-strong bg-void p-8 shadow-2xl">
         {/* HEADER_INDICATOR */}
-        <header className="mb-6 border-b border-neutral-900 pb-4">
+        <header className="mb-6 border-b border-border-strong pb-4">
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 ${err ? 'bg-neon-red shadow-[0_0_8px_rgba(255,0,0,0.5)]' : 'animate-pulse bg-neon-cyan'}`} />
-            <p className="text-[10px] uppercase tracking-[0.4em] text-neutral-500">
+            <p className="text-[10px] uppercase tracking-[0.4em] text-text-muted">
               SYS.INTEGRATION // {err ? 'FAILURE' : 'WORKING'}
             </p>
           </div>
@@ -78,7 +78,7 @@ export default function JoinPackPage() {
         {err ? (
           <div className="space-y-6">
             <div className="space-y-2">
-              <p className="text-[9px] uppercase tracking-widest text-neutral-600">ERROR_LOG:</p>
+              <p className="text-[9px] uppercase tracking-widest text-text-muted/70">ERROR_LOG:</p>
               <p className="text-xs leading-relaxed text-neon-red">
                 {t('join.failed')}: {err}
               </p>
@@ -86,7 +86,7 @@ export default function JoinPackPage() {
             
             <Link
               href="/"
-              className="group flex h-10 items-center justify-center border border-neon-cyan/30 px-6 text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan/10 hover:text-white"
+              className="group flex h-10 items-center justify-center border border-neon-cyan/30 px-6 text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan/10 hover:text-text-primary"
             >
               [ {t('common.back')} ]
             </Link>
@@ -96,14 +96,14 @@ export default function JoinPackPage() {
             <p className="animate-pulse text-xs uppercase tracking-[0.3em] text-neon-cyan">
               {t('join.working')}...
             </p>
-            <div className="h-[1px] w-12 bg-neutral-800" />
-            <p className="text-[9px] text-zinc-700">PREPARING_STUB_CHANNELS</p>
+            <div className="h-[1px] w-12 bg-elevated" />
+            <p className="text-[9px] text-text-muted/70">PREPARING_STUB_CHANNELS</p>
           </div>
         )}
 
         {/* FOOTER_MARK */}
-        <footer className="mt-8 pt-4 border-t border-neutral-900/50">
-          <p className="text-center text-[8px] uppercase tracking-widest text-neutral-800">
+        <footer className="mt-8 pt-4 border-t border-border-strong/50">
+          <p className="text-center text-[8px] uppercase tracking-widest text-text-muted/50">
             ONETOTHREE // One_To_Three
           </p>
         </footer>

@@ -1,7 +1,7 @@
 'use client'
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-zinc-800/60 rounded ${className ?? ''}`} />
+  return <div className={`animate-pulse bg-elevated/60 rounded ${className ?? ''}`} />
 }
 
 export function ChatRowSkeleton() {

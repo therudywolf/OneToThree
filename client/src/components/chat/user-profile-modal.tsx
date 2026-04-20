@@ -105,10 +105,10 @@ export function UserProfileModal({
     : profile?.online
       ? t('profile.online')
       : t('profile.offline')
-  const statusColor = profile?.online ? 'text-neon-cyan' : 'text-zinc-500'
+  const statusColor = profile?.online ? 'text-neon-cyan' : 'text-text-muted'
   const dotColor = profile?.online
     ? 'bg-neon-cyan animate-pulse'
-    : 'bg-zinc-600'
+    : 'bg-surface-elevated'
 
   const lastSeen = profile?.last_seen_at
     ? new Date(profile.last_seen_at).toLocaleString(undefined, {
@@ -126,7 +126,7 @@ export function UserProfileModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
-        className="fixed inset-0 z-[150] flex items-end justify-center bg-black/90 backdrop-blur-sm md:items-center"
+        className="fixed inset-0 z-[150] flex items-end justify-center bg-void/90 backdrop-blur-sm md:items-center"
         role="dialog"
         aria-modal="true"
         aria-label={`${t('profile.title')} :: ${username}`}
@@ -137,7 +137,7 @@ export function UserProfileModal({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 60 }}
           transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-          className="terminal-panel relative flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden border border-neon-cyan/40 bg-black shadow-[0_0_30px_rgba(0,255,255,0.05)] md:max-h-[85vh] md:rounded-none"
+          className="terminal-panel relative flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden border border-neon-cyan/40 bg-void shadow-[0_0_30px_rgba(0,255,255,0.05)] md:max-h-[85vh] md:rounded-none"
           onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
         >
           {/* Close / drag handle for mobile */}
@@ -170,7 +170,7 @@ export function UserProfileModal({
                   avatarKey={avatarKey ?? null}
                   size={128}
                 />
-                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/0 transition-colors group-hover:bg-black/40">
+                <div className="absolute inset-0 flex items-center justify-center rounded-full bg-void/0 transition-colors group-hover:bg-void/40">
                   <span className="hidden font-mono text-[8px] uppercase tracking-widest text-neon-cyan group-hover:block">
                     VIEW
                   </span>
@@ -185,7 +185,7 @@ export function UserProfileModal({
                   <p className="font-mono text-xl uppercase tracking-[0.15em] text-neon-cyan">
                     {profile.display_name}
                   </p>
-                  <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-400">
+                  <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
                     @{username}
                   </p>
                 </>
@@ -194,7 +194,7 @@ export function UserProfileModal({
                   {username}
                 </p>
               )}
-              <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
                 ID: {userId.split('-')[0]}
               </p>
             </div>
@@ -209,7 +209,7 @@ export function UserProfileModal({
 
             {/* Last seen */}
             {!profile?.online && lastSeen ? (
-              <p className="mt-1 text-center font-mono text-[9px] text-zinc-600">
+              <p className="mt-1 text-center font-mono text-[9px] text-text-muted/70">
                 {t('profile.lastSeen')}: {lastSeen}
               </p>
             ) : null}
@@ -223,7 +223,7 @@ export function UserProfileModal({
                     onMessage()
                     onClose()
                   }}
-                  className="flex items-center gap-1.5 border border-neon-cyan/50 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+                  className="flex items-center gap-1.5 border border-neon-cyan/50 bg-void px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
                 >
                   <MessageSquare className="h-3.5 w-3.5" />
                   {t('profile.message')}
@@ -236,7 +236,7 @@ export function UserProfileModal({
                     onVoiceCall()
                     onClose()
                   }}
-                  className="flex items-center gap-1.5 border border-neon-cyan/50 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+                  className="flex items-center gap-1.5 border border-neon-cyan/50 bg-void px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
                 >
                   <Phone className="h-3.5 w-3.5" />
                 </button>
@@ -248,21 +248,21 @@ export function UserProfileModal({
                     onVideoCall()
                     onClose()
                   }}
-                  className="flex items-center gap-1.5 border border-neon-cyan/50 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+                  className="flex items-center gap-1.5 border border-neon-cyan/50 bg-void px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
                 >
                   <Video className="h-3.5 w-3.5" />
                 </button>
               ) : null}
               <button
                 type="button"
-                className="flex items-center gap-1.5 border border-red-900/50 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10"
+                className="flex items-center gap-1.5 border border-danger/40 bg-void px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10"
                 title={t('profile.block')}
               >
                 <ShieldX className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
-                className="flex items-center gap-1.5 border border-red-900/50 bg-black px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-red-800 transition-colors hover:border-neon-red hover:bg-neon-red/10"
+                className="flex items-center gap-1.5 border border-danger/40 bg-void px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10"
                 title={t('profile.report')}
               >
                 <Flag className="h-3.5 w-3.5" />
@@ -279,7 +279,7 @@ export function UserProfileModal({
                   className={`flex-1 py-2 font-mono text-[9px] uppercase tracking-widest transition-colors ${
                     activeTab === tab
                       ? 'border-b-2 border-neon-cyan text-neon-cyan'
-                      : 'text-zinc-600 hover:text-zinc-400'
+                      : 'text-text-muted/70 hover:text-text-muted'
                   }`}
                 >
                   {tab === 'info'
@@ -325,7 +325,7 @@ export function UserProfileModal({
                               href={safeUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center justify-between border border-neon-cyan/30 bg-black/50 px-3 py-2 font-mono text-[9px] uppercase tracking-wider text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all"
+                              className="flex items-center justify-between border border-neon-cyan/30 bg-void/50 px-3 py-2 font-mono text-[9px] uppercase tracking-wider text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 transition-all"
                             >
                               <span className="flex items-center gap-2">
                                 <Icon className="h-3 w-3" />
@@ -349,7 +349,7 @@ export function UserProfileModal({
                         {profile.mutual_groups.map((g) => (
                           <div
                             key={g.id}
-                            className="flex items-center gap-2 border border-neon-cyan/20 bg-black/50 px-3 py-2 font-mono text-[10px] text-neon-cyan/80"
+                            className="flex items-center gap-2 border border-neon-cyan/20 bg-void/50 px-3 py-2 font-mono text-[10px] text-neon-cyan/80"
                           >
                             <span className="h-2 w-2 rounded-full bg-neon-cyan/40 shrink-0" />
                             <span className="truncate">{g.name}</span>
@@ -357,7 +357,7 @@ export function UserProfileModal({
                         ))}
                       </div>
                     ) : (
-                      <p className="font-mono text-[10px] text-zinc-600">
+                      <p className="font-mono text-[10px] text-text-muted/70">
                         {t('profile.noMutualGroups')}
                       </p>
                     )}
@@ -376,7 +376,7 @@ export function UserProfileModal({
                       {sharedMediaItems.map((item) => (
                         <div
                           key={item.id}
-                          className="relative aspect-square border border-neon-cyan/20 bg-zinc-950 overflow-hidden"
+                          className="relative aspect-square border border-neon-cyan/20 bg-void overflow-hidden"
                         >
                           <div className="flex h-full w-full items-center justify-center">
                             <div className="text-center">
@@ -387,8 +387,8 @@ export function UserProfileModal({
                               )}
                             </div>
                           </div>
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/80 px-1 py-0.5">
-                            <p className="font-mono text-[7px] text-zinc-500 truncate">
+                          <div className="absolute bottom-0 left-0 right-0 bg-void/80 px-1 py-0.5">
+                            <p className="font-mono text-[7px] text-text-muted truncate">
                               {new Date(item.created_at).toLocaleDateString()}
                             </p>
                           </div>
@@ -398,8 +398,8 @@ export function UserProfileModal({
                   ) : (
                     <div className="flex items-center justify-center py-8">
                       <div className="text-center">
-                        <ImageIcon className="mx-auto h-8 w-8 text-zinc-700" />
-                        <p className="mt-2 font-mono text-[10px] text-zinc-600">
+                        <ImageIcon className="mx-auto h-8 w-8 text-text-muted/70" />
+                        <p className="mt-2 font-mono text-[10px] text-text-muted/70">
                           {t('group.mediaArchiveEmpty')}
                         </p>
                       </div>
@@ -419,14 +419,14 @@ export function UserProfileModal({
                       {sharedFileItems.map((item) => (
                         <div
                           key={item.id}
-                          className="flex items-center gap-2 border border-neon-cyan/20 bg-black/50 px-3 py-2"
+                          className="flex items-center gap-2 border border-neon-cyan/20 bg-void/50 px-3 py-2"
                         >
                           <FileText className="h-4 w-4 text-neon-cyan/40 shrink-0" />
                           <div className="min-w-0 flex-1">
                             <p className="font-mono text-[10px] text-neon-cyan/80 truncate">
                               {item.media_path?.split('/').pop() ?? 'file'}
                             </p>
-                            <p className="font-mono text-[8px] text-zinc-600">
+                            <p className="font-mono text-[8px] text-text-muted/70">
                               {new Date(item.created_at).toLocaleDateString()}
                             </p>
                           </div>
@@ -436,8 +436,8 @@ export function UserProfileModal({
                   ) : (
                     <div className="flex items-center justify-center py-8">
                       <div className="text-center">
-                        <FileText className="mx-auto h-8 w-8 text-zinc-700" />
-                        <p className="mt-2 font-mono text-[10px] text-zinc-600">
+                        <FileText className="mx-auto h-8 w-8 text-text-muted/70" />
+                        <p className="mt-2 font-mono text-[10px] text-text-muted/70">
                           {t('group.mediaArchiveEmpty')}
                         </p>
                       </div>
@@ -450,7 +450,7 @@ export function UserProfileModal({
 
           {/* Loading indicator */}
           {loading ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+            <div className="absolute inset-0 flex items-center justify-center bg-void/80">
               <p className="animate-pulse font-mono text-[10px] text-neon-cyan/60">
                 [ LOADING... ]
               </p>
@@ -459,7 +459,7 @@ export function UserProfileModal({
 
           {/* Footer hint */}
           <div className="shrink-0 border-t border-neon-cyan/20 px-6 py-2 text-center">
-            <p className="font-mono text-[8px] text-zinc-600 uppercase tracking-widest">
+            <p className="font-mono text-[8px] text-text-muted/70 uppercase tracking-widest">
               [ {t('profile.tapToClose')} ]
             </p>
           </div>
@@ -472,7 +472,7 @@ export function UserProfileModal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-void/95"
           onClick={() => setAvatarFullscreen(false)}
         >
           <UserAvatar

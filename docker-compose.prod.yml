@@ -250,33 +250,77 @@ services:
       retries: 8
       start_period: 90s
 
-  # TURN relay for WebRTC (symmetric NAT). Uses host networking so UDP relay ports are not
-  # behind Docker NAT. Open 3478/tcp+udp and 49152-65535/udp on the host firewall.
+  # TURN relay for WebRTC (symmetric NAT). Uses host networking so UDP relay
+  # ports are not behind Docker NAT.
   #
-  # CRITICAL (Cloudflare): If the zone uses Cloudflare, create a dedicated hostname (e.g.
-  # turn.onetothree.ru) pointing at this server's IP and set it to "DNS only" (gray cloud).
-  # Orange-cloud proxy does not support the UDP traffic TURN needs; api.* and apex can stay proxied.
-  # Set NEXT_PUBLIC_TURN_URLS in .env.prod with fallback chain (turn+turns), not api.* host.
+  # Firewall checklist (host):
+  #   - TCP 3478, 5349 (STUN/TURN + TURNS).
+  #   - UDP 3478 for STUN.
+  #   - UDP 49160-49200 for RELAY media. Must be NOT blocked by Cloudflare Proxy.
+  #
+  # CRITICAL (Cloudflare): create hostname `turn.onetothree.ru` pointing at
+  # this server's IP and set it to "DNS only" (gray cloud). Orange-cloud proxy
+  # drops UDP and blocks TURN. Apex + api.* can remain orange.
+  #
+  # TLS material (for turns:// fallback on 5349) is the same certificate
+  # Caddy obtains via ACME — we mount `caddy_data` read-only and point coturn
+  # at the Let's Encrypt `current/` directory.
   coturn:
     image: coturn/coturn:4.6
+    restart: always
+    network_mode: host
+    user: root
+    env_file:
+      - .env.prod
+    volumes:
+      - ./docker/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./docker/coturn/tls:/etc/coturn/tls:ro
+    command:
+      - -n
+      - --log-file=stdout
+      - --realm=${TURN_REALM:-onetothree.ru}
+      - --user=${TURN_USERNAME:-turn}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.prod}
+      - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP in .env.prod}
+    healthcheck:
+      # STUN probe on 3478/udp — confirms the daemon is reachable.
+      test:
+        [
+          'CMD-SHELL',
+          'timeout 3 bash -c ">/dev/tcp/127.0.0.1/3478" || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # LiveKit SFU — selective forwarding unit for 3+ participants / low-latency
+  # video. Uses host networking because WebRTC requires a wide UDP range and
+  # ICE/TCP fallback on :7881. Caddy terminates TLS for the WSS signaling
+  # endpoint at wss://lk.onetothree.ru and proxies it to livekit:7880.
+  #
+  # Configuration file (docker/livekit/livekit.yaml) pulls keys/secrets from
+  # the environment — do NOT bake them into the image. Set LIVEKIT_API_KEY
+  # and LIVEKIT_API_SECRET in .env.prod; the matching HS256 secret signs the
+  # tokens issued by /api/call/token.
+  livekit:
+    image: livekit/livekit-server:v1.8
     restart: always
     network_mode: host
     env_file:
       - .env.prod
     volumes:
-      - ./docker/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
-    command:
-      - -n
-      - --log-file=stdout
-      - --listening-port=3478
-      - --min-port=49152
-      - --max-port=65535
-      - --fingerprint
-      - --lt-cred-mech
-      - --no-multicast-peers
-      - --realm=onetothree.ru
-      - --user=${TURN_USERNAME:-turn}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.prod}
-      - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP in .env.prod}
+      - ./docker/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    command: ['--config', '/etc/livekit.yaml']
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'timeout 3 bash -c ">/dev/tcp/127.0.0.1/7880" || exit 1',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   caddy:
     image: caddy:2-alpine

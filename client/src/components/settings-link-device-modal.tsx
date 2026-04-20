@@ -62,7 +62,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/92 px-3 py-6"
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-void/92 px-3 py-6"
       role="dialog"
       aria-modal="true"
       aria-label={t('settings.linkDeviceTitle')}
@@ -71,7 +71,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: 'easeOut' }}
-        className="terminal-panel flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-hidden border border-neon-cyan/40 bg-black p-4"
+        className="terminal-panel flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-hidden border border-neon-cyan/40 bg-void p-4"
       >
         <div className="flex items-start justify-between gap-2 border-b border-neon-red/35 pb-3">
           <p className="min-w-0 break-words font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan">
@@ -99,11 +99,11 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
           </div>
         ) : (
           <>
-            <p className="mt-3 break-words text-[9px] leading-relaxed text-red-800">
+            <p className="mt-3 break-words text-[9px] leading-relaxed text-danger">
               {t('settings.linkDeviceHint')}
             </p>
             {needsTotp ? (
-              <div className="mt-3 border border-neon-cyan/30 bg-zinc-950/60 p-3">
+              <div className="mt-3 border border-neon-cyan/30 bg-void/60 p-3">
                 <p className="mb-2 text-[9px] uppercase tracking-widest text-neon-cyan/80">
                   [ TOTP REQUIRED ]
                 </p>
@@ -114,21 +114,21 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                   value={totpCode}
                   onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="000000"
-                  className="w-full border border-neon-cyan/30 bg-zinc-950 px-3 py-2 text-center font-mono text-xs tracking-[0.3em] text-neon-cyan placeholder:text-zinc-600 focus:border-neon-cyan focus:outline-none"
+                  className="w-full border border-neon-cyan/30 bg-void px-3 py-2 text-center font-mono text-xs tracking-[0.3em] text-neon-cyan placeholder:text-text-muted/70 focus:border-neon-cyan focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={() => void generateQr()}
                   disabled={loading || totpCode.replace(/\D/g, '').length !== 6}
-                  className="mt-2 w-full border border-neon-cyan bg-black py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-50"
+                  className="mt-2 w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-50"
                 >
                   [ RETRY WITH TOTP ]
                 </button>
               </div>
             ) : null}
-            <div className="mt-4 flex min-h-[200px] flex-1 items-center justify-center border border-neon-cyan/25 bg-black p-4">
+            <div className="mt-4 flex min-h-[200px] flex-1 items-center justify-center border border-neon-cyan/25 bg-void p-4">
               {loading ? (
-                <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
                   [ LOADING... ]
                 </span>
               ) : err ? (

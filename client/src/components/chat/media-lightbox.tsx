@@ -234,11 +234,11 @@ export function MediaLightbox({
   const hasMultiple = hasPrev || hasNext
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-md">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-void/95 backdrop-blur-md">
       {/* Close button */}
       <button
         onClick={onClose}
-        className="absolute right-4 top-4 z-10 rounded-none border border-neon-cyan/50 bg-black/80 p-2 text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+        className="absolute right-4 top-4 z-10 rounded-none border border-neon-cyan/50 bg-void/80 p-2 text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
         aria-label="Close lightbox"
       >
         <X className="h-6 w-6" />
@@ -250,7 +250,7 @@ export function MediaLightbox({
           {hasPrev && (
             <button
               onClick={(e) => { e.stopPropagation(); navigatePrev(); }}
-              className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-none border border-neon-cyan/50 bg-black/80 p-3 text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+              className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-none border border-neon-cyan/50 bg-void/80 p-3 text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
               aria-label="Previous image"
             >
               <ChevronLeft className="h-8 w-8" />
@@ -259,7 +259,7 @@ export function MediaLightbox({
           {hasNext && (
             <button
               onClick={(e) => { e.stopPropagation(); navigateNext(); }}
-              className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-none border border-neon-cyan/50 bg-black/80 p-3 text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
+              className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-none border border-neon-cyan/50 bg-void/80 p-3 text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red"
               aria-label="Next image"
             >
               <ChevronRight className="h-8 w-8" />
@@ -273,7 +273,7 @@ export function MediaLightbox({
         <button
           onClick={(e) => { e.stopPropagation(); handleZoomOut(); }}
           disabled={zoom <= 1}
-          className="rounded-none border border-neon-cyan/50 bg-black/80 p-2 text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-30"
+          className="rounded-none border border-neon-cyan/50 bg-void/80 p-2 text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Zoom out"
         >
           <ZoomOut className="h-5 w-5" />
@@ -281,14 +281,14 @@ export function MediaLightbox({
         <button
           onClick={(e) => { e.stopPropagation(); resetZoom(); }}
           disabled={!isZoomed}
-          className="min-w-[60px] rounded-none border border-neon-cyan/50 bg-black/80 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-30"
+          className="min-w-[60px] rounded-none border border-neon-cyan/50 bg-void/80 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-30"
         >
           {Math.round(zoom * 100)}%
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); handleZoomIn(); }}
           disabled={zoom >= 3}
-          className="rounded-none border border-neon-cyan/50 bg-black/80 p-2 text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-30"
+          className="rounded-none border border-neon-cyan/50 bg-void/80 p-2 text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Zoom in"
         >
           <ZoomIn className="h-5 w-5" />
@@ -297,14 +297,14 @@ export function MediaLightbox({
 
       {/* Media counter */}
       {media.length > 1 && (
-        <div className="absolute bottom-4 right-4 z-10 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 bg-black/50 px-2 py-1 border border-neon-cyan/20">
+        <div className="absolute bottom-4 right-4 z-10 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 bg-void/50 px-2 py-1 border border-neon-cyan/20">
           {currentIndex + 1} / {media.length}
         </div>
       )}
 
       {/* Loading indicator */}
       {loadingNav && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/50">
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-void/50">
           <p className="animate-pulse font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
             [ DECRYPTING... ]
           </p>

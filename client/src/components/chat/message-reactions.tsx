@@ -69,7 +69,7 @@ export function MessageReactions({
             className={`inline-flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[10px] transition-all active:scale-95 ${
               isMine
                 ? 'border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan shadow-[0_0_6px_rgba(0,255,255,0.15)]'
-                : 'border-zinc-700 bg-zinc-900/50 text-zinc-400 hover:border-neon-cyan/40'
+                : 'border-border-strong bg-void/50 text-text-muted hover:border-neon-cyan/40'
             }`}
           >
             <span className="text-sm leading-none">{emoji}</span>
@@ -85,7 +85,7 @@ export function MessageReactions({
             setPickerOpen((o) => !o)
             onOpenPicker()
           }}
-          className="inline-flex h-6 w-6 items-center justify-center border border-zinc-800 bg-zinc-950 text-zinc-500 transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
+          className="inline-flex h-6 w-6 items-center justify-center border border-border-strong bg-void text-text-muted transition-colors hover:border-neon-cyan/40 hover:text-neon-cyan"
           title={t('reactions.add')}
         >
           <SmilePlus className="h-3 w-3" />
@@ -97,11 +97,11 @@ export function MessageReactions({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.15 }}
-              className="absolute bottom-full left-0 z-20 mb-1 flex flex-wrap gap-0.5 border border-neon-cyan/40 bg-black p-1.5 shadow-[0_0_16px_rgba(0,255,255,0.1)]"
+              className="absolute bottom-full left-0 z-20 mb-1 flex flex-wrap gap-0.5 border border-neon-cyan/40 bg-void p-1.5 shadow-[0_0_16px_rgba(0,255,255,0.1)]"
               onMouseDown={(e: React.MouseEvent) => e.stopPropagation()}
             >
               {recentEmojis.length > 0 ? (
-                <p className="w-full font-mono text-[7px] uppercase tracking-widest text-zinc-600 mb-0.5">
+                <p className="w-full font-mono text-[7px] uppercase tracking-widest text-text-muted/70 mb-0.5">
                   {t('reactions.recentlyUsed')}
                 </p>
               ) : null}

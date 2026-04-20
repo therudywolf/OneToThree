@@ -161,7 +161,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
         <p className="text-xs uppercase tracking-[0.25em] text-neon-cyan">
           {t('settings.mediaSectionTitle')}
         </p>
-        <p className="mt-1 text-[9px] text-red-800">{t('settings.mediaHint')}</p>
+        <p className="mt-1 text-[9px] text-danger">{t('settings.mediaHint')}</p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-1">
@@ -235,7 +235,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           <p className="text-[10px] uppercase tracking-widest text-neon-cyan">
             {t('settings.mediaNoise')}
           </p>
-          <p className="text-[9px] text-zinc-500">{t('settings.mediaNoiseHint')}</p>
+          <p className="text-[9px] text-text-muted">{t('settings.mediaNoiseHint')}</p>
         </div>
         <button
           type="button"
@@ -250,7 +250,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           className={`shrink-0 border-2 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${
             noiseOn
               ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-              : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+              : 'border-border-strong/60 bg-void text-text-muted'
           }`}
         >
           {noiseOn ? '[ ON ]' : '[ OFF ]'}
@@ -262,7 +262,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           <p className="text-[10px] uppercase tracking-widest text-neon-cyan">
             {t('settings.mediaLowBandwidth')}
           </p>
-          <p className="text-[9px] text-zinc-500">{t('settings.mediaLowBandwidthHint')}</p>
+          <p className="text-[9px] text-text-muted">{t('settings.mediaLowBandwidthHint')}</p>
         </div>
         <button
           type="button"
@@ -276,7 +276,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           className={`shrink-0 border-2 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${
             lowBandwidth
               ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-              : 'border-zinc-600 bg-zinc-950 text-zinc-400'
+              : 'border-border-strong/60 bg-void text-text-muted'
           }`}
         >
           {lowBandwidth ? '[ ON ]' : '[ OFF ]'}
@@ -284,7 +284,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
       </div>
 
       <div>
-        <p className="mb-1 text-[9px] uppercase tracking-wider text-zinc-500">
+        <p className="mb-1 text-[9px] uppercase tracking-wider text-text-muted">
           {t('settings.mediaViewfinder')}
         </p>
         <video
@@ -293,7 +293,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           playsInline
           muted
           controls={false}
-          className="mt-1 h-48 w-full border border-neon-cyan/30 bg-black object-cover"
+          className="mt-1 h-48 w-full border border-neon-cyan/30 bg-void object-cover"
         />
         {previewError ? (
           <p className="mt-2 break-words border border-neon-red/60 px-2 py-1 font-mono text-[10px] text-neon-red">
@@ -302,11 +302,11 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
         ) : null}
       </div>
 
-      <div className="space-y-2 border border-neon-cyan/25 bg-black/60 px-3 py-3">
+      <div className="space-y-2 border border-neon-cyan/25 bg-void/60 px-3 py-3">
         <p className="text-[10px] uppercase tracking-[0.35em] text-neon-cyan">
           {t('settings.digitalDenTitle')}
         </p>
-        <p className="text-[9px] leading-snug text-red-800/90">
+        <p className="text-[9px] leading-snug text-danger/90">
           {t('settings.digitalDenHint')}
         </p>
         <div className="flex flex-wrap items-center justify-between gap-2 border border-neon-cyan/15 px-2 py-2 font-mono text-[10px] text-neon-cyan/90">
@@ -333,7 +333,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
                 }
               })()
             }}
-            className="border border-neon-red/70 bg-black px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40"
+            className="border border-neon-red/70 bg-void px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40"
           >
             [ {denBusy ? t('settings.digitalDenBusy') : t('settings.digitalDenClear')} ]
           </button>

@@ -86,7 +86,7 @@ export function SecureVideoCircle({
 
   if (!sharedKey || !objectUrl) {
     return (
-      <div className="relative flex h-48 w-48 items-center justify-center rounded-full border-2 border-neon-cyan bg-black">
+      <div className="relative flex h-48 w-48 items-center justify-center rounded-full border-2 border-neon-cyan bg-void">
         <p className="animate-pulse font-mono text-[10px] text-neon-cyan">LOADING...</p>
       </div>
     )
@@ -97,7 +97,7 @@ export function SecureVideoCircle({
       {/* The aspect-square and rounded-full classes force the video to be a circle. 
         object-cover ensures it fills the circle without stretching.
       */}
-      <div className="relative aspect-square w-48 overflow-hidden rounded-full border-2 border-neon-cyan bg-black shadow-[0_0_16px_rgba(0,255,255,0.15)] group">
+      <div className="relative aspect-square w-48 overflow-hidden rounded-full border-2 border-neon-cyan bg-void shadow-[0_0_16px_rgba(0,255,255,0.15)] group">
         <video
           ref={videoRef}
           src={objectUrl}
@@ -122,12 +122,12 @@ export function SecureVideoCircle({
         <button
           type="button"
           onClick={togglePlay}
-          className="absolute inset-0 m-auto flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-neon-cyan opacity-100 backdrop-blur-sm transition-opacity hover:bg-neon-cyan hover:text-black group-hover:opacity-100"
+          className="absolute inset-0 m-auto flex h-12 w-12 items-center justify-center rounded-full bg-void/60 text-neon-cyan opacity-100 backdrop-blur-sm transition-opacity hover:bg-neon-cyan hover:text-text-primary group-hover:opacity-100"
         >
           {playing ? '||' : '▶'}
         </button>
       </div>
-      <div className="mt-3 h-1 w-48 overflow-hidden bg-zinc-900">
+      <div className="mt-3 h-1 w-48 overflow-hidden bg-void">
         <div
           className="h-full bg-neon-cyan transition-all duration-100 ease-linear"
           style={{ width: `${progress}%` }}

@@ -33,7 +33,7 @@ export function GroupCallMiniPlayer({ onExpand, onEndCall, onToggleMute }: Props
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="fixed bottom-24 right-4 z-[190] flex items-center gap-2 bg-black/95 border border-neutral-700 backdrop-blur-xl shadow-2xl px-3 py-2 cursor-pointer"
+      className="fixed bottom-24 right-4 z-[190] flex items-center gap-2 bg-void/95 border border-border-strong backdrop-blur-xl shadow-2xl px-3 py-2 cursor-pointer"
       onClick={onExpand}
     >
       {/* Participant avatars (up to 4) */}
@@ -43,13 +43,13 @@ export function GroupCallMiniPlayer({ onExpand, onEndCall, onToggleMute }: Props
           .map((p) => (
             <div
               key={p.userId}
-              className={`h-7 w-7 rounded-full border-2 border-black flex items-center justify-center ${
+              className={`h-7 w-7 rounded-full border-2 border-border-strong flex items-center justify-center ${
                 p.isSpeaking
                   ? 'bg-neon-cyan/20 border-neon-cyan/50'
-                  : 'bg-neutral-900 border-neutral-700'
+                  : 'bg-void border-border-strong'
               }`}
             >
-              <span className="font-mono text-[8px] uppercase text-neutral-400">
+              <span className="font-mono text-[8px] uppercase text-text-muted">
                 {p.username.slice(0, 2)}
               </span>
             </div>
@@ -63,14 +63,14 @@ export function GroupCallMiniPlayer({ onExpand, onEndCall, onToggleMute }: Props
       </div>
 
       {/* Controls */}
-      <div className="flex items-center gap-1 pl-1 border-l border-neutral-800 ml-1">
+      <div className="flex items-center gap-1 pl-1 border-l border-border-strong ml-1">
         <button
           onClick={(e) => {
             e.stopPropagation()
             onToggleMute()
           }}
           className={`p-1.5 transition-colors ${
-            audioMuted ? 'text-neon-red' : 'text-neutral-400 hover:text-white'
+            audioMuted ? 'text-neon-red' : 'text-text-muted hover:text-text-primary'
           }`}
           title={audioMuted ? t('call.unmute') : t('call.mute')}
         >

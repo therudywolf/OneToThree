@@ -30,7 +30,7 @@ export function MessageStatus({ pending, readAt, delivered, failed, onRetry }: P
     case 'sending':
       return (
         <span
-          className="inline-flex items-center gap-1 text-zinc-500"
+          className="inline-flex items-center gap-1 text-text-muted"
           title={t('msg.sending')}
           aria-label={t('msg.sending')}
         >
@@ -40,7 +40,7 @@ export function MessageStatus({ pending, readAt, delivered, failed, onRetry }: P
     case 'sent':
       return (
         <span
-          className="inline-flex items-center text-zinc-500"
+          className="inline-flex items-center text-text-muted"
           title={t('msg.sent')}
           aria-label={t('msg.sent')}
         >
@@ -50,7 +50,7 @@ export function MessageStatus({ pending, readAt, delivered, failed, onRetry }: P
     case 'delivered':
       return (
         <span
-          className="inline-flex items-center text-zinc-400"
+          className="inline-flex items-center text-text-muted"
           title={t('msg.delivered')}
           aria-label={t('msg.delivered')}
         >
@@ -60,7 +60,7 @@ export function MessageStatus({ pending, readAt, delivered, failed, onRetry }: P
     case 'read':
       return (
         <span
-          className="inline-flex items-center text-cyan-400 drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]"
+          className="inline-flex items-center text-neon-cyan drop-shadow-[0_0_4px_rgba(34,211,238,0.5)]"
           title={t('msg.read')}
           aria-label={t('msg.read')}
         >

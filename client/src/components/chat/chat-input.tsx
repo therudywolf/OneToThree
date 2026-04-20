@@ -9,6 +9,13 @@ import { useMediaRecorder } from '@/hooks/use-media-recorder'
 import { resumeAudioContextAfterGesture } from '@/lib/call-ringtones'
 import { vibrateShort } from '@/lib/vibrate'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
+import type { AttachmentKind } from '@/lib/attachment-envelope'
+import { toastError } from '@/store/toastStore'
+import {
+  MEDIA_ACCESS_ERROR_MESSAGE,
+  MEDIA_PERMISSION_DENIED_CODE,
+  MEDIA_TOO_LARGE_CODE,
+} from '@/lib/media-limits'
 import EmojiPicker, { Theme } from 'emoji-picker-react'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 
@@ -33,7 +40,15 @@ type Props = {
     blob: Blob,
     mediaType: 'audio' | 'video' | 'image' | 'file',
     caption?: string,
-    options?: { fileName?: string; fileType?: string }
+    options?: { fileName?: string; fileType?: string; kind?: AttachmentKind }
+  ) => Promise<void>
+  sendAlbum?: (
+    items: Array<{
+      blob: Blob
+      segmentClass: 'audio' | 'video' | 'image' | 'file'
+      options?: { label?: string; mime?: string; kind?: AttachmentKind }
+    }>,
+    caption?: string
   ) => Promise<void>
   cryptoCtx: ChatCryptoContext | null
   disabled?: boolean
@@ -41,7 +56,7 @@ type Props = {
 
 type QueuedFile = { file: File; mediaType: 'image' | 'video' | 'audio' | 'file' }
 
-export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
+export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
   const [messageText, setMessageText] = useState('')
   const [emojiOpen, setEmojiOpen] = useState(false)
@@ -81,7 +96,24 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     startVideoCircleCapture,
     stopCapture,
     previewStream,
+    error: recorderError,
+    clearError: clearRecorderError,
   } = useMediaRecorder()
+
+  // Surface recorder errors (permission denied, too-large, no MediaRecorder) to the user.
+  useEffect(() => {
+    if (!recorderError) return
+    const message =
+      recorderError === MEDIA_PERMISSION_DENIED_CODE
+        ? 'Microphone/camera access denied. Grant permission in browser settings.'
+        : recorderError === MEDIA_TOO_LARGE_CODE
+        ? 'Recording exceeds the size limit.'
+        : recorderError === MEDIA_ACCESS_ERROR_MESSAGE
+        ? 'Media devices not available in this browser.'
+        : `Recorder error: ${recorderError}`
+    toastError(message, { title: 'RECORDING' })
+    clearRecorderError()
+  }, [recorderError, clearRecorderError])
 
   const videoPreviewRef = useRef<HTMLVideoElement>(null)
 
@@ -149,14 +181,27 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     if (recordTimerRef.current) { clearInterval(recordTimerRef.current); recordTimerRef.current = null }
     try {
       const result = await stopCapture()
-      if (shouldSend && result && result.blob.size > 0 && cryptoCtx) {
-        await sendMedia(result.blob, mediaMode === 'voice' ? 'audio' : 'video', undefined, { fileType: result.mimeType })
-      } else if (!shouldSend) {
-        // cancelled
-      } else {
-        console.warn('Capture stopped but blob is empty or null.')
+      if (!shouldSend) return
+      if (!result || result.blob.size === 0) {
+        if (shouldSend) toastError('Recording was empty — nothing to send.', { title: 'RECORDING' })
+        return
       }
+      if (!cryptoCtx) {
+        toastError('E2E context not ready — try again.', { title: 'RECORDING' })
+        return
+      }
+      const isVoice = mediaMode === 'voice'
+      const kind: AttachmentKind = isVoice ? 'voice' : 'video_circle'
+      const prefix = isVoice ? 'voice-note' : 'video-circle'
+      const labelName = `${prefix}-${Date.now()}`
+      await sendMedia(
+        result.blob,
+        isVoice ? 'audio' : 'video',
+        undefined,
+        { fileType: result.mimeType, fileName: labelName, kind }
+      )
     } catch (error) {
+      // `sendMedia` already surfaces a toast; avoid double-notifying here.
       console.error('Failed to stop recording:', error)
     }
   }, [stopCapture, sendMedia, cryptoCtx, mediaMode])
@@ -224,11 +269,29 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  const canAlbum = (items: QueuedFile[]) =>
+    items.length >= 2 &&
+    items.length <= 10 &&
+    items.every((it) => it.mediaType === 'image' || it.mediaType === 'video')
+
   const handlePreviewSend = useCallback(async (caption: string) => {
-    const item = fileQueue[0]
-    if (!item || sendingMediaRef.current) return
+    if (sendingMediaRef.current || fileQueue.length === 0) return
     sendingMediaRef.current = true
     try {
+      if (sendAlbum && canAlbum(fileQueue)) {
+        await sendAlbum(
+          fileQueue.map((it) => ({
+            blob: it.file,
+            segmentClass: it.mediaType,
+            options: { label: it.file.name, mime: it.file.type },
+          })),
+          caption || undefined,
+        )
+        setFileQueue([])
+        return
+      }
+      const item = fileQueue[0]
+      if (!item) return
       await sendMedia(item.file, item.mediaType, caption || undefined, {
         fileName: item.file.name,
         fileType: item.file.type,
@@ -237,7 +300,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
     } finally {
       sendingMediaRef.current = false
     }
-  }, [sendMedia, fileQueue])
+  }, [sendMedia, sendAlbum, fileQueue])
 
   const handlePreviewCancel = useCallback(() => setFileQueue([]), [])
   const handleRemoveFromQueue = useCallback((index: number) => {
@@ -343,7 +406,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="sticky bottom-0 z-10 shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-black p-2 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200"
+      className="sticky bottom-0 z-10 shrink-0 touch-manipulation border-t border-neon-cyan/40 bg-void p-2 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] transition-colors duration-200"
       style={{
         paddingBottom:
           'calc(max(0.5rem, env(safe-area-inset-bottom)) + var(--p13-keyboard-inset, 0px))',
@@ -376,7 +439,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             ↳ {t('chat.replyBanner')}:{' '}
             {replyTo.plaintext ? replyTo.plaintext.slice(0, 80) : '[MEDIA]'}
           </p>
-          <button type="button" onClick={() => setReplyTo(null)} className="shrink-0 font-mono text-[10px] text-red-800 hover:text-neon-red">[X]</button>
+          <button type="button" onClick={() => setReplyTo(null)} className="shrink-0 font-mono text-[10px] text-danger hover:text-neon-red">[X]</button>
         </div>
       ) : null}
 
@@ -384,19 +447,19 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
       {isRecordingUI && recordLocked ? (
         <div className="flex items-center gap-3 py-1">
           <button type="button" onClick={() => void cancelRecording()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-red/70 bg-black text-neon-red transition-colors hover:bg-neon-red/10"
+            className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-red/70 bg-void text-neon-red transition-colors hover:bg-neon-red/10"
             title={t('common.cancel')}>
             <X className="h-4 w-4" />
           </button>
           {mediaMode === 'circle' && previewStream ? (
-            <div className="relative aspect-square w-16 shrink-0 overflow-hidden rounded-full border-2 border-neon-red bg-black shadow-[0_0_12px_rgba(255,0,0,0.2)]">
+            <div className="relative aspect-square w-16 shrink-0 overflow-hidden rounded-full border-2 border-neon-red bg-void shadow-[0_0_12px_rgba(255,0,0,0.2)]">
               <video ref={videoPreviewRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-              <span className="absolute bottom-0 left-0 right-0 bg-black/60 text-center font-mono text-[7px] text-neon-red">{formatRecordTime(recordSeconds)}</span>
+              <span className="absolute bottom-0 left-0 right-0 bg-void/60 text-center font-mono text-[7px] text-neon-red">{formatRecordTime(recordSeconds)}</span>
             </div>
           ) : null}
-          <div className="flex flex-1 items-center gap-2 border border-neon-red/40 bg-zinc-950 px-3 py-2">
-            <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-red-600 animate-pulse" />
-            <span className="shrink-0 font-mono text-[10px] text-red-400 tabular-nums">{formatRecordTime(recordSeconds)}</span>
+          <div className="flex flex-1 items-center gap-2 border border-neon-red/40 bg-void px-3 py-2">
+            <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-danger/30 animate-pulse" />
+            <span className="shrink-0 font-mono text-[10px] text-danger/80 tabular-nums">{formatRecordTime(recordSeconds)}</span>
             <div className="flex h-6 flex-1 items-end gap-[1px]">
               {waveformBars.map((h, i) => (
                 <div key={i} className="min-w-[2px] flex-1 rounded-[1px] bg-neon-red/70 transition-all duration-150" style={{ height: `${Math.round(h * 100)}%` }} />
@@ -405,7 +468,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
             <Lock className="h-3 w-3 shrink-0 text-neon-cyan/60" />
           </div>
           <button type="button" onClick={() => void stopRecording(true)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan bg-black text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan bg-void text-neon-cyan transition-colors hover:bg-neon-cyan/10"
             title={t('common.send')}>
             <Send className="h-4 w-4" />
           </button>
@@ -420,7 +483,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           <div ref={emojiContainerRef} className="relative shrink-0">
             <button
               type="button"
-              className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan/70 hover:text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors"
+              className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-void text-neon-cyan/70 hover:text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors"
               disabled={disabled}
               onClick={() => setEmojiOpen((o) => !o)}
               tabIndex={-1}
@@ -448,7 +511,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <div className="relative shrink-0">
           <button
             type="button"
-            className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-black text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40 transition-colors"
+            className="flex h-10 w-10 items-center justify-center border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10 hover:border-neon-cyan disabled:opacity-40 transition-colors"
             disabled={disabled || isRecordingUI}
             onClick={handleAttachClick}
             title={t('chat.attachFile')}
@@ -460,7 +523,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         {/* Input field */}
         <div className="relative flex-1">
           <div className={`flex items-center gap-2 rounded border px-3 py-2 ${
-            isRecordingUI ? 'border-neon-red/70 bg-zinc-950' : 'border-neon-cyan/40 bg-black'
+            isRecordingUI ? 'border-neon-red/70 bg-void' : 'border-neon-cyan/40 bg-void'
           }`}>
             <textarea
               ref={inputRef}
@@ -496,12 +559,12 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
                     <video ref={videoPreviewRef} autoPlay playsInline muted className="h-full w-full object-cover" />
                   </span>
                 ) : null}
-                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-red-600 animate-pulse" />
-                <span className="font-mono text-[10px] text-red-400 tabular-nums">{formatRecordTime(recordSeconds)}</span>
+                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-danger/30 animate-pulse" />
+                <span className="font-mono text-[10px] text-danger/80 tabular-nums">{formatRecordTime(recordSeconds)}</span>
                 {swipeOffsetY > 10 ? (
                   <Lock className="h-3 w-3 text-neon-cyan animate-bounce" />
                 ) : (
-                  <span className="font-mono text-[8px] text-zinc-500 uppercase">{t('media.swipeHint')}</span>
+                  <span className="font-mono text-[8px] text-text-muted uppercase">{t('media.swipeHint')}</span>
                 )}
               </span>
             ) : null}
@@ -509,7 +572,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
 
           {isRecordingUI && !recordLocked && swipeOffsetX > 20 ? (
             <div
-              className="absolute inset-0 flex items-center justify-center bg-red-950/80 border border-neon-red/50 rounded transition-opacity"
+              className="absolute inset-0 flex items-center justify-center bg-danger/30 border border-neon-red/50 rounded transition-opacity"
               style={{ opacity: Math.min(1, swipeOffsetX / CANCEL_THRESHOLD_X) }}
             >
               <span className="font-mono text-[10px] text-neon-red uppercase tracking-widest">{t('media.slideCancel')}</span>
@@ -520,11 +583,11 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         {/* Record button */}
         <button
           type="button"
-          className={`shrink-0 select-none border bg-black transition-all disabled:opacity-40
+          className={`shrink-0 select-none border bg-void transition-all disabled:opacity-40
             flex h-10 w-10 items-center justify-center
             ${
               isRecordingUI
-                ? 'border-red-600 bg-red-950/20 text-red-300'
+                ? 'border-danger/40 bg-danger/30 text-danger/60'
                 : mediaMode === 'voice'
                 ? 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'
                 : 'border-neon-red text-neon-red hover:bg-neon-red/10'
@@ -545,7 +608,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
           style={{ touchAction: 'none' }}
         >
           {isRecordingUI ? (
-            <Square className="h-3.5 w-3.5 fill-red-500 text-red-500" />
+            <Square className="h-3.5 w-3.5 fill-danger text-danger/80" />
           ) : mediaMode === 'voice' ? (
             <Mic className="h-4 w-4" />
           ) : (
@@ -557,7 +620,7 @@ export function ChatInput({ sendText, sendMedia, cryptoCtx, disabled }: Props) {
         <button
           type="button"
           disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
-          className={`shrink-0 flex h-10 w-10 items-center justify-center border border-neon-cyan bg-black text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors
+          className={`shrink-0 flex h-10 w-10 items-center justify-center border border-neon-cyan bg-void text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors
             ${showSendOnMobile ? 'flex' : 'hidden md:flex'}
           `}
           title={t('common.send')}

@@ -103,11 +103,11 @@ function ParticipantTile({
 
   const speakingBorder = isSpeaking
     ? 'border-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.3)]'
-    : 'border-neutral-800'
+    : 'border-border-strong'
 
   return (
     <div
-      className={`relative overflow-hidden bg-black transition-all duration-200 border ${speakingBorder} ${
+      className={`relative overflow-hidden bg-void transition-all duration-200 border ${speakingBorder} ${
         isSpotlighted ? 'col-span-full row-span-2 min-h-[50vh]' : ''
       }`}
       onClick={onClick}
@@ -126,20 +126,20 @@ function ParticipantTile({
           }`}
         />
       ) : (
-        <div className="flex w-full h-full items-center justify-center bg-zinc-950 min-h-[120px]">
+        <div className="flex w-full h-full items-center justify-center bg-void min-h-[120px]">
           <div className="space-y-2 text-center">
             <div
               className={`mx-auto h-14 w-14 rounded-full flex items-center justify-center border ${
                 isSpeaking
                   ? 'border-neon-cyan bg-neon-cyan/10'
-                  : 'border-neutral-700 bg-neutral-900'
+                  : 'border-border-strong bg-void'
               }`}
             >
-              <span className="font-mono text-lg uppercase text-neutral-400">
+              <span className="font-mono text-lg uppercase text-text-muted">
                 {label.slice(0, 2)}
               </span>
             </div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-neutral-500">
+            <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
               {label}
             </p>
           </div>
@@ -147,9 +147,9 @@ function ParticipantTile({
       )}
 
       {/* Name + Status overlay */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-void/80 to-transparent px-2 py-1.5">
         <div className="flex items-center justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-white/80 truncate max-w-[70%]">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-text-primary/80 truncate max-w-[70%]">
             {label}
           </span>
           <div className="flex items-center gap-1">
@@ -157,7 +157,7 @@ function ParticipantTile({
               <MicOff className="h-3 w-3 text-neon-red" />
             )}
             {isVideoOff && (
-              <VideoOff className="h-3 w-3 text-neutral-500" />
+              <VideoOff className="h-3 w-3 text-text-muted" />
             )}
             {connectionState === 'failed' && (
               <span className="font-mono text-[8px] text-neon-red uppercase">FAIL</span>
@@ -191,20 +191,20 @@ function ParticipantPanel({
       animate={{ y: 0 }}
       exit={{ y: '100%' }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="absolute bottom-20 left-0 right-0 max-h-[60vh] bg-black/95 border-t border-neutral-800 backdrop-blur-xl z-30 overflow-y-auto"
+      className="absolute bottom-20 left-0 right-0 max-h-[60vh] bg-void/95 border-t border-border-strong backdrop-blur-xl z-30 overflow-y-auto"
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
-        <span className="font-mono text-xs uppercase tracking-wider text-neutral-400">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border-strong">
+        <span className="font-mono text-xs uppercase tracking-wider text-text-muted">
           {t('groupCall.participants')} ({Object.keys(participants).length + 1})
         </span>
         <button
           onClick={onClose}
-          className="text-neutral-500 hover:text-white transition-colors"
+          className="text-text-muted hover:text-text-primary transition-colors"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="divide-y divide-neutral-900">
+      <div className="divide-y divide-border-strong">
         {Object.values(participants).map((p) => (
           <div
             key={p.userId}
@@ -215,16 +215,16 @@ function ParticipantPanel({
                 className={`h-8 w-8 rounded-full flex items-center justify-center border ${
                   p.isSpeaking
                     ? 'border-neon-cyan bg-neon-cyan/10'
-                    : 'border-neutral-700 bg-neutral-900'
+                    : 'border-border-strong bg-void'
                 }`}
               >
-                <span className="font-mono text-[10px] uppercase text-neutral-400">
+                <span className="font-mono text-[10px] uppercase text-text-muted">
                   {p.username.slice(0, 2)}
                 </span>
               </div>
               <div>
-                <p className="font-mono text-xs text-white">{p.username}</p>
-                <p className="font-mono text-[9px] text-neutral-600 uppercase">
+                <p className="font-mono text-xs text-text-primary">{p.username}</p>
+                <p className="font-mono text-[9px] text-text-muted/70 uppercase">
                   {p.connectionState === 'connected' || p.connectionState === 'completed'
                     ? 'LINKED'
                     : p.connectionState === 'failed'
@@ -235,7 +235,7 @@ function ParticipantPanel({
             </div>
             <div className="flex items-center gap-2">
               {p.isMuted && <MicOff className="h-3.5 w-3.5 text-neon-red" />}
-              {p.isVideoOff && <VideoOff className="h-3.5 w-3.5 text-neutral-600" />}
+              {p.isVideoOff && <VideoOff className="h-3.5 w-3.5 text-text-muted/70" />}
               {p.isSpeaking && (
                 <span className="h-2 w-2 rounded-full bg-neon-cyan animate-pulse" />
               )}
@@ -341,16 +341,16 @@ export function GroupCallScreen({
 
   return (
     <PortalRoot>
-      <div className="fixed inset-0 z-[200] flex flex-col bg-zinc-950 font-mono" role="dialog">
+      <div className="fixed inset-0 z-[200] flex flex-col bg-void font-mono" role="dialog">
         {/* HEADER */}
-        <div className="flex shrink-0 items-center justify-between border-b border-neutral-900 bg-black/50 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md">
+        <div className="flex shrink-0 items-center justify-between border-b border-border-strong bg-void/50 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md">
           <div className="flex items-center gap-3">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full bg-neon-cyan opacity-75" />
               <span className="relative inline-flex h-2 w-2 bg-neon-cyan" />
             </span>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">
-              {t('groupCall.title')} // <span className="text-white">NODES: {totalCount}</span>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
+              {t('groupCall.title')} // <span className="text-text-primary">NODES: {totalCount}</span>
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -369,7 +369,7 @@ export function GroupCallScreen({
         </div>
 
         {/* STREAMS GRID */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-900 to-black">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void">
           {useDominantSpeaker && spotlightId ? (
             // DOMINANT SPEAKER LAYOUT
             <div className="flex flex-col h-full gap-2">
@@ -476,7 +476,7 @@ export function GroupCallScreen({
 
         {/* CONTROL BAR */}
         <div
-          className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-black/90 border border-neutral-800 backdrop-blur-xl shadow-2xl transition-all duration-300 pb-[env(safe-area-inset-bottom)] ${
+          className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-void/90 border border-border-strong backdrop-blur-xl shadow-2xl transition-all duration-300 pb-[env(safe-area-inset-bottom)] ${
             showControls
               ? 'translate-y-0 opacity-100'
               : 'translate-y-4 opacity-0 pointer-events-none'
@@ -485,10 +485,10 @@ export function GroupCallScreen({
           {/* Mute */}
           <button
             onClick={onToggleMute}
-            className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${
+            className={`flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${
               audioMuted
-                ? 'bg-red-950/30 text-neon-red hover:bg-red-900/50'
-                : 'text-neutral-300 hover:text-white hover:bg-white/5'
+                ? 'bg-danger/30 text-neon-red hover:bg-danger/30'
+                : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
             }`}
             title={audioMuted ? t('call.unmute') : t('call.mute')}
           >
@@ -498,10 +498,10 @@ export function GroupCallScreen({
           {/* Camera */}
           <button
             onClick={onToggleVideo}
-            className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${
+            className={`flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${
               videoOff
-                ? 'bg-neutral-900/50 text-neutral-600 hover:bg-neutral-800'
-                : 'text-neutral-300 hover:text-white hover:bg-white/5'
+                ? 'bg-void/50 text-text-muted/70 hover:bg-elevated'
+                : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
             }`}
             title={videoOff ? t('call.videoOn') : t('call.videoOff')}
           >
@@ -512,10 +512,10 @@ export function GroupCallScreen({
           {!isMobileDevice && (
             <button
               onClick={handleScreenShareToggle}
-              className={`hidden sm:flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${
+              className={`hidden sm:flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${
                 isScreenSharing
                   ? 'bg-neon-cyan/10 text-neon-cyan'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                  : 'text-text-muted hover:text-text-primary hover:bg-surface/5'
               }`}
               title={
                 isScreenSharing
@@ -534,10 +534,10 @@ export function GroupCallScreen({
           {/* Participants */}
           <button
             onClick={() => setShowParticipantPanel(!showParticipantPanel)}
-            className={`flex h-12 w-14 items-center justify-center border-r border-neutral-800 transition-colors ${
+            className={`flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${
               showParticipantPanel
                 ? 'bg-neon-cyan/10 text-neon-cyan'
-                : 'text-neutral-400 hover:text-white hover:bg-white/5'
+                : 'text-text-muted hover:text-text-primary hover:bg-surface/5'
             }`}
             title={t('groupCall.participants')}
           >
@@ -553,7 +553,7 @@ export function GroupCallScreen({
           <div className="relative">
             <button
               onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className="flex h-12 w-14 items-center justify-center border-r border-neutral-800 text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+              className="flex h-12 w-14 items-center justify-center border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5 transition-colors"
               title={t('groupCall.more')}
             >
               <MoreVertical className="h-4 w-4" />
@@ -564,11 +564,11 @@ export function GroupCallScreen({
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
-                  className="absolute bottom-14 right-0 border border-neutral-700 bg-black/95 backdrop-blur-xl shadow-2xl z-50 min-w-[160px]"
+                  className="absolute bottom-14 right-0 border border-border-strong bg-void/95 backdrop-blur-xl shadow-2xl z-50 min-w-[160px]"
                 >
                   <button
                     onClick={() => setShowMoreMenu(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left font-mono text-[11px] uppercase tracking-wider text-neutral-400 hover:text-white hover:bg-white/5 transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-text-primary hover:bg-surface/5 transition-colors"
                   >
                     <Hand className="h-3.5 w-3.5" />
                     {t('groupCall.raiseHand')}
@@ -581,7 +581,7 @@ export function GroupCallScreen({
           {/* End Call */}
           <button
             onClick={onEndCall}
-            className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-black transition-all"
+            className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-text-primary transition-all"
             title={t('call.endCall')}
           >
             <PhoneOff className="h-5 w-5" />

@@ -8,8 +8,8 @@ export function WelcomeScreen({ onContinue }: Props) {
   const { t } = useTranslation()
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-zinc-950/95 px-4 font-mono backdrop-blur-sm">
-      <div className="relative w-full max-w-md border border-neutral-900 bg-black p-8 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-void/95 px-4 font-mono backdrop-blur-sm">
+      <div className="relative w-full max-w-md border border-border-strong bg-void p-8 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
         <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-neon-cyan via-neon-red to-neon-cyan opacity-50" />
 
         {/* Logo */}
@@ -20,30 +20,30 @@ export function WelcomeScreen({ onContinue }: Props) {
         </div>
 
         {/* Title */}
-        <h1 className="mb-3 text-center text-xl font-bold uppercase tracking-[0.5em] text-white">
+        <h1 className="mb-3 text-center text-xl font-bold uppercase tracking-[0.5em] text-text-primary">
           {t('welcome.title')}
         </h1>
 
         {/* Description */}
-        <p className="mb-8 text-center text-[10px] leading-relaxed text-zinc-400">
+        <p className="mb-8 text-center text-[10px] leading-relaxed text-text-muted">
           {t('welcome.subtitle')}
         </p>
 
         {/* Key features */}
         <div className="mb-8 space-y-3">
-          <div className="flex items-center gap-3 border border-neon-cyan/20 bg-zinc-950/50 p-3">
+          <div className="flex items-center gap-3 border border-neon-cyan/20 bg-void/50 p-3">
             <span className="shrink-0 text-base">🔒</span>
             <span className="text-[10px] uppercase tracking-widest text-neon-cyan">
               {t('welcome.featureE2e')}
             </span>
           </div>
-          <div className="flex items-center gap-3 border border-neon-cyan/20 bg-zinc-950/50 p-3">
+          <div className="flex items-center gap-3 border border-neon-cyan/20 bg-void/50 p-3">
             <span className="shrink-0 text-base">🏠</span>
             <span className="text-[10px] uppercase tracking-widest text-neon-cyan">
               {t('welcome.featureSelfHosted')}
             </span>
           </div>
-          <div className="flex items-center gap-3 border border-neon-cyan/20 bg-zinc-950/50 p-3">
+          <div className="flex items-center gap-3 border border-neon-cyan/20 bg-void/50 p-3">
             <span className="shrink-0 text-base">🚫</span>
             <span className="text-[10px] uppercase tracking-widest text-neon-cyan">
               {t('welcome.featureNoTracking')}
@@ -53,7 +53,7 @@ export function WelcomeScreen({ onContinue }: Props) {
 
         {/* License link */}
         <p className="mb-6 text-center">
-          <span className="text-[9px] uppercase tracking-widest text-zinc-600">
+          <span className="text-[9px] uppercase tracking-widest text-text-muted/70">
             {t('welcome.licenseLink')}
           </span>
         </p>
@@ -62,7 +62,7 @@ export function WelcomeScreen({ onContinue }: Props) {
         <button
           type="button"
           onClick={onContinue}
-          className="flex h-12 w-full items-center justify-center border border-neon-cyan bg-neon-cyan/5 text-[11px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-black shadow-[0_0_20px_rgba(0,255,255,0.1)]"
+          className="flex h-12 w-full items-center justify-center border border-neon-cyan bg-neon-cyan/5 text-[11px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-text-primary shadow-[0_0_20px_rgba(0,255,255,0.1)]"
         >
           {t('welcome.continue')}
         </button>

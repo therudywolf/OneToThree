@@ -105,40 +105,12 @@ export async function markMessagesReadBatch(messageIds: string[]): Promise<void>
   }
 }
 
-export type SearchMessageRow = {
-  id: string
-  chat_id: string
-  sender_id: string
-  content: string | null
-  iv: string | null
-  media_path: string | null
-  media_type: string | null
-  created_at: string
-}
-
-/** GET /api/messages/search — server-side message search within a chat. */
-export async function searchChatMessages(
-  chatId: string,
-  query: string,
-  limit = 20
-): Promise<SearchMessageRow[]> {
-  const params = new URLSearchParams({
-    chatId,
-    q: query,
-    limit: String(limit),
-  })
-  const res = await fetch(`${API_URL}/messages/search?${params.toString()}`, {
-    credentials: 'include',
-  })
-  const data = (await res.json().catch(() => ({}))) as {
-    messages?: SearchMessageRow[]
-    error?: string
-  }
-  if (!res.ok) {
-    throw new Error(data.error ?? 'SEARCH_FAILED')
-  }
-  return data.messages ?? []
-}
+/**
+ * Server-side message search has been removed (see MIGRATION_NOTES v4).
+ * Use `useLocalSearch` from `@/hooks/use-local-search` which searches
+ * decrypted plaintext in memory (and `searchLocalMessages` in
+ * `@/lib/message-cache` for the token-index fallback).
+ */
 
 export type SharedMediaRow = {
   id: string

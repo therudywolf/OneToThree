@@ -126,18 +126,18 @@ export function RecoveryHandler() {
   if (!showForceReset) return null
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="space-y-4 border border-neon-red bg-black/95 p-6 text-center shadow-[0_0_16px_rgba(255,0,0,0.4)]">
+    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-void/80 backdrop-blur-sm">
+      <div className="space-y-4 border border-neon-red bg-void/95 p-6 text-center shadow-[0_0_16px_rgba(255,0,0,0.4)]">
         <p className="font-mono text-sm text-neon-cyan">
           App is not responding
         </p>
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-text-muted">
           The app may have encountered a loading issue. Clear cache and reload?
         </p>
         <button
           type="button"
           onClick={handleForceReset}
-          className="border border-neon-red bg-black/50 px-4 py-2 font-mono text-sm text-neon-red hover:bg-neon-red/10"
+          className="border border-neon-red bg-void/50 px-4 py-2 font-mono text-sm text-neon-red hover:bg-neon-red/10"
         >
           FORCE RESET
         </button>

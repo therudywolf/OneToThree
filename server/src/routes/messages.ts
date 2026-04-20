@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -190,65 +190,24 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  /** Server-side message search within a chat (ILIKE on plaintext content). */
-  app.get('/search', async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
-    const q = request.query as { chatId?: string; q?: string; limit?: string }
-    const chatId = q.chatId?.trim()
-    const query = q.q?.trim()
-    const limit = Math.min(Math.max(parseInt(q.limit ?? '20', 10) || 20, 1), 50)
-
-    if (!chatId || !z.string().uuid().safeParse(chatId).success) {
-      return reply.status(400).send({ error: 'INVALID_CHAT_ID' })
-    }
-    if (!query || query.length < 2) {
-      return reply.status(400).send({ error: 'QUERY_TOO_SHORT' })
-    }
-
-    const memberOk = await db
-      .select({ one: chatMembers.userId })
-      .from(chatMembers)
-      .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id)))
-      .limit(1)
-    if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
-
-    const cutoff = await getHistoryCutoff(user.id, request)
-    const escaped = query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
-    const pattern = `%${escaped}%`
-
-    const rows = await db
-      .select({
-        id: messages.id,
-        chatId: messages.chatId,
-        senderId: messages.senderId,
-        content: messages.content,
-        iv: messages.iv,
-        mediaPath: messages.mediaPath,
-        mediaType: messages.mediaType,
-        createdAt: messages.createdAt,
-      })
-      .from(messages)
-      .where(and(
-        eq(messages.chatId, chatId),
-        isNotNull(messages.content),
-        ilike(messages.content, pattern),
-        cutoff ? gte(messages.createdAt, cutoff) : undefined
-      ))
-      .orderBy(desc(messages.createdAt))
-      .limit(limit)
-
-    return reply.send({
-      messages: rows.map((m) => ({
-        id: m.id,
-        chat_id: m.chatId,
-        sender_id: m.senderId,
-        content: m.content,
-        iv: m.iv,
-        media_path: m.mediaPath,
-        media_type: m.mediaType,
-        created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
-      })),
+  /**
+   * Server-side message search is REMOVED in protocol v4.
+   *
+   * Rationale: with E2EE enabled the stored `messages.content` column is
+   * AES-GCM ciphertext (or a base64-wrapped plaintext for legacy `public_open`
+   * groups). Running ILIKE over that column is either useless (encrypted
+   * chats — zero signal) or a plaintext privacy leak (public groups — server
+   * sees and logs user queries in the clear).
+   *
+   * Search is now always client-side against decrypted messages
+   * (see `client/src/hooks/use-local-search.ts` and the IndexedDB token index
+   * in `client/src/lib/message-cache.ts`). The endpoint returns 410 Gone so
+   * older clients fail fast with a clear error instead of silent 404.
+   */
+  app.get('/search', async (_request, reply) => {
+    return reply.status(410).send({
+      error: 'SEARCH_SERVER_SIDE_REMOVED',
+      message: 'Server-side search has been disabled. Update the client; search is now performed locally against decrypted messages.',
     })
   })
 

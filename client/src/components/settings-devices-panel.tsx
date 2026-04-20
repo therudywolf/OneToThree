@@ -240,26 +240,26 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         <p className="text-xs uppercase tracking-[0.25em] text-neon-cyan">
           {t('settings.devicesSectionTitle')}
         </p>
-        <p className="mt-1 break-words text-[9px] text-red-800">
+        <p className="mt-1 break-words text-[9px] text-danger">
           {t('settings.devicesHint')}
         </p>
       </div>
 
       {/* Объяснение QR-входа */}
-      <div className="border border-neon-cyan/10 bg-zinc-950/60 p-3 space-y-1">
+      <div className="border border-neon-cyan/10 bg-void/60 p-3 space-y-1">
         <p className="text-[9px] uppercase tracking-widest text-neon-cyan/70">[ ДОБАВИТЬ УСТРОЙСТВО :: QR ]</p>
-        <p className="text-[9px] text-zinc-500 leading-relaxed">
-          Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер и отсканируй его камерой или через приложение. Новое устройство получит сессию, а для аккаунтов с 2FA дополнительно потребуется TOTP-код. QR действителен <span className="text-zinc-300">5 минут</span> и одноразовый.
+        <p className="text-[9px] text-text-muted leading-relaxed">
+          Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер и отсканируй его камерой или через приложение. Новое устройство получит сессию, а для аккаунтов с 2FA дополнительно потребуется TOTP-код. QR действителен <span className="text-text-primary">5 минут</span> и одноразовый.
         </p>
       </div>
 
       {/* Объяснение резервного ключа */}
-      <div className="border border-neon-red/20 bg-zinc-950/60 p-3 space-y-1">
+      <div className="border border-neon-red/20 bg-void/60 p-3 space-y-1">
         <p className="text-[9px] uppercase tracking-widest text-neon-red/80">[ РЕЗЕРВНАЯ КОПИЯ КЛЮЧА ]</p>
-        <p className="text-[9px] text-zinc-500 leading-relaxed">
-          Твой приватный ключ хранится <span className="text-zinc-300">только локально</span> в этом браузере. Сервер его не знает и восстановить не может. Скачай резервную копию и храни в надёжном месте — без неё при потере браузера аккаунт будет недоступен навсегда.
+        <p className="text-[9px] text-text-muted leading-relaxed">
+          Твой приватный ключ хранится <span className="text-text-primary">только локально</span> в этом браузере. Сервер его не знает и восстановить не может. Скачай резервную копию и храни в надёжном месте — без неё при потере браузера аккаунт будет недоступен навсегда.
         </p>
-        <p className="text-[9px] text-zinc-600">
+        <p className="text-[9px] text-text-muted/70">
           Файл зашифрован твоим vault-паролем — без него он бесполезен для посторонних.
         </p>
       </div>
@@ -268,7 +268,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         <button
           type="button"
           onClick={handleLinkDeviceClick}
-          className="w-full border border-neon-cyan/70 bg-black px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-cyan/10 active:scale-95 sm:w-auto"
+          className="w-full border border-neon-cyan/70 bg-void px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-cyan/10 active:scale-95 sm:w-auto"
         >
           {t('settings.linkDeviceCta')}
         </button>
@@ -294,7 +294,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
             type="button"
             onClick={() => void onClearRevoked()}
             disabled={busyAction === 'clear-revoked'}
-            className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap !border-zinc-600 !text-zinc-400 hover:!bg-zinc-800/30 sm:flex-1"
+            className="w-full min-w-0 !px-2 !py-1.5 !text-[9px] whitespace-nowrap !border-border-strong/60 !text-text-muted hover:!bg-elevated/30 sm:flex-1"
           >
             {busyAction === 'clear-revoked' ? '…' : t('settings.digitalDenClear')}
           </TerminalGlitchButton>
@@ -310,7 +310,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       <div className="relative min-h-[10rem]">
         {loading ? (
           <div
-            className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-black/55 backdrop-blur-[1px]"
+            className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center bg-void/55 backdrop-blur-[1px]"
             aria-hidden
           >
             <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90">
@@ -326,7 +326,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         {devices.map((d) => (
           <li
             key={d.id}
-            className="border border-zinc-800 bg-black/80 px-2 py-2 font-mono text-[10px] text-zinc-300"
+            className="border border-border-strong bg-void/80 px-2 py-2 font-mono text-[10px] text-text-primary"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
@@ -338,17 +338,17 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                     </span>
                   ) : null}
                   {d.is_master ? (
-                    <span className="ml-2 border border-yellow-500 px-1 text-[9px] uppercase text-yellow-500">
+                    <span className="ml-2 border border-accent-2/40 px-1 text-[9px] uppercase text-accent-2">
                       {t('settings.devicesMaster')}
                     </span>
                   ) : null}
                   {d.revoked ? (
-                    <span className="ml-2 text-red-700">
+                    <span className="ml-2 text-danger">
                       {t('settings.devicesRevoked')}
                     </span>
                   ) : null}
                 </p>
-                <p className="truncate text-[9px] text-zinc-600">
+                <p className="truncate text-[9px] text-text-muted/70">
                   {d.last_active} · {d.ip_address ?? '—'}
                 </p>
               </div>
@@ -358,7 +358,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                     type="button"
                     disabled={busyId === d.id}
                     onClick={() => void onSetMaster(d)}
-                    className="shrink-0 border border-yellow-500/70 px-2 py-1 text-[9px] uppercase text-yellow-500 transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-yellow-500/10 active:scale-95 disabled:opacity-40"
+                    className="shrink-0 border border-accent-2/40 px-2 py-1 text-[9px] uppercase text-accent-2 transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-accent-2/15 active:scale-95 disabled:opacity-40"
                   >
                     {busyId === d.id && busyAction === 'master' ? '…' : t('settings.devicesMaster')}
                   </button>
@@ -372,7 +372,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                   </button>
                 </div>
               ) : !d.revoked && d.is_master ? (
-                <span className="text-[9px] text-yellow-500">{t('settings.devicesMaster')}</span>
+                <span className="text-[9px] text-accent-2">{t('settings.devicesMaster')}</span>
               ) : !d.revoked ? (
                 <button
                   type="button"
@@ -399,21 +399,21 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
           </li>
         ))}
         {!loading && devices.length === 0 ? (
-          <li className="text-[10px] text-zinc-600">{t('sidebar.noActiveRoutes')}</li>
+          <li className="text-[10px] text-text-muted/70">{t('sidebar.noActiveRoutes')}</li>
         ) : null}
         </ul>
       </div>
-      <p className="text-[9px] text-zinc-600">
+      <p className="text-[9px] text-text-muted/70">
         device_id:{' '}
         <span className="text-neon-cyan/80">{user?.device_id ?? '—'}</span>
       </p>
 
       {reauthDevice ? (
-        <div className="border border-neon-cyan/50 bg-black/80 p-3 space-y-2">
+        <div className="border border-neon-cyan/50 bg-void/80 p-3 space-y-2">
           <p className="text-[10px] text-neon-cyan uppercase tracking-widest">
             {t('settings.devicesReauthorize')}: {reauthDevice.device_name}
           </p>
-          <p className="text-[9px] text-zinc-400">
+          <p className="text-[9px] text-text-muted">
             {t('settings.devicesReauthorizeHint')}
           </p>
           <input
@@ -424,7 +424,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
               if (e.key === 'Enter') void onReauthorize()
             }}
             placeholder={t('settings.killPinLabel')}
-            className="w-full border border-neon-cyan/30 bg-black px-2 py-1.5 font-mono text-[10px] text-neon-cyan placeholder-zinc-600 focus:border-neon-cyan focus:outline-none"
+            className="w-full border border-neon-cyan/30 bg-void px-2 py-1.5 font-mono text-[10px] text-neon-cyan placeholder-text-muted focus:border-neon-cyan focus:outline-none"
             autoFocus
           />
           {reauthError ? (
@@ -446,7 +446,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
                 setReauthPin('')
                 setReauthError(null)
               }}
-              className="flex-1 border border-zinc-600 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-zinc-400 hover:bg-zinc-800/30"
+              className="flex-1 border border-border-strong/60 px-2 py-1.5 font-mono text-[9px] uppercase tracking-widest text-text-muted hover:bg-elevated/30"
             >
               {t('common.cancel')}
             </button>
@@ -455,7 +455,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       ) : null}
 
       {showVaultExportPrompt && (
-        <div className="border border-neon-red/50 bg-black/80 p-3">
+        <div className="border border-neon-red/50 bg-void/80 p-3">
           <p className="mb-2 text-[9px] text-neon-red">
             {t('settings.vaultBackupHint')}
           </p>

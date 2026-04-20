@@ -192,7 +192,7 @@ export function LoginForm() {
   }
 
   if (authLoading) return (
-    <div className="border border-neutral-900 bg-black p-6 font-mono text-[10px] uppercase tracking-[0.4em] text-zinc-600 animate-pulse">
+    <div className="border border-border-strong bg-void p-6 font-mono text-[10px] uppercase tracking-[0.4em] text-text-muted/70 animate-pulse">
       {t('login.authLoading')}
     </div>
   )
@@ -212,22 +212,22 @@ export function LoginForm() {
           <motion.form
             key="mfa"
             onSubmit={execMfaSync}
-            className="relative w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl"
+            className="relative w-full max-w-sm border border-border-strong bg-void p-8 shadow-2xl"
             initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
           >
-            <header className="mb-8 border-b border-neutral-900 pb-4">
+            <header className="mb-8 border-b border-border-strong pb-4">
               <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">{t('login.totpTitle')}</p>
             </header>
             <div className="space-y-6">
               <div className="space-y-2">
-                <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-zinc-500">
+                <label htmlFor="totp" className="text-[9px] uppercase tracking-widest text-text-muted">
                   {t('login.totpCodeLabel')}
                 </label>
                 <input
                   id="totp" type="text" inputMode="numeric" maxLength={6}
                   value={totpCode}
                   onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                  className="w-full bg-zinc-950 border border-neutral-900 p-3 font-mono text-xl tracking-[0.6em] text-neon-cyan text-center outline-none focus:border-neon-cyan/50"
+                  className="w-full bg-void border border-border-strong p-3 font-mono text-xl tracking-[0.6em] text-neon-cyan text-center outline-none focus:border-neon-cyan/50"
                   placeholder="000000" autoComplete="one-time-code" autoFocus
                 />
               </div>
@@ -238,7 +238,7 @@ export function LoginForm() {
                 {t('login.totpSubmit')}
               </TerminalGlitchButton>
               <button type="button" onClick={() => setStage('IDENTITY')}
-                className="w-full text-[9px] uppercase tracking-widest text-zinc-700 hover:text-neon-red">
+                className="w-full text-[9px] uppercase tracking-widest text-text-muted/70 hover:text-neon-red">
                 {t('common.back')}
               </button>
             </div>
@@ -250,25 +250,25 @@ export function LoginForm() {
           <motion.form
             key="identity"
             onSubmit={execAuthProtocol}
-            className="relative w-full max-w-sm border border-neutral-900 bg-black p-8 shadow-2xl"
+            className="relative w-full max-w-sm border border-border-strong bg-void p-8 shadow-2xl"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           >
             <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
 
-            <header className="mb-8 border-b border-neutral-900 pb-4">
+            <header className="mb-8 border-b border-border-strong pb-4">
               <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
                 {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
               </p>
-              <p className="mt-1 text-[8px] text-zinc-600 tracking-widest">E2E // ECDSA P-256 // ZERO-TRUST</p>
+              <p className="mt-1 text-[8px] text-text-muted/70 tracking-widest">E2E // ECDSA P-256 // ZERO-TRUST</p>
             </header>
 
             <div className="space-y-6">
 
               {/* TOS при регистрации */}
               {mode === 'GENESIS' && (
-                <div className="border border-zinc-900 bg-zinc-950/50 p-4">
+                <div className="border border-border-strong bg-void/50 p-4">
                   <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">{t('login.tosRegisterTitle')}</p>
-                  <div className="max-h-32 overflow-y-auto text-[9px] leading-relaxed text-zinc-500 pr-2 custom-scrollbar">
+                  <div className="max-h-32 overflow-y-auto text-[9px] leading-relaxed text-text-muted pr-2 custom-scrollbar">
                     {t('login.tosRegisterBody')}
                   </div>
                 </div>
@@ -292,11 +292,11 @@ export function LoginForm() {
               <div className="space-y-2">
                 {mode === 'GENESIS' && (
                   <div className="border-l-2 border-neon-cyan/40 pl-3 space-y-1 mb-3">
-                    <p className="text-[8px] text-zinc-400 leading-relaxed">
+                    <p className="text-[8px] text-text-muted leading-relaxed">
                       Пароль шифрует твой приватный ключ локально.
                       Сервер его не знает и восстановить не может.
                     </p>
-                    <p className="text-[8px] text-zinc-600">
+                    <p className="text-[8px] text-text-muted/70">
                       Если экспортируешь vault-файл на другое устройство — тот же пароль разблокирует его.
                       Запомни или сохрани — без него нет доступа к аккаунту.
                     </p>
@@ -334,7 +334,7 @@ export function LoginForm() {
 
               {/* Предупреждение о длине */}
               {mode === 'GENESIS' && vaultPassword.length > 0 && vaultPassword.length < 8 && (
-                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] text-zinc-400">
+                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] text-text-muted">
                   <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
                 </p>
               )}
@@ -372,15 +372,15 @@ export function LoginForm() {
                 <button type="button"
                   onClick={() => { setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS'); resetForm() }}
                   aria-label={mode === 'ACCESS' ? 'New device' : t('login.existingVault')}
-                  className="text-[9px] uppercase tracking-widest text-zinc-600 hover:text-neon-cyan transition-colors">
+                  className="text-[9px] uppercase tracking-widest text-text-muted/70 hover:text-neon-cyan transition-colors">
                   {mode === 'ACCESS' ? t('login.newDevice') : t('login.existingVault')}
                 </button>
               </div>
 
               {mode === 'ACCESS' && (
-                <div className="mt-6 border-t border-neutral-900 pt-6 space-y-3">
+                <div className="mt-6 border-t border-border-strong pt-6 space-y-3">
                   <button type="button" onClick={handleVaultImport}
-                    className="w-full border border-neutral-800 bg-zinc-950 py-2 text-[9px] uppercase tracking-widest text-zinc-500 hover:border-neon-cyan hover:text-neon-cyan transition-all">
+                    className="w-full border border-border-strong bg-void py-2 text-[9px] uppercase tracking-widest text-text-muted hover:border-neon-cyan hover:text-neon-cyan transition-all">
                     {t('login.vaultRecoveryImport')}
                   </button>
                   {vaultLinkOk && (
@@ -388,7 +388,7 @@ export function LoginForm() {
                   )}
                   <button type="button"
                     onClick={async () => { await clearSessionApi().catch(() => {}); window.location.reload() }}
-                    className="w-full text-[8px] uppercase tracking-widest text-zinc-600 hover:text-zinc-400 transition-colors">
+                    className="w-full text-[8px] uppercase tracking-widest text-text-muted/70 hover:text-text-muted transition-colors">
                     {t('login.clearSession')}
                   </button>
                 </div>

@@ -125,6 +125,75 @@ export async function decryptInboundText(
   return decryptMessage(sharedSecret, ciphertext, iv)
 }
 
+/**
+ * [V2_SEAL] :: Encrypt a DIRECT message using the Double Ratchet if a session
+ * already exists, otherwise transparently fall back to static ECDH (v1).
+ *
+ * Callers should persist the returned `protocol_version` and `dr_header`
+ * alongside the ciphertext in `messages.protocol_version` / `messages.dr_header`.
+ */
+export async function encryptOutboundTextV2(
+  privateKey: CryptoKey,
+  plaintext: string,
+  frame: ChatCryptoContext,
+  ctx: { ownerUserId: string; peerUserId: string | null }
+): Promise<{
+  protocol_version: 1 | 2
+  encrypted_content: string
+  iv: string
+  dr_header: string | null
+}> {
+  if (frame.mode === 'DIRECT' && ctx.peerUserId) {
+    try {
+      const { encryptForPeer } = await import('@/lib/ratchet/session-manager')
+      const wire = await encryptForPeer(ctx.ownerUserId, ctx.peerUserId, plaintext)
+      return {
+        protocol_version: 2,
+        encrypted_content: wire.encrypted_content,
+        iv: wire.iv,
+        dr_header: wire.drHeader,
+      }
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        err.message !== 'RATCHET_NO_SESSION'
+      ) {
+        throw err
+      }
+      // No DR session yet — fall through to legacy v1 path.
+    }
+  }
+  const legacy = await encryptOutboundText(privateKey, plaintext, frame)
+  return { protocol_version: 1, ...legacy, dr_header: null }
+}
+
+/** [V2_UNSEAL] :: Decrypt a message whose frame is tagged v1 or v2. */
+export async function decryptInboundTextV2(
+  privateKey: CryptoKey,
+  frame: ChatCryptoContext,
+  envelope: {
+    protocol_version: number
+    encrypted_content: string
+    iv: string
+    dr_header: string | null
+  },
+  ctx: { ownerUserId: string; peerUserId: string | null }
+): Promise<string> {
+  if (envelope.protocol_version === 2) {
+    if (!ctx.peerUserId || !envelope.dr_header) {
+      throw new Error('ERR_DR_METADATA_MISSING')
+    }
+    const { decryptFromPeer } = await import('@/lib/ratchet/session-manager')
+    return decryptFromPeer(ctx.ownerUserId, ctx.peerUserId, {
+      protocolVersion: 2,
+      drHeader: envelope.dr_header,
+      iv: envelope.iv,
+      encrypted_content: envelope.encrypted_content,
+    })
+  }
+  return decryptInboundText(privateKey, frame, envelope.encrypted_content, envelope.iv)
+}
+
 /** [EXTRACT_SECTOR_KEY] :: Получение AES-GCM ключа для текущего линка */
 export async function getAesKeyForChat(
   privateKey: CryptoKey,

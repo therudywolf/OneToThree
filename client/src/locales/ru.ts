@@ -174,6 +174,7 @@ const ru = {
   'sidebar.createFailed': 'Ошибка создания',
   'sidebar.copyMyInvite': 'Моя ссылка',
   'sidebar.createGroupE2e': 'Новая группа',
+  'sidebar.createChannel': 'Новый канал',
   'sidebar.openPeer': 'Написать',
   'sidebar.savedMessages': 'Сохранённые сообщения',
   'sidebar.noActiveRoutes': 'Нет чатов',

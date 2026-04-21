@@ -112,8 +112,7 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
-  const themeId = useThemeStore((s) => s.theme)
-  const isMd3 = shellMode === 'md3' || themeId === 'md3dark' || themeId === 'md3light'
+  const isMd3 = shellMode === 'md3'
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const setActiveChatId = useSessionStore((s) => s.setActiveChatId)
   const peerPresence = usePresenceStore((s) => s.peerPresence)
@@ -918,18 +917,6 @@ export function ChatSidebar({
         })}
       </nav>
 
-      {isMd3 ? (
-        <button
-          type="button"
-          onClick={() => setGroupModalOpen(true)}
-          aria-label={t('chat.newChat')}
-          title={t('chat.newChat')}
-          className="absolute bottom-6 right-4 z-10 hidden h-14 w-14 items-center justify-center rounded-2xl bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-3)] transition-transform hover:scale-[1.03] active:scale-95 md:inline-flex"
-        >
-          <MessageSquarePlus className="h-6 w-6" />
-        </button>
-      ) : null}
-
       {/* Active Chat Controls */}
       {activeChatId ? (
         <div className="border-t border-neon-cyan/20 bg-void/20 p-3 space-y-2">
@@ -1017,32 +1004,6 @@ export function ChatSidebar({
           </Link>
         ) : null}
 
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={async () => {
-              const origin = window.location.origin
-              const link = `${origin}/?invite=${encodeURIComponent(userId)}`
-              try {
-                await navigator.clipboard.writeText(link)
-                setCreateErr('INVITE_LINK_COPIED')
-              } catch {
-                setCreateErr(link)
-              }
-            }}
-            className={`flex-1 py-1.5 text-[9px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
-          >
-            {t('sidebar.copyMyInvite')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setGroupModalOpen(true)}
-            className={`flex-1 py-1.5 text-[9px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
-          >
-            {t('sidebar.createGroupE2e')}
-          </button>
-        </div>
-
         <div className="pt-2 border-t border-neon-cyan/20">
           <p className="mb-1.5 text-[9px] uppercase tracking-[0.2em] text-neon-cyan/70">
             {t('sidebar.openDirect')}
@@ -1072,6 +1033,41 @@ export function ChatSidebar({
               {t('sidebar.openPeer')}
             </button>
           </div>
+        </div>
+
+        <div className="space-y-2 pt-2 border-t border-neon-cyan/20">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setGroupModalOpen(true)}
+              className={`flex-1 py-2 text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
+            >
+              {t('sidebar.createGroupE2e')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupModalOpen(true)}
+              className={`flex-1 py-2 text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
+            >
+              {t('sidebar.createChannel')}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              const origin = window.location.origin
+              const link = `${origin}/?invite=${encodeURIComponent(userId)}`
+              try {
+                await navigator.clipboard.writeText(link)
+                setCreateErr('INVITE_LINK_COPIED')
+              } catch {
+                setCreateErr(link)
+              }
+            }}
+            className={`w-full py-2 text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-1)] hover:brightness-110' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
+          >
+            {t('sidebar.copyMyInvite')}
+          </button>
         </div>
       </div>
     </aside>

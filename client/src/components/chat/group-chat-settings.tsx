@@ -199,7 +199,6 @@ export function GroupChatSettings({
       for (const m of editable) {
         const nextRole: ChannelFeedRole =
           mode === 'all_members' ? 'editor' : m.role === 'owner' || m.role === 'admin' ? 'editor' : 'subscriber'
-        // eslint-disable-next-line no-await-in-loop
         await patchChannelMemberFeedRole(chatId, m.user_id, nextRole)
       }
       await syncSector()

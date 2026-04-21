@@ -120,9 +120,9 @@ export type AccentPreset = {
   accent: string
 }
 
-const VOID_PRIMARY = '#ff4d6d'
-const VOID_ACCENT = '#33f0ff'
-const VOID_AMBER = '#ffbf47'
+const VOID_PRIMARY = '#ff2a3d'
+const VOID_ACCENT = '#00e8ff'
+const VOID_AMBER = '#ffb347'
 
 const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
@@ -216,9 +216,9 @@ export const THEMES: ThemeConfig[] = [
     elevated: '#24151d',
     text: '#ffe7c2',
     muted: '#c3aa87',
-    primary: VOID_PRIMARY,
-    accent: VOID_ACCENT,
-    accentSoft: VOID_AMBER,
+    primary: '#ff5f3d',
+    accent: '#2ff3ff',
+    accentSoft: '#ffc166',
     border: '#4a3320',
     success: VOID_AMBER,
     danger: '#ff5d4a',
@@ -489,13 +489,6 @@ function inferShellFromLegacyTheme(theme: ThemeId | undefined): ShellModeId {
   return 'terminal'
 }
 
-/** Palette themes that ship as a fixed pair with a shell (Cyber sharp / MD3 rounded). */
-function shellModeForTheme(id: ThemeId): ShellModeId | null {
-  if (id === 'cyberpunk2077') return 'terminal'
-  if (id === 'md3dark' || id === 'md3light') return 'md3'
-  return null
-}
-
 export function resolveThemeAppearance(input: Pick<
   ChromaticState,
   | 'theme'
@@ -514,20 +507,14 @@ export function resolveThemeAppearance(input: Pick<
       ? ACCENT_PRESET_BY_ID[input.accentPreset]
       : null
 
-  const isLockedVoidPalette =
-    shellId === 'terminal' &&
-    (base.id === 'default' || base.id === 'cyberpunk2077')
-
-  const primary = isLockedVoidPalette
-    ? VOID_PRIMARY
-    : normalizeHex(input.primaryColorOverride) ??
-      normalizeHex(preset?.primary) ??
-      base.tokens.primary
-  const accent = isLockedVoidPalette
-    ? VOID_ACCENT
-    : normalizeHex(input.accentColorOverride) ??
-      normalizeHex(preset?.accent) ??
-      base.tokens.accent
+  const primary =
+    normalizeHex(input.primaryColorOverride) ??
+    normalizeHex(preset?.primary) ??
+    base.tokens.primary
+  const accent =
+    normalizeHex(input.accentColorOverride) ??
+    normalizeHex(preset?.accent) ??
+    base.tokens.accent
   const background =
     normalizeHex(input.backgroundColorOverride) ?? base.tokens.background
 
@@ -555,14 +542,15 @@ export function resolveThemeAppearance(input: Pick<
     elevated,
     primary,
     accent,
-    accentSoft: isLockedVoidPalette
-      ? VOID_AMBER
-      : mixColors(accent, base.scheme === 'light' ? '#ffffff' : '#d9faff', base.scheme === 'light' ? 0.45 : 0.2),
-    border: mixColors(accent, background, base.scheme === 'light' ? 0.82 : 0.68),
+    accentSoft: mixColors(accent, base.scheme === 'light' ? '#ffffff' : '#d9faff', base.scheme === 'light' ? 0.45 : 0.2),
+    border:
+      base.id === 'md3dark' || base.id === 'md3light'
+        ? base.tokens.border
+        : mixColors(accent, background, base.scheme === 'light' ? 0.82 : 0.68),
     shadowRgb: rgbTriplet(accent),
     pageGlow: mixColors(primary, background, base.scheme === 'light' ? 0.68 : 0.26),
     pageGlowSecondary: mixColors(accent, background, base.scheme === 'light' ? 0.72 : 0.22),
-    success: isLockedVoidPalette ? VOID_AMBER : base.tokens.success,
+    success: base.tokens.success,
     // Shell preset owns typography + shape + CRT:
     fontFamily: shell.fontFamily,
     panelRadius: shell.panelRadius,
@@ -599,13 +587,7 @@ export const useThemeStore = create<ChromaticState>()(
       accentColorOverride: null,
       backgroundColorOverride: null,
       motionMode: 'full',
-      setTheme: (id) =>
-        set(() => {
-          const paired = shellModeForTheme(id)
-          return paired
-            ? { theme: id, shellMode: paired }
-            : { theme: id }
-        }),
+      setTheme: (id) => set({ theme: id }),
       setShellMode: (mode) => set({ shellMode: mode }),
       setAccentPreset: (id) => {
         const preset = ACCENT_PRESET_BY_ID[id]

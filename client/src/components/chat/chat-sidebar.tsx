@@ -418,8 +418,12 @@ export function ChatSidebar({
     }
   }, [chats, userId])
 
+  const visibleFolders = folders.length
+    ? folders
+    : [{ id: 'all', name: t('sidebar.channels'), chatIds: [], excludedChatIds: [], isSystem: true, rule: { includeDirect: true, includeGroups: true, includeChannels: true, includeSaved: false, includeMuted: true, includeRead: true } }]
+
   return (
-    <aside className={`relative flex h-full w-full min-w-0 flex-col md:w-[21.5rem] md:shrink-0 ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-r border-neon-cyan/30 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_92%,transparent),color-mix(in_srgb,var(--void)_84%,transparent))] backdrop-blur-xl shadow-[8px_0_40px_rgba(0,0,0,0.32),1px_0_0_rgba(255,255,255,0.02)]'}`}>
+    <aside className={`relative flex h-full w-full min-w-0 flex-row md:w-[21.5rem] md:shrink-0 ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-r border-neon-cyan/30 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_92%,transparent),color-mix(in_srgb,var(--void)_84%,transparent))] backdrop-blur-xl shadow-[8px_0_40px_rgba(0,0,0,0.32),1px_0_0_rgba(255,255,255,0.02)]'}`}>
       {groupModalOpen ? (
         <CreateGroupModal
           userId={userId}
@@ -432,219 +436,112 @@ export function ChatSidebar({
         />
       ) : null}
 
-      {/* Header */}
-      <div className={`border-b px-4 py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface)_96%,transparent),color-mix(in_srgb,var(--surface-elevated)_88%,transparent))]'}`}>
-        <div className="flex items-center justify-between gap-2">
-          <span className={`block text-[11px] font-semibold ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : 'uppercase tracking-[0.28em] text-neon-cyan'}`}>
-            {t('sidebar.channels')}
-          </span>
-          <span className="flex h-2 w-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_8px_rgba(0,255,255,0.85)]" />
-        </div>
-      </div>
-
-      {/* Folders */}
-      <div className={`border-b px-3 py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/20'}`}>
-        <div className="custom-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1">
-          {(folders.length ? folders : [{ id: 'all', name: t('sidebar.channels'), chatIds: [], excludedChatIds: [], rule: { includeDirect: true, includeGroups: true, includeChannels: true, includeSaved: false, includeMuted: true, includeRead: true } }]).map((folder) => {
-            const matchingChats = nonSelfChats.filter((c) =>
-              folderMatchesChat(folder, c, userId, {
-                unreadTotal: unreadByChat[c.id]?.total ?? 0,
-                muted: isChatMuted(c),
-              })
-            )
-            const count = matchingChats.length
-            const unreadCount = matchingChats.reduce((acc, c) => acc + (unreadByChat[c.id]?.total ?? 0), 0)
-            const mentionCount = matchingChats.reduce((acc, c) => acc + (unreadByChat[c.id]?.mentions ?? 0), 0)
-            const Icon = folderIcon(folder)
-            return (
-              <button
-                key={folder.id}
-                type="button"
-                ref={(el) => {
-                  folderButtonRefs.current[folder.id] = el
-                }}
-                draggable={!folder.isSystem}
-                onDragStart={(e) => {
-                  if (folder.isSystem) return
-                  setDragFolderId(folder.id)
-                  e.dataTransfer.setData('text/folder-id', folder.id)
-                }}
-                onDragOver={(e) => {
-                  if (!dragFolderId || dragFolderId === folder.id) return
-                  if (folder.isSystem) return
-                  e.preventDefault()
-                  setDragOverFolderId(folder.id)
-                }}
-                onDragLeave={() => setDragOverFolderId((prev) => (prev === folder.id ? null : prev))}
-                onDrop={(e) => {
-                  if (folder.isSystem) return
-                  const sourceId = e.dataTransfer.getData('text/folder-id')
-                  if (!sourceId || sourceId === folder.id) return
-                  reorderCustomFolders(sourceId, folder.id)
-                  setFolders(loadChatFolders())
-                  setDragFolderId(null)
-                  setDragOverFolderId(null)
-                }}
-                onDragEnd={() => {
-                  setDragFolderId(null)
-                  setDragOverFolderId(null)
-                }}
-                onContextMenu={(e) => {
-                  if (folder.isSystem) return
-                  e.preventDefault()
-                  setFolderMenu({ folderId: folder.id, x: e.clientX, y: e.clientY })
-                }}
-                onDoubleClick={() => {
-                  if (folder.isSystem) return
-                  setRenamingFolderId(folder.id)
-                  setRenamingFolderName(folder.name)
-                }}
-                onClick={() => setActiveFolderId(folder.id)}
-                className={`inline-flex shrink-0 items-center gap-1 px-2.5 py-1 text-[10px] transition-colors ${
-                  activeFolderId === folder.id
-                    ? isMd3
-                      ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]'
-                      : 'border border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan'
-                    : isMd3
-                      ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
-                      : 'border border-border-strong/40 bg-void font-mono uppercase tracking-[0.12em] text-text-muted hover:text-neon-cyan'
-                } ${dragOverFolderId === folder.id ? (isMd3 ? 'ring-2 ring-[var(--neon-red)]' : 'ring-2 ring-neon-cyan') : ''}`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {renamingFolderId === folder.id ? (
-                  <input
-                    autoFocus
-                    value={renamingFolderName}
-                    onChange={(e) => setRenamingFolderName(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        setRenamingFolderId(null)
-                        setRenamingFolderName('')
-                        return
-                      }
-                      if (e.key === 'Enter') {
-                        const nextName = renamingFolderName.trim()
-                        if (!nextName) return
-                        upsertChatFolder({ ...folder, name: nextName })
-                        setFolders(loadChatFolders())
-                        setRenamingFolderId(null)
-                        setRenamingFolderName('')
-                      }
-                    }}
-                    onBlur={() => {
-                      const nextName = renamingFolderName.trim()
-                      if (nextName) {
-                        upsertChatFolder({ ...folder, name: nextName })
-                        setFolders(loadChatFolders())
-                      }
-                      setRenamingFolderId(null)
-                      setRenamingFolderName('')
-                    }}
-                    className={`w-24 bg-transparent text-[10px] focus:outline-none ${isMd3 ? 'text-[var(--surface)]' : 'text-neon-cyan'}`}
-                  />
-                ) : (
-                  folder.name
-                )}
-                <span className={`px-1 py-[1px] text-[9px] ${
-                  activeFolderId === folder.id
-                    ? isMd3
-                      ? 'rounded-full bg-[color-mix(in_srgb,var(--surface)_40%,transparent)] text-[var(--surface)]'
-                      : 'rounded border border-neon-cyan/40'
-                    : isMd3
-                      ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-text-muted'
-                      : 'rounded border border-border-strong/30 text-text-muted'
-                }`}>
-                  {count}
-                </span>
-                {unreadCount > 0 ? (
-                  <span className={`px-1 py-[1px] text-[9px] ${
-                    activeFolderId === folder.id
-                      ? isMd3
-                        ? 'rounded-full bg-[color-mix(in_srgb,var(--surface)_40%,transparent)] text-[var(--surface)]'
-                        : 'rounded border border-neon-red/40 text-neon-red'
-                      : isMd3
-                        ? 'rounded-full bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)]'
-                        : 'rounded border border-neon-red/40 text-neon-red'
-                  }`}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                ) : null}
-                {mentionCount > 0 ? (
-                  <span className={`px-1 py-[1px] text-[9px] ${
-                    activeFolderId === folder.id
-                      ? isMd3
-                        ? 'rounded-full bg-[color-mix(in_srgb,var(--surface)_40%,transparent)] text-[var(--surface)]'
-                        : 'rounded border border-accent-2/50 text-accent-2'
-                      : isMd3
-                        ? 'rounded-full bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] text-[var(--on-surface)]'
-                        : 'rounded border border-accent-2/50 text-accent-2'
-                  }`}>
-                    @{mentionCount > 99 ? '99+' : mentionCount}
-                  </span>
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
-        {folderMenu ? (
-          <div
-            className="fixed z-[220] min-w-[11rem] border border-border-strong bg-surface p-1 shadow-2xl"
-            style={{ left: folderMenu.x, top: folderMenu.y }}
-          >
+      {/* Vertical folder rail — Telegram-style left column */}
+      <nav className={`custom-scrollbar flex shrink-0 flex-col items-center gap-0.5 overflow-y-auto py-2 w-14 ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-r border-neon-cyan/15'}`}>
+        {visibleFolders.map((folder) => {
+          const matchingChats = nonSelfChats.filter((c) =>
+            folderMatchesChat(folder, c, userId, {
+              unreadTotal: unreadByChat[c.id]?.total ?? 0,
+              muted: isChatMuted(c),
+            })
+          )
+          const unreadCount = matchingChats.reduce((acc, c) => acc + (unreadByChat[c.id]?.total ?? 0), 0)
+          const mentionCount = matchingChats.reduce((acc, c) => acc + (unreadByChat[c.id]?.mentions ?? 0), 0)
+          const Icon = folderIcon(folder)
+          const isActive = activeFolderId === folder.id
+          return (
             <button
+              key={folder.id}
               type="button"
-              className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
-              onClick={() => {
-                const folder = folders.find((f) => f.id === folderMenu.folderId)
-                if (!folder || folder.isSystem) return
+              ref={(el) => { folderButtonRefs.current[folder.id] = el }}
+              title={folder.name}
+              draggable={!folder.isSystem}
+              onDragStart={(e) => {
+                if (folder.isSystem) return
+                setDragFolderId(folder.id)
+                e.dataTransfer.setData('text/folder-id', folder.id)
+              }}
+              onDragOver={(e) => {
+                if (!dragFolderId || dragFolderId === folder.id || folder.isSystem) return
+                e.preventDefault()
+                setDragOverFolderId(folder.id)
+              }}
+              onDragLeave={() => setDragOverFolderId((prev) => (prev === folder.id ? null : prev))}
+              onDrop={(e) => {
+                if (folder.isSystem) return
+                const sourceId = e.dataTransfer.getData('text/folder-id')
+                if (!sourceId || sourceId === folder.id) return
+                reorderCustomFolders(sourceId, folder.id)
+                setFolders(loadChatFolders())
+                setDragFolderId(null)
+                setDragOverFolderId(null)
+              }}
+              onDragEnd={() => { setDragFolderId(null); setDragOverFolderId(null) }}
+              onContextMenu={(e) => {
+                if (folder.isSystem) return
+                e.preventDefault()
+                setFolderMenu({ folderId: folder.id, x: e.clientX, y: e.clientY })
+              }}
+              onDoubleClick={() => {
+                if (folder.isSystem) return
                 setRenamingFolderId(folder.id)
                 setRenamingFolderName(folder.name)
-                setFolderMenu(null)
               }}
+              onClick={() => setActiveFolderId(folder.id)}
+              className={`relative flex flex-col items-center justify-center w-10 h-10 rounded-xl transition-all ${
+                isActive
+                  ? isMd3
+                    ? 'bg-[var(--neon-red)] text-[var(--surface)]'
+                    : 'bg-neon-cyan/15 text-neon-cyan border border-neon-cyan/40'
+                  : isMd3
+                    ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                    : 'text-text-muted/60 hover:text-neon-cyan hover:bg-neon-cyan/8'
+              } ${dragOverFolderId === folder.id ? (isMd3 ? 'ring-2 ring-[var(--neon-red)]' : 'ring-2 ring-neon-cyan') : ''}`}
             >
-              Переименовать
+              <Icon className="h-4 w-4 shrink-0" />
+              {(unreadCount > 0 || mentionCount > 0) && !isActive ? (
+                <span className={`absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[8px] font-bold ${isMd3 ? 'bg-[var(--neon-red)] text-[var(--surface)]' : 'bg-neon-red text-text-primary'}`}>
+                  {mentionCount > 0 ? `@${mentionCount > 9 ? '9+' : mentionCount}` : unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              ) : null}
             </button>
-            <button
-              type="button"
-              className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
-              onClick={() => {
-                const copy = duplicateChatFolder(folderMenu.folderId)
-                if (copy) {
-                  setFolders(loadChatFolders())
-                  setActiveFolderId(copy.id)
-                }
-                setFolderMenu(null)
-              }}
-            >
-              Дублировать
-            </button>
-            <button
-              type="button"
-              className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
-              onClick={() => {
-                resetChatFolderRules(folderMenu.folderId)
-                setFolders(loadChatFolders())
-                setFolderMenu(null)
-              }}
-            >
-              Сбросить правила
-            </button>
-            <button
-              type="button"
-              className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
-              onClick={() => {
-                deleteChatFolder(folderMenu.folderId)
-                setFolders(loadChatFolders())
-                if (activeFolderId === folderMenu.folderId) setActiveFolderId('all')
-                setFolderMenu(null)
-              }}
-            >
-              Удалить
-            </button>
-          </div>
-        ) : null}
-      </div>
+          )
+        })}
+      </nav>
+      {folderMenu ? (
+        <div
+          className="fixed z-[220] min-w-[11rem] border border-border-strong bg-surface p-1 shadow-2xl"
+          style={{ left: folderMenu.x, top: folderMenu.y }}
+          onMouseLeave={() => setFolderMenu(null)}
+        >
+          <button type="button" className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
+            onClick={() => {
+              const folder = folders.find((f) => f.id === folderMenu.folderId)
+              if (!folder || folder.isSystem) return
+              setRenamingFolderId(folder.id)
+              setRenamingFolderName(folder.name)
+              setFolderMenu(null)
+            }}>Переименовать</button>
+          <button type="button" className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
+            onClick={() => {
+              const copy = duplicateChatFolder(folderMenu.folderId)
+              if (copy) { setFolders(loadChatFolders()); setActiveFolderId(copy.id) }
+              setFolderMenu(null)
+            }}>Дублировать</button>
+          <button type="button" className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
+            onClick={() => { resetChatFolderRules(folderMenu.folderId); setFolders(loadChatFolders()); setFolderMenu(null) }}>Сбросить правила</button>
+          <button type="button" className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
+            onClick={() => {
+              deleteChatFolder(folderMenu.folderId)
+              setFolders(loadChatFolders())
+              if (activeFolderId === folderMenu.folderId) setActiveFolderId('all')
+              setFolderMenu(null)
+            }}>Удалить</button>
+        </div>
+      ) : null}
+
+      {/* Right panel — search + chat list + compose */}
+      <div className="flex flex-col flex-1 min-w-0">
 
       {/* Search */}
       <div className={`border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/25'}`}>
@@ -1070,6 +967,8 @@ export function ChatSidebar({
           </button>
         </div>
       </div>
+
+      </div>{/* end right panel */}
     </aside>
   )
 }

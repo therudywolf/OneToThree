@@ -671,6 +671,9 @@ if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
   sync_secret_to_env "acme_email"           "ACME_EMAIL"
   sync_secret_to_env "turn_external_ip"     "TURN_EXTERNAL_IP"
   sync_secret_to_env "vapid_subject"        "VAPID_SUBJECT"
+  sync_secret_to_env "vapid_public_key"     "VAPID_PUBLIC_KEY"
+  sync_secret_to_env "vapid_public_key"     "NEXT_PUBLIC_VAPID_PUBLIC_KEY"
+  sync_secret_to_env "vapid_private_key"    "VAPID_PRIVATE_KEY"
   if [[ -f "$SECRETS_DIR/domain" ]]; then
     DOMAIN_VAL=$(cat "$SECRETS_DIR/domain")
     current_api=$(val_for_key NEXT_PUBLIC_API_URL)

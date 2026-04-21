@@ -67,6 +67,10 @@ export type WsInboundMessage =
         created_at: string
         read_at?: string | null
         burn_at?: string | null
+        /** Double Ratchet v2 — same fields as REST ApiMessageRow. */
+        protocol_version?: 1 | 2 | null
+        dr_header?: string | null
+        dr_init?: string | null
       }
     }
   | { type: 'webrtc_signal'; fromUserId: string; signalData: unknown }

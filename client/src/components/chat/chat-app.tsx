@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star, Settings, Search } from 'lucide-react'
+import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -54,6 +54,8 @@ import { useGroupCallStore } from '@/store/groupCallStore'
 import { useMobileViewport } from '@/hooks/use-mobile-viewport'
 import { useNotificationOpen } from '@/hooks/use-notification-open'
 import { useThemeStore } from '@/store/themeStore'
+import { isApprovedContact } from '@/lib/contacts-store'
+import { UserAvatar } from '@/components/user-avatar'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -127,9 +129,12 @@ export function ChatApp({
   const setUserId = useChatStore((s) => s.setUserId)
   const setSelfUsername = useChatStore((s) => s.setSelfUsername)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
+  const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
   const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const activeChatId = useChatStore((s) => s.activeChatId)
   const historyDecryptBusy = useChatStore((s) => s.historyDecryptBusy)
+  const unreadTotal = useChatStore((s) => s.unreadTotal)
+  const unreadByChat = useChatStore((s) => s.unreadByChat)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [identityOpen, setIdentityOpen] = useState(false)
   const [peerIdentity, setPeerIdentity] = useState<{
@@ -161,10 +166,12 @@ export function ChatApp({
   >({})
   const [groupDetailTick, setGroupDetailTick] = useState(0)
   const [peerAvatarKey, setPeerAvatarKey] = useState<string | null>(null)
+  const [peerApproved, setPeerApproved] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [headerProfileOpen, setHeaderProfileOpen] = useState(false)
   const [md3HeaderCondensed, setMd3HeaderCondensed] = useState(false)
+  const [isOnline, setIsOnline] = useState(true)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
 
@@ -243,6 +250,18 @@ export function ChatApp({
   }, [activeChatId])
 
   useEffect(() => {
+    setIsOnline(window.navigator.onLine)
+    const onOnline = () => setIsOnline(true)
+    const onOffline = () => setIsOnline(false)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!isMd3) {
       setMd3HeaderCondensed(false)
       return
@@ -261,11 +280,13 @@ export function ChatApp({
   useEffect(() => {
     if (!activeChatId || !userId) {
       setPeerIdentity(null)
+      setPeerApproved(false)
       return
     }
     const active = chats.find((c) => c.id === activeChatId)
     if (!active || active.is_group) {
       setPeerIdentity(null)
+      setPeerApproved(false)
       return
     }
     const peerId = active.member_ids.find(
@@ -273,6 +294,7 @@ export function ChatApp({
     )
     if (!peerId) {
       setPeerIdentity(null)
+      setPeerApproved(false)
       return
     }
 
@@ -295,8 +317,12 @@ export function ChatApp({
           ecdhPublicKeyJwk: row.ecdh_public_key_jwk,
           verified: trust.verified,
         })
+        setPeerApproved(isApprovedContact(peerId))
       } catch {
-        if (!cancelled) setPeerIdentity(null)
+        if (!cancelled) {
+          setPeerIdentity(null)
+          setPeerApproved(false)
+        }
       }
     })()
     return () => { cancelled = true }
@@ -394,6 +420,12 @@ export function ChatApp({
   const peerPresenceRow = directPeerIdForPresence
     ? peerPresence[directPeerIdForPresence]
     : undefined
+  const canShowCallControls =
+    !!activeChatId && !!activeRow && !activeRow.is_group && !isSelfChat
+  const mentionTotal = Object.values(unreadByChat).reduce(
+    (acc, row) => acc + (row.mentions ?? 0),
+    0
+  )
 
   const scratchers = activeChatId
     ? Object.values(typingUsers[activeChatId] ?? {})
@@ -539,6 +571,7 @@ export function ChatApp({
               prev ? { ...prev, verified } : prev
             )
           }
+          onContactApprovedChanged={setPeerApproved}
         />
       ) : null}
       {headerProfileOpen && peerIdentity ? (
@@ -620,6 +653,9 @@ export function ChatApp({
                 {peerIdentity.verified ? (
                   <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" />
                 ) : null}
+                {peerApproved ? (
+                  <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" />
+                ) : null}
                 <span className="truncate max-w-[140px] md:max-w-xs">@{peerIdentity.username}</span>
               </button>
               {/* Presence */}
@@ -649,24 +685,37 @@ export function ChatApp({
         {/* RIGHT: calls block + separator + settings icon */}
         <div className="flex shrink-0 items-center gap-1.5">
 
-          {/* Calls block — visually grouped */}
-          <div className={`flex items-center gap-1 p-0.5 ${isMd3 ? 'rounded-full bg-transparent' : 'border border-neon-cyan/20 bg-void'}`}>
-            <CallHeaderButtons
-              disabled={!activeChatId || !!ctxError}
-              peerReady={peerReady}
-              onVoiceCall={() => {
-                if (activeRow?.is_group) void handleGroupVoiceCall()
-                else void handleVoiceCall()
-              }}
-              onVideoCall={() => {
-                if (activeRow?.is_group) void handleGroupVideoCall()
-                else void handleVideoCall()
-              }}
-            />
-          </div>
+          {canShowCallControls ? (
+            <>
+              {/* Calls block — visually grouped */}
+              <div className={`flex items-center gap-1 p-0.5 ${isMd3 ? 'rounded-full bg-transparent' : 'border border-neon-cyan/20 bg-void'}`}>
+                <CallHeaderButtons
+                  disabled={!activeChatId || !!ctxError}
+                  peerReady={peerReady}
+                  onVoiceCall={() => {
+                    if (activeRow?.is_group) void handleGroupVoiceCall()
+                    else void handleVoiceCall()
+                  }}
+                  onVideoCall={() => {
+                    if (activeRow?.is_group) void handleGroupVideoCall()
+                    else void handleVideoCall()
+                  }}
+                />
+              </div>
 
-          {/* Vertical separator */}
-          <span className={`h-6 w-px shrink-0 ${isMd3 ? 'bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'bg-neon-cyan/20'}`} aria-hidden />
+              {/* Vertical separator */}
+              <span className={`h-6 w-px shrink-0 ${isMd3 ? 'bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'bg-neon-cyan/20'}`} aria-hidden />
+            </>
+          ) : (
+            <div className={`hidden md:flex min-w-[15rem] flex-col items-end px-2 ${isMd3 ? 'text-text-muted' : 'font-mono'}`}>
+              <span className={`${isMd3 ? 'text-[11px] font-semibold text-[var(--on-surface)]' : 'text-[10px] uppercase tracking-[0.3em] text-neon-cyan/75'}`}>
+                ONETOTHREE
+              </span>
+              <span className={`${isMd3 ? 'text-[10px]' : 'text-[9px] uppercase tracking-[0.18em] text-neon-cyan/45'}`}>
+                E2E messenger
+              </span>
+            </div>
+          )}
 
           {/* Per-chat search — opens dock search slot on xl+, or toggles an
               inline overlay on narrower viewports. Gated on an active chat. */}
@@ -690,6 +739,75 @@ export function ChatApp({
               <Search className="h-4 w-4" aria-hidden />
             </button>
           ) : null}
+
+          <div
+            className={`hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[10px] ${
+              isMd3
+                ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
+                : 'border border-neon-cyan/30 bg-void font-mono uppercase tracking-[0.16em] text-neon-cyan/80'
+            }`}
+            title={mentionTotal > 0 ? `Mentions: ${mentionTotal}` : 'Unread messages'}
+          >
+            <span className="opacity-80">Inbox</span>
+            <span
+              className={`px-1.5 py-[1px] ${
+                isMd3
+                  ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]'
+                  : 'border border-neon-cyan/50 text-neon-cyan'
+              }`}
+            >
+              {unreadTotal > 99 ? '99+' : unreadTotal}
+            </span>
+            {mentionTotal > 0 ? (
+              <span
+                className={`px-1.5 py-[1px] ${
+                  isMd3
+                    ? 'rounded-full bg-[color-mix(in_srgb,var(--neon-red)_24%,transparent)] text-[var(--on-surface)]'
+                    : 'border border-accent-2/50 text-accent-2'
+                }`}
+              >
+                @{mentionTotal > 99 ? '99+' : mentionTotal}
+              </span>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setUnwrappedPrivateKey(null)}
+            aria-label="Lock vault"
+            title="Lock vault"
+            className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] transition-colors ${
+              isMd3
+                ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
+                : 'border border-neon-red/45 bg-void font-mono uppercase tracking-[0.14em] text-neon-red/85 hover:bg-neon-red/10'
+            }`}
+          >
+            <Lock className="h-3.5 w-3.5" aria-hidden />
+            <span className="hidden md:inline">Vault</span>
+          </button>
+
+          <div
+            className={`hidden md:inline-flex items-center gap-2 px-2 py-1 ${
+              isMd3
+                ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                : 'border border-neon-cyan/25 bg-void'
+            }`}
+            title={isOnline ? 'Online' : 'Offline'}
+          >
+            <UserAvatar
+              userId={userId}
+              username={user?.username ?? username}
+              avatarKey={user?.avatar_key ?? null}
+              size={22}
+            />
+            <span className={`max-w-[9rem] truncate text-[10px] ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono uppercase tracking-[0.14em] text-neon-cyan/85'}`}>
+              @{user?.username ?? username}
+            </span>
+            <span className={`inline-flex items-center gap-1 text-[9px] ${isMd3 ? 'text-text-muted' : 'font-mono text-neon-cyan/65'}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-neon-cyan' : 'bg-neon-red'}`} />
+              {isOnline ? 'online' : 'offline'}
+            </span>
+          </div>
 
           {/* Settings — gear icon always, no text label */}
           <button

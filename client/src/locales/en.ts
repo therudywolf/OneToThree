@@ -776,6 +776,16 @@ const en = {
   'thread.inputPlaceholder': 'Reply...',
   'thread.close': 'Close thread',
   'thread.openThread': 'Open thread',
+
+  // [IDENTITY]
+  'identity.verifyHint': 'Compare this code with your contact via a secure external channel.',
+  'identity.compromisedAlert': '[!] ALERT: TRUST_REVOKED // Peer key changed. Potential interception attempt.',
+  'identity.revokeTrust': '[ SEVER_TRUST_LINK ]',
+  'identity.validateIdentity': '[ VALIDATE_IDENTITY ]',
+  'identity.addToContacts': '[ ADD_TO_CONTACTS ]',
+  'identity.removeContact': '[ REMOVE_FROM_CONTACTS ]',
+  'identity.contactApproved': 'Contact approved on this device.',
+  'identity.contactNotApproved': 'Contact is not approved yet.',
 } as const;
 
 export default en;

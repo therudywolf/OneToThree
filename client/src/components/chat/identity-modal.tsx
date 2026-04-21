@@ -10,6 +10,12 @@ import {
   revokeVerifiedTrust,
   setVerifiedHash,
 } from '@/lib/trust-store'
+import {
+  approveContact,
+  isApprovedContact,
+  revokeContact,
+} from '@/lib/contacts-store'
+import { useTranslation } from '@/hooks/use-translation'
 
 /**
  * ONETOTHREE :: NODE_INTEGRITY_CHECK
@@ -24,6 +30,7 @@ type Props = {
   myEcdhPublicKeyJwk: string
   onClose: () => void
   onTrustChanged?: (verified: boolean) => void
+  onContactApprovedChanged?: (approved: boolean) => void
 }
 
 export function IdentityModal({
@@ -33,10 +40,13 @@ export function IdentityModal({
   myEcdhPublicKeyJwk,
   onClose,
   onTrustChanged,
+  onContactApprovedChanged,
 }: Props) {
+  const { t } = useTranslation()
   const [nodeFingerprint, setNodeFingerprint] = useState('...')
   const [keyHash, setKeyHash] = useState('')
   const [isTrusted, setIsTrusted] = useState(false)
+  const [isApproved, setIsApproved] = useState(false)
   const [isCompromised, setIsCompromised] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
 
@@ -61,6 +71,7 @@ export function IdentityModal({
         const { verified, revokedByKeyChange } = resolveTrustStatus(peerUserId, hash)
         setIsTrusted(verified)
         setIsCompromised(revokedByKeyChange)
+        setIsApproved(isApprovedContact(peerUserId))
       } catch (err) {
         console.error('[SYS.CRYPTO] Integrity check failed:', err)
       } finally {
@@ -88,6 +99,18 @@ export function IdentityModal({
     setIsTrusted(true)
     setIsCompromised(false)
     onTrustChanged?.(true)
+  }
+
+  const toggleContactApproval = () => {
+    if (isApproved) {
+      revokeContact(peerUserId)
+      setIsApproved(false)
+      onContactApprovedChanged?.(false)
+      return
+    }
+    approveContact(peerUserId)
+    setIsApproved(true)
+    onContactApprovedChanged?.(true)
   }
 
   return (
@@ -128,30 +151,49 @@ export function IdentityModal({
               </pre>
             </div>
             <p className="text-[9px] leading-relaxed text-text-muted/70">
-              {">"} Сверь этот код с контактом через защищенный внешний канал.
+              {`> ${t('identity.verifyHint')}`}
             </p>
           </div>
 
           {/* ALERT_SECTION */}
           {isCompromised && (
             <div className="border border-neon-red/50 bg-neon-red/5 p-3 font-mono text-[10px] text-neon-red animate-pulse">
-              [!] ALERT: TRUST_REVOKED // Ключ узла был изменен. Возможна попытка перехвата.
+              {t('identity.compromisedAlert')}
             </div>
           )}
 
           {/* ACTION_CONTROL */}
-          <button
-            type="button"
-            disabled={isScanning || !keyHash}
-            onClick={toggleTrustProtocol}
-            className={`w-full border py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] transition-all ${
-              isTrusted 
-                ? 'border-neon-red text-neon-red hover:bg-neon-red hover:text-text-primary' 
-                : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'
-            } disabled:opacity-20`}
-          >
-            {isTrusted ? '[ SEVER_TRUST_LINK ]' : '[ VALIDATE_IDENTITY ]'}
-          </button>
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled={isScanning || !keyHash}
+              onClick={toggleTrustProtocol}
+              className={`w-full border py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] transition-all ${
+                isTrusted
+                  ? 'border-neon-red text-neon-red hover:bg-neon-red hover:text-text-primary'
+                  : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'
+              } disabled:opacity-20`}
+            >
+              {isTrusted ? t('identity.revokeTrust') : t('identity.validateIdentity')}
+            </button>
+            <button
+              type="button"
+              disabled={!isTrusted || isScanning}
+              onClick={toggleContactApproval}
+              className={`w-full border py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] transition-all ${
+                isApproved
+                  ? 'border-neon-red/60 text-neon-red hover:bg-neon-red/10'
+                  : 'border-neon-cyan/70 text-neon-cyan hover:bg-neon-cyan/10'
+              } disabled:opacity-20`}
+            >
+              {isApproved ? t('identity.removeContact') : t('identity.addToContacts')}
+            </button>
+            <p className="text-[9px] text-text-muted/70">
+              {isApproved
+                ? t('identity.contactApproved')
+                : t('identity.contactNotApproved')}
+            </p>
+          </div>
         </div>
 
         {/* FOOTER_MARK */}

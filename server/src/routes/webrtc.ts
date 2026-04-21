@@ -110,13 +110,12 @@ function buildEphemeralCoturnCredentials(
 
 function collectCoturnIceServers(userId: string): IceServerConfig[] {
   const rawUrls = [process.env.TURN_URLS, process.env.TURN_URL]
-  const authSecret =
-    readSecret('TURN_AUTH_SECRET')?.trim() || process.env.TURN_AUTH_SECRET?.trim()
+  const envAuthSecret = process.env.TURN_AUTH_SECRET?.trim()
+  const authSecret = envAuthSecret || readSecret('TURN_AUTH_SECRET')?.trim()
 
   const rawUser = (process.env.TURN_USERNAME || process.env.TURN_USER)?.trim()
-  const rawPassword =
-    readSecret('TURN_PASSWORD')?.trim() ||
-    (process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
+  const envStaticPassword = (process.env.TURN_SECRET || process.env.TURN_CREDENTIAL)?.trim()
+  const rawPassword = envStaticPassword || readSecret('TURN_PASSWORD')?.trim()
 
   const includeTlsFallback = (process.env.TURN_ENABLE_TLS_FALLBACK ?? '1') !== '0'
   const parsedTlsPorts = parseTurnUrls(process.env.TURN_TLS_PORTS ?? '443,5349')
@@ -129,6 +128,18 @@ function collectCoturnIceServers(userId: string): IceServerConfig[] {
     .flatMap((u) => toOrderedTurnCandidates(u, tlsPorts, includeTlsFallback))
   const urls = Array.from(new Set(allCandidates.filter(isAllowedIceUrl))).slice(0, MAX_TURN_URL_CANDIDATES)
   if (urls.length === 0) return []
+
+  // Explicit env static credentials should override auth-secret/file defaults for testability and operator intent.
+  if (rawUser && envStaticPassword) {
+    return [{ urls, username: rawUser, credential: envStaticPassword }]
+  }
+
+  if (envAuthSecret) {
+    const ttlRaw = Number.parseInt(process.env.TURN_CREDENTIAL_TTL_SEC ?? '86400', 10)
+    const ttlSec = Number.isFinite(ttlRaw) && ttlRaw > 60 && ttlRaw <= 86400 * 7 ? ttlRaw : 86400
+    const { username, credential } = buildEphemeralCoturnCredentials(envAuthSecret, userId, ttlSec)
+    return [{ urls, username, credential }]
+  }
 
   if (authSecret) {
     const ttlRaw = Number.parseInt(process.env.TURN_CREDENTIAL_TTL_SEC ?? '86400', 10)

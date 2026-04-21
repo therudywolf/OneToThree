@@ -64,9 +64,11 @@ yarn-error.log*
 # Vercel / misc
 .vercel
 .cursor/
+.claude/
 .idea/
 .vscode/
 *.pem
+*.codex-temp.*
 
 # PWA / next-pwa generated (regenerated on build)
 **/public/sw.js

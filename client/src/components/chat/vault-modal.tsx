@@ -28,6 +28,7 @@ import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { vibrateShort } from '@/lib/vibrate'
 import { useTranslation } from '@/hooks/use-translation'
 import { isIOSOrIPadOS } from '@/lib/ios'
+import { useThemeStore } from '@/store/themeStore'
 
 /** Detect if the device likely uses Face ID (iOS) vs fingerprint (Android/other) */
 function useBiometricIcon() {
@@ -46,6 +47,8 @@ type Props = {
 export function VaultModal({ userId, displayHandle }: Props) {
   const { t } = useTranslation()
   const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isMd3 = shellMode === 'md3'
   const BiometricIcon = useBiometricIcon()
 
   const [pin, setPin] = useState('')
@@ -182,27 +185,35 @@ export function VaultModal({ userId, displayHandle }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-void/95 px-4 backdrop-blur-md"
+      className={`fixed inset-0 z-[200] flex items-center justify-center px-4 ${
+        isMd3
+          ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
+          : 'bg-void/95 backdrop-blur-md'
+      }`}
       role="dialog"
       aria-modal="true"
       aria-label="Key vault"
     >
-      <div className="w-full max-w-sm space-y-6 border border-neon-cyan/40 bg-void p-6 shadow-[0_0_30px_rgba(0,255,255,0.05)]">
-        <header className="border-b border-neon-cyan/30 pb-4">
-          <p className="font-mono text-sm uppercase tracking-[0.35em] text-neon-cyan animate-pulse">
+      <div className={`w-full max-w-sm space-y-6 p-6 ${
+        isMd3
+          ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
+          : 'border border-neon-cyan/40 bg-void shadow-[0_0_30px_rgba(0,255,255,0.05)]'
+      }`}>
+        <header className={`pb-4 ${isMd3 ? 'border-b border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-b border-neon-cyan/30'}`}>
+          <p className={`text-sm ${isMd3 ? 'font-medium tracking-normal text-[var(--on-surface)]' : 'font-mono uppercase tracking-[0.35em] text-neon-cyan animate-pulse'}`}>
             {t('login.vaultPassphraseLabel')}
           </p>
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
+          <p className={`mt-2 text-[10px] ${isMd3 ? 'tracking-wide text-text-muted' : 'font-mono uppercase tracking-widest text-neon-cyan/60'}`}>
             {displayHandle}
           </p>
-          <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-danger">
+          <p className={`mt-1 text-[9px] ${isMd3 ? 'text-text-muted' : 'font-mono uppercase tracking-widest text-danger'}`}>
             E2E // {t('login.pinMin8')}
           </p>
         </header>
 
         <form onSubmit={(ev) => void handleUnlock(ev)} className="space-y-5">
           <div>
-            <label className="mb-2 block font-mono text-[10px] uppercase tracking-widest text-neon-cyan/70" htmlFor="vault-pin">
+            <label className={`mb-2 block text-[10px] ${isMd3 ? 'tracking-wide text-text-muted' : 'font-mono uppercase tracking-widest text-neon-cyan/70'}`} htmlFor="vault-pin">
               {t('login.vaultPassphraseLabel')}
             </label>
             <input
@@ -210,20 +221,35 @@ export function VaultModal({ userId, displayHandle }: Props) {
               type="password"
               autoComplete="current-password"
               autoFocus
-              className="w-full border border-neon-cyan/30 bg-void px-3 py-2 font-mono text-neon-cyan transition-colors focus:border-neon-cyan focus:bg-neon-cyan/5 focus:outline-none"
+              className={`w-full px-3 py-2 transition-colors focus:outline-none ${
+                isMd3
+                  ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
+                  : 'border border-neon-cyan/30 bg-void font-mono text-neon-cyan focus:border-neon-cyan focus:bg-neon-cyan/5'
+              }`}
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               required
             />
           </div>
           {error ? (
-            <p className="border-l-2 border-neon-red bg-danger/30 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red">
+            <p className={`px-3 py-2 text-[10px] ${isMd3 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]' : 'border-l-2 border-neon-red bg-danger/30 font-mono uppercase tracking-widest text-neon-red'}`}>
               {error}
             </p>
           ) : null}
-          <TerminalGlitchButton type="submit" disabled={busy} aria-label="UNLOCK" className="w-full">
-            {t('login.signIn')}
-          </TerminalGlitchButton>
+          {isMd3 ? (
+            <button
+              type="submit"
+              disabled={busy}
+              aria-label="UNLOCK"
+              className="w-full rounded-full bg-[var(--neon-red)] px-4 py-2 text-[var(--surface)] shadow-[var(--md3-elevation-2)] transition-colors hover:brightness-110 disabled:opacity-50"
+            >
+              {t('login.signIn')}
+            </button>
+          ) : (
+            <TerminalGlitchButton type="submit" disabled={busy} aria-label="UNLOCK" className="w-full">
+              {t('login.signIn')}
+            </TerminalGlitchButton>
+          )}
         </form>
       </div>
     </div>

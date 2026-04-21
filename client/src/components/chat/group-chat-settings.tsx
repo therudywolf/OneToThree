@@ -20,6 +20,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { UserAvatar } from '@/components/user-avatar'
 import { MediaArchivePanel } from '@/components/chat/media-archive-panel'
 import { useChatStore } from '@/store/chatStore'
+import { useThemeStore } from '@/store/themeStore'
 
 /**
  * PROJECT 13 :: SECTOR_AUTHORITY_HUB
@@ -45,6 +46,8 @@ export function GroupChatSettings({
   onChanged: () => void
 }) {
   const { t } = useTranslation()
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isMd3 = shellMode === 'md3'
   const [activeTab, setActiveTab] = useState<'nodes' | 'vault'>('nodes')
   const [protocol, setProtocol] = useState<{
     chat_type: string
@@ -185,6 +188,29 @@ export function GroupChatSettings({
     }
   }
 
+  const applyChannelPostingMode = async (mode: 'all_members' | 'admins_only') => {
+    if (!protocol || protocol.chat_type !== 'channel') return
+    const editable = protocol.members.filter(
+      (m) => canonicalUserId(m.user_id) !== canonicalUserId(userId)
+    )
+    setIsBusy(true)
+    setErrorLog(null)
+    try {
+      for (const m of editable) {
+        const nextRole: ChannelFeedRole =
+          mode === 'all_members' ? 'editor' : m.role === 'owner' || m.role === 'admin' ? 'editor' : 'subscriber'
+        // eslint-disable-next-line no-await-in-loop
+        await patchChannelMemberFeedRole(chatId, m.user_id, nextRole)
+      }
+      await syncSector()
+      onChanged()
+    } catch (e) {
+      setErrorLog(e instanceof Error ? e.message : 'CHANNEL_MODE_FAILED')
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
   const openDiscussionChat = () => {
     const id = protocol?.discussion_chat_id
     if (!id) return
@@ -203,14 +229,24 @@ export function GroupChatSettings({
   const activeLink = protocol.invite_code ? `${window.location.origin}/join/${protocol.invite_code}` : null
 
   return (
-    <div className="flex flex-col border-t border-border-strong bg-void font-mono text-[10px] uppercase tracking-[0.2em] text-text-muted">
+    <div className={`flex flex-col border-t text-[10px] ${
+      isMd3
+        ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] text-text-muted'
+        : 'border-border-strong bg-void font-mono uppercase tracking-[0.2em] text-text-muted'
+    }`}>
       
       {/* TACTICAL_TABS */}
-      <div className="flex border-b border-border-strong">
+      <div className={`flex border-b ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-border-strong'}`}>
         <button
           onClick={() => setActiveTab('nodes')}
           className={`flex-1 flex items-center justify-center gap-2 py-3 transition-all ${
-            activeTab === 'nodes' ? 'bg-void text-neon-cyan' : 'hover:bg-void/50'
+            activeTab === 'nodes'
+              ? isMd3
+                ? 'bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
+                : 'bg-void text-neon-cyan'
+              : isMd3
+                ? 'hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                : 'hover:bg-void/50'
           }`}
         >
           <ShieldAlert className="h-3 w-3" />
@@ -219,7 +255,13 @@ export function GroupChatSettings({
         <button
           onClick={() => setActiveTab('vault')}
           className={`flex-1 flex items-center justify-center gap-2 py-3 transition-all ${
-            activeTab === 'vault' ? 'bg-void text-neon-cyan' : 'hover:bg-void/50'
+            activeTab === 'vault'
+              ? isMd3
+                ? 'bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
+                : 'bg-void text-neon-cyan'
+              : isMd3
+                ? 'hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                : 'hover:bg-void/50'
           }`}
         >
           <Database className="h-3 w-3" />
@@ -290,6 +332,22 @@ export function GroupChatSettings({
                   ))}
                 </select>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => void applyChannelPostingMode('all_members')}
+                    className="border border-neon-cyan/50 bg-void px-3 py-1.5 text-[8px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
+                  >
+                    Все участники пишут
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => void applyChannelPostingMode('admins_only')}
+                    className="border border-neon-cyan/50 bg-void px-3 py-1.5 text-[8px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
+                  >
+                    Только админы пишут
+                  </button>
                   <button
                     type="button"
                     disabled={isBusy}

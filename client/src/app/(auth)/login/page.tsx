@@ -5,6 +5,7 @@ import { LoginForm } from '@/components/login-form'
 import { LoginQrDevicePanel } from '@/components/login-qr-device-panel'
 import { LocaleToggle } from '@/components/locale-toggle'
 import { WelcomeScreen } from '@/components/onboarding/welcome-screen'
+import { useThemeStore } from '@/store/themeStore'
 
 /**
  * ONETOTHREE :: GATEWAY_NODE
@@ -16,6 +17,8 @@ export const dynamic = 'force-dynamic'
 
 export default function LoginPage() {
   const [showWelcome, setShowWelcome] = useState(false)
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isMd3 = shellMode === 'md3'
 
   useEffect(() => {
     if (navigator.webdriver) return
@@ -30,7 +33,9 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-void px-4 py-16 font-mono selection:bg-neon-red selection:text-text-primary">
+    <main className={`relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-16 selection:bg-neon-red selection:text-text-primary ${
+      isMd3 ? 'bg-[var(--surface)] font-sans' : 'bg-void font-mono'
+    }`}>
       {showWelcome && <WelcomeScreen onContinue={dismissWelcome} />}
       
       {/* BACKGROUND_FX :: Стерильный градиент и шум */}
@@ -40,23 +45,33 @@ export default function LoginPage() {
       </div>
 
       {/* TACTICAL_CONTROLS :: Переключатель модулей */}
-      <div className="absolute right-6 top-6 z-20 border border-border-strong bg-void/50 p-1 backdrop-blur-md">
+      <div className={`absolute right-6 top-6 z-20 p-1 backdrop-blur-md ${
+        isMd3
+          ? 'rounded-2xl border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[color-mix(in_srgb,var(--surface)_88%,transparent)]'
+          : 'border border-border-strong bg-void/50'
+      }`}>
         <LocaleToggle />
       </div>
 
       {/* HEADER_UNIT :: Идентификация системы */}
       <header className="relative z-10 mb-12 flex flex-col items-center text-center">
-        <div className="mb-4 flex h-12 w-12 items-center justify-center border border-neon-red bg-danger/30 shadow-[0_0_20px_rgba(255,0,0,0.1)]">
+        <div className={`mb-4 flex h-12 w-12 items-center justify-center ${
+          isMd3
+            ? 'rounded-2xl bg-[color-mix(in_srgb,var(--neon-red)_20%,transparent)]'
+            : 'border border-neon-red bg-danger/30 shadow-[0_0_20px_rgba(255,0,0,0.1)]'
+        }`}>
           <span className="h-4 w-4 animate-pulse bg-neon-red" />
         </div>
         
-        <h1 className="text-xl font-bold uppercase tracking-[0.5em] text-text-primary md:text-2xl">
+        <h1 className={`text-xl font-bold text-text-primary md:text-2xl ${
+          isMd3 ? 'tracking-wide' : 'uppercase tracking-[0.5em]'
+        }`}>
           ONETOTHREE
         </h1>
         
         <div className="mt-4 flex items-center gap-3">
           <span className="h-[1px] w-8 bg-elevated" />
-          <p className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan/70">
+          <p className={`text-[10px] ${isMd3 ? 'tracking-wide text-text-muted' : 'uppercase tracking-[0.4em] text-neon-cyan/70'}`}>
             :: NODE_ENTRY_PROTOCOL ::
           </p>
           <span className="h-[1px] w-8 bg-elevated" />
@@ -66,8 +81,12 @@ export default function LoginPage() {
       {/* AUTH_BLOCKS :: Основные модули входа */}
       <section className="relative z-10 flex w-full max-w-sm flex-col gap-6">
         {/* Модуль стандартных учетных данных */}
-        <div className="border border-border-strong bg-void/40 p-1 backdrop-blur-sm">
-          <div className="border border-border-strong p-6">
+        <div className={`p-1 backdrop-blur-sm ${
+          isMd3
+            ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-2)]'
+            : 'border border-border-strong bg-void/40'
+        }`}>
+          <div className={`${isMd3 ? 'rounded-[24px] p-6' : 'border border-border-strong p-6'}`}>
             <LoginForm />
           </div>
         </div>
@@ -80,7 +99,11 @@ export default function LoginPage() {
         </div>
 
         {/* Модуль аппаратной привязки (QR) */}
-        <div className="border border-border-strong bg-void/50 p-6 shadow-2xl transition-all hover:border-neon-cyan/30">
+        <div className={`p-6 transition-all ${
+          isMd3
+            ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-2)]'
+            : 'border border-border-strong bg-void/50 shadow-2xl hover:border-neon-cyan/30'
+        }`}>
           <LoginQrDevicePanel />
         </div>
       </section>

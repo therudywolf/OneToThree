@@ -26,6 +26,7 @@ import { SettingsMediaPanel } from '@/components/settings-media-panel'
 import { SettingsPushNotifications } from '@/components/settings-push-notifications'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { SettingsAvatarSection } from '@/components/settings-avatar-section'
+import { SettingsChatFoldersPanel } from '@/components/settings-chat-folders-panel'
 import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { patchMyProfile } from '@/lib/api/users'
@@ -78,7 +79,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableCode, setTotpDisableCode] = useState('')
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'main' | 'profile' | 'media' | 'devices' | 'security'>('main')
+  const [settingsTab, setSettingsTab] = useState<'main' | 'profile' | 'media' | 'devices' | 'security' | 'folders'>('main')
   const [changePinOpen, setChangePinOpen] = useState(false)
   const [changePinOld, setChangePinOld] = useState('')
   const [changePinNew, setChangePinNew] = useState('')
@@ -446,8 +447,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       <motion.div
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${
-          settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' ? 'max-w-2xl'
+          className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${
+          settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' || settingsTab === 'folders' ? 'max-w-2xl'
           : settingsTab === 'profile' ? 'max-w-lg'
           : totpSetup ? 'max-w-lg' : 'max-w-md'
         } ${isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : ''}`}
@@ -465,7 +466,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
         {/* ── Tabs ── */}
         <div className={`flex shrink-0 flex-col gap-2 border-b py-2 sm:flex-row sm:flex-wrap sm:overflow-x-auto ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
-          {(['main', 'profile', 'security', 'media', 'devices'] as const).map((tab) => (
+          {(['main', 'profile', 'folders', 'security', 'media', 'devices'] as const).map((tab) => (
             <button key={tab} type="button" onClick={() => setSettingsTab(tab)}
               className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
                 settingsTab === tab
@@ -478,6 +479,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               }`}>
               {tab === 'main'     ? `${isMd3 ? '' : '[ '}${t('settings.tabGeneral')}${isMd3 ? '' : ' ]'}`
               : tab === 'profile' ? `${isMd3 ? '' : '[ '}${t('profile.section')}${isMd3 ? '' : ' ]'}`
+              : tab === 'folders' ? `${isMd3 ? '' : '[ '}Папки${isMd3 ? '' : ' ]'}`
               : tab === 'security'? `${isMd3 ? '' : '[ '}${t('settings.tabSecurity')}${isMd3 ? '' : ' ]'}`
               : tab === 'media'   ? `${isMd3 ? '' : '[ '}${t('settings.tabMedia')}${isMd3 ? '' : ' ]'}`
               :                     `${isMd3 ? '' : '[ '}${t('settings.tabDevices')}${isMd3 ? '' : ' ]'}`}
@@ -792,6 +794,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           {/* ════════════ MEDIA / DEVICES TABS ════════════ */}
           {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
           {settingsTab === 'devices' ? <SettingsDevicesPanel userId={userId} active /> : null}
+          {settingsTab === 'folders' ? <SettingsChatFoldersPanel userId={userId} /> : null}
 
           {/* ════════════ PROFILE TAB ════════════ */}
           {settingsTab === 'profile' ? (

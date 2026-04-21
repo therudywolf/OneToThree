@@ -179,7 +179,7 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 ```
 
 Эта команда:
-1. Загружает последний код из git (`git pull origin master`)
+1. Загружает последний код из git (`git pull origin main`)
 2. Пересобирает Docker-образы
 3. Перезапускает контейнеры с `--remove-orphans`
 4. Миграции базы данных выполняются автоматически через контейнер `db-migrate` при старте

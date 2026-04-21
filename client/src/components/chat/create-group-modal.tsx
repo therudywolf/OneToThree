@@ -8,6 +8,7 @@ import { createPublicOpenChat } from '@/lib/api/chats'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 import type { TranslationKey } from '@/hooks/use-translation'
+import { useThemeStore } from '@/store/themeStore'
 
 /**
  * PROJECT 13 :: CHANNEL_GENESIS_NODE
@@ -47,10 +48,12 @@ function mapSystemError(raw: string, t: (k: TranslationKey) => string): string {
 
 export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
   const { t } = useTranslation()
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isMd3 = shellMode === 'md3'
   const { createGroup, busy, error, clearError, reset } = useCreateGroup(userId)
   
   const [channelName, setChannelName] = useState('')
-  const [isPublic, setIsPublic] = useState(false)
+  const [createMode, setCreateMode] = useState<'group' | 'channel'>('group')
   const [searchQuery, setSearchQuery] = useState('')
   const [radarResults, setRadarResults] = useState<SearchUserRow[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -60,10 +63,10 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
 
   const systemMessage = useMemo(
     () => {
-      const e = isPublic ? publicError : error
+      const e = createMode === 'channel' ? publicError : error
       return e ? mapSystemError(e, t) : null
     },
-    [error, publicError, isPublic, t]
+    [error, publicError, createMode, t]
   )
 
   useEffect(() => {
@@ -111,7 +114,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
     clearError()
     setPublicError(null)
 
-    if (isPublic) {
+    if (createMode === 'channel') {
       if (!channelName.trim()) return
       setPublicBusy(true)
       try {
@@ -142,28 +145,34 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
     }
   }
 
-  const isBusy = isPublic ? publicBusy : busy
-  const canInitialize = isPublic
+  const isBusy = createMode === 'channel' ? publicBusy : busy
+  const canInitialize = createMode === 'channel'
     ? !!channelName.trim() && !publicBusy
     : selectedNodes.length > 0 && !busy
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-void/90 px-4 backdrop-blur-sm"
+      className={`fixed inset-0 z-[120] flex items-center justify-center px-4 ${
+        isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : 'bg-void/90 backdrop-blur-sm'
+      }`}
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-lg border border-border-strong bg-void p-6 shadow-2xl">
+      <div className={`relative w-full max-w-lg p-6 ${
+        isMd3
+          ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
+          : 'border border-border-strong bg-void shadow-2xl'
+      }`}>
         {/* TOP_DECOR */}
         <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50" />
 
-        <header className="mb-6 flex items-start justify-between border-b border-border-strong pb-4">
+        <header className={`mb-6 flex items-start justify-between pb-4 ${isMd3 ? 'border-b border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-b border-border-strong'}`}>
           <div className="space-y-1">
-            <h2 className="text-[10px] uppercase tracking-[0.4em] text-neon-cyan">
+            <h2 className={`text-[10px] ${isMd3 ? 'tracking-wide text-[var(--on-surface)]' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>
               {t('group.title')}
             </h2>
-            <p className="font-mono text-[9px] text-text-muted/70">
-              {isPublic ? t('group.hintPublic') : t('group.hintEcdh')}
+            <p className={`text-[9px] ${isMd3 ? 'tracking-normal text-text-muted' : 'font-mono text-text-muted/70'}`}>
+              {createMode === 'channel' ? t('group.hintPublic') : t('group.hintEcdh')}
             </p>
           </div>
           <button
@@ -176,36 +185,60 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
         </header>
 
         <form onSubmit={(ev) => void handleGenesis(ev)} className="space-y-5">
-          {/* PUBLIC_GROUP_TOGGLE */}
-          <div className="border border-border-strong bg-void p-3 transition-colors hover:border-border-strong">
-            <label className="flex cursor-pointer items-center gap-3">
-              <input
-                type="checkbox"
-                checked={isPublic}
-                onChange={(e) => setIsPublic(e.target.checked)}
-                className="h-3 w-3 accent-neon-cyan"
-              />
-              <span className="text-[9px] uppercase tracking-widest text-text-muted">
-                {t('group.publicToggle')}
-              </span>
-            </label>
-            <p className="mt-2 pl-6 text-[8px] leading-relaxed text-text-muted/70">
-              {isPublic ? t('group.publicHintChecked') : t('group.publicHintUnchecked')}
+          <div className={`p-3 ${isMd3 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-border-strong bg-void transition-colors hover:border-border-strong'}`}>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCreateMode('group')}
+                className={`px-3 py-1 text-[9px] ${
+                  createMode === 'group'
+                    ? isMd3
+                      ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]'
+                      : 'border border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                    : isMd3
+                      ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
+                      : 'border border-border-strong text-text-muted'
+                }`}
+              >
+                Группа (E2E)
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateMode('channel')}
+                className={`px-3 py-1 text-[9px] ${
+                  createMode === 'channel'
+                    ? isMd3
+                      ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]'
+                      : 'border border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                    : isMd3
+                      ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
+                      : 'border border-border-strong text-text-muted'
+                }`}
+              >
+                Канал (Broadcast)
+              </button>
+            </div>
+            <p className="mt-2 text-[8px] leading-relaxed text-text-muted/70">
+              {createMode === 'channel' ? t('group.publicHintChecked') : t('group.publicHintUnchecked')}
             </p>
           </div>
 
           {/* CHANNEL_NAME_INPUT */}
           <div className="space-y-2">
             <label className="text-[9px] uppercase tracking-widest text-text-muted" htmlFor="grp-name">
-              {t('group.channelName')}{isPublic ? ' *' : ''}
+              {t('group.channelName')}{createMode === 'channel' ? ' *' : ''}
             </label>
             <input
               id="grp-name"
               autoFocus
-              className="w-full border border-border-strong bg-void px-3 py-2 font-mono text-xs text-text-primary outline-none transition-all focus:border-neon-cyan/50"
+              className={`w-full px-3 py-2 text-xs text-text-primary outline-none transition-all ${
+                isMd3
+                  ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] focus:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
+                  : 'border border-border-strong bg-void font-mono focus:border-neon-cyan/50'
+              }`}
               value={channelName}
               onChange={(e) => setChannelName(e.target.value)}
-              placeholder={isPublic ? t('group.publicNameRequired') : t('group.optional')}
+              placeholder={createMode === 'channel' ? t('group.publicNameRequired') : t('group.optional')}
               autoComplete="off"
             />
           </div>
@@ -251,7 +284,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
                     }`}
                   >
                     <span>{node.username}</span>
-                    {!isPublic && (
+                    {createMode !== 'channel' && (
                       <span className={`text-[9px] ${node.ecdh_public_key_jwk ? 'text-text-muted/70' : 'text-neon-red'}`}>
                         {node.ecdh_public_key_jwk ? 'P256_READY' : t('group.noEcdhBadge')}
                       </span>
@@ -280,13 +313,23 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
 
           {/* ACTION_CONTROLS */}
           <div className="flex gap-3 pt-2">
-            <TerminalGlitchButton
-              type="submit"
-              disabled={!canInitialize}
-              className="flex-1"
-            >
-              {isBusy ? t('group.creating') : t('group.create')}
-            </TerminalGlitchButton>
+            {isMd3 ? (
+              <button
+                type="submit"
+                disabled={!canInitialize}
+                className="flex-1 rounded-full bg-[var(--neon-red)] px-4 py-2 text-[var(--surface)] shadow-[var(--md3-elevation-2)] disabled:opacity-40"
+              >
+                {isBusy ? t('group.creating') : t('group.create')}
+              </button>
+            ) : (
+              <TerminalGlitchButton
+                type="submit"
+                disabled={!canInitialize}
+                className="flex-1"
+              >
+                {isBusy ? t('group.creating') : t('group.create')}
+              </TerminalGlitchButton>
+            )}
             
             <button
               type="button"

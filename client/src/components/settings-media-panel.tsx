@@ -295,7 +295,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           playsInline
           muted
           controls={false}
-          className={`mt-1 h-48 w-full object-cover ${isMd3 ? 'rounded-[20px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-black' : 'border border-neon-cyan/30 bg-void'}`}
+          className={`mt-1 h-48 w-full object-cover ${isMd3 ? 'rounded-[20px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-void' : 'border border-neon-cyan/30 bg-void'}`}
         />
         {previewError ? (
           <p className="mt-2 break-words border border-neon-red/60 px-2 py-1 font-mono text-[10px] text-neon-red">

@@ -82,7 +82,8 @@ export async function deriveSessionWrapKey(identity: IdentityKeyPair): Promise<C
     ENC.encode('p13:dr:session-wrap:v1'),
     32
   )
-  return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 }, false, [
+  const keyMaterial = new Uint8Array(raw)
+  return crypto.subtle.importKey('raw', keyMaterial, { name: 'AES-GCM', length: 256 }, false, [
     'encrypt',
     'decrypt',
   ])

@@ -174,6 +174,7 @@ const en = {
   'sidebar.createFailed': 'Creation failed',
   'sidebar.copyMyInvite': 'My Link',
   'sidebar.createGroupE2e': 'New Group',
+  'sidebar.createChannel': 'New Channel',
   'sidebar.openPeer': 'Message',
   'sidebar.savedMessages': 'Saved Messages',
   'sidebar.noActiveRoutes': 'No chats',

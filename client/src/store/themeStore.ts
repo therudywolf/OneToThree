@@ -189,7 +189,7 @@ function makeTheme(
 }
 
 export const THEMES: ThemeConfig[] = [
-  makeTheme('default', 'VOID // DEFAULT', 'dark', {
+  makeTheme('default', '13 // DEFAULT', 'dark', {
     background: '#05070a',
     surface: '#0d1218',
     elevated: '#111923',

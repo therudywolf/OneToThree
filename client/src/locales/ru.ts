@@ -398,6 +398,7 @@ const ru = {
   'settings.changePinSuccess': 'Пароль хранилища изменён.',
 
   'settings.tabGeneral': 'Основное',
+  'settings.tabChats': 'Чаты и оформление',
   'settings.tabMedia': 'Камера и микрофон',
   'settings.mediaSectionTitle': 'Камера и микрофон',
   'settings.mediaHint': 'Выбор устройств ввода и вывода.',

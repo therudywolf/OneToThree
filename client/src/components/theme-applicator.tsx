@@ -66,9 +66,15 @@ export function ThemeApplicator() {
       resolved.shell.textShadowIntensity
     )
 
-    // --- shape ---
-    html.style.setProperty('--border-radius', resolved.tokens.panelRadius)
-    html.style.setProperty('--radius-md', resolved.tokens.controlRadius)
+    // --- shape (all radius vars must follow shell so no component leaks rounded corners) ---
+    const panelR = resolved.tokens.panelRadius
+    const ctrlR = resolved.tokens.controlRadius
+    html.style.setProperty('--border-radius', panelR)
+    html.style.setProperty('--radius-md', ctrlR)
+    // Derive sm/lg proportionally from panel/control so they stay consistent.
+    // Terminal shell: both are 0px → all stay 0.  MD3 shell: scale naturally.
+    html.style.setProperty('--radius-sm', ctrlR === '0px' ? '0px' : '4px')
+    html.style.setProperty('--radius-lg', panelR === '0px' ? '0px' : '16px')
 
     // --- background glow ---
     html.style.setProperty('--page-glow', resolved.tokens.pageGlow)

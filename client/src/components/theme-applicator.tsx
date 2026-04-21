@@ -80,10 +80,11 @@ export function ThemeApplicator() {
     html.style.setProperty('--page-glow', resolved.tokens.pageGlow)
     html.style.setProperty('--page-glow-secondary', resolved.tokens.pageGlowSecondary)
 
-    // --- motion ---
-    const fast = resolved.motionMode === 'reduced' ? '0ms' : '120ms'
-    const base = resolved.motionMode === 'reduced' ? '0ms' : '220ms'
-    const slow = resolved.motionMode === 'reduced' ? '0ms' : '360ms'
+    // --- motion (shell-aware: MD3 uses Material 3 spec timings) ---
+    const isMd3Shell = resolved.shell.id === 'md3'
+    const fast = resolved.motionMode === 'reduced' ? '0ms' : isMd3Shell ? '100ms' : '120ms'
+    const base = resolved.motionMode === 'reduced' ? '0ms' : isMd3Shell ? '200ms' : '220ms'
+    const slow = resolved.motionMode === 'reduced' ? '0ms' : isMd3Shell ? '300ms' : '360ms'
     html.style.setProperty('--motion-fast', fast)
     html.style.setProperty('--motion-base', base)
     html.style.setProperty('--motion-slow', slow)

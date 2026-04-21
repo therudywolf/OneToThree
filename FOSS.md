@@ -10,10 +10,10 @@
 > Every key lives in your browser. Every call is peer-to-peer.
 > If the server is seized, the attacker gets encrypted noise and timestamps — nothing else.
 
-Forest Messenger is a self-hosted, end-to-end encrypted communication platform built on a
+OneToThree is a self-hosted, end-to-end encrypted communication platform built on a
 zero-trust server model. Unlike Signal (centralized, phone-number identity), Telegram
 (server-side encryption optional, phone required), or Matrix (federated but complex),
-Forest Messenger is:
+OneToThree is:
 
 | | One To Three | Signal | Telegram | Matrix |
 |---|---|---|---|---|
@@ -505,7 +505,7 @@ Groups use a shared symmetric key. The creator distributes it encrypted per-memb
 
 ## Data Flow — What the Server Sees
 
-This is the most important section. Forest Messenger operates on a **zero-trust server** model:
+This is the most important section. OneToThree operates on a **zero-trust server** model:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -914,7 +914,7 @@ OneToThree/
 ## Mobile Strategy
 
 ### Current: PWA (Progressive Web App)
-Forest Messenger ships as a full-featured PWA installable on Android and iOS.
+OneToThree ships as a full-featured PWA installable on Android and iOS.
 
 | Feature | Android Chrome | iOS Safari (16.4+) |
 |---------|---------------|-------------------|
@@ -969,7 +969,7 @@ This project is open source. See the LICENSE file for details.
 
 <div align="center">
 
-**Forest Messenger** — *Your messages. Your server. Your keys.*
+**OneToThree** — *Your messages. Your server. Your keys.*
 
 Built by [rudywolf](https://github.com/rudywolf)
 

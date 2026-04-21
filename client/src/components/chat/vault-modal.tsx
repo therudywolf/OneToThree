@@ -15,6 +15,8 @@ import {
   CURRENT_VAULT_VERSION,
   readVaultBlob,
   unwrapPrivateJwkWithPin,
+  upgradeVaultBlob,
+  persistVaultBlob,
   VaultVersionMismatchError,
 } from '@/lib/vault'
 import {
@@ -121,6 +123,11 @@ export function VaultModal({ userId, displayHandle }: Props) {
         throw new VaultVersionMismatchError()
       }
       const plain = await unwrapPrivateJwkWithPin(blob, pin)
+      if (blob.version < CURRENT_VAULT_VERSION) {
+        upgradeVaultBlob(blob, pin)
+          .then((upgraded) => persistVaultBlob(userId, upgraded))
+          .catch(() => { /* non-fatal — user stays on legacy vault */ })
+      }
       await applyPlaintext(plain)
       vibrateShort(20)
     } catch (err) {

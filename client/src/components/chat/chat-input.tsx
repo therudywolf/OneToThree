@@ -546,24 +546,24 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       />
 
       {replyTo && !editingMessage ? (
-        <div className="mb-2 flex items-center gap-2 border-l-2 border-neon-cyan/50 pl-2">
-          <p className="min-w-0 flex-1 truncate font-mono text-[10px] text-neon-cyan/70">
+        <div className="p13-reply-banner">
+          <p className="p13-reply-banner-text">
             ↳ {t('chat.replyBanner')}:{' '}
             {replyTo.plaintext ? replyTo.plaintext.slice(0, 80) : '[MEDIA]'}
           </p>
-          <button type="button" onClick={() => setReplyTo(null)} className="shrink-0 font-mono text-[10px] text-danger hover:text-neon-red">[X]</button>
+          <button type="button" onClick={() => setReplyTo(null)} className="p13-banner-dismiss">[X]</button>
         </div>
       ) : null}
 
       {editingMessage ? (
-        <div className="mb-2 flex items-center gap-2 border-l-2 border-[color-mix(in_srgb,var(--accent)_60%,transparent)] pl-2">
-          <p className="min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-widest text-[var(--accent)]">
+        <div className="p13-edit-banner">
+          <p className="p13-edit-banner-text">
             {t('msgAction.edit')}: {editingMessage.plaintext?.slice(0, 80) ?? '…'}
           </p>
           <button
             type="button"
             onClick={() => { setEditingMessage(null); setMessageText('') }}
-            className="shrink-0 font-mono text-[10px] text-danger hover:text-neon-red"
+            className="p13-banner-dismiss"
           >
             [X]
           </button>
@@ -572,30 +572,30 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
 
       {/* Locked recording controls */}
       {isRecordingUI && recordLocked ? (
-        <div className="flex items-center gap-3 py-1">
+        <div className="p13-record-bar">
           <button type="button" onClick={() => void cancelRecording()}
-            className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-red/70 bg-void text-neon-red transition-colors hover:bg-neon-red/10"
+            className="p13-icon-btn p13-icon-btn--danger shrink-0"
             title={t('common.cancel')}>
             <X className="h-4 w-4" />
           </button>
           {mediaMode === 'circle' && previewStream ? (
-            <div className="relative aspect-square w-16 shrink-0 overflow-hidden rounded-full border-2 border-neon-red bg-void shadow-[0_0_12px_rgba(255,0,0,0.2)]">
+            <div className="relative aspect-square w-16 shrink-0 overflow-hidden rounded-full border-2 border-danger bg-void">
               <video ref={videoPreviewRef} autoPlay playsInline muted className="h-full w-full object-cover" />
-              <span className="absolute bottom-0 left-0 right-0 bg-void/60 text-center font-mono text-[7px] text-neon-red">{formatRecordTime(recordSeconds)}</span>
+              <span className="absolute bottom-0 left-0 right-0 bg-void/60 text-center font-mono text-[7px] text-danger">{formatRecordTime(recordSeconds)}</span>
             </div>
           ) : null}
-          <div className="flex flex-1 items-center gap-2 border border-neon-red/40 bg-void px-3 py-2">
-            <span className="inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-danger/30 animate-pulse" />
-            <span className="shrink-0 font-mono text-[10px] text-danger/80 tabular-nums">{formatRecordTime(recordSeconds)}</span>
+          <div className="p13-record-waveform">
+            <span className="inline-flex h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-danger/60" />
+            <span className="shrink-0 font-[family-name:var(--p13-font-body)] text-[10px] tabular-nums text-danger/80">{formatRecordTime(recordSeconds)}</span>
             <div className="flex h-6 flex-1 items-end gap-[1px]">
               {waveformBars.map((h, i) => (
-                <div key={i} className="min-w-[2px] flex-1 rounded-[1px] bg-neon-red/70 transition-all duration-150" style={{ height: `${Math.round(h * 100)}%` }} />
+                <div key={i} className="min-w-[2px] flex-1 bg-danger/70 transition-all duration-150" style={{ height: `${Math.round(h * 100)}%`, borderRadius: 'var(--p13-radius-msg)' }} />
               ))}
             </div>
             <Lock className="h-3 w-3 shrink-0 text-neon-cyan/60" />
           </div>
           <button type="button" onClick={() => void stopRecording(true)}
-            className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan bg-void text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className="p13-icon-btn p13-icon-btn--primary shrink-0"
             title={t('common.send')}>
             <Send className="h-4 w-4" />
           </button>
@@ -632,7 +632,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
               <Smile className="h-4 w-4" />
             </button>
             {emojiOpen && (
-              <div className="absolute bottom-full left-0 z-[60] mb-1 border border-neon-cyan/50 shadow-[0_0_16px_rgba(0,255,255,0.12)]">
+              <div className="p13-emoji-popup">
                 <LazyEmojiPicker
                   onEmojiClick={(emojiData: { emoji: string }) => { insertEmoji(emojiData.emoji); setEmojiOpen(false) }}
                   skinTonesDisabled
@@ -722,7 +722,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           ) : null}
         </div>
 
-        {/* Record button */}
+        {/* Record button — hidden when text is present (Telegram-style mic↔send morph) */}
         <button
           type="button"
           className={`p13-icon-btn shrink-0 select-none ${
@@ -731,7 +731,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
               : mediaMode === 'voice'
               ? 'p13-icon-btn--primary'
               : 'p13-icon-btn--danger'
-          } ${showSendOnMobile ? 'hidden md:inline-flex' : ''}`}
+          } ${showSendOnMobile ? 'hidden' : 'inline-flex'}`}
           disabled={disabled || !cryptoCtx}
           onContextMenu={handleContextMenu}
           onPointerDown={handleRecordPointerDown}
@@ -754,12 +754,12 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           )}
         </button>
 
-        {/* Send button — type=button, single onClick only, no onTouchEnd */}
+        {/* Send button — shown only when text is present (Telegram-style mic↔send morph) */}
         <button
           type="button"
           disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
           className={`p13-icon-btn p13-icon-btn--primary shrink-0 ${
-            showSendOnMobile ? 'inline-flex' : 'hidden md:inline-flex'
+            showSendOnMobile ? 'inline-flex' : 'hidden'
           }`}
           title={t('common.send')}
           onClick={handleSendClick}

@@ -18,7 +18,7 @@ export function generateRecoveryMaterial(): RecoveryMaterial {
 }
 
 export function hashRecoveryKey(recoveryKey: string, salt: string): string {
-  const out = scryptSync(recoveryKey, salt, 32) as Buffer
+  const out = scryptSync(recoveryKey, salt, 32, { N: 131072, r: 8, p: 1 }) as Buffer
   return b64url(out)
 }
 

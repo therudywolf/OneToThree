@@ -7,6 +7,7 @@
   --p13-vh: 1vh;
   --neon-red: #ff0000;
   --neon-cyan: #00ffff;
+  --neon-amber: #ffbf47;
   --accent-2: #7af7ff;
   --void: #000000;
   --surface: #0a0a0a;
@@ -85,14 +86,15 @@ body {
   --void: #12090c;
   --surface: #1b1014;
   --surface-elevated: #24151d;
-  --neon-red: #ffe55c;
-  --neon-cyan: #ff3b7a;
-  --accent-2: #ff89af;
-  --on-surface: #fff2b3;
+  --neon-red: #ff4d6d;
+  --neon-cyan: #33f0ff;
+  --neon-amber: #ffbf47;
+  --accent-2: var(--neon-amber);
+  --on-surface: #ffe7c2;
   --text-primary: var(--on-surface);
-  --text-muted: color-mix(in srgb, var(--on-surface) 52%, #473227);
-  --border-strong: #473227;
-  --shadow-rgb: 255, 59, 122;
+  --text-muted: color-mix(in srgb, var(--on-surface) 52%, #4a3320);
+  --border-strong: #4a3320;
+  --shadow-rgb: 51, 240, 255;
   --page-glow: #452600;
   --page-glow-secondary: #4a0830;
   --crt-opacity: 0.12;
@@ -451,14 +453,72 @@ textarea {
   text-shadow: 0 0 1px color-mix(in srgb, var(--neon-cyan) calc(var(--text-shadow-intensity, 0.35) * 100%), transparent);
 }
 
+[data-shell="terminal"] .terminal-panel,
+[data-shell="terminal"] .p13-surface {
+  position: relative;
+  isolation: isolate;
+}
+
+[data-shell="terminal"] .terminal-panel::before,
+[data-shell="terminal"] .p13-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--neon-cyan) 6%, transparent) 0px,
+      color-mix(in srgb, var(--neon-cyan) 6%, transparent) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  opacity: 0.32;
+}
+
+[data-shell="terminal"] .terminal-panel > *,
+[data-shell="terminal"] .p13-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* Sharpen all rounded Tailwind utilities back to zero under terminal. This
  * matters when a component lazy-imports MD3 tokens via CSS variables. */
 [data-shell="terminal"] .rounded-lg,
 [data-shell="terminal"] .rounded-xl,
 [data-shell="terminal"] .rounded-2xl,
 [data-shell="terminal"] .rounded-3xl,
+[data-shell="terminal"] .rounded-md,
+[data-shell="terminal"] .rounded-sm,
 [data-shell="terminal"] .rounded-full {
   border-radius: 0 !important;
+}
+
+[data-shell="terminal"] button,
+[data-shell="terminal"] input,
+[data-shell="terminal"] textarea,
+[data-shell="terminal"] select,
+[data-shell="terminal"] [role='menu'],
+[data-shell="terminal"] [role='dialog'],
+[data-shell="terminal"] [data-radix-popper-content-wrapper] > * {
+  border-radius: 0 !important;
+}
+
+[data-shell="terminal"] button:hover:not(:disabled),
+[data-shell="terminal"] [role='button']:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--neon-cyan) 42%, transparent),
+    0 0 16px color-mix(in srgb, var(--neon-cyan) 16%, transparent);
+}
+
+[data-shell="terminal"] button:focus-visible,
+[data-shell="terminal"] input:focus-visible,
+[data-shell="terminal"] textarea:focus-visible,
+[data-shell="terminal"] select:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--neon-amber) 66%, transparent);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-amber) 45%, transparent);
 }
 
 /* Composer pill → square frame under terminal. */
@@ -1137,6 +1197,41 @@ select {
 
 .chat-scroll::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--neon-cyan) 40%, transparent);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--neon-cyan) 46%, transparent) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--void) 88%, transparent);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 35%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--neon-cyan) 44%, transparent),
+      color-mix(in srgb, var(--neon-red) 30%, transparent)
+    );
+  border-radius: 0;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  border-color: color-mix(in srgb, var(--neon-amber) 55%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--neon-cyan) 56%, transparent),
+      color-mix(in srgb, var(--neon-amber) 52%, transparent)
+    );
 }
 
 /* ==============================================================

@@ -22,11 +22,11 @@ export function LocaleToggle({ className = '' }: { className?: string }) {
       aria-label={t('common.toggleLanguageAria')}
       onClick={cycleProtocol}
       className={`
-        touch-manipulation inline-flex items-center justify-center gap-2 
+        p13-icon-btn touch-manipulation inline-flex items-center justify-center gap-2 
         border border-border-strong bg-void px-3 py-1.5 
         font-mono text-[10px] uppercase tracking-[0.2em] 
         text-neon-cyan transition-all duration-200
-        hover:border-neon-red hover:text-neon-red 
+        hover:border-neon-amber hover:text-neon-amber 
         active:scale-95 md:min-h-0 ${className}
       `}
     >

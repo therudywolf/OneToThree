@@ -120,6 +120,10 @@ export type AccentPreset = {
   accent: string
 }
 
+const VOID_PRIMARY = '#ff4d6d'
+const VOID_ACCENT = '#33f0ff'
+const VOID_AMBER = '#ffbf47'
+
 const HEX_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 function normalizeHex(value: string | null | undefined): string | null {
@@ -191,9 +195,9 @@ export const THEMES: ThemeConfig[] = [
     elevated: '#111923',
     text: '#ebf4ff',
     muted: '#92a0b7',
-    primary: '#ff5c7a',
-    accent: '#4df3ff',
-    accentSoft: '#7af7ff',
+    primary: VOID_PRIMARY,
+    accent: VOID_ACCENT,
+    accentSoft: VOID_AMBER,
     border: '#1e2b39',
     success: '#2fd67f',
     danger: '#ff6262',
@@ -210,15 +214,15 @@ export const THEMES: ThemeConfig[] = [
     background: '#12090c',
     surface: '#1b1014',
     elevated: '#24151d',
-    text: '#fff2b3',
-    muted: '#b8a879',
-    primary: '#ffe55c',
-    accent: '#ff3b7a',
-    accentSoft: '#ff89af',
-    border: '#473227',
+    text: '#ffe7c2',
+    muted: '#c3aa87',
+    primary: VOID_PRIMARY,
+    accent: VOID_ACCENT,
+    accentSoft: VOID_AMBER,
+    border: '#4a3320',
     success: '#37e27d',
     danger: '#ff5d4a',
-    shadowRgb: '255, 59, 122',
+    shadowRgb: '51, 240, 255',
     crtOpacity: '0.12',
     crtVignetteOpacity: '0.32',
     fontFamily: "'Space Mono', 'IBM Plex Mono', ui-monospace, monospace",
@@ -429,11 +433,11 @@ export const THEME_BY_ID: Record<ThemeId, ThemeConfig> = THEMES.reduce(
 export const ACCENT_PRESETS: AccentPreset[] = [
   { id: 'theme', label: 'Theme', primary: '', accent: '' },
   { id: 'signal', label: 'Signal', primary: '#ff4f7b', accent: '#4ff1ff' },
-  { id: 'mint', label: 'Mint', primary: '#6ef0a4', accent: '#9cf7ff' },
-  { id: 'amber', label: 'Amber', primary: '#ffbe48', accent: '#ff7d36' },
-  { id: 'violet', label: 'Violet', primary: '#c78bff', accent: '#7aa7ff' },
-  { id: 'sunset', label: 'Sunset', primary: '#ff8b6a', accent: '#ffd36a' },
-  { id: 'mono', label: 'Mono', primary: '#d7dde7', accent: '#aab5c6' },
+  { id: 'mint', label: 'Mint', primary: VOID_PRIMARY, accent: VOID_ACCENT },
+  { id: 'amber', label: 'Amber', primary: VOID_PRIMARY, accent: VOID_AMBER },
+  { id: 'violet', label: 'Violet', primary: VOID_PRIMARY, accent: VOID_ACCENT },
+  { id: 'sunset', label: 'Sunset', primary: VOID_PRIMARY, accent: VOID_AMBER },
+  { id: 'mono', label: 'Mono', primary: VOID_PRIMARY, accent: VOID_ACCENT },
 ]
 
 export const ACCENT_PRESET_BY_ID: Record<AccentPresetId, AccentPreset> =

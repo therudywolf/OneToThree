@@ -365,14 +365,14 @@ export function ChatSidebar({
             // the button look dead in the wild.
           }
         }}
-        className="mx-3 mt-3 flex items-center gap-2 rounded-2xl border border-accent-2/40 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan"
+        className="mx-3 mt-3 flex items-center gap-2 border border-accent-2/40 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan"
       >
         <Star className="h-3.5 w-3.5 text-accent-2 fill-accent-2" />
         {t('sidebar.savedMessages')}
       </button>
 
       {/* Chat List */}
-      <nav className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-3 pb-3 pt-3 [-webkit-overflow-scrolling:touch]">
+      <nav className="custom-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-3 pb-3 pt-3 [-webkit-overflow-scrolling:touch]">
         {initialLoading ? (
           <div className="space-y-2 py-1">
             {Array.from({ length: 5 }, (_, i) => (
@@ -401,7 +401,7 @@ export function ChatSidebar({
         {ghostHitChatIds !== null &&
         localGhostQuery.trim().length >= 2 &&
         sidebarChatsFiltered.length === 0 ? (
-            <p className="mx-1 mt-2 rounded-2xl border border-neon-red/30 bg-danger/30 px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red">
+            <p className="mx-1 mt-2 border border-neon-red/30 bg-danger/30 px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red">
               {t('sidebar.ghostNoHits')}
             </p>
         ) : null}

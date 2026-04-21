@@ -35,7 +35,10 @@ export async function denyJti(jti: string, expiresAt: number): Promise<void> {
     await r.set(`${KEY_PREFIX}${jti}`, '1', 'EX', ttlSec)
     return
   }
-  // in-memory fallback
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT denylist unavailable: Redis is required in production')
+  }
+  // dev/test in-memory fallback
   mem.set(jti, { expiresAt: expiresAt * 1000 })
 }
 
@@ -46,7 +49,10 @@ export async function isJtiDenied(jti: string): Promise<boolean> {
     const exists = await r.exists(`${KEY_PREFIX}${jti}`)
     return exists === 1
   }
-  // in-memory fallback
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT denylist unavailable: Redis is required in production')
+  }
+  // dev/test in-memory fallback
   const entry = mem.get(jti)
   if (!entry) return false
   if (entry.expiresAt <= Date.now()) {

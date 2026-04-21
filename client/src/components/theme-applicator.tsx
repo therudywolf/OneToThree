@@ -50,6 +50,7 @@ export function ThemeApplicator() {
     html.style.setProperty('--neon-red', resolved.tokens.primary)
     html.style.setProperty('--neon-cyan', resolved.tokens.accent)
     html.style.setProperty('--accent-2', resolved.tokens.accentSoft)
+    html.style.setProperty('--neon-amber', resolved.tokens.accentSoft)
     html.style.setProperty('--border-strong', resolved.tokens.border)
     html.style.setProperty('--danger', resolved.tokens.danger)
     html.style.setProperty('--success', resolved.tokens.success)

@@ -434,7 +434,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-void/90 px-3 py-6 sm:px-4"
+      className="custom-scrollbar fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-void/90 px-3 py-6 sm:px-4"
       role="dialog" aria-modal="true" aria-label={t('common.settings')}
     >
       <motion.div
@@ -477,7 +477,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           ))}
         </div>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4">
+        <div className="custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4">
 
           {/* ── VAULT GATE OVERLAY ── */}
           <AnimatePresence>
@@ -697,7 +697,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 {blockedUsers.length === 0 ? (
                   <p className="text-[9px] text-text-muted/70">{t('block.empty')}</p>
                 ) : (
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                  <div className="custom-scrollbar space-y-1 max-h-40 overflow-y-auto">
                     {blockedUsers.map((u) => (
                       <div key={u.user_id} className="flex items-center justify-between border border-border-strong px-2 py-1">
                         <span className="font-mono text-[10px] text-neon-cyan/80 truncate">@{u.username}</span>
@@ -726,7 +726,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 {loginHistory.length === 0 ? (
                   <p className="text-[9px] text-text-muted/70">{t('security.loginNoEvents')}</p>
                 ) : (
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                  <div className="custom-scrollbar space-y-1 max-h-48 overflow-y-auto">
                     {loginHistory.slice(0, 10).map((ev) => {
                       const outcomeLabel =
                         ev.outcome === 'success' ? t('security.loginSuccess')
@@ -980,11 +980,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     >
                       {preset.id !== 'theme' ? (
                         <span className="flex gap-1">
-                          <span className="h-2.5 w-2.5 rounded-full border border-border-strong/10" style={{ background: preset.primary }} />
-                          <span className="h-2.5 w-2.5 rounded-full border border-border-strong/10" style={{ background: preset.accent }} />
+                          <span className="h-2.5 w-2.5 border border-border-strong/10" style={{ background: preset.primary }} />
+                          <span className="h-2.5 w-2.5 border border-border-strong/10" style={{ background: preset.accent }} />
                         </span>
                       ) : (
-                        <span className="h-2.5 w-2.5 rounded-full border border-border-strong/10 bg-transparent" />
+                        <span className="h-2.5 w-2.5 border border-border-strong/10 bg-transparent" />
                       )}
                       {preset.label}
                     </button>
@@ -1069,7 +1069,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   }}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="h-10 w-10 rounded-full border border-border-strong/10" style={{ background: resolvedTheme.tokens.primary }} />
+                    <span className="h-10 w-10 border border-border-strong/10" style={{ background: resolvedTheme.tokens.primary }} />
                     <div className="min-w-0">
                       <p className="truncate font-mono text-[11px] uppercase tracking-widest" style={{ color: resolvedTheme.tokens.text }}>
                         {resolvedTheme.label}
@@ -1080,10 +1080,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     </div>
                   </div>
                   <div className="mt-3 flex gap-2">
-                    <div className="flex-1 rounded-full px-3 py-2 text-[10px] font-semibold" style={{ background: resolvedTheme.tokens.primary, color: resolvedTheme.tokens.background }}>
+                    <div className="flex-1 px-3 py-2 text-[10px] font-semibold" style={{ background: resolvedTheme.tokens.primary, color: resolvedTheme.tokens.background }}>
                       PRIMARY
                     </div>
-                    <div className="flex-1 rounded-full border px-3 py-2 text-[10px] font-semibold" style={{ borderColor: resolvedTheme.tokens.border, color: resolvedTheme.tokens.accent }}>
+                    <div className="flex-1 border px-3 py-2 text-[10px] font-semibold" style={{ borderColor: resolvedTheme.tokens.border, color: resolvedTheme.tokens.accent }}>
                       ACCENT
                     </div>
                   </div>

@@ -222,8 +222,8 @@ export const THEMES: ThemeConfig[] = [
     crtOpacity: '0.12',
     crtVignetteOpacity: '0.32',
     fontFamily: "'Space Mono', 'IBM Plex Mono', ui-monospace, monospace",
-    panelRadius: '12px',
-    controlRadius: '12px',
+    panelRadius: '4px',
+    controlRadius: '2px',
     pageGlow: '#452600',
     pageGlowSecondary: '#4a0830',
   }),
@@ -481,7 +481,15 @@ type ChromaticState = {
  */
 function inferShellFromLegacyTheme(theme: ThemeId | undefined): ShellModeId {
   if (theme === 'md3dark' || theme === 'md3light') return 'md3'
+  if (theme === 'cyberpunk2077') return 'terminal'
   return 'terminal'
+}
+
+/** Palette themes that ship as a fixed pair with a shell (Cyber sharp / MD3 rounded). */
+function shellModeForTheme(id: ThemeId): ShellModeId | null {
+  if (id === 'cyberpunk2077') return 'terminal'
+  if (id === 'md3dark' || id === 'md3light') return 'md3'
+  return null
 }
 
 export function resolveThemeAppearance(input: Pick<
@@ -550,6 +558,12 @@ export function resolveThemeAppearance(input: Pick<
     crtVignetteOpacity: shell.crtVignetteOpacity,
   }
 
+  // Night City: palette tokens carry near-square radii; keep monospace + CRT from terminal shell.
+  if (input.theme === 'cyberpunk2077') {
+    tokens.panelRadius = base.tokens.panelRadius
+    tokens.controlRadius = base.tokens.controlRadius
+  }
+
   return {
     id: base.id,
     label: base.label,
@@ -572,7 +586,13 @@ export const useThemeStore = create<ChromaticState>()(
       accentColorOverride: null,
       backgroundColorOverride: null,
       motionMode: 'full',
-      setTheme: (id) => set({ theme: id }),
+      setTheme: (id) =>
+        set(() => {
+          const paired = shellModeForTheme(id)
+          return paired
+            ? { theme: id, shellMode: paired }
+            : { theme: id }
+        }),
       setShellMode: (mode) => set({ shellMode: mode }),
       setAccentPreset: (id) => {
         const preset = ACCENT_PRESET_BY_ID[id]

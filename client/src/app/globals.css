@@ -100,14 +100,12 @@ body {
   --text-shadow-intensity: 0.42;
 }
 [data-theme="cyberpunk2077"] .terminal-panel {
-  border-radius: 4px !important;
   transition:
     box-shadow 0.22s ease,
     border-color 0.2s ease,
     transform 0.18s ease;
 }
 [data-theme="cyberpunk2077"] .terminal-input {
-  border-radius: 2px !important;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 [data-theme="matrix"] {

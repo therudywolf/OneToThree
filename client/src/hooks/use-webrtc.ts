@@ -12,7 +12,7 @@ import {
   MEDIA_PERMISSION_DENIED_CODE,
 } from '@/lib/media-limits'
 import { useCallStore } from '@/store/callStore'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { getIceServers } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { createCallToken, fetchCallConfig } from '@/lib/api/call'
@@ -295,7 +295,7 @@ export function useWebRTC(userId: string | null) {
     disconnectSfu()
     revertToOptics()
     
-    const chatId = useChatStore.getState().activeChatId
+    const chatId = useSessionStore.getState().activeChatId
     if (chatId) getFmSocket().send({ type: 'call_leave', chat_id: chatId })
 
     Array.from(pcsRef.current.keys()).forEach(purgePeer)
@@ -712,7 +712,7 @@ export function useWebRTC(userId: string | null) {
     }
 
     setLocalStream(stream)
-    fallbackMetaRef.current = { attempted: false, chatId: useChatStore.getState().activeChatId ?? null, isVideo: !!inc.isVideo }
+    fallbackMetaRef.current = { attempted: false, chatId: useSessionStore.getState().activeChatId ?? null, isVideo: !!inc.isVideo }
     const relays = await getSignalRelays()
     const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'all' })
     

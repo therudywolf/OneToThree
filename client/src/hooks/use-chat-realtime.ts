@@ -11,6 +11,9 @@ import { playNotificationSound } from '@/lib/call-ringtones'
 import { isChatIdMuted } from '@/lib/muted-chats'
 import { lookupUsers } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { usePresenceStore } from '@/store/presenceStore'
+import { useUnreadStore } from '@/store/unreadStore'
 import type { DecryptedMessage } from '@/types/chat'
 
 export function useChatRealtime(
@@ -18,19 +21,19 @@ export function useChatRealtime(
   triggerBackgroundPush?: (title: string, body: string, targetUrl?: string) => void,
   directPeerUserId?: string | null
 ) {
-  const activeChatId = useChatStore((s) => s.activeChatId)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const userId = useSessionStore((s) => s.userId)
+  const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const appendMessage = useChatStore((s) => s.appendMessage)
   const removeMessage = useChatStore((s) => s.removeMessage)
-  const userId = useChatStore((s) => s.userId)
-  const setTypingUser = useChatStore((s) => s.setTypingUser)
-  const clearTypingUser = useChatStore((s) => s.clearTypingUser)
-  const clearTypingUserEverywhere = useChatStore((s) => s.clearTypingUserEverywhere)
-  const pruneTypingUsers = useChatStore((s) => s.pruneTypingUsers)
   const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
   const updateMessageReactions = useChatStore((s) => s.updateMessageReactions)
-  const trackInboundUnread = useChatStore((s) => s.trackInboundUnread)
-  const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
+  const setTypingUser = usePresenceStore((s) => s.setTypingUser)
+  const clearTypingUser = usePresenceStore((s) => s.clearTypingUser)
+  const clearTypingUserEverywhere = usePresenceStore((s) => s.clearTypingUserEverywhere)
+  const pruneTypingUsers = usePresenceStore((s) => s.pruneTypingUsers)
+  const trackInboundUnread = useUnreadStore((s) => s.trackInboundUnread)
   const usernameCacheRef = useRef<Record<string, string>>({})
   const pendingPullRef = useRef(false)
 
@@ -111,7 +114,9 @@ export function useChatRealtime(
           senderId: m.sender_id,
           replyToId: m.reply_to_id ?? null,
           isForegroundVisible: document.visibilityState === 'visible',
-          isActiveChat: m.chat_id === useChatStore.getState().activeChatId,
+          isActiveChat: m.chat_id === useSessionStore.getState().activeChatId,
+          userId,
+          messages: useChatStore.getState().messages,
         })
       }
       if (userId && m.sender_id !== userId) {

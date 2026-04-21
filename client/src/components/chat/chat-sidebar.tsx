@@ -20,7 +20,9 @@ import {
   Folder,
 } from 'lucide-react'
 import Link from 'next/link'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { usePresenceStore } from '@/store/presenceStore'
+import { useUnreadStore } from '@/store/unreadStore'
 import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite, setChatMute, isChatMuted } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
@@ -112,10 +114,10 @@ export function ChatSidebar({
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
   const isMd3 = shellMode === 'md3' || themeId === 'md3dark' || themeId === 'md3light'
-  const activeChatId = useChatStore((s) => s.activeChatId)
-  const setActiveChatId = useChatStore((s) => s.setActiveChatId)
-  const peerPresence = useChatStore((s) => s.peerPresence)
-  const unreadByChat = useChatStore((s) => s.unreadByChat)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const setActiveChatId = useSessionStore((s) => s.setActiveChatId)
+  const peerPresence = usePresenceStore((s) => s.peerPresence)
+  const unreadByChat = useUnreadStore((s) => s.unreadByChat)
   const { chats, reload, initialLoading, patchChat } = useChats(userId)
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)

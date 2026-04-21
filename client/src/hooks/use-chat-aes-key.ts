@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { getAesKeyForChat, type ChatCryptoContext } from '@/lib/chat-crypto'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 
 /** Cached AES-GCM key for the active chat (text + media). */
 export function useChatAesKey(cryptoCtx: ChatCryptoContext | null) {
-  const privateKey = useChatStore((s) => s.unwrappedPrivateKey)
+  const privateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const [key, setKey] = useState<CryptoKey | null>(null)
 
   useEffect(() => {

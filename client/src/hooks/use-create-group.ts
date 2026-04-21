@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react'
 import { createGroupE2EChat } from '@/lib/api/chats'
 import { lookupUsers } from '@/lib/api/users'
 import { wrapGroupKeyForMemberWithCreatorEcdh } from '@/lib/chat-logic'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 
 const CREATE_TIMEOUT_MS = 90_000
 
@@ -30,7 +30,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
  * @param currentUserId — session user id from the tree (ChatApp → Sidebar); do not rely on Zustand alone.
  */
 export function useCreateGroup(currentUserId: string) {
-  const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
+  const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

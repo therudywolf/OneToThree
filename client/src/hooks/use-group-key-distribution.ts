@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 import {
   fetchChatDetail,
   uploadMemberWrappedGroupKey,
@@ -17,9 +17,9 @@ export function useGroupKeyDistribution(
   cryptoCtx: ChatCryptoContext | null,
   reloadChats: () => void
 ) {
-  const activeChatId = useChatStore((s) => s.activeChatId)
-  const userId = useChatStore((s) => s.userId)
-  const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const userId = useSessionStore((s) => s.userId)
+  const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const busyRef = useRef(false)
 
   useEffect(() => {

@@ -19,7 +19,7 @@ import { canonicalUserId } from '@/lib/user-id'
 import { useTranslation } from '@/hooks/use-translation'
 import { UserAvatar } from '@/components/user-avatar'
 import { MediaArchivePanel } from '@/components/chat/media-archive-panel'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { useThemeStore } from '@/store/themeStore'
 
 /**
@@ -214,7 +214,7 @@ export function GroupChatSettings({
   const openDiscussionChat = () => {
     const id = protocol?.discussion_chat_id
     if (!id) return
-    useChatStore.getState().setActiveChatId(id)
+    useSessionStore.getState().setActiveChatId(id)
     onChanged()
   }
 

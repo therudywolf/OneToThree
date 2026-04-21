@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { useCallStore } from '@/store/callStore'
 
 /**
@@ -42,8 +42,8 @@ export function saveAutoLockTimeout(value: AutoLockTimeout): void {
 
 export function useAutoLock() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
-  const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
+  const setUnwrappedPrivateKey = useSessionStore((s) => s.setUnwrappedPrivateKey)
+  const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
 
   useEffect(() => {
     if (!unwrappedPrivateKey) return

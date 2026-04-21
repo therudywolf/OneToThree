@@ -14,14 +14,16 @@ import {
   getRecentCachedMessages,
 } from '@/lib/message-cache'
 import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { useUnreadStore } from '@/store/unreadStore'
 import type { DecryptedMessage } from '@/types/chat'
 
 export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
-  const activeChatId = useChatStore((s) => s.activeChatId)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
+  const userId = useSessionStore((s) => s.userId)
   const setMessages = useChatStore((s) => s.setMessages)
-  const setHistoryDecryptBusy = useChatStore((s) => s.setHistoryDecryptBusy)
-  const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
-  const userId = useChatStore((s) => s.userId)
+  const setHistoryDecryptBusy = useUnreadStore((s) => s.setHistoryDecryptBusy)
 
   useEffect(() => {
     if (!activeChatId || !cryptoCtx || !unwrappedPrivateKey) {
@@ -93,12 +95,6 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
     return () => {
       cancelled = true
     }
-  }, [
-    activeChatId,
-    cryptoCtx,
-    unwrappedPrivateKey,
-    setMessages,
-    setHistoryDecryptBusy,
-    userId,
-  ])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId, cryptoCtx, unwrappedPrivateKey, setMessages, setHistoryDecryptBusy, userId])
 }

@@ -25,7 +25,7 @@ import {
   largeBlobLikelySupported,
   unlockVaultWithWebAuthn,
 } from '@/lib/webauthn-vault'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { vibrateShort } from '@/lib/vibrate'
 import { useTranslation } from '@/hooks/use-translation'
@@ -48,7 +48,7 @@ type Props = {
 
 export function VaultModal({ userId, displayHandle }: Props) {
   const { t } = useTranslation()
-  const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
+  const setUnwrappedPrivateKey = useSessionStore((s) => s.setUnwrappedPrivateKey)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
   const BiometricIcon = useBiometricIcon()

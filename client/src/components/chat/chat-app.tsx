@@ -9,6 +9,9 @@ import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
 import { useShallow } from 'zustand/shallow'
 import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { usePresenceStore } from '@/store/presenceStore'
+import { useUnreadStore } from '@/store/unreadStore'
 import { useCallStore } from '@/store/callStore'
 import { useChatCryptoContext } from '@/hooks/use-chat-crypto-context'
 import { useCryptoVault } from '@/hooks/use-crypto-vault'
@@ -126,15 +129,15 @@ export function ChatApp({
   const { t } = useTranslation()
   const { user, logout } = useAuth()
   const searchParams = useSearchParams()
-  const setUserId = useChatStore((s) => s.setUserId)
-  const setSelfUsername = useChatStore((s) => s.setSelfUsername)
-  const setActiveChatId = useChatStore((s) => s.setActiveChatId)
-  const setUnwrappedPrivateKey = useChatStore((s) => s.setUnwrappedPrivateKey)
-  const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
-  const activeChatId = useChatStore((s) => s.activeChatId)
-  const historyDecryptBusy = useChatStore((s) => s.historyDecryptBusy)
-  const unreadTotal = useChatStore((s) => s.unreadTotal)
-  const unreadByChat = useChatStore((s) => s.unreadByChat)
+  const setUserId = useSessionStore((s) => s.setUserId)
+  const setSelfUsername = useSessionStore((s) => s.setSelfUsername)
+  const setActiveChatId = useSessionStore((s) => s.setActiveChatId)
+  const setUnwrappedPrivateKey = useSessionStore((s) => s.setUnwrappedPrivateKey)
+  const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const historyDecryptBusy = useUnreadStore((s) => s.historyDecryptBusy)
+  const unreadTotal = useUnreadStore((s) => s.unreadTotal)
+  const unreadByChat = useUnreadStore((s) => s.unreadByChat)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [identityOpen, setIdentityOpen] = useState(false)
   const [peerIdentity, setPeerIdentity] = useState<{
@@ -404,7 +407,7 @@ export function ChatApp({
 
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
   const isSelfChat = activeRow != null && isSavedMessagesChat(activeRow, userId)
-  const { typingUsers, peerPresence } = useChatStore(
+  const { typingUsers, peerPresence } = usePresenceStore(
     useShallow((s) => ({
       typingUsers: s.typingUsers,
       peerPresence: s.peerPresence,

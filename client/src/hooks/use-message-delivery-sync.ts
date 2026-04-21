@@ -11,6 +11,8 @@ import { BATCH_WORKER_MIN } from '@/lib/crypto-batch-worker'
 import { getFmSocket } from '@/lib/api/socket'
 import { cacheMessage } from '@/lib/message-cache'
 import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { useUnreadStore } from '@/store/unreadStore'
 import type { DecryptedMessage } from '@/types/chat'
 
 async function pullPendingForChat(
@@ -52,10 +54,10 @@ async function pullPendingForChat(
 }
 
 export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
-  const activeChatId = useChatStore((s) => s.activeChatId)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const appendMessage = useChatStore((s) => s.appendMessage)
-  const setHistoryDecryptBusy = useChatStore((s) => s.setHistoryDecryptBusy)
-  const unwrappedPrivateKey = useChatStore((s) => s.unwrappedPrivateKey)
+  const setHistoryDecryptBusy = useUnreadStore((s) => s.setHistoryDecryptBusy)
   const prevConnected = useRef(false)
 
   useEffect(() => {
@@ -63,8 +65,8 @@ export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
     const offStatus = socket.subscribeStatus(() => {
       const now = socket.connected
       if (now && !prevConnected.current) {
-        const chatId = useChatStore.getState().activeChatId
-        const pk = useChatStore.getState().unwrappedPrivateKey
+        const chatId = useSessionStore.getState().activeChatId
+        const pk = useSessionStore.getState().unwrappedPrivateKey
         const ctx = cryptoCtx
         if (chatId && pk && ctx) {
           void pullPendingForChat(

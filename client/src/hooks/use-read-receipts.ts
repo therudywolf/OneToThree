@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import { markMessagesReadBatch } from '@/lib/api/messages'
+import { useSessionStore } from '@/store/sessionStore'
 import { useChatStore } from '@/store/chatStore'
 
 /**
@@ -18,8 +19,8 @@ export function useReadReceipts(
   scrollRootRef: RefObject<HTMLDivElement | null>,
   opts?: { enabled?: boolean }
 ) {
-  const activeChatId = useChatStore(s => s.activeChatId)
-  const userId = useChatStore(s => s.userId)
+  const activeChatId = useSessionStore(s => s.activeChatId)
+  const userId = useSessionStore(s => s.userId)
   
   const processedRef = useRef(new Set<string>())
   const syncQueueRef = useRef(new Set<string>())

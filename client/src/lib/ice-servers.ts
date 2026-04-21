@@ -24,10 +24,20 @@ const DEFAULT_STUN: RTCIceServer[] = [
 const CACHE_WINDOW_MS = 30_000
 const REFRESH_SAFETY_MS = 60_000
 
+/** Mirrors server `GET /api/ice-servers` `source` (plus client-only states). */
+export type IceBackendSource =
+  | 'cloudflare'
+  | 'coturn'
+  | 'stun-only'
+  | 'fetch-failed'
+  | undefined
+
 interface IceCacheEntry {
   fetchedAt: number
   expiresAt: number | null
   payload: RTCIceServer[]
+  /** Set when the last successful JSON parse included `source`, or on fetch failure. */
+  backendSource: IceBackendSource
 }
 
 let cache: IceCacheEntry | null = null
@@ -62,6 +72,16 @@ function normalizeList(list: unknown): RTCIceServer[] {
   return out
 }
 
+function listContainsTurnRelay(servers: RTCIceServer[]): boolean {
+  for (const srv of servers) {
+    const urls = Array.isArray(srv.urls) ? srv.urls : [srv.urls]
+    for (const u of urls) {
+      if (/^turns?:/i.test(String(u))) return true
+    }
+  }
+  return false
+}
+
 /**
  * Fetch (or return cached) ICE servers for a new RTCPeerConnection.
  *
@@ -87,20 +107,38 @@ export async function getIceServers(options?: { forceRefresh?: boolean }): Promi
         headers: { accept: 'application/json' },
       })
       if (!res.ok) throw new Error(`ICE_FETCH_${res.status}`)
-      const payload = (await res.json()) as { iceServers?: unknown; expiresAt?: number | null }
+      const payload = (await res.json()) as {
+        iceServers?: unknown
+        expiresAt?: number | null
+        source?: string
+      }
       const servers = normalizeList(payload.iceServers)
       const merged = mergeUnique([...DEFAULT_STUN, ...servers])
+      let backendSource: IceBackendSource
+      if (payload.source === 'cloudflare' || payload.source === 'coturn' || payload.source === 'stun-only') {
+        backendSource = payload.source
+      } else if (listContainsTurnRelay(servers)) {
+        backendSource = undefined
+      } else {
+        backendSource = 'stun-only'
+      }
       cache = {
         fetchedAt: now,
         expiresAt: typeof payload.expiresAt === 'number' ? payload.expiresAt : null,
         payload: merged,
+        backendSource,
       }
       return merged
     } catch (err) {
       if (typeof console !== 'undefined') {
         console.debug('[ice] /api/ice-servers failed, using public STUN only', err)
       }
-      cache = { fetchedAt: now, expiresAt: now + CACHE_WINDOW_MS, payload: DEFAULT_STUN }
+      cache = {
+        fetchedAt: now,
+        expiresAt: now + CACHE_WINDOW_MS,
+        payload: DEFAULT_STUN,
+        backendSource: 'fetch-failed',
+      }
       return DEFAULT_STUN
     } finally {
       inflight = null
@@ -120,6 +158,23 @@ function mergeUnique(list: RTCIceServer[]): RTCIceServer[] {
     out.push(srv)
   }
   return out
+}
+
+/** Last resolved ICE backend after `getIceServers` (cached). */
+export function getLastIceBackendSource(): IceBackendSource {
+  return cache?.backendSource
+}
+
+/** True when the last fetch had no TURN relay (symmetric NAT calls may fail). */
+export function lastIceFetchWasStunOnly(): boolean {
+  if (!cache) return true
+  if (cache.backendSource === 'cloudflare' || cache.backendSource === 'coturn') {
+    return false
+  }
+  if (cache.backendSource === 'stun-only' || cache.backendSource === 'fetch-failed') {
+    return true
+  }
+  return !listContainsTurnRelay(cache.payload)
 }
 
 /** Exposed for tests and dev-tools reset. */

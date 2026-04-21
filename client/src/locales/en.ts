@@ -72,6 +72,9 @@ const en = {
   'call.reconnecting': 'Reconnecting...',
   'call.connectionLost': 'Connection lost',
   'call.relayDegradation': 'Connection switched to relay \u2014 still encrypted',
+  'call.iceRelayTitle': 'Calls',
+  'call.iceRelayMissing':
+    'No TURN relay configured (only STUN). Calls may fail behind symmetric NAT. Configure Cloudflare Realtime, or set a DNS-only hostname for coturn (UDP cannot use orange-cloud proxy).',
   'call.activePeer': 'Active call',
   'call.returnToCall': 'Return to call',
 

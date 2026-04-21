@@ -13,12 +13,7 @@ import { getFmSocket } from '@/lib/api/socket'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import type { GroupCallParticipant as _GroupCallParticipant } from '@/store/groupCallStore'
 import { getIceServers } from '@/lib/ice-servers'
-
-const DEFAULT_STUN: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-]
+import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 
 function hasTransportParam(url: string): boolean {
   return /[?&]transport=/i.test(url)
@@ -66,6 +61,7 @@ function normalizeIceServers(servers: RTCIceServer[]): RTCIceServer[] {
 
 async function resolveIceServers(): Promise<RTCIceServer[]> {
   const servers = await getIceServers()
+  notifyIfIceStunOnlyOnce()
   return normalizeIceServers(servers)
 }
 

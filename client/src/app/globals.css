@@ -796,6 +796,58 @@ textarea {
 [data-shell="md3"] .md3-settings button {
   border-radius: 999px;
 }
+[data-shell="md3"] .md3-settings .border {
+  border-color: color-mix(in srgb, var(--on-surface) 14%, transparent) !important;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--on-surface) 3%, transparent);
+}
+[data-shell="md3"] .md3-settings .border-t {
+  border-color: color-mix(in srgb, var(--on-surface) 12%, transparent) !important;
+}
+[data-shell="md3"] .md3-settings p.text-xs {
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+}
+[data-shell="md3"] .md3-settings .font-mono {
+  font-family: var(--font-family) !important;
+}
+[data-shell="md3"] .md3-settings .uppercase {
+  text-transform: none !important;
+}
+[data-shell="md3"] .md3-settings .text-danger,
+[data-shell="md3"] .md3-settings .text-neon-red,
+[data-shell="md3"] .md3-settings .text-neon-red\/70,
+[data-shell="md3"] .md3-settings .text-neon-red\/80,
+[data-shell="md3"] .md3-settings .text-neon-red\/50 {
+  color: color-mix(in srgb, var(--on-surface) 68%, transparent) !important;
+}
+[data-shell="md3"] .md3-settings .border-neon-red,
+[data-shell="md3"] .md3-settings .border-danger {
+  border-color: color-mix(in srgb, var(--on-surface) 14%, transparent) !important;
+}
+
+.md3-pane-enter {
+  animation: md3-fade-through var(--motion-base) var(--md3-ease-standard, cubic-bezier(0.2,0,0,1));
+}
+
+.md3-empty-state {
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--on-surface) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+
+@keyframes md3-fade-through {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
 
 /* Inputs. */
 [data-shell="md3"] .terminal-input,

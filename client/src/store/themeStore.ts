@@ -514,14 +514,20 @@ export function resolveThemeAppearance(input: Pick<
       ? ACCENT_PRESET_BY_ID[input.accentPreset]
       : null
 
-  const primary =
-    normalizeHex(input.primaryColorOverride) ??
-    normalizeHex(preset?.primary) ??
-    base.tokens.primary
-  const accent =
-    normalizeHex(input.accentColorOverride) ??
-    normalizeHex(preset?.accent) ??
-    base.tokens.accent
+  const isLockedVoidPalette =
+    shellId === 'terminal' &&
+    (base.id === 'default' || base.id === 'cyberpunk2077')
+
+  const primary = isLockedVoidPalette
+    ? VOID_PRIMARY
+    : normalizeHex(input.primaryColorOverride) ??
+      normalizeHex(preset?.primary) ??
+      base.tokens.primary
+  const accent = isLockedVoidPalette
+    ? VOID_ACCENT
+    : normalizeHex(input.accentColorOverride) ??
+      normalizeHex(preset?.accent) ??
+      base.tokens.accent
   const background =
     normalizeHex(input.backgroundColorOverride) ?? base.tokens.background
 
@@ -549,11 +555,14 @@ export function resolveThemeAppearance(input: Pick<
     elevated,
     primary,
     accent,
-    accentSoft: mixColors(accent, base.scheme === 'light' ? '#ffffff' : '#d9faff', base.scheme === 'light' ? 0.45 : 0.2),
+    accentSoft: isLockedVoidPalette
+      ? VOID_AMBER
+      : mixColors(accent, base.scheme === 'light' ? '#ffffff' : '#d9faff', base.scheme === 'light' ? 0.45 : 0.2),
     border: mixColors(accent, background, base.scheme === 'light' ? 0.82 : 0.68),
     shadowRgb: rgbTriplet(accent),
     pageGlow: mixColors(primary, background, base.scheme === 'light' ? 0.68 : 0.26),
     pageGlowSecondary: mixColors(accent, background, base.scheme === 'light' ? 0.72 : 0.22),
+    success: isLockedVoidPalette ? VOID_AMBER : base.tokens.success,
     // Shell preset owns typography + shape + CRT:
     fontFamily: shell.fontFamily,
     panelRadius: shell.panelRadius,

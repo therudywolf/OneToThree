@@ -65,7 +65,7 @@ export async function encryptFanout(
   targetDevices: DeviceSlot[],
   plaintext: string
 ): Promise<FanoutSlot[]> {
-  const slots = await Promise.all(
+  const results = await Promise.allSettled(
     targetDevices.map(async (dev) => {
       const peerPub = await importEcdhPublicKey(dev.ecdh_public_key)
       const sharedKey = await deriveSharedSecret(senderPrivateKey, peerPub)
@@ -73,7 +73,9 @@ export async function encryptFanout(
       return { device_id: dev.device_id, ciphertext, iv } satisfies FanoutSlot
     })
   )
-  return slots
+  return results
+    .filter((r): r is PromiseFulfilledResult<FanoutSlot> => r.status === 'fulfilled')
+    .map((r) => r.value)
 }
 
 /**
@@ -157,6 +159,9 @@ export async function decryptFanoutSlot(
   ciphertext: string,
   iv: string
 ): Promise<string> {
+  if (!senderEcdhPublicKeyJwk || !ciphertext || !iv) {
+    throw new Error('FANOUT_SLOT_INVALID_INPUT')
+  }
   const senderPub = await importEcdhPublicKey(senderEcdhPublicKeyJwk)
   const sharedKey = await deriveSharedSecret(receiverPrivateKey, senderPub)
   return decryptMessage(sharedKey, ciphertext, iv)

@@ -19,6 +19,7 @@ import { canonicalUserId } from '@/lib/user-id'
 import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
 import type { ApiChatRow } from '@/lib/api/chats'
 import { searchLocalMessages } from '@/lib/message-cache'
+import { useThemeStore } from '@/store/themeStore'
 
 const PINNED_CHATS_KEY = 'fm_pinned_chats'
 
@@ -79,6 +80,8 @@ export function ChatSidebar({
   onNavigate,
 }: ChatSidebarProps) {
   const { t } = useTranslation()
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isMd3 = shellMode === 'md3'
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const peerPresence = useChatStore((s) => s.peerPresence)
@@ -283,7 +286,7 @@ export function ChatSidebar({
   }, [chats, userId])
 
   return (
-    <aside className="flex h-full w-full min-w-0 flex-col border-r border-neon-cyan/30 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_92%,transparent),color-mix(in_srgb,var(--void)_84%,transparent))] backdrop-blur-xl md:w-[21.5rem] md:shrink-0 shadow-[8px_0_40px_rgba(0,0,0,0.32),1px_0_0_rgba(255,255,255,0.02)]">
+    <aside className={`relative flex h-full w-full min-w-0 flex-col md:w-[21.5rem] md:shrink-0 ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-r border-neon-cyan/30 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_92%,transparent),color-mix(in_srgb,var(--void)_84%,transparent))] backdrop-blur-xl shadow-[8px_0_40px_rgba(0,0,0,0.32),1px_0_0_rgba(255,255,255,0.02)]'}`}>
       {groupModalOpen ? (
         <CreateGroupModal
           userId={userId}
@@ -297,10 +300,10 @@ export function ChatSidebar({
       ) : null}
 
       {/* Header */}
-      <div className="border-b border-neon-cyan/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface)_96%,transparent),color-mix(in_srgb,var(--surface-elevated)_88%,transparent))] px-4 py-3">
+      <div className={`border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface)_96%,transparent),color-mix(in_srgb,var(--surface-elevated)_88%,transparent))]'}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1">
-            <span className="block text-[10px] font-bold uppercase tracking-[0.32em] text-neon-cyan">
+            <span className={`block text-[10px] font-bold ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : 'uppercase tracking-[0.32em] text-neon-cyan'}`}>
               {t('sidebar.channels')}
             </span>
             <p className="text-[10px] leading-relaxed text-text-muted">
@@ -312,11 +315,11 @@ export function ChatSidebar({
       </div>
 
       {/* Search */}
-      <div className="border-b border-neon-cyan/15 bg-void/25 px-4 py-3">
+      <div className={`border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/25'}`}>
         <label className="sr-only" htmlFor="ghost-search">
           {t('sidebar.localGhostSearch')}
         </label>
-        <div className="relative flex items-center overflow-hidden rounded-2xl border border-border-strong/5 bg-surface/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className={`relative flex items-center overflow-hidden border ${isMd3 ? 'rounded-full border-transparent bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] shadow-none' : 'rounded-2xl border-border-strong/5 bg-surface/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'}`}>
           {isSearching ? (
             <Loader2 className="absolute left-3 h-3.5 w-3.5 animate-spin text-neon-cyan/50" />
           ) : (
@@ -324,7 +327,7 @@ export function ChatSidebar({
           )}
           <input
             id="ghost-search"
-            className="w-full bg-transparent px-3 py-2 pl-9 text-[11px] text-neon-cyan placeholder:text-neon-cyan/30 focus:outline-none"
+            className={`w-full bg-transparent px-3 py-2 pl-9 text-[11px] focus:outline-none ${isMd3 ? 'text-[var(--on-surface)] placeholder:text-text-muted' : 'text-neon-cyan placeholder:text-neon-cyan/30'}`}
             placeholder={t('sidebar.localGhostSearch')}
             value={localGhostQuery}
             onChange={(e) => setLocalGhostQuery(e.target.value)}
@@ -365,7 +368,7 @@ export function ChatSidebar({
             // the button look dead in the wild.
           }
         }}
-        className="mx-3 mt-3 flex items-center gap-2 border border-accent-2/40 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 transition-colors hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan"
+        className={`mx-3 mt-3 flex items-center gap-2 px-3 py-2.5 text-left text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-accent-2/40 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] font-mono uppercase tracking-widest text-neon-cyan/80 hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan'}`}
       >
         <Star className="h-3.5 w-3.5 text-accent-2 fill-accent-2" />
         {t('sidebar.savedMessages')}
@@ -438,7 +441,7 @@ export function ChatSidebar({
             >
               <button
                 type="button"
-                className="min-w-0 flex-1 px-3 py-3 text-left font-mono text-xs outline-none"
+                className={`min-w-0 flex-1 px-3 py-3 text-left text-xs outline-none ${isMd3 ? 'font-sans' : 'font-mono'}`}
                 aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {
                   setActiveChatId(c.id)
@@ -470,7 +473,7 @@ export function ChatSidebar({
                       {!c.is_group && trustedPeerIds.has(peerId ?? '') ? (
                         <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
                       ) : null}
-                      <span className={`truncate text-[12px] ${activeChatId === c.id ? 'font-semibold text-neon-cyan' : 'text-neon-cyan/85'}`}>
+                      <span className={`truncate text-[12px] ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-text-muted' : 'text-neon-cyan/85')}`}>
                         {listTitle}
                       </span>
                       {isPinned ? (
@@ -508,7 +511,7 @@ export function ChatSidebar({
                           @{mentionTotal}
                         </span>
                       ) : null}
-                      <span className="rounded border border-neon-cyan/60 bg-void px-1.5 py-[1px] text-[9px] font-bold text-neon-cyan">
+                      <span className={`px-1.5 py-[1px] text-[9px] font-bold ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
                         {unreadTotal > 99 ? '99+' : unreadTotal}
                       </span>
                     </span>
@@ -574,6 +577,18 @@ export function ChatSidebar({
           )
         })}
       </nav>
+
+      {isMd3 ? (
+        <button
+          type="button"
+          onClick={() => setGroupModalOpen(true)}
+          aria-label={t('chat.newChat')}
+          title={t('chat.newChat')}
+          className="absolute bottom-24 right-4 z-10 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-3)] transition-transform hover:scale-[1.03] active:scale-95 md:bottom-6"
+        >
+          <MessageSquarePlus className="h-6 w-6" />
+        </button>
+      ) : null}
 
       {/* Active Chat Controls */}
       {activeChatId ? (
@@ -641,7 +656,7 @@ export function ChatSidebar({
       ) : null}
 
       {/* Global Actions */}
-      <div className="border-t border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))] p-3 space-y-3">
+      <div className={`border-t p-3 space-y-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))]'}`}>
 
         {/* Admin link — only for admins, mobile-first placement */}
         {isAdmin ? (
@@ -667,14 +682,14 @@ export function ChatSidebar({
                 setCreateErr(link)
               }
             }}
-            className="flex-1 border border-neon-cyan/50 bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className={`flex-1 py-1.5 text-[9px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
           >
             {t('sidebar.copyMyInvite')}
           </button>
           <button
             type="button"
             onClick={() => setGroupModalOpen(true)}
-            className="flex-1 border border-neon-cyan/50 bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+            className={`flex-1 py-1.5 text-[9px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
           >
             {t('sidebar.createGroupE2e')}
           </button>
@@ -693,7 +708,7 @@ export function ChatSidebar({
 
           <div className="flex gap-1">
             <input
-              className="terminal-input w-full px-2 py-1 text-[10px] placeholder:text-neon-cyan/30"
+              className={`w-full px-2 py-1 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:outline-none' : 'terminal-input placeholder:text-neon-cyan/30'}`}
               placeholder={t('sidebar.peerPlaceholder')}
               value={peerInput}
               onChange={(e) => setPeerInput(e.target.value)}
@@ -703,7 +718,7 @@ export function ChatSidebar({
               type="button"
               onClick={() => void openDirect()}
               disabled={creating || !peerInput.trim()}
-              className="shrink-0 border border-neon-cyan bg-void px-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-text-primary disabled:opacity-40 disabled:hover:bg-void disabled:hover:text-neon-cyan"
+              className={`shrink-0 px-3 text-[10px] transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] hover:bg-[color-mix(in_srgb,var(--neon-red)_88%,white)] disabled:hover:bg-[var(--neon-red)]' : 'border border-neon-cyan bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan hover:text-text-primary disabled:hover:bg-void disabled:hover:text-neon-cyan'}`}
             >
               {t('sidebar.openPeer')}
             </button>

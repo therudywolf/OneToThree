@@ -32,14 +32,22 @@ export function ToastHost() {
             : t.level === 'success'
             ? 'border-[var(--success,theme(colors.emerald.500))] text-[var(--success,theme(colors.emerald.200))]'
             : 'border-[var(--accent,theme(colors.cyan.400))] text-[var(--accent,theme(colors.cyan.200))]'
+        const levelPrefix =
+          t.level === 'error'
+            ? '[ ! ]'
+            : t.level === 'warn'
+            ? '[ SYS ]'
+            : t.level === 'success'
+            ? '[ OK ]'
+            : '[ INFO ]'
         return (
           <button
             key={t.id}
             type="button"
             onClick={() => dismiss(t.id)}
-            className={`pointer-events-auto w-full border bg-[var(--surface,rgba(0,0,0,0.92))] px-3 py-2 text-left font-mono text-[12px] leading-tight shadow-[0_6px_20px_rgba(0,0,0,0.35)] ${cls}`}
+            className={`pointer-events-auto w-full border bg-[var(--surface,rgba(0,0,0,0.92))] px-3 py-2 text-left font-mono text-[12px] leading-tight shadow-[0_6px_20px_rgba(0,0,0,0.35)] ${cls} p13-surface`}
           >
-            {t.title ? <div className="mb-0.5 text-[10px] uppercase tracking-[0.2em] opacity-70">{t.title}</div> : null}
+            <div className="mb-0.5 text-[10px] uppercase tracking-[0.2em] opacity-80">{levelPrefix} {t.title ?? 'SYSTEM'}</div>
             <div className="break-words">{t.message}</div>
           </button>
         )

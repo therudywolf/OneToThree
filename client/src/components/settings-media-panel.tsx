@@ -7,6 +7,7 @@ import {
   getDigitalDenUsageBytes,
 } from '@/lib/media-cache'
 import { useTranslation } from '@/hooks/use-translation'
+import { useThemeStore } from '@/store/themeStore'
 
 function stopTracks(stream: MediaStream | null) {
   stream?.getTracks().forEach((t) => t.stop())
@@ -21,6 +22,7 @@ function formatBytes(n: number): string {
 
 export function SettingsMediaPanel({ active }: { active: boolean }) {
   const { t } = useTranslation()
+  const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [cameraId, setCameraId] = useState('')
@@ -156,7 +158,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   }
 
   return (
-    <div className="space-y-4 border-t border-neon-cyan/30 pt-3">
+    <div className={`space-y-4 border-t pt-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/30'}`}>
       <div>
         <p className="text-xs uppercase tracking-[0.25em] text-neon-cyan">
           {t('settings.mediaSectionTitle')}
@@ -168,7 +170,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
         <label className="block space-y-1">
           <span className="terminal-label">{t('settings.mediaCamera')}</span>
           <select
-            className="terminal-input w-full py-2 text-xs"
+            className={`w-full py-2 text-xs ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] px-4' : 'terminal-input'}`}
             value={cameraId}
             onChange={(e) => {
               const v = e.target.value
@@ -189,7 +191,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
         <label className="block space-y-1">
           <span className="terminal-label">{t('settings.mediaMic')}</span>
           <select
-            className="terminal-input w-full py-2 text-xs"
+            className={`w-full py-2 text-xs ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] px-4' : 'terminal-input'}`}
             value={micId}
             onChange={(e) => {
               const v = e.target.value
@@ -210,7 +212,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
         <label className="block space-y-1">
           <span className="terminal-label">{t('settings.mediaSpeaker')}</span>
           <select
-            className="terminal-input w-full py-2 text-xs"
+            className={`w-full py-2 text-xs ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] px-4' : 'terminal-input'}`}
             value={speakerId}
             onChange={(e) => {
               const v = e.target.value
@@ -230,7 +232,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
         </label>
       </div>
 
-      <div className="flex items-center justify-between gap-3 border border-neon-cyan/20 px-2 py-2">
+      <div className={`flex items-center justify-between gap-3 px-2 py-2 ${isMd3 ? 'rounded-[20px] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-cyan/20'}`}>
         <div>
           <p className="text-[10px] uppercase tracking-widest text-neon-cyan">
             {t('settings.mediaNoise')}
@@ -247,17 +249,17 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
             saveMediaPrefs({ isIsolated: next })
             void startPreview()
           }}
-          className={`shrink-0 border-2 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${
+          className={`shrink-0 px-3 py-1.5 text-[10px] ${
             noiseOn
-              ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-              : 'border-border-strong/60 bg-void text-text-muted'
+              ? (isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'border-2 border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan')
+              : (isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-text-muted' : 'border-2 border-border-strong/60 bg-void font-mono uppercase tracking-widest text-text-muted')
           }`}
         >
           {noiseOn ? '[ ON ]' : '[ OFF ]'}
         </button>
       </div>
 
-      <div className="flex items-center justify-between gap-3 border border-neon-cyan/20 px-2 py-2">
+      <div className={`flex items-center justify-between gap-3 px-2 py-2 ${isMd3 ? 'rounded-[20px] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-cyan/20'}`}>
         <div>
           <p className="text-[10px] uppercase tracking-widest text-neon-cyan">
             {t('settings.mediaLowBandwidth')}
@@ -273,10 +275,10 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
             setLowBandwidth(next)
             saveMediaPrefs({ lowBandwidth: next })
           }}
-          className={`shrink-0 border-2 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest ${
+          className={`shrink-0 px-3 py-1.5 text-[10px] ${
             lowBandwidth
-              ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-              : 'border-border-strong/60 bg-void text-text-muted'
+              ? (isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'border-2 border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan')
+              : (isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-text-muted' : 'border-2 border-border-strong/60 bg-void font-mono uppercase tracking-widest text-text-muted')
           }`}
         >
           {lowBandwidth ? '[ ON ]' : '[ OFF ]'}
@@ -293,7 +295,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           playsInline
           muted
           controls={false}
-          className="mt-1 h-48 w-full border border-neon-cyan/30 bg-void object-cover"
+          className={`mt-1 h-48 w-full object-cover ${isMd3 ? 'rounded-[20px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-black' : 'border border-neon-cyan/30 bg-void'}`}
         />
         {previewError ? (
           <p className="mt-2 break-words border border-neon-red/60 px-2 py-1 font-mono text-[10px] text-neon-red">

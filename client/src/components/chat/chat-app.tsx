@@ -53,6 +53,7 @@ import { useGroupCall } from '@/hooks/use-group-call'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { useMobileViewport } from '@/hooks/use-mobile-viewport'
 import { useNotificationOpen } from '@/hooks/use-notification-open'
+import { useThemeStore } from '@/store/themeStore'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -163,6 +164,9 @@ export function ChatApp({
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [headerProfileOpen, setHeaderProfileOpen] = useState(false)
+  const [md3HeaderCondensed, setMd3HeaderCondensed] = useState(false)
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isMd3 = shellMode === 'md3'
 
   const {
     peerReady,
@@ -237,6 +241,22 @@ export function ChatApp({
   useEffect(() => {
     setMobileSidebarOpen(false)
   }, [activeChatId])
+
+  useEffect(() => {
+    if (!isMd3) {
+      setMd3HeaderCondensed(false)
+      return
+    }
+    const onScrollCapture = (ev: Event) => {
+      const target = ev.target as HTMLElement | null
+      if (!target) return
+      const scroller = target.closest('.chat-scroll, .custom-scrollbar') as HTMLElement | null
+      if (!scroller) return
+      setMd3HeaderCondensed(scroller.scrollTop > 20)
+    }
+    document.addEventListener('scroll', onScrollCapture, true)
+    return () => document.removeEventListener('scroll', onScrollCapture, true)
+  }, [isMd3])
 
   useEffect(() => {
     if (!activeChatId || !userId) {
@@ -552,7 +572,7 @@ export function ChatApp({
       ) : null}
 
       {/* ─── HEADER ────────────────────────────────────────────────────────────────────────── */}
-      <header className="p13-header chat-header-compact flex shrink-0 items-center gap-2 px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))]">
+      <header className={`p13-header chat-header-compact flex shrink-0 items-center gap-2 px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] ${isMd3 ? `md3-top-appbar ${md3HeaderCondensed ? 'md3-top-appbar--condensed' : ''}` : ''}`}>
 
         {/* Burger — mobile only */}
         <button
@@ -565,14 +585,14 @@ export function ChatApp({
         </button>
 
         {/* Desktop: app title (hidden on mobile) */}
-        <span className="hidden md:block shrink-0 text-[10px] uppercase tracking-[0.35em] text-neon-cyan/60 whitespace-nowrap">
+        <span className={`hidden md:block shrink-0 text-[10px] whitespace-nowrap ${isMd3 ? 'text-text-muted' : 'uppercase tracking-[0.35em] text-neon-cyan/60'}`}>
           ONETOTHREE :: E2E :: @{user?.username ?? username}
         </span>
 
         {/* CENTER: peer nick — always visible, takes remaining space */}
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {isSelfChat ? (
-            <div className="flex min-w-0 items-center gap-1.5 border border-accent-2/40 bg-void px-2 py-1 text-[10px] tracking-[0.2em] text-accent-2">
+            <div className={`flex min-w-0 items-center gap-1.5 px-2 py-1 text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-accent-2/40 bg-void tracking-[0.2em] text-accent-2'}`}>
               <Star className="h-3.5 w-3.5 fill-accent-2 shrink-0" />
               <span className="truncate">{t('sidebar.savedMessages')}</span>
             </div>
@@ -591,7 +611,11 @@ export function ChatApp({
                     setHeaderProfileOpen(true)
                   }
                 }}
-                className="touch-manipulation inline-flex min-w-0 items-center gap-1.5 border border-neon-cyan/40 bg-void px-2 py-1 text-[11px] font-bold tracking-wider text-neon-cyan hover:border-neon-red hover:text-neon-red transition-colors"
+                className={`touch-manipulation inline-flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] font-bold transition-colors ${
+                  isMd3
+                    ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
+                    : 'border border-neon-cyan/40 bg-void tracking-wider text-neon-cyan hover:border-neon-red hover:text-neon-red'
+                }`}
               >
                 {peerIdentity.verified ? (
                   <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" />
@@ -626,7 +650,7 @@ export function ChatApp({
         <div className="flex shrink-0 items-center gap-1.5">
 
           {/* Calls block — visually grouped */}
-          <div className="flex items-center gap-1 border border-neon-cyan/20 bg-void p-0.5">
+          <div className={`flex items-center gap-1 p-0.5 ${isMd3 ? 'rounded-full bg-transparent' : 'border border-neon-cyan/20 bg-void'}`}>
             <CallHeaderButtons
               disabled={!activeChatId || !!ctxError}
               peerReady={peerReady}
@@ -642,7 +666,7 @@ export function ChatApp({
           </div>
 
           {/* Vertical separator */}
-          <span className="h-6 w-px shrink-0 bg-neon-cyan/20" aria-hidden />
+          <span className={`h-6 w-px shrink-0 ${isMd3 ? 'bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'bg-neon-cyan/20'}`} aria-hidden />
 
           {/* Per-chat search — opens dock search slot on xl+, or toggles an
               inline overlay on narrower viewports. Gated on an active chat. */}
@@ -690,7 +714,7 @@ export function ChatApp({
           />
         ) : null}
         <div
-          className={`chat-layout-sidebar fixed inset-y-0 left-0 z-50 flex h-full max-h-[100dvh] w-[min(20rem,92vw)] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-auto md:max-h-none md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${
+          className={`chat-layout-sidebar fixed inset-y-0 left-0 z-50 flex h-full max-h-[100dvh] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-auto md:max-h-none md:w-[21.5rem] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
         >
@@ -702,7 +726,11 @@ export function ChatApp({
             onNavigate={() => setMobileSidebarOpen(false)}
           />
         </div>
-        <div className="chat-layout-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain">
+        <div
+          className={`chat-layout-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain ${
+            mobileSidebarOpen ? 'pointer-events-none opacity-0 md:pointer-events-auto md:opacity-100' : ''
+          }`}
+        >
           {ctxError ? (
             <div className="shrink-0 border-b border-border-strong px-3 py-1 font-mono text-xs text-text-muted">
               {t('errors.signalLost')}

@@ -124,6 +124,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     setMotionMode,
     resetAppearance,
   } = useThemeStore()
+  const isMd3 = shellMode === 'md3'
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -421,7 +422,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const settingsReady = discoverable !== null && hidePresence !== null
   const discoverableOn = discoverable === true
   const ghostOn = hidePresence === true
-  const settingsBtn = 'border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
+  const settingsBtn = isMd3
+    ? 'rounded-full border border-[color-mix(in_srgb,var(--on-surface)_18%,transparent)] px-4 py-2 text-[13px] font-medium tracking-normal transition-colors'
+    : 'border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
   const resolvedTheme = resolveThemeAppearance({
     theme,
     shellMode,
@@ -431,48 +434,53 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     backgroundColorOverride,
     motionMode,
   })
+  const chromeLabel = (label: string) => (isMd3 ? label : `[ ${label} ]`)
 
   return (
     <div
-      className="custom-scrollbar fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden bg-void/90 px-3 py-6 sm:px-4"
+      className={`custom-scrollbar fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden px-3 py-6 sm:px-4 ${
+        isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : 'bg-void/90'
+      }`}
       role="dialog" aria-modal="true" aria-label={t('common.settings')}
     >
       <motion.div
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className={`terminal-panel flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${
+        className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${
           settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' ? 'max-w-2xl'
           : settingsTab === 'profile' ? 'max-w-lg'
           : totpSetup ? 'max-w-lg' : 'max-w-md'
-        }`}
+        } ${isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : ''}`}
       >
         {/* ── Header ── */}
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-neon-red/40 pb-3">
-          <p className="min-w-0 break-words text-xs uppercase tracking-[0.35em] text-neon-cyan">
+        <header className={`flex shrink-0 items-start justify-between gap-2 border-b pb-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-red/40'}`}>
+          <p className={`min-w-0 break-words text-xs ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : 'uppercase tracking-[0.35em] text-neon-cyan'}`}>
             {t('common.settings')} :: {username}
           </p>
           <button type="button" onClick={onClose}
-            className="shrink-0 font-mono text-xs text-neon-red transition-all duration-200 ease-in-out hover:text-neon-cyan active:scale-95">
-            [X]
+            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'rounded-full px-2 py-1 text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : 'font-mono text-neon-red hover:text-neon-cyan'}`}>
+            {isMd3 ? '✕' : '[X]'}
           </button>
         </header>
 
         {/* ── Tabs ── */}
-        <div className="flex shrink-0 flex-col gap-2 border-b border-neon-cyan/20 py-2 sm:flex-row sm:flex-wrap sm:overflow-x-auto">
+        <div className={`flex shrink-0 flex-col gap-2 border-b py-2 sm:flex-row sm:flex-wrap sm:overflow-x-auto ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
           {(['main', 'profile', 'security', 'media', 'devices'] as const).map((tab) => (
             <button key={tab} type="button" onClick={() => setSettingsTab(tab)}
               className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
                 settingsTab === tab
                   ? tab === 'security'
-                    ? 'border-neon-red bg-neon-red/10 text-neon-red'
-                    : 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-                  : 'border-border-strong bg-void text-text-muted hover:border-neon-cyan/50'
+                    ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--danger)_16%,transparent)] text-[var(--danger)]' : 'border-neon-red bg-neon-red/10 text-neon-red')
+                    : (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_18%,transparent)] text-[var(--on-surface)]' : 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan')
+                  : isMd3
+                    ? 'bg-transparent text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                    : 'border-border-strong bg-void text-text-muted hover:border-neon-cyan/50'
               }`}>
-              {tab === 'main'     ? `[ ${t('settings.tabGeneral')} ]`
-              : tab === 'profile' ? `[ ${t('profile.section')} ]`
-              : tab === 'security'? `[ ${t('settings.tabSecurity')} ]`
-              : tab === 'media'   ? `[ ${t('settings.tabMedia')} ]`
-              :                     `[ ${t('settings.tabDevices')} ]`}
+              {tab === 'main'     ? `${isMd3 ? '' : '[ '}${t('settings.tabGeneral')}${isMd3 ? '' : ' ]'}`
+              : tab === 'profile' ? `${isMd3 ? '' : '[ '}${t('profile.section')}${isMd3 ? '' : ' ]'}`
+              : tab === 'security'? `${isMd3 ? '' : '[ '}${t('settings.tabSecurity')}${isMd3 ? '' : ' ]'}`
+              : tab === 'media'   ? `${isMd3 ? '' : '[ '}${t('settings.tabMedia')}${isMd3 ? '' : ' ]'}`
+              :                     `${isMd3 ? '' : '[ '}${t('settings.tabDevices')}${isMd3 ? '' : ' ]'}`}
             </button>
           ))}
         </div>
@@ -511,7 +519,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <button type="button" disabled={totpBusy}
                         onClick={() => { setError(null); setVaultGate('totp_disable') }}
                         className="w-full border border-neon-red/70 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
-                        [ {t('settings.totpDisable')} ]
+                        {chromeLabel(t('settings.totpDisable'))}
                       </button>
                     ) : (
                       <div className="space-y-2 border border-neon-red/40 p-2">
@@ -542,7 +550,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <button type="button" disabled={totpBusy}
                         onClick={() => { setError(null); setVaultGate('totp_setup') }}
                         className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
-                        [ {t('settings.totpSetup')} ]
+                        {chromeLabel(t('settings.totpSetup'))}
                       </button>
                     ) : (
                       <div className="space-y-3 border border-neon-cyan/30 p-3">
@@ -559,12 +567,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         <div className="flex flex-wrap gap-2">
                           <button type="button" disabled={totpBusy} onClick={() => void confirmTotpSetup()}
                             className="border border-neon-cyan px-3 py-1 font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
-                            [ {t('settings.totpConfirm')} ]
+                            {chromeLabel(t('settings.totpConfirm'))}
                           </button>
                           <button type="button" disabled={totpBusy}
                             onClick={() => { setTotpSetup(null); setTotpEnableCode('') }}
                             className="border border-danger/40 px-3 py-1 font-mono text-[10px] uppercase text-danger hover:text-neon-red">
-                            [ {t('settings.totpCancelSetup')} ]
+                            {chromeLabel(t('settings.totpCancelSetup'))}
                           </button>
                         </div>
                       </div>
@@ -581,7 +589,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   <button type="button"
                     onClick={() => { setChangePinOpen(true); setChangePinOld(''); setChangePinNew(''); setChangePinConfirm(''); setError(null) }}
                     className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
-                    [ {t('settings.changePinAction')} ]
+                    {chromeLabel(t('settings.changePinAction'))}
                   </button>
                 ) : (
                   <div className="space-y-2">
@@ -594,12 +602,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     <div className="flex gap-2">
                       <button type="button" disabled={changePinBusy} onClick={() => void changeVaultPin()}
                         className="flex-1 border border-neon-cyan bg-void py-1 font-mono text-[10px] uppercase text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
-                        {changePinBusy ? '[ ... ]' : `[ ${t('common.confirm')} ]`}
+                        {changePinBusy ? (isMd3 ? '…' : '[ ... ]') : chromeLabel(t('common.confirm'))}
                       </button>
                       <button type="button"
                         onClick={() => { setChangePinOpen(false); setChangePinOld(''); setChangePinNew(''); setChangePinConfirm('') }}
                         className="flex-1 border border-border-strong/60 py-1 font-mono text-[10px] text-text-muted">
-                        [ {t('common.cancel')} ]
+                        {chromeLabel(t('common.cancel'))}
                       </button>
                     </div>
                   </div>
@@ -614,7 +622,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 <button type="button"
                   onClick={() => { setError(null); setVaultGate('export') }}
                   className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
-                  [ {t('settings.exportVaultAction')} ]
+                  {chromeLabel(t('settings.exportVaultAction'))}
                 </button>
               </div>
 
@@ -677,7 +685,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       : disableReadReceipts ? 'border-neon-red bg-neon-red/10 text-neon-red shadow-[0_0_14px_rgba(239,68,68,0.25)]'
                       : 'border-border-strong/60 bg-void text-text-muted'
                     } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}>
-                    {busy ? '[ … ]' : disableReadReceipts === null ? '[ -- ]' : disableReadReceipts ? '[ OFF ]' : '[ ON ]'}
+                    {busy ? (isMd3 ? '…' : '[ … ]') : disableReadReceipts === null ? (isMd3 ? '—' : '[ -- ]') : disableReadReceipts ? (isMd3 ? 'OFF' : '[ OFF ]') : (isMd3 ? 'ON' : '[ ON ]')}
                   </button>
                 </div>
               </div>
@@ -691,7 +699,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   </div>
                   <button type="button" onClick={() => void loadBlockedUsers()} disabled={blockedLoading}
                     className="shrink-0 border border-neon-cyan/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10 disabled:opacity-40">
-                    {blockedLoading ? '[ ... ]' : '[ LOAD ]'}
+                    {blockedLoading ? (isMd3 ? '…' : '[ ... ]') : chromeLabel('LOAD')}
                   </button>
                 </div>
                 {blockedUsers.length === 0 ? (
@@ -720,7 +728,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   </div>
                   <button type="button" onClick={() => void loadLoginHistory()} disabled={loginHistoryLoading}
                     className="shrink-0 border border-neon-cyan/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10 disabled:opacity-40">
-                    {loginHistoryLoading ? '[ ... ]' : '[ LOAD ]'}
+                    {loginHistoryLoading ? (isMd3 ? '…' : '[ ... ]') : chromeLabel('LOAD')}
                   </button>
                 </div>
                 {loginHistory.length === 0 ? (
@@ -771,7 +779,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         onChange={(e) => setKillPin(e.target.value)} autoComplete="off" />
                       <TerminalGlitchButton type="button" disabled={busy} onClick={() => void runGlobalKillSwitch()}
                         className="w-full !border-danger/40 !py-2 !text-[10px] !text-danger/80 hover:!bg-danger/30">
-                        [ {t('settings.killExecute')} ]
+                        {chromeLabel(t('settings.killExecute'))}
                       </TerminalGlitchButton>
                     </motion.div>
                   )}
@@ -873,17 +881,17 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     .finally(() => setProfileBusy(false))
                 }}
                 className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
-                {profileBusy ? '[ ... ]' : `[ ${t('profile.saveProfile')} ]`}
+                {profileBusy ? (isMd3 ? '…' : '[ ... ]') : chromeLabel(t('profile.saveProfile'))}
               </button>
               <div className="border-t border-neon-red/40 pt-3 space-y-3">
                 <p className="text-xs uppercase tracking-widest text-neon-red">{t('profile.dangerZone')}</p>
                 <button type="button" onClick={() => setSettingsTab('security')}
                   className="w-full border border-neon-red/50 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red/70 hover:bg-neon-red/10 hover:text-neon-red transition-colors">
-                  [ {t('profile.changePassword')} ]
+                  {chromeLabel(t('profile.changePassword'))}
                 </button>
                 <button type="button" onClick={() => { setKillOpen(true); setSettingsTab('security') }}
                   className="w-full border border-danger/40 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-danger/80 hover:bg-danger/30 transition-colors">
-                  [ {t('profile.deleteAccount')} ]
+                  {chromeLabel(t('profile.deleteAccount'))}
                 </button>
               </div>
             </div>
@@ -902,7 +910,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
                   chatSoundEnabled ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]' : 'border-border-strong/60 bg-void text-text-muted'
                 } hover:border-neon-red hover:text-neon-red`}>
-                {chatSoundEnabled ? '[ ON ]' : '[ OFF ]'}
+                {chatSoundEnabled ? (isMd3 ? 'ON' : '[ ON ]') : (isMd3 ? 'OFF' : '[ OFF ]')}
               </button>
             </div>
             <div className="space-y-2 border-t border-neon-cyan/20 pt-3">
@@ -1107,7 +1115,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   : discoverableOn ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
                   : 'border-border-strong/60 bg-void text-text-muted'
                 } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}>
-                {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : discoverableOn ? '[ ON ]' : '[ OFF ]'}
+                {busy ? (isMd3 ? '…' : '[ … ]') : !settingsReady ? (isMd3 ? '—' : '[ -- ]') : discoverableOn ? (isMd3 ? 'ON' : '[ ON ]') : (isMd3 ? 'OFF' : '[ OFF ]')}
               </button>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1122,7 +1130,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   : ghostOn ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]'
                   : 'border-border-strong/60 bg-void text-text-muted'
                 } hover:border-neon-red hover:text-neon-red disabled:opacity-40 disabled:pointer-events-none`}>
-                {busy ? '[ … ]' : !settingsReady ? '[ -- ]' : ghostOn ? '[ ON ]' : '[ OFF ]'}
+                {busy ? (isMd3 ? '…' : '[ … ]') : !settingsReady ? (isMd3 ? '—' : '[ -- ]') : ghostOn ? (isMd3 ? 'ON' : '[ ON ]') : (isMd3 ? 'OFF' : '[ OFF ]')}
               </button>
             </div>
             <div className="flex flex-col gap-2 border-t border-neon-cyan/30 pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -1142,7 +1150,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               <p className="mb-2 break-words text-[9px] text-text-muted">{t('settings.purgeHint')}</p>
               <TerminalGlitchButton type="button" onClick={() => void purgeLocalCache()}
                 className="w-full !border-neon-red !px-2 !py-2 !text-[10px] !text-neon-red hover:!bg-neon-red/10">
-                [ {t('settings.purgeLocalCache')} ]
+                {chromeLabel(t('settings.purgeLocalCache'))}
               </TerminalGlitchButton>
             </div>
           </div>

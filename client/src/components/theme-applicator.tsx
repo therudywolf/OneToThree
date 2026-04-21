@@ -54,6 +54,7 @@ export function ThemeApplicator() {
     html.style.setProperty('--border-strong', resolved.tokens.border)
     html.style.setProperty('--danger', resolved.tokens.danger)
     html.style.setProperty('--success', resolved.tokens.success)
+    html.style.setProperty('--warning', resolved.tokens.accentSoft)
     html.style.setProperty('--shadow-rgb', resolved.tokens.shadowRgb)
 
     // --- CRT effect ---

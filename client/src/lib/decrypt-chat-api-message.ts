@@ -108,17 +108,18 @@ async function decryptRowPlaintext(
     })
   }
 
-  // v1 fan-out: per-device ECDH slot.
+  // v1 fan-out: per-device ECDH slot (DIRECT and SELF both use fan-out delivery).
   if (
-    cryptoCtx.mode === 'DIRECT' &&
+    (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') &&
     row.device_ciphertext &&
+    row.device_iv &&
     row.sender_ecdh_public_key_jwk
   ) {
     return decryptFanoutSlot(
       unwrappedPrivateKey,
       row.sender_ecdh_public_key_jwk,
       row.device_ciphertext,
-      iv
+      row.device_iv
     )
   }
 
@@ -135,7 +136,7 @@ export async function decryptApiMessageRows(
   rows: ApiMessageRow[],
   drCtx?: DrContext
 ): Promise<DecryptedMessage[]> {
-  if (cryptoCtx.mode === 'DIRECT') {
+  if (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') {
     return Promise.all(
       rows.map(async (m) => {
         try {

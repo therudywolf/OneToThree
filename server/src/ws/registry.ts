@@ -50,10 +50,12 @@ export function registerUserSocket(
   ws.on('close', cleanup)
 }
 
-export function sendToUser(userId: string, payload: unknown): void {
+export function sendToUser(userId: string, payload: unknown): void
+export function sendToUser(userId: string, rawJson: string, _serialized: true): void
+export function sendToUser(userId: string, payloadOrRaw: unknown, _serialized?: true): void {
   const set = userSockets.get(userId)
   if (!set?.size) return
-  const raw = JSON.stringify(payload)
+  const raw = _serialized ? (payloadOrRaw as string) : JSON.stringify(payloadOrRaw)
   for (const socket of set) {
     if (socket.readyState === socket.OPEN) {
       socket.send(raw)
@@ -62,8 +64,11 @@ export function sendToUser(userId: string, payload: unknown): void {
 }
 
 export function broadcastToUsers(userIds: string[], payload: unknown): void {
-  for (const id of new Set(userIds)) {
-    sendToUser(id, payload)
+  const ids = new Set(userIds)
+  if (ids.size === 0) return
+  const raw = JSON.stringify(payload)
+  for (const id of ids) {
+    sendToUser(id, raw, true)
   }
 }
 

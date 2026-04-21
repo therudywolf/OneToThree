@@ -72,6 +72,9 @@ const ru = {
   'call.reconnecting': 'Переподключение...',
   'call.connectionLost': 'Соединение потеряно',
   'call.relayDegradation': 'Соединение переключено на сервер \u2014 шифрование сохранено',
+  'call.iceRelayTitle': 'Звонки',
+  'call.iceRelayMissing':
+    'Нет TURN-реле (только STUN). За симметричным NAT звонки могут не установиться. Настройте Cloudflare Realtime или coturn на отдельном имени с серым облаком (UDP не проходит через оранжевый прокси).',
   'call.activePeer': 'Активный звонок',
   'call.returnToCall': 'Вернуться к звонку',
 

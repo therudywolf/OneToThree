@@ -14,18 +14,13 @@ import {
 import { useCallStore } from '@/store/callStore'
 import { useChatStore } from '@/store/chatStore'
 import { getIceServers } from '@/lib/ice-servers'
+import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
  * Level: Transmission Layer (Zero-Trust)
  * Vibe: Clinical Steel / Terminal Noir
  */
-
-const DEFAULT_STUN: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-]
 
 function hasTransportParam(url: string): boolean {
   return /[?&]transport=/i.test(url)
@@ -75,6 +70,7 @@ async function getSignalRelays(): Promise<RTCIceServer[]> {
   // ICE/TURN credentials must come from `/api/ice-servers` (Cloudflare short-lived
   // or coturn HMAC); never embed TURN passwords in the client bundle.
   const servers = await getIceServers()
+  notifyIfIceStunOnlyOnce()
   return normalizeIceServers(servers)
 }
 

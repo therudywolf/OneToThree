@@ -5,11 +5,13 @@ import {
 } from '@/lib/api/auth'
 import {
   exportEcdsaPublicKeyJwk,
+  exportEcdhPublicJwkFromPrivateKeyString,
   generateEcdsaP256KeyPairIsolated,
   generateKeyPairIsolated,
   importEcdsaPrivateKeyForSign,
   signUtf8WithEcdsaP256,
 } from '@/lib/crypto'
+import { patchMyEcdhPublicKey } from '@/lib/api/users'
 import { parseVaultPlaintext, stringifyVaultKeyringV2 } from '@/lib/vault-keyring'
 import {
   CURRENT_VAULT_VERSION,
@@ -157,6 +159,11 @@ export async function cryptoLogin(
       const inner = stringifyVaultKeyringV2(ecdsaPrivateJwk, ecdhPrivateJwkForVault)
       const blob  = await wrapPrivateJwkWithPin(inner, vaultPassword)
       persistVaultBlobByLoginUsername(canonicalHandle, blob)
+      // Upload ECDH public key immediately so peers can DM this user without
+      // waiting for vault unlock.
+      try {
+        await patchMyEcdhPublicKey(exportEcdhPublicJwkFromPrivateKeyString(ecdhPrivateJwkForVault))
+      } catch { /* non-fatal */ }
     }
 
     mirrorVaultLoginToUserId(canonicalHandle, user.id)

@@ -131,6 +131,7 @@ export function ChatApp({
   const searchParams = useSearchParams()
   const setUserId = useSessionStore((s) => s.setUserId)
   const setSelfUsername = useSessionStore((s) => s.setSelfUsername)
+  const selfUsername = useSessionStore((s) => s.selfUsername)
   const setActiveChatId = useSessionStore((s) => s.setActiveChatId)
   const setUnwrappedPrivateKey = useSessionStore((s) => s.setUnwrappedPrivateKey)
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
@@ -673,10 +674,16 @@ export function ChatApp({
               ) : null}
             </div>
           ) : (
-            /* No active chat — show app title */
-            <span className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan/50 truncate">
-              ONETOTHREE
-            </span>
+            /* No active chat — show username + online status */
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`truncate text-[11px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan/80 tracking-wider'}`}>
+                @{selfUsername ?? '…'}
+              </span>
+              <span className={`hidden sm:flex items-center gap-1 font-mono text-[9px] ${isMd3 ? 'text-text-muted' : 'text-neon-cyan/50'}`}>
+                <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neon-cyan/20 shadow-[0_0_6px_rgba(34,211,238,0.7)]" />
+                online
+              </span>
+            </div>
           )}
         </div>
 

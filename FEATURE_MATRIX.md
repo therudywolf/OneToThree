@@ -1,6 +1,6 @@
 # OneToThree Feature Matrix
 
-Last updated: 2026-04-17
+Last updated: 2026-04-21
 
 Legend:
 - `implemented`: done and covered by checks
@@ -9,66 +9,91 @@ Legend:
 - `stub`: placeholder logic, not product-complete
 - `missing`: not implemented
 
-## Stage Status
+## Feature Status
 
-| Stage | Scope | Status | Notes |
-|---|---|---|---|
-| 0 | Audit + freeze + quality gates | implemented | Audit register and freeze list are tracked in `MASTER_AUDIT.md`; quality gates are scripted in `scripts/stage-all-suite.sh`. |
-| 1 | Auth/Security foundation | partial | Auth/TOTP stabilized; server-side step-up is enforced for sensitive settings/device routes; full security architecture shift still in progress. |
-| 2 | Device linking + recovery | partial | `link/init` + `link/confirm` exist; QR payload unified to `link_token`; recovery key setup/verify and explicit history-sync approval are implemented. |
-| 3 | Messaging crypto/transport | partial | Legacy+fanout hybrid still present, one contract target not fully reached. |
-| 4 | Calls/WebRTC | partial | P2P + TURN works; fallback matrix expanded (UDP/TCP/TLS), final ops hardening pending. |
-| 5 | Notifications + PWA + mobile | partial | Push baseline exists; full unread/badge/open-on-tap parity still pending. |
-| 6 | Groups/Channels/Moderation | partial | Core entities present; product-complete role/mod tooling and counters are incomplete. |
-| 7 | Design system + settings architecture | partial | Theme token core and dynamic theme-color/color-scheme improved; full settings-domain normalization pending. |
-| 8 | Missing features backlog | partial | Favorites baseline shipped; full polish/search/thread/media backlog remains. |
-| 9 | Observability/docs/release | partial | Base docs/logging exist; release-grade checklists/regression coverage not complete. |
+### Auth & Security
 
-## Current Focus (UI-first)
+| Feature | Status | Notes |
+|---|---|---|
+| ECDSA P-256 challenge-response login | implemented | No passwords; private key never leaves vault |
+| TOTP two-factor authentication | implemented | TOTP step-up enforced on sensitive routes |
+| Device management (list, revoke) | implemented | Revoked devices gate all API access |
+| QR device linking | implemented | `link/init` + `link/confirm`; unified `link_token` payload |
+| Recovery key (vault restore) | implemented | `POST /api/auth/recovery/setup` + `/verify` |
+| History sync approval for linked devices | implemented | Explicit per-device approval; future-only until approved |
+| JWT denylist (logout/revocation) | implemented | Redis-backed |
+| TOTP replay guard | implemented | Single-use codes via Redis |
+| Rate limiting | implemented | Defined inline per route handler |
 
-Priority wave:
-1. Stage 7 (theme system, layout discipline, settings domain cleanup)
-2. Stage 5 (mobile/PWA consistency)
-3. Stage 6 (product-complete groups/channels/moderation)
+### Messaging
 
-## Stage 7 delta in this change
+| Feature | Status | Notes |
+|---|---|---|
+| Direct (1:1) messages — fan-out ECDH | implemented | Per-device AES-GCM slots in `message_deliveries` |
+| Self (Saved Messages) fan-out decrypt | implemented | Fixed 2026-04-21; routed through same per-device path as DIRECT |
+| Group messages (SECTOR) | implemented | AES group key wrapped per member |
+| Public chats | implemented | Plaintext base64; UI warns about no E2E |
+| Message reactions | implemented | |
+| Reply-to | implemented | |
+| Pin messages | implemented | |
+| Burn-after-read | implemented | `burn_at` timestamp |
+| Read receipts | implemented | |
+| Media messages (image/video/audio/file) | implemented | Client-side encrypted; MinIO presigned PUT |
+| Message search | implemented | Local client-side only (IndexedDB index); server endpoint removed (410 Gone) |
+| Failed send retry (IndexedDB outbox) | implemented | Background Sync API |
+| Double Ratchet v2 (X3DH + DR) | partial | Gated by `NEXT_PUBLIC_DR_ENABLED=1`; send path still uses v1 fan-out |
 
-- Added dynamic theme metadata model (`scheme`, `themeColor`) in theme store.
-- Theme applicator now updates:
-  - `data-theme`
-  - runtime `color-scheme`
-  - `<meta name="theme-color">`
-- Root layout no longer hard-locks app to dark-only viewport metadata.
-- Introduced additional semantic CSS tokens (`surface-elevated`, text/border/motion/radius tokens).
-- Wired base component styles (`terminal-panel`, `terminal-input`) to semantic tokens.
+### Groups & Channels
 
-## Stage 5 delta in this change
+| Feature | Status | Notes |
+|---|---|---|
+| Group chats (SECTOR) | partial | Core entity exists; role/mod tooling incomplete |
+| Channels (broadcast, Telegram-style) | partial | `chat_type = 'channel'` DB enum + schema exists; UI create/discovery not shipped |
+| Open groups / public discovery | stub | `public_open` type exists; discovery UI not built |
+| Closed groups | partial | Invite-only join; no moderation UI |
+| Member roles / moderation | missing | Schema has `channel_role`; no enforcement UI |
 
-- Added retry policy for push critical operations (SW register/update, push subscribe, sync subscribe API, unsubscribe API, browser unsubscribe).
-- Retry now avoids non-retryable failures (`WEB_PUSH_UNSUPPORTED`, `NOTIFICATION_DENIED`, invalid payload) and retries transient network/runtime errors with backoff.
-- Added backward-compatible `username?: string` prop support in chat sidebar to prevent build regressions from stale callers during staged rollout.
+### Calls / WebRTC
 
-## Stage 4/5 test delta in this change
+| Feature | Status | Notes |
+|---|---|---|
+| P2P audio/video calls | implemented | Full mesh; UDP/TCP/TLS ICE fallback matrix |
+| TURN relay (coturn) | implemented | `turns://` over 5349; DNS-only required on Cloudflare |
+| LiveKit SFU (3+ participants) | partial | Server-side token issuance ready; client Call UI uses mesh |
+| Call E2EE via sender keys | missing | Architecture documented in `MIGRATION_NOTES.md` phase 4.3 |
 
-- Added server route test coverage for TURN config generation and fallback matrix:
-  - `server/src/routes/webrtc.test.ts`
-- Added server route test coverage for push subscription lifecycle:
-  - `server/src/routes/push.test.ts`
-- Extended quality-gate suite to include these tests:
-  - `scripts/stage-all-suite.sh`
+### Stickers
 
-## Stage 1/2 hardening delta in this change
+| Feature | Status | Notes |
+|---|---|---|
+| Sticker pack DB schema | partial | Tables exist (`sticker_packs`, `stickers`); `p13: 'sticker'` envelope defined |
+| Telegram sticker import | missing | Bot API token required; import pipeline not built |
+| Sticker picker UI / Lottie player | missing | |
 
-- Added server-side TOTP step-up guard for sensitive user actions (device-management + device-linking toggle):
-  - `server/src/lib/totp-stepup.ts`
-  - integrated in `server/src/routes/users.ts`
-- Added CORS allowance for `X-TOTP-Code` header:
-  - `server/src/app.ts`
-- Unified QR login payload to a single field:
-  - `link_token` only across server/client/tests
-- Added recovery key protocol (server-side hashed storage + verify endpoints):
-  - `POST /api/auth/recovery/setup`
-  - `POST /api/auth/recovery/verify`
-- Added explicit history sync approval flow for linked devices:
-  - `POST /api/users/me/devices/:deviceId/history-sync`
-  - message/history APIs now enforce `future-only` until approval
+### Notifications & PWA
+
+| Feature | Status | Notes |
+|---|---|---|
+| Web Push baseline | implemented | VAPID keys; subscription lifecycle; retry policy |
+| Unread counts / badge | partial | Push delivered; open-on-tap and badge parity incomplete |
+| PWA install / offline | partial | Service worker registered; background sync for outbox |
+
+### Design System
+
+| Feature | Status | Notes |
+|---|---|---|
+| Cyberpunk2077 palette + Terminal shell | implemented | Fully square (0px radius); CRT overlay; neon tokens |
+| Material Design 3 shell | implemented | M3 motion timings, elevation scale, typography tokens |
+| Dynamic theme-color meta | implemented | `<meta name="theme-color">` updated on palette change |
+| Reduced motion support | implemented | 0ms timings when `motionMode === 'reduced'` |
+
+### Infrastructure
+
+| Feature | Status | Notes |
+|---|---|---|
+| Docker Compose production stack | implemented | Caddy + Next.js + Fastify + Postgres + Redis + MinIO + coturn + LiveKit |
+| Auto-TLS (Let's Encrypt via Caddy) | implemented | |
+| Docker secrets | implemented | `/run/secrets/*`; never in env files at runtime |
+| DB migrations (Drizzle) | implemented | Run via `db-migrate` container on startup |
+| CI: lint + typecheck + test + audit | implemented | GitHub Actions `prod-checks.yml` |
+| CI: Trivy security scan | implemented | `@0.35.0`; CRITICAL/HIGH fails build |

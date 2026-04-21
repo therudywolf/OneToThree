@@ -239,6 +239,13 @@
       "when": 1776688570000,
       "tag": "0034_chats_key_epoch",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1776688580000,
+      "tag": "0035_messages_pinned_and_muted",
+      "breakpoints": true
     }
   ]
 }

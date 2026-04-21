@@ -15,6 +15,7 @@ import { useCallStore } from '@/store/callStore'
 import { useChatStore } from '@/store/chatStore'
 import { getIceServers } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
+import { createCallToken, fetchCallConfig } from '@/lib/api/call'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
@@ -136,6 +137,13 @@ export function useWebRTC(userId: string | null) {
 
   const iceRetryTimersRef = useRef(new Map<string, number>())
   const connectTimeoutRef = useRef<number | null>(null)
+  const sfuRoomRef = useRef<import('livekit-client').Room | null>(null)
+  const sfuRemoteStreamsRef = useRef(new Map<string, MediaStream>())
+  const fallbackMetaRef = useRef<{ attempted: boolean; chatId: string | null; isVideo: boolean }>({
+    attempted: false,
+    chatId: null,
+    isVideo: false,
+  })
 
   const {
     setIncomingCall, reset: resetCallStore, addPeerConnection,
@@ -183,6 +191,75 @@ export function useWebRTC(userId: string | null) {
     delete pendingIceRef.current[peerId]
   }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearPeerConnectionType])
 
+  const disconnectSfu = useCallback(() => {
+    for (const [peerId] of sfuRemoteStreamsRef.current) {
+      removeRemoteStream(peerId)
+      clearRemotePeerMedia(peerId)
+      clearPeerConnectionType(peerId)
+    }
+    sfuRemoteStreamsRef.current.clear()
+    const room = sfuRoomRef.current
+    sfuRoomRef.current = null
+    if (room) void room.disconnect()
+  }, [removeRemoteStream, clearRemotePeerMedia, clearPeerConnectionType])
+
+  const trySfuFallback = useCallback(async (): Promise<boolean> => {
+    const meta = fallbackMetaRef.current
+    if (meta.attempted || !meta.chatId) return false
+    meta.attempted = true
+    try {
+      const cfg = await fetchCallConfig()
+      if (!cfg.livekit_enabled || !cfg.livekit_url) return false
+      const tokenRes = await createCallToken(meta.chatId)
+      const { Room, RoomEvent, Track } = await import('livekit-client')
+      const room = new Room()
+      await room.connect(tokenRes.url, tokenRes.token)
+      sfuRoomRef.current = room
+      const local = useCallStore.getState().localStream
+      if (local) {
+        for (const t of local.getTracks()) {
+          if (!meta.isVideo && t.kind === 'video') continue
+          await room.localParticipant.publishTrack(t)
+        }
+      }
+      room.on(RoomEvent.TrackSubscribed, (track, _pub, participant) => {
+        if (track.kind !== Track.Kind.Audio && track.kind !== Track.Kind.Video) return
+        const peerId = participant.identity
+        const stream = sfuRemoteStreamsRef.current.get(peerId) ?? new MediaStream()
+        stream.addTrack(track.mediaStreamTrack)
+        sfuRemoteStreamsRef.current.set(peerId, stream)
+        setRemoteStream(peerId, stream)
+        setPeerConnectionType(peerId, 'relay')
+      })
+      room.on(RoomEvent.TrackUnsubscribed, (track, _pub, participant) => {
+        const peerId = participant.identity
+        const stream = sfuRemoteStreamsRef.current.get(peerId)
+        if (!stream) return
+        stream.removeTrack(track.mediaStreamTrack)
+        if (stream.getTracks().length === 0) {
+          sfuRemoteStreamsRef.current.delete(peerId)
+          removeRemoteStream(peerId)
+          clearRemotePeerMedia(peerId)
+          clearPeerConnectionType(peerId)
+        } else {
+          setRemoteStream(peerId, stream)
+        }
+      })
+      room.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        const peerId = participant.identity
+        sfuRemoteStreamsRef.current.delete(peerId)
+        removeRemoteStream(peerId)
+        clearRemotePeerMedia(peerId)
+        clearPeerConnectionType(peerId)
+      })
+      setReconnecting(false)
+      setConnectionLost(false)
+      return true
+    } catch {
+      return false
+    }
+  }, [clearPeerConnectionType, clearRemotePeerMedia, removeRemoteStream, setConnectionLost, setPeerConnectionType, setReconnecting, setRemoteStream])
+
   const revertToOptics = useCallback(() => {
     const orig = originalOpticsRef.current
     const screen = screenFeedRef.current
@@ -214,6 +291,8 @@ export function useWebRTC(userId: string | null) {
     ringStopRef.current?.()
     if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null }
     setMediaAccessError(null)
+    fallbackMetaRef.current = { attempted: false, chatId: null, isVideo: false }
+    disconnectSfu()
     revertToOptics()
     
     const chatId = useChatStore.getState().activeChatId
@@ -224,7 +303,7 @@ export function useWebRTC(userId: string | null) {
     const state = useCallStore.getState()
     terminateFeed(state.localStream)
     resetCallStore()
-  }, [purgePeer, resetCallStore, revertToOptics])
+  }, [purgePeer, resetCallStore, revertToOptics, disconnectSfu])
 
   const setupPeerLink = useCallback((peerId: string, pc: RTCPeerConnection) => {
     pc.onnegotiationneeded = async () => {
@@ -293,8 +372,13 @@ export function useWebRTC(userId: string | null) {
         } else {
           // 3 retries exhausted → connection lost
           console.error('[SYS.ICE] All retries exhausted for', peerId.slice(0, 8))
-          setReconnecting(false)
-          setConnectionLost(true)
+          void (async () => {
+            const switched = await trySfuFallback()
+            if (!switched) {
+              setReconnecting(false)
+              setConnectionLost(true)
+            }
+          })()
         }
       } else if (iceState === 'closed') {
         purgePeer(peerId)
@@ -311,7 +395,7 @@ export function useWebRTC(userId: string | null) {
         candidate: ev.candidate ? ev.candidate.toJSON() : null,
       })
     }
-  }, [setRemoteStream, purgePeer, setReconnecting, setConnectionLost, setIceRetryCount])
+  }, [setRemoteStream, purgePeer, setReconnecting, setConnectionLost, setIceRetryCount, trySfuFallback])
 
   // Socket Subscription Layer
   useEffect(() => {
@@ -573,6 +657,7 @@ export function useWebRTC(userId: string | null) {
     setLocalStream(stream)
     setIsCalling(true)
     setCallStartTime(Date.now())
+    fallbackMetaRef.current = { attempted: false, chatId: chatId ?? null, isVideo }
     const relays = await getSignalRelays()
 
     for (const peerId of recipients) {
@@ -601,13 +686,16 @@ export function useWebRTC(userId: string | null) {
         )
         if (!anyConnected && useCallStore.getState().isCalling) {
           console.warn('[SYS.ICE] 30s connection timeout — no peers connected')
-          severAllLinks()
+          void (async () => {
+            const switched = await trySfuFallback()
+            if (!switched) severAllLinks()
+          })()
         }
       }, 30_000)
     } else {
       severAllLinks()
     }
-  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks])
+  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime, trySfuFallback])
 
   const acceptLink = useCallback(async () => {
     const inc = useCallStore.getState().incomingCall
@@ -624,6 +712,7 @@ export function useWebRTC(userId: string | null) {
     }
 
     setLocalStream(stream)
+    fallbackMetaRef.current = { attempted: false, chatId: useChatStore.getState().activeChatId ?? null, isVideo: !!inc.isVideo }
     const relays = await getSignalRelays()
     const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'all' })
     

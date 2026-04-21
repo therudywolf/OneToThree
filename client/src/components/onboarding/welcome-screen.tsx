@@ -282,7 +282,7 @@ function ShellStep({
               {/* Mini preview pane */}
               <div
                 className={`mb-4 h-20 w-full overflow-hidden ${
-                  pTerminal ? 'rounded-none bg-[#030406]' : 'rounded-[14px] bg-[#111318]'
+                  pTerminal ? 'rounded-none bg-void' : 'rounded-[14px] bg-surface'
                 } relative`}
               >
                 {pTerminal ? (
@@ -295,10 +295,10 @@ function ShellStep({
                   </>
                 ) : (
                   <>
-                    <div className="absolute left-3 top-3 h-5 w-20 rounded-[10px] bg-[#a8c7fa]/30" />
-                    <div className="absolute left-3 top-10 h-2 w-32 rounded-full bg-[#a8c7fa]/50" />
-                    <div className="absolute left-3 top-14 h-2 w-24 rounded-full bg-[#a8c7fa]/30" />
-                    <div className="absolute right-3 bottom-3 h-6 w-12 rounded-[16px] bg-[#a8c7fa]/40" />
+                    <div className="absolute left-3 top-3 h-5 w-20 rounded-[10px] bg-[color-mix(in_srgb,var(--neon-cyan)_30%,transparent)]" />
+                    <div className="absolute left-3 top-10 h-2 w-32 rounded-full bg-[color-mix(in_srgb,var(--neon-cyan)_50%,transparent)]" />
+                    <div className="absolute left-3 top-14 h-2 w-24 rounded-full bg-[color-mix(in_srgb,var(--neon-cyan)_30%,transparent)]" />
+                    <div className="absolute right-3 bottom-3 h-6 w-12 rounded-[16px] bg-[color-mix(in_srgb,var(--neon-cyan)_40%,transparent)]" />
                   </>
                 )}
               </div>

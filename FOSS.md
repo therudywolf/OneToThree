@@ -110,7 +110,7 @@ OneToThree is:
 | **AES-GCM-256** | All message content, all media files, vault encryption |
 | **ECDH P-256** | Key agreement for direct chats and group key wrapping |
 | **ECDSA P-256 + SHA-256** | Passwordless authentication (challenge-response) |
-| **PBKDF2 (210k iterations, SHA-256)** | Vault passphrase → AES wrapping key derivation |
+| **PBKDF2 (600k iterations, SHA-256)** | Vault passphrase → AES wrapping key derivation |
 | **WebRTC + DTLS-SRTP** | Voice/video calls (always E2EE) |
 | **VAPID / Web Push** | Background push notifications |
 | **TOTP RFC 6238** | Two-factor authentication |
@@ -235,7 +235,7 @@ No password is ever sent to the server. Authentication uses a digital signature 
    │ ◄───────────────────────│                  │   { token, user }       │
    │                         │                  │ ◄───────────────────────│
    │  encrypt vault:         │                  │                         │
-   │  PBKDF2(pin, salt, 210k)│
+  │  PBKDF2(pin, salt, 600k)│
    │    → AES-GCM wrap keys  │
    │  store in localStorage  │
 ```
@@ -549,7 +549,7 @@ An attacker who gains full database access obtains:
 |---|---|
 | Messages table | **No** — AES-GCM-256 ciphertext, no key |
 | Media in MinIO | **No** — AES-GCM-256 encrypted blobs |
-| Vault backups | **No** — PBKDF2 (210k iter) + AES-GCM-256, needs user PIN |
+| Vault backups | **No** — PBKDF2 (600k iter) + AES-GCM-256, needs user PIN |
 | Public keys | **No** — cannot derive private keys from public keys |
 | Group key payloads | **No** — ECDH-wrapped, needs member private key |
 | Usernames | **Yes** — usernames are plaintext |
@@ -752,7 +752,7 @@ cp .env.prod.example .env.prod
 - [x] 2FA / TOTP (RFC 6238)
 - [x] Multi-device with QR linking
 - [x] Passwordless auth (ECDSA challenge-response)
-- [x] Vault encryption (PBKDF2 210k + AES-GCM)
+- [x] Vault encryption (PBKDF2 600k + AES-GCM)
 - [x] Offline outbox (IndexedDB queue)
 - [x] Read receipts (direct chats)
 - [x] Typing indicators

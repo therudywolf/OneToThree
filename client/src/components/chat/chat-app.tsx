@@ -617,11 +617,6 @@ export function ChatApp({
           <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden />
         </button>
 
-        {/* Desktop: app title (hidden on mobile) */}
-        <span className={`hidden md:block shrink-0 text-[10px] whitespace-nowrap ${isMd3 ? 'text-text-muted' : 'uppercase tracking-[0.35em] text-neon-cyan/60'}`}>
-          ONETOTHREE :: E2E :: @{user?.username ?? username}
-        </span>
-
         {/* CENTER: peer nick — always visible, takes remaining space */}
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {isSelfChat ? (
@@ -707,14 +702,9 @@ export function ChatApp({
               <span className={`h-6 w-px shrink-0 ${isMd3 ? 'bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'bg-neon-cyan/20'}`} aria-hidden />
             </>
           ) : (
-            <div className={`hidden md:flex min-w-[15rem] flex-col items-end px-2 ${isMd3 ? 'text-text-muted' : 'font-mono'}`}>
-              <span className={`${isMd3 ? 'text-[11px] font-semibold text-[var(--on-surface)]' : 'text-[10px] uppercase tracking-[0.3em] text-neon-cyan/75'}`}>
-                ONETOTHREE
-              </span>
-              <span className={`${isMd3 ? 'text-[10px]' : 'text-[9px] uppercase tracking-[0.18em] text-neon-cyan/45'}`}>
-                E2E messenger
-              </span>
-            </div>
+            <span className={`hidden md:inline text-[10px] ${isMd3 ? 'text-text-muted' : 'font-mono uppercase tracking-[0.18em] text-neon-cyan/55'}`}>
+              E2E messenger
+            </span>
           )}
 
           {/* Per-chat search — opens dock search slot on xl+, or toggles an

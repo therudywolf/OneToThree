@@ -9,6 +9,12 @@ import { users } from '../db/schema.js'
 
 describe('webrtc turn route', () => {
   let app: FastifyInstance | undefined
+  const cfPrev = {
+    KEY_ID: process.env.CLOUDFLARE_TURN_KEY_ID,
+    API_TOKEN: process.env.CLOUDFLARE_TURN_API_TOKEN,
+    KEY_ID_FILE: process.env.CLOUDFLARE_TURN_KEY_ID_FILE,
+    API_TOKEN_FILE: process.env.CLOUDFLARE_TURN_API_TOKEN_FILE,
+  }
 
   async function createSessionCookie(label: string): Promise<{ cookie: string; userId: string }> {
     const username = `${label}${Date.now().toString(36)}`
@@ -29,12 +35,20 @@ describe('webrtc turn route', () => {
   }
 
   beforeAll(async () => {
+    delete process.env.CLOUDFLARE_TURN_KEY_ID
+    delete process.env.CLOUDFLARE_TURN_API_TOKEN
+    delete process.env.CLOUDFLARE_TURN_KEY_ID_FILE
+    delete process.env.CLOUDFLARE_TURN_API_TOKEN_FILE
     app = await buildApp()
     await app.ready()
   })
 
   afterAll(async () => {
     if (app) await app.close()
+    process.env.CLOUDFLARE_TURN_KEY_ID = cfPrev.KEY_ID
+    process.env.CLOUDFLARE_TURN_API_TOKEN = cfPrev.API_TOKEN
+    process.env.CLOUDFLARE_TURN_KEY_ID_FILE = cfPrev.KEY_ID_FILE
+    process.env.CLOUDFLARE_TURN_API_TOKEN_FILE = cfPrev.API_TOKEN_FILE
   })
 
   it('GET /api/turn requires session', async () => {
@@ -169,7 +183,9 @@ describe('webrtc turn route', () => {
     const prev = {
       TURN_URLS: process.env.TURN_URLS,
       TURN_USERNAME: process.env.TURN_USERNAME,
+      TURN_USER: process.env.TURN_USER,
       TURN_SECRET: process.env.TURN_SECRET,
+      TURN_CREDENTIAL: process.env.TURN_CREDENTIAL,
       TURN_AUTH_SECRET: process.env.TURN_AUTH_SECRET,
       TURN_CREDENTIAL_TTL_SEC: process.env.TURN_CREDENTIAL_TTL_SEC,
       TURN_ENABLE_TLS_FALLBACK: process.env.TURN_ENABLE_TLS_FALLBACK,
@@ -177,7 +193,9 @@ describe('webrtc turn route', () => {
     process.env.TURN_URLS = 'turn:turn.example.test:3478'
     process.env.TURN_AUTH_SECRET = 'static-auth-secret-for-coturn'
     delete process.env.TURN_USERNAME
+    delete process.env.TURN_USER
     delete process.env.TURN_SECRET
+    delete process.env.TURN_CREDENTIAL
     process.env.TURN_CREDENTIAL_TTL_SEC = '7200'
     process.env.TURN_ENABLE_TLS_FALLBACK = '0'
 
@@ -188,7 +206,11 @@ describe('webrtc turn route', () => {
         .expect(200)
 
       const relay = (res.body.iceServers as Array<{ urls: string[]; username?: string; credential?: string }>).find(
-        (s) => Array.isArray(s.urls) && s.urls.includes('turn:turn.example.test:3478?transport=udp')
+        (s) =>
+          Array.isArray(s.urls) &&
+          typeof s.username === 'string' &&
+          typeof s.credential === 'string' &&
+          s.urls.includes('turn:turn.example.test:3478?transport=udp')
       )
       expect(relay).toBeTruthy()
       expect(relay!.username).toMatch(/^\d+:[0-9a-f-]{36}$/)
@@ -199,7 +221,9 @@ describe('webrtc turn route', () => {
     } finally {
       process.env.TURN_URLS = prev.TURN_URLS
       process.env.TURN_USERNAME = prev.TURN_USERNAME
+      process.env.TURN_USER = prev.TURN_USER
       process.env.TURN_SECRET = prev.TURN_SECRET
+      process.env.TURN_CREDENTIAL = prev.TURN_CREDENTIAL
       process.env.TURN_AUTH_SECRET = prev.TURN_AUTH_SECRET
       process.env.TURN_CREDENTIAL_TTL_SEC = prev.TURN_CREDENTIAL_TTL_SEC
       process.env.TURN_ENABLE_TLS_FALLBACK = prev.TURN_ENABLE_TLS_FALLBACK

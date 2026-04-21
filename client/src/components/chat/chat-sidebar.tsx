@@ -1,7 +1,24 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star, ShieldAlert, Bell, BellOff, UserCheck } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import {
+  Pin,
+  ShieldCheck,
+  Search,
+  Loader2,
+  MessageSquarePlus,
+  Star,
+  ShieldAlert,
+  Bell,
+  BellOff,
+  UserCheck,
+  Inbox,
+  MessageSquare,
+  Users,
+  Megaphone,
+  Radio,
+  Folder,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useChatStore } from '@/store/chatStore'
 import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite, setChatMute, isChatMuted } from '@/lib/api/chats'
@@ -18,6 +35,17 @@ import { isUuid, normalizePeerInput } from '@/lib/peer-input'
 import { canonicalUserId } from '@/lib/user-id'
 import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
 import { isApprovedContact } from '@/lib/contacts-store'
+import {
+  CHAT_FOLDERS_EVENT,
+  deleteChatFolder,
+  duplicateChatFolder,
+  folderMatchesChat,
+  loadChatFolders,
+  reorderCustomFolders,
+  resetChatFolderRules,
+  upsertChatFolder,
+  type ChatFolder,
+} from '@/lib/chat-folders'
 import type { ApiChatRow } from '@/lib/api/chats'
 import { searchLocalMessages } from '@/lib/message-cache'
 import { useThemeStore } from '@/store/themeStore'
@@ -103,6 +131,14 @@ export function ChatSidebar({
   const [peerLookupByUserId, setPeerLookupByUserId] = useState<
     Record<string, { username: string; avatar_key: string | null }>
   >({})
+  const [folders, setFolders] = useState<ChatFolder[]>([])
+  const [activeFolderId, setActiveFolderId] = useState('all')
+  const folderButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const [dragFolderId, setDragFolderId] = useState<string | null>(null)
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
+  const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null)
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
+  const [renamingFolderName, setRenamingFolderName] = useState('')
 
   useEffect(() => {
     try {
@@ -147,6 +183,63 @@ export function ChatSidebar({
   }, [chats, userId])
 
   useEffect(() => {
+    const apply = () => {
+      const loaded = loadChatFolders()
+      setFolders(loaded)
+      if (!loaded.some((f) => f.id === activeFolderId)) {
+        setActiveFolderId('all')
+      }
+    }
+    apply()
+    const onUpdate = () => apply()
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key && !ev.key.includes('p13_chat_folders')) return
+      apply()
+    }
+    window.addEventListener(CHAT_FOLDERS_EVENT, onUpdate)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(CHAT_FOLDERS_EVENT, onUpdate)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [activeFolderId])
+
+  useEffect(() => {
+    const node = folderButtonRefs.current[activeFolderId]
+    if (!node) return
+    node.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  }, [activeFolderId])
+
+  useEffect(() => {
+    if (!folderMenu) return
+    const onGlobalClick = () => setFolderMenu(null)
+    window.addEventListener('click', onGlobalClick)
+    return () => window.removeEventListener('click', onGlobalClick)
+  }, [folderMenu])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const active = folders.find((f) => f.id === activeFolderId)
+      if (!active || active.isSystem) return
+      if (e.key === 'F2') {
+        e.preventDefault()
+        setRenamingFolderId(active.id)
+        setRenamingFolderName(active.name)
+      }
+      if (e.key === 'Delete' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const ok = window.confirm(`Удалить папку "${active.name}"?`)
+        if (!ok) return
+        deleteChatFolder(active.id)
+        const next = loadChatFolders()
+        setFolders(next)
+        setActiveFolderId('all')
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeFolderId, folders])
+
+  useEffect(() => {
     const directPeerIds = chats
       .filter((c) => !c.is_group)
       .map((c) => c.member_ids.find((id) => id !== userId))
@@ -188,15 +281,35 @@ export function ChatSidebar({
 
   const nonSelfChats = sidebarChats.filter((c) => !isSavedMessagesChat(c, userId))
 
+  const activeFolder = folders.find((f) => f.id === activeFolderId) ?? folders[0] ?? null
+  const folderFilteredChats = activeFolder
+    ? nonSelfChats.filter((c) =>
+      folderMatchesChat(activeFolder, c, userId, {
+        unreadTotal: unreadByChat[c.id]?.total ?? 0,
+        muted: isChatMuted(c),
+      })
+    )
+    : nonSelfChats
+
   const sidebarChatsFiltered =
     ghostHitChatIds === null
-      ? nonSelfChats
-      : nonSelfChats.filter((c) => ghostHitChatIds.has(c.id))
+      ? folderFilteredChats
+      : folderFilteredChats.filter((c) => ghostHitChatIds.has(c.id))
 
   function togglePin(chatId: string) {
     setPinnedIds((prev) =>
       prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId]
     )
+  }
+
+  function folderIcon(folder: ChatFolder) {
+    if (folder.id === 'all') return Inbox
+    if (folder.id === 'unread') return MessageSquare
+    if (folder.id === 'direct') return Users
+    if (folder.id === 'groups') return Users
+    if (folder.id === 'channels') return Megaphone
+    if (folder.id === 'channels_broadcast') return Radio
+    return Folder
   }
 
   async function toggleFavorite(chatId: string, current: boolean) {
@@ -319,18 +432,217 @@ export function ChatSidebar({
       ) : null}
 
       {/* Header */}
-      <div className={`border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface)_96%,transparent),color-mix(in_srgb,var(--surface-elevated)_88%,transparent))]'}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <span className={`block text-[10px] font-bold ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : 'uppercase tracking-[0.32em] text-neon-cyan'}`}>
-              {t('sidebar.channels')}
-            </span>
-            <p className="text-[10px] leading-relaxed text-text-muted">
-              {t('sidebar.channelsSubtitle')}
-            </p>
-          </div>
-          <span className="mt-1 flex h-2.5 w-2.5 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_10px_rgba(0,255,255,0.85)]" />
+      <div className={`border-b px-4 py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/25 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface)_96%,transparent),color-mix(in_srgb,var(--surface-elevated)_88%,transparent))]'}`}>
+        <div className="flex items-center justify-between gap-2">
+          <span className={`block text-[11px] font-semibold ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : 'uppercase tracking-[0.28em] text-neon-cyan'}`}>
+            {t('sidebar.channels')}
+          </span>
+          <span className="flex h-2 w-2 rounded-full bg-neon-cyan animate-pulse shadow-[0_0_8px_rgba(0,255,255,0.85)]" />
         </div>
+      </div>
+
+      {/* Folders */}
+      <div className={`border-b px-3 py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/20'}`}>
+        <div className="custom-scrollbar flex items-center gap-1.5 overflow-x-auto pb-1">
+          {(folders.length ? folders : [{ id: 'all', name: t('sidebar.channels'), chatIds: [], excludedChatIds: [], rule: { includeDirect: true, includeGroups: true, includeChannels: true, includeSaved: false, includeMuted: true, includeRead: true } }]).map((folder) => {
+            const matchingChats = nonSelfChats.filter((c) =>
+              folderMatchesChat(folder, c, userId, {
+                unreadTotal: unreadByChat[c.id]?.total ?? 0,
+                muted: isChatMuted(c),
+              })
+            )
+            const count = matchingChats.length
+            const unreadCount = matchingChats.reduce((acc, c) => acc + (unreadByChat[c.id]?.total ?? 0), 0)
+            const mentionCount = matchingChats.reduce((acc, c) => acc + (unreadByChat[c.id]?.mentions ?? 0), 0)
+            const Icon = folderIcon(folder)
+            return (
+              <button
+                key={folder.id}
+                type="button"
+                ref={(el) => {
+                  folderButtonRefs.current[folder.id] = el
+                }}
+                draggable={!folder.isSystem}
+                onDragStart={(e) => {
+                  if (folder.isSystem) return
+                  setDragFolderId(folder.id)
+                  e.dataTransfer.setData('text/folder-id', folder.id)
+                }}
+                onDragOver={(e) => {
+                  if (!dragFolderId || dragFolderId === folder.id) return
+                  if (folder.isSystem) return
+                  e.preventDefault()
+                  setDragOverFolderId(folder.id)
+                }}
+                onDragLeave={() => setDragOverFolderId((prev) => (prev === folder.id ? null : prev))}
+                onDrop={(e) => {
+                  if (folder.isSystem) return
+                  const sourceId = e.dataTransfer.getData('text/folder-id')
+                  if (!sourceId || sourceId === folder.id) return
+                  reorderCustomFolders(sourceId, folder.id)
+                  setFolders(loadChatFolders())
+                  setDragFolderId(null)
+                  setDragOverFolderId(null)
+                }}
+                onDragEnd={() => {
+                  setDragFolderId(null)
+                  setDragOverFolderId(null)
+                }}
+                onContextMenu={(e) => {
+                  if (folder.isSystem) return
+                  e.preventDefault()
+                  setFolderMenu({ folderId: folder.id, x: e.clientX, y: e.clientY })
+                }}
+                onDoubleClick={() => {
+                  if (folder.isSystem) return
+                  setRenamingFolderId(folder.id)
+                  setRenamingFolderName(folder.name)
+                }}
+                onClick={() => setActiveFolderId(folder.id)}
+                className={`inline-flex shrink-0 items-center gap-1 px-2.5 py-1 text-[10px] transition-colors ${
+                  activeFolderId === folder.id
+                    ? isMd3
+                      ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]'
+                      : 'border border-neon-cyan/60 bg-neon-cyan/10 text-neon-cyan'
+                    : isMd3
+                      ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
+                      : 'border border-border-strong/40 bg-void font-mono uppercase tracking-[0.12em] text-text-muted hover:text-neon-cyan'
+                } ${dragOverFolderId === folder.id ? (isMd3 ? 'ring-2 ring-[var(--neon-red)]' : 'ring-2 ring-neon-cyan') : ''}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {renamingFolderId === folder.id ? (
+                  <input
+                    autoFocus
+                    value={renamingFolderName}
+                    onChange={(e) => setRenamingFolderName(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setRenamingFolderId(null)
+                        setRenamingFolderName('')
+                        return
+                      }
+                      if (e.key === 'Enter') {
+                        const nextName = renamingFolderName.trim()
+                        if (!nextName) return
+                        upsertChatFolder({ ...folder, name: nextName })
+                        setFolders(loadChatFolders())
+                        setRenamingFolderId(null)
+                        setRenamingFolderName('')
+                      }
+                    }}
+                    onBlur={() => {
+                      const nextName = renamingFolderName.trim()
+                      if (nextName) {
+                        upsertChatFolder({ ...folder, name: nextName })
+                        setFolders(loadChatFolders())
+                      }
+                      setRenamingFolderId(null)
+                      setRenamingFolderName('')
+                    }}
+                    className={`w-24 bg-transparent text-[10px] focus:outline-none ${isMd3 ? 'text-[var(--surface)]' : 'text-neon-cyan'}`}
+                  />
+                ) : (
+                  folder.name
+                )}
+                <span className={`px-1 py-[1px] text-[9px] ${
+                  activeFolderId === folder.id
+                    ? isMd3
+                      ? 'rounded-full bg-[color-mix(in_srgb,var(--surface)_40%,transparent)] text-[var(--surface)]'
+                      : 'rounded border border-neon-cyan/40'
+                    : isMd3
+                      ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-text-muted'
+                      : 'rounded border border-border-strong/30 text-text-muted'
+                }`}>
+                  {count}
+                </span>
+                {unreadCount > 0 ? (
+                  <span className={`px-1 py-[1px] text-[9px] ${
+                    activeFolderId === folder.id
+                      ? isMd3
+                        ? 'rounded-full bg-[color-mix(in_srgb,var(--surface)_40%,transparent)] text-[var(--surface)]'
+                        : 'rounded border border-neon-red/40 text-neon-red'
+                      : isMd3
+                        ? 'rounded-full bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)]'
+                        : 'rounded border border-neon-red/40 text-neon-red'
+                  }`}>
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                ) : null}
+                {mentionCount > 0 ? (
+                  <span className={`px-1 py-[1px] text-[9px] ${
+                    activeFolderId === folder.id
+                      ? isMd3
+                        ? 'rounded-full bg-[color-mix(in_srgb,var(--surface)_40%,transparent)] text-[var(--surface)]'
+                        : 'rounded border border-accent-2/50 text-accent-2'
+                      : isMd3
+                        ? 'rounded-full bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] text-[var(--on-surface)]'
+                        : 'rounded border border-accent-2/50 text-accent-2'
+                  }`}>
+                    @{mentionCount > 99 ? '99+' : mentionCount}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+        {folderMenu ? (
+          <div
+            className="fixed z-[220] min-w-[11rem] border border-border-strong bg-surface p-1 shadow-2xl"
+            style={{ left: folderMenu.x, top: folderMenu.y }}
+          >
+            <button
+              type="button"
+              className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
+              onClick={() => {
+                const folder = folders.find((f) => f.id === folderMenu.folderId)
+                if (!folder || folder.isSystem) return
+                setRenamingFolderId(folder.id)
+                setRenamingFolderName(folder.name)
+                setFolderMenu(null)
+              }}
+            >
+              Переименовать
+            </button>
+            <button
+              type="button"
+              className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
+              onClick={() => {
+                const copy = duplicateChatFolder(folderMenu.folderId)
+                if (copy) {
+                  setFolders(loadChatFolders())
+                  setActiveFolderId(copy.id)
+                }
+                setFolderMenu(null)
+              }}
+            >
+              Дублировать
+            </button>
+            <button
+              type="button"
+              className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
+              onClick={() => {
+                resetChatFolderRules(folderMenu.folderId)
+                setFolders(loadChatFolders())
+                setFolderMenu(null)
+              }}
+            >
+              Сбросить правила
+            </button>
+            <button
+              type="button"
+              className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
+              onClick={() => {
+                deleteChatFolder(folderMenu.folderId)
+                setFolders(loadChatFolders())
+                if (activeFolderId === folderMenu.folderId) setActiveFolderId('all')
+                setFolderMenu(null)
+              }}
+            >
+              Удалить
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {/* Search */}
@@ -610,7 +922,7 @@ export function ChatSidebar({
           onClick={() => setGroupModalOpen(true)}
           aria-label={t('chat.newChat')}
           title={t('chat.newChat')}
-          className="absolute bottom-24 right-4 z-10 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-3)] transition-transform hover:scale-[1.03] active:scale-95 md:bottom-6"
+          className="absolute bottom-6 right-4 z-10 hidden h-14 w-14 items-center justify-center rounded-2xl bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-3)] transition-transform hover:scale-[1.03] active:scale-95 md:inline-flex"
         >
           <MessageSquarePlus className="h-6 w-6" />
         </button>
@@ -671,7 +983,11 @@ export function ChatSidebar({
                       .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
                       .finally(() => setBusy(false))
                   }}
-                  className="flex-1 border border-danger/40 bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                  className={`flex-1 py-1.5 text-[9px] transition-colors disabled:opacity-40 ${
+                    isMd3
+                      ? 'rounded-full border border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_16%,transparent)]'
+                      : 'border border-danger/40 bg-void font-mono uppercase tracking-widest text-danger hover:border-neon-red hover:bg-neon-red/10'
+                  }`}
                 >
                   {t('sidebar.deleteChat')}
                 </button>

@@ -77,9 +77,16 @@ body {
   --void: #000000;
   --surface: #0a0a0a;
   --surface-elevated: #111111;
-  --on-surface: #00ffff;
+  --neon-red: #ff4d6d;
+  --neon-cyan: #33f0ff;
+  --neon-amber: #ffbf47;
+  --accent-2: var(--neon-amber);
+  --on-surface: #e8f6ff;
   --text-primary: var(--on-surface);
-  --text-muted: color-mix(in srgb, var(--neon-cyan) 55%, transparent);
+  --text-muted: color-mix(in srgb, var(--on-surface) 56%, transparent);
+  --border-strong: color-mix(in srgb, var(--neon-cyan) 36%, #111827);
+  --success: var(--neon-amber);
+  --warning: var(--neon-amber);
 }
 
 /* Night City: aligned with themeStore `cyberpunk2077` for first-paint / SSR */

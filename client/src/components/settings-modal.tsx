@@ -506,7 +506,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
           {/* ════════════ SECURITY TAB ════════════ */}
           {settingsTab === 'security' && !vaultGate ? (
-            <div className="space-y-3">
+            <div className={`space-y-3 ${isMd3 ? 'md3-pane-enter' : ''}`}>
 
               {/* TOTP */}
               <div className="border border-neon-cyan/30 p-3">
@@ -795,7 +795,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
           {/* ════════════ PROFILE TAB ════════════ */}
           {settingsTab === 'profile' ? (
-            <div className="space-y-4">
+            <div className={`space-y-4 ${isMd3 ? 'md3-pane-enter' : ''}`}>
               <SettingsAvatarSection userId={userId} username={username} />
               <div className="border border-neon-cyan/30 p-3 space-y-2">
                 <label className="terminal-label" htmlFor="profile-display-name">{t('profile.editName')}</label>
@@ -898,7 +898,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           ) : null}
 
           {/* ════════════ MAIN TAB ════════════ */}
-          <div className={`space-y-3 ${settingsTab !== 'main' ? 'hidden' : ''}`}>
+          <div className={`space-y-3 ${settingsTab !== 'main' ? 'hidden' : ''} ${isMd3 ? 'md3-pane-enter' : ''}`}>
             <SettingsPushNotifications userId={userId} />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
@@ -939,15 +939,15 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       onClick={() => setShellMode(sp.id as ShellModeId)}
                       className={`flex items-start gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
                         shellMode === sp.id
-                          ? 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
-                          : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                          ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
+                          : (isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
                       }`}
                     >
                       <span className="flex flex-col">
                         <span>{sp.label}</span>
                         <span className="text-[8px] text-text-muted">{sp.hint}</span>
                       </span>
-                      {shellMode === sp.id && <span className="ml-auto text-neon-cyan">◆</span>}
+                      {shellMode === sp.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
                     </button>
                   ))}
                 </div>
@@ -960,7 +960,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 {THEMES.map((t_cfg) => (
                   <button key={t_cfg.id} type="button" onClick={() => setTheme(t_cfg.id as ThemeId)}
                     className={`flex items-center gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
-                      theme === t_cfg.id ? 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                      theme === t_cfg.id
+                        ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
+                        : (isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
                     }`}>
                     <span className="flex shrink-0 gap-1">
                       <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[0] }} />
@@ -968,7 +970,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[2] }} />
                     </span>
                     {t_cfg.label}
-                    {theme === t_cfg.id && <span className="ml-auto text-neon-cyan">◆</span>}
+                    {theme === t_cfg.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
                   </button>
                 ))}
               </div>

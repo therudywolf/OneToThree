@@ -81,7 +81,8 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
-  const isMd3 = shellMode === 'md3'
+  const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3' || themeId === 'md3dark' || themeId === 'md3light'
   const activeChatId = useChatStore((s) => s.activeChatId)
   const setActiveChatId = useChatStore((s) => s.setActiveChatId)
   const peerPresence = useChatStore((s) => s.peerPresence)
@@ -383,17 +384,21 @@ export function ChatSidebar({
             ))}
           </div>
         ) : chats.length === 0 ? (
-          <div className="px-4 py-8 text-center space-y-3">
-            <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted/70">
+          <div className={`px-4 py-8 text-center space-y-3 ${isMd3 ? 'md3-empty-state' : ''}`}>
+            <p className={`${isMd3 ? 'text-[15px] font-medium text-[var(--on-surface)]' : 'font-mono text-[10px] uppercase tracking-widest text-text-muted/70'}`}>
               {t('sidebar.noActiveRoutes')}
             </p>
-            <p className="text-[9px] text-text-muted/70">
+            <p className={`${isMd3 ? 'text-[13px] text-text-muted' : 'text-[9px] text-text-muted/70'}`}>
               {t('chat.startChatHint')}
             </p>
             <button
               type="button"
               onClick={() => setGroupModalOpen(true)}
-              className="inline-flex items-center gap-1.5 border border-neon-cyan/50 bg-void px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
+                isMd3
+                  ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-2)] hover:brightness-110'
+                  : 'border border-neon-cyan/50 bg-void font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'
+              }`}
             >
               <MessageSquarePlus className="h-3 w-3" />
               {t('chat.newChat')}
@@ -662,10 +667,14 @@ export function ChatSidebar({
         {isAdmin ? (
           <Link
             href="/admin"
-            className="flex items-center gap-2 w-full border border-danger/40 bg-void px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red"
+            className={`flex items-center gap-2 w-full px-3 py-2 transition-colors ${
+              isMd3
+                ? 'rounded-2xl bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_18%,transparent)]'
+                : 'border border-danger/40 bg-void font-mono text-[10px] uppercase tracking-widest text-danger hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red'
+            }`}
           >
             <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span>[ WARDEN ]</span>
+            <span>{isMd3 ? 'Warden' : '[ WARDEN ]'}</span>
           </Link>
         ) : null}
 
@@ -718,8 +727,9 @@ export function ChatSidebar({
               type="button"
               onClick={() => void openDirect()}
               disabled={creating || !peerInput.trim()}
-              className={`shrink-0 px-3 text-[10px] transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] hover:bg-[color-mix(in_srgb,var(--neon-red)_88%,white)] disabled:hover:bg-[var(--neon-red)]' : 'border border-neon-cyan bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan hover:text-text-primary disabled:hover:bg-void disabled:hover:text-neon-cyan'}`}
+              className={`shrink-0 px-3 text-[10px] transition-colors disabled:opacity-40 ${isMd3 ? 'inline-flex items-center gap-1.5 rounded-2xl bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-2)] hover:brightness-110 disabled:hover:bg-[var(--neon-red)]' : 'border border-neon-cyan bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan hover:text-text-primary disabled:hover:bg-void disabled:hover:text-neon-cyan'}`}
             >
+              {isMd3 ? <MessageSquarePlus className="h-4 w-4" aria-hidden /> : null}
               {t('sidebar.openPeer')}
             </button>
           </div>

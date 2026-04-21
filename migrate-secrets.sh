@@ -55,6 +55,13 @@ read_old() {
 command -v openssl >/dev/null || err "openssl is required"
 command -v docker  >/dev/null || err "docker is required"
 
+validate_pg_identifier() {
+  local val="$1" name="$2"
+  if [[ ! "$val" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+    err "$name '${val}' contains invalid characters. Only letters, digits, and underscores are allowed."
+  fi
+}
+
 # --- read preserved values from old env ------------------------------------
 
 log "Reading preserved values from $OLD_ENV …"
@@ -87,6 +94,8 @@ OLD_PG_PASS="$(read_old POSTGRES_PASSWORD)"
 # Defaults
 POSTGRES_USER="${POSTGRES_USER:-forest}"
 POSTGRES_DB="${POSTGRES_DB:-forest}"
+validate_pg_identifier "$POSTGRES_USER" "POSTGRES_USER"
+validate_pg_identifier "$POSTGRES_DB" "POSTGRES_DB"
 MINIO_ROOT_USER="${MINIO_ROOT_USER:-minio}"
 MINIO_BUCKET="${MINIO_BUCKET:-project13-media}"
 MINIO_BUCKET_AVATARS="${MINIO_BUCKET_AVATARS:-project13-avatars}"

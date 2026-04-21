@@ -158,7 +158,14 @@ function QrLoginInner() {
             maxLength={6}
             value={totpCode}
             onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void submitTotp()
+              }
+            }}
             placeholder="000000"
+            autoComplete="one-time-code"
           />
           <a
             href="#submit"
@@ -190,7 +197,23 @@ function QrLoginInner() {
 
 export default function QrLoginPage() {
   return (
-    <Suspense>
+    <Suspense
+      fallback={
+        <main
+          style={{
+            minHeight: '100dvh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'monospace',
+            background: '#0a0a0a',
+            color: '#00ffcc',
+          }}
+        >
+          [ QR :: ЗАГРУЗКА... ]
+        </main>
+      }
+    >
       <QrLoginInner />
     </Suspense>
   )

@@ -245,6 +245,7 @@ export function useChatRealtime(
     removeMessage,
     setTypingUser,
     trackInboundUnread,
+    triggerBackgroundPush,
     unwrappedPrivateKey,
     updateMessageReadAt,
     updateMessageReactions,

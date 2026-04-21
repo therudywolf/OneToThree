@@ -397,6 +397,7 @@ const en = {
   'settings.changePinSuccess': 'Vault password changed.',
 
   'settings.tabGeneral': 'General',
+  'settings.tabChats': 'Chats & Appearance',
   'settings.tabMedia': 'Camera & Mic',
   'settings.mediaSectionTitle': 'Camera & Microphone',
   'settings.mediaHint': 'Input and output device selection.',

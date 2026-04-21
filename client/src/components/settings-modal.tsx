@@ -79,7 +79,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableCode, setTotpDisableCode] = useState('')
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'main' | 'profile' | 'media' | 'devices' | 'security' | 'folders'>('main')
+  const [settingsTab, setSettingsTab] = useState<'main' | 'chat' | 'profile' | 'media' | 'devices' | 'security' | 'folders'>('main')
   const [changePinOpen, setChangePinOpen] = useState(false)
   const [changePinOld, setChangePinOld] = useState('')
   const [changePinNew, setChangePinNew] = useState('')
@@ -448,7 +448,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
           className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${
-          settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' || settingsTab === 'folders' ? 'max-w-2xl'
+          settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' || settingsTab === 'folders' || settingsTab === 'chat' ? 'max-w-2xl'
           : settingsTab === 'profile' ? 'max-w-lg'
           : totpSetup ? 'max-w-lg' : 'max-w-md'
         } ${isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : ''}`}
@@ -466,7 +466,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
         {/* ── Tabs ── */}
         <div className={`flex shrink-0 flex-col gap-2 border-b py-2 sm:flex-row sm:flex-wrap sm:overflow-x-auto ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
-          {(['main', 'profile', 'folders', 'security', 'media', 'devices'] as const).map((tab) => (
+          {(['main', 'chat', 'profile', 'folders', 'security', 'media', 'devices'] as const).map((tab) => (
             <button key={tab} type="button" onClick={() => setSettingsTab(tab)}
               className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
                 settingsTab === tab
@@ -478,6 +478,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     : 'border-border-strong bg-void text-text-muted hover:border-neon-cyan/50'
               }`}>
               {tab === 'main'     ? `${isMd3 ? '' : '[ '}${t('settings.tabGeneral')}${isMd3 ? '' : ' ]'}`
+              : tab === 'chat'    ? `${isMd3 ? '' : '[ '}${t('settings.tabChats')}${isMd3 ? '' : ' ]'}`
               : tab === 'profile' ? `${isMd3 ? '' : '[ '}${t('profile.section')}${isMd3 ? '' : ' ]'}`
               : tab === 'folders' ? `${isMd3 ? '' : '[ '}Папки${isMd3 ? '' : ' ]'}`
               : tab === 'security'? `${isMd3 ? '' : '[ '}${t('settings.tabSecurity')}${isMd3 ? '' : ' ]'}`
@@ -901,209 +902,217 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           ) : null}
 
           {/* ════════════ MAIN TAB ════════════ */}
-          <div className={`space-y-3 ${settingsTab !== 'main' ? 'hidden' : ''} ${isMd3 ? 'md3-pane-enter' : ''}`}>
-            <SettingsPushNotifications userId={userId} />
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.chatSoundTitle')}</p>
-                <p className="break-words text-[9px] text-danger">{t('settings.chatSoundHint')}</p>
-              </div>
-              <button type="button" role="switch" aria-checked={chatSoundEnabled}
-                onClick={() => setChatSoundEnabled(!chatSoundEnabled)}
-                className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
-                  chatSoundEnabled ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]' : 'border-border-strong/60 bg-void text-text-muted'
-                } hover:border-neon-red hover:text-neon-red`}>
-                {chatSoundEnabled ? (isMd3 ? 'ON' : '[ ON ]') : (isMd3 ? 'OFF' : '[ OFF ]')}
-              </button>
-            </div>
-            <div className="space-y-2 border-t border-neon-cyan/20 pt-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.appearanceTitle')}</p>
-                  <p className="mt-1 text-[9px] text-danger">{t('settings.appearanceHint')}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => resetAppearance()}
-                  className="shrink-0 border border-neon-cyan/30 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10"
-                >
-                  {t('settings.appearanceReset')}
-                </button>
-              </div>
-              <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/30 p-3">
-                <p className="mb-2 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
-                  {t('settings.appearanceShellTitle')}
-                </p>
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                  {SHELL_PRESETS.map((sp) => (
-                    <button
-                      key={sp.id}
-                      type="button"
-                      onClick={() => setShellMode(sp.id as ShellModeId)}
-                      className={`flex items-start gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
-                        shellMode === sp.id
-                          ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
-                          : (isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
-                      }`}
-                    >
-                      <span className="flex flex-col">
-                        <span>{sp.label}</span>
-                        <span className="text-[8px] text-text-muted">{sp.hint}</span>
-                      </span>
-                      {shellMode === sp.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <p className="mt-1 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
-                {t('settings.appearancePaletteTitle')}
-              </p>
-              <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
-                {THEMES.map((t_cfg) => (
-                  <button key={t_cfg.id} type="button" onClick={() => setTheme(t_cfg.id as ThemeId)}
-                    className={`flex items-center gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
-                      theme === t_cfg.id
-                        ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
-                        : (isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
-                    }`}>
-                    <span className="flex shrink-0 gap-1">
-                      <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[0] }} />
-                      <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[1] }} />
-                      <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[2] }} />
-                    </span>
-                    {t_cfg.label}
-                    {theme === t_cfg.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
-                  </button>
-                ))}
-              </div>
-
-              <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/30 p-3">
-                <div className="flex flex-wrap gap-2">
-                  {ACCENT_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => setAccentPreset(preset.id)}
-                      className={`flex items-center gap-2 border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-widest transition-colors ${
-                        accentPreset === preset.id
-                          ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
-                          : 'border-border-strong text-text-muted hover:border-neon-cyan/50 hover:text-neon-cyan'
-                      }`}
-                    >
-                      {preset.id !== 'theme' ? (
-                        <span className="flex gap-1">
-                          <span className="h-2.5 w-2.5 border border-border-strong/10" style={{ background: preset.primary }} />
-                          <span className="h-2.5 w-2.5 border border-border-strong/10" style={{ background: preset.accent }} />
-                        </span>
-                      ) : (
-                        <span className="h-2.5 w-2.5 border border-border-strong/10 bg-transparent" />
-                      )}
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
-                  {[
-                    {
-                      key: 'primary',
-                      label: t('settings.appearancePrimary'),
-                      value: primaryColorOverride ?? resolvedTheme.tokens.primary,
-                      onChange: setPrimaryColorOverride,
-                    },
-                    {
-                      key: 'accent',
-                      label: t('settings.appearanceAccent'),
-                      value: accentColorOverride ?? resolvedTheme.tokens.accent,
-                      onChange: setAccentColorOverride,
-                    },
-                    {
-                      key: 'background',
-                      label: t('settings.appearanceBackground'),
-                      value: backgroundColorOverride ?? resolvedTheme.tokens.background,
-                      onChange: setBackgroundColorOverride,
-                    },
-                  ].map((item) => (
-                    <label key={item.key} className="space-y-1">
-                      <span className="terminal-label">{item.label}</span>
-                      <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/40 px-2 py-2">
-                        <input
-                          type="color"
-                          value={item.value}
-                          onChange={(e) => item.onChange(e.target.value)}
-                          className="h-8 w-10 cursor-pointer border border-neon-cyan/30 bg-transparent"
-                        />
-                        <input
-                          type="text"
-                          value={item.value}
-                          onChange={(e) => item.onChange(e.target.value)}
-                          className="terminal-input h-8 px-2 py-1 text-[10px]"
-                          spellCheck={false}
-                        />
-                      </div>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-neon-cyan">{t('settings.appearanceMotion')}</p>
-                    <p className="text-[9px] text-text-muted">{t('settings.appearanceMotionHint')}</p>
+          <div className={`space-y-3 ${(settingsTab !== 'main' && settingsTab !== 'chat') ? 'hidden' : ''} ${isMd3 ? 'md3-pane-enter' : ''}`}>
+            {settingsTab === 'chat' ? (
+              <>
+                <SettingsPushNotifications userId={userId} />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.chatSoundTitle')}</p>
+                    <p className="break-words text-[9px] text-danger">{t('settings.chatSoundHint')}</p>
                   </div>
-                  <div className="flex gap-2">
-                    {([
-                      ['full', t('settings.appearanceMotionFull')],
-                      ['reduced', t('settings.appearanceMotionReduced')],
-                    ] as const).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setMotionMode(mode as MotionMode)}
-                        className={`border px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest ${
-                          motionMode === mode
-                            ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
-                            : 'border-border-strong text-text-muted hover:border-neon-cyan/40 hover:text-neon-cyan'
-                        }`}
-                      >
-                        {label}
+                  <button type="button" role="switch" aria-checked={chatSoundEnabled}
+                    onClick={() => setChatSoundEnabled(!chatSoundEnabled)}
+                    className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
+                      chatSoundEnabled ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_14px_rgba(34,211,238,0.25)]' : 'border-border-strong/60 bg-void text-text-muted'
+                    } hover:border-neon-red hover:text-neon-red`}>
+                    {chatSoundEnabled ? (isMd3 ? 'ON' : '[ ON ]') : (isMd3 ? 'OFF' : '[ OFF ]')}
+                  </button>
+                </div>
+                <div className="space-y-2 border-t border-neon-cyan/20 pt-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.appearanceTitle')}</p>
+                      <p className="mt-1 text-[9px] text-danger">{t('settings.appearanceHint')}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => resetAppearance()}
+                      className="shrink-0 border border-neon-cyan/30 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10"
+                    >
+                      {t('settings.appearanceReset')}
+                    </button>
+                  </div>
+                  <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/30 p-3">
+                    <p className="mb-2 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
+                      {t('settings.appearanceShellTitle')}
+                    </p>
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      {SHELL_PRESETS.map((sp) => (
+                        <button
+                          key={sp.id}
+                          type="button"
+                          onClick={() => setShellMode(sp.id as ShellModeId)}
+                          className={`flex items-start gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                            shellMode === sp.id
+                              ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
+                              : (isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
+                          }`}
+                        >
+                          <span className="flex flex-col">
+                            <span>{sp.label}</span>
+                            <span className="text-[8px] text-text-muted">{sp.hint}</span>
+                          </span>
+                          {shellMode === sp.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="mt-1 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
+                    {t('settings.appearancePaletteTitle')}
+                  </p>
+                  <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+                    {THEMES.map((t_cfg) => (
+                      <button key={t_cfg.id} type="button" onClick={() => setTheme(t_cfg.id as ThemeId)}
+                        className={`flex items-center gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                          theme === t_cfg.id
+                            ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
+                            : (isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
+                        }`}>
+                        <span className="flex shrink-0 gap-1">
+                          <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[0] }} />
+                          <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[1] }} />
+                          <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[2] }} />
+                        </span>
+                        {t_cfg.label}
+                        {theme === t_cfg.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
                       </button>
                     ))}
                   </div>
-                </div>
 
-                <div
-                  className="mt-3 overflow-hidden border p-3"
-                  style={{
-                    borderColor: resolvedTheme.tokens.border,
-                    borderRadius: resolvedTheme.tokens.panelRadius,
-                    background: `linear-gradient(135deg, ${resolvedTheme.tokens.surface} 0%, ${resolvedTheme.tokens.elevated} 100%)`,
-                    boxShadow: `0 0 24px rgba(${resolvedTheme.tokens.shadowRgb}, 0.14)`,
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="h-10 w-10 border border-border-strong/10" style={{ background: resolvedTheme.tokens.primary }} />
-                    <div className="min-w-0">
-                      <p className="truncate font-mono text-[11px] uppercase tracking-widest" style={{ color: resolvedTheme.tokens.text }}>
-                        {resolvedTheme.label}
-                      </p>
-                      <p className="text-[10px]" style={{ color: resolvedTheme.tokens.muted }}>
-                        {t('settings.appearancePreviewHint')}
-                      </p>
+                  <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/30 p-3">
+                    <div className="flex flex-wrap gap-2">
+                      {ACCENT_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setAccentPreset(preset.id)}
+                          className={`flex items-center gap-2 border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-widest transition-colors ${
+                            accentPreset === preset.id
+                              ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10'
+                              : 'border-border-strong text-text-muted hover:border-neon-cyan/50 hover:text-neon-cyan'
+                          }`}
+                        >
+                          {preset.id !== 'theme' ? (
+                            <span className="flex gap-1">
+                              <span className="h-2.5 w-2.5 border border-border-strong/10" style={{ background: preset.primary }} />
+                              <span className="h-2.5 w-2.5 border border-border-strong/10" style={{ background: preset.accent }} />
+                            </span>
+                          ) : (
+                            <span className="h-2.5 w-2.5 border border-border-strong/10 bg-transparent" />
+                          )}
+                          {preset.label}
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <div className="flex-1 px-3 py-2 text-[10px] font-semibold" style={{ background: resolvedTheme.tokens.primary, color: resolvedTheme.tokens.background }}>
-                      PRIMARY
+
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      {[
+                        {
+                          key: 'primary',
+                          label: t('settings.appearancePrimary'),
+                          value: primaryColorOverride ?? resolvedTheme.tokens.primary,
+                          onChange: setPrimaryColorOverride,
+                        },
+                        {
+                          key: 'accent',
+                          label: t('settings.appearanceAccent'),
+                          value: accentColorOverride ?? resolvedTheme.tokens.accent,
+                          onChange: setAccentColorOverride,
+                        },
+                        {
+                          key: 'background',
+                          label: t('settings.appearanceBackground'),
+                          value: backgroundColorOverride ?? resolvedTheme.tokens.background,
+                          onChange: setBackgroundColorOverride,
+                        },
+                      ].map((item) => (
+                        <label key={item.key} className="space-y-1">
+                          <span className="terminal-label">{item.label}</span>
+                          <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/40 px-2 py-2">
+                            <input
+                              type="color"
+                              value={item.value}
+                              onChange={(e) => item.onChange(e.target.value)}
+                              className="h-8 w-10 cursor-pointer border border-neon-cyan/30 bg-transparent"
+                            />
+                            <input
+                              type="text"
+                              value={item.value}
+                              onChange={(e) => item.onChange(e.target.value)}
+                              className="terminal-input h-8 px-2 py-1 text-[10px]"
+                              spellCheck={false}
+                            />
+                          </div>
+                        </label>
+                      ))}
                     </div>
-                    <div className="flex-1 border px-3 py-2 text-[10px] font-semibold" style={{ borderColor: resolvedTheme.tokens.border, color: resolvedTheme.tokens.accent }}>
-                      ACCENT
+
+                    <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-widest text-neon-cyan">{t('settings.appearanceMotion')}</p>
+                        <p className="text-[9px] text-text-muted">{t('settings.appearanceMotionHint')}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        {([
+                          ['full', t('settings.appearanceMotionFull')],
+                          ['reduced', t('settings.appearanceMotionReduced')],
+                        ] as const).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setMotionMode(mode as MotionMode)}
+                            className={`border px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest ${
+                              motionMode === mode
+                                ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan'
+                                : 'border-border-strong text-text-muted hover:border-neon-cyan/40 hover:text-neon-cyan'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div
+                      className="mt-3 overflow-hidden border p-3"
+                      style={{
+                        borderColor: resolvedTheme.tokens.border,
+                        borderRadius: resolvedTheme.tokens.panelRadius,
+                        background: `linear-gradient(135deg, ${resolvedTheme.tokens.surface} 0%, ${resolvedTheme.tokens.elevated} 100%)`,
+                        boxShadow: `0 0 24px rgba(${resolvedTheme.tokens.shadowRgb}, 0.14)`,
+                        fontFamily: resolvedTheme.tokens.fontFamily,
+                      }}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="h-10 w-10 border border-border-strong/10" style={{ background: resolvedTheme.tokens.primary }} />
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] uppercase tracking-widest" style={{ color: resolvedTheme.tokens.text }}>
+                            {resolvedTheme.label}
+                          </p>
+                          <p className="text-[10px]" style={{ color: resolvedTheme.tokens.muted }}>
+                            {t('settings.appearancePreviewHint')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <div className="flex-1 px-3 py-2 text-[10px] font-semibold" style={{ background: resolvedTheme.tokens.primary, color: resolvedTheme.tokens.background }}>
+                          PRIMARY
+                        </div>
+                        <div className="flex-1 border px-3 py-2 text-[10px] font-semibold" style={{ borderColor: resolvedTheme.tokens.border, color: resolvedTheme.tokens.accent }}>
+                          ACCENT
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              </>
+            ) : null}
+
+            {settingsTab === 'main' ? (
+              <>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
                 <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.discoverable')}</p>
                 <p className="break-words text-[9px] text-danger">{t('settings.discoverableHint')}</p>
@@ -1123,7 +1132,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 {busy ? (isMd3 ? '…' : '[ … ]') : !settingsReady ? (isMd3 ? '—' : '[ -- ]') : discoverableOn ? (isMd3 ? 'ON' : '[ ON ]') : (isMd3 ? 'OFF' : '[ OFF ]')}
               </button>
             </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0 flex-1">
                 <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.ghostPresence')}</p>
                 <p className="break-words text-[9px] text-danger">{t('settings.ghostPresenceHint')}</p>
@@ -1158,6 +1167,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                 {chromeLabel(t('settings.purgeLocalCache'))}
               </TerminalGlitchButton>
             </div>
+              </>
+            ) : null}
           </div>
 
         </div>{/* end scroll area */}

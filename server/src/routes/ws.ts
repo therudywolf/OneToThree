@@ -310,6 +310,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/ws', { websocket: true }, (ws: WebSocket, request: FastifyRequest) => {
     const correlationId = randomUUID()
     const pending: unknown[] = []
+    const MAX_PENDING = 20
     let authed: AuthUser | null = null
     /** Session metadata for ongoing revocation checks. */
     let sessionJti: string | undefined
@@ -800,7 +801,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
 
     ws.on('message', (raw) => {
       if (!authed) {
-        pending.push(raw)
+        if (pending.length < MAX_PENDING) pending.push(raw)
         return
       }
       handleMessage(raw, authed)

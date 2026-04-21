@@ -1664,3 +1664,294 @@ select {
   animation: none;
 }
 
+/* ============================================================
+ * P13 SHELL-AWARE UTILITY COMPONENTS (Sprint 2A)
+ * ============================================================ */
+
+/* --- Chat scroll area font ---------------------------------- */
+/* Scroll container sets --p13-font-body so MD3 users see sans-serif
+ * in timestamps/labels while terminal keeps monospace. */
+.p13-chat-scroll {
+  font-family: var(--p13-font-body);
+}
+
+/* --- Typing indicator --------------------------------------- */
+.p13-typing-indicator {
+  position: absolute;
+  left: 50%;
+  top: 0.5rem;
+  z-index: 5;
+  max-width: calc(100% - 1rem);
+  transform: translateX(-50%);
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  padding: 3px 12px;
+  font-family: var(--p13-font-body);
+  font-size: 10px;
+  text-transform: var(--p13-label-transform);
+  letter-spacing: var(--p13-label-spacing);
+  background: color-mix(in srgb, var(--void) 80%, transparent);
+  color: color-mix(in srgb, var(--neon-cyan) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 25%, transparent);
+  border-radius: var(--p13-radius-pill);
+}
+[data-shell="md3"] .p13-typing-indicator {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  background: var(--surface-elevated);
+  color: color-mix(in srgb, var(--on-surface) 75%, transparent);
+  border: none;
+  border-radius: 999px;
+  padding: 4px 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.14), 0 2px 6px rgba(0,0,0,.10);
+}
+
+/* --- Empty chat state --------------------------------------- */
+.p13-empty-state-box {
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 20%, transparent);
+  background: transparent;
+  padding: 1.5rem 2rem;
+  text-align: center;
+  border-radius: var(--p13-radius-panel);
+}
+[data-shell="md3"] .p13-empty-state-box {
+  background: color-mix(in srgb, var(--surface-elevated) 60%, transparent);
+  border: none;
+  border-radius: 24px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 1px 3px rgba(0,0,0,.08);
+}
+.p13-empty-state-text {
+  font-family: var(--p13-font-body);
+  font-size: 11px;
+  text-transform: var(--p13-label-transform);
+  letter-spacing: var(--p13-label-spacing);
+  color: color-mix(in srgb, var(--neon-cyan) 60%, transparent);
+}
+[data-shell="md3"] .p13-empty-state-text {
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--on-surface) 60%, transparent);
+}
+.p13-empty-state-hint {
+  font-family: var(--p13-font-body);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--danger);
+  margin-top: 0.5rem;
+}
+[data-shell="md3"] .p13-empty-state-hint {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--on-surface) 50%, transparent);
+}
+
+/* --- Reply banner ------------------------------------------- */
+.p13-reply-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid color-mix(in srgb, var(--neon-cyan) 55%, transparent);
+}
+.p13-reply-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--p13-font-body);
+  font-size: 10px;
+  text-transform: var(--p13-label-transform);
+  letter-spacing: var(--p13-label-spacing);
+  color: color-mix(in srgb, var(--neon-cyan) 70%, transparent);
+}
+[data-shell="md3"] .p13-reply-banner {
+  border-left: 3px solid var(--neon-cyan);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--neon-cyan) 8%, transparent);
+  padding: 6px 10px;
+}
+[data-shell="md3"] .p13-reply-banner-text {
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--on-surface) 75%, transparent);
+}
+.p13-banner-dismiss {
+  flex-shrink: 0;
+  font-family: var(--p13-font-body);
+  font-size: 10px;
+  color: var(--danger);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-transform: var(--p13-label-transform);
+  letter-spacing: var(--p13-label-spacing);
+  line-height: 1;
+}
+[data-shell="md3"] .p13-banner-dismiss {
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: color-mix(in srgb, var(--on-surface) 55%, transparent);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color var(--motion-fast) ease;
+}
+[data-shell="md3"] .p13-banner-dismiss:hover {
+  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+}
+
+/* --- Edit banner (accent = primary/red) --------------------- */
+.p13-edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid color-mix(in srgb, var(--neon-red) 60%, transparent);
+}
+.p13-edit-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--p13-font-body);
+  font-size: 10px;
+  text-transform: var(--p13-label-transform);
+  letter-spacing: var(--p13-label-spacing);
+  color: var(--neon-red);
+}
+[data-shell="md3"] .p13-edit-banner {
+  border-left: 3px solid var(--neon-red);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--neon-red) 6%, transparent);
+  padding: 6px 10px;
+}
+[data-shell="md3"] .p13-edit-banner-text {
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+/* --- Emoji picker popup ------------------------------------- */
+.p13-emoji-popup {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 50%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--neon-cyan) 12%, transparent);
+  background: var(--void);
+  overflow: hidden;
+}
+[data-shell="md3"] .p13-emoji-popup {
+  border: none;
+  border-radius: 24px;
+  box-shadow: 0 4px 8px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.12);
+  background: var(--surface-elevated);
+}
+
+/* --- Recording bar (locked) --------------------------------- */
+.p13-record-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+.p13-record-waveform {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  background: var(--p13-composer-input-bg);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--p13-radius-input);
+}
+[data-shell="md3"] .p13-record-waveform {
+  border: none;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border-radius: 16px;
+}
+
+/* --- CRT flicker enhancement (terminal only) ---------------- */
+@keyframes p13-crt-flicker {
+  0%, 94%, 100% { opacity: var(--crt-opacity, 0.16); }
+  95%  { opacity: calc(var(--crt-opacity, 0.16) * 0.5); }
+  96%  { opacity: calc(var(--crt-opacity, 0.16) * 1.6); }
+  97%  { opacity: calc(var(--crt-opacity, 0.16) * 0.7); }
+}
+[data-shell="terminal"] .crt-overlay {
+  animation: p13-crt-flicker 12s steps(1) infinite;
+}
+
+/* --- MD3 state layer on icon buttons ----------------------- */
+[data-shell="md3"] .p13-icon-btn {
+  position: relative;
+  overflow: hidden;
+}
+[data-shell="md3"] .p13-icon-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease;
+  pointer-events: none;
+}
+[data-shell="md3"] .p13-icon-btn:hover::after { opacity: 0.08; }
+[data-shell="md3"] .p13-icon-btn:active::after { opacity: 0.12; }
+
+/* ===== RESPONSIVE: ultra-wide & aspect ratios ===== */
+
+/* 32:9 super-ultrawide (e.g. 3440px+): cap total app width so content
+ * doesn't stretch across 2 000+ px of chat area */
+@media (min-width: 3200px) {
+  .chat-safe-shell {
+    max-width: 2800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* 16:10 desktop (1440-1919px): sidebar slightly narrower than 16:9 dock */
+@media (min-width: 1440px) and (max-width: 1919px) and (min-aspect-ratio: 16/10) and (max-aspect-ratio: 16/9) {
+  .chat-dock-panel {
+    width: 340px;
+    min-width: 340px;
+  }
+}
+/* 16:10 at 1920+ px: sidebar room */
+@media (min-width: 1920px) and (min-aspect-ratio: 16/10) and (max-aspect-ratio: 16/9) {
+  .chat-layout-sidebar {
+    width: 340px;
+  }
+}
+
+/* Mobile sidebar open: ensure full height flex column */
+@media (max-width: 767px) {
+  .chat-layout-sidebar.sidebar-open {
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 50;
+  }
+}
+

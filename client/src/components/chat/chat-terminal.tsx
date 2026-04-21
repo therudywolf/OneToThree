@@ -946,18 +946,14 @@ export function ChatTerminal({
       {/* Floating typing indicator — absolutely positioned so it does not
           reflow the message list when it toggles on/off. */}
       {typingLabel ? (
-        <div
-          className="pointer-events-none absolute left-1/2 top-2 z-[5] max-w-[calc(100%-1rem)] -translate-x-1/2 border border-neon-cyan/25 bg-void/80 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan/90 backdrop-blur-sm"
-          aria-live="polite"
-        >
-          [ @{typingLabel} IS SCRATCHING
-          <span className="animate-pulse">...</span> ]
+        <div className="p13-typing-indicator" aria-live="polite">
+          @{typingLabel}<span className="animate-pulse"> ···</span>
         </div>
       ) : null}
       <div
         ref={ref}
         data-stabilizing="true"
-        className="chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 font-mono text-sm [-webkit-overflow-scrolling:touch] sm:px-4"
+        className="p13-chat-scroll chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 text-sm [-webkit-overflow-scrolling:touch] sm:px-4"
         onClick={() => { if (reactingMsgId) setReactingMsgId(null) }}
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
@@ -976,9 +972,9 @@ export function ChatTerminal({
           </div>
         ) : renderMessages.length === 0 ? (
           <div className="flex h-full min-h-[12rem] items-center justify-center">
-            <div className="space-y-3 border border-neon-cyan/20 px-6 py-4 text-center">
+            <div className="p13-empty-state-box space-y-3">
               {isSelfChat ? (
-                <p className="font-mono text-xs tracking-[0.25em] text-accent-2">
+                <p className="p13-empty-state-text text-accent-2">
                   {t('sidebar.savedMessages')}
                 </p>
               ) : !isGroup && directPeerUsername ? (
@@ -989,19 +985,15 @@ export function ChatTerminal({
                     avatarKey={null}
                     size={48}
                   />
-                  <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/60">
-                    {directPeerUsername}
-                  </p>
+                  <p className="p13-empty-state-text">{directPeerUsername}</p>
                 </>
               ) : isGroup ? (
-                <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/60">
+                <p className="p13-empty-state-text">
                   {activeChat?.name || t('sidebar.groupUntitled')}
                 </p>
               ) : null}
-              <p className="font-mono text-xs tracking-[0.25em] text-neon-cyan/50">
-                {t('chat.noLogsTitle')}
-              </p>
-              <p className="text-[9px] uppercase tracking-widest text-danger">
+              <p className="p13-empty-state-text">{t('chat.noLogsTitle')}</p>
+              <p className="p13-empty-state-hint">
                 {isGroup ? t('chat.emptyGroupHint') : t('chat.noLogsHint')}
               </p>
             </div>

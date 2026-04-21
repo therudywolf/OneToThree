@@ -221,29 +221,27 @@ async function saveSession(
   peerId: string,
   session: SerializedSession
 ): Promise<void> {
-  const json = JSON.stringify(session)
-  if (sessionWrapKey) {
-    const iv = crypto.getRandomValues(new Uint8Array(12))
-    const ct = new Uint8Array(
-      await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: bytesToArrayBuffer(iv) },
-        sessionWrapKey,
-        bytesToArrayBuffer(ENCODER.encode(json))
-      )
-    )
-    // Layout: [WRAP_MAGIC(1) | iv(12) | ciphertext+tag].
-    const wrapped = new Uint8Array(1 + 12 + ct.length)
-    wrapped[0] = WRAP_MAGIC
-    wrapped.set(iv, 1)
-    wrapped.set(ct, 13)
-    const copy = new ArrayBuffer(wrapped.byteLength)
-    new Uint8Array(copy).set(wrapped)
-    await putSessionRecord(ownerId, peerId, copy, PROTOCOL_VERSION)
-    return
+  if (!sessionWrapKey) {
+    // Refuse to persist ratchet chain keys without a vault wrap key.
+    // The vault must be unlocked before DR sessions can be established.
+    throw new Error('RATCHET_VAULT_NOT_UNLOCKED')
   }
-  const buf = ENCODER.encode(json)
-  const copy = new ArrayBuffer(buf.byteLength)
-  new Uint8Array(copy).set(buf)
+  const json = JSON.stringify(session)
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const ct = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: bytesToArrayBuffer(iv) },
+      sessionWrapKey,
+      bytesToArrayBuffer(ENCODER.encode(json))
+    )
+  )
+  // Layout: [WRAP_MAGIC(1) | iv(12) | ciphertext+tag].
+  const wrapped = new Uint8Array(1 + 12 + ct.length)
+  wrapped[0] = WRAP_MAGIC
+  wrapped.set(iv, 1)
+  wrapped.set(ct, 13)
+  const copy = new ArrayBuffer(wrapped.byteLength)
+  new Uint8Array(copy).set(wrapped)
   await putSessionRecord(ownerId, peerId, copy, PROTOCOL_VERSION)
 }
 

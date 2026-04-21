@@ -776,6 +776,16 @@ const ru = {
   'thread.inputPlaceholder': 'Ответить...',
   'thread.close': 'Закрыть обсуждение',
   'thread.openThread': 'Открыть обсуждение',
+
+  // [IDENTITY]
+  'identity.verifyHint': 'Сверьте этот код с контактом через защищенный внешний канал.',
+  'identity.compromisedAlert': '[!] ALERT: TRUST_REVOKED // Ключ узла был изменен. Возможна попытка перехвата.',
+  'identity.revokeTrust': '[ РАЗОРВАТЬ_ДОВЕРИЕ ]',
+  'identity.validateIdentity': '[ ПОДТВЕРДИТЬ_ЛИЧНОСТЬ ]',
+  'identity.addToContacts': '[ ДОБАВИТЬ_В_КОНТАКТЫ ]',
+  'identity.removeContact': '[ УДАЛИТЬ_ИЗ_КОНТАКТОВ ]',
+  'identity.contactApproved': 'Контакт апрувнут на этом устройстве.',
+  'identity.contactNotApproved': 'Контакт пока не апрувнут.',
 } as const;
 
 export default ru;

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star, ShieldAlert, Bell, BellOff } from 'lucide-react'
+import { Pin, ShieldCheck, Search, Loader2, MessageSquarePlus, Star, ShieldAlert, Bell, BellOff, UserCheck } from 'lucide-react'
 import Link from 'next/link'
 import { useChatStore } from '@/store/chatStore'
 import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite, setChatMute, isChatMuted } from '@/lib/api/chats'
@@ -17,6 +17,7 @@ import { resolveTrustStatus } from '@/lib/trust-store'
 import { isUuid, normalizePeerInput } from '@/lib/peer-input'
 import { canonicalUserId } from '@/lib/user-id'
 import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
+import { isApprovedContact } from '@/lib/contacts-store'
 import type { ApiChatRow } from '@/lib/api/chats'
 import { searchLocalMessages } from '@/lib/message-cache'
 import { useThemeStore } from '@/store/themeStore'
@@ -94,6 +95,7 @@ export function ChatSidebar({
   const [groupModalOpen, setGroupModalOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [trustedPeerIds, setTrustedPeerIds] = useState<Set<string>>(new Set())
+  const [approvedPeerIds, setApprovedPeerIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<string[]>(loadPinnedIds)
   const [localGhostQuery, setLocalGhostQuery] = useState('')
   const [ghostHitChatIds, setGhostHitChatIds] = useState<Set<string> | null>(null)
@@ -142,6 +144,22 @@ export function ChatSidebar({
     return () => {
       cancelled = true
     }
+  }, [chats, userId])
+
+  useEffect(() => {
+    const directPeerIds = chats
+      .filter((c) => !c.is_group)
+      .map((c) => c.member_ids.find((id) => id !== userId))
+      .filter((id): id is string => Boolean(id))
+    if (!directPeerIds.length) {
+      setApprovedPeerIds(new Set())
+      return
+    }
+    const approved = new Set<string>()
+    for (const peerId of directPeerIds) {
+      if (isApprovedContact(peerId)) approved.add(peerId)
+    }
+    setApprovedPeerIds(approved)
   }, [chats, userId])
 
   const sidebarChats = orderedSidebarChats(chats, pinnedIds)
@@ -477,6 +495,9 @@ export function ChatSidebar({
                     <span className="inline-flex items-center gap-1.5">
                       {!c.is_group && trustedPeerIds.has(peerId ?? '') ? (
                         <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
+                      ) : null}
+                      {!c.is_group && approvedPeerIds.has(peerId ?? '') ? (
+                        <UserCheck className="h-3.5 w-3.5 text-accent-2 shrink-0" />
                       ) : null}
                       <span className={`truncate text-[12px] ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-text-muted' : 'text-neon-cyan/85')}`}>
                         {listTitle}

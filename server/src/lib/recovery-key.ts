@@ -18,7 +18,14 @@ export function generateRecoveryMaterial(): RecoveryMaterial {
 }
 
 export function hashRecoveryKey(recoveryKey: string, salt: string): string {
-  const out = scryptSync(recoveryKey, salt, 32, { N: 131072, r: 8, p: 1 }) as Buffer
+  // N=131072 r=8 requires ~128 MB; pass maxmem explicitly so Node doesn't
+  // reject with "memory limit exceeded" on its default 32 MB cap.
+  const out = scryptSync(recoveryKey, salt, 32, {
+    N: 131072,
+    r: 8,
+    p: 1,
+    maxmem: 256 * 1024 * 1024,
+  }) as Buffer
   return b64url(out)
 }
 

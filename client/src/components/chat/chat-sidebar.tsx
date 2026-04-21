@@ -45,7 +45,6 @@ import {
   loadChatFolders,
   reorderCustomFolders,
   resetChatFolderRules,
-  upsertChatFolder,
   type ChatFolder,
 } from '@/lib/chat-folders'
 import type { ApiChatRow } from '@/lib/api/chats'
@@ -138,8 +137,8 @@ export function ChatSidebar({
   const [dragFolderId, setDragFolderId] = useState<string | null>(null)
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null)
-  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
-  const [renamingFolderName, setRenamingFolderName] = useState('')
+  const [_renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
+  const [_renamingFolderName, setRenamingFolderName] = useState('')
 
   useEffect(() => {
     try {

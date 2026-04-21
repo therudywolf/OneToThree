@@ -3,6 +3,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { Crown, Star, ArrowDown, Reply } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { useUnreadStore } from '@/store/unreadStore'
 import { getFmSocket } from '@/lib/api/socket'
 import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
@@ -112,11 +114,11 @@ export function ChatTerminal({
 }) {
   const { t, module: locale } = useTranslation()
   const messages = useChatStore((s) => s.messages)
-  const historyDecryptBusy = useChatStore((s) => s.historyDecryptBusy)
-  const readAtOverrides = useChatStore((s) => s.readAtOverrides)
   const removeMessage = useChatStore((s) => s.removeMessage)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
-  const activeChatId = useChatStore((s) => s.activeChatId)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const historyDecryptBusy = useUnreadStore((s) => s.historyDecryptBusy)
+  const readAtOverrides = useUnreadStore((s) => s.readAtOverrides)
   const ref = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const topSentinelRef = useRef<HTMLDivElement>(null)
@@ -533,7 +535,7 @@ export function ChatTerminal({
   // context and sends it as a normal message. E2E-safe: the server never sees
   // the plaintext and cannot "move" ciphertext between chats because each chat
   // has its own key material. This is purely a client-side operation.
-  const privateKeyForForward = useChatStore((s) => s.unwrappedPrivateKey)
+  const privateKeyForForward = useSessionStore((s) => s.unwrappedPrivateKey)
   const handleForward = useCallback(
     async (chatId: string, text: string) => {
       if (!userId) throw new Error('FORWARD_NOT_AUTHED')
@@ -1390,10 +1392,10 @@ export function ChatTerminal({
                 c => !c.is_group && c.member_ids.some(id => canonicalUserId(id) === canonicalUserId(profileTarget.userId))
               )
               if (existing) {
-                useChatStore.getState().setActiveChatId(existing.id)
+                useSessionStore.getState().setActiveChatId(existing.id)
               } else {
                 const chat = await createDirectE2EChat(userId, profileTarget.userId)
-                useChatStore.getState().setActiveChatId(chat.id)
+                useSessionStore.getState().setActiveChatId(chat.id)
               }
             } catch (err) {
               console.error('[SYS.CHAT] Failed to open DM:', err)

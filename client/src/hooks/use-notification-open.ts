@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { parseTargetChatIdFromUrl } from '@/lib/notification-open'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 
 type SwMessageData = {
   type?: string
@@ -10,7 +10,7 @@ type SwMessageData = {
 }
 
 export function useNotificationOpen() {
-  const setActiveChatId = useChatStore((s) => s.setActiveChatId)
+  const setActiveChatId = useSessionStore((s) => s.setActiveChatId)
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return

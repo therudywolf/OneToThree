@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 
 /**
  * PROJECT 13 :: INPUT_PRESENCE_ENGINE
@@ -14,8 +14,8 @@ const THROTTLE_INTERVAL = 1500 // Интервал между сигналами
 const TERMINATE_DEBOUNCE = 3000 // Задержка перед обрывом сигнала (мс)
 
 export function useTypingIndicator() {
-  const activeChatId = useChatStore(s => s.activeChatId)
-  const userId = useChatStore(s => s.userId)
+  const activeChatId = useSessionStore(s => s.activeChatId)
+  const userId = useSessionStore(s => s.userId)
   
   const isTypingActive = useRef(false)
   const lastSignalTime = useRef(0)

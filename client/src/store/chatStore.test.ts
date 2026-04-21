@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { DecryptedMessage } from '@/types/chat'
 import { useChatStore } from './chatStore'
+import { useSessionStore } from './sessionStore'
+import { useUnreadStore } from './unreadStore'
 
 function message(partial: Partial<DecryptedMessage> & { id: string; chat_id: string; sender_id: string }): DecryptedMessage {
   return {
@@ -21,114 +23,128 @@ function message(partial: Partial<DecryptedMessage> & { id: string; chat_id: str
 describe('chatStore unread model', () => {
   beforeEach(() => {
     useChatStore.getState().reset()
-    useChatStore.getState().setUserId('u-self')
+    useSessionStore.getState().setUserId('u-self')
   })
 
   it('tracks per-chat unread and aggregate total for background messages', () => {
-    const store = useChatStore.getState()
-    store.trackInboundUnread({
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-peer',
       isForegroundVisible: false,
       isActiveChat: false,
+      userId: useSessionStore.getState().userId,
+      messages: useChatStore.getState().messages,
     })
 
-    const next = useChatStore.getState()
+    const next = useUnreadStore.getState()
     expect(next.unreadByChat['chat-a']?.total).toBe(1)
     expect(next.unreadByChat['chat-a']?.mentions).toBe(0)
     expect(next.unreadTotal).toBe(1)
   })
 
   it('does not increase unread for own message or visible active chat', () => {
-    const store = useChatStore.getState()
-
-    store.trackInboundUnread({
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-self',
       isForegroundVisible: false,
       isActiveChat: false,
+      userId: useSessionStore.getState().userId,
+      messages: useChatStore.getState().messages,
     })
-    expect(useChatStore.getState().unreadTotal).toBe(0)
+    expect(useUnreadStore.getState().unreadTotal).toBe(0)
 
-    store.trackInboundUnread({
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-peer',
       isForegroundVisible: true,
       isActiveChat: true,
+      userId: useSessionStore.getState().userId,
+      messages: useChatStore.getState().messages,
     })
-    expect(useChatStore.getState().unreadTotal).toBe(0)
+    expect(useUnreadStore.getState().unreadTotal).toBe(0)
   })
 
   it('counts thread and mention when replying to own message', () => {
-    const store = useChatStore.getState()
-    store.setMessages([
+    useChatStore.getState().setMessages([
       message({ id: 'm-own', chat_id: 'chat-a', sender_id: 'u-self' }),
     ])
-    store.trackInboundUnread({
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-peer',
       replyToId: 'm-own',
       isForegroundVisible: false,
       isActiveChat: false,
+      userId: useSessionStore.getState().userId,
+      messages: useChatStore.getState().messages,
     })
 
-    const state = useChatStore.getState()
+    const state = useUnreadStore.getState()
     expect(state.unreadByChat['chat-a']?.total).toBe(1)
     expect(state.unreadByChat['chat-a']?.mentions).toBe(1)
     expect(state.unreadByChat['chat-a']?.threads['m-own']).toBe(1)
   })
 
   it('clears unread for chat when opening chat', () => {
-    const store = useChatStore.getState()
-    store.trackInboundUnread({
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-peer',
       isForegroundVisible: false,
       isActiveChat: false,
+      userId: useSessionStore.getState().userId,
+      messages: useChatStore.getState().messages,
     })
-    store.trackInboundUnread({
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-b',
       senderId: 'u-peer',
       isForegroundVisible: false,
       isActiveChat: false,
+      userId: useSessionStore.getState().userId,
+      messages: useChatStore.getState().messages,
     })
-    expect(useChatStore.getState().unreadTotal).toBe(2)
+    expect(useUnreadStore.getState().unreadTotal).toBe(2)
 
-    store.setActiveChatId('chat-a')
-    const next = useChatStore.getState()
+    useSessionStore.getState().setActiveChatId('chat-a')
+    const next = useUnreadStore.getState()
     expect(next.unreadByChat['chat-a']).toBeUndefined()
     expect(next.unreadByChat['chat-b']?.total).toBe(1)
     expect(next.unreadTotal).toBe(1)
   })
 
   it('marks a thread as read and decreases aggregate unread', () => {
-    const store = useChatStore.getState()
-    store.trackInboundUnread({
+    const userId = useSessionStore.getState().userId
+    const messages = useChatStore.getState().messages
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-peer',
       replyToId: 'thread-1',
       isForegroundVisible: false,
       isActiveChat: false,
+      userId,
+      messages,
     })
-    store.trackInboundUnread({
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-peer2',
       replyToId: 'thread-1',
       isForegroundVisible: false,
       isActiveChat: false,
+      userId,
+      messages,
     })
-    store.trackInboundUnread({
+    useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-peer2',
       replyToId: 'thread-2',
       isForegroundVisible: false,
       isActiveChat: false,
+      userId,
+      messages,
     })
 
-    expect(useChatStore.getState().unreadByChat['chat-a']?.total).toBe(3)
-    store.markThreadRead('chat-a', 'thread-1')
+    expect(useUnreadStore.getState().unreadByChat['chat-a']?.total).toBe(3)
+    useUnreadStore.getState().markThreadRead('chat-a', 'thread-1')
 
-    const next = useChatStore.getState()
+    const next = useUnreadStore.getState()
     expect(next.unreadByChat['chat-a']?.threads['thread-1']).toBeUndefined()
     expect(next.unreadByChat['chat-a']?.threads['thread-2']).toBe(1)
     expect(next.unreadByChat['chat-a']?.total).toBe(1)

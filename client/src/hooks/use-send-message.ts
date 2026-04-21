@@ -15,6 +15,7 @@ import {
 import { cacheMessage } from '@/lib/message-cache'
 import { vibrateShort } from '@/lib/vibrate'
 import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { toastError } from '@/store/toastStore'
 import type { DecryptedMessage } from '@/types/chat'
 
@@ -28,9 +29,9 @@ export function useSendMessage(
   cryptoCtx: ChatCryptoContext | null,
   directPeerUserId: string | null
 ) {
-  const activeChatId = useChatStore(s => s.activeChatId)
-  const userId = useChatStore(s => s.userId)
-  const unwrappedPrivateKey = useChatStore(s => s.unwrappedPrivateKey)
+  const activeChatId = useSessionStore(s => s.activeChatId)
+  const userId = useSessionStore(s => s.userId)
+  const unwrappedPrivateKey = useSessionStore(s => s.unwrappedPrivateKey)
   const appendMessage = useChatStore(s => s.appendMessage)
   const lastDispatchRef = useRef<{ key: string; at: number }>({ key: '', at: 0 })
 

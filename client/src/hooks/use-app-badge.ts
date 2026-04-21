@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { useUnreadStore } from '@/store/unreadStore'
 
 /**
  * PROJECT 13 :: APP_BADGE_PROTOCOL
@@ -20,9 +21,9 @@ function isBadgingSupported(): boolean {
 }
 
 export function useAppBadge(userId: string | null) {
-  const activeChatId = useChatStore((s) => s.activeChatId)
-  const unreadTotal = useChatStore((s) => s.unreadTotal)
-  const markChatRead = useChatStore((s) => s.markChatRead)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const unreadTotal = useUnreadStore((s) => s.unreadTotal)
+  const markChatRead = useUnreadStore((s) => s.markChatRead)
 
   useEffect(() => {
     if (typeof document === 'undefined') return

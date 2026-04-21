@@ -3,7 +3,7 @@
 import { useEffect, useMemo } from 'react'
 import { getFmSocket } from '@/lib/api/socket'
 import { fetchUserPresence } from '@/lib/api/users'
-import { useChatStore } from '@/store/chatStore'
+import { usePresenceStore } from '@/store/presenceStore'
 import type { ApiChatRow } from '@/lib/api/chats'
 
 /**
@@ -22,8 +22,8 @@ const HEARTBEAT_INTERVAL_MS = 45_000
 export const usePresenceSync = usePulseRadar
 
 export function usePulseRadar(userId: string, sectors: ApiChatRow[]) {
-  const mergePeerPresenceBatch = useChatStore(s => s.mergePeerPresenceBatch)
-  const setPeerPresence = useChatStore(s => s.setPeerPresence)
+  const mergePeerPresenceBatch = usePresenceStore(s => s.mergePeerPresenceBatch)
+  const setPeerPresence = usePresenceStore(s => s.setPeerPresence)
 
   // [1] PEER_ID_EXTRACTION :: Выделяем идентификаторы пиров из активных линков
   const targetPeerIds = useMemo(() => {

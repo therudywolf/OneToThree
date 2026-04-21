@@ -6,7 +6,7 @@ import { createDirectE2EChat } from '@/lib/api/chats'
 import { lookupUsers } from '@/lib/api/users'
 import { normalizePeerInput } from '@/lib/peer-input'
 import { canonicalUserId } from '@/lib/user-id'
-import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 
 /**
  * PROJECT 13 :: DIRECT_LINK_GENESIS
@@ -19,7 +19,7 @@ const genesisLock = new Set<string>()
 
 export function InviteChatLinkEffect({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
-  const setActiveChatId = useChatStore(s => s.setActiveChatId)
+  const setActiveChatId = useSessionStore(s => s.setActiveChatId)
   const [errorLog, setErrorLog] = useState<string | null>(null)
 
   useEffect(() => {

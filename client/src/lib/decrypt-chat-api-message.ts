@@ -10,6 +10,32 @@ import {
   decryptTextBatchInWorker,
 } from '@/lib/crypto-batch-worker'
 import type { DecryptedMessage } from '@/types/chat'
+import type { DrInitWirePayload } from '@/lib/ratchet/session-manager'
+
+/** Validate and parse a server-supplied dr_init JSON string. Returns undefined
+ *  on any structural mismatch so the caller skips the DR path rather than
+ *  passing unvalidated data into cryptographic operations. */
+function parseDrInitWirePayload(raw: string): DrInitWirePayload | undefined {
+  try {
+    const v = JSON.parse(raw)
+    if (
+      v === null ||
+      typeof v !== 'object' ||
+      v.p13 !== 'dr-init' ||
+      v.v !== 1 ||
+      typeof v.initiatorIdentityExchange !== 'string' || v.initiatorIdentityExchange.length === 0 ||
+      typeof v.initiatorIdentitySigning !== 'string' || v.initiatorIdentitySigning.length === 0 ||
+      typeof v.initiatorEphemeralPublic !== 'string' || v.initiatorEphemeralPublic.length === 0 ||
+      typeof v.signedPrekeyId !== 'number' ||
+      (v.oneTimePrekeyId !== null && typeof v.oneTimePrekeyId !== 'number')
+    ) {
+      return undefined
+    }
+    return v as DrInitWirePayload
+  } catch {
+    return undefined
+  }
+}
 
 export type ApiMessageRow = {
   id: string
@@ -104,7 +130,7 @@ async function decryptRowPlaintext(
       drHeader: row.dr_header,
       iv: DR_SLOT_SENTINEL,
       encrypted_content: c,
-      drInit: row.dr_init ? (JSON.parse(row.dr_init) as import('@/lib/ratchet/session-manager').DrInitWirePayload) : undefined,
+      drInit: row.dr_init ? parseDrInitWirePayload(row.dr_init) : undefined,
     })
   }
 

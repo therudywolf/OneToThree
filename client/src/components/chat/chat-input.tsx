@@ -202,9 +202,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       window.removeEventListener('pointercancel', onGlobalUp)
       window.removeEventListener('mouseup', onGlobalUp)
     }
-    // stopRecording changes identity between renders; we only want to
-    // (re-)install the listener when the RECORDING state flips.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRecordingUI, recordLocked])
 
   const startRecording = async () => {

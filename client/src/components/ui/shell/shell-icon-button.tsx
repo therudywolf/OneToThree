@@ -42,7 +42,7 @@ export const ShellIconButton = forwardRef<HTMLButtonElement, Props>(
     const toneTerminal: Record<Tone, string> = {
       default: active
         ? 'border-neon-cyan bg-neon-cyan/15 text-neon-cyan shadow-[0_0_10px_color-mix(in_srgb,var(--neon-cyan)_35%,transparent)]'
-        : 'border-neon-cyan/40 bg-void text-neon-cyan/85 hover:border-neon-cyan hover:text-neon-cyan hover:shadow-[0_0_8px_color-mix(in_srgb,var(--neon-cyan)_30%,transparent)]',
+        : 'border-neon-cyan/40 bg-void text-neon-cyan/85 hover:border-neon-amber hover:text-neon-amber hover:shadow-[0_0_10px_color-mix(in_srgb,var(--neon-amber)_32%,transparent)]',
       primary:
         'border-neon-cyan bg-neon-cyan/20 text-neon-cyan shadow-[0_0_12px_color-mix(in_srgb,var(--neon-cyan)_45%,transparent)] hover:bg-neon-cyan/30',
       danger:

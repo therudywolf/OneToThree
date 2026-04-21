@@ -199,7 +199,7 @@ export const THEMES: ThemeConfig[] = [
     accent: VOID_ACCENT,
     accentSoft: VOID_AMBER,
     border: '#1e2b39',
-    success: '#2fd67f',
+    success: VOID_AMBER,
     danger: '#ff6262',
     shadowRgb: '77, 243, 255',
     crtOpacity: '0.16',
@@ -220,7 +220,7 @@ export const THEMES: ThemeConfig[] = [
     accent: VOID_ACCENT,
     accentSoft: VOID_AMBER,
     border: '#4a3320',
-    success: '#37e27d',
+    success: VOID_AMBER,
     danger: '#ff5d4a',
     shadowRgb: '51, 240, 255',
     crtOpacity: '0.12',
@@ -432,7 +432,7 @@ export const THEME_BY_ID: Record<ThemeId, ThemeConfig> = THEMES.reduce(
 
 export const ACCENT_PRESETS: AccentPreset[] = [
   { id: 'theme', label: 'Theme', primary: '', accent: '' },
-  { id: 'signal', label: 'Signal', primary: '#ff4f7b', accent: '#4ff1ff' },
+  { id: 'signal', label: 'Signal', primary: VOID_PRIMARY, accent: VOID_ACCENT },
   { id: 'mint', label: 'Mint', primary: VOID_PRIMARY, accent: VOID_ACCENT },
   { id: 'amber', label: 'Amber', primary: VOID_PRIMARY, accent: VOID_AMBER },
   { id: 'violet', label: 'Violet', primary: VOID_PRIMARY, accent: VOID_ACCENT },

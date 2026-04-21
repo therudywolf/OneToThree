@@ -202,7 +202,6 @@ export function AlbumBubble({ messageId, envelope, sharedKey, onMediaClick }: Pr
                 }
                 aria-label={item.fileName}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={url}
                   alt={item.fileName}

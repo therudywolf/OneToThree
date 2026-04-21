@@ -16,6 +16,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { readVaultBlob, unwrapPrivateJwkWithPin } from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { VaultPinGate } from '@/components/vault-pin-gate'
+import { useThemeStore } from '@/store/themeStore'
 
 type Props = { userId: string; active: boolean }
 
@@ -28,6 +29,7 @@ type PendingAction =
 
 export function SettingsDevicesPanel({ userId, active }: Props) {
   const { t } = useTranslation()
+  const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
   const { user, refresh, logout } = useAuth()
   const [devices, setDevices] = useState<DeviceRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -222,7 +224,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
   })()
 
   return (
-    <div className="space-y-4 border-t border-neon-cyan/30 pt-3">
+    <div className={`space-y-4 border-t pt-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/30'}`}>
       {linkQrOpen ? (
         <SettingsLinkDeviceModal onClose={() => setLinkQrOpen(false)} />
       ) : null}
@@ -246,7 +248,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       </div>
 
       {/* Объяснение QR-входа */}
-      <div className="border border-neon-cyan/10 bg-void/60 p-3 space-y-1">
+      <div className={`p-3 space-y-1 ${isMd3 ? 'rounded-[20px] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-cyan/10 bg-void/60'}`}>
         <p className="text-[9px] uppercase tracking-widest text-neon-cyan/70">[ ДОБАВИТЬ УСТРОЙСТВО :: QR ]</p>
         <p className="text-[9px] text-text-muted leading-relaxed">
           Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер и отсканируй его камерой или через приложение. Новое устройство получит сессию, а для аккаунтов с 2FA дополнительно потребуется TOTP-код. QR действителен <span className="text-text-primary">5 минут</span> и одноразовый.
@@ -254,7 +256,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       </div>
 
       {/* Объяснение резервного ключа */}
-      <div className="border border-neon-red/20 bg-void/60 p-3 space-y-1">
+      <div className={`p-3 space-y-1 ${isMd3 ? 'rounded-[20px] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-red/20 bg-void/60'}`}>
         <p className="text-[9px] uppercase tracking-widest text-neon-red/80">[ РЕЗЕРВНАЯ КОПИЯ КЛЮЧА ]</p>
         <p className="text-[9px] text-text-muted leading-relaxed">
           Твой приватный ключ хранится <span className="text-text-primary">только локально</span> в этом браузере. Сервер его не знает и восстановить не может. Скачай резервную копию и храни в надёжном месте — без неё при потере браузера аккаунт будет недоступен навсегда.
@@ -268,7 +270,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         <button
           type="button"
           onClick={handleLinkDeviceClick}
-          className="w-full border border-neon-cyan/70 bg-void px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-all duration-200 ease-in-out hover:scale-[1.02] hover:bg-neon-cyan/10 active:scale-95 sm:w-auto"
+          className={`w-full px-3 py-2 text-[10px] transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 sm:w-auto ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'border border-neon-cyan/70 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
         >
           {t('settings.linkDeviceCta')}
         </button>
@@ -319,14 +321,14 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
           </div>
         ) : null}
         <ul
-          className={`max-h-64 space-y-2 overflow-y-auto border border-neon-cyan/20 p-2 ${
+          className={`max-h-64 space-y-2 overflow-y-auto p-2 ${isMd3 ? 'rounded-[20px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border border-neon-cyan/20'} ${
             loading ? 'opacity-40' : ''
           }`}
         >
         {devices.map((d) => (
           <li
             key={d.id}
-            className="border border-border-strong bg-void/80 px-2 py-2 font-mono text-[10px] text-text-primary"
+            className={`px-2 py-2 text-[10px] text-text-primary ${isMd3 ? 'rounded-[16px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_4%,transparent)]' : 'border border-border-strong bg-void/80 font-mono'}`}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 flex-1">

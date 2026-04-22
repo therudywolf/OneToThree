@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { useThemeStore } from '@/store/themeStore'
 import {
   generateSafetyNumber,
@@ -55,6 +56,7 @@ export function IdentityModal({
 }: Props) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
+  const trapRef = useFocusTrap<HTMLDivElement>(true, onClose)
   const isMd3 = shellMode === 'md3'
   const [nodeFingerprint, setNodeFingerprint] = useState('...')
   const [drSafetyNumber, setDrSafetyNumber] = useState<string | null>(null)
@@ -150,6 +152,7 @@ export function IdentityModal({
   if (isMd3) {
     return (
       <div
+        ref={trapRef}
         className="fixed inset-0 z-[140] flex items-center justify-center bg-void/40 px-4 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
@@ -255,6 +258,7 @@ export function IdentityModal({
 
   return (
     <div
+      ref={trapRef}
       className="fixed inset-0 z-[140] flex items-center justify-center bg-void/90 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { Fingerprint, ScanFace } from 'lucide-react'
 import {
   exportEcdhPublicJwkFromPrivateKeyString,
@@ -90,6 +91,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
   const BiometricIcon = useBiometricIcon()
+  const trapRef = useFocusTrap<HTMLDivElement>(true)
 
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -235,6 +237,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
 
   return (
     <div
+      ref={trapRef}
       className={`fixed inset-0 z-[200] flex items-center justify-center px-4 ${
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'

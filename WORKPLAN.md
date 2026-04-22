@@ -76,6 +76,7 @@
   - [x] этап 1.3 — mobile header chips + modal controls (`chat-search-panel`, `forward-modal`) унифицированы
   - [x] этап 1.4 — финишный sweep по редким модалкам (`vault`, `identity`, `group settings`)
   - [x] этап 1.5 — контекст-меню чата: clamp в viewport + расширенная ширина + перенос длинных лейблов (фикс обрезки пунктов меню)
+  - [x] этап 1.6 — sidebar row hover-actions (`pin/favorite/mute`) скрыты до hover/focus (`w-0`), больше не съедают ширину текста
 
 ---
 
@@ -213,6 +214,7 @@
 | 2026-04-22 | [x] Sidebar utility rail: в левую колонку добавлены нижние кнопки Settings / Notifications toggle / Vault lock + mobile-drawer поведение через `onNavigate` |
 | 2026-04-22 | [x] Fix: исчезающие сообщения `[DECRYPT_FAIL]` после отправки — DR-контекст добавлен в history load + delivery sync (`use-load-chat-messages`, `use-message-delivery-sync`, `use-messages`) |
 | 2026-04-22 | [x] UI quick-fix: `chat-row-context-menu` теперь не вылезает за край экрана, русские лейблы не обрезаются (viewport clamp + `min-w` 220 + word wrap) |
+| 2026-04-22 | [x] UI quick-fix: в `chat-sidebar` hover-экшены строки (`pin/favorite/mute`) не резервируют 120px до hover/focus; текст строки больше не укорачивается заранее |
 
 ---
 

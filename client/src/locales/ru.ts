@@ -177,6 +177,7 @@ const ru = {
   'sidebar.userNotFound': 'Пользователь не найден',
   'sidebar.cannotOpenSelf': 'Нельзя написать самому себе.',
   'sidebar.createFailed': 'Ошибка создания',
+  'sidebar.newChat': 'Создать',
   'sidebar.copyMyInvite': 'Моя ссылка',
   'sidebar.createGroupE2e': 'Новая группа',
   'sidebar.createChannel': 'Новый канал',
@@ -821,6 +822,12 @@ const ru = {
   'settings.trustRegistry': 'Доверенные контакты',
   'settings.trustRegistryHint': 'Верифицированные идентификаторы хранятся локально. Сверяйте номера безопасности через внешний канал.',
   'settings.trustRegistryCount': 'Посмотреть количество',
+  'explore.title': 'Группы и каналы',
+  'explore.searchPlaceholder': 'Поиск публичных групп…',
+  'explore.noResults': 'Публичных групп не найдено',
+  'explore.join': 'Вступить',
+  'explore.typeGroup': 'Группа',
+  'explore.typeChannel': 'Канал',
 } as const;
 
 export default ru;

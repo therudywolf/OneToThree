@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, desc, eq, inArray, max, ne, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, max, ne, or, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -1357,5 +1357,56 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         role: m.role,
       })),
     })
+  })
+
+  // Public group / channel discovery
+  app.get('/discover', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const qSchema = z.object({
+      q: z.string().max(100).optional(),
+      limit: z.coerce.number().min(1).max(50).default(20),
+      offset: z.coerce.number().min(0).default(0),
+    })
+    const parsed = qSchema.safeParse(request.query)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_QUERY' })
+    const { q, limit, offset } = parsed.data
+
+    const memberCountSq = db
+      .select({ chatId: chatMembers.chatId, memberCount: count(chatMembers.userId).as('member_count') })
+      .from(chatMembers)
+      .groupBy(chatMembers.chatId)
+      .as('member_count_sq')
+
+    const baseWhere = and(
+      or(eq(chats.type, 'public_open'), eq(chats.type, 'channel')),
+      q ? ilike(chats.name, `%${q}%`) : undefined
+    )
+
+    const rows = await db
+      .select({
+        id: chats.id,
+        name: chats.name,
+        type: chats.type,
+        inviteCode: chats.inviteCode,
+        memberCount: memberCountSq.memberCount,
+      })
+      .from(chats)
+      .leftJoin(memberCountSq, eq(chats.id, memberCountSq.chatId))
+      .where(baseWhere)
+      .orderBy(desc(memberCountSq.memberCount))
+      .limit(limit)
+      .offset(offset)
+
+    return reply.send(
+      rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        invite_code: r.inviteCode,
+        member_count: Number(r.memberCount ?? 0),
+      }))
+    )
   })
 }

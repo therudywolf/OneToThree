@@ -425,3 +425,25 @@ export async function deleteMessage(
     throw new Error(d.error ?? 'DELETE_MSG_FAILED')
   }
 }
+
+export type DiscoverChatRow = {
+  id: string
+  name: string | null
+  type: string
+  invite_code: string | null
+  member_count: number
+}
+
+export async function discoverChats(opts?: { q?: string; limit?: number; offset?: number }): Promise<DiscoverChatRow[]> {
+  const params = new URLSearchParams()
+  if (opts?.q) params.set('q', opts.q)
+  if (opts?.limit != null) params.set('limit', String(opts.limit))
+  if (opts?.offset != null) params.set('offset', String(opts.offset))
+  const qs = params.toString()
+  const r = await fetch(`${API_URL}/chats/discover${qs ? `?${qs}` : ''}`, { credentials: 'include' })
+  if (!r.ok) {
+    const d = (await r.json().catch(() => ({}))) as { error?: string }
+    throw new Error(d.error ?? 'DISCOVER_FAILED')
+  }
+  return (await r.json()) as DiscoverChatRow[]
+}

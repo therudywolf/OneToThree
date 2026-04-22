@@ -6,6 +6,7 @@ import { db } from '../db/index.js'
 import { chatMembers, chats, devices, messageDeliveries, messages, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
+import { channelRoleAllowsPost } from '../lib/chat-permissions.js'
 import {
   persistChatMessageAndFanOut,
   persistedRowToClientJson,
@@ -92,7 +93,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const p = parsed.data
 
     const memberOk = await db
-      .select({ one: chatMembers.userId })
+      .select({ channelRole: chatMembers.channelRole })
       .from(chatMembers)
       .where(and(eq(chatMembers.chatId, p.chat_id), eq(chatMembers.userId, user.id)))
       .limit(1)
@@ -111,6 +112,11 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       .limit(1)
     if (!chatRow) return reply.status(404).send({ error: 'CHAT_NOT_FOUND' })
     const isDirectChat = chatRow.type === 'direct_e2e'
+
+    // Channel: only editors/owners may post.
+    if (chatRow.type === 'channel' && !channelRoleAllowsPost(memberOk[0].channelRole ?? null)) {
+      return reply.status(403).send({ error: 'CHANNEL_SUBSCRIBERS_CANNOT_POST' })
+    }
 
     // Stage 3 finalized contract:
     // direct_e2e must always use device fan-out slots.

@@ -17,6 +17,10 @@ const REGISTRY_KEY = 'p13_trust_registry'
 const CHECKSUM_KEY = `${REGISTRY_KEY}_chk`
 // Prefix distinguishes SHA-256 checksums from legacy DJB2 hex strings.
 const CHECKSUM_PREFIX = 'sha256:'
+// Written once when a device first encounters (and upgrades) a legacy DJB2
+// entry. Allows future code to safely drop DJB2 support after the grace
+// window has elapsed on all active sessions.
+const MIGRATION_TS_KEY = `${REGISTRY_KEY}_djb2_migrated_at`
 
 type NodeRegistry = Record<string, string>
 
@@ -67,8 +71,11 @@ function pullRegistry(): NodeRegistry {
         return {}
       }
       if (validLegacy) {
-        // Upgrade to SHA-256 in place.
+        // Upgrade to SHA-256 in place and record migration timestamp.
         commitRegistry(registry)
+        if (!localStorage.getItem(MIGRATION_TS_KEY)) {
+          localStorage.setItem(MIGRATION_TS_KEY, new Date().toISOString())
+        }
       }
     }
     return registry

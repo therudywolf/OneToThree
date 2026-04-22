@@ -51,7 +51,7 @@
 ---
 
 ### A3 🔴 Call E2EE: SFU видит plaintext
-**Статус:** `[–]` (deferred, архитектура задокументирована в MIGRATION_NOTES фаза 4.3)
+**Статус:** `[x]` закрыто 2026-04-22 (03197eb): LiveKit Insertable Streams E2EE через ExternalE2EEKeyProvider.
 
 **Проблема:** DTLS-SRTP шифрует транспорт клиент↔LiveKit, но сам SFU получает плейнтекст медиапотока. Это не E2EE по определению — оператор LiveKit-сервера видит аудио/видео.
 
@@ -446,3 +446,4 @@ A2 (trust store SHA-256) ─── B7 (safety numbers UI)
 | 2026-04-22 | **ALL HIGH закрыты** — F3+F4 UI, B1 enforcement+discovery, B2, D1+D2 тесты; B3+B4+B5 верифицированы как уже реализованные (коммит 7b3a9da) |
 | 2026-04-22 | **MEDIUM+LOW закрыты** — F5 sidebar resize, F6 avatar gradient, F8 textarea auto-grow; B1 channel type fix; B6/E1 верифицированы; E2 message_deliveries cleanup, E3 rate limits keys, E4 strict CI (0 violations); F7 задокументировано как known limitation |
 | 2026-04-22 | **Все оставшиеся закрыты** — C3 mobile touch-pass (4 Playwright tests), D3 Saved Messages test, D4 DR runtime test, D5 TURN/ICE test; F7 unreadStore persist middleware |
+| 2026-04-22 | **A3 закрыт** — Call E2EE: LiveKit ExternalE2EEKeyProvider + Insertable Streams. Server выдаёт call_e2ee_key в token response; клиент инициализирует E2EE Worker и инжектирует ключ после Room.connect() |

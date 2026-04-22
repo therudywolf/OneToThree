@@ -12,6 +12,7 @@ import {
   type Sticker,
   type StickerPack,
 } from '@/lib/api/stickers'
+import { searchGifs, type GifHit } from '@/lib/api/gif'
 import { buildStickerPlaintext } from '@/lib/sticker-payload'
 import { toastError } from '@/store/toastStore'
 
@@ -33,6 +34,7 @@ export type ComposerPickerPanelProps = {
   layout: 'dock' | 'modal'
   onEmoji: (emoji: string) => void
   onStickerSend: (json: string) => Promise<void>
+  onGifPick?: (gifUrl: string) => void
   /** Called after a sticker is sent (e.g. close modal). */
   onAfterStickerSend?: () => void
 }
@@ -41,6 +43,7 @@ export function ComposerPickerPanel({
   layout,
   onEmoji,
   onStickerSend,
+  onGifPick,
   onAfterStickerSend,
 }: ComposerPickerPanelProps) {
   const { t } = useTranslation()
@@ -54,6 +57,10 @@ export function ComposerPickerPanel({
   const [stickersLoading, setStickersLoading] = useState(false)
   const [importName, setImportName] = useState('')
   const [importBusy, setImportBusy] = useState(false)
+  const [gifQuery, setGifQuery] = useState('')
+  const [gifBusy, setGifBusy] = useState(false)
+  const [gifErr, setGifErr] = useState<string | null>(null)
+  const [gifs, setGifs] = useState<GifHit[]>([])
 
   const pickerHeight = layout === 'dock' ? 360 : 320
 
@@ -97,6 +104,39 @@ export function ComposerPickerPanel({
       cancelled = true
     }
   }, [tab, selectedPackId])
+
+  useEffect(() => {
+    if (tab !== 'gif') return
+    const q = gifQuery.trim()
+    if (q.length < 2) {
+      setGifs([])
+      setGifErr(null)
+      setGifBusy(false)
+      return
+    }
+    let cancelled = false
+    setGifBusy(true)
+    setGifErr(null)
+    const timer = setTimeout(() => {
+      void searchGifs(q, 24)
+        .then((rows) => {
+          if (!cancelled) setGifs(rows)
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setGifs([])
+            setGifErr(e instanceof Error ? e.message : 'GIF_SEARCH_FAILED')
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setGifBusy(false)
+        })
+    }, 220)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [tab, gifQuery])
 
   const onImport = async () => {
     const name = importName.trim()
@@ -240,8 +280,41 @@ export function ComposerPickerPanel({
         ) : null}
 
         {tab === 'gif' ? (
-          <div className="flex h-48 items-center justify-center p-4 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted">
-            {t('composer.gifSoon')}
+          <div className="flex min-h-0 flex-col gap-2 p-2">
+            <input
+              type="text"
+              value={gifQuery}
+              onChange={(e) => setGifQuery(e.target.value)}
+              placeholder={t('composer.gifSearchPlaceholder')}
+              className="h-10 w-full rounded border border-neon-cyan/25 bg-void/40 px-3 font-mono text-[11px] text-[color:var(--on-surface)] placeholder:text-text-muted"
+            />
+            {gifBusy ? (
+              <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
+            ) : gifErr ? (
+              <div className="py-2 font-mono text-[10px] text-danger/90">{gifErr}</div>
+            ) : gifQuery.trim().length < 2 ? (
+              <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifHint')}</div>
+            ) : gifs.length === 0 ? (
+              <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifEmpty')}</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {gifs.map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    className="overflow-hidden rounded border border-neon-cyan/15 bg-void/40 hover:border-neon-cyan/50"
+                    onClick={() => {
+                      if (onGifPick) onGifPick(g.originalUrl)
+                      else onEmoji(` ${g.originalUrl} `)
+                      onAfterStickerSend?.()
+                    }}
+                    title={g.title}
+                  >
+                    <img src={g.previewUrl} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : null}
       </div>

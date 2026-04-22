@@ -26,18 +26,63 @@ export type Sticker = {
   createdAt: string
 }
 
+const PACKS_CACHE_KEY = 'p13:stickers:packs:v1'
+const PACK_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+
+function readCache<T>(key: string, ttlMs: number): T | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { ts: number; data: T }
+    if (!parsed || typeof parsed.ts !== 'number') return null
+    if (Date.now() - parsed.ts > ttlMs) return null
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function writeCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }))
+  } catch {
+    // non-fatal
+  }
+}
+
+function stickersCacheKey(packId: string): string {
+  return `p13:stickers:pack:${packId}:v1`
+}
+
 export async function fetchStickerPacks(): Promise<StickerPack[]> {
-  const res = await fetch(`${API_URL}/stickers/packs`, { credentials: 'include' })
-  if (!res.ok) throw new Error(`FETCH_PACKS_${res.status}`)
-  const data = (await res.json()) as { packs: StickerPack[] }
-  return data.packs
+  const cached = readCache<StickerPack[]>(PACKS_CACHE_KEY, PACK_CACHE_TTL_MS)
+  try {
+    const res = await fetch(`${API_URL}/stickers/packs`, { credentials: 'include' })
+    if (!res.ok) throw new Error(`FETCH_PACKS_${res.status}`)
+    const data = (await res.json()) as { packs: StickerPack[] }
+    writeCache(PACKS_CACHE_KEY, data.packs)
+    return data.packs
+  } catch (e) {
+    if (cached) return cached
+    throw e
+  }
 }
 
 export async function fetchPackStickers(packId: string): Promise<Sticker[]> {
-  const res = await fetch(`${API_URL}/stickers/packs/${packId}/stickers`, { credentials: 'include' })
-  if (!res.ok) throw new Error(`FETCH_STICKERS_${res.status}`)
-  const data = (await res.json()) as { stickers: Sticker[] }
-  return data.stickers
+  const key = stickersCacheKey(packId)
+  const cached = readCache<Sticker[]>(key, PACK_CACHE_TTL_MS)
+  try {
+    const res = await fetch(`${API_URL}/stickers/packs/${packId}/stickers`, { credentials: 'include' })
+    if (!res.ok) throw new Error(`FETCH_STICKERS_${res.status}`)
+    const data = (await res.json()) as { stickers: Sticker[] }
+    writeCache(key, data.stickers)
+    return data.stickers
+  } catch (e) {
+    if (cached) return cached
+    throw e
+  }
 }
 
 /** Presigned GET URL for a sticker object key (pack must be visible to the user). */
@@ -61,5 +106,13 @@ export async function importTelegramStickerPack(shortName: string): Promise<{ pa
     const err = (await res.json().catch(() => ({}))) as { error?: string }
     throw new Error(err.error ?? `IMPORT_${res.status}`)
   }
-  return res.json() as Promise<{ pack_id: string; imported: boolean; count?: number }>
+  const out = await (res.json() as Promise<{ pack_id: string; imported: boolean; count?: number }>)
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(PACKS_CACHE_KEY)
+    } catch {
+      // non-fatal
+    }
+  }
+  return out
 }

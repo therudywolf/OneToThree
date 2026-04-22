@@ -83,18 +83,22 @@
 ### 3.1 Telegram стикеры — интеграция
 - [x] Эндпоинты `GET /api/stickers/packs`, `POST /api/stickers/packs/import`, `GET .../packs/:id`, `GET .../stickers`, `GET /api/stickers/asset-url`
 - [x] Клиент: `client/src/lib/api/stickers.ts`, отправка через `buildStickerPlaintext` → `sendText` (E2E JSON в plaintext)
-- [ ] Клиент: офлайн-кэш паков (сейчас загрузка по вкладке)
-- [ ] Клиент: рендеринг TGS/Lottie (сейчас fallback: emoji + метка; static/webm — img/video)
+- [x] Клиент: офлайн-кэш паков (localStorage TTL + fallback при сетевых ошибках)
+- [x] Клиент: рендеринг TGS/Lottie (`lottie-web` + `pako` для tgs)
 - [x] Envelope `p13: 'sticker'`, поле `path` = стабильный `media_key` (не presigned URL)
 
 **Структура БД уже есть:** `sticker_packs`, `stickers` (migration 0031)
 
 ### 3.2 Кнопка emoji/sticker/gif
-- [x] Компонент `ComposerPickerPanel` — вкладки Emoji | Stickers | GIF (GIF — заглушка)
+- [x] Компонент `ComposerPickerPanel` — вкладки Emoji | Stickers | GIF
 - [x] Emoji: `emoji-picker-react`
 - [x] Sticker: сетка по паку + импорт по short_name
-- [ ] GIF: Tenor / Giphy
+- [x] GIF: Giphy search + вставка GIF URL в composer
 - [x] Кнопка смайлика → composer (dock xl+ / модал на узких)
+
+### Статус по запросу пользователя (2026-04-22)
+- [x] Выполнен пункт 2 (GIF + TGS/Lottie + офлайн-кэш паков)
+- [ ] Не приступал к остальным пунктам (Sprint 1, Sprint 4, Sprint 5, Sprint 6) в этом цикле
 
 ---
 
@@ -204,6 +208,7 @@
 | 2026-04-22 | [x] UI task: этап 1.3a — mobile header chips в `chat-app` приведены к единой высоте (`h-9`) |
 | 2026-04-22 | [x] UI task: этап 1.3b — modal/action controls (`chat-search-panel`, `forward-modal`) приведены к `h-8/h-10` |
 | 2026-04-22 | [x] UI task: этап 1.4 — `vault-modal`, `identity-modal`, `group-chat-settings` кнопки и поля приведены к единой высоте |
+| 2026-04-22 | [x] Пункт 2: GIF (Giphy), TGS/Lottie renderer, офлайн-кэш sticker packs |
 
 ---
 

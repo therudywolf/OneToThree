@@ -37,6 +37,9 @@ Last updated: 2026-04-22
     `sticker-bubble.tsx`, `lib/api/stickers.ts`, `lib/sticker-payload.ts`.
   - Chat input/dock wiring uses unified composer slot (`emoji | sticker | gif`).
   - Message rendering supports sticker envelope previews and replies.
+  - GIF search integrated via Giphy API in composer tab.
+  - Offline sticker cache added (localStorage TTL + network-fallback).
+  - TGS/Lottie playback integrated in `sticker-bubble` (`lottie-web` + `pako`).
 - Docs/progress:
   - `WORKPLAN.md` updated.
   - `CLAUDE.md` updated with vault v4, public chat plaintext note, schema updates.
@@ -49,17 +52,17 @@ Last updated: 2026-04-22
 
 ## Current Open Priorities (User-Critical)
 
-1. Invites still need full e2e validation in real client flow (`join/[code]`, status handling).
-2. Messages pipeline still needs runtime validation with real accounts/devices:
+1. Invites still need full e2e validation in real client flow (`join/[code]`, status handling). (not started in this cycle)
+2. Messages pipeline still needs runtime validation with real accounts/devices: (not started in this cycle)
    - direct fanout path
    - websocket delivery and decrypt
-3. Saved Messages (self-chat) remains to verify/fix in production-like flow.
+3. Saved Messages (self-chat) remains to verify/fix in production-like flow. (not started in this cycle)
 4. UI parity with Telegram Desktop is partial:
    - composer improved
    - many layout/interaction polish tasks remain in `WORKPLAN.md`
    - button-size unification baseline is complete for primary chat flows and core modals.
-5. GIF provider integration (Tenor/Giphy) not started.
-6. TGS/Lottie runtime renderer not integrated yet (currently fallback for tgs/lottie).
+5. GIF provider integration (Tenor/Giphy) is now implemented via Giphy search.
+6. TGS/Lottie runtime renderer is now implemented in `sticker-bubble`.
 7. Double Ratchet send path is still incomplete (feature-flagged components exist).
 
 ## Recommended Next Execution Order

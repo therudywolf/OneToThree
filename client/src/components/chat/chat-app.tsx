@@ -985,8 +985,18 @@ export function ChatApp({
           ) : null}
 
           {ctxError ? (
-            <div className="shrink-0 border-b border-border-strong px-3 py-1 font-mono text-xs text-text-muted">
-              {t('errors.signalLost')}
+            <div className="shrink-0 border-b border-border-strong px-3 py-1.5 font-mono text-[11px]">
+              {ctxError.includes('MISMATCH') || ctxError.includes('COMPROMISED') ? (
+                <span className="text-neon-red">
+                  {t('errors.tofuMismatch')}
+                </span>
+              ) : ctxError.includes('PEER_SIGNAL') ? (
+                <span className="text-text-muted">
+                  {t('errors.peerKeyMissing')}
+                </span>
+              ) : (
+                <span className="text-text-muted">{t('errors.signalLost')}</span>
+              )}
             </div>
           ) : null}
           {historyDecryptBusy ? (

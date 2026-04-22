@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { searchUsers, type SearchUserRow } from '@/lib/api/users'
 import { normalizePeerInput } from '@/lib/peer-input'
 import { useCreateGroup } from '@/hooks/use-create-group'
-import { createPublicOpenChat } from '@/lib/api/chats'
+import { createChannelChat } from '@/lib/api/chats'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 import type { TranslationKey } from '@/hooks/use-translation'
@@ -118,7 +118,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
       if (!channelName.trim()) return
       setPublicBusy(true)
       try {
-        const chat = await createPublicOpenChat({
+        const chat = await createChannelChat({
           name: channelName.trim(),
           memberIds: [userId, ...selectedNodes.map((s) => s.id)],
         })

@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { devices, loginEvents, messages, pushSubscriptions, userBlocks, users } from '../db/schema.js'
+import { devices, loginEvents, messageDeliveries, messages, pushSubscriptions, userBlocks, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { setPendingAvatarKey, takePendingAvatarKey } from '../lib/avatar-pending.js'
 import {
@@ -670,6 +670,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .returning({ id: devices.id })
     if (!updated) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
 
+    await db.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, deviceId))
+
     sendToUser(user.id, { type: 'server_notice', notice: 'device_revoked', device_id: deviceId })
     return reply.send({ ok: true })
   })
@@ -713,6 +715,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .returning({ id: devices.id })
     if (!updated) return reply.status(404).send({ error: 'SESSION_NOT_FOUND' })
 
+    await db.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, sessionId))
+
     sendToUser(user.id, { type: 'server_notice', notice: 'device_revoked', device_id: sessionId })
     return reply.send({ ok: true })
   })
@@ -725,9 +729,21 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const currentDeviceId = sess?.device_id ? normalizeUuid(sess.device_id) : null
 
     if (currentDeviceId) {
-      await db.update(devices).set({ revokedAt: new Date() }).where(and(eq(devices.userId, user.id), ne(devices.id, currentDeviceId)))
+      const revokedRows = await db
+        .update(devices)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(devices.userId, user.id), ne(devices.id, currentDeviceId)))
+        .returning({ id: devices.id })
+      const ids = revokedRows.map((r) => r.id)
+      if (ids.length) await db.delete(messageDeliveries).where(inArray(messageDeliveries.deviceId, ids))
     } else {
-      await db.update(devices).set({ revokedAt: new Date() }).where(eq(devices.userId, user.id))
+      const revokedRows = await db
+        .update(devices)
+        .set({ revokedAt: new Date() })
+        .where(eq(devices.userId, user.id))
+        .returning({ id: devices.id })
+      const ids = revokedRows.map((r) => r.id)
+      if (ids.length) await db.delete(messageDeliveries).where(inArray(messageDeliveries.deviceId, ids))
       clearFmSessionCookie(reply)
     }
     return reply.send({ ok: true })

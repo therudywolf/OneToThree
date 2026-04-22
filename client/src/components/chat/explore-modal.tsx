@@ -43,7 +43,7 @@ export function ExploreModal({ onJoin, onClose }: ExploreModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-void/60 backdrop-blur-sm" onClick={onClose} />
       <div className={`relative z-10 flex w-full max-w-md flex-col overflow-hidden ${
         isMd3
           ? 'rounded-3xl bg-[var(--surface-container-high)] shadow-[var(--md3-elevation-5)]'

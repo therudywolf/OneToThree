@@ -1111,23 +1111,11 @@ select {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) {
   .chat-layout-sidebar {
-    width: 280px;
-    flex-shrink: 0;
-  }
-}
-
-@media (min-width: 1024px) and (max-width: 1279px) {
-  .chat-layout-sidebar {
-    width: 300px;
-    flex-shrink: 0;
-  }
-}
-
-@media (min-width: 1280px) {
-  .chat-layout-sidebar {
-    width: 320px;
+    width: var(--p13-sb-w, 21rem);
+    min-width: 15rem;
+    max-width: 30rem;
     flex-shrink: 0;
   }
 }

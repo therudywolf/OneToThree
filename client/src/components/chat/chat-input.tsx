@@ -104,7 +104,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         if (!el) return
         el.focus()
         el.style.height = 'auto'
-        el.style.height = `${Math.min(el.scrollHeight, 96)}px`
+        el.style.height = `${Math.min(el.scrollHeight, 120)}px`
         const pos = editingMessage.plaintext!.length
         try { el.setSelectionRange(pos, pos) } catch { /* noop */ }
       })
@@ -658,7 +658,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
             <textarea
               ref={inputRef}
               rows={1}
-              className="flex-1 min-h-6 max-h-24 resize-none bg-transparent border-0 outline-none text-[color:var(--on-surface)] placeholder:text-[color:var(--text-muted)] disabled:cursor-not-allowed"
+              className="flex-1 min-h-6 max-h-[120px] resize-none bg-transparent border-0 outline-none text-[color:var(--on-surface)] placeholder:text-[color:var(--text-muted)] disabled:cursor-not-allowed"
               style={{ fontSize: 'max(16px, 1em)' }}
               value={messageText}
               onChange={(e) => {
@@ -666,7 +666,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 setMessageText(next)
                 onDraftChanged(next)
                 e.target.style.height = 'auto'
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 96)}px`
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {

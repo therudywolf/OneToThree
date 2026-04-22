@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
 import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock, X } from 'lucide-react'
@@ -178,6 +178,37 @@ export function ChatApp({
   const [isOnline, setIsOnline] = useState(true)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
+
+  const [sidebarWidth, setSidebarWidth] = useState(344)
+  const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  useLayoutEffect(() => {
+    const saved = localStorage.getItem('p13_sidebar_width')
+    if (!saved) return
+    const n = Number(saved)
+    if (Number.isFinite(n) && n >= 240 && n <= 480) setSidebarWidth(n)
+  }, [])
+
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sidebarWidth
+    sidebarDragRef.current = { startX, startWidth }
+    const onMove = (mv: MouseEvent) => {
+      const delta = mv.clientX - startX
+      const next = Math.min(480, Math.max(240, startWidth + delta))
+      setSidebarWidth(next)
+    }
+    const onUp = (up: MouseEvent) => {
+      const delta = up.clientX - startX
+      const final = Math.min(480, Math.max(240, startWidth + delta))
+      localStorage.setItem('p13_sidebar_width', String(final))
+      sidebarDragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [sidebarWidth])
 
   const {
     peerReady,
@@ -843,9 +874,10 @@ export function ChatApp({
           />
         ) : null}
         <div
-          className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex h-[100dvh] max-h-[100dvh] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-[100dvh] md:max-h-[100dvh] md:w-[21.5rem] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] md:pt-0 pb-[env(safe-area-inset-bottom,0px)] md:pb-0 ${
+          className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex h-[100dvh] max-h-[100dvh] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-[100dvh] md:max-h-[100dvh] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] md:pt-0 pb-[env(safe-area-inset-bottom,0px)] md:pb-0 ${
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
+          style={{ ['--sb-w' as string]: `${sidebarWidth}px` } as React.CSSProperties}
         >
           <div
             className={`flex h-12 shrink-0 items-center justify-between border-b px-3 md:hidden ${
@@ -877,6 +909,12 @@ export function ChatApp({
             onLockVault={() => setUnwrappedPrivateKey(null)}
           />
         </div>
+        {/* Sidebar resize handle — desktop only */}
+        <div
+          className="hidden md:block w-1.5 shrink-0 cursor-ew-resize bg-transparent hover:bg-neon-cyan/20 active:bg-neon-cyan/30 transition-colors touch-none z-10"
+          onMouseDown={handleSidebarResizeStart}
+          title="Drag to resize sidebar"
+        />
         <div
           className={`chat-layout-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain ${
             mobileSidebarOpen ? 'pointer-events-none opacity-0 md:pointer-events-auto md:opacity-100' : ''
@@ -923,8 +961,8 @@ export function ChatApp({
                       <span className={`flex items-center gap-1.5 text-[11px] ${isMd3 ? 'text-text-muted' : 'font-mono text-[10px]'}`}>
                         {peerPresenceRow.online ? (
                           <>
-                            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-                            <span className={isMd3 ? 'text-emerald-500' : 'text-neon-cyan/75'}>
+                            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-neon-cyan/70 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+                            <span className={isMd3 ? 'text-neon-cyan/80' : 'text-neon-cyan/75'}>
                               {isMd3 ? 'online' : 'ONLINE'}
                             </span>
                           </>

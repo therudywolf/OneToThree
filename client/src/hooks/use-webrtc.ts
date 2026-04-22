@@ -13,6 +13,7 @@ import {
 } from '@/lib/media-limits'
 import { useCallStore } from '@/store/callStore'
 import { useSessionStore } from '@/store/sessionStore'
+import { lookupUsers } from '@/lib/api/users'
 import { getIceServers } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 
@@ -321,7 +322,13 @@ export function useWebRTC(userId: string | null) {
       if (msg.type === 'call_invite') {
         const state = useCallStore.getState()
         if (state.isCalling || state.incomingCall) return
-        setIncomingCall({ peerId: msg.from_user_id, isVideo: msg.is_video, offer: null })
+        const peerId = msg.from_user_id
+        setIncomingCall({ peerId, isVideo: msg.is_video, offer: null })
+        void lookupUsers([peerId]).then(([u]) => {
+          if (u && useCallStore.getState().incomingCall?.peerId === peerId) {
+            setIncomingCall({ peerId, isVideo: msg.is_video, offer: null, peerUsername: u.username })
+          }
+        }).catch(() => { /* best-effort */ })
       }
 
       if (msg.type === 'call_leave') {
@@ -366,7 +373,13 @@ export function useWebRTC(userId: string | null) {
             await pc.setLocalDescription(answer)
             transmitSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
           } else {
-            setIncomingCall({ peerId: fromUserId, isVideo: !!data.isVideo, offer: { type: 'offer', sdp: data.sdp } })
+            setIncomingCall({ peerId: fromUserId, isVideo: !!data.isVideo, offer: { type: 'offer', sdp: data.sdp ?? '' } })
+            void lookupUsers([fromUserId]).then(([u]) => {
+              if (u) {
+                const cur = useCallStore.getState().incomingCall
+                if (cur?.peerId === fromUserId) setIncomingCall({ ...cur, peerUsername: u.username })
+              }
+            }).catch(() => { /* best-effort */ })
           }
         }
 

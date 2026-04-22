@@ -47,7 +47,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
               </span>
               <div>
                 <p className="text-sm font-medium text-[var(--on-surface)]">{t('call.incomingCall')}</p>
-                <p className="text-xs text-[var(--on-surface-variant)]">{incoming.peerId.slice(0, 12)}…</p>
+                <p className="text-xs text-[var(--on-surface-variant)]">{incoming.peerUsername ?? incoming.peerId.slice(0, 12) + '…'}</p>
               </div>
             </div>
             <p className="mb-6 text-xs text-[var(--on-surface-variant)]">
@@ -106,7 +106,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
                 ORIGIN_NODE
               </p>
               <p className="text-sm text-text-primary">
-                {incoming.peerId.slice(0, 12)}…
+                {incoming.peerUsername ?? incoming.peerId.slice(0, 12) + '…'}
               </p>
             </div>
 

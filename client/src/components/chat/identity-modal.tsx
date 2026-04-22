@@ -133,9 +133,9 @@ export function IdentityModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-text-muted/70 transition-colors hover:text-neon-red"
+            className="inline-flex h-8 w-8 items-center justify-center border border-border-strong bg-void text-text-muted/70 transition-colors hover:border-neon-red hover:text-neon-red"
           >
-            [X]
+            <span className="font-mono text-[10px] leading-none">X</span>
           </button>
         </header>
 
@@ -168,7 +168,7 @@ export function IdentityModal({
               type="button"
               disabled={isScanning || !keyHash}
               onClick={toggleTrustProtocol}
-              className={`w-full border py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] transition-all ${
+              className={`h-10 w-full border px-3 font-mono text-[10px] uppercase tracking-[0.3em] transition-all ${
                 isTrusted
                   ? 'border-neon-red text-neon-red hover:bg-neon-red hover:text-text-primary'
                   : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'
@@ -180,7 +180,7 @@ export function IdentityModal({
               type="button"
               disabled={!isTrusted || isScanning}
               onClick={toggleContactApproval}
-              className={`w-full border py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] transition-all ${
+              className={`h-10 w-full border px-3 font-mono text-[10px] uppercase tracking-[0.3em] transition-all ${
                 isApproved
                   ? 'border-neon-red/60 text-neon-red hover:bg-neon-red/10'
                   : 'border-neon-cyan/70 text-neon-cyan hover:bg-neon-cyan/10'

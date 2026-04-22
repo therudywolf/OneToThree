@@ -118,6 +118,52 @@ export async function fetchStickerAssetUrl(mediaKey: string): Promise<string> {
   return data.url
 }
 
+const stickerBlobUrlByMediaKey = new Map<string, string>()
+
+/** Authenticated GET that streams sticker bytes (same-origin or credentialed fetch). */
+export function stickerMediaFetchUrl(mediaKey: string): string {
+  const q = new URLSearchParams({ media_key: mediaKey })
+  return `${API_URL}/stickers/media?${q}`
+}
+
+/**
+ * URL safe to assign to <img>/<video>/<fetch> for a sticker `mediaKey`.
+ * When the API is same-origin (`API_URL` starts with `/`), returns `/api/stickers/media?...`.
+ * Otherwise loads via credentialed fetch and returns a `blob:` URL (page CSP often blocks
+ * cross-origin S3 in `img-src`, and `<img>` cannot send auth to a sibling API host reliably).
+ */
+export async function loadStickerDisplayUrl(mediaKey: string): Promise<string> {
+  if (API_URL.startsWith('/')) {
+    return stickerMediaFetchUrl(mediaKey)
+  }
+  const cached = stickerBlobUrlByMediaKey.get(mediaKey)
+  if (cached) return cached
+
+  const res = await fetchWithTimeout(stickerMediaFetchUrl(mediaKey), {
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `MEDIA_${res.status}`)
+  }
+  const blob = await res.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  stickerBlobUrlByMediaKey.set(mediaKey, objectUrl)
+  return objectUrl
+}
+
+/** Drop cached `blob:` URL (if any) and fetch sticker media again. */
+export async function reloadStickerDisplayUrl(mediaKey: string): Promise<string> {
+  if (!API_URL.startsWith('/')) {
+    const old = stickerBlobUrlByMediaKey.get(mediaKey)
+    if (old) {
+      URL.revokeObjectURL(old)
+      stickerBlobUrlByMediaKey.delete(mediaKey)
+    }
+  }
+  return loadStickerDisplayUrl(mediaKey)
+}
+
 export async function importTelegramStickerPack(shortName: string): Promise<{ pack_id: string; imported: boolean; count?: number }> {
   const normalizedShortName = normalizeTelegramShortName(shortName)
   const res = await fetchWithTimeout(`${API_URL}/stickers/packs/import`, {

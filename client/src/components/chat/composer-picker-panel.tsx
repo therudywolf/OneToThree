@@ -7,8 +7,9 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useShell } from '@/components/ui/shell'
 import {
   fetchPackStickers,
-  fetchStickerAssetUrl,
   fetchStickerPacks,
+  loadStickerDisplayUrl,
+  reloadStickerDisplayUrl,
   importTelegramStickerPack,
   type Sticker,
   type StickerPack,
@@ -94,17 +95,21 @@ export function ComposerPickerPanel({
     let cancelled = false
     setStickersLoading(true)
     void fetchPackStickers(selectedPackId)
-      .then((rows) => {
-        if (!cancelled) {
-          setStickers(rows)
-          setStickerSrcById(
-            rows.reduce<Record<string, string>>((acc, s) => {
-              acc[s.id] = s.url
-              return acc
-            }, {})
-          )
-          setStickerRetryById({})
-        }
+      .then(async (rows) => {
+        if (cancelled) return
+        setStickers(rows)
+        setStickerRetryById({})
+        const next: Record<string, string> = {}
+        await Promise.all(
+          rows.map(async (s) => {
+            try {
+              next[s.id] = await loadStickerDisplayUrl(s.mediaKey)
+            } catch {
+              next[s.id] = s.url
+            }
+          })
+        )
+        if (!cancelled) setStickerSrcById(next)
       })
       .catch(() => {
         if (!cancelled) setStickers([])
@@ -294,7 +299,7 @@ export function ComposerPickerPanel({
                           onError={() => {
                             if (stickerRetryById[s.id]) return
                             setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
-                            void fetchStickerAssetUrl(s.mediaKey)
+                            void reloadStickerDisplayUrl(s.mediaKey)
                               .then((url) => {
                                 setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
                               })
@@ -312,7 +317,7 @@ export function ComposerPickerPanel({
                           onError={() => {
                             if (stickerRetryById[s.id]) return
                             setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
-                            void fetchStickerAssetUrl(s.mediaKey)
+                            void reloadStickerDisplayUrl(s.mediaKey)
                               .then((url) => {
                                 setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
                               })

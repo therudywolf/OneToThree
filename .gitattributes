@@ -1,0 +1,34 @@
+# Force LF line endings for all text files — prevents CRLF on Windows checkouts
+# breaking shebang lines and shell scripts on Linux servers.
+* text=auto eol=lf
+
+# Shell scripts — always LF, never CRLF
+*.sh text eol=lf
+
+# Docker and config files
+Dockerfile* text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.env* text eol=lf
+
+# Binary files — no conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.otf binary
+*.mp4 binary
+*.webm binary

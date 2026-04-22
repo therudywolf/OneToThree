@@ -225,14 +225,12 @@ export async function presignPutObject(params: {
   bucket: string
   key: string
   contentType: string
-  contentLength?: number
   expiresIn?: number
 }): Promise<string> {
   const cmd = new PutObjectCommand({
     Bucket: params.bucket,
     Key: params.key,
     ContentType: params.contentType,
-    ...(params.contentLength != null && { ContentLength: params.contentLength }),
   })
   return getSignedUrl(params.client, cmd, {
     expiresIn: params.expiresIn ?? DEFAULT_PRESIGN_PUT_TTL_S,

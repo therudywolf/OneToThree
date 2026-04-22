@@ -146,7 +146,6 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
         bucket,
         key,
         contentType: fileType,
-        contentLength: fileSize,
       })
     )
 

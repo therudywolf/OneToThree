@@ -37,8 +37,9 @@ export function useLoadChatMessages(
 
     let cancelled = false
     ;(async () => {
+      let cached: DecryptedMessage[] = []
       try {
-        const cached = await getRecentCachedMessages(activeChatId, 50)
+        cached = await getRecentCachedMessages(activeChatId, 50)
         if (!cancelled && cached.length > 0) {
           setMessages(cached)
         }
@@ -78,6 +79,22 @@ export function useLoadChatMessages(
       } finally {
         if (showDecryptBusy) setHistoryDecryptBusy(false)
       }
+
+      // Preserve locally known plaintext when a history decrypt falls back to
+      // empty/DECRYPT_FAIL for the same message id (common for transient DR
+      // session desync windows right after chat re-open).
+      if (cached.length > 0) {
+        const cachedById = new Map(cached.map((m) => [m.id, m]))
+        out = out.map((m) => {
+          const prev = cachedById.get(m.id)
+          if (!prev) return m
+          const currentBad = !m.plaintext || m.plaintext === '[DECRYPT_FAIL]'
+          const previousGood = Boolean(prev.plaintext) && prev.plaintext !== '[DECRYPT_FAIL]'
+          if (!currentBad || !previousGood) return m
+          return { ...m, plaintext: prev.plaintext }
+        })
+      }
+
       if (!cancelled) {
         out.sort(
           (a, b) =>

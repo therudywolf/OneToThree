@@ -1,6 +1,6 @@
 # CLAUDE HANDOFF — START HERE
 
-Last updated: 2026-04-22 (актуализировано после Sprint 8)
+Last updated: 2026-04-22d (prod hotfix notes)
 
 ## Goal
 
@@ -32,6 +32,21 @@ Last updated: 2026-04-22 (актуализировано после Sprint 8)
 ---
 
 ## Текущее состояние (2026-04-22)
+
+### Инциденты и хотфиксы (добавлено 2026-04-22d)
+
+- [x] **`start.sh update` падал на миграции**: `type "channel_role" already exists`.
+  - Причина: дублирующая DDL в `server/drizzle/0035_same_molly_hayes.sql`.
+  - Фикс: миграция сделана идемпотентной (`IF NOT EXISTS`/`duplicate_object` guards).
+  - Коммит: `03611fe` (`fix(db): make 0035 migration idempotent`).
+- [x] После фикса миграций `db-migrate` проходит успешно на проде (по логам `start.sh update`).
+- [ ] **Открытый блокер media upload**: `STORAGE_PUT_403 SignatureDoesNotMatch` при `PUT` в `s3.onetothree.ru` (HAR: `Har/gs.har`, `Har/gol.har`).
+  - Диагностика: presigned URL подписывает `content-length` (`X-Amz-SignedHeaders=content-length;host`), что ломается за proxy/CDN.
+  - Кодовый фикс подготовлен локально: убрать `ContentLength` из presign PUT (`server/src/lib/s3.ts`, `server/src/routes/storage.ts`).
+  - Требуется: commit+push+deploy, затем повторный runtime тест медиа/ГС.
+- [ ] **Открытый UX/runtime дефект**: сообщение может становиться пустым/`[DECRYPT_FAIL]` после возврата в чат.
+  - Кодовый фикс подготовлен локально: fallback из message cache по `message.id` в `use-load-chat-messages`.
+  - Требуется: commit+push+deploy и повторная проверка сценария.
 
 ### Закрыто (Sprint 8)
 - [x] `[DECRYPT_FAIL]` при повторном входе в чат

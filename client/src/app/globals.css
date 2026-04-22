@@ -610,10 +610,14 @@ textarea {
   border-radius: var(--radius-md, 14px) !important;
 }
 
-/* CRT-flavored effects off. */
-[data-shell="md3"] .crt-overlay,
-[data-shell="md3"] .crt-terminal-vignette {
+/* CRT-flavored effects off in MD3. */
+/* crt-overlay is a pure decorative overlay — hide it entirely. */
+[data-shell="md3"] .crt-overlay {
   display: none !important;
+}
+/* crt-terminal-vignette is the ChatTerminal root container — only kill the
+   box-shadow vignette effect, NOT the element itself. */
+[data-shell="md3"] .crt-terminal-vignette {
   box-shadow: none !important;
 }
 

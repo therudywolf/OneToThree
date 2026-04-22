@@ -10,6 +10,8 @@ export type CallTokenResponse = {
   url: string
   room: string
   ttl_seconds: number
+  /** Base64-encoded 32-byte room E2EE key for LiveKit Insertable Streams. */
+  call_e2ee_key?: string
 }
 
 export async function fetchCallConfig(): Promise<CallConfig> {
@@ -42,5 +44,6 @@ export async function createCallToken(room: string): Promise<CallTokenResponse> 
     url: data.url,
     room: typeof data.room === 'string' ? data.room : room,
     ttl_seconds: typeof data.ttl_seconds === 'number' ? data.ttl_seconds : 0,
+    call_e2ee_key: typeof data.call_e2ee_key === 'string' ? data.call_e2ee_key : undefined,
   }
 }

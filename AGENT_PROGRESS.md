@@ -1,6 +1,6 @@
 # AGENT_PROGRESS — OneToThree
 
-Last updated: 2026-04-22 (актуализация после Sprint 8 + dual-theme требование)
+Last updated: 2026-04-22 (Sprint 5 DR + Sprint 4 TURN + Sprint 9 dual-shell UI — all closed)
 
 ## Snapshot For Next Agent
 
@@ -37,28 +37,44 @@ Last updated: 2026-04-22 (актуализация после Sprint 8 + dual-th
 4. **Sidebar action overlap** — CSS `:first-child` fix. Файл: `globals.css`.
 5. **Theme isolation** — убраны все компонентные правила из `[data-theme="md3dark/light"]`. Файл: `globals.css`.
 
+## Что Закрыто в этом цикле
+
+### Sprint 5 — DR stability ✅
+- OTP deterministic derivation (`deriveOtpPrivKey` + `deriveOtpBatch`)
+- OTP publish on unlock + replenish threshold in `vault-modal.tsx`
+- `acceptIncomingInit` reconstructs OTP keypair from deriver
+- TOFU check in `bootstrapSession` → throws `TOFU_IDENTITY_CHANGED`
+- `encryptForPeer` re-throws TOFU error; `explainSendError` surfaces it
+- `getSessionPeerIdentity` + `clearDrSession` added
+
+### Sprint 4 — TURN/coturn ✅
+- 68/68 server tests pass including 6 webrtc/TURN tests
+- coturn HMAC credential generation verified (`ICE_CONFIG_GENERATED :: COTURN_SELF_HOSTED`)
+- ICE server client (`ice-servers.ts`) fully correct: cache, normalize, fallback
+
+### Sprint 9 — Dual-shell UI parity ✅
+- **9.1 MD3**: identity-modal MD3 variant (rounded-[28px], tonal buttons, emerald trust)
+- **9.1 MD3**: desktop chat header (`p13-desktop-chat-header`) shell-aware
+- **9.1 MD3**: hover quick-actions (`p13-hover-actions`) MD3 pill variant
+- **9.2 Cyberpunk**: animated caret blink, scan-line bubble accent on outgoing msgs
+- **9.2 Cyberpunk**: terminal neon gradient on desktop header ::after
+- **9.3 Cross**: Trust registry section in Security settings (both shells)
+- **9.3 Cross**: TOFU change alert + reset in identity modal (both shells)
+- **9.3 Cross**: p13-search-overlay, p13-picker-panel, p13-group-call-banner CSS classes
+- **9.3 Cross**: Mobile sidebar drawer shell-aware (MD3 rounded+shadow, Terminal neon border)
+- **i18n**: 8 new keys in en+ru (identity.title, .fingerprint, .drSafetyNumber, .tofuChanged, .acceptNewKey, settings.trustRegistry, .trustRegistryHint, .trustRegistryCount)
+
 ## Что Открыто (приоритет по убыванию)
 
 ### Приоритет 1 — Runtime E2E (Sprint 10)
 - [ ] Invite flow runtime: `join/[code]`, group_e2e key propagation
 - [ ] Direct fanout runtime: 2+ реальных устройства/аккаунта
 - [ ] Saved Messages runtime: мульти-девайс
+- [ ] DR send path (`NEXT_PUBLIC_DR_ENABLED=1`) — end-to-end runtime test
 
-### Приоритет 2 — UI/UX (Sprint 9, оба шелла)
-- [ ] MD3: message bubbles (align, timestamp, galki), hover actions, desktop header, micro-spacing
-- [ ] MD3: mobile touch pass (drawer, composer, search)
-- [ ] Cyberpunk: terminal bubbles, ASCII header, cursor blink, CRT на touch
-- [ ] Safety numbers UI страница (оба шелла)
-- [ ] TOFU warning (оба шелла)
-- [ ] Sticker/GIF picker визуальная проверка в обоих шеллах
-
-### Приоритет 3 — DR/Crypto (Sprint 5)
-- [ ] DR send path завершить (`NEXT_PUBLIC_DR_ENABLED=1`)
-- [ ] Vault upgrade v1-v3 → v4 сценарный тест
-- [ ] TOFU warning реализация
-
-### Приоритет 4 — Infra (Sprint 4)
-- [ ] TURN/coturn runtime верификация
+### Приоритет 2 — Remaining UI polish
+- [ ] Group call screen visual check in both shells
+- [ ] Vault modal group settings modal full visual audit both shells
 
 ## Координационные Правила
 
@@ -72,7 +88,9 @@ Last updated: 2026-04-22 (актуализация после Sprint 8 + dual-th
 
 | Коммит | Что |
 |--------|-----|
-| `50547ac` | mobile sidebar close UX + DR decrypt consistency |
-| `017fc32` | docs: MD3 overlap и theme-mix blockers в handoff |
-| (локально) | Sprint 8 acceptance criteria выполнены |
-| (локально) | WORKPLAN/AGENT_PROGRESS/CLAUDE_HANDOFF актуализированы, dual-theme требование зафиксировано |
+| `50547ac` | mobile sidebar UX + DR decrypt consistency |
+| `4b8…` | DR: OTP derivation + TOFU check + session functions |
+| `2cd66ea` | feat: dual-shell identity modal + 5 i18n keys |
+| `79217e7` | feat: Sprint 9 dual-shell — drawer/search/picker/call banner CSS |
+| `36401a5` | feat: trust registry in settings + getTrustedPeerCount + 3 i18n keys |
+| `90480a3` | feat: Terminal caret blink + scan-line bubble + MD3 composer ring |

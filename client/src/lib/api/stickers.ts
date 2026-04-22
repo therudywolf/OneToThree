@@ -57,6 +57,28 @@ function stickersCacheKey(packId: string): string {
   return `p13:stickers:pack:${packId}:v1`
 }
 
+function normalizeTelegramShortName(input: string): string {
+  const raw = input.trim()
+  if (!raw) return ''
+
+  let candidate = raw
+  try {
+    const asUrl = raw.startsWith('http://') || raw.startsWith('https://')
+      ? new URL(raw)
+      : new URL(`https://${raw}`)
+    const host = asUrl.hostname.replace(/^www\./i, '').toLowerCase()
+    if (host === 't.me' || host === 'telegram.me') {
+      const parts = asUrl.pathname.split('/').filter(Boolean)
+      const idx = parts.findIndex((p) => p.toLowerCase() === 'addstickers')
+      if (idx >= 0 && parts[idx + 1]) candidate = parts[idx + 1]!
+    }
+  } catch {
+    // Keep non-URL input unchanged.
+  }
+
+  return candidate.replace(/^@+/, '').trim()
+}
+
 export async function fetchStickerPacks(): Promise<StickerPack[]> {
   const cached = readCache<StickerPack[]>(PACKS_CACHE_KEY, PACK_CACHE_TTL_MS)
   try {
@@ -97,11 +119,12 @@ export async function fetchStickerAssetUrl(mediaKey: string): Promise<string> {
 }
 
 export async function importTelegramStickerPack(shortName: string): Promise<{ pack_id: string; imported: boolean; count?: number }> {
+  const normalizedShortName = normalizeTelegramShortName(shortName)
   const res = await fetchWithTimeout(`${API_URL}/stickers/packs/import`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ short_name: shortName }),
+    body: JSON.stringify({ short_name: normalizedShortName }),
   })
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { error?: string }

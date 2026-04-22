@@ -63,6 +63,30 @@ function mimeForExt(ext: string): string {
   return 'application/octet-stream'
 }
 
+function normalizeTelegramShortName(input: string): string | null {
+  const raw = input.trim()
+  if (!raw) return null
+
+  let candidate = raw
+  try {
+    const asUrl = raw.startsWith('http://') || raw.startsWith('https://')
+      ? new URL(raw)
+      : new URL(`https://${raw}`)
+    const host = asUrl.hostname.replace(/^www\./i, '').toLowerCase()
+    if (host === 't.me' || host === 'telegram.me') {
+      const parts = asUrl.pathname.split('/').filter(Boolean)
+      const idx = parts.findIndex((p) => p.toLowerCase() === 'addstickers')
+      if (idx >= 0 && parts[idx + 1]) candidate = parts[idx + 1]!
+    }
+  } catch {
+    // Not a URL; keep the original value as-is.
+  }
+
+  const clean = candidate.replace(/^@+/, '').trim()
+  if (!/^[A-Za-z0-9_]{1,64}$/.test(clean)) return null
+  return clean
+}
+
 export const stickersRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /api/stickers/asset-url?media_key=...
@@ -190,10 +214,11 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     const token = process.env.TELEGRAM_BOT_TOKEN?.trim()
     if (!token) return reply.status(503).send({ error: 'TELEGRAM_BOT_TOKEN_NOT_CONFIGURED' })
 
-    const body = z.object({ short_name: z.string().min(1).max(64) }).safeParse(request.body)
+    const body = z.object({ short_name: z.string().min(1).max(512) }).safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
-    const shortName = body.data.short_name.trim()
+    const shortName = normalizeTelegramShortName(body.data.short_name)
+    if (!shortName) return reply.status(400).send({ error: 'INVALID_SHORT_NAME' })
 
     // Check if pack already imported by this user
     const [existing] = await db

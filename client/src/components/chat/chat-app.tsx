@@ -604,7 +604,7 @@ export function ChatApp({
           we use a full-height sheet so the chat stays reachable behind it. */}
       {mobileSearchOpen ? (
         <div
-          className="fixed inset-0 z-[120] flex flex-col bg-void/95 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-sm xl:hidden"
+          className="p13-search-overlay fixed inset-0 z-[120] flex flex-col bg-void/95 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-sm xl:hidden"
           role="dialog"
           aria-modal="true"
           aria-label={t('chatSearch.title')}

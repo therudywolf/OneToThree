@@ -25,7 +25,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
       transition={{ duration: 0.25 }}
       className="overflow-hidden"
     >
-      <div className="flex items-center justify-between border-b border-neon-cyan/20 bg-neon-cyan/5 px-4 py-2">
+      <div className="p13-group-call-banner flex items-center justify-between border-b border-neon-cyan/20 bg-neon-cyan/5 px-4 py-2">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full bg-neon-cyan opacity-75" />

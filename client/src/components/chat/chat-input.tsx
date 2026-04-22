@@ -619,7 +619,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
               <Smile className="h-4 w-4" />
             </button>
             {composerPickerOpen ? (
-              <div className="p13-emoji-popup w-[min(440px,92vw)] max-h-[min(520px,70vh)] overflow-hidden">
+              <div className="p13-emoji-popup p13-picker-panel w-[min(440px,92vw)] max-h-[min(520px,70vh)] overflow-hidden">
                 <ComposerPickerPanel
                   layout="modal"
                   onEmoji={(emoji) => insertEmoji(emoji)}

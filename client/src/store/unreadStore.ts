@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import type { DecryptedMessage } from '@/types/chat'
 
 /**
@@ -56,79 +57,93 @@ export type UnreadState = {
   reset: () => void
 }
 
-export const useUnreadStore = create<UnreadState>((set) => ({
-  unreadByChat: {},
-  unreadTotal: 0,
-  readAtOverrides: {},
-  historyDecryptBusy: false,
-
-  markChatRead: (chatId) =>
-    set((s) => {
-      if (!s.unreadByChat[chatId]) return s
-      const nextUnread = { ...s.unreadByChat }
-      delete nextUnread[chatId]
-      return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
-    }),
-
-  markThreadRead: (chatId, threadId) =>
-    set((s) => {
-      const chatUnread = s.unreadByChat[chatId]
-      if (!chatUnread) return s
-      const dec = chatUnread.threads[threadId] ?? 0
-      if (dec <= 0) return s
-      const nextThreads = { ...chatUnread.threads }
-      delete nextThreads[threadId]
-      const nextChat = {
-        ...chatUnread,
-        total: Math.max(0, chatUnread.total - dec),
-        threads: nextThreads,
-      }
-      const nextUnread = { ...s.unreadByChat, [chatId]: nextChat }
-      if (nextChat.total <= 0) delete nextUnread[chatId]
-      return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
-    }),
-
-  clearAllUnread: () => set({ unreadByChat: {}, unreadTotal: 0 }),
-
-  trackInboundUnread: (params) =>
-    set((s) => {
-      if (!params.userId) return s
-      if (params.senderId === params.userId) return s
-      if (params.isForegroundVisible && params.isActiveChat) return s
-
-      const chatUnread = s.unreadByChat[params.chatId] ?? emptyUnreadState()
-      const nextThreads = { ...chatUnread.threads }
-      if (params.replyToId) {
-        nextThreads[params.replyToId] = (nextThreads[params.replyToId] ?? 0) + 1
-      }
-
-      const mentionByReply = hasMentionByReplyToOwnMessage({
-        replyToId: params.replyToId ?? null,
-        messages: params.messages,
-        userId: params.userId,
-      })
-      const nextChat: ChatUnreadState = {
-        total: chatUnread.total + 1,
-        mentions: chatUnread.mentions + (mentionByReply ? 1 : 0),
-        threads: nextThreads,
-      }
-
-      const nextUnread = { ...s.unreadByChat, [params.chatId]: nextChat }
-      return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
-    }),
-
-  setHistoryDecryptBusy: (busy) => set({ historyDecryptBusy: busy }),
-
-  updateReadAtOverride: (nodeId, timestamp) =>
-    set((s) => ({ readAtOverrides: { ...s.readAtOverrides, [nodeId]: timestamp } })),
-
-  clearReadAtOverrides: () => set({ readAtOverrides: {} }),
-
-  reset: () =>
-    set({
+export const useUnreadStore = create<UnreadState>()(
+  persist(
+    (set) => ({
       unreadByChat: {},
       unreadTotal: 0,
       readAtOverrides: {},
       historyDecryptBusy: false,
+
+      markChatRead: (chatId) =>
+        set((s) => {
+          if (!s.unreadByChat[chatId]) return s
+          const nextUnread = { ...s.unreadByChat }
+          delete nextUnread[chatId]
+          return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
+        }),
+
+      markThreadRead: (chatId, threadId) =>
+        set((s) => {
+          const chatUnread = s.unreadByChat[chatId]
+          if (!chatUnread) return s
+          const dec = chatUnread.threads[threadId] ?? 0
+          if (dec <= 0) return s
+          const nextThreads = { ...chatUnread.threads }
+          delete nextThreads[threadId]
+          const nextChat = {
+            ...chatUnread,
+            total: Math.max(0, chatUnread.total - dec),
+            threads: nextThreads,
+          }
+          const nextUnread = { ...s.unreadByChat, [chatId]: nextChat }
+          if (nextChat.total <= 0) delete nextUnread[chatId]
+          return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
+        }),
+
+      clearAllUnread: () => set({ unreadByChat: {}, unreadTotal: 0 }),
+
+      trackInboundUnread: (params) =>
+        set((s) => {
+          if (!params.userId) return s
+          if (params.senderId === params.userId) return s
+          if (params.isForegroundVisible && params.isActiveChat) return s
+
+          const chatUnread = s.unreadByChat[params.chatId] ?? emptyUnreadState()
+          const nextThreads = { ...chatUnread.threads }
+          if (params.replyToId) {
+            nextThreads[params.replyToId] = (nextThreads[params.replyToId] ?? 0) + 1
+          }
+
+          const mentionByReply = hasMentionByReplyToOwnMessage({
+            replyToId: params.replyToId ?? null,
+            messages: params.messages,
+            userId: params.userId,
+          })
+          const nextChat: ChatUnreadState = {
+            total: chatUnread.total + 1,
+            mentions: chatUnread.mentions + (mentionByReply ? 1 : 0),
+            threads: nextThreads,
+          }
+
+          const nextUnread = { ...s.unreadByChat, [params.chatId]: nextChat }
+          return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
+        }),
+
+      setHistoryDecryptBusy: (busy) => set({ historyDecryptBusy: busy }),
+
+      updateReadAtOverride: (nodeId, timestamp) =>
+        set((s) => ({ readAtOverrides: { ...s.readAtOverrides, [nodeId]: timestamp } })),
+
+      clearReadAtOverrides: () => set({ readAtOverrides: {} }),
+
+      reset: () =>
+        set({
+          unreadByChat: {},
+          unreadTotal: 0,
+          readAtOverrides: {},
+          historyDecryptBusy: false,
+        }),
     }),
-}))
+    {
+      name: 'p13-unread-store',
+      version: 1,
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        unreadByChat: state.unreadByChat,
+        unreadTotal: state.unreadTotal,
+        readAtOverrides: state.readAtOverrides,
+      }),
+    }
+  )
+)

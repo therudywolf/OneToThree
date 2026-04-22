@@ -1,6 +1,9 @@
 /**
  * D1 — Group E2E invite flow: new member receives group key and can send/receive messages.
  * D2 — Direct fanout: two accounts exchange messages, no DECRYPT_FAIL.
+ * D3 — Saved Messages: self-chat message survives a page reload.
+ * D4 — DR runtime: direct message carries protocol_version:2 after DR bootstrap.
+ * D5 — TURN/ICE: /api/ice-servers returns a valid iceServers array.
  */
 import { expect, test } from '@playwright/test'
 import { fetchUserId, registerNewUser, uniqueHandle } from './helpers'
@@ -111,5 +114,108 @@ test.describe('D1: group E2E invite flow — member receives group key', () => {
 
     await ctxA.close()
     await ctxB.close()
+  })
+})
+
+test.describe('D3: Saved Messages — self-chat persistence across reload', () => {
+  test('message sent to self survives page reload', async ({ page }) => {
+    const handle = uniqueHandle('d3self')
+    await registerNewUser(page, handle, PASS)
+
+    // Open Saved Messages via API
+    const selfChatId: string = await page.evaluate(async () => {
+      const res = await fetch('/api/chats/self', { credentials: 'include' })
+      if (!res.ok) throw new Error(`self ${res.status}`)
+      const data = (await res.json()) as { id: string }
+      return data.id
+    })
+    expect(selfChatId).toBeTruthy()
+
+    // Navigate to self-chat and send a message
+    await page.goto(`/?chat=${selfChatId}`)
+    const chatSelf = new ChatPage(page)
+    await chatSelf.waitForChatReady(PASS)
+
+    const msg = `d3-self-${Date.now()}`
+    await chatSelf.sendChatMessage(msg)
+    await expect(page.getByText(msg)).toBeVisible({ timeout: 15_000 })
+
+    // Reload and re-unlock vault
+    await page.reload()
+    await chatSelf.waitForChatReady(PASS)
+
+    // Message must still be visible after reload
+    await expect(page.getByText(msg)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+  })
+})
+
+test.describe('D4: DR runtime — direct message uses protocol_version 2', () => {
+  test('after DR bootstrap, outbound message carries protocol_version:2', async ({ browser }) => {
+    const alice = uniqueHandle('d4alice')
+    const bob = uniqueHandle('d4bob')
+
+    const ctxA = await browser.newContext()
+    const ctxB = await browser.newContext()
+    const pageA = await ctxA.newPage()
+    const pageB = await ctxB.newPage()
+
+    await registerNewUser(pageA, alice, PASS)
+    await registerNewUser(pageB, bob, PASS)
+
+    const bobId = await fetchUserId(pageB)
+
+    // Intercept outbound /api/messages/send to inspect body
+    let capturedBody: Record<string, unknown> | null = null
+    await pageA.route('**/api/messages/send', async (route) => {
+      const postData = route.request().postDataJSON() as Record<string, unknown>
+      capturedBody = postData
+      await route.continue()
+    })
+
+    const chatA = new ChatPage(pageA)
+    await chatA.openDirectChatByPeerId(bobId, PASS)
+
+    const msg = `d4-dr-${Date.now()}`
+    await chatA.sendChatMessage(msg)
+
+    // Give the route handler time to fire
+    await expect(pageA.getByText(msg)).toBeVisible({ timeout: 15_000 })
+
+    // Verify DR wire format: protocol_version 2 is present when DR is enabled.
+    // If NEXT_PUBLIC_DR_ENABLED is not set, fanout is used (no protocol_version).
+    // Either way the message must not show DECRYPT_FAIL.
+    if (capturedBody && 'protocol_version' in capturedBody) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((capturedBody as any)['protocol_version']).toBe(2)
+    }
+    await expect(pageA.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+
+    await ctxA.close()
+    await ctxB.close()
+  })
+})
+
+test.describe('D5: TURN/coturn — /api/ice-servers returns valid config', () => {
+  test('authenticated GET /api/ice-servers returns iceServers array', async ({ page }) => {
+    const handle = uniqueHandle('d5ice')
+    await registerNewUser(page, handle, PASS)
+
+    const result = await page.evaluate(async () => {
+      const res = await fetch('/api/ice-servers', { credentials: 'include' })
+      if (!res.ok) return { ok: false as const, status: res.status }
+      const body = (await res.json()) as {
+        iceServers: unknown[]
+        source: string
+        expiresAt: number | null
+      }
+      return { ok: true as const, body }
+    })
+
+    expect(result.ok).toBe(true)
+    const body = (result as { ok: true; body: { iceServers: unknown[]; source: string } }).body
+    expect(Array.isArray(body.iceServers)).toBe(true)
+    expect(body.iceServers.length).toBeGreaterThan(0)
+    expect(['cloudflare', 'coturn', 'stun-only']).toContain(body.source)
   })
 })

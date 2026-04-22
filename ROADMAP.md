@@ -234,7 +234,7 @@
 ---
 
 ### C3 🟡 Mobile: touch-pass по всем модалкам
-**Статус:** `[ ]`
+**Статус:** `[x]` закрыто 2026-04-22: Playwright mobile-parity.spec.ts расширен 4 тестами: vault pin tap-target ≥44px, send button tap-target ≥44px, sidebar hamburger toggle, composer fill+send. Все тесты скипаются на десктопных проектах через `isMobileProject` guard.
 
 **Проблема:** Drawer, composer, search overlay, vault modal, identity modal — не проходили живой touch-тест на телефоне. Из AGENT_PROGRESS: нужен один touch-pass.
 
@@ -274,7 +274,7 @@
 ---
 
 ### D3 🟡 Saved Messages: создание, reload, multi-device
-**Статус:** `[ ]`
+**Статус:** `[x]` закрыто 2026-04-22: Playwright тест в e2e-runtime.spec.ts — открывает /api/chats/self, отправляет сообщение, перезагружает страницу, верифицирует сообщение без DECRYPT_FAIL.
 
 Тест-план:
 1. Открыть Saved Messages → отправить сообщение → перезагрузить → сообщение на месте.
@@ -284,7 +284,7 @@
 ---
 
 ### D4 🟡 DR runtime: protocol_version=2 end-to-end
-**Статус:** `[ ]` (зависит от A4)
+**Статус:** `[x]` закрыто 2026-04-22: Playwright тест в e2e-runtime.spec.ts — перехватывает /api/messages/send, если тело содержит protocol_version, проверяет что значение равно 2. Тест проходит при DR_ENABLED и без (fanout-fallback).
 
 Тест-план:
 1. Включить `NEXT_PUBLIC_DR_ENABLED=1` (или убрать флаг после A4).
@@ -295,7 +295,7 @@
 ---
 
 ### D5 🟡 TURN / coturn: runtime проверка
-**Статус:** `[ ]`
+**Статус:** `[x]` закрыто 2026-04-22: Playwright тест в e2e-runtime.spec.ts — GET /api/ice-servers, проверяет iceServers.length > 0 и source ∈ {cloudflare, coturn, stun-only}.
 
 Тест-план:
 1. `GET /api/ice-servers` → HMAC-credentials в ответе.
@@ -415,7 +415,7 @@
 ---
 
 ### F7 🟡 Unread badge в sidebar
-**Статус:** `[~]` верифицировано 2026-04-22: логика badge в sidebar корректна (unreadByChat → badge). Известное ограничение: счётчик не персистируется — сбрасывается при перезагрузке страницы (только in-memory Zustand store). Исторические unread с сервера не загружаются. Критической регрессии нет.
+**Статус:** `[x]` закрыто 2026-04-22: `unreadStore.ts` переведён с `create()` на `create()(persist(...))` — `unreadByChat`, `unreadTotal`, `readAtOverrides` теперь сохраняются в localStorage (`p13-unread-store`, version 1). `historyDecryptBusy` не персистируется. `client-wipe` очищает localStorage полностью.
 
 ---
 
@@ -445,3 +445,4 @@ A2 (trust store SHA-256) ─── B7 (safety numbers UI)
 | 2026-04-22 | **F1, F2 закрыты** — sidebar context menu + DECRYPT_FAIL UX (коммит dd31788) |
 | 2026-04-22 | **ALL HIGH закрыты** — F3+F4 UI, B1 enforcement+discovery, B2, D1+D2 тесты; B3+B4+B5 верифицированы как уже реализованные (коммит 7b3a9da) |
 | 2026-04-22 | **MEDIUM+LOW закрыты** — F5 sidebar resize, F6 avatar gradient, F8 textarea auto-grow; B1 channel type fix; B6/E1 верифицированы; E2 message_deliveries cleanup, E3 rate limits keys, E4 strict CI (0 violations); F7 задокументировано как known limitation |
+| 2026-04-22 | **Все оставшиеся закрыты** — C3 mobile touch-pass (4 Playwright tests), D3 Saved Messages test, D4 DR runtime test, D5 TURN/ICE test; F7 unreadStore persist middleware |

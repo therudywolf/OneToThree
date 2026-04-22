@@ -4,6 +4,7 @@ import { db } from '../db/index.js'
 import { users } from '../db/schema.js'
 import { consumeTotpCode } from './totp-replay-guard.js'
 import { verifyTotp } from './totp.js'
+import { decryptTotpSecret } from './totp-crypto.js'
 
 type StepUpResult =
   | { ok: true }
@@ -38,7 +39,7 @@ export async function requireTotpStepUp(
     return { ok: false, status: 401, error: 'TOTP_STEP_UP_REQUIRED' }
   }
 
-  const valid = await verifyTotp(code, row.totpSecret)
+  const valid = await verifyTotp(code, decryptTotpSecret(row.totpSecret))
   if (!valid) return { ok: false, status: 401, error: 'TOTP_INVALID' }
 
   const consumed = await consumeTotpCode(userId, code)

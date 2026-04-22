@@ -26,9 +26,10 @@ import Link from 'next/link'
 import { useSessionStore } from '@/store/sessionStore'
 import { usePresenceStore } from '@/store/presenceStore'
 import { useUnreadStore } from '@/store/unreadStore'
-import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite, setChatMute, isChatMuted } from '@/lib/api/chats'
+import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite, setChatMute, isChatMuted, joinChatByInviteCode } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
+import { ExploreModal } from '@/components/chat/explore-modal'
 import { GroupChatSettings } from '@/components/chat/group-chat-settings'
 import { UserAvatar } from '@/components/user-avatar'
 import { lookupUsers, searchUsers } from '@/lib/api/users'
@@ -163,6 +164,9 @@ export function ChatSidebar({
     x: number
     y: number
   } | null>(null)
+  const [fabOpen, setFabOpen] = useState(false)
+  const fabRef = useRef<HTMLDivElement>(null)
+  const [exploreOpen, setExploreOpen] = useState(false)
 
   useEffect(() => {
     try {
@@ -418,6 +422,21 @@ export function ChatSidebar({
     ghostHitChatIds === null
       ? folderFilteredChats
       : folderFilteredChats.filter((c) => ghostHitChatIds.has(c.id))
+
+  useEffect(() => {
+    if (!fabOpen) return
+    function handleDown(e: MouseEvent | TouchEvent) {
+      if (fabRef.current && !fabRef.current.contains(e.target as Node)) {
+        setFabOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleDown)
+    document.addEventListener('touchstart', handleDown)
+    return () => {
+      document.removeEventListener('mousedown', handleDown)
+      document.removeEventListener('touchstart', handleDown)
+    }
+  }, [fabOpen])
 
   function togglePin(chatId: string) {
     setPinnedIds((prev) =>
@@ -1063,43 +1082,106 @@ export function ChatSidebar({
           </div>
         </div>
 
-        <div className="space-y-2 pt-2 border-t border-neon-cyan/20">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setGroupModalOpen(true)}
-              className={`flex h-10 flex-1 items-center justify-center px-3 text-[10px] font-medium uppercase tracking-[0.14em] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
-            >
-              {t('sidebar.createGroupE2e')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setGroupModalOpen(true)}
-              className={`flex h-10 flex-1 items-center justify-center px-3 text-[10px] font-medium uppercase tracking-[0.14em] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
-            >
-              {t('sidebar.createChannel')}
-            </button>
-          </div>
+        {/* FAB "+" — New Group / New Channel / My Invite */}
+        <div ref={fabRef} className="relative pt-2 border-t border-neon-cyan/20">
+          {fabOpen ? (
+            <div className={`absolute bottom-full mb-1 left-0 right-0 z-50 overflow-hidden ${
+              isMd3
+                ? 'rounded-2xl bg-[var(--surface-container-high)] shadow-[var(--md3-elevation-3)]'
+                : 'border border-neon-cyan/30 bg-void shadow-[0_-4px_20px_rgba(0,0,0,0.7)]'
+            }`}>
+              <button
+                type="button"
+                onClick={() => { setFabOpen(false); setGroupModalOpen(true) }}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
+                  isMd3
+                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
+                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                }`}
+              >
+                <Users className="h-3.5 w-3.5 shrink-0" />
+                {t('sidebar.createGroupE2e')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFabOpen(false); setGroupModalOpen(true) }}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
+                  isMd3
+                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
+                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                }`}
+              >
+                <Megaphone className="h-3.5 w-3.5 shrink-0" />
+                {t('sidebar.createChannel')}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setFabOpen(false)
+                  const link = `${window.location.origin}/?invite=${encodeURIComponent(userId)}`
+                  try {
+                    await navigator.clipboard.writeText(link)
+                    setCreateErr('INVITE_LINK_COPIED')
+                  } catch {
+                    setCreateErr(link)
+                  }
+                }}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
+                  isMd3
+                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
+                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                }`}
+              >
+                <Lock className="h-3.5 w-3.5 shrink-0" />
+                {t('sidebar.copyMyInvite')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFabOpen(false); setExploreOpen(true) }}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
+                  isMd3
+                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
+                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                }`}
+              >
+                <Search className="h-3.5 w-3.5 shrink-0" />
+                {t('explore.title')}
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
-            onClick={async () => {
-              const origin = window.location.origin
-              const link = `${origin}/?invite=${encodeURIComponent(userId)}`
-              try {
-                await navigator.clipboard.writeText(link)
-                setCreateErr('INVITE_LINK_COPIED')
-              } catch {
-                setCreateErr(link)
-              }
-            }}
-            className={`flex h-10 w-full items-center justify-center px-3 text-[10px] font-medium uppercase tracking-[0.14em] transition-colors ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-1)] hover:brightness-110' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
+            onClick={() => setFabOpen((o) => !o)}
+            className={`flex h-10 w-full items-center justify-center gap-2 transition-colors ${
+              isMd3
+                ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-2)] hover:brightness-110'
+                : 'border border-neon-cyan/50 bg-void font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'
+            }`}
           >
-            {t('sidebar.copyMyInvite')}
+            <MessageSquarePlus className="h-4 w-4" aria-hidden />
+            {t('sidebar.newChat')}
           </button>
         </div>
       </div>
 
       </div>{/* end right panel */}
+
+      {exploreOpen ? (
+        <ExploreModal
+          onJoin={async (code) => {
+            try {
+              const result = await joinChatByInviteCode(code)
+              setExploreOpen(false)
+              setActiveChatId(result.chat_id)
+              await reload()
+            } catch (e) {
+              setCreateErr(e instanceof Error ? e.message : 'JOIN_FAILED')
+              setExploreOpen(false)
+            }
+          }}
+          onClose={() => setExploreOpen(false)}
+        />
+      ) : null}
 
       {rowContextMenu ? (() => {
         const c = chats.find((ch) => ch.id === rowContextMenu.chatId)

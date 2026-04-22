@@ -1112,9 +1112,9 @@ export function ChatTerminal({
                     <Reply className="h-4 w-4 text-neon-cyan" />
                   </div>
                 ) : null}
-                {/* Hover quick-action bar — desktop only, fades in on group hover */}
-                <div className={`p13-hover-actions hidden md:flex items-center gap-0.5 self-end mb-2 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150 ${
-                  mine ? 'order-first mr-1' : 'order-last ml-1'
+                {/* Hover quick-action bar — desktop only, absolute above the bubble */}
+                <div className={`p13-hover-actions absolute -top-8 z-10 hidden md:flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150 ${
+                  mine ? 'right-0' : 'left-0'
                 }`}>
                   <button
                     type="button"

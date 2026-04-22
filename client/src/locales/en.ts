@@ -177,6 +177,7 @@ const en = {
   'sidebar.userNotFound': 'User not found',
   'sidebar.cannotOpenSelf': 'Cannot message yourself.',
   'sidebar.createFailed': 'Creation failed',
+  'sidebar.newChat': 'New',
   'sidebar.copyMyInvite': 'My Link',
   'sidebar.createGroupE2e': 'New Group',
   'sidebar.createChannel': 'New Channel',
@@ -821,6 +822,12 @@ const en = {
   'settings.trustRegistry': 'Trusted Contacts',
   'settings.trustRegistryHint': 'Verified identities are stored locally. Compare safety numbers with contacts out-of-band.',
   'settings.trustRegistryCount': 'View count',
+  'explore.title': 'Explore Groups & Channels',
+  'explore.searchPlaceholder': 'Search public groups…',
+  'explore.noResults': 'No public groups found',
+  'explore.join': 'Join',
+  'explore.typeGroup': 'Group',
+  'explore.typeChannel': 'Channel',
 } as const;
 
 export default en;

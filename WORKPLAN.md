@@ -272,9 +272,21 @@
 - [ ] Keep cyberpunk sizes unchanged; only tune MD3 variant.
 - [ ] Run quick visual pass desktop/mobile for regression.
 
-### 8.4 Acceptance criteria for Claude
+### 8.4 Sidebar actions overlap
+- [ ] Reproduce visual collision/stacking of row actions (pin / favorite / notifications).
+- [ ] Rework row-action layout so controls never overlap at any sidebar width/theme.
+- [ ] Validate hover/active states for both shells (`md3`, `terminal`).
+
+### 8.5 Theme isolation (MD3 vs Cyberpunk mix)
+- [ ] Audit global selectors and component classes causing cross-theme leakage.
+- [ ] Ensure strict shell scoping so MD3 rules do not affect cyberpunk and vice versa.
+- [ ] Verify chat list, bubbles, header, and sidebar controls in both shells after fixes.
+
+### 8.6 Acceptance criteria for Claude
 - [ ] Runtime: no `[DECRYPT_FAIL]` regression after re-entering the same chat.
 - [ ] MD3: chats open consistently.
 - [ ] MD3 left rail: visually proportional controls.
+- [ ] Sidebar action controls: no overlap/collision.
+- [ ] Theme isolation: no mixed MD3/cyberpunk styling artifacts.
 - [ ] Green checks: `typecheck`, `lint`, server tests.
 

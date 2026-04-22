@@ -243,6 +243,9 @@ const en = {
   'composer.tabSticker': 'Stickers',
   'composer.tabGif': 'GIF',
   'composer.gifSoon': 'GIF search — coming soon',
+  'composer.gifSearchPlaceholder': 'Search GIFs',
+  'composer.gifHint': 'Type at least 2 characters',
+  'composer.gifEmpty': 'No GIF results',
   'composer.stickerImportPlaceholder': 'Telegram short name',
   'composer.stickerImport': 'Import',
   'composer.stickerImportHint':

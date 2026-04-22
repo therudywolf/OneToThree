@@ -627,6 +627,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                     await sendText(json)
                     setComposerPickerOpen(false)
                   }}
+                  onGifPick={(url) => insertEmoji(` ${url} `)}
                   onAfterStickerSend={() => setComposerPickerOpen(false)}
                 />
               </div>

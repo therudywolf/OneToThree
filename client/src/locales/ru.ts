@@ -243,6 +243,9 @@ const ru = {
   'composer.tabSticker': 'Стикеры',
   'composer.tabGif': 'GIF',
   'composer.gifSoon': 'Поиск GIF — скоро',
+  'composer.gifSearchPlaceholder': 'Поиск GIF',
+  'composer.gifHint': 'Введите минимум 2 символа',
+  'composer.gifEmpty': 'GIF не найдены',
   'composer.stickerImportPlaceholder': 'Короткое имя в Telegram',
   'composer.stickerImport': 'Импорт',
   'composer.stickerImportHint':

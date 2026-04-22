@@ -24,6 +24,7 @@ import { verifyNonceSignatureEcdsaP256 } from '../lib/ecdsa-verify.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { saveLinkToken, consumeLinkToken } from '../lib/link-token-store.js'
 import { verifyTotpSync } from '../lib/totp.js'
+import { decryptTotpSecret } from '../lib/totp-crypto.js'
 
 const LINK_TOKEN_TTL_S = 300
 
@@ -112,7 +113,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         if (!row.totpSecret) {
           return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
         }
-        if (!verifyTotpSync(totp_code, row.totpSecret)) {
+        if (!verifyTotpSync(totp_code, decryptTotpSecret(row.totpSecret))) {
           return reply.status(401).send({ error: 'TOTP_INVALID' })
         }
         if (!await consumeTotpCode(user.id, totp_code)) {

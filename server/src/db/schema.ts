@@ -1,5 +1,6 @@
 import {
   bigint,
+  bigserial,
   boolean,
   index,
   integer,
@@ -231,6 +232,8 @@ export const messages = pgTable(
   'messages',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    /** Global monotonic sequence for deterministic ordering when created_at ties. */
+    seq: bigserial('seq', { mode: 'bigint' }).notNull(),
     chatId: uuid('chat_id')
       .notNull()
       .references(() => chats.id, { onDelete: 'cascade' }),
@@ -288,6 +291,7 @@ export const messages = pgTable(
       t.chatId,
       t.createdAt
     ),
+    chatSeqIdx: index('messages_chat_id_seq_idx').on(t.chatId, t.seq),
     senderIdx: index('messages_sender_id_idx').on(t.senderId),
     replyIdx: index('messages_reply_to_id_idx').on(t.replyToId),
     pinnedIdx: index('messages_chat_pinned_idx').on(t.chatId, t.isPinned),

@@ -83,6 +83,56 @@ is_placeholder() {
   return 1
 }
 
+trim_value() {
+  local val="$1"
+  val="${val//$'\r'/}"
+  val="${val#"${val%%[![:space:]]*}"}"
+  val="${val%"${val##*[![:space:]]}"}"
+  echo "$val"
+}
+
+sync_telegram_secret_file() {
+  local token="$1"
+  mkdir -p "$SECRETS_DIR"
+  chmod 700 "$SECRETS_DIR"
+  echo -n "$token" > "$SECRETS_DIR/telegram_bot_token"
+  chmod 600 "$SECRETS_DIR/telegram_bot_token"
+}
+
+prompt_and_save_telegram_token() {
+  local allow_skip="${1:-1}"
+  local current token_input
+  current="$(trim_value "$(val_for_key TELEGRAM_BOT_TOKEN)")"
+
+  if [[ -n "$current" ]] && ! is_placeholder "$current"; then
+    sync_telegram_secret_file "$current"
+    ok "TELEGRAM_BOT_TOKEN уже задан."
+    return 0
+  fi
+
+  echo ""
+  warn "Для импорта Telegram стикерпаков нужен TELEGRAM_BOT_TOKEN."
+  if [[ "$allow_skip" == "1" ]]; then
+    read -r -p "  Введите TELEGRAM_BOT_TOKEN (Enter чтобы пропустить): " token_input
+  else
+    read -r -p "  Введите TELEGRAM_BOT_TOKEN: " token_input
+  fi
+  token_input="$(trim_value "$token_input")"
+
+  if [[ -z "$token_input" ]]; then
+    if [[ "$allow_skip" == "1" ]]; then
+      warn "TELEGRAM_BOT_TOKEN пропущен — импорт Telegram sticker pack будет недоступен."
+      return 1
+    fi
+    die "TELEGRAM_BOT_TOKEN обязателен для этой команды."
+  fi
+
+  update_key TELEGRAM_BOT_TOKEN "$token_input"
+  sync_telegram_secret_file "$token_input"
+  ok "TELEGRAM_BOT_TOKEN сохранён в ${ENV_FILE} и ./secrets/telegram_bot_token."
+  return 0
+}
+
 build_turn_urls() {
   local host="$1"
   echo "turn:${host}:3478,turn:${host}:3478?transport=tcp,turns:${host}:443?transport=tcp,turns:${host}:5349?transport=tcp"
@@ -271,6 +321,7 @@ case "$CMD" in
     fi
     git fetch --all --prune
     git pull --ff-only origin "$CURRENT_BRANCH"
+    prompt_and_save_telegram_token 1 || true
     CURRENT_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
     detect_update_services "${PREVIOUS_HEAD}..${CURRENT_HEAD}"
 
@@ -311,6 +362,14 @@ case "$CMD" in
     fi
 
     ok "Обновление завершено. Данные сохранены."
+    exit 0
+    ;;
+  tg)
+    [[ -f "$ENV_FILE" ]] || die "Не найден ${ENV_FILE}. Сначала выполните ./start.sh up"
+    prompt_and_save_telegram_token 0
+    log "Перезапускаю API для применения TELEGRAM_BOT_TOKEN..."
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate api
+    ok "TELEGRAM_BOT_TOKEN применён."
     exit 0
     ;;
   backup)
@@ -510,7 +569,7 @@ case "$CMD" in
     : # продолжаем ниже
     ;;
   *)
-    echo "Использование: ./start.sh [install|up|quick|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|backup|clean|uninstall]"
+    echo "Использование: ./start.sh [install|up|quick|tg|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|backup|clean|uninstall]"
     exit 1
     ;;
 esac
@@ -682,6 +741,7 @@ if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
   sync_secret_to_env "vapid_public_key"     "VAPID_PUBLIC_KEY"
   sync_secret_to_env "vapid_public_key"     "NEXT_PUBLIC_VAPID_PUBLIC_KEY"
   sync_secret_to_env "vapid_private_key"    "VAPID_PRIVATE_KEY"
+  sync_secret_to_env "telegram_bot_token"   "TELEGRAM_BOT_TOKEN"
   if [[ -f "$SECRETS_DIR/domain" ]]; then
     DOMAIN_VAL=$(cat "$SECRETS_DIR/domain")
     current_api=$(val_for_key NEXT_PUBLIC_API_URL)

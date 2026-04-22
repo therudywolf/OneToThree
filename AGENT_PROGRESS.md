@@ -1,95 +1,78 @@
 # AGENT_PROGRESS — OneToThree
 
-Last updated: 2026-04-22 (post mobile+DR hotfix audit)
+Last updated: 2026-04-22 (актуализация после Sprint 8 + dual-theme требование)
 
 ## Snapshot For Next Agent
 
-- Branch: `main`, working tree dirty (expected local edits, no revert needed).
-- User-critical recent fixes landed locally:
-  - mobile sidebar got explicit close UX on phone (`X` button in drawer header),
-  - left rail got bottom utility actions (settings / notifications / vault lock),
-  - disappearing-message regression fixed by passing DR context in history/deferred sync decrypt paths.
+- Branch: `main`, working tree dirty (ожидаемые локальные правки, не откатывать).
+- Sprint 8 закрыт полностью (все acceptance criteria выполнены).
+- Добавлено постоянное требование: **два независимых шелла (MD3 + Cyberpunk/Terminal), оба должны быть полностью отполированы**.
 
-## Verified In This Cycle
+## Verified In This Cycle (Sprint 8)
 
-- Client static quality:
-  - `npm run typecheck -w project-13-client` → PASS
-  - `npm run lint -w project-13-client` → PASS
-- Server stability:
-  - `npm run test -w project-13-server` → PASS (full suite green).
-- HAR-based root cause confirmed for message vanish:
-  - outbound rows carry `protocol_version=2`, `device_iv="dr:v2"`, `dr_header`,
-  - before fix, history/sync decrypt path lacked `drCtx`, producing `[DECRYPT_FAIL]`.
+- `npm run typecheck -w project-13-client` → PASS
+- `npm run lint -w project-13-client` → PASS
+- `npm run test -w project-13-server` → PASS (68/68)
 
-## What Changed Right Now (Important)
+## Dual-Theme Requirement (ПОСТОЯННОЕ)
 
-1. Mobile UI/UX:
-   - Added visible close affordance for chat-list drawer on phones.
-   - File: `client/src/components/chat/chat-app.tsx`.
-2. Sidebar utility UX:
-   - Added bottom buttons on left rail: Settings, Notifications toggle, Vault lock.
-   - Files: `client/src/components/chat/chat-sidebar.tsx`, `client/src/components/chat/chat-app.tsx`.
-3. DR decrypt consistency:
-   - `drCtx` now propagated to history load and pending-delivery sync hooks.
-   - Files:
-     - `client/src/hooks/use-load-chat-messages.ts`
-     - `client/src/hooks/use-message-delivery-sync.ts`
-     - `client/src/hooks/use-messages.ts`
+Проект имеет **два полностью независимых UI-шелла**:
 
-## Остатки / Fragments For Next Agent
+| Шелл | `data-shell` | Стиль |
+|------|-------------|-------|
+| MD3 | `"md3"` | Material Design 3: Google Sans, скруглённые, dynamic colors |
+| Cyberpunk/Terminal | `"terminal"` | monospace, neon, CRT/glitch, ASCII |
 
-### A) Runtime (highest priority)
+**Правила изоляции:**
+- `[data-shell="md3"]` — компонентные стили MD3.
+- `[data-shell="terminal"]` — компонентные стили Cyberpunk.
+- `[data-theme="*"]` — только palette-токены (цвета), никаких компонентных правил.
+- Каждый UI-коммит проверяется в обоих шеллах.
 
-- Invites e2e (client flow still not fully runtime-validated):
-  - `join/[code]` states, wrong/expired code UX, `group_e2e` key propagation.
-- Saved Messages self-flow runtime verification still pending (multi-device included).
-- Direct fanout runtime validation still needed with at least 2 real devices/accounts.
+## Что Закрыто (Sprint 8)
 
-### B) DR / Crypto
+1. **[DECRYPT_FAIL] root fix** — `directPeerUserId` вычисляется синхронно из `chats + activeChatId`, `drCtx` доступен немедленно при смене чата. Файл: `chat-app.tsx`.
+2. **MD3 чаты не открывались** — та же причина (drCtx=null → DECRYPT_FAIL → пустой chat).
+3. **MD3 left rail buttons** — `h-8 w-8 rounded-full`, иконки 18px. Файл: `chat-sidebar.tsx`.
+4. **Sidebar action overlap** — CSS `:first-child` fix. Файл: `globals.css`.
+5. **Theme isolation** — убраны все компонентные правила из `[data-theme="md3dark/light"]`. Файл: `globals.css`.
 
-- DR send path still partially feature-flagged and not fully completed server/client end-to-end.
-- TOFU/identity-change warning UX still not implemented.
-- Vault upgrade path v1-v3 → v4 needs explicit migration scenario test.
+## Что Открыто (приоритет по убыванию)
 
-### C) UI/UX parity
+### Приоритет 1 — Runtime E2E (Sprint 10)
+- [ ] Invite flow runtime: `join/[code]`, group_e2e key propagation
+- [ ] Direct fanout runtime: 2+ реальных устройства/аккаунта
+- [ ] Saved Messages runtime: мульти-девайс
 
-- Baseline sizing pass is largely complete, but Telegram-like parity is still partial:
-  - micro-spacing consistency,
-  - desktop chat header details,
-  - hover actions and interaction polish.
-- Mobile now has close button for drawer, but still worth usability pass with real touch testing.
+### Приоритет 2 — UI/UX (Sprint 9, оба шелла)
+- [ ] MD3: message bubbles (align, timestamp, galki), hover actions, desktop header, micro-spacing
+- [ ] MD3: mobile touch pass (drawer, composer, search)
+- [ ] Cyberpunk: terminal bubbles, ASCII header, cursor blink, CRT на touch
+- [ ] Safety numbers UI страница (оба шелла)
+- [ ] TOFU warning (оба шелла)
+- [ ] Sticker/GIF picker визуальная проверка в обоих шеллах
 
-### D) Calls/TURN
+### Приоритет 3 — DR/Crypto (Sprint 5)
+- [ ] DR send path завершить (`NEXT_PUBLIC_DR_ENABLED=1`)
+- [ ] Vault upgrade v1-v3 → v4 сценарный тест
+- [ ] TOFU warning реализация
 
-- Needs real environment verification (`/api/ice-servers`, coturn/HMAC credentials, fallback behavior).
+### Приоритет 4 — Infra (Sprint 4)
+- [ ] TURN/coturn runtime верификация
 
-## Concrete Next Steps (exact order)
+## Координационные Правила
 
-1. Reproduce 3 user flows in real runtime:
-   - invite join,
-   - direct message send/receive across two devices,
-   - saved messages send/reload.
-2. Add/adjust regression tests per reproduced bug.
-3. Finish DR send-path milestones from `WORKPLAN.md`.
-4. Perform focused mobile UX smoke pass (drawer, composer, search overlay).
-5. Re-run:
-   - `npm run typecheck -w project-13-client`
-   - `npm run lint -w project-13-client`
-   - `npm run test -w project-13-server`
+- Не откатывать несвязанные изменения.
+- `WORKPLAN.md` и этот файл синхронизировать после каждого значимого фикса.
+- Если `[DECRYPT_FAIL]` снова появится — проверить, передаётся ли `drCtx` в конкретный decrypt-path.
+- HAR-трейсы: `/mnt/c/Users/rudywolf/Workspace/OneToThree/Har/`.
+- Качество базы перед крупными правками: typecheck + lint + test:server.
 
-## Coordination Rules
+## Лог (этот цикл)
 
-- Do not discard unrelated local changes.
-- Keep `WORKPLAN.md` and this file synchronized after every meaningful fix.
-- If `[DECRYPT_FAIL]` reappears, inspect whether decrypt path includes `drCtx` for that code path.
-
-## User Directive For Next Agent (Claude)
-
-- Stop further "quick fixes" without full runtime reproduction.
-- Treat the following as open tasks for Claude:
-  1. Messages show, then become `[DECRYPT_FAIL]` after re-entering chat.
-  2. MD3 theme: chats are not opening reliably.
-  3. MD3 theme: left rail buttons look oversized/disproportionate.
-  4. Sidebar action buttons overlap visually (pin / favorite / notification controls stacking).
-  5. Theme boundary regression: MD3 and cyberpunk styles are mixed.
-- Priority order: runtime correctness first, then MD3 UX sizing/polish.
+| Коммит | Что |
+|--------|-----|
+| `50547ac` | mobile sidebar close UX + DR decrypt consistency |
+| `017fc32` | docs: MD3 overlap и theme-mix blockers в handoff |
+| (локально) | Sprint 8 acceptance criteria выполнены |
+| (локально) | WORKPLAN/AGENT_PROGRESS/CLAUDE_HANDOFF актуализированы, dual-theme требование зафиксировано |

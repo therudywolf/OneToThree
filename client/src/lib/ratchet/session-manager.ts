@@ -373,6 +373,13 @@ export async function bootstrapSession(
 ): Promise<SerializedSession> {
   const response = await keysApi.fetchBundle(peerId)
   const bundle = bundleFromResponse(response)
+
+  // TOFU check: if a prior session exists with a different peer identity, refuse
+  // to silently re-bootstrap — the caller must explicitly clear the old session first.
+  const existing = await loadSession(ownerId, peerId)
+  if (existing && existing.peerIdentityExchange !== b64urlEncode(bundle.identityExchange)) {
+    throw new Error('TOFU_IDENTITY_CHANGED')
+  }
   const ephemeral = generateX25519KeyPair()
   const { sharedSecret } = x3dhInitiator({
     initiatorIdentity: ownIdentity,
@@ -504,7 +511,8 @@ export async function encryptForPeer(
     if (!_ownIdentity) throw new Error('RATCHET_NO_SESSION')
     try {
       session = await bootstrapSession(ownerId, _ownIdentity, peerId)
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message === 'TOFU_IDENTITY_CHANGED') throw err
       throw new Error('RATCHET_NO_SESSION')
     }
   }
@@ -604,6 +612,27 @@ export async function sessionFingerprint(
     b64urlDecode(session.ownIdentityExchange),
     b64urlDecode(session.peerIdentityExchange)
   )
+}
+
+/**
+ * Get the stored peer identity exchange public key for a session (base64url).
+ * Used by TOFU UI to compare against a freshly-fetched bundle.
+ */
+export async function getSessionPeerIdentity(
+  ownerId: string,
+  peerId: string
+): Promise<string | null> {
+  const session = await loadSession(ownerId, peerId)
+  return session?.peerIdentityExchange ?? null
+}
+
+/**
+ * Clear a DR session record so it can be re-bootstrapped with a new identity.
+ * Call only after explicit user confirmation of a key change (TOFU reset).
+ */
+export async function clearDrSession(ownerId: string, peerId: string): Promise<void> {
+  const { deleteSessionRecord } = await import('./session-store')
+  await deleteSessionRecord(ownerId, peerId)
 }
 
 /** Utility re-exports the callers typically need. */

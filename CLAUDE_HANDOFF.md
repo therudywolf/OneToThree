@@ -1,42 +1,90 @@
 # CLAUDE HANDOFF — START HERE
 
-Last updated: 2026-04-22
+Last updated: 2026-04-22 (актуализировано после Sprint 8)
 
 ## Goal
 
-Continue work without speculative fixes. Reproduce first, then patch with tests.
+Две независимые темы — MD3 и Cyberpunk/Terminal — должны работать идеально. Runtime-корректность первична. UI/UX полировка — второй приоритет, но обязательно для обоих шеллов.
 
 ## Source Of Truth
 
-1. `WORKPLAN.md` — full backlog and sprint structure.
-2. `AGENT_PROGRESS.md` — concise state snapshot + risks.
-3. This file — immediate startup checklist for Claude.
+1. `WORKPLAN.md` — полный бэклог и структура спринтов.
+2. `AGENT_PROGRESS.md` — краткий снимок состояния + риски.
+3. Этот файл — чеклист запуска для Claude.
 
-## Immediate Open Tasks
+---
 
-1. Runtime bug: message is visible, then after re-entering chat becomes `[DECRYPT_FAIL]`.
-2. MD3 bug: chat rows do not open chats reliably.
-3. MD3 UX issue: left rail buttons are visually too large.
-4. Sidebar row actions overlap/stack incorrectly (pin / favorite / notifications controls visually collide).
-5. Theme isolation regression: Cyberpunk and MD3 visual styles are mixed in the same UI states.
+## КРИТИЧЕСКОЕ ТРЕБОВАНИЕ: Dual-theme
 
-## How To Start (exact order)
+В проекте **два полностью независимых интерфейса**:
 
-1. Reproduce bugs from HAR traces:
-   - `C:\Users\rudywolf\Downloads\Не отправляются сообщения.har`
-   - `C:\Users\rudywolf\Downloads\md3.har`
-2. Re-run local quality baseline:
-   - `npm run typecheck -w project-13-client`
-   - `npm run lint -w project-13-client`
-   - `npm run test -w project-13-server`
-3. Fix runtime decrypt regression first, then MD3 open-chat bug, then MD3 sizing polish.
-4. Add/adjust regression tests for each fixed behavior.
-5. Update `WORKPLAN.md` + `AGENT_PROGRESS.md` after each meaningful step.
+| Шелл | `data-shell` | Характер |
+|------|-------------|----------|
+| **MD3** | `"md3"` | Material Design 3 — Google Sans, скруглённые формы, динамические цвета |
+| **Cyberpunk / Terminal** | `"terminal"` | Монопространственный, neon-цвета, CRT/glitch, ASCII-ритм |
+
+**Правила:**
+- Каждый UI/UX коммит тестируется в **обоих** шеллах.
+- Стили изолированы строго: `[data-shell="md3"]` и `[data-shell="terminal"]`.
+- `[data-theme="md3dark/light"]` и `[data-theme="cyberpunk"]` — только palette-токены, никаких компонентных правил.
+- Никаких утечек: MD3 не должен получать monospace, terminal не должен получать Google Sans.
+
+---
+
+## Текущее состояние (2026-04-22)
+
+### Закрыто (Sprint 8)
+- [x] `[DECRYPT_FAIL]` при повторном входе в чат
+- [x] MD3: чаты не открывались (та же причина — async drCtx)
+- [x] MD3 left rail кнопки — пересчитан размер
+- [x] Sidebar action buttons overlap — CSS фикс
+- [x] Theme isolation MD3/Cyberpunk — убраны все утечки из `[data-theme]`
+
+### Открыто — приоритет 1 (Runtime)
+→ Sprint 10 в WORKPLAN.md
+
+1. Invite flow (`join/[code]`) — runtime не валидировался
+2. Direct fanout 2+ устройства — runtime не валидировался
+3. Saved Messages мульти-девайс — runtime не валидировался
+
+### Открыто — приоритет 2 (UI/UX обоих шеллов)
+→ Sprint 9 в WORKPLAN.md
+
+4. MD3: message bubbles, hover actions, desktop header, micro-spacing
+5. Cyberpunk: terminal bubbles, ASCII-header, cursor blink, CRT на touch
+6. Safety numbers UI страница (оба шелла)
+7. TOFU warning при смене ключа (оба шелла)
+8. Mobile touch pass (оба шелла)
+
+### Открыто — приоритет 3 (Crypto/DR)
+→ Sprint 5 в WORKPLAN.md
+
+9. DR send path завершить (feature-flagged, не закончен)
+10. Vault upgrade v1-v3 → v4 сценарный тест
+
+### Открыто — приоритет 4 (Infra)
+11. TURN/coturn runtime верификация
+
+---
+
+## Как Стартовать (exact order)
+
+1. Прочитать этот файл + `AGENT_PROGRESS.md`.
+2. Прогнать качество базы:
+   ```
+   npm run typecheck -w project-13-client
+   npm run lint -w project-13-client
+   npm run test -w project-13-server
+   ```
+3. Взять задачу из Sprint 10 (runtime) или Sprint 9 (UI) по приоритету.
+4. При любых UI-правках: проверить **оба шелла** — MD3 и terminal.
+5. Обновить `WORKPLAN.md` + `AGENT_PROGRESS.md` после каждого значимого шага.
+
+---
 
 ## Important Notes
 
 - Do not revert unrelated user changes.
-- Prioritize runtime correctness over visual polish.
-- If decrypt bug reappears, audit every feed rebuild path, not only realtime WS path.
-- Keep cyberpunk theme behavior intact while tuning MD3-only visuals.
-- Do not "blend" shell rules: ensure MD3 and terminal/cyberpunk tokens stay isolated by shell selector.
+- Если снова появится `[DECRYPT_FAIL]` — проверить, передаётся ли `drCtx` в конкретный decrypt-path.
+- Не смешивать shell rules: MD3 и terminal токены изолированы по `[data-shell]`.
+- HAR-трейсы в `/mnt/c/Users/rudywolf/Workspace/OneToThree/Har/` для диагностики runtime-багов.

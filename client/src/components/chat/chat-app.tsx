@@ -362,7 +362,17 @@ export function ChatApp({
   const { cryptoCtx, ctxError } = useChatCryptoContext()
   const { emitPhantomSignal } = usePhantomPush()
   const sharedKey = useChatAesKey(cryptoCtx)
-  const directPeerUserId = peerIdentity?.userId ?? null
+  // Derive peer ID synchronously from the chat list so drCtx is available
+  // immediately on chat switch — don't wait for the async peerIdentity lookup.
+  const directPeerUserId = (() => {
+    const row = chats.find((c) => c.id === activeChatId)
+    if (!row || row.is_group) return null
+    return (
+      row.member_ids.find(
+        (id) => canonicalUserId(id) !== canonicalUserId(userId)
+      ) ?? null
+    )
+  })()
   useMessages(cryptoCtx, emitPhantomSignal, directPeerUserId)
   const { sendText } = useSendMessage(cryptoCtx, directPeerUserId)
   const { sendMedia: rawSendMedia, sendAlbum: rawSendAlbum } = useSendMediaMessage(cryptoCtx, directPeerUserId)
@@ -569,6 +579,7 @@ export function ChatApp({
           peerUsername={peerIdentity.username}
           peerEcdhPublicKeyJwk={peerIdentity.ecdhPublicKeyJwk}
           myEcdhPublicKeyJwk={myEcdhPublicKeyJwk}
+          myUserId={userId ?? undefined}
           onClose={() => setIdentityOpen(false)}
           onTrustChanged={(verified) =>
             setPeerIdentity((prev) =>

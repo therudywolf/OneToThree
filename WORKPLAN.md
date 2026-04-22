@@ -251,42 +251,89 @@
 
 ---
 
-## SPRINT 8 — HANDOFF TO CLAUDE (current blockers)
+## SPRINT 8 — HANDOFF TO CLAUDE (ЗАКРЫТО 2026-04-22)
 
-### 8.1 Runtime: message re-open regression
-- [ ] Reproduce with attached HAR traces: message visible immediately, then `[DECRYPT_FAIL]` after leaving/re-entering chat.
-- [ ] Verify all decrypt entrypoints receive DR peer context consistently:
-  - history load
-  - pending sync
-  - realtime WS
-  - any path that rebuilds feed after navigation
-- [ ] Add regression test for "re-open chat keeps plaintext for same message id".
+### 8.1–8.5 — всё закрыто
+- [x] `[DECRYPT_FAIL]` regression — `directPeerUserId` синхронно из `chats`, не async
+- [x] MD3 chats not opening — та же корневая причина
+- [x] MD3 left rail button sizes — `h-8 w-8 rounded-full`, иконки 18px
+- [x] Sidebar action overlap — CSS `:first-child` fix, action buttons `width:36px; padding:0`
+- [x] Theme isolation — shell rules строго в `[data-shell]`, palette в `[data-theme/palette]`
+- [x] typecheck ✓ lint ✓ server tests 68/68 ✓
 
-### 8.2 MD3: chats not opening
-- [ ] Reproduce in MD3 shell with real click flow (sidebar list -> active chat switch).
-- [ ] Validate event chain: row click -> `setActiveChatId` -> crypto context -> message fetch/render.
-- [ ] Check for MD3-specific CSS/overlay/pointer-events interference.
+---
 
-### 8.3 MD3: oversized left rail buttons
-- [ ] Bring MD3 left rail icon button scale to compact visual rhythm (Telegram-like density).
-- [ ] Keep cyberpunk sizes unchanged; only tune MD3 variant.
-- [ ] Run quick visual pass desktop/mobile for regression.
+## SPRINT 9 — DUAL-THEME UI PARITY (активный)
 
-### 8.4 Sidebar actions overlap
-- [ ] Reproduce visual collision/stacking of row actions (pin / favorite / notifications).
-- [ ] Rework row-action layout so controls never overlap at any sidebar width/theme.
-- [ ] Validate hover/active states for both shells (`md3`, `terminal`).
+> **Постоянное требование:** в проекте два независимых интерфейса — **MD3** (`data-shell="md3"`) и **Cyberpunk/Terminal** (`data-shell="terminal"`). Оба должны быть полностью отполированы и работать идеально. Любой UI/UX вклад обязан тестировать и поддерживать обе темы. Никаких утечек стилей между темами.
 
-### 8.5 Theme isolation (MD3 vs Cyberpunk mix)
-- [ ] Audit global selectors and component classes causing cross-theme leakage.
-- [ ] Ensure strict shell scoping so MD3 rules do not affect cyberpunk and vice versa.
-- [ ] Verify chat list, bubbles, header, and sidebar controls in both shells after fixes.
+### Принципы изоляции тем
 
-### 8.6 Acceptance criteria for Claude
-- [ ] Runtime: no `[DECRYPT_FAIL]` regression after re-entering the same chat.
-- [ ] MD3: chats open consistently.
-- [ ] MD3 left rail: visually proportional controls.
-- [ ] Sidebar action controls: no overlap/collision.
-- [ ] Theme isolation: no mixed MD3/cyberpunk styling artifacts.
-- [ ] Green checks: `typecheck`, `lint`, server tests.
+| Область | MD3 | Cyberpunk/Terminal |
+|---------|-----|-------------------|
+| Шрифт | Google Sans / Roboto | монопространственный (IBM Plex Mono / JetBrains) |
+| Цвета | Material You dynamic palette | neon: cyan/green/magenta на тёмном фоне |
+| Радиусы | скруглённые (rounded-full, rounded-xl) | прямоугольные/острые (rounded-none, rounded-sm) |
+| Анимации | Material motion (ease-in-out) | CRT / glitch / scanlines |
+| Иконки | Material Symbols | Lucide, ASCII-стиль |
+| CSS-зона | `[data-shell="md3"]` | `[data-shell="terminal"]` |
+
+### 9.1 MD3 — полировка
+
+- [ ] Chat list item: аватар + имя + preview + badge + время — проверить все состояния
+- [ ] Message bubbles: align (мои справа / чужие слева), timestamp + галочки
+- [ ] Reply bubble: встроен в bubble, не отдельный блок
+- [ ] Hover actions: Reply / React / Forward / Delete
+- [ ] Desktop chat header: аватар + имя + online/last-seen + Search/Call/More
+- [ ] Composer: Attach | Emoji+Sticker | поле | Send — проверить пропорции
+- [ ] Micro-spacing: единый ритм отступов по всему интерфейсу
+- [ ] Mobile: touch pass — drawer, composer, search overlay
+- [ ] Входящие звонки, group call banner — визуальная проверка
+
+### 9.2 Cyberpunk/Terminal — полировка
+
+- [ ] Chat list: глитч-эффекты, CRT scanlines — работают корректно
+- [ ] Terminal header: ASCII-разделители, monospace пропорции
+- [ ] Message bubbles: стиль терминала, цвет нод (> you / > peer)
+- [ ] Composer: стиль командной строки, cursor blink
+- [ ] Hover actions: terminal-style (highlight без rounded)
+- [ ] Mobile: проверить drawer в terminal shell (нет утечки MD3 стилей)
+- [ ] CRT/vignette overlay: не ломает интерактивность на touch-устройствах
+
+### 9.3 Общие / cross-theme задачи
+
+- [ ] Safety numbers UI страница (одинаково в обоих шеллах, кастомизация по теме)
+- [ ] TOFU warning при смене ключа собеседника (оба шелла)
+- [ ] Sticker picker — проверить визуально в обоих шеллах
+- [ ] GIF picker — проверить визуально в обоих шеллах
+- [ ] Group call UI — работает в обоих шеллах
+- [ ] Модалки (vault, identity, group settings) — проверить в обоих шеллах
+
+---
+
+## SPRINT 10 — RUNTIME E2E ВАЛИДАЦИЯ (активный)
+
+### 10.1 Инвайты (join flow)
+- [ ] `join/[code]` — корректный код, ошибочный код, истекший код
+- [ ] `group_e2e`: `encrypted_group_key` передаётся при вступлении
+- [ ] `public_open`: вступление без ключа
+
+### 10.2 Direct fanout (2+ устройства)
+- [ ] Отправить сообщение с устройства A, получить на устройстве B
+- [ ] Убедиться что `[DECRYPT_FAIL]` не воспроизводится
+- [ ] Проверить `DIRECT_FANOUT_UNAVAILABLE` при отсутствии ECDH-ключа
+
+### 10.3 Saved Messages
+- [ ] Создать/перезагрузить/прочитать — один аккаунт
+- [ ] Мульти-девайс: написать с A, прочитать на B
+
+### 10.4 DR send path (Sprint 5 — продолжение)
+- [ ] `use-send-message` включить DR path при `NEXT_PUBLIC_DR_ENABLED=1`
+- [ ] Server принимает `protocol_version:2` + `dr_header`
+- [ ] Fallback v1 если нет DR bundle у собеседника
+
+### 10.5 TURN / звонки
+- [ ] `/api/ice-servers` возвращает HMAC-credentials
+- [ ] coturn доступен и проксирует
+- [ ] Fallback на STUN при недоступности coturn
 

@@ -39,6 +39,7 @@ import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
 import { generateTotpSecret, generateTotpUri, verifyTotp } from '../lib/totp.js'
+import { encryptTotpSecret, decryptTotpSecret } from '../lib/totp-crypto.js'
 import { generateRecoveryMaterial, verifyRecoveryKey } from '../lib/recovery-key.js'
 import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
 
@@ -134,7 +135,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (row.isTotpEnabled) {
       if (!totp_code) return reply.status(400).send({ error: 'TOTP_REQUIRED' })
       if (!row.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
-      const totpOk = await verifyTotp(totp_code, row.totpSecret)
+      const totpOk = await verifyTotp(totp_code, decryptTotpSecret(row.totpSecret))
       if (!totpOk) return reply.status(401).send({ error: 'TOTP_INVALID' })
       if (!await consumeTotpCode(user.id, totp_code)) {
         return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
@@ -296,7 +297,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (row?.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
 
     const secret = generateTotpSecret()
-    await db.update(users).set({ totpSecret: secret }).where(eq(users.id, user.id))
+    await db.update(users).set({ totpSecret: encryptTotpSecret(secret) }).where(eq(users.id, user.id))
 
     const otpauthUrl = generateTotpUri(user.username, 'Project13', secret)
     const qrDataUrl = await QRCode.toDataURL(otpauthUrl)
@@ -317,7 +318,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!row?.totpSecret) return reply.status(400).send({ error: 'TOTP_SETUP_REQUIRED' })
     if (row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_ALREADY_ENABLED' })
 
-    if (!await verifyTotp(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
+    if (!await verifyTotp(parsed.data.code, decryptTotpSecret(row.totpSecret))) return reply.status(401).send({ error: 'TOTP_INVALID' })
     if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
     await db.update(users).set({ isTotpEnabled: true }).where(eq(users.id, user.id))
@@ -336,7 +337,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       .from(users).where(eq(users.id, user.id)).limit(1)
 
     if (!row?.isTotpEnabled || !row.totpSecret) return reply.status(400).send({ error: 'TOTP_NOT_ENABLED' })
-    if (!await verifyTotp(parsed.data.code, row.totpSecret)) return reply.status(401).send({ error: 'TOTP_INVALID' })
+    if (!await verifyTotp(parsed.data.code, decryptTotpSecret(row.totpSecret))) return reply.status(401).send({ error: 'TOTP_INVALID' })
     if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
     await db.update(users).set({ totpSecret: null, isTotpEnabled: false }).where(eq(users.id, user.id))
@@ -417,7 +418,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!row?.totpSecret || !row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_NOT_CONFIGURED' })
     if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
 
-    if (!await verifyTotp(parsed.data.code, row.totpSecret)) {
+    if (!await verifyTotp(parsed.data.code, decryptTotpSecret(row.totpSecret))) {
       await recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }

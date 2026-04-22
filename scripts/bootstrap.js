@@ -172,6 +172,11 @@ function main() {
     console.log('[bootstrap] Set MINIO_ROOT_USER / MINIO_ROOT_PASSWORD (strong defaults)')
   }
 
+  if (!getKey(serverEnv, 'TOTP_WRAP_KEY')) {
+    serverEnv = upsertKey(serverEnv, 'TOTP_WRAP_KEY', randomHex(32))
+    console.log('[bootstrap] Generated TOTP_WRAP_KEY (32 bytes, AES-256-GCM for TOTP at-rest encryption)')
+  }
+
   writeFile(SERVER_ENV, serverEnv)
 
   const nextPub = getKey(clientEnv, 'NEXT_PUBLIC_VAPID_PUBLIC_KEY')

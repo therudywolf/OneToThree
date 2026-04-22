@@ -49,6 +49,12 @@ backups/
 # Runtime API logs (optional)
 logs/
 
+# Debug / analysis artifacts (HAR traces, screenshots — never commit)
+Har/
+Screen/
+*.har
+*.png.tmp
+
 # OS & logs
 .DS_Store
 Thumbs.db

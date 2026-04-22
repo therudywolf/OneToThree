@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from '@/lib/api/auth'
 import { canonicalUserId } from '@/lib/user-id'
 
@@ -50,7 +51,7 @@ export type AdminStorageUserRow = {
 }
 
 export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
-  const res = await fetch(`${API_URL}/admin/users`, { credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_URL}/admin/users`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as {
     users?: AdminUserRow[]
     error?: string
@@ -68,7 +69,7 @@ export async function patchUserBan(
   userId: string,
   banned: boolean
 ): Promise<AdminUserRow> {
-  const res = await fetch(`${API_URL}/admin/users/${userId}/ban`, {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/${userId}/ban`, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -89,7 +90,7 @@ export async function postAdminPurgeUser(
   userId: string,
   confirmUsername: string
 ): Promise<{ ok: true; purged_direct_chats: number }> {
-  const res = await fetch(`${API_URL}/admin/users/${userId}/purge`, {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/${userId}/purge`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -111,7 +112,7 @@ export async function postAdminPurgeUser(
 }
 
 export async function fetchAdminSystemStats(): Promise<AdminSystemStats> {
-  const res = await fetch(`${API_URL}/admin/system-stats`, {
+  const res = await fetchWithTimeout(`${API_URL}/admin/system-stats`, {
     credentials: 'include',
   })
   const data = (await res.json().catch(() => ({}))) as AdminSystemStats & {
@@ -126,7 +127,7 @@ export async function fetchAdminSystemStats(): Promise<AdminSystemStats> {
 export async function fetchAdminUserStorageUsage(): Promise<
   AdminStorageUserRow[]
 > {
-  const res = await fetch(`${API_URL}/admin/users/storage-usage`, {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/storage-usage`, {
     credentials: 'include',
   })
   const data = (await res.json().catch(() => ({}))) as {
@@ -143,7 +144,7 @@ export async function fetchAdminUserStorageUsage(): Promise<
 }
 
 export async function fetchAdminReports(): Promise<AdminReportRow[]> {
-  const res = await fetch(`${API_URL}/admin/reports`, { credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_URL}/admin/reports`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as {
     reports?: AdminReportRow[]
     error?: string

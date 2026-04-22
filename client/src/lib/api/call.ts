@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 
 export type CallConfig = {
@@ -15,7 +16,7 @@ export type CallTokenResponse = {
 }
 
 export async function fetchCallConfig(): Promise<CallConfig> {
-  const res = await fetch(`${API_URL}/call/config`, {
+  const res = await fetchWithTimeout(`${API_URL}/call/config`, {
     credentials: 'include',
   })
   const data = (await res.json().catch(() => ({}))) as Partial<CallConfig> & { error?: string }
@@ -29,7 +30,7 @@ export async function fetchCallConfig(): Promise<CallConfig> {
 }
 
 export async function createCallToken(room: string): Promise<CallTokenResponse> {
-  const res = await fetch(`${API_URL}/call/token`, {
+  const res = await fetchWithTimeout(`${API_URL}/call/token`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

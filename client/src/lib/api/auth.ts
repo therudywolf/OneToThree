@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import {
   authDeviceHeaders,
   getOrCreateClientDeviceId,
@@ -39,7 +40,7 @@ export class AuthHttpError extends Error {
 }
 
 export async function requestChallenge(username: string): Promise<{ nonce: string }> {
-  const res = await fetch(`${API_URL}/auth/challenge`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/challenge`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -72,7 +73,7 @@ export type VerifyChallengeResult =
 export async function verifyChallenge(
   payload: VerifyChallengePayload
 ): Promise<VerifyChallengeResult> {
-  const res = await fetch(`${API_URL}/auth/verify`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/verify`, {
     method: 'POST',
     headers: sanitizeFetchHeaderRecord({
       'Content-Type': 'application/json',
@@ -125,7 +126,7 @@ export async function complete2faLogin(
   pendingToken: string,
   code: string
 ): Promise<{ user: { id: string; username: string } }> {
-  const res = await fetch(`${API_URL}/auth/login/2fa`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/login/2fa`, {
     method: 'POST',
     headers: sanitizeFetchHeaderRecord({
       'Content-Type': 'application/json',
@@ -166,7 +167,7 @@ export async function fetchMe(): Promise<{
     avatar_key?: string | null
   }
 }> {
-  const res = await fetch(`${API_URL}/auth/me`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/me`, {
     method: 'GET',
     credentials: 'include',
   })
@@ -218,7 +219,7 @@ export function ensureClientDeviceId(): void {
 }
 
 export async function logoutApi(): Promise<void> {
-  await fetch(`${API_URL}/auth/logout`, {
+  await fetchWithTimeout(`${API_URL}/auth/logout`, {
     method: 'POST',
     credentials: 'include',
   })
@@ -226,7 +227,7 @@ export async function logoutApi(): Promise<void> {
 
 /** Drop the session cookie without auth. Used on login page to clear stale sessions. */
 export async function clearSessionApi(): Promise<void> {
-  await fetch(`${API_URL}/auth/clear-session`, {
+  await fetchWithTimeout(`${API_URL}/auth/clear-session`, {
     method: 'POST',
     credentials: 'include',
   })
@@ -234,7 +235,7 @@ export async function clearSessionApi(): Promise<void> {
 
 /** Short-lived JWT for WebSocket when the upgrade cannot send cookies. */
 export async function fetchWsTicket(): Promise<string> {
-  const res = await fetch(`${API_URL}/auth/ws-ticket`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/ws-ticket`, {
     method: 'GET',
     credentials: 'include',
   })
@@ -255,7 +256,7 @@ export async function setupRecoveryKey(totpCode?: string): Promise<{ recovery_ke
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const code = totpCode?.trim()
   if (code) headers['X-TOTP-Code'] = code
-  const res = await fetch(`${API_URL}/auth/recovery/setup`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/recovery/setup`, {
     method: 'POST',
     credentials: 'include',
     headers: sanitizeFetchHeaderRecord(headers),
@@ -278,7 +279,7 @@ export async function verifyRecoveryKey(recoveryKey: string, totpCode?: string):
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const code = totpCode?.trim()
   if (code) headers['X-TOTP-Code'] = code
-  const res = await fetch(`${API_URL}/auth/recovery/verify`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/recovery/verify`, {
     method: 'POST',
     credentials: 'include',
     headers: sanitizeFetchHeaderRecord(headers),

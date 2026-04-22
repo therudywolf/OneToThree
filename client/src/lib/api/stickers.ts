@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 
 export type StickerFormat = 'tgs' | 'lottie' | 'static' | 'webm'
@@ -59,7 +60,7 @@ function stickersCacheKey(packId: string): string {
 export async function fetchStickerPacks(): Promise<StickerPack[]> {
   const cached = readCache<StickerPack[]>(PACKS_CACHE_KEY, PACK_CACHE_TTL_MS)
   try {
-    const res = await fetch(`${API_URL}/stickers/packs`, { credentials: 'include' })
+    const res = await fetchWithTimeout(`${API_URL}/stickers/packs`, { credentials: 'include' })
     if (!res.ok) throw new Error(`FETCH_PACKS_${res.status}`)
     const data = (await res.json()) as { packs: StickerPack[] }
     writeCache(PACKS_CACHE_KEY, data.packs)
@@ -74,7 +75,7 @@ export async function fetchPackStickers(packId: string): Promise<Sticker[]> {
   const key = stickersCacheKey(packId)
   const cached = readCache<Sticker[]>(key, PACK_CACHE_TTL_MS)
   try {
-    const res = await fetch(`${API_URL}/stickers/packs/${packId}/stickers`, { credentials: 'include' })
+    const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/stickers`, { credentials: 'include' })
     if (!res.ok) throw new Error(`FETCH_STICKERS_${res.status}`)
     const data = (await res.json()) as { stickers: Sticker[] }
     writeCache(key, data.stickers)
@@ -88,7 +89,7 @@ export async function fetchPackStickers(packId: string): Promise<Sticker[]> {
 /** Presigned GET URL for a sticker object key (pack must be visible to the user). */
 export async function fetchStickerAssetUrl(mediaKey: string): Promise<string> {
   const q = new URLSearchParams({ media_key: mediaKey })
-  const res = await fetch(`${API_URL}/stickers/asset-url?${q}`, { credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_URL}/stickers/asset-url?${q}`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
   if (!res.ok) throw new Error(data.error ?? `ASSET_URL_${res.status}`)
   if (!data.url) throw new Error('INVALID_ASSET_URL_RESPONSE')
@@ -96,7 +97,7 @@ export async function fetchStickerAssetUrl(mediaKey: string): Promise<string> {
 }
 
 export async function importTelegramStickerPack(shortName: string): Promise<{ pack_id: string; imported: boolean; count?: number }> {
-  const res = await fetch(`${API_URL}/stickers/packs/import`, {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/import`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

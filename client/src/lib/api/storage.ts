@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 
 export type UploadUrlResponse = {
@@ -12,7 +13,7 @@ export async function postUploadUrl(body: {
   chatId: string
   fileSize: number
 }): Promise<UploadUrlResponse> {
-  const res = await fetch(`${API_URL}/storage/upload-url`, {
+  const res = await fetchWithTimeout(`${API_URL}/storage/upload-url`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -32,7 +33,7 @@ export async function postUploadUrl(body: {
 
 export async function getDownloadUrl(filePath: string): Promise<string> {
   const q = new URLSearchParams({ filePath })
-  const res = await fetch(`${API_URL}/storage/download-url?${q.toString()}`, {
+  const res = await fetchWithTimeout(`${API_URL}/storage/download-url?${q.toString()}`, {
     method: 'GET',
     credentials: 'include',
   })

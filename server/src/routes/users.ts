@@ -663,14 +663,17 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (!deviceToRevoke) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
     if (deviceToRevoke.isMaster) return reply.status(403).send({ error: 'CANNOT_REVOKE_MASTER_DEVICE' })
 
-    const [updated] = await db
-      .update(devices)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
-      .returning({ id: devices.id })
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(devices)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+        .returning({ id: devices.id })
+      if (!row) return null
+      await tx.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, deviceId))
+      return row
+    })
     if (!updated) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
-
-    await db.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, deviceId))
 
     sendToUser(user.id, { type: 'server_notice', notice: 'device_revoked', device_id: deviceId })
     return reply.send({ ok: true })

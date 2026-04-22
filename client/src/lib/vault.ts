@@ -27,7 +27,7 @@ const ARGON2_DEFAULT_PARAMS = {
   p: 1,
 } as const satisfies Pick<ArgonOpts, 't' | 'm' | 'p'>
 
-export const CURRENT_VAULT_VERSION = 4
+export const CURRENT_VAULT_VERSION = 5
 
 export type Argon2Params = {
   t: number
@@ -184,7 +184,9 @@ export async function deriveWrapKeyArgon2(
   )
 }
 
-/** [WRAP] :: Seal a JWK into a v4 (Argon2id) vault blob. */
+/** [WRAP] :: Seal a JWK into a v5 (Argon2id + AAD) vault blob.
+ * AAD = JSON({version, argon2}) prevents downgrade attacks via XSS-tampered blob metadata.
+ */
 export async function wrapPrivateJwkWithPin(
   jwkString: string,
   pin: string,
@@ -193,9 +195,12 @@ export async function wrapPrivateJwkWithPin(
   const salt = crypto.getRandomValues(new Uint8Array(16))
   const iv = crypto.getRandomValues(new Uint8Array(12))
   const wrapKey = await deriveWrapKeyArgon2(pin, salt, params)
+  const aad = new TextEncoder().encode(
+    JSON.stringify({ version: CURRENT_VAULT_VERSION, argon2: params })
+  )
 
   const cipherBuf = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
+    { name: 'AES-GCM', iv: iv as BufferSource, additionalData: aad },
     wrapKey,
     new TextEncoder().encode(jwkString)
   )
@@ -209,7 +214,10 @@ export async function wrapPrivateJwkWithPin(
   }
 }
 
-/** [UNWRAP] :: Extract a JWK from any supported vault version (v1–v4). */
+/** [UNWRAP] :: Extract a JWK from any supported vault version (v1–v5).
+ * v5 uses AAD = JSON({version, argon2}) to authenticate blob metadata.
+ * v4 (no AAD) and v1–v3 (PBKDF2) are supported for backward compatibility.
+ */
 export async function unwrapPrivateJwkWithPin(
   blob: VaultBlob,
   pin: string
@@ -219,18 +227,23 @@ export async function unwrapPrivateJwkWithPin(
   const cipher = fromB64(blob.ciphertextB64)
 
   let wrapKey: CryptoKey
-  if (blob.version >= 4 && blob.argon2) {
+  let gcmParams: AesGcmParams
+  if (blob.version >= 5 && blob.argon2) {
     wrapKey = await deriveWrapKeyArgon2(pin, salt, blob.argon2)
+    const aad = new TextEncoder().encode(
+      JSON.stringify({ version: blob.version, argon2: blob.argon2 })
+    )
+    gcmParams = { name: 'AES-GCM', iv: iv as BufferSource, additionalData: aad }
+  } else if (blob.version >= 4 && blob.argon2) {
+    wrapKey = await deriveWrapKeyArgon2(pin, salt, blob.argon2)
+    gcmParams = { name: 'AES-GCM', iv: iv as BufferSource }
   } else {
     const iterations = blob.pbkdf2Iterations ?? PBKDF2_ITERATIONS_LEGACY
     wrapKey = await deriveWrapKey(pin, salt as BufferSource, iterations)
+    gcmParams = { name: 'AES-GCM', iv: iv as BufferSource }
   }
 
-  const plainBuf = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
-    wrapKey,
-    cipher as BufferSource
-  )
+  const plainBuf = await crypto.subtle.decrypt(gcmParams, wrapKey, cipher as BufferSource)
   return new TextDecoder().decode(plainBuf)
 }
 

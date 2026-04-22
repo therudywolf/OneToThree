@@ -196,7 +196,8 @@ export function ensureBucketExists(client: S3Client, bucket: string): Promise<vo
   return promise
 }
 
-const DEFAULT_PRESIGN_TTL_S = 3600
+const DEFAULT_PRESIGN_PUT_TTL_S = 600   // 10 min — upload window
+const DEFAULT_PRESIGN_GET_TTL_S = 300   // 5 min — download link
 
 /**
  * Normalize presigned URL origin to `MINIO_PUBLIC_URL` using the URL API (no string replace).
@@ -234,7 +235,7 @@ export async function presignPutObject(params: {
     ...(params.contentLength != null && { ContentLength: params.contentLength }),
   })
   return getSignedUrl(params.client, cmd, {
-    expiresIn: params.expiresIn ?? DEFAULT_PRESIGN_TTL_S,
+    expiresIn: params.expiresIn ?? DEFAULT_PRESIGN_PUT_TTL_S,
   })
 }
 
@@ -249,7 +250,7 @@ export async function presignGetObject(params: {
     Key: params.key,
   })
   return getSignedUrl(params.client, cmd, {
-    expiresIn: params.expiresIn ?? DEFAULT_PRESIGN_TTL_S,
+    expiresIn: params.expiresIn ?? DEFAULT_PRESIGN_GET_TTL_S,
   })
 }
 

@@ -20,65 +20,65 @@ self.addEventListener('fetch', (event) => {
 })
 
 self.addEventListener('push', (event) => {
-  let payload = {
-    title: 'OneToThree',
-    body: 'New message',
-    icon: '/wolf-logo.png',
-    data: { url: '/' },
-  }
-
-  try {
-    if (event.data) {
-      const parsed = event.data.json()
-      payload = {
-        title: parsed.title || payload.title,
-        body: parsed.body || payload.body,
-        icon: parsed.icon || '/wolf-logo.png',
-        data: parsed.data && typeof parsed.data === 'object' ? parsed.data : { url: '/' },
+  event.waitUntil(
+    (async () => {
+      let payload = {
+        title: 'OneToThree',
+        body: 'New message',
+        icon: '/wolf-logo.png',
+        data: { url: '/' },
       }
-    }
-  } catch {
-    try {
-      const text = event.data?.text()
-      if (text) payload.body = text
-    } catch {
-      /* ignore */
-    }
-  }
 
-  const url = payload.data?.url || '/'
-  const isIncomingCall = payload.data?.type === 'incoming_call'
+      if (event.data) {
+        try {
+          const parsed = event.data.json()
+          payload = {
+            title: parsed.title || payload.title,
+            body: parsed.body || payload.body,
+            icon: parsed.icon || '/wolf-logo.png',
+            data: parsed.data && typeof parsed.data === 'object' ? parsed.data : { url: '/' },
+          }
+        } catch {
+          try {
+            const text = await event.data.text()
+            if (text) payload.body = text
+          } catch {
+            /* ignore */
+          }
+        }
+      }
 
-  if (isIncomingCall) {
-    const callerName = payload.data?.caller_name || 'Unknown'
-    const chatId = payload.data?.chat_id || ''
-    event.waitUntil(
-      self.registration.showNotification('Incoming call from ' + callerName, {
-        body: 'Tap to answer',
-        icon: payload.icon || '/wolf-logo.png',
-        badge: '/wolf-logo.png',
-        actions: [
-          { action: 'accept', title: '\u2713 Answer' },
-          { action: 'decline', title: '\u2717 Decline' },
-        ],
-        tag: 'incoming-call',
-        data: { ...payload.data, url: '/?chat=' + chatId, chat_id: chatId, type: 'incoming_call' },
-        requireInteraction: true,
-        vibrate: [200, 100, 200, 100, 200],
-      })
-    )
-  } else {
-    event.waitUntil(
-      self.registration.showNotification(payload.title, {
-        body: payload.body,
-        icon: payload.icon || '/wolf-logo.png',
-        badge: '/wolf-logo.png',
-        tag: 'forest-msg',
-        data: { ...payload.data, url },
-        requireInteraction: false,
-      })
-    )
-  }
+      const url = payload.data?.url || '/'
+      const isIncomingCall = payload.data?.type === 'incoming_call'
+
+      if (isIncomingCall) {
+        const callerName = payload.data?.caller_name || 'Unknown'
+        const chatId = payload.data?.chat_id || ''
+        await self.registration.showNotification('Incoming call from ' + callerName, {
+          body: 'Tap to answer',
+          icon: payload.icon || '/wolf-logo.png',
+          badge: '/wolf-logo.png',
+          actions: [
+            { action: 'accept', title: '\u2713 Answer' },
+            { action: 'decline', title: '\u2717 Decline' },
+          ],
+          tag: 'incoming-call',
+          data: { ...payload.data, url: '/?chat=' + chatId, chat_id: chatId, type: 'incoming_call' },
+          requireInteraction: true,
+          vibrate: [200, 100, 200, 100, 200],
+        })
+      } else {
+        await self.registration.showNotification(payload.title, {
+          body: payload.body,
+          icon: payload.icon || '/wolf-logo.png',
+          badge: '/wolf-logo.png',
+          tag: 'forest-msg',
+          data: { ...payload.data, url },
+          requireInteraction: false,
+        })
+      }
+    })()
+  )
 })
 
 /* ── Background Sync: Outbox ── */

@@ -577,7 +577,7 @@ export function useWebRTC(userId: string | null) {
     for (const peerId of recipients) {
       if (peerId === userId || pcsRef.current.has(peerId)) continue
       
-      const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'all' })
+      const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
       pcsRef.current.set(peerId, pc)
       addPeerConnection(peerId, pc)
       setupPeerLink(peerId, pc)
@@ -624,8 +624,8 @@ export function useWebRTC(userId: string | null) {
 
     setLocalStream(stream)
     const relays = await getSignalRelays()
-    const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'all' })
-    
+    const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
+
     pcsRef.current.set(inc.peerId, pc)
     addPeerConnection(inc.peerId, pc)
     setupPeerLink(inc.peerId, pc)

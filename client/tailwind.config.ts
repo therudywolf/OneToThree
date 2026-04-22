@@ -25,11 +25,13 @@ const config: Config = {
         accent: 'var(--neon-cyan)',
         'neon-red': 'var(--neon-red)',
         'neon-cyan': 'var(--neon-cyan)',
+        'neon-amber': 'var(--neon-amber)',
         'accent-2': 'var(--accent-2)',
         'border-strong': 'var(--border-strong)',
         border: 'var(--border-strong)',
         danger: 'var(--danger)',
         success: 'var(--success)',
+        warning: 'var(--warning)',
         // Semantic overlays for hover/press states — tied to tokens, not palette.
         overlay: 'color-mix(in srgb, var(--on-surface) 6%, transparent)',
         'overlay-strong': 'color-mix(in srgb, var(--on-surface) 12%, transparent)',

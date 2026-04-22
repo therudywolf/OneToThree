@@ -879,7 +879,7 @@ export function ChatSidebar({
             <div
               key={c.id}
               data-index={virtualRow.index}
-              ref={virtualizer.measureElement}
+              ref={(el) => { if (el) virtualizer.measureElement(el) }}
               data-chat-list-item
               data-active={activeChatId === c.id ? 'true' : 'false'}
               className={`p13-sidebar-row chat-list-item group overflow-hidden ${

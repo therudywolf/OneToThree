@@ -86,7 +86,8 @@ body {
   --text-muted: color-mix(in srgb, var(--on-surface) 56%, transparent);
   --border-strong: color-mix(in srgb, var(--neon-cyan) 36%, #111827);
   --success: var(--neon-amber);
-  --warning: var(--neon-amber);
+  --warning: var(--neon-red);
+  --danger: var(--neon-red);
 }
 
 /* Night City: aligned with themeStore `cyberpunk2077` for first-paint / SSR */
@@ -175,6 +176,7 @@ body {
   --void: #0F0F11;
   --neon-red: #A8C7FA;
   --neon-cyan: #7BCEFF;
+  --neon-amber: #FFAB40;
   --surface: #1A1C1E;
   --surface-elevated: #24282b;
   --on-surface: #E2E2E6;
@@ -187,6 +189,9 @@ body {
   --border-radius: 16px;
   --text-shadow-intensity: 0;
   --font-family: 'Google Sans', 'Roboto', system-ui, sans-serif;
+  --success: #30D158;
+  --warning: #FF9F0A;
+  --danger: #FF453A;
 }
 [data-theme="md3dark"] body {
   color: var(--on-surface);
@@ -198,6 +203,7 @@ body {
   --void: #FAFCFF;
   --neon-red: #0062A1;
   --neon-cyan: #00639B;
+  --neon-amber: #E65100;
   --surface: #FFFFFF;
   --surface-elevated: #f4f7fb;
   --on-surface: #1A1C1E;
@@ -210,6 +216,9 @@ body {
   --border-radius: 16px;
   --text-shadow-intensity: 0;
   --font-family: 'Google Sans', 'Roboto', system-ui, sans-serif;
+  --success: #1B8C3A;
+  --warning: #D14900;
+  --danger: #BA1A1A;
 }
 [data-theme="md3light"] body {
   color: var(--on-surface);

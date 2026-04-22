@@ -24,6 +24,11 @@ export type PushPayload = {
   body: string
   url: string
   icon: string
+  /** Chat ID for privacy-first notifications — SW navigates to /?chat=<id> without needing plaintext body. */
+  chat_id?: string
+  type?: 'message' | 'incoming_call'
+  /** Only for incoming_call notifications */
+  caller_name?: string
 }
 
 function httpStatus(err: unknown): number | undefined {
@@ -53,11 +58,22 @@ export async function sendPushToUser(
 
   if (!rows.length) return
 
+  // Privacy-first: never include plaintext message content in push payload.
+  // Apple/Google push infrastructure cannot read encrypted E2E messages.
+  // SW receives chat_id and navigates; the app fetches + decrypts on open.
   const body = JSON.stringify({
-    title: payload.title,
-    body: payload.body,
+    title: payload.type === 'incoming_call' ? payload.title : 'OneToThree',
+    body: payload.type === 'incoming_call' ? (payload.body || 'Incoming call') : 'New message',
     icon: payload.icon,
-    data: { url: payload.url },
+    type: payload.type || 'message',
+    chat_id: payload.chat_id,
+    caller_name: payload.caller_name,
+    data: {
+      url: payload.url,
+      chat_id: payload.chat_id,
+      type: payload.type || 'message',
+      caller_name: payload.caller_name,
+    },
   })
 
   await Promise.allSettled(rows.map(async (row) => {

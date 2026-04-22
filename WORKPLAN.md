@@ -77,6 +77,7 @@
   - [x] этап 1.4 — финишный sweep по редким модалкам (`vault`, `identity`, `group settings`)
   - [x] этап 1.5 — контекст-меню чата: clamp в viewport + расширенная ширина + перенос длинных лейблов (фикс обрезки пунктов меню)
   - [x] этап 1.6 — sidebar row hover-actions (`pin/favorite/mute`) скрыты до hover/focus (`w-0`), больше не съедают ширину текста
+  - [x] этап 1.7 — mobile/narrow polish: action-зона строки видна у активного чата без hover, timestamp/badge выровнены
 
 ---
 
@@ -215,6 +216,7 @@
 | 2026-04-22 | [x] Fix: исчезающие сообщения `[DECRYPT_FAIL]` после отправки — DR-контекст добавлен в history load + delivery sync (`use-load-chat-messages`, `use-message-delivery-sync`, `use-messages`) |
 | 2026-04-22 | [x] UI quick-fix: `chat-row-context-menu` теперь не вылезает за край экрана, русские лейблы не обрезаются (viewport clamp + `min-w` 220 + word wrap) |
 | 2026-04-22 | [x] UI quick-fix: в `chat-sidebar` hover-экшены строки (`pin/favorite/mute`) не резервируют 120px до hover/focus; текст строки больше не укорачивается заранее |
+| 2026-04-22 | [x] UI quick-fix: для активной строки чата action-зона раскрыта без hover (touch-friendly), timestamp и unread badge стабилизированы на узких ширинах |
 
 ---
 

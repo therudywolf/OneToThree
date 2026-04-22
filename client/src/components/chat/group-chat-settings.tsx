@@ -238,7 +238,7 @@ export function GroupChatSettings({
       <div className={`flex border-b ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-border-strong'}`}>
         <button
           onClick={() => setActiveTab('nodes')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 transition-all ${
+          className={`flex h-10 flex-1 items-center justify-center gap-2 px-3 transition-all ${
             activeTab === 'nodes'
               ? isMd3
                 ? 'bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
@@ -253,7 +253,7 @@ export function GroupChatSettings({
         </button>
         <button
           onClick={() => setActiveTab('vault')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 transition-all ${
+          className={`flex h-10 flex-1 items-center justify-center gap-2 px-3 transition-all ${
             activeTab === 'vault'
               ? isMd3
                 ? 'bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
@@ -296,7 +296,7 @@ export function GroupChatSettings({
                 <button
                   disabled={isBusy}
                   onClick={() => void generateIntegrationLink()}
-                  className="w-full border border-neon-cyan/40 bg-void py-2 text-[9px] font-bold text-neon-cyan transition-all hover:bg-neon-cyan hover:text-text-primary disabled:opacity-20"
+                  className="h-10 w-full border border-neon-cyan/40 bg-void px-3 text-[10px] font-bold text-neon-cyan transition-all hover:bg-neon-cyan hover:text-text-primary disabled:opacity-20"
                 >
                   {t('group.copyInviteLink')}
                 </button>
@@ -318,7 +318,7 @@ export function GroupChatSettings({
                   {t('group.discussionHint')}
                 </p>
                 <select
-                  className="w-full border border-border-strong bg-void p-2 text-[9px] uppercase tracking-wider text-text-primary"
+                  className="h-10 w-full border border-border-strong bg-void px-3 text-[9px] uppercase tracking-wider text-text-primary"
                   value={discussionPick}
                   onChange={(e) => setDiscussionPick(e.target.value)}
                   disabled={isBusy}
@@ -335,7 +335,7 @@ export function GroupChatSettings({
                     type="button"
                     disabled={isBusy}
                     onClick={() => void applyChannelPostingMode('all_members')}
-                    className="border border-neon-cyan/50 bg-void px-3 py-1.5 text-[8px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
+                    className="inline-flex h-9 items-center border border-neon-cyan/50 bg-void px-3 text-[9px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
                   >
                     Все участники пишут
                   </button>
@@ -343,7 +343,7 @@ export function GroupChatSettings({
                     type="button"
                     disabled={isBusy}
                     onClick={() => void applyChannelPostingMode('admins_only')}
-                    className="border border-neon-cyan/50 bg-void px-3 py-1.5 text-[8px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
+                    className="inline-flex h-9 items-center border border-neon-cyan/50 bg-void px-3 text-[9px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
                   >
                     Только админы пишут
                   </button>
@@ -351,7 +351,7 @@ export function GroupChatSettings({
                     type="button"
                     disabled={isBusy}
                     onClick={() => void saveDiscussionLink()}
-                    className="border border-neon-cyan/50 bg-void px-3 py-1.5 text-[8px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
+                    className="inline-flex h-9 items-center border border-neon-cyan/50 bg-void px-3 text-[9px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
                   >
                     {t('group.discussionSave')}
                   </button>
@@ -376,7 +376,7 @@ export function GroupChatSettings({
                         }
                       })()
                     }}
-                    className="border border-border-strong bg-void px-3 py-1.5 text-[8px] text-text-muted transition-colors hover:border-neon-red hover:text-neon-red disabled:opacity-30"
+                    className="inline-flex h-9 items-center border border-border-strong bg-void px-3 text-[9px] text-text-muted transition-colors hover:border-neon-red hover:text-neon-red disabled:opacity-30"
                   >
                     {t('group.discussionClear')}
                   </button>
@@ -385,7 +385,7 @@ export function GroupChatSettings({
                       type="button"
                       disabled={isBusy}
                       onClick={() => openDiscussionChat()}
-                      className="border border-border-strong bg-void px-3 py-1.5 text-[8px] text-neon-cyan/90 transition-colors hover:bg-neon-cyan/10"
+                      className="inline-flex h-9 items-center border border-border-strong bg-void px-3 text-[9px] text-neon-cyan/90 transition-colors hover:bg-neon-cyan/10"
                     >
                       {t('group.discussionOpen')}
                     </button>
@@ -432,7 +432,7 @@ export function GroupChatSettings({
 
                       {showChannelRoleSelect ? (
                         <select
-                          className="max-w-[9rem] shrink-0 border border-border-strong bg-void p-1 text-[8px] uppercase tracking-tight text-neon-cyan/90"
+                          className="h-8 max-w-[9rem] shrink-0 border border-border-strong bg-void px-2 text-[8px] uppercase tracking-tight text-neon-cyan/90"
                           value={feedRole}
                           disabled={isBusy}
                           onChange={(e) =>
@@ -450,16 +450,16 @@ export function GroupChatSettings({
 
                       <div className="flex gap-1">
                         {showGrantAdmin && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className="border border-border-strong px-2 py-1 text-[8px] hover:text-neon-cyan">{t('group.makeAdmin')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className="inline-flex h-8 items-center border border-border-strong px-2 text-[8px] hover:text-neon-cyan">{t('group.makeAdmin')}</button>
                         )}
                         {showRevokeAdmin && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className="border border-border-strong px-2 py-1 text-[8px] hover:text-neon-red">{t('group.demoteMember')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className="inline-flex h-8 items-center border border-border-strong px-2 text-[8px] hover:text-neon-red">{t('group.demoteMember')}</button>
                         )}
                         {showTransfer && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className="border border-border-strong px-2 py-1 text-[8px] hover:text-neon-cyan">{t('group.transferOwner')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className="inline-flex h-8 items-center border border-border-strong px-2 text-[8px] hover:text-neon-cyan">{t('group.transferOwner')}</button>
                         )}
                         {showExpunge && (
-                          <button onClick={() => void expungeNode(m.user_id)} className="border border-border-strong px-2 py-1 text-[8px] text-danger hover:border-neon-red hover:text-neon-red">{t('group.kick')}</button>
+                          <button onClick={() => void expungeNode(m.user_id)} className="inline-flex h-8 items-center border border-border-strong px-2 text-[8px] text-danger hover:border-neon-red hover:text-neon-red">{t('group.kick')}</button>
                         )}
                       </div>
                     </div>

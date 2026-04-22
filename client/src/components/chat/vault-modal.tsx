@@ -228,7 +228,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
               type="password"
               autoComplete="current-password"
               autoFocus
-              className={`w-full px-3 py-2 transition-colors focus:outline-none ${
+              className={`h-10 w-full px-3 transition-colors focus:outline-none ${
                 isMd3
                   ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
                   : 'border border-neon-cyan/30 bg-void font-mono text-neon-cyan focus:border-neon-cyan focus:bg-neon-cyan/5'
@@ -248,7 +248,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
               type="submit"
               disabled={busy}
               aria-label="UNLOCK"
-              className="w-full rounded-full bg-[var(--neon-red)] px-4 py-2 text-[var(--surface)] shadow-[var(--md3-elevation-2)] transition-colors hover:brightness-110 disabled:opacity-50"
+              className="h-10 w-full rounded-full bg-[var(--neon-red)] px-4 text-[var(--surface)] shadow-[var(--md3-elevation-2)] transition-colors hover:brightness-110 disabled:opacity-50"
             >
               {t('login.signIn')}
             </button>

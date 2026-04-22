@@ -28,6 +28,8 @@ Last updated: 2026-04-22
 - Button-size normalization (phase 1.3b) completed:
   - `chat-search-panel` close/clear buttons and result rows normalized
   - `forward-modal` close/search/list action controls normalized.
+- Button-size normalization (phase 1.4) completed:
+  - `vault-modal`, `identity-modal`, `group-chat-settings` action controls normalized.
 - Sticker integration:
   - Server: `server/src/routes/stickers.ts`, wired in `server/src/app.ts`.
   - API: packs list/detail/items, Telegram import, `GET /api/stickers/asset-url`.
@@ -55,7 +57,7 @@ Last updated: 2026-04-22
 4. UI parity with Telegram Desktop is partial:
    - composer improved
    - many layout/interaction polish tasks remain in `WORKPLAN.md`
-   - button-size unification is in progress (sidebar + composer + mobile header + core modals done; minor modal sweep remains).
+   - button-size unification baseline is complete for primary chat flows and core modals.
 5. GIF provider integration (Tenor/Giphy) not started.
 6. TGS/Lottie runtime renderer not integrated yet (currently fallback for tgs/lottie).
 7. Double Ratchet send path is still incomplete (feature-flagged components exist).

@@ -31,6 +31,7 @@
 - [ ] Проверить: таблица `message_deliveries` — есть ли `device_id` и `ciphertext` колонки
 - [ ] Проверить: WebSocket подключается и доставляет события
 - [ ] Исправить: если ECDH key не загружается — починить поток vault unlock → ECDH upload
+- [~] Hotfix: сообщение может пропасть после reopen чата (empty/`[DECRYPT_FAIL]`) — локальный фикс cache fallback в `use-load-chat-messages.ts`, требуется ship в main
 
 **Ключевые файлы:**
 - `client/src/lib/fanout-crypto.ts` — `buildFanoutSlots`
@@ -122,6 +123,20 @@
 - [ ] Формат: `{ iceServers: [{ urls: ['turn:...', 'turns:...'], username, credential }] }`
 - [ ] Если coturn недоступен — добавить fallback на публичные STUN (уже в `ice-servers.ts`)
 - [ ] Для разработки: добавить `.env.local` пример с TURN_SECRET
+
+---
+
+## SPRINT 11 — PROD INCIDENT HOTFIXES (оперативный)
+
+### 11.1 `start.sh update` migration crash
+- [x] Fix: `server/drizzle/0035_same_molly_hayes.sql` made idempotent (`duplicate_object`/`IF NOT EXISTS`)
+- [x] Commit shipped: `03611fe`
+- [x] Prod update confirms `db-migrate` success
+
+### 11.2 Media upload `STORAGE_PUT_403 SignatureDoesNotMatch`
+- [x] HAR diagnostics done (`Har/gs.har`, `Har/gol.har`)
+- [ ] Ship fix: stop signing `content-length` in presigned PUT URL (`server/src/lib/s3.ts`, `server/src/routes/storage.ts`)
+- [ ] Validate runtime: voice + media upload from browser behind Cloudflare/Caddy
 
 ---
 
@@ -226,6 +241,8 @@
 | 2026-04-22 | [x] UI quick-fix: touch-доступность `active-call-overlay` (tile header controls видимы на mobile), mobile readability `admin/page` (X-scroll таблиц + action visibility), md3 parity для `start-guide` |
 | 2026-04-22 | [x] Верификация UI-batch: `npm run typecheck -w project-13-client` и `npm run lint -w project-13-client` — PASS |
 | 2026-04-22 | [x] UI quick-fix: `group-call-screen` mobile control bar получил edge-safe layout + унифицированные touch-target кнопок; `settings-modal` tabs переведены в горизонтальный mobile strip с устойчивыми размерами |
+| 2026-04-22 | [x] Prod hotfix: migration `0035_same_molly_hayes.sql` made idempotent, commit `03611fe`, `start.sh update` migration stage recovered |
+| 2026-04-22 | [~] Prod incident diagnosed: media upload `STORAGE_PUT_403 SignatureDoesNotMatch` due to signed `content-length` in presigned PUT (HAR-confirmed), code fix prepared but not shipped |
 
 ---
 

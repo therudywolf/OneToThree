@@ -84,6 +84,10 @@ export function revokeVerifiedTrust(userId: string): void {
   }
 }
 
+export function getTrustedPeerCount(): number {
+  return Object.keys(pullRegistry()).length
+}
+
 export type TrustStatus = {
   is_verified: boolean
   is_compromised: boolean

@@ -1,12 +1,15 @@
 # AGENT_PROGRESS — OneToThree
 
-Last updated: 2026-04-22 (Sprint 5 DR + Sprint 4 TURN + Sprint 9 dual-shell UI — all closed)
+Last updated: 2026-04-22b (bugfix session — production issues fixed)
 
 ## Snapshot For Next Agent
 
-- Branch: `main`, working tree dirty (ожидаемые локальные правки, не откатывать).
-- Sprint 8 закрыт полностью (все acceptance criteria выполнены).
+- Branch: `main`, working tree clean после bugfix-сессии.
+- **КРИТИЧЕСКИЙ БАГ ЗАКРЫТ**: MD3 shell полностью скрывал ChatTerminal (`crt-terminal-vignette { display:none }` убивал root div).
+- MinIO голосовые/видео починены (AWS SDK v3 checksum issue).
+- Sidebar click area починен (pointer-events на hidden кнопках).
 - Добавлено постоянное требование: **два независимых шелла (MD3 + Cyberpunk/Terminal), оба должны быть полностью отполированы**.
+- **ПРАВИЛО**: перед написанием CSS для MD3 — проверять что CSS-класс не используется как container/root div в JSX.
 
 ## Verified In This Cycle (Sprint 8)
 
@@ -83,6 +86,19 @@ Last updated: 2026-04-22 (Sprint 5 DR + Sprint 4 TURN + Sprint 9 dual-shell UI �
 - Если `[DECRYPT_FAIL]` снова появится — проверить, передаётся ли `drCtx` в конкретный decrypt-path.
 - HAR-трейсы: `/mnt/c/Users/rudywolf/Workspace/OneToThree/Har/`.
 - Качество базы перед крупными правками: typecheck + lint + test:server.
+
+## Лог (bugfix сессия 2026-04-22b)
+
+| Коммит | Что |
+|--------|-----|
+| `e1ffe14` | **MD3 ChatTerminal hidden fix** — `crt-terminal-vignette { display:none }` → только `box-shadow:none` |
+| `7934fee` | MinIO S3 403 fix + sidebar pointer-events + emoji CSS vars + DECRYPT_FAIL cache + TOFU normalize |
+| `f15bffe` | .gitignore: Har/ Screen/ в исключения |
+
+## Открытые проблемы после bugfix
+
+- **DECRYPT_FAIL на старых сообщениях** — ECDH ключ сменился (пересоздание vault/другое устройство). Исторические сообщения необратимы без оригинального ключа. Нужен UI для информирования пользователя.
+- **Sidebar hover-иконки** занимают 120px (3×w-10) постоянно в DOM — текст усекается. Нужно `width:0 overflow-hidden group-hover:width-10` или `position:absolute`.
 
 ## Лог (этот цикл)
 

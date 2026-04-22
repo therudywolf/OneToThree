@@ -73,7 +73,8 @@
 - [~] Нормализация размеров кнопок:
   - [x] этап 1.1 — `chat-sidebar` (row-actions, direct input action, CTA-блок)
   - [x] этап 1.2 — `composer-picker-panel` + `chat-terminal` (единые `h-9/h-10` для tab/import/CTA/scroll button)
-  - [~] этап 1.3 — mobile header chips унифицированы (`chat-app`), осталось: `dock-panel` + modal controls
+  - [x] этап 1.3 — mobile header chips + modal controls (`chat-search-panel`, `forward-modal`) унифицированы
+  - [ ] этап 1.4 — финишный sweep по редким модалкам (`vault`, `identity`, `group settings`) для полной консистентности
 
 ---
 
@@ -201,6 +202,7 @@
 | 2026-04-22 | [x] UI task: унификация размеров кнопок в сайдбаре (h-10 для CTA/input-action, w-10 для row-action) |
 | 2026-04-22 | [x] UI task: этап 1.2 унификации кнопок — composer tabs/import controls/scroll-to-bottom button |
 | 2026-04-22 | [x] UI task: этап 1.3a — mobile header chips в `chat-app` приведены к единой высоте (`h-9`) |
+| 2026-04-22 | [x] UI task: этап 1.3b — modal/action controls (`chat-search-panel`, `forward-modal`) приведены к `h-8/h-10` |
 
 ---
 

@@ -69,9 +69,9 @@ Last updated: 2026-04-22
 
 1. Sprint 1 runtime bugs (`invites`, `messages`, `saved`) with reproducible scenario.
 2. Add/adjust tests for each fixed bug before moving to UI polish.
-3. Implement GIF API integration.
-4. Add TGS/Lottie renderer support with dependency + lazy loading.
-5. Continue DR send-path milestones from `WORKPLAN.md`.
+3. Continue DR send-path milestones from `WORKPLAN.md`.
+4. Validate TURN behavior in real environment (coturn + fallback).
+5. Final UI parity polish pass after runtime stability.
 
 ## Safety / Coordination Notes
 

@@ -104,13 +104,7 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     const [row] = await db
       .select({ mediaKey: stickers.mediaKey })
       .from(stickers)
-      .innerJoin(stickerPacks, eq(stickers.packId, stickerPacks.id))
-      .where(
-        and(
-          eq(stickers.mediaKey, mediaKey),
-          or(eq(stickerPacks.isPublic, true), eq(stickerPacks.ownerId, user.id))
-        )
-      )
+      .where(eq(stickers.mediaKey, mediaKey))
       .limit(1)
 
     if (!row) return reply.status(404).send({ error: 'STICKER_NOT_FOUND' })
@@ -244,7 +238,9 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       title: stickerSet.title,
       shortName: `${shortName}_${packId.slice(0, 8)}`, // avoid unique constraint collisions on re-import
       format: tgFormat(stickerSet.stickers[0] ?? { is_animated: false, is_video: false } as TgSticker),
-      isPublic: false,
+      // Imported Telegram packs should be usable by recipients in direct/group chats.
+      // Keep owner linkage for management, but make assets globally readable by key.
+      isPublic: true,
       tgSource: shortName,
     })
 

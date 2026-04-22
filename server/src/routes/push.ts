@@ -28,6 +28,13 @@ const resubscribeBodySchema = z.object({
 })
 
 export const pushRoutes: FastifyPluginAsync = async (app) => {
+  // Public endpoint — SW needs VAPID key without auth cookie (cookie may not be present in SW context).
+  app.get('/vapid-public-key', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (_request, reply) => {
+    const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY
+    if (!key) return reply.status(503).send({ error: 'VAPID_NOT_CONFIGURED' })
+    return reply.send({ vapid_public_key: key })
+  })
+
   app.post('/subscribe', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

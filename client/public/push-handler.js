@@ -102,7 +102,18 @@ self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil(
     (async () => {
       try {
-        const appServerKey = self.__VAPID_PUBLIC_KEY__
+        // Fetch VAPID public key from server (SW has no access to env vars).
+        let appServerKey
+        try {
+          const r = await fetch('/api/push/vapid-public-key', { credentials: 'include' })
+          if (r.ok) {
+            const d = await r.json()
+            appServerKey = d.vapid_public_key || d.key
+          }
+        } catch {
+          /* non-fatal — subscribe without key if server unreachable */
+        }
+
         const newSub = await self.registration.pushManager.subscribe({
           userVisibleOnly: true,
           ...(appServerKey ? { applicationServerKey: appServerKey } : {}),

@@ -2346,6 +2346,42 @@ select {
   background: rgba(0,255,255,0.02);
 }
 
+/* ── Terminal composer — animated caret ─────────────────────────────────── */
+[data-shell="terminal"] .p13-composer-input textarea,
+[data-shell="terminal"] .p13-composer-input [contenteditable] {
+  caret-color: var(--neon-cyan);
+  animation: terminal-caret-pulse 1.1s step-end infinite;
+}
+@keyframes terminal-caret-pulse {
+  0%, 100% { caret-color: var(--neon-cyan); }
+  50%       { caret-color: transparent; }
+}
+
+/* ── MD3 composer — smooth pill focus ring ───────────────────────────────── */
+[data-shell="md3"] .p13-composer-input:focus-within {
+  outline: none;
+  ring: none;
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+/* ── Terminal bubbles — subtle scan-line accent on mine ──────────────────── */
+[data-shell="terminal"] .msg-bubble-mine {
+  position: relative;
+}
+[data-shell="terminal"] .msg-bubble-mine::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 255, 255, 0.015) 3px,
+    rgba(0, 255, 255, 0.015) 4px
+  );
+  pointer-events: none;
+}
+
 /* ── Mobile sidebar drawer — shell-aware polish ─────────────────────────── */
 
 /* MD3: native-feeling slide overlay with rounded right edge */

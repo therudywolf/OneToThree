@@ -3,14 +3,20 @@
 /**
  * PROJECT 13 :: NODE_INTEGRITY_RESOLVER
  * Level: Authority Layer (Trust Pinning)
- * Vibe: Clinical Pure / Zero-Trust
  *
- * Registry integrity: a lightweight checksum (DJB2) detects tampering with
- * localStorage contents; it does not resist a full XSS attacker (same origin).
+ * Registry integrity: SHA-256 checksum over canonical JSON detects tampering
+ * with localStorage contents. Does not resist a full XSS attacker (same
+ * origin), but raises the bar against casual storage manipulation.
+ *
+ * Migration: legacy DJB2 checksums (v1) are detected and silently upgraded
+ * to SHA-256 on first read.
  */
+import { sha256 } from '@noble/hashes/sha2'
 
 const REGISTRY_KEY = 'p13_trust_registry'
 const CHECKSUM_KEY = `${REGISTRY_KEY}_chk`
+// Prefix distinguishes SHA-256 checksums from legacy DJB2 hex strings.
+const CHECKSUM_PREFIX = 'sha256:'
 
 type NodeRegistry = Record<string, string>
 
@@ -21,6 +27,13 @@ function canonicalJson(obj: NodeRegistry): string {
   return JSON.stringify(sorted)
 }
 
+function sha256Hex(s: string): string {
+  const bytes = new TextEncoder().encode(s)
+  const digest = sha256(bytes)
+  return CHECKSUM_PREFIX + Array.from(digest).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Legacy DJB2 — used only for migration detection. */
 function djb2Hex(s: string): string {
   let hash = 5381
   for (let i = 0; i < s.length; i++) {
@@ -42,11 +55,21 @@ function pullRegistry(): NodeRegistry {
     const registry = parsed as NodeRegistry
 
     const chk = localStorage.getItem(CHECKSUM_KEY)
-    if (chk && chk !== djb2Hex(canonicalJson(registry))) {
-      console.warn('>> [SYS.TRUST] REGISTRY_CHECKSUM_MISMATCH — clearing')
-      localStorage.removeItem(REGISTRY_KEY)
-      localStorage.removeItem(CHECKSUM_KEY)
-      return {}
+    if (chk) {
+      const canonical = canonicalJson(registry)
+      const validSha256 = chk === sha256Hex(canonical)
+      // Migration path: accept legacy DJB2 checksum and upgrade silently.
+      const validLegacy = !chk.startsWith(CHECKSUM_PREFIX) && chk === djb2Hex(canonical)
+      if (!validSha256 && !validLegacy) {
+        console.warn('>> [SYS.TRUST] REGISTRY_CHECKSUM_MISMATCH — clearing')
+        localStorage.removeItem(REGISTRY_KEY)
+        localStorage.removeItem(CHECKSUM_KEY)
+        return {}
+      }
+      if (validLegacy) {
+        // Upgrade to SHA-256 in place.
+        commitRegistry(registry)
+      }
     }
     return registry
   } catch {
@@ -59,7 +82,7 @@ function commitRegistry(next: NodeRegistry): void {
   if (typeof window === 'undefined') return
   const body = canonicalJson(next)
   localStorage.setItem(REGISTRY_KEY, body)
-  localStorage.setItem(CHECKSUM_KEY, djb2Hex(body))
+  localStorage.setItem(CHECKSUM_KEY, sha256Hex(body))
 }
 
 /**

@@ -571,6 +571,17 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
     broadcastToUsers(memberIds, { type: 'chats_updated' })
 
+    if (chat.type === 'group_e2e') {
+      // Notify existing members (excluding the joiner) so their clients can
+      // deliver the group encryption key to the new member.
+      const existingIds = memberIds.filter((id) => id !== user.id)
+      broadcastToUsers(existingIds, {
+        type: 'member_joined',
+        chat_id: chat.id,
+        user_id: user.id,
+      })
+    }
+
     return reply.send({
       chat_id: chat.id,
       already_member: false,

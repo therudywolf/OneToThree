@@ -1,6 +1,8 @@
 const en = {
   // [COMMON]
   'common.back': 'Back',
+  'common.copy': 'Copy',
+  'common.copied': 'Copied',
   'common.next': 'Next',
   'common.skip': 'Skip',
   'common.saved': 'Saved',
@@ -37,6 +39,7 @@ const en = {
   'errors.generic': 'Error',
   'errors.tofuMismatch': '⚠ Contact key changed — open identity panel to verify or accept',
   'errors.peerKeyMissing': 'Peer has not uploaded encryption keys yet — ask them to open the app',
+  'errors.groupKeyPending': 'Waiting for group encryption key — an admin must be online to deliver it',
 
   // [ATTACHMENTS]
   'attach.pickAria': 'Attach file',
@@ -802,6 +805,7 @@ const en = {
   'identity.title': 'Security',
   'identity.fingerprint': 'Safety Number',
   'identity.drSafetyNumber': 'DR Safety Number',
+  'identity.safetyNumberHint': 'Compare these digits with your contact over a secure out-of-band channel (phone call, in person).',
   'identity.tofuChanged': "Peer's identity key changed. Verify before sending.",
   'identity.acceptNewKey': 'Accept new key & reset session',
   'identity.verifyHint': 'Compare this code with your contact via a secure external channel.',

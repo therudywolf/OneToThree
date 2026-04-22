@@ -994,6 +994,10 @@ export function ChatApp({
                 <span className="text-text-muted">
                   {t('errors.peerKeyMissing')}
                 </span>
+              ) : ctxError.includes('MISSING_SECTOR_KEY') ? (
+                <span className="text-neon-cyan/70">
+                  {t('errors.groupKeyPending')}
+                </span>
               ) : (
                 <span className="text-text-muted">{t('errors.signalLost')}</span>
               )}

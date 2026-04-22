@@ -62,8 +62,9 @@ async function replenishOtpsIfNeeded(userId: string, dBytes: Uint8Array): Promis
   try {
     const inventory = await fetchInventory()
     if (inventory.one_time_prekeys > OTP_REPLENISH_THRESHOLD) return
+    // If pool is empty use id=1 (fresh start); otherwise continue from where we left off.
     const nextIdRaw = localStorage.getItem(OTP_NEXT_ID_KEY(userId))
-    const nextId = nextIdRaw ? parseInt(nextIdRaw, 10) : 21
+    const nextId = nextIdRaw ? parseInt(nextIdRaw, 10) : 1
     if (!Number.isFinite(nextId) || nextId <= 0) return
     await publishDrOtpBatch(userId, dBytes, nextId, OTP_BATCH_SIZE)
   } catch { /* non-fatal */ }
@@ -129,27 +130,21 @@ export function VaultModal({ userId, displayHandle }: Props) {
           (id: number) => deriveOtpPrivKey(dBytes, id)
         )
 
-        // Publish key bundle to server once per account (generation 1 = stable).
-        // The server ignores duplicate publishes with the same generation.
-        const publishedKey = `p13:dr-published:${userId}`
-        if (!localStorage.getItem(publishedKey)) {
-          await publishIdentity({
-            signing_public_key: encodeBase64Url(bundle.identity.signing.publicKey),
-            exchange_public_key: encodeBase64Url(bundle.identity.exchange.publicKey),
-            generation: 1,
-          })
-          await publishSignedPrekey({
-            pre_key_id: bundle.signedPreKeyId,
-            public_key: encodeBase64Url(bundle.signedPreKey.publicKey),
-            signature: encodeBase64Url(bundle.signedPreKeySignature),
-          })
-          // Publish initial OTP batch (ids 1-20).
-          await publishDrOtpBatch(userId, dBytes, 1, 20)
-          localStorage.setItem(publishedKey, '1')
-        } else {
-          // Check if OTP pool is low and replenish.
-          void replenishOtpsIfNeeded(userId, dBytes)
-        }
+        // Publish identity + SPK on every unlock — server deduplicates by
+        // (user_id, generation) so this is idempotent and self-healing if
+        // the server loses our keys (wipe, migration, new instance).
+        await publishIdentity({
+          signing_public_key: encodeBase64Url(bundle.identity.signing.publicKey),
+          exchange_public_key: encodeBase64Url(bundle.identity.exchange.publicKey),
+          generation: 1,
+        })
+        await publishSignedPrekey({
+          pre_key_id: bundle.signedPreKeyId,
+          public_key: encodeBase64Url(bundle.signedPreKey.publicKey),
+          signature: encodeBase64Url(bundle.signedPreKeySignature),
+        })
+        // Ensure OTP pool is healthy; publish initial batch if pool is empty.
+        await replenishOtpsIfNeeded(userId, dBytes)
       } catch { /* DR setup is non-fatal; v1 fanout still works */ }
 
       setPin('')

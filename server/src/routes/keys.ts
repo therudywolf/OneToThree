@@ -58,7 +58,7 @@ const MAX_OPKS_PER_USER = 200
 
 export const keysRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /identity ──────────────────────────────────────────────────────
-  app.post('/identity', async (req, reply) => {
+  app.post('/identity', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
     const body = identityBodySchema.safeParse(req.body)
@@ -100,7 +100,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // ── POST /signed-prekey ─────────────────────────────────────────────────
-  app.post('/signed-prekey', async (req, reply) => {
+  app.post('/signed-prekey', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
     const body = spkBodySchema.safeParse(req.body)
@@ -136,7 +136,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // ── POST /one-time ──────────────────────────────────────────────────────
-  app.post('/one-time', async (req, reply) => {
+  app.post('/one-time', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
     const body = opkBodySchema.safeParse(req.body)

@@ -86,7 +86,7 @@
 ## B — Feature completion (заявлено, не реализовано)
 
 ### B1 🟠 Channels: UI создания, публикации, подписки
-**Статус:** `[~]` частично 2026-04-22 (7b3a9da): server enforcement + ExploreModal discovery добавлены; `create-group-modal` ещё не переключён на `type: 'channel'`.
+**Статус:** `[x]` закрыто 2026-04-22: server enforcement + ExploreModal + `createChannelChat()` API + `create-group-modal` переключён на `type: 'channel'` при `createMode === 'channel'`.
 
 **Проблема:** `chat_type = 'channel'` есть в DB enum (миграция 0029/0030), `channel_role` схема есть. Но:
 - ~~Нет серверного enforcement~~ — ЗАКРЫТО: `CHANNEL_SUBSCRIBERS_CANNOT_POST` в POST /messages/send.
@@ -170,7 +170,7 @@
 ---
 
 ### B6 🟡 Web Push: полировка unread badge и open-on-tap
-**Статус:** `[~]` частично реализовано
+**Статус:** `[x]` верифицировано 2026-04-22: все три пункта уже реализованы. `push-handler.js` → `openWindow('/?chat=chatId')`; `chat-app.tsx` читает `?chat=` из searchParams; `useAppBadge` вызывает `navigator.setAppBadge(unreadTotal)`. `useNotificationOpen` обрабатывает SW-сообщения для открытых вкладок.
 
 **Проблема:**
 - Unread badge (PWA app icon badge) не всегда синхронизирован с реальным unread count.
@@ -308,32 +308,22 @@
 ## E — Tech debt / мелкие вещи
 
 ### E1 🟢 Vault upgrade: проверить auto-upgrade v1-v3 → v4
-**Статус:** `[ ]`
-
-`upgradeVaultBlob()` написан, но не ясно вызывается ли он автоматически при первом unlock на старом vault. Проверить в `vault-modal.tsx`.
+**Статус:** `[x]` верифицировано 2026-04-22: `vault-modal.tsx:169-173` — `if (blob.version < CURRENT_VAULT_VERSION) upgradeVaultBlob(blob, pin).then(persist)` — вызывается при каждом unlock автоматически.
 
 ---
 
 ### E2 🟢 Device revoke: cleanup в message_deliveries
-**Статус:** `[ ]`
-
-При отзыве устройства старые `message_deliveries` слоты не удаляются. Это не security issue (расшифровать без ключа нельзя), но занимает место в DB.
-
-**Где:** `server/src/routes/devices.ts` — revoke handler.
+**Статус:** `[x]` закрыто 2026-04-22: `server/src/routes/users.ts` — 3 revoke-хендлера: single device, single session, bulk sessions — каждый теперь удаляет `message_deliveries WHERE device_id = revokedId`.
 
 ---
 
 ### E3 🟢 Rate limits: аудит на auth routes
-**Статус:** `[ ]`
-
-Проверить что `POST /auth/login`, `POST /auth/verify`, `POST /keys/one-time` имеют достаточные rate limits. Текущие определены inline, но не задокументированы.
+**Статус:** `[x]` закрыто 2026-04-22: `/auth/challenge`+`/verify` — scoped 5/15min; `POST /keys/identity` 10/h, `POST /keys/signed-prekey` 20/h, `POST /keys/one-time` 5/h добавлены. Глобальный лимит 100/min применяется ко всему.
 
 ---
 
 ### E4 🟢 Lint / typecheck CI: строгий режим для новых файлов
-**Статус:** `[ ]`
-
-`audit:security:strict` проходит. Добавить проверку `STRICT=1` в `prod-checks.yml` чтобы новые файлы не нарушали правило.
+**Статус:** `[x]` закрыто 2026-04-22: исправлены все 27 существующих violations (identity-modal, chat-app, explore-modal, user-avatar) → 0 violations. `continue-on-error: true` удалён из `prod-checks.yml` — теперь hard gate.
 
 ---
 
@@ -415,30 +405,22 @@
 ---
 
 ### F5 🟡 Sidebar resize / минимальная ширина
-**Статус:** `[ ]`
-
-На узких окнах текст чатов в сайдбаре сильно обрезается. Добавить drag-resize handle на границе сайдбар/чат (desktop), диапазон 240–480px, сохранять в localStorage.
+**Статус:** `[x]` закрыто 2026-04-22: drag handle между sidebar и main, диапазон 240-480px, localStorage persistence, CSS var `--p13-sb-w` контролирует ширину.
 
 ---
 
 ### F6 🟡 Аватары в сайдбаре: placeholder при пустом
-**Статус:** `[ ]`
-
-Некоторые аватары — цветные плашки с инициалами (хорошо), некоторые пустые. Унифицировать: всегда цветной градиент от хеша username + первая буква.
+**Статус:** `[x]` закрыто 2026-04-22: `user-avatar.tsx` — `hashToHue(username)` даёт детерминированный hue, fallback = `linear-gradient(135deg, hsl(hue,55%,30%), hsl(hue+45,50%,22%))` + инициалы.
 
 ---
 
 ### F7 🟡 Unread badge в sidebar
-**Статус:** `[ ]`
-
-Badge с числом непрочитанных сообщений не всегда отображается на строке чата. Проверить и исправить в обоих шеллах.
+**Статус:** `[~]` верифицировано 2026-04-22: логика badge в sidebar корректна (unreadByChat → badge). Известное ограничение: счётчик не персистируется — сбрасывается при перезагрузке страницы (только in-memory Zustand store). Исторические unread с сервера не загружаются. Критической регрессии нет.
 
 ---
 
 ### F8 🟡 Composer: высота textarea auto-grow
-**Статус:** `[ ]`
-
-Поле ввода не растёт при длинном тексте — появляется скролл внутри маленького поля. Должно расти до ~5 строк, потом скролл.
+**Статус:** `[x]` закрыто 2026-04-22: `chat-input.tsx` max-h изменён с 96px (4 строки) → 120px (5 строк) в 3 местах.
 
 ---
 
@@ -462,3 +444,4 @@ A2 (trust store SHA-256) ─── B7 (safety numbers UI)
 | 2026-04-22 | **Блок 1 закрыт** — A1, A2, A4, B7: DR always-on, SHA-256 trust store, group key delivery on join, safety numbers UI (коммит 69c3a1c) |
 | 2026-04-22 | **F1, F2 закрыты** — sidebar context menu + DECRYPT_FAIL UX (коммит dd31788) |
 | 2026-04-22 | **ALL HIGH закрыты** — F3+F4 UI, B1 enforcement+discovery, B2, D1+D2 тесты; B3+B4+B5 верифицированы как уже реализованные (коммит 7b3a9da) |
+| 2026-04-22 | **MEDIUM+LOW закрыты** — F5 sidebar resize, F6 avatar gradient, F8 textarea auto-grow; B1 channel type fix; B6/E1 верифицированы; E2 message_deliveries cleanup, E3 rate limits keys, E4 strict CI (0 violations); F7 задокументировано как known limitation |

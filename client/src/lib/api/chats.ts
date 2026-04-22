@@ -221,6 +221,33 @@ export async function createPublicOpenChat(params: {
   return data.chat
 }
 
+export async function createChannelChat(params: {
+  name: string
+  memberIds: string[]
+}): Promise<ApiChatRow> {
+  const res = await fetch(`${API_URL}/chats`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'channel',
+      name: params.name.trim() || null,
+      member_ids: params.memberIds.map(canonicalUserId),
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    chat?: ApiChatRow
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'CHANNEL_CREATE_FAILED')
+  }
+  if (!data.chat?.id) {
+    throw new Error('INVALID_CHANNEL_RESPONSE')
+  }
+  return data.chat
+}
+
 export async function fetchPeerIdsForChat(
   chatId: string,
   myUserId: string

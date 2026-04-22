@@ -150,14 +150,14 @@ export function IdentityModal({
   if (isMd3) {
     return (
       <div
-        className="fixed inset-0 z-[140] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+        className="fixed inset-0 z-[140] flex items-center justify-center bg-void/40 px-4 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
       >
         <div className="relative w-full max-w-md rounded-[28px] bg-[var(--surface)] p-6 shadow-[var(--md3-elevation-3,0_8px_24px_rgba(0,0,0,0.18))]">
           <header className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className={`h-2.5 w-2.5 rounded-full ${isTrusted ? 'bg-emerald-500' : 'animate-pulse bg-red-500'}`} />
+              <span className={`h-2.5 w-2.5 rounded-full ${isTrusted ? 'bg-neon-cyan/70' : 'animate-pulse bg-neon-red'}`} />
               <p className="text-sm font-medium text-[var(--on-surface)]">
                 {t('identity.title')} — {peerUsername}
               </p>
@@ -192,14 +192,14 @@ export function IdentityModal({
             )}
 
             {isCompromised && (
-              <div className="rounded-2xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+              <div className="rounded-2xl bg-danger/10 p-3 text-sm text-neon-red">
                 {t('identity.compromisedAlert')}
               </div>
             )}
 
             {tofuChanged && (
-              <div className="space-y-3 rounded-2xl bg-red-50 p-4 dark:bg-red-950/40">
-                <p className="text-sm text-red-700 dark:text-red-300">
+              <div className="space-y-3 rounded-2xl bg-danger/10 p-4">
+                <p className="text-sm text-neon-red">
                   ⚠ {t('identity.tofuChanged')}
                 </p>
                 <button
@@ -211,7 +211,7 @@ export function IdentityModal({
                       setDrSafetyNumber(null)
                     })
                   }}
-                  className="rounded-full bg-red-600 px-4 py-2 text-xs font-medium text-white hover:bg-red-700"
+                  className="rounded-full bg-danger/80 px-4 py-2 text-xs font-medium text-[var(--surface)] hover:bg-danger"
                 >
                   {t('identity.acceptNewKey')}
                 </button>
@@ -225,7 +225,7 @@ export function IdentityModal({
                 onClick={toggleTrustProtocol}
                 className={`h-10 w-full rounded-full px-4 text-sm font-medium transition-colors disabled:opacity-40 ${
                   isTrusted
-                    ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-950/50 dark:text-red-300'
+                    ? 'bg-danger/10 text-neon-red hover:bg-danger/20'
                     : 'bg-[var(--primary)] text-[var(--on-primary)] hover:opacity-90'
                 }`}
               >
@@ -237,7 +237,7 @@ export function IdentityModal({
                 onClick={toggleContactApproval}
                 className={`h-10 w-full rounded-full px-4 text-sm font-medium transition-colors disabled:opacity-40 ${
                   isApproved
-                    ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-950/50 dark:text-red-300'
+                    ? 'bg-danger/10 text-neon-red hover:bg-danger/20'
                     : 'bg-[var(--secondary-container)] text-[var(--on-secondary-container)] hover:opacity-90'
                 }`}
               >

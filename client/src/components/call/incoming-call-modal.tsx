@@ -7,6 +7,7 @@ import { useCallStore } from '@/store/callStore'
 import { useThemeStore } from '@/store/themeStore'
 import { useTranslation } from '@/hooks/use-translation'
 import { PortalRoot } from '@/components/portal-root'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 
 type Props = {
   onAccept: () => void
@@ -17,6 +18,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
   const incoming = useCallStore((s) => s.incomingCall)
   const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
   const { t } = useTranslation()
+  const trapRef = useFocusTrap<HTMLDivElement>(!!incoming, onReject)
 
   useEffect(() => {
     if (!incoming) return
@@ -32,6 +34,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
     return (
       <PortalRoot>
         <div
+          ref={trapRef}
           className="fixed inset-0 z-[250] flex items-end justify-center bg-black/50 px-4 pb-8 backdrop-blur-md sm:items-center sm:pb-0"
           role="dialog"
           aria-modal="true"
@@ -79,6 +82,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
   return (
     <PortalRoot>
       <div
+        ref={trapRef}
         className="fixed inset-0 z-[250] flex items-center justify-center bg-void/90 px-4 font-mono backdrop-blur-md"
         role="dialog"
         aria-modal="true"

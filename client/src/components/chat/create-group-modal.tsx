@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { searchUsers, type SearchUserRow } from '@/lib/api/users'
 import { normalizePeerInput } from '@/lib/peer-input'
 import { useCreateGroup } from '@/hooks/use-create-group'
@@ -50,6 +51,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
+  const trapRef = useFocusTrap<HTMLDivElement>(true, onClose)
   const { createGroup, busy, error, clearError, reset } = useCreateGroup(userId)
   
   const [channelName, setChannelName] = useState('')
@@ -152,6 +154,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
 
   return (
     <div
+      ref={trapRef}
       className={`fixed inset-0 z-[120] flex items-center justify-center px-4 ${
         isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : 'bg-void/90 backdrop-blur-sm'
       }`}

@@ -258,6 +258,7 @@ const en = {
   'composer.tabGif': 'GIF',
   'composer.gifSoon': 'GIF search — coming soon',
   'composer.gifSearchPlaceholder': 'Search GIFs',
+  'composer.gifPopular': 'Popular GIFs',
   'composer.gifHint': 'Type at least 2 characters',
   'composer.gifEmpty': 'No GIF results',
   'composer.stickerImportPlaceholder': 'Telegram short name',

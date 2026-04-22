@@ -70,7 +70,7 @@
 - [x] Убрать пустой глобальный header на desktop (`chat-app` header скрыт на `md+`)
 - [x] Сайдбар стартует от самого верха, без верхнего safe-padding на desktop (`md:pt-0`, `h:100dvh`)
 - [x] Добавить верхний блок `ЧАТЫ` как первый элемент правой панели сайдбара (`top:0`, `sticky`)
-- [~] Нормализация размеров кнопок (этап 1): убран проблемный desktop header с разноразмерными чипами; этап 2 — унификация в remaining panels
+- [~] Нормализация размеров кнопок: этап 1.1 завершён — унифицированы размеры кнопок в `chat-sidebar` (row-actions, direct input action, CTA-блок)
 
 ---
 
@@ -195,6 +195,7 @@
 | 2026-04-22 | [x] Импорт TG: dedup по `(tg_source, owner_id)` на сервере |
 | 2026-04-22 | [x] Верификация: `npm run test -w project-13-server` (68/68), `npm run lint`, `npm run typecheck` — зелёные |
 | 2026-04-22 | [x] UI task: desktop header скрыт, sidebar поднят к верхнему краю (`top:0`, `100dvh`), добавлен верхний блок `ЧАТЫ` |
+| 2026-04-22 | [x] UI task: унификация размеров кнопок в сайдбаре (h-10 для CTA/input-action, w-10 для row-action) |
 
 ---
 

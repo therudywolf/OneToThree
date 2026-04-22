@@ -17,6 +17,9 @@ Last updated: 2026-04-22
 - Desktop top header is hidden (`md+`) to remove empty top gap above sidebar.
 - Sidebar container now starts at the top edge (`top: 0`) and uses `100dvh`.
 - Added a top `Chats` strip as the first sidebar-right-panel element (`sticky top-0`).
+- Sidebar button-size normalization (phase 1.1) completed:
+  - row action buttons normalized to fixed width targets
+  - direct-open action/input and lower CTA buttons normalized to `h-10`.
 - Sticker integration:
   - Server: `server/src/routes/stickers.ts`, wired in `server/src/app.ts`.
   - API: packs list/detail/items, Telegram import, `GET /api/stickers/asset-url`.
@@ -44,7 +47,7 @@ Last updated: 2026-04-22
 4. UI parity with Telegram Desktop is partial:
    - composer improved
    - many layout/interaction polish tasks remain in `WORKPLAN.md`
-   - button-size unification is only partially addressed (header removed; other panel controls still to harmonize).
+   - button-size unification is in progress (sidebar done; header/main-panel controls still to harmonize).
 5. GIF provider integration (Tenor/Giphy) not started.
 6. TGS/Lottie runtime renderer not integrated yet (currently fallback for tgs/lottie).
 7. Double Ratchet send path is still incomplete (feature-flagged components exist).

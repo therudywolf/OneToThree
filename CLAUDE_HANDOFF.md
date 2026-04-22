@@ -17,6 +17,8 @@ Continue work without speculative fixes. Reproduce first, then patch with tests.
 1. Runtime bug: message is visible, then after re-entering chat becomes `[DECRYPT_FAIL]`.
 2. MD3 bug: chat rows do not open chats reliably.
 3. MD3 UX issue: left rail buttons are visually too large.
+4. Sidebar row actions overlap/stack incorrectly (pin / favorite / notifications controls visually collide).
+5. Theme isolation regression: Cyberpunk and MD3 visual styles are mixed in the same UI states.
 
 ## How To Start (exact order)
 
@@ -37,3 +39,4 @@ Continue work without speculative fixes. Reproduce first, then patch with tests.
 - Prioritize runtime correctness over visual polish.
 - If decrypt bug reappears, audit every feed rebuild path, not only realtime WS path.
 - Keep cyberpunk theme behavior intact while tuning MD3-only visuals.
+- Do not "blend" shell rules: ensure MD3 and terminal/cyberpunk tokens stay isolated by shell selector.

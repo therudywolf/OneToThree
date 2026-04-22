@@ -13,7 +13,7 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net/npm/; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://cdn.jsdelivr.net; media-src 'self' blob: https://s3.onetothree.ru; connect-src 'self' wss: https: https://s3.onetothree.ru; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net/npm/; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://cdn.jsdelivr.net https://*.giphy.com; media-src 'self' blob: https://s3.onetothree.ru https://*.giphy.com; connect-src 'self' wss: https: https://s3.onetothree.ru; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
 		-Server
 	}
 }

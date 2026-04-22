@@ -249,3 +249,32 @@
 - Если снова появится симптом «сообщение сначала видно, потом `[DECRYPT_FAIL]`», первым делом проверить, передаётся ли `drCtx` в конкретный decrypt-path.
 - Мобильный UX стал лучше (добавлен явный выход из drawer), но нужен один живой touch-pass на телефоне, особенно с открытым поиском/модалками/доком.
 
+---
+
+## SPRINT 8 — HANDOFF TO CLAUDE (current blockers)
+
+### 8.1 Runtime: message re-open regression
+- [ ] Reproduce with attached HAR traces: message visible immediately, then `[DECRYPT_FAIL]` after leaving/re-entering chat.
+- [ ] Verify all decrypt entrypoints receive DR peer context consistently:
+  - history load
+  - pending sync
+  - realtime WS
+  - any path that rebuilds feed after navigation
+- [ ] Add regression test for "re-open chat keeps plaintext for same message id".
+
+### 8.2 MD3: chats not opening
+- [ ] Reproduce in MD3 shell with real click flow (sidebar list -> active chat switch).
+- [ ] Validate event chain: row click -> `setActiveChatId` -> crypto context -> message fetch/render.
+- [ ] Check for MD3-specific CSS/overlay/pointer-events interference.
+
+### 8.3 MD3: oversized left rail buttons
+- [ ] Bring MD3 left rail icon button scale to compact visual rhythm (Telegram-like density).
+- [ ] Keep cyberpunk sizes unchanged; only tune MD3 variant.
+- [ ] Run quick visual pass desktop/mobile for regression.
+
+### 8.4 Acceptance criteria for Claude
+- [ ] Runtime: no `[DECRYPT_FAIL]` regression after re-entering the same chat.
+- [ ] MD3: chats open consistently.
+- [ ] MD3 left rail: visually proportional controls.
+- [ ] Green checks: `typecheck`, `lint`, server tests.
+

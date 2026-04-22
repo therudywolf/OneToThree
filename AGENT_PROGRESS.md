@@ -82,3 +82,12 @@ Last updated: 2026-04-22 (post mobile+DR hotfix audit)
 - Do not discard unrelated local changes.
 - Keep `WORKPLAN.md` and this file synchronized after every meaningful fix.
 - If `[DECRYPT_FAIL]` reappears, inspect whether decrypt path includes `drCtx` for that code path.
+
+## User Directive For Next Agent (Claude)
+
+- Stop further "quick fixes" without full runtime reproduction.
+- Treat the following as open tasks for Claude:
+  1. Messages show, then become `[DECRYPT_FAIL]` after re-entering chat.
+  2. MD3 theme: chats are not opening reliably.
+  3. MD3 theme: left rail buttons look oversized/disproportionate.
+- Priority order: runtime correctness first, then MD3 UX sizing/polish.

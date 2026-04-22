@@ -215,6 +215,8 @@ const en = {
   'chat.inputPlaceholder': 'Type a message...',
   'chat.burnTimerLabel': 'Delete after',
   'chat.originalDeleted': 'Message deleted',
+  'chat.decryptFailed': 'Message could not be decrypted',
+  'chat.decryptFailedPreview': '🔒 Encrypted message',
   'chat.newChat': 'New Chat',
   'chat.startChatHint': 'Start a new chat',
   'chat.attachFile': 'Attach file',

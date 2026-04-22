@@ -219,7 +219,7 @@ export function GroupChatSettings({
 
   if (!protocol) {
     return (
-      <div className="border-t border-border-strong bg-void/20 p-4 font-mono text-[10px] text-danger">
+      <div className={`border-t p-4 text-[10px] text-danger ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)]' : 'border-border-strong bg-void/20 font-mono'}`}>
         {errorLog ? errorLog : t('common.loading')}
       </div>
     )
@@ -269,7 +269,7 @@ export function GroupChatSettings({
       </div>
 
       <div className="p-4 space-y-4">
-        {errorLog && <p className="text-neon-red animate-pulse">{errorLog}</p>}
+        {errorLog && <p className={`animate-pulse ${isMd3 ? 'text-[var(--danger)]' : 'text-neon-red'}`}>{errorLog}</p>}
 
         {activeTab === 'vault' ? (
           <div className="animate-in fade-in slide-in-from-bottom-1">
@@ -282,13 +282,13 @@ export function GroupChatSettings({
             {/* INTEGRATION_LINK_SECTION */}
             {canManage && (
               <div className="space-y-3">
-                <label className="flex cursor-pointer items-center gap-3 border border-border-strong bg-void p-3 transition-colors hover:border-border-strong">
+                <label className={`flex cursor-pointer items-center gap-3 p-3 transition-colors ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border border-border-strong bg-void hover:border-border-strong'}`}>
                   <input
                     type="checkbox"
                     checked={oneTimeLink}
                     onChange={(e) => setOneTimeLink(e.target.checked)}
                     disabled={isBusy}
-                    className="h-3 w-3 accent-neon-cyan"
+                    className={`h-3 w-3 ${isMd3 ? 'accent-[var(--primary)]' : 'accent-neon-cyan'}`}
                   />
                   <span className="text-[9px] text-text-muted">{t('group.oneTimeInvite')}</span>
                 </label>
@@ -296,29 +296,29 @@ export function GroupChatSettings({
                 <button
                   disabled={isBusy}
                   onClick={() => void generateIntegrationLink()}
-                  className="h-10 w-full border border-neon-cyan/40 bg-void px-3 text-[10px] font-bold text-neon-cyan transition-all hover:bg-neon-cyan hover:text-text-primary disabled:opacity-20"
+                  className={`h-10 w-full px-3 text-[10px] font-bold transition-all disabled:opacity-20 ${isMd3 ? 'rounded-full bg-[var(--primary)] text-[var(--on-primary)] hover:brightness-110' : 'border border-neon-cyan/40 bg-void text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'}`}
                 >
                   {t('group.copyInviteLink')}
                 </button>
 
                 {activeLink ? (
-                  <div className="border border-border-strong bg-void p-2 break-all font-mono text-[9px] lowercase text-text-muted">
+                  <div className={`p-2 break-all text-[9px] lowercase text-text-muted ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-border-strong bg-void font-mono'}`}>
                     {activeLink}
                   </div>
                 ) : (
-                  <p className="text-danger lowercase">{t('group.inviteGenerateHint')}</p>
+                  <p className={`lowercase ${isMd3 ? 'text-[var(--danger)]' : 'text-danger'}`}>{t('group.inviteGenerateHint')}</p>
                 )}
               </div>
             )}
 
             {protocol.chat_type === 'channel' && canOwner ? (
-              <div className="space-y-2 border border-neon-cyan/25 bg-void/40 p-3">
-                <p className="text-[9px] text-neon-cyan/90">{t('group.discussionTitle')}</p>
+              <div className={`space-y-2 p-3 ${isMd3 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]' : 'border border-neon-cyan/25 bg-void/40'}`}>
+                <p className={`text-[9px] ${isMd3 ? 'text-[var(--primary)]' : 'text-neon-cyan/90'}`}>{t('group.discussionTitle')}</p>
                 <p className="text-[8px] normal-case tracking-normal text-text-muted/80">
                   {t('group.discussionHint')}
                 </p>
                 <select
-                  className="h-10 w-full border border-border-strong bg-void px-3 text-[9px] uppercase tracking-wider text-text-primary"
+                  className={`h-10 w-full px-3 text-[9px] uppercase tracking-wider text-text-primary ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] border-0' : 'border border-border-strong bg-void'}`}
                   value={discussionPick}
                   onChange={(e) => setDiscussionPick(e.target.value)}
                   disabled={isBusy}
@@ -335,7 +335,7 @@ export function GroupChatSettings({
                     type="button"
                     disabled={isBusy}
                     onClick={() => void applyChannelPostingMode('all_members')}
-                    className="inline-flex h-9 items-center border border-neon-cyan/50 bg-void px-3 text-[9px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
+                    className={`inline-flex h-9 items-center px-3 text-[9px] transition-colors disabled:opacity-30 ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_22%,transparent)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
                   >
                     Все участники пишут
                   </button>
@@ -343,7 +343,7 @@ export function GroupChatSettings({
                     type="button"
                     disabled={isBusy}
                     onClick={() => void applyChannelPostingMode('admins_only')}
-                    className="inline-flex h-9 items-center border border-neon-cyan/50 bg-void px-3 text-[9px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
+                    className={`inline-flex h-9 items-center px-3 text-[9px] transition-colors disabled:opacity-30 ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_22%,transparent)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
                   >
                     Только админы пишут
                   </button>
@@ -351,7 +351,7 @@ export function GroupChatSettings({
                     type="button"
                     disabled={isBusy}
                     onClick={() => void saveDiscussionLink()}
-                    className="inline-flex h-9 items-center border border-neon-cyan/50 bg-void px-3 text-[9px] text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-30"
+                    className={`inline-flex h-9 items-center px-3 text-[9px] transition-colors disabled:opacity-30 ${isMd3 ? 'rounded-full bg-[var(--primary)] text-[var(--on-primary)] hover:brightness-110' : 'border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
                   >
                     {t('group.discussionSave')}
                   </button>
@@ -376,7 +376,7 @@ export function GroupChatSettings({
                         }
                       })()
                     }}
-                    className="inline-flex h-9 items-center border border-border-strong bg-void px-3 text-[9px] text-text-muted transition-colors hover:border-neon-red hover:text-neon-red disabled:opacity-30"
+                    className={`inline-flex h-9 items-center px-3 text-[9px] text-text-muted transition-colors disabled:opacity-30 ${isMd3 ? 'rounded-full hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] hover:text-[var(--danger)]' : 'border border-border-strong bg-void hover:border-neon-red hover:text-neon-red'}`}
                   >
                     {t('group.discussionClear')}
                   </button>
@@ -385,7 +385,7 @@ export function GroupChatSettings({
                       type="button"
                       disabled={isBusy}
                       onClick={() => openDiscussionChat()}
-                      className="inline-flex h-9 items-center border border-border-strong bg-void px-3 text-[9px] text-neon-cyan/90 transition-colors hover:bg-neon-cyan/10"
+                      className={`inline-flex h-9 items-center px-3 text-[9px] transition-colors ${isMd3 ? 'rounded-full text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]' : 'border border-border-strong bg-void text-neon-cyan/90 hover:bg-neon-cyan/10'}`}
                     >
                       {t('group.discussionOpen')}
                     </button>
@@ -412,7 +412,7 @@ export function GroupChatSettings({
                     isChannel && canOwner && !isSelf
 
                   return (
-                    <div key={m.user_id} className="flex items-center gap-3 border border-border-strong bg-void p-2 transition-colors hover:bg-void/30">
+                    <div key={m.user_id} className={`flex items-center gap-3 p-2 transition-colors ${isMd3 ? 'rounded-xl hover:bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-border-strong bg-void hover:bg-void/30'}`}>
                       <UserAvatar
                         userId={m.user_id}
                         username={m.username}
@@ -432,7 +432,7 @@ export function GroupChatSettings({
 
                       {showChannelRoleSelect ? (
                         <select
-                          className="h-8 max-w-[9rem] shrink-0 border border-border-strong bg-void px-2 text-[8px] uppercase tracking-tight text-neon-cyan/90"
+                          className={`h-8 max-w-[9rem] shrink-0 px-2 text-[8px] uppercase tracking-tight ${isMd3 ? 'rounded-lg bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] border-0' : 'border border-border-strong bg-void text-neon-cyan/90'}`}
                           value={feedRole}
                           disabled={isBusy}
                           onChange={(e) =>
@@ -450,16 +450,16 @@ export function GroupChatSettings({
 
                       <div className="flex gap-1">
                         {showGrantAdmin && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className="inline-flex h-8 items-center border border-border-strong px-2 text-[8px] hover:text-neon-cyan">{t('group.makeAdmin')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'admin')} className={`inline-flex h-8 items-center px-2 text-[8px] transition-colors ${isMd3 ? 'rounded-lg hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] hover:text-[var(--primary)]' : 'border border-border-strong hover:text-neon-cyan'}`}>{t('group.makeAdmin')}</button>
                         )}
                         {showRevokeAdmin && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className="inline-flex h-8 items-center border border-border-strong px-2 text-[8px] hover:text-neon-red">{t('group.demoteMember')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'member')} className={`inline-flex h-8 items-center px-2 text-[8px] transition-colors ${isMd3 ? 'rounded-lg hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] hover:text-[var(--danger)]' : 'border border-border-strong hover:text-neon-red'}`}>{t('group.demoteMember')}</button>
                         )}
                         {showTransfer && (
-                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className="inline-flex h-8 items-center border border-border-strong px-2 text-[8px] hover:text-neon-cyan">{t('group.transferOwner')}</button>
+                          <button onClick={() => void reassignAuthority(m.user_id, 'owner')} className={`inline-flex h-8 items-center px-2 text-[8px] transition-colors ${isMd3 ? 'rounded-lg hover:bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] hover:text-[var(--primary)]' : 'border border-border-strong hover:text-neon-cyan'}`}>{t('group.transferOwner')}</button>
                         )}
                         {showExpunge && (
-                          <button onClick={() => void expungeNode(m.user_id)} className="inline-flex h-8 items-center border border-border-strong px-2 text-[8px] text-danger hover:border-neon-red hover:text-neon-red">{t('group.kick')}</button>
+                          <button onClick={() => void expungeNode(m.user_id)} className={`inline-flex h-8 items-center px-2 text-[8px] text-danger transition-colors ${isMd3 ? 'rounded-lg hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] hover:text-[var(--danger)]' : 'border border-border-strong hover:border-neon-red hover:text-neon-red'}`}>{t('group.kick')}</button>
                         )}
                       </div>
                     </div>

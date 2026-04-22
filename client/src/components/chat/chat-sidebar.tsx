@@ -830,7 +830,7 @@ export function ChatSidebar({
                   e.stopPropagation()
                   togglePin(c.id)
                 }}
-                className={`shrink-0 border-l border-border-strong/5 px-3 transition-colors ${
+                className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
                   isPinned
                     ? 'bg-neon-cyan/5 text-neon-cyan hover:bg-neon-red/10 hover:text-neon-red'
                     : 'text-text-muted/70 opacity-0 hover:bg-neon-cyan/10 hover:text-neon-cyan group-hover:opacity-100'
@@ -845,7 +845,7 @@ export function ChatSidebar({
                   e.stopPropagation()
                   void toggleFavorite(c.id, Boolean(c.is_favorite))
                 }}
-                className={`shrink-0 border-l border-border-strong/5 px-3 transition-colors ${
+                className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
                   c.is_favorite
                     ? 'text-accent-2 bg-accent-2/15 hover:bg-accent-2/15'
                     : 'text-text-muted/70 hover:bg-accent-2/15 hover:text-accent-2 opacity-0 group-hover:opacity-100'
@@ -864,7 +864,7 @@ export function ChatSidebar({
                       e.stopPropagation()
                       void toggleMute(c.id, muted)
                     }}
-                    className={`shrink-0 border-l border-border-strong/5 px-3 transition-colors ${
+                    className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
                       muted
                         ? 'text-text-muted bg-text-muted/10 hover:bg-neon-red/10 hover:text-neon-red'
                         : 'text-text-muted/70 hover:bg-neon-cyan/10 hover:text-neon-cyan opacity-0 group-hover:opacity-100'
@@ -913,7 +913,7 @@ export function ChatSidebar({
                     .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
                     .finally(() => setBusy(false))
                 }}
-                className="flex-1 border border-danger/40 bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                className="flex h-10 flex-1 items-center justify-center border border-danger/40 bg-void px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
               >
                 {t('sidebar.leaveGroup')}
               </button>
@@ -938,7 +938,7 @@ export function ChatSidebar({
                       .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
                       .finally(() => setBusy(false))
                   }}
-                  className={`flex-1 py-1.5 text-[9px] transition-colors disabled:opacity-40 ${
+                  className={`flex h-10 flex-1 items-center justify-center px-3 text-[10px] font-medium uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${
                     isMd3
                       ? 'rounded-full border border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_16%,transparent)]'
                       : 'border border-danger/40 bg-void font-mono uppercase tracking-widest text-danger hover:border-neon-red hover:bg-neon-red/10'
@@ -959,7 +959,7 @@ export function ChatSidebar({
         {isAdmin ? (
           <Link
             href="/admin"
-            className={`flex items-center gap-2 w-full px-3 py-2 transition-colors ${
+            className={`flex h-10 w-full items-center gap-2 px-3 transition-colors ${
               isMd3
                 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_18%,transparent)]'
                 : 'border border-danger/40 bg-void font-mono text-[10px] uppercase tracking-widest text-danger hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red'
@@ -983,7 +983,7 @@ export function ChatSidebar({
 
           <div className="flex gap-1">
             <input
-              className={`w-full px-2 py-1 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:outline-none' : 'terminal-input placeholder:text-neon-cyan/30'}`}
+              className={`h-10 w-full px-3 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:outline-none' : 'terminal-input placeholder:text-neon-cyan/30'}`}
               placeholder={t('sidebar.peerPlaceholder')}
               value={peerInput}
               onChange={(e) => setPeerInput(e.target.value)}
@@ -993,7 +993,7 @@ export function ChatSidebar({
               type="button"
               onClick={() => void openDirect()}
               disabled={creating || !peerInput.trim()}
-              className={`shrink-0 px-3 text-[10px] transition-colors disabled:opacity-40 ${isMd3 ? 'inline-flex items-center gap-1.5 rounded-2xl bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-2)] hover:brightness-110 disabled:hover:bg-[var(--neon-red)]' : 'border border-neon-cyan bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan hover:text-text-primary disabled:hover:bg-void disabled:hover:text-neon-cyan'}`}
+              className={`inline-flex h-10 shrink-0 items-center justify-center gap-1.5 px-4 text-[10px] font-medium uppercase tracking-[0.14em] transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-2xl bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-2)] hover:brightness-110 disabled:hover:bg-[var(--neon-red)]' : 'border border-neon-cyan bg-void font-mono text-neon-cyan hover:bg-neon-cyan hover:text-text-primary disabled:hover:bg-void disabled:hover:text-neon-cyan'}`}
             >
               {isMd3 ? <MessageSquarePlus className="h-4 w-4" aria-hidden /> : null}
               {t('sidebar.openPeer')}
@@ -1006,14 +1006,14 @@ export function ChatSidebar({
             <button
               type="button"
               onClick={() => setGroupModalOpen(true)}
-              className={`flex-1 py-2 text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
+              className={`flex h-10 flex-1 items-center justify-center px-3 text-[10px] font-medium uppercase tracking-[0.14em] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
             >
               {t('sidebar.createGroupE2e')}
             </button>
             <button
               type="button"
               onClick={() => setGroupModalOpen(true)}
-              className={`flex-1 py-2 text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
+              className={`flex h-10 flex-1 items-center justify-center px-3 text-[10px] font-medium uppercase tracking-[0.14em] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
             >
               {t('sidebar.createChannel')}
             </button>
@@ -1030,7 +1030,7 @@ export function ChatSidebar({
                 setCreateErr(link)
               }
             }}
-            className={`w-full py-2 text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-1)] hover:brightness-110' : 'border border-neon-cyan/50 bg-void font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'}`}
+            className={`flex h-10 w-full items-center justify-center px-3 text-[10px] font-medium uppercase tracking-[0.14em] transition-colors ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-1)] hover:brightness-110' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
           >
             {t('sidebar.copyMyInvite')}
           </button>

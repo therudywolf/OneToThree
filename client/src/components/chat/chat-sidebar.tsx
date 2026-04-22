@@ -845,7 +845,7 @@ export function ChatSidebar({
         {ghostHitChatIds !== null &&
         localGhostQuery.trim().length >= 2 &&
         sidebarChatsFiltered.length === 0 ? (
-            <p className="mx-1 mt-2 border border-neon-red/30 bg-danger/30 px-4 py-6 text-center font-mono text-[10px] uppercase tracking-widest text-neon-red">
+            <p className={`mx-1 mt-2 border px-4 py-6 text-center text-[10px] uppercase tracking-widest ${isMd3 ? 'rounded-2xl border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_5%,transparent)] text-[var(--on-surface-variant)]' : 'border-neon-red/30 bg-danger/30 font-mono text-neon-red'}`}>
               {t('sidebar.ghostNoHits')}
             </p>
         ) : null}
@@ -910,13 +910,13 @@ export function ChatSidebar({
                         size={28}
                       />
                     ) : c.is_group ? (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center border border-neon-cyan/50 bg-void font-mono text-[10px] text-neon-cyan">
-                        GRP
+                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)] font-sans font-semibold' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan'}`}>
+                        {isMd3 ? (c.name?.slice(0, 2)?.toUpperCase() || 'GR') : 'GRP'}
                       </div>
                     ) : null}
 
                     {!c.is_group && pres?.online ? (
-                       <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 border-border-strong bg-neon-cyan/15 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                       <span className={`absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 ${isMd3 ? 'border-[var(--surface)] bg-[var(--success)]' : 'border-border-strong bg-neon-cyan shadow-[0_0_8px_rgba(34,211,238,0.8)]'}`} />
                     ) : null}
                   </div>
 
@@ -957,7 +957,7 @@ export function ChatSidebar({
                       {unreadTotal > 0 ? (
                         <span className="ml-auto inline-flex shrink-0 items-center gap-1">
                           {threadTotal > 0 ? (
-                            <span className="rounded border border-neon-cyan/50 bg-neon-cyan/10 px-1 py-[1px] text-[8px] font-bold text-neon-cyan">
+                            <span className={`rounded px-1 py-[1px] text-[8px] font-bold ${isMd3 ? 'bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)]' : 'border border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'}`}>
                               T{threadTotal}
                             </span>
                           ) : null}
@@ -1051,7 +1051,7 @@ export function ChatSidebar({
 
       {/* Active Chat Controls */}
       {activeChatId ? (
-        <div className="border-t border-neon-cyan/20 bg-void/20 p-3 space-y-2">
+        <div className={`border-t p-3 space-y-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-void/20'}`}>
           {chats.find((c) => c.id === activeChatId)?.is_group ? (
             <GroupChatSettings
               chatId={activeChatId}
@@ -1079,7 +1079,7 @@ export function ChatSidebar({
                     .catch((e) => setCreateErr(e instanceof Error ? e.message : 'ERR'))
                     .finally(() => setBusy(false))
                 }}
-                className="flex h-10 flex-1 items-center justify-center border border-danger/40 bg-void px-3 text-[10px] font-medium uppercase tracking-[0.16em] text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                className={`flex h-10 flex-1 items-center justify-center px-3 text-[10px] font-medium uppercase tracking-[0.16em] transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-full border border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_16%,transparent)]' : 'border border-danger/40 bg-void font-mono text-danger hover:border-neon-red hover:bg-neon-red/10'}`}
               >
                 {t('sidebar.leaveGroup')}
               </button>
@@ -1136,13 +1136,13 @@ export function ChatSidebar({
           </Link>
         ) : null}
 
-        <div className="pt-2 border-t border-neon-cyan/20">
-          <p className="mb-1.5 text-[9px] uppercase tracking-[0.2em] text-neon-cyan/70">
+        <div className={`pt-2 border-t ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-cyan/20'}`}>
+          <p className={`mb-1.5 text-[9px] uppercase tracking-[0.2em] ${isMd3 ? 'text-[var(--on-surface-variant)]' : 'text-neon-cyan/70'}`}>
             {t('sidebar.openDirect')}
           </p>
 
           {createErr ? (
-            <p className={`mb-2 font-mono text-[9px] uppercase tracking-wider p-1 border ${createErr === 'INVITE_LINK_COPIED' ? 'border-neon-cyan text-neon-cyan bg-neon-cyan/10' : 'border-neon-red text-neon-red bg-neon-red/10'}`}>
+            <p className={`mb-2 text-[9px] uppercase tracking-wider p-1 border ${isMd3 ? (createErr === 'INVITE_LINK_COPIED' ? 'rounded-lg border-[color-mix(in_srgb,var(--primary)_30%,transparent)] bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]' : 'rounded-lg border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]') : (createErr === 'INVITE_LINK_COPIED' ? 'font-mono border-neon-cyan text-neon-cyan bg-neon-cyan/10' : 'font-mono border-neon-red text-neon-red bg-neon-red/10')}`}>
               {mapSidebarError(createErr)}
             </p>
           ) : null}
@@ -1168,7 +1168,7 @@ export function ChatSidebar({
         </div>
 
         {/* FAB "+" — New Group / New Channel / My Invite */}
-        <div ref={fabRef} className="relative pt-2 border-t border-neon-cyan/20">
+        <div ref={fabRef} className={`relative pt-2 border-t ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-cyan/20'}`}>
           {fabOpen ? (
             <div className={`absolute bottom-full mb-1 left-0 right-0 z-50 overflow-hidden ${
               isMd3

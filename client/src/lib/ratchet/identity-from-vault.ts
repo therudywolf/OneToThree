@@ -34,6 +34,43 @@ export interface DerivedDrBundle {
 }
 
 /**
+ * Derive one OTP private key by id (1-based). Deterministic: same vault → same key.
+ * Alice consumes an OTP id from the server bundle; Bob re-derives the private key here.
+ */
+export function deriveOtpPrivKey(dBytes: Uint8Array, id: number): Uint8Array {
+  const idBuf = ENC.encode(String(id))
+  return hkdf(
+    sha256,
+    dBytes,
+    ENC.encode('p13:dr:otp:v1:salt'),
+    new Uint8Array([...ENC.encode('p13:dr:otp:'), ...idBuf]),
+    32
+  )
+}
+
+/**
+ * Derive a batch of OTP key pairs [startId, startId+count).
+ */
+export function deriveOtpBatch(
+  dBytes: Uint8Array,
+  startId: number,
+  count: number
+): Array<{ id: number; keypair: KeyPair }> {
+  return Array.from({ length: count }, (_, i) => {
+    const id = startId + i
+    const priv = deriveOtpPrivKey(dBytes, id)
+    return { id, keypair: { privateKey: priv, publicKey: x25519.getPublicKey(priv) } }
+  })
+}
+
+/** Extract the raw P-256 private scalar from a JWK string. */
+export function extractEcdhDBytes(ecdhJwk: string): Uint8Array {
+  const jwk = JSON.parse(ecdhJwk) as { d?: string }
+  if (!jwk.d) throw new Error('DR_DERIVE_MISSING_D')
+  return b64urlDecode(jwk.d)
+}
+
+/**
  * Derive a full DR identity bundle from the vault ECDH JWK string.
  * The `d` field of the JWK (P-256 private scalar) is the HKDF input key.
  */

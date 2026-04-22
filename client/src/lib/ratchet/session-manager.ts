@@ -192,6 +192,8 @@ export function hasSessionWrapKey(): boolean {
 let _ownIdentity: IdentityKeyPair | null = null
 let _ownSignedPreKey: KeyPair | null = null
 let _ownSignedPreKeyId = 1
+/** Derives an OTP private key by id — set from vault unlock. */
+let _ownOtpDeriver: ((id: number) => Uint8Array) | null = null
 
 /**
  * Called by vault unlock to register the local DR identity.
@@ -201,16 +203,19 @@ let _ownSignedPreKeyId = 1
 export function setOwnDrIdentity(
   identity: IdentityKeyPair,
   signedPreKey: KeyPair,
-  signedPreKeyId: number
+  signedPreKeyId: number,
+  otpDeriver?: (id: number) => Uint8Array
 ): void {
   _ownIdentity = identity
   _ownSignedPreKey = signedPreKey
   _ownSignedPreKeyId = signedPreKeyId
+  _ownOtpDeriver = otpDeriver ?? null
 }
 
 export function clearOwnDrIdentity(): void {
   _ownIdentity = null
   _ownSignedPreKey = null
+  _ownOtpDeriver = null
 }
 
 const WRAP_MAGIC = 0xF0 // leading byte marker "wrapped v1"
@@ -546,7 +551,13 @@ export async function acceptIncomingInit(
   if (existing) return
   if (!_ownIdentity || !_ownSignedPreKey) throw new Error('RATCHET_NO_IDENTITY')
   if (init.signedPrekeyId !== _ownSignedPreKeyId) throw new Error('RATCHET_UNKNOWN_SPK')
-  await acceptSession(ownerId, _ownIdentity, peerId, _ownSignedPreKey, null, {
+  let otpKeyPair: KeyPair | null = null
+  if (init.oneTimePrekeyId != null && _ownOtpDeriver) {
+    const priv = _ownOtpDeriver(init.oneTimePrekeyId)
+    const { x25519 } = await import('@noble/curves/ed25519')
+    otpKeyPair = { privateKey: priv, publicKey: x25519.getPublicKey(priv) }
+  }
+  await acceptSession(ownerId, _ownIdentity, peerId, _ownSignedPreKey, otpKeyPair, {
     initiatorIdentityExchange: b64urlDecode(init.initiatorIdentityExchange),
     initiatorIdentitySigning: b64urlDecode(init.initiatorIdentitySigning),
     initiatorEphemeralPublic: b64urlDecode(init.initiatorEphemeralPublic),

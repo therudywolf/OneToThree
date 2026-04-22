@@ -81,6 +81,8 @@
   - [x] этап 1.8 — narrow row conflict fix: `listTitle` приоритетный (`flex-1 truncate`), timestamp скрывается на `<sm`, чтобы не конфликтовать с badges
   - [x] этап 1.9 — calls touch polish: в `active-call-overlay` header controls в tile доступны на mobile без hover
   - [x] этап 1.10 — full-product mobile parity: `admin/page` таблицы прокручиваемы по X, row actions не скрыты на mobile; `start-guide` получил md3 shell-aware оформление
+  - [x] этап 1.11 — `group-call-screen` control bar edge-safe на mobile + touch-first размеры кнопок/aria-label
+  - [x] этап 1.12 — `settings-modal` tab-strip адаптирован для mobile (`overflow-x-auto`, `min-h-11`, no-wrap labels)
 
 ---
 
@@ -223,6 +225,7 @@
 | 2026-04-22 | [x] UI quick-fix: устранён конфликт `name + badges + time` на узких экранах — имя приоритетно, timestamp скрыт на `<sm` |
 | 2026-04-22 | [x] UI quick-fix: touch-доступность `active-call-overlay` (tile header controls видимы на mobile), mobile readability `admin/page` (X-scroll таблиц + action visibility), md3 parity для `start-guide` |
 | 2026-04-22 | [x] Верификация UI-batch: `npm run typecheck -w project-13-client` и `npm run lint -w project-13-client` — PASS |
+| 2026-04-22 | [x] UI quick-fix: `group-call-screen` mobile control bar получил edge-safe layout + унифицированные touch-target кнопок; `settings-modal` tabs переведены в горизонтальный mobile strip с устойчивыми размерами |
 
 ---
 

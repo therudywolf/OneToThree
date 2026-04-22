@@ -425,8 +425,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const discoverableOn = discoverable === true
   const ghostOn = hidePresence === true
   const settingsBtn = isMd3
-    ? 'rounded-full border border-[color-mix(in_srgb,var(--on-surface)_18%,transparent)] px-4 py-2 text-[13px] font-medium tracking-normal transition-colors'
-    : 'border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
+    ? 'min-h-11 whitespace-nowrap rounded-full border border-[color-mix(in_srgb,var(--on-surface)_18%,transparent)] px-4 py-2 text-[13px] font-medium tracking-normal transition-colors'
+    : 'min-h-11 whitespace-nowrap border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
   const resolvedTheme = resolveThemeAppearance({
     theme,
     shellMode,
@@ -466,7 +466,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         </header>
 
         {/* ── Tabs ── */}
-        <div className={`flex shrink-0 flex-col gap-2 border-b py-2 sm:flex-row sm:flex-wrap sm:overflow-x-auto ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
+        <div className={`custom-scrollbar flex shrink-0 items-center gap-2 overflow-x-auto border-b py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
           {(['main', 'chat', 'profile', 'folders', 'security', 'media', 'devices'] as const).map((tab) => (
             <button key={tab} type="button" onClick={() => setSettingsTab(tab)}
               className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${

@@ -109,6 +109,11 @@ Last updated: 2026-04-22c (UI/UX quick-fix only session)
 - Исправления сделаны только в UI-компонентах `client/src/components/chat/chat-row-context-menu.tsx` и `client/src/components/chat/chat-sidebar.tsx`.
 - Для мобильного/тач UX: action-зона строки чата теперь также видна у **активного** чата без hover.
 - Мелкая полировка строки чата: timestamp получил `tabular-nums + truncate`, unread badge выровнен фиксированной min-width.
+- Узкие экраны: в `chat row` имя теперь имеет приоритет (`min-w-0 flex-1 truncate`), а timestamp скрывается на `<sm`, чтобы не конфликтовать с бейджами/иконками.
+- Calls touch UX: верхний статус-бар `PeerTile` теперь всегда видим на mobile/touch (не только через hover), чтобы fullscreen control был доступен без мыши.
+- Admin UX на mobile: обе таблицы получили `overflow-x-auto` + `min-width`, а action-кнопки в строках всегда видимы на мобильных (без зависимости от hover).
+- Onboarding parity: `StartGuide` получил shell-aware стили для `md3` (типографика, кнопки, surface/elevation), terminal стиль сохранён отдельно.
+- Валидация после батча: `npm run typecheck -w project-13-client` и `npm run lint -w project-13-client` — PASS.
 - **Сознательно не трогали** крипту, DR, invite runtime, fanout и другие сложные задачи (оставлено следующей нейросети).
 
 ## Лог (этот цикл)

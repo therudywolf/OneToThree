@@ -207,8 +207,8 @@ export default function AdminPage() {
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-neon-red">:: NODE_REGISTRY</h2>
         </div>
         
-        <div className="overflow-hidden border border-border-strong bg-void shadow-2xl">
-          <table className="w-full text-left">
+        <div className="overflow-x-auto border border-border-strong bg-void shadow-2xl">
+          <table className="min-w-[52rem] w-full text-left">
             <thead>
               <tr className="border-b border-border-strong bg-void/50 text-[9px] uppercase tracking-[0.2em] text-text-muted">
                 <th className="px-4 py-3 font-normal">IDENTIFIER</th>
@@ -246,7 +246,7 @@ export default function AdminPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2 opacity-40 group-hover:opacity-100 transition-opacity">
+                      <div className="flex gap-2 opacity-100 transition-opacity md:opacity-40 md:group-hover:opacity-100">
                         <button
                           disabled={lockId === node.id || isSelf}
                           onClick={() => toggleIsolation(node)}
@@ -278,8 +278,8 @@ export default function AdminPage() {
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-text-muted/70">:: INCIDENT_QUEUE</h2>
         </div>
         
-        <div className="overflow-hidden border border-border-strong bg-void">
-          <table className="w-full text-left">
+        <div className="overflow-x-auto border border-border-strong bg-void">
+          <table className="min-w-[48rem] w-full text-left">
             <thead>
               <tr className="border-b border-border-strong bg-void/50 text-[9px] uppercase tracking-[0.2em] text-text-muted">
                 <th className="px-4 py-3 font-normal">ID</th>

@@ -116,7 +116,8 @@ export async function cryptoLogin(
     const parsed = parseVaultPlaintext(plain)
     if (!parsed)                  return { ok: false, error: 'INVALID_VAULT_FORMAT' }
     if (parsed.kind === 'LEGACY') return { ok: false, error: 'LEGACY_VAULT_REQUIRES_REREGISTER' }
-    ecdsaPrivateJwk = parsed.ecdsaJwk
+    ecdsaPrivateJwk        = parsed.ecdsaJwk
+    ecdhPrivateJwkForVault = parsed.ecdhJwk
   }
 
   let nonce: string
@@ -159,8 +160,12 @@ export async function cryptoLogin(
       const inner = stringifyVaultKeyringV2(ecdsaPrivateJwk, ecdhPrivateJwkForVault)
       const blob  = await wrapPrivateJwkWithPin(inner, vaultPassword)
       persistVaultBlobByLoginUsername(canonicalHandle, blob)
-      // Upload ECDH public key immediately so peers can DM this user without
-      // waiting for vault unlock.
+    }
+
+    // Upload ECDH public key so this device is reachable for fan-out
+    // encryption. On register: freshly generated key. On login: the key
+    // already stored in the vault (captured earlier in ecdhPrivateJwkForVault).
+    if (ecdhPrivateJwkForVault) {
       try {
         await patchMyEcdhPublicKey(exportEcdhPublicJwkFromPrivateKeyString(ecdhPrivateJwkForVault))
       } catch { /* non-fatal */ }

@@ -54,6 +54,11 @@ const en = {
 
   'call.openChannels': 'Calls',
   'call.mediaPermissionDenied': 'Camera and microphone unavailable. Check browser settings.',
+  'call.incomingCall': 'Incoming Call',
+  'call.accept': 'Accept',
+  'call.decline': 'Decline',
+  'call.typeVideo': 'Video + Audio',
+  'call.typeAudio': 'Audio Only',
 
   // [CALL UI]
   'call.screenSharing': 'Screen Share',
@@ -143,6 +148,7 @@ const en = {
   'login.tosRegisterTitle': 'Terms of Service',
   'login.tosRegisterBody': `Non-Custodial: We physically cannot access your keys. If you lose your password, your history is gone permanently.\n\nLiability: This is a private service. You operate at your own risk. We do not moderate content. You are solely responsible for your data.\n\nAs-Is: Service provided without warranty. Data loss is possible.\n\nThe administration reserves the right to remove any account without warning.`,
   'login.signIn': 'Sign In',
+  'login.generatingKeys': 'Generating keys…',
   'login.register': 'Register',
   'login.sessionExpired': 'Session expired. Please sign in again.',
   'login.clearSession': 'Having trouble? Clear session',

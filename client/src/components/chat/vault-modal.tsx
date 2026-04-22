@@ -293,11 +293,11 @@ export function VaultModal({ userId, displayHandle }: Props) {
               aria-label="UNLOCK"
               className="h-10 w-full rounded-full bg-[var(--neon-red)] px-4 text-[var(--surface)] shadow-[var(--md3-elevation-2)] transition-colors hover:brightness-110 disabled:opacity-50"
             >
-              {t('login.signIn')}
+              {busy ? t('login.generatingKeys') : t('login.signIn')}
             </button>
           ) : (
             <TerminalGlitchButton type="submit" disabled={busy} aria-label="UNLOCK" className="w-full">
-              {t('login.signIn')}
+              {busy ? `[ ${t('login.generatingKeys')} ]` : t('login.signIn')}
             </TerminalGlitchButton>
           )}
         </form>

@@ -73,9 +73,20 @@ export async function encryptFanout(
       return { device_id: dev.device_id, ciphertext, iv } satisfies FanoutSlot
     })
   )
-  return results
+  const failed = results
+    .map((r, i) => ({ r, dev: targetDevices[i] }))
+    .filter(({ r }) => r.status === 'rejected')
+  if (failed.length > 0) {
+    const ids = failed.map(({ dev }) => dev.device_id).join(', ')
+    console.warn(`[fanout] ${failed.length}/${results.length} slots failed to encrypt (devices: ${ids})`)
+  }
+  const slots = results
     .filter((r): r is PromiseFulfilledResult<FanoutSlot> => r.status === 'fulfilled')
     .map((r) => r.value)
+  if (slots.length === 0 && targetDevices.length > 0) {
+    throw new Error('FANOUT_ALL_SLOTS_FAILED')
+  }
+  return slots
 }
 
 /**

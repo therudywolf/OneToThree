@@ -107,16 +107,34 @@ export async function registerOutboxSync(): Promise<void> {
 
 let flushingOutbox = false
 
+const MAX_RETRIES = 10
+const MAX_BACKOFF_MS = 60_000
+/** In-memory retry state; resets on page reload (Background Sync handles persistence). */
+const retryState = new Map<string, { retries: number; nextRetry: number }>()
+
+function getBackoffMs(retries: number): number {
+  return Math.min(1000 * 2 ** retries, MAX_BACKOFF_MS)
+}
+
 /**
  * Retry pending outbox sends after transport comes back (WebSocket `open`,
- * `window` `online`). Stops at the first failing send.
+ * `window` `online`). Processes each entry independently with exponential
+ * backoff; one failing entry does not block the rest.
  */
 export async function flushOutboxPending(): Promise<void> {
   if (flushingOutbox || typeof indexedDB === 'undefined') return
   flushingOutbox = true
   try {
     const entries = await readOutbox()
+    const now = Date.now()
     for (const entry of entries) {
+      const state = retryState.get(entry.id) ?? { retries: 0, nextRetry: 0 }
+      if (state.retries >= MAX_RETRIES) {
+        await removeOutboxEntry(entry.id)
+        retryState.delete(entry.id)
+        continue
+      }
+      if (state.nextRetry > now) continue
       try {
         const res = await fetch(`${API_URL}/messages/send`, {
           method: 'POST',
@@ -126,11 +144,16 @@ export async function flushOutboxPending(): Promise<void> {
         })
         if (res.ok) {
           await removeOutboxEntry(entry.id)
+          retryState.delete(entry.id)
         } else {
-          break
+          state.retries++
+          state.nextRetry = Date.now() + getBackoffMs(state.retries)
+          retryState.set(entry.id, state)
         }
       } catch {
-        break
+        state.retries++
+        state.nextRetry = Date.now() + getBackoffMs(state.retries)
+        retryState.set(entry.id, state)
       }
     }
   } finally {

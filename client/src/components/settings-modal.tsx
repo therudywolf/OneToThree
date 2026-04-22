@@ -561,7 +561,17 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         <p className="text-[9px] text-neon-cyan/90">{t('settings.totpScanQr')}</p>
                         <img src={totpSetup.qr_data_url} alt="" className="mx-auto border border-neon-cyan/40 bg-surface p-1" width={192} height={192} />
                         <p className="text-[9px] text-danger">{t('settings.totpSecretManual')}</p>
-                        <p className="break-all font-mono text-[9px] text-neon-cyan/80 overflow-x-hidden">{totpSetup.secret}</p>
+                        <div className="flex items-start gap-2">
+                          <p className="break-all font-mono text-[9px] text-neon-cyan/80 overflow-x-hidden flex-1 select-all">{totpSetup.secret}</p>
+                          <button
+                            type="button"
+                            onClick={() => void navigator.clipboard.writeText(totpSetup.secret)}
+                            className="shrink-0 border border-neon-cyan/40 px-2 py-0.5 font-mono text-[8px] uppercase text-neon-cyan/70 hover:bg-neon-cyan/10"
+                            title="Copy secret"
+                          >
+                            COPY
+                          </button>
+                        </div>
                         <label className="terminal-label" htmlFor="totp-enable-code">{t('settings.totpEnableCode')}</label>
                         <input id="totp-enable-code" className="terminal-input" inputMode="numeric" maxLength={6}
                           value={totpEnableCode}

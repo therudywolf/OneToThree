@@ -4,6 +4,8 @@ import { useEffect } from 'react'
 import { Phone, PhoneOff } from 'lucide-react'
 import { startIncomingRingtone } from '@/lib/call-ringtones'
 import { useCallStore } from '@/store/callStore'
+import { useThemeStore } from '@/store/themeStore'
+import { useTranslation } from '@/hooks/use-translation'
 import { PortalRoot } from '@/components/portal-root'
 
 type Props = {
@@ -13,6 +15,8 @@ type Props = {
 
 export function IncomingCallModal({ onAccept, onReject }: Props) {
   const incoming = useCallStore((s) => s.incomingCall)
+  const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (!incoming) return
@@ -23,6 +27,54 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
   }, [incoming])
 
   if (!incoming) return null
+
+  if (isMd3) {
+    return (
+      <PortalRoot>
+        <div
+          className="fixed inset-0 z-[250] flex items-end justify-center bg-black/50 px-4 pb-8 backdrop-blur-md sm:items-center sm:pb-0"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('call.incomingCall')}
+        >
+          <div className="w-full max-w-sm rounded-[28px] bg-[var(--surface-container-high)] p-6 shadow-[var(--md3-elevation-3)]">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--error-container)]">
+                <Phone className="h-5 w-5 text-[var(--on-error-container)]" />
+              </span>
+              <div>
+                <p className="text-sm font-medium text-[var(--on-surface)]">{t('call.incomingCall')}</p>
+                <p className="text-xs text-[var(--on-surface-variant)]">{incoming.peerId.slice(0, 12)}…</p>
+              </div>
+            </div>
+            <p className="mb-6 text-xs text-[var(--on-surface-variant)]">
+              {incoming.isVideo ? t('call.typeVideo') : t('call.typeAudio')}
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onAccept}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[var(--primary)] py-3 text-sm font-medium text-[var(--on-primary)] transition-opacity hover:opacity-90"
+                aria-label={t('call.accept')}
+              >
+                <Phone className="h-4 w-4" />
+                {t('call.accept')}
+              </button>
+              <button
+                type="button"
+                onClick={onReject}
+                className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[var(--error)] py-3 text-sm font-medium text-[var(--on-error)] transition-opacity hover:opacity-90"
+                aria-label={t('call.decline')}
+              >
+                <PhoneOff className="h-4 w-4" />
+                {t('call.decline')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </PortalRoot>
+    )
+  }
 
   return (
     <PortalRoot>
@@ -44,7 +96,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
                 SYS.ALERT // INBOUND_LINK
               </p>
             </div>
-            
+
             <div className="mt-5 space-y-1">
               <p className="text-[9px] uppercase tracking-widest text-text-muted/70">
                 ORIGIN_NODE
@@ -78,7 +130,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
                 ACCEPT
               </span>
             </button>
-            
+
             <button
               type="button"
               onClick={onReject}

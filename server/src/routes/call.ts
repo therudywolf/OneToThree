@@ -16,11 +16,12 @@
  * fall back to the mesh WebRTC path. This intentional fail-open keeps the
  * messenger usable when LiveKit is not yet deployed.
  */
-import { createHmac } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { readSecret } from '../lib/read-secret.js'
+import { getRedis } from '../lib/redis.js'
 
 const tokenBodySchema = z.object({
   room: z
@@ -52,6 +53,8 @@ function signLivekitToken(
   const sig = createHmac('sha256', apiSecret).update(signingInput).digest()
   return `${signingInput}.${b64url(sig)}`
 }
+
+const callSessionFallback = new Map<string, string>()
 
 export const callRoutes: FastifyPluginAsync = async (app) => {
   app.post('/call/token', async (req, reply) => {
@@ -91,11 +94,32 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       },
     })
 
-    // Derive a deterministic 32-byte E2EE room key from the API secret + room ID.
-    // All participants who obtain a token for this room receive the same key via
-    // this authenticated endpoint, enabling Insertable Streams E2EE in the browser.
+    // Derive E2EE room key from the API secret + room ID + per-session UUID.
+    // The session UUID is stored in Redis with a TTL so each call activation
+    // gets a fresh key (forward secrecy: former participants cannot decrypt
+    // future calls in the same room).
+    const redisKey = `call:session:${parsed.data.room}`
+    const redis = getRedis()
+    const CALL_SESSION_TTL = 60 * 60 * 8 // 8 hours
+    let callSessionId: string
+    if (redis) {
+      const existing = await redis.get(redisKey)
+      if (existing) {
+        callSessionId = existing
+      } else {
+        callSessionId = randomUUID()
+        await redis.set(redisKey, callSessionId, 'EX', CALL_SESSION_TTL)
+      }
+    } else {
+      // No Redis — fall back to a per-process map (single-node dev only)
+      callSessionId = callSessionFallback.get(parsed.data.room) ?? (() => {
+        const id = randomUUID()
+        callSessionFallback.set(parsed.data.room, id)
+        return id
+      })()
+    }
     const e2eeKey = createHmac('sha256', apiSecret)
-      .update(`e2ee:${parsed.data.room}`)
+      .update(`e2ee:${parsed.data.room}:${callSessionId}`)
       .digest('base64')
 
     reply.header('Cache-Control', 'no-store')

@@ -5,8 +5,13 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { stickerPacks, stickers } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
-import { createS3Client, createS3ClientForPresigning, presignGetObject } from '../lib/s3.js'
-import { PutObjectCommand } from '@aws-sdk/client-s3'
+import {
+  createS3Client,
+  createS3ClientForPresigning,
+  ensureBucketExists,
+  presignGetObject,
+} from '../lib/s3.js'
+import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 
 const MINIO_BUCKET = process.env.MINIO_BUCKET ?? 'project13-media'
 const TG_API = 'https://api.telegram.org'
@@ -112,6 +117,55 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     const s3 = createS3ClientForPresigning()
     const url = await presignGetObject({ client: s3, bucket: MINIO_BUCKET, key: row.mediaKey })
     return reply.send({ url })
+  })
+
+  /**
+   * GET /api/stickers/media?media_key=...
+   * Same access rules as asset-url, but streams bytes from MinIO through the API.
+   * Used by the web client when page CSP blocks direct <img>/<video> to presigned S3 URLs.
+   */
+  app.get('/media', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const q = z.object({ media_key: z.string().min(1).max(512) }).safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const mediaKey = q.data.media_key
+
+    const [row] = await db
+      .select({ mediaKey: stickers.mediaKey })
+      .from(stickers)
+      .where(eq(stickers.mediaKey, mediaKey))
+      .limit(1)
+
+    if (!row) return reply.status(404).send({ error: 'STICKER_NOT_FOUND' })
+
+    const s3 = createS3Client()
+    await ensureBucketExists(s3, MINIO_BUCKET)
+
+    let body: unknown
+    try {
+      const out = await s3.send(
+        new GetObjectCommand({ Bucket: MINIO_BUCKET, Key: row.mediaKey })
+      )
+      body = out.Body
+    } catch (err: unknown) {
+      const name =
+        err && typeof err === 'object' && 'name' in err ? String((err as { name?: string }).name) : ''
+      if (name === 'NoSuchKey' || name === 'NotFound') {
+        return reply.status(404).send({ error: 'STICKER_OBJECT_NOT_FOUND' })
+      }
+      request.log.error({ err }, 'sticker media get failed')
+      return reply.status(502).send({ error: 'STICKER_MEDIA_FETCH_FAILED' })
+    }
+
+    if (body == null) return reply.status(404).send({ error: 'STICKER_BODY_EMPTY' })
+
+    const ext = row.mediaKey.split('.').pop() ?? 'bin'
+    void reply.header('Content-Type', mimeForExt(ext))
+    void reply.header('Cache-Control', 'private, max-age=120')
+    return reply.send(body)
   })
 
   /** GET /api/stickers/packs — list all packs owned by current user + public packs */

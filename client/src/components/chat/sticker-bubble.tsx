@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { StickerEnvelopeV1 } from '@/lib/attachment-envelope'
-import { fetchStickerAssetUrl } from '@/lib/api/stickers'
+import { loadStickerDisplayUrl } from '@/lib/api/stickers'
 
 type Props = { envelope: StickerEnvelopeV1 }
 
@@ -21,7 +21,7 @@ export function StickerBubble({ envelope }: Props) {
       setUrl(key)
       return
     }
-    void fetchStickerAssetUrl(key)
+    void loadStickerDisplayUrl(key)
       .then((u) => {
         if (!cancelled) setUrl(u)
       })

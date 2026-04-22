@@ -118,7 +118,7 @@ export function ComposerPickerPanel({
       key={id}
       type="button"
       onClick={() => setTab(id)}
-      className={`rounded px-2 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+      className={`inline-flex h-9 items-center justify-center rounded px-3 font-mono text-[10px] uppercase tracking-widest transition-colors ${
         tab === id
           ? isTerminal
             ? 'bg-neon-cyan/15 text-neon-cyan'
@@ -162,13 +162,13 @@ export function ComposerPickerPanel({
                 value={importName}
                 onChange={(e) => setImportName(e.target.value)}
                 placeholder={t('composer.stickerImportPlaceholder')}
-                className="min-w-[8rem] flex-1 rounded border border-neon-cyan/25 bg-void/40 px-2 py-1 font-mono text-[11px] text-[color:var(--on-surface)] placeholder:text-text-muted"
+                className="min-w-[8rem] h-10 flex-1 rounded border border-neon-cyan/25 bg-void/40 px-3 font-mono text-[11px] text-[color:var(--on-surface)] placeholder:text-text-muted"
               />
               <button
                 type="button"
                 disabled={importBusy || !importName.trim()}
                 onClick={() => void onImport()}
-                className="shrink-0 rounded border border-neon-cyan/40 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+                className="inline-flex h-10 shrink-0 items-center justify-center rounded border border-neon-cyan/40 px-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
               >
                 {importBusy ? '…' : t('composer.stickerImport')}
               </button>
@@ -192,7 +192,7 @@ export function ComposerPickerPanel({
                     key={p.id}
                     type="button"
                     onClick={() => setSelectedPackId(p.id)}
-                    className={`max-w-[10rem] truncate rounded px-2 py-0.5 font-mono text-[10px] ${
+                    className={`inline-flex h-8 max-w-[10rem] items-center truncate rounded px-3 font-mono text-[10px] ${
                       selectedPackId === p.id
                         ? 'bg-neon-cyan/20 text-neon-cyan'
                         : 'bg-void/50 text-text-muted hover:text-neon-cyan/90'

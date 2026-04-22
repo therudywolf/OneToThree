@@ -20,6 +20,9 @@ Last updated: 2026-04-22
 - Sidebar button-size normalization (phase 1.1) completed:
   - row action buttons normalized to fixed width targets
   - direct-open action/input and lower CTA buttons normalized to `h-10`.
+- Button-size normalization (phase 1.2) completed:
+  - `composer-picker-panel` tabs/import controls normalized to consistent heights
+  - `chat-terminal` floating scroll button normalized.
 - Sticker integration:
   - Server: `server/src/routes/stickers.ts`, wired in `server/src/app.ts`.
   - API: packs list/detail/items, Telegram import, `GET /api/stickers/asset-url`.
@@ -47,7 +50,7 @@ Last updated: 2026-04-22
 4. UI parity with Telegram Desktop is partial:
    - composer improved
    - many layout/interaction polish tasks remain in `WORKPLAN.md`
-   - button-size unification is in progress (sidebar done; header/main-panel controls still to harmonize).
+   - button-size unification is in progress (sidebar + composer done; dock/modal/mobile chips still to harmonize).
 5. GIF provider integration (Tenor/Giphy) not started.
 6. TGS/Lottie runtime renderer not integrated yet (currently fallback for tgs/lottie).
 7. Double Ratchet send path is still incomplete (feature-flagged components exist).

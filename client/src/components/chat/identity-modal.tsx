@@ -16,6 +16,12 @@ import {
   revokeContact,
 } from '@/lib/contacts-store'
 import { useTranslation } from '@/hooks/use-translation'
+import { computeSafetyNumber } from '@/lib/ratchet/safety-number'
+import {
+  sessionFingerprint,
+  getSessionPeerIdentity,
+  clearDrSession,
+} from '@/lib/ratchet/session-manager'
 
 /**
  * ONETOTHREE :: NODE_INTEGRITY_CHECK
@@ -28,6 +34,8 @@ type Props = {
   peerUsername: string
   peerEcdhPublicKeyJwk: string
   myEcdhPublicKeyJwk: string
+  /** Local owner user id — used for DR session fingerprint lookup. */
+  myUserId?: string
   onClose: () => void
   onTrustChanged?: (verified: boolean) => void
   onContactApprovedChanged?: (approved: boolean) => void
@@ -38,51 +46,73 @@ export function IdentityModal({
   peerUsername,
   peerEcdhPublicKeyJwk,
   myEcdhPublicKeyJwk,
+  myUserId,
   onClose,
   onTrustChanged,
   onContactApprovedChanged,
 }: Props) {
   const { t } = useTranslation()
   const [nodeFingerprint, setNodeFingerprint] = useState('...')
+  const [drSafetyNumber, setDrSafetyNumber] = useState<string | null>(null)
   const [keyHash, setKeyHash] = useState('')
   const [isTrusted, setIsTrusted] = useState(false)
   const [isApproved, setIsApproved] = useState(false)
   const [isCompromised, setIsCompromised] = useState(false)
+  const [tofuChanged, setTofuChanged] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setIsScanning(true)
-    
+
     void (async () => {
       try {
         const peerJwk = JSON.parse(peerEcdhPublicKeyJwk) as JsonWebKey
         const myJwk = JSON.parse(myEcdhPublicKeyJwk) as JsonWebKey
-        const [fingerprint, hash] = await Promise.all([
+        const [fp, hash] = await Promise.all([
           generateSafetyNumber(myJwk, peerJwk),
           hashPublicKeyJwk(peerJwk),
         ])
-        
+
         if (cancelled) return
-        
-        setNodeFingerprint(fingerprint)
+
+        setNodeFingerprint(fp)
         setKeyHash(hash)
-        
+
         const { verified, revokedByKeyChange } = resolveTrustStatus(peerUserId, hash)
         setIsTrusted(verified)
         setIsCompromised(revokedByKeyChange)
         setIsApproved(isApprovedContact(peerUserId))
+
+        // DR safety number (if a session exists)
+        if (myUserId) {
+          const fpBytes = await sessionFingerprint(myUserId, peerUserId)
+          if (fpBytes && !cancelled) {
+            const drNum = computeSafetyNumber(fpBytes.slice(0, 32), fpBytes.slice(32, 64))
+            setDrSafetyNumber(drNum)
+          }
+          // TOFU: check if server bundle identity differs from session identity
+          const storedIdentity = await getSessionPeerIdentity(myUserId, peerUserId)
+          if (storedIdentity) {
+            try {
+              const { fetchBundle } = await import('@/lib/api/keys')
+              const bundle = await fetchBundle(peerUserId)
+              // server returns base64url; storedIdentity is also base64url
+              if (bundle.identity.exchange_public_key !== storedIdentity && !cancelled) setTofuChanged(true)
+            } catch { /* non-fatal */ }
+          }
+        }
       } catch (err) {
         console.error('[SYS.CRYPTO] Integrity check failed:', err)
       } finally {
         if (!cancelled) setIsScanning(false)
       }
     })()
-    
+
     return () => {
       cancelled = true
     }
-  }, [peerEcdhPublicKeyJwk, myEcdhPublicKeyJwk, peerUserId])
+  }, [peerEcdhPublicKeyJwk, myEcdhPublicKeyJwk, peerUserId, myUserId])
 
   const toggleTrustProtocol = () => {
     if (!keyHash) return
@@ -155,10 +185,47 @@ export function IdentityModal({
             </p>
           </div>
 
+          {/* DR_SAFETY_NUMBER */}
+          {drSafetyNumber && (
+            <div className="space-y-1">
+              <p className="text-[9px] uppercase tracking-widest text-text-muted/70">
+                DR_SAFETY_NUMBER
+              </p>
+              <div className="border border-border-strong bg-void px-4 py-2">
+                <pre className="font-mono text-[11px] tracking-widest text-neon-cyan/80 whitespace-pre-wrap break-all">
+                  {drSafetyNumber}
+                </pre>
+              </div>
+            </div>
+          )}
+
           {/* ALERT_SECTION */}
           {isCompromised && (
             <div className="border border-neon-red/50 bg-neon-red/5 p-3 font-mono text-[10px] text-neon-red animate-pulse">
               {t('identity.compromisedAlert')}
+            </div>
+          )}
+
+          {/* TOFU_CHANGE_ALERT */}
+          {tofuChanged && (
+            <div className="space-y-2 border border-neon-red/70 bg-neon-red/5 p-3">
+              <p className="font-mono text-[10px] text-neon-red">
+                ⚠ IDENTITY_KEY_CHANGED — peer&apos;s DR key differs from stored session.
+                Verify with the peer before accepting.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!myUserId) return
+                  void clearDrSession(myUserId, peerUserId).then(() => {
+                    setTofuChanged(false)
+                    setDrSafetyNumber(null)
+                  })
+                }}
+                className="h-8 border border-neon-red px-3 font-mono text-[9px] uppercase tracking-widest text-neon-red hover:bg-neon-red hover:text-text-primary"
+              >
+                Accept new key &amp; reset session
+              </button>
             </div>
           )}
 

@@ -632,26 +632,26 @@ export function ChatSidebar({
             onOpenSettings?.()
             onNavigate?.()
           }}
-          className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+          className={`inline-flex items-center justify-center transition-colors ${
             isMd3
-              ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
-              : 'border border-neon-cyan/25 text-neon-cyan/75 hover:border-neon-cyan hover:text-neon-cyan'
+              ? 'h-8 w-8 rounded-full text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+              : 'h-10 w-10 rounded-xl border border-neon-cyan/25 text-neon-cyan/75 hover:border-neon-cyan hover:text-neon-cyan'
           }`}
         >
-          <Settings className="h-4 w-4" />
+          <Settings className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
         </button>
         <button
           type="button"
           title={pushEnabled ? t('settings.pushDisable') : t('settings.pushEnable')}
           disabled={pushBusy || !supportsWebPush()}
           onClick={() => { void togglePushInRail() }}
-          className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors disabled:opacity-40 ${
+          className={`inline-flex items-center justify-center transition-colors disabled:opacity-40 ${
             isMd3
-              ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
-              : 'border border-neon-cyan/25 text-neon-cyan/75 hover:border-neon-cyan hover:text-neon-cyan'
+              ? 'h-8 w-8 rounded-full text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+              : 'h-10 w-10 rounded-xl border border-neon-cyan/25 text-neon-cyan/75 hover:border-neon-cyan hover:text-neon-cyan'
           }`}
         >
-          {pushEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+          {pushEnabled ? <Bell className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} /> : <BellOff className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />}
         </button>
         <button
           type="button"
@@ -660,13 +660,13 @@ export function ChatSidebar({
             onLockVault?.()
             onNavigate?.()
           }}
-          className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+          className={`inline-flex items-center justify-center transition-colors ${
             isMd3
-              ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
-              : 'border border-neon-red/30 text-neon-red/80 hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red'
+              ? 'h-8 w-8 rounded-full text-[color-mix(in_srgb,var(--danger)_80%,var(--on-surface-variant))] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]'
+              : 'h-10 w-10 rounded-xl border border-neon-red/30 text-neon-red/80 hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red'
           }`}
         >
-          <Lock className="h-4 w-4" />
+          <Lock className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
         </button>
       </div>
       </div>

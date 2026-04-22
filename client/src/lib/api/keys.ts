@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 /**
  * Client for /api/keys/* (Double Ratchet / X3DH key directory).
  *
@@ -45,7 +46,7 @@ async function postJson<T>(
   path: string,
   body: unknown
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(`${API_URL}${path}`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -59,7 +60,7 @@ async function postJson<T>(
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_URL}${path}`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
   if (!res.ok) {
     throw new Error((data.error as string) ?? 'KEYS_REQUEST_FAILED')

@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 import { canonicalUserId } from '@/lib/user-id'
 
@@ -11,7 +12,7 @@ export type SearchUserRow = {
 export async function searchUsers(query: string): Promise<SearchUserRow[]> {
   const q = query.trim()
   if (!q) return []
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/users/search?q=${encodeURIComponent(q)}`,
     { credentials: 'include' }
   )
@@ -46,7 +47,7 @@ export async function fetchUserPresence(
     new Set(userIds.map((id) => canonicalUserId(id)))
   )
   if (unique.length === 0) return []
-  const res = await fetch(`${API_URL}/users/presence`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/presence`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -67,7 +68,7 @@ export async function lookupUsers(userIds: string[]): Promise<UserLookupRow[]> {
     new Set(userIds.map((id) => canonicalUserId(id)))
   )
   if (unique.length === 0) return []
-  const res = await fetch(`${API_URL}/users/lookup`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/lookup`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -96,7 +97,7 @@ export type UserProfile = {
 }
 
 export async function fetchUserProfile(username: string): Promise<UserProfile> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/users/${encodeURIComponent(username)}/profile`,
     { credentials: 'include' }
   )
@@ -116,7 +117,7 @@ export type ProfilePatch = {
 }
 
 export async function patchMyProfile(patch: ProfilePatch): Promise<void> {
-  const res = await fetch(`${API_URL}/users/me`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/me`, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -131,7 +132,7 @@ export async function patchMyProfile(patch: ProfilePatch): Promise<void> {
 export async function patchMyEcdhPublicKey(
   ecdh_public_key_jwk: string
 ): Promise<void> {
-  const res = await fetch(`${API_URL}/users/me`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/me`, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

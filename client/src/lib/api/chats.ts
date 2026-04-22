@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 import { canonicalUserId } from '@/lib/user-id'
 
@@ -67,7 +68,7 @@ export type ChatDetailPayload = {
 }
 
 export async function fetchOrCreateSelfChat(): Promise<ApiChatRow> {
-  const res = await fetch(`${API_URL}/chats/self`, { credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_URL}/chats/self`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as {
     chat?: ApiChatRow
     error?: string
@@ -82,7 +83,7 @@ export async function fetchOrCreateSelfChat(): Promise<ApiChatRow> {
 }
 
 export async function fetchChatsList(): Promise<ApiChatRow[]> {
-  const res = await fetch(`${API_URL}/chats`, { credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_URL}/chats`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as {
     chats?: ApiChatRow[]
     error?: string
@@ -94,7 +95,7 @@ export async function fetchChatsList(): Promise<ApiChatRow[]> {
 }
 
 export async function fetchFavoriteChatsList(): Promise<ApiChatRow[]> {
-  const res = await fetch(`${API_URL}/chats/favorites`, { credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_URL}/chats/favorites`, { credentials: 'include' })
   const data = (await res.json().catch(() => ({}))) as {
     chats?: ApiChatRow[]
     error?: string
@@ -106,7 +107,7 @@ export async function fetchFavoriteChatsList(): Promise<ApiChatRow[]> {
 }
 
 export async function setChatFavorite(chatId: string, favorite: boolean): Promise<void> {
-  const res = await fetch(`${API_URL}/chats/${chatId}/favorite`, {
+  const res = await fetchWithTimeout(`${API_URL}/chats/${chatId}/favorite`, {
     method: favorite ? 'POST' : 'DELETE',
     credentials: 'include',
   })
@@ -124,7 +125,7 @@ export async function setChatMute(
   chatId: string,
   mutedUntil: string | 'forever' | null
 ): Promise<{ muted_until: string | null }> {
-  const res = await fetch(`${API_URL}/chats/${chatId}/mute`, {
+  const res = await fetchWithTimeout(`${API_URL}/chats/${chatId}/mute`, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -142,7 +143,7 @@ export async function createDirectE2EChat(
   _myUserId: string,
   peerUserId: string
 ): Promise<ApiChatRow> {
-  const res = await fetch(`${API_URL}/chats`, {
+  const res = await fetchWithTimeout(`${API_URL}/chats`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -168,7 +169,7 @@ export async function createGroupE2EChat(params: {
   name?: string | null
   members: Array<{ userId: string; encryptedGroupKey: string }>
 }): Promise<ApiChatRow> {
-  const res = await fetch(`${API_URL}/chats`, {
+  const res = await fetchWithTimeout(`${API_URL}/chats`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -198,7 +199,7 @@ export async function createPublicOpenChat(params: {
   name: string
   memberIds: string[]
 }): Promise<ApiChatRow> {
-  const res = await fetch(`${API_URL}/chats`, {
+  const res = await fetchWithTimeout(`${API_URL}/chats`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -225,7 +226,7 @@ export async function createChannelChat(params: {
   name: string
   memberIds: string[]
 }): Promise<ApiChatRow> {
-  const res = await fetch(`${API_URL}/chats`, {
+  const res = await fetchWithTimeout(`${API_URL}/chats`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -261,7 +262,7 @@ export async function fetchPeerIdsForChat(
 }
 
 export async function leaveChat(chatId: string): Promise<void> {
-  const r = await fetch(`${API_URL}/chats/${chatId}/leave`, {
+  const r = await fetchWithTimeout(`${API_URL}/chats/${chatId}/leave`, {
     method: 'POST',
     credentials: 'include',
   })
@@ -272,7 +273,7 @@ export async function leaveChat(chatId: string): Promise<void> {
 }
 
 export async function deleteChat(chatId: string): Promise<void> {
-  const r = await fetch(`${API_URL}/chats/${chatId}`, {
+  const r = await fetchWithTimeout(`${API_URL}/chats/${chatId}`, {
     method: 'DELETE',
     credentials: 'include',
   })
@@ -283,7 +284,7 @@ export async function deleteChat(chatId: string): Promise<void> {
 }
 
 export async function fetchChatDetail(chatId: string): Promise<ChatDetailPayload> {
-  const res = await fetch(`${API_URL}/chats/${chatId}`, {
+  const res = await fetchWithTimeout(`${API_URL}/chats/${chatId}`, {
     credentials: 'include',
   })
   const data = (await res.json().catch(() => ({}))) as
@@ -301,7 +302,7 @@ export async function ensureGroupInviteCode(
   chatId: string,
   opts?: { invite_one_time?: boolean }
 ): Promise<string> {
-  const res = await fetch(`${API_URL}/chats/${chatId}/invite`, {
+  const res = await fetchWithTimeout(`${API_URL}/chats/${chatId}/invite`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -325,7 +326,7 @@ export async function joinChatByInviteCode(code: string): Promise<{
   already_member: boolean
 }> {
   const trimmed = code.trim()
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/chats/join/${encodeURIComponent(trimmed)}`,
     { credentials: 'include' }
   )
@@ -348,7 +349,7 @@ export async function patchChatMemberRole(
   targetUserId: string,
   role: ChatMemberRole
 ): Promise<void> {
-  const r = await fetch(
+  const r = await fetchWithTimeout(
     `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}/role`,
     {
       method: 'PATCH',
@@ -368,7 +369,7 @@ export async function patchDiscussionChat(
   chatId: string,
   discussionChatId: string | null
 ): Promise<void> {
-  const r = await fetch(`${API_URL}/chats/${chatId}/discussion`, {
+  const r = await fetchWithTimeout(`${API_URL}/chats/${chatId}/discussion`, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -385,7 +386,7 @@ export async function patchChannelMemberFeedRole(
   targetUserId: string,
   role: ChannelFeedRole
 ): Promise<void> {
-  const r = await fetch(
+  const r = await fetchWithTimeout(
     `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}/channel-role`,
     {
       method: 'PATCH',
@@ -404,7 +405,7 @@ export async function kickChatMember(
   chatId: string,
   targetUserId: string
 ): Promise<void> {
-  const r = await fetch(
+  const r = await fetchWithTimeout(
     `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}`,
     {
       method: 'DELETE',
@@ -422,7 +423,7 @@ export async function uploadMemberWrappedGroupKey(
   targetUserId: string,
   encryptedGroupKeyBase64: string
 ): Promise<void> {
-  const r = await fetch(
+  const r = await fetchWithTimeout(
     `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}/wrapped-key`,
     {
       method: 'PUT',
@@ -441,7 +442,7 @@ export async function deleteMessage(
   messageId: string,
   forEveryone: boolean
 ): Promise<void> {
-  const r = await fetch(`${API_URL}/messages/${messageId}`, {
+  const r = await fetchWithTimeout(`${API_URL}/messages/${messageId}`, {
     method: 'DELETE',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -467,7 +468,7 @@ export async function discoverChats(opts?: { q?: string; limit?: number; offset?
   if (opts?.limit != null) params.set('limit', String(opts.limit))
   if (opts?.offset != null) params.set('offset', String(opts.offset))
   const qs = params.toString()
-  const r = await fetch(`${API_URL}/chats/discover${qs ? `?${qs}` : ''}`, { credentials: 'include' })
+  const r = await fetchWithTimeout(`${API_URL}/chats/discover${qs ? `?${qs}` : ''}`, { credentials: 'include' })
   if (!r.ok) {
     const d = (await r.json().catch(() => ({}))) as { error?: string }
     throw new Error(d.error ?? 'DISCOVER_FAILED')

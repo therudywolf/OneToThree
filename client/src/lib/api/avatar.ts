@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 import { sanitizeFetchHeaderRecord } from '@/lib/http-fetch-headers'
 import { sha256HexBytes } from '@/lib/sha256'
@@ -26,7 +27,7 @@ async function putAvatarWithRetry(
           `(attempt ${attempt}/${retries})`
         )
       }
-      const put = await fetch(uploadUrl, {
+      const put = await fetchWithTimeout(uploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'image/jpeg' },
         body: buf,
@@ -56,7 +57,7 @@ async function putAvatarWithRetry(
 }
 
 export async function fetchAvatarChallenge(): Promise<{ nonce: string }> {
-  const res = await fetch(`${API_URL}/users/me/avatar-challenge`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/me/avatar-challenge`, {
     credentials: 'include',
   })
   const data = (await res.json().catch(() => ({}))) as {
@@ -72,7 +73,7 @@ export async function fetchAvatarChallenge(): Promise<{ nonce: string }> {
 export async function fetchAvatarDownloadUrl(
   userId: string
 ): Promise<string | null> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/storage/avatar-url?userId=${encodeURIComponent(userId)}`,
     { credentials: 'include' }
   )
@@ -105,7 +106,7 @@ export async function uploadAvatarJpeg(params: {
     message
   )
 
-  const presign = await fetch(`${API_URL}/users/me/avatar/presign`, {
+  const presign = await fetchWithTimeout(`${API_URL}/users/me/avatar/presign`, {
     method: 'POST',
     credentials: 'include',
     headers: sanitizeFetchHeaderRecord({
@@ -129,7 +130,7 @@ export async function uploadAvatarJpeg(params: {
   // Execute PUT to MinIO with retry logic (matches media upload flow)
   await putAvatarWithRetry(uploadUrl, buf)
 
-  const commit = await fetch(`${API_URL}/users/me/avatar/commit`, {
+  const commit = await fetchWithTimeout(`${API_URL}/users/me/avatar/commit`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

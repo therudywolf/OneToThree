@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 import { authDeviceHeaders } from '@/lib/client-device'
 import { sanitizeFetchHeaderRecord } from '@/lib/http-fetch-headers'
@@ -45,7 +46,7 @@ export async function postQrGenerate(params: {
   link_token: string
   expires_in: number
 }> {
-  const res = await fetch(`${API_URL}/auth/qr-generate`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/qr-generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -70,7 +71,7 @@ export async function postQrLogin(token: string): Promise<
   | { ok: true; user: { id: string; username: string } }
   | { ok: 'needs_2fa'; pendingToken: string; userId: string }
 > {
-  const res = await fetch(`${API_URL}/auth/qr-login`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/qr-login`, {
     method: 'POST',
     credentials: 'include',
     headers: sanitizeFetchHeaderRecord({

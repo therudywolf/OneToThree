@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from '@/lib/api/auth'
 
 export type VaultFetchResponse = {
@@ -10,7 +11,7 @@ export async function fetchVaultFromServer(): Promise<
   | { ok: true; data: VaultFetchResponse }
   | { ok: false; status: number; error?: string }
 > {
-  const res = await fetch(`${API_URL}/vault/fetch`, {
+  const res = await fetchWithTimeout(`${API_URL}/vault/fetch`, {
     method: 'GET',
     credentials: 'include',
   })
@@ -29,7 +30,7 @@ export async function changeVaultPinOnServer(body: {
   | { ok: true; vault_version: number; updated_at: string }
   | { ok: false; error?: string }
 > {
-  const res = await fetch(`${API_URL}/users/me/vault/change-pin`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/me/vault/change-pin`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -58,7 +59,7 @@ export async function syncVaultToServer(body: {
   | { ok: true; vault_version: number; updated_at: string }
   | { ok: false; status: number; error?: string; vault_version?: number }
 > {
-  const res = await fetch(`${API_URL}/vault/sync`, {
+  const res = await fetchWithTimeout(`${API_URL}/vault/sync`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },

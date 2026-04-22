@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 export type GifHit = {
   id: string
   title: string
@@ -19,7 +20,7 @@ export async function searchGifs(query: string, limit = 24): Promise<GifHit[]> {
     rating: 'pg-13',
     lang: 'en',
   })
-  const res = await fetch(`${GIPHY_API}?${params.toString()}`)
+  const res = await fetchWithTimeout(`${GIPHY_API}?${params.toString()}`)
   if (!res.ok) throw new Error(`GIF_SEARCH_${res.status}`)
   const data = (await res.json()) as {
     data?: Array<{

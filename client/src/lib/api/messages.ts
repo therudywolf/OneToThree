@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import type { ApiMessageRow } from '@/lib/decrypt-chat-api-message'
 import { API_URL } from './auth'
 
@@ -31,7 +32,7 @@ export type SendChatMessageBody = {
 export async function postSendChatMessage(
   body: SendChatMessageBody
 ): Promise<ApiMessageRow> {
-  const res = await fetch(`${API_URL}/messages/send`, {
+  const res = await fetchWithTimeout(`${API_URL}/messages/send`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -51,7 +52,7 @@ export async function postSendChatMessage(
 export async function fetchPendingDeliveries(
   chatId: string
 ): Promise<ApiMessageRow[]> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/messages/sync/pending?chat_id=${encodeURIComponent(chatId)}`,
     { credentials: 'include' }
   )
@@ -74,7 +75,7 @@ export async function acknowledgeMessagesDelivered(
   if (messageIds.length === 0) return
   for (let i = 0; i < messageIds.length; i += DELIVERED_ACK_CHUNK) {
     const chunk = messageIds.slice(i, i + DELIVERED_ACK_CHUNK)
-    const res = await fetch(`${API_URL}/messages/delivered`, {
+    const res = await fetchWithTimeout(`${API_URL}/messages/delivered`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -89,7 +90,7 @@ export async function acknowledgeMessagesDelivered(
 
 /** POST /api/messages/read/:messageId — idempotent mark read (direct E2E). */
 export async function markMessageRead(messageId: string): Promise<void> {
-  const res = await fetch(`${API_URL}/messages/read/${messageId}`, {
+  const res = await fetchWithTimeout(`${API_URL}/messages/read/${messageId}`, {
     method: 'POST',
     credentials: 'include',
   })
@@ -102,7 +103,7 @@ export async function markMessageRead(messageId: string): Promise<void> {
 /** POST /api/messages/batch-read — batch mark multiple messages as read (optimized for scrolling). */
 export async function markMessagesReadBatch(messageIds: string[]): Promise<void> {
   if (!messageIds.length) return
-  const res = await fetch(`${API_URL}/messages/batch-read`, {
+  const res = await fetchWithTimeout(`${API_URL}/messages/batch-read`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -138,7 +139,7 @@ export async function fetchSharedMedia(
   userId: string,
   type: 'media' | 'files' = 'media'
 ): Promise<SharedMediaRow[]> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/messages/shared-media/${userId}?type=${type}`,
     { credentials: 'include' }
   )
@@ -166,7 +167,7 @@ export type MediaArchiveRow = {
 export async function fetchChatMediaArchive(
   chatId: string
 ): Promise<MediaArchiveRow[]> {
-  const res = await fetch(`${API_URL}/messages/${chatId}/media`, {
+  const res = await fetchWithTimeout(`${API_URL}/messages/${chatId}/media`, {
     credentials: 'include',
   })
   const data = (await res.json().catch(() => ({}))) as {

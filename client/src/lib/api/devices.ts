@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from '@/lib/api/auth'
 import { canonicalUserId } from '@/lib/user-id'
 
@@ -16,7 +17,7 @@ export async function fetchDevices(): Promise<{
   current_device_id: string | null
   devices: DeviceRow[]
 }> {
-  const res = await fetch(`${API_URL}/users/me/devices`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/me/devices`, {
     credentials: 'include',
   })
   const data = (await res.json().catch(() => ({}))) as {
@@ -39,7 +40,7 @@ export async function fetchDevices(): Promise<{
 export async function revokeDevice(deviceId: string): Promise<void> {
   if (!deviceId) return
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/users/me/devices/${encodeURIComponent(deviceId)}`,
     { method: 'DELETE', credentials: 'include' }
   )
@@ -52,7 +53,7 @@ export async function revokeDevice(deviceId: string): Promise<void> {
 export async function setMasterDevice(deviceId: string): Promise<void> {
   if (!deviceId) return
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/users/me/devices/${encodeURIComponent(deviceId)}/master`,
     {
       method: 'PATCH',
@@ -76,7 +77,7 @@ export async function setMasterDevice(deviceId: string): Promise<void> {
 }
 
 export async function revokeAllOtherSessions(): Promise<void> {
-  const res = await fetch(`${API_URL}/users/me/devices/revoke-all-others`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/me/devices/revoke-all-others`, {
     method: 'POST',
     credentials: 'include',
   })
@@ -87,7 +88,7 @@ export async function revokeAllOtherSessions(): Promise<void> {
 }
 
 export async function clearRevokedDevices(): Promise<void> {
-  const res = await fetch(`${API_URL}/users/me/devices/clear-revoked`, {
+  const res = await fetchWithTimeout(`${API_URL}/users/me/devices/clear-revoked`, {
     method: 'POST',
     credentials: 'include',
   })
@@ -100,7 +101,7 @@ export async function clearRevokedDevices(): Promise<void> {
 export async function reauthorizeDevice(deviceId: string): Promise<void> {
   if (!deviceId) return
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/users/me/devices/${encodeURIComponent(deviceId)}/reauthorize`,
     {
       method: 'POST',
@@ -131,7 +132,7 @@ export async function enableDeviceHistorySync(params: {
   const code = params.totpCode?.trim()
   if (code) headers['X-TOTP-Code'] = code
 
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_URL}/users/me/devices/${encodeURIComponent(params.deviceId)}/history-sync`,
     {
       method: 'POST',
@@ -172,7 +173,7 @@ export type LinkInitResult = {
  * The caller must sign `nonce` with the current device's ECDSA private key.
  */
 export async function linkInit(params: LinkInitParams): Promise<LinkInitResult> {
-  const res = await fetch(`${API_URL}/devices/link/init`, {
+  const res = await fetchWithTimeout(`${API_URL}/devices/link/init`, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -215,7 +216,7 @@ export async function linkConfirm(params: LinkConfirmParams): Promise<LinkConfir
   if (params.device_name) body.device_name = params.device_name
   if (params.user_agent) body.user_agent = params.user_agent
 
-  const res = await fetch(`${API_URL}/devices/link/confirm`, {
+  const res = await fetchWithTimeout(`${API_URL}/devices/link/confirm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

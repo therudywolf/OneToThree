@@ -882,6 +882,108 @@ export function ChatApp({
             mobileSidebarOpen ? 'pointer-events-none opacity-0 md:pointer-events-auto md:opacity-100' : ''
           }`}
         >
+          {/* ─── DESKTOP CHAT HEADER (md+) ─────────────────────────────────────── */}
+          {activeChatId ? (
+            <div className={`p13-desktop-chat-header hidden md:flex shrink-0 items-center gap-2 px-4 py-2.5 border-b ${
+              isMd3
+                ? 'border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'
+                : 'border-border-strong bg-void'
+            }`}>
+              {/* Peer identity / chat name */}
+              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                {isSelfChat ? (
+                  <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-accent-2'}`}>
+                    <Star className="h-4 w-4 fill-accent-2 shrink-0" />
+                    <span>{t('sidebar.savedMessages')}</span>
+                  </div>
+                ) : peerIdentity ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (matchesDockViewport()) {
+                          useDockStore.getState().openProfile(peerIdentity.userId)
+                        } else {
+                          setHeaderProfileOpen(true)
+                        }
+                      }}
+                      className={`inline-flex items-center gap-1.5 text-[13px] font-semibold transition-colors ${
+                        isMd3
+                          ? 'text-[var(--on-surface)] hover:text-[var(--primary)]'
+                          : 'text-neon-cyan hover:text-neon-red font-mono'
+                      }`}
+                    >
+                      {peerIdentity.verified ? <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" /> : null}
+                      {peerApproved ? <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" /> : null}
+                      <span className="truncate max-w-xs">
+                        {isMd3 ? peerIdentity.username : `@${peerIdentity.username}`}
+                      </span>
+                    </button>
+                    {peerPresenceRow ? (
+                      <span className={`flex items-center gap-1.5 text-[11px] ${isMd3 ? 'text-text-muted' : 'font-mono text-[10px]'}`}>
+                        {peerPresenceRow.online ? (
+                          <>
+                            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+                            <span className={isMd3 ? 'text-emerald-500' : 'text-neon-cyan/75'}>
+                              {isMd3 ? 'online' : 'ONLINE'}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-text-muted/80 whitespace-nowrap text-[10px]">
+                            {formatLastSeen(peerPresenceRow.last_seen_at)}
+                          </span>
+                        )}
+                      </span>
+                    ) : null}
+                  </>
+                ) : activeRow ? (
+                  <span className={`truncate text-[13px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-neon-cyan'}`}>
+                    {activeRow.name ?? activeRow.id}
+                  </span>
+                ) : null}
+              </div>
+
+              {/* Right: search + identity + calls */}
+              <div className="flex shrink-0 items-center gap-1">
+                {peerIdentity ? (
+                  <button
+                    type="button"
+                    onClick={() => setIdentityOpen(true)}
+                    className="p13-icon-btn"
+                    aria-label="Security info"
+                    title="Security info"
+                  >
+                    <ShieldCheck className="h-4 w-4" strokeWidth={1.5} />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!activeChatId) return
+                    if (matchesDockViewport()) {
+                      useDockStore.getState().openSearch(activeChatId, (id) => scrollToMessage(id))
+                    } else {
+                      setMobileSearchOpen(true)
+                    }
+                  }}
+                  className="p13-icon-btn"
+                  aria-label={t('chatSearch.title')}
+                  title={t('chatSearch.title')}
+                >
+                  <Search className="h-4 w-4" strokeWidth={1.5} />
+                </button>
+                {canShowCallControls ? (
+                  <CallHeaderButtons
+                    disabled={!activeChatId || !!ctxError}
+                    peerReady={peerReady}
+                    onVoiceCall={() => void (activeRow?.is_group ? handleGroupVoiceCall() : handleVoiceCall())}
+                    onVideoCall={() => void handleVideoCall()}
+                  />
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           {ctxError ? (
             <div className="shrink-0 border-b border-border-strong px-3 py-1 font-mono text-xs text-text-muted">
               {t('errors.signalLost')}

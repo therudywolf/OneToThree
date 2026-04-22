@@ -2293,3 +2293,56 @@ select {
   }
 }
 
+/* ── Desktop chat header — dual-theme refinements ─────────────────────────── */
+
+/* MD3: minimal elevation, smooth transitions */
+[data-shell="md3"] .p13-desktop-chat-header {
+  background: color-mix(in srgb, var(--surface) 96%, var(--void));
+  border-bottom: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+[data-shell="md3"] .p13-desktop-chat-header:has(~ *) {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Terminal: neon separator, monospace rhythm */
+[data-shell="terminal"] .p13-desktop-chat-header {
+  border-bottom: 1px solid rgba(0, 255, 255, 0.18);
+  background: var(--void);
+  position: relative;
+}
+[data-shell="terminal"] .p13-desktop-chat-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,255,255,0.25) 20%, rgba(0,255,255,0.5) 50%, rgba(0,255,255,0.25) 80%, transparent 100%);
+}
+
+/* Hover action bar — MD3: pill shape, soft tonal */
+[data-shell="md3"] .p13-hover-actions {
+  background: var(--surface-elevated, color-mix(in srgb, var(--surface) 90%, var(--void)));
+  border-radius: 999px;
+  padding: 2px 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+
+/* Hover action bar — Terminal: borderless, neon on hover */
+[data-shell="terminal"] .p13-hover-actions {
+  background: transparent;
+  padding: 0;
+}
+[data-shell="terminal"] .p13-hover-actions .p13-icon-btn:hover {
+  color: var(--neon-cyan);
+}
+
+/* Message row hover state: subtle bg tint for easier hit-targeting */
+[data-shell="md3"] .group\/msg:hover > div:not([class*="hover-actions"]) {
+  background: transparent;
+}
+[data-shell="terminal"] .group\/msg:hover {
+  background: rgba(0,255,255,0.02);
+}
+

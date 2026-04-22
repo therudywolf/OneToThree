@@ -237,6 +237,20 @@ const en = {
   'emoji.pickerAria': 'Insert emoji',
   'emoji.pickerTitle': 'Emoji',
 
+  'composer.toggle': 'Emoji, stickers & GIFs',
+  'composer.pickerTitle': 'Emoji & stickers',
+  'composer.tabEmoji': 'Emoji',
+  'composer.tabSticker': 'Stickers',
+  'composer.tabGif': 'GIF',
+  'composer.gifSoon': 'GIF search — coming soon',
+  'composer.stickerImportPlaceholder': 'Telegram short name',
+  'composer.stickerImport': 'Import',
+  'composer.stickerImportHint':
+    'Name from t.me/addstickers/… — requires TELEGRAM_BOT_TOKEN on the server.',
+  'composer.stickerEmpty': 'No sticker packs — import one above.',
+
+  'chat.previewSticker': 'Sticker',
+
   'dock.panelAria': 'Side panel',
   'dock.profileTitle': 'Profile',
   'dock.searchTitle': 'Search in chat',

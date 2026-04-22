@@ -1,6 +1,8 @@
 /**
  * Runs before any test file. Ensures env exists before modules that read DATABASE_URL/JWT at import time.
  */
+import postgres from 'postgres'
+
 process.env.JWT_SECRET =
   process.env.JWT_SECRET?.trim() ||
   'vitest-jwt-secret-must-be-32-chars-min!!'
@@ -32,4 +34,31 @@ process.env.MINIO_SECRET_KEY =
 /** QR link store tests use in-memory fallback unless `VITEST_REDIS_URL` is set. */
 if (!process.env.VITEST_REDIS_URL) {
   delete process.env.REDIS_URL
+}
+
+// Some local dev databases may lag behind newest migrations; ensure required
+// test-time compatibility for message ordering schema.
+{
+  const sql = postgres(process.env.DATABASE_URL as string, {
+    max: 1,
+    connect_timeout: 2,
+  })
+  try {
+    const hasSeq = await sql<{ exists: boolean }[]>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'messages'
+          AND column_name = 'seq'
+      ) AS exists
+    `
+    if (!hasSeq[0]?.exists) {
+      await sql`ALTER TABLE messages ADD COLUMN seq BIGSERIAL`
+    }
+  } catch {
+    // best-effort for environments without a running local DB
+  } finally {
+    await sql.end({ timeout: 1 })
+  }
 }

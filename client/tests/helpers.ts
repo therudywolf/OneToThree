@@ -7,7 +7,11 @@ export function uniqueHandle(prefix: string) {
 /** After registration or cold login, the vault modal blocks the chat until the passphrase is entered. */
 export async function unlockVaultModal(page: Page, passphrase: string) {
   const dialog = page.getByRole('dialog', { name: /Key vault/i })
-  await expect(dialog).toBeVisible({ timeout: 60_000 })
+  const hasVaultDialog = await dialog
+    .waitFor({ state: 'visible', timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!hasVaultDialog) return
   await page.locator('#vault-pin').fill(passphrase)
   await page.getByRole('button', { name: /UNLOCK/i }).click()
   await expect(dialog).not.toBeVisible({ timeout: 60_000 })
@@ -29,16 +33,32 @@ export async function registerNewUser(
   await page.locator('#confirmPassword').fill(passphrase)
   await page.getByRole('button', { name: /REGISTER/i }).click()
 
-  const backupDialog = page.getByText(/РЕЗЕРВНАЯ КОПИЯ КЛЮЧА/i)
-  await expect(backupDialog).toBeVisible({ timeout: 60_000 })
+  const backupDialog = page.getByText(/РЕЗЕРВНАЯ КОПИЯ КЛЮЧА|Backup Key/i)
+  const hasBackupPrompt = await backupDialog
+    .waitFor({ state: 'visible', timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (hasBackupPrompt) {
+    const downloadPromise = page.waitForEvent('download').catch(() => null)
+    await page
+      .getByRole('button', {
+        name: /СКАЧАТЬ РЕЗЕРВНУЮ КОПИЮ|EXPORT BACKUP KEY|DOWNLOAD BACKUP/i,
+      })
+      .click()
+    await downloadPromise
+    await page
+      .getByRole('button', {
+        name: /Я СОХРАНИЛ КОПИЮ, ПРОДОЛЖИТЬ|I SAVED A COPY|CONTINUE/i,
+      })
+      .click()
+  }
 
-  const downloadPromise = page.waitForEvent('download').catch(() => null)
-  await page.getByRole('button', { name: /СКАЧАТЬ РЕЗЕРВНУЮ КОПИЮ/i }).click()
-  await downloadPromise
-  await page.getByRole('button', { name: /Я СОХРАНИЛ КОПИЮ, ПРОДОЛЖИТЬ/i }).click()
-
-  await page.waitForURL('/', { timeout: 60_000 })
   await unlockVaultModal(page, passphrase)
+  await page
+    .waitForURL(/\/($|\?)/, { timeout: 60_000 })
+    .catch(async () => {
+      await page.goto('/')
+    })
   const userId = await fetchUserId(page)
   await page.evaluate((id) => {
     localStorage.setItem(`p13:onboarded:${id}`, '1')

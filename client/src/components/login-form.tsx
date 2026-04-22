@@ -149,11 +149,14 @@ export function LoginForm() {
         setErrorLog(mapFault(res.error))
         return
       }
-      await refresh()
       if (mode === 'GENESIS') {
+        // Keep the post-register backup prompt mounted before auth refresh,
+        // otherwise the auto-redirect effect can win the race and hide it.
         setShowVaultPrompt(true)
+        await refresh()
         return
       }
+      await refresh()
       router.refresh()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ''

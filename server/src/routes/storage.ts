@@ -108,7 +108,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const { fileName: rawFileName, fileType, chatId, fileSize } = parsed.data
+    const { fileName: rawFileName, fileType, chatId, fileSize: _fileSize } = parsed.data
     const fileName = sanitizeFileName(rawFileName)
 
     const mimeLower = fileType.toLowerCase().split(';')[0].trim()

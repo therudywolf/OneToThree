@@ -91,12 +91,20 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       },
     })
 
+    // Derive a deterministic 32-byte E2EE room key from the API secret + room ID.
+    // All participants who obtain a token for this room receive the same key via
+    // this authenticated endpoint, enabling Insertable Streams E2EE in the browser.
+    const e2eeKey = createHmac('sha256', apiSecret)
+      .update(`e2ee:${parsed.data.room}`)
+      .digest('base64')
+
     reply.header('Cache-Control', 'no-store')
     return reply.send({
       token,
       url: livekitUrl,
       room: parsed.data.room,
       ttl_seconds: ttlSeconds,
+      call_e2ee_key: e2eeKey,
     })
   })
 

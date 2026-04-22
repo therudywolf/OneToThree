@@ -211,9 +211,34 @@ export function useWebRTC(userId: string | null) {
       const cfg = await fetchCallConfig()
       if (!cfg.livekit_enabled || !cfg.livekit_url) return false
       const tokenRes = await createCallToken(meta.chatId)
-      const { Room, RoomEvent, Track } = await import('livekit-client')
-      const room = new Room()
+      const { Room, RoomEvent, Track, ExternalE2EEKeyProvider, isE2EESupported } = await import('livekit-client')
+
+      // Wire E2EE when the server provides a room key and the browser supports
+      // Insertable Streams or RTCRtpScriptTransform.
+      let keyProvider: InstanceType<typeof ExternalE2EEKeyProvider> | undefined
+      let e2eeWorker: Worker | undefined
+      if (tokenRes.call_e2ee_key && isE2EESupported()) {
+        try {
+          keyProvider = new ExternalE2EEKeyProvider()
+          e2eeWorker = new Worker(new URL('/livekit-e2ee-worker.js', location.origin))
+        } catch {
+          keyProvider = undefined
+          e2eeWorker = undefined
+        }
+      }
+
+      const room = new Room(
+        keyProvider && e2eeWorker
+          ? { e2ee: { keyProvider, worker: e2eeWorker } }
+          : {}
+      )
       await room.connect(tokenRes.url, tokenRes.token)
+
+      // Set the E2EE key after connecting so the cryptor is initialised.
+      if (keyProvider && tokenRes.call_e2ee_key) {
+        const raw = Uint8Array.from(atob(tokenRes.call_e2ee_key), (c) => c.charCodeAt(0))
+        await keyProvider.setKey(raw.buffer as ArrayBuffer)
+      }
       sfuRoomRef.current = room
       const local = useCallStore.getState().localStream
       if (local) {

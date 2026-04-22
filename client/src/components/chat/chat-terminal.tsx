@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal } from 'lucide-react'
+import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal, Lock } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useUnreadStore } from '@/store/unreadStore'
@@ -1225,7 +1225,15 @@ export function ChatTerminal({
                       {formatMessageTimestamp(m.created_at, locale)}
                     </div>
                     {stickerEnv ? <StickerBubble envelope={stickerEnv} /> : null}
-                    {m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv ? (
+                    {m.plaintext === '[DECRYPT_FAIL]' ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 text-text-muted/60 text-[11px] italic"
+                        title={t('chat.decryptFailed')}
+                      >
+                        <Lock className="h-3 w-3 shrink-0 text-text-muted/50" aria-hidden />
+                        {t('chat.decryptFailed')}
+                      </span>
+                    ) : m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv ? (
                       <CollapsibleText text={m.plaintext}>
                         {(visibleText) => (
                           <NoirPlaintext

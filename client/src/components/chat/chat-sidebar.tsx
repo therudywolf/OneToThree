@@ -21,6 +21,7 @@ import {
   Radio,
   Folder,
 } from 'lucide-react'
+import { ChatRowContextMenu } from '@/components/chat/chat-row-context-menu'
 import Link from 'next/link'
 import { useSessionStore } from '@/store/sessionStore'
 import { usePresenceStore } from '@/store/presenceStore'
@@ -157,6 +158,11 @@ export function ChatSidebar({
   const [lastMessages, setLastMessages] = useState<Record<string, DecryptedMessage | null>>({})
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
+  const [rowContextMenu, setRowContextMenu] = useState<{
+    chatId: string
+    x: number
+    y: number
+  } | null>(null)
 
   useEffect(() => {
     try {
@@ -368,6 +374,7 @@ export function ChatSidebar({
         ? `${st.fallbackEmoji} · ${t('chat.previewSticker')}`
         : t('chat.previewSticker')
     }
+    if (msg.plaintext === '[DECRYPT_FAIL]') return t('chat.decryptFailedPreview')
     return msg.plaintext?.slice(0, 60) ?? ''
   }
 
@@ -844,6 +851,10 @@ export function ChatSidebar({
               className={`p13-sidebar-row chat-list-item group overflow-hidden ${
                 isPinned ? 'ring-1 ring-inset ring-[color:var(--neon-cyan)]/20' : ''
               }`}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                setRowContextMenu({ chatId: c.id, x: e.clientX, y: e.clientY })
+              }}
             >
               <button
                 type="button"
@@ -929,61 +940,6 @@ export function ChatSidebar({
                   </span>
                 </span>
               </button>
-              <button
-                type="button"
-                title={isPinned ? t('sidebar.unpin') : t('sidebar.pin')}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  togglePin(c.id)
-                }}
-                className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
-                  isPinned
-                    ? 'bg-neon-cyan/5 text-neon-cyan hover:bg-neon-red/10 hover:text-neon-red'
-                    : 'text-text-muted/70 opacity-0 pointer-events-none hover:bg-neon-cyan/10 hover:text-neon-cyan group-hover:opacity-100 group-hover:pointer-events-auto'
-                }`}
-              >
-                <Pin className="h-3.5 w-3.5" aria-hidden />
-              </button>
-              <button
-                type="button"
-                title={c.is_favorite ? t('sidebar.unfavorite') : t('sidebar.favorite')}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  void toggleFavorite(c.id, Boolean(c.is_favorite))
-                }}
-                className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
-                  c.is_favorite
-                    ? 'text-accent-2 bg-accent-2/15 hover:bg-accent-2/15'
-                    : 'text-text-muted/70 hover:bg-accent-2/15 hover:text-accent-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
-                }`}
-              >
-                <Star className={`h-3.5 w-3.5 ${c.is_favorite ? 'fill-accent-2' : ''}`} aria-hidden />
-              </button>
-              {(() => {
-                const muted = isChatMuted(c)
-                return (
-                  <button
-                    type="button"
-                    title={muted ? t('sidebar.unmute') : t('sidebar.mute')}
-                    aria-pressed={muted}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      void toggleMute(c.id, muted)
-                    }}
-                    className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
-                      muted
-                        ? 'text-text-muted bg-text-muted/10 hover:bg-neon-red/10 hover:text-neon-red'
-                        : 'text-text-muted/70 hover:bg-neon-cyan/10 hover:text-neon-cyan opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
-                    }`}
-                  >
-                    {muted ? (
-                      <BellOff className="h-3.5 w-3.5" aria-hidden />
-                    ) : (
-                      <Bell className="h-3.5 w-3.5" aria-hidden />
-                    )}
-                  </button>
-                )
-              })()}
             </div>
           )
         })}
@@ -1144,6 +1100,26 @@ export function ChatSidebar({
       </div>
 
       </div>{/* end right panel */}
+
+      {rowContextMenu ? (() => {
+        const c = chats.find((ch) => ch.id === rowContextMenu.chatId)
+        if (!c) return null
+        const isPinnedCtx = pinnedIds.includes(c.id)
+        const isMutedCtx = isChatMuted(c)
+        return (
+          <ChatRowContextMenu
+            x={rowContextMenu.x}
+            y={rowContextMenu.y}
+            isPinned={isPinnedCtx}
+            isFavorite={Boolean(c.is_favorite)}
+            isMuted={isMutedCtx}
+            onPin={() => togglePin(c.id)}
+            onFavorite={() => void toggleFavorite(c.id, Boolean(c.is_favorite))}
+            onMute={() => void toggleMute(c.id, isMutedCtx)}
+            onClose={() => setRowContextMenu(null)}
+          />
+        )
+      })() : null}
     </aside>
   )
 }

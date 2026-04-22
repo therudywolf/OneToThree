@@ -7,12 +7,13 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useShell } from '@/components/ui/shell'
 import {
   fetchPackStickers,
+  fetchStickerAssetUrl,
   fetchStickerPacks,
   importTelegramStickerPack,
   type Sticker,
   type StickerPack,
 } from '@/lib/api/stickers'
-import { searchGifs, type GifHit } from '@/lib/api/gif'
+import { fetchTrendingGifs, searchGifs, type GifHit } from '@/lib/api/gif'
 import { buildStickerPlaintext } from '@/lib/sticker-payload'
 import { toastError } from '@/store/toastStore'
 
@@ -55,6 +56,8 @@ export function ComposerPickerPanel({
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null)
   const [stickers, setStickers] = useState<Sticker[]>([])
   const [stickersLoading, setStickersLoading] = useState(false)
+  const [stickerSrcById, setStickerSrcById] = useState<Record<string, string>>({})
+  const [stickerRetryById, setStickerRetryById] = useState<Record<string, boolean>>({})
   const [importName, setImportName] = useState('')
   const [importBusy, setImportBusy] = useState(false)
   const [gifQuery, setGifQuery] = useState('')
@@ -92,7 +95,16 @@ export function ComposerPickerPanel({
     setStickersLoading(true)
     void fetchPackStickers(selectedPackId)
       .then((rows) => {
-        if (!cancelled) setStickers(rows)
+        if (!cancelled) {
+          setStickers(rows)
+          setStickerSrcById(
+            rows.reduce<Record<string, string>>((acc, s) => {
+              acc[s.id] = s.url
+              return acc
+            }, {})
+          )
+          setStickerRetryById({})
+        }
       })
       .catch(() => {
         if (!cancelled) setStickers([])
@@ -108,17 +120,13 @@ export function ComposerPickerPanel({
   useEffect(() => {
     if (tab !== 'gif') return
     const q = gifQuery.trim()
-    if (q.length < 2) {
-      setGifs([])
-      setGifErr(null)
-      setGifBusy(false)
-      return
-    }
+    const isTrendingMode = q.length < 2
     let cancelled = false
     setGifBusy(true)
     setGifErr(null)
     const timer = setTimeout(() => {
-      void searchGifs(q, 24)
+      const run = isTrendingMode ? fetchTrendingGifs(24) : searchGifs(q, 24)
+      void run
         .then((rows) => {
           if (!cancelled) setGifs(rows)
         })
@@ -171,7 +179,7 @@ export function ComposerPickerPanel({
   )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-wrap gap-1 border-b border-neon-cyan/15 px-2 py-1.5">
         {tabBtn('emoji', t('composer.tabEmoji'))}
         {tabBtn('sticker', t('composer.tabSticker'))}
@@ -195,7 +203,7 @@ export function ComposerPickerPanel({
         ) : null}
 
         {tab === 'sticker' ? (
-          <div className="flex min-h-0 flex-col gap-2 p-2">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
             <div className="flex flex-wrap gap-1">
               <input
                 type="text"
@@ -249,7 +257,8 @@ export function ComposerPickerPanel({
               stickersLoading ? (
                 <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
               ) : (
-                <div className="grid grid-cols-5 gap-1 sm:grid-cols-6">
+                <div className="min-h-0 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                  <div className="grid grid-cols-5 gap-1 sm:grid-cols-6">
                   {stickers.map((s) => (
                     <button
                       key={s.id}
@@ -270,9 +279,26 @@ export function ComposerPickerPanel({
                       }}
                       className="flex aspect-square items-center justify-center overflow-hidden rounded border border-neon-cyan/15 bg-void/40 hover:border-neon-cyan/50"
                     >
-                      <img src={s.url} alt="" className="max-h-full max-w-full object-contain" loading="lazy" />
+                      <img
+                        src={stickerSrcById[s.id] ?? s.url}
+                        alt=""
+                        className="max-h-full max-w-full object-contain"
+                        loading="lazy"
+                        onError={() => {
+                          if (stickerRetryById[s.id]) return
+                          setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
+                          void fetchStickerAssetUrl(s.mediaKey)
+                            .then((url) => {
+                              setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
+                            })
+                            .catch(() => {
+                              // non-fatal; keep placeholder if both URLs fail
+                            })
+                        }}
+                      />
                     </button>
                   ))}
+                </div>
                 </div>
               )
             ) : null}
@@ -293,7 +319,7 @@ export function ComposerPickerPanel({
             ) : gifErr ? (
               <div className="py-2 font-mono text-[10px] text-danger/90">{gifErr}</div>
             ) : gifQuery.trim().length < 2 ? (
-              <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifHint')}</div>
+              <div className="py-2 text-center font-mono text-[10px] text-text-muted">{t('composer.gifPopular')}</div>
             ) : gifs.length === 0 ? (
               <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifEmpty')}</div>
             ) : (

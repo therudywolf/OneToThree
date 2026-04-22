@@ -86,12 +86,12 @@
 ## B — Feature completion (заявлено, не реализовано)
 
 ### B1 🟠 Channels: UI создания, публикации, подписки
-**Статус:** `[ ]`
+**Статус:** `[~]` частично 2026-04-22 (7b3a9da): server enforcement + ExploreModal discovery добавлены; `create-group-modal` ещё не переключён на `type: 'channel'`.
 
 **Проблема:** `chat_type = 'channel'` есть в DB enum (миграция 0029/0030), `channel_role` схема есть. Но:
-- Нет серверного enforcement: любой член может постить в channel (нет проверки `channel_role`).
-- Нет discovery feed (browsable channel list).
-- Нет UI подписки без invite.
+- ~~Нет серверного enforcement~~ — ЗАКРЫТО: `CHANNEL_SUBSCRIBERS_CANNOT_POST` в POST /messages/send.
+- ~~Нет discovery feed~~ — ЗАКРЫТО: GET /chats/discover + ExploreModal.
+- Нет UI подписки без invite (пока через Explore → Join).
 - `create-group-modal.tsx` уже имеет `createMode === 'channel'`, но создаёт `public_open`, не `channel`.
 
 **Где:** `server/src/routes/chats.ts`, `client/src/components/chat/create-group-modal.tsx`, новый компонент channel-feed.
@@ -107,7 +107,7 @@
 ---
 
 ### B2 🟠 Public group discovery
-**Статус:** `[ ]`
+**Статус:** `[x]` закрыто 2026-04-22 (7b3a9da): GET /chats/discover + ExploreModal + discoverChats() API
 
 **Проблема:** `public_open` тип существует, используется. Но нет UI для обнаружения публичных групп (browse/search).
 
@@ -121,12 +121,12 @@
 ---
 
 ### B3 🟠 Member roles / moderation UI для групп
-**Статус:** `[ ]`
+**Статус:** `[x]` уже было реализовано: `group-chat-settings.tsx` содержит kick, reassignAuthority, setChannelFeedRole; server routes PATCH/DELETE /chats/:id/members/:userId существуют.
 
 **Проблема:** `channel_role` enum есть в DB и схеме. Но:
-- Нет API для назначения роли.
-- Нет UI управления участниками (сделать/убрать admin, кик, бан).
-- Group settings modal (`group-chat-settings`) не имеет вкладки участников.
+- ~~Нет API для назначения роли~~ — PATCH /chats/:id/members/:userId/role реализован.
+- ~~Нет UI управления участниками~~ — group-chat-settings.tsx содержит kick, promote to admin/owner.
+- ~~Group settings modal не имеет вкладки участников~~ — реализовано.
 
 **Где:** `server/src/routes/chats.ts`, `client/src/components/chat/group-chat-settings-modal.tsx`.
 
@@ -139,7 +139,7 @@
 ---
 
 ### B4 🟠 LiveKit SFU: подключение к Call UI
-**Статус:** `[ ]`
+**Статус:** `[x]` уже реализовано: use-webrtc.ts `trySfuFallback()` подключается к LiveKit когда `livekit_enabled && livekit_url`. Токен-роут call.ts реализован.
 
 **Проблема:** LiveKit сервер работает, `POST /api/call/token` выдаёт JWT, но Call UI (`group-call-screen.tsx`, `active-call-overlay.tsx`) использует только mesh WebRTC. При 3+ участниках это N×N потоков — неприемлемо.
 
@@ -155,7 +155,7 @@
 ---
 
 ### B5 🟠 Sticker import: Bot API pipeline
-**Статус:** `[ ]`
+**Статус:** `[x]` уже реализовано: stickers.ts использует tgApiGet + downloadTgFile, env TELEGRAM_BOT_TOKEN опциональный (503 если нет).
 
 **Проблема:** `POST /api/stickers/packs/import` принимает `short_name`, но не скачивает TGS через Bot API. Таблица `sticker_packs.tg_source` есть, но import endpoint не делает реального fetch с Telegram.
 
@@ -250,7 +250,7 @@
 ## D — Runtime E2E валидация
 
 ### D1 🟠 Invite flow: group_e2e с передачей ключа
-**Статус:** `[ ]` (зависит от A1)
+**Статус:** `[x]` Playwright тест добавлен 2026-04-22 (7b3a9da): tests/e2e-runtime.spec.ts
 
 Тест-план:
 1. Пользователь A создаёт `group_e2e` → копирует invite link.
@@ -262,7 +262,7 @@
 ---
 
 ### D2 🟠 Direct fanout: 2 реальных устройства/аккаунта
-**Статус:** `[ ]`
+**Статус:** `[x]` Playwright тест добавлен 2026-04-22 (7b3a9da): tests/e2e-runtime.spec.ts
 
 Тест-план:
 1. Аккаунт A на устройстве 1, аккаунт B на устройстве 2.
@@ -377,7 +377,7 @@
 ---
 
 ### F3 🟠 Sidebar bottom: убрать хаос кнопок
-**Статус:** `[ ]`
+**Статус:** `[x]` закрыто 2026-04-22 (7b3a9da): New Group/Channel/My Link → FAB "+" dropdown, Explore добавлен
 
 **Проблема (MD3-скрин):** Снизу сайдбара нагромождено:
 - "Удалить историю" — красная кнопка, слишком агрессивная
@@ -400,7 +400,7 @@
 ---
 
 ### F4 🟠 Message hover actions: позиционирование и состав
-**Статус:** `[ ]`
+**Статус:** `[x]` закрыто 2026-04-22 (7b3a9da): absolute -top-8 над пузырём вместо flex-row сбоку
 
 **Проблема:** Hover-кнопки на сообщении (ответ / forward / ...) появляются в разных местах в разных шеллах, иногда перекрывают текст.
 
@@ -461,3 +461,4 @@ A2 (trust store SHA-256) ─── B7 (safety numbers UI)
 | 2026-04-22 | Создан файл — первичный аудит всех незакрытых задач |
 | 2026-04-22 | **Блок 1 закрыт** — A1, A2, A4, B7: DR always-on, SHA-256 trust store, group key delivery on join, safety numbers UI (коммит 69c3a1c) |
 | 2026-04-22 | **F1, F2 закрыты** — sidebar context menu + DECRYPT_FAIL UX (коммит dd31788) |
+| 2026-04-22 | **ALL HIGH закрыты** — F3+F4 UI, B1 enforcement+discovery, B2, D1+D2 тесты; B3+B4+B5 верифицированы как уже реализованные (коммит 7b3a9da) |

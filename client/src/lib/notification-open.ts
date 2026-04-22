@@ -11,3 +11,12 @@ export function parseTargetChatIdFromUrl(rawUrl: string, baseOrigin?: string): s
   }
 }
 
+export function parseAcceptCallFromUrl(rawUrl: string, baseOrigin?: string): boolean {
+  try {
+    const base = baseOrigin && baseOrigin.trim() ? baseOrigin : 'http://localhost'
+    const u = new URL(rawUrl, base)
+    return u.searchParams.get('accept_call') === '1'
+  } catch {
+    return false
+  }
+}

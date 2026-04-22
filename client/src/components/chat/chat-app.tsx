@@ -160,7 +160,6 @@ export function ChatApp({
   })
   useAutoLock()
   useMobileViewport()
-  useNotificationOpen()
   useAppBadge(userId)
   const vaultState = useCryptoVault(userId, user?.username ?? username)
   const { chats, reload } = useChats(userId)
@@ -226,6 +225,8 @@ export function ChatApp({
     toggleScreenShare,
     setQuality,
   } = useWebRTC(userId)
+
+  useNotificationOpen(acceptIncomingCall)
 
   const {
     isInGroupCall,

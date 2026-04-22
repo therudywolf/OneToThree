@@ -1,6 +1,6 @@
 # AGENT_PROGRESS — OneToThree
 
-Last updated: 2026-04-22b (bugfix session — production issues fixed)
+Last updated: 2026-04-22c (UI/UX quick-fix only session)
 
 ## Snapshot For Next Agent
 
@@ -99,6 +99,14 @@ Last updated: 2026-04-22b (bugfix session — production issues fixed)
 
 - **DECRYPT_FAIL на старых сообщениях** — ECDH ключ сменился (пересоздание vault/другое устройство). Исторические сообщения необратимы без оригинального ключа. Нужен UI для информирования пользователя.
 - **Sidebar hover-иконки** занимают 120px (3×w-10) постоянно в DOM — текст усекается. Нужно `width:0 overflow-hidden group-hover:width-10` или `position:absolute`.
+
+## UI/UX Quick Fixes (этот цикл, без крипты/сложного runtime)
+
+- Починен контекст-меню чата: теперь меню **зажимается в границы viewport** и не уходит за край экрана.
+- Увеличена минимальная ширина меню (`220px`) + добавлен `max-width` от ширины окна.
+- Тексты пунктов меню больше не режутся: добавлен перенос строк (`whitespace-normal`, `break-words`).
+- Исправления сделаны только в UI-компоненте `client/src/components/chat/chat-row-context-menu.tsx`.
+- **Сознательно не трогали** крипту, DR, invite runtime, fanout и другие сложные задачи (оставлено следующей нейросети).
 
 ## Лог (этот цикл)
 

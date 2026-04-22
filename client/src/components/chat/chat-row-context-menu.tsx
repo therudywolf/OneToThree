@@ -31,6 +31,8 @@ export function ChatRowContextMenu({
   const { t } = useTranslation()
   const isMd3 = useThemeStore((s) => s.shellMode) === 'md3'
   const menuRef = useRef<HTMLDivElement>(null)
+  const MENU_MIN_WIDTH = 220
+  const VIEWPORT_MARGIN = 8
 
   useEffect(() => {
     function handleDown(e: MouseEvent | TouchEvent) {
@@ -51,11 +53,23 @@ export function ChatRowContextMenu({
     }
   }, [onClose])
 
-  // Adjust position so menu doesn't overflow viewport
+  // Keep menu inside viewport so labels/buttons are never clipped.
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 0
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 0
+  const clampedLeft =
+    viewportWidth > 0
+      ? Math.max(VIEWPORT_MARGIN, Math.min(x, viewportWidth - MENU_MIN_WIDTH - VIEWPORT_MARGIN))
+      : x
+  const estimatedMenuHeight = 3 * 44 + 8
+  const clampedTop =
+    viewportHeight > 0
+      ? Math.max(VIEWPORT_MARGIN, Math.min(y, viewportHeight - estimatedMenuHeight - VIEWPORT_MARGIN))
+      : y
+
   const style: React.CSSProperties = {
     position: 'fixed',
-    left: x,
-    top: y,
+    left: clampedLeft,
+    top: clampedTop,
     zIndex: 9999,
   }
 
@@ -85,7 +99,7 @@ export function ChatRowContextMenu({
       <div
         ref={menuRef}
         style={style}
-        className="min-w-[160px] overflow-hidden rounded-xl bg-[var(--surface-container-high)] py-1 shadow-[var(--md3-elevation-3)]"
+        className="min-w-[220px] max-w-[min(92vw,280px)] overflow-hidden rounded-xl bg-[var(--surface-container-high)] py-1 shadow-[var(--md3-elevation-3)]"
       >
         {items.map((item) => (
           <button
@@ -100,7 +114,7 @@ export function ChatRowContextMenu({
             }}
           >
             <item.icon className="h-4 w-4 shrink-0" />
-            <span>{item.label}</span>
+            <span className="whitespace-normal break-words leading-5">{item.label}</span>
           </button>
         ))}
       </div>
@@ -111,7 +125,7 @@ export function ChatRowContextMenu({
     <div
       ref={menuRef}
       style={style}
-      className="min-w-[160px] border border-neon-cyan/30 bg-void font-mono shadow-[0_4px_24px_rgba(0,0,0,0.8)]"
+      className="min-w-[220px] max-w-[min(92vw,300px)] border border-neon-cyan/30 bg-void font-mono shadow-[0_4px_24px_rgba(0,0,0,0.8)]"
     >
       {items.map((item) => (
         <button
@@ -126,7 +140,7 @@ export function ChatRowContextMenu({
           }}
         >
           <item.icon className="h-3.5 w-3.5 shrink-0" />
-          <span>{item.label}</span>
+          <span className="whitespace-normal break-words leading-4">{item.label}</span>
         </button>
       ))}
     </div>

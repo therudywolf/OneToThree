@@ -75,6 +75,7 @@
   - [x] этап 1.2 — `composer-picker-panel` + `chat-terminal` (единые `h-9/h-10` для tab/import/CTA/scroll button)
   - [x] этап 1.3 — mobile header chips + modal controls (`chat-search-panel`, `forward-modal`) унифицированы
   - [x] этап 1.4 — финишный sweep по редким модалкам (`vault`, `identity`, `group settings`)
+  - [x] этап 1.5 — контекст-меню чата: clamp в viewport + расширенная ширина + перенос длинных лейблов (фикс обрезки пунктов меню)
 
 ---
 
@@ -211,6 +212,7 @@
 | 2026-04-22 | [x] Пункт 2: GIF (Giphy), TGS/Lottie renderer, офлайн-кэш sticker packs |
 | 2026-04-22 | [x] Sidebar utility rail: в левую колонку добавлены нижние кнопки Settings / Notifications toggle / Vault lock + mobile-drawer поведение через `onNavigate` |
 | 2026-04-22 | [x] Fix: исчезающие сообщения `[DECRYPT_FAIL]` после отправки — DR-контекст добавлен в history load + delivery sync (`use-load-chat-messages`, `use-message-delivery-sync`, `use-messages`) |
+| 2026-04-22 | [x] UI quick-fix: `chat-row-context-menu` теперь не вылезает за край экрана, русские лейблы не обрезаются (viewport clamp + `min-w` 220 + word wrap) |
 
 ---
 

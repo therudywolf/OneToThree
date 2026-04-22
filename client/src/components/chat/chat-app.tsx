@@ -506,7 +506,7 @@ export function ChatApp({
   }
 
   return (
-    <div className="chat-safe-shell safe-all flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-void supports-[height:100dvh]:h-[100dvh]">
+    <div className="chat-safe-shell flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-void supports-[height:100dvh]:h-[100dvh]">
       <InviteChatLinkEffect userId={userId} />
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
@@ -609,7 +609,7 @@ export function ChatApp({
       ) : null}
 
       {/* ─── HEADER ────────────────────────────────────────────────────────────────────────── */}
-      <header className={`p13-header chat-header-compact flex shrink-0 items-center gap-2 px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] ${isMd3 ? `md3-top-appbar ${md3HeaderCondensed ? 'md3-top-appbar--condensed' : ''}` : ''}`}>
+      <header className={`p13-header chat-header-compact flex shrink-0 items-center gap-2 px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] md:hidden ${isMd3 ? `md3-top-appbar ${md3HeaderCondensed ? 'md3-top-appbar--condensed' : ''}` : ''}`}>
 
         {/* Burger — mobile only */}
         <button
@@ -832,7 +832,7 @@ export function ChatApp({
           />
         ) : null}
         <div
-          className={`chat-layout-sidebar fixed inset-y-0 left-0 z-50 flex h-full max-h-[100dvh] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-auto md:max-h-none md:w-[21.5rem] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] ${
+          className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex h-[100dvh] max-h-[100dvh] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-[100dvh] md:max-h-[100dvh] md:w-[21.5rem] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] md:pt-0 pb-[env(safe-area-inset-bottom,0px)] md:pb-0 ${
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
         >

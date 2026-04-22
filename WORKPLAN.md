@@ -71,21 +71,20 @@
 ## SPRINT 3 — Стикеры и Emoji
 
 ### 3.1 Telegram стикеры — интеграция
-- [ ] Добавить эндпоинт `GET /api/stickers/packs` — список паков пользователя
-- [ ] Добавить эндпоинт `POST /api/stickers/packs/import` — импорт из Telegram Bot API
-- [ ] Добавить эндпоинт `GET /api/stickers/packs/:packId` — список стикеров в паке
-- [ ] Клиент: загрузка и кэширование sticker пак-данных
-- [ ] Клиент: рендеринг TGS/Lottie через `@lottiefiles/dotlottie-web` или `lottie-web`
-- [ ] Envelope `p13: 'sticker'` уже в `attachment-envelope.ts` — проверить wire format
+- [x] Эндпоинты `GET /api/stickers/packs`, `POST /api/stickers/packs/import`, `GET .../packs/:id`, `GET .../stickers`, `GET /api/stickers/asset-url`
+- [x] Клиент: `client/src/lib/api/stickers.ts`, отправка через `buildStickerPlaintext` → `sendText` (E2E JSON в plaintext)
+- [ ] Клиент: офлайн-кэш паков (сейчас загрузка по вкладке)
+- [ ] Клиент: рендеринг TGS/Lottie (сейчас fallback: emoji + метка; static/webm — img/video)
+- [x] Envelope `p13: 'sticker'`, поле `path` = стабильный `media_key` (не presigned URL)
 
 **Структура БД уже есть:** `sticker_packs`, `stickers` (migration 0031)
 
 ### 3.2 Кнопка emoji/sticker/gif
-- [ ] Компонент `<EmojiStickerGifPicker>` — три вкладки
-- [ ] Emoji: встроить `emoji-picker-element` или `@emoji-mart/react`
-- [ ] Sticker: grid из `sticker_packs`, lazy-load
-- [ ] GIF: интеграция Tenor API (бесплатно) или Giphy
-- [ ] Поле ввода: заменить текущую кнопку эмодзи на новый попап
+- [x] Компонент `ComposerPickerPanel` — вкладки Emoji | Stickers | GIF (GIF — заглушка)
+- [x] Emoji: `emoji-picker-react`
+- [x] Sticker: сетка по паку + импорт по short_name
+- [ ] GIF: Tenor / Giphy
+- [x] Кнопка смайлика → composer (dock xl+ / модал на узких)
 
 ---
 
@@ -186,4 +185,6 @@
 | 2026-04-22 | Диагностика: БД доступна (postgres:5432), схема полная. 0 устройств = тестовые пользователи, не через UI. |
 | 2026-04-22 | Диагностика: ice-servers эндпоинт СУЩЕСТВУЕТ. Нужно настроить TURN_URLS/TURN_AUTH_SECRET в server/.env |
 | 2026-04-22 | Диагностика: все 68 тестов проходят после scrypt-фикса |
+| 2026-04-22 | [x] Стикеры: UI `ComposerPickerPanel`, `StickerBubble`, `GET /stickers/asset-url`, фикс `getLastCachedMessageForChat` IDBKeyRange (`\\uffff`) |
+| 2026-04-22 | [x] Импорт TG: dedup по `(tg_source, owner_id)` на сервере |
 

@@ -237,6 +237,20 @@ const ru = {
   'emoji.pickerAria': 'Вставить эмодзи',
   'emoji.pickerTitle': 'Эмодзи',
 
+  'composer.toggle': 'Эмодзи, стикеры и GIF',
+  'composer.pickerTitle': 'Эмодзи и стикеры',
+  'composer.tabEmoji': 'Эмодзи',
+  'composer.tabSticker': 'Стикеры',
+  'composer.tabGif': 'GIF',
+  'composer.gifSoon': 'Поиск GIF — скоро',
+  'composer.stickerImportPlaceholder': 'Короткое имя в Telegram',
+  'composer.stickerImport': 'Импорт',
+  'composer.stickerImportHint':
+    'Имя из t.me/addstickers/… — на сервере нужен TELEGRAM_BOT_TOKEN.',
+  'composer.stickerEmpty': 'Нет наборов — импортируйте выше.',
+
+  'chat.previewSticker': 'Стикер',
+
   'dock.panelAria': 'Боковая панель',
   'dock.profileTitle': 'Профиль',
   'dock.searchTitle': 'Поиск в чате',

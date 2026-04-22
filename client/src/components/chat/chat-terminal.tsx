@@ -8,7 +8,8 @@ import { useUnreadStore } from '@/store/unreadStore'
 import { getFmSocket } from '@/lib/api/socket'
 import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
-import { parseAttachmentEnvelope } from '@/lib/attachment-envelope'
+import { parseAttachmentEnvelope, parseStickerEnvelope } from '@/lib/attachment-envelope'
+import { StickerBubble } from '@/components/chat/sticker-bubble'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { deleteMessage } from '@/lib/api/chats'
 import {
@@ -658,6 +659,8 @@ export function ChatTerminal({
   function replySnippet(msg: DecryptedMessage): string {
     const env = parseAttachmentEnvelope(msg.plaintext)
     if (env) return env.fileName.length > 48 ? `${env.fileName.slice(0, 48)}…` : env.fileName
+    const st = parseStickerEnvelope(msg.plaintext)
+    if (st) return st.fallbackEmoji?.trim() || '🎭'
     if (msg.plaintext && msg.plaintext !== '[DECRYPT_FAIL]') {
       return msg.plaintext.length > 60 ? `${msg.plaintext.slice(0, 60)}…` : msg.plaintext
     }
@@ -1049,6 +1052,7 @@ export function ChatTerminal({
           if (group.type === 'UNIT') {
             const m = group.message
             const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
+            const stickerEnv = m.plaintext ? parseStickerEnvelope(m.plaintext) : null
             const mine = m.sender_id === userId
             const senderLabel = labelForSender(m.sender_id)
             const showUnreadDivider =
@@ -1180,7 +1184,8 @@ export function ChatTerminal({
                     <div className="p13-label mb-1 text-[10px] opacity-70">
                       {formatMessageTimestamp(m.created_at, locale)}
                     </div>
-                    {m.plaintext && !parseAttachmentEnvelope(m.plaintext) ? (
+                    {stickerEnv ? <StickerBubble envelope={stickerEnv} /> : null}
+                    {m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv ? (
                       <CollapsibleText text={m.plaintext}>
                         {(visibleText) => (
                           <NoirPlaintext

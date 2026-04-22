@@ -21,6 +21,7 @@ import { wsRoutes } from './routes/ws.js'
 import { devicesRoutes } from './routes/devices.js'
 import { keysRoutes } from './routes/keys.js'
 import { callRoutes } from './routes/call.js'
+import { stickersRoutes } from './routes/stickers.js'
 import { sql } from 'drizzle-orm'
 import { linkPreviewRoutes } from './routes/link-preview.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
@@ -180,6 +181,7 @@ export async function buildApp() {
   await app.register(devicesRoutes, { prefix: '/api/devices' })
   await app.register(keysRoutes, { prefix: '/api/keys' })
   await app.register(callRoutes, { prefix: '/api' })
+  await app.register(stickersRoutes, { prefix: '/api/stickers' })
 
   app.get('/health', async () => ({ ok: true }))
 

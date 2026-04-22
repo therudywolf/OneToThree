@@ -199,7 +199,7 @@ export async function getOlderCachedMessages(
 export async function getLastCachedMessageForChat(chatId: string): Promise<DecryptedMessage | null> {
   if (typeof indexedDB === 'undefined') return null
   const conn = await initConnection()
-  const range = IDBKeyRange.bound([chatId, '', ''], [chatId, '￿', '￿'])
+  const range = IDBKeyRange.bound([chatId, '', ''], [chatId, '\uffff', '\uffff'])
   const tx = conn.transaction('message_feed', 'readonly')
   const idx = tx.store.index('bySectorCreated')
   const cursor = await idx.openCursor(range, 'prev')

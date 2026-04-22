@@ -16,22 +16,9 @@ import {
   MEDIA_PERMISSION_DENIED_CODE,
   MEDIA_TOO_LARGE_CODE,
 } from '@/lib/media-limits'
-import dynamic from 'next/dynamic'
-import { Theme } from 'emoji-picker-react'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
+import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
-
-const LazyEmojiPicker = dynamic(
-  () => import('emoji-picker-react').then((m) => m.default),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[350px] w-[300px] items-center justify-center font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
-        loading…
-      </div>
-    ),
-  }
-)
 
 function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
@@ -73,7 +60,7 @@ type QueuedFile = { file: File; mediaType: 'image' | 'video' | 'audio' | 'file' 
 export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
   const [messageText, setMessageText] = useState('')
-  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [composerPickerOpen, setComposerPickerOpen] = useState(false)
 
   const isRecordingRef = useRef(false)
   const [isRecordingUI, setIsRecordingUI] = useState(false)
@@ -100,7 +87,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const emojiContainerRef = useRef<HTMLDivElement>(null)
+  const composerPickerRef = useRef<HTMLDivElement>(null)
   const replyTo = useChatStore((s) => s.replyTo)
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const editingMessage = useChatStore((s) => s.editingMessage)
@@ -161,14 +148,14 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   }, [previewStream, mediaMode])
 
   useEffect(() => {
-    if (!emojiOpen) return
+    if (!composerPickerOpen) return
     const close = (e: MouseEvent) => {
-      if (emojiContainerRef.current?.contains(e.target as Node)) return
-      setEmojiOpen(false)
+      if (composerPickerRef.current?.contains(e.target as Node)) return
+      setComposerPickerOpen(false)
     }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
-  }, [emojiOpen])
+  }, [composerPickerOpen])
 
   useEffect(() => {
     return () => {
@@ -604,43 +591,46 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
 
         {/* Emoji button — left side, next to attach */}
         {!isRecordingUI ? (
-          <div ref={emojiContainerRef} className="relative shrink-0">
+          <div ref={composerPickerRef} className="relative shrink-0">
             <button
               type="button"
               className="p13-icon-btn"
               disabled={disabled}
               onClick={() => {
-                // On xl+ viewports open the shared right-dock emoji slot
-                // so the picker persists as the user scrolls/searches.
                 if (matchesDockViewport()) {
                   const store = useDockStore.getState()
-                  if (store.slot === 'emoji') {
+                  if (store.slot === 'composer') {
                     store.close()
                   } else {
-                    store.openEmoji((emoji) => insertEmoji(emoji))
+                    store.openComposer({
+                      onEmoji: (emoji) => insertEmoji(emoji),
+                      onStickerSend: async (json) => {
+                        await sendText(json)
+                      },
+                    })
                   }
                   return
                 }
-                setEmojiOpen((o) => !o)
+                setComposerPickerOpen((o) => !o)
               }}
               tabIndex={-1}
-              title={t('emoji.pickerToggle')}
+              title={t('composer.toggle')}
             >
               <Smile className="h-4 w-4" />
             </button>
-            {emojiOpen && (
-              <div className="p13-emoji-popup">
-                <LazyEmojiPicker
-                  onEmojiClick={(emojiData: { emoji: string }) => { insertEmoji(emojiData.emoji); setEmojiOpen(false) }}
-                  skinTonesDisabled
-                  searchDisabled
-                  previewConfig={{ showPreview: false }}
-                  width={300}
-                  height={350}
-                  theme={Theme.DARK}
+            {composerPickerOpen ? (
+              <div className="p13-emoji-popup w-[min(440px,92vw)] max-h-[min(520px,70vh)] overflow-hidden">
+                <ComposerPickerPanel
+                  layout="modal"
+                  onEmoji={(emoji) => insertEmoji(emoji)}
+                  onStickerSend={async (json) => {
+                    await sendText(json)
+                    setComposerPickerOpen(false)
+                  }}
+                  onAfterStickerSend={() => setComposerPickerOpen(false)}
                 />
               </div>
-            )}
+            ) : null}
           </div>
         ) : null}
 

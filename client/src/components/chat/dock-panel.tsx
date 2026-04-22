@@ -9,6 +9,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useLocaleStore } from '@/store/localeStore'
 import { ShellSurface, ShellText, ShellIconButton, useShell } from '@/components/ui/shell'
 import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
+import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 
 const LazyEmojiPicker = dynamic(
   () => import('emoji-picker-react').then((m) => m.default),
@@ -45,6 +46,8 @@ export function DockPanel() {
   const close = useDockStore((s) => s.close)
   const profileUserId = useDockStore((s) => s.profileUserId)
   const emojiOnPick = useDockStore((s) => s.emojiOnPick)
+  const composerOnEmoji = useDockStore((s) => s.composerOnEmoji)
+  const composerOnStickerSend = useDockStore((s) => s.composerOnStickerSend)
   const searchOnJump = useDockStore((s) => s.searchOnJump)
 
   useEffect(() => {
@@ -77,6 +80,7 @@ export function DockPanel() {
         <ShellText variant="label" className="truncate">
           {slot === 'profile' && t('dock.profileTitle')}
           {slot === 'emoji' && t('emoji.pickerTitle')}
+          {slot === 'composer' && t('composer.pickerTitle')}
           {slot === 'search' && t('dock.searchTitle')}
           {slot === 'pinned' && t('dock.pinnedTitle')}
         </ShellText>
@@ -117,6 +121,14 @@ export function DockPanel() {
               theme={isTerminal ? Theme.DARK : Theme.LIGHT}
             />
           </div>
+        ) : null}
+
+        {slot === 'composer' && composerOnEmoji && composerOnStickerSend ? (
+          <ComposerPickerPanel
+            layout="dock"
+            onEmoji={(e) => composerOnEmoji(e)}
+            onStickerSend={composerOnStickerSend}
+          />
         ) : null}
 
         {slot === 'search' ? (

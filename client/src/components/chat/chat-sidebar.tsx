@@ -50,6 +50,7 @@ import {
 import type { ApiChatRow } from '@/lib/api/chats'
 import { searchLocalMessages, getLastCachedMessageForChat, MESSAGE_CACHED_EVENT } from '@/lib/message-cache'
 import type { DecryptedMessage } from '@/types/chat'
+import { parseStickerEnvelope } from '@/lib/attachment-envelope'
 import { useThemeStore } from '@/store/themeStore'
 
 const PINNED_CHATS_KEY = 'fm_pinned_chats'
@@ -302,6 +303,12 @@ export function ChatSidebar({
     if (msg.media_type === 'audio') return '🎵 Audio'
     if (msg.media_type === 'video') return '🎬 Video'
     if (msg.media_type === 'file') return '📎 File'
+    const st = msg.plaintext ? parseStickerEnvelope(msg.plaintext) : null
+    if (st) {
+      return st.fallbackEmoji?.trim()
+        ? `${st.fallbackEmoji} · ${t('chat.previewSticker')}`
+        : t('chat.previewSticker')
+    }
     return msg.plaintext?.slice(0, 60) ?? ''
   }
 

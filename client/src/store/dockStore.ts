@@ -10,7 +10,7 @@ import type { DecryptedMessage } from '@/types/chat'
  * `window.matchMedia('(min-width: 80rem)')` or a `useMediaQuery` hook before
  * choosing dock vs. modal.
  */
-export type DockSlot = 'profile' | 'emoji' | 'search' | 'pinned'
+export type DockSlot = 'profile' | 'emoji' | 'search' | 'pinned' | 'composer'
 
 type DockState = {
   slot: DockSlot | null
@@ -20,6 +20,9 @@ type DockState = {
    */
   profileUserId: string | null
   emojiOnPick: ((emoji: string) => void) | null
+  /** Unified emoji + sticker + GIF picker (xl+ dock). */
+  composerOnEmoji: ((emoji: string) => void) | null
+  composerOnStickerSend: ((json: string) => Promise<void>) | null
   searchScopeChatId: string | null
   /**
    * Callback wired by the chat view that the search panel invokes to scroll
@@ -33,6 +36,10 @@ type DockState = {
 
   openProfile: (userId: string) => void
   openEmoji: (onPick: (emoji: string) => void) => void
+  openComposer: (handlers: {
+    onEmoji: (emoji: string) => void
+    onStickerSend: (json: string) => Promise<void>
+  }) => void
   openSearch: (chatId: string, onJump?: (messageId: string) => void) => void
   openPinned: (chatId: string) => void
   close: () => void
@@ -43,6 +50,8 @@ export const useDockStore = create<DockState>((set, get) => ({
   slot: null,
   profileUserId: null,
   emojiOnPick: null,
+  composerOnEmoji: null,
+  composerOnStickerSend: null,
   searchScopeChatId: null,
   searchOnJump: null,
   pinnedChatId: null,
@@ -51,7 +60,19 @@ export const useDockStore = create<DockState>((set, get) => ({
   openProfile: (userId) =>
     set({ slot: 'profile', profileUserId: userId }),
   openEmoji: (onPick) =>
-    set({ slot: 'emoji', emojiOnPick: onPick }),
+    set({
+      slot: 'emoji',
+      emojiOnPick: onPick,
+      composerOnEmoji: null,
+      composerOnStickerSend: null,
+    }),
+  openComposer: (handlers) =>
+    set({
+      slot: 'composer',
+      composerOnEmoji: handlers.onEmoji,
+      composerOnStickerSend: handlers.onStickerSend,
+      emojiOnPick: null,
+    }),
   openSearch: (chatId, onJump) =>
     set({ slot: 'search', searchScopeChatId: chatId, searchOnJump: onJump ?? null }),
   openPinned: (chatId) =>
@@ -61,6 +82,8 @@ export const useDockStore = create<DockState>((set, get) => ({
       slot: null,
       profileUserId: null,
       emojiOnPick: null,
+      composerOnEmoji: null,
+      composerOnStickerSend: null,
       searchScopeChatId: null,
       searchOnJump: null,
       pinnedChatId: null,

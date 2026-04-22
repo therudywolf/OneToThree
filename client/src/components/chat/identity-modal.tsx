@@ -23,6 +23,7 @@ import {
   getSessionPeerIdentity,
   clearDrSession,
 } from '@/lib/ratchet/session-manager'
+import { SafetyNumberDisplay } from '@/components/chat/safety-number-display'
 
 /**
  * ONETOTHREE :: NODE_INTEGRITY_CHECK
@@ -187,16 +188,7 @@ export function IdentityModal({
             </div>
 
             {drSafetyNumber && (
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-[var(--on-surface-variant)]">
-                  {t('identity.drSafetyNumber')}
-                </p>
-                <div className="rounded-2xl bg-[var(--surface-variant)] px-4 py-2">
-                  <pre className="text-xs font-mono tracking-widest text-[var(--on-surface)] whitespace-pre-wrap break-all">
-                    {drSafetyNumber}
-                  </pre>
-                </div>
-              </div>
+              <SafetyNumberDisplay safetyNumber={drSafetyNumber} />
             )}
 
             {isCompromised && (
@@ -305,16 +297,7 @@ export function IdentityModal({
 
           {/* DR_SAFETY_NUMBER */}
           {drSafetyNumber && (
-            <div className="space-y-1">
-              <p className="text-[9px] uppercase tracking-widest text-text-muted/70">
-                DR_SAFETY_NUMBER
-              </p>
-              <div className="border border-border-strong bg-void px-4 py-2">
-                <pre className="font-mono text-[11px] tracking-widest text-neon-cyan/80 whitespace-pre-wrap break-all">
-                  {drSafetyNumber}
-                </pre>
-              </div>
-            </div>
+            <SafetyNumberDisplay safetyNumber={drSafetyNumber} />
           )}
 
           {/* ALERT_SECTION */}

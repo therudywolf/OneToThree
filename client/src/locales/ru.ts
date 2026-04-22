@@ -1,6 +1,8 @@
 const ru = {
   // [COMMON]
   'common.back': 'Назад',
+  'common.copy': 'Копировать',
+  'common.copied': 'Скопировано',
   'common.next': 'Далее',
   'common.skip': 'Пропустить',
   'common.saved': 'Сохранено',
@@ -37,6 +39,7 @@ const ru = {
   'errors.generic': 'Ошибка',
   'errors.tofuMismatch': '⚠ Ключ собеседника изменился — откройте панель идентификации для подтверждения',
   'errors.peerKeyMissing': 'Собеседник не загрузил ключи — попросите его открыть приложение',
+  'errors.groupKeyPending': 'Ожидание группового ключа шифрования — нужно чтобы онлайн был администратор',
 
   // [ATTACHMENTS]
   'attach.pickAria': 'Прикрепить файл',
@@ -802,6 +805,7 @@ const ru = {
   'identity.title': 'Безопасность',
   'identity.fingerprint': 'Номер безопасности',
   'identity.drSafetyNumber': 'DR-номер безопасности',
+  'identity.safetyNumberHint': 'Сверьте эти цифры с контактом по защищённому внешнему каналу (звонок, лично).',
   'identity.tofuChanged': 'Ключ идентификации собеседника изменился. Проверьте перед отправкой.',
   'identity.acceptNewKey': 'Принять новый ключ и сбросить сессию',
   'identity.verifyHint': 'Сверьте этот код с контактом через защищенный внешний канал.',

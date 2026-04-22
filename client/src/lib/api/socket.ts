@@ -76,6 +76,7 @@ export type WsInboundMessage =
   | { type: 'webrtc_signal'; fromUserId: string; signalData: unknown }
   | { type: 'chats_updated' }
   | { type: 'group_key_epoch'; chat_id: string; key_epoch: number }
+  | { type: 'member_joined'; chat_id: string; user_id: string }
   | { type: 'message_deleted'; message_id: string; chat_id: string }
   | {
       type: 'message_pin_changed'

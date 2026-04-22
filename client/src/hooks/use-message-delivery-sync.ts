@@ -6,7 +6,7 @@ import {
   fetchPendingDeliveries,
 } from '@/lib/api/messages'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
-import { decryptApiMessageRows } from '@/lib/decrypt-chat-api-message'
+import { decryptApiMessageRows, type DrContext } from '@/lib/decrypt-chat-api-message'
 import { BATCH_WORKER_MIN } from '@/lib/crypto-batch-worker'
 import { getFmSocket } from '@/lib/api/socket'
 import { cacheMessage } from '@/lib/message-cache'
@@ -19,6 +19,7 @@ async function pullPendingForChat(
   chatId: string,
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
+  drCtx: DrContext | undefined,
   appendMessage: (m: DecryptedMessage) => void,
   setDecryptBusy?: (busy: boolean) => void
 ): Promise<void> {
@@ -36,7 +37,8 @@ async function pullPendingForChat(
     decrypted = await decryptApiMessageRows(
       unwrappedPrivateKey,
       cryptoCtx,
-      rows
+      rows,
+      drCtx
     )
   } finally {
     if (showBusy) setDecryptBusy?.(false)
@@ -53,9 +55,13 @@ async function pullPendingForChat(
   await acknowledgeMessagesDelivered(ids)
 }
 
-export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
+export function useMessageDeliverySync(
+  cryptoCtx: ChatCryptoContext | null,
+  directPeerUserId?: string | null
+) {
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
+  const userId = useSessionStore((s) => s.userId)
   const appendMessage = useChatStore((s) => s.appendMessage)
   const setHistoryDecryptBusy = useUnreadStore((s) => s.setHistoryDecryptBusy)
   const prevConnected = useRef(false)
@@ -67,12 +73,18 @@ export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
       if (now && !prevConnected.current) {
         const chatId = useSessionStore.getState().activeChatId
         const pk = useSessionStore.getState().unwrappedPrivateKey
+        const ownerUserId = useSessionStore.getState().userId
         const ctx = cryptoCtx
+        const drCtx: DrContext | undefined =
+          ownerUserId && directPeerUserId
+            ? { ownerUserId, peerUserId: directPeerUserId }
+            : undefined
         if (chatId && pk && ctx) {
           void pullPendingForChat(
             chatId,
             pk,
             ctx,
+            drCtx,
             appendMessage,
             setHistoryDecryptBusy
           ).catch(() => {
@@ -88,10 +100,15 @@ export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
   useEffect(() => {
     if (!activeChatId || !cryptoCtx || !unwrappedPrivateKey) return
     if (!getFmSocket().connected) return
+    const drCtx: DrContext | undefined =
+      userId && directPeerUserId
+        ? { ownerUserId: userId, peerUserId: directPeerUserId }
+        : undefined
     void pullPendingForChat(
       activeChatId,
       unwrappedPrivateKey,
       cryptoCtx,
+      drCtx,
       appendMessage,
       setHistoryDecryptBusy
     ).catch(() => {
@@ -100,7 +117,9 @@ export function useMessageDeliverySync(cryptoCtx: ChatCryptoContext | null) {
   }, [
     activeChatId,
     cryptoCtx,
+    directPeerUserId,
     unwrappedPrivateKey,
+    userId,
     appendMessage,
     setHistoryDecryptBusy,
   ])

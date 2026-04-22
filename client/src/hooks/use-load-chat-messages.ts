@@ -6,6 +6,7 @@ import { acknowledgeMessagesDelivered } from '@/lib/api/messages'
 import { type ChatCryptoContext } from '@/lib/chat-crypto'
 import {
   decryptApiMessageRows,
+  type DrContext,
   type ApiMessageRow,
 } from '@/lib/decrypt-chat-api-message'
 import { BATCH_WORKER_MIN } from '@/lib/crypto-batch-worker'
@@ -18,7 +19,10 @@ import { useSessionStore } from '@/store/sessionStore'
 import { useUnreadStore } from '@/store/unreadStore'
 import type { DecryptedMessage } from '@/types/chat'
 
-export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
+export function useLoadChatMessages(
+  cryptoCtx: ChatCryptoContext | null,
+  directPeerUserId?: string | null
+) {
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const userId = useSessionStore((s) => s.userId)
@@ -58,12 +62,18 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
       ).length
       const showDecryptBusy = cipherCount >= BATCH_WORKER_MIN
       if (showDecryptBusy) setHistoryDecryptBusy(true)
+      const drCtx: DrContext | undefined =
+        userId && directPeerUserId
+          ? { ownerUserId: userId, peerUserId: directPeerUserId }
+          : undefined
+
       let out: DecryptedMessage[] = []
       try {
         out = await decryptApiMessageRows(
           unwrappedPrivateKey,
           cryptoCtx,
-          rows
+          rows,
+          drCtx
         )
       } finally {
         if (showDecryptBusy) setHistoryDecryptBusy(false)
@@ -95,5 +105,13 @@ export function useLoadChatMessages(cryptoCtx: ChatCryptoContext | null) {
     return () => {
       cancelled = true
     }
-  }, [activeChatId, cryptoCtx, unwrappedPrivateKey, setMessages, setHistoryDecryptBusy, userId])
+  }, [
+    activeChatId,
+    cryptoCtx,
+    directPeerUserId,
+    unwrappedPrivateKey,
+    setMessages,
+    setHistoryDecryptBusy,
+    userId,
+  ])
 }

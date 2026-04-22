@@ -9,6 +9,8 @@ import {
   MessageSquarePlus,
   Star,
   ShieldAlert,
+  Settings,
+  Lock,
   Bell,
   BellOff,
   UserCheck,
@@ -52,6 +54,13 @@ import { searchLocalMessages, getLastCachedMessageForChat, MESSAGE_CACHED_EVENT 
 import type { DecryptedMessage } from '@/types/chat'
 import { parseStickerEnvelope } from '@/lib/attachment-envelope'
 import { useThemeStore } from '@/store/themeStore'
+import {
+  getExistingPushSubscription,
+  getNotificationPermission,
+  subscribeUserPush,
+  supportsWebPush,
+  unsubscribeUserPush,
+} from '@/lib/push-subscription'
 
 const PINNED_CHATS_KEY = 'fm_pinned_chats'
 
@@ -102,6 +111,8 @@ type ChatSidebarProps = {
   sharedKey: CryptoKey | null
   onPackSettingsChanged?: () => void
   onNavigate?: () => void
+  onOpenSettings?: () => void
+  onLockVault?: () => void
 }
 
 export function ChatSidebar({
@@ -110,6 +121,8 @@ export function ChatSidebar({
   sharedKey,
   onPackSettingsChanged,
   onNavigate,
+  onOpenSettings,
+  onLockVault,
 }: ChatSidebarProps) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
@@ -142,6 +155,8 @@ export function ChatSidebar({
   const [_renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
   const [_renamingFolderName, setRenamingFolderName] = useState('')
   const [lastMessages, setLastMessages] = useState<Record<string, DecryptedMessage | null>>({})
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
 
   useEffect(() => {
     try {
@@ -283,6 +298,50 @@ export function ChatSidebar({
     window.addEventListener(MESSAGE_CACHED_EVENT, onCached)
     return () => window.removeEventListener(MESSAGE_CACHED_EVENT, onCached)
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (!supportsWebPush()) {
+        if (!cancelled) setPushEnabled(false)
+        return
+      }
+      try {
+        const [permission, sub] = await Promise.all([
+          getNotificationPermission(),
+          getExistingPushSubscription(),
+        ])
+        if (!cancelled) setPushEnabled(permission === 'granted' && !!sub)
+      } catch {
+        if (!cancelled) setPushEnabled(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function togglePushInRail() {
+    if (pushBusy || !supportsWebPush()) return
+    setPushBusy(true)
+    try {
+      if (pushEnabled) {
+        await unsubscribeUserPush()
+      } else {
+        await subscribeUserPush()
+      }
+      const [permission, sub] = await Promise.all([
+        getNotificationPermission(),
+        getExistingPushSubscription(),
+      ])
+      setPushEnabled(permission === 'granted' && !!sub)
+      onNavigate?.()
+    } catch (e) {
+      setCreateErr(e instanceof Error ? e.message : 'PUSH_TOGGLE_FAILED')
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   function formatChatTs(iso: string | null | undefined): string {
     if (!iso) return ''
@@ -493,7 +552,8 @@ export function ChatSidebar({
       ) : null}
 
       {/* Vertical folder rail — Telegram-style left column */}
-      <nav className={`custom-scrollbar flex shrink-0 flex-col items-center gap-0.5 overflow-y-auto py-2 w-14 ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-r border-neon-cyan/15'}`}>
+      <div className={`flex h-full w-14 shrink-0 flex-col ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-r border-neon-cyan/15'}`}>
+      <nav className="custom-scrollbar flex flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2">
         {visibleFolders.map((folder) => {
           const matchingChats = nonSelfChats.filter((c) =>
             folderMatchesChat(folder, c, userId, {
@@ -564,6 +624,52 @@ export function ChatSidebar({
           )
         })}
       </nav>
+      <div className={`flex shrink-0 flex-col items-center gap-1 border-t px-1.5 py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-cyan/15'}`}>
+        <button
+          type="button"
+          title={t('common.settings')}
+          onClick={() => {
+            onOpenSettings?.()
+            onNavigate?.()
+          }}
+          className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+            isMd3
+              ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+              : 'border border-neon-cyan/25 text-neon-cyan/75 hover:border-neon-cyan hover:text-neon-cyan'
+          }`}
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          title={pushEnabled ? t('settings.pushDisable') : t('settings.pushEnable')}
+          disabled={pushBusy || !supportsWebPush()}
+          onClick={() => { void togglePushInRail() }}
+          className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors disabled:opacity-40 ${
+            isMd3
+              ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+              : 'border border-neon-cyan/25 text-neon-cyan/75 hover:border-neon-cyan hover:text-neon-cyan'
+          }`}
+        >
+          {pushEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+        </button>
+        <button
+          type="button"
+          title="Lock vault"
+          onClick={() => {
+            onLockVault?.()
+            onNavigate?.()
+          }}
+          className={`inline-flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+            isMd3
+              ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+              : 'border border-neon-red/30 text-neon-red/80 hover:border-neon-red hover:bg-neon-red/10 hover:text-neon-red'
+          }`}
+        >
+          <Lock className="h-4 w-4" />
+        </button>
+      </div>
+      </div>
       {folderMenu ? (
         <div
           className="fixed z-[220] min-w-[11rem] border border-border-strong bg-surface p-1 shadow-2xl"

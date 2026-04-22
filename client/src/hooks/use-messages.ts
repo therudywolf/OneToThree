@@ -11,7 +11,7 @@ export function useMessages(
   triggerBackgroundPush?: (title: string, body: string, targetUrl?: string) => void,
   directPeerUserId?: string | null
 ) {
-  useLoadChatMessages(cryptoCtx)
-  useMessageDeliverySync(cryptoCtx)
+  useLoadChatMessages(cryptoCtx, directPeerUserId)
+  useMessageDeliverySync(cryptoCtx, directPeerUserId)
   useChatRealtime(cryptoCtx, triggerBackgroundPush, directPeerUserId)
 }

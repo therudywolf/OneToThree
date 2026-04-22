@@ -214,7 +214,7 @@ function PeerTile({
             <div className="mx-auto h-10 w-10 border border-border-strong bg-void flex items-center justify-center">
               <span className="block w-2 h-2 bg-neon-red animate-pulse" />
             </div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted/70">OPTICS_OFFLINE</p>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted/70">VIDEO_OFFLINE</p>
           </div>
         </div>
       )}

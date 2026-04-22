@@ -843,6 +843,7 @@ export function ChatSidebar({
 
         {sidebarChatsFiltered.map((c) => {
           const isPinned = pinnedIds.includes(c.id)
+          const isMutedRow = isChatMuted(c)
           const unread = unreadByChat[c.id]
           const unreadTotal = unread?.total ?? 0
           const mentionTotal = unread?.mentions ?? 0
@@ -959,6 +960,72 @@ export function ChatSidebar({
                   </span>
                 </span>
               </button>
+              <div
+                className={`flex w-0 shrink-0 items-center gap-1 overflow-hidden pr-0 opacity-0 transition-[width,opacity,padding] duration-150 group-hover:w-[108px] group-hover:pr-2 group-hover:opacity-100 group-focus-within:w-[108px] group-focus-within:pr-2 group-focus-within:opacity-100 ${
+                  isMd3 ? '' : 'border-l border-neon-cyan/15'
+                }`}
+              >
+                <button
+                  type="button"
+                  aria-label={isPinned ? t('sidebar.unpin') : t('sidebar.pin')}
+                  title={isPinned ? t('sidebar.unpin') : t('sidebar.pin')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    togglePin(c.id)
+                  }}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                    isPinned
+                      ? isMd3
+                        ? 'bg-[color-mix(in_srgb,var(--neon-cyan)_20%,transparent)] text-[var(--on-surface)]'
+                        : 'bg-neon-cyan/15 text-neon-cyan'
+                      : isMd3
+                        ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+                        : 'text-text-muted hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                  }`}
+                >
+                  <Pin className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={c.is_favorite ? t('sidebar.unfavorite') : t('sidebar.favorite')}
+                  title={c.is_favorite ? t('sidebar.unfavorite') : t('sidebar.favorite')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void toggleFavorite(c.id, Boolean(c.is_favorite))
+                  }}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                    c.is_favorite
+                      ? isMd3
+                        ? 'bg-[color-mix(in_srgb,var(--accent-2)_18%,transparent)] text-[var(--on-surface)]'
+                        : 'bg-accent-2/15 text-accent-2'
+                      : isMd3
+                        ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+                        : 'text-text-muted hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                  }`}
+                >
+                  <Star className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={isMutedRow ? t('sidebar.unmute') : t('sidebar.mute')}
+                  title={isMutedRow ? t('sidebar.unmute') : t('sidebar.mute')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void toggleMute(c.id, isMutedRow)
+                  }}
+                  className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                    isMutedRow
+                      ? isMd3
+                        ? 'bg-[color-mix(in_srgb,var(--danger)_15%,transparent)] text-[var(--danger)]'
+                        : 'bg-neon-red/10 text-neon-red'
+                      : isMd3
+                        ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+                        : 'text-text-muted hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                  }`}
+                >
+                  {isMutedRow ? <BellOff className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+                </button>
+              </div>
             </div>
           )
         })}

@@ -105,7 +105,8 @@ Last updated: 2026-04-22c (UI/UX quick-fix only session)
 - Починен контекст-меню чата: теперь меню **зажимается в границы viewport** и не уходит за край экрана.
 - Увеличена минимальная ширина меню (`220px`) + добавлен `max-width` от ширины окна.
 - Тексты пунктов меню больше не режутся: добавлен перенос строк (`whitespace-normal`, `break-words`).
-- Исправления сделаны только в UI-компоненте `client/src/components/chat/chat-row-context-menu.tsx`.
+- Починен UX `sidebar hover`-иконок: экшены `pin/favorite/mute` теперь скрыты в `w-0` до hover/focus и **не резервируют 120px** в строке чата.
+- Исправления сделаны только в UI-компонентах `client/src/components/chat/chat-row-context-menu.tsx` и `client/src/components/chat/chat-sidebar.tsx`.
 - **Сознательно не трогали** крипту, DR, invite runtime, fanout и другие сложные задачи (оставлено следующей нейросети).
 
 ## Лог (этот цикл)

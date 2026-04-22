@@ -1,6 +1,6 @@
 # AGENT_PROGRESS — OneToThree
 
-Last updated: 2026-04-22c (UI/UX quick-fix only session)
+Last updated: 2026-04-22d (prod incidents + pending hotfixes)
 
 ## Snapshot For Next Agent
 
@@ -10,6 +10,21 @@ Last updated: 2026-04-22c (UI/UX quick-fix only session)
 - Sidebar click area починен (pointer-events на hidden кнопках).
 - Добавлено постоянное требование: **два независимых шелла (MD3 + Cyberpunk/Terminal), оба должны быть полностью отполированы**.
 - **ПРАВИЛО**: перед написанием CSS для MD3 — проверять что CSS-класс не используется как container/root div в JSX.
+
+## Incident Notes (2026-04-22d)
+
+- [x] **DB migration incident fixed**: `start.sh update` падал на `0035_same_molly_hayes.sql` с `channel_role already exists`.
+  - Fix shipped to `main`: commit `03611fe`.
+  - Result: `db-migrate` now completes successfully on update.
+- [ ] **Media upload still blocked in production**: `STORAGE_PUT_403 SignatureDoesNotMatch`.
+  - HAR confirmed: `Har/gs.har`, `Har/gol.har`.
+  - Root cause: presigned PUT signs `content-length` (`X-Amz-SignedHeaders=content-length;host`) and proxy path breaks signature.
+  - Prepared local fix (not yet shipped): remove `ContentLength` from presign path in:
+    - `server/src/lib/s3.ts`
+    - `server/src/routes/storage.ts`
+- [ ] **Message disappears after reopening chat** (empty/`[DECRYPT_FAIL]` regression window).
+  - Prepared local fix (not yet shipped): history-load fallback from local cache by `message.id` in:
+    - `client/src/hooks/use-load-chat-messages.ts`
 
 ## Verified In This Cycle (Sprint 8)
 

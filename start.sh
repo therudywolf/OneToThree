@@ -216,6 +216,13 @@ ensure_secret_stub "livekit_api_key"
 ensure_secret_stub "livekit_api_secret"
 ensure_secret_stub "cloudflare_turn_key_id"
 ensure_secret_stub "cloudflare_turn_api_token"
+# totp_wrap_key is mandatory — auto-generate if missing so api container
+# can mount /run/secrets/totp_wrap_key and encrypt TOTP secrets at rest.
+if [[ -d "$SECRETS_DIR" ]] && [[ ! -s "$SECRETS_DIR/totp_wrap_key" ]]; then
+  printf '%s' "$(openssl rand -hex 32)" > "$SECRETS_DIR/totp_wrap_key"
+  chmod 600 "$SECRETS_DIR/totp_wrap_key"
+  warn "Сгенерирован TOTP_WRAP_KEY (AES-256-GCM ключ шифрования TOTP секретов в БД)."
+fi
 
 # =============================================================================
 # КОМАНДЫ
@@ -662,6 +669,7 @@ if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
   sync_secret_to_env "minio_root_password"  "MINIO_ROOT_PASSWORD"
   sync_secret_to_env "jwt_secret"           "JWT_SECRET"
   sync_secret_to_env "webhook_secret"       "WEBHOOK_SECRET"
+  sync_secret_to_env "totp_wrap_key"        "TOTP_WRAP_KEY"
   sync_secret_to_env "turn_password"        "TURN_PASSWORD"
   sync_secret_to_env "turn_password"        "NEXT_PUBLIC_TURN_PASSWORD"
   sync_secret_to_env "cluster_join_token"   "CLUSTER_JOIN_TOKEN"
@@ -709,6 +717,18 @@ WH=$(val_for_key WEBHOOK_SECRET)
 if is_placeholder "$WH"; then
   update_key WEBHOOK_SECRET "$(openssl rand -hex 32)"
   ok "WEBHOOK_SECRET сгенерирован."
+fi
+
+TOTP_WRAP=$(val_for_key TOTP_WRAP_KEY)
+if [[ -z "${TOTP_WRAP:-}" ]] || is_placeholder "$TOTP_WRAP"; then
+  NEW_TOTP_WRAP=$(openssl rand -hex 32)
+  update_key TOTP_WRAP_KEY "$NEW_TOTP_WRAP"
+  # Also write the Docker secret file so the mount exists for api container.
+  if [[ -d "$SECRETS_DIR" ]]; then
+    echo -n "$NEW_TOTP_WRAP" > "$SECRETS_DIR/totp_wrap_key"
+    chmod 600 "$SECRETS_DIR/totp_wrap_key"
+  fi
+  ok "TOTP_WRAP_KEY сгенерирован (AES-256-GCM для шифрования TOTP секретов в БД)."
 fi
 
 TURN_PASS=$(val_for_key TURN_PASSWORD)

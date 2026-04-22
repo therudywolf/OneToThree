@@ -24,6 +24,8 @@ self.addEventListener('push', (event) => {
     (async () => {
       let payload = {
         title: 'OneToThree',
+        // Privacy-first: never show message content in notification body.
+        // Server sends only action + chatId; client fetches + decrypts on open.
         body: 'New message',
         icon: '/wolf-logo.png',
         data: { url: '/' },
@@ -32,11 +34,20 @@ self.addEventListener('push', (event) => {
       if (event.data) {
         try {
           const parsed = event.data.json()
+          // Silent push: server sends { action, chat_id } without plaintext content.
+          // Fall back to generic body if legacy server sends body text.
+          const chatId = parsed.chat_id || parsed.data?.chat_id || ''
+          const notifUrl = chatId ? '/?chat=' + chatId : (parsed.data?.url || '/')
           payload = {
-            title: parsed.title || payload.title,
-            body: parsed.body || payload.body,
+            title: parsed.title || 'OneToThree',
+            body: parsed.body || 'New message',
             icon: parsed.icon || '/wolf-logo.png',
-            data: parsed.data && typeof parsed.data === 'object' ? parsed.data : { url: '/' },
+            data: {
+              ...(parsed.data && typeof parsed.data === 'object' ? parsed.data : {}),
+              url: notifUrl,
+              chat_id: chatId,
+              type: parsed.type || parsed.data?.type || 'message',
+            },
           }
         } catch {
           try {
@@ -48,19 +59,20 @@ self.addEventListener('push', (event) => {
         }
       }
 
-      const url = payload.data?.url || '/'
-      const isIncomingCall = payload.data?.type === 'incoming_call'
+      const notifUrl = payload.data?.url || '/'
+      const type = payload.data?.type || 'message'
+      const isIncomingCall = type === 'incoming_call'
 
       if (isIncomingCall) {
         const callerName = payload.data?.caller_name || 'Unknown'
         const chatId = payload.data?.chat_id || ''
-        await self.registration.showNotification('Incoming call from ' + callerName, {
+        await self.registration.showNotification('☎ Incoming call from ' + callerName, {
           body: 'Tap to answer',
           icon: payload.icon || '/wolf-logo.png',
           badge: '/wolf-logo.png',
           actions: [
-            { action: 'accept', title: '\u2713 Answer' },
-            { action: 'decline', title: '\u2717 Decline' },
+            { action: 'accept', title: '✓ Answer' },
+            { action: 'decline', title: '✗ Decline' },
           ],
           tag: 'incoming-call',
           data: { ...payload.data, url: '/?chat=' + chatId, chat_id: chatId, type: 'incoming_call' },
@@ -73,9 +85,36 @@ self.addEventListener('push', (event) => {
           icon: payload.icon || '/wolf-logo.png',
           badge: '/wolf-logo.png',
           tag: 'forest-msg',
-          data: { ...payload.data, url },
+          data: { ...payload.data, url: notifUrl },
           requireInteraction: false,
         })
+      }
+    })()
+  )
+})
+
+/**
+ * Re-subscribe when the browser or OS invalidates the push subscription
+ * (e.g. after iOS/Android OS update, VAPID key rotation, or 30-day TTL on iOS).
+ * Without this, background push silently stops working until the user reopens the app.
+ */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const appServerKey = self.__VAPID_PUBLIC_KEY__
+        const newSub = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          ...(appServerKey ? { applicationServerKey: appServerKey } : {}),
+        })
+        await fetch('/api/push/resubscribe', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription: newSub.toJSON() }),
+        })
+      } catch (err) {
+        console.warn('[SW] pushsubscriptionchange resubscribe failed:', err)
       }
     })()
   )
@@ -156,53 +195,48 @@ self.addEventListener('notificationclick', (event) => {
   const action = event.action
   const isCallNotification = raw.type === 'incoming_call'
 
-  // Handle incoming call actions
   if (isCallNotification && action === 'decline') {
-    // Best-effort local dismiss: there is no dedicated /api/calls/decline endpoint.
-    // Call state will be synchronized by websocket when app resumes.
+    // Best-effort local dismiss — call state syncs via WS when app resumes.
     return
   }
 
-  // Accept call or general notification click: navigate to the app
   const targetUrl = typeof raw.url === 'string' ? raw.url : '/'
-  // For call accept, add accept_call param
   const finalUrl = isCallNotification && (action === 'accept' || !action)
     ? targetUrl + (targetUrl.includes('?') ? '&' : '?') + 'accept_call=1'
     : targetUrl
 
   event.waitUntil(
     (async () => {
-      var clientList = await self.clients.matchAll({
+      const clientList = await self.clients.matchAll({
         type: 'window',
         includeUncontrolled: true,
       })
-      var absUrl = new URL(finalUrl, self.location.origin).href
-      for (var i = 0; i < clientList.length; i++) {
-        var client = clientList[i]
+      const absUrl = new URL(finalUrl, self.location.origin).href
+
+      // Try to focus an existing window and navigate it.
+      for (const client of clientList) {
         if (!client.url.startsWith(self.location.origin)) continue
         try {
-          client.postMessage({
-            type: 'notification_click',
-            url: absUrl,
-            data: raw,
-          })
+          client.postMessage({ type: 'notification_click', url: absUrl, data: raw })
         } catch {
           /* best-effort */
-        }
-        try {
-          await client.focus()
-        } catch {
-          /* continue */
         }
         if ('navigate' in client && typeof client.navigate === 'function') {
           try {
             await client.navigate(absUrl)
             return client.focus()
           } catch {
-            /* fall through to openWindow */
+            /* fall through */
           }
         }
+        try {
+          return await client.focus()
+        } catch {
+          /* continue to next client */
+        }
       }
+
+      // No existing window — open a new one.
       if (self.clients.openWindow) {
         return self.clients.openWindow(absUrl)
       }

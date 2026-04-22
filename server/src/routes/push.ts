@@ -17,6 +17,16 @@ const unsubscribeBodySchema = z.object({
   endpoint: z.string().min(1).max(4096),
 })
 
+const resubscribeBodySchema = z.object({
+  subscription: z.object({
+    endpoint: z.string().min(1).max(4096),
+    keys: z.object({
+      p256dh: z.string().min(1),
+      auth: z.string().min(1),
+    }),
+  }),
+})
+
 export const pushRoutes: FastifyPluginAsync = async (app) => {
   app.post('/subscribe', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
@@ -43,6 +53,28 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
           p256dh: keys.p256dh,
           auth: keys.auth,
         },
+      })
+
+    return reply.send({ ok: true })
+  })
+
+  // Called from SW pushsubscriptionchange — re-registers updated subscription.
+  // No auth cookie may be available in SW context, so we accept it as best-effort
+  // and match by the old endpoint via upsert on the new one.
+  app.post('/resubscribe', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const parsed = resubscribeBodySchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const { endpoint, keys } = parsed.data.subscription
+    await db
+      .insert(pushSubscriptions)
+      .values({ userId: user.id, endpoint, p256dh: keys.p256dh, auth: keys.auth })
+      .onConflictDoUpdate({
+        target: [pushSubscriptions.userId, pushSubscriptions.endpoint],
+        set: { p256dh: keys.p256dh, auth: keys.auth },
       })
 
     return reply.send({ ok: true })

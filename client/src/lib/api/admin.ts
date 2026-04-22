@@ -154,3 +154,65 @@ export async function fetchAdminReports(): Promise<AdminReportRow[]> {
   }
   return data.reports ?? []
 }
+
+export type AdminDeviceRow = {
+  id: string
+  device_name: string | null
+  user_agent: string | null
+  ip_address: string | null
+  last_active: string
+  revoked_at: string | null
+  created_at: string
+}
+
+export type AdminLoginEventRow = {
+  id: string
+  user_id: string | null
+  outcome: string
+  ip_address: string | null
+  user_agent: string | null
+  created_at: string
+}
+
+export async function fetchAdminUserDevices(userId: string): Promise<AdminDeviceRow[]> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/${userId}/devices`, { credentials: 'include' })
+  const data = (await res.json().catch(() => ({}))) as { devices?: AdminDeviceRow[]; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_DEVICES_FAILED')
+  return data.devices ?? []
+}
+
+export async function fetchAdminUserLoginHistory(userId: string): Promise<AdminLoginEventRow[]> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/${userId}/login-history`, { credentials: 'include' })
+  const data = (await res.json().catch(() => ({}))) as { events?: AdminLoginEventRow[]; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_LOGIN_HISTORY_FAILED')
+  return data.events ?? []
+}
+
+export async function fetchAdminLoginEvents(): Promise<AdminLoginEventRow[]> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/login-events`, { credentials: 'include' })
+  const data = (await res.json().catch(() => ({}))) as { events?: AdminLoginEventRow[]; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_LOGIN_EVENTS_FAILED')
+  return data.events ?? []
+}
+
+export async function patchAdminUserRole(userId: string, role: 'user' | 'admin'): Promise<AdminUserRow> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/${userId}/role`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { user?: AdminUserRow; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_ROLE_FAILED')
+  if (!data.user) throw new Error('INVALID_ADMIN_RESPONSE')
+  return data.user
+}
+
+export async function deleteAdminDevice(deviceId: string): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/devices/${deviceId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_DEVICE_REVOKE_FAILED')
+}

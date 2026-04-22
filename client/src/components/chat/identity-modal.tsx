@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useThemeStore } from '@/store/themeStore'
 import {
   generateSafetyNumber,
   hashPublicKeyJwk,
@@ -52,6 +53,8 @@ export function IdentityModal({
   onContactApprovedChanged,
 }: Props) {
   const { t } = useTranslation()
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isMd3 = shellMode === 'md3'
   const [nodeFingerprint, setNodeFingerprint] = useState('...')
   const [drSafetyNumber, setDrSafetyNumber] = useState<string | null>(null)
   const [keyHash, setKeyHash] = useState('')
@@ -141,6 +144,121 @@ export function IdentityModal({
     approveContact(peerUserId)
     setIsApproved(true)
     onContactApprovedChanged?.(true)
+  }
+
+  if (isMd3) {
+    return (
+      <div
+        className="fixed inset-0 z-[140] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="relative w-full max-w-md rounded-[28px] bg-[var(--surface)] p-6 shadow-[var(--md3-elevation-3,0_8px_24px_rgba(0,0,0,0.18))]">
+          <header className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${isTrusted ? 'bg-emerald-500' : 'animate-pulse bg-red-500'}`} />
+              <p className="text-sm font-medium text-[var(--on-surface)]">
+                {t('identity.title')} — {peerUsername}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--on-surface-variant)] transition-colors hover:bg-[var(--surface-variant)]"
+              aria-label="Close"
+            >
+              <span className="text-lg leading-none">×</span>
+            </button>
+          </header>
+
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-[var(--on-surface-variant)]">
+                {t('identity.fingerprint')}
+              </p>
+              <div className="rounded-2xl bg-[var(--surface-variant)] px-4 py-3">
+                <pre className="overflow-x-auto text-xs font-mono tracking-[0.25em] text-[var(--on-surface)] custom-scrollbar whitespace-pre-wrap break-all">
+                  {isScanning ? '…' : nodeFingerprint}
+                </pre>
+              </div>
+              <p className="text-xs text-[var(--on-surface-variant)]">
+                {t('identity.verifyHint')}
+              </p>
+            </div>
+
+            {drSafetyNumber && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-[var(--on-surface-variant)]">
+                  {t('identity.drSafetyNumber')}
+                </p>
+                <div className="rounded-2xl bg-[var(--surface-variant)] px-4 py-2">
+                  <pre className="text-xs font-mono tracking-widest text-[var(--on-surface)] whitespace-pre-wrap break-all">
+                    {drSafetyNumber}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {isCompromised && (
+              <div className="rounded-2xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                {t('identity.compromisedAlert')}
+              </div>
+            )}
+
+            {tofuChanged && (
+              <div className="space-y-3 rounded-2xl bg-red-50 p-4 dark:bg-red-950/40">
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  ⚠ {t('identity.tofuChanged')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!myUserId) return
+                    void clearDrSession(myUserId, peerUserId).then(() => {
+                      setTofuChanged(false)
+                      setDrSafetyNumber(null)
+                    })
+                  }}
+                  className="rounded-full bg-red-600 px-4 py-2 text-xs font-medium text-white hover:bg-red-700"
+                >
+                  {t('identity.acceptNewKey')}
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                disabled={isScanning || !keyHash}
+                onClick={toggleTrustProtocol}
+                className={`h-10 w-full rounded-full px-4 text-sm font-medium transition-colors disabled:opacity-40 ${
+                  isTrusted
+                    ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-950/50 dark:text-red-300'
+                    : 'bg-[var(--primary)] text-[var(--on-primary)] hover:opacity-90'
+                }`}
+              >
+                {isTrusted ? t('identity.revokeTrust') : t('identity.validateIdentity')}
+              </button>
+              <button
+                type="button"
+                disabled={!isTrusted || isScanning}
+                onClick={toggleContactApproval}
+                className={`h-10 w-full rounded-full px-4 text-sm font-medium transition-colors disabled:opacity-40 ${
+                  isApproved
+                    ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-950/50 dark:text-red-300'
+                    : 'bg-[var(--secondary-container)] text-[var(--on-secondary-container)] hover:opacity-90'
+                }`}
+              >
+                {isApproved ? t('identity.removeContact') : t('identity.addToContacts')}
+              </button>
+              <p className="text-center text-xs text-[var(--on-surface-variant)]">
+                {isApproved ? t('identity.contactApproved') : t('identity.contactNotApproved')}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

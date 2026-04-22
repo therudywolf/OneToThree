@@ -797,6 +797,11 @@ const ru = {
   'thread.openThread': 'Открыть обсуждение',
 
   // [IDENTITY]
+  'identity.title': 'Безопасность',
+  'identity.fingerprint': 'Номер безопасности',
+  'identity.drSafetyNumber': 'DR-номер безопасности',
+  'identity.tofuChanged': 'Ключ идентификации собеседника изменился. Проверьте перед отправкой.',
+  'identity.acceptNewKey': 'Принять новый ключ и сбросить сессию',
   'identity.verifyHint': 'Сверьте этот код с контактом через защищенный внешний канал.',
   'identity.compromisedAlert': '[!] ALERT: TRUST_REVOKED // Ключ узла был изменен. Возможна попытка перехвата.',
   'identity.revokeTrust': '[ РАЗОРВАТЬ_ДОВЕРИЕ ]',

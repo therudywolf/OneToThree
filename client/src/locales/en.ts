@@ -797,6 +797,11 @@ const en = {
   'thread.openThread': 'Open thread',
 
   // [IDENTITY]
+  'identity.title': 'Security',
+  'identity.fingerprint': 'Safety Number',
+  'identity.drSafetyNumber': 'DR Safety Number',
+  'identity.tofuChanged': "Peer's identity key changed. Verify before sending.",
+  'identity.acceptNewKey': 'Accept new key & reset session',
   'identity.verifyHint': 'Compare this code with your contact via a secure external channel.',
   'identity.compromisedAlert': '[!] ALERT: TRUST_REVOKED // Peer key changed. Potential interception attempt.',
   'identity.revokeTrust': '[ SEVER_TRUST_LINK ]',

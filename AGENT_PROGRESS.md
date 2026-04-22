@@ -113,6 +113,8 @@ Last updated: 2026-04-22c (UI/UX quick-fix only session)
 - Calls touch UX: верхний статус-бар `PeerTile` теперь всегда видим на mobile/touch (не только через hover), чтобы fullscreen control был доступен без мыши.
 - Admin UX на mobile: обе таблицы получили `overflow-x-auto` + `min-width`, а action-кнопки в строках всегда видимы на мобильных (без зависимости от hover).
 - Onboarding parity: `StartGuide` получил shell-aware стили для `md3` (типографика, кнопки, surface/elevation), terminal стиль сохранён отдельно.
+- Group call mobile polish: control bar стал edge-safe на узких экранах (left/right inset), иконки получили единый touch-first размер и `aria-label`.
+- Settings mobile polish: tab-strip в `settings-modal` переведён в горизонтальный scroll, tab-кнопки получили `min-h-11` и `whitespace-nowrap` для стабильных hit-target.
 - Валидация после батча: `npm run typecheck -w project-13-client` и `npm run lint -w project-13-client` — PASS.
 - **Сознательно не трогали** крипту, DR, invite runtime, fanout и другие сложные задачи (оставлено следующей нейросети).
 

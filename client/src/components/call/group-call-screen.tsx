@@ -199,7 +199,8 @@ function ParticipantPanel({
         </span>
         <button
           onClick={onClose}
-          className="text-text-muted hover:text-text-primary transition-colors"
+          className="inline-flex h-10 w-10 items-center justify-center text-text-muted transition-colors hover:bg-surface/5 hover:text-text-primary"
+          aria-label={t('common.close')}
         >
           <X className="h-4 w-4" />
         </button>
@@ -476,7 +477,7 @@ export function GroupCallScreen({
 
         {/* CONTROL BAR */}
         <div
-          className={`absolute bottom-6 left-1/2 transform -translate-x-1/2 flex items-center bg-void/90 border border-border-strong backdrop-blur-xl shadow-2xl transition-all duration-300 pb-[env(safe-area-inset-bottom)] ${
+          className={`absolute bottom-2 left-2 right-2 flex items-center justify-center bg-void/90 border border-border-strong backdrop-blur-xl shadow-2xl transition-all duration-300 pb-[env(safe-area-inset-bottom)] md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2 ${
             showControls
               ? 'translate-y-0 opacity-100'
               : 'translate-y-4 opacity-0 pointer-events-none'
@@ -485,12 +486,13 @@ export function GroupCallScreen({
           {/* Mute */}
           <button
             onClick={onToggleMute}
-            className={`flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${
+            className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
               audioMuted
                 ? 'bg-danger/30 text-neon-red hover:bg-danger/30'
                 : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
             }`}
             title={audioMuted ? t('call.unmute') : t('call.mute')}
+            aria-label={audioMuted ? t('call.unmute') : t('call.mute')}
           >
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
@@ -498,12 +500,13 @@ export function GroupCallScreen({
           {/* Camera */}
           <button
             onClick={onToggleVideo}
-            className={`flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${
+            className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
               videoOff
                 ? 'bg-void/50 text-text-muted/70 hover:bg-elevated'
                 : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
             }`}
             title={videoOff ? t('call.videoOn') : t('call.videoOff')}
+            aria-label={videoOff ? t('call.videoOn') : t('call.videoOff')}
           >
             {videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
           </button>
@@ -512,7 +515,7 @@ export function GroupCallScreen({
           {!isMobileDevice && (
             <button
               onClick={handleScreenShareToggle}
-              className={`hidden sm:flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${
+              className={`hidden sm:flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
                 isScreenSharing
                   ? 'bg-neon-cyan/10 text-neon-cyan'
                   : 'text-text-muted hover:text-text-primary hover:bg-surface/5'
@@ -534,12 +537,13 @@ export function GroupCallScreen({
           {/* Participants */}
           <button
             onClick={() => setShowParticipantPanel(!showParticipantPanel)}
-            className={`flex h-12 w-14 items-center justify-center border-r border-border-strong transition-colors ${
+            className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
               showParticipantPanel
                 ? 'bg-neon-cyan/10 text-neon-cyan'
                 : 'text-text-muted hover:text-text-primary hover:bg-surface/5'
             }`}
             title={t('groupCall.participants')}
+            aria-label={t('groupCall.participants')}
           >
             <div className="relative">
               <Users className="h-4 w-4" />
@@ -553,8 +557,9 @@ export function GroupCallScreen({
           <div className="relative">
             <button
               onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className="flex h-12 w-14 items-center justify-center border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5 transition-colors"
+              className="flex h-12 w-12 items-center justify-center border-r border-border-strong text-text-muted transition-colors hover:text-text-primary hover:bg-surface/5 md:w-14"
               title={t('groupCall.more')}
+              aria-label={t('groupCall.more')}
             >
               <MoreVertical className="h-4 w-4" />
             </button>
@@ -581,8 +586,9 @@ export function GroupCallScreen({
           {/* End Call */}
           <button
             onClick={onEndCall}
-            className="flex h-12 w-16 items-center justify-center bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-text-primary transition-all"
+            className="flex h-12 w-14 items-center justify-center bg-neon-red/10 text-neon-red transition-all hover:bg-neon-red hover:text-text-primary md:w-16"
             title={t('call.endCall')}
+            aria-label={t('call.endCall')}
           >
             <PhoneOff className="h-5 w-5" />
           </button>

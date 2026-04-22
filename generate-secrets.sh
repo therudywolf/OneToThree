@@ -41,6 +41,7 @@ POSTGRES_PASSWORD=$(openssl rand -hex 24)
 MINIO_ROOT_PASSWORD=$(openssl rand -hex 24)
 JWT_SECRET=$(openssl rand -hex 32)
 WEBHOOK_SECRET=$(openssl rand -hex 32)
+TOTP_WRAP_KEY=$(openssl rand -hex 32)
 TURN_PASSWORD=$(openssl rand -hex 16)
 BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 INTERNAL_API_SIGNING_KEY=$(openssl rand -hex 32)
@@ -144,6 +145,7 @@ echo -n "$POSTGRES_PASSWORD"    > "$SECRETS_DIR/postgres_password"
 echo -n "$MINIO_ROOT_PASSWORD"  > "$SECRETS_DIR/minio_root_password"
 echo -n "$JWT_SECRET"           > "$SECRETS_DIR/jwt_secret"
 echo -n "$WEBHOOK_SECRET"       > "$SECRETS_DIR/webhook_secret"
+echo -n "$TOTP_WRAP_KEY"        > "$SECRETS_DIR/totp_wrap_key"
 echo -n "$TURN_PASSWORD"        > "$SECRETS_DIR/turn_password"
 echo -n "$BACKUP_ENCRYPTION_KEY" > "$SECRETS_DIR/backup_encryption_key"
 echo -n "$INTERNAL_API_SIGNING_KEY" > "$SECRETS_DIR/internal_api_signing_key"

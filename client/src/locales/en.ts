@@ -810,6 +810,9 @@ const en = {
   'identity.removeContact': '[ REMOVE_FROM_CONTACTS ]',
   'identity.contactApproved': 'Contact approved on this device.',
   'identity.contactNotApproved': 'Contact is not approved yet.',
+  'settings.trustRegistry': 'Trusted Contacts',
+  'settings.trustRegistryHint': 'Verified identities are stored locally. Compare safety numbers with contacts out-of-band.',
+  'settings.trustRegistryCount': 'View count',
 } as const;
 
 export default en;

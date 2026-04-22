@@ -42,6 +42,7 @@ import {
   type MotionMode,
 } from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
+import { getTrustedPeerCount } from '@/lib/trust-store'
 
 type Props = { userId: string; username: string; onClose: () => void }
 
@@ -761,6 +762,28 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     })}
                   </div>
                 )}
+              </div>
+
+              {/* Trust Registry */}
+              <div className={isMd3 ? 'rounded-2xl bg-[var(--surface-variant)] p-4 space-y-2' : 'border border-neon-cyan/30 p-3 space-y-2'}>
+                <p className={isMd3 ? 'text-sm font-medium text-[var(--on-surface)]' : 'text-xs uppercase tracking-widest text-neon-cyan'}>
+                  {t('settings.trustRegistry')}
+                </p>
+                <p className={isMd3 ? 'text-xs text-[var(--on-surface-variant)]' : 'text-[9px] text-text-muted/70'}>
+                  {t('settings.trustRegistryHint')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const count = getTrustedPeerCount()
+                    alert(count === 0 ? 'No verified contacts yet.' : `${count} verified contact(s) on this device.`)
+                  }}
+                  className={isMd3
+                    ? 'rounded-full bg-[var(--secondary-container)] text-[var(--on-secondary-container)] px-4 py-2 text-xs font-medium hover:opacity-90'
+                    : 'border border-neon-cyan/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/70 hover:bg-neon-cyan/10'}
+                >
+                  {t('settings.trustRegistryCount')}
+                </button>
               </div>
 
               {/* Kill Switch */}

@@ -810,6 +810,9 @@ const ru = {
   'identity.removeContact': '[ УДАЛИТЬ_ИЗ_КОНТАКТОВ ]',
   'identity.contactApproved': 'Контакт апрувнут на этом устройстве.',
   'identity.contactNotApproved': 'Контакт пока не апрувнут.',
+  'settings.trustRegistry': 'Доверенные контакты',
+  'settings.trustRegistryHint': 'Верифицированные идентификаторы хранятся локально. Сверяйте номера безопасности через внешний канал.',
+  'settings.trustRegistryCount': 'Посмотреть количество',
 } as const;
 
 export default ru;

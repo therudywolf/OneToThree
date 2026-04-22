@@ -209,6 +209,8 @@
 | 2026-04-22 | [x] UI task: этап 1.3b — modal/action controls (`chat-search-panel`, `forward-modal`) приведены к `h-8/h-10` |
 | 2026-04-22 | [x] UI task: этап 1.4 — `vault-modal`, `identity-modal`, `group-chat-settings` кнопки и поля приведены к единой высоте |
 | 2026-04-22 | [x] Пункт 2: GIF (Giphy), TGS/Lottie renderer, офлайн-кэш sticker packs |
+| 2026-04-22 | [x] Sidebar utility rail: в левую колонку добавлены нижние кнопки Settings / Notifications toggle / Vault lock + mobile-drawer поведение через `onNavigate` |
+| 2026-04-22 | [x] Fix: исчезающие сообщения `[DECRYPT_FAIL]` после отправки — DR-контекст добавлен в history load + delivery sync (`use-load-chat-messages`, `use-message-delivery-sync`, `use-messages`) |
 
 ---
 
@@ -219,4 +221,31 @@
 - Уже закрыто технически: invite race, login ECDH upload, sticker composer/send/render (webp/webm/tgs/lottie), sticker asset-url, GIF search, offline sticker cache.
 - Не закрыто: реальные e2e-баги из Sprint 1 (invites flow/messages/saved), DR send-path.
 - Перед любыми крупными правками прогонять: `npm run typecheck`, `npm run lint`, `npm run test -w project-13-server`.
+
+---
+
+## Остатки и фрагменты (handoff delta, 2026-04-22)
+
+### Что перепроверено в этом цикле
+- [x] `npm run typecheck -w project-13-client` — PASS
+- [x] `npm run lint -w project-13-client` — PASS
+- [x] `npm run test -w project-13-server` — PASS (полный ран)
+- [x] HAR-анализ проблемы «сообщение видно, потом пропадает»: подтверждён `protocol_version=2` + `dr:v2` + `dr_header`, корень в отсутствии `drCtx` на history/sync-пути
+
+### Что закрыто прямо сейчас
+- [x] Mobile UX: у списка чатов появился явный close-action (`X`) в drawer-header
+- [x] Sidebar UX: внизу левой колонки добавлены Settings / Notifications toggle / Vault lock
+- [x] Fix: для history load и pending delivery sync добавлен `drCtx`, чтобы DR v2 не деградировал в `[DECRYPT_FAIL]`
+
+### Что остаётся следующей нейросети (приоритет)
+1. [ ] Прогнать реальный e2e invites flow (`join/[code]`, некорректный code, `group_e2e` ключ)
+2. [ ] Прогнать real-device runtime direct fanout (2+ устройства) и убедиться, что `[DECRYPT_FAIL]` не воспроизводится
+3. [ ] Прогнать Saved Messages runtime (создание/перезагрузка/мульти-девайс)
+4. [ ] Завершить DR send-path milestones (Sprint 5) и тестовое покрытие
+5. [ ] TURN runtime проверка в боевом окружении (`/api/ice-servers`, coturn, fallback)
+
+### Короткая обратная связь следующей нейросети
+- Основной риск сейчас не в статике (линт/тайпы/юнит), а в runtime-переходах между путями доставки (REST/WS/sync/history).
+- Если снова появится симптом «сообщение сначала видно, потом `[DECRYPT_FAIL]`», первым делом проверить, передаётся ли `drCtx` в конкретный decrypt-path.
+- Мобильный UX стал лучше (добавлен явный выход из drawer), но нужен один живой touch-pass на телефоне, особенно с открытым поиском/модалками/доком.
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock } from 'lucide-react'
+import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock, X } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -836,12 +836,34 @@ export function ChatApp({
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
         >
+          <div
+            className={`flex h-12 shrink-0 items-center justify-between border-b px-3 md:hidden ${
+              isMd3
+                ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                : 'border-neon-cyan/20'
+            }`}
+          >
+            <span className={`text-[11px] uppercase tracking-[0.2em] ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono text-neon-cyan/85'}`}>
+              {t('sidebar.channels')}
+            </span>
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen(false)}
+              aria-label={t('common.close')}
+              title={t('common.close')}
+              className="p13-icon-btn touch-manipulation"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
           <ChatSidebar
             userId={userId}
             isAdmin={user?.role === 'admin'}
             sharedKey={sharedKey}
             onPackSettingsChanged={() => setGroupDetailTick((n) => n + 1)}
             onNavigate={() => setMobileSidebarOpen(false)}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onLockVault={() => setUnwrappedPrivateKey(null)}
           />
         </div>
         <div

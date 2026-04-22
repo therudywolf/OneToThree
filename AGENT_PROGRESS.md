@@ -107,6 +107,8 @@ Last updated: 2026-04-22c (UI/UX quick-fix only session)
 - Тексты пунктов меню больше не режутся: добавлен перенос строк (`whitespace-normal`, `break-words`).
 - Починен UX `sidebar hover`-иконок: экшены `pin/favorite/mute` теперь скрыты в `w-0` до hover/focus и **не резервируют 120px** в строке чата.
 - Исправления сделаны только в UI-компонентах `client/src/components/chat/chat-row-context-menu.tsx` и `client/src/components/chat/chat-sidebar.tsx`.
+- Для мобильного/тач UX: action-зона строки чата теперь также видна у **активного** чата без hover.
+- Мелкая полировка строки чата: timestamp получил `tabular-nums + truncate`, unread badge выровнен фиксированной min-width.
 - **Сознательно не трогали** крипту, DR, invite runtime, fanout и другие сложные задачи (оставлено следующей нейросети).
 
 ## Лог (этот цикл)

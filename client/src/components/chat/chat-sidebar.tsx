@@ -844,6 +844,7 @@ export function ChatSidebar({
         {sidebarChatsFiltered.map((c) => {
           const isPinned = pinnedIds.includes(c.id)
           const isMutedRow = isChatMuted(c)
+          const isActiveRow = activeChatId === c.id
           const unread = unreadByChat[c.id]
           const unreadTotal = unread?.total ?? 0
           const mentionTotal = unread?.mentions ?? 0
@@ -920,7 +921,7 @@ export function ChatSidebar({
                       {isPinned ? (
                         <Pin className="h-2.5 w-2.5 shrink-0 text-neon-cyan/60" />
                       ) : null}
-                      <span className={`ml-auto shrink-0 text-[10px] ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
+                      <span className={`ml-auto max-w-[5.5rem] shrink-0 truncate text-[10px] tabular-nums ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
                         {formatChatTs(lastMessages[c.id]?.created_at ?? c.last_message_at)}
                       </span>
                     </span>
@@ -951,7 +952,7 @@ export function ChatSidebar({
                               @{mentionTotal}
                             </span>
                           ) : null}
-                          <span className={`px-1.5 py-[1px] text-[9px] font-bold ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
+                          <span className={`min-w-[1.45rem] px-1.5 py-[1px] text-center text-[9px] font-bold ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
                             {unreadTotal > 99 ? '99+' : unreadTotal}
                           </span>
                         </span>
@@ -961,7 +962,9 @@ export function ChatSidebar({
                 </span>
               </button>
               <div
-                className={`flex w-0 shrink-0 items-center gap-1 overflow-hidden pr-0 opacity-0 transition-[width,opacity,padding] duration-150 group-hover:w-[108px] group-hover:pr-2 group-hover:opacity-100 group-focus-within:w-[108px] group-focus-within:pr-2 group-focus-within:opacity-100 ${
+                className={`flex shrink-0 items-center gap-1 overflow-hidden transition-[width,opacity,padding] duration-150 group-hover:w-[108px] group-hover:pr-2 group-hover:opacity-100 group-focus-within:w-[108px] group-focus-within:pr-2 group-focus-within:opacity-100 ${
+                  isActiveRow ? 'w-[108px] pr-2 opacity-100' : 'w-0 pr-0 opacity-0'
+                } ${
                   isMd3 ? '' : 'border-l border-neon-cyan/15'
                 }`}
               >

@@ -133,13 +133,24 @@ export async function cacheMessages(nodes: DecryptedMessage[]): Promise<void> {
   for (const node of nodes) await tx.store.put(node)
   await tx.done
   for (const node of nodes) scheduleTrace(() => indexNodeContent(node))
+  if (typeof window !== 'undefined') {
+    const affectedChats = new Set(nodes.map((n) => n.chat_id))
+    for (const chatId of affectedChats) {
+      window.dispatchEvent(new CustomEvent(MESSAGE_CACHED_EVENT, { detail: { chatId } }))
+    }
+  }
 }
+
+export const MESSAGE_CACHED_EVENT = 'p13:message-cached'
 
 export async function cacheMessage(node: DecryptedMessage): Promise<void> {
   if (typeof indexedDB === 'undefined') return
   const conn = await initConnection()
   await conn.put('message_feed', node)
   scheduleTrace(() => indexNodeContent(node))
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(MESSAGE_CACHED_EVENT, { detail: { chatId: node.chat_id } }))
+  }
 }
 
 export async function getRecentCachedMessages(chatId: string, limit = 50): Promise<DecryptedMessage[]> {
@@ -182,6 +193,17 @@ export async function getOlderCachedMessages(
     cursor = await cursor.continue()
   }
   return logs.reverse()
+}
+
+/** Get the most recent cached message for a chat (for sidebar preview). */
+export async function getLastCachedMessageForChat(chatId: string): Promise<DecryptedMessage | null> {
+  if (typeof indexedDB === 'undefined') return null
+  const conn = await initConnection()
+  const range = IDBKeyRange.bound([chatId, '', ''], [chatId, '￿', '￿'])
+  const tx = conn.transaction('message_feed', 'readonly')
+  const idx = tx.store.index('bySectorCreated')
+  const cursor = await idx.openCursor(range, 'prev')
+  return cursor?.value ?? null
 }
 
 /** Delete a single cached message by id. */

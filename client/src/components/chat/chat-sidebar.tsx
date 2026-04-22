@@ -48,7 +48,8 @@ import {
   type ChatFolder,
 } from '@/lib/chat-folders'
 import type { ApiChatRow } from '@/lib/api/chats'
-import { searchLocalMessages } from '@/lib/message-cache'
+import { searchLocalMessages, getLastCachedMessageForChat, MESSAGE_CACHED_EVENT } from '@/lib/message-cache'
+import type { DecryptedMessage } from '@/types/chat'
 import { useThemeStore } from '@/store/themeStore'
 
 const PINNED_CHATS_KEY = 'fm_pinned_chats'
@@ -139,6 +140,7 @@ export function ChatSidebar({
   const [folderMenu, setFolderMenu] = useState<{ folderId: string; x: number; y: number } | null>(null)
   const [_renamingFolderId, setRenamingFolderId] = useState<string | null>(null)
   const [_renamingFolderName, setRenamingFolderName] = useState('')
+  const [lastMessages, setLastMessages] = useState<Record<string, DecryptedMessage | null>>({})
 
   useEffect(() => {
     try {
@@ -254,6 +256,54 @@ export function ChatSidebar({
     }
     setApprovedPeerIds(approved)
   }, [chats, userId])
+
+  useEffect(() => {
+    if (!chats.length) return
+    let cancelled = false
+    void Promise.all(
+      chats.map(async (c) => ({ id: c.id, msg: await getLastCachedMessageForChat(c.id) }))
+    ).then((results) => {
+      if (cancelled) return
+      const next: Record<string, DecryptedMessage | null> = {}
+      for (const r of results) next[r.id] = r.msg
+      setLastMessages(next)
+    })
+    return () => { cancelled = true }
+  }, [chats])
+
+  useEffect(() => {
+    const onCached = (e: Event) => {
+      const chatId = (e as CustomEvent<{ chatId: string }>).detail?.chatId
+      if (!chatId) return
+      void getLastCachedMessageForChat(chatId).then((msg) => {
+        setLastMessages((prev) => ({ ...prev, [chatId]: msg }))
+      })
+    }
+    window.addEventListener(MESSAGE_CACHED_EVENT, onCached)
+    return () => window.removeEventListener(MESSAGE_CACHED_EVENT, onCached)
+  }, [])
+
+  function formatChatTs(iso: string | null | undefined): string {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    const now = new Date()
+    const diffMs = now.getTime() - d.getTime()
+    const diffDays = Math.floor(diffMs / 86400000)
+    if (diffDays === 0) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: 'short' })
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+
+  function previewText(c: { id: string; type: string; last_message_at?: string | null }): string {
+    const msg = lastMessages[c.id]
+    if (!msg) return c.last_message_at ? '…' : ''
+    if (msg.media_type === 'image') return '📷 Photo'
+    if (msg.media_type === 'audio') return '🎵 Audio'
+    if (msg.media_type === 'video') return '🎬 Video'
+    if (msg.media_type === 'file') return '📎 File'
+    return msg.plaintext?.slice(0, 60) ?? ''
+  }
 
   const sidebarChats = orderedSidebarChats(chats, pinnedIds)
 
@@ -700,57 +750,59 @@ export function ChatSidebar({
                     ) : null}
                   </div>
 
-                  <span className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="inline-flex items-center gap-1.5">
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    {/* Row 1: name + timestamp */}
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
                       {!c.is_group && trustedPeerIds.has(peerId ?? '') ? (
-                        <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
+                        <ShieldCheck className="h-3 w-3 text-neon-cyan shrink-0" />
                       ) : null}
                       {!c.is_group && approvedPeerIds.has(peerId ?? '') ? (
-                        <UserCheck className="h-3.5 w-3.5 text-accent-2 shrink-0" />
+                        <UserCheck className="h-3 w-3 text-accent-2 shrink-0" />
                       ) : null}
-                      <span className={`truncate text-[12px] ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-text-muted' : 'text-neon-cyan/85')}`}>
+                      <span className={`truncate text-[12px] font-medium ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan/85')}`}>
                         {listTitle}
                       </span>
                       {isPinned ? (
-                        <span className="rounded-full border border-neon-cyan/25 bg-neon-cyan/10 px-1.5 py-0.5 text-[8px] uppercase tracking-[0.24em] text-neon-cyan/80">
-                          Pin
-                        </span>
+                        <Pin className="h-2.5 w-2.5 shrink-0 text-neon-cyan/60" />
                       ) : null}
+                      <span className={`ml-auto shrink-0 text-[10px] ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
+                        {formatChatTs(lastMessages[c.id]?.created_at ?? c.last_message_at)}
+                      </span>
                     </span>
 
-                    {pres && !pres.online ? (
-                      <span className="truncate text-[10px] text-text-muted">
-                        {t('sidebar.lastSeen')}:{' '}
-                        {pres.last_seen_at
-                          ? new Date(pres.last_seen_at).toLocaleString(
-                              undefined,
-                              { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-                            )
-                          : '—'}
+                    {/* Row 2: last message preview + unread badge */}
+                    <span className="inline-flex min-w-0 items-center gap-1">
+                      <span className={`truncate text-[11px] ${isMd3 ? 'text-text-muted' : 'text-text-muted/60'}`}>
+                        {previewText(c) || (
+                          pres && !pres.online ? (
+                            <>
+                              {t('sidebar.lastSeen')}{' '}
+                              {pres.last_seen_at
+                                ? new Date(pres.last_seen_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                : '—'}
+                            </>
+                          ) : c.is_group ? `${c.member_ids.length} ${t('sidebar.members')}` : ''
+                        )}
                       </span>
-                    ) : c.is_group ? (
-                      <span className="truncate text-[10px] text-text-muted">
-                         {c.member_ids.length} {t('sidebar.members')}
-                       </span>
-                    ) : null}
-                  </span>
-                  {unreadTotal > 0 ? (
-                    <span className="ml-auto inline-flex items-center gap-1 self-center">
-                      {threadTotal > 0 ? (
-                        <span className="rounded border border-neon-cyan/50 bg-neon-cyan/10 px-1 py-[1px] text-[8px] font-bold text-neon-cyan">
-                          T{threadTotal}
+                      {unreadTotal > 0 ? (
+                        <span className="ml-auto inline-flex shrink-0 items-center gap-1">
+                          {threadTotal > 0 ? (
+                            <span className="rounded border border-neon-cyan/50 bg-neon-cyan/10 px-1 py-[1px] text-[8px] font-bold text-neon-cyan">
+                              T{threadTotal}
+                            </span>
+                          ) : null}
+                          {mentionTotal > 0 ? (
+                            <span className="rounded border border-accent-2/40 bg-accent-2/15 px-1 py-[1px] text-[8px] font-bold text-accent-2">
+                              @{mentionTotal}
+                            </span>
+                          ) : null}
+                          <span className={`px-1.5 py-[1px] text-[9px] font-bold ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
+                            {unreadTotal > 99 ? '99+' : unreadTotal}
+                          </span>
                         </span>
                       ) : null}
-                      {mentionTotal > 0 ? (
-                        <span className="rounded border border-accent-2/40 bg-accent-2/15 px-1 py-[1px] text-[8px] font-bold text-accent-2">
-                          @{mentionTotal}
-                        </span>
-                      ) : null}
-                      <span className={`px-1.5 py-[1px] text-[9px] font-bold ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
-                        {unreadTotal > 99 ? '99+' : unreadTotal}
-                      </span>
                     </span>
-                  ) : null}
+                  </span>
                 </span>
               </button>
               <button

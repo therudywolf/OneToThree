@@ -598,6 +598,17 @@ export function ChatSidebar({
 
       {/* Right panel — search + chat list + compose */}
       <div className="flex flex-col flex-1 min-w-0">
+      <div
+        className={`sticky top-0 z-10 border-b px-4 py-2 ${
+          isMd3
+            ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]'
+            : 'border-neon-cyan/30 bg-void'
+        }`}
+      >
+        <p className={`${isMd3 ? 'text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--on-surface)]' : 'font-mono text-[11px] uppercase tracking-[0.3em] text-neon-cyan'}`}>
+          {t('sidebar.channels')}
+        </p>
+      </div>
 
       {/* Search */}
       <div className={`border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/25'}`}>

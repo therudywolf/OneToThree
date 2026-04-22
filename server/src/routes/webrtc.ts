@@ -18,11 +18,7 @@ const DEFAULT_ICE_SERVERS: Array<{
   urls: string | string[]
   username?: string
   credential?: string
-}> = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-]
+}> = []
 const MAX_TURN_URL_CANDIDATES = 24
 
 function parseTurnUrls(raw: string | undefined): string[] {
@@ -162,10 +158,8 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
    * Resolution order (first winner writes):
    *   1. Cloudflare Calls TURN (orange-cloud friendly, preferred).
    *   2. Self-hosted coturn (grey-cloud subdomain).
-   *   3. Public STUN only (no relay — works only for non-symmetric NAT).
    *
-   * The response always includes STUN fallbacks so the client has at least
-   * host-to-host discovery even if TURN is down.
+   * No STUN-only fallback: relay is mandatory.
    */
   app.get('/turn', async (request, reply) => {
     const user = await getAuthUser(request, reply)
@@ -175,7 +169,7 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const iceServers: IceServerConfig[] = [...DEFAULT_ICE_SERVERS]
-    let source: 'cloudflare' | 'coturn' | 'stun-only' = 'stun-only'
+    let source: 'cloudflare' | 'coturn' | null = null
     let expiresAt: number | null = null
 
     if (isCloudflareTurnConfigured()) {
@@ -189,11 +183,11 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
           'ICE_CONFIG_GENERATED :: CLOUDFLARE_CALLS'
         )
       } catch (err) {
-        app.log.error({ err }, 'CLOUDFLARE_TURN_FAILED :: falling back to coturn/stun')
+        app.log.error({ err }, 'CLOUDFLARE_TURN_FAILED :: checking coturn')
       }
     }
 
-    if (source === 'stun-only') {
+    if (!source) {
       const coturn = collectCoturnIceServers(user.id)
       if (coturn.length > 0) {
         iceServers.push(...coturn)
@@ -203,9 +197,8 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
           'ICE_CONFIG_GENERATED :: COTURN_SELF_HOSTED'
         )
       } else {
-        app.log.warn(
-          'ICE_CONFIG_STUN_ONLY :: no TURN credentials configured (CF or coturn). Symmetric NAT peers will fail.'
-        )
+        app.log.error('ICE_CONFIG_FAILED :: no TURN credentials configured (CF or coturn)')
+        return reply.status(503).send({ error: 'TURN_NOT_CONFIGURED' })
       }
     }
 
@@ -230,7 +223,7 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
     if (!assertAuthed(reply, user)) return
 
     const iceServers: IceServerConfig[] = [...DEFAULT_ICE_SERVERS]
-    let source: 'cloudflare' | 'coturn' | 'stun-only' = 'stun-only'
+    let source: 'cloudflare' | 'coturn' | null = null
     let expiresAt: number | null = null
 
     if (isCloudflareTurnConfigured()) {
@@ -240,15 +233,19 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
         source = 'cloudflare'
         expiresAt = cf.expiresAt
       } catch (err) {
-        request.log.warn({ err }, 'ice-servers cloudflare failed, using fallbacks')
+        request.log.warn({ err }, 'ice-servers cloudflare failed, checking coturn')
       }
     }
-    if (source === 'stun-only') {
+    if (!source) {
       const coturn = collectCoturnIceServers(user.id)
       if (coturn.length > 0) {
         iceServers.push(...coturn)
         source = 'coturn'
       }
+    }
+    if (!source || iceServers.length === 0) {
+      request.log.error('ice-servers failed: relay not configured')
+      return reply.status(503).send({ error: 'TURN_NOT_CONFIGURED' })
     }
 
     reply.header('cache-control', 'private, max-age=0, must-revalidate')

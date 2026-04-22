@@ -119,9 +119,9 @@
 - [ ] Проверить: coturn запущен и доступен
 
 ### 4.2 Фикс
-- [ ] `GET /api/ice-servers` должен возвращать coturn HMAC-credentials (time-limited)
-- [ ] Формат: `{ iceServers: [{ urls: ['turn:...', 'turns:...'], username, credential }] }`
-- [ ] Если coturn недоступен — добавить fallback на публичные STUN (уже в `ice-servers.ts`)
+- [x] `GET /api/ice-servers` возвращает coturn HMAC-credentials (time-limited)
+- [x] Формат: `{ iceServers: [{ urls: ['turn:...', 'turns:...'], username, credential }] }`
+- [x] Принята новая политика: fallback на публичные STUN удалён (relay-only calls)
 - [ ] Для разработки: добавить `.env.local` пример с TURN_SECRET
 
 ---
@@ -243,6 +243,7 @@
 | 2026-04-22 | [x] UI quick-fix: `group-call-screen` mobile control bar получил edge-safe layout + унифицированные touch-target кнопок; `settings-modal` tabs переведены в горизонтальный mobile strip с устойчивыми размерами |
 | 2026-04-22 | [x] Prod hotfix: migration `0035_same_molly_hayes.sql` made idempotent, commit `03611fe`, `start.sh update` migration stage recovered |
 | 2026-04-22 | [~] Prod incident diagnosed: media upload `STORAGE_PUT_403 SignatureDoesNotMatch` due to signed `content-length` in presigned PUT (HAR-confirmed), code fix prepared but not shipped |
+| 2026-04-22 | [x] Calls policy update: relay-only mode (no STUN fallback, no runtime call fallback), updated `server/src/routes/webrtc.ts`, `client/src/lib/ice-servers.ts`, `client/src/hooks/use-webrtc.ts`; client checks + focused webrtc tests pass |
 
 ---
 
@@ -367,5 +368,5 @@
 ### 10.5 TURN / звонки
 - [ ] `/api/ice-servers` возвращает HMAC-credentials
 - [ ] coturn доступен и проксирует
-- [ ] Fallback на STUN при недоступности coturn
+- [x] Fallback на STUN при недоступности coturn удалён (по решению: no fallback)
 

@@ -1,6 +1,6 @@
 # CLAUDE HANDOFF — START HERE
 
-Last updated: 2026-04-22d (prod hotfix notes)
+Last updated: 2026-04-22e (relay-only calls update)
 
 ## Goal
 
@@ -47,6 +47,16 @@ Last updated: 2026-04-22d (prod hotfix notes)
 - [ ] **Открытый UX/runtime дефект**: сообщение может становиться пустым/`[DECRYPT_FAIL]` после возврата в чат.
   - Кодовый фикс подготовлен локально: fallback из message cache по `message.id` в `use-load-chat-messages`.
   - Требуется: commit+push+deploy и повторная проверка сценария.
+
+### Call transport policy update (2026-04-22e)
+
+- [x] Принята новая политика: **звонки только через relay/TURN**, без STUN-only и без клиентских fallback-веток.
+- [x] Реализовано:
+  - `server/src/routes/webrtc.ts` — `/api/turn` и `/api/ice-servers` возвращают `503 TURN_NOT_CONFIGURED`, если relay не настроен.
+  - `client/src/lib/ice-servers.ts` — убран fallback на public STUN; `getIceServers()` теперь требует TURN relay.
+  - `client/src/hooks/use-webrtc.ts` — убран runtime fallback/auto-switch path при ICE-fail/timeout.
+- [x] Локальная проверка: `typecheck` + `lint` (client) PASS, `server/src/routes/webrtc.test.ts` PASS.
+- [!] ВАЖНО: это **жёсткий режим**. Если TURN (Cloudflare TURN/coturn) недоступен, звонок не поднимется.
 
 ### Закрыто (Sprint 8)
 - [x] `[DECRYPT_FAIL]` при повторном входе в чат

@@ -83,7 +83,7 @@ export function ChatSearchPanel({ onJumpToMessage, onClose, locale }: Props) {
             type="button"
             onClick={clear}
             aria-label={t('common.clear')}
-            className="opacity-60 transition-opacity hover:opacity-100"
+            className="inline-flex h-8 w-8 items-center justify-center rounded opacity-60 transition-opacity hover:bg-neon-cyan/10 hover:opacity-100"
           >
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -93,7 +93,7 @@ export function ChatSearchPanel({ onJumpToMessage, onClose, locale }: Props) {
             type="button"
             onClick={onClose}
             aria-label={t('common.close')}
-            className="opacity-60 transition-opacity hover:opacity-100"
+            className="inline-flex h-8 w-8 items-center justify-center rounded opacity-60 transition-opacity hover:bg-neon-cyan/10 hover:opacity-100"
           >
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -124,10 +124,10 @@ export function ChatSearchPanel({ onJumpToMessage, onClose, locale }: Props) {
                 <button
                   type="button"
                   onClick={() => handleJump(m.id)}
-                  className={`block w-full text-left text-[11px] transition-colors ${
+                  className={`block h-10 w-full text-left text-[11px] transition-colors ${
                     isTerminal
-                      ? 'border border-neon-cyan/20 bg-void/40 px-2 py-1 font-mono text-neon-cyan/90 hover:border-neon-cyan/50 hover:bg-neon-cyan/10'
-                      : 'rounded-[var(--radius-sm,8px)] bg-[color-mix(in_srgb,var(--md3-primary,#8ab4f8)_8%,transparent)] px-2 py-1.5 text-[var(--md3-on-surface,#fff)] hover:bg-[color-mix(in_srgb,var(--md3-primary,#8ab4f8)_14%,transparent)]'
+                      ? 'border border-neon-cyan/20 bg-void/40 px-2 font-mono text-neon-cyan/90 hover:border-neon-cyan/50 hover:bg-neon-cyan/10'
+                      : 'rounded-[var(--radius-sm,8px)] bg-[color-mix(in_srgb,var(--md3-primary,#8ab4f8)_8%,transparent)] px-2 text-[var(--md3-on-surface,#fff)] hover:bg-[color-mix(in_srgb,var(--md3-primary,#8ab4f8)_14%,transparent)]'
                   }`}
                 >
                   <div className="mb-0.5 flex items-center justify-between gap-2 text-[9px] uppercase tracking-widest opacity-60">

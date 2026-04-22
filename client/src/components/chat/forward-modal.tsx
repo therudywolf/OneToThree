@@ -70,8 +70,13 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
             <p className="font-mono text-[10px] uppercase tracking-widest text-neon-cyan">
               {t('forward.title')}
             </p>
-            <button type="button" onClick={onClose}
-              className="text-neon-red font-mono text-xs hover:text-neon-cyan">[X]</button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-8 w-8 items-center justify-center border border-neon-red/35 bg-void text-neon-red transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+            >
+              <span className="font-mono text-[10px] leading-none">X</span>
+            </button>
           </header>
 
           {/* Snippet preview */}
@@ -84,7 +89,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
           )}
 
           <input
-            className="terminal-input mb-3 text-[10px]"
+            className="terminal-input mb-3 h-10 px-3 text-[10px]"
             placeholder={t('forward.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -105,7 +110,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
                     type="button"
                     disabled={!!busy || isSent}
                     onClick={() => void handleForward(c.id)}
-                    className={`flex w-full items-center justify-between border px-2 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-colors ${
+                    className={`flex h-10 w-full items-center justify-between border px-3 font-mono text-[10px] uppercase tracking-widest transition-colors ${
                       isSent
                         ? 'border-neon-cyan/20 text-neon-cyan/40'
                         : 'border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10'

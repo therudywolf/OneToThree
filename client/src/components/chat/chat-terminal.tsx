@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Crown, Star, ArrowDown, Reply } from 'lucide-react'
+import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useUnreadStore } from '@/store/unreadStore'
@@ -1112,6 +1112,46 @@ export function ChatTerminal({
                     <Reply className="h-4 w-4 text-neon-cyan" />
                   </div>
                 ) : null}
+                {/* Hover quick-action bar — desktop only, fades in on group hover */}
+                <div className={`p13-hover-actions hidden md:flex items-center gap-0.5 self-end mb-2 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150 ${
+                  mine ? 'order-first mr-1' : 'order-last ml-1'
+                }`}>
+                  <button
+                    type="button"
+                    title={t('msgAction.reply')}
+                    aria-label={t('msgAction.reply')}
+                    onClick={(e) => { e.stopPropagation(); handleMessageAction('reply', m) }}
+                    className="p13-icon-btn h-7 w-7"
+                  >
+                    <Reply className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  </button>
+                  <button
+                    type="button"
+                    title={t('msgAction.react')}
+                    aria-label={t('msgAction.react')}
+                    onClick={(e) => { e.stopPropagation(); setReactingMsgId(m.id) }}
+                    className="p13-icon-btn h-7 w-7"
+                  >
+                    <SmilePlus className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  </button>
+                  <button
+                    type="button"
+                    title="More actions"
+                    aria-label="More actions"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const pad = 8
+                      const mw = 200
+                      const mh = 320
+                      const x = Math.min(e.clientX, (typeof window !== 'undefined' ? window.innerWidth : e.clientX) - mw - pad)
+                      const y = Math.min(e.clientY, (typeof window !== 'undefined' ? window.innerHeight : e.clientY) - mh - pad)
+                      setCtxMenu({ msg: m, x: Math.max(pad, x), y: Math.max(pad, y), isMine: mine })
+                    }}
+                    className="p13-icon-btn h-7 w-7"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  </button>
+                </div>
                 <div
                   className={`min-w-0 relative ${
                     mine

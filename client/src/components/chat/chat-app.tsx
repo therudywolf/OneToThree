@@ -624,7 +624,7 @@ export function ChatApp({
         {/* CENTER: peer nick — always visible, takes remaining space */}
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {isSelfChat ? (
-            <div className={`flex min-w-0 items-center gap-1.5 px-2 py-1 text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-accent-2/40 bg-void tracking-[0.2em] text-accent-2'}`}>
+            <div className={`flex h-9 min-w-0 items-center gap-1.5 px-3 text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-accent-2/40 bg-void tracking-[0.2em] text-accent-2'}`}>
               <Star className="h-3.5 w-3.5 fill-accent-2 shrink-0" />
               <span className="truncate">{t('sidebar.savedMessages')}</span>
             </div>
@@ -643,7 +643,7 @@ export function ChatApp({
                     setHeaderProfileOpen(true)
                   }
                 }}
-                className={`touch-manipulation inline-flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] font-bold transition-colors ${
+                className={`touch-manipulation inline-flex h-9 min-w-0 items-center gap-1.5 px-3 text-[11px] font-bold transition-colors ${
                   isMd3
                     ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
                     : 'border border-neon-cyan/40 bg-void tracking-wider text-neon-cyan hover:border-neon-red hover:text-neon-red'
@@ -741,7 +741,7 @@ export function ChatApp({
           ) : null}
 
           <div
-            className={`hidden sm:inline-flex items-center gap-1 px-2 py-1 text-[10px] ${
+            className={`hidden h-9 sm:inline-flex items-center gap-1 px-3 text-[10px] ${
               isMd3
                 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
                 : 'border border-neon-cyan/30 bg-void font-mono uppercase tracking-[0.16em] text-neon-cyan/80'
@@ -776,7 +776,7 @@ export function ChatApp({
             onClick={() => setUnwrappedPrivateKey(null)}
             aria-label="Lock vault"
             title="Lock vault"
-            className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] transition-colors ${
+            className={`inline-flex h-9 items-center gap-1.5 px-3 text-[10px] transition-colors ${
               isMd3
                 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
                 : 'border border-neon-red/45 bg-void font-mono uppercase tracking-[0.14em] text-neon-red/85 hover:bg-neon-red/10'
@@ -787,7 +787,7 @@ export function ChatApp({
           </button>
 
           <div
-            className={`hidden md:inline-flex items-center gap-2 px-2 py-1 ${
+            className={`hidden h-9 md:inline-flex items-center gap-2 px-3 ${
               isMd3
                 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
                 : 'border border-neon-cyan/25 bg-void'

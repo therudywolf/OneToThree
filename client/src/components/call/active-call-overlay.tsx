@@ -180,7 +180,7 @@ function PeerTile({
       onClick={handleInteraction}
     >
       {/* NODE HEADER */}
-      <div className="absolute top-0 left-0 w-full z-10 flex items-center justify-between border-b border-border-strong/5 bg-void/80 backdrop-blur-sm px-2 py-1 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+      <div className="absolute top-0 left-0 w-full z-10 flex items-center justify-between border-b border-border-strong/5 bg-void/80 px-2 py-1 opacity-100 transition-opacity duration-300 md:opacity-0 md:group-hover:opacity-100">
         <p className="font-mono text-[10px] uppercase tracking-widest text-text-primary/70">
           <span className={isRemote ? 'text-neon-cyan' : 'text-text-muted'}>[{label}]</span> :: {peerId.slice(0, 8)}
         </p>

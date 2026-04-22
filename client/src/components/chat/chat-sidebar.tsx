@@ -908,20 +908,20 @@ export function ChatSidebar({
 
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     {/* Row 1: name + timestamp */}
-                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <span className="inline-flex min-w-0 items-center gap-1">
                       {!c.is_group && trustedPeerIds.has(peerId ?? '') ? (
                         <ShieldCheck className="h-3 w-3 text-neon-cyan shrink-0" />
                       ) : null}
                       {!c.is_group && approvedPeerIds.has(peerId ?? '') ? (
                         <UserCheck className="h-3 w-3 text-accent-2 shrink-0" />
                       ) : null}
-                      <span className={`truncate text-[12px] font-medium ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan/85')}`}>
+                      <span className={`min-w-0 flex-1 truncate text-[12px] font-medium ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan/85')}`}>
                         {listTitle}
                       </span>
                       {isPinned ? (
                         <Pin className="h-2.5 w-2.5 shrink-0 text-neon-cyan/60" />
                       ) : null}
-                      <span className={`ml-auto max-w-[5.5rem] shrink-0 truncate text-[10px] tabular-nums ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
+                      <span className={`ml-2 hidden max-w-[5.5rem] shrink-0 truncate text-[10px] tabular-nums sm:inline ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
                         {formatChatTs(lastMessages[c.id]?.created_at ?? c.last_message_at)}
                       </span>
                     </span>

@@ -78,6 +78,9 @@
   - [x] этап 1.5 — контекст-меню чата: clamp в viewport + расширенная ширина + перенос длинных лейблов (фикс обрезки пунктов меню)
   - [x] этап 1.6 — sidebar row hover-actions (`pin/favorite/mute`) скрыты до hover/focus (`w-0`), больше не съедают ширину текста
   - [x] этап 1.7 — mobile/narrow polish: action-зона строки видна у активного чата без hover, timestamp/badge выровнены
+  - [x] этап 1.8 — narrow row conflict fix: `listTitle` приоритетный (`flex-1 truncate`), timestamp скрывается на `<sm`, чтобы не конфликтовать с badges
+  - [x] этап 1.9 — calls touch polish: в `active-call-overlay` header controls в tile доступны на mobile без hover
+  - [x] этап 1.10 — full-product mobile parity: `admin/page` таблицы прокручиваемы по X, row actions не скрыты на mobile; `start-guide` получил md3 shell-aware оформление
 
 ---
 
@@ -217,6 +220,9 @@
 | 2026-04-22 | [x] UI quick-fix: `chat-row-context-menu` теперь не вылезает за край экрана, русские лейблы не обрезаются (viewport clamp + `min-w` 220 + word wrap) |
 | 2026-04-22 | [x] UI quick-fix: в `chat-sidebar` hover-экшены строки (`pin/favorite/mute`) не резервируют 120px до hover/focus; текст строки больше не укорачивается заранее |
 | 2026-04-22 | [x] UI quick-fix: для активной строки чата action-зона раскрыта без hover (touch-friendly), timestamp и unread badge стабилизированы на узких ширинах |
+| 2026-04-22 | [x] UI quick-fix: устранён конфликт `name + badges + time` на узких экранах — имя приоритетно, timestamp скрыт на `<sm` |
+| 2026-04-22 | [x] UI quick-fix: touch-доступность `active-call-overlay` (tile header controls видимы на mobile), mobile readability `admin/page` (X-scroll таблиц + action visibility), md3 parity для `start-guide` |
+| 2026-04-22 | [x] Верификация UI-batch: `npm run typecheck -w project-13-client` и `npm run lint -w project-13-client` — PASS |
 
 ---
 

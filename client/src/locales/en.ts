@@ -417,6 +417,12 @@ const en = {
   'settings.totpDisableWarn': 'Disabling two-factor authentication will reduce security.',
   'settings.totpDisableCode': 'Current code',
 
+  'settings.recoveryKeyTitle': 'Recovery Key',
+  'settings.recoveryKeyHint': 'Generate a one-time recovery key to restore vault access if you forget your password.',
+  'settings.recoveryKeyGenerate': 'Generate Recovery Key',
+  'settings.recoveryKeySaveWarning': 'Save this key securely — it is shown only once.',
+  'settings.recoveryKeyDownload': 'Download',
+
   'settings.changePinTitle': 'Change Vault Password',
   'settings.changePinHint': 'Re-encrypt your private keys with a new password.',
   'settings.changePinAction': 'Change Password',

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useState } from 'react'
-import { API_URL, fetchMe } from '@/lib/api/auth'
+import { API_URL, fetchMe, setupRecoveryKey } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
 import { nuclearWipeClient } from '@/lib/client-wipe'
 import {
@@ -80,6 +80,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableCode, setTotpDisableCode] = useState('')
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
+  const [recoveryKey, setRecoveryKey] = useState<string | null>(null)
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
   const [settingsTab, setSettingsTab] = useState<'main' | 'chat' | 'profile' | 'media' | 'devices' | 'security' | 'folders'>('main')
   const [changePinOpen, setChangePinOpen] = useState(false)
   const [changePinOld, setChangePinOld] = useState('')
@@ -592,6 +594,62 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       </div>
                     )}
                   </div>
+                )}
+              </div>
+
+              {/* Recovery Key */}
+              <div className={settingsBtn}>
+                <p className={`mb-1 text-xs uppercase tracking-widest ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>{t('settings.recoveryKeyTitle')}</p>
+                <p className="mb-3 text-[9px] text-text-muted">{t('settings.recoveryKeyHint')}</p>
+                {recoveryKey ? (
+                  <div className="space-y-2">
+                    <p className={`text-[9px] font-semibold ${isMd3 ? 'text-[var(--danger)]' : 'text-neon-red'}`}>{t('settings.recoveryKeySaveWarning')}</p>
+                    <div className={`p-3 text-center ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-cyan/40 bg-void/50'}`}>
+                      <p className="break-all font-mono text-sm tracking-wider select-all text-text-primary">{recoveryKey}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const blob = new Blob([recoveryKey], { type: 'text/plain' })
+                          const url = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = url; a.download = 'onetothree-recovery-key.txt'; a.click()
+                          URL.revokeObjectURL(url)
+                        }}
+                        className={`flex-1 py-2 text-[10px] font-medium uppercase tracking-widest transition-colors ${isMd3 ? 'rounded-full bg-[var(--primary)] text-[var(--on-primary)] hover:brightness-110' : 'border border-neon-cyan bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
+                      >
+                        {t('settings.recoveryKeyDownload')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { void navigator.clipboard.writeText(recoveryKey) }}
+                        className={`px-4 py-2 text-[10px] font-medium uppercase tracking-widest transition-colors ${isMd3 ? 'rounded-full border border-[color-mix(in_srgb,var(--on-surface)_20%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
+                      >
+                        COPY
+                      </button>
+                    </div>
+                    <button type="button" onClick={() => setRecoveryKey(null)} className={`w-full py-1 text-[9px] text-text-muted transition-colors hover:text-text-primary`}>
+                      {t('common.close')}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={recoveryBusy}
+                    onClick={async () => {
+                      setRecoveryBusy(true); setError(null)
+                      try {
+                        const r = await setupRecoveryKey()
+                        setRecoveryKey(r.recovery_key)
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : t('settings.unknown'))
+                      } finally { setRecoveryBusy(false) }
+                    }}
+                    className={`w-full py-2 text-[10px] font-medium uppercase tracking-widest transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-full border border-[color-mix(in_srgb,var(--primary)_40%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]' : 'border border-neon-cyan bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
+                  >
+                    {chromeLabel(t('settings.recoveryKeyGenerate'))}
+                  </button>
                 )}
               </div>
 

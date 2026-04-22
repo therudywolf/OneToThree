@@ -840,16 +840,33 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
     let code = chat.inviteCode
     if (!code) {
-      code = await generateUniqueInviteCode()
-      await db
-        .update(chats)
-        .set({
-          inviteCode: code,
-          ...(typeof wantOneTime === 'boolean'
-            ? { inviteOneTime: wantOneTime }
-            : {}),
-        })
-        .where(eq(chats.id, chatId))
+      // Atomic: only write if invite_code is still NULL so concurrent requests
+      // don't silently overwrite each other.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const candidate = randomBytes(18).toString('base64url')
+        const updated = await db
+          .update(chats)
+          .set({
+            inviteCode: candidate,
+            ...(typeof wantOneTime === 'boolean' ? { inviteOneTime: wantOneTime } : {}),
+          })
+          .where(and(eq(chats.id, chatId), sql`${chats.inviteCode} IS NULL`))
+          .returning({ inviteCode: chats.inviteCode })
+        if (updated.length > 0) {
+          code = candidate
+          break
+        }
+        // Another request beat us; read back what they wrote.
+        const [existing] = await db
+          .select({ inviteCode: chats.inviteCode })
+          .from(chats)
+          .where(eq(chats.id, chatId))
+          .limit(1)
+        if (existing?.inviteCode) {
+          code = existing.inviteCode
+          break
+        }
+      }
     } else if (typeof wantOneTime === 'boolean') {
       await db
         .update(chats)

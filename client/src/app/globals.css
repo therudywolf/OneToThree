@@ -2197,12 +2197,34 @@ select {
   box-shadow: 0 0 16px color-mix(in srgb, var(--neon-cyan) 12%, transparent);
   background: var(--void);
   overflow: hidden;
+  /* Override emoji-picker-react internal CSS vars to match Terminal palette */
+  --epr-bg-color: var(--void);
+  --epr-category-label-bg-color: color-mix(in srgb, var(--neon-cyan) 6%, var(--void));
+  --epr-text-color: color-mix(in srgb, var(--neon-cyan) 85%, transparent);
+  --epr-search-input-bg-color: color-mix(in srgb, var(--neon-cyan) 6%, var(--void));
+  --epr-search-border-color: color-mix(in srgb, var(--neon-cyan) 30%, transparent);
+  --epr-hover-bg-color: color-mix(in srgb, var(--neon-cyan) 10%, transparent);
+  --epr-focus-bg-color: color-mix(in srgb, var(--neon-cyan) 15%, transparent);
+  --epr-highlight-color: var(--neon-cyan);
+  --epr-category-icon-active-color: var(--neon-cyan);
+  --epr-skin-tone-picker-menu-color: var(--void);
 }
 [data-shell="md3"] .p13-emoji-popup {
   border: none;
   border-radius: 24px;
   box-shadow: 0 4px 8px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.12);
   background: var(--surface-elevated);
+  /* Override emoji-picker-react internal CSS vars to match MD3 palette */
+  --epr-bg-color: var(--surface-elevated, #1e2430);
+  --epr-category-label-bg-color: color-mix(in srgb, var(--on-surface) 4%, var(--surface-elevated, #1e2430));
+  --epr-text-color: var(--on-surface);
+  --epr-search-input-bg-color: color-mix(in srgb, var(--on-surface) 6%, transparent);
+  --epr-search-border-color: color-mix(in srgb, var(--on-surface) 18%, transparent);
+  --epr-hover-bg-color: color-mix(in srgb, var(--on-surface) 8%, transparent);
+  --epr-focus-bg-color: color-mix(in srgb, var(--primary) 12%, transparent);
+  --epr-highlight-color: var(--primary);
+  --epr-category-icon-active-color: var(--primary);
+  --epr-skin-tone-picker-menu-color: var(--surface-elevated, #1e2430);
 }
 
 /* --- Recording bar (locked) --------------------------------- */

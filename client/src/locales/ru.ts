@@ -35,6 +35,8 @@ const ru = {
   'errors.signalLost': 'Соединение потеряно',
   'errors.retrySession': 'Попробовать снова',
   'errors.generic': 'Ошибка',
+  'errors.tofuMismatch': '⚠ Ключ собеседника изменился — откройте панель идентификации для подтверждения',
+  'errors.peerKeyMissing': 'Собеседник не загрузил ключи — попросите его открыть приложение',
 
   // [ATTACHMENTS]
   'attach.pickAria': 'Прикрепить файл',

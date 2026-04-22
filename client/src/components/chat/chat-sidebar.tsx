@@ -939,7 +939,7 @@ export function ChatSidebar({
                 className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
                   isPinned
                     ? 'bg-neon-cyan/5 text-neon-cyan hover:bg-neon-red/10 hover:text-neon-red'
-                    : 'text-text-muted/70 opacity-0 hover:bg-neon-cyan/10 hover:text-neon-cyan group-hover:opacity-100'
+                    : 'text-text-muted/70 opacity-0 pointer-events-none hover:bg-neon-cyan/10 hover:text-neon-cyan group-hover:opacity-100 group-hover:pointer-events-auto'
                 }`}
               >
                 <Pin className="h-3.5 w-3.5" aria-hidden />
@@ -954,7 +954,7 @@ export function ChatSidebar({
                 className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
                   c.is_favorite
                     ? 'text-accent-2 bg-accent-2/15 hover:bg-accent-2/15'
-                    : 'text-text-muted/70 hover:bg-accent-2/15 hover:text-accent-2 opacity-0 group-hover:opacity-100'
+                    : 'text-text-muted/70 hover:bg-accent-2/15 hover:text-accent-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
                 }`}
               >
                 <Star className={`h-3.5 w-3.5 ${c.is_favorite ? 'fill-accent-2' : ''}`} aria-hidden />
@@ -973,7 +973,7 @@ export function ChatSidebar({
                     className={`inline-flex h-full w-10 shrink-0 items-center justify-center border-l border-border-strong/5 transition-colors ${
                       muted
                         ? 'text-text-muted bg-text-muted/10 hover:bg-neon-red/10 hover:text-neon-red'
-                        : 'text-text-muted/70 hover:bg-neon-cyan/10 hover:text-neon-cyan opacity-0 group-hover:opacity-100'
+                        : 'text-text-muted/70 hover:bg-neon-cyan/10 hover:text-neon-cyan opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto'
                     }`}
                   >
                     {muted ? (

@@ -84,7 +84,11 @@ export function useLoadChatMessages(
             new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         )
         try {
-          await cacheMessages(out)
+          // Don't persist messages that failed to decrypt — stale DECRYPT_FAIL
+          // entries in IndexedDB would reappear on every subsequent chat open
+          // before the fresh network decrypt completes.
+          const cacheable = out.filter((m) => m.plaintext !== '[DECRYPT_FAIL]')
+          await cacheMessages(cacheable)
         } catch {
           /* cache write best-effort */
         }

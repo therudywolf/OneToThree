@@ -53,6 +53,11 @@ export function createS3Client(): S3Client {
     endpoint,
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: true,
+    // AWS SDK v3 ≥ 3.600 adds CRC32 checksum params to presigned PUT URLs by
+    // default, but MinIO rejects them because they're absent from SignedHeaders.
+    // Disabling automatic checksum injection fixes 403 SignatureDoesNotMatch.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   })
 }
 
@@ -87,6 +92,10 @@ export function createS3ClientForPresigning(): S3Client {
     endpoint,
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: true,
+    // Same as createS3Client — disable SDK-level CRC32 injection so presigned
+    // PUT URLs don't include unsigned checksum query params that MinIO rejects.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   })
 }
 

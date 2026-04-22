@@ -71,8 +71,20 @@ export async function buildChatCryptoContext(
         const pinnedSignal = registry[peer.user_id]
         
         if (pinnedSignal) {
-          const normalize = (jwk: string) => JSON.stringify(JSON.parse(jwk), Object.keys(JSON.parse(jwk)).sort())
-          if (normalize(pinnedSignal) !== normalize(peer.ecdh_public_key_jwk)) {
+          // Compare only the key-material fields (kty/crv/x/y for EC keys).
+          // Ignoring extra JWK metadata (key_ops, use, ext…) prevents false
+          // MISMATCH alerts when the server re-uploads the same key with
+          // different optional fields.
+          const keyFields = ['crv', 'kty', 'x', 'y'] as const
+          const extractKey = (jwkStr: string) => {
+            try {
+              const parsed = JSON.parse(jwkStr) as Record<string, unknown>
+              return JSON.stringify(Object.fromEntries(keyFields.map((k) => [k, parsed[k] ?? null])))
+            } catch {
+              return jwkStr
+            }
+          }
+          if (extractKey(pinnedSignal) !== extractKey(peer.ecdh_public_key_jwk)) {
             throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
           }
         }

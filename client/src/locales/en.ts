@@ -35,6 +35,8 @@ const en = {
   'errors.signalLost': 'Connection lost',
   'errors.retrySession': 'Try Again',
   'errors.generic': 'Error',
+  'errors.tofuMismatch': '⚠ Contact key changed — open identity panel to verify or accept',
+  'errors.peerKeyMissing': 'Peer has not uploaded encryption keys yet — ask them to open the app',
 
   // [ATTACHMENTS]
   'attach.pickAria': 'Attach file',

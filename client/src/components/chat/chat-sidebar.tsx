@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Pin,
   ShieldCheck,
@@ -423,6 +424,14 @@ export function ChatSidebar({
       ? folderFilteredChats
       : folderFilteredChats.filter((c) => ghostHitChatIds.has(c.id))
 
+  const chatListScrollRef = useRef<HTMLElement>(null)
+  const virtualizer = useVirtualizer({
+    count: sidebarChatsFiltered.length,
+    getScrollElement: useCallback(() => chatListScrollRef.current, []),
+    estimateSize: () => 64,
+    overscan: 5,
+  })
+
   useEffect(() => {
     if (!fabOpen) return
     function handleDown(e: MouseEvent | TouchEvent) {
@@ -803,7 +812,7 @@ export function ChatSidebar({
       </button>
 
       {/* Chat List */}
-      <nav className="custom-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-3 pb-3 pt-3 [-webkit-overflow-scrolling:touch]">
+      <nav ref={chatListScrollRef as React.RefObject<HTMLElement>} className="custom-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-3 pb-3 pt-3 [-webkit-overflow-scrolling:touch]">
         {initialLoading ? (
           <div className="space-y-2 py-1">
             {Array.from({ length: 5 }, (_, i) => (
@@ -841,7 +850,9 @@ export function ChatSidebar({
             </p>
         ) : null}
 
-        {sidebarChatsFiltered.map((c) => {
+        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const c = sidebarChatsFiltered[virtualRow.index]!
           const isPinned = pinnedIds.includes(c.id)
           const isMutedRow = isChatMuted(c)
           const isActiveRow = activeChatId === c.id
@@ -867,11 +878,14 @@ export function ChatSidebar({
           return (
             <div
               key={c.id}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
               data-chat-list-item
               data-active={activeChatId === c.id ? 'true' : 'false'}
               className={`p13-sidebar-row chat-list-item group overflow-hidden ${
                 isPinned ? 'ring-1 ring-inset ring-[color:var(--neon-cyan)]/20' : ''
               }`}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${virtualRow.start}px)` }}
               onContextMenu={(e) => {
                 e.preventDefault()
                 setRowContextMenu({ chatId: c.id, x: e.clientX, y: e.clientY })
@@ -1032,6 +1046,7 @@ export function ChatSidebar({
             </div>
           )
         })}
+        </div>
       </nav>
 
       {/* Active Chat Controls */}

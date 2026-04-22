@@ -181,9 +181,9 @@
 | Тема | Решение |
 |------|---------|
 | Стикеры TG | Bot API `getFile` → скачать TGS → загрузить в MinIO → хранить `media_key` |
-| GIF | Tenor API (бесплатный, без ключа в dev) |
+| GIF | Giphy Search API (`NEXT_PUBLIC_GIPHY_API_KEY`, fallback public beta key) |
 | Emoji picker | `emoji-mart` (легковесная, React) |
-| Lottie render | `@lottiefiles/dotlottie-web` (поддерживает TGS) |
+| Lottie render | `lottie-web` + `pako` (gunzip `.tgs` → JSON) |
 | TURN fallback | При недоступности coturn → Google STUN (уже в `ice-servers.ts`) |
 | DR send path | Feature flag `NEXT_PUBLIC_DR_ENABLED=1`, fallback v1 если нет bundle |
 
@@ -214,9 +214,9 @@
 
 ## AGENT HANDOFF (для следующих нейросетей)
 
-- Последний интеграционный коммит по стикерам: `949f3eb`.
+- Последний интеграционный коммит по стикерам: `aff5c78`.
 - Главный трекер: этот файл (`WORKPLAN.md`) + `AGENT_PROGRESS.md`.
-- Уже закрыто технически: invite race, login ECDH upload, sticker composer/send/render (webp/webm), sticker asset-url.
-- Не закрыто: реальные e2e-баги из Sprint 1 (invites flow/messages/saved), GIF API, TGS/Lottie renderer, DR send-path.
+- Уже закрыто технически: invite race, login ECDH upload, sticker composer/send/render (webp/webm/tgs/lottie), sticker asset-url, GIF search, offline sticker cache.
+- Не закрыто: реальные e2e-баги из Sprint 1 (invites flow/messages/saved), DR send-path.
 - Перед любыми крупными правками прогонять: `npm run typecheck`, `npm run lint`, `npm run test -w project-13-server`.
 

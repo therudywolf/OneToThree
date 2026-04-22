@@ -10,7 +10,7 @@
 ### 1.1 Инвайты — DB-ошибка при создании
 - [x] Все миграции применены (0034_chats_key_epoch, 0035_messages_pinned_and_muted — в DB)
 - [x] `chats_invite_code_unique` — правильный UNIQUE INDEX, NULLs разрешены
-- [ ] ПОТЕНЦИАЛЬНЫЙ БАГ: race condition в `generateUniqueInviteCode` (SELECT → race → UPDATE unique violation)
+- [x] Fix: race condition устранён (atomic update в `POST /:chatId/invite`)
 - [ ] Проверить: роут `POST /:chatId/invite` возвращает правильный статус при ошибке
 
 **Ключевые файлы:**
@@ -27,7 +27,7 @@
 
 ### 1.3 Сообщения не работают
 - [ ] Диагностировать: `DIRECT_FANOUT_UNAVAILABLE` (нет ECDH-ключа устройства) vs DB-ошибка
-- [ ] Проверить: при login vault-unlock загружает `ecdh_public_key_jwk` через `PATCH /users/me`
+- [x] Fix: при login ECDH ключ повторно загружается (`PATCH /users/me`)
 - [ ] Проверить: таблица `message_deliveries` — есть ли `device_id` и `ciphertext` колонки
 - [ ] Проверить: WebSocket подключается и доставляет события
 - [ ] Исправить: если ECDH key не загружается — починить поток vault unlock → ECDH upload
@@ -187,4 +187,15 @@
 | 2026-04-22 | Диагностика: все 68 тестов проходят после scrypt-фикса |
 | 2026-04-22 | [x] Стикеры: UI `ComposerPickerPanel`, `StickerBubble`, `GET /stickers/asset-url`, фикс `getLastCachedMessageForChat` IDBKeyRange (`\\uffff`) |
 | 2026-04-22 | [x] Импорт TG: dedup по `(tg_source, owner_id)` на сервере |
+| 2026-04-22 | [x] Верификация: `npm run test -w project-13-server` (68/68), `npm run lint`, `npm run typecheck` — зелёные |
+
+---
+
+## AGENT HANDOFF (для следующих нейросетей)
+
+- Последний интеграционный коммит по стикерам: `949f3eb`.
+- Главный трекер: этот файл (`WORKPLAN.md`) + `AGENT_PROGRESS.md`.
+- Уже закрыто технически: invite race, login ECDH upload, sticker composer/send/render (webp/webm), sticker asset-url.
+- Не закрыто: реальные e2e-баги из Sprint 1 (invites flow/messages/saved), GIF API, TGS/Lottie renderer, DR send-path.
+- Перед любыми крупными правками прогонять: `npm run typecheck`, `npm run lint`, `npm run test -w project-13-server`.
 

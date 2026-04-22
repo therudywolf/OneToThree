@@ -8,9 +8,15 @@ import {
 } from '@/lib/crypto'
 import { patchMyEcdhPublicKey } from '@/lib/api/users'
 import { parseVaultPlaintext } from '@/lib/vault-keyring'
-import { deriveDrBundleFromEcdhJwk, deriveSessionWrapKey } from '@/lib/ratchet/identity-from-vault'
+import {
+  deriveDrBundleFromEcdhJwk,
+  deriveSessionWrapKey,
+  deriveOtpBatch,
+  deriveOtpPrivKey,
+  extractEcdhDBytes,
+} from '@/lib/ratchet/identity-from-vault'
 import { setOwnDrIdentity, setSessionWrapKey, encodeBase64Url } from '@/lib/ratchet/session-manager'
-import { publishIdentity, publishSignedPrekey } from '@/lib/api/keys'
+import { publishIdentity, publishSignedPrekey, publishOneTimePrekeys, fetchInventory } from '@/lib/api/keys'
 import {
   CURRENT_VAULT_VERSION,
   readVaultBlob,
@@ -31,6 +37,37 @@ import { vibrateShort } from '@/lib/vibrate'
 import { useTranslation } from '@/hooks/use-translation'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { useThemeStore } from '@/store/themeStore'
+
+const OTP_NEXT_ID_KEY = (userId: string) => `p13:dr-otp-next:${userId}`
+const OTP_REPLENISH_THRESHOLD = 5
+const OTP_BATCH_SIZE = 20
+
+async function publishDrOtpBatch(
+  userId: string,
+  dBytes: Uint8Array,
+  startId: number,
+  count: number
+): Promise<void> {
+  const batch = deriveOtpBatch(dBytes, startId, count)
+  await publishOneTimePrekeys({
+    keys: batch.map((k) => ({
+      pre_key_id: k.id,
+      public_key: encodeBase64Url(k.keypair.publicKey),
+    })),
+  })
+  localStorage.setItem(OTP_NEXT_ID_KEY(userId), String(startId + count))
+}
+
+async function replenishOtpsIfNeeded(userId: string, dBytes: Uint8Array): Promise<void> {
+  try {
+    const inventory = await fetchInventory()
+    if (inventory.one_time_prekeys > OTP_REPLENISH_THRESHOLD) return
+    const nextIdRaw = localStorage.getItem(OTP_NEXT_ID_KEY(userId))
+    const nextId = nextIdRaw ? parseInt(nextIdRaw, 10) : 21
+    if (!Number.isFinite(nextId) || nextId <= 0) return
+    await publishDrOtpBatch(userId, dBytes, nextId, OTP_BATCH_SIZE)
+  } catch { /* non-fatal */ }
+}
 
 /** Detect if the device likely uses Face ID (iOS) vs fingerprint (Android/other) */
 function useBiometricIcon() {
@@ -81,10 +118,16 @@ export function VaultModal({ userId, displayHandle }: Props) {
 
       // Derive DR identity from vault ECDH key and activate it in-memory.
       try {
+        const dBytes = extractEcdhDBytes(ecdhJwk)
         const bundle = deriveDrBundleFromEcdhJwk(ecdhJwk)
         const wrapKey = await deriveSessionWrapKey(bundle.identity)
         setSessionWrapKey(wrapKey)
-        setOwnDrIdentity(bundle.identity, bundle.signedPreKey, bundle.signedPreKeyId)
+        setOwnDrIdentity(
+          bundle.identity,
+          bundle.signedPreKey,
+          bundle.signedPreKeyId,
+          (id: number) => deriveOtpPrivKey(dBytes, id)
+        )
 
         // Publish key bundle to server once per account (generation 1 = stable).
         // The server ignores duplicate publishes with the same generation.
@@ -100,7 +143,12 @@ export function VaultModal({ userId, displayHandle }: Props) {
             public_key: encodeBase64Url(bundle.signedPreKey.publicKey),
             signature: encodeBase64Url(bundle.signedPreKeySignature),
           })
+          // Publish initial OTP batch (ids 1-20).
+          await publishDrOtpBatch(userId, dBytes, 1, 20)
           localStorage.setItem(publishedKey, '1')
+        } else {
+          // Check if OTP pool is low and replenish.
+          void replenishOtpsIfNeeded(userId, dBytes)
         }
       } catch { /* DR setup is non-fatal; v1 fanout still works */ }
 

@@ -4,9 +4,8 @@
 // ---------------------------------------------------------------------------
 // Shared ICE-server resolver for WebRTC call sites.
 // ---------------------------------------------------------------------------
-// The server's `/api/ice-servers` issues short-lived Cloudflare Calls TURN
-// credentials when configured (orange-cloud friendly) and falls back to
-// self-hosted coturn or public STUN automatically.  Browsers should call this
+// The server's `/api/ice-servers` issues short-lived TURN credentials.
+// Browsers should call this
 // helper *immediately before* each RTCPeerConnection is constructed so that
 // credentials don't expire mid-call.
 //
@@ -15,12 +14,6 @@
 // (e.g. joining a group call with 5 existing participants).
 // ---------------------------------------------------------------------------
 
-const DEFAULT_STUN: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-]
-
 const CACHE_WINDOW_MS = 30_000
 const REFRESH_SAFETY_MS = 60_000
 
@@ -28,8 +21,6 @@ const REFRESH_SAFETY_MS = 60_000
 export type IceBackendSource =
   | 'cloudflare'
   | 'coturn'
-  | 'stun-only'
-  | 'fetch-failed'
   | undefined
 
 interface IceCacheEntry {
@@ -85,9 +76,7 @@ function listContainsTurnRelay(servers: RTCIceServer[]): boolean {
 /**
  * Fetch (or return cached) ICE servers for a new RTCPeerConnection.
  *
- * Never throws: on network or auth failure it degrades to public STUN so the
- * call can still try host/server-reflexive candidates.  Caller should treat an
- * empty TURN list as "symmetric NAT may fail" and surface a UI warning.
+ * Throws on network/auth/config errors.
  */
 export async function getIceServers(options?: { forceRefresh?: boolean }): Promise<RTCIceServer[]> {
   const now = Date.now()
@@ -113,14 +102,17 @@ export async function getIceServers(options?: { forceRefresh?: boolean }): Promi
         source?: string
       }
       const servers = normalizeList(payload.iceServers)
-      const merged = mergeUnique([...DEFAULT_STUN, ...servers])
+      const merged = mergeUnique(servers)
+      if (!listContainsTurnRelay(merged)) {
+        throw new Error('ICE_NO_TURN_RELAY')
+      }
       let backendSource: IceBackendSource
-      if (payload.source === 'cloudflare' || payload.source === 'coturn' || payload.source === 'stun-only') {
+      if (payload.source === 'cloudflare' || payload.source === 'coturn') {
         backendSource = payload.source
-      } else if (listContainsTurnRelay(servers)) {
+      } else if (listContainsTurnRelay(merged)) {
         backendSource = undefined
       } else {
-        backendSource = 'stun-only'
+        backendSource = undefined
       }
       cache = {
         fetchedAt: now,
@@ -129,17 +121,6 @@ export async function getIceServers(options?: { forceRefresh?: boolean }): Promi
         backendSource,
       }
       return merged
-    } catch (err) {
-      if (typeof console !== 'undefined') {
-        console.debug('[ice] /api/ice-servers failed, using public STUN only', err)
-      }
-      cache = {
-        fetchedAt: now,
-        expiresAt: now + CACHE_WINDOW_MS,
-        payload: DEFAULT_STUN,
-        backendSource: 'fetch-failed',
-      }
-      return DEFAULT_STUN
     } finally {
       inflight = null
     }
@@ -167,12 +148,9 @@ export function getLastIceBackendSource(): IceBackendSource {
 
 /** True when the last fetch had no TURN relay (symmetric NAT calls may fail). */
 export function lastIceFetchWasStunOnly(): boolean {
-  if (!cache) return true
+  if (!cache) return false
   if (cache.backendSource === 'cloudflare' || cache.backendSource === 'coturn') {
     return false
-  }
-  if (cache.backendSource === 'stun-only' || cache.backendSource === 'fetch-failed') {
-    return true
   }
   return !listContainsTurnRelay(cache.payload)
 }

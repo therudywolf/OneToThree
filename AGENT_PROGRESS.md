@@ -1,6 +1,6 @@
 # AGENT_PROGRESS — OneToThree
 
-Last updated: 2026-04-22d (prod incidents + pending hotfixes)
+Last updated: 2026-04-22e (relay-only calls update)
 
 ## Snapshot For Next Agent
 
@@ -25,6 +25,34 @@ Last updated: 2026-04-22d (prod incidents + pending hotfixes)
 - [ ] **Message disappears after reopening chat** (empty/`[DECRYPT_FAIL]` regression window).
   - Prepared local fix (not yet shipped): history-load fallback from local cache by `message.id` in:
     - `client/src/hooks/use-load-chat-messages.ts`
+
+## Relay-only Calls Update (2026-04-22e)
+
+- [x] **No-fallback call policy shipped in code**:
+  - server: `server/src/routes/webrtc.ts`
+  - client ICE resolver: `client/src/lib/ice-servers.ts`
+  - client call runtime: `client/src/hooks/use-webrtc.ts`
+- [x] Поведение теперь строгое:
+  - нет public STUN fallback;
+  - нет auto fallback path при `ICE failed/timeout`;
+  - при отсутствии TURN конфигурации сервер возвращает `503 TURN_NOT_CONFIGURED`.
+- [x] Проверки:
+  - `npm run typecheck -w project-13-client` PASS
+  - `npm run lint -w project-13-client` PASS
+  - `npx vitest run src/routes/webrtc.test.ts` PASS
+- [!] Полный `npm run test -w project-13-server` сейчас красный из-за отдельной старой проблемы test DB schema (`messages.seq` отсутствует), не из этого change-set.
+
+## Что НЕ закрыто в этом заходе
+
+- [ ] `STORAGE_PUT_403` media upload hotfix не дошиплен (`server/src/lib/s3.ts`, `server/src/routes/storage.ts`).
+- [ ] Reopen-chat `[DECRYPT_FAIL]` hotfix из `use-load-chat-messages.ts` не дошиплен.
+- [ ] Runtime E2E (invite/direct fanout/saved messages), DR send path — без изменений.
+
+## Возможные риски после policy change
+
+- [!] Если TURN/Cloudflare TURN/coturn временно недоступен, звонки не работают вообще (ожидаемое поведение по новой политике).
+- [!] Возможны регрессии UX: на слабой сети не будет "мягкого" fallback-пути, только fail.
+- [ ] Нужен runtime smoke в реальном окружении за Cloudflare/Caddy после deploy.
 
 ## Verified In This Cycle (Sprint 8)
 

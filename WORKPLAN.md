@@ -70,7 +70,10 @@
 - [x] Убрать пустой глобальный header на desktop (`chat-app` header скрыт на `md+`)
 - [x] Сайдбар стартует от самого верха, без верхнего safe-padding на desktop (`md:pt-0`, `h:100dvh`)
 - [x] Добавить верхний блок `ЧАТЫ` как первый элемент правой панели сайдбара (`top:0`, `sticky`)
-- [~] Нормализация размеров кнопок: этап 1.1 завершён — унифицированы размеры кнопок в `chat-sidebar` (row-actions, direct input action, CTA-блок)
+- [~] Нормализация размеров кнопок:
+  - [x] этап 1.1 — `chat-sidebar` (row-actions, direct input action, CTA-блок)
+  - [x] этап 1.2 — `composer-picker-panel` + `chat-terminal` (единые `h-9/h-10` для tab/import/CTA/scroll button)
+  - [ ] этап 1.3 — финальная унификация в оставшихся панелях (`dock-panel`, modal controls, header mobile chips)
 
 ---
 
@@ -196,6 +199,7 @@
 | 2026-04-22 | [x] Верификация: `npm run test -w project-13-server` (68/68), `npm run lint`, `npm run typecheck` — зелёные |
 | 2026-04-22 | [x] UI task: desktop header скрыт, sidebar поднят к верхнему краю (`top:0`, `100dvh`), добавлен верхний блок `ЧАТЫ` |
 | 2026-04-22 | [x] UI task: унификация размеров кнопок в сайдбаре (h-10 для CTA/input-action, w-10 для row-action) |
+| 2026-04-22 | [x] UI task: этап 1.2 унификации кнопок — composer tabs/import controls/scroll-to-bottom button |
 
 ---
 

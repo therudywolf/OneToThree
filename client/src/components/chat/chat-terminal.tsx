@@ -1356,7 +1356,7 @@ export function ChatTerminal({
         <button
           type="button"
           onClick={scrollToBottom}
-          className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 inline-flex items-center gap-1.5 border border-neon-cyan/60 bg-void/90 px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.15)] transition-colors hover:bg-neon-cyan/10"
+          className="absolute bottom-20 left-1/2 z-10 -translate-x-1/2 inline-flex h-9 items-center gap-1.5 border border-neon-cyan/60 bg-void/90 px-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.15)] transition-colors hover:bg-neon-cyan/10"
         >
           <ArrowDown className="h-3 w-3" />
           {newMsgCount > 0

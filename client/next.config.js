@@ -31,19 +31,20 @@ const nextConfig = {
       process.env.NEXT_PUBLIC_API_URL?.trim() || 'https://api.onetothree.ru'
     const storageOrigin =
       process.env.MINIO_PUBLIC_URL?.trim() || 'https://s3.onetothree.ru'
+    const giphyOrigin = 'https://*.giphy.com'
     const wsOrigin = apiOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
 
     const cspHeader = `
     default-src 'self';
     script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/ blob:;
     style-src 'self' 'unsafe-inline';
-    img-src 'self' blob: data: https://cdn.jsdelivr.net ${storageOrigin};
+    img-src 'self' blob: data: https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin};
     font-src 'self';
     object-src 'none';
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
-    media-src 'self' blob:;
+    media-src 'self' blob: ${storageOrigin} ${giphyOrigin};
     connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin};
     worker-src 'self' blob:;
     upgrade-insecure-requests;

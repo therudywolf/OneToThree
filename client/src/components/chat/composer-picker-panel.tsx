@@ -259,7 +259,10 @@ export function ComposerPickerPanel({
               ) : (
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1 custom-scrollbar">
                   <div className="grid grid-cols-5 gap-1 sm:grid-cols-6">
-                  {stickers.map((s) => (
+                  {stickers.map((s) => {
+                    const stickerSrc = stickerSrcById[s.id] ?? s.url
+                    const isWebm = /\.webm($|\?)/i.test(stickerSrc) || /\.webm$/i.test(s.mediaKey)
+                    return (
                     <button
                       key={s.id}
                       type="button"
@@ -279,25 +282,49 @@ export function ComposerPickerPanel({
                       }}
                       className="flex aspect-square items-center justify-center overflow-hidden rounded border border-neon-cyan/15 bg-void/40 hover:border-neon-cyan/50"
                     >
-                      <img
-                        src={stickerSrcById[s.id] ?? s.url}
-                        alt=""
-                        className="max-h-full max-w-full object-contain"
-                        loading="lazy"
-                        onError={() => {
-                          if (stickerRetryById[s.id]) return
-                          setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
-                          void fetchStickerAssetUrl(s.mediaKey)
-                            .then((url) => {
-                              setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
-                            })
-                            .catch(() => {
-                              // non-fatal; keep placeholder if both URLs fail
-                            })
-                        }}
-                      />
+                      {isWebm ? (
+                        <video
+                          src={stickerSrc}
+                          className="max-h-full max-w-full object-contain"
+                          muted
+                          autoPlay
+                          loop
+                          playsInline
+                          preload="metadata"
+                          onError={() => {
+                            if (stickerRetryById[s.id]) return
+                            setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
+                            void fetchStickerAssetUrl(s.mediaKey)
+                              .then((url) => {
+                                setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
+                              })
+                              .catch(() => {
+                                // non-fatal; keep placeholder if both URLs fail
+                              })
+                          }}
+                        />
+                      ) : (
+                        <img
+                          src={stickerSrc}
+                          alt=""
+                          className="max-h-full max-w-full object-contain"
+                          loading="lazy"
+                          onError={() => {
+                            if (stickerRetryById[s.id]) return
+                            setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
+                            void fetchStickerAssetUrl(s.mediaKey)
+                              .then((url) => {
+                                setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
+                              })
+                              .catch(() => {
+                                // non-fatal; keep placeholder if both URLs fail
+                              })
+                          }}
+                        />
+                      )}
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
                 </div>
               )

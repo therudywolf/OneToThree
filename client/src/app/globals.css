@@ -2346,3 +2346,52 @@ select {
   background: rgba(0,255,255,0.02);
 }
 
+/* ── Mobile sidebar drawer — shell-aware polish ─────────────────────────── */
+
+/* MD3: native-feeling slide overlay with rounded right edge */
+@media (max-width: 767px) {
+  [data-shell="md3"] .chat-layout-sidebar {
+    border-radius: 0 16px 16px 0;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
+  }
+
+  /* Terminal: sharp edges, subtle neon left-border on open */
+  [data-shell="terminal"] .chat-layout-sidebar.sidebar-open {
+    border-right: 1px solid rgba(0, 255, 255, 0.2);
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* ── Search overlay — dual-shell ─────────────────────────────────────────── */
+[data-shell="md3"] .p13-search-overlay {
+  border-radius: 0 0 16px 16px;
+  background: color-mix(in srgb, var(--surface) 97%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+[data-shell="terminal"] .p13-search-overlay {
+  border-bottom: 1px solid rgba(0, 255, 255, 0.18);
+  background: var(--void);
+}
+
+/* ── Sticker/GIF picker — dual-shell ────────────────────────────────────── */
+[data-shell="md3"] .p13-picker-panel {
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+[data-shell="terminal"] .p13-picker-panel {
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+}
+
+/* ── Group call banner — dual-shell ─────────────────────────────────────── */
+[data-shell="md3"] .p13-group-call-banner {
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 95%, var(--primary));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+[data-shell="terminal"] .p13-group-call-banner {
+  border: 1px solid rgba(0, 255, 255, 0.25);
+  background: color-mix(in srgb, var(--void) 90%, transparent);
+}

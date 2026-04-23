@@ -1,9 +1,30 @@
 /**
- * Optional assets under `/public/sounds/`:
- *   ring.mp3     — outgoing / ringing while connecting (looped)
- *   incoming.mp3 — incoming call (looped until accept/reject)
+ * Sound schemes are resolved from localStorage key `p13:chat_sound_scheme`.
+ * Optional assets under `/public/sounds/<scheme>/`:
+ *   ring.mp3         — outgoing / ringing while connecting (looped)
+ *   incoming.mp3     — incoming call (looped until accept/reject)
+ *   notification.mp3 — new message short sound
  * If missing or autoplay blocked, falls back to short Web Audio tones.
  */
+
+type SoundSchemeId = 'classic' | 'soft' | 'retro'
+const SOUND_SCHEME_KEY = 'p13:chat_sound_scheme'
+
+function resolveSoundScheme(): SoundSchemeId {
+  if (typeof window === 'undefined') return 'classic'
+  try {
+    const raw = window.localStorage.getItem(SOUND_SCHEME_KEY)
+    if (raw === 'soft' || raw === 'retro' || raw === 'classic') return raw
+  } catch {
+    /* ignore localStorage failures */
+  }
+  return 'classic'
+}
+
+function resolveSoundPath(fileName: string): string {
+  const scheme = resolveSoundScheme()
+  return `/sounds/${scheme}/${fileName}`
+}
 
 function playFallbackPulse(
   freq: number,
@@ -78,19 +99,19 @@ function startLoopingMp3OrFallback(
 
 /** Caller / outgoing: loop until `stop()`. */
 export function startOutgoingRingtone(): () => void {
-  return startLoopingMp3OrFallback('/sounds/ring.mp3', 0.35, 520, 900)
+  return startLoopingMp3OrFallback(resolveSoundPath('ring.mp3'), 0.35, 520, 900)
 }
 
 /** Callee incoming modal — loop until stop. */
 export function startIncomingRingtone(): () => void {
-  return startLoopingMp3OrFallback('/sounds/incoming.mp3', 0.4, 440, 1400)
+  return startLoopingMp3OrFallback(resolveSoundPath('incoming.mp3'), 0.4, 440, 1400)
 }
 
 /** Short beep when an incoming chat message arrives (not for your own sends). */
 export function playNotificationSound(): void {
   if (typeof window === 'undefined') return
   try {
-    const el = new Audio('/sounds/notification.mp3')
+    const el = new Audio(resolveSoundPath('notification.mp3'))
     el.volume = 0.42
     void el.play().catch((e: unknown) => {
       if (
@@ -99,9 +120,12 @@ export function playNotificationSound(): void {
       ) {
         return
       }
+      const stop = playFallbackPulse(880, 160)
+      window.setTimeout(stop, 220)
     })
   } catch {
-    /* ignore */
+    const stop = playFallbackPulse(880, 160)
+    window.setTimeout(stop, 220)
   }
 }
 

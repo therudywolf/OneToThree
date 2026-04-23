@@ -6,6 +6,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 export type ThemeId =
   | 'default'
   | 'cyberpunk2077'
+  | 'retro'
   | 'matrix'
   | 'dracula'
   | 'midnight'
@@ -230,6 +231,27 @@ export const THEMES: ThemeConfig[] = [
     controlRadius: '0px',
     pageGlow: '#452600',
     pageGlowSecondary: '#4a0830',
+  }),
+  makeTheme('retro', 'RETRO // CLASSIC', 'dark', {
+    background: '#1f2227',
+    surface: '#c0c0c0',
+    elevated: '#d4d0c8',
+    text: '#111111',
+    muted: '#3c4653',
+    primary: '#0a4ea1',
+    accent: '#00a0a0',
+    accentSoft: '#f2c94c',
+    border: '#6f737a',
+    success: '#1b7c3c',
+    danger: '#b0383a',
+    shadowRgb: '10, 78, 161',
+    crtOpacity: '0.05',
+    crtVignetteOpacity: '0.14',
+    fontFamily: "'Tahoma', 'Verdana', 'MS Sans Serif', sans-serif",
+    panelRadius: '6px',
+    controlRadius: '4px',
+    pageGlow: '#35537b',
+    pageGlowSecondary: '#5e4a79',
   }),
   makeTheme('matrix', 'MATRIX // GREEN', 'dark', {
     background: '#020603',

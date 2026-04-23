@@ -786,6 +786,8 @@ const ru = {
   // [SETTINGS - CHAT SOUND]
   'settings.chatSoundTitle': 'Звук в чате',
   'settings.chatSoundHint': 'Воспроизводить звук при новом сообщении, пока окно открыто и активно.',
+  'settings.soundSchemeTitle': 'Звуковая схема',
+  'settings.soundSchemeHint': 'Выбери набор звуков для звонка, входящего вызова и новых сообщений.',
   'settings.appearanceTitle': 'Система оформления',
   'settings.appearanceHint': 'Отдельно выбери оболочку (шрифт + форма) и палитру (цвета). Можно подстроить ключевой, акцентный и фоновый цвета.',
   'settings.appearanceShellTitle': 'Оболочка',

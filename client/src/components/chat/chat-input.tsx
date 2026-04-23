@@ -578,9 +578,9 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
 
       {/* Locked recording controls */}
       {isRecordingUI && recordLocked ? (
-        <div className="p13-record-bar">
+        <div className="p13-record-bar p13-audio-card rounded-[var(--p13-radius-input)] px-2 py-2">
           <button type="button" onClick={() => void cancelRecording()}
-            className="p13-icon-btn p13-icon-btn--danger shrink-0"
+            className="p13-media-action-btn p13-icon-btn p13-icon-btn--danger shrink-0"
             title={t('common.cancel')}>
             <X className="h-4 w-4" />
           </button>
@@ -601,7 +601,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
             <Lock className="h-3 w-3 shrink-0 text-neon-cyan/60" />
           </div>
           <button type="button" onClick={() => void stopRecording(true)}
-            className="p13-icon-btn p13-icon-btn--primary shrink-0"
+            className="p13-media-action-btn p13-icon-btn p13-icon-btn--primary shrink-0"
             title={t('common.send')}>
             <Send className="h-4 w-4" />
           </button>

@@ -219,7 +219,7 @@ export function ComposerPickerPanel({
                 value={importName}
                 onChange={(e) => setImportName(e.target.value)}
                 placeholder={t('composer.stickerImportPlaceholder')}
-                className="min-w-[8rem] h-10 flex-1 rounded border border-neon-cyan/25 bg-void/40 px-3 font-mono text-[11px] text-[color:var(--on-surface)] placeholder:text-text-muted"
+                className="p13-picker-input min-w-[8rem] flex-1 rounded"
               />
               <button
                 type="button"
@@ -294,7 +294,7 @@ export function ComposerPickerPanel({
                           }
                         })()
                       }}
-                      className="flex aspect-square items-center justify-center overflow-hidden rounded border border-neon-cyan/15 bg-void/40 hover:border-neon-cyan/50"
+                      className="p13-sticker-tile flex aspect-square items-center justify-center rounded"
                     >
                       {isWebm ? (
                         <video
@@ -353,7 +353,7 @@ export function ComposerPickerPanel({
               value={gifQuery}
               onChange={(e) => setGifQuery(e.target.value)}
               placeholder={t('composer.gifSearchPlaceholder')}
-              className="h-10 w-full rounded border border-neon-cyan/25 bg-void/40 px-3 font-mono text-[11px] text-[color:var(--on-surface)] placeholder:text-text-muted"
+              className="p13-picker-input rounded"
             />
             {gifBusy ? (
               <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
@@ -371,7 +371,7 @@ export function ComposerPickerPanel({
                     <button
                       key={g.id}
                       type="button"
-                      className="overflow-hidden rounded border border-neon-cyan/15 bg-void/40 hover:border-neon-cyan/50"
+                      className="p13-media-tile rounded"
                       onClick={() => {
                         void (async () => {
                           try {

@@ -107,6 +107,12 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     return isMissingRelationError(err, 'sticker_pack_shares')
   }
 
+  function isSchemaMismatchError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false
+    const e = err as PgErrorLike
+    return e.code === '42P01' || e.code === '42703'
+  }
+
   async function getAccessiblePack(packId: string, userId: string) {
     let row:
       | {
@@ -350,6 +356,10 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
         )
         .orderBy(asc(stickerPacks.createdAt))
     } catch (err) {
+      if (isSchemaMismatchError(err)) {
+        request.log.warn({ err }, 'stickers schema mismatch, returning empty pack list')
+        return reply.send({ packs: [] })
+      }
       if (!isMissingSharesTableError(err)) throw err
       const fallbackRows = await db
         .select({

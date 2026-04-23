@@ -45,6 +45,7 @@ import {
 } from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { getTrustedPeerCount } from '@/lib/trust-store'
+import { PortalRoot } from '@/components/portal-root'
 
 type Props = { userId: string; username: string; onClose: () => void }
 type SettingsTabId =
@@ -476,6 +477,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   }
 
   return (
+    <PortalRoot>
     <div
       className={`custom-scrollbar fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden px-3 py-6 sm:px-4 ${
         isMd3
@@ -489,11 +491,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       <motion.div
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-          className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${
-          settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' || settingsTab === 'folders' || settingsTab === 'chat' || settingsTab === 'stickers' ? 'max-w-2xl'
-          : settingsTab === 'profile' ? 'max-w-lg'
-          : totpSetup ? 'max-w-lg' : 'max-w-md'
-        } ${isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!rounded-none !border-[#6f747c] !bg-[#d4d0c8] !shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_16px_36px_rgba(0,0,0,0.34)]' : ''}`}
+          className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex h-[min(100dvh,100vh)] w-full min-w-0 max-w-[min(1200px,98vw)] flex-col overflow-hidden lg:h-[min(92dvh,92vh)] ${
+        isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!rounded-none !border-[#6f747c] !bg-[#d4d0c8] !shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_16px_36px_rgba(0,0,0,0.34)]' : ''}`}
       >
         {/* ── Header ── */}
         <header className={`flex shrink-0 items-start justify-between gap-2 border-b pb-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#001f57] bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)] px-3 pt-2' : 'border-neon-red/40'}`}>
@@ -506,8 +505,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-hidden md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
-          <aside className={`hidden min-h-0 border-r p-2 md:flex md:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
+        <div className="min-h-0 flex-1 overflow-hidden lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <aside className={`hidden min-h-0 border-r p-2 lg:flex lg:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
             <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
               {SETTINGS_TABS.map((tab) => (
                 <button
@@ -531,7 +530,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </aside>
 
           <div className="min-h-0 flex flex-col">
-            <div className={`border-b p-2 md:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
+            <div className={`border-b p-2 lg:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
               {mobileSettingsView === 'list' ? (
                 <p className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] text-[#1c3653]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
                   {t('common.settings')}
@@ -548,7 +547,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </div>
 
             {mobileSettingsView === 'list' ? (
-              <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2 md:hidden">
+              <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2 lg:hidden">
                 {SETTINGS_TABS.map((tab) => (
                   <button
                     key={tab.id}
@@ -562,7 +561,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               </div>
             ) : null}
 
-            <div className={`custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4 ${mobileSettingsView === 'list' ? 'hidden md:block' : 'block'}`}>
+            <div className={`custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4 ${mobileSettingsView === 'list' ? 'hidden lg:block' : 'block'}`}>
 
           {/* ── VAULT GATE OVERLAY ── */}
           <AnimatePresence>
@@ -1410,5 +1409,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         </div>
       </motion.div>
     </div>
+    </PortalRoot>
   )
 }

@@ -134,8 +134,8 @@ body {
   --surface-elevated: #d4d0c8;
   --neon-red: #0a4ea1;
   --neon-cyan: #0b4f9b;
-  --neon-amber: #e0ad2d;
-  --accent-2: #f2c94c;
+  --neon-amber: #2f3640;
+  --accent-2: #1f2933;
   --on-surface: #111111;
   --text-primary: var(--on-surface);
   --text-muted: color-mix(in srgb, #000 55%, #ffffff);
@@ -473,16 +473,16 @@ body {
   color: #1f1f1f !important;
 }
 [data-theme="retro"][data-shell="terminal"] .p13-sidebar-row .p13-sidebar-unread-badge {
-  border: 1px solid #7f6500 !important;
-  background: #ffce00 !important;
-  color: #1f1f1f !important;
+  border: 1px solid #0a0a0a !important;
+  background: #1f2328 !important;
+  color: #f3f6fb !important;
   border-radius: 2px !important;
   font-weight: 700;
 }
 [data-theme="retro"][data-shell="terminal"] .p13-sidebar-row .p13-sidebar-mention-badge {
-  border-color: #7f6500 !important;
-  background: #ffe18f !important;
-  color: #2a2100 !important;
+  border-color: #15191d !important;
+  background: #3a4553 !important;
+  color: #f3f6fb !important;
   border-radius: 2px !important;
 }
 [data-theme="retro"][data-shell="terminal"] .p13-sidebar-presence-dot {
@@ -549,8 +549,8 @@ body {
 [data-theme="retro"][data-shell="terminal"] .p13-date-divider > span,
 [data-theme="retro"][data-shell="terminal"] .chat-unread-divider {
   border: 1px solid #6f747c !important;
-  background: #d4d0c8 !important;
-  color: #1f1f1f !important;
+  background: #c9c5bd !important;
+  color: #15181c !important;
   box-shadow:
     inset -1px -1px 0 #7d7d7d,
     inset 1px 1px 0 #ffffff !important;

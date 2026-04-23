@@ -66,6 +66,7 @@ import {
   supportsNativePush,
 } from '@/lib/push-subscription'
 import { NotificationModeOnboarding } from '@/components/notification-mode-onboarding'
+import { requestAndroidEssentialPermissionsOnce } from '@/lib/native-permissions'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -396,6 +397,10 @@ export function ChatApp({
 
   useEffect(() => {
     return installPushRecoveryListener()
+  }, [])
+
+  useEffect(() => {
+    void requestAndroidEssentialPermissionsOnce()
   }, [])
 
   useEffect(() => {

@@ -42,6 +42,7 @@ import { ThreadPanel } from '@/components/chat/thread-panel'
 import { cloneStickerPack } from '@/lib/api/stickers'
 import { addGifFavorite, type GifHit } from '@/lib/api/gif'
 import { toastError, toastSuccess } from '@/store/toastStore'
+import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 
 const OLDER_PAGE_SIZE = 25
 const OLDER_RAM_CAP = 200
@@ -222,7 +223,7 @@ export function ChatTerminal({
   // keeps the experience close to Telegram-like: even if someone is browsing
   // the last couple of bubbles, new incoming messages still pull them to the
   // bottom instead of showing the "new messages below" chip.
-  const AUTOSCROLL_STICK_PX = 240
+  const AUTOSCROLL_STICK_PX = TELEGRAM_BEHAVIOR.autoscroll.stickPx
 
   const scrollToBottomInstant = useCallback(() => {
     const el = ref.current
@@ -478,25 +479,40 @@ export function ChatTerminal({
     // Scan chronologically for the first peer message the user hasn't read.
     for (const m of messages) {
       if (m.sender_id === userId) continue
-      if (m.read_at) continue
+      if (m.read_at ?? readAtOverrides[m.id]) continue
       firstUnreadIdRef.current = m.id
       setFirstUnreadAnchorId(m.id)
-      // Try to scroll the anchor into view at 1/3 from top — Telegram-style.
-      requestAnimationFrame(() => {
-        const el = ref.current
-        const anchor = el?.querySelector(`[data-message-id="${m.id}"]`) as HTMLElement | null
-        if (!el || !anchor) return
-        const target =
-          anchor.offsetTop - el.clientHeight / 3
-        el.scrollTop = Math.max(0, target)
-      })
       break
     }
     // Explicit "no unread" marker so we don't keep scanning.
     if (!firstUnreadIdRef.current) {
       firstUnreadIdRef.current = ''
     }
-  }, [messages, activeChatId, userId])
+  }, [messages, activeChatId, readAtOverrides, userId])
+
+  // Keep unread divider in sync: if the anchored unread message becomes read,
+  // move anchor to next unread or hide the divider completely.
+  useEffect(() => {
+    if (!activeChatId || !userId) return
+    if (!firstUnreadAnchorId) return
+    const anchor = messages.find((m) => m.id === firstUnreadAnchorId)
+    if (!anchor) {
+      setFirstUnreadAnchorId(null)
+      firstUnreadIdRef.current = ''
+      return
+    }
+    if (!(anchor.read_at ?? readAtOverrides[anchor.id])) return
+    const nextUnread = messages.find(
+      (m) => m.sender_id !== userId && !(m.read_at ?? readAtOverrides[m.id])
+    )
+    if (!nextUnread) {
+      setFirstUnreadAnchorId(null)
+      firstUnreadIdRef.current = ''
+      return
+    }
+    setFirstUnreadAnchorId(nextUnread.id)
+    firstUnreadIdRef.current = nextUnread.id
+  }, [activeChatId, firstUnreadAnchorId, messages, readAtOverrides, userId])
 
   const handleMessageAction = useCallback(
     (action: string, msg: DecryptedMessage) => {
@@ -1122,8 +1138,10 @@ export function ChatTerminal({
               <div
                 key={m.id}
                 data-message-id={m.id}
+                data-sender-id={m.sender_id}
+                data-read-at={m.read_at ?? ''}
                 data-run-continuation={isRunContinuation ? 'true' : 'false'}
-                className={`p13-msg-group p13-list-row group/msg relative flex w-full ${
+                className={`p13-msg-group group/msg relative flex w-full ${
                   mine ? 'justify-end' : 'justify-start'
                 } transition-transform duration-150`}
                 style={{
@@ -1363,7 +1381,7 @@ export function ChatTerminal({
                 {dateDivider}
               <div
                 data-run-continuation={isRunContinuation ? 'true' : 'false'}
-                className={`p13-msg-group p13-list-row group flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+                className={`p13-msg-group group flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
               >
                 <div
                   className={`min-w-0 ${

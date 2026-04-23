@@ -168,6 +168,7 @@ export function ChatSidebar({
   const [fabOpen, setFabOpen] = useState(false)
   const fabRef = useRef<HTMLDivElement>(null)
   const [exploreOpen, setExploreOpen] = useState(false)
+  const [groupSettingsOpen, setGroupSettingsOpen] = useState(false)
 
   useEffect(() => {
     try {
@@ -176,6 +177,16 @@ export function ChatSidebar({
       /* ignore quota */
     }
   }, [pinnedIds])
+
+  useEffect(() => {
+    setGroupSettingsOpen(false)
+  }, [activeChatId])
+
+  useEffect(() => {
+    const onOpenSettings = () => setGroupSettingsOpen(true)
+    window.addEventListener('p13_open_group_settings', onOpenSettings)
+    return () => window.removeEventListener('p13_open_group_settings', onOpenSettings)
+  }, [])
 
   useEffect(() => {
     const peerIds = Array.from(
@@ -432,6 +443,14 @@ export function ChatSidebar({
     overscan: 5,
   })
 
+  const navigateToChat = useCallback((chatId: string) => {
+    setActiveChatId(chatId)
+    setFabOpen(false)
+    setRowContextMenu(null)
+    setFolderMenu(null)
+    onNavigate?.()
+  }, [onNavigate, setActiveChatId])
+
   useEffect(() => {
     if (!fabOpen) return
     function handleDown(e: MouseEvent | TouchEvent) {
@@ -524,7 +543,7 @@ export function ChatSidebar({
         throw new Error('CANNOT_OPEN_DIRECT_WITH_SELF')
       }
       const chat = await createDirectE2EChat(userId, pid)
-      setActiveChatId(chat.id)
+      navigateToChat(chat.id)
       setPeerInput('')
     } catch (e) {
       setCreateErr(e instanceof Error ? e.message : 'CREATE_FAILED')
@@ -579,9 +598,8 @@ export function ChatSidebar({
           userId={userId}
           onClose={() => setGroupModalOpen(false)}
           onCreated={(id) => {
-            setActiveChatId(id)
+            navigateToChat(id)
             setGroupModalOpen(false)
-            onNavigate?.()
           }}
         />
       ) : null}
@@ -746,7 +764,7 @@ export function ChatSidebar({
             : 'border-neon-cyan/30 bg-void'
         }`}
       >
-        <p className={`${isMd3 ? 'text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--on-surface)]' : 'font-mono text-[11px] uppercase tracking-[0.3em] text-neon-cyan'}`}>
+        <p className={`p13-sidebar-top-label ${isMd3 ? 'text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--on-surface)]' : 'font-mono text-[11px] uppercase tracking-[0.3em] text-neon-cyan'}`}>
           {t('sidebar.channels')}
         </p>
       </div>
@@ -790,14 +808,12 @@ export function ChatSidebar({
         onClick={async () => {
           const existingSelf = chats.find((c) => isSavedMessagesChat(c, userId))
           if (existingSelf) {
-            setActiveChatId(existingSelf.id)
-            onNavigate?.()
+            navigateToChat(existingSelf.id)
             return
           }
           try {
             const self = await fetchOrCreateSelfChat()
-            setActiveChatId(self.id)
-            onNavigate?.()
+            navigateToChat(self.id)
             void reload()
           } catch (err) {
             console.error('[saved-messages] open failed', err)
@@ -894,8 +910,7 @@ export function ChatSidebar({
                 className={`min-w-0 flex-1 px-3 py-3 text-left text-xs outline-none ${isMd3 ? 'font-sans' : 'font-mono'}`}
                 aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {
-                  setActiveChatId(c.id)
-                  onNavigate?.()
+                  navigateToChat(c.id)
                 }}
               >
                 <span className="inline-flex min-w-0 items-center gap-3">
@@ -981,17 +996,33 @@ export function ChatSidebar({
 
       {/* Active Chat Controls */}
       {activeChatId ? (
-        <div className={`border-t p-3 space-y-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-void/20'}`}>
+      <div className={`p13-sidebar-bottom-actions border-t p-3 space-y-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-void/20'}`}>
           {chats.find((c) => c.id === activeChatId)?.is_group ? (
-            <GroupChatSettings
-              chatId={activeChatId}
-              userId={userId}
-              sharedKey={sharedKey}
-              onChanged={() => {
-                void reload()
-                onPackSettingsChanged?.()
-              }}
-            />
+            <>
+              <button
+                type="button"
+                onClick={() => setGroupSettingsOpen((v) => !v)}
+                className={`flex h-10 w-full items-center justify-between px-3 text-[10px] font-medium uppercase tracking-[0.16em] transition-colors ${
+                  isMd3
+                    ? 'rounded-full border border-[color-mix(in_srgb,var(--on-surface)_16%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+                    : 'border border-neon-cyan/40 bg-void font-mono text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10'
+                }`}
+              >
+                <span>{t('group.packSettings')}</span>
+                <Settings className={`h-3.5 w-3.5 ${groupSettingsOpen ? 'opacity-100' : 'opacity-75'}`} aria-hidden />
+              </button>
+              {groupSettingsOpen ? (
+                <GroupChatSettings
+                  chatId={activeChatId}
+                  userId={userId}
+                  sharedKey={sharedKey}
+                  onChanged={() => {
+                    void reload()
+                    onPackSettingsChanged?.()
+                  }}
+                />
+              ) : null}
+            </>
           ) : null}
 
           <div className="flex gap-1">
@@ -1049,7 +1080,7 @@ export function ChatSidebar({
       ) : null}
 
       {/* Global Actions */}
-      <div className={`border-t p-3 space-y-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))]'}`}>
+      <div className={`p13-sidebar-bottom-actions border-t p-3 space-y-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))]'}`}>
 
         {/* Admin link — only for admins, mobile-first placement */}
         {isAdmin ? (
@@ -1187,7 +1218,7 @@ export function ChatSidebar({
             try {
               const result = await joinChatByInviteCode(code)
               setExploreOpen(false)
-              setActiveChatId(result.chat_id)
+              navigateToChat(result.chat_id)
               await reload()
             } catch (e) {
               setCreateErr(e instanceof Error ? e.message : 'JOIN_FAILED')

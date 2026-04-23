@@ -20,6 +20,7 @@ import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 import type { GifHit } from '@/lib/api/gif'
+import { useThemeStore } from '@/store/themeStore'
 
 function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
@@ -60,6 +61,8 @@ type QueuedFile = { file: File; mediaType: 'image' | 'video' | 'audio' | 'file' 
 
 export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled }: Props) {
   const { t } = useTranslation()
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isMd3 = shellMode === 'md3'
   const [messageText, setMessageText] = useState('')
   const [composerPickerOpen, setComposerPickerOpen] = useState(false)
 
@@ -613,7 +616,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
 
         {/* Emoji button — left side, next to attach */}
         {!isRecordingUI ? (
-          <div ref={composerPickerRef} className="relative shrink-0">
+          <div ref={composerPickerRef} className={`relative shrink-0 ${isMd3 ? 'order-3' : ''}`}>
             <button
               type="button"
               className="p13-icon-btn"
@@ -663,7 +666,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         ) : null}
 
         {/* Attach — always opens file picker directly */}
-        <div className="relative shrink-0">
+        <div className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
           <button
             type="button"
             className="p13-icon-btn"
@@ -676,7 +679,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         </div>
 
         {/* Input field */}
-        <div className="relative flex-1">
+        <div className={`relative flex-1 ${isMd3 ? 'order-2' : ''}`}>
           <div
             className={`p13-composer-input relative ${
               isRecordingUI ? 'ring-1 ring-danger/40' : ''
@@ -700,7 +703,20 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                   e.preventDefault()
                   if (messageText.trim() && !disabled && !sendingTextRef.current) void onSubmit(e as unknown as React.FormEvent)
                 }
-                if (e.key === 'Escape' && replyTo) setReplyTo(null)
+                if (e.key === 'Escape') {
+                  if (replyTo) {
+                    setReplyTo(null)
+                    return
+                  }
+                  if (composerPickerOpen) {
+                    setComposerPickerOpen(false)
+                    return
+                  }
+                  const store = useDockStore.getState()
+                  if (store.slot === 'composer' || store.slot === 'emoji') {
+                    store.close()
+                  }
+                }
               }}
               onPaste={handlePaste}
               disabled={disabled || isRecordingUI || sendingText}
@@ -746,7 +762,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
               : mediaMode === 'voice'
               ? 'p13-icon-btn--primary'
               : 'p13-icon-btn--danger'
-          } ${showSendOnMobile ? 'hidden' : 'inline-flex'}`}
+          } ${showSendOnMobile ? 'hidden' : 'inline-flex'} ${isMd3 ? 'order-4' : ''}`}
           disabled={disabled || !cryptoCtx}
           onContextMenu={handleContextMenu}
           onPointerDown={handleRecordPointerDown}
@@ -775,7 +791,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
           className={`p13-icon-btn p13-icon-btn--primary shrink-0 ${
             showSendOnMobile ? 'inline-flex' : 'hidden'
-          }`}
+          } ${isMd3 ? 'order-4' : ''}`}
           title={t('common.send')}
           onClick={handleSendClick}
         >

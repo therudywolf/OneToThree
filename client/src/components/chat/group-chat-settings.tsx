@@ -7,6 +7,7 @@ import {
   fetchChatDetail,
   fetchChatsList,
   kickChatMember,
+  patchInviteSlug,
   patchChatMemberRole,
   patchChannelMemberFeedRole,
   patchDiscussionChat,
@@ -54,11 +55,13 @@ export function GroupChatSettings({
     discussion_chat_id: string | null
     my_role: ChatMemberRole
     invite_code: string | null
+    invite_slug: string | null
     invite_one_time: boolean | null
     members: ChatDetailMember[]
   } | null>(null)
 
   const [discussionPick, setDiscussionPick] = useState<string>('')
+  const [inviteSlugDraft, setInviteSlugDraft] = useState('')
   const [discussionCandidates, setDiscussionCandidates] = useState<ApiChatRow[]>([])
   const [oneTimeLink, setOneTimeLink] = useState(false)
   const [errorLog, setErrorLog] = useState<string | null>(null)
@@ -73,10 +76,12 @@ export function GroupChatSettings({
         discussion_chat_id: d.chat.discussion_chat_id ?? null,
         my_role: d.chat.my_role,
         invite_code: d.chat.invite_code,
+        invite_slug: d.chat.invite_slug ?? null,
         invite_one_time: d.chat.invite_one_time,
         members: d.members,
       })
       setDiscussionPick(d.chat.discussion_chat_id ?? '')
+      setInviteSlugDraft(d.chat.invite_slug ?? '')
       if (typeof d.chat.invite_one_time === 'boolean') {
         setOneTimeLink(d.chat.invite_one_time)
       }
@@ -188,6 +193,22 @@ export function GroupChatSettings({
     }
   }
 
+  const saveInviteSlug = async () => {
+    if (!protocol || protocol.chat_type !== 'channel') return
+    setIsBusy(true)
+    setErrorLog(null)
+    try {
+      const saved = await patchInviteSlug(chatId, inviteSlugDraft)
+      setInviteSlugDraft(saved)
+      await syncSector()
+      onChanged()
+    } catch (e) {
+      setErrorLog(e instanceof Error ? e.message : 'INVITE_SLUG_SAVE_FAILED')
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
   const applyChannelPostingMode = async (mode: 'all_members' | 'admins_only') => {
     if (!protocol || protocol.chat_type !== 'channel') return
     const editable = protocol.members.filter(
@@ -225,7 +246,8 @@ export function GroupChatSettings({
     )
   }
 
-  const activeLink = protocol.invite_code ? `${window.location.origin}/join/${protocol.invite_code}` : null
+  const activeJoinKey = protocol.invite_slug || protocol.invite_code
+  const activeLink = activeJoinKey ? `${window.location.origin}/join/${activeJoinKey}` : null
 
   return (
     <div className={`flex flex-col border-t text-[10px] ${
@@ -313,6 +335,24 @@ export function GroupChatSettings({
 
             {protocol.chat_type === 'channel' && canOwner ? (
               <div className={`space-y-2 p-3 ${isMd3 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]' : 'border border-neon-cyan/25 bg-void/40'}`}>
+                <p className={`text-[9px] ${isMd3 ? 'text-[var(--primary)]' : 'text-neon-cyan/90'}`}>{t('group.permanentLinkTitle')}</p>
+                <div className="flex gap-2">
+                  <input
+                    value={inviteSlugDraft}
+                    onChange={(e) => setInviteSlugDraft(e.target.value.toLowerCase())}
+                    placeholder={t('group.permanentLinkPlaceholder')}
+                    disabled={isBusy}
+                    className={`h-10 w-full px-3 text-[10px] normal-case tracking-normal ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] border-0 text-[var(--on-surface)]' : 'border border-border-strong bg-void text-neon-cyan'}`}
+                  />
+                  <button
+                    type="button"
+                    disabled={isBusy || !inviteSlugDraft.trim()}
+                    onClick={() => void saveInviteSlug()}
+                    className={`inline-flex h-10 shrink-0 items-center px-3 text-[9px] transition-colors disabled:opacity-30 ${isMd3 ? 'rounded-full bg-[var(--primary)] text-[var(--on-primary)] hover:brightness-110' : 'border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
+                  >
+                    {t('group.saveSlug')}
+                  </button>
+                </div>
                 <p className={`text-[9px] ${isMd3 ? 'text-[var(--primary)]' : 'text-neon-cyan/90'}`}>{t('group.discussionTitle')}</p>
                 <p className="text-[8px] normal-case tracking-normal text-text-muted/80">
                   {t('group.discussionHint')}

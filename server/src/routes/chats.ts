@@ -25,6 +25,9 @@ const wrappedKeySchema = z.object({
 const invitePostSchema = z.object({
   invite_one_time: z.boolean().optional(),
 })
+const inviteSlugPatchSchema = z.object({
+  invite_slug: z.string().trim().min(4).max(32).regex(/^[a-z0-9_]+$/),
+})
 
 const createChatSchema = z
   .object({
@@ -186,6 +189,7 @@ type UserChatRow = {
   keyEpoch: number
   encryptedGroupKey: string | null
   inviteCode: string | null
+  inviteSlug: string | null
   myRole: ChatMemberRole
   isFavorite: boolean
   mutedUntil: string | null
@@ -200,6 +204,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
       keyEpoch: chats.keyEpoch,
       encryptedGroupKey: chatMembers.encryptedGroupKey,
       inviteCode: chats.inviteCode,
+      inviteSlug: chats.inviteSlug,
       myRole: chatMembers.role,
       favoriteUserId: chatFavorites.userId,
       mutedUntil: chatMembers.mutedUntil,
@@ -219,6 +224,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
     keyEpoch: r.keyEpoch ?? 0,
     encryptedGroupKey: r.encryptedGroupKey,
     inviteCode: r.inviteCode,
+    inviteSlug: r.inviteSlug,
     myRole: r.myRole,
     isFavorite: Boolean(r.favoriteUserId),
     mutedUntil: r.mutedUntil instanceof Date ? r.mutedUntil.toISOString() : r.mutedUntil,
@@ -298,6 +304,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           last_message_at: lastMessageAtByChat.get(c.id) ?? null,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
+          invite_slug: showInvite ? c.inviteSlug : null,
           key_epoch: c.keyEpoch,
         }
       }),
@@ -337,6 +344,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         keyEpoch: chats.keyEpoch,
         encryptedGroupKey: chatMembers.encryptedGroupKey,
         inviteCode: chats.inviteCode,
+        inviteSlug: chats.inviteSlug,
         myRole: chatMembers.role,
         favoriteAt: chatFavorites.createdAt,
       })
@@ -391,6 +399,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
               : null,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
+          invite_slug: showInvite ? c.inviteSlug : null,
           key_epoch: c.keyEpoch ?? 0,
         }
       }),
@@ -494,7 +503,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     const [chat] = await db
       .select()
       .from(chats)
-      .where(eq(chats.inviteCode, trimmed))
+      .where(or(eq(chats.inviteCode, trimmed), eq(chats.inviteSlug, trimmed)))
       .limit(1)
 
     if (!chat || (chat.type !== 'group_e2e' && chat.type !== 'public_open')) {
@@ -895,6 +904,32 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return reply.send({ invite_code: fresh.inviteCode })
+  })
+
+  app.patch('/:chatId/invite-slug', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const parsedBody = inviteSlugPatchSchema.safeParse(request.body ?? {})
+    if (!parsedBody.success) return reply.status(400).send({ error: 'INVALID_INVITE_SLUG' })
+    const { chatId } = params.data
+    const nextSlug = parsedBody.data.invite_slug.trim().toLowerCase()
+
+    const chat = await getChatById(chatId)
+    if (!chat || (chat.type !== 'channel' && chat.type !== 'public_open')) {
+      return reply.status(400).send({ error: 'NOT_CHANNEL_CHAT' })
+    }
+    const role = await getMemberRole(chatId, user.id)
+    if (role !== 'owner') return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    try {
+      await db.update(chats).set({ inviteSlug: nextSlug }).where(eq(chats.id, chatId))
+    } catch {
+      return reply.status(409).send({ error: 'INVITE_SLUG_TAKEN' })
+    }
+
+    return reply.send({ invite_slug: nextSlug })
   })
 
   app.post('/:chatId/leave', async (request, reply) => {
@@ -1345,6 +1380,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         type: chat.type,
         is_group: isGroupType(chat.type),
         invite_code: showInvite ? chat.inviteCode : null,
+        invite_slug: showInvite ? chat.inviteSlug : null,
         invite_one_time: showInvite ? chat.inviteOneTime : null,
         my_role: memberOk[0].myRole,
       },
@@ -1390,6 +1426,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         name: chats.name,
         type: chats.type,
         inviteCode: chats.inviteCode,
+        inviteSlug: chats.inviteSlug,
         memberCount: memberCountSq.memberCount,
       })
       .from(chats)
@@ -1405,6 +1442,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         name: r.name,
         type: r.type,
         invite_code: r.inviteCode,
+        invite_slug: r.inviteSlug,
         member_count: Number(r.memberCount ?? 0),
       }))
     )

@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import { markMessagesReadBatch } from '@/lib/api/messages'
 import { useSessionStore } from '@/store/sessionStore'
-import { useChatStore } from '@/store/chatStore'
+import { useUnreadStore } from '@/store/unreadStore'
 
 /**
  * PROJECT 13 :: VISUAL_CAPTURE_SYNC
@@ -80,16 +80,19 @@ export function useReadReceipts(
         for (const entry of entries) {
           if (!entry.isIntersecting) continue
           
-          const msgId = (entry.target as HTMLElement).dataset.messageId
+          const node = entry.target as HTMLElement
+          const msgId = node.dataset.messageId
           if (!msgId || processedRef.current.has(msgId)) continue
 
-          // [VERIFICATION] :: Проверка, что сообщение чужое и еще не прочитано
-          const currentMessages = useChatStore.getState().messages
-          const targetNode = currentMessages.find((m) => m.id === msgId)
-          if (!targetNode || targetNode.sender_id === userId) continue
+          // Use rendered node metadata instead of chatStore snapshot to support
+          // mixed lists (cached older + live messages) and effective read state.
+          const senderId = node.dataset.senderId ?? ''
+          const effectiveReadAt = node.dataset.readAt ?? ''
+          if (!senderId || senderId === userId || effectiveReadAt) continue
 
           processedRef.current.add(msgId)
           syncQueueRef.current.add(msgId)
+          useUnreadStore.getState().updateReadAtOverride(msgId, new Date().toISOString())
           triggerBatchSync()
         }
       },

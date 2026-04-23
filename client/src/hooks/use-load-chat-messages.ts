@@ -30,13 +30,18 @@ export function useLoadChatMessages(
   const setHistoryDecryptBusy = useUnreadStore((s) => s.setHistoryDecryptBusy)
 
   useEffect(() => {
-    if (!activeChatId || !cryptoCtx || !unwrappedPrivateKey) {
+    if (!activeChatId) {
       setMessages([])
+      return
+    }
+    if (!cryptoCtx || !unwrappedPrivateKey) {
+      // Keep already rendered messages while vault/session context is warming up.
       return
     }
 
     let cancelled = false
-    ;(async () => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    const load = async (attempt = 0) => {
       let cached: DecryptedMessage[] = []
       try {
         cached = await getRecentCachedMessages(activeChatId, 50)
@@ -47,84 +52,94 @@ export function useLoadChatMessages(
         /* IndexedDB unavailable or corrupt — continue with network fetch */
       }
 
-      const res = await fetch(`${API_URL}/messages/${activeChatId}`, {
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        if (!cancelled) setMessages([])
-        return
-      }
-      const data = (await res.json()) as { messages?: ApiMessageRow[] }
-      const rows = data.messages ?? []
-      const cipherCount = rows.filter(
-        (m) =>
-          (m.device_ciphertext != null && m.device_iv != null && m.device_ciphertext !== '') ||
-          (m.content != null && m.iv != null && m.content !== '')
-      ).length
-      const showDecryptBusy = cipherCount >= BATCH_WORKER_MIN
-      if (showDecryptBusy) setHistoryDecryptBusy(true)
-      const drCtx: DrContext | undefined =
-        userId && directPeerUserId
-          ? { ownerUserId: userId, peerUserId: directPeerUserId }
-          : undefined
-
-      let out: DecryptedMessage[] = []
       try {
-        out = await decryptApiMessageRows(
-          unwrappedPrivateKey,
-          cryptoCtx,
-          rows,
-          drCtx
-        )
-      } finally {
-        if (showDecryptBusy) setHistoryDecryptBusy(false)
-      }
-
-      // Preserve locally known plaintext when a history decrypt falls back to
-      // empty/DECRYPT_FAIL for the same message id (common for transient DR
-      // session desync windows right after chat re-open).
-      if (cached.length > 0) {
-        const cachedById = new Map(cached.map((m) => [m.id, m]))
-        out = out.map((m) => {
-          const prev = cachedById.get(m.id)
-          if (!prev) return m
-          const currentBad = !m.plaintext || m.plaintext === '[DECRYPT_FAIL]'
-          const previousGood = Boolean(prev.plaintext) && prev.plaintext !== '[DECRYPT_FAIL]'
-          if (!currentBad || !previousGood) return m
-          return { ...m, plaintext: prev.plaintext }
+        const res = await fetch(`${API_URL}/messages/${activeChatId}`, {
+          credentials: 'include',
         })
-      }
-
-      if (!cancelled) {
-        out.sort(
-          (a, b) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        )
-        try {
-          // Don't persist messages that failed to decrypt — stale DECRYPT_FAIL
-          // entries in IndexedDB would reappear on every subsequent chat open
-          // before the fresh network decrypt completes.
-          const cacheable = out.filter((m) => m.plaintext !== '[DECRYPT_FAIL]')
-          await cacheMessages(cacheable)
-        } catch {
-          /* cache write best-effort */
+        if (!res.ok) {
+          if (!cancelled && attempt < 1) {
+            retryTimer = setTimeout(() => { void load(attempt + 1) }, 1200)
+          }
+          return
         }
-        setMessages(out)
-        if (userId) {
-          const incomingIds = out
-            .filter((m) => m.sender_id !== userId)
-            .map((m) => m.id)
-          if (incomingIds.length > 0) {
-            void acknowledgeMessagesDelivered(incomingIds).catch(() => {
-              /* delivery ack is best-effort */
-            })
+        const data = (await res.json()) as { messages?: ApiMessageRow[] }
+        const rows = data.messages ?? []
+        const cipherCount = rows.filter(
+          (m) =>
+            (m.device_ciphertext != null && m.device_iv != null && m.device_ciphertext !== '') ||
+            (m.content != null && m.iv != null && m.content !== '')
+        ).length
+        const showDecryptBusy = cipherCount >= BATCH_WORKER_MIN
+        if (showDecryptBusy) setHistoryDecryptBusy(true)
+        const drCtx: DrContext | undefined =
+          userId && directPeerUserId
+            ? { ownerUserId: userId, peerUserId: directPeerUserId }
+            : undefined
+
+        let out: DecryptedMessage[] = []
+        try {
+          out = await decryptApiMessageRows(
+            unwrappedPrivateKey,
+            cryptoCtx,
+            rows,
+            drCtx
+          )
+        } finally {
+          if (showDecryptBusy) setHistoryDecryptBusy(false)
+        }
+
+        // Preserve locally known plaintext when a history decrypt falls back to
+        // empty/DECRYPT_FAIL for the same message id (common for transient DR
+        // session desync windows right after chat re-open).
+        if (cached.length > 0) {
+          const cachedById = new Map(cached.map((m) => [m.id, m]))
+          out = out.map((m) => {
+            const prev = cachedById.get(m.id)
+            if (!prev) return m
+            const currentBad = !m.plaintext || m.plaintext === '[DECRYPT_FAIL]'
+            const previousGood = Boolean(prev.plaintext) && prev.plaintext !== '[DECRYPT_FAIL]'
+            if (!currentBad || !previousGood) return m
+            return { ...m, plaintext: prev.plaintext }
+          })
+        }
+
+        if (!cancelled) {
+          out.sort(
+            (a, b) =>
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          )
+          try {
+            // Don't persist messages that failed to decrypt — stale DECRYPT_FAIL
+            // entries in IndexedDB would reappear on every subsequent chat open
+            // before the fresh network decrypt completes.
+            const cacheable = out.filter((m) => m.plaintext !== '[DECRYPT_FAIL]')
+            await cacheMessages(cacheable)
+          } catch {
+            /* cache write best-effort */
+          }
+          setMessages(out)
+          if (userId) {
+            const incomingIds = out
+              .filter((m) => m.sender_id !== userId)
+              .map((m) => m.id)
+            if (incomingIds.length > 0) {
+              void acknowledgeMessagesDelivered(incomingIds).catch(() => {
+                /* delivery ack is best-effort */
+              })
+            }
           }
         }
+      } catch {
+        if (!cancelled && attempt < 1) {
+          retryTimer = setTimeout(() => { void load(attempt + 1) }, 1200)
+        }
       }
-    })()
+    }
+    void load()
 
     return () => {
       cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
     }
   }, [
     activeChatId,

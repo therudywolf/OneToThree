@@ -37,6 +37,42 @@ function parseStickerPacksPayload(payload: unknown): StickerPack[] {
   return []
 }
 
+function packPriority(scope: StickerPack['accessScope']): number {
+  if (scope === 'owned') return 3
+  if (scope === 'shared') return 2
+  return 1
+}
+
+function packDedupKey(pack: StickerPack): string {
+  const src = (pack.tgSource ?? '').trim().toLowerCase()
+  if (src) return `tg:${src}`
+  return `sn:${pack.shortName.trim().toLowerCase()}`
+}
+
+function dedupeStickerPacks(list: StickerPack[]): StickerPack[] {
+  const byKey = new Map<string, StickerPack>()
+  for (const pack of list) {
+    const key = packDedupKey(pack)
+    const prev = byKey.get(key)
+    if (!prev) {
+      byKey.set(key, pack)
+      continue
+    }
+    const prevScore = packPriority(prev.accessScope)
+    const nextScore = packPriority(pack.accessScope)
+    if (nextScore > prevScore) {
+      byKey.set(key, pack)
+      continue
+    }
+    if (nextScore === prevScore && new Date(pack.createdAt).getTime() > new Date(prev.createdAt).getTime()) {
+      byKey.set(key, pack)
+    }
+  }
+  return Array.from(byKey.values()).sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  )
+}
+
 const PACKS_CACHE_KEY = 'p13:stickers:packs:v1'
 const PACK_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 
@@ -96,8 +132,9 @@ export async function fetchStickerPacks(): Promise<StickerPack[]> {
     const res = await fetchWithTimeout(`${API_URL}/stickers/packs`, { credentials: 'include' })
     if (res.ok) {
       const data = (await res.json()) as { packs: StickerPack[] }
-      writeCache(PACKS_CACHE_KEY, data.packs)
-      return data.packs
+      const normalized = dedupeStickerPacks(data.packs)
+      writeCache(PACKS_CACHE_KEY, normalized)
+      return normalized
     }
 
     const packsErr = (await res.json().catch(() => ({}))) as { error?: string }
@@ -115,7 +152,9 @@ export async function fetchStickerPacks(): Promise<StickerPack[]> {
       if (staleCached) return staleCached
       throw new Error(`FETCH_PACKS_${res.status}`)
     }
-    const legacyData = parseStickerPacksPayload(await legacyRes.json().catch(() => null))
+    const legacyData = dedupeStickerPacks(
+      parseStickerPacksPayload(await legacyRes.json().catch(() => null))
+    )
     if (!legacyData.length) throw new Error('FETCH_PACKS_EMPTY')
     writeCache(PACKS_CACHE_KEY, legacyData)
     return legacyData

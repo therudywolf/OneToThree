@@ -491,7 +491,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       <motion.div
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-          className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex h-[min(100dvh,100vh)] w-full min-w-0 max-w-[min(1200px,98vw)] flex-col overflow-hidden lg:h-[min(92dvh,92vh)] ${
+          className={`terminal-panel p13-settings-modal ${isMd3 ? 'md3-settings' : ''} flex h-[min(100dvh,100vh)] w-full min-w-0 max-w-[min(1200px,98vw)] flex-col overflow-hidden lg:h-[min(92dvh,92vh)] ${
         isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!rounded-none !border-[#6f747c] !bg-[#d4d0c8] !shadow-none' : ''}`}
       >
         {/* ── Header ── */}
@@ -505,7 +505,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-hidden lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <div className="p13-settings-layout min-h-0 flex-1 overflow-hidden lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
           <aside className={`hidden min-h-0 border-r p-2 lg:flex lg:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
             <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
               {SETTINGS_TABS.map((tab) => (
@@ -529,7 +529,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </div>
           </aside>
 
-          <div className="min-h-0 flex flex-col">
+          <div className="p13-settings-content min-h-0 flex flex-col">
             <div className={`border-b p-2 lg:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
               {mobileSettingsView === 'list' ? (
                 <p className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] text-[#1c3653]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
@@ -561,7 +561,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               </div>
             ) : null}
 
-            <div className={`custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4 ${mobileSettingsView === 'list' ? 'hidden lg:block' : 'block'}`}>
+            <div className={`p13-settings-scroll custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4 ${mobileSettingsView === 'list' ? 'hidden lg:block' : 'block'}`}>
 
           {/* ── VAULT GATE OVERLAY ── */}
           <AnimatePresence>
@@ -1111,18 +1111,18 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       ))}
                     </select>
                   </div>
-                  <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/30 p-3">
-                    <p className="mb-2 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
+                  <div className={`rounded-[var(--radius-md)] border p-3 ${isRetro ? 'border-[#7a8089] bg-[#c9c5bd]' : 'border-neon-cyan/20 bg-void/30'}`}>
+                    <p className={`mb-2 text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'text-[#243a57]' : 'text-neon-cyan/70'}`}>
                       Theme mode
                     </p>
                     <div className="mb-3 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
                       <button
                         type="button"
                         onClick={() => { setShellMode('terminal'); setTheme('cyberpunk2077') }}
-                        className={`border px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                        className={`border px-3 py-2 text-left text-[10px] transition-all duration-150 ${
                           shellMode === 'terminal' && theme === 'cyberpunk2077'
-                            ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
-                            : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                            ? (isRetro ? 'border-[#0a4ea1] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659]' : 'border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
+                            : (isRetro ? 'border-[#7a8089] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#3f4752] hover:border-[#0a4ea1] hover:text-[#123659]' : 'border-neon-red/25 font-mono uppercase tracking-widest text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
                         }`}
                       >
                         TERMINAL
@@ -1130,10 +1130,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <button
                         type="button"
                         onClick={() => { setShellMode('md3'); setTheme('md3dark') }}
-                        className={`border px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                        className={`border px-3 py-2 text-left text-[10px] transition-all duration-150 ${
                           shellMode === 'md3' && theme === 'md3dark'
-                            ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
-                            : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                            ? (isRetro ? 'border-[#0a4ea1] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659]' : 'border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
+                            : (isRetro ? 'border-[#7a8089] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#3f4752] hover:border-[#0a4ea1] hover:text-[#123659]' : 'border-neon-red/25 font-mono uppercase tracking-widest text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
                         }`}
                       >
                         MD3
@@ -1141,16 +1141,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <button
                         type="button"
                         onClick={() => { setShellMode('terminal'); setTheme('retro') }}
-                        className={`border px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                        className={`border px-3 py-2 text-left text-[10px] transition-all duration-150 ${
                           theme === 'retro'
-                            ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
-                            : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                            ? (isRetro ? 'border-[#0a4ea1] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659]' : 'border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
+                            : (isRetro ? 'border-[#7a8089] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#3f4752] hover:border-[#0a4ea1] hover:text-[#123659]' : 'border-neon-red/25 font-mono uppercase tracking-widest text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
                         }`}
                       >
                         RETRO
                       </button>
                     </div>
-                    <p className="mb-2 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
+                    <p className={`mb-2 text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'text-[#243a57]' : 'text-neon-cyan/70'}`}>
                       {t('settings.appearanceShellTitle')}
                     </p>
                     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">

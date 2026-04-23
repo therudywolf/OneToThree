@@ -115,23 +115,69 @@ body {
   --shadow-rgb: 51, 240, 255;
   --page-glow: #452600;
   --page-glow-secondary: #4a0830;
-  --crt-opacity: 0.12;
-  --crt-vignette-opacity: 0.32;
+  --crt-opacity: 0.16;
+  --crt-vignette-opacity: 0.4;
   --text-shadow-intensity: 0.42;
+}
+[data-theme="cyberpunk2077"] body {
+  background:
+    radial-gradient(circle at 10% 6%, color-mix(in srgb, #ff4d6d 26%, transparent) 0, transparent 26%),
+    radial-gradient(circle at 84% 2%, color-mix(in srgb, #33f0ff 30%, transparent) 0, transparent 32%),
+    linear-gradient(180deg, #10060b 0%, #14090e 44%, #08090d 100%) !important;
+}
+[data-theme="cyberpunk2077"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.26;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.015) 0px,
+      rgba(255, 255, 255, 0.015) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    radial-gradient(circle at 12% 12%, rgba(51, 240, 255, 0.16), transparent 26%),
+    radial-gradient(circle at 88% 6%, rgba(255, 77, 109, 0.14), transparent 30%);
+  background-size: 100% 4px, 180% 180%, 170% 170%;
+  animation: p13-cyberpunk-grid-drift 22s linear infinite;
 }
 [data-theme="cyberpunk2077"] .terminal-panel {
   transition:
     box-shadow 0.22s ease,
     border-color 0.2s ease,
     transform 0.18s ease;
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 18%, transparent),
+    0 0 22px rgba(51, 240, 255, 0.08);
 }
 [data-theme="cyberpunk2077"] .terminal-input {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neon-red) 12%, transparent);
+}
+[data-theme="cyberpunk2077"] .p13-bubble--mine,
+[data-theme="cyberpunk2077"] .p13-bubble--peer {
+  position: relative;
+  overflow: hidden;
+}
+[data-theme="cyberpunk2077"] .p13-bubble--mine::after,
+[data-theme="cyberpunk2077"] .p13-bubble--peer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background: linear-gradient(120deg, transparent 0%, rgba(255, 255, 255, 0.14) 50%, transparent 100%);
+  transform: translateX(-120%);
+  animation: p13-cyberpunk-bubble-sheen 5.8s ease-in-out infinite;
 }
 [data-theme="retro"] {
-  --void: #008080;
-  --surface: #c0c0c0;
-  --surface-elevated: #d4d0c8;
+  --void: #8e8468;
+  --surface: #d2c7a6;
+  --surface-elevated: #e2d8b9;
   --neon-red: #0a4ea1;
   --neon-cyan: #0b4f9b;
   --neon-amber: #2f3640;
@@ -141,8 +187,8 @@ body {
   --text-muted: color-mix(in srgb, #000 55%, #ffffff);
   --border-strong: #6f737a;
   --shadow-rgb: 10, 78, 161;
-  --page-glow: #35537b;
-  --page-glow-secondary: #5e4a79;
+  --page-glow: #88744a;
+  --page-glow-secondary: #7d6b45;
   --crt-opacity: 0.05;
   --crt-vignette-opacity: 0.14;
   --text-shadow-intensity: 0.08;
@@ -150,7 +196,10 @@ body {
 [data-theme="retro"] body {
   text-shadow: none;
   image-rendering: auto;
-  background: #008080 !important;
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(255, 240, 184, 0.45), transparent 62%),
+    radial-gradient(900px 480px at 88% 8%, rgba(160, 133, 78, 0.18), transparent 58%),
+    linear-gradient(180deg, #d7ccaa 0%, #c4b58d 48%, #b39f72 100%) !important;
   color: #111;
 }
 [data-theme="retro"] .terminal-panel {
@@ -205,12 +254,12 @@ body {
   box-shadow: none !important;
 }
 [data-theme="retro"] .chat-layout-sidebar {
-  background: #c8c4bc !important;
+  background: #cfc2a0 !important;
   border-right: 1px solid #737983 !important;
   box-shadow: none !important;
 }
 [data-theme="retro"] .chat-layout-main {
-  background: #d4d0c8 !important;
+  background: #dfd2b0 !important;
   border-left: 1px solid #7a8089 !important;
   box-shadow: none !important;
 }
@@ -256,7 +305,7 @@ body {
 }
 [data-theme="retro"] .p13-composer,
 [data-theme="retro"] .chat-compose-shell {
-  background: #c8c4bc !important;
+  background: #c9ba94 !important;
   border-top: 1px solid #6f747c !important;
 }
 [data-theme="retro"] .p13-empty-state-box {
@@ -371,6 +420,30 @@ body {
 }
 [data-theme="retro"][data-shell="terminal"] {
   --font-family: 'Tahoma', 'Verdana', 'MS Sans Serif', sans-serif;
+}
+[data-theme="retro"][data-shell="terminal"] .p13-window,
+[data-theme="retro"][data-shell="terminal"] .terminal-panel,
+[data-theme="retro"][data-shell="terminal"] .p13-surface {
+  box-shadow:
+    inset -1px -1px 0 #7d7d7d,
+    inset 1px 1px 0 #ffffff !important;
+}
+[data-theme="retro"][data-shell="terminal"] .p13-titlebar,
+[data-theme="retro"][data-shell="terminal"] .chat-header-compact,
+[data-theme="retro"][data-shell="terminal"] .p13-desktop-chat-header {
+  background: linear-gradient(90deg, #114c98 0%, #2f71c5 100%) !important;
+}
+[data-theme="retro"][data-shell="terminal"] .p13-audio-card {
+  border: 1px solid #6f747c !important;
+  background:
+    linear-gradient(180deg, #f1efe9 0%, #d8d5cd 100%) !important;
+  box-shadow:
+    inset -1px -1px 0 #8a8a8a,
+    inset 1px 1px 0 #ffffff !important;
+}
+[data-theme="retro"][data-shell="terminal"] .p13-audio-card .p13-label {
+  color: #0d4ea8 !important;
+  font-weight: 700;
 }
 [data-theme="retro"][data-shell="terminal"] .chat-layout-sidebar {
   border-right: 2px solid #7a8089 !important;
@@ -1647,6 +1720,22 @@ select {
     max-width: 30rem;
     flex-shrink: 0;
   }
+  .chat-layout-sidebar[data-collapsed='true'] input,
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-meta,
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-title,
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-timestamp,
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-unread-badge,
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-thread-badge,
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-mention-badge,
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-top-label,
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-bottom-actions {
+    display: none !important;
+  }
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-row {
+    justify-content: center;
+    padding-left: 0.375rem !important;
+    padding-right: 0.375rem !important;
+  }
 }
 
 /*
@@ -1804,6 +1893,22 @@ select {
   overflow-x: hidden;
 }
 
+.p13-settings-modal {
+  border-width: 1px;
+}
+
+.p13-settings-layout {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.p13-settings-content {
+  min-width: 0;
+}
+
+.p13-settings-scroll {
+  scrollbar-gutter: stable both-edges;
+}
+
 @media (max-width: 430px) {
   .p13-icon-btn {
     width: 34px;
@@ -1852,10 +1957,10 @@ select {
 
 @media (min-width: 1024px) {
   .msg-bubble-width {
-    max-width: min(70vw, 42rem);
+    max-width: min(68vw, 40rem);
   }
   .msg-bubble-peer-width {
-    max-width: min(calc(70vw - 2.5rem), 42rem);
+    max-width: min(calc(68vw - 2.5rem), 40rem);
   }
 }
 
@@ -2141,9 +2246,9 @@ select {
   --p13-hover-lift: translateY(0);
   --p13-row-indicator-width: 2px;
   --p13-msg-gap: 12px;
-  --p13-msg-gap-run: 2px;
+  --p13-msg-gap-run: 12px;
   --p13-msg-stack-gap: 4px;
-  --p13-msg-stack-gap-run: 0px;
+  --p13-msg-stack-gap-run: 4px;
   --p13-msg-meta-gap: 4px;
   --p13-date-divider-gap-top: 14px;
   --p13-date-divider-gap-bottom: 8px;
@@ -2229,15 +2334,15 @@ select {
   /* animation vocabulary — material spring */
   --p13-msg-enter-mine: p13-md3-msg-in;
   --p13-msg-enter-peer: p13-md3-msg-in;
-  --p13-msg-enter-duration: 260ms;
+  --p13-msg-enter-duration: 240ms;
   --p13-msg-enter-ease: cubic-bezier(0.2, 0, 0, 1);
   --p13-btn-press-transform: scale(0.94);
   --p13-hover-lift: translateY(-1px);
   --p13-row-indicator-width: 0;
   --p13-msg-gap: 10px;
-  --p13-msg-gap-run: 3px;
+  --p13-msg-gap-run: 10px;
   --p13-msg-stack-gap: 6px;
-  --p13-msg-stack-gap-run: 1px;
+  --p13-msg-stack-gap-run: 6px;
   --p13-msg-meta-gap: 6px;
   --p13-date-divider-gap-top: 16px;
   --p13-date-divider-gap-bottom: 10px;
@@ -2277,6 +2382,34 @@ select {
   --md3-state-hover: 0.08;
   --md3-state-focus: 0.12;
   --md3-state-pressed: 0.12;
+}
+[data-shell="md3"] .p13-icon-btn {
+  transition:
+    background-color var(--motion-fast) ease,
+    transform var(--motion-fast) ease,
+    box-shadow var(--motion-base) ease;
+}
+[data-shell="md3"] .p13-icon-btn:hover {
+  box-shadow: var(--md3-elevation-1);
+}
+[data-shell="md3"] .p13-icon-btn:active {
+  transform: scale(0.96);
+}
+[data-shell="md3"] .p13-sidebar-row {
+  backdrop-filter: saturate(1.08) blur(2px);
+}
+[data-shell="md3"] .p13-bubble--mine {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.16),
+    0 4px 10px rgba(0, 0, 0, 0.11);
+}
+[data-shell="md3"] .p13-bubble--peer {
+  border: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+}
+[data-shell="md3"] .p13-composer-input:focus-within {
+  box-shadow:
+    inset 0 -2px 0 0 var(--neon-cyan),
+    0 0 0 1px color-mix(in srgb, var(--neon-cyan) 30%, transparent);
 }
 
 /* Theme-aware foreground on the primary bubble (MD3 only). We pick
@@ -2621,6 +2754,15 @@ select {
   0%   { opacity: 0; transform: translateX(10px); filter: brightness(1.8); }
   35%  { opacity: 0.65; filter: brightness(1.15); }
   100% { opacity: 1; transform: translateX(0); filter: brightness(1); }
+}
+@keyframes p13-cyberpunk-grid-drift {
+  0% { background-position: 0 0, 0 0, 0 0; }
+  50% { background-position: 0 180px, -28px 24px, 24px -20px; }
+  100% { background-position: 0 360px, -56px 48px, 48px -40px; }
+}
+@keyframes p13-cyberpunk-bubble-sheen {
+  0%, 70%, 100% { transform: translateX(-120%); opacity: 0.12; }
+  82% { transform: translateX(120%); opacity: 0.26; }
 }
 @keyframes p13-term-msg-in-left {
   0%   { opacity: 0; transform: translateX(-10px); filter: brightness(1.8); }
@@ -3278,9 +3420,6 @@ select {
 /* Retro must stay flat: no blur, glow, vignette, or dim overlays. */
 [data-theme="retro"] * {
   text-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  filter: none !important;
 }
 [data-theme="retro"] .crt-overlay,
 [data-theme="retro"] .chat-safe-shell::before,
@@ -3292,6 +3431,34 @@ select {
   animation: none !important;
   box-shadow: none !important;
   background: transparent !important;
+}
+
+[data-theme="cyberpunk2077"] .chat-layout-main {
+  position: relative;
+}
+
+[data-theme="cyberpunk2077"] .chat-layout-main::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 3px,
+    color-mix(in srgb, var(--neon-cyan) 4%, transparent) 3px,
+    color-mix(in srgb, var(--neon-cyan) 4%, transparent) 4px
+  );
+  mix-blend-mode: screen;
+  opacity: 0.28;
+}
+
+[data-shell="md3"] .p13-sidebar-row {
+  transition: background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+[data-theme="retro"] .p13-icon-btn {
+  box-shadow: inset -1px -1px 0 #7d7d7d, inset 1px 1px 0 #ffffff;
 }
 
 [data-motion="reduced"] * {

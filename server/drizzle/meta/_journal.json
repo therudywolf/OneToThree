@@ -260,6 +260,13 @@
       "when": 1776964200000,
       "tag": "0037_gif_favorites",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1776964300000,
+      "tag": "0038_chats_invite_slug",
+      "breakpoints": true
     }
   ]
 }

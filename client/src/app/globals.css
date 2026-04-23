@@ -455,7 +455,32 @@ textarea {
 }
 
 .chat-safe-shell {
+  position: relative;
   padding-bottom: 0;
+}
+[data-shell="terminal"] .chat-safe-shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.14;
+  background-image:
+    radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--neon-cyan) 22%, transparent) 0, transparent 22%),
+    radial-gradient(circle at 82% 0%, color-mix(in srgb, var(--neon-red) 16%, transparent) 0, transparent 24%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.02) 0px,
+      rgba(255, 255, 255, 0.02) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  background-size: 170% 170%, 150% 150%, 100% 4px;
+  animation: p13-terminal-noise-drift 14s linear infinite;
+}
+[data-shell="terminal"] .chat-safe-shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .pb-safe {
@@ -503,51 +528,37 @@ textarea {
 
 .chat-layout-divider {
   position: relative;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--border-strong) 8%, transparent) 0%,
-      color-mix(in srgb, var(--border-strong) 34%, transparent) 12%,
-      color-mix(in srgb, var(--border-strong) 44%, transparent) 50%,
-      color-mix(in srgb, var(--border-strong) 34%, transparent) 88%,
-      color-mix(in srgb, var(--border-strong) 8%, transparent) 100%
-    );
+  background: transparent;
+}
+
+.chat-layout-divider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--border-strong) 58%, transparent);
 }
 
 .chat-layout-divider:hover {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--neon-cyan) 26%, transparent) 0%,
-      color-mix(in srgb, var(--neon-cyan) 52%, transparent) 50%,
-      color-mix(in srgb, var(--neon-cyan) 26%, transparent) 100%
-    );
+  background: color-mix(in srgb, var(--neon-cyan) 7%, transparent);
 }
 
 .chat-layout-divider:active {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--neon-cyan) 38%, transparent) 0%,
-      color-mix(in srgb, var(--neon-cyan) 72%, transparent) 50%,
-      color-mix(in srgb, var(--neon-cyan) 38%, transparent) 100%
-    );
+  background: color-mix(in srgb, var(--neon-cyan) 12%, transparent);
 }
 
 [data-shell="terminal"] .chat-layout-divider {
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 28%, transparent),
-    0 0 14px color-mix(in srgb, var(--neon-cyan) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 16%, transparent);
 }
 
 [data-shell="md3"] .chat-layout-divider {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--on-surface) 8%, transparent) 0%,
-      color-mix(in srgb, var(--on-surface) 16%, transparent) 50%,
-      color-mix(in srgb, var(--on-surface) 8%, transparent) 100%
-    );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--on-surface) 12%, transparent);
+}
+[data-shell="md3"] .chat-layout-divider::before {
+  background: color-mix(in srgb, var(--on-surface) 22%, transparent);
 }
 
 [data-shell="md3"] .chat-layout-main {
@@ -1171,6 +1182,18 @@ textarea {
   }
 }
 
+@keyframes p13-terminal-noise-drift {
+  0% {
+    background-position: 0% 0%, 0% 0%, 0 0;
+  }
+  50% {
+    background-position: 52% 32%, 35% 45%, 0 1px;
+  }
+  100% {
+    background-position: 100% 70%, 70% 100%, 0 0;
+  }
+}
+
 @keyframes terminal-edge-run {
   0% {
     transform: translateX(-105%);
@@ -1435,6 +1458,17 @@ select {
 }
 
 @media (max-width: 430px) {
+  .p13-icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .p13-chat-scroll {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .p13-msg-group {
+    margin-bottom: max(8px, var(--p13-msg-gap-run));
+  }
   .msg-bubble-width {
     max-width: calc(100vw - 2rem);
   }
@@ -1444,6 +1478,10 @@ select {
 }
 
 @media (min-width: 431px) and (max-width: 767px) {
+  .p13-icon-btn {
+    width: 34px;
+    height: 34px;
+  }
   .msg-bubble-width {
     max-width: min(85vw, 32rem);
   }
@@ -1453,6 +1491,10 @@ select {
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
+  .p13-icon-btn {
+    width: 36px;
+    height: 36px;
+  }
   .msg-bubble-width {
     max-width: min(75vw, 38rem);
   }
@@ -2275,6 +2317,15 @@ select {
 [data-motion='reduced'] .p13-bubble--mine,
 [data-motion='reduced'] .p13-bubble--peer {
   animation: none !important;
+}
+[data-motion='reduced'] .p13-media-tile,
+[data-motion='reduced'] .p13-sticker-tile,
+[data-motion='reduced'] .p13-icon-btn,
+[data-motion='reduced'] .p13-media-action-btn,
+[data-motion='reduced'] .chat-safe-shell::before {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
 }
 [data-motion='reduced'] .p13-media-tile,
 [data-motion='reduced'] .p13-sticker-tile,

@@ -359,33 +359,40 @@ export function ComposerPickerPanel({
               <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
             ) : gifErr ? (
               <div className="py-2 font-mono text-[10px] text-danger/90">{gifErr}</div>
+            ) : gifs.length > 0 ? (
+              <>
+                {gifDegraded ? (
+                  <div className="py-2 font-mono text-[10px] text-text-muted">
+                    {t('composer.gifFallbackMode')}
+                  </div>
+                ) : null}
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {gifs.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      className="overflow-hidden rounded border border-neon-cyan/15 bg-void/40 hover:border-neon-cyan/50"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            if (onGifPick) await onGifPick(g)
+                            else onEmoji(` ${g.originalUrl} `)
+                            onAfterStickerSend?.()
+                          } catch (e) {
+                            toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })
+                          }
+                        })()
+                      }}
+                      title={g.title}
+                    >
+                      <img src={g.previewUrl} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              </>
             ) : gifDegraded ? (
               <div className="py-2 font-mono text-[10px] text-text-muted">
                 {t('composer.gifFallbackMode')}
-              </div>
-            ) : gifs.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {gifs.map((g) => (
-                  <button
-                    key={g.id}
-                    type="button"
-                    className="overflow-hidden rounded border border-neon-cyan/15 bg-void/40 hover:border-neon-cyan/50"
-                    onClick={() => {
-                      void (async () => {
-                        try {
-                          if (onGifPick) await onGifPick(g)
-                          else onEmoji(` ${g.originalUrl} `)
-                          onAfterStickerSend?.()
-                        } catch (e) {
-                          toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })
-                        }
-                      })()
-                    }}
-                    title={g.title}
-                  >
-                    <img src={g.previewUrl} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
-                  </button>
-                ))}
               </div>
             ) : gifQuery.trim().length < 2 ? (
               <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifPopular')}</div>

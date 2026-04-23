@@ -1019,22 +1019,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     {chatSoundEnabled ? (isMd3 ? 'ON' : '[ ON ]') : (isMd3 ? 'OFF' : '[ OFF ]')}
                   </button>
                 </div>
-                <div className="flex flex-col gap-2 border border-neon-cyan/20 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.soundSchemeTitle')}</p>
-                    <p className="break-words text-[9px] text-danger">{t('settings.soundSchemeHint')}</p>
-                  </div>
-                  <select
-                    className="terminal-input h-9 w-full max-w-[12rem] py-1 text-xs"
-                    value={chatSoundScheme}
-                    onChange={(e) => setChatSoundScheme(e.target.value as ChatSoundSchemeId)}
-                    aria-label={t('settings.soundSchemeTitle')}
-                  >
-                    {CHAT_SOUND_SCHEMES.map((scheme) => (
-                      <option key={scheme.id} value={scheme.id}>{scheme.label}</option>
-                    ))}
-                  </select>
-                </div>
                 <div className="space-y-2 border-t border-neon-cyan/20 pt-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -1049,7 +1033,61 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       {t('settings.appearanceReset')}
                     </button>
                   </div>
+                  <div className="flex flex-col gap-2 border border-neon-cyan/20 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.soundSchemeTitle')}</p>
+                      <p className="break-words text-[9px] text-danger">{t('settings.soundSchemeHint')}</p>
+                    </div>
+                    <select
+                      className="terminal-input h-9 w-full max-w-[12rem] py-1 text-xs"
+                      value={chatSoundScheme}
+                      onChange={(e) => setChatSoundScheme(e.target.value as ChatSoundSchemeId)}
+                      aria-label={t('settings.soundSchemeTitle')}
+                    >
+                      {CHAT_SOUND_SCHEMES.map((scheme) => (
+                        <option key={scheme.id} value={scheme.id}>{scheme.label}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="rounded-[var(--radius-md)] border border-neon-cyan/20 bg-void/30 p-3">
+                    <p className="mb-2 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
+                      Theme mode
+                    </p>
+                    <div className="mb-3 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        onClick={() => { setShellMode('terminal'); setTheme('cyberpunk2077') }}
+                        className={`border px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                          shellMode === 'terminal' && theme === 'cyberpunk2077'
+                            ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
+                            : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                        }`}
+                      >
+                        TERMINAL
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShellMode('md3'); setTheme('md3dark') }}
+                        className={`border px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                          shellMode === 'md3' && theme === 'md3dark'
+                            ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
+                            : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                        }`}
+                      >
+                        MD3
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShellMode('terminal'); setTheme('retro') }}
+                        className={`border px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                          theme === 'retro'
+                            ? 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]'
+                            : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red'
+                        }`}
+                      >
+                        RETRO
+                      </button>
+                    </div>
                     <p className="mb-2 text-[9px] uppercase tracking-[0.28em] text-neon-cyan/70">
                       {t('settings.appearanceShellTitle')}
                     </p>

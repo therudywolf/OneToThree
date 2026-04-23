@@ -164,11 +164,14 @@ export const chats = pgTable(
     keyEpoch: integer('key_epoch').notNull().default(0),
     /** Random slug for group invite links; unique when set. */
     inviteCode: text('invite_code'),
+    /** User-defined permanent invite slug for channels; unique when set. */
+    inviteSlug: text('invite_slug'),
     /** When true, first successful join by a new member clears `invite_code`. */
     inviteOneTime: boolean('invite_one_time').notNull().default(false),
   },
   (t) => ({
     inviteCodeUnique: uniqueIndex('chats_invite_code_unique').on(t.inviteCode),
+    inviteSlugUnique: uniqueIndex('chats_invite_slug_unique').on(t.inviteSlug),
   })
 )
 

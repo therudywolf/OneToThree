@@ -335,11 +335,29 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
           inArray(messageDeliveries.messageId, ids)
         )
       : and(eq(messageDeliveries.userId, user.id), inArray(messageDeliveries.messageId, ids))
-    await db
+    const updated = await db
       .update(messageDeliveries)
       .set({ deliveredAt: new Date() })
       .where(whereClause)
-    return reply.send({ ok: true })
+      .returning({ messageId: messageDeliveries.messageId })
+    const updatedIds = new Set(updated.map((r) => r.messageId))
+    const missed = ids.filter((id) => !updatedIds.has(id))
+    if (missed.length > 0) {
+      request.log.warn(
+        {
+          userId: user.id,
+          requested_count: ids.length,
+          updated_count: updated.length,
+          missed_count: missed.length,
+        },
+        'messages.delivered ack partial'
+      )
+    }
+    return reply.send({
+      ok: true,
+      updated_count: updated.length,
+      missed_count: missed.length,
+    })
   })
 
   app.post('/read/:messageId', async (request, reply) => {
@@ -372,6 +390,30 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const results = await markMessagesReadByReader(user.id, messageIds)
     const successful = results.filter((r) => r.ok)
     const failed = results.filter((r) => !r.ok)
+    if (failed.length > 0) {
+      const byReason: Record<string, number> = {}
+      for (const f of failed) byReason[f.error] = (byReason[f.error] ?? 0) + 1
+      request.log.warn(
+        {
+          userId: user.id,
+          requested_count: messageIds.length,
+          marked_count: successful.length,
+          failed_count: failed.length,
+          failed_by_reason: byReason,
+          failed_ratio: Number((failed.length / Math.max(1, messageIds.length)).toFixed(4)),
+        },
+        'messages.batch-read partial'
+      )
+    } else {
+      request.log.debug(
+        {
+          userId: user.id,
+          requested_count: messageIds.length,
+          marked_count: successful.length,
+        },
+        'messages.batch-read ok'
+      )
+    }
     return reply.send({
       ok: true,
       marked_count: successful.length,

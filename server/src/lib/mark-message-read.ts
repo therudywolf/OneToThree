@@ -150,52 +150,103 @@ export async function markMessagesReadByReader(
     return messageIds.map((_id) => ({ ok: false as const, error: 'READ_RECEIPTS_DISABLED' }))
   }
 
-  const now = new Date()
+  const targetIds = Array.from(new Set(messageIds))
 
-  // Batch update: mark all eligible messages as read in one query
-  const updated = await db
-    .update(messages)
-    .set({ readAt: now })
-    .where(
-      and(
-        inArray(messages.id, messageIds),
-        isNull(messages.readAt),
-        ne(messages.senderId, readerId)
-      )
+  // Build eligible set first (reader must be member and chat must support read receipts).
+  const eligible = await db
+    .select({
+      id: messages.id,
+      chatId: messages.chatId,
+      senderId: messages.senderId,
+      readAt: messages.readAt,
+      chatType: chats.type,
+    })
+    .from(messages)
+    .innerJoin(chats, eq(chats.id, messages.chatId))
+    .innerJoin(
+      chatMembers,
+      and(eq(chatMembers.chatId, messages.chatId), eq(chatMembers.userId, readerId))
     )
-    .returning({
+    .where(inArray(messages.id, targetIds))
+
+  const eligibleMap = new Map(eligible.map((r) => [r.id, r]))
+  const updatableIds = eligible
+    .filter((r) => r.chatType === 'direct_e2e' && r.senderId !== readerId && r.readAt == null)
+    .map((r) => r.id)
+
+  let updatedMap = new Map<string, { id: string; chatId: string; senderId: string; readAt: Date | string | null }>()
+  if (updatableIds.length > 0) {
+    const updated = await db
+      .update(messages)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          inArray(messages.id, updatableIds),
+          isNull(messages.readAt),
+          ne(messages.senderId, readerId)
+        )
+      )
+      .returning({
+        id: messages.id,
+        chatId: messages.chatId,
+        senderId: messages.senderId,
+        readAt: messages.readAt,
+      })
+    updatedMap = new Map(updated.map((r) => [r.id, r]))
+  }
+
+  // Hydrate idempotent results for rows that were already marked read.
+  const resolvedReadAtRows = await db
+    .select({
       id: messages.id,
       chatId: messages.chatId,
       senderId: messages.senderId,
       readAt: messages.readAt,
     })
+    .from(messages)
+    .where(inArray(messages.id, eligible.map((r) => r.id)))
 
-  const updatedMap = new Map(updated.map((r) => [r.id, r]))
+  const finalReadAtMap = new Map(resolvedReadAtRows.map((r) => [r.id, r]))
 
   const results: MarkReadResult[] = []
-  for (const msgId of messageIds) {
-    const row = updatedMap.get(msgId)
-    if (row) {
-      const readAtIso = ts(row.readAt)
-      // Notify sender
-      sendToUser(row.senderId, {
-        type: 'message_read_update',
-        chat_id: row.chatId,
-        message_id: row.id,
-        reader_id: readerId,
-        read_at: readAtIso,
-      })
-      results.push({
-        ok: true,
-        chat_id: row.chatId,
-        message_id: row.id,
-        sender_id: row.senderId,
-        reader_id: readerId,
-        read_at: readAtIso,
-      })
-    } else {
-      results.push({ ok: false, error: 'NOT_UPDATED' })
+  for (const msgId of targetIds) {
+    const base = eligibleMap.get(msgId)
+    if (!base) {
+      results.push({ ok: false, error: 'MESSAGE_NOT_FOUND_OR_NOT_A_MEMBER' })
+      continue
     }
+    if (base.chatType !== 'direct_e2e') {
+      results.push({ ok: false, error: 'READ_RECEIPTS_DIRECT_ONLY' })
+      continue
+    }
+    if (base.senderId === readerId) {
+      results.push({ ok: false, error: 'CANNOT_READ_OWN_MESSAGE' })
+      continue
+    }
+    const finalRow = finalReadAtMap.get(msgId)
+    if (!finalRow?.readAt) {
+      results.push({ ok: false, error: 'NOT_READABLE' })
+      continue
+    }
+    const readAtIso = ts(finalRow.readAt)
+    const justUpdated = updatedMap.has(msgId)
+    if (justUpdated) {
+      sendToUser(finalRow.senderId, {
+        type: 'message_read_update',
+        chat_id: finalRow.chatId,
+        message_id: finalRow.id,
+        reader_id: readerId,
+        read_at: readAtIso,
+      })
+    }
+    results.push({
+      ok: true,
+      chat_id: finalRow.chatId,
+      message_id: finalRow.id,
+      sender_id: finalRow.senderId,
+      reader_id: readerId,
+      read_at: readAtIso,
+    })
   }
   return results
 }

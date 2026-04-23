@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { Theme } from 'emoji-picker-react'
@@ -10,6 +10,8 @@ import { useLocaleStore } from '@/store/localeStore'
 import { ShellSurface, ShellText, ShellIconButton, useShell } from '@/components/ui/shell'
 import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
+import { lookupUsers } from '@/lib/api/users'
+import { UserAvatar } from '@/components/user-avatar'
 
 const LazyEmojiPicker = dynamic(
   () => import('emoji-picker-react').then((m) => m.default),
@@ -30,14 +32,6 @@ const LazyEmojiPicker = dynamic(
  * in the dock store).
  */
 
-const UserProfileModal = dynamic(
-  () =>
-    import('@/components/chat/user-profile-modal').then(
-      (m) => m.UserProfileModal
-    ),
-  { ssr: false }
-)
-
 export function DockPanel() {
   const { t } = useTranslation()
   const { isTerminal } = useShell()
@@ -50,6 +44,31 @@ export function DockPanel() {
   const composerOnStickerSend = useDockStore((s) => s.composerOnStickerSend)
   const composerOnGifPick = useDockStore((s) => s.composerOnGifPick)
   const searchOnJump = useDockStore((s) => s.searchOnJump)
+  const [profileSummary, setProfileSummary] = useState<{ id: string; username: string; avatar_key: string | null } | null>(null)
+
+  useEffect(() => {
+    if (slot === 'profile' && !profileUserId) {
+      close()
+      return
+    }
+    if (slot !== 'profile' || !profileUserId) {
+      setProfileSummary(null)
+      return
+    }
+    let cancelled = false
+    void lookupUsers([profileUserId])
+      .then((rows) => {
+        if (cancelled) return
+        const row = rows[0]
+        setProfileSummary(row ? { id: row.id, username: row.username, avatar_key: row.avatar_key ?? null } : null)
+      })
+      .catch(() => {
+        if (!cancelled) setProfileSummary(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [slot, profileUserId])
 
   useEffect(() => {
     if (!slot) return
@@ -96,17 +115,36 @@ export function DockPanel() {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {slot === 'profile' && profileUserId ? (
-          // Profile slot temporarily renders the legacy modal at the bottom
-          // of the screen. Replacing it with a dock-native profile view is
-          // tracked separately — for now this keeps the dock wiring exercised
-          // without duplicating all the tabs/media panels of UserProfileModal.
-          <UserProfileModal
-            userId={profileUserId}
-            username={''}
-            avatarKey={null}
-            onClose={close}
-            onMessage={close}
-          />
+          <div className="flex min-h-0 flex-1 flex-col p-3">
+            <div className={`rounded-2xl border p-3 ${
+              isTerminal
+                ? 'border-neon-cyan/30 bg-void/70'
+                : 'border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]'
+            }`}>
+              {profileSummary ? (
+                <div className="flex items-center gap-3">
+                  <UserAvatar
+                    userId={profileSummary.id}
+                    username={profileSummary.username}
+                    avatarKey={profileSummary.avatar_key}
+                    size={42}
+                  />
+                  <div className="min-w-0">
+                    <p className={`truncate text-sm font-semibold ${isTerminal ? 'text-neon-cyan' : 'text-[var(--on-surface)]'}`}>
+                      {profileSummary.username}
+                    </p>
+                    <p className={`truncate text-xs ${isTerminal ? 'text-neon-cyan/70' : 'text-text-muted'}`}>
+                      ID: {profileSummary.id}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className={`text-xs ${isTerminal ? 'text-neon-cyan/70' : 'text-text-muted'}`}>
+                  {t('common.loading')}
+                </p>
+              )}
+            </div>
+          </div>
         ) : null}
 
         {slot === 'emoji' ? (

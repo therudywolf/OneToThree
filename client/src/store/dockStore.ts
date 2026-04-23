@@ -94,7 +94,11 @@ export const useDockStore = create<DockState>((set, get) => ({
       pinnedChatId: null,
     }),
   toggle: (slot) => {
-    if (get().slot === slot) get().close()
+    if (get().slot === slot) {
+      get().close()
+      return
+    }
+    set({ slot })
   },
 }))
 

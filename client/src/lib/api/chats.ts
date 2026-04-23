@@ -28,6 +28,7 @@ export type ApiChatRow = {
   my_role?: ChatMemberRole
   /** Group: invite slug when you may manage links. */
   invite_code?: string | null
+  invite_slug?: string | null
   /** Server bump when group membership requires key rotation (group_e2e). */
   key_epoch?: number
 }
@@ -60,6 +61,7 @@ export type ChatDetailPayload = {
     type: string
     is_group: boolean
     invite_code: string | null
+    invite_slug?: string | null
     invite_one_time: boolean | null
     my_role: ChatMemberRole
     discussion_chat_id?: string | null
@@ -320,6 +322,21 @@ export async function ensureGroupInviteCode(
     throw new Error(data.error ?? 'INVITE_CREATE_FAILED')
   }
   return data.invite_code
+}
+
+export async function patchInviteSlug(chatId: string, inviteSlug: string): Promise<string> {
+  const trimmed = inviteSlug.trim().toLowerCase()
+  const r = await fetchWithTimeout(`${API_URL}/chats/${chatId}/invite-slug`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invite_slug: trimmed }),
+  })
+  const data = (await r.json().catch(() => ({}))) as { invite_slug?: string; error?: string }
+  if (!r.ok || !data.invite_slug) {
+    throw new Error(data.error ?? 'INVITE_SLUG_PATCH_FAILED')
+  }
+  return data.invite_slug
 }
 
 export async function joinChatByInviteCode(code: string): Promise<{

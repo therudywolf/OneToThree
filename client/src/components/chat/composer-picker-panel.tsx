@@ -16,7 +16,14 @@ import {
   type Sticker,
   type StickerPack,
 } from '@/lib/api/stickers'
-import { fetchGifFavorites, fetchTrendingGifs, removeGifFavorite, searchGifs, type GifHit } from '@/lib/api/gif'
+import {
+  addGifFavorite,
+  fetchGifFavorites,
+  fetchTrendingGifs,
+  removeGifFavorite,
+  searchGifs,
+  type GifHit,
+} from '@/lib/api/gif'
 import { buildStickerPlaintext } from '@/lib/sticker-payload'
 import { toastError, toastSuccess } from '@/store/toastStore'
 
@@ -33,6 +40,7 @@ const LazyEmojiPicker = dynamic(
 )
 
 type Tab = 'emoji' | 'sticker' | 'gif'
+const STICKER_FAVORITES_KEY = 'p13:favorite-stickers:v1'
 
 export type ComposerPickerPanelProps = {
   layout: 'dock' | 'modal'
@@ -64,6 +72,13 @@ export function ComposerPickerPanel({
   const [stickersLoading, setStickersLoading] = useState(false)
   const [stickerSrcById, setStickerSrcById] = useState<Record<string, string>>({})
   const [stickerRetryById, setStickerRetryById] = useState<Record<string, boolean>>({})
+  const [packPreviewById, setPackPreviewById] = useState<Record<string, string>>({})
+  const [favoriteStickers, setFavoriteStickers] = useState<Array<{
+    sticker: Sticker
+    packId: string
+    format: StickerPack['format']
+    src: string
+  }>>([])
   const [importName, setImportName] = useState('')
   const [importBusy, setImportBusy] = useState(false)
   const [cloneBusyPackId, setCloneBusyPackId] = useState<string | null>(null)
@@ -74,6 +89,38 @@ export function ComposerPickerPanel({
   const [gifDegraded, setGifDegraded] = useState(false)
   const [gifFavorites, setGifFavorites] = useState<GifHit[]>([])
   const [gifFavBusyId, setGifFavBusyId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(STICKER_FAVORITES_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Array<{
+        sticker: Sticker
+        packId: string
+        format: StickerPack['format']
+        src: string
+      }>
+      if (Array.isArray(parsed)) setFavoriteStickers(parsed.slice(0, 60))
+    } catch {
+      // non-fatal
+    }
+  }, [])
+
+  const persistFavoriteStickers = useCallback((items: Array<{
+    sticker: Sticker
+    packId: string
+    format: StickerPack['format']
+    src: string
+  }>) => {
+    setFavoriteStickers(items)
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(STICKER_FAVORITES_KEY, JSON.stringify(items.slice(0, 60)))
+    } catch {
+      // non-fatal
+    }
+  }, [])
 
   const pickerHeight = layout === 'dock' ? 360 : 320
 
@@ -95,6 +142,28 @@ export function ComposerPickerPanel({
     if (tab !== 'sticker') return
     void loadPacks()
   }, [tab, loadPacks])
+
+  useEffect(() => {
+    if (tab !== 'sticker' || packs.length === 0) return
+    let cancelled = false
+    void (async () => {
+      const next: Record<string, string> = {}
+      for (const p of packs) {
+        try {
+          const rows = await fetchPackStickers(p.id)
+          const first = rows[0]
+          if (!first) continue
+          next[p.id] = await loadStickerDisplayUrl(first.mediaKey)
+        } catch {
+          // non-fatal preview miss
+        }
+      }
+      if (!cancelled) setPackPreviewById(next)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [tab, packs])
 
   useEffect(() => {
     if (tab !== 'sticker' || !selectedPackId) {
@@ -140,7 +209,7 @@ export function ComposerPickerPanel({
     setGifErr(null)
     setGifDegraded(false)
     const timer = setTimeout(() => {
-      const run = isTrendingMode ? fetchTrendingGifs(24) : searchGifs(q, 24)
+      const run = isTrendingMode ? fetchTrendingGifs(48) : searchGifs(q, 48)
       void run
         .then((result) => {
           if (cancelled) return
@@ -301,7 +370,7 @@ export function ComposerPickerPanel({
                     key={p.id}
                     type="button"
                     onClick={() => setSelectedPackId(p.id)}
-                    className={`inline-flex h-8 max-w-[10rem] items-center truncate rounded px-3 text-[10px] ${
+                    className={`inline-flex h-8 max-w-[12rem] items-center gap-1.5 truncate rounded px-2 text-[10px] ${
                       selectedPackId === p.id
                         ? isRetro
                           ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#123659] shadow-[inset_1px_1px_0_#7d7d7d,inset_-1px_-1px_0_#ffffff]'
@@ -312,6 +381,14 @@ export function ComposerPickerPanel({
                     }`}
                     title={p.title}
                   >
+                    {packPreviewById[p.id] ? (
+                      <img
+                        src={packPreviewById[p.id]}
+                        alt=""
+                        className="h-5 w-5 shrink-0 rounded object-cover"
+                        loading="lazy"
+                      />
+                    ) : null}
                     <span className="truncate">{p.title}</span>
                     {p.accessScope === 'shared' ? (
                       <span className="ml-1 shrink-0 text-[8px] uppercase tracking-widest text-accent-2/80">
@@ -328,6 +405,29 @@ export function ComposerPickerPanel({
                 <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
               ) : (
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                  {favoriteStickers.length > 0 ? (
+                    <div className="mb-2">
+                      <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                        {t('stickers.favorites')}
+                      </p>
+                      <div className="grid grid-cols-6 gap-1">
+                        {favoriteStickers.slice(0, 18).map((fav) => (
+                          <button
+                            key={`fav-st-${fav.sticker.id}`}
+                            type="button"
+                            title={fav.sticker.emoji || 'sticker'}
+                            onClick={() => {
+                              const json = buildStickerPlaintext(fav.sticker, fav.packId, fav.format)
+                              void onStickerSend(json)
+                            }}
+                            className="p13-sticker-tile flex aspect-square items-center justify-center rounded"
+                          >
+                            <img src={fav.src} alt="" className="max-h-full max-w-full object-contain" loading="lazy" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {(() => {
                     const selectedPack = packs.find((p) => p.id === selectedPackId)
                     if (!selectedPack || selectedPack.accessScope === 'owned') return null
@@ -369,8 +469,29 @@ export function ComposerPickerPanel({
                           }
                         })()
                       }}
-                      className="p13-sticker-tile flex aspect-square items-center justify-center rounded"
+                      className="p13-sticker-tile relative flex aspect-square items-center justify-center rounded"
                     >
+                      <span
+                        className="absolute right-1 top-1 rounded border border-black/50 bg-black/60 px-1 text-[9px] text-white"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const packMeta = packs.find((p) => p.id === selectedPackId)
+                          if (!packMeta) return
+                          const exists = favoriteStickers.some((f) => f.sticker.id === s.id)
+                          if (exists) {
+                            persistFavoriteStickers(
+                              favoriteStickers.filter((f) => f.sticker.id !== s.id)
+                            )
+                          } else {
+                            persistFavoriteStickers([
+                              { sticker: s, packId: selectedPackId, format: packMeta.format, src: stickerSrc },
+                              ...favoriteStickers,
+                            ])
+                          }
+                        }}
+                      >
+                        {favoriteStickers.some((f) => f.sticker.id === s.id) ? '★' : '☆'}
+                      </span>
                       {isWebm ? (
                         <video
                           src={stickerSrc}
@@ -493,25 +614,48 @@ export function ComposerPickerPanel({
                 ) : null}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {gifs.map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      className="p13-media-tile rounded"
-                      onClick={() => {
-                        void (async () => {
-                          try {
-                            if (onGifPick) await onGifPick(g)
-                            else onEmoji(` ${g.originalUrl} `)
-                            onAfterStickerSend?.()
-                          } catch (e) {
-                            toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })
-                          }
-                        })()
-                      }}
-                      title={g.title}
-                    >
-                      <img src={g.previewUrl} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
-                    </button>
+                    <div key={g.id} className="relative">
+                      <button
+                        type="button"
+                        className="p13-media-tile rounded"
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              if (onGifPick) await onGifPick(g)
+                              else onEmoji(` ${g.originalUrl} `)
+                              onAfterStickerSend?.()
+                            } catch (e) {
+                              toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })
+                            }
+                          })()
+                        }}
+                        title={g.title}
+                      >
+                        <img src={g.previewUrl} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={gifFavBusyId === g.id}
+                        onClick={() => {
+                          setGifFavBusyId(g.id)
+                          void addGifFavorite(g)
+                            .then(() => {
+                              setGifFavorites((prev) => {
+                                if (prev.some((x) => x.id === g.id)) return prev
+                                return [g, ...prev].slice(0, 60)
+                              })
+                            })
+                            .catch((e) => {
+                              toastError(e instanceof Error ? e.message : 'GIF_FAVORITE_ADD_FAILED', { title: 'GIF' })
+                            })
+                            .finally(() => setGifFavBusyId(null))
+                        }}
+                        className="absolute right-1 top-1 rounded border border-black/50 bg-black/60 px-1 text-[9px] text-white disabled:opacity-50"
+                        aria-label="Add favorite gif"
+                      >
+                        {gifFavorites.some((x) => x.id === g.id) ? '★' : '+'}
+                      </button>
+                    </div>
                   ))}
                 </div>
               </>

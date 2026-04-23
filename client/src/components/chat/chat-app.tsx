@@ -59,6 +59,7 @@ import { useNotificationOpen } from '@/hooks/use-notification-open'
 import { useThemeStore } from '@/store/themeStore'
 import { isApprovedContact } from '@/lib/contacts-store'
 import { UserAvatar } from '@/components/user-avatar'
+import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -179,27 +180,34 @@ export function ChatApp({
   const isMd3 = shellMode === 'md3'
 
   const [sidebarWidth, setSidebarWidth] = useState(344)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
   useLayoutEffect(() => {
     const saved = localStorage.getItem('p13_sidebar_width')
     if (!saved) return
     const n = Number(saved)
-    if (Number.isFinite(n) && n >= 240 && n <= 480) setSidebarWidth(n)
+    if (Number.isFinite(n) && n >= TELEGRAM_BEHAVIOR.sidebar.minWidth && n <= TELEGRAM_BEHAVIOR.sidebar.maxWidth) setSidebarWidth(n)
+  }, [])
+  useLayoutEffect(() => {
+    const saved = localStorage.getItem('p13_sidebar_collapsed')
+    if (!saved) return
+    setSidebarCollapsed(saved === '1')
   }, [])
 
   const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    if (sidebarCollapsed) return
     e.preventDefault()
     const startX = e.clientX
     const startWidth = sidebarWidth
     sidebarDragRef.current = { startX, startWidth }
     const onMove = (mv: MouseEvent) => {
       const delta = mv.clientX - startX
-      const next = Math.min(480, Math.max(240, startWidth + delta))
+      const next = Math.min(TELEGRAM_BEHAVIOR.sidebar.maxWidth, Math.max(TELEGRAM_BEHAVIOR.sidebar.minWidth, startWidth + delta))
       setSidebarWidth(next)
     }
     const onUp = (up: MouseEvent) => {
       const delta = up.clientX - startX
-      const final = Math.min(480, Math.max(240, startWidth + delta))
+      const final = Math.min(TELEGRAM_BEHAVIOR.sidebar.maxWidth, Math.max(TELEGRAM_BEHAVIOR.sidebar.minWidth, startWidth + delta))
       localStorage.setItem('p13_sidebar_width', String(final))
       sidebarDragRef.current = null
       window.removeEventListener('mousemove', onMove)
@@ -207,7 +215,49 @@ export function ChatApp({
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-  }, [sidebarWidth])
+  }, [sidebarCollapsed, sidebarWidth])
+
+  const setSidebarCollapsedPersisted = useCallback((next: boolean) => {
+    setSidebarCollapsed(next)
+    localStorage.setItem('p13_sidebar_collapsed', next ? '1' : '0')
+  }, [])
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsedPersisted(!sidebarCollapsed)
+  }, [setSidebarCollapsedPersisted, sidebarCollapsed])
+
+  const openMobileSidebar = useCallback(() => {
+    setMobileSearchOpen(false)
+    setMobileSidebarOpen(true)
+  }, [])
+
+  const openPeerProfile = useCallback((peerUserId: string) => {
+    if (matchesDockViewport()) {
+      const store = useDockStore.getState()
+      if (store.slot === 'profile' && store.profileUserId === peerUserId) {
+        store.close()
+      } else {
+        store.openProfile(peerUserId)
+      }
+      return
+    }
+    setHeaderProfileOpen(true)
+  }, [])
+
+  const toggleSearchSurface = useCallback(() => {
+    if (!activeChatId) return
+    if (matchesDockViewport()) {
+      const store = useDockStore.getState()
+      if (store.slot === 'search') {
+        store.close()
+      } else {
+        store.openSearch(activeChatId, (id) => scrollToMessage(id))
+      }
+      return
+    }
+    setMobileSidebarOpen(false)
+    setMobileSearchOpen((v) => !v)
+  }, [activeChatId])
 
   const {
     peerReady,
@@ -283,6 +333,20 @@ export function ChatApp({
 
   useEffect(() => {
     setMobileSidebarOpen(false)
+    setMobileSearchOpen(false)
+    setHeaderProfileOpen(false)
+    if (!activeChatId && matchesDockViewport()) {
+      const store = useDockStore.getState()
+      if (store.slot === 'search' || store.slot === 'profile') store.close()
+    }
+  }, [activeChatId])
+
+  useEffect(() => {
+    if (!activeChatId || !matchesDockViewport()) return
+    const store = useDockStore.getState()
+    if (store.slot === 'search' && store.searchScopeChatId && store.searchScopeChatId !== activeChatId) {
+      store.close()
+    }
   }, [activeChatId])
 
   useEffect(() => {
@@ -659,7 +723,7 @@ export function ChatApp({
           type="button"
           className="p13-icon-btn touch-manipulation md:hidden"
           aria-label={t('call.openChannels')}
-          onClick={() => setMobileSidebarOpen(true)}
+          onClick={openMobileSidebar}
         >
           <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden />
         </button>
@@ -680,11 +744,7 @@ export function ChatApp({
                   // Prefer the right-dock profile slot on xl+ viewports so
                   // the chat stays visible; fall back to the legacy modal
                   // on narrower screens. See `DOCK_BREAKPOINT` in dockStore.
-                  if (matchesDockViewport() && peerIdentity) {
-                    useDockStore.getState().openProfile(peerIdentity.userId)
-                  } else {
-                    setHeaderProfileOpen(true)
-                  }
+                  openPeerProfile(peerIdentity.userId)
                 }}
                 className={`touch-manipulation inline-flex h-9 min-w-0 items-center gap-1.5 px-3 text-[11px] font-bold transition-colors ${
                   isMd3
@@ -766,14 +826,7 @@ export function ChatApp({
             <button
               type="button"
               onClick={() => {
-                if (!activeChatId) return
-                if (matchesDockViewport()) {
-                  useDockStore.getState().openSearch(activeChatId, (id) => {
-                    scrollToMessage(id)
-                  })
-                } else {
-                  setMobileSearchOpen(true)
-                }
+                toggleSearchSurface()
               }}
               aria-label={t('chatSearch.title')}
               title={t('chatSearch.title')}
@@ -878,7 +931,8 @@ export function ChatApp({
           className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex h-[100dvh] max-h-[100dvh] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-[100dvh] md:max-h-[100dvh] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] md:pt-0 pb-[env(safe-area-inset-bottom,0px)] md:pb-0 ${
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
-          style={{ ['--sb-w' as string]: `${sidebarWidth}px` } as React.CSSProperties}
+          style={{ ['--p13-sb-w' as string]: `${sidebarCollapsed ? TELEGRAM_BEHAVIOR.sidebar.collapsedWidth : sidebarWidth}px` } as React.CSSProperties}
+          data-collapsed={sidebarCollapsed ? 'true' : 'false'}
         >
           <div
             className={`flex h-12 shrink-0 items-center justify-between border-b px-3 md:hidden ${
@@ -912,7 +966,9 @@ export function ChatApp({
         </div>
         {/* Sidebar resize handle — desktop only */}
         <div
-          className="chat-layout-divider hidden md:block w-2 shrink-0 cursor-ew-resize transition-colors touch-none z-10"
+          className={`chat-layout-divider hidden md:block w-2 shrink-0 transition-colors touch-none z-10 ${
+            sidebarCollapsed ? 'cursor-default opacity-40' : 'cursor-ew-resize'
+          }`}
           onMouseDown={handleSidebarResizeStart}
           title="Drag to resize sidebar"
         />
@@ -939,13 +995,7 @@ export function ChatApp({
                   <>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (matchesDockViewport()) {
-                          useDockStore.getState().openProfile(peerIdentity.userId)
-                        } else {
-                          setHeaderProfileOpen(true)
-                        }
-                      }}
+                      onClick={() => openPeerProfile(peerIdentity.userId)}
                       className={`inline-flex items-center gap-1.5 text-[13px] font-semibold transition-colors ${
                         isMd3
                           ? 'text-[var(--on-surface)] hover:text-[var(--primary)]'
@@ -984,6 +1034,17 @@ export function ChatApp({
 
               {/* Right: search + identity + calls */}
               <div className="flex shrink-0 items-center gap-1">
+                {isMd3 ? (
+                  <button
+                    type="button"
+                    onClick={toggleSidebarCollapsed}
+                    className="p13-icon-btn"
+                    aria-label={sidebarCollapsed ? 'Expand chats sidebar' : 'Collapse chats sidebar'}
+                    title={sidebarCollapsed ? 'Expand chats sidebar' : 'Collapse chats sidebar'}
+                  >
+                    <Menu className="h-4 w-4" strokeWidth={1.5} />
+                  </button>
+                ) : null}
                 {peerIdentity ? (
                   <button
                     type="button"
@@ -997,20 +1058,29 @@ export function ChatApp({
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!activeChatId) return
-                    if (matchesDockViewport()) {
-                      useDockStore.getState().openSearch(activeChatId, (id) => scrollToMessage(id))
-                    } else {
-                      setMobileSearchOpen(true)
-                    }
-                  }}
+                  onClick={toggleSearchSurface}
                   className="p13-icon-btn"
                   aria-label={t('chatSearch.title')}
                   title={t('chatSearch.title')}
                 >
                   <Search className="h-4 w-4" strokeWidth={1.5} />
                 </button>
+                {isMd3 && activeRow?.is_group ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(new Event('p13_open_group_settings'))
+                      if (sidebarCollapsed) {
+                        setSidebarCollapsedPersisted(false)
+                      }
+                    }}
+                    className="p13-icon-btn"
+                    aria-label={t('group.packSettings')}
+                    title={t('group.packSettings')}
+                  >
+                    <Settings className="h-4 w-4" strokeWidth={1.5} />
+                  </button>
+                ) : null}
                 {canShowCallControls ? (
                   <CallHeaderButtons
                     disabled={!activeChatId || !!ctxError}

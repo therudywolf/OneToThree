@@ -402,7 +402,62 @@ textarea {
 }
 
 [data-shell="terminal"] .chat-layout-main {
-  border-left: 1px solid color-mix(in srgb, var(--neon-cyan) 14%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--neon-cyan) 22%, transparent);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--neon-cyan) 18%, transparent);
+}
+
+.chat-layout-divider {
+  position: relative;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--border-strong) 8%, transparent) 0%,
+      color-mix(in srgb, var(--border-strong) 34%, transparent) 12%,
+      color-mix(in srgb, var(--border-strong) 44%, transparent) 50%,
+      color-mix(in srgb, var(--border-strong) 34%, transparent) 88%,
+      color-mix(in srgb, var(--border-strong) 8%, transparent) 100%
+    );
+}
+
+.chat-layout-divider:hover {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--neon-cyan) 26%, transparent) 0%,
+      color-mix(in srgb, var(--neon-cyan) 52%, transparent) 50%,
+      color-mix(in srgb, var(--neon-cyan) 26%, transparent) 100%
+    );
+}
+
+.chat-layout-divider:active {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--neon-cyan) 38%, transparent) 0%,
+      color-mix(in srgb, var(--neon-cyan) 72%, transparent) 50%,
+      color-mix(in srgb, var(--neon-cyan) 38%, transparent) 100%
+    );
+}
+
+[data-shell="terminal"] .chat-layout-divider {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 28%, transparent),
+    0 0 14px color-mix(in srgb, var(--neon-cyan) 18%, transparent);
+}
+
+[data-shell="md3"] .chat-layout-divider {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--on-surface) 8%, transparent) 0%,
+      color-mix(in srgb, var(--on-surface) 16%, transparent) 50%,
+      color-mix(in srgb, var(--on-surface) 8%, transparent) 100%
+    );
+}
+
+[data-shell="md3"] .chat-layout-main {
+  border-left: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--on-surface) 6%, transparent);
 }
 
 [data-shell="terminal"] .terminal-panel,

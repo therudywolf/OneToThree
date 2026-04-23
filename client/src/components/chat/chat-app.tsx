@@ -912,7 +912,7 @@ export function ChatApp({
         </div>
         {/* Sidebar resize handle — desktop only */}
         <div
-          className="hidden md:block w-1.5 shrink-0 cursor-ew-resize bg-transparent hover:bg-neon-cyan/20 active:bg-neon-cyan/30 transition-colors touch-none z-10"
+          className="chat-layout-divider hidden md:block w-2 shrink-0 cursor-ew-resize transition-colors touch-none z-10"
           onMouseDown={handleSidebarResizeStart}
           title="Drag to resize sidebar"
         />

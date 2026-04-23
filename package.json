@@ -15,6 +15,11 @@
     "dev:client": "npm run dev -w client",
     "dev:server": "npm run dev -w server",
     "build": "npm run build -w client && npm run build -w server",
+    "build:client:export": "npm run build:export -w project-13-client",
+    "android:sync": "npm run build:client:export && npm run sync --prefix mobile/capacitor",
+    "android:open": "npm run open:android --prefix mobile/capacitor",
+    "android:build:debug": "npm run android:sync && npm run build:debug --prefix mobile/capacitor",
+    "android:build:release": "npm run android:sync && npm run build:release --prefix mobile/capacitor",
     "build:all": "npm run build --workspaces --if-present",
     "lint": "npm run lint -w project-13-client && npm run lint -w project-13-server",
     "prod:start": "npm run docker:up",
@@ -53,5 +58,13 @@
     "serialize-javascript": "^7.0.5",
     "glob": "^10.4.6",
     "esbuild": "^0.25.12"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/push-notifications": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2"
   }
 }

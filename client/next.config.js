@@ -1,3 +1,5 @@
+const isStaticExport = process.env.NEXT_EXPORT === '1'
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -11,9 +13,10 @@ const nextConfig = {
         ? { exclude: ['error', 'warn'] }
         : false,
   },
-  output: 'standalone',
+  output: isStaticExport ? 'export' : 'standalone',
   outputFileTracingRoot: __dirname,
   async rewrites() {
+    if (isStaticExport) return []
     const internal =
       process.env.API_INTERNAL_URL?.trim() ||
       process.env.API_URL?.trim() ||

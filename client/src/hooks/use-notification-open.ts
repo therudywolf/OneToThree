@@ -9,6 +9,16 @@ type SwMessageData = {
   url?: string
 }
 
+type CapacitorPushAction = {
+  notification?: {
+    data?: {
+      url?: string
+      chat_id?: string
+      accept_call?: string
+    }
+  }
+}
+
 // acceptIncomingCall is passed as an optional stable callback so the hook can
 // trigger call acceptance from push notification "Answer" actions.
 export function useNotificationOpen(acceptIncomingCall?: () => void) {
@@ -43,5 +53,49 @@ export function useNotificationOpen(acceptIncomingCall?: () => void) {
 
     navigator.serviceWorker.addEventListener('message', onMessage)
     return () => navigator.serviceWorker.removeEventListener('message', onMessage)
+  }, [setActiveChatId])
+
+  useEffect(() => {
+    const w = window as unknown as {
+      Capacitor?: {
+        isNativePlatform?: () => boolean
+        Plugins?: {
+          PushNotifications?: {
+            addListener: (
+              eventName: 'pushNotificationActionPerformed',
+              listenerFunc: (payload: CapacitorPushAction) => void
+            ) => Promise<{ remove: () => void }>
+          }
+        }
+      }
+    }
+    if (!w.Capacitor?.isNativePlatform?.()) return
+    const plugin = w.Capacitor?.Plugins?.PushNotifications
+    if (!plugin) return
+
+    let remove: (() => void) | null = null
+    void plugin
+      .addListener('pushNotificationActionPerformed', (payload) => {
+        const url = payload.notification?.data?.url ?? ''
+        const chatId =
+          payload.notification?.data?.chat_id ??
+          parseTargetChatIdFromUrl(url, window.location.origin)
+        if (chatId) setActiveChatId(chatId)
+        if (payload.notification?.data?.accept_call === '1' || parseAcceptCallFromUrl(url, window.location.origin)) {
+          window.setTimeout(() => {
+            acceptRef.current?.()
+          }, 400)
+        }
+      })
+      .then((h) => {
+        remove = () => h.remove()
+      })
+      .catch(() => {
+        remove = null
+      })
+
+    return () => {
+      remove?.()
+    }
   }, [setActiveChatId])
 }

@@ -1,22 +1,50 @@
-# Capacitor Phase (Mobile Production Shell)
+# OneToThree Android Capacitor Shell
 
-This directory contains the bootstrap configuration for the native wrapper phase.
+Capacitor wrapper for Android release builds with native push lifecycle.
 
-## Goals
+## Quick start
 
-- Stable background notifications when browser PWA restrictions apply.
-- Better lifecycle handling (`foreground` / `background` / `terminated`).
-- Native integration baseline: app icon, splash, status bar, haptics, share intent.
+From repo root:
 
-## Planned steps
+```bash
+npm run android:build:debug
+```
 
-1. Build web client for static output compatible with Capacitor webDir.
-2. Initialize Capacitor runtime and add `android` / `ios` platforms.
-3. Wire native push token registration to backend push routes.
-4. Connect notification tap deep-links to open chat by `chat_id`.
-5. Add telemetry for delivery/open rates and background failures.
+This command:
 
-## Notes
+1. builds static web assets (`client/out`)
+2. syncs assets into `mobile/capacitor/android`
+3. builds `assembleDebug`
 
-- Current PWA flow remains primary until native shell is validated in beta.
-- This scaffold is intentionally minimal and non-breaking for existing web builds.
+## FCM setup
+
+1. Create Firebase Android app with package id `ru.onetothree.app`.
+2. Place `google-services.json` into `mobile/capacitor/android/app/google-services.json`.
+3. Configure backend secrets:
+   - `FIREBASE_SERVICE_ACCOUNT_JSON` (or `*_FILE`)
+   - or split fields: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
+
+## Release signing
+
+Set Gradle properties (CLI `-P` or `android/gradle.properties`):
+
+- `RELEASE_STORE_FILE`
+- `RELEASE_STORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+- `VERSION_CODE`
+- `VERSION_NAME`
+
+Build:
+
+```bash
+npm run android:build:release
+```
+
+## Notification routing contract
+
+- Push payload must carry `chat_id` and `url` (e.g. `/?chat=<id>`).
+- App listener maps push action to chat open flow for:
+  - foreground
+  - background
+  - cold start (terminated)

@@ -88,6 +88,31 @@ export function supportsWebPush(): boolean {
   )
 }
 
+type CapacitorPushPlugin = {
+  requestPermissions: () => Promise<{ receive?: 'granted' | 'denied' }>
+  register: () => Promise<void>
+  addListener: (
+    eventName: 'registration' | 'registrationError' | 'pushNotificationActionPerformed',
+    listenerFunc: (payload: unknown) => void
+  ) => Promise<{ remove: () => void }>
+}
+
+function getCapacitorPushPlugin(): CapacitorPushPlugin | null {
+  const w = window as unknown as {
+    Capacitor?: {
+      isNativePlatform?: () => boolean
+      Plugins?: { PushNotifications?: CapacitorPushPlugin }
+    }
+  }
+  if (!w.Capacitor?.isNativePlatform?.()) return null
+  return w.Capacitor?.Plugins?.PushNotifications ?? null
+}
+
+export function supportsNativePush(): boolean {
+  if (typeof window === 'undefined') return false
+  return !!getCapacitorPushPlugin()
+}
+
 /** [AUTH_PROBE] :: Проверка текущих прав на прерывание */
 export async function getNotificationPermission(): Promise<NotificationPermission> {
   if (typeof window === 'undefined' || !('Notification' in window)) return 'denied'
@@ -176,6 +201,17 @@ async function requestPushSync(path: '/push/subscribe' | '/push/unsubscribe', in
   })
 }
 
+async function requestNativePushSync(path: '/push/native/register' | '/push/native/unregister', init: RequestInit): Promise<void> {
+  await withRetry(async () => {
+    const res = await fetch(`${API_URL}${path}`, init)
+    if (res.ok) return
+    const fault = await parsePushFault(res)
+    const err = new Error(fault.error ?? `NATIVE_PUSH_REQUEST_FAILED_${res.status}`) as PushHttpError
+    err.status = res.status
+    throw err
+  })
+}
+
 /** [SYNC_CORE] :: Передача данных перехвата на основной сервер */
 async function syncInterceptWithCore(sub: PushSubscription): Promise<void> {
   const data = sub.toJSON()
@@ -197,6 +233,10 @@ async function syncInterceptWithCore(sub: PushSubscription): Promise<void> {
 
 /** [ESTABLISH_INTERCEPT] :: Полный цикл активации оповещений */
 export async function subscribeUserPush(): Promise<void> {
+  if (supportsNativePush()) {
+    await subscribeNativePush()
+    return
+  }
   const vapid = getVapidPublicKey()
   if (!vapid) throw new Error('WEB_PUSH_UNSUPPORTED')
   if (!supportsWebPush()) throw new Error('WEB_PUSH_UNSUPPORTED')
@@ -223,6 +263,10 @@ export async function subscribeUserPush(): Promise<void> {
 
 /** [TERMINATE_INTERCEPT] :: Удаление узла из системы оповещений */
 export async function unsubscribeUserPush(): Promise<void> {
+  if (supportsNativePush()) {
+    await unsubscribeNativePush()
+    return
+  }
   try {
     const reg = await navigator.serviceWorker.getRegistration('/')
     if (!reg) return
@@ -244,6 +288,67 @@ export async function unsubscribeUserPush(): Promise<void> {
   } catch (err) {
     console.error('>> [SYS.PUSH] TERMINATE_FAULT:', err)
     throw err
+  }
+}
+
+export async function subscribeNativePush(): Promise<void> {
+  const plugin = getCapacitorPushPlugin()
+  if (!plugin) throw new Error('NATIVE_PUSH_UNSUPPORTED')
+
+  const perm = await plugin.requestPermissions()
+  if (perm.receive !== 'granted') throw new Error('NOTIFICATION_DENIED')
+
+  const token = await new Promise<string>((resolve, reject) => {
+    let timeout: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+      timeout = null
+      reject(new Error('NATIVE_PUSH_REGISTER_TIMEOUT'))
+    }, 10000)
+    void plugin.addListener('registration', (payload) => {
+      const value = (payload as { value?: string } | null)?.value
+      if (!value) return
+      if (timeout) clearTimeout(timeout)
+      resolve(value)
+    })
+    void plugin.addListener('registrationError', (err) => {
+      if (timeout) clearTimeout(timeout)
+      reject(new Error((err as { error?: string } | null)?.error || 'NATIVE_PUSH_REGISTER_FAILED'))
+    })
+    void plugin.register()
+  })
+
+  await requestNativePushSync('/push/native/register', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ platform: 'android', token }),
+  })
+  try {
+    localStorage.setItem('p13:native_push_token', token)
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function unsubscribeNativePush(): Promise<void> {
+  let token: string | null = null
+  try {
+    token = localStorage.getItem('p13:native_push_token')
+  } catch {
+    token = null
+  }
+  if (!token) return
+
+  await requestNativePushSync('/push/native/unregister', {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ platform: 'android', token }),
+  }).catch(() => {})
+
+  try {
+    localStorage.removeItem('p13:native_push_token')
+  } catch {
+    /* ignore */
   }
 }
 

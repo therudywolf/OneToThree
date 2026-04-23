@@ -13,8 +13,6 @@ import { useThemeStore } from '@/store/themeStore'
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
-export const dynamic = 'force-dynamic'
-
 export default function LoginPage() {
   const [showWelcome, setShowWelcome] = useState(false)
   const shellMode = useThemeStore((s) => s.shellMode)

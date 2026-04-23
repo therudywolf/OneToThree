@@ -6,6 +6,7 @@ import {
   getExistingPushSubscription,
   getNotificationPermission,
   getVapidPublicKey,
+  supportsNativePush,
   subscribeUserPush,
   supportsWebPush,
   unsubscribeUserPush,
@@ -20,15 +21,21 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
   const [permission, setPermission] =
     useState<NotificationPermission>('default')
   const [hasBrowserSubscription, setHasBrowserSubscription] = useState(false)
+  const [hasNativeSubscription, setHasNativeSubscription] = useState(false)
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
   const vapidOk = !!getVapidPublicKey()
-  const pushSupported = supportsWebPush()
+  const pushSupported = supportsWebPush() || supportsNativePush()
 
   const refresh = useCallback(async () => {
     const p = await getNotificationPermission()
     setPermission(p)
+    if (!supportsWebPush()) {
+      const nativeToken =
+        typeof window !== 'undefined' ? window.localStorage.getItem('p13:native_push_token') : null
+      setHasNativeSubscription(!!nativeToken)
+    }
     if (!pushSupported) {
       setHasBrowserSubscription(false)
       return
@@ -54,7 +61,7 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
     setLocalError(null)
     setBusy(true)
     try {
-      if (hasBrowserSubscription) {
+      if (hasBrowserSubscription || hasNativeSubscription) {
         await unsubscribeUserPush()
       } else {
         if (!vapidOk) {
@@ -81,10 +88,14 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
     }
   }
 
+  const nativeSupported = supportsNativePush()
   const showEnableButton =
-    permission !== 'denied' && vapidOk && pushSupported && !hasBrowserSubscription
+    permission !== 'denied' &&
+    pushSupported &&
+    !(hasBrowserSubscription || hasNativeSubscription) &&
+    (nativeSupported || vapidOk)
 
-  const pushActive = hasBrowserSubscription && permission === 'granted'
+  const pushActive = hasNativeSubscription || (hasBrowserSubscription && permission === 'granted')
 
   return (
     <div className="border-t border-neon-cyan/30 pt-3">
@@ -135,7 +146,7 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
       {showEnableButton ? (
         <button
           type="button"
-          disabled={busy || !vapidOk}
+          disabled={busy || (!nativeSupported && !vapidOk)}
           onClick={() => void onToggleEnable()}
           className="w-full border border-neon-cyan/70 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-red hover:text-neon-red disabled:cursor-not-allowed disabled:opacity-40"
         >

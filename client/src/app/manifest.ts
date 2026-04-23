@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next'
 
+export const dynamic = 'force-static'
+
 /**
  * OneToThree :: PWA_MANIFEST_DESCRIPTOR
  * Level: Interface Layer (OS Integration)

@@ -5,6 +5,7 @@ import { Bell, X } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import {
   supportsWebPush,
+  supportsNativePush,
   getVapidPublicKey,
   subscribeUserPush,
   getExistingPushSubscription,
@@ -26,13 +27,18 @@ export function PushOnboardingBanner() {
     async function sync() {
       if (typeof window === 'undefined') { setVisible(false); return }
       // Браузер не поддерживает Web Push — прячем баннер
-      if (!supportsWebPush() || !getVapidPublicKey()) { setVisible(false); return }
+      if (!supportsWebPush() && !supportsNativePush()) { setVisible(false); return }
+      if (supportsWebPush() && !supportsNativePush() && !getVapidPublicKey()) { setVisible(false); return }
 
       const permission = await getNotificationPermission()
       // Уже blocked — баннер бесполезен
       if (permission === 'denied') { setVisible(false); return }
       // Уже есть реальная SW-подписка — баннер не нужен
       if (permission === 'granted') {
+        if (supportsNativePush()) {
+          const token = localStorage.getItem('p13:native_push_token')
+          if (token) { setVisible(false); return }
+        }
         const sub = await getExistingPushSubscription()
         if (sub) { setVisible(false); return }
       }

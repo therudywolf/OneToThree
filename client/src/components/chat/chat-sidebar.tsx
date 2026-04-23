@@ -914,7 +914,7 @@ export function ChatSidebar({
                     ) : null}
 
                     {!c.is_group && pres?.online ? (
-                       <span className={`absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 ${isMd3 ? 'border-[var(--surface)] bg-[var(--success)]' : 'border-border-strong bg-neon-cyan shadow-[0_0_8px_rgba(34,211,238,0.8)]'}`} />
+                       <span className={`p13-sidebar-presence-dot absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 ${isMd3 ? 'border-[var(--surface)] bg-[var(--success)]' : 'border-border-strong bg-neon-cyan shadow-[0_0_8px_rgba(34,211,238,0.8)]'}`} />
                     ) : null}
                   </div>
 
@@ -927,20 +927,20 @@ export function ChatSidebar({
                       {!c.is_group && approvedPeerIds.has(peerId ?? '') ? (
                         <UserCheck className="h-3 w-3 text-accent-2 shrink-0" />
                       ) : null}
-                      <span className={`min-w-0 flex-1 truncate text-[12px] font-medium ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan/85')}`}>
+                      <span className={`p13-sidebar-title min-w-0 flex-1 truncate text-[12px] font-medium ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan/85')}`}>
                         {listTitle}
                       </span>
                       {isPinned ? (
                         <Pin className="h-2.5 w-2.5 shrink-0 text-neon-cyan/60" />
                       ) : null}
-                      <span className={`ml-2 hidden max-w-[5.5rem] shrink-0 truncate text-[10px] tabular-nums sm:inline ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
+                      <span className={`p13-sidebar-timestamp ml-2 hidden max-w-[5.5rem] shrink-0 truncate text-[10px] tabular-nums sm:inline ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
                         {formatChatTs(lastMessages[c.id]?.created_at ?? c.last_message_at)}
                       </span>
                     </span>
 
                     {/* Row 2: last message preview + unread badge */}
                     <span className="inline-flex min-w-0 items-center gap-1">
-                      <span className={`truncate text-[11px] ${isMd3 ? 'text-text-muted' : 'text-text-muted/60'}`}>
+                      <span className={`p13-sidebar-meta truncate text-[11px] ${isMd3 ? 'text-text-muted' : 'text-text-muted/60'}`}>
                         {previewText(c) || (
                           pres && !pres.online ? (
                             <>
@@ -955,16 +955,16 @@ export function ChatSidebar({
                       {unreadTotal > 0 ? (
                         <span className="ml-auto inline-flex shrink-0 items-center gap-1">
                           {threadTotal > 0 ? (
-                            <span className={`rounded px-1 py-[1px] text-[8px] font-bold ${isMd3 ? 'bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)]' : 'border border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'}`}>
+                            <span className={`p13-sidebar-thread-badge rounded px-1 py-[1px] text-[8px] font-bold ${isMd3 ? 'bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)]' : 'border border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'}`}>
                               T{threadTotal}
                             </span>
                           ) : null}
                           {mentionTotal > 0 ? (
-                            <span className="rounded border border-accent-2/40 bg-accent-2/15 px-1 py-[1px] text-[8px] font-bold text-accent-2">
+                            <span className="p13-sidebar-mention-badge rounded border border-accent-2/40 bg-accent-2/15 px-1 py-[1px] text-[8px] font-bold text-accent-2">
                               @{mentionTotal}
                             </span>
                           ) : null}
-                          <span className={`min-w-[1.45rem] px-1.5 py-[1px] text-center text-[9px] font-bold ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
+                          <span className={`p13-sidebar-unread-badge min-w-[1.45rem] px-1.5 py-[1px] text-center text-[9px] font-bold ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
                             {unreadTotal > 99 ? '99+' : unreadTotal}
                           </span>
                         </span>

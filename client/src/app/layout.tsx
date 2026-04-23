@@ -66,7 +66,7 @@ const themeInitScript = `
     var theme = state.theme;
     var shell = state.shellMode;
     var motion = state.motionMode;
-    var validThemes = ['default','cyberpunk2077','matrix','dracula','midnight','synthwave','hacker','pixel','nord','md3dark','md3light'];
+    var validThemes = ['default','cyberpunk2077','retro','matrix','dracula','midnight','synthwave','hacker','pixel','nord','md3dark','md3light'];
     var validShells = ['terminal','md3'];
     if (theme && validThemes.indexOf(theme) !== -1) {
       document.documentElement.setAttribute('data-theme', theme);

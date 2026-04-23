@@ -233,7 +233,7 @@ export const THEMES: ThemeConfig[] = [
     pageGlowSecondary: '#4a0830',
   }),
   makeTheme('retro', 'RETRO // CLASSIC', 'dark', {
-    background: '#1f2227',
+    background: '#0b2d74',
     surface: '#c0c0c0',
     elevated: '#d4d0c8',
     text: '#111111',
@@ -250,8 +250,8 @@ export const THEMES: ThemeConfig[] = [
     fontFamily: "'Tahoma', 'Verdana', 'MS Sans Serif', sans-serif",
     panelRadius: '6px',
     controlRadius: '4px',
-    pageGlow: '#35537b',
-    pageGlowSecondary: '#5e4a79',
+    pageGlow: '#103a8c',
+    pageGlowSecondary: '#0a2a6b',
   }),
   makeTheme('matrix', 'MATRIX // GREEN', 'dark', {
     background: '#020603',

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
+import { useThemeStore } from '@/store/themeStore'
 
 type Action =
   | 'reply'
@@ -43,6 +44,10 @@ export function MessageActions({
   onClose,
 }: Props) {
   const { t } = useTranslation()
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3'
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -133,7 +138,13 @@ export function MessageActions({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.12, ease: 'easeOut' }}
-        className="fixed z-[120] min-w-[12rem] border border-neon-cyan/60 bg-void py-1 shadow-[0_0_24px_rgba(0,255,255,0.1)]"
+        className={`fixed z-[120] min-w-[12rem] py-1 ${
+          isMd3
+            ? 'rounded-2xl border border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] bg-[var(--surface-elevated)] shadow-[var(--md3-elevation-3)]'
+            : isRetro
+              ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_6px_14px_rgba(0,0,0,0.24)]'
+              : 'border border-neon-cyan/60 bg-void shadow-[0_0_24px_rgba(0,255,255,0.1)]'
+        }`}
         role="menu"
         aria-label={t('chat.contextMenuAria')}
         style={{ left: x, top: y }}
@@ -147,10 +158,18 @@ export function MessageActions({
                 key={action.key}
                 type="button"
                 role="menuitem"
-                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left font-mono text-[10px] uppercase tracking-widest transition-colors ${
-                  action.danger
-                    ? 'text-danger hover:bg-neon-red/10 hover:text-neon-red'
-                    : 'text-neon-cyan hover:bg-neon-cyan/10'
+                className={`flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors ${
+                  isMd3
+                    ? action.danger
+                      ? 'rounded-xl text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_10%,transparent)]'
+                      : 'rounded-xl text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                    : isRetro
+                      ? action.danger
+                        ? 'font-["Tahoma"] text-[11px] text-[#8f1f23] hover:bg-[#eadfdc]'
+                        : 'font-["Tahoma"] text-[11px] text-[#1e2f44] hover:bg-[#e8e4dc]'
+                      : action.danger
+                        ? 'font-mono text-[10px] uppercase tracking-widest text-danger hover:bg-neon-red/10 hover:text-neon-red'
+                        : 'font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'
                 }`}
                 onClick={(e) => {
                   e.stopPropagation()
@@ -179,8 +198,21 @@ type QuickReactProps = {
 }
 
 export function QuickReactBar({ onReact }: QuickReactProps) {
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3'
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
+
   return (
-    <div className="flex items-center gap-0.5 border border-neon-cyan/40 bg-void px-1 py-0.5 shadow-[0_0_12px_rgba(0,255,255,0.08)]">
+    <div
+      className={`flex items-center gap-0.5 px-1 py-0.5 ${
+        isMd3
+          ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,var(--surface))] shadow-[var(--md3-elevation-2)]'
+          : isRetro
+            ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+            : 'border border-neon-cyan/40 bg-void shadow-[0_0_12px_rgba(0,255,255,0.08)]'
+      }`}
+    >
       {QUICK_REACTIONS.map((emoji) => (
         <button
           key={emoji}
@@ -189,7 +221,13 @@ export function QuickReactBar({ onReact }: QuickReactProps) {
             e.stopPropagation()
             onReact(emoji)
           }}
-          className="flex h-7 w-7 items-center justify-center text-base transition-transform hover:scale-125 active:scale-95"
+          className={`flex h-7 w-7 items-center justify-center text-base transition-transform active:scale-95 ${
+            isMd3
+              ? 'rounded-full hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:scale-110'
+              : isRetro
+                ? 'rounded-none border border-transparent hover:border-[#9aa0aa] hover:bg-[#ece9e2] hover:scale-105'
+                : 'hover:scale-125'
+          }`}
         >
           {emoji}
         </button>

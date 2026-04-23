@@ -17,7 +17,10 @@ type Props = {
 
 export function ForwardModal({ message, onClose, onForward }: Props) {
   const { t } = useTranslation()
-  const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3'
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
   const [chats, setChats] = useState<ApiChatRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -60,38 +63,57 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className={`fixed inset-0 z-[130] flex items-center justify-center px-3 ${isMd3 ? 'bg-black/40 backdrop-blur-sm' : 'bg-void/80'}`}
+        className={`fixed inset-0 z-[130] flex items-center justify-center px-3 ${
+          isMd3
+            ? 'bg-black/40 backdrop-blur-sm'
+            : isRetro
+              ? 'bg-[color-mix(in_srgb,var(--void)_44%,#0b2d74)]'
+              : 'bg-void/80'
+        }`}
       >
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
-          className={`w-full max-w-sm ${isMd3 ? 'rounded-[28px] bg-[var(--surface-container-high)] p-5 shadow-[var(--md3-elevation-3)]' : 'terminal-panel'}`}
+          className={`w-full max-w-sm ${
+            isMd3
+              ? 'rounded-[28px] bg-[var(--surface-container-high)] p-5 shadow-[var(--md3-elevation-3)]'
+              : isRetro
+                ? 'border border-[#6f747c] bg-[#d4d0c8] p-0 shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_14px_36px_rgba(0,0,0,0.32)]'
+                : 'terminal-panel'
+          }`}
         >
-          <header className={`flex items-center justify-between gap-2 pb-3 mb-3 border-b ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/30'}`}>
-            <p className={`text-[10px] uppercase tracking-widest ${isMd3 ? 'font-sans font-semibold text-[var(--on-surface)]' : 'font-mono text-neon-cyan'}`}>
+          <header className={`flex items-center justify-between gap-2 ${isRetro ? 'mb-0 border-b border-[#001f57] px-3 py-2' : 'mb-3 pb-3 border-b'} ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)]' : 'border-neon-cyan/30'}`}>
+            <p className={`text-[10px] ${isMd3 ? 'font-sans font-semibold text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] tracking-[0.05em] text-[#f4f7ff]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
               {t('forward.title')}
             </p>
             <button
               type="button"
               onClick={onClose}
-              className={`inline-flex h-8 w-8 items-center justify-center transition-colors ${isMd3 ? 'rounded-full text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border border-neon-red/35 bg-void text-neon-red hover:border-neon-cyan hover:text-neon-cyan'}`}
+              className={`inline-flex h-8 w-8 items-center justify-center transition-colors ${
+                isMd3
+                  ? 'rounded-full text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                  : isRetro
+                    ? 'border border-[#6f747c] bg-[#d4d0c8] text-[#13273f] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                    : 'border border-neon-red/35 bg-void text-neon-red hover:border-neon-cyan hover:text-neon-cyan'
+              }`}
             >
-              <span className={`${isMd3 ? 'font-sans' : 'font-mono'} text-[10px] leading-none`}>✕</span>
+              <span className={`${isMd3 ? 'font-sans' : isRetro ? 'font-["Tahoma"]' : 'font-mono'} text-[10px] leading-none`}>✕</span>
             </button>
           </header>
+          <div className={isRetro ? 'p-4' : ''}>
 
           {/* Snippet preview */}
           {text.trim() && (
-            <div className={`mb-3 px-2 py-1.5 ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-cyan/20'}`}>
-              <p className={`text-[9px] truncate ${isMd3 ? 'text-[var(--on-surface-variant)]' : 'font-mono text-neon-cyan/60'}`}>
+            <div className={`mb-3 px-2 py-1.5 ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : isRetro ? 'border border-[#9ea4ad] bg-[#ece9e2]' : 'border border-neon-cyan/20'}`}>
+              <p className={`text-[9px] truncate ${isMd3 ? 'text-[var(--on-surface-variant)]' : isRetro ? 'font-["Tahoma"] text-[#33465b]' : 'font-mono text-neon-cyan/60'}`}>
                 {text.slice(0, 120)}{text.length > 120 ? '…' : ''}
               </p>
             </div>
           )}
 
           <input
-            className={`mb-3 h-10 w-full px-3 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:outline-none' : 'terminal-input'}`}
+            className={`mb-3 h-10 w-full px-3 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:outline-none' : isRetro ? 'border border-[#6f747c] bg-[#ffffff] font-["Tahoma"] text-[#1a1a1a] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6] outline-none' : 'terminal-input'}`}
             placeholder={t('forward.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -112,10 +134,12 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
                     type="button"
                     disabled={!!busy || isSent}
                     onClick={() => void handleForward(c.id)}
-                    className={`flex h-10 w-full items-center justify-between px-3 text-[10px] uppercase tracking-widest transition-colors disabled:opacity-50 ${
+                    className={`flex h-10 w-full items-center justify-between px-3 text-[10px] transition-colors disabled:opacity-50 ${
                       isMd3
                         ? `rounded-xl ${isSent ? 'bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] text-[color-mix(in_srgb,var(--primary)_50%,var(--on-surface))]' : 'text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]'}`
-                        : `border font-mono ${isSent ? 'border-neon-cyan/20 text-neon-cyan/40' : 'border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10'}`
+                        : isRetro
+                          ? `border font-["Tahoma"] ${isSent ? 'border-[#9da2ab] bg-[#ece9e2] text-[#6a7079]' : 'border-[#7e838c] bg-[#d4d0c8] text-[#112b45] hover:bg-[#e2ded6]'}`
+                          : `border font-mono uppercase tracking-widest ${isSent ? 'border-neon-cyan/20 text-neon-cyan/40' : 'border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10'}`
                     }`}
                   >
                     <span className="truncate">{c.name ?? c.id.slice(0, 12)}</span>
@@ -135,6 +159,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
           {error && (
             <p className={`mt-2 text-[9px] ${isMd3 ? 'text-[var(--danger)]' : 'font-mono text-neon-red'}`}>[!] {error}</p>
           )}
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>

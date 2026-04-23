@@ -70,6 +70,10 @@ export function useCreateGroup(currentUserId: string) {
             throw new Error(`MISSING_ECDH:${r.username}`)
           }
         }
+        const creator = rows.find((r) => r.id === currentUserId)
+        if (!creator?.ecdh_public_key_jwk) {
+          throw new Error('MISSING_CREATOR_ECDH')
+        }
 
         const groupKey = await crypto.subtle.generateKey(
           { name: 'AES-GCM', length: 256 },
@@ -83,7 +87,8 @@ export function useCreateGroup(currentUserId: string) {
             encryptedGroupKey: await wrapGroupKeyForMemberWithCreatorEcdh(
               unwrappedPrivateKey,
               r.ecdh_public_key_jwk!,
-              groupKey
+              groupKey,
+              creator.ecdh_public_key_jwk ?? undefined
             ),
           }))
         )

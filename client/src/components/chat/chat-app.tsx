@@ -1064,6 +1064,10 @@ export function ChatApp({
                 <span className="mr-2 text-neon-red">[!]</span>
                 {mediaAccessError === MEDIA_PERMISSION_DENIED_CODE
                   ? t('call.mediaPermissionDenied')
+                  : mediaAccessError.startsWith('ICE_FETCH_') ||
+                    mediaAccessError === 'ICE_NO_TURN_RELAY' ||
+                    mediaAccessError === 'ICE_SERVERS_UNAVAILABLE'
+                  ? t('call.connectionLost')
                   : mediaAccessError}
               </span>
               <button

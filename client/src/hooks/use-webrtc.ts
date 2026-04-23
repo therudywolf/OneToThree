@@ -582,10 +582,18 @@ export function useWebRTC(userId: string | null) {
       return
     }
 
+    let relays: RTCIceServer[]
+    try {
+      relays = await getSignalRelays()
+    } catch (err) {
+      terminateFeed(stream)
+      setMediaAccessError(err instanceof Error ? err.message : 'ICE_SERVERS_UNAVAILABLE')
+      setIsCalling(false)
+      return
+    }
     setLocalStream(stream)
     setIsCalling(true)
     setCallStartTime(Date.now())
-    const relays = await getSignalRelays()
 
     for (const peerId of recipients) {
       if (peerId === userId || pcsRef.current.has(peerId)) continue
@@ -635,8 +643,16 @@ export function useWebRTC(userId: string | null) {
       return
     }
 
+    let relays: RTCIceServer[]
+    try {
+      relays = await getSignalRelays()
+    } catch (err) {
+      terminateFeed(stream)
+      setMediaAccessError(err instanceof Error ? err.message : 'ICE_SERVERS_UNAVAILABLE')
+      setIncomingCall(null)
+      return
+    }
     setLocalStream(stream)
-    const relays = await getSignalRelays()
     const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
 
     pcsRef.current.set(inc.peerId, pc)

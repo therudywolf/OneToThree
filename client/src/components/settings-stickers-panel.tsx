@@ -14,13 +14,17 @@ export function SettingsStickersPanel() {
   const [loading, setLoading] = useState(false)
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       setPacks(await fetchStickerPacks())
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'LOAD_FAILED', { title: 'Stickers' })
+      const msg = e instanceof Error ? e.message : 'LOAD_FAILED'
+      setLoadError(msg)
+      toastError(msg, { title: 'Stickers' })
     } finally {
       setLoading(false)
     }
@@ -75,6 +79,21 @@ export function SettingsStickersPanel() {
 
         {loading ? (
           <p className={mutedCls}>…</p>
+        ) : loadError ? (
+          <div className="space-y-2">
+            <p className={mutedCls}>{t('settings.loadFailed')}</p>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className={`${btnBase} ${
+                isMd3
+                  ? 'bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)]'
+                  : 'border-neon-cyan/30 text-neon-cyan/70 hover:border-neon-cyan/60 hover:text-neon-cyan'
+              }`}
+            >
+              {t('msg.retry')}
+            </button>
+          </div>
         ) : packs.length === 0 ? (
           <p className={mutedCls}>{t('settings.stickersEmpty')}</p>
         ) : (

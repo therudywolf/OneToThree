@@ -331,7 +331,7 @@ export function LoginQrDevicePanel() {
             {/* Divider */}
             <div className="flex items-center gap-3">
               <div className="h-[1px] flex-1 bg-void" />
-              <span className="text-[8px] uppercase tracking-widest text-text-muted/70">OR_MANUAL</span>
+              <span className="text-[8px] uppercase tracking-widest text-text-muted/70">{t('login.qrOrManual')}</span>
               <div className="h-[1px] flex-1 bg-void" />
             </div>
 

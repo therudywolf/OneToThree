@@ -10,6 +10,7 @@ import {
   getExistingPushSubscription,
   getNotificationPermission,
 } from '@/lib/push-subscription'
+import { toastWarn } from '@/store/toastStore'
 
 const DISMISS_KEY = 'p13:push-onboarding-dismissed'
 
@@ -54,8 +55,9 @@ export function PushOnboardingBanner() {
     try {
       // Полный цикл: permission → SW register → pushManager.subscribe → POST /push/subscribe
       await subscribeUserPush()
-    } catch {
-      // Тихо — детальная ошибка в settings-push-notifications
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'PUSH_ENABLE_FAILED'
+      toastWarn(msg, { title: 'Push' })
     } finally {
       setBusy(false)
     }

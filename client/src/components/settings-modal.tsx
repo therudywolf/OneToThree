@@ -472,7 +472,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         </header>
 
         {/* ── Tabs ── */}
-        <div className={`custom-scrollbar flex shrink-0 items-center gap-2 overflow-x-auto border-b py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
+        <div className={`custom-scrollbar flex shrink-0 flex-wrap items-center gap-2 overflow-x-hidden border-b py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
           {(['main', 'chat', 'profile', 'folders', 'stickers', 'security', 'media', 'devices'] as const).map((tab) => (
             <button key={tab} type="button" onClick={() => setSettingsTab(tab)}
               className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
@@ -487,7 +487,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               {tab === 'main'     ? `${isMd3 ? '' : '[ '}${t('settings.tabGeneral')}${isMd3 ? '' : ' ]'}`
               : tab === 'chat'    ? `${isMd3 ? '' : '[ '}${t('settings.tabChats')}${isMd3 ? '' : ' ]'}`
               : tab === 'profile' ? `${isMd3 ? '' : '[ '}${t('profile.section')}${isMd3 ? '' : ' ]'}`
-              : tab === 'folders' ? `${isMd3 ? '' : '[ '}Папки${isMd3 ? '' : ' ]'}`
+              : tab === 'folders' ? `${isMd3 ? '' : '[ '}${t('settings.tabFolders')}${isMd3 ? '' : ' ]'}`
               : tab === 'stickers'? `${isMd3 ? '' : '[ '}${t('settings.tabStickers')}${isMd3 ? '' : ' ]'}`
               : tab === 'security'? `${isMd3 ? '' : '[ '}${t('settings.tabSecurity')}${isMd3 ? '' : ' ]'}`
               : tab === 'media'   ? `${isMd3 ? '' : '[ '}${t('settings.tabMedia')}${isMd3 ? '' : ' ]'}`

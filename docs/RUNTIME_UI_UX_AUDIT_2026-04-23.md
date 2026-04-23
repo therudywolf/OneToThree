@@ -206,3 +206,29 @@ Scope: live manual testing on `onetothree.ru` + production logs + adaptive check
 
 - This audit intentionally records runtime/visual defects only (not full security audit items from `AUDIT.md`).
 - Keep this file as the implementation checklist source for upcoming UI/UX and call stabilization work.
+
+---
+
+## HAR Remediation Status (2026-04-23)
+
+- `stickers.backend.503`: `fixed`
+  - Server-side hardening added for schema-drift detection and storage unavailability mapping in sticker routes.
+  - Expected error surfaces now distinguish schema/storage issues from access/path issues.
+
+- `stickers.permissions.403`: `fixed`
+  - Sticker settings actions are owner-only in UI (`refresh/delete` hidden for non-owner scopes).
+  - Non-owner action attempts are normalized to non-fatal UX messaging.
+
+- `link-preview.giphy.500`: `fixed`
+  - Link preview auth resolution is now guarded to avoid raw 500 from auth-backend side effects.
+  - Route returns deterministic non-500 code for auth backend outage (`AUTH_BACKEND_UNAVAILABLE`).
+
+- `giphy.trending.403`: `fixed`
+  - Production build chain now supports `NEXT_PUBLIC_GIPHY_API_KEY` propagation.
+  - GIF picker now exposes explicit degraded mode (fallback content with user-visible status).
+
+- `har.smoke.typecheck`: `verified`
+  - Client/server typecheck passed after HAR remediation patchset.
+
+- `har.prod.two-account-manual`: `residual`
+  - Requires post-deploy runtime verification on `onetothree.ru` with two accounts and real prod config/secrets.

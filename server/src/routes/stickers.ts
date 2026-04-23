@@ -93,10 +93,18 @@ function normalizeTelegramShortName(input: string): string | null {
 }
 
 export const stickersRoutes: FastifyPluginAsync = async (app) => {
+  type PgErrorLike = { code?: string; message?: string }
+
+  function isMissingRelationError(err: unknown, relation: string): boolean {
+    if (!err || typeof err !== 'object') return false
+    const e = err as PgErrorLike
+    if (e.code === '42P01') return true
+    const msg = (e.message ?? '').toLowerCase()
+    return msg.includes(`relation "${relation}"`) && msg.includes('does not exist')
+  }
+
   function isMissingSharesTableError(err: unknown): boolean {
-    if (!(err instanceof Error)) return false
-    const msg = err.message.toLowerCase()
-    return msg.includes('sticker_pack_shares') && msg.includes('does not exist')
+    return isMissingRelationError(err, 'sticker_pack_shares')
   }
 
   async function getAccessiblePack(packId: string, userId: string) {
@@ -268,7 +276,12 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const s3 = createS3Client()
-    await ensureBucketExists(s3, MINIO_BUCKET)
+    try {
+      await ensureBucketExists(s3, MINIO_BUCKET)
+    } catch (err) {
+      request.log.error({ err }, 'sticker media storage unavailable')
+      return reply.status(503).send({ error: 'STICKER_STORAGE_UNAVAILABLE' })
+    }
 
     let body: unknown
     try {

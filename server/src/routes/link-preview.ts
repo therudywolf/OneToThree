@@ -72,8 +72,13 @@ export const linkPreviewRoutes: FastifyPluginAsync = async (app) => {
     '/link-preview',
     { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      const user = await getAuthUser(request, reply)
-      if (!assertAuthed(reply, user)) return
+      try {
+        const user = await getAuthUser(request, reply)
+        if (!assertAuthed(reply, user)) return
+      } catch (err) {
+        request.log.error({ err }, 'link-preview auth resolution failed')
+        return reply.status(503).send({ error: 'AUTH_BACKEND_UNAVAILABLE' })
+      }
 
       const parsed = querySchema.safeParse(request.query)
       if (!parsed.success) {

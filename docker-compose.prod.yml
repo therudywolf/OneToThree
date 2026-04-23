@@ -227,6 +227,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.onetothree.ru}
         NEXT_PUBLIC_WS_ORIGIN: ${NEXT_PUBLIC_WS_ORIGIN:-https://api.onetothree.ru}
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
+        NEXT_PUBLIC_GIPHY_API_KEY: ${NEXT_PUBLIC_GIPHY_API_KEY:-}
         MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://s3.onetothree.ru}
         NEXT_PUBLIC_DR_ENABLED: ${NEXT_PUBLIC_DR_ENABLED:-1}
     restart: always

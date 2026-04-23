@@ -35,6 +35,7 @@ const nextConfig = {
     const storageOrigin =
       process.env.MINIO_PUBLIC_URL?.trim() || 'https://s3.onetothree.ru'
     const giphyOrigin = 'https://*.giphy.com'
+    const giphyApiOrigin = 'https://api.giphy.com'
     const wsOrigin = apiOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
 
     const cspHeader = `
@@ -48,7 +49,7 @@ const nextConfig = {
     form-action 'self';
     frame-ancestors 'none';
     media-src 'self' blob: ${storageOrigin} ${giphyOrigin};
-    connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin};
+    connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin} ${giphyApiOrigin};
     worker-src 'self' blob:;
     upgrade-insecure-requests;
 `.replace(/\n/g, "");

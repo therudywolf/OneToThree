@@ -374,6 +374,17 @@ const en = {
   'settings.pushNoSw': 'Service Worker not found. Production build with HTTPS required.',
   'settings.pushVapidMissing': 'Server not configured for push notifications.',
   'settings.pushGrantNoSubHint': 'Permission granted. Tap \u201cEnable Notifications\u201d to finish.',
+  'settings.notificationModeTitle': 'Notification mode',
+  'settings.notificationModeFirstRunHint':
+    'Choose how notifications are delivered. You can change this later in settings.',
+  'settings.notificationModeSettingsHint':
+    'Direct mode keeps a foreground service for more private delivery. FCM saves battery but uses Google push infrastructure.',
+  'settings.notificationModeDirect': 'Direct (foreground service)',
+  'settings.notificationModeDirectHint':
+    'More private transport, higher battery usage, persistent system notification.',
+  'settings.notificationModeFcm': 'Google FCM push',
+  'settings.notificationModeFcmHint':
+    'Lower battery usage and better background reliability, but delivery metadata goes via Google.',
   'settings.loadFailed': 'Failed to load settings.',
   'settings.vaultBackup': 'Backup Key',
   'settings.vaultBackupHint': 'Encrypted file. Keep it in a safe place.',

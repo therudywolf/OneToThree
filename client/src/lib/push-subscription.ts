@@ -97,6 +97,15 @@ type CapacitorPushPlugin = {
   ) => Promise<{ remove: () => void }>
 }
 
+type CapacitorNotificationModePlugin = {
+  startDirectForegroundService: () => Promise<{ ok?: boolean }>
+  stopDirectForegroundService: () => Promise<{ ok?: boolean }>
+  getDirectForegroundServiceState: () => Promise<{ running?: boolean }>
+}
+
+export type NotificationMode = 'fcm' | 'direct'
+const NOTIFICATION_MODE_KEY = 'p13:notification_mode'
+
 function getCapacitorPushPlugin(): CapacitorPushPlugin | null {
   const w = window as unknown as {
     Capacitor?: {
@@ -108,9 +117,44 @@ function getCapacitorPushPlugin(): CapacitorPushPlugin | null {
   return w.Capacitor?.Plugins?.PushNotifications ?? null
 }
 
+function getCapacitorNotificationModePlugin(): CapacitorNotificationModePlugin | null {
+  const w = window as unknown as {
+    Capacitor?: {
+      isNativePlatform?: () => boolean
+      Plugins?: { NotificationMode?: CapacitorNotificationModePlugin }
+    }
+  }
+  if (!w.Capacitor?.isNativePlatform?.()) return null
+  return w.Capacitor?.Plugins?.NotificationMode ?? null
+}
+
 export function supportsNativePush(): boolean {
   if (typeof window === 'undefined') return false
   return !!getCapacitorPushPlugin()
+}
+
+export function supportsDirectForegroundMode(): boolean {
+  if (typeof window === 'undefined') return false
+  return !!getCapacitorNotificationModePlugin()
+}
+
+export function getStoredNotificationMode(): NotificationMode | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(NOTIFICATION_MODE_KEY)
+    return raw === 'direct' || raw === 'fcm' ? raw : null
+  } catch {
+    return null
+  }
+}
+
+function persistNotificationMode(mode: NotificationMode): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(NOTIFICATION_MODE_KEY, mode)
+  } catch {
+    /* ignore */
+  }
 }
 
 /** [AUTH_PROBE] :: Проверка текущих прав на прерывание */
@@ -233,6 +277,11 @@ async function syncInterceptWithCore(sub: PushSubscription): Promise<void> {
 
 /** [ESTABLISH_INTERCEPT] :: Полный цикл активации оповещений */
 export async function subscribeUserPush(): Promise<void> {
+  const selectedMode = getStoredNotificationMode()
+  if (supportsNativePush() && selectedMode === 'direct') {
+    await ensureDirectForegroundMode()
+    return
+  }
   if (supportsNativePush()) {
     await subscribeNativePush()
     return
@@ -263,6 +312,11 @@ export async function subscribeUserPush(): Promise<void> {
 
 /** [TERMINATE_INTERCEPT] :: Удаление узла из системы оповещений */
 export async function unsubscribeUserPush(): Promise<void> {
+  const selectedMode = getStoredNotificationMode()
+  if (supportsNativePush() && selectedMode === 'direct') {
+    await disableDirectForegroundMode()
+    return
+  }
   if (supportsNativePush()) {
     await unsubscribeNativePush()
     return
@@ -289,6 +343,51 @@ export async function unsubscribeUserPush(): Promise<void> {
     console.error('>> [SYS.PUSH] TERMINATE_FAULT:', err)
     throw err
   }
+}
+
+export async function setNotificationMode(mode: NotificationMode): Promise<void> {
+  const previous = getStoredNotificationMode()
+  if (previous === mode) return
+  try {
+    if (mode === 'direct') {
+      await unsubscribeNativePush().catch(() => {})
+      await ensureDirectForegroundMode()
+      persistNotificationMode('direct')
+      return
+    }
+    await disableDirectForegroundMode().catch(() => {})
+    await subscribeNativePush()
+    persistNotificationMode('fcm')
+  } catch (err) {
+    if (previous === 'direct') {
+      await ensureDirectForegroundMode().catch(() => {})
+      persistNotificationMode('direct')
+    }
+    if (previous === 'fcm') {
+      await subscribeNativePush().catch(() => {})
+      persistNotificationMode('fcm')
+    }
+    throw err
+  }
+}
+
+export async function ensureDirectForegroundMode(): Promise<void> {
+  const plugin = getCapacitorNotificationModePlugin()
+  if (!plugin) throw new Error('DIRECT_MODE_UNSUPPORTED')
+  await plugin.startDirectForegroundService()
+}
+
+export async function disableDirectForegroundMode(): Promise<void> {
+  const plugin = getCapacitorNotificationModePlugin()
+  if (!plugin) return
+  await plugin.stopDirectForegroundService()
+}
+
+export async function getDirectForegroundModeState(): Promise<boolean> {
+  const plugin = getCapacitorNotificationModePlugin()
+  if (!plugin) return false
+  const data = await plugin.getDirectForegroundServiceState()
+  return !!data.running
 }
 
 export async function subscribeNativePush(): Promise<void> {

@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { pushSubscriptions } from '../db/schema.js'
+import { nativePushTokens, pushSubscriptions } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 
 const subscribeBodySchema = z.object({
@@ -25,6 +25,16 @@ const resubscribeBodySchema = z.object({
       auth: z.string().min(1),
     }),
   }),
+})
+
+const nativeRegisterBodySchema = z.object({
+  platform: z.literal('android'),
+  token: z.string().min(10).max(4096),
+})
+
+const nativeUnregisterBodySchema = z.object({
+  platform: z.literal('android'),
+  token: z.string().min(10).max(4096),
 })
 
 export const pushRoutes: FastifyPluginAsync = async (app) => {
@@ -102,6 +112,45 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
         and(
           eq(pushSubscriptions.userId, user.id),
           eq(pushSubscriptions.endpoint, parsed.data.endpoint)
+        )
+      )
+
+    return reply.send({ ok: true })
+  })
+
+  app.post('/native/register', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const parsed = nativeRegisterBodySchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    await db
+      .insert(nativePushTokens)
+      .values({
+        userId: user.id,
+        platform: parsed.data.platform,
+        token: parsed.data.token,
+      })
+      .onConflictDoNothing()
+
+    return reply.send({ ok: true })
+  })
+
+  app.delete('/native/unregister', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const parsed = nativeUnregisterBodySchema.safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    await db
+      .delete(nativePushTokens)
+      .where(
+        and(
+          eq(nativePushTokens.userId, user.id),
+          eq(nativePushTokens.platform, parsed.data.platform),
+          eq(nativePushTokens.token, parsed.data.token)
         )
       )
 

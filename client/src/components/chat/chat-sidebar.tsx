@@ -598,7 +598,7 @@ export function ChatSidebar({
     : [{ id: 'all', name: t('sidebar.channels'), chatIds: [], excludedChatIds: [], isSystem: true, rule: { includeDirect: true, includeGroups: true, includeChannels: true, includeSaved: false, includeMuted: true, includeRead: true } }]
 
   return (
-    <aside className={`relative flex h-full w-full min-w-0 flex-row md:w-[21.5rem] md:shrink-0 ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-r border-neon-cyan/30 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_92%,transparent),color-mix(in_srgb,var(--void)_84%,transparent))] backdrop-blur-xl shadow-[8px_0_40px_rgba(0,0,0,0.32),1px_0_0_rgba(255,255,255,0.02)]'}`}>
+    <aside className={`relative flex h-full w-full min-w-0 flex-row ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-r border-neon-cyan/30 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_92%,transparent),color-mix(in_srgb,var(--void)_84%,transparent))] backdrop-blur-xl shadow-[8px_0_40px_rgba(0,0,0,0.32),1px_0_0_rgba(255,255,255,0.02)]'}`}>
       {groupModalOpen ? (
         <CreateGroupModal
           userId={userId}

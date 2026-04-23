@@ -15,6 +15,7 @@ export function ThemeApplicator() {
   const accentPreset = useThemeStore((s) => s.accentPreset)
   const primaryColorOverride = useThemeStore((s) => s.primaryColorOverride)
   const accentColorOverride = useThemeStore((s) => s.accentColorOverride)
+  const accentSoftColorOverride = useThemeStore((s) => s.accentSoftColorOverride)
   const backgroundColorOverride = useThemeStore((s) => s.backgroundColorOverride)
   const motionMode = useThemeStore((s) => s.motionMode)
 
@@ -26,6 +27,7 @@ export function ThemeApplicator() {
       accentPreset,
       primaryColorOverride,
       accentColorOverride,
+      accentSoftColorOverride,
       backgroundColorOverride,
       motionMode,
     })

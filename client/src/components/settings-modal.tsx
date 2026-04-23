@@ -123,6 +123,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     setPrimaryColorOverride,
     accentColorOverride,
     setAccentColorOverride,
+    accentSoftColorOverride,
+    setAccentSoftColorOverride,
     backgroundColorOverride,
     setBackgroundColorOverride,
     motionMode,
@@ -436,6 +438,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     accentPreset,
     primaryColorOverride,
     accentColorOverride,
+    accentSoftColorOverride,
     backgroundColorOverride,
     motionMode,
   })
@@ -1064,10 +1067,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                             ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
                             : (isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
                         }`}>
-                        <span className="flex shrink-0 gap-1">
+                        <span className="flex shrink-0 gap-0.5">
                           <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[0] }} />
                           <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[1] }} />
                           <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[2] }} />
+                          <span className="h-3 w-3 border border-border-strong/10" style={{ background: t_cfg.preview[3] }} />
                         </span>
                         {t_cfg.label}
                         {theme === t_cfg.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
@@ -1101,7 +1105,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       ))}
                     </div>
 
-                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div className="mt-3 grid gap-3 md:grid-cols-4">
                       {[
                         {
                           key: 'primary',
@@ -1114,6 +1118,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                           label: t('settings.appearanceAccent'),
                           value: accentColorOverride ?? resolvedTheme.tokens.accent,
                           onChange: setAccentColorOverride,
+                        },
+                        {
+                          key: 'accentSoft',
+                          label: t('settings.appearanceAccent2'),
+                          value: accentSoftColorOverride ?? resolvedTheme.tokens.accentSoft,
+                          onChange: setAccentSoftColorOverride,
                         },
                         {
                           key: 'background',

@@ -110,7 +110,7 @@ export function DockPanel() {
         ) : null}
 
         {slot === 'emoji' ? (
-          <div className="p-2">
+          <div className="p13-epr-host p-2">
             <LazyEmojiPicker
               onEmojiClick={(data: { emoji: string }) => {
                 emojiOnPick?.(data.emoji)

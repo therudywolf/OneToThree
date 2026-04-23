@@ -2188,17 +2188,10 @@ select {
   font-weight: 500;
 }
 
-/* --- Emoji picker popup ------------------------------------- */
+/* --- Emoji picker theming (shared by popup + dock + composer) ------------- */
+/* Terminal shell: neon-cyan palette */
+.p13-epr-host,
 .p13-emoji-popup {
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 0;
-  z-index: 60;
-  border: 1px solid color-mix(in srgb, var(--neon-cyan) 50%, transparent);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--neon-cyan) 12%, transparent);
-  background: var(--void);
-  overflow: hidden;
-  /* Override emoji-picker-react internal CSS vars to match Terminal palette */
   --epr-bg-color: var(--void);
   --epr-category-label-bg-color: color-mix(in srgb, var(--neon-cyan) 6%, var(--void));
   --epr-text-color: color-mix(in srgb, var(--neon-cyan) 85%, transparent);
@@ -2209,13 +2202,11 @@ select {
   --epr-highlight-color: var(--neon-cyan);
   --epr-category-icon-active-color: var(--neon-cyan);
   --epr-skin-tone-picker-menu-color: var(--void);
+  /* suppress the library's own border/shadow on the picker widget itself */
+  --epr-picker-border-color: transparent;
 }
+[data-shell="md3"] .p13-epr-host,
 [data-shell="md3"] .p13-emoji-popup {
-  border: none;
-  border-radius: 24px;
-  box-shadow: 0 4px 8px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.12);
-  background: var(--surface-elevated);
-  /* Override emoji-picker-react internal CSS vars to match MD3 palette */
   --epr-bg-color: var(--surface-elevated, #1e2430);
   --epr-category-label-bg-color: color-mix(in srgb, var(--on-surface) 4%, var(--surface-elevated, #1e2430));
   --epr-text-color: var(--on-surface);
@@ -2226,6 +2217,31 @@ select {
   --epr-highlight-color: var(--primary);
   --epr-category-icon-active-color: var(--primary);
   --epr-skin-tone-picker-menu-color: var(--surface-elevated, #1e2430);
+  --epr-picker-border-color: transparent;
+}
+/* strip the library's own outer border/shadow so it blends into the host container */
+.p13-epr-host .EmojiPickerReact,
+.p13-emoji-popup .EmojiPickerReact {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* --- Emoji picker popup (chat-input floating panel) --------- */
+.p13-emoji-popup {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 50%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--neon-cyan) 12%, transparent);
+  background: var(--void);
+  overflow: hidden;
+}
+[data-shell="md3"] .p13-emoji-popup {
+  border: none;
+  border-radius: 24px;
+  box-shadow: 0 4px 8px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.12);
+  background: var(--surface-elevated);
 }
 
 /* --- Recording bar (locked) --------------------------------- */

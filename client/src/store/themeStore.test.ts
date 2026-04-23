@@ -9,6 +9,7 @@ describe('theme appearance resolution', () => {
       accentPreset: 'theme',
       primaryColorOverride: null,
       accentColorOverride: null,
+      accentSoftColorOverride: null,
       backgroundColorOverride: null,
       motionMode: 'full',
     })
@@ -27,6 +28,7 @@ describe('theme appearance resolution', () => {
       accentPreset: 'amber',
       primaryColorOverride: '#112233',
       accentColorOverride: '#445566',
+      accentSoftColorOverride: null,
       backgroundColorOverride: '#ddeeff',
       motionMode: 'reduced',
     })
@@ -49,6 +51,7 @@ describe('theme appearance resolution', () => {
       accentPreset: 'theme',
       primaryColorOverride: null,
       accentColorOverride: null,
+      accentSoftColorOverride: null,
       backgroundColorOverride: null,
       motionMode: 'full',
     })
@@ -64,9 +67,32 @@ describe('theme appearance resolution', () => {
       accentPreset: 'theme',
       primaryColorOverride: null,
       accentColorOverride: null,
+      accentSoftColorOverride: null,
       backgroundColorOverride: null,
       motionMode: 'full',
     })
     expect(resolved.shell.id).toBe('terminal')
+  })
+
+  it('applies explicit accentSoft override and exposes 4-color preview', () => {
+    const resolved = resolveThemeAppearance({
+      theme: 'pixel',
+      shellMode: 'terminal',
+      accentPreset: 'theme',
+      primaryColorOverride: null,
+      accentColorOverride: '#445566',
+      accentSoftColorOverride: '#112233',
+      backgroundColorOverride: null,
+      motionMode: 'full',
+    })
+
+    expect(resolved.tokens.accent).toBe('#445566')
+    expect(resolved.tokens.accentSoft).toBe('#112233')
+    expect(resolved.preview).toEqual([
+      resolved.tokens.background,
+      resolved.tokens.primary,
+      resolved.tokens.accent,
+      resolved.tokens.accentSoft,
+    ])
   })
 })

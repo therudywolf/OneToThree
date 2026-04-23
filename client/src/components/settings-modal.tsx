@@ -483,7 +483,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : isRetro
-            ? 'bg-[color-mix(in_srgb,var(--void)_45%,#0b2d74)]'
+            ? 'bg-[#008080]/75'
             : 'bg-void/90'
       }`}
       role="dialog" aria-modal="true" aria-label={t('common.settings')}
@@ -492,15 +492,15 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
           className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex h-[min(100dvh,100vh)] w-full min-w-0 max-w-[min(1200px,98vw)] flex-col overflow-hidden lg:h-[min(92dvh,92vh)] ${
-        isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!rounded-none !border-[#6f747c] !bg-[#d4d0c8] !shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_16px_36px_rgba(0,0,0,0.34)]' : ''}`}
+        isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!rounded-none !border-[#6f747c] !bg-[#d4d0c8] !shadow-none' : ''}`}
       >
         {/* ── Header ── */}
-        <header className={`flex shrink-0 items-start justify-between gap-2 border-b pb-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#001f57] bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)] px-3 pt-2' : 'border-neon-red/40'}`}>
+        <header className={`flex shrink-0 items-start justify-between gap-2 border-b pb-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#001f57] bg-[#0a4ea1] px-3 pt-2' : 'border-neon-red/40'}`}>
           <p className={`min-w-0 break-words text-xs ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : isRetro ? 'font-["Tahoma"] tracking-[0.04em] text-[#f4f7ff]' : 'uppercase tracking-[0.35em] text-neon-cyan'}`}>
             {t('common.settings')} :: {username}
           </p>
           <button type="button" onClick={onClose}
-            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'rounded-full px-2 py-1 text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'border border-[#6f747c] bg-[#d4d0c8] px-2 py-0.5 font-["Tahoma"] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]' : 'font-mono text-neon-red hover:text-neon-cyan'}`}>
+            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'rounded-full px-2 py-1 text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'border border-[#6f747c] bg-[#d4d0c8] px-2 py-0.5 font-["Tahoma"] text-[#10243a] shadow-none' : 'font-mono text-neon-red hover:text-neon-cyan'}`}>
             {isMd3 || isRetro ? '✕' : '[X]'}
           </button>
         </header>

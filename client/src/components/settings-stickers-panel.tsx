@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
-import { fetchStickerPacks, deleteStickerPack, refreshStickerPack, type StickerPack } from '@/lib/api/stickers'
+import { cloneStickerPack, fetchStickerPacks, deleteStickerPack, refreshStickerPack, type StickerPack } from '@/lib/api/stickers'
 import { toastError, toastSuccess } from '@/store/toastStore'
 
 function normalizeStickerActionError(err: unknown): string {
@@ -25,6 +25,7 @@ export function SettingsStickersPanel() {
   const [loading, setLoading] = useState(false)
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [cloningId, setCloningId] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -74,6 +75,20 @@ export function SettingsStickersPanel() {
       toastError(normalizeStickerActionError(e), { title: 'Stickers' })
     } finally {
       setRefreshingId(null)
+    }
+  }
+
+  const handleClone = async (pack: StickerPack) => {
+    if (cloningId) return
+    setCloningId(pack.id)
+    try {
+      const out = await cloneStickerPack(pack.id)
+      toastSuccess(out.already_owned ? t('stickers.alreadyMine') : t('stickers.addedMine'), { title: pack.title })
+      await load()
+    } catch (e) {
+      toastError(normalizeStickerActionError(e), { title: 'Stickers' })
+    } finally {
+      setCloningId(null)
     }
   }
 
@@ -168,7 +183,24 @@ export function SettingsStickersPanel() {
                       <span className="hidden sm:inline">{t('settings.stickersDelete')}</span>
                     </button>
                   ) : (
-                    <span className={mutedCls}>{pack.accessScope ?? 'shared'}</span>
+                    <>
+                      <button
+                        type="button"
+                        disabled={!!cloningId}
+                        onClick={() => void handleClone(pack)}
+                        className={`${btnBase} ${
+                          isMd3
+                            ? 'bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)] disabled:opacity-40'
+                            : 'border-neon-cyan/30 text-neon-cyan/70 hover:border-neon-cyan/60 hover:text-neon-cyan disabled:opacity-40'
+                        }`}
+                      >
+                        <span className="hidden sm:inline">
+                          {cloningId === pack.id ? t('stickers.adding') : t('stickers.addToMine')}
+                        </span>
+                        <span className="sm:hidden">+</span>
+                      </button>
+                      <span className={mutedCls}>{pack.accessScope ?? 'shared'}</span>
+                    </>
                   )}
                 </div>
               </div>

@@ -253,6 +253,13 @@
       "when": 1776869710793,
       "tag": "0035_same_molly_hayes",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1776964200000,
+      "tag": "0037_gif_favorites",
+      "breakpoints": true
     }
   ]
 }

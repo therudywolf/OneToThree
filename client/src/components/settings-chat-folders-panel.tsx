@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { fetchChatsList, type ApiChatRow } from '@/lib/api/chats'
+import { lookupUsers, type UserLookupRow } from '@/lib/api/users'
 import {
   createChatFolder,
   deleteChatFolder,
   duplicateChatFolder,
   loadChatFolders,
   moveChatFolder,
-  reorderCustomFolders,
   resetChatFolderRules,
   saveChatFolders,
   type ChatFolder,
@@ -26,11 +26,41 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
   const [activeFolderId, setActiveFolderId] = useState<string>('all')
   const [newFolderName, setNewFolderName] = useState('')
   const [chats, setChats] = useState<ApiChatRow[]>([])
+  const [userLookupById, setUserLookupById] = useState<Record<string, UserLookupRow>>({})
 
   useEffect(() => {
     setFolders(loadChatFolders())
     void fetchChatsList().then(setChats).catch(() => setChats([]))
   }, [userId])
+
+  useEffect(() => {
+    const peerIds = Array.from(
+      new Set(
+        chats
+          .filter((c) => !c.is_group)
+          .map((c) => c.member_ids.find((id) => id !== userId))
+          .filter((id): id is string => Boolean(id))
+      )
+    )
+    if (peerIds.length === 0) {
+      setUserLookupById({})
+      return
+    }
+    let cancelled = false
+    void lookupUsers(peerIds)
+      .then((rows) => {
+        if (cancelled) return
+        const map: Record<string, UserLookupRow> = {}
+        for (const row of rows) map[row.id] = row
+        setUserLookupById(map)
+      })
+      .catch(() => {
+        if (!cancelled) setUserLookupById({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [chats, userId])
 
   const activeFolder = useMemo(
     () => folders.find((f) => f.id === activeFolderId) ?? folders[0] ?? null,
@@ -222,6 +252,10 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                 {chats.map((c) => {
                   const checked = activeFolder.chatIds.includes(c.id)
                   const excluded = activeFolder.excludedChatIds.includes(c.id)
+                  const peerId = !c.is_group ? c.member_ids.find((id) => id !== userId) : null
+                  const peerName = peerId ? userLookupById[peerId]?.username?.trim() : ''
+                  const fallbackName = c.is_group ? `Group ${c.id.slice(0, 6)}` : `${(peerId ?? c.id).slice(0, 8)}…`
+                  const displayName = c.name?.trim() || peerName || fallbackName
                   return (
                     <div key={c.id} className="flex items-center gap-2 text-[10px]">
                       <input
@@ -239,7 +273,7 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                         title="Исключить из папки"
                       />
                       <span className="truncate">
-                        {c.name?.trim() || (c.is_group ? `Group ${c.id.slice(0, 6)}` : `DM ${c.id.slice(0, 6)}`)}
+                        {displayName}
                       </span>
                     </div>
                   )
@@ -248,33 +282,6 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
             </div>
           </div>
         ) : null}
-      </div>
-      <div className="border border-neon-cyan/30 p-3">
-        <p className="mb-2 text-[10px] text-text-muted">Drag and drop папок (пользовательские)</p>
-        <div className="space-y-1">
-          {folders.filter((f) => !f.isSystem).map((f) => (
-            <div
-              key={f.id}
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData('text/folder-id', f.id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault()
-                const source = e.dataTransfer.getData('text/folder-id')
-                if (!source) return
-                reorderCustomFolders(source, f.id)
-                setFolders(loadChatFolders())
-              }}
-              className={`px-2 py-1 text-[10px] ${
-                isMd3
-                  ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
-                  : 'border border-border-strong text-text-muted font-mono uppercase tracking-widest'
-              }`}
-            >
-              {f.name}
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   )

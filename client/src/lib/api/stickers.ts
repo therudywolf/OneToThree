@@ -257,6 +257,36 @@ export async function importTelegramStickerPack(shortName: string): Promise<{ pa
   return out
 }
 
+export async function cloneStickerPack(packId: string): Promise<{ pack_id: string; cloned: boolean; count?: number; already_owned?: boolean }> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/clone`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  const out = (await res.json().catch(() => ({}))) as {
+    pack_id?: string
+    cloned?: boolean
+    count?: number
+    already_owned?: boolean
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(out.error ?? `CLONE_PACK_${res.status}`)
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(PACKS_CACHE_KEY)
+    } catch {
+      // non-fatal
+    }
+  }
+  return {
+    pack_id: out.pack_id ?? '',
+    cloned: Boolean(out.cloned),
+    count: out.count,
+    already_owned: out.already_owned,
+  }
+}
+
 export async function fetchStickerPackShares(packId: string): Promise<Array<{ userId: string; createdAt: string }>> {
   const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/shares`, {
     credentials: 'include',

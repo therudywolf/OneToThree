@@ -15,10 +15,12 @@ import {
 import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
 import { useThemeStore } from '@/store/themeStore'
+import { parseStickerEnvelope } from '@/lib/attachment-envelope'
 
 type Action =
   | 'reply'
   | 'react'
+  | 'saveToMine'
   | 'edit'
   | 'deleteForMe'
   | 'deleteForAll'
@@ -85,6 +87,21 @@ export function MessageActions({
     show: boolean
     danger?: boolean
   }> = [
+    {
+      key: 'saveToMine',
+      label: (() => {
+        const sticker = parseStickerEnvelope(message.plaintext)
+        return sticker ? t('msgAction.addStickerPack') : t('msgAction.addGifFavorite')
+      })(),
+      icon: Copy,
+      show: (() => {
+        if (parseStickerEnvelope(message.plaintext)) return true
+        const mediaPath = message.media_path?.toLowerCase() ?? ''
+        if (mediaPath.endsWith('.gif')) return true
+        const plain = message.plaintext?.toLowerCase() ?? ''
+        return plain.includes('.gif') || plain.includes('giphy.com') || plain.includes('media.tenor.com')
+      })(),
+    },
     { key: 'reply', label: t('msgAction.reply'), icon: Reply, show: true },
     { key: 'react', label: t('msgAction.react'), icon: SmilePlus, show: true },
     {

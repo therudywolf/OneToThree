@@ -7,6 +7,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useShell } from '@/components/ui/shell'
 import { useThemeStore } from '@/store/themeStore'
 import {
+  cloneStickerPack,
   fetchPackStickers,
   fetchStickerPacks,
   loadStickerDisplayUrl,
@@ -15,9 +16,9 @@ import {
   type Sticker,
   type StickerPack,
 } from '@/lib/api/stickers'
-import { fetchTrendingGifs, searchGifs, type GifHit } from '@/lib/api/gif'
+import { fetchGifFavorites, fetchTrendingGifs, removeGifFavorite, searchGifs, type GifHit } from '@/lib/api/gif'
 import { buildStickerPlaintext } from '@/lib/sticker-payload'
-import { toastError } from '@/store/toastStore'
+import { toastError, toastSuccess } from '@/store/toastStore'
 
 const LazyEmojiPicker = dynamic(
   () => import('emoji-picker-react').then((m) => m.default),
@@ -65,11 +66,14 @@ export function ComposerPickerPanel({
   const [stickerRetryById, setStickerRetryById] = useState<Record<string, boolean>>({})
   const [importName, setImportName] = useState('')
   const [importBusy, setImportBusy] = useState(false)
+  const [cloneBusyPackId, setCloneBusyPackId] = useState<string | null>(null)
   const [gifQuery, setGifQuery] = useState('')
   const [gifBusy, setGifBusy] = useState(false)
   const [gifErr, setGifErr] = useState<string | null>(null)
   const [gifs, setGifs] = useState<GifHit[]>([])
   const [gifDegraded, setGifDegraded] = useState(false)
+  const [gifFavorites, setGifFavorites] = useState<GifHit[]>([])
+  const [gifFavBusyId, setGifFavBusyId] = useState<string | null>(null)
 
   const pickerHeight = layout === 'dock' ? 360 : 320
 
@@ -159,6 +163,28 @@ export function ComposerPickerPanel({
     }
   }, [tab, gifQuery])
 
+  useEffect(() => {
+    if (tab !== 'gif') return
+    let cancelled = false
+    void fetchGifFavorites()
+      .then((rows) => {
+        if (!cancelled) {
+          setGifFavorites(rows.map((r) => ({
+            id: r.id,
+            title: r.title,
+            previewUrl: r.previewUrl,
+            originalUrl: r.originalUrl,
+          })))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setGifFavorites([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tab])
+
   const onImport = async () => {
     const name = importName.trim()
     if (!name || importBusy) return
@@ -171,6 +197,20 @@ export function ComposerPickerPanel({
       toastError(e instanceof Error ? e.message : 'IMPORT_FAILED', { title: 'Stickers' })
     } finally {
       setImportBusy(false)
+    }
+  }
+
+  const onClonePack = async (packId: string) => {
+    if (cloneBusyPackId) return
+    setCloneBusyPackId(packId)
+    try {
+      const out = await cloneStickerPack(packId)
+      toastSuccess(out.already_owned ? t('stickers.alreadyMine') : t('stickers.addedMine'), { title: 'Stickers' })
+      await loadPacks()
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : 'CLONE_FAILED', { title: 'Stickers' })
+    } finally {
+      setCloneBusyPackId(null)
     }
   }
 
@@ -288,6 +328,25 @@ export function ComposerPickerPanel({
                 <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
               ) : (
                 <div className="min-h-0 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                  {(() => {
+                    const selectedPack = packs.find((p) => p.id === selectedPackId)
+                    if (!selectedPack || selectedPack.accessScope === 'owned') return null
+                    return (
+                      <div className="mb-2 flex items-center justify-between rounded border border-neon-cyan/20 bg-void/40 px-2 py-1">
+                        <span className="font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                          {selectedPack.accessScope === 'public' ? 'Public pack' : 'Shared pack'}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={cloneBusyPackId === selectedPack.id}
+                          onClick={() => void onClonePack(selectedPack.id)}
+                          className="rounded border border-neon-cyan/40 px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+                        >
+                          {cloneBusyPackId === selectedPack.id ? t('stickers.adding') : t('stickers.addToMine')}
+                        </button>
+                      </div>
+                    )
+                  })()}
                   <div className="grid grid-cols-5 gap-1 sm:grid-cols-6">
                   {stickers.map((s) => {
                     const stickerSrc = stickerSrcById[s.id] ?? s.url
@@ -364,6 +423,56 @@ export function ComposerPickerPanel({
 
         {tab === 'gif' ? (
           <div className="flex min-h-0 flex-col gap-2 p-2">
+            {gifFavorites.length > 0 ? (
+              <div className="space-y-1">
+                <p className="font-mono text-[9px] uppercase tracking-widest text-text-muted">{t('gif.favorites')}</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {gifFavorites.map((g) => (
+                    <div key={`fav-${g.id}`} className="relative">
+                      <button
+                        type="button"
+                        className="p13-media-tile rounded"
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              if (onGifPick) await onGifPick(g)
+                              else onEmoji(` ${g.originalUrl} `)
+                              onAfterStickerSend?.()
+                            } catch (e) {
+                              toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })
+                            }
+                          })()
+                        }}
+                        title={g.title}
+                      >
+                        <img src={g.previewUrl} alt={g.title} className="h-20 w-full object-cover" loading="lazy" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={gifFavBusyId === g.id}
+                        onClick={() => {
+                          setGifFavBusyId(g.id)
+                          void removeGifFavorite(g.id)
+                            .then(() => {
+                              setGifFavorites((prev) => prev.filter((x) => x.id !== g.id))
+                            })
+                            .catch((e) => {
+                              toastError(e instanceof Error ? e.message : 'GIF_FAVORITE_REMOVE_FAILED', { title: 'GIF' })
+                            })
+                            .finally(() => {
+                              setGifFavBusyId(null)
+                            })
+                        }}
+                        className="absolute right-1 top-1 rounded border border-black/50 bg-black/60 px-1 text-[9px] text-white disabled:opacity-50"
+                        aria-label="Remove favorite gif"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <input
               type="text"
               value={gifQuery}

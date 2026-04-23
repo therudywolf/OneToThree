@@ -39,12 +39,43 @@ import { formatMessageTimestamp, formatDateDivider, calendarDayKey } from '@/lib
 import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
 import { ForwardModal } from '@/components/chat/forward-modal'
 import { ThreadPanel } from '@/components/chat/thread-panel'
+import { cloneStickerPack } from '@/lib/api/stickers'
+import { addGifFavorite, type GifHit } from '@/lib/api/gif'
+import { toastError, toastSuccess } from '@/store/toastStore'
 
 const OLDER_PAGE_SIZE = 25
 const OLDER_RAM_CAP = 200
 
 function shortId(id: string) {
   return `${id.slice(0, 8)}…`
+}
+
+function gifIdFromUrl(url: string): string {
+  return `gif-${encodeURIComponent(url).slice(0, 110)}`
+}
+
+function gifFromMessage(msg: DecryptedMessage): GifHit | null {
+  const media = msg.media_path?.trim()
+  if (media && media.toLowerCase().endsWith('.gif')) {
+    return {
+      id: gifIdFromUrl(media),
+      title: 'gif',
+      previewUrl: media,
+      originalUrl: media,
+    }
+  }
+  const plain = msg.plaintext?.trim() ?? ''
+  const match = plain.match(/https?:\/\/\S+\.gif(\?\S+)?/i)
+  if (match?.[0]) {
+    const url = match[0]
+    return {
+      id: gifIdFromUrl(url),
+      title: 'gif',
+      previewUrl: url,
+      originalUrl: url,
+    }
+  }
+  return null
 }
 
 function mimeFromPathAndType(
@@ -501,6 +532,34 @@ export function ChatTerminal({
         case 'react':
           setReactingMsgId(msg.id)
           break
+        case 'saveToMine': {
+          const stickerEnv = parseStickerEnvelope(msg.plaintext)
+          if (stickerEnv) {
+            void (async () => {
+              try {
+                const out = await cloneStickerPack(stickerEnv.packId)
+                toastSuccess(
+                  out.already_owned ? t('stickers.alreadyMine') : t('stickers.addedMine'),
+                  { title: 'Stickers' }
+                )
+              } catch (err) {
+                toastError(err instanceof Error ? err.message : 'STICKER_SAVE_FAILED', { title: 'Stickers' })
+              }
+            })()
+            break
+          }
+          const gif = gifFromMessage(msg)
+          if (!gif) break
+          void (async () => {
+            try {
+              await addGifFavorite(gif)
+              toastSuccess(t('gif.addedToFavorites'), { title: 'GIF' })
+            } catch (err) {
+              toastError(err instanceof Error ? err.message : 'GIF_FAVORITE_ADD_FAILED', { title: 'GIF' })
+            }
+          })()
+          break
+        }
         case 'forward':
           setForwardMsg(msg)
           break

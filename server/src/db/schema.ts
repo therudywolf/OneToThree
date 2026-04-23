@@ -228,6 +228,26 @@ export const chatFavorites = pgTable(
   })
 )
 
+/** Per-user favorite GIFs for composer quick access. */
+export const gifFavorites = pgTable(
+  'gif_favorites',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    gifId: text('gif_id').notNull(),
+    title: text('title').notNull(),
+    previewUrl: text('preview_url').notNull(),
+    originalUrl: text('original_url').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.gifId] }),
+    userIdx: index('gif_favorites_user_id_idx').on(t.userId),
+    createdAtIdx: index('gif_favorites_created_at_idx').on(t.createdAt),
+  })
+)
+
 export const messages = pgTable(
   'messages',
   {

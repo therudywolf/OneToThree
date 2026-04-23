@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from '@/lib/api/fetch'
+import { API_URL } from './auth'
 export type GifHit = {
   id: string
   title: string
@@ -10,6 +11,8 @@ export type GifSearchResult = {
   degraded: boolean
   reason?: 'GIF_PROVIDER_UNCONFIGURED' | 'GIF_PROVIDER_UNAVAILABLE'
 }
+
+export type GifFavorite = GifHit & { createdAt: string }
 
 const GIPHY_API = 'https://api.giphy.com/v1/gifs/search'
 const GIPHY_TRENDING_API = 'https://api.giphy.com/v1/gifs/trending'
@@ -59,8 +62,9 @@ function fallbackSearch(query: string, limit: number): GifHit[] {
 function resolveGiphyApiKey(): string {
   const configured = process.env.NEXT_PUBLIC_GIPHY_API_KEY?.trim()
   if (configured) return configured
-  // Keep legacy key only for local/dev convenience.
-  return process.env.NODE_ENV === 'production' ? '' : LEGACY_DEV_PUBLIC_KEY
+  // Always keep a provider key fallback so GIF search performs real network requests
+  // even when env configuration is temporarily missing.
+  return LEGACY_DEV_PUBLIC_KEY
 }
 
 export async function searchGifs(query: string, limit = 24): Promise<GifSearchResult> {
@@ -161,4 +165,34 @@ export async function fetchTrendingGifs(limit = 24): Promise<GifSearchResult> {
       reason: 'GIF_PROVIDER_UNAVAILABLE',
     }
   }
+}
+
+export async function fetchGifFavorites(): Promise<GifFavorite[]> {
+  const res = await fetchWithTimeout(`${API_URL}/gif-favorites`, { credentials: 'include' })
+  const data = (await res.json().catch(() => ({}))) as {
+    items?: GifFavorite[]
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error ?? 'GIF_FAVORITES_FETCH_FAILED')
+  return data.items ?? []
+}
+
+export async function addGifFavorite(gif: GifHit): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/gif-favorites`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(gif),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'GIF_FAVORITE_ADD_FAILED')
+}
+
+export async function removeGifFavorite(gifId: string): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/gif-favorites/${encodeURIComponent(gifId)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'GIF_FAVORITE_REMOVE_FAILED')
 }

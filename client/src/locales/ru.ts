@@ -675,6 +675,14 @@ const ru = {
   'msgAction.copy': 'Скопировать текст',
   'msgAction.pin': 'Закрепить сообщение',
   'msgAction.unpin': 'Открепить сообщение',
+  'msgAction.addStickerPack': 'Добавить пак себе',
+  'msgAction.addGifFavorite': 'Добавить GIF в избранное',
+  'stickers.addToMine': 'Добавить себе',
+  'stickers.adding': 'Добавление…',
+  'stickers.alreadyMine': 'Уже есть в вашей коллекции',
+  'stickers.addedMine': 'Добавлено в вашу коллекцию',
+  'gif.favorites': 'Избранные',
+  'gif.addedToFavorites': 'GIF добавлен в избранное',
 
   // [PROFILE - EXPANDED]
   'profile.mutualGroups': 'Общие группы',

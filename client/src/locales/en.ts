@@ -675,6 +675,14 @@ const en = {
   'msgAction.copy': 'Copy text',
   'msgAction.pin': 'Pin message',
   'msgAction.unpin': 'Unpin message',
+  'msgAction.addStickerPack': 'Add pack to mine',
+  'msgAction.addGifFavorite': 'Add GIF to favorites',
+  'stickers.addToMine': 'Add to mine',
+  'stickers.adding': 'Adding…',
+  'stickers.alreadyMine': 'Already in your collection',
+  'stickers.addedMine': 'Added to your collection',
+  'gif.favorites': 'Favorites',
+  'gif.addedToFavorites': 'GIF added to favorites',
 
   // [PROFILE - EXPANDED]
   'profile.mutualGroups': 'Mutual Groups',

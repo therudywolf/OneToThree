@@ -445,6 +445,92 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ stickers: withUrls })
   })
 
+  /**
+   * POST /api/stickers/packs/:packId/clone
+   * Clone an accessible pack into the current user's private collection.
+   * Reuses already cached sticker media objects on the server (no Telegram fetch).
+   */
+  app.post('/packs/:packId/clone', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const source = await getAccessiblePack(params.data.packId, user.id)
+    if (!source) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (!source.canRead) return reply.status(403).send({ error: 'FORBIDDEN' })
+    if (source.ownerId === user.id) {
+      return reply.send({ pack_id: params.data.packId, cloned: false, already_owned: true })
+    }
+
+    const [sourcePack] = await db
+      .select({
+        id: stickerPacks.id,
+        title: stickerPacks.title,
+        shortName: stickerPacks.shortName,
+        format: stickerPacks.format,
+        tgSource: stickerPacks.tgSource,
+      })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+    if (!sourcePack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+
+    const cloneShortName = `c_${sourcePack.id.slice(0, 8)}_${user.id.slice(0, 8)}`
+    const [existingClone] = await db
+      .select({ id: stickerPacks.id })
+      .from(stickerPacks)
+      .where(and(eq(stickerPacks.ownerId, user.id), eq(stickerPacks.shortName, cloneShortName)))
+      .limit(1)
+    if (existingClone) {
+      return reply.send({ pack_id: existingClone.id, cloned: false })
+    }
+
+    const sourceStickers = await db
+      .select({
+        position: stickers.position,
+        emoji: stickers.emoji,
+        mediaKey: stickers.mediaKey,
+        thumbhash: stickers.thumbhash,
+        width: stickers.width,
+        height: stickers.height,
+        durationMs: stickers.durationMs,
+      })
+      .from(stickers)
+      .where(eq(stickers.packId, sourcePack.id))
+      .orderBy(asc(stickers.position))
+
+    const clonedPackId = randomUUID()
+    await db.insert(stickerPacks).values({
+      id: clonedPackId,
+      ownerId: user.id,
+      title: sourcePack.title,
+      shortName: cloneShortName,
+      format: sourcePack.format,
+      isPublic: false,
+      tgSource: sourcePack.tgSource,
+    })
+
+    if (sourceStickers.length > 0) {
+      await db.insert(stickers).values(
+        sourceStickers.map((s) => ({
+          id: randomUUID(),
+          packId: clonedPackId,
+          position: s.position,
+          emoji: s.emoji,
+          mediaKey: s.mediaKey,
+          thumbhash: s.thumbhash,
+          width: s.width,
+          height: s.height,
+          durationMs: s.durationMs,
+        }))
+      )
+    }
+
+    return reply.status(201).send({ pack_id: clonedPackId, cloned: true, count: sourceStickers.length })
+  })
+
   /** DELETE /api/stickers/packs/:packId — delete a pack and its stickers (owner only) */
   app.delete('/packs/:packId', async (request, reply) => {
     const user = await getAuthUser(request, reply)

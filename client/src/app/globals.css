@@ -138,6 +138,10 @@ body {
   --crt-vignette-opacity: 0.14;
   --text-shadow-intensity: 0.08;
 }
+[data-theme="retro"] body {
+  text-shadow: none;
+  image-rendering: auto;
+}
 [data-theme="retro"] .terminal-panel {
   box-shadow:
     inset -1px -1px 0 #7d7d7d,
@@ -149,15 +153,32 @@ body {
     inset -1px -1px 0 #ffffff,
     inset 1px 1px 0 #7d7d7d;
 }
+[data-theme="retro"] .terminal-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em !important;
+  font-size: 10px;
+}
+[data-theme="retro"] .terminal-input,
+[data-theme="retro"] select,
+[data-theme="retro"] textarea {
+  border-radius: 0 !important;
+  border-color: #6b7078 !important;
+  background: #d4d0c8 !important;
+  color: #111 !important;
+}
 [data-theme="retro"] .p13-icon-btn,
 [data-theme="retro"] .p13-media-action-btn {
   box-shadow:
     inset -1px -1px 0 #6f737a,
     inset 1px 1px 0 #f8f8f8;
+  border-radius: 0 !important;
+  background: #d4d0c8;
+  color: #10243a;
 }
 [data-theme="retro"] .p13-icon-btn:hover,
 [data-theme="retro"] .p13-media-action-btn:hover {
-  filter: saturate(1.1);
+  background: #e1ddd5;
+  color: #0a4ea1;
 }
 [data-theme="retro"] .p13-icon-btn:active,
 [data-theme="retro"] .p13-media-action-btn:active {
@@ -168,31 +189,54 @@ body {
 }
 [data-theme="retro"] .p13-sidebar-row {
   border-left-color: transparent !important;
+  border-radius: 0 !important;
+  background: #d4d0c8 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 [data-theme="retro"] .p13-sidebar-row::after {
-  background: color-mix(in srgb, #5f6670 60%, transparent);
+  background: #9ba1ab;
 }
 [data-theme="retro"] .p13-sidebar-row[data-active="true"] {
-  background: color-mix(in srgb, var(--neon-red) 18%, #d4d0c8);
+  background: color-mix(in srgb, #0a4ea1 16%, #d4d0c8) !important;
   box-shadow:
     inset -1px -1px 0 #8a8f98,
     inset 1px 1px 0 #ffffff;
 }
+[data-theme="retro"] .chat-layout-sidebar {
+  background: #c8c4bc !important;
+  border-right: 1px solid #737983 !important;
+  box-shadow:
+    inset -1px 0 0 #f8f8f8,
+    1px 0 0 #727780;
+}
+[data-theme="retro"] .chat-layout-main {
+  border-left: 1px solid #7a8089 !important;
+  box-shadow: inset 1px 0 0 #f2f2f2 !important;
+}
+[data-theme="retro"] .chat-layout-divider::before {
+  background: #6f747c !important;
+}
 [data-theme="retro"] .p13-bubble--mine,
 [data-theme="retro"] .p13-bubble--peer {
   clip-path: none !important;
+  border-radius: 0 !important;
 }
 [data-theme="retro"] .p13-bubble--mine {
   box-shadow:
     inset -1px -1px 0 #7b8088,
     inset 1px 1px 0 #ffffff,
     0 1px 0 rgba(0, 0, 0, 0.15);
+  background: color-mix(in srgb, #0a4ea1 16%, #d4d0c8) !important;
+  color: #112b45 !important;
 }
 [data-theme="retro"] .p13-bubble--peer {
   box-shadow:
     inset -1px -1px 0 #898e97,
     inset 1px 1px 0 #ffffff,
     0 1px 0 rgba(0, 0, 0, 0.12);
+  background: #dcd8cf !important;
+  color: #1c1c1c !important;
 }
 [data-theme="retro"] .p13-date-divider > span,
 [data-theme="retro"] .chat-unread-divider {
@@ -200,6 +244,7 @@ body {
   background: color-mix(in srgb, #d4d0c8 92%, transparent);
   color: #283647;
   text-shadow: none;
+  border-radius: 0 !important;
 }
 [data-theme="retro"] .p13-media-tile,
 [data-theme="retro"] .p13-sticker-tile,
@@ -209,10 +254,52 @@ body {
   box-shadow:
     inset -1px -1px 0 #81858e,
     inset 1px 1px 0 #ffffff;
+  border-radius: 0 !important;
+  background: #d4d0c8 !important;
 }
 [data-theme="retro"] .p13-media-tile:hover,
 [data-theme="retro"] .p13-sticker-tile:hover {
-  transform: translateY(-1px);
+  transform: none;
+  background: #e2ded6 !important;
+}
+[data-theme="retro"] .p13-composer,
+[data-theme="retro"] .chat-compose-shell {
+  background: #c8c4bc !important;
+  border-top: 1px solid #6f747c !important;
+}
+[data-theme="retro"] .p13-composer-input {
+  border-radius: 0 !important;
+  background: #d4d0c8 !important;
+  border: 1px solid #6f747c !important;
+  box-shadow:
+    inset -1px -1px 0 #f6f6f6,
+    inset 1px 1px 0 #7b818a !important;
+}
+[data-theme="retro"] .p13-composer-input:focus-within {
+  box-shadow:
+    inset -1px -1px 0 #f6f6f6,
+    inset 1px 1px 0 #7b818a,
+    0 0 0 1px #0a4ea1 !important;
+}
+[data-theme="retro"] .p13-desktop-chat-header,
+[data-theme="retro"] .chat-header-compact {
+  background: #c8c4bc !important;
+  border-bottom: 1px solid #727881 !important;
+}
+[data-theme="retro"] .custom-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 0 !important;
+  border: 1px solid #6f747c !important;
+  background: linear-gradient(180deg, #d8d4cc, #b6b2ab) !important;
+}
+[data-theme="retro"] .custom-scrollbar::-webkit-scrollbar-track {
+  background: #c2beb6 !important;
+}
+[data-theme="retro"] button,
+[data-theme="retro"] .p13-media-action-btn,
+[data-theme="retro"] .p13-icon-btn {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
 }
 [data-theme="matrix"] {
   --void: #000000;

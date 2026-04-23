@@ -53,6 +53,31 @@ export function ThemeApplicator() {
     html.style.setProperty('--neon-cyan', resolved.tokens.accent)
     html.style.setProperty('--accent-2', resolved.tokens.accentSoft)
     html.style.setProperty('--neon-amber', resolved.tokens.accentSoft)
+    html.style.setProperty('--primary', resolved.tokens.primary)
+    html.style.setProperty(
+      '--on-primary',
+      resolved.scheme === 'light' ? '#ffffff' : '#101216'
+    )
+    html.style.setProperty(
+      '--surface-variant',
+      `color-mix(in srgb, ${resolved.tokens.surface} 84%, ${resolved.tokens.text} 16%)`
+    )
+    html.style.setProperty(
+      '--on-surface-variant',
+      `color-mix(in srgb, ${resolved.tokens.text} 70%, transparent)`
+    )
+    html.style.setProperty(
+      '--secondary-container',
+      `color-mix(in srgb, ${resolved.tokens.accent} 20%, ${resolved.tokens.surface})`
+    )
+    html.style.setProperty(
+      '--on-secondary-container',
+      `color-mix(in srgb, ${resolved.tokens.text} 92%, transparent)`
+    )
+    html.style.setProperty(
+      '--state-hover',
+      `color-mix(in srgb, ${resolved.tokens.text} 8%, transparent)`
+    )
     html.style.setProperty('--border-strong', resolved.tokens.border)
     html.style.setProperty('--danger', resolved.tokens.danger)
     html.style.setProperty('--success', resolved.tokens.success)

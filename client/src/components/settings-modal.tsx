@@ -135,6 +135,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     resetAppearance,
   } = useThemeStore()
   const isMd3 = shellMode === 'md3'
+  const isRetro = shellMode === 'terminal' && theme === 'retro'
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -434,6 +435,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const ghostOn = hidePresence === true
   const settingsBtn = isMd3
     ? 'min-h-11 whitespace-nowrap rounded-full border border-[color-mix(in_srgb,var(--on-surface)_18%,transparent)] px-4 py-2 text-[13px] font-medium tracking-normal transition-colors'
+    : isRetro
+      ? 'min-h-11 whitespace-nowrap rounded-none border border-[#6f747c] bg-[#d4d0c8] px-3 py-1.5 font-["Tahoma"] text-[11px] tracking-[0.02em] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff] transition-all duration-150'
     : 'min-h-11 whitespace-nowrap border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
   const resolvedTheme = resolveThemeAppearance({
     theme,
@@ -445,12 +448,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     backgroundColorOverride,
     motionMode,
   })
-  const chromeLabel = (label: string) => (isMd3 ? label : `[ ${label} ]`)
+  const chromeLabel = (label: string) => (isMd3 || isRetro ? label : `[ ${label} ]`)
 
   return (
     <div
       className={`custom-scrollbar fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden px-3 py-6 sm:px-4 ${
-        isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : 'bg-void/90'
+        isMd3
+          ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
+          : isRetro
+            ? 'bg-[color-mix(in_srgb,var(--void)_45%,#0b2d74)]'
+            : 'bg-void/90'
       }`}
       role="dialog" aria-modal="true" aria-label={t('common.settings')}
     >
@@ -461,16 +468,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' || settingsTab === 'folders' || settingsTab === 'chat' || settingsTab === 'stickers' ? 'max-w-2xl'
           : settingsTab === 'profile' ? 'max-w-lg'
           : totpSetup ? 'max-w-lg' : 'max-w-md'
-        } ${isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : ''}`}
+        } ${isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!rounded-none !border-[#6f747c] !bg-[#d4d0c8] !shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_16px_36px_rgba(0,0,0,0.34)]' : ''}`}
       >
         {/* ── Header ── */}
-        <header className={`flex shrink-0 items-start justify-between gap-2 border-b pb-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-red/40'}`}>
-          <p className={`min-w-0 break-words text-xs ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : 'uppercase tracking-[0.35em] text-neon-cyan'}`}>
+        <header className={`flex shrink-0 items-start justify-between gap-2 border-b pb-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#001f57] bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)] px-3 pt-2' : 'border-neon-red/40'}`}>
+          <p className={`min-w-0 break-words text-xs ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : isRetro ? 'font-["Tahoma"] tracking-[0.04em] text-[#f4f7ff]' : 'uppercase tracking-[0.35em] text-neon-cyan'}`}>
             {t('common.settings')} :: {username}
           </p>
           <button type="button" onClick={onClose}
-            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'rounded-full px-2 py-1 text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : 'font-mono text-neon-red hover:text-neon-cyan'}`}>
-            {isMd3 ? '✕' : '[X]'}
+            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'rounded-full px-2 py-1 text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'border border-[#6f747c] bg-[#d4d0c8] px-2 py-0.5 font-["Tahoma"] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]' : 'font-mono text-neon-red hover:text-neon-cyan'}`}>
+            {isMd3 || isRetro ? '✕' : '[X]'}
           </button>
         </header>
 

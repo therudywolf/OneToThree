@@ -1015,6 +1015,7 @@ export function ChatApp({
             userId={userId}
             isAdmin={user?.role === 'admin'}
             sharedKey={sharedKey}
+            isCollapsed={sidebarCollapsed}
             onPackSettingsChanged={() => setGroupDetailTick((n) => n + 1)}
             onNavigate={closeMobileOverlays}
             onOpenSettings={() => setSettingsOpen(true)}

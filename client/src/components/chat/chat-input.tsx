@@ -163,6 +163,13 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   }, [composerPickerOpen])
 
   useEffect(() => {
+    if (!composerPickerOpen) return
+    if (!matchesDockViewport()) return
+    // Keep one picker surface active after viewport transitions.
+    setComposerPickerOpen(false)
+  }, [composerPickerOpen])
+
+  useEffect(() => {
     return () => {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current)
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
@@ -642,7 +649,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 }
                 setComposerPickerOpen((o) => !o)
               }}
-              tabIndex={-1}
               title={t('composer.toggle')}
             >
               <Smile className="h-4 w-4" />

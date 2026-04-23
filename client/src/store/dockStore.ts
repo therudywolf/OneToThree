@@ -5,10 +5,9 @@ import type { DecryptedMessage } from '@/types/chat'
 
 /**
  * Which slot the right dock panel (xl+ screens) is currently rendering.
- * `null` = dock collapsed.  The same actions fall back to plain modals on
- * narrower viewports — components that surface these actions should check
- * `window.matchMedia('(min-width: 80rem)')` or a `useMediaQuery` hook before
- * choosing dock vs. modal.
+ * `null` = dock collapsed. The same actions fall back to plain modals on
+ * narrower viewports — components should use `matchesDockViewport()` so
+ * logic stays aligned with the actual `xl` dock visibility breakpoint.
  */
 export type DockSlot = 'profile' | 'emoji' | 'search' | 'pinned' | 'composer'
 
@@ -102,8 +101,8 @@ export const useDockStore = create<DockState>((set, get) => ({
   },
 }))
 
-/** Tailwind breakpoint used to decide dock-vs-modal rendering. */
-export const DOCK_BREAKPOINT = '(min-width: 80rem)'
+/** Tailwind `xl` breakpoint used to decide dock-vs-modal rendering. */
+export const DOCK_BREAKPOINT = '(min-width: 1280px)'
 
 /** Cheap SSR-safe query used by consumers to pick dock vs. modal. */
 export function matchesDockViewport(): boolean {

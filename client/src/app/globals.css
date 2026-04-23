@@ -129,11 +129,11 @@ body {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 [data-theme="retro"] {
-  --void: #0b2d74;
+  --void: #008080;
   --surface: #c0c0c0;
   --surface-elevated: #d4d0c8;
   --neon-red: #0a4ea1;
-  --neon-cyan: #008e8e;
+  --neon-cyan: #0b4f9b;
   --neon-amber: #e0ad2d;
   --accent-2: #f2c94c;
   --on-surface: #111111;
@@ -151,7 +151,7 @@ body {
   text-shadow: none;
   image-rendering: auto;
   background:
-    linear-gradient(180deg, #0b2d74 0%, #103a8c 45%, #0a2a6b 100%) !important;
+    linear-gradient(180deg, #008080 0%, #0a6f73 45%, #0b5f61 100%) !important;
   color: #111;
 }
 [data-theme="retro"] .terminal-panel {
@@ -289,10 +289,10 @@ body {
     inset 1px 1px 0 #ffffff !important;
 }
 [data-theme="retro"] .p13-empty-state-text {
-  color: #ffffff !important;
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
-  background: linear-gradient(180deg, #0a4ea1, #083b7c);
-  border: 1px solid #001e52;
+  color: #10243a !important;
+  text-shadow: none;
+  background: #d4d0c8;
+  border: 1px solid #7a8089;
   padding: 8px 14px;
 }
 [data-theme="retro"] .p13-empty-state-hint {
@@ -366,7 +366,7 @@ body {
   --p13-row-bg: #d4d0c8;
   --p13-row-hover-bg: #e2ded6;
   --p13-row-active-bg: #0a4ea1;
-  --p13-row-active-stripe: #ffce00;
+  --p13-row-active-stripe: #ffffff;
   --p13-row-margin: 0;
   --p13-row-radius: 0;
   --p13-header-bg: linear-gradient(180deg, #0a4ea1, #0b3f87);
@@ -375,9 +375,9 @@ body {
   --p13-icon-btn-border: 1px solid #6f747c;
   --p13-icon-btn-fg: #10243a;
   --p13-icon-btn-hover-bg: #e1ddd5;
-  --p13-badge-bg: #ffce00;
-  --p13-badge-border: 1px solid #7f6500;
-  --p13-badge-fg: #1c1c1c;
+  --p13-badge-bg: #dcd8cf;
+  --p13-badge-border: 1px solid #6f747c;
+  --p13-badge-fg: #1f2f44;
   --p13-label-transform: none;
   --p13-label-spacing: 0.03em;
   --p13-label-weight: 700;
@@ -2997,6 +2997,19 @@ select {
   --epr-skin-tone-picker-menu-color: var(--surface-elevated, #1e2430);
   --epr-picker-border-color: transparent;
 }
+[data-theme="retro"][data-shell="terminal"] .p13-epr-host,
+[data-theme="retro"][data-shell="terminal"] .p13-emoji-popup {
+  --epr-bg-color: #d4d0c8;
+  --epr-category-label-bg-color: #c9c6bc;
+  --epr-text-color: #1c2e42;
+  --epr-search-input-bg-color: #ffffff;
+  --epr-search-border-color: #6f747c;
+  --epr-hover-bg-color: #d8e6f8;
+  --epr-focus-bg-color: #c6daf4;
+  --epr-highlight-color: #0a4ea1;
+  --epr-category-icon-active-color: #0a4ea1;
+  --epr-skin-tone-picker-menu-color: #d4d0c8;
+}
 /* strip the library's own outer border/shadow so it blends into the host container */
 .p13-epr-host .EmojiPickerReact,
 .p13-emoji-popup .EmojiPickerReact {
@@ -3020,6 +3033,14 @@ select {
   border-radius: 24px;
   box-shadow: 0 4px 8px rgba(0,0,0,.14), 0 1px 3px rgba(0,0,0,.12);
   background: var(--surface-elevated);
+}
+[data-theme="retro"][data-shell="terminal"] .p13-emoji-popup {
+  border: 1px solid #6f747c;
+  box-shadow:
+    inset -1px -1px 0 #7d7d7d,
+    inset 1px 1px 0 #ffffff,
+    0 10px 20px rgba(0, 0, 0, 0.28);
+  background: #d4d0c8;
 }
 
 /* --- Recording bar (locked) --------------------------------- */

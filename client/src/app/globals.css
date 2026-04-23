@@ -76,8 +76,8 @@ body {
   font-family: var(--font-family);
   text-shadow: 0 0 1px color-mix(in srgb, var(--neon-cyan) calc(var(--text-shadow-intensity, 0.35) * 100%), transparent);
   overflow-x: hidden;
-  overflow-y: hidden;
-  overscroll-behavior-y: none;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
   background-attachment: fixed;
   background:
     radial-gradient(circle at 12% 10%, color-mix(in srgb, var(--page-glow) 34%, transparent) 0, transparent 30%),
@@ -883,7 +883,7 @@ textarea {
 
 .chat-safe-shell {
   position: relative;
-  padding-bottom: var(--p13-safe-bottom, env(safe-area-inset-bottom, 0px));
+  padding-bottom: 0;
 }
 .p13-app-shell {
   height: var(--p13-app-height, 100dvh);

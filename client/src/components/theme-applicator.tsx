@@ -122,6 +122,8 @@ export function ThemeApplicator() {
       `color-mix(in srgb, ${resolved.tokens.surface} 82%, transparent)`
     )
     html.style.setProperty('--p13-touch-target', `${TELEGRAM_BEHAVIOR.mobile.touchTargetPx}px`)
+    html.style.setProperty('--p13-mobile-sheet-duration', `${TELEGRAM_BEHAVIOR.mobile.sheetAnimationMs}ms`)
+    html.style.setProperty('--p13-keyboard-settle-duration', `${TELEGRAM_BEHAVIOR.mobile.keyboardSettleMs}ms`)
 
     // --- motion (shell-aware: MD3 uses Material 3 spec timings) ---
     const isMd3Shell = resolved.shell.id === 'md3'

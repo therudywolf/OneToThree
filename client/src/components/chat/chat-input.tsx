@@ -21,6 +21,7 @@ import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 import type { GifHit } from '@/lib/api/gif'
 import { useThemeStore } from '@/store/themeStore'
+import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 
 function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
@@ -29,9 +30,9 @@ function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   return 'file'
 }
 
-const LOCK_THRESHOLD_Y = 60
-const CANCEL_THRESHOLD_X = 80
-const HOLD_THRESHOLD_MS = 200
+const LOCK_THRESHOLD_Y = TELEGRAM_BEHAVIOR.gestures.recordLockYpx
+const CANCEL_THRESHOLD_X = TELEGRAM_BEHAVIOR.gestures.recordCancelXpx
+const HOLD_THRESHOLD_MS = TELEGRAM_BEHAVIOR.gestures.recordHoldMs
 
 type Props = {
   sendText: (

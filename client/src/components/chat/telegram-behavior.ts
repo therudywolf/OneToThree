@@ -4,6 +4,12 @@ export const TELEGRAM_BEHAVIOR = {
     maxWidth: 480,
     collapsedWidth: 88,
   },
+  mobile: {
+    touchTargetPx: 44,
+    headerHeightPx: 52,
+    sheetAnimationMs: 220,
+    keyboardSettleMs: 180,
+  },
   autoscroll: {
     stickPx: 240,
   },

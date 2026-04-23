@@ -66,11 +66,11 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // Called from SW pushsubscriptionchange — re-registers updated subscription.
-  // No auth cookie may be available in SW context, so we accept it as best-effort
-  // and match by the old endpoint via upsert on the new one.
+  // No auth cookie may be available in SW context on iOS/Android; treat as
+  // best-effort and let foreground app session recover subscription later.
   app.post('/resubscribe', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
+    if (!user) return reply.status(202).send({ ok: false, queued: true })
 
     const parsed = resubscribeBodySchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })

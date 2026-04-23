@@ -60,6 +60,7 @@ import { useThemeStore } from '@/store/themeStore'
 import { isApprovedContact } from '@/lib/contacts-store'
 import { UserAvatar } from '@/components/user-avatar'
 import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
+import { installPushRecoveryListener } from '@/lib/push-subscription'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -230,6 +231,12 @@ export function ChatApp({
     setMobileSearchOpen(false)
     setMobileSidebarOpen(true)
   }, [])
+  const closeMobileOverlays = useCallback(() => {
+    setMobileSidebarOpen(false)
+    setMobileSearchOpen(false)
+    setHeaderProfileOpen(false)
+  }, [])
+  const mobileOverlayOpen = mobileSidebarOpen || mobileSearchOpen || headerProfileOpen
 
   const openPeerProfile = useCallback((peerUserId: string) => {
     if (matchesDockViewport()) {
@@ -342,6 +349,26 @@ export function ChatApp({
   }, [activeChatId])
 
   useEffect(() => {
+    if (!mobileOverlayOpen) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [mobileOverlayOpen])
+
+  useEffect(() => {
+    if (!mobileOverlayOpen) return
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') closeMobileOverlays()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [mobileOverlayOpen, closeMobileOverlays])
+
+  useEffect(() => {
     if (!activeChatId || !matchesDockViewport()) return
     const store = useDockStore.getState()
     if (store.slot === 'search' && store.searchScopeChatId && store.searchScopeChatId !== activeChatId) {
@@ -359,6 +386,10 @@ export function ChatApp({
       window.removeEventListener('online', onOnline)
       window.removeEventListener('offline', onOffline)
     }
+  }, [])
+
+  useEffect(() => {
+    return installPushRecoveryListener()
   }, [])
 
   useEffect(() => {
@@ -700,15 +731,15 @@ export function ChatApp({
           we use a full-height sheet so the chat stays reachable behind it. */}
       {mobileSearchOpen ? (
         <div
-          className="p13-search-overlay fixed inset-0 z-[120] flex flex-col bg-void/95 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-sm xl:hidden"
+          className="p13-search-overlay fixed inset-0 z-[120] flex flex-col bg-void/95 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-sm motion-safe:animate-[p13-mobile-sheet-in_var(--motion-base)_ease-out] xl:hidden"
           role="dialog"
           aria-modal="true"
           aria-label={t('chatSearch.title')}
         >
           <ChatSearchPanel
-            onClose={() => setMobileSearchOpen(false)}
+            onClose={closeMobileOverlays}
             onJumpToMessage={(id) => {
-              setMobileSearchOpen(false)
+              closeMobileOverlays()
               scrollToMessage(id)
             }}
           />
@@ -716,7 +747,10 @@ export function ChatApp({
       ) : null}
 
       {/* ─── HEADER ────────────────────────────────────────────────────────────────────────── */}
-      <header className={`p13-header chat-header-compact flex shrink-0 items-center gap-2 px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] md:hidden ${isMd3 ? `md3-top-appbar ${md3HeaderCondensed ? 'md3-top-appbar--condensed' : ''}` : ''}`}>
+      <header
+        className={`p13-header chat-header-compact flex shrink-0 items-center gap-2 px-2 py-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] md:hidden ${isMd3 ? `md3-top-appbar ${md3HeaderCondensed ? 'md3-top-appbar--condensed' : ''}` : ''}`}
+        style={{ minHeight: `${TELEGRAM_BEHAVIOR.mobile.headerHeightPx}px` }}
+      >
 
         {/* Burger — mobile only */}
         <button
@@ -924,7 +958,7 @@ export function ChatApp({
             type="button"
             className="fixed inset-0 z-40 touch-none bg-void/75 md:hidden"
             aria-label="Close channel list"
-            onClick={() => setMobileSidebarOpen(false)}
+            onClick={closeMobileOverlays}
           />
         ) : null}
         <div
@@ -946,7 +980,7 @@ export function ChatApp({
             </span>
             <button
               type="button"
-              onClick={() => setMobileSidebarOpen(false)}
+              onClick={closeMobileOverlays}
               aria-label={t('common.close')}
               title={t('common.close')}
               className="p13-icon-btn touch-manipulation"
@@ -959,7 +993,7 @@ export function ChatApp({
             isAdmin={user?.role === 'admin'}
             sharedKey={sharedKey}
             onPackSettingsChanged={() => setGroupDetailTick((n) => n + 1)}
-            onNavigate={() => setMobileSidebarOpen(false)}
+            onNavigate={closeMobileOverlays}
             onOpenSettings={() => setSettingsOpen(true)}
             onLockVault={() => setUnwrappedPrivateKey(null)}
           />

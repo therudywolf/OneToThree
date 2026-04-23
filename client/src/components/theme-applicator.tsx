@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { resolveThemeAppearance, useThemeStore } from '@/store/themeStore'
+import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 
 /**
  * CHROMATIC_APPLICATOR
@@ -116,6 +117,11 @@ export function ThemeApplicator() {
     // --- background glow ---
     html.style.setProperty('--page-glow', resolved.tokens.pageGlow)
     html.style.setProperty('--page-glow-secondary', resolved.tokens.pageGlowSecondary)
+    html.style.setProperty(
+      '--p13-mobile-header-bg',
+      `color-mix(in srgb, ${resolved.tokens.surface} 82%, transparent)`
+    )
+    html.style.setProperty('--p13-touch-target', `${TELEGRAM_BEHAVIOR.mobile.touchTargetPx}px`)
 
     // --- motion (shell-aware: MD3 uses Material 3 spec timings) ---
     const isMd3Shell = resolved.shell.id === 'md3'

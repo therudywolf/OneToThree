@@ -14,8 +14,11 @@ function computeKeyboardInsetPx(): number {
 function applyViewportVars() {
   if (typeof document === 'undefined') return
   const root = document.documentElement
-  root.style.setProperty('--p13-keyboard-inset', `${computeKeyboardInsetPx()}px`)
+  const keyboardInset = computeKeyboardInsetPx()
+  root.style.setProperty('--p13-keyboard-inset', `${keyboardInset}px`)
+  root.style.setProperty('--p13-safe-bottom', `max(env(safe-area-inset-bottom, 0px), ${keyboardInset}px)`)
   root.style.setProperty('--p13-vh', `${window.innerHeight * 0.01}px`)
+  root.setAttribute('data-keyboard-open', keyboardInset > 0 ? 'true' : 'false')
 }
 
 export function useMobileViewport() {

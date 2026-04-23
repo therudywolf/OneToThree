@@ -17,6 +17,7 @@ export function useShellIntegration() {
   const [integrationEvent, setIntegrationEvent] = useState<BeforeInstallPromptEvent | null>(
     null
   )
+  const [isInstalled, setIsInstalled] = useState(false)
 
   useEffect(() => {
     /** [SIGNAL_INTERCEPT] :: Перехват запроса на установку оболочки */
@@ -24,11 +25,30 @@ export function useShellIntegration() {
       e.preventDefault()
       setIntegrationEvent(e as BeforeInstallPromptEvent)
     }
+    const onInstalled = () => {
+      setIsInstalled(true)
+      try {
+        localStorage.setItem('p13:pwa-installed', '1')
+      } catch {
+        /* ignore quota/storage errors */
+      }
+      setIntegrationEvent(null)
+    }
+
+    try {
+      setIsInstalled(localStorage.getItem('p13:pwa-installed') === '1')
+    } catch {
+      setIsInstalled(false)
+    }
 
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    window.addEventListener('appinstalled', onInstalled)
     
     return () =>
-      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+      {
+        window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+        window.removeEventListener('appinstalled', onInstalled)
+      }
   }, [])
 
   /** [EXECUTE_INTEGRATION] :: Запуск процесса развертывания нативного узла */
@@ -52,7 +72,8 @@ export function useShellIntegration() {
   const purgeIntegration = useCallback(() => setIntegrationEvent(null), [])
 
   return {
-    isInstallable: !!integrationEvent,
+    isInstallable: !!integrationEvent && !isInstalled,
+    isInstalled,
     triggerIntegration,
     purgeIntegration,
   }

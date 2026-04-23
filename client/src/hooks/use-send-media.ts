@@ -175,7 +175,12 @@ async function prepareEncryptedBlob(
   const label = ensureExtension(rawLabel, mimeType)
 
   let workBlob: Blob = rawBlob
-  if (segmentClass === 'image' && rawBlob.size > IMAGE_COMPRESSION_THRESHOLD_BYTES) {
+  const normalizedMime = mimeType.toLowerCase()
+  const shouldCompressImage =
+    segmentClass === 'image' &&
+    rawBlob.size > IMAGE_COMPRESSION_THRESHOLD_BYTES &&
+    normalizedMime !== 'image/gif'
+  if (shouldCompressImage) {
     const source = rawBlob instanceof File ? rawBlob : new File([rawBlob], label, { type: mimeType })
     try {
       workBlob = await imageCompression(source, {

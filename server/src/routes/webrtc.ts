@@ -219,36 +219,41 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
    * legacy log-verbose error-path handling.
    */
   app.get('/ice-servers', async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
+    try {
+      const user = await getAuthUser(request, reply)
+      if (!assertAuthed(reply, user)) return
 
-    const iceServers: IceServerConfig[] = [...DEFAULT_ICE_SERVERS]
-    let source: 'cloudflare' | 'coturn' | null = null
-    let expiresAt: number | null = null
+      const iceServers: IceServerConfig[] = [...DEFAULT_ICE_SERVERS]
+      let source: 'cloudflare' | 'coturn' | null = null
+      let expiresAt: number | null = null
 
-    if (isCloudflareTurnConfigured()) {
-      try {
-        const cf = await issueCloudflareTurnCredentials()
-        iceServers.push(...cf.iceServers)
-        source = 'cloudflare'
-        expiresAt = cf.expiresAt
-      } catch (err) {
-        request.log.warn({ err }, 'ice-servers cloudflare failed, checking coturn')
+      if (isCloudflareTurnConfigured()) {
+        try {
+          const cf = await issueCloudflareTurnCredentials()
+          iceServers.push(...cf.iceServers)
+          source = 'cloudflare'
+          expiresAt = cf.expiresAt
+        } catch (err) {
+          request.log.warn({ err }, 'ice-servers cloudflare failed, checking coturn')
+        }
       }
-    }
-    if (!source) {
-      const coturn = collectCoturnIceServers(user.id)
-      if (coturn.length > 0) {
-        iceServers.push(...coturn)
-        source = 'coturn'
+      if (!source) {
+        const coturn = collectCoturnIceServers(user.id)
+        if (coturn.length > 0) {
+          iceServers.push(...coturn)
+          source = 'coturn'
+        }
       }
-    }
-    if (!source || iceServers.length === 0) {
-      request.log.error('ice-servers failed: relay not configured')
-      return reply.status(503).send({ error: 'TURN_NOT_CONFIGURED' })
-    }
+      if (!source || iceServers.length === 0) {
+        request.log.error('ice-servers failed: relay not configured')
+        return reply.status(503).send({ error: 'TURN_NOT_CONFIGURED' })
+      }
 
-    reply.header('cache-control', 'private, max-age=0, must-revalidate')
-    return reply.send({ iceServers, source, expiresAt })
+      reply.header('cache-control', 'private, max-age=0, must-revalidate')
+      return reply.send({ iceServers, source, expiresAt })
+    } catch (err) {
+      request.log.error({ err }, 'ice-servers route failed unexpectedly')
+      return reply.status(503).send({ error: 'ICE_SERVERS_UNAVAILABLE' })
+    }
   })
 }

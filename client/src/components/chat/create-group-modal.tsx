@@ -41,6 +41,9 @@ function mapSystemError(raw: string, t: (k: TranslationKey) => string): string {
     INVALID_BODY: 'group.serverInvalid',
     DUPLICATE_MEMBER: 'group.serverDuplicate',
     CREATOR_NOT_IN_MEMBERS: 'group.creatorMissing',
+    MISSING_CREATOR_ECDH: 'group.createFailed',
+    INVALID_CHAT_TYPE: 'group.serverInvalid',
+    ICE_SERVERS_UNAVAILABLE: 'group.createFailed',
   }
   
   const key = protocolErrors[raw]

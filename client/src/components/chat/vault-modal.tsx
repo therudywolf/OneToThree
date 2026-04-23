@@ -38,6 +38,7 @@ import { vibrateShort } from '@/lib/vibrate'
 import { useTranslation } from '@/hooks/use-translation'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { useThemeStore } from '@/store/themeStore'
+import { LogoutButton } from '@/components/logout-button'
 
 const OTP_NEXT_ID_KEY = (userId: string) => `p13:dr-otp-next:${userId}`
 const OTP_REPLENISH_THRESHOLD = 5
@@ -303,6 +304,12 @@ export function VaultModal({ userId, displayHandle }: Props) {
               {busy ? `[ ${t('login.generatingKeys')} ]` : t('login.signIn')}
             </TerminalGlitchButton>
           )}
+          <div className={`space-y-2 border-t pt-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/25'}`}>
+            <p className={`text-[10px] ${isMd3 ? 'text-text-muted' : 'font-mono uppercase tracking-widest text-text-muted/80'}`}>
+              {t('login.switchAccountHint')}
+            </p>
+            <LogoutButton className="w-full" />
+          </div>
         </form>
       </div>
     </div>

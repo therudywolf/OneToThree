@@ -133,9 +133,11 @@ export async function dispatchSectorKeys(
 export async function wrapGroupKeyForMemberWithCreatorEcdh(
   creatorPrivateKey: CryptoKey,
   memberPublicKeyJwk: string,
-  sectorKey: CryptoKey
+  sectorKey: CryptoKey,
+  creatorPublicKeyJwk?: string
 ): Promise<string> {
-  const creatorPubJwk = await exportEcdhPublicJwkFromPrivateKey(creatorPrivateKey)
+  const creatorPubJwk =
+    creatorPublicKeyJwk ?? (await exportEcdhPublicJwkFromPrivateKey(creatorPrivateKey))
   const memberPub = await importEcdhPublicKey(memberPublicKeyJwk)
   const wrapKey = await deriveSharedSecret(creatorPrivateKey, memberPub)
   

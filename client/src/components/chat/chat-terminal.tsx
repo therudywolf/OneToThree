@@ -480,11 +480,13 @@ export function ChatTerminal({
           }
           break
         case 'deleteForMe':
+          if (!globalThis.confirm('Delete this message only for you?')) break
           removeMessage(msg.id)
           void deleteCachedMessage(msg.id)
           break
         case 'deleteForAll':
           if (mine) {
+            if (!globalThis.confirm('Delete this message for everyone?')) break
             void (async () => {
               try {
                 await deleteMessage(msg.id, true)

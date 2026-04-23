@@ -231,7 +231,8 @@ export async function createChannelChat(params: {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      type: 'channel',
+      // Channel UI currently uses the public-open backend flow.
+      type: 'public_open',
       name: params.name.trim() || null,
       member_ids: params.memberIds.map(canonicalUserId),
     }),

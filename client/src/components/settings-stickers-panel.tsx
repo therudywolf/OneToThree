@@ -5,12 +5,15 @@ import { RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import { fetchStickerPacks, deleteStickerPack, refreshStickerPack, type StickerPack } from '@/lib/api/stickers'
-import { toastError } from '@/store/toastStore'
+import { toastError, toastSuccess } from '@/store/toastStore'
 
 function normalizeStickerActionError(err: unknown): string {
   const msg = err instanceof Error ? err.message : 'REQUEST_FAILED'
   if (msg === 'FORBIDDEN' || msg.startsWith('DELETE_PACK_403') || msg.startsWith('REFRESH_PACK_403')) {
     return 'Owner-only action'
+  }
+  if (msg === 'DATABASE_SCHEMA_MISMATCH' || msg.startsWith('FETCH_PACKS_503')) {
+    return 'Sticker DB schema is outdated on server. Apply migrations and restart API.'
   }
   return msg
 }
@@ -32,7 +35,7 @@ export function SettingsStickersPanel() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'LOAD_FAILED'
       setLoadError(msg)
-      toastError(msg, { title: 'Stickers' })
+      toastError(normalizeStickerActionError(e), { title: 'Stickers' })
     } finally {
       setLoading(false)
     }
@@ -66,7 +69,7 @@ export function SettingsStickersPanel() {
     setRefreshingId(pack.id)
     try {
       const res = await refreshStickerPack(pack.id)
-      toastError(`✓ Refreshed: ${res.count} stickers`, { title: pack.title })
+      toastSuccess(`Refreshed: ${res.count} stickers`, { title: pack.title })
     } catch (e) {
       toastError(normalizeStickerActionError(e), { title: 'Stickers' })
     } finally {

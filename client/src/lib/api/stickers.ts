@@ -29,17 +29,25 @@ export type Sticker = {
   createdAt: string
 }
 
+function parseStickerPacksPayload(payload: unknown): StickerPack[] {
+  if (Array.isArray(payload)) return payload as StickerPack[]
+  if (payload && typeof payload === 'object' && Array.isArray((payload as { packs?: unknown }).packs)) {
+    return (payload as { packs: StickerPack[] }).packs
+  }
+  return []
+}
+
 const PACKS_CACHE_KEY = 'p13:stickers:packs:v1'
 const PACK_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 
-function readCache<T>(key: string, ttlMs: number): T | null {
+function readCache<T>(key: string, ttlMs: number, allowStale = false): T | null {
   if (typeof window === 'undefined') return null
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return null
     const parsed = JSON.parse(raw) as { ts: number; data: T }
     if (!parsed || typeof parsed.ts !== 'number') return null
-    if (Date.now() - parsed.ts > ttlMs) return null
+    if (!allowStale && Date.now() - parsed.ts > ttlMs) return null
     return parsed.data
   } catch {
     return null
@@ -83,14 +91,25 @@ function normalizeTelegramShortName(input: string): string {
 
 export async function fetchStickerPacks(): Promise<StickerPack[]> {
   const cached = readCache<StickerPack[]>(PACKS_CACHE_KEY, PACK_CACHE_TTL_MS)
+  const staleCached = readCache<StickerPack[]>(PACKS_CACHE_KEY, PACK_CACHE_TTL_MS, true)
   try {
     const res = await fetchWithTimeout(`${API_URL}/stickers/packs`, { credentials: 'include' })
-    if (!res.ok) throw new Error(`FETCH_PACKS_${res.status}`)
-    const data = (await res.json()) as { packs: StickerPack[] }
-    writeCache(PACKS_CACHE_KEY, data.packs)
-    return data.packs
+    if (res.ok) {
+      const data = (await res.json()) as { packs: StickerPack[] }
+      writeCache(PACKS_CACHE_KEY, data.packs)
+      return data.packs
+    }
+
+    // Legacy fallback route used by older server builds.
+    const legacyRes = await fetchWithTimeout(`${API_URL}/stickers`, { credentials: 'include' })
+    if (!legacyRes.ok) throw new Error(`FETCH_PACKS_${res.status}`)
+    const legacyData = parseStickerPacksPayload(await legacyRes.json().catch(() => null))
+    if (!legacyData.length) throw new Error('FETCH_PACKS_EMPTY')
+    writeCache(PACKS_CACHE_KEY, legacyData)
+    return legacyData
   } catch (e) {
     if (cached) return cached
+    if (staleCached) return staleCached
     throw e
   }
 }
@@ -98,6 +117,7 @@ export async function fetchStickerPacks(): Promise<StickerPack[]> {
 export async function fetchPackStickers(packId: string): Promise<Sticker[]> {
   const key = stickersCacheKey(packId)
   const cached = readCache<Sticker[]>(key, PACK_CACHE_TTL_MS)
+  const staleCached = readCache<Sticker[]>(key, PACK_CACHE_TTL_MS, true)
   try {
     const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/stickers`, { credentials: 'include' })
     if (!res.ok) throw new Error(`FETCH_STICKERS_${res.status}`)
@@ -106,6 +126,7 @@ export async function fetchPackStickers(packId: string): Promise<Sticker[]> {
     return data.stickers
   } catch (e) {
     if (cached) return cached
+    if (staleCached) return staleCached
     throw e
   }
 }

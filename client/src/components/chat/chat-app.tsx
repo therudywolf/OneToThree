@@ -60,7 +60,12 @@ import { useThemeStore } from '@/store/themeStore'
 import { isApprovedContact } from '@/lib/contacts-store'
 import { UserAvatar } from '@/components/user-avatar'
 import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
-import { installPushRecoveryListener } from '@/lib/push-subscription'
+import {
+  getStoredNotificationMode,
+  installPushRecoveryListener,
+  supportsNativePush,
+} from '@/lib/push-subscription'
+import { NotificationModeOnboarding } from '@/components/notification-mode-onboarding'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -160,6 +165,7 @@ export function ChatApp({
     if (typeof window === 'undefined') return false
     return !localStorage.getItem(`p13:onboarded:${userId}`)
   })
+  const [showNotificationModeOnboarding, setShowNotificationModeOnboarding] = useState(false)
   useAutoLock()
   useMobileViewport()
   useAppBadge(userId)
@@ -390,6 +396,13 @@ export function ChatApp({
 
   useEffect(() => {
     return installPushRecoveryListener()
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!supportsNativePush()) return
+    if (getStoredNotificationMode()) return
+    setShowNotificationModeOnboarding(true)
   }, [])
 
   useEffect(() => {
@@ -691,6 +704,10 @@ export function ChatApp({
           }}
         />
       ) : null}
+      <NotificationModeOnboarding
+        open={showNotificationModeOnboarding}
+        onDone={() => setShowNotificationModeOnboarding(false)}
+      />
       <OfflineBanner />
       <PwaInstallBanner />
       {settingsOpen ? (

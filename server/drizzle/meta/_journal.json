@@ -267,6 +267,13 @@
       "when": 1776964300000,
       "tag": "0038_chats_invite_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1777058400000,
+      "tag": "0039_native_push_tokens",
+      "breakpoints": true
     }
   ]
 }

@@ -3,9 +3,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Bell, BellOff } from 'lucide-react'
 import {
+  getStoredNotificationMode,
   getExistingPushSubscription,
+  getDirectForegroundModeState,
   getNotificationPermission,
   getVapidPublicKey,
+  setNotificationMode,
+  supportsDirectForegroundMode,
   supportsNativePush,
   subscribeUserPush,
   supportsWebPush,
@@ -24,6 +28,7 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
   const [hasNativeSubscription, setHasNativeSubscription] = useState(false)
   const [busy, setBusy] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const [mode, setMode] = useState<'fcm' | 'direct' | null>(null)
 
   const vapidOk = !!getVapidPublicKey()
   const pushSupported = supportsWebPush() || supportsNativePush()
@@ -35,6 +40,12 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
       const nativeToken =
         typeof window !== 'undefined' ? window.localStorage.getItem('p13:native_push_token') : null
       setHasNativeSubscription(!!nativeToken)
+      const storedMode = getStoredNotificationMode()
+      setMode(storedMode)
+      if (storedMode === 'direct') {
+        const running = await getDirectForegroundModeState().catch(() => false)
+        setHasNativeSubscription(running)
+      }
     }
     if (!pushSupported) {
       setHasBrowserSubscription(false)
@@ -64,7 +75,7 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
       if (hasBrowserSubscription || hasNativeSubscription) {
         await unsubscribeUserPush()
       } else {
-        if (!vapidOk) {
+        if (!nativeSupported && !vapidOk) {
           setLocalError(t('settings.pushVapidMissing'))
           return
         }
@@ -83,6 +94,20 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
       } else {
         setLocalError(msg)
       }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onModeSelect(nextMode: 'fcm' | 'direct') {
+    setBusy(true)
+    setLocalError(null)
+    try {
+      await setNotificationMode(nextMode)
+      setMode(nextMode)
+      await refresh()
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
@@ -125,6 +150,47 @@ export function SettingsPushNotifications({ userId: _userId }: Props) {
 
       {!vapidOk ? (
         <p className="text-[9px] text-danger">{t('settings.pushVapidMissing')}</p>
+      ) : null}
+
+      {supportsNativePush() && supportsDirectForegroundMode() ? (
+        <div className="mt-3 space-y-2 border border-border-strong px-2 py-2">
+          <p className="text-[10px] uppercase tracking-widest text-neon-cyan">
+            {t('settings.notificationModeTitle')}
+          </p>
+          <p className="text-[9px] text-text-muted">{t('settings.notificationModeSettingsHint')}</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void onModeSelect('direct')}
+              className={`border px-2 py-2 text-left text-[10px] uppercase tracking-wide ${
+                mode === 'direct'
+                  ? 'border-neon-cyan text-neon-cyan'
+                  : 'border-border-strong text-text-muted'
+              }`}
+            >
+              <span className="block">{t('settings.notificationModeDirect')}</span>
+              <span className="mt-1 block text-[9px] normal-case tracking-normal">
+                {t('settings.notificationModeDirectHint')}
+              </span>
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void onModeSelect('fcm')}
+              className={`border px-2 py-2 text-left text-[10px] uppercase tracking-wide ${
+                mode === 'fcm'
+                  ? 'border-neon-red text-neon-red'
+                  : 'border-border-strong text-text-muted'
+              }`}
+            >
+              <span className="block">{t('settings.notificationModeFcm')}</span>
+              <span className="mt-1 block text-[9px] normal-case tracking-normal">
+                {t('settings.notificationModeFcmHint')}
+              </span>
+            </button>
+          </div>
+        </div>
       ) : null}
 
       {permission === 'granted' && hasBrowserSubscription ? (

@@ -374,6 +374,17 @@ const ru = {
   'settings.pushNoSw': 'Service Worker не найден. Нужна Production-сборка с HTTPS.',
   'settings.pushVapidMissing': 'Сервер не настроен для push-уведомлений.',
   'settings.pushGrantNoSubHint': 'Разрешения получены. Нажмите \u00abВключить уведомления\u00bb.',
+  'settings.notificationModeTitle': 'Режим уведомлений',
+  'settings.notificationModeFirstRunHint':
+    'Выберите способ доставки уведомлений. Позже это можно изменить в настройках.',
+  'settings.notificationModeSettingsHint':
+    'Direct использует foreground service для более приватной доставки. FCM экономит батарею, но использует инфраструктуру Google.',
+  'settings.notificationModeDirect': 'Direct (foreground service)',
+  'settings.notificationModeDirectHint':
+    'Более приватный канал, выше расход батареи, постоянная системная плашка.',
+  'settings.notificationModeFcm': 'Google FCM push',
+  'settings.notificationModeFcmHint':
+    'Меньше расход батареи и стабильнее в фоне, но метаданные доставки проходят через Google.',
   'settings.loadFailed': 'Ошибка загрузки настроек.',
   'settings.vaultBackup': 'Резервная копия ключа',
   'settings.vaultBackupHint': 'Зашифрованный файл. Храните в надёжном месте.',

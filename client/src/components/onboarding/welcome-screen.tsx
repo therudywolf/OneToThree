@@ -7,7 +7,6 @@ import { useLocaleStore, type LocaleSegment } from '@/store/localeStore'
 import {
   useThemeStore,
   THEMES,
-  SHELL_PRESETS,
   type ShellModeId,
   type ThemeId,
 } from '@/store/themeStore'
@@ -15,6 +14,7 @@ import {
 type Props = { onContinue: () => void }
 
 type Step = 'language' | 'shell' | 'palette' | 'ready'
+type WelcomeStyleId = ShellModeId | 'retro'
 
 /**
  * 4-step welcome: language -> shell -> palette -> ready.
@@ -42,12 +42,17 @@ export function WelcomeScreen({ onContinue }: Props) {
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
 
+  const selectedStyle: WelcomeStyleId = shell === 'md3' ? 'md3' : theme === 'retro' ? 'retro' : 'terminal'
+
   const palettesForShell = useMemo(() => {
-    if (shell === 'md3') {
+    if (selectedStyle === 'md3') {
       return THEMES.filter((t) => t.id === 'md3dark' || t.id === 'md3light' || t.id === 'pixel' || t.id === 'nord' || t.id === 'dracula' || t.id === 'midnight')
     }
-    return THEMES.filter((t) => t.id !== 'md3dark' && t.id !== 'md3light')
-  }, [shell])
+    if (selectedStyle === 'retro') {
+      return THEMES.filter((t) => t.id === 'retro')
+    }
+    return THEMES.filter((t) => t.id !== 'md3dark' && t.id !== 'md3light' && t.id !== 'retro')
+  }, [selectedStyle])
 
   const isTerminal = shell === 'terminal'
 
@@ -139,12 +144,17 @@ export function WelcomeScreen({ onContinue }: Props) {
 
         {step === 'shell' ? (
           <ShellStep
-            current={shell}
+            current={selectedStyle}
             onPick={(s) => {
-              setShell(s)
+              if (s === 'retro') {
+                setShell('terminal')
+                setTheme('retro')
+              } else {
+                setShell(s)
+              }
               if (s === 'md3' && theme !== 'md3dark' && theme !== 'md3light') {
                 setTheme('md3dark')
-              } else if (s === 'terminal' && (theme === 'md3dark' || theme === 'md3light')) {
+              } else if (s === 'terminal' && (theme === 'md3dark' || theme === 'md3light' || theme === 'retro')) {
                 setTheme('default')
               }
               setStep('palette')
@@ -248,22 +258,29 @@ function ShellStep({
   subClass,
   isTerminal,
 }: {
-  current: ShellModeId
-  onPick: (s: ShellModeId) => void
+  current: WelcomeStyleId
+  onPick: (s: WelcomeStyleId) => void
   t: TranslateFn
   titleClass: string
   subClass: string
   isTerminal: boolean
 }) {
+  const styleOptions: Array<{ id: WelcomeStyleId; label: string; hint: string; previewKind: 'terminal' | 'md3' | 'retro' }> = [
+    { id: 'terminal', label: 'TERMINAL', hint: 'Monospace / CRT / sharp corners', previewKind: 'terminal' },
+    { id: 'md3', label: 'MATERIAL 3', hint: 'Google Sans / rounded / flat', previewKind: 'md3' },
+    { id: 'retro', label: 'RETRO', hint: 'Classic amber monitor / vintage UI', previewKind: 'retro' },
+  ]
+
   return (
     <div className="text-center">
       <Zap className="mx-auto mb-3 h-5 w-5 text-[var(--neon-cyan)]" />
       <h1 className={`mb-2 ${titleClass}`}>{t('welcome.shellTitle')}</h1>
       <p className={`mb-8 ${subClass}`}>{t('welcome.shellSubtitle')}</p>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {SHELL_PRESETS.map((preset) => {
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {styleOptions.map((preset) => {
           const selected = current === preset.id
-          const pTerminal = preset.id === 'terminal'
+          const pTerminal = preset.previewKind === 'terminal'
+          const pRetro = preset.previewKind === 'retro'
           return (
             <button
               key={preset.id}
@@ -282,7 +299,7 @@ function ShellStep({
               {/* Mini preview pane */}
               <div
                 className={`mb-4 h-20 w-full overflow-hidden ${
-                  pTerminal ? 'rounded-none bg-void' : 'rounded-[14px] bg-surface'
+                  pTerminal ? 'rounded-none bg-void' : pRetro ? 'rounded-none bg-[#efe5bf]' : 'rounded-[14px] bg-surface'
                 } relative`}
               >
                 {pTerminal ? (
@@ -292,6 +309,14 @@ function ShellStep({
                     <div className="absolute left-2 top-8 h-2 w-24 bg-[color-mix(in_srgb,var(--neon-cyan)_40%,transparent)]" />
                     <div className="absolute left-2 top-12 h-2 w-20 bg-[color-mix(in_srgb,var(--neon-cyan)_30%,transparent)]" />
                     <div className="absolute right-2 bottom-2 h-4 w-10 border border-[var(--neon-red)] bg-[color-mix(in_srgb,var(--neon-red)_14%,transparent)]" />
+                  </>
+                ) : pRetro ? (
+                  <>
+                    <div className="absolute inset-0 bg-[linear-gradient(180deg,#f7efce_0%,#e8dbab_100%)]" />
+                    <div className="absolute left-2 top-2 h-4 w-16 border border-[#8a7a4b] bg-[#efe2b7]" />
+                    <div className="absolute left-2 top-8 h-2 w-24 bg-[#8a7a4b]/65" />
+                    <div className="absolute left-2 top-12 h-2 w-20 bg-[#6c5a2e]/55" />
+                    <div className="absolute right-2 bottom-2 h-4 w-12 border border-[#8a7a4b] bg-[#e3d39f]" />
                   </>
                 ) : (
                   <>

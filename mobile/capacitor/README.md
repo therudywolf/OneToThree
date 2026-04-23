@@ -48,3 +48,26 @@ npm run android:build:release
   - foreground
   - background
   - cold start (terminated)
+
+## Notification modes in app
+
+Android app supports two user-selectable delivery modes:
+
+- `Direct (foreground service)`:
+  - starts native foreground service,
+  - avoids Google push transport,
+  - uses more battery and shows ongoing system notification.
+- `Google FCM push`:
+  - uses Firebase token and standard push flow,
+  - lower battery impact,
+  - delivery metadata goes through Google infrastructure.
+
+Default behavior: user must choose mode on first run.
+
+## Theme parity expectation
+
+Android WebView must keep the same theme behavior as Web/PWA:
+
+- same persisted shell/palette selection,
+- same runtime theme switching,
+- same visual tokens for all supported themes.

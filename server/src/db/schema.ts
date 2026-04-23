@@ -48,6 +48,7 @@ export const stickerFormatEnum = pgEnum('sticker_format', [
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
 
 export const reportStatusEnum = pgEnum('report_status', ['open', 'closed'])
+export const nativePushPlatformEnum = pgEnum('native_push_platform', ['android'])
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -404,6 +405,29 @@ export const pushSubscriptions = pgTable(
       t.userId,
       t.endpoint
     ),
+  })
+)
+
+export const nativePushTokens = pgTable(
+  'native_push_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    platform: nativePushPlatformEnum('platform').notNull(),
+    token: text('token').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    userTokenUnique: uniqueIndex('native_push_tokens_user_platform_token_idx').on(
+      t.userId,
+      t.platform,
+      t.token
+    ),
+    userIdx: index('native_push_tokens_user_idx').on(t.userId),
   })
 )
 

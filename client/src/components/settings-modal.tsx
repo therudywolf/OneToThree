@@ -1113,44 +1113,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   </div>
                   <div className={`rounded-[var(--radius-md)] border p-3 ${isRetro ? 'border-[#7a8089] bg-[#c9c5bd]' : 'border-neon-cyan/20 bg-void/30'}`}>
                     <p className={`mb-2 text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'text-[#243a57]' : 'text-neon-cyan/70'}`}>
-                      Theme mode
-                    </p>
-                    <div className="mb-3 grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-                      <button
-                        type="button"
-                        onClick={() => { setShellMode('terminal'); setTheme('cyberpunk2077') }}
-                        className={`border px-3 py-2 text-left text-[10px] transition-all duration-150 ${
-                          shellMode === 'terminal' && theme === 'cyberpunk2077'
-                            ? (isRetro ? 'border-[#0a4ea1] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659]' : 'border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
-                            : (isRetro ? 'border-[#7a8089] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#3f4752] hover:border-[#0a4ea1] hover:text-[#123659]' : 'border-neon-red/25 font-mono uppercase tracking-widest text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
-                        }`}
-                      >
-                        TERMINAL
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setShellMode('md3'); setTheme('md3dark') }}
-                        className={`border px-3 py-2 text-left text-[10px] transition-all duration-150 ${
-                          shellMode === 'md3' && theme === 'md3dark'
-                            ? (isRetro ? 'border-[#0a4ea1] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659]' : 'border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
-                            : (isRetro ? 'border-[#7a8089] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#3f4752] hover:border-[#0a4ea1] hover:text-[#123659]' : 'border-neon-red/25 font-mono uppercase tracking-widest text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
-                        }`}
-                      >
-                        MD3
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setShellMode('terminal'); setTheme('retro') }}
-                        className={`border px-3 py-2 text-left text-[10px] transition-all duration-150 ${
-                          theme === 'retro'
-                            ? (isRetro ? 'border-[#0a4ea1] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659]' : 'border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
-                            : (isRetro ? 'border-[#7a8089] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#3f4752] hover:border-[#0a4ea1] hover:text-[#123659]' : 'border-neon-red/25 font-mono uppercase tracking-widest text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
-                        }`}
-                      >
-                        RETRO
-                      </button>
-                    </div>
-                    <p className={`mb-2 text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'text-[#243a57]' : 'text-neon-cyan/70'}`}>
                       {t('settings.appearanceShellTitle')}
                     </p>
                     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -1319,12 +1281,18 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                           </p>
                         </div>
                       </div>
-                      <div className="mt-3 flex gap-2">
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         <div className="flex-1 px-3 py-2 text-[10px] font-semibold" style={{ background: resolvedTheme.tokens.primary, color: resolvedTheme.tokens.background }}>
                           PRIMARY
                         </div>
                         <div className="flex-1 border px-3 py-2 text-[10px] font-semibold" style={{ borderColor: resolvedTheme.tokens.border, color: resolvedTheme.tokens.accent }}>
                           ACCENT
+                        </div>
+                        <div className="flex-1 border px-3 py-2 text-[10px] font-semibold" style={{ borderColor: resolvedTheme.tokens.border, color: resolvedTheme.tokens.accentSoft }}>
+                          ACCENT 2
+                        </div>
+                        <div className="flex-1 border px-3 py-2 text-[10px] font-semibold" style={{ borderColor: resolvedTheme.tokens.border, color: resolvedTheme.tokens.text, background: resolvedTheme.tokens.background }}>
+                          BACKGROUND
                         </div>
                       </div>
                     </div>

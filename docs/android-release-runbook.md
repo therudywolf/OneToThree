@@ -42,10 +42,22 @@ cd mobile/capacitor/android
 
 - App launches from cold start.
 - Login/session restore works.
-- Push delivery works in foreground/background/terminated.
+- Notification mode chooser appears on first run (Android native only).
+- `Direct (foreground service)` mode:
+  - foreground service starts and remains active,
+  - persistent system notification is visible,
+  - message notification flow works after app background/return.
+- `Google FCM` mode:
+  - token registers successfully,
+  - push delivery works in foreground/background/terminated.
+- Runtime mode switch works both ways (`Direct <-> FCM`) without duplicate notifications.
 - Notification tap opens expected chat (`chat_id` routing).
 - Offline send queue retries when back online.
 - Message/read state remains consistent after kill/reopen.
+- Theme parity check on Android matches Web/PWA:
+  - shell mode and palette persist across restart,
+  - runtime theme switch applies immediately,
+  - no visual regressions for `terminal`, `md3`, `retro`, `cyberpunk2077`.
 
 ## 5) Play Store rollout
 

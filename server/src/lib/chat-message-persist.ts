@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { chatMembers, messages } from '../db/schema.js'
-import { sendPushToUser } from './push.js'
+import { sendNativePushToUser, sendPushToUser } from './push.js'
 import {
   broadcastToUsers,
   hasActiveSocket,
@@ -159,12 +159,16 @@ export async function persistChatMessageAndFanOut(
   for (const memberId of new Set(ids)) {
     if (memberId === input.senderId) continue
     if (!hasActiveSocket(memberId)) {
-      void sendPushToUser(memberId, {
+      const payload = {
         title: 'Новое сообщение',
         body: 'Вам пришло зашифрованное сообщение',
         url: `/?chat=${input.chatId}`,
         icon: '/wolf-logo.png',
-      })
+        chat_id: input.chatId,
+        type: 'message' as const,
+      }
+      void sendPushToUser(memberId, payload)
+      void sendNativePushToUser(memberId, payload)
     }
   }
 

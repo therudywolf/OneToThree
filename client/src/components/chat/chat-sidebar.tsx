@@ -61,6 +61,7 @@ import {
   getExistingPushSubscription,
   getNotificationPermission,
   subscribeUserPush,
+  supportsNativePush,
   supportsWebPush,
   unsubscribeUserPush,
 } from '@/lib/push-subscription'
@@ -324,11 +325,16 @@ export function ChatSidebar({
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      if (!supportsWebPush()) {
+      if (!supportsWebPush() && !supportsNativePush()) {
         if (!cancelled) setPushEnabled(false)
         return
       }
       try {
+        if (supportsNativePush()) {
+          const token = localStorage.getItem('p13:native_push_token')
+          if (!cancelled) setPushEnabled(!!token)
+          return
+        }
         const [permission, sub] = await Promise.all([
           getNotificationPermission(),
           getExistingPushSubscription(),
@@ -344,7 +350,7 @@ export function ChatSidebar({
   }, [])
 
   async function togglePushInRail() {
-    if (pushBusy || !supportsWebPush()) return
+    if (pushBusy || (!supportsWebPush() && !supportsNativePush())) return
     setPushBusy(true)
     try {
       if (pushEnabled) {
@@ -696,7 +702,7 @@ export function ChatSidebar({
         <button
           type="button"
           title={pushEnabled ? t('settings.pushDisable') : t('settings.pushEnable')}
-          disabled={pushBusy || !supportsWebPush()}
+          disabled={pushBusy || (!supportsWebPush() && !supportsNativePush())}
           onClick={() => { void togglePushInRail() }}
           className={`inline-flex items-center justify-center transition-colors disabled:opacity-40 ${
             isMd3

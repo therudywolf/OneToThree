@@ -7,8 +7,7 @@ import { HomeClient } from '@/components/home-client'
  * Purpose: Gateway to the active communication sector.
  */
 
-// Форсим динамику, чтобы Zero-Trust токены и сессии проверялись на каждом такте.
-export const dynamic = 'force-dynamic'
+// Страница рендерится как клиентский shell; для export используем default static behavior.
 
 export default function Home() {
   /**

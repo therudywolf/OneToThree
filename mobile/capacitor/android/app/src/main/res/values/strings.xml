@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OneToThree</string>
+    <string name="title_activity_main">OneToThree</string>
+    <string name="package_name">ru.onetothree.app</string>
+    <string name="custom_url_scheme">ru.onetothree.app</string>
+</resources>

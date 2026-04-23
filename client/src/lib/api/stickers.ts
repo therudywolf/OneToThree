@@ -100,9 +100,21 @@ export async function fetchStickerPacks(): Promise<StickerPack[]> {
       return data.packs
     }
 
+    const packsErr = (await res.json().catch(() => ({}))) as { error?: string }
+    if (res.status === 503 && packsErr.error === 'DATABASE_SCHEMA_MISMATCH') {
+      // Keep UI responsive during backend migration lag.
+      if (cached) return cached
+      if (staleCached) return staleCached
+      return []
+    }
+
     // Legacy fallback route used by older server builds.
     const legacyRes = await fetchWithTimeout(`${API_URL}/stickers`, { credentials: 'include' })
-    if (!legacyRes.ok) throw new Error(`FETCH_PACKS_${res.status}`)
+    if (!legacyRes.ok) {
+      if (cached) return cached
+      if (staleCached) return staleCached
+      throw new Error(`FETCH_PACKS_${res.status}`)
+    }
     const legacyData = parseStickerPacksPayload(await legacyRes.json().catch(() => null))
     if (!legacyData.length) throw new Error('FETCH_PACKS_EMPTY')
     writeCache(PACKS_CACHE_KEY, legacyData)

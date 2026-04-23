@@ -1,7 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { API_URL, fetchMe, setupRecoveryKey } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
 import { nuclearWipeClient } from '@/lib/client-wipe'
@@ -38,9 +38,7 @@ import {
   resolveThemeAppearance,
   useThemeStore,
   THEMES,
-  SHELL_PRESETS,
   type ThemeId,
-  type ShellModeId,
   type MotionMode,
 } from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
@@ -89,6 +87,7 @@ function readDiscoverableFromPayload(v: unknown): boolean {
 }
 
 type VaultGateTarget = 'export' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | null
+type AppearanceStyleId = 'terminal' | 'md3' | 'retro'
 
 export function SettingsModal({ userId, username, onClose }: Props) {
   const modalRef = useRef<HTMLDivElement | null>(null)
@@ -160,6 +159,24 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   } = useThemeStore()
   const isMd3 = shellMode === 'md3'
   const isRetro = shellMode === 'terminal' && theme === 'retro'
+  const appearanceStyle: AppearanceStyleId =
+    shellMode === 'md3' ? 'md3' : theme === 'retro' ? 'retro' : 'terminal'
+  const appearanceStyles: ReadonlyArray<{
+    id: AppearanceStyleId
+    label: string
+    hint: string
+  }> = [
+    { id: 'terminal', label: 'CYBERPUNK', hint: 'Monospace / CRT / sharp corners' },
+    { id: 'md3', label: 'MATERIAL 3', hint: 'Google Sans / rounded / flat' },
+    { id: 'retro', label: 'RETRO', hint: 'Classic amber monitor / vintage UI' },
+  ]
+  const palettesForStyle = useMemo(() => {
+    if (appearanceStyle === 'retro') return THEMES.filter((cfg) => cfg.id === 'retro')
+    if (appearanceStyle === 'terminal') {
+      return THEMES.filter((cfg) => cfg.id !== 'md3dark' && cfg.id !== 'md3light' && cfg.id !== 'retro')
+    }
+    return THEMES.filter((cfg) => cfg.id !== 'retro')
+  }, [appearanceStyle])
 
   const loadSettingsFromApi = useCallback(async () => {
     setError(null)
@@ -1172,14 +1189,29 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     <p className={`mb-2 text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'text-[#243a57]' : 'text-neon-cyan/70'}`}>
                       {t('settings.appearanceShellTitle')}
                     </p>
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                      {SHELL_PRESETS.map((sp) => (
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                      {appearanceStyles.map((sp) => (
                         <button
                           key={sp.id}
                           type="button"
-                          onClick={() => setShellMode(sp.id as ShellModeId)}
+                          onClick={() => {
+                            if (sp.id === 'retro') {
+                              setShellMode('terminal')
+                              setTheme('retro')
+                              return
+                            }
+                            if (sp.id === 'md3') {
+                              setShellMode('md3')
+                              if (theme === 'retro') setTheme('md3dark')
+                              return
+                            }
+                            setShellMode('terminal')
+                            if (theme === 'retro' || theme === 'md3dark' || theme === 'md3light') {
+                              setTheme('default')
+                            }
+                          }}
                           className={`flex items-start gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
-                            shellMode === sp.id
+                            appearanceStyle === sp.id
                               ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
                               : (isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
                           }`}
@@ -1188,7 +1220,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                             <span>{sp.label}</span>
                             <span className="text-[8px] text-text-muted">{sp.hint}</span>
                           </span>
-                          {shellMode === sp.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
+                          {appearanceStyle === sp.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
                         </button>
                       ))}
                     </div>
@@ -1198,7 +1230,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     {t('settings.appearancePaletteTitle')}
                   </p>
                   <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
-                    {THEMES.map((t_cfg) => (
+                    {palettesForStyle.map((t_cfg) => (
                       <button key={t_cfg.id} type="button" onClick={() => setTheme(t_cfg.id as ThemeId)}
                         className={`flex items-center gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
                           theme === t_cfg.id

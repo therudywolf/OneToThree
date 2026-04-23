@@ -1,8 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
-import { Theme } from 'emoji-picker-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useShell } from '@/components/ui/shell'
 import { useThemeStore } from '@/store/themeStore'
@@ -27,20 +25,17 @@ import {
 import { buildStickerPlaintext } from '@/lib/sticker-payload'
 import { toastError, toastSuccess } from '@/store/toastStore'
 
-const LazyEmojiPicker = dynamic(
-  () => import('emoji-picker-react').then((m) => m.default),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[280px] items-center justify-center font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
-        loading…
-      </div>
-    ),
-  }
-)
-
 type Tab = 'emoji' | 'sticker' | 'gif'
+type EmojiGroupId = 'smileys' | 'gestures' | 'people' | 'objects' | 'nature' | 'symbols'
 const STICKER_FAVORITES_KEY = 'p13:favorite-stickers:v1'
+const EMOJI_GROUPS: ReadonlyArray<{ id: EmojiGroupId; label: string; emojis: string[] }> = [
+  { id: 'smileys', label: 'Smileys', emojis: ['😀', '😄', '😁', '😂', '🤣', '😊', '🙂', '😉', '😍', '😘', '😎', '🤩', '🤔', '😴', '🥵', '🥶', '🥳', '😭'] },
+  { id: 'gestures', label: 'Gestures', emojis: ['👍', '👎', '👏', '🙌', '🤝', '🙏', '💪', '👌', '✌️', '🤟', '🫶', '🤘', '👀', '🔥', '💯', '✅', '❌', '⚠️'] },
+  { id: 'people', label: 'People', emojis: ['👋', '🧑', '👨', '👩', '🧑‍💻', '👨‍💻', '👩‍💻', '🧑‍🚀', '👨‍🚀', '👩‍🚀', '👮', '🕵️', '🥷', '🧠', '🫡', '🤖'] },
+  { id: 'objects', label: 'Objects', emojis: ['📱', '💻', '⌚', '🎧', '📷', '🎮', '🔒', '🔑', '💡', '📌', '📎', '🧲', '💣', '🧯', '🛡️', '⚙️'] },
+  { id: 'nature', label: 'Nature', emojis: ['🌞', '🌙', '⭐', '☁️', '⚡', '🔥', '🌊', '❄️', '🌈', '🌲', '🌴', '🌵', '🌸', '🍀', '🍁', '🌍'] },
+  { id: 'symbols', label: 'Symbols', emojis: ['❤️', '💙', '💚', '🖤', '💜', '🤍', '☮️', '☢️', '⚛️', '♻️', '🆘', '❗', '❓', '➕', '➖', '➡️'] },
+]
 
 export type ComposerPickerPanelProps = {
   layout: 'dock' | 'modal'
@@ -89,6 +84,8 @@ export function ComposerPickerPanel({
   const [gifDegraded, setGifDegraded] = useState(false)
   const [gifFavorites, setGifFavorites] = useState<GifHit[]>([])
   const [gifFavBusyId, setGifFavBusyId] = useState<string | null>(null)
+  const [emojiGroup, setEmojiGroup] = useState<EmojiGroupId>('smileys')
+  const [emojiQuery, setEmojiQuery] = useState('')
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -123,6 +120,12 @@ export function ComposerPickerPanel({
   }, [])
 
   const pickerHeight = layout === 'dock' ? 360 : 320
+  const emojiSearch = emojiQuery.trim()
+  const activeEmojiGroup = EMOJI_GROUPS.find((g) => g.id === emojiGroup) ?? EMOJI_GROUPS[0]
+  const visibleEmojis = useMemo(() => {
+    if (!emojiSearch) return activeEmojiGroup.emojis
+    return EMOJI_GROUPS.flatMap((group) => group.emojis).filter((emoji) => emoji.includes(emojiSearch))
+  }, [activeEmojiGroup.emojis, emojiSearch])
 
   const loadPacks = useCallback(async () => {
     setPacksLoading(true)
@@ -314,17 +317,58 @@ export function ComposerPickerPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'emoji' ? (
-          <div className="p13-epr-host p-2">
-            <LazyEmojiPicker
-              onEmojiClick={(data: { emoji: string }) => {
-                onEmoji(data.emoji)
-              }}
-              skinTonesDisabled
-              previewConfig={{ showPreview: false }}
-              width={layout === 'dock' ? '100%' : 300}
-              height={pickerHeight}
-              theme={isTerminal ? Theme.DARK : Theme.LIGHT}
+          <div className="flex h-full min-h-0 flex-col gap-2 p-2">
+            <input
+              type="text"
+              value={emojiQuery}
+              onChange={(e) => setEmojiQuery(e.target.value)}
+              placeholder={t('composer.gifSearchPlaceholder')}
+              className="p13-picker-input rounded"
             />
+            <div className="flex shrink-0 flex-wrap gap-1">
+              {EMOJI_GROUPS.map((group) => (
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => setEmojiGroup(group.id)}
+                  className={`inline-flex h-8 items-center justify-center rounded px-2 text-[9px] ${
+                    emojiGroup === group.id
+                      ? isRetro
+                        ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#123659] shadow-[inset_1px_1px_0_#7d7d7d,inset_-1px_-1px_0_#ffffff]'
+                        : 'bg-neon-cyan/20 text-neon-cyan'
+                      : isRetro
+                        ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#3f4752] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                        : 'bg-void/50 text-text-muted hover:text-neon-cyan/90'
+                  }`}
+                >
+                  {group.label}
+                </button>
+              ))}
+            </div>
+            <div
+              className="custom-scrollbar min-h-0 flex-1 overflow-y-auto rounded border border-neon-cyan/10 p-1.5"
+              style={{ maxHeight: pickerHeight }}
+            >
+              {visibleEmojis.length === 0 ? (
+                <p className="px-2 py-3 text-center font-mono text-[10px] text-text-muted">
+                  {t('composer.gifEmpty')}
+                </p>
+              ) : (
+                <div className="grid grid-cols-8 gap-1 sm:grid-cols-10">
+                  {visibleEmojis.map((emoji, idx) => (
+                    <button
+                      key={`${emoji}-${idx}`}
+                      type="button"
+                      onClick={() => onEmoji(emoji)}
+                      className="flex h-9 items-center justify-center rounded border border-transparent text-xl hover:border-neon-cyan/30 hover:bg-neon-cyan/10"
+                      aria-label={`emoji ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
 

@@ -16,8 +16,12 @@ function applyViewportVars() {
   const root = document.documentElement
   const keyboardInset = computeKeyboardInsetPx()
   root.style.setProperty('--p13-keyboard-inset', `${keyboardInset}px`)
+  root.style.setProperty('--p13-safe-top', 'env(safe-area-inset-top, 0px)')
+  root.style.setProperty('--p13-safe-left', 'env(safe-area-inset-left, 0px)')
+  root.style.setProperty('--p13-safe-right', 'env(safe-area-inset-right, 0px)')
   root.style.setProperty('--p13-safe-bottom', `max(env(safe-area-inset-bottom, 0px), ${keyboardInset}px)`)
   root.style.setProperty('--p13-vh', `${window.innerHeight * 0.01}px`)
+  root.style.setProperty('--p13-app-height', `calc(${window.innerHeight * 0.01}px * 100)`)
   root.setAttribute('data-keyboard-open', keyboardInset > 0 ? 'true' : 'false')
 }
 

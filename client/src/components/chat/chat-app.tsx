@@ -656,7 +656,7 @@ export function ChatApp({
   }
 
   return (
-    <div className="chat-safe-shell flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col overflow-hidden bg-void supports-[height:100dvh]:h-[100dvh]">
+    <div className="chat-safe-shell p13-app-shell flex min-h-0 flex-col overflow-hidden bg-void">
       <InviteChatLinkEffect userId={userId} />
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
@@ -980,7 +980,7 @@ export function ChatApp({
           />
         ) : null}
         <div
-          className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex h-[100dvh] max-h-[100dvh] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-[100dvh] md:max-h-[100dvh] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[env(safe-area-inset-top,0px)] md:pt-0 pb-[env(safe-area-inset-bottom,0px)] md:pb-0 ${
+          className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex h-[var(--p13-app-height)] max-h-[var(--p13-app-height)] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-[var(--p13-app-height)] md:max-h-[var(--p13-app-height)] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[var(--p13-safe-top)] md:pt-0 pb-[var(--p13-safe-bottom)] md:pb-0 ${
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
           style={{ ['--p13-sb-w' as string]: `${sidebarCollapsed ? TELEGRAM_BEHAVIOR.sidebar.collapsedWidth : sidebarWidth}px` } as React.CSSProperties}

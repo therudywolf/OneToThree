@@ -562,8 +562,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
         </header>
 
-        <div className="p13-settings-layout min-h-0 flex-1 overflow-hidden lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
-          <aside className={`hidden min-h-0 border-r p-2 lg:flex lg:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
+        <div className="p13-settings-layout min-h-0 flex-1 overflow-hidden xl:grid xl:grid-cols-[16rem_minmax(0,1fr)]">
+          <aside className={`hidden min-h-0 border-r p-2 xl:flex xl:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
             <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
               {SETTINGS_TABS.map((tab) => (
                 <button
@@ -587,7 +587,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </aside>
 
           <div className="p13-settings-content min-h-0 flex flex-col">
-            <div className={`border-b p-2 lg:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
+            <div className={`border-b p-2 xl:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
               {mobileSettingsView === 'list' ? (
                 <p className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] text-[#1c3653]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
                   {t('common.settings')}
@@ -604,7 +604,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </div>
 
             {mobileSettingsView === 'list' ? (
-              <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2 lg:hidden">
+              <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2 xl:hidden">
                 {SETTINGS_TABS.map((tab) => (
                   <button
                     key={tab.id}
@@ -618,7 +618,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               </div>
             ) : null}
 
-            <div className={`p13-settings-scroll custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4 ${mobileSettingsView === 'list' ? 'hidden lg:block' : 'block'}`}>
+            <div className={`p13-settings-scroll custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4 ${mobileSettingsView === 'list' ? 'hidden xl:block' : 'block'}`}>
 
           {/* ── VAULT GATE OVERLAY ── */}
           <AnimatePresence>

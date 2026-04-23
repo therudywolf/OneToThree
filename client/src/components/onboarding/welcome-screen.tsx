@@ -28,10 +28,15 @@ export function WelcomeScreen({ onContinue }: Props) {
   const { t } = useTranslation()
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  const openerRef = useRef<HTMLElement | null>(null)
   const [step, setStep] = useState<Step>('language')
 
   useEffect(() => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     panelRef.current?.focus()
+    return () => {
+      openerRef.current?.focus()
+    }
   }, [])
 
   const localeModule = useLocaleStore((s) => s.module)
@@ -83,6 +88,34 @@ export function WelcomeScreen({ onContinue }: Props) {
           if (e.key === 'Escape') {
             e.preventDefault()
             onContinue()
+            return
+          }
+          if (e.key !== 'Tab') return
+          const panel = panelRef.current
+          if (!panel) return
+          const focusable = Array.from(
+            panel.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )
+          )
+          if (focusable.length === 0) {
+            e.preventDefault()
+            panel.focus()
+            return
+          }
+          const current = document.activeElement as HTMLElement | null
+          const first = focusable[0]
+          const last = focusable[focusable.length - 1]
+          if (e.shiftKey) {
+            if (!current || current === first) {
+              e.preventDefault()
+              last?.focus()
+            }
+            return
+          }
+          if (!current || current === last) {
+            e.preventDefault()
+            first?.focus()
           }
         }}
         className={`relative w-full max-w-2xl outline-none ${cardShape} p-8`}

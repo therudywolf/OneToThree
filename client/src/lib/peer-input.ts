@@ -1,6 +1,7 @@
 'use client'
 
 import { canonicalUserId } from '@/lib/user-id'
+import { sanitizeTextInput } from '@/lib/input-sanitize'
 
 /**
  * PROJECT 13 :: IDENTITY_SIGNAL_EXTRACTOR
@@ -21,7 +22,7 @@ export function syncUuid(id: string): string {
  * Обрабатывает: сырые UUID, никнеймы, ссылки-приглашения.
  */
 export function scanPeerIdentity(raw: string): string {
-  const signal = raw.trim()
+  const signal = sanitizeTextInput(raw).trim()
   if (!signal) return ''
 
   // [1] DIRECT_MATCH :: Если это прямой UUID

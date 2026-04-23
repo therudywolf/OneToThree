@@ -114,6 +114,7 @@ type ChatSidebarProps = {
   username?: string
   isAdmin?: boolean
   sharedKey: CryptoKey | null
+  isCollapsed?: boolean
   onPackSettingsChanged?: () => void
   onNavigate?: () => void
   onOpenSettings?: () => void
@@ -124,6 +125,7 @@ export function ChatSidebar({
   userId,
   isAdmin,
   sharedKey,
+  isCollapsed = false,
   onPackSettingsChanged,
   onNavigate,
   onOpenSettings,
@@ -446,7 +448,7 @@ export function ChatSidebar({
   const virtualizer = useVirtualizer({
     count: sidebarChatsFiltered.length,
     getScrollElement: useCallback(() => chatListScrollRef.current, []),
-    estimateSize: () => 64,
+    estimateSize: () => (isCollapsed ? 52 : 64),
     overscan: 5,
   })
 
@@ -763,9 +765,9 @@ export function ChatSidebar({
       ) : null}
 
       {/* Right panel — search + chat list + compose */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="p13-sidebar-main flex flex-col flex-1 min-w-0">
       <div
-        className={`sticky top-0 z-10 border-b px-4 py-2 ${
+        className={`p13-sidebar-top sticky top-0 z-10 border-b px-4 py-2 ${
           isMd3
             ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]'
             : 'border-neon-cyan/30 bg-void'
@@ -777,7 +779,7 @@ export function ChatSidebar({
       </div>
 
       {/* Search */}
-      <div className={`border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/25'}`}>
+      <div className={`p13-sidebar-search border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/25'}`}>
         <label className="sr-only" htmlFor="ghost-search">
           {t('sidebar.localGhostSearch')}
         </label>
@@ -828,14 +830,14 @@ export function ChatSidebar({
             // the button look dead in the wild.
           }
         }}
-        className={`mx-3 mt-3 flex items-center gap-2 px-3 py-2.5 text-left text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-accent-2/40 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent-2)_16%,transparent),color-mix(in_srgb,var(--accent-2)_8%,transparent))] font-mono uppercase tracking-widest text-neon-cyan/80 hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan'}`}
+        className={`p13-sidebar-saved mx-3 mt-3 flex items-center gap-2 px-3 py-2.5 text-left text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-accent-2/40 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent-2)_16%,transparent),color-mix(in_srgb,var(--accent-2)_8%,transparent))] font-mono uppercase tracking-widest text-neon-cyan/80 hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan'}`}
       >
         <Star className="h-3.5 w-3.5 text-accent-2 fill-accent-2" />
         {t('sidebar.savedMessages')}
       </button>
 
       {/* Chat List */}
-      <nav ref={chatListScrollRef as React.RefObject<HTMLElement>} className="custom-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-3 pb-3 pt-3 [-webkit-overflow-scrolling:touch]">
+      <nav ref={chatListScrollRef as React.RefObject<HTMLElement>} className={`p13-sidebar-chatlist custom-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] ${isCollapsed ? 'px-1 pb-2 pt-2' : 'px-3 pb-3 pt-3'}`}>
         {initialLoading ? (
           <div className="space-y-2 py-1">
             {Array.from({ length: 5 }, (_, i) => (
@@ -914,13 +916,13 @@ export function ChatSidebar({
             >
               <button
                 type="button"
-                className={`min-w-0 flex-1 px-3 py-3 text-left text-xs outline-none ${isMd3 ? 'font-sans' : 'font-mono'}`}
+                className={`min-w-0 flex-1 text-left text-xs outline-none ${isCollapsed ? 'px-1 py-2' : 'px-3 py-3'} ${isMd3 ? 'font-sans' : 'font-mono'}`}
                 aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {
                   navigateToChat(c.id)
                 }}
               >
-                <span className="inline-flex min-w-0 items-center gap-3">
+                <span className={`inline-flex min-w-0 items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
                   <div className="relative">
                     {peerId ? (
                       <UserAvatar
@@ -940,6 +942,7 @@ export function ChatSidebar({
                     ) : null}
                   </div>
 
+                  {!isCollapsed ? (
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     {/* Row 1: name + timestamp */}
                     <span className="inline-flex min-w-0 items-center gap-1">
@@ -993,6 +996,7 @@ export function ChatSidebar({
                       ) : null}
                     </span>
                   </span>
+                  ) : null}
                 </span>
               </button>
             </div>
@@ -1087,7 +1091,7 @@ export function ChatSidebar({
       ) : null}
 
       {/* Global Actions */}
-      <div className={`p13-sidebar-bottom-actions border-t p-3 space-y-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))]'}`}>
+      <div className={`p13-sidebar-bottom-actions p13-sidebar-global-actions border-t p-3 space-y-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))]'}`}>
 
         {/* Admin link — only for admins, mobile-first placement */}
         {isAdmin ? (

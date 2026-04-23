@@ -89,6 +89,7 @@ export function DockPanel() {
           ? 'border-l border-neon-cyan/40 bg-void'
           : 'border-l border-[var(--md3-surface-variant,rgba(255,255,255,0.08))] bg-[var(--surface,#111)]'
       }`}
+      data-dock-open="true"
       role="complementary"
       aria-label={t('dock.panelAria')}
     >

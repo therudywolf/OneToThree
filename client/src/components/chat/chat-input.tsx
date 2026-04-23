@@ -19,6 +19,7 @@ import {
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
+import type { GifHit } from '@/lib/api/gif'
 
 function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
@@ -280,6 +281,27 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       return next
     })
   }
+
+  const sendGif = useCallback(async (gif: GifHit) => {
+    const response = await fetch(gif.originalUrl)
+    if (!response.ok) {
+      throw new Error(`GIF_FETCH_${response.status}`)
+    }
+    const blob = await response.blob()
+    const normalizedGifBlob =
+      blob.type === 'image/gif' || blob.type === ''
+        ? blob
+        : new Blob([await blob.arrayBuffer()], { type: 'image/gif' })
+    await sendMedia(
+      normalizedGifBlob,
+      'image',
+      undefined,
+      {
+        fileName: `gif-${gif.id}.gif`,
+        fileType: 'image/gif',
+      },
+    )
+  }, [sendMedia])
 
   const handlePaste = (e: React.ClipboardEvent) => {
     if (!e.clipboardData?.files.length) return
@@ -607,7 +629,9 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                       onStickerSend: async (json) => {
                         await sendText(json)
                       },
-                      onGifPick: (url) => insertEmoji(` ${url} `),
+                      onGifPick: async (gif) => {
+                        await sendGif(gif)
+                      },
                     })
                   }
                   return
@@ -628,7 +652,9 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                     await sendText(json)
                     setComposerPickerOpen(false)
                   }}
-                  onGifPick={(url) => insertEmoji(` ${url} `)}
+                  onGifPick={async (gif) => {
+                    await sendGif(gif)
+                  }}
                   onAfterStickerSend={() => setComposerPickerOpen(false)}
                 />
               </div>

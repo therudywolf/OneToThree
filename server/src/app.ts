@@ -42,6 +42,24 @@ function normalizeHttpOrigin(raw: string | undefined): string | null {
   }
 }
 
+function normalizeMobileOrigin(raw: string): string | null {
+  const value = raw.trim()
+  if (!value) return null
+  try {
+    const u = new URL(value)
+    if (
+      u.protocol !== 'https:' &&
+      u.protocol !== 'http:' &&
+      u.protocol !== 'capacitor:'
+    ) {
+      return null
+    }
+    return u.origin
+  } catch {
+    return null
+  }
+}
+
 /** Enforces CORS + Redis in production — extracted for unit tests (no Fastify init). */
 export function assertProdSecurityEnv(): void {
   const isProd = process.env.NODE_ENV === 'production'
@@ -86,13 +104,25 @@ export async function buildApp() {
     process.env.CORS_ORIGIN?.split(',')
       .map((o) => o.trim())
       .filter(Boolean) ?? []
+  const allowMobileCors =
+    (process.env.CORS_ALLOW_MOBILE_APP ?? '1').trim() !== '0'
+  const mobileCorsOrigins = allowMobileCors
+    ? ['http://localhost', 'https://localhost', 'capacitor://localhost']
+    : []
+  const corsOriginsList = Array.from(
+    new Set(
+      [...corsOriginsRaw, ...mobileCorsOrigins]
+        .map((o) => normalizeMobileOrigin(o))
+        .filter((o): o is string => !!o)
+    )
+  )
 
-  const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsRaw : true
+  const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsList : true
   const apiOrigin = normalizeHttpOrigin(process.env.NEXT_PUBLIC_API_URL)
   const storageOrigin = normalizeHttpOrigin(process.env.MINIO_PUBLIC_URL)
   const connectSrc = new Set<string>(["'self'", 'wss:', 'https:', 'https://cdn.jsdelivr.net/npm/'])
   const imgSrc = new Set<string>(["'self'", 'blob:', 'data:', 'https://cdn.jsdelivr.net'])
-  for (const origin of corsOriginsRaw) connectSrc.add(origin)
+  for (const origin of corsOriginsList) connectSrc.add(origin)
   if (apiOrigin) connectSrc.add(apiOrigin)
   if (storageOrigin) {
     connectSrc.add(storageOrigin)

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 
-type Err = Error & { statusCode?: number; validation?: unknown }
+type Err = Error & { statusCode?: number; validation?: unknown; code?: string }
 
 function aggregateErrorText(error: unknown): string {
   const parts: string[] = []
@@ -17,7 +17,8 @@ function aggregateErrorText(error: unknown): string {
 }
 
 /** Postgres/Drizzle after a missed migration — give operators a clear signal. */
-function isDatabaseSchemaMismatch(message: string): boolean {
+function isDatabaseSchemaMismatch(error: Err, message: string): boolean {
+  if (error.code === '42P01' || error.code === '42703') return true
   const m = message.toLowerCase()
   if (!m.includes('does not exist')) return false
   return m.includes('column ') || m.includes('relation ') || m.includes('table ')
@@ -36,7 +37,7 @@ export function registerGlobalErrorHandler(app: FastifyInstance): void {
 
     if (statusCode >= 500) {
       const text = aggregateErrorText(error)
-      if (isDatabaseSchemaMismatch(text)) {
+      if (isDatabaseSchemaMismatch(error, text)) {
         reply.status(503).send({
           error: 'DATABASE_SCHEMA_MISMATCH',
           hint:

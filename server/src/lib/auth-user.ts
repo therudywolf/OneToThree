@@ -145,7 +145,10 @@ export async function getAuthUser(
   }
 
   // Stage 3: seed device registry for legacy users before route logic continues.
-  await maybeAutoMigrateDevice(normalizeUuid(row.id), row.publicKeyJwk)
+  // Never fail auth reads because of a best-effort migration side effect.
+  await maybeAutoMigrateDevice(normalizeUuid(row.id), row.publicKeyJwk).catch((err) => {
+    request.log?.warn({ err, userId: row.id }, 'device auto-migration skipped')
+  })
 
   return {
     id: normalizeUuid(row.id),

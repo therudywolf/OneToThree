@@ -7,6 +7,14 @@ import { useThemeStore } from '@/store/themeStore'
 import { fetchStickerPacks, deleteStickerPack, refreshStickerPack, type StickerPack } from '@/lib/api/stickers'
 import { toastError } from '@/store/toastStore'
 
+function normalizeStickerActionError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : 'REQUEST_FAILED'
+  if (msg === 'FORBIDDEN' || msg.startsWith('DELETE_PACK_403') || msg.startsWith('REFRESH_PACK_403')) {
+    return 'Owner-only action'
+  }
+  return msg
+}
+
 export function SettingsStickersPanel() {
   const { t } = useTranslation()
   const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
@@ -33,26 +41,34 @@ export function SettingsStickersPanel() {
   useEffect(() => { void load() }, [load])
 
   const handleDelete = async (pack: StickerPack) => {
+    if (pack.accessScope !== 'owned') {
+      toastError('Owner-only action', { title: 'Stickers' })
+      return
+    }
     if (deletingId) return
     setDeletingId(pack.id)
     try {
       await deleteStickerPack(pack.id)
       setPacks((prev) => prev.filter((p) => p.id !== pack.id))
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'DELETE_FAILED', { title: 'Stickers' })
+      toastError(normalizeStickerActionError(e), { title: 'Stickers' })
     } finally {
       setDeletingId(null)
     }
   }
 
   const handleRefresh = async (pack: StickerPack) => {
+    if (pack.accessScope !== 'owned') {
+      toastError('Owner-only action', { title: 'Stickers' })
+      return
+    }
     if (refreshingId) return
     setRefreshingId(pack.id)
     try {
       const res = await refreshStickerPack(pack.id)
       toastError(`✓ Refreshed: ${res.count} stickers`, { title: pack.title })
     } catch (e) {
-      toastError(e instanceof Error ? e.message : 'REFRESH_FAILED', { title: 'Stickers' })
+      toastError(normalizeStickerActionError(e), { title: 'Stickers' })
     } finally {
       setRefreshingId(null)
     }
@@ -114,7 +130,7 @@ export function SettingsStickersPanel() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">
-                  {pack.tgSource ? (
+                  {pack.tgSource && pack.accessScope === 'owned' ? (
                     <button
                       type="button"
                       disabled={!!refreshingId}
@@ -133,20 +149,24 @@ export function SettingsStickersPanel() {
                     </button>
                   ) : null}
 
-                  <button
-                    type="button"
-                    disabled={!!deletingId}
-                    onClick={() => void handleDelete(pack)}
-                    title={t('settings.stickersDelete')}
-                    className={`${btnBase} ${
-                      isMd3
-                        ? 'bg-[color-mix(in_srgb,var(--danger,#f44336)_10%,transparent)] text-[var(--danger,#f44336)] hover:bg-[color-mix(in_srgb,var(--danger,#f44336)_18%,transparent)] disabled:opacity-40'
-                        : 'border-neon-red/30 text-neon-red/70 hover:border-neon-red/60 hover:text-neon-red disabled:opacity-40'
-                    }`}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    <span className="hidden sm:inline">{t('settings.stickersDelete')}</span>
-                  </button>
+                  {pack.accessScope === 'owned' ? (
+                    <button
+                      type="button"
+                      disabled={!!deletingId}
+                      onClick={() => void handleDelete(pack)}
+                      title={t('settings.stickersDelete')}
+                      className={`${btnBase} ${
+                        isMd3
+                          ? 'bg-[color-mix(in_srgb,var(--danger,#f44336)_10%,transparent)] text-[var(--danger,#f44336)] hover:bg-[color-mix(in_srgb,var(--danger,#f44336)_18%,transparent)] disabled:opacity-40'
+                          : 'border-neon-red/30 text-neon-red/70 hover:border-neon-red/60 hover:text-neon-red disabled:opacity-40'
+                      }`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span className="hidden sm:inline">{t('settings.stickersDelete')}</span>
+                    </button>
+                  ) : (
+                    <span className={mutedCls}>{pack.accessScope ?? 'shared'}</span>
+                  )}
                 </div>
               </div>
             ))}

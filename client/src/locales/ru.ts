@@ -261,6 +261,7 @@ const ru = {
   'composer.gifSoon': 'Поиск GIF — скоро',
   'composer.gifSearchPlaceholder': 'Поиск GIF',
   'composer.gifPopular': 'Популярные GIF',
+  'composer.gifFallbackMode': 'Провайдер GIF недоступен, показаны резервные GIF.',
   'composer.gifHint': 'Введите минимум 2 символа',
   'composer.gifEmpty': 'GIF не найдены',
   'composer.stickerImportPlaceholder': 'Короткое имя в Telegram',

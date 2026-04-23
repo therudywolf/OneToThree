@@ -5,10 +5,15 @@ export type GifHit = {
   previewUrl: string
   originalUrl: string
 }
+export type GifSearchResult = {
+  items: GifHit[]
+  degraded: boolean
+  reason?: 'GIF_PROVIDER_UNCONFIGURED' | 'GIF_PROVIDER_UNAVAILABLE'
+}
 
 const GIPHY_API = 'https://api.giphy.com/v1/gifs/search'
 const GIPHY_TRENDING_API = 'https://api.giphy.com/v1/gifs/trending'
-const DEFAULT_PUBLIC_KEY = 'dc6zaTOxFJmzC'
+const LEGACY_DEV_PUBLIC_KEY = 'dc6zaTOxFJmzC'
 const FALLBACK_GIFS: GifHit[] = [
   { id: 'fallback-1', title: 'happy cat', previewUrl: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif', originalUrl: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif' },
   { id: 'fallback-2', title: 'thumbs up', previewUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif', originalUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
@@ -49,10 +54,24 @@ function fallbackSearch(query: string, limit: number): GifHit[] {
   return FALLBACK_GIFS.filter((g) => g.title.toLowerCase().includes(q)).slice(0, limit)
 }
 
-export async function searchGifs(query: string, limit = 24): Promise<GifHit[]> {
+function resolveGiphyApiKey(): string {
+  const configured = process.env.NEXT_PUBLIC_GIPHY_API_KEY?.trim()
+  if (configured) return configured
+  // Keep legacy key only for local/dev convenience.
+  return process.env.NODE_ENV === 'production' ? '' : LEGACY_DEV_PUBLIC_KEY
+}
+
+export async function searchGifs(query: string, limit = 24): Promise<GifSearchResult> {
   const q = query.trim()
   if (!q) return fetchTrendingGifs(limit)
-  const apiKey = process.env.NEXT_PUBLIC_GIPHY_API_KEY?.trim() || DEFAULT_PUBLIC_KEY
+  const apiKey = resolveGiphyApiKey()
+  if (!apiKey) {
+    return {
+      items: fallbackSearch(q, limit),
+      degraded: true,
+      reason: 'GIF_PROVIDER_UNCONFIGURED',
+    }
+  }
   const params = new URLSearchParams({
     api_key: apiKey,
     q,
@@ -62,7 +81,13 @@ export async function searchGifs(query: string, limit = 24): Promise<GifHit[]> {
   })
   try {
     const res = await fetchWithTimeout(`${GIPHY_API}?${params.toString()}`)
-    if (!res.ok) throw new Error(`GIF_SEARCH_${res.status}`)
+    if (!res.ok) {
+      return {
+        items: fallbackSearch(q, limit),
+        degraded: true,
+        reason: 'GIF_PROVIDER_UNAVAILABLE',
+      }
+    }
     const data = (await res.json()) as {
       data?: Array<{
         id: string
@@ -74,14 +99,29 @@ export async function searchGifs(query: string, limit = 24): Promise<GifHit[]> {
       }>
     }
     const mapped = mapRows(data)
-    return mapped.length > 0 ? mapped : fallbackSearch(q, limit)
+    return {
+      items: mapped.length > 0 ? mapped : fallbackSearch(q, limit),
+      degraded: mapped.length === 0,
+      reason: mapped.length === 0 ? 'GIF_PROVIDER_UNAVAILABLE' : undefined,
+    }
   } catch {
-    return fallbackSearch(q, limit)
+    return {
+      items: fallbackSearch(q, limit),
+      degraded: true,
+      reason: 'GIF_PROVIDER_UNAVAILABLE',
+    }
   }
 }
 
-export async function fetchTrendingGifs(limit = 24): Promise<GifHit[]> {
-  const apiKey = process.env.NEXT_PUBLIC_GIPHY_API_KEY?.trim() || DEFAULT_PUBLIC_KEY
+export async function fetchTrendingGifs(limit = 24): Promise<GifSearchResult> {
+  const apiKey = resolveGiphyApiKey()
+  if (!apiKey) {
+    return {
+      items: FALLBACK_GIFS.slice(0, limit),
+      degraded: true,
+      reason: 'GIF_PROVIDER_UNCONFIGURED',
+    }
+  }
   const params = new URLSearchParams({
     api_key: apiKey,
     limit: String(Math.max(1, Math.min(50, limit))),
@@ -89,7 +129,13 @@ export async function fetchTrendingGifs(limit = 24): Promise<GifHit[]> {
   })
   try {
     const res = await fetchWithTimeout(`${GIPHY_TRENDING_API}?${params.toString()}`)
-    if (!res.ok) throw new Error(`GIF_TRENDING_${res.status}`)
+    if (!res.ok) {
+      return {
+        items: FALLBACK_GIFS.slice(0, limit),
+        degraded: true,
+        reason: 'GIF_PROVIDER_UNAVAILABLE',
+      }
+    }
     const data = (await res.json()) as {
       data?: Array<{
         id: string
@@ -101,8 +147,16 @@ export async function fetchTrendingGifs(limit = 24): Promise<GifHit[]> {
       }>
     }
     const mapped = mapRows(data)
-    return mapped.length > 0 ? mapped : FALLBACK_GIFS.slice(0, limit)
+    return {
+      items: mapped.length > 0 ? mapped : FALLBACK_GIFS.slice(0, limit),
+      degraded: mapped.length === 0,
+      reason: mapped.length === 0 ? 'GIF_PROVIDER_UNAVAILABLE' : undefined,
+    }
   } catch {
-    return FALLBACK_GIFS.slice(0, limit)
+    return {
+      items: FALLBACK_GIFS.slice(0, limit),
+      degraded: true,
+      reason: 'GIF_PROVIDER_UNAVAILABLE',
+    }
   }
 }

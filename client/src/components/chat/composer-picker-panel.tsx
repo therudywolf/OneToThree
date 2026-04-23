@@ -65,6 +65,7 @@ export function ComposerPickerPanel({
   const [gifBusy, setGifBusy] = useState(false)
   const [gifErr, setGifErr] = useState<string | null>(null)
   const [gifs, setGifs] = useState<GifHit[]>([])
+  const [gifDegraded, setGifDegraded] = useState(false)
 
   const pickerHeight = layout === 'dock' ? 360 : 320
 
@@ -129,11 +130,14 @@ export function ComposerPickerPanel({
     let cancelled = false
     setGifBusy(true)
     setGifErr(null)
+    setGifDegraded(false)
     const timer = setTimeout(() => {
       const run = isTrendingMode ? fetchTrendingGifs(24) : searchGifs(q, 24)
       void run
-        .then((rows) => {
-          if (!cancelled) setGifs(rows)
+        .then((result) => {
+          if (cancelled) return
+          setGifs(result.items)
+          setGifDegraded(result.degraded)
         })
         .catch((e) => {
           if (!cancelled) {
@@ -355,6 +359,10 @@ export function ComposerPickerPanel({
               <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
             ) : gifErr ? (
               <div className="py-2 font-mono text-[10px] text-danger/90">{gifErr}</div>
+            ) : gifDegraded ? (
+              <div className="py-2 font-mono text-[10px] text-text-muted">
+                {t('composer.gifFallbackMode')}
+              </div>
             ) : gifs.length > 0 ? (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {gifs.map((g) => (

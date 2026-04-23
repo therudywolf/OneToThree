@@ -261,6 +261,7 @@ const en = {
   'composer.gifSoon': 'GIF search — coming soon',
   'composer.gifSearchPlaceholder': 'Search GIFs',
   'composer.gifPopular': 'Popular GIFs',
+  'composer.gifFallbackMode': 'GIF provider unavailable, showing fallback GIFs.',
   'composer.gifHint': 'Type at least 2 characters',
   'composer.gifEmpty': 'No GIF results',
   'composer.stickerImportPlaceholder': 'Telegram short name',

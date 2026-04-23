@@ -735,6 +735,10 @@ const ru = {
   'login.qrScanStart': 'Сканировать QR',
   'login.qrScanStop': 'Остановить сканер',
   'login.qrScanNoCamera': 'Камера недоступна. Проверьте разрешения.',
+  'login.qrScanDenied': 'Доступ к камере запрещен. Разрешите камеру в настройках браузера.',
+  'login.qrScanNotFound': 'Камера не найдена на устройстве.',
+  'login.qrScanBusy': 'Камера занята другим приложением или вкладкой.',
+  'login.qrScanFailed': 'Не удалось запустить QR-сканер. Попробуйте перезагрузить страницу.',
   'login.qrScanProcessing': 'QR-код обнаружен, подключение...',
 
   // [ONBOARDING WELCOME]

@@ -51,7 +51,9 @@ function mapRows(data: {
 function fallbackSearch(query: string, limit: number): GifHit[] {
   const q = query.trim().toLowerCase()
   if (!q) return FALLBACK_GIFS.slice(0, limit)
-  return FALLBACK_GIFS.filter((g) => g.title.toLowerCase().includes(q)).slice(0, limit)
+  const matched = FALLBACK_GIFS.filter((g) => g.title.toLowerCase().includes(q))
+  // If query language doesn't match fallback titles, still show usable GIFs.
+  return (matched.length > 0 ? matched : FALLBACK_GIFS).slice(0, limit)
 }
 
 function resolveGiphyApiKey(): string {

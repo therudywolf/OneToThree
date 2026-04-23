@@ -95,4 +95,20 @@ describe('theme appearance resolution', () => {
       resolved.tokens.accentSoft,
     ])
   })
+
+  it('keeps theme-provided accent 2 when no overrides are set', () => {
+    const resolved = resolveThemeAppearance({
+      theme: 'default',
+      shellMode: 'terminal',
+      accentPreset: 'theme',
+      primaryColorOverride: null,
+      accentColorOverride: null,
+      accentSoftColorOverride: null,
+      backgroundColorOverride: null,
+      motionMode: 'full',
+    })
+
+    expect(resolved.tokens.accent).toBe('#00e8ff')
+    expect(resolved.tokens.accentSoft).toBe('#ffb347')
+  })
 })

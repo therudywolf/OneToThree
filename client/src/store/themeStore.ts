@@ -560,6 +560,16 @@ export function resolveThemeAppearance(input: Pick<
         )
       : base.tokens.elevated
 
+  const accentSoft =
+    normalizeHex(input.accentSoftColorOverride) ??
+    (input.accentPreset === 'theme'
+      ? base.tokens.accentSoft
+      : mixColors(
+          accent,
+          base.scheme === 'light' ? '#ffffff' : '#d9faff',
+          base.scheme === 'light' ? 0.45 : 0.2
+        ))
+
   const tokens: ThemeTokens = {
     ...base.tokens,
     background,
@@ -567,7 +577,7 @@ export function resolveThemeAppearance(input: Pick<
     elevated,
     primary,
     accent,
-    accentSoft: normalizeHex(input.accentSoftColorOverride) ?? mixColors(accent, base.scheme === 'light' ? '#ffffff' : '#d9faff', base.scheme === 'light' ? 0.45 : 0.2),
+    accentSoft,
     border:
       base.id === 'md3dark' || base.id === 'md3light'
         ? base.tokens.border

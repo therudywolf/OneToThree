@@ -27,6 +27,7 @@ import { SettingsPushNotifications } from '@/components/settings-push-notificati
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { SettingsAvatarSection } from '@/components/settings-avatar-section'
 import { SettingsChatFoldersPanel } from '@/components/settings-chat-folders-panel'
+import { SettingsStickersPanel } from '@/components/settings-stickers-panel'
 import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { patchMyProfile } from '@/lib/api/users'
@@ -82,7 +83,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null)
   const [recoveryBusy, setRecoveryBusy] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'main' | 'chat' | 'profile' | 'media' | 'devices' | 'security' | 'folders'>('main')
+  const [settingsTab, setSettingsTab] = useState<'main' | 'chat' | 'profile' | 'media' | 'devices' | 'security' | 'folders' | 'stickers'>('main')
   const [changePinOpen, setChangePinOpen] = useState(false)
   const [changePinOld, setChangePinOld] = useState('')
   const [changePinNew, setChangePinNew] = useState('')
@@ -451,7 +452,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
           className={`terminal-panel ${isMd3 ? 'md3-settings' : ''} flex max-h-[min(92dvh,92vh)] w-full min-w-0 flex-col overflow-hidden ${
-          settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' || settingsTab === 'folders' || settingsTab === 'chat' ? 'max-w-2xl'
+          settingsTab === 'media' || settingsTab === 'devices' || settingsTab === 'security' || settingsTab === 'folders' || settingsTab === 'chat' || settingsTab === 'stickers' ? 'max-w-2xl'
           : settingsTab === 'profile' ? 'max-w-lg'
           : totpSetup ? 'max-w-lg' : 'max-w-md'
         } ${isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : ''}`}
@@ -469,7 +470,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
         {/* ── Tabs ── */}
         <div className={`custom-scrollbar flex shrink-0 items-center gap-2 overflow-x-auto border-b py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
-          {(['main', 'chat', 'profile', 'folders', 'security', 'media', 'devices'] as const).map((tab) => (
+          {(['main', 'chat', 'profile', 'folders', 'stickers', 'security', 'media', 'devices'] as const).map((tab) => (
             <button key={tab} type="button" onClick={() => setSettingsTab(tab)}
               className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
                 settingsTab === tab
@@ -484,6 +485,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               : tab === 'chat'    ? `${isMd3 ? '' : '[ '}${t('settings.tabChats')}${isMd3 ? '' : ' ]'}`
               : tab === 'profile' ? `${isMd3 ? '' : '[ '}${t('profile.section')}${isMd3 ? '' : ' ]'}`
               : tab === 'folders' ? `${isMd3 ? '' : '[ '}Папки${isMd3 ? '' : ' ]'}`
+              : tab === 'stickers'? `${isMd3 ? '' : '[ '}${t('settings.tabStickers')}${isMd3 ? '' : ' ]'}`
               : tab === 'security'? `${isMd3 ? '' : '[ '}${t('settings.tabSecurity')}${isMd3 ? '' : ' ]'}`
               : tab === 'media'   ? `${isMd3 ? '' : '[ '}${t('settings.tabMedia')}${isMd3 ? '' : ' ]'}`
               :                     `${isMd3 ? '' : '[ '}${t('settings.tabDevices')}${isMd3 ? '' : ' ]'}`}
@@ -883,10 +885,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </div>
           ) : null}
 
-          {/* ════════════ MEDIA / DEVICES TABS ════════════ */}
+          {/* ════════════ MEDIA / DEVICES / STICKERS TABS ════════════ */}
           {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
           {settingsTab === 'devices' ? <SettingsDevicesPanel userId={userId} active /> : null}
           {settingsTab === 'folders' ? <SettingsChatFoldersPanel userId={userId} /> : null}
+          {settingsTab === 'stickers' ? <SettingsStickersPanel /> : null}
 
           {/* ════════════ PROFILE TAB ════════════ */}
           {settingsTab === 'profile' ? (

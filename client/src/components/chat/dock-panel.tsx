@@ -48,6 +48,7 @@ export function DockPanel() {
   const emojiOnPick = useDockStore((s) => s.emojiOnPick)
   const composerOnEmoji = useDockStore((s) => s.composerOnEmoji)
   const composerOnStickerSend = useDockStore((s) => s.composerOnStickerSend)
+  const composerOnGifPick = useDockStore((s) => s.composerOnGifPick)
   const searchOnJump = useDockStore((s) => s.searchOnJump)
 
   useEffect(() => {
@@ -128,6 +129,7 @@ export function DockPanel() {
             layout="dock"
             onEmoji={(e) => composerOnEmoji(e)}
             onStickerSend={composerOnStickerSend}
+            onGifPick={composerOnGifPick ?? undefined}
           />
         ) : null}
 

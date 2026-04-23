@@ -164,6 +164,41 @@ export async function reloadStickerDisplayUrl(mediaKey: string): Promise<string>
   return loadStickerDisplayUrl(mediaKey)
 }
 
+export async function deleteStickerPack(packId: string): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `DELETE_PACK_${res.status}`)
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(PACKS_CACHE_KEY)
+      localStorage.removeItem(stickersCacheKey(packId))
+    } catch { /* non-fatal */ }
+  }
+}
+
+export async function refreshStickerPack(packId: string): Promise<{ count: number }> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `REFRESH_PACK_${res.status}`)
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.removeItem(PACKS_CACHE_KEY)
+      localStorage.removeItem(stickersCacheKey(packId))
+    } catch { /* non-fatal */ }
+  }
+  return (await res.json()) as { count: number }
+}
+
 export async function importTelegramStickerPack(shortName: string): Promise<{ pack_id: string; imported: boolean; count?: number }> {
   const normalizedShortName = normalizeTelegramShortName(shortName)
   const res = await fetchWithTimeout(`${API_URL}/stickers/packs/import`, {

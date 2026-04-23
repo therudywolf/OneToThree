@@ -854,7 +854,6 @@ export function ChatSidebar({
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const c = sidebarChatsFiltered[virtualRow.index]!
           const isPinned = pinnedIds.includes(c.id)
-          const isMutedRow = isChatMuted(c)
           const unread = unreadByChat[c.id]
           const unreadTotal = unread?.total ?? 0
           const mentionTotal = unread?.mentions ?? 0

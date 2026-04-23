@@ -785,6 +785,7 @@ const ru = {
   'settings.appearanceReset': 'Сбросить стиль',
   'settings.appearancePrimary': 'Ключевой цвет',
   'settings.appearanceAccent': 'Акцентный цвет',
+  'settings.appearanceAccent2': 'Акцент 2',
   'settings.appearanceBackground': 'Фон',
   'settings.appearanceMotion': 'Плотность анимации',
   'settings.appearanceMotionHint': 'Можно уменьшить анимации, если нужен более спокойный интерфейс.',

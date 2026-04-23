@@ -100,7 +100,7 @@ export interface ThemeConfig {
   label: string
   scheme: 'dark' | 'light'
   themeColor: string
-  preview: [string, string, string]
+  preview: [string, string, string, string]
   tokens: ThemeTokens
 }
 
@@ -183,7 +183,7 @@ function makeTheme(
     label,
     scheme,
     themeColor: tokens.background,
-    preview: [tokens.background, tokens.primary, tokens.accent],
+    preview: [tokens.background, tokens.primary, tokens.accent, tokens.accentSoft],
     tokens,
   }
 }
@@ -454,7 +454,7 @@ export type ResolvedThemeAppearance = {
   label: string
   scheme: 'dark' | 'light'
   themeColor: string
-  preview: [string, string, string]
+  preview: [string, string, string, string]
   tokens: ThemeTokens
   motionMode: MotionMode
   shell: ShellPreset
@@ -466,6 +466,7 @@ type ChromaticState = {
   accentPreset: AccentPresetId
   primaryColorOverride: string | null
   accentColorOverride: string | null
+  accentSoftColorOverride: string | null
   backgroundColorOverride: string | null
   motionMode: MotionMode
   setTheme: (id: ThemeId) => void
@@ -473,6 +474,7 @@ type ChromaticState = {
   setAccentPreset: (id: AccentPresetId) => void
   setPrimaryColorOverride: (value: string | null) => void
   setAccentColorOverride: (value: string | null) => void
+  setAccentSoftColorOverride: (value: string | null) => void
   setBackgroundColorOverride: (value: string | null) => void
   setMotionMode: (mode: MotionMode) => void
   resetAppearance: () => void
@@ -495,6 +497,7 @@ export function resolveThemeAppearance(input: Pick<
   | 'accentPreset'
   | 'primaryColorOverride'
   | 'accentColorOverride'
+  | 'accentSoftColorOverride'
   | 'backgroundColorOverride'
   | 'motionMode'
 > & { shellMode?: ShellModeId }): ResolvedThemeAppearance {
@@ -542,7 +545,7 @@ export function resolveThemeAppearance(input: Pick<
     elevated,
     primary,
     accent,
-    accentSoft: mixColors(accent, base.scheme === 'light' ? '#ffffff' : '#d9faff', base.scheme === 'light' ? 0.45 : 0.2),
+    accentSoft: normalizeHex(input.accentSoftColorOverride) ?? mixColors(accent, base.scheme === 'light' ? '#ffffff' : '#d9faff', base.scheme === 'light' ? 0.45 : 0.2),
     border:
       base.id === 'md3dark' || base.id === 'md3light'
         ? base.tokens.border
@@ -570,7 +573,7 @@ export function resolveThemeAppearance(input: Pick<
     label: base.label,
     scheme: base.scheme,
     themeColor: background,
-    preview: [background, primary, accent],
+    preview: [background, primary, accent, tokens.accentSoft],
     tokens,
     motionMode: input.motionMode,
     shell,
@@ -585,6 +588,7 @@ export const useThemeStore = create<ChromaticState>()(
       accentPreset: 'theme',
       primaryColorOverride: null,
       accentColorOverride: null,
+      accentSoftColorOverride: null,
       backgroundColorOverride: null,
       motionMode: 'full',
       setTheme: (id) => set({ theme: id }),
@@ -595,6 +599,8 @@ export const useThemeStore = create<ChromaticState>()(
           accentPreset: id,
           primaryColorOverride: preset && id !== 'theme' ? preset.primary : null,
           accentColorOverride: preset && id !== 'theme' ? preset.accent : null,
+          // Keep Accent 2 derived from the selected preset/theme unless user edits it explicitly.
+          accentSoftColorOverride: null,
         })
       },
       setPrimaryColorOverride: (value) =>
@@ -607,6 +613,10 @@ export const useThemeStore = create<ChromaticState>()(
           accentPreset: 'theme',
           accentColorOverride: normalizeHex(value),
         }),
+      setAccentSoftColorOverride: (value) =>
+        set({
+          accentSoftColorOverride: normalizeHex(value),
+        }),
       setBackgroundColorOverride: (value) =>
         set({
           backgroundColorOverride: normalizeHex(value),
@@ -617,6 +627,7 @@ export const useThemeStore = create<ChromaticState>()(
           accentPreset: 'theme',
           primaryColorOverride: null,
           accentColorOverride: null,
+          accentSoftColorOverride: null,
           backgroundColorOverride: null,
           motionMode: 'full',
         }),
@@ -631,6 +642,7 @@ export const useThemeStore = create<ChromaticState>()(
         accentPreset: state.accentPreset,
         primaryColorOverride: state.primaryColorOverride,
         accentColorOverride: state.accentColorOverride,
+        accentSoftColorOverride: state.accentSoftColorOverride,
         backgroundColorOverride: state.backgroundColorOverride,
         motionMode: state.motionMode,
       }),

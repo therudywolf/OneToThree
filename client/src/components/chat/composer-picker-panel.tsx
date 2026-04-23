@@ -193,7 +193,7 @@ export function ComposerPickerPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'emoji' ? (
-          <div className="p-2">
+          <div className="p13-epr-host p-2">
             <LazyEmojiPicker
               onEmojiClick={(data: { emoji: string }) => {
                 onEmoji(data.emoji)

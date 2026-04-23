@@ -785,6 +785,7 @@ const en = {
   'settings.appearanceReset': 'Reset look',
   'settings.appearancePrimary': 'Key color',
   'settings.appearanceAccent': 'Accent color',
+  'settings.appearanceAccent2': 'Accent 2',
   'settings.appearanceBackground': 'Background',
   'settings.appearanceMotion': 'Motion density',
   'settings.appearanceMotionHint': 'Reduce animation if you want a calmer UI.',

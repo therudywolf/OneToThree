@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { Theme } from 'emoji-picker-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useShell } from '@/components/ui/shell'
+import { useThemeStore } from '@/store/themeStore'
 import {
   fetchPackStickers,
   fetchStickerPacks,
@@ -50,6 +51,9 @@ export function ComposerPickerPanel({
 }: ComposerPickerPanelProps) {
   const { t } = useTranslation()
   const { isTerminal } = useShell()
+  const themeId = useThemeStore((s) => s.theme)
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
   const [tab, setTab] = useState<Tab>('emoji')
   const [packs, setPacks] = useState<StickerPack[]>([])
   const [packsErr, setPacksErr] = useState<string | null>(null)
@@ -177,10 +181,14 @@ export function ComposerPickerPanel({
       onClick={() => setTab(id)}
       className={`inline-flex h-9 items-center justify-center rounded px-3 font-mono text-[10px] uppercase tracking-widest transition-colors ${
         tab === id
-          ? isTerminal
+          ? isRetro
+            ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] normal-case text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+            : isTerminal
             ? 'bg-neon-cyan/15 text-neon-cyan'
             : 'bg-[var(--md3-primary-container,#2a3441)] text-[var(--on-surface)]'
-          : 'text-text-muted hover:text-neon-cyan/80'
+          : isRetro
+            ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] normal-case text-[#3f4752] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+            : 'text-text-muted hover:text-neon-cyan/80'
       }`}
     >
       {label}
@@ -225,7 +233,11 @@ export function ComposerPickerPanel({
                 type="button"
                 disabled={importBusy || !importName.trim()}
                 onClick={() => void onImport()}
-                className="inline-flex h-10 shrink-0 items-center justify-center rounded border border-neon-cyan/40 px-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40"
+                className={`inline-flex h-10 shrink-0 items-center justify-center rounded px-3 text-[10px] disabled:opacity-40 ${
+                  isRetro
+                    ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                    : 'border border-neon-cyan/40 font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'
+                }`}
               >
                 {importBusy ? '…' : t('composer.stickerImport')}
               </button>
@@ -249,10 +261,14 @@ export function ComposerPickerPanel({
                     key={p.id}
                     type="button"
                     onClick={() => setSelectedPackId(p.id)}
-                    className={`inline-flex h-8 max-w-[10rem] items-center truncate rounded px-3 font-mono text-[10px] ${
+                    className={`inline-flex h-8 max-w-[10rem] items-center truncate rounded px-3 text-[10px] ${
                       selectedPackId === p.id
-                        ? 'bg-neon-cyan/20 text-neon-cyan'
-                        : 'bg-void/50 text-text-muted hover:text-neon-cyan/90'
+                        ? isRetro
+                          ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#123659] shadow-[inset_1px_1px_0_#7d7d7d,inset_-1px_-1px_0_#ffffff]'
+                          : 'bg-neon-cyan/20 text-neon-cyan'
+                        : isRetro
+                          ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#3f4752] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                          : 'bg-void/50 text-text-muted hover:text-neon-cyan/90'
                     }`}
                     title={p.title}
                   >

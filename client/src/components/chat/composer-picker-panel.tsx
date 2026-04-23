@@ -350,11 +350,7 @@ export function ComposerPickerPanel({
               <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
             ) : gifErr ? (
               <div className="py-2 font-mono text-[10px] text-danger/90">{gifErr}</div>
-            ) : gifQuery.trim().length < 2 ? (
-              <div className="py-2 text-center font-mono text-[10px] text-text-muted">{t('composer.gifPopular')}</div>
-            ) : gifs.length === 0 ? (
-              <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifEmpty')}</div>
-            ) : (
+            ) : gifs.length > 0 ? (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {gifs.map((g) => (
                   <button
@@ -372,6 +368,10 @@ export function ComposerPickerPanel({
                   </button>
                 ))}
               </div>
+            ) : gifQuery.trim().length < 2 ? (
+              <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifPopular')}</div>
+            ) : (
+              <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifEmpty')}</div>
             )}
           </div>
         ) : null}

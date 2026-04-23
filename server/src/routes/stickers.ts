@@ -248,6 +248,96 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ stickers: withUrls })
   })
 
+  /** DELETE /api/stickers/packs/:packId — delete a pack and its stickers (owner only) */
+  app.delete('/packs/:packId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const [pack] = await db
+      .select({ id: stickerPacks.id, ownerId: stickerPacks.ownerId })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+
+    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    await db.delete(stickerPacks).where(eq(stickerPacks.id, params.data.packId))
+    return reply.status(204).send()
+  })
+
+  /**
+   * POST /api/stickers/packs/:packId/refresh
+   * Re-fetch sticker set from Telegram and update stickers in DB (owner only).
+   */
+  app.post('/packs/:packId/refresh', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const token = process.env.TELEGRAM_BOT_TOKEN?.trim()
+    if (!token) return reply.status(503).send({ error: 'TELEGRAM_BOT_TOKEN_NOT_CONFIGURED' })
+
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const [pack] = await db
+      .select()
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+
+    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
+    if (!pack.tgSource) return reply.status(400).send({ error: 'NOT_A_TG_PACK' })
+
+    let stickerSet: TgStickerSet
+    try {
+      stickerSet = await tgApiGet<TgStickerSet>(token, 'getStickerSet', { name: pack.tgSource })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'TG_ERROR'
+      return reply.status(422).send({ error: `FETCH_STICKER_SET_FAILED: ${msg}` })
+    }
+
+    await db.delete(stickers).where(eq(stickers.packId, pack.id))
+
+    const s3 = createS3Client()
+    const stickerRows = []
+    for (let i = 0; i < Math.min(stickerSet.stickers.length, 100); i++) {
+      const s = stickerSet.stickers[i]!
+      try {
+        const { data, ext } = await downloadTgFile(token, s.file_id)
+        const mediaKey = `stickers/${pack.id}/${randomUUID()}.${ext}`
+        await s3.send(new PutObjectCommand({
+          Bucket: MINIO_BUCKET,
+          Key: mediaKey,
+          Body: data,
+          ContentType: mimeForExt(ext),
+        }))
+        stickerRows.push({
+          packId: pack.id,
+          position: i,
+          emoji: s.emoji ?? '',
+          mediaKey,
+          width: s.width,
+          height: s.height,
+        })
+      } catch (err) {
+        app.log.warn({ err, fileId: s.file_id }, 'sticker refresh download failed, skipping')
+      }
+    }
+
+    if (stickerRows.length > 0) {
+      await db.insert(stickers).values(stickerRows)
+    }
+
+    return reply.send({ count: stickerRows.length })
+  })
+
   /**
    * POST /api/stickers/packs/import
    * Body: { short_name: string }  — Telegram sticker set short name (the part after t.me/addstickers/)

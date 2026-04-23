@@ -23,6 +23,7 @@ type DockState = {
   /** Unified emoji + sticker + GIF picker (xl+ dock). */
   composerOnEmoji: ((emoji: string) => void) | null
   composerOnStickerSend: ((json: string) => Promise<void>) | null
+  composerOnGifPick: ((gifUrl: string) => void) | null
   searchScopeChatId: string | null
   /**
    * Callback wired by the chat view that the search panel invokes to scroll
@@ -39,6 +40,7 @@ type DockState = {
   openComposer: (handlers: {
     onEmoji: (emoji: string) => void
     onStickerSend: (json: string) => Promise<void>
+    onGifPick?: (gifUrl: string) => void
   }) => void
   openSearch: (chatId: string, onJump?: (messageId: string) => void) => void
   openPinned: (chatId: string) => void
@@ -52,6 +54,7 @@ export const useDockStore = create<DockState>((set, get) => ({
   emojiOnPick: null,
   composerOnEmoji: null,
   composerOnStickerSend: null,
+  composerOnGifPick: null,
   searchScopeChatId: null,
   searchOnJump: null,
   pinnedChatId: null,
@@ -71,6 +74,7 @@ export const useDockStore = create<DockState>((set, get) => ({
       slot: 'composer',
       composerOnEmoji: handlers.onEmoji,
       composerOnStickerSend: handlers.onStickerSend,
+      composerOnGifPick: handlers.onGifPick ?? null,
       emojiOnPick: null,
     }),
   openSearch: (chatId, onJump) =>
@@ -84,6 +88,7 @@ export const useDockStore = create<DockState>((set, get) => ({
       emojiOnPick: null,
       composerOnEmoji: null,
       composerOnStickerSend: null,
+      composerOnGifPick: null,
       searchScopeChatId: null,
       searchOnJump: null,
       pinnedChatId: null,

@@ -607,6 +607,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                       onStickerSend: async (json) => {
                         await sendText(json)
                       },
+                      onGifPick: (url) => insertEmoji(` ${url} `),
                     })
                   }
                   return

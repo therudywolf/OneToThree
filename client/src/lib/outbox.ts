@@ -112,6 +112,28 @@ const MAX_BACKOFF_MS = 60_000
 /** In-memory retry state; resets on page reload (Background Sync handles persistence). */
 const retryState = new Map<string, { retries: number; nextRetry: number }>()
 
+function emitOutboxTelemetry(payload: { attempted: number; sent: number; failed: number }) {
+  if (typeof window === 'undefined') return
+  const failRatio = payload.attempted > 0 ? payload.failed / payload.attempted : 0
+  try {
+    localStorage.setItem(
+      'p13:outbox-telemetry',
+      JSON.stringify({
+        ...payload,
+        failRatio,
+        ts: new Date().toISOString(),
+      })
+    )
+  } catch {
+    /* ignore storage failures */
+  }
+  window.dispatchEvent(
+    new CustomEvent('p13_outbox_telemetry', {
+      detail: { ...payload, failRatio },
+    })
+  )
+}
+
 function getBackoffMs(retries: number): number {
   return Math.min(1000 * 2 ** retries, MAX_BACKOFF_MS)
 }
@@ -126,6 +148,9 @@ export async function flushOutboxPending(): Promise<void> {
   flushingOutbox = true
   try {
     const entries = await readOutbox()
+    let attempted = 0
+    let sent = 0
+    let failed = 0
     const now = Date.now()
     for (const entry of entries) {
       const state = retryState.get(entry.id) ?? { retries: 0, nextRetry: 0 }
@@ -135,6 +160,7 @@ export async function flushOutboxPending(): Promise<void> {
         continue
       }
       if (state.nextRetry > now) continue
+      attempted++
       try {
         const res = await fetch(`${API_URL}/messages/send`, {
           method: 'POST',
@@ -145,17 +171,21 @@ export async function flushOutboxPending(): Promise<void> {
         if (res.ok) {
           await removeOutboxEntry(entry.id)
           retryState.delete(entry.id)
+          sent++
         } else {
           state.retries++
           state.nextRetry = Date.now() + getBackoffMs(state.retries)
           retryState.set(entry.id, state)
+          failed++
         }
       } catch {
         state.retries++
         state.nextRetry = Date.now() + getBackoffMs(state.retries)
         retryState.set(entry.id, state)
+        failed++
       }
     }
+    emitOutboxTelemetry({ attempted, sent, failed })
   } finally {
     flushingOutbox = false
   }

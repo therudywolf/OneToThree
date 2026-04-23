@@ -1,10 +1,36 @@
 /* Imported by Workbox service worker (next-pwa). Handles push + notification clicks. */
-/** Required for installability: explicit fetch handler (network-first pass-through). */
+const SHELL_CACHE = 'p13-shell-v2'
+const RUNTIME_CACHE = 'p13-runtime-v2'
+const OFFLINE_FALLBACK_URL = '/offline.html'
+const SHELL_ASSETS = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/wolf-logo.png', OFFLINE_FALLBACK_URL]
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS)).catch(() => undefined)
+  )
+})
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const keys = await caches.keys()
+      await Promise.all(
+        keys
+          .filter((key) => key.startsWith('p13-') && key !== SHELL_CACHE && key !== RUNTIME_CACHE)
+          .map((key) => caches.delete(key))
+      )
+      await self.clients.claim()
+    })()
+  )
+})
+
+/** Required for installability: explicit fetch handler with offline fallback. */
 self.addEventListener('fetch', (event) => {
   // Skip S3/MinIO presigned requests — let browser handle them directly.
   // Intercepting binary PUT uploads through SW causes ERR_ABORTED on voice/video messages.
   const url = new URL(event.request.url)
   if (
+    event.request.method !== 'GET' ||
     event.request.method === 'PUT' ||
     url.searchParams.has('X-Amz-Signature') ||
     url.searchParams.has('X-Amz-Algorithm')
@@ -13,9 +39,49 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    fetch(event.request).catch(() => {
-      return Response.error()
-    })
+    (async () => {
+      const isDocument = event.request.mode === 'navigate'
+      const isSameOrigin = url.origin === self.location.origin
+      if (isDocument) {
+        try {
+          const fresh = await fetch(event.request)
+          const runtime = await caches.open(RUNTIME_CACHE)
+          runtime.put(event.request, fresh.clone())
+          return fresh
+        } catch {
+          const cachedDoc = await caches.match(event.request)
+          if (cachedDoc) return cachedDoc
+          const fallback = await caches.match(OFFLINE_FALLBACK_URL)
+          if (fallback) return fallback
+          return new Response('Offline', { status: 503, statusText: 'Offline' })
+        }
+      }
+
+      if (!isSameOrigin) {
+        try {
+          return await fetch(event.request)
+        } catch {
+          const cached = await caches.match(event.request)
+          return cached || new Response('', { status: 504, statusText: 'Gateway Timeout' })
+        }
+      }
+
+      const cached = await caches.match(event.request)
+      const network = fetch(event.request)
+        .then(async (res) => {
+          if (res && res.ok) {
+            const runtime = await caches.open(RUNTIME_CACHE)
+            runtime.put(event.request, res.clone())
+          }
+          return res
+        })
+        .catch(() => null)
+      if (cached) {
+        event.waitUntil(network)
+        return cached
+      }
+      return (await network) || new Response('', { status: 504, statusText: 'Gateway Timeout' })
+    })()
   )
 })
 
@@ -126,6 +192,14 @@ self.addEventListener('pushsubscriptionchange', (event) => {
         })
       } catch (err) {
         console.warn('[SW] pushsubscriptionchange resubscribe failed:', err)
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+        for (const client of clients) {
+          try {
+            client.postMessage({ type: 'push_resubscribe_needed' })
+          } catch {
+            /* noop */
+          }
+        }
       }
     })()
   )

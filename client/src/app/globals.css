@@ -4,6 +4,7 @@
 
 :root {
   --p13-keyboard-inset: 0px;
+  --p13-safe-bottom: env(safe-area-inset-bottom, 0px);
   --p13-vh: 1vh;
   --neon-red: #ff0000;
   --neon-cyan: #00ffff;
@@ -3459,6 +3460,35 @@ select {
 
 [data-theme="retro"] .p13-icon-btn {
   box-shadow: inset -1px -1px 0 #7d7d7d, inset 1px 1px 0 #ffffff;
+}
+
+@keyframes p13-mobile-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 767px) {
+  .chat-header-compact {
+    min-height: var(--p13-touch-target, 44px);
+    background: var(--p13-mobile-header-bg, color-mix(in srgb, var(--surface) 82%, transparent));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .p13-icon-btn {
+    min-width: var(--p13-touch-target, 44px);
+    min-height: var(--p13-touch-target, 44px);
+  }
+
+  .p13-composer {
+    padding-bottom: var(--p13-safe-bottom);
+  }
 }
 
 [data-motion="reduced"] * {

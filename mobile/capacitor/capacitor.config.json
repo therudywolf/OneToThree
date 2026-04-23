@@ -1,0 +1,19 @@
+{
+  "appId": "ru.onetothree.app",
+  "appName": "OneToThree",
+  "webDir": "../../client/out",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#0b0d11"
+    }
+  }
+}

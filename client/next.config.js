@@ -84,6 +84,30 @@ try {
     importScripts: ['/push-handler.js'],
     runtimeCaching: [
       {
+        urlPattern: /^https?:\/\/[^/]+\/(_next\/static|icon-\d+\.png|wolf-logo\.png|manifest\.webmanifest)/,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'p13-static',
+          expiration: {
+            maxEntries: 80,
+            maxAgeSeconds: 60 * 60 * 24 * 14,
+          },
+        },
+      },
+      {
+        urlPattern: /^https?:\/\/[^/]+\/api\/(?!messages\/send).*/,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'p13-api',
+          networkTimeoutSeconds: 3,
+          cacheableResponse: { statuses: [0, 200] },
+          expiration: {
+            maxEntries: 60,
+            maxAgeSeconds: 60 * 5,
+          },
+        },
+      },
+      {
         urlPattern: /(_rsc=|__rsc=)/,
         handler: 'NetworkOnly',
         options: {

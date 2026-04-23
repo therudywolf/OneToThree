@@ -247,6 +247,32 @@ export async function unsubscribeUserPush(): Promise<void> {
   }
 }
 
+/**
+ * Recovers push delivery when SW reports a broken subscription.
+ * The service worker emits `push_resubscribe_needed` messages after
+ * failed `pushsubscriptionchange` handling.
+ */
+export function installPushRecoveryListener(): () => void {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return () => {}
+  }
+  let busy = false
+  const onMessage = (event: MessageEvent) => {
+    const type = (event.data as { type?: string } | null)?.type
+    if (type !== 'push_resubscribe_needed' || busy) return
+    busy = true
+    void subscribeUserPush()
+      .catch(() => {
+        /* best effort: next app session will retry */
+      })
+      .finally(() => {
+        busy = false
+      })
+  }
+  navigator.serviceWorker.addEventListener('message', onMessage)
+  return () => navigator.serviceWorker.removeEventListener('message', onMessage)
+}
+
 export const __testOnly = {
   requestPushSync,
   shouldRetryPushError,

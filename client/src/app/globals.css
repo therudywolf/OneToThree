@@ -24,6 +24,8 @@
   --secondary-container: color-mix(in srgb, var(--neon-cyan) 20%, var(--surface));
   --on-secondary-container: color-mix(in srgb, var(--on-surface) 92%, transparent);
   --state-hover: color-mix(in srgb, var(--on-surface) 8%, transparent);
+  --state-pressed: color-mix(in srgb, var(--on-surface) 14%, transparent);
+  --state-focus-ring: color-mix(in srgb, var(--primary) 45%, transparent);
   --danger: #ff3b30;
   --success: #ffbf47;
   --warning: #ffbf47;
@@ -3254,4 +3256,54 @@ select {
 [data-shell="terminal"] .p13-group-call-banner {
   border: 1px solid rgba(0, 255, 255, 0.25);
   background: color-mix(in srgb, var(--void) 90%, transparent);
+}
+.p13-media-caption {
+  color: color-mix(in srgb, var(--on-surface) 72%, transparent);
+  font-family: var(--font-family);
+}
+[data-theme="retro"][data-shell="terminal"] .p13-media-caption {
+  color: #2a3f59;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+}
+
+/* --- Retro semantic visual kit --- */
+.p13-window {
+  border: 1px solid #6f747c;
+  background: #d4d0c8;
+  box-shadow: inset -1px -1px 0 #7d7d7d, inset 1px 1px 0 #ffffff;
+}
+.p13-titlebar {
+  border-bottom: 1px solid #001f57;
+  background: linear-gradient(180deg, #0a4ea1, #0b3f87);
+  color: #f4f7ff;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+}
+.p13-list-row {
+  border: 1px solid transparent;
+}
+.p13-list-row:hover {
+  border-color: #7a8089;
+  background: color-mix(in srgb, #d4d0c8 86%, #0a4ea1);
+}
+.p13-statusbar {
+  border-top: 1px solid #7a8089;
+  background: #c9c6bc;
+  color: #233e5e;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+}
+.p13-classic-input {
+  border: 1px solid #6f747c;
+  background: #ffffff;
+  box-shadow: inset 1px 1px 0 #7b818a, inset -1px -1px 0 #f6f6f6;
+}
+.p13-classic-menu {
+  border: 1px solid #6f747c;
+  background: #d4d0c8;
+  box-shadow: inset -1px -1px 0 #7d7d7d, inset 1px 1px 0 #ffffff;
+}
+
+[data-motion="reduced"] * {
+  animation-duration: 0ms !important;
+  transition-duration: 0ms !important;
+  scroll-behavior: auto !important;
 }

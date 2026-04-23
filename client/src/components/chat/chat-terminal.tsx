@@ -1064,7 +1064,7 @@ export function ChatTerminal({
                 key={m.id}
                 data-message-id={m.id}
                 data-run-continuation={isRunContinuation ? 'true' : 'false'}
-                className={`p13-msg-group group/msg relative flex w-full ${
+                className={`p13-msg-group p13-list-row group/msg relative flex w-full ${
                   mine ? 'justify-end' : 'justify-start'
                 } transition-transform duration-150`}
                 style={{
@@ -1304,7 +1304,7 @@ export function ChatTerminal({
                 {dateDivider}
               <div
                 data-run-continuation={isRunContinuation ? 'true' : 'false'}
-                className={`p13-msg-group group flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+                className={`p13-msg-group p13-list-row group flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
               >
                 <div
                   className={`min-w-0 ${

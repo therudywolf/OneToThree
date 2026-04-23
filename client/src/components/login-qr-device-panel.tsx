@@ -6,6 +6,7 @@ import { useAuth } from '@/components/auth/auth-provider'
 import { ensureClientDeviceId } from '@/lib/api/auth'
 import { buildQrLoginUrl, extractQrLoginToken, postQrLogin } from '@/lib/api/auth-qr'
 import { useTranslation } from '@/hooks/use-translation'
+import { useThemeStore } from '@/store/themeStore'
 import jsQR from 'jsqr'
 
 /**
@@ -72,6 +73,9 @@ export function LoginQrDevicePanel() {
 
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -264,14 +268,22 @@ export function LoginQrDevicePanel() {
   }
 
   return (
-    <div className="mt-8 w-full border border-border-strong bg-void/40 p-1 backdrop-blur-sm transition-all hover:border-border-strong">
-      <div className="border border-border-strong p-4">
+    <div className={`mt-8 w-full p-1 transition-all ${
+      isRetro
+        ? 'border border-[#7d828a] bg-[#cfc9bc]'
+        : 'border border-border-strong bg-void/40 backdrop-blur-sm hover:border-border-strong'
+    }`}>
+      <div className={isRetro ? 'border border-[#7d828a] bg-[#d4d0c8] p-4' : 'border border-border-strong p-4'}>
 
         <button
           type="button"
           onClick={() => setIsExpanded((prev) => !prev)}
           data-testid="qr-link-toggle"
-          className="flex w-full items-center justify-between font-mono text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-colors hover:text-neon-red"
+          className={`flex w-full items-center justify-between text-[10px] transition-colors ${
+            isRetro
+              ? 'font-["Tahoma"] tracking-[0.03em] text-[#123659] hover:text-[#7f1d1d]'
+              : 'font-mono uppercase tracking-[0.3em] text-neon-cyan hover:text-neon-red'
+          }`}
         >
           <span>{t('login.qrLinkSection')}</span>
           <span className="text-xs opacity-50">{isExpanded ? '[ − ]' : '[ + ]'}</span>
@@ -286,7 +298,7 @@ export function LoginQrDevicePanel() {
                   <p className="text-[9px] leading-relaxed text-neon-cyan uppercase tracking-widest">
                     // {t('login.qrScanHint')}
                   </p>
-                  <div className="relative border border-neon-cyan/40 bg-void overflow-hidden">
+                  <div className={`relative overflow-hidden ${isRetro ? 'border border-[#7d828a] bg-[#ffffff]' : 'border border-neon-cyan/40 bg-void'}`}>
                     <video
                       ref={videoRef}
                       className="w-full max-h-[240px] object-cover"
@@ -306,7 +318,11 @@ export function LoginQrDevicePanel() {
                   <button
                     type="button"
                     onClick={stopScanner}
-                    className="w-full border border-neon-red/50 bg-void py-2 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-red transition-all hover:bg-neon-red/10"
+                    className={`w-full border py-2 text-[10px] transition-all ${
+                      isRetro
+                        ? 'border-[#7d828a] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#7f1d1d] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                        : 'border-neon-red/50 bg-void font-mono uppercase tracking-[0.3em] text-neon-red hover:bg-neon-red/10'
+                    }`}
                   >
                     [ {t('login.qrScanStop')} ]
                   </button>
@@ -316,7 +332,11 @@ export function LoginQrDevicePanel() {
                   type="button"
                   onClick={() => void startScanner()}
                   disabled={isBusy}
-                  className="w-full border border-neon-cyan/60 bg-void py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-text-primary disabled:opacity-20"
+                  className={`w-full border py-2.5 text-[10px] transition-all disabled:opacity-20 ${
+                    isRetro
+                      ? 'border-[#7d828a] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                      : 'border-neon-cyan/60 bg-void font-mono uppercase tracking-[0.3em] text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'
+                  }`}
                 >
                   {`>> ${t('login.qrScanStart')}`}
                 </button>
@@ -354,7 +374,11 @@ export function LoginQrDevicePanel() {
                     placeholder={t('login.qrTokenPlaceholder')}
                     autoComplete="off"
                     spellCheck={false}
-                    className="w-full bg-void border border-border-strong p-3 font-mono text-xs text-text-primary outline-none focus:border-neon-cyan/50 placeholder:text-text-muted/50"
+                    className={`w-full border p-3 text-xs text-text-primary outline-none placeholder:text-text-muted/50 ${
+                      isRetro
+                        ? 'border-[#7d828a] bg-[#ffffff] font-["Tahoma"] focus:border-[#355f94]'
+                        : 'bg-void border-border-strong font-mono focus:border-neon-cyan/50'
+                    }`}
                   />
                   <div className="absolute bottom-0 left-0 h-[1px] w-0 bg-neon-cyan transition-all duration-500 group-focus-within:w-full" />
                 </div>
@@ -369,7 +393,11 @@ export function LoginQrDevicePanel() {
               <button
                 type="submit"
                 disabled={isBusy || !signalToken.trim()}
-                className="group relative w-full overflow-hidden border border-neon-cyan bg-void py-2.5 font-mono text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-text-primary disabled:opacity-20"
+                className={`group relative w-full overflow-hidden border py-2.5 text-[10px] transition-all disabled:opacity-20 ${
+                  isRetro
+                    ? 'border-[#7d828a] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                    : 'border-neon-cyan bg-void font-mono uppercase tracking-[0.3em] text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'
+                }`}
               >
                 <span className="relative z-10">
                   {isBusy ? ':: SYNCING_SIGNAL ::' : `>> ${t('login.qrLinkSubmit')}`}

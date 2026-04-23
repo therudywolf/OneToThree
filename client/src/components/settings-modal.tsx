@@ -1,7 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_URL, fetchMe, setupRecoveryKey } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
 import { nuclearWipeClient } from '@/lib/client-wipe'
@@ -91,6 +91,8 @@ function readDiscoverableFromPayload(v: unknown): boolean {
 type VaultGateTarget = 'export' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | null
 
 export function SettingsModal({ userId, username, onClose }: Props) {
+  const modalRef = useRef<HTMLDivElement | null>(null)
+  const openerRef = useRef<HTMLElement | null>(null)
   const { module: locale, setModule: setLocale, t } = useTranslation()
   const { user, updateUser, refresh } = useAuth()
   const [discoverable, setDiscoverable] = useState<boolean | null>(null)
@@ -476,6 +478,58 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     setMobileSettingsView(tab)
   }
 
+  useEffect(() => {
+    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const panel = modalRef.current
+    if (!panel) return
+    const focusable = panel.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+    if (focusable.length > 0) {
+      focusable[0]?.focus()
+    } else {
+      panel.focus()
+    }
+    return () => {
+      openerRef.current?.focus()
+    }
+  }, [])
+
+  const handleModalKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onClose()
+      return
+    }
+    if (e.key !== 'Tab') return
+    const panel = modalRef.current
+    if (!panel) return
+    const focusable = Array.from(
+      panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    )
+    if (focusable.length === 0) {
+      e.preventDefault()
+      panel.focus()
+      return
+    }
+    const current = document.activeElement as HTMLElement | null
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey) {
+      if (!current || current === first) {
+        e.preventDefault()
+        last?.focus()
+      }
+      return
+    }
+    if (!current || current === last) {
+      e.preventDefault()
+      first?.focus()
+    }
+  }, [onClose])
+
   return (
     <PortalRoot>
     <div
@@ -489,6 +543,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       role="dialog" aria-modal="true" aria-label={t('common.settings')}
     >
       <motion.div
+        ref={modalRef}
+        tabIndex={-1}
+        onKeyDown={handleModalKeyDown}
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
           className={`terminal-panel p13-settings-modal ${isMd3 ? 'md3-settings' : ''} flex h-[min(100dvh,100vh)] w-full min-w-0 max-w-[min(1200px,98vw)] flex-col overflow-hidden lg:h-[min(92dvh,92vh)] ${

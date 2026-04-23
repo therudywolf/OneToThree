@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
+import { sanitizeTextInput } from '@/lib/input-sanitize'
 
 /**
  * Client-side search over decrypted messages in the chatStore.
@@ -21,7 +22,7 @@ export function useLocalSearch() {
     )
   }, [messages, query])
 
-  const search = useCallback((q: string) => setQuery(q), [])
+  const search = useCallback((q: string) => setQuery(sanitizeTextInput(q)), [])
   const clear = useCallback(() => setQuery(''), [])
 
   return { query, results, search, clear }

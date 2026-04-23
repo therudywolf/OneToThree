@@ -527,20 +527,20 @@ export function ChatTerminal({
           }
           break
         case 'deleteForMe':
-          if (!globalThis.confirm('Delete this message only for you?')) break
           removeMessage(msg.id)
           void deleteCachedMessage(msg.id)
+          toastSuccess(t('chat.originalDeleted'))
           break
         case 'deleteForAll':
           if (mine) {
-            if (!globalThis.confirm('Delete this message for everyone?')) break
             void (async () => {
               try {
                 await deleteMessage(msg.id, true)
                 removeMessage(msg.id)
                 await deleteCachedMessage(msg.id)
+                toastSuccess(t('chat.originalDeleted'))
               } catch {
-                /* Server rejected */
+                toastError('DELETE_FOR_ALL_FAILED')
               }
             })()
           }

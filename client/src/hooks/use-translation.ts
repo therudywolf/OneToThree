@@ -29,7 +29,10 @@ export function useTranslation() {
   const { module, setModule, cycleProtocol } = useLocaleStore()
 
   // [DECRYPTION_DICTIONARY] :: Выбор активного словаря на основе сегмента
-  const dict = useMemo(() => segmentMap[module], [module])
+  const dict = useMemo(() => {
+    const safe: 'en' | 'ru' = module === 'en' || module === 'ru' ? module : 'ru'
+    return segmentMap[safe]
+  }, [module])
 
   /** * [T_FUNCTION] :: Стабильный переводчик.
    * Возвращает ключ, если перевод в секторе не найден.

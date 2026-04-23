@@ -30,7 +30,8 @@ export function usePulseRadar(userId: string, sectors: ApiChatRow[]) {
     const ids = new Set<string>()
     for (const sector of sectors) {
       if (sector.is_group) continue // Групповые секторы обрабатываются иначе
-      const peer = sector.member_ids.find((id) => id !== userId)
+      const members = Array.isArray(sector.member_ids) ? sector.member_ids : []
+      const peer = members.find((id) => id !== userId)
       if (peer) ids.add(peer)
     }
     return [...ids]

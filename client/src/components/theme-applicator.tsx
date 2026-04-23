@@ -138,6 +138,7 @@ export function ThemeApplicator() {
     )
   }, [
     accentColorOverride,
+    accentSoftColorOverride,
     accentPreset,
     backgroundColorOverride,
     motionMode,

@@ -203,7 +203,7 @@ export function ChatTerminal({
   // arrival.
   const lastMsgKeyRef = useRef<string | null>(null)
   const firstMessagesRenderRef = useRef(true)
-  const swipeRef = useRef<{ startX: number; msgId: string } | null>(null)
+  const swipeRef = useRef<{ startX: number; startY: number; msgId: string } | null>(null)
   const [swipingMsgId, setSwipingMsgId] = useState<string | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
   const prevScrollHeightRef = useRef(0)
@@ -675,7 +675,7 @@ export function ChatTerminal({
           y: touch.clientY,
           isMine: mine,
         })
-      }, 500)
+      }, TELEGRAM_BEHAVIOR.gestures.longPressMs)
     },
     [userId],
   )
@@ -690,7 +690,7 @@ export function ChatTerminal({
   const handleSwipeStart = useCallback((msgId: string, e: React.TouchEvent) => {
     const touch = e.touches[0]
     if (!touch) return
-    swipeRef.current = { startX: touch.clientX, msgId }
+    swipeRef.current = { startX: touch.clientX, startY: touch.clientY, msgId }
   }, [])
 
   const handleSwipeMove = useCallback((e: React.TouchEvent) => {
@@ -698,14 +698,23 @@ export function ChatTerminal({
     const touch = e.touches[0]
     if (!touch) return
     const dx = touch.clientX - swipeRef.current.startX
-    if (dx > 0) {
-      setSwipingMsgId(swipeRef.current.msgId)
-      setSwipeOffset(Math.min(dx, 80))
+    const dy = Math.abs(touch.clientY - swipeRef.current.startY)
+    if (dy > TELEGRAM_BEHAVIOR.gestures.swipeVerticalTolerancePx || Math.abs(dx) > TELEGRAM_BEHAVIOR.gestures.swipeReplyStartPx) {
+      handleTouchEnd()
     }
-  }, [])
+    if (dy > TELEGRAM_BEHAVIOR.gestures.swipeVerticalTolerancePx) {
+      setSwipingMsgId(null)
+      setSwipeOffset(0)
+      return
+    }
+    if (dx > TELEGRAM_BEHAVIOR.gestures.swipeReplyStartPx) {
+      setSwipingMsgId(swipeRef.current.msgId)
+      setSwipeOffset(Math.min(dx, TELEGRAM_BEHAVIOR.gestures.swipeReplyMaxPx))
+    }
+  }, [handleTouchEnd])
 
   const handleSwipeEnd = useCallback(() => {
-    if (swipeRef.current && swipeOffset > 50) {
+    if (swipeRef.current && swipeOffset > TELEGRAM_BEHAVIOR.gestures.swipeReplyCommitPx) {
       const msg = renderMessages.find((m) => m.id === swipeRef.current!.msgId)
       if (msg) setReplyTo(msg)
     }

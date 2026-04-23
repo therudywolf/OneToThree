@@ -10,6 +10,16 @@ export const TELEGRAM_BEHAVIOR = {
     sheetAnimationMs: 220,
     keyboardSettleMs: 180,
   },
+  gestures: {
+    longPressMs: 420,
+    swipeReplyStartPx: 16,
+    swipeReplyCommitPx: 52,
+    swipeReplyMaxPx: 84,
+    swipeVerticalTolerancePx: 12,
+    recordLockYpx: 60,
+    recordCancelXpx: 84,
+    recordHoldMs: 180,
+  },
   autoscroll: {
     stickPx: 240,
   },

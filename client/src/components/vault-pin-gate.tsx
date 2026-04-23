@@ -10,6 +10,7 @@ import { useState, useRef } from 'react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { readVaultBlob } from '@/lib/vault'
 import { unwrapPrivateJwkWithPin } from '@/lib/vault'
+import { useThemeStore } from '@/store/themeStore'
 
 type Props = {
   /** Текст над полем — что именно подтверждает пользователь */
@@ -24,6 +25,10 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3'
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
 
   async function verify() {
     if (!pin.trim() || busy) return
@@ -62,9 +67,15 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
   }
 
   return (
-    <div className="border border-neon-cyan/40 bg-void p-4 space-y-3 font-mono">
+    <div className={`p-4 space-y-3 ${
+      isMd3
+        ? 'rounded-2xl border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface-variant)]'
+        : isRetro
+          ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+          : 'border border-neon-cyan/40 bg-void font-mono'
+    }`}>
       <div>
-        <p className="text-[9px] uppercase tracking-widest text-neon-cyan/80">
+        <p className={`text-[9px] ${isRetro ? 'tracking-[0.02em] text-[#0f2f4f]' : 'uppercase tracking-widest text-neon-cyan/80'}`}>
           [ ПОДТВЕРЖДЕНИЕ ЛИЧНОСТИ ]
         </p>
         <p className="mt-1 text-[9px] text-text-muted">{actionLabel}</p>
@@ -79,7 +90,13 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
         onChange={(e) => setPin(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') void verify() }}
         placeholder="vault-пароль"
-        className="w-full border border-neon-cyan/30 bg-void px-3 py-2 text-[10px] text-neon-cyan placeholder-text-muted focus:border-neon-cyan focus:outline-none"
+        className={`w-full px-3 py-2 text-[10px] placeholder-text-muted focus:outline-none ${
+          isMd3
+            ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
+            : isRetro
+              ? 'border border-[#6f747c] bg-[#ffffff] font-["Tahoma"] text-[#0f2f4f] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6]'
+              : 'border border-neon-cyan/30 bg-void text-neon-cyan focus:border-neon-cyan'
+        }`}
       />
 
       {error && (
@@ -91,14 +108,22 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
           type="button"
           onClick={() => void verify()}
           disabled={busy || !pin.trim()}
-          className="flex-1 border border-neon-cyan bg-void px-3 py-1.5 text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40 transition-colors"
+          className={`flex-1 border px-3 py-1.5 text-[9px] disabled:opacity-40 transition-colors ${
+            isRetro
+              ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+              : 'border-neon-cyan bg-void uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'
+          }`}
         >
           {busy ? '...' : '[ ПОДТВЕРДИТЬ ]'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 border border-border-strong bg-void px-3 py-1.5 text-[9px] uppercase tracking-widest text-text-muted hover:bg-elevated/30 transition-colors"
+          className={`flex-1 border px-3 py-1.5 text-[9px] transition-colors ${
+            isRetro
+              ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#3f4752] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+              : 'border-border-strong bg-void uppercase tracking-widest text-text-muted hover:bg-elevated/30'
+          }`}
         >
           [ ОТМЕНА ]
         </button>

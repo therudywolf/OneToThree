@@ -277,7 +277,10 @@ export function ActiveCallOverlay({
   onSetQuality,
 }: Props) {
   const { t } = useTranslation()
-  const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3'
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
   const isCalling = useCallStore((s) => s.isCalling)
   const localStream = useCallStore((s) => s.localStream)
   const remoteStreams = useCallStore((s) => s.remoteStreams)
@@ -369,9 +372,9 @@ export function ActiveCallOverlay({
   return (
     <PortalRoot>
       <RelayToast />
-      <div className={`fixed inset-0 z-[200] flex flex-col bg-void ${isMd3 ? '' : 'font-mono'}`} role="dialog">
+      <div className={`fixed inset-0 z-[200] flex flex-col ${isRetro ? 'bg-[#0f356f] font-["Tahoma"]' : 'bg-void'} ${isMd3 ? '' : 'font-mono'}`} role="dialog">
         {/* HEADER BAR */}
-        <div className={`flex shrink-0 items-center justify-between border-b border-border-strong bg-void/50 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md`}>
+        <div className={`flex shrink-0 items-center justify-between border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] ${isRetro ? 'p13-titlebar border-[#001f57]' : 'border-border-strong bg-void/50 backdrop-blur-md'}`}>
           <div className="flex items-center gap-3">
             <span className="relative flex h-2.5 w-2.5">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isMd3 ? 'bg-[var(--primary)]' : 'bg-neon-cyan'} opacity-75`}></span>
@@ -511,9 +514,11 @@ export function ActiveCallOverlay({
         </div>
 
         {/* CONTROLS */}
-        <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center shadow-2xl backdrop-blur-xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'} ${
+        <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'} ${
           isMd3
             ? 'gap-2 rounded-[28px] bg-[var(--surface-container-high)]/95 px-3 py-2'
+            : isRetro
+              ? 'p13-classic-menu gap-1 bg-[#d4d0c8] px-2 py-2'
             : 'border border-border-strong bg-void/90'
         }`}>
 

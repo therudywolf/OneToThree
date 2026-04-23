@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { postQrLogin } from '@/lib/api/auth-qr'
 import { complete2faLogin } from '@/lib/api/auth'
+import { useThemeStore } from '@/store/themeStore'
 
 function QrLoginInner() {
   const router = useRouter()
@@ -15,6 +16,9 @@ function QrLoginInner() {
   const [pendingToken, setPendingToken] = useState<string | null>(null)
   const [totpCode, setTotpCode] = useState('')
   const [verifyingTotp, setVerifyingTotp] = useState(false)
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
 
   useEffect(() => {
     if (didRun.current) return
@@ -80,56 +84,16 @@ function QrLoginInner() {
     }
   }
 
-  const s = {
-    page: {
-      minHeight: '100dvh',
-      display: 'flex',
-      flexDirection: 'column' as const,
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'monospace',
-      background: '#0a0a0a',
-      color: '#00ffcc',
-      gap: '1rem',
-      padding: '2rem',
-    },
-    label: { fontSize: '0.65rem', letterSpacing: '0.2em', color: '#444', textTransform: 'uppercase' as const },
-    ok: { fontSize: '1rem', color: '#00ff88' },
-    err: { fontSize: '0.85rem', color: '#ff4444', maxWidth: '320px', textAlign: 'center' as const, lineHeight: 1.6 },
-    hint: { fontSize: '0.7rem', color: '#555', maxWidth: '320px', textAlign: 'center' as const, lineHeight: 1.6, marginTop: '0.5rem' },
-    input: {
-      width: '220px',
-      padding: '0.75rem 1rem',
-      background: '#111',
-      color: '#00ffcc',
-      border: '1px solid #00ffcc55',
-      letterSpacing: '0.35em',
-      textAlign: 'center' as const,
-      fontFamily: 'monospace',
-      fontSize: '1rem',
-      outline: 'none',
-    },
-    link: {
-      marginTop: '1.5rem',
-      fontSize: '0.7rem',
-      color: '#00ffcc',
-      textDecoration: 'none',
-      border: '1px solid #00ffcc',
-      padding: '0.5rem 1.2rem',
-      letterSpacing: '0.15em',
-      textTransform: 'uppercase' as const,
-    },
-    spinner: { fontSize: '0.85rem', color: '#00ffcc', animation: 'pulse 1.5s infinite' },
-  }
-
   return (
-    <main style={s.page}>
-      <div style={s.label}>QR :: DEVICE LINK</div>
+    <main className={`flex min-h-dvh flex-col items-center justify-center gap-4 px-6 py-8 ${
+      isRetro ? 'bg-[#0e3f86] font-["Tahoma"] text-[#f4f7ff]' : 'bg-[#0a0a0a] font-mono text-neon-cyan'
+    }`}>
+      <div className={`text-[11px] ${isRetro ? 'tracking-[0.03em]' : 'uppercase tracking-[0.2em] text-text-muted'}`}>QR :: DEVICE LINK</div>
 
       {status === 'pending' && (
         <>
-          <div style={s.spinner}>[ АВТОРИЗАЦИЯ... ]</div>
-          <div style={s.hint}>
+          <div className="animate-pulse text-sm">[ АВТОРИЗАЦИЯ... ]</div>
+          <div className="max-w-sm text-center text-xs leading-relaxed text-text-muted">
             Этот браузер получает сессию от устройства, которое сгенерировало QR-код.
             Пароль не нужен — доверие делегировано через токен. История и ключи
             сквозного шифрования на новом устройстве подтягиваются отдельно (см.
@@ -140,19 +104,21 @@ function QrLoginInner() {
 
       {status === 'ok' && (
         <>
-          <div style={s.ok}>[ OK :: СЕССИЯ ПОЛУЧЕНА ]</div>
-          <div style={s.hint}>Перенаправление на главную...</div>
+          <div className="text-base text-neon-cyan">[ OK :: СЕССИЯ ПОЛУЧЕНА ]</div>
+          <div className="text-xs text-text-muted">Перенаправление на главную...</div>
         </>
       )}
 
       {status === 'totp' && (
         <>
-          <div style={s.ok}>[ TOTP :: ПОДТВЕРЖДЕНИЕ ]</div>
-          <div style={s.hint}>
+          <div className="text-base text-neon-cyan">[ TOTP :: ПОДТВЕРЖДЕНИЕ ]</div>
+          <div className="max-w-sm text-center text-xs leading-relaxed text-text-muted">
             Этот аккаунт защищён двухфакторной аутентификацией. Введи 6-значный код из приложения-аутентификатора.
           </div>
           <input
-            style={s.input}
+            className={`w-56 border px-4 py-3 text-center text-base tracking-[0.35em] outline-none ${
+              isRetro ? 'border-[#6f747c] bg-[#ffffff] text-[#15385f]' : 'border-neon-cyan/40 bg-[#111] text-neon-cyan'
+            }`}
             type="text"
             inputMode="numeric"
             maxLength={6}
@@ -169,7 +135,9 @@ function QrLoginInner() {
           />
           <a
             href="#submit"
-            style={{ ...s.link, opacity: verifyingTotp ? 0.6 : 1 }}
+            className={`mt-4 border px-5 py-2 text-xs uppercase tracking-widest ${verifyingTotp ? 'opacity-60' : 'opacity-100'} ${
+              isRetro ? 'border-[#6f747c] bg-[#d4d0c8] text-[#15385f]' : 'border-neon-cyan text-neon-cyan'
+            }`}
             onClick={(e) => {
               e.preventDefault()
               void submitTotp()
@@ -177,18 +145,18 @@ function QrLoginInner() {
           >
             {verifyingTotp ? '[ ПРОВЕРКА... ]' : '[ ПОДТВЕРДИТЬ ]'}
           </a>
-          {errorMsg ? <div style={s.err}>{errorMsg}</div> : null}
+          {errorMsg ? <div className="max-w-sm text-center text-sm leading-relaxed text-neon-red">{errorMsg}</div> : null}
         </>
       )}
 
       {status === 'error' && (
         <>
-          <div style={{ fontSize: '1rem', color: '#ff4444' }}>[ ОШИБКА ]</div>
-          <div style={s.err}>{errorMsg}</div>
-          <div style={s.hint}>
+          <div className="text-base text-neon-red">[ ОШИБКА ]</div>
+          <div className="max-w-sm text-center text-sm leading-relaxed text-neon-red">{errorMsg}</div>
+          <div className="max-w-sm text-center text-xs leading-relaxed text-text-muted">
             QR действителен 5 минут и одноразовый. Зайди в настройки → Устройства → Добавить устройство и сгенерируй новый.
           </div>
-          <a href="/login" style={s.link}>[ НА ВХОД ]</a>
+          <a href="/login" className={`mt-3 border px-5 py-2 text-xs uppercase tracking-widest ${isRetro ? 'border-[#6f747c] bg-[#d4d0c8] text-[#15385f]' : 'border-neon-cyan text-neon-cyan'}`}>[ НА ВХОД ]</a>
         </>
       )}
     </main>
@@ -196,20 +164,13 @@ function QrLoginInner() {
 }
 
 export default function QrLoginPage() {
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
   return (
     <Suspense
       fallback={
-        <main
-          style={{
-            minHeight: '100dvh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontFamily: 'monospace',
-            background: '#0a0a0a',
-            color: '#00ffcc',
-          }}
-        >
+        <main className={`flex min-h-dvh items-center justify-center ${isRetro ? 'bg-[#0e3f86] font-["Tahoma"] text-[#f4f7ff]' : 'bg-[#0a0a0a] font-mono text-neon-cyan'}`}>
           [ QR :: ЗАГРУЗКА... ]
         </main>
       }

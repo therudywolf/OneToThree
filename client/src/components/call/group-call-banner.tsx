@@ -3,6 +3,7 @@
 import { Phone, Users } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useTranslation } from '@/hooks/use-translation'
+import { useThemeStore } from '@/store/themeStore'
 
 type Props = {
   participantCount: number
@@ -16,6 +17,9 @@ type Props = {
  */
 export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: Props) {
   const { t } = useTranslation()
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
 
   return (
     <motion.div
@@ -25,13 +29,15 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
       transition={{ duration: 0.25 }}
       className="overflow-hidden"
     >
-      <div className="p13-group-call-banner flex items-center justify-between border-b border-neon-cyan/20 bg-neon-cyan/5 px-4 py-2">
+      <div className={`p13-group-call-banner flex items-center justify-between border-b px-4 py-2 ${
+        isRetro ? 'border-[#7a8089] bg-[#d4d0c8]' : 'border-neon-cyan/20 bg-neon-cyan/5'
+      }`}>
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full bg-neon-cyan opacity-75" />
-            <span className="relative inline-flex h-2 w-2 bg-neon-cyan" />
+            <span className={`absolute inline-flex h-full w-full opacity-75 ${isRetro ? 'bg-[#0a4ea1]' : 'animate-ping bg-neon-cyan'}`} />
+            <span className={`relative inline-flex h-2 w-2 ${isRetro ? 'bg-[#0a4ea1]' : 'bg-neon-cyan'}`} />
           </span>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-neon-cyan">
+          <span className={`text-[10px] ${isRetro ? 'font-["Tahoma"] tracking-[0.02em] text-[#123659]' : 'font-mono uppercase tracking-wider text-neon-cyan'}`}>
             {t('groupCall.activeCall')}
           </span>
           <span className="flex items-center gap-1 font-mono text-[10px] text-text-muted">
@@ -42,14 +48,22 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
         <div className="flex items-center gap-2">
           <button
             onClick={onJoinVoice}
-            className="flex items-center gap-1.5 border border-neon-cyan/50 bg-neon-cyan/10 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-neon-cyan hover:bg-neon-cyan/20 transition-colors"
+            className={`flex items-center gap-1.5 border px-3 py-1 text-[10px] transition-colors ${
+              isRetro
+                ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                : 'border-neon-cyan/50 bg-neon-cyan/10 font-mono uppercase tracking-wider text-neon-cyan hover:bg-neon-cyan/20'
+            }`}
           >
             <Phone className="h-3 w-3" />
             {t('groupCall.joinVoice')}
           </button>
           <button
             onClick={onJoinVideo}
-            className="flex items-center gap-1.5 border border-neon-red/50 bg-neon-red/10 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-neon-red hover:bg-neon-red/20 transition-colors"
+            className={`flex items-center gap-1.5 border px-3 py-1 text-[10px] transition-colors ${
+              isRetro
+                ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#8f1f23] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                : 'border-neon-red/50 bg-neon-red/10 font-mono uppercase tracking-wider text-neon-red hover:bg-neon-red/20'
+            }`}
           >
             {t('groupCall.joinVideo')}
           </button>

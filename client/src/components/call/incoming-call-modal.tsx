@@ -16,7 +16,10 @@ type Props = {
 
 export function IncomingCallModal({ onAccept, onReject }: Props) {
   const incoming = useCallStore((s) => s.incomingCall)
-  const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3'
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
   const { t } = useTranslation()
   const trapRef = useFocusTrap<HTMLDivElement>(!!incoming, onReject)
 
@@ -83,20 +86,20 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
     <PortalRoot>
       <div
         ref={trapRef}
-        className="fixed inset-0 z-[250] flex items-center justify-center bg-void/90 px-4 font-mono backdrop-blur-md"
+        className={`fixed inset-0 z-[250] flex items-center justify-center px-4 backdrop-blur-md ${isRetro ? 'bg-[#0e2f6f]/85' : 'bg-void/90 font-mono'}`}
         role="dialog"
         aria-modal="true"
         aria-label="Incoming connection"
       >
         {/* TERMINAL MODAL */}
-        <div className="relative w-full max-w-sm border border-neon-red bg-void p-6 shadow-[0_0_40px_rgba(255,0,0,0.15)]">
+        <div className={`relative w-full max-w-sm p-6 ${isRetro ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_16px_34px_rgba(0,0,0,0.3)]' : 'border border-neon-red bg-void shadow-[0_0_40px_rgba(255,0,0,0.15)]'}`}>
           {/* ACCENT BAR */}
-          <div className="absolute left-0 top-0 h-1 w-full animate-pulse bg-neon-red" />
+          <div className={`absolute left-0 top-0 h-1 w-full ${isRetro ? 'bg-[#0a4ea1]' : 'animate-pulse bg-neon-red'}`} />
 
-          <header className="border-b border-border-strong pb-4">
+          <header className={`border-b pb-4 ${isRetro ? 'border-[#7a8089]' : 'border-border-strong'}`}>
             <div className="flex items-center gap-2">
-              <span className="block h-2 w-2 animate-ping bg-neon-red" />
-              <p className="text-[10px] uppercase tracking-[0.4em] text-neon-red">
+              <span className={`block h-2 w-2 ${isRetro ? 'bg-[#0a4ea1]' : 'animate-ping bg-neon-red'}`} />
+              <p className={`text-[10px] ${isRetro ? 'font-["Tahoma"] tracking-[0.02em] text-[#0f2f4f]' : 'uppercase tracking-[0.4em] text-neon-red'}`}>
                 SYS.ALERT // INBOUND_LINK
               </p>
             </div>
@@ -114,7 +117,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
               <p className="text-[9px] uppercase tracking-widest text-text-muted/70">
                 PAYLOAD_TYPE
               </p>
-              <p className="text-[10px] tracking-widest text-neon-cyan">
+              <p className={`text-[10px] ${isRetro ? 'font-["Tahoma"] tracking-[0.02em] text-[#20466d]' : 'tracking-widest text-neon-cyan'}`}>
                 {incoming.isVideo ? '[ AUDIO + OPTICS ]' : '[ AUDIO_ONLY ]'}
               </p>
             </div>
@@ -124,7 +127,11 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
             <button
               type="button"
               onClick={onAccept}
-              className="group relative flex h-11 flex-1 items-center justify-center border border-neon-cyan bg-void text-neon-cyan transition-all hover:bg-neon-cyan/10 hover:shadow-[0_0_15px_rgba(0,255,255,0.2)]"
+              className={`group relative flex h-11 flex-1 items-center justify-center border transition-all ${
+                isRetro
+                  ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                  : 'border-neon-cyan bg-void text-neon-cyan hover:bg-neon-cyan/10 hover:shadow-[0_0_15px_rgba(0,255,255,0.2)]'
+              }`}
               aria-label="Accept link"
             >
               <span className="absolute left-3 opacity-50 transition-opacity group-hover:opacity-100">
@@ -138,7 +145,11 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
             <button
               type="button"
               onClick={onReject}
-              className="group relative flex h-11 flex-1 items-center justify-center border border-neon-red bg-void text-neon-red transition-all hover:bg-neon-red/10 hover:shadow-[0_0_15px_rgba(255,0,0,0.2)]"
+              className={`group relative flex h-11 flex-1 items-center justify-center border transition-all ${
+                isRetro
+                  ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] text-[#8f1f23] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                  : 'border-neon-red bg-void text-neon-red hover:bg-neon-red/10 hover:shadow-[0_0_15px_rgba(255,0,0,0.2)]'
+              }`}
               aria-label="Sever link"
             >
               <span className="absolute right-3 opacity-50 transition-opacity group-hover:opacity-100">

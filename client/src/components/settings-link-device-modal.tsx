@@ -8,6 +8,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { useAuth } from '@/components/auth/auth-provider'
 import { signMessageWithVaultPin } from '@/lib/vault-signing'
+import { useThemeStore } from '@/store/themeStore'
 
 type Props = { onClose: () => void }
 
@@ -22,6 +23,10 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const qrValue = linkToken ? buildQrLoginUrl(linkToken) : null
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3'
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
 
   async function generateQr() {
     if (!user?.id || !vaultPin) return
@@ -62,7 +67,9 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center bg-void/92 px-3 py-6"
+      className={`fixed inset-0 z-[110] flex items-center justify-center px-3 py-6 ${
+        isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : isRetro ? 'bg-[color-mix(in_srgb,#0b2d74_70%,black)]' : 'bg-void/92'
+      }`}
       role="dialog"
       aria-modal="true"
       aria-label={t('settings.linkDeviceTitle')}
@@ -71,16 +78,22 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: 'easeOut' }}
-        className="terminal-panel flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-hidden border border-neon-cyan/40 bg-void p-4"
+        className={`terminal-panel flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-hidden p-4 ${
+          isMd3
+            ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'
+            : isRetro
+              ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+              : 'border border-neon-cyan/40 bg-void'
+        }`}
       >
-        <div className="flex items-start justify-between gap-2 border-b border-neon-red/35 pb-3">
-          <p className="min-w-0 break-words font-mono text-[10px] uppercase tracking-[0.25em] text-neon-cyan">
+        <div className={`flex items-start justify-between gap-2 border-b pb-3 ${isRetro ? 'border-[#001f57] bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)] px-2 pt-2' : 'border-neon-red/35'}`}>
+          <p className={`min-w-0 break-words text-[10px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] tracking-[0.04em] text-[#f4f7ff]' : 'font-mono uppercase tracking-[0.25em] text-neon-cyan'}`}>
             {t('settings.linkDeviceTitle')}
           </p>
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 font-mono text-xs text-neon-red transition-all duration-200 ease-in-out hover:text-neon-cyan active:scale-95"
+            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isRetro ? 'border border-[#6f747c] bg-[#d4d0c8] px-2 py-0.5 font-["Tahoma"] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]' : 'font-mono text-neon-red hover:text-neon-cyan'}`}
           >
             [X]
           </button>
@@ -99,7 +112,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
           </div>
         ) : (
           <>
-            <p className="mt-3 break-words text-[9px] leading-relaxed text-danger">
+            <p className={`mt-3 break-words text-[9px] leading-relaxed ${isRetro ? 'font-["Tahoma"] text-[#2a3f59]' : 'text-danger'}`}>
               {t('settings.linkDeviceHint')}
             </p>
             {needsTotp ? (

@@ -47,6 +47,26 @@ import { VaultPinGate } from '@/components/vault-pin-gate'
 import { getTrustedPeerCount } from '@/lib/trust-store'
 
 type Props = { userId: string; username: string; onClose: () => void }
+type SettingsTabId =
+  | 'main'
+  | 'chat'
+  | 'profile'
+  | 'media'
+  | 'devices'
+  | 'security'
+  | 'folders'
+  | 'stickers'
+
+const SETTINGS_TABS: ReadonlyArray<{ id: SettingsTabId; labelKey: string }> = [
+  { id: 'main', labelKey: 'settings.tabGeneral' },
+  { id: 'chat', labelKey: 'settings.tabChats' },
+  { id: 'profile', labelKey: 'profile.section' },
+  { id: 'folders', labelKey: 'settings.tabFolders' },
+  { id: 'stickers', labelKey: 'settings.tabStickers' },
+  { id: 'security', labelKey: 'settings.tabSecurity' },
+  { id: 'media', labelKey: 'settings.tabMedia' },
+  { id: 'devices', labelKey: 'settings.tabDevices' },
+]
 
 /**
  * SECURITY GATES (vault-password required):
@@ -84,7 +104,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [totpDisableOpen, setTotpDisableOpen] = useState(false)
   const [recoveryKey, setRecoveryKey] = useState<string | null>(null)
   const [recoveryBusy, setRecoveryBusy] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'main' | 'chat' | 'profile' | 'media' | 'devices' | 'security' | 'folders' | 'stickers'>('main')
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>('main')
+  const [mobileSettingsView, setMobileSettingsView] = useState<'list' | SettingsTabId>('list')
   const [changePinOpen, setChangePinOpen] = useState(false)
   const [changePinOld, setChangePinOld] = useState('')
   const [changePinNew, setChangePinNew] = useState('')
@@ -449,6 +470,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     motionMode,
   })
   const chromeLabel = (label: string) => (isMd3 || isRetro ? label : `[ ${label} ]`)
+  const openSettingsTab = (tab: SettingsTabId) => {
+    setSettingsTab(tab)
+    setMobileSettingsView(tab)
+  }
 
   return (
     <div
@@ -481,32 +506,63 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
         </header>
 
-        {/* ── Tabs ── */}
-        <div className={`custom-scrollbar flex shrink-0 flex-wrap items-center gap-2 overflow-x-hidden border-b py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/20'}`}>
-          {(['main', 'chat', 'profile', 'folders', 'stickers', 'security', 'media', 'devices'] as const).map((tab) => (
-            <button key={tab} type="button" onClick={() => setSettingsTab(tab)}
-              className={`${settingsBtn} hover:scale-[1.02] active:scale-95 ${
-                settingsTab === tab
-                  ? tab === 'security'
-                    ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--danger)_16%,transparent)] text-[var(--danger)]' : 'border-neon-red bg-neon-red/10 text-neon-red')
-                    : (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_18%,transparent)] text-[var(--on-surface)]' : 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan')
-                  : isMd3
-                    ? 'bg-transparent text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
-                    : 'border-border-strong bg-void text-text-muted hover:border-neon-cyan/50'
-              }`}>
-              {tab === 'main'     ? `${isMd3 ? '' : '[ '}${t('settings.tabGeneral')}${isMd3 ? '' : ' ]'}`
-              : tab === 'chat'    ? `${isMd3 ? '' : '[ '}${t('settings.tabChats')}${isMd3 ? '' : ' ]'}`
-              : tab === 'profile' ? `${isMd3 ? '' : '[ '}${t('profile.section')}${isMd3 ? '' : ' ]'}`
-              : tab === 'folders' ? `${isMd3 ? '' : '[ '}${t('settings.tabFolders')}${isMd3 ? '' : ' ]'}`
-              : tab === 'stickers'? `${isMd3 ? '' : '[ '}${t('settings.tabStickers')}${isMd3 ? '' : ' ]'}`
-              : tab === 'security'? `${isMd3 ? '' : '[ '}${t('settings.tabSecurity')}${isMd3 ? '' : ' ]'}`
-              : tab === 'media'   ? `${isMd3 ? '' : '[ '}${t('settings.tabMedia')}${isMd3 ? '' : ' ]'}`
-              :                     `${isMd3 ? '' : '[ '}${t('settings.tabDevices')}${isMd3 ? '' : ' ]'}`}
-            </button>
-          ))}
-        </div>
+        <div className="min-h-0 flex-1 overflow-hidden md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
+          <aside className={`hidden min-h-0 border-r p-2 md:flex md:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
+            <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
+              {SETTINGS_TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSettingsTab(tab.id)}
+                  className={`${settingsBtn} w-full text-left hover:scale-[1.01] active:scale-95 ${
+                    settingsTab === tab.id
+                      ? tab.id === 'security'
+                        ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--danger)_16%,transparent)] text-[var(--danger)]' : 'border-neon-red bg-neon-red/10 text-neon-red')
+                        : (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_18%,transparent)] text-[var(--on-surface)]' : 'border-neon-cyan bg-neon-cyan/10 text-neon-cyan')
+                      : isMd3
+                        ? 'bg-transparent text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                        : 'border-border-strong bg-void text-text-muted hover:border-neon-cyan/50'
+                  }`}
+                >
+                  {chromeLabel(t(tab.labelKey as Parameters<typeof t>[0]))}
+                </button>
+              ))}
+            </div>
+          </aside>
 
-        <div className="custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4">
+          <div className="min-h-0 flex flex-col">
+            <div className={`border-b p-2 md:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
+              {mobileSettingsView === 'list' ? (
+                <p className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] text-[#1c3653]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
+                  {t('common.settings')}
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMobileSettingsView('list')}
+                  className={`${settingsBtn} !min-h-9`}
+                >
+                  {chromeLabel(t('common.back'))}
+                </button>
+              )}
+            </div>
+
+            {mobileSettingsView === 'list' ? (
+              <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2 md:hidden">
+                {SETTINGS_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => openSettingsTab(tab.id)}
+                    className={`${settingsBtn} w-full text-left`}
+                  >
+                    {chromeLabel(t(tab.labelKey as Parameters<typeof t>[0]))}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <div className={`custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden px-2 py-4 ${mobileSettingsView === 'list' ? 'hidden md:block' : 'block'}`}>
 
           {/* ── VAULT GATE OVERLAY ── */}
           <AnimatePresence>
@@ -996,11 +1052,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               </button>
               <div className="border-t border-neon-red/40 pt-3 space-y-3">
                 <p className="text-xs uppercase tracking-widest text-neon-red">{t('profile.dangerZone')}</p>
-                <button type="button" onClick={() => setSettingsTab('security')}
+                <button type="button" onClick={() => openSettingsTab('security')}
                   className="w-full border border-neon-red/50 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red/70 hover:bg-neon-red/10 hover:text-neon-red transition-colors">
                   {chromeLabel(t('profile.changePassword'))}
                 </button>
-                <button type="button" onClick={() => { setKillOpen(true); setSettingsTab('security') }}
+                <button type="button" onClick={() => { setKillOpen(true); openSettingsTab('security') }}
                   className="w-full border border-danger/40 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-danger/80 hover:bg-danger/30 transition-colors">
                   {chromeLabel(t('profile.deleteAccount'))}
                 </button>
@@ -1339,7 +1395,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             ) : null}
           </div>
 
-        </div>{/* end scroll area */}
+            </div>{/* end scroll area */}
+          </div>
+        </div>
 
         {error && (
           <p className="shrink-0 border border-neon-red px-2 py-1 font-mono text-[10px] text-neon-red break-words overflow-x-hidden">[!] {error}</p>

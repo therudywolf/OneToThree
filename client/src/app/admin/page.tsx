@@ -23,6 +23,7 @@ import {
   type AdminStorageUserRow,
   type AdminUserRow,
 } from '@/lib/api/admin'
+import { useThemeStore } from '@/store/themeStore'
 
 type Tab = 'nodes' | 'incidents' | 'login-events' | 'system'
 
@@ -203,6 +204,9 @@ export default function AdminPage() {
   const [errorLog, setErrorLog] = useState<string | null>(null)
   const [lockId, setLockId] = useState<string | null>(null)
   const [detailNode, setDetailNode] = useState<AdminUserRow | null>(null)
+  const shellMode = useThemeStore((s) => s.shellMode)
+  const themeId = useThemeStore((s) => s.theme)
+  const isRetro = themeId === 'retro' && shellMode === 'terminal'
 
   const nodeStorageMap = useMemo(() => {
     const m = new Map<string, AdminStorageUserRow>()
@@ -305,7 +309,7 @@ export default function AdminPage() {
   ]
 
   return (
-    <div className="min-h-dvh bg-void font-mono text-xs text-text-muted selection:bg-neon-red selection:text-text-primary">
+    <div className={`min-h-dvh text-xs text-text-muted selection:bg-neon-red selection:text-text-primary ${isRetro ? 'p13-window bg-[#c0c0c0] font-["Tahoma"]' : 'bg-void font-mono'}`}>
       {detailNode && (
         <UserDetailModal
           node={detailNode}
@@ -318,7 +322,7 @@ export default function AdminPage() {
         />
       )}
 
-      <header className="sticky top-0 z-10 border-b border-border-strong bg-void/95 backdrop-blur-sm px-4 py-3 md:px-8 flex items-center justify-between gap-4">
+      <header className={`sticky top-0 z-10 border-b px-4 py-3 md:px-8 flex items-center justify-between gap-4 ${isRetro ? 'p13-titlebar border-[#001f57]' : 'border-border-strong bg-void/95 backdrop-blur-sm'}`}>
         <div className="flex items-center gap-3">
           <div className="h-6 w-0.5 bg-neon-red shadow-[0_0_8px_rgba(255,0,0,0.5)]" />
           <div>
@@ -349,7 +353,7 @@ export default function AdminPage() {
       )}
 
       {/* TABS */}
-      <div className="border-b border-border-strong px-4 md:px-8">
+      <div className={`border-b px-4 md:px-8 ${isRetro ? 'border-[#7a8089] bg-[#d4d0c8]' : 'border-border-strong'}`}>
         <div className="flex gap-0 overflow-x-auto">
           {tabs.map(t => (
             <button

@@ -78,6 +78,14 @@ export function ThemeApplicator() {
       '--state-hover',
       `color-mix(in srgb, ${resolved.tokens.text} 8%, transparent)`
     )
+    html.style.setProperty(
+      '--state-pressed',
+      `color-mix(in srgb, ${resolved.tokens.text} 14%, transparent)`
+    )
+    html.style.setProperty(
+      '--state-focus-ring',
+      `color-mix(in srgb, ${resolved.tokens.primary} 45%, transparent)`
+    )
     html.style.setProperty('--border-strong', resolved.tokens.border)
     html.style.setProperty('--danger', resolved.tokens.danger)
     html.style.setProperty('--success', resolved.tokens.success)

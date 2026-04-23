@@ -75,7 +75,7 @@ type Props = {
 /** Caption rendered below any media bubble */
 function MediaCaption({ text }: { text: string }) {
   return (
-    <p className="mt-1.5 font-mono text-[12px] leading-snug text-neon-cyan/80 break-words max-w-sm">
+    <p className="p13-media-caption mt-1.5 text-[12px] leading-snug break-words max-w-sm">
       {text}
     </p>
   )

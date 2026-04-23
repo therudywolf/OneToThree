@@ -735,6 +735,10 @@ const en = {
   'login.qrScanStart': 'Scan QR',
   'login.qrScanStop': 'Stop Scanner',
   'login.qrScanNoCamera': 'Camera unavailable. Check permissions.',
+  'login.qrScanDenied': 'Camera access denied. Allow camera permission in browser settings.',
+  'login.qrScanNotFound': 'No camera device found on this system.',
+  'login.qrScanBusy': 'Camera is busy in another app or tab.',
+  'login.qrScanFailed': 'Unable to start QR scanner. Try reloading the page.',
   'login.qrScanProcessing': 'QR code detected, connecting...',
 
   // [ONBOARDING WELCOME]

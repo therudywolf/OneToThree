@@ -24,14 +24,31 @@ import {
 
 const ENC = new TextEncoder()
 
-// Build a peer-bound HKDF info string.
-// Signal spec binds info to the peer identity key to prevent cross-session
-// key confusion attacks where the same DH output is reused for a different peer.
-function buildX3dhInfo(peerIdentityKey: Uint8Array): Uint8Array {
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const min = Math.min(a.length, b.length)
+  for (let i = 0; i < min; i += 1) {
+    if (a[i] !== b[i]) return a[i] - b[i]
+  }
+  return a.length - b.length
+}
+
+// Build a stable HKDF info string bound to BOTH identity keys.
+// The order must be deterministic across initiator/responder; otherwise each
+// side derives different output even with identical DH transcripts.
+function buildX3dhInfo(
+  initiatorIdentityKey: Uint8Array,
+  responderIdentityKey: Uint8Array
+): Uint8Array {
   const prefix = ENC.encode('ForestMsg/x3dh/1:')
-  const out = new Uint8Array(prefix.length + peerIdentityKey.length)
+  const first =
+    compareBytes(initiatorIdentityKey, responderIdentityKey) <= 0
+      ? initiatorIdentityKey
+      : responderIdentityKey
+  const second = first === initiatorIdentityKey ? responderIdentityKey : initiatorIdentityKey
+  const out = new Uint8Array(prefix.length + first.length + second.length)
   out.set(prefix)
-  out.set(peerIdentityKey, prefix.length)
+  out.set(first, prefix.length)
+  out.set(second, prefix.length + first.length)
   return out
 }
 
@@ -78,7 +95,8 @@ export interface X3dhResponder {
 
 function derive(
   dhOutputs: Uint8Array[],
-  peerIdentityKey: Uint8Array,
+  initiatorIdentityKey: Uint8Array,
+  responderIdentityKey: Uint8Array,
   ikm?: Uint8Array
 ): { sharedSecret: Uint8Array } {
   let total = 0
@@ -93,7 +111,7 @@ function derive(
     sha256,
     joined,
     ikm ?? new Uint8Array(32),
-    buildX3dhInfo(peerIdentityKey),
+    buildX3dhInfo(initiatorIdentityKey, responderIdentityKey),
     32
   )
   return { sharedSecret }
@@ -115,8 +133,11 @@ export function x3dhInitiator(args: X3dhInitiator): { sharedSecret: Uint8Array }
   if (args.bundle.oneTimePreKey) {
     dhList.push(dh(args.ephemeral.privateKey, args.bundle.oneTimePreKey.publicKey))
   }
-  // Bind info to Bob's identity key (peer being messaged)
-  return derive(dhList, args.bundle.identityExchange)
+  return derive(
+    dhList,
+    args.initiatorIdentity.exchange.publicKey,
+    args.bundle.identityExchange
+  )
 }
 
 /**
@@ -130,6 +151,9 @@ export function x3dhResponder(args: X3dhResponder): { sharedSecret: Uint8Array }
   if (args.oneTimePreKey) {
     dhList.push(dh(args.oneTimePreKey.privateKey, args.initiatorEphemeralPublic))
   }
-  // Bind info to Alice's identity key (initiator, from responder's perspective)
-  return derive(dhList, args.initiatorIdentityPublic)
+  return derive(
+    dhList,
+    args.initiatorIdentityPublic,
+    args.responderIdentity.exchange.publicKey
+  )
 }

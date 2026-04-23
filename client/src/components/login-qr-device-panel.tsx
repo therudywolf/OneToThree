@@ -77,6 +77,14 @@ export function LoginQrDevicePanel() {
   const streamRef = useRef<MediaStream | null>(null)
   const animFrameRef = useRef<number>(0)
   const scanAbortRef = useRef<boolean>(false)
+  const scanErrorText = (() => {
+    if (!scanError) return null
+    if (scanError === 'QR_CAMERA_DENIED') return t('login.qrScanDenied')
+    if (scanError === 'QR_CAMERA_NOT_FOUND') return t('login.qrScanNotFound')
+    if (scanError === 'QR_CAMERA_BUSY') return t('login.qrScanBusy')
+    if (scanError === 'QR_CAMERA_FAILED') return t('login.qrScanFailed')
+    return scanError
+  })()
 
   const stopScanner = useCallback(() => {
     scanAbortRef.current = true
@@ -313,9 +321,9 @@ export function LoginQrDevicePanel() {
                   {`>> ${t('login.qrScanStart')}`}
                 </button>
               )}
-              {scanError && (
+              {scanErrorText && (
                 <div className="border border-neon-red/30 bg-neon-red/5 p-2 font-mono text-[9px] text-neon-red uppercase tracking-widest">
-                  [!] {scanError}
+                  [!] {scanErrorText}
                 </div>
               )}
             </div>
@@ -337,7 +345,7 @@ export function LoginQrDevicePanel() {
                   // {t('login.qrLinkHint')}
                 </p>
 
-                <div className="relative">
+                <div className="group relative">
                   <input
                     data-testid="qr-token-input"
                     type="text"

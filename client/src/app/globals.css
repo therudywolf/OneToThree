@@ -3283,8 +3283,6 @@ select {
   filter: none !important;
 }
 [data-theme="retro"] .crt-overlay,
-[data-theme="retro"] .crt-vignette,
-[data-theme="retro"] .crt-terminal-vignette,
 [data-theme="retro"] .chat-safe-shell::before,
 [data-theme="retro"] .terminal-panel::before,
 [data-theme="retro"] .terminal-panel::after,

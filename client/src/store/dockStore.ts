@@ -23,7 +23,7 @@ type DockState = {
   /** Unified emoji + sticker + GIF picker (xl+ dock). */
   composerOnEmoji: ((emoji: string) => void) | null
   composerOnStickerSend: ((json: string) => Promise<void>) | null
-  composerOnGifPick: ((gifUrl: string) => void) | null
+  composerOnGifPick: ((gif: { id: string; title: string; previewUrl: string; originalUrl: string }) => Promise<void> | void) | null
   searchScopeChatId: string | null
   /**
    * Callback wired by the chat view that the search panel invokes to scroll
@@ -40,7 +40,7 @@ type DockState = {
   openComposer: (handlers: {
     onEmoji: (emoji: string) => void
     onStickerSend: (json: string) => Promise<void>
-    onGifPick?: (gifUrl: string) => void
+    onGifPick?: (gif: { id: string; title: string; previewUrl: string; originalUrl: string }) => Promise<void> | void
   }) => void
   openSearch: (chatId: string, onJump?: (messageId: string) => void) => void
   openPinned: (chatId: string) => void

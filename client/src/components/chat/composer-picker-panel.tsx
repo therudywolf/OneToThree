@@ -36,7 +36,7 @@ export type ComposerPickerPanelProps = {
   layout: 'dock' | 'modal'
   onEmoji: (emoji: string) => void
   onStickerSend: (json: string) => Promise<void>
-  onGifPick?: (gifUrl: string) => void
+  onGifPick?: (gif: GifHit) => Promise<void> | void
   /** Called after a sticker is sent (e.g. close modal). */
   onAfterStickerSend?: () => void
 }
@@ -358,9 +358,15 @@ export function ComposerPickerPanel({
                     type="button"
                     className="overflow-hidden rounded border border-neon-cyan/15 bg-void/40 hover:border-neon-cyan/50"
                     onClick={() => {
-                      if (onGifPick) onGifPick(g.originalUrl)
-                      else onEmoji(` ${g.originalUrl} `)
-                      onAfterStickerSend?.()
+                      void (async () => {
+                        try {
+                          if (onGifPick) await onGifPick(g)
+                          else onEmoji(` ${g.originalUrl} `)
+                          onAfterStickerSend?.()
+                        } catch (e) {
+                          toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })
+                        }
+                      })()
                     }}
                     title={g.title}
                   >

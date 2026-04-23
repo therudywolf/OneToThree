@@ -1893,6 +1893,16 @@ select {
     background-color var(--motion-fast) ease,
     border-color var(--motion-fast) ease;
 }
+.p13-sidebar-row::after {
+  content: '';
+  position: absolute;
+  left: calc(0.75rem + var(--p13-row-indicator-width));
+  right: 0.75rem;
+  bottom: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  pointer-events: none;
+}
 .p13-sidebar-row:hover {
   background: var(--p13-row-hover-bg);
 }
@@ -1900,8 +1910,17 @@ select {
   background: var(--p13-row-active-bg);
   border-left-color: var(--p13-row-active-stripe);
 }
+.p13-sidebar-row[data-active="true"]::after {
+  opacity: 0;
+}
 [data-shell="terminal"] .p13-sidebar-row[data-active="true"] {
   box-shadow: inset 2px 0 14px color-mix(in srgb, var(--neon-cyan) 32%, transparent);
+}
+[data-shell="terminal"] .p13-sidebar-row::after {
+  background: color-mix(in srgb, var(--neon-cyan) 22%, transparent);
+}
+[data-shell="md3"] .p13-sidebar-row::after {
+  background: color-mix(in srgb, var(--on-surface) 14%, transparent);
 }
 
 /* --- Header ------------------------------------------------ */

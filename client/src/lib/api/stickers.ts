@@ -11,6 +11,8 @@ export type StickerPack = {
   isPublic: boolean
   tgSource: string | null
   createdAt: string
+  accessScope?: 'owned' | 'shared' | 'public'
+  ownerId?: string | null
 }
 
 export type Sticker = {
@@ -220,4 +222,40 @@ export async function importTelegramStickerPack(shortName: string): Promise<{ pa
     }
   }
   return out
+}
+
+export async function fetchStickerPackShares(packId: string): Promise<Array<{ userId: string; createdAt: string }>> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/shares`, {
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `FETCH_SHARES_${res.status}`)
+  }
+  const data = (await res.json()) as { shares: Array<{ userId: string; createdAt: string }> }
+  return data.shares
+}
+
+export async function shareStickerPack(packId: string, userId: string): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/shares`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `SHARE_PACK_${res.status}`)
+  }
+}
+
+export async function unshareStickerPack(packId: string, userId: string): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/shares/${userId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `UNSHARE_PACK_${res.status}`)
+  }
 }

@@ -663,6 +663,23 @@ export const stickerPacks = pgTable(
   })
 )
 
+export const stickerPackShares = pgTable(
+  'sticker_pack_shares',
+  {
+    packId: uuid('pack_id')
+      .notNull()
+      .references(() => stickerPacks.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.packId, t.userId] }),
+    userIdx: index('sticker_pack_shares_user_idx').on(t.userId),
+  })
+)
+
 export const stickers = pgTable(
   'stickers',
   {

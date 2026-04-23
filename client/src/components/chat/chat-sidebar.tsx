@@ -805,7 +805,7 @@ export function ChatSidebar({
             // the button look dead in the wild.
           }
         }}
-        className={`mx-3 mt-3 flex items-center gap-2 px-3 py-2.5 text-left text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-accent-2/40 bg-[linear-gradient(180deg,rgba(255,191,0,0.08),rgba(255,191,0,0.03))] font-mono uppercase tracking-widest text-neon-cyan/80 hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan'}`}
+        className={`mx-3 mt-3 flex items-center gap-2 px-3 py-2.5 text-left text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-accent-2/40 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent-2)_16%,transparent),color-mix(in_srgb,var(--accent-2)_8%,transparent))] font-mono uppercase tracking-widest text-neon-cyan/80 hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan'}`}
       >
         <Star className="h-3.5 w-3.5 text-accent-2 fill-accent-2" />
         {t('sidebar.savedMessages')}

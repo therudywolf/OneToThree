@@ -252,7 +252,12 @@ export function ComposerPickerPanel({
                     }`}
                     title={p.title}
                   >
-                    {p.title}
+                    <span className="truncate">{p.title}</span>
+                    {p.accessScope === 'shared' ? (
+                      <span className="ml-1 shrink-0 text-[8px] uppercase tracking-widest text-accent-2/80">
+                        SH
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>

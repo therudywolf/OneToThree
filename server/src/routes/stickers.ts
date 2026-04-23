@@ -3,7 +3,7 @@ import { and, asc, eq, or } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { stickerPacks, stickers } from '../db/schema.js'
+import { stickerPackShares, stickerPacks, stickers, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import {
   createS3Client,
@@ -93,6 +93,58 @@ function normalizeTelegramShortName(input: string): string | null {
 }
 
 export const stickersRoutes: FastifyPluginAsync = async (app) => {
+  function isMissingSharesTableError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false
+    const msg = err.message.toLowerCase()
+    return msg.includes('sticker_pack_shares') && msg.includes('does not exist')
+  }
+
+  async function getAccessiblePack(packId: string, userId: string) {
+    let row:
+      | {
+          id: string
+          ownerId: string | null
+          isPublic: boolean
+          sharedUserId: string | null
+        }
+      | undefined
+    try {
+      ;[row] = await db
+        .select({
+          id: stickerPacks.id,
+          ownerId: stickerPacks.ownerId,
+          isPublic: stickerPacks.isPublic,
+          sharedUserId: stickerPackShares.userId,
+        })
+        .from(stickerPacks)
+        .leftJoin(
+          stickerPackShares,
+          and(eq(stickerPackShares.packId, stickerPacks.id), eq(stickerPackShares.userId, userId))
+        )
+        .where(eq(stickerPacks.id, packId))
+        .limit(1)
+    } catch (err) {
+      if (!isMissingSharesTableError(err)) throw err
+      ;[row] = await db
+        .select({
+          id: stickerPacks.id,
+          ownerId: stickerPacks.ownerId,
+          isPublic: stickerPacks.isPublic,
+          sharedUserId: stickerPacks.ownerId, // sentinel: never equals non-owner user
+        })
+        .from(stickerPacks)
+        .where(eq(stickerPacks.id, packId))
+        .limit(1)
+      if (row) row.sharedUserId = null
+    }
+    if (!row) return null
+    const canRead =
+      row.ownerId === userId ||
+      row.sharedUserId === userId ||
+      row.isPublic
+    return { ...row, canRead }
+  }
+
   /**
    * GET /api/stickers/asset-url?media_key=...
    * Presigned GET for a sticker object key; caller must have access to the pack.
@@ -106,13 +158,50 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
 
     const mediaKey = q.data.media_key
 
-    const [row] = await db
-      .select({ mediaKey: stickers.mediaKey })
-      .from(stickers)
-      .where(eq(stickers.mediaKey, mediaKey))
-      .limit(1)
+    let row:
+      | {
+          mediaKey: string
+          ownerId: string | null
+          isPublic: boolean
+          sharedUserId: string | null
+        }
+      | undefined
+    try {
+      ;[row] = await db
+        .select({
+          mediaKey: stickers.mediaKey,
+          ownerId: stickerPacks.ownerId,
+          isPublic: stickerPacks.isPublic,
+          sharedUserId: stickerPackShares.userId,
+        })
+        .from(stickers)
+        .innerJoin(stickerPacks, eq(stickers.packId, stickerPacks.id))
+        .leftJoin(
+          stickerPackShares,
+          and(eq(stickerPackShares.packId, stickerPacks.id), eq(stickerPackShares.userId, user.id))
+        )
+        .where(eq(stickers.mediaKey, mediaKey))
+        .limit(1)
+    } catch (err) {
+      if (!isMissingSharesTableError(err)) throw err
+      ;[row] = await db
+        .select({
+          mediaKey: stickers.mediaKey,
+          ownerId: stickerPacks.ownerId,
+          isPublic: stickerPacks.isPublic,
+          sharedUserId: stickerPacks.ownerId,
+        })
+        .from(stickers)
+        .innerJoin(stickerPacks, eq(stickers.packId, stickerPacks.id))
+        .where(eq(stickers.mediaKey, mediaKey))
+        .limit(1)
+      if (row) row.sharedUserId = null
+    }
 
     if (!row) return reply.status(404).send({ error: 'STICKER_NOT_FOUND' })
+    if (row.ownerId !== user.id && row.sharedUserId !== user.id && !row.isPublic) {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
 
     const s3 = createS3ClientForPresigning()
     const url = await presignGetObject({ client: s3, bucket: MINIO_BUCKET, key: row.mediaKey })
@@ -133,13 +222,50 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
 
     const mediaKey = q.data.media_key
 
-    const [row] = await db
-      .select({ mediaKey: stickers.mediaKey })
-      .from(stickers)
-      .where(eq(stickers.mediaKey, mediaKey))
-      .limit(1)
+    let row:
+      | {
+          mediaKey: string
+          ownerId: string | null
+          isPublic: boolean
+          sharedUserId: string | null
+        }
+      | undefined
+    try {
+      ;[row] = await db
+        .select({
+          mediaKey: stickers.mediaKey,
+          ownerId: stickerPacks.ownerId,
+          isPublic: stickerPacks.isPublic,
+          sharedUserId: stickerPackShares.userId,
+        })
+        .from(stickers)
+        .innerJoin(stickerPacks, eq(stickers.packId, stickerPacks.id))
+        .leftJoin(
+          stickerPackShares,
+          and(eq(stickerPackShares.packId, stickerPacks.id), eq(stickerPackShares.userId, user.id))
+        )
+        .where(eq(stickers.mediaKey, mediaKey))
+        .limit(1)
+    } catch (err) {
+      if (!isMissingSharesTableError(err)) throw err
+      ;[row] = await db
+        .select({
+          mediaKey: stickers.mediaKey,
+          ownerId: stickerPacks.ownerId,
+          isPublic: stickerPacks.isPublic,
+          sharedUserId: stickerPacks.ownerId,
+        })
+        .from(stickers)
+        .innerJoin(stickerPacks, eq(stickers.packId, stickerPacks.id))
+        .where(eq(stickers.mediaKey, mediaKey))
+        .limit(1)
+      if (row) row.sharedUserId = null
+    }
 
     if (!row) return reply.status(404).send({ error: 'STICKER_NOT_FOUND' })
+    if (row.ownerId !== user.id && row.sharedUserId !== user.id && !row.isPublic) {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
 
     const s3 = createS3Client()
     await ensureBucketExists(s3, MINIO_BUCKET)
@@ -168,26 +294,79 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     return reply.send(body)
   })
 
-  /** GET /api/stickers/packs — list all packs owned by current user + public packs */
+  /** GET /api/stickers/packs — list all packs owned by current user + explicitly shared packs */
   app.get('/packs', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    const rows = await db
-      .select({
-        id: stickerPacks.id,
-        title: stickerPacks.title,
-        shortName: stickerPacks.shortName,
-        format: stickerPacks.format,
-        isPublic: stickerPacks.isPublic,
-        tgSource: stickerPacks.tgSource,
-        createdAt: stickerPacks.createdAt,
-      })
-      .from(stickerPacks)
-      .where(or(eq(stickerPacks.ownerId, user.id), eq(stickerPacks.isPublic, true)))
-      .orderBy(asc(stickerPacks.createdAt))
+    let rows: Array<{
+      id: string
+      title: string
+      shortName: string
+      format: 'tgs' | 'lottie' | 'static' | 'webm'
+      isPublic: boolean
+      tgSource: string | null
+      createdAt: Date
+      ownerId: string | null
+      sharedUserId: string | null
+    }>
+    try {
+      rows = await db
+        .select({
+          id: stickerPacks.id,
+          title: stickerPacks.title,
+          shortName: stickerPacks.shortName,
+          format: stickerPacks.format,
+          isPublic: stickerPacks.isPublic,
+          tgSource: stickerPacks.tgSource,
+          createdAt: stickerPacks.createdAt,
+          ownerId: stickerPacks.ownerId,
+          sharedUserId: stickerPackShares.userId,
+        })
+        .from(stickerPacks)
+        .leftJoin(
+          stickerPackShares,
+          and(eq(stickerPackShares.packId, stickerPacks.id), eq(stickerPackShares.userId, user.id))
+        )
+        .where(
+          or(
+            eq(stickerPacks.ownerId, user.id),
+            eq(stickerPackShares.userId, user.id),
+            eq(stickerPacks.isPublic, true)
+          )
+        )
+        .orderBy(asc(stickerPacks.createdAt))
+    } catch (err) {
+      if (!isMissingSharesTableError(err)) throw err
+      const fallbackRows = await db
+        .select({
+          id: stickerPacks.id,
+          title: stickerPacks.title,
+          shortName: stickerPacks.shortName,
+          format: stickerPacks.format,
+          isPublic: stickerPacks.isPublic,
+          tgSource: stickerPacks.tgSource,
+          createdAt: stickerPacks.createdAt,
+          ownerId: stickerPacks.ownerId,
+        })
+        .from(stickerPacks)
+        .where(or(eq(stickerPacks.ownerId, user.id), eq(stickerPacks.isPublic, true)))
+        .orderBy(asc(stickerPacks.createdAt))
+      rows = fallbackRows.map((row) => ({ ...row, sharedUserId: null }))
+    }
 
-    return reply.send({ packs: rows })
+    const packs = rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      shortName: row.shortName,
+      format: row.format,
+      isPublic: row.isPublic,
+      tgSource: row.tgSource,
+      createdAt: row.createdAt,
+      accessScope: row.ownerId === user.id ? 'owned' : row.sharedUserId === user.id ? 'shared' : 'public',
+      ownerId: row.ownerId,
+    }))
+    return reply.send({ packs })
   })
 
   /** GET /api/stickers/packs/:packId — pack detail */
@@ -198,18 +377,18 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
 
-    const [pack] = await db
+    const pack = await getAccessiblePack(params.data.packId, user.id)
+    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (!pack.canRead) {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
+
+    const [fullPack] = await db
       .select()
       .from(stickerPacks)
       .where(eq(stickerPacks.id, params.data.packId))
       .limit(1)
-
-    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
-    if (!pack.isPublic && pack.ownerId !== user.id) {
-      return reply.status(403).send({ error: 'FORBIDDEN' })
-    }
-
-    return reply.send({ pack })
+    return reply.send({ pack: fullPack })
   })
 
   /** GET /api/stickers/packs/:packId/stickers — list stickers with presigned URLs */
@@ -220,14 +399,9 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
 
-    const [pack] = await db
-      .select({ id: stickerPacks.id, isPublic: stickerPacks.isPublic, ownerId: stickerPacks.ownerId })
-      .from(stickerPacks)
-      .where(eq(stickerPacks.id, params.data.packId))
-      .limit(1)
-
+    const pack = await getAccessiblePack(params.data.packId, user.id)
     if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
-    if (!pack.isPublic && pack.ownerId !== user.id) {
+    if (!pack.canRead) {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
 
@@ -266,6 +440,96 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
 
     await db.delete(stickerPacks).where(eq(stickerPacks.id, params.data.packId))
+    return reply.status(204).send()
+  })
+
+  /** GET /api/stickers/packs/:packId/shares — list explicit shares (owner only) */
+  app.get('/packs/:packId/shares', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const [pack] = await db
+      .select({ ownerId: stickerPacks.ownerId })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    const rows = await db
+      .select({
+        userId: stickerPackShares.userId,
+        createdAt: stickerPackShares.createdAt,
+      })
+      .from(stickerPackShares)
+      .where(eq(stickerPackShares.packId, params.data.packId))
+      .orderBy(asc(stickerPackShares.createdAt))
+    return reply.send({ shares: rows })
+  })
+
+  /** POST /api/stickers/packs/:packId/shares — share pack with user (owner only) */
+  app.post('/packs/:packId/shares', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const body = z.object({ user_id: z.string().uuid() }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const [pack] = await db
+      .select({ ownerId: stickerPacks.ownerId })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
+    if (body.data.user_id === user.id) return reply.status(400).send({ error: 'CANNOT_SHARE_TO_SELF' })
+
+    const [target] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, body.data.user_id))
+      .limit(1)
+    if (!target) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+
+    await db
+      .insert(stickerPackShares)
+      .values({ packId: params.data.packId, userId: body.data.user_id })
+      .onConflictDoNothing()
+
+    return reply.status(201).send({ ok: true })
+  })
+
+  /** DELETE /api/stickers/packs/:packId/shares/:userId — remove explicit share (owner only) */
+  app.delete('/packs/:packId/shares/:userId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z
+      .object({ packId: z.string().uuid(), userId: z.string().uuid() })
+      .safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const [pack] = await db
+      .select({ ownerId: stickerPacks.ownerId })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    await db
+      .delete(stickerPackShares)
+      .where(
+        and(
+          eq(stickerPackShares.packId, params.data.packId),
+          eq(stickerPackShares.userId, params.data.userId)
+        )
+      )
     return reply.status(204).send()
   })
 
@@ -382,9 +646,8 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       title: stickerSet.title,
       shortName: `${shortName}_${packId.slice(0, 8)}`, // avoid unique constraint collisions on re-import
       format: tgFormat(stickerSet.stickers[0] ?? { is_animated: false, is_video: false } as TgSticker),
-      // Imported Telegram packs should be usable by recipients in direct/group chats.
-      // Keep owner linkage for management, but make assets globally readable by key.
-      isPublic: true,
+      // Imported packs are private by default; explicit sharing controls visibility.
+      isPublic: false,
       tgSource: shortName,
     })
 

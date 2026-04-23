@@ -35,7 +35,6 @@ import { useGroupKeyDistribution } from '@/hooks/use-group-key-distribution'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
-import { DockPanel } from '@/components/chat/dock-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
 import { scrollToMessage } from '@/lib/chat-scroll'
@@ -125,6 +124,12 @@ const GroupCallBanner = dynamic(
       (m) => m.GroupCallBanner
     ),
   { ssr: false }
+)
+
+/** Right dock (xl+ only). Loaded lazily so `emoji-picker-react` is not evaluated on every mobile session — some WebViews crash on that import. */
+const DockPanel = dynamic(
+  () => import('@/components/chat/dock-panel').then((m) => m.DockPanel),
+  { ssr: false, loading: () => null }
 )
 
 export function ChatApp({

@@ -786,6 +786,8 @@ const en = {
   // [SETTINGS - CHAT SOUND]
   'settings.chatSoundTitle': 'In-Chat Sound',
   'settings.chatSoundHint': 'Play a sound for new messages while the window is open and focused.',
+  'settings.soundSchemeTitle': 'Sound Scheme',
+  'settings.soundSchemeHint': 'Choose a sound set for ring, incoming call, and new message events.',
   'settings.appearanceTitle': 'Appearance System',
   'settings.appearanceHint': 'Pick a shell (typography + shape) and a color palette independently. Fine-tune key, accent, and background colors.',
   'settings.appearanceShellTitle': 'Shell mode',

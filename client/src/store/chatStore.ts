@@ -30,6 +30,15 @@ const enforceMemoryLimit = (nodes: DecryptedMessage[]): DecryptedMessage[] => {
 }
 
 const CHAT_SOUND_KEY = 'p13:chat_sound_enabled'
+const CHAT_SOUND_SCHEME_KEY = 'p13:chat_sound_scheme'
+
+export type ChatSoundSchemeId = 'classic' | 'soft' | 'retro'
+
+export const CHAT_SOUND_SCHEMES: Array<{ id: ChatSoundSchemeId; label: string }> = [
+  { id: 'classic', label: 'Classic' },
+  { id: 'soft', label: 'Soft' },
+  { id: 'retro', label: 'Retro' },
+]
 
 function loadChatSoundEnabled(): boolean {
   try {
@@ -37,6 +46,16 @@ function loadChatSoundEnabled(): boolean {
     return v === null ? true : v === 'true'
   } catch {
     return true
+  }
+}
+
+function loadChatSoundScheme(): ChatSoundSchemeId {
+  try {
+    const v = localStorage.getItem(CHAT_SOUND_SCHEME_KEY)
+    if (v === 'soft' || v === 'retro' || v === 'classic') return v
+    return 'classic'
+  } catch {
+    return 'classic'
   }
 }
 
@@ -59,6 +78,7 @@ export type ChatState = {
 
   // [SOUND]
   chatSoundEnabled: boolean
+  chatSoundScheme: ChatSoundSchemeId
 
   // [ACTIONS]
   setMessages: (nodes: DecryptedMessage[]) => void
@@ -70,6 +90,7 @@ export type ChatState = {
   updateMessageReadAt: (nodeId: string, timestamp: string) => void
   updateMessageReactions: (nodeId: string, reactions: Record<string, string[]>) => void
   setChatSoundEnabled: (enabled: boolean) => void
+  setChatSoundScheme: (scheme: ChatSoundSchemeId) => void
   /** Resets message layer; also resets all sub-stores. */
   reset: () => void
 }
@@ -120,6 +141,11 @@ export const useChatStore = create<ChatState>((set) => {
     set({ chatSoundEnabled: enabled })
   }
 
+  const setChatSoundScheme = (scheme: ChatSoundSchemeId) => {
+    try { localStorage.setItem(CHAT_SOUND_SCHEME_KEY, scheme) } catch { /* ignore */ }
+    set({ chatSoundScheme: scheme })
+  }
+
   const reset = () => {
     set({ messages: [], replyTo: null, editingMessage: null })
     useSessionStore.getState().reset()
@@ -132,6 +158,7 @@ export const useChatStore = create<ChatState>((set) => {
     replyTo: null,
     editingMessage: null,
     chatSoundEnabled: loadChatSoundEnabled(),
+    chatSoundScheme: loadChatSoundScheme(),
 
     setMessages,
     appendMessage,
@@ -142,6 +169,7 @@ export const useChatStore = create<ChatState>((set) => {
     updateMessageReadAt,
     updateMessageReactions,
     setChatSoundEnabled,
+    setChatSoundScheme,
     reset,
   }
 })

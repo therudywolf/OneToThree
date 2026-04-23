@@ -286,7 +286,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     return (
       <div>
         <div
-          className="mt-2 max-w-full overflow-hidden border border-neon-cyan/40 hover:border-neon-cyan/80 transition-colors cursor-pointer"
+          className="p13-media-card mt-2 max-w-full overflow-hidden hover:border-neon-cyan/80 transition-colors cursor-pointer"
           style={{ maxHeight: '300px', aspectRatio: '16/9', maxWidth: '300px' }}
         >
           <img
@@ -315,7 +315,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
           <a
             href={objectUrl}
             download={displayName}
-            className="flex h-8 items-center gap-1 border border-neon-cyan/30 bg-void px-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+            className="p13-media-action-btn flex h-8 items-center gap-1 px-2 font-mono text-[9px] uppercase tracking-widest"
           >
             <Download className="h-3 w-3" />
             {t('media.download')}
@@ -329,7 +329,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   if (isAudio) {
     return (
       <div>
-        <div className="mt-2 max-w-sm rounded-none border border-neon-cyan/40 bg-void p-2 shadow-[0_0_10px_rgba(0,255,255,0.05)]">
+        <div className="p13-audio-card mt-2 max-w-sm rounded-none p-2">
           <audio
             ref={audioRef}
             src={objectUrl}
@@ -378,7 +378,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                 if (playing) el.pause()
                 else void el.play()
               }}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan bg-void font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan hover:text-text-primary"
+              className="p13-media-action-btn flex h-7 w-7 shrink-0 items-center justify-center rounded-none font-mono text-[10px] uppercase tracking-widest"
             >
               {playing ? '||' : '▶'}
             </button>
@@ -391,7 +391,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                   audioRef.current.playbackRate = newSpeed
                 }
               }}
-              className="flex h-7 w-8 shrink-0 items-center justify-center rounded-none border border-neon-cyan/30 bg-void font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:border-neon-red hover:text-neon-red"
+              className="p13-media-action-btn flex h-7 w-8 shrink-0 items-center justify-center rounded-none font-mono text-[9px] uppercase tracking-widest hover:border-neon-red hover:text-neon-red"
             >
               {playbackSpeed}x
             </button>
@@ -399,7 +399,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               <button
                 type="button"
                 onClick={onPrevVoice}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-void text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+                className="p13-media-action-btn flex h-7 w-7 shrink-0 items-center justify-center rounded-none text-neon-cyan/60"
                 title={t('media.prevVoice')}
               >
                 <SkipBack className="h-3 w-3" />
@@ -409,7 +409,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               <button
                 type="button"
                 onClick={onNextVoice}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-void text-neon-cyan/60 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+                className="p13-media-action-btn flex h-7 w-7 shrink-0 items-center justify-center rounded-none text-neon-cyan/60"
                 title={t('media.nextVoice')}
               >
                 <SkipForward className="h-3 w-3" />
@@ -434,7 +434,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             <a
               href={objectUrl}
               download={displayName}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none border border-neon-cyan/20 bg-void text-neon-cyan/70 transition-colors hover:border-neon-cyan hover:text-neon-cyan"
+            className="p13-media-action-btn flex h-7 w-7 shrink-0 items-center justify-center rounded-none text-neon-cyan/70"
               title={t('media.download')}
             >
               <Download className="h-3 w-3" />
@@ -486,10 +486,10 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               width: videoNoteExpanded ? expandedSize : collapsedSize,
             }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className={`relative rounded-sm border bg-void/40 p-2 ${
+            className={`p13-video-card relative rounded-sm p-2 ${
               videoNoteExpanded
                 ? 'z-[90] border-neon-cyan/60 shadow-[0_0_30px_rgba(0,255,255,0.25)]'
-                : 'border-neon-cyan/20'
+                : ''
             }`}
           >
             <motion.div
@@ -551,7 +551,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                     if (playing) el.pause()
                     else void el.play()
                   }}
-                  className="flex h-6 items-center justify-center rounded-none border border-neon-red bg-void px-2 font-mono text-[9px] uppercase tracking-widest text-neon-red transition-colors hover:border-neon-cyan hover:bg-neon-cyan hover:text-text-primary"
+                  className="p13-media-action-btn flex h-6 items-center justify-center rounded-none px-2 font-mono text-[9px] uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:bg-neon-cyan hover:text-text-primary"
                 >
                   {playing ? '|| PAUSE' : '\u25B6 UNMUTE'}
                 </button>
@@ -582,7 +582,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
     return (
       <div>
-        <div className="mt-2 max-w-md border border-neon-cyan/40 bg-void p-1" style={{ aspectRatio: '16/9' }}>
+        <div className="p13-video-card mt-2 max-w-md p-1" style={{ aspectRatio: '16/9' }}>
           <video
             ref={videoRef}
             src={objectUrl}
@@ -606,7 +606,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
           <a
             href={objectUrl}
             download={displayName}
-            className="flex h-8 items-center gap-1 border border-neon-cyan/30 bg-void px-2 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+            className="p13-media-action-btn flex h-8 items-center gap-1 px-2 font-mono text-[9px] uppercase tracking-widest"
           >
             <Download className="h-3 w-3" />
             {t('media.download')}
@@ -621,7 +621,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   const ext = displayName.split('.').pop()?.toLowerCase() ?? ''
   return (
     <div>
-      <div className="mt-2 max-w-sm border border-border-strong bg-void/80 font-mono">
+      <div className="p13-file-card mt-2 max-w-sm font-mono">
         <div className="flex items-center gap-3 p-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan/30 bg-void">
             <FileText className="h-5 w-5 text-neon-cyan/60" />
@@ -638,7 +638,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
           <a
             href={objectUrl}
             download={displayName}
-            className="flex h-8 w-8 shrink-0 items-center justify-center border border-neon-cyan/40 bg-void text-neon-cyan transition-colors hover:border-neon-cyan hover:bg-neon-cyan/10"
+            className="p13-media-action-btn flex h-8 w-8 shrink-0 items-center justify-center text-neon-cyan"
             title={t('media.download')}
           >
             <Download className="h-4 w-4" />

@@ -1064,9 +1064,7 @@ export function ChatTerminal({
                 key={m.id}
                 data-message-id={m.id}
                 data-run-continuation={isRunContinuation ? 'true' : 'false'}
-                className={`group/msg relative flex w-full ${
-                  isRunContinuation ? 'mb-0.5' : 'mb-3'
-                } ${
+                className={`p13-msg-group group/msg relative flex w-full ${
                   mine ? 'justify-end' : 'justify-start'
                 } transition-transform duration-150`}
                 style={{
@@ -1159,11 +1157,11 @@ export function ChatTerminal({
                     mine
                       ? 'msg-bubble-width msg-bubble-mine items-end'
                       : 'msg-bubble-peer-width msg-bubble-peer items-start'
-                  } flex flex-col ${isRunContinuation ? 'gap-0' : 'gap-1'}`}
+                  } p13-msg-stack flex flex-col`}
                 >
                   {isRunContinuation ? null : (
                   <div
-                    className={`p13-label flex items-center gap-2 px-1 text-[11px] ${
+                    className={`p13-msg-meta p13-label flex items-center gap-2 px-1 text-[11px] ${
                       mine
                         ? 'flex-row-reverse justify-end text-right text-neon-cyan/80'
                         : 'justify-start text-left text-neon-cyan/90'
@@ -1201,7 +1199,7 @@ export function ChatTerminal({
                   </div>
                   )}
                   <div
-                    className={`p13-bubble w-full leading-relaxed ${
+                    className={`p13-msg-bubble p13-bubble w-full leading-relaxed ${
                       mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
                     }`}
                   >
@@ -1306,20 +1304,18 @@ export function ChatTerminal({
                 {dateDivider}
               <div
                 data-run-continuation={isRunContinuation ? 'true' : 'false'}
-                className={`group flex w-full ${
-                  isRunContinuation ? 'mb-0.5' : 'mb-3'
-                } ${mine ? 'justify-end' : 'justify-start'}`}
+                className={`p13-msg-group group flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
               >
                 <div
                   className={`min-w-0 ${
                     mine
                       ? 'msg-bubble-width msg-bubble-mine items-end'
                       : 'msg-bubble-peer-width msg-bubble-peer items-start'
-                  } flex flex-col ${isRunContinuation ? 'gap-0' : 'gap-1'}`}
+                  } p13-msg-stack flex flex-col`}
                 >
                   {isRunContinuation ? null : (
                   <div
-                    className={`p13-label flex items-center gap-1.5 px-1 text-[10px] ${
+                    className={`p13-msg-meta p13-label flex items-center gap-1.5 px-1 text-[10px] ${
                       mine
                         ? 'flex-row-reverse justify-end text-right text-neon-cyan/70'
                         : 'justify-start text-left text-neon-cyan/80'
@@ -1357,7 +1353,7 @@ export function ChatTerminal({
                   </div>
                   )}
                   <div
-                    className={`p13-bubble w-full ${
+                    className={`p13-msg-bubble p13-bubble w-full ${
                       mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
                     }`}
                   >

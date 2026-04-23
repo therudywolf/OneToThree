@@ -1,6 +1,16 @@
-Optional WebRTC ring tones (MP3):
+Sound schemes (MP3) are loaded from:
 
-  ring.mp3     — outgoing call / connecting (looped by the app)
-  incoming.mp3 — incoming call (looped until accept/reject)
+  /sounds/classic/ring.mp3
+  /sounds/classic/incoming.mp3
+  /sounds/classic/notification.mp3
 
-If these files are absent, the app uses short built-in beeps instead.
+  /sounds/soft/ring.mp3
+  /sounds/soft/incoming.mp3
+  /sounds/soft/notification.mp3
+
+  /sounds/retro/ring.mp3
+  /sounds/retro/incoming.mp3
+  /sounds/retro/notification.mp3
+
+You can replace the placeholder files with your own tracks.
+If a file is missing or cannot be played, the app falls back to built-in beeps.

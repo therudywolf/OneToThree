@@ -32,6 +32,7 @@ import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { patchMyProfile } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
+import { CHAT_SOUND_SCHEMES, type ChatSoundSchemeId } from '@/store/chatStore'
 import {
   ACCENT_PRESETS,
   resolveThemeAppearance,
@@ -112,6 +113,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
   const setChatSoundEnabled = useChatStore((s) => s.setChatSoundEnabled)
+  const chatSoundScheme = useChatStore((s) => s.chatSoundScheme)
+  const setChatSoundScheme = useChatStore((s) => s.setChatSoundScheme)
   const {
     theme,
     setTheme,
@@ -1015,6 +1018,22 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     } hover:border-neon-red hover:text-neon-red`}>
                     {chatSoundEnabled ? (isMd3 ? 'ON' : '[ ON ]') : (isMd3 ? 'OFF' : '[ OFF ]')}
                   </button>
+                </div>
+                <div className="flex flex-col gap-2 border border-neon-cyan/20 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.soundSchemeTitle')}</p>
+                    <p className="break-words text-[9px] text-danger">{t('settings.soundSchemeHint')}</p>
+                  </div>
+                  <select
+                    className="terminal-input h-9 w-full max-w-[12rem] py-1 text-xs"
+                    value={chatSoundScheme}
+                    onChange={(e) => setChatSoundScheme(e.target.value as ChatSoundSchemeId)}
+                    aria-label={t('settings.soundSchemeTitle')}
+                  >
+                    {CHAT_SOUND_SCHEMES.map((scheme) => (
+                      <option key={scheme.id} value={scheme.id}>{scheme.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-2 border-t border-neon-cyan/20 pt-3">
                   <div className="flex items-start justify-between gap-3">

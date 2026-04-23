@@ -42,6 +42,7 @@ import { isUuid, normalizePeerInput } from '@/lib/peer-input'
 import { canonicalUserId } from '@/lib/user-id'
 import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
 import { isApprovedContact } from '@/lib/contacts-store'
+import { sanitizeTextInput } from '@/lib/input-sanitize'
 import {
   CHAT_FOLDERS_EVENT,
   deleteChatFolder,
@@ -403,7 +404,7 @@ export function ChatSidebar({
   const sidebarChats = orderedSidebarChats(chats, pinnedIds)
 
   useEffect(() => {
-    const q = localGhostQuery.trim()
+    const q = sanitizeTextInput(localGhostQuery).trim()
     if (q.length < 2) {
       setGhostHitChatIds(null)
       setIsSearching(false)
@@ -525,7 +526,7 @@ export function ChatSidebar({
   }
 
   async function openDirect() {
-    const raw = normalizePeerInput(peerInput)
+    const raw = normalizePeerInput(sanitizeTextInput(peerInput))
     if (!raw) return
     setCreating(true)
     setCreateErr(null)
@@ -790,8 +791,8 @@ export function ChatSidebar({
             id="ghost-search"
             className={`w-full bg-transparent px-3 py-2 pl-9 text-[11px] focus:outline-none ${isMd3 ? 'text-[var(--on-surface)] placeholder:text-text-muted' : 'text-neon-cyan placeholder:text-neon-cyan/30'}`}
             placeholder={t('sidebar.localGhostSearch')}
-            value={localGhostQuery}
-            onChange={(e) => setLocalGhostQuery(e.target.value)}
+            value={sanitizeTextInput(localGhostQuery)}
+            onChange={(e) => setLocalGhostQuery(sanitizeTextInput(e.target.value))}
             autoComplete="off"
             spellCheck="false"
           />
@@ -865,7 +866,7 @@ export function ChatSidebar({
         ) : null}
 
         {ghostHitChatIds !== null &&
-        localGhostQuery.trim().length >= 2 &&
+        sanitizeTextInput(localGhostQuery).trim().length >= 2 &&
         sidebarChatsFiltered.length === 0 ? (
             <p className={`mx-1 mt-2 border px-4 py-6 text-center text-[10px] uppercase tracking-widest ${isMd3 ? 'rounded-2xl border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_5%,transparent)] text-[var(--on-surface-variant)]' : 'border-neon-red/30 bg-danger/30 font-mono text-neon-red'}`}>
               {t('sidebar.ghostNoHits')}
@@ -1118,14 +1119,14 @@ export function ChatSidebar({
             <input
               className={`h-10 w-full px-3 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:outline-none' : 'terminal-input placeholder:text-neon-cyan/30'}`}
               placeholder={t('sidebar.peerPlaceholder')}
-              value={peerInput}
-              onChange={(e) => setPeerInput(e.target.value)}
+              value={sanitizeTextInput(peerInput)}
+              onChange={(e) => setPeerInput(sanitizeTextInput(e.target.value))}
               spellCheck="false"
             />
             <button
               type="button"
               onClick={() => void openDirect()}
-              disabled={creating || !peerInput.trim()}
+              disabled={creating || !sanitizeTextInput(peerInput).trim()}
               className={`inline-flex h-10 shrink-0 items-center justify-center gap-1.5 px-4 text-[10px] font-medium uppercase tracking-[0.14em] transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-2xl bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-2)] hover:brightness-110 disabled:hover:bg-[var(--neon-red)]' : 'border border-neon-cyan bg-void font-mono text-neon-cyan hover:bg-neon-cyan hover:text-text-primary disabled:hover:bg-void disabled:hover:text-neon-cyan'}`}
             >
               {isMd3 ? <MessageSquarePlus className="h-4 w-4" aria-hidden /> : null}

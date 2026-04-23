@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Reply,
@@ -51,6 +51,7 @@ export function MessageActions({
   const isMd3 = shellMode === 'md3'
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
   const menuRef = useRef<HTMLDivElement>(null)
+  const [dangerConfirmKey, setDangerConfirmKey] = useState<Action | null>(null)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -67,6 +68,12 @@ export function MessageActions({
       document.removeEventListener('keydown', handleKey)
     }
   }, [onClose])
+
+  useEffect(() => {
+    if (!dangerConfirmKey) return
+    const timer = window.setTimeout(() => setDangerConfirmKey(null), 2500)
+    return () => window.clearTimeout(timer)
+  }, [dangerConfirmKey])
 
   // Clamp position to viewport
   const menuWidth = 200
@@ -190,12 +197,18 @@ export function MessageActions({
                 }`}
                 onClick={(e) => {
                   e.stopPropagation()
+                  if (action.danger && dangerConfirmKey !== action.key) {
+                    setDangerConfirmKey(action.key)
+                    return
+                  }
                   onAction(action.key)
                   onClose()
                 }}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
-                {action.label}
+                {action.danger && dangerConfirmKey === action.key
+                  ? `${t('common.confirm')}: ${action.label}`
+                  : action.label}
               </button>
             )
           })}

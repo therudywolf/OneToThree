@@ -1085,7 +1085,7 @@ export function ChatApp({
               </div>
 
               {/* Right: search + identity + calls */}
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1 max-[1180px]:gap-0.5">
                 {isMd3 ? (
                   <button
                     type="button"
@@ -1101,7 +1101,7 @@ export function ChatApp({
                   <button
                     type="button"
                     onClick={() => setIdentityOpen(true)}
-                    className="p13-icon-btn"
+                    className="p13-icon-btn max-[1180px]:hidden"
                     aria-label="Security info"
                     title="Security info"
                   >
@@ -1126,7 +1126,7 @@ export function ChatApp({
                         setSidebarCollapsedPersisted(false)
                       }
                     }}
-                    className="p13-icon-btn"
+                    className="p13-icon-btn max-[1180px]:hidden"
                     aria-label={t('group.packSettings')}
                     title={t('group.packSettings')}
                   >

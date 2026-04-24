@@ -167,6 +167,18 @@ Primary files:
 - `client/src/components/settings-modal.tsx`
 - `client/src/lib/settings-errors.ts`
 
+### 2.8 Post-deploy build and reliability follow-up
+
+- Fixed the clean web build regression reported after update:
+  - `client/src/lib/native-session.ts` no longer imports `@capacitor/core` at compile time,
+  - native cookie bridge now resolves from runtime Capacitor globals instead.
+- Fixed `online` listener lifecycle in the socket client:
+  - `client/src/lib/api/socket.ts`
+- Added explicit delete confirmations to message actions:
+  - `client/src/components/chat/chat-terminal.tsx`
+  - `client/src/locales/en.ts`
+  - `client/src/locales/ru.ts`
+
 ## 3. Verification Snapshot
 
 Verified during or at the end of the thread:
@@ -176,8 +188,15 @@ Verified during or at the end of the thread:
 - `npm run test:unit:client` — PASS (`16` files / `77` tests)
 - `npm run test:server` — PASS (`26` files / `71` tests)
 - `npm run build` — PASS
-- `npm run build:client:export` — PASS earlier in thread
+- `npm run build:client:export` — PASS
 - `npm run audit:security` — FAIL, but improved to `161` violations
+- `client` non-dev `npm audit` — `0` vulnerabilities
+- `server` non-dev `npm audit` — `12` vulnerabilities (`10 moderate`, `2 low`)
+
+Environment note:
+
+- `docker compose build web` could not be used as an isolated validation in this audit environment because compose interpolation aborted on missing `JWT_SECRET`.
+- Direct Docker rebuild verification was also blocked here because Docker daemon access is unavailable.
 
 ## 4. What Is Still Open
 

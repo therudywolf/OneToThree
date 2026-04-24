@@ -244,6 +244,8 @@ const ru = {
   'chat.inputPlaceholder': 'Введите сообщение...',
   'chat.burnTimerLabel': 'Удалить через',
   'chat.originalDeleted': 'Сообщение удалено',
+  'chat.deleteForMeConfirm': 'Удалить это сообщение только у вас?',
+  'chat.deleteForAllConfirm': 'Удалить это сообщение у всех участников?',
   'chat.decryptFailed': 'Сообщение не удалось расшифровать',
   'chat.decryptFailedPreview': '🔒 Зашифрованное сообщение',
   'chat.newChat': 'Новый чат',

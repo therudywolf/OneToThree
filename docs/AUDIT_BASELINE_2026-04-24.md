@@ -35,8 +35,8 @@ Source of truth: current repo state, local static checks, existing runtime audit
 |---|---|---:|---|---|
 | Mobile auth entry hierarchy | partially fixed | high | Android-first entry hierarchy now leads with add-device and native session warming exists, but full live-device revalidation is still pending | client/auth |
 | Desktop sidebar adaptability | already fixed | high | sidebar now clamps to viewport, preserves main pane width, and supports pointer resize like Telegram Desktop | client/chat |
-| Search poisoning (`undefined`) | reproduced | high | prior runtime audit item 26/32; not yet revalidated in this run | client/chat |
-| Destructive action safety | reproduced | high | prior runtime audit item 31; no explicit confirmation pattern is guaranteed across flows | client/chat |
+| Search poisoning (`undefined`) | reproduced | high | prior runtime audit item 26/32; input sanitization exists in current sidebar code, but a fresh live-browser revalidation is still pending | client/chat |
+| Destructive action safety | partially fixed | medium | message deletion now has explicit confirmation; broader destructive flows still need consistency audit | client/chat |
 | Sticker settings/raw error UX | partially fixed | medium | settings panel now normalizes some failures, but broader sticker UX still incomplete | client/stickers |
 | Push/noise in shell | reproduced | medium | prior runtime audit item 15 | client/push |
 
@@ -66,6 +66,7 @@ Source of truth: current repo state, local static checks, existing runtime audit
 |---|---|---:|---|---|
 | Client unit test truthfulness | already fixed | critical | persist-safe storage and updated tests make client unit CI green again | client/core |
 | Server integration test truthfulness | already fixed | critical | compatibility bootstrap aligns test DB schema and keeps server integration CI green | server/core |
+| Docker/web clean build blocker | already fixed | critical | `native-session` no longer imports `@capacitor/core` at compile time; clean Next web build path is restored | client/auth |
 | GIF provider reliability | partially fixed | high | legacy public Giphy fallback removed and connect-src now allows provider media, but live send/render verification is still required | client/media |
 | Phone login reliability | partially fixed | high | Android-first auth UI and native cookie/session bridge landed, but cold-install/relaunch/two-device runtime replay on a real device is still pending | client/auth + android |
 | Group/channel creation stability | reproduced | high | runtime audit critical item 5 | client/chat + server/chat |

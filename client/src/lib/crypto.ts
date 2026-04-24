@@ -307,6 +307,28 @@ export async function encryptMessage(
 }
 
 /**
+ * AES-GCM encrypt raw bytes for low-latency binary transports.
+ */
+export async function encryptBytes(
+  sharedKey: CryptoKey,
+  plaintext: Uint8Array
+): Promise<EncryptedMessage> {
+  const iv = new Uint8Array(AES_GCM_IV_LENGTH)
+  crypto.getRandomValues(iv)
+
+  const cipherBuffer = await getSubtle().encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    sharedKey,
+    plaintext as BufferSource
+  )
+
+  return {
+    ciphertext: uint8ToBase64(new Uint8Array(cipherBuffer)),
+    iv: uint8ToBase64(iv),
+  }
+}
+
+/**
  * Decrypt a payload produced by {@link encryptMessage}.
  */
 export async function decryptMessage(
@@ -324,6 +346,26 @@ export async function decryptMessage(
   )
 
   return new TextDecoder().decode(plainBuffer)
+}
+
+/**
+ * Decrypt AES-GCM ciphertext into raw bytes.
+ */
+export async function decryptBytes(
+  sharedKey: CryptoKey,
+  ciphertextBase64: string,
+  ivBase64: string
+): Promise<Uint8Array> {
+  const ciphertext = base64ToUint8(ciphertextBase64)
+  const iv = base64ToUint8(ivBase64)
+
+  const plainBuffer = await getSubtle().decrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    sharedKey,
+    ciphertext as BufferSource
+  )
+
+  return new Uint8Array(plainBuffer)
 }
 
 /** AES-GCM encrypt arbitrary bytes (same 256-bit key as text messages). */

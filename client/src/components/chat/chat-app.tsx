@@ -132,6 +132,10 @@ const DockPanel = dynamic(
   { ssr: false, loading: () => null }
 )
 
+const DESKTOP_MIN_MAIN_PANE_WIDTH = 560
+const DESKTOP_FRAME_GUTTER = 32
+const DOCK_PANEL_RESERVE_WIDTH = 360
+
 export function ChatApp({
   userId,
   username,
@@ -189,46 +193,88 @@ export function ChatApp({
   const [headerProfileOpen, setHeaderProfileOpen] = useState(false)
   const [md3HeaderCondensed, setMd3HeaderCondensed] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
+  const dockSlot = useDockStore((s) => s.slot)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
 
   const [sidebarWidth, setSidebarWidth] = useState(344)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarResizeActive, setSidebarResizeActive] = useState(false)
   const sidebarDragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+  const clampSidebarWidthForViewport = useCallback((requested: number) => {
+    const bounded = Math.min(
+      TELEGRAM_BEHAVIOR.sidebar.maxWidth,
+      Math.max(TELEGRAM_BEHAVIOR.sidebar.minWidth, requested)
+    )
+    if (typeof window === 'undefined') return bounded
+    if (!window.matchMedia('(min-width: 768px)').matches) return bounded
+    const dockReserve = matchesDockViewport() && dockSlot ? DOCK_PANEL_RESERVE_WIDTH : 0
+    const viewportMax = window.innerWidth - dockReserve - DESKTOP_MIN_MAIN_PANE_WIDTH - DESKTOP_FRAME_GUTTER
+    const maxAllowed = Math.max(
+      TELEGRAM_BEHAVIOR.sidebar.minWidth,
+      Math.min(TELEGRAM_BEHAVIOR.sidebar.maxWidth, viewportMax)
+    )
+    return Math.min(maxAllowed, bounded)
+  }, [dockSlot])
   useLayoutEffect(() => {
     const saved = localStorage.getItem('p13_sidebar_width')
     if (!saved) return
     const n = Number(saved)
-    if (Number.isFinite(n) && n >= TELEGRAM_BEHAVIOR.sidebar.minWidth && n <= TELEGRAM_BEHAVIOR.sidebar.maxWidth) setSidebarWidth(n)
-  }, [])
+    if (Number.isFinite(n) && n >= TELEGRAM_BEHAVIOR.sidebar.minWidth && n <= TELEGRAM_BEHAVIOR.sidebar.maxWidth) {
+      setSidebarWidth(clampSidebarWidthForViewport(n))
+    }
+  }, [clampSidebarWidthForViewport])
   useLayoutEffect(() => {
     const saved = localStorage.getItem('p13_sidebar_collapsed')
     if (!saved) return
     setSidebarCollapsed(saved === '1')
   }, [])
 
-  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
-    if (sidebarCollapsed) return
+  const handleSidebarResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (sidebarCollapsed || e.button !== 0) return
+    if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches) return
     e.preventDefault()
+    e.currentTarget.setPointerCapture?.(e.pointerId)
     const startX = e.clientX
     const startWidth = sidebarWidth
     sidebarDragRef.current = { startX, startWidth }
-    const onMove = (mv: MouseEvent) => {
+    setSidebarResizeActive(true)
+    const previousCursor = document.body.style.cursor
+    const previousSelect = document.body.style.userSelect
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    const onMove = (mv: PointerEvent) => {
       const delta = mv.clientX - startX
-      const next = Math.min(TELEGRAM_BEHAVIOR.sidebar.maxWidth, Math.max(TELEGRAM_BEHAVIOR.sidebar.minWidth, startWidth + delta))
+      const next = clampSidebarWidthForViewport(startWidth + delta)
       setSidebarWidth(next)
     }
-    const onUp = (up: MouseEvent) => {
+    const onUp = (up: PointerEvent) => {
       const delta = up.clientX - startX
-      const final = Math.min(TELEGRAM_BEHAVIOR.sidebar.maxWidth, Math.max(TELEGRAM_BEHAVIOR.sidebar.minWidth, startWidth + delta))
+      const final = clampSidebarWidthForViewport(startWidth + delta)
+      setSidebarWidth(final)
       localStorage.setItem('p13_sidebar_width', String(final))
       sidebarDragRef.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
+      setSidebarResizeActive(false)
+      document.body.style.cursor = previousCursor
+      document.body.style.userSelect = previousSelect
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
     }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [sidebarCollapsed, sidebarWidth])
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }, [clampSidebarWidthForViewport, sidebarCollapsed, sidebarWidth])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const syncSidebarWidth = () => {
+      setSidebarWidth((current) => clampSidebarWidthForViewport(current))
+    }
+    syncSidebarWidth()
+    window.addEventListener('resize', syncSidebarWidth)
+    return () => window.removeEventListener('resize', syncSidebarWidth)
+  }, [clampSidebarWidthForViewport])
 
   const setSidebarCollapsedPersisted = useCallback((next: boolean) => {
     setSidebarCollapsed(next)
@@ -1029,11 +1075,13 @@ export function ChatApp({
         </div>
         {/* Sidebar resize handle — desktop only */}
         <div
-          className={`chat-layout-divider hidden md:block w-2 shrink-0 transition-colors touch-none z-10 ${
+          className={`chat-layout-divider hidden md:block shrink-0 transition-colors touch-none z-10 ${
             sidebarCollapsed ? 'cursor-default opacity-40' : 'cursor-ew-resize'
           }`}
-          onMouseDown={handleSidebarResizeStart}
-          title="Drag to resize sidebar"
+          onPointerDown={handleSidebarResizeStart}
+          onDoubleClick={toggleSidebarCollapsed}
+          title={sidebarCollapsed ? 'Double-click to expand sidebar' : 'Drag to resize sidebar. Double-click to collapse.'}
+          data-dragging={sidebarResizeActive ? 'true' : 'false'}
         />
         <div
           className={`chat-layout-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-y-contain ${
@@ -1240,9 +1288,9 @@ export function ChatApp({
 
 function DockPanelXlOnly() {
   const slot = useDockStore((s) => s.slot)
-  if (!slot) return null
+  if (!slot || !matchesDockViewport()) return null
   return (
-    <div className="hidden xl:flex xl:min-h-0 xl:shrink-0">
+    <div className="flex min-h-0 shrink-0">
       <DockPanel />
     </div>
   )

@@ -11,6 +11,7 @@ export type InboundLinkRequest = {
   peerUsername?: string
   isVideo?: boolean
   offer?: RTCSessionDescriptionInit | null
+  transport?: 'webrtc' | 'audio_relay'
 }
 
 /** Состояние периферии удаленного узла (оптика/акустика) */

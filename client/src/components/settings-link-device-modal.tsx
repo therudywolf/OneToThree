@@ -9,6 +9,7 @@ import { VaultPinGate } from '@/components/vault-pin-gate'
 import { useAuth } from '@/components/auth/auth-provider'
 import { signMessageWithVaultPin } from '@/lib/vault-signing'
 import { useThemeStore } from '@/store/themeStore'
+import { explainDeviceLinkError } from '@/lib/device-link-errors'
 
 type Props = { onClose: () => void }
 
@@ -49,11 +50,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     } catch (e) {
       const message = e instanceof Error ? e.message : 'QR_GENERATE_FAILED'
       if (message === 'TOTP_REQUIRED') setNeedsTotp(true)
-      if (message === 'DEVICE_LINKING_DISABLED') {
-        setErr('DEVICE_LINKING_DISABLED :: Включите "Device Linking" в Security settings.')
-      } else {
-        setErr(message)
-      }
+      else setErr(explainDeviceLinkError(message, t))
     } finally {
       setLoading(false)
     }
@@ -68,7 +65,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   return (
     <div
       className={`fixed inset-0 z-[110] flex items-center justify-center px-3 py-6 ${
-        isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : isRetro ? 'bg-[color-mix(in_srgb,#0b2d74_70%,black)]' : 'bg-void/92'
+        isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : isRetro ? 'p13-classic-overlay' : 'bg-void/92'
       }`}
       role="dialog"
       aria-modal="true"
@@ -81,19 +78,19 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         className={`terminal-panel flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-hidden p-4 ${
           isMd3
             ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'
-            : isRetro
-              ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+          : isRetro
+              ? 'p13-classic-window'
               : 'border border-neon-cyan/40 bg-void'
         }`}
       >
-        <div className={`flex items-start justify-between gap-2 border-b pb-3 ${isRetro ? 'border-[#001f57] bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)] px-2 pt-2' : 'border-neon-red/35'}`}>
-          <p className={`min-w-0 break-words text-[10px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] tracking-[0.04em] text-[#f4f7ff]' : 'font-mono uppercase tracking-[0.25em] text-neon-cyan'}`}>
+        <div className={`flex items-start justify-between gap-2 border-b pb-3 ${isRetro ? 'p13-classic-titlebar px-2 pt-2' : 'border-neon-red/35'}`}>
+          <p className={`min-w-0 break-words text-[10px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'tracking-[0.04em]' : 'font-mono uppercase tracking-[0.25em] text-neon-cyan'}`}>
             {t('settings.linkDeviceTitle')}
           </p>
           <button
             type="button"
             onClick={onClose}
-            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isRetro ? 'border border-[#6f747c] bg-[#d4d0c8] px-2 py-0.5 font-["Tahoma"] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]' : 'font-mono text-neon-red hover:text-neon-cyan'}`}
+            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isRetro ? 'p13-classic-button px-2 py-0.5' : 'font-mono text-neon-red hover:text-neon-cyan'}`}
           >
             [X]
           </button>
@@ -112,12 +109,12 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
           </div>
         ) : (
           <>
-            <p className={`mt-3 break-words text-[9px] leading-relaxed ${isRetro ? 'font-["Tahoma"] text-[#2a3f59]' : 'text-danger'}`}>
+            <p className={`mt-3 break-words text-[9px] leading-relaxed ${isRetro ? 'p13-classic-copy-soft' : 'text-danger'}`}>
               {t('settings.linkDeviceHint')}
             </p>
             {needsTotp ? (
-              <div className="mt-3 border border-neon-cyan/30 bg-void/60 p-3">
-                <p className="mb-2 text-[9px] uppercase tracking-widest text-neon-cyan/80">
+              <div className={`mt-3 p-3 ${isRetro ? 'p13-classic-inset' : 'border border-neon-cyan/30 bg-void/60'}`}>
+                <p className={`mb-2 text-[9px] uppercase tracking-widest ${isRetro ? 'p13-classic-copy' : 'text-neon-cyan/80'}`}>
                   [ TOTP REQUIRED ]
                 </p>
                 <input
@@ -127,19 +124,19 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                   value={totpCode}
                   onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="000000"
-                  className="w-full border border-neon-cyan/30 bg-void px-3 py-2 text-center font-mono text-xs tracking-[0.3em] text-neon-cyan placeholder:text-text-muted/70 focus:border-neon-cyan focus:outline-none"
+                  className={`w-full px-3 py-2 text-center text-xs tracking-[0.3em] placeholder:text-text-muted/70 focus:outline-none ${isRetro ? 'p13-classic-input p13-classic-copy' : 'border border-neon-cyan/30 bg-void font-mono text-neon-cyan focus:border-neon-cyan'}`}
                 />
                 <button
                   type="button"
                   onClick={() => void generateQr()}
                   disabled={loading || totpCode.replace(/\D/g, '').length !== 6}
-                  className="mt-2 w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-50"
+                  className={`mt-2 w-full border py-2 text-[10px] uppercase tracking-widest transition-colors disabled:opacity-50 ${isRetro ? 'p13-classic-button' : 'border-neon-cyan bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
                 >
                   [ RETRY WITH TOTP ]
                 </button>
               </div>
             ) : null}
-            <div className="mt-4 flex min-h-[200px] flex-1 items-center justify-center border border-neon-cyan/25 bg-void p-4">
+            <div className={`mt-4 flex min-h-[200px] flex-1 items-center justify-center p-4 ${isRetro ? 'p13-classic-inset' : 'border border-neon-cyan/25 bg-void'}`}>
               {loading ? (
                 <span className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
                   [ LOADING... ]

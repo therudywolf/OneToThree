@@ -160,7 +160,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
   return (
     <div
       ref={trapRef}
-      className={`fixed inset-0 z-[120] flex items-center justify-center px-4 ${
+      className={`fixed inset-0 z-[120] flex items-end justify-center px-3 py-3 sm:items-center sm:px-4 ${
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : isRetro
@@ -170,7 +170,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
       role="dialog"
       aria-modal="true"
     >
-      <div className={`relative w-full max-w-lg p-6 ${
+      <div className={`relative flex max-h-[min(92dvh,100vh-0.75rem)] w-full max-w-xl flex-col overflow-hidden p-4 sm:p-6 ${
         isMd3
           ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
           : isRetro
@@ -198,9 +198,9 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </button>
         </header>
 
-        <form onSubmit={(ev) => void handleGenesis(ev)} className="space-y-5">
+        <form onSubmit={(ev) => void handleGenesis(ev)} className="custom-scrollbar min-h-0 space-y-5 overflow-y-auto pr-1">
           <div className={`p-3 ${isMd3 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-border-strong bg-void transition-colors hover:border-border-strong'}`}>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => setCreateMode('group')}
@@ -284,7 +284,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </div>
 
           {/* RADAR_RESULTS */}
-          <div className={`max-h-32 overflow-y-auto border ${isRetro ? 'border-[#8e939c] bg-[#ebe7de]' : 'border-border-strong bg-void/40'}`}>
+          <div className={`max-h-44 overflow-y-auto border ${isRetro ? 'border-[#8e939c] bg-[#ebe7de]' : 'border-border-strong bg-void/40'}`}>
             {radarResults.length === 0 ? (
               <p className="p-4 text-center font-mono text-[10px] text-text-muted/50">
                 {t('group.noHits')}
@@ -316,9 +316,9 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </div>
 
           {/* SELECTION_SUMMARY */}
-          <div className="border-l border-border-strong pl-3">
+          <div className={`rounded border px-3 py-2 ${isRetro ? 'border-[#8e939c] bg-[#ebe7de]' : 'border-border-strong bg-void/30'}`}>
             <p className="text-[9px] uppercase tracking-widest text-text-muted/70">{t('group.selectedLabel')}</p>
-            <p className="mt-1 font-mono text-[10px] text-neon-cyan truncate">
+            <p className="mt-1 break-words font-mono text-[10px] text-neon-cyan">
               {selectedNodes.length === 0
                 ? t('group.selectHint')
                 : selectedNodes.map((s) => s.username).join(', ')}
@@ -332,12 +332,12 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           )}
 
           {/* ACTION_CONTROLS */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
             {isMd3 ? (
               <button
                 type="submit"
                 disabled={!canInitialize}
-                className="flex-1 rounded-full bg-[var(--neon-red)] px-4 py-2 text-[var(--surface)] shadow-[var(--md3-elevation-2)] disabled:opacity-40"
+                className="min-h-11 flex-1 rounded-full bg-[var(--neon-red)] px-4 py-2 text-[var(--surface)] shadow-[var(--md3-elevation-2)] disabled:opacity-40"
               >
                 {isBusy ? t('group.creating') : t('group.create')}
               </button>
@@ -345,7 +345,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
               <TerminalGlitchButton
                 type="submit"
                 disabled={!canInitialize}
-                className="flex-1"
+                className="min-h-11 flex-1"
               >
                 {isBusy ? t('group.creating') : t('group.create')}
               </TerminalGlitchButton>
@@ -354,7 +354,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className={`px-6 text-[10px] transition-all ${
+              className={`min-h-11 px-6 text-[10px] transition-all sm:w-auto ${
                 isRetro
                   ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] text-[#2a3e56] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff] hover:bg-[#e2ded6]'
                   : 'border border-border-strong bg-void font-mono uppercase tracking-widest text-text-muted/70 hover:border-neon-red hover:text-neon-red'

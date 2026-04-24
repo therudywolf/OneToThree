@@ -75,18 +75,6 @@ export function MessageActions({
     return () => window.clearTimeout(timer)
   }, [dangerConfirmKey])
 
-  // Clamp position to viewport
-  const menuWidth = 200
-  const menuHeight = 320
-  const x = Math.min(
-    Math.max(8, position.x),
-    (typeof window !== 'undefined' ? window.innerWidth : 400) - menuWidth - 8,
-  )
-  const y = Math.min(
-    Math.max(8, position.y),
-    (typeof window !== 'undefined' ? window.innerHeight : 400) - menuHeight - 8,
-  )
-
   const actions: Array<{
     key: Action
     label: string
@@ -153,6 +141,16 @@ export function MessageActions({
       danger: true,
     },
   ]
+  const visibleActions = actions.filter((a) => a.show)
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 400
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 400
+  const compactViewport = viewportWidth < 640
+  const menuWidth = compactViewport ? Math.min(260, viewportWidth - 16) : 216
+  const menuHeight = Math.min(420, visibleActions.length * 42 + 20)
+  const x = compactViewport
+    ? 8
+    : Math.min(Math.max(8, position.x), viewportWidth - menuWidth - 8)
+  const y = Math.min(Math.max(8, position.y), viewportHeight - menuHeight - 8)
 
   return (
     <AnimatePresence>
@@ -162,7 +160,7 @@ export function MessageActions({
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.12, ease: 'easeOut' }}
-        className={`fixed z-[120] min-w-[12rem] py-1 ${
+        className={`fixed z-[120] w-[min(16rem,calc(100vw-1rem))] max-w-[16rem] py-1 ${
           isMd3
             ? 'rounded-2xl border border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] bg-[var(--surface-elevated)] shadow-[var(--md3-elevation-3)]'
             : isRetro
@@ -173,9 +171,7 @@ export function MessageActions({
         aria-label={t('chat.contextMenuAria')}
         style={{ left: x, top: y }}
       >
-        {actions
-          .filter((a) => a.show)
-          .map((action) => {
+        {visibleActions.map((action) => {
             const Icon = action.icon
             return (
               <button

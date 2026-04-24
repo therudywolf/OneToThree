@@ -248,20 +248,33 @@ const MAX_WS_MESSAGE_BYTES = 64 * 1024
 
 /** Per-connection rate limit: max messages per window. */
 const WS_RATE_LIMIT_MAX = 60
+const WS_RATE_LIMIT_RELAY_MAX = 2400
 const WS_RATE_LIMIT_WINDOW_MS = 60_000
 
 /** Simple sliding-window rate limiter per WebSocket connection. */
 class WsRateLimiter {
   private timestamps: number[] = []
 
-  check(): boolean {
+  check(limit = WS_RATE_LIMIT_MAX): boolean {
     const now = Date.now()
     const cutoff = now - WS_RATE_LIMIT_WINDOW_MS
     this.timestamps = this.timestamps.filter((t) => t > cutoff)
-    if (this.timestamps.length >= WS_RATE_LIMIT_MAX) return false
+    if (this.timestamps.length >= limit) return false
     this.timestamps.push(now)
     return true
   }
+}
+
+function resolveWsRateLimit(json: unknown): number {
+  if (!json || typeof json !== 'object') return WS_RATE_LIMIT_MAX
+  const entry = json as {
+    type?: unknown
+    signalData?: { kind?: unknown } | null
+  }
+  if (entry.type === 'webrtc_signal' && entry.signalData?.kind === 'relay_frame') {
+    return WS_RATE_LIMIT_RELAY_MAX
+  }
+  return WS_RATE_LIMIT_MAX
 }
 
 /** Returns the byte length of a raw websocket payload for size validation. */
@@ -344,18 +357,18 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           return
         }
 
-        if (!rateLimiter.check()) {
-          request.log.warn({ correlationId, userId: user.id }, 'ws: rate limit exceeded')
-          safeSend(ws, JSON.stringify({ type: 'error', error: 'RATE_LIMIT_EXCEEDED' }))
-          return
-        }
-
         let json: unknown
         try {
           json = JSON.parse(bufferToString(raw))
         } catch {
           request.log.warn({ correlationId, userId: user.id }, 'ws: invalid json frame')
           safeSend(ws, JSON.stringify({ type: 'error', error: 'INVALID_JSON' }))
+          return
+        }
+
+        if (!rateLimiter.check(resolveWsRateLimit(json))) {
+          request.log.warn({ correlationId, userId: user.id }, 'ws: rate limit exceeded')
+          safeSend(ws, JSON.stringify({ type: 'error', error: 'RATE_LIMIT_EXCEEDED' }))
           return
         }
 

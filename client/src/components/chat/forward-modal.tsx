@@ -31,9 +31,9 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
   useEffect(() => {
     void fetchChatsList()
       .then((list) => setChats(list))
-      .catch(() => setError('LOAD_FAILED'))
+      .catch(() => setError(t('settings.loadFailed')))
       .finally(() => setLoading(false))
-  }, [])
+  }, [t])
 
   const text = message.plaintext ?? ''
 
@@ -49,8 +49,8 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
     try {
       await onForward(chatId, text)
       setSent((prev) => new Set([...prev, chatId]))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('forward.failed'))
+    } catch {
+      setError(t('forward.failed'))
     } finally {
       setBusy(null)
     }
@@ -65,9 +65,9 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
         exit={{ opacity: 0 }}
         className={`fixed inset-0 z-[130] flex items-center justify-center px-3 ${
           isMd3
-            ? 'bg-black/40 backdrop-blur-sm'
+            ? 'bg-[color-mix(in_srgb,var(--void)_40%,transparent)] backdrop-blur-sm'
             : isRetro
-              ? 'bg-[color-mix(in_srgb,var(--void)_44%,#0b2d74)]'
+              ? 'p13-classic-overlay'
               : 'bg-void/80'
         }`}
       >
@@ -78,13 +78,13 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
           className={`w-full max-w-sm ${
             isMd3
               ? 'rounded-[28px] bg-[var(--surface-container-high)] p-5 shadow-[var(--md3-elevation-3)]'
-              : isRetro
-                ? 'border border-[#6f747c] bg-[#d4d0c8] p-0 shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_14px_36px_rgba(0,0,0,0.32)]'
+            : isRetro
+                ? 'p13-classic-window p-0'
                 : 'terminal-panel'
           }`}
         >
-          <header className={`flex items-center justify-between gap-2 ${isRetro ? 'mb-0 border-b border-[#001f57] px-3 py-2' : 'mb-3 pb-3 border-b'} ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)]' : 'border-neon-cyan/30'}`}>
-            <p className={`text-[10px] ${isMd3 ? 'font-sans font-semibold text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] tracking-[0.05em] text-[#f4f7ff]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
+          <header className={`flex items-center justify-between gap-2 ${isRetro ? 'mb-0 p13-classic-titlebar px-3 py-2' : 'mb-3 pb-3 border-b'} ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? '' : 'border-neon-cyan/30'}`}>
+            <p className={`text-[10px] ${isMd3 ? 'font-sans font-semibold text-[var(--on-surface)]' : isRetro ? 'tracking-[0.05em]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
               {t('forward.title')}
             </p>
             <button
@@ -94,26 +94,26 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
                 isMd3
                   ? 'rounded-full text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
                   : isRetro
-                    ? 'border border-[#6f747c] bg-[#d4d0c8] text-[#13273f] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                    ? 'p13-classic-button'
                     : 'border border-neon-red/35 bg-void text-neon-red hover:border-neon-cyan hover:text-neon-cyan'
               }`}
             >
-              <span className={`${isMd3 ? 'font-sans' : isRetro ? 'font-["Tahoma"]' : 'font-mono'} text-[10px] leading-none`}>✕</span>
+              <span className={`${isMd3 ? 'font-sans' : isRetro ? '' : 'font-mono'} text-[10px] leading-none`}>✕</span>
             </button>
           </header>
           <div className={isRetro ? 'p-4' : ''}>
 
           {/* Snippet preview */}
           {text.trim() && (
-            <div className={`mb-3 px-2 py-1.5 ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : isRetro ? 'border border-[#9ea4ad] bg-[#ece9e2]' : 'border border-neon-cyan/20'}`}>
-              <p className={`text-[9px] truncate ${isMd3 ? 'text-[var(--on-surface-variant)]' : isRetro ? 'font-["Tahoma"] text-[#33465b]' : 'font-mono text-neon-cyan/60'}`}>
+            <div className={`mb-3 px-2 py-1.5 ${isMd3 ? 'rounded-xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : isRetro ? 'p13-classic-inset' : 'border border-neon-cyan/20'}`}>
+              <p className={`text-[9px] truncate ${isMd3 ? 'text-[var(--on-surface-variant)]' : isRetro ? 'p13-classic-copy-soft' : 'font-mono text-neon-cyan/60'}`}>
                 {text.slice(0, 120)}{text.length > 120 ? '…' : ''}
               </p>
             </div>
           )}
 
           <input
-            className={`mb-3 h-10 w-full px-3 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:outline-none' : isRetro ? 'border border-[#6f747c] bg-[#ffffff] font-["Tahoma"] text-[#1a1a1a] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6] outline-none' : 'terminal-input'}`}
+            className={`mb-3 h-10 w-full px-3 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] placeholder:text-text-muted focus:outline-none' : isRetro ? 'p13-classic-input outline-none' : 'terminal-input'}`}
             placeholder={t('forward.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -138,7 +138,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
                       isMd3
                         ? `rounded-xl ${isSent ? 'bg-[color-mix(in_srgb,var(--primary)_8%,transparent)] text-[color-mix(in_srgb,var(--primary)_50%,var(--on-surface))]' : 'text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]'}`
                         : isRetro
-                          ? `border font-["Tahoma"] ${isSent ? 'border-[#9da2ab] bg-[#ece9e2] text-[#6a7079]' : 'border-[#7e838c] bg-[#d4d0c8] text-[#112b45] hover:bg-[#e2ded6]'}`
+                          ? `border ${isSent ? 'p13-classic-button p13-classic-button--muted' : 'p13-classic-button'}`
                           : `border font-mono uppercase tracking-widest ${isSent ? 'border-neon-cyan/20 text-neon-cyan/40' : 'border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10'}`
                     }`}
                   >

@@ -2,28 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
-import dynamic from 'next/dynamic'
-import { Theme } from 'emoji-picker-react'
 import { useDockStore } from '@/store/dockStore'
 import { useTranslation } from '@/hooks/use-translation'
 import { useLocaleStore } from '@/store/localeStore'
 import { ShellSurface, ShellText, ShellIconButton, useShell } from '@/components/ui/shell'
 import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
+import { ChatEmojiPicker } from '@/components/chat/chat-emoji-picker'
 import { lookupUsers } from '@/lib/api/users'
 import { UserAvatar } from '@/components/user-avatar'
-
-const LazyEmojiPicker = dynamic(
-  () => import('emoji-picker-react').then((m) => m.default),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-[420px] items-center justify-center font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
-        loading…
-      </div>
-    ),
-  }
-)
 
 /**
  * DockPanel — right-side slide-in panel on xl+ screens. Hosts profile,
@@ -149,16 +136,12 @@ export function DockPanel() {
         ) : null}
 
         {slot === 'emoji' ? (
-          <div className="p13-epr-host p-2">
-            <LazyEmojiPicker
-              onEmojiClick={(data: { emoji: string }) => {
-                emojiOnPick?.(data.emoji)
-              }}
-              skinTonesDisabled
-              previewConfig={{ showPreview: false }}
-              width="100%"
+          <div className="p-2">
+            <ChatEmojiPicker
               height={420}
-              theme={isTerminal ? Theme.DARK : Theme.LIGHT}
+              onPick={(emoji) => {
+                emojiOnPick?.(emoji)
+              }}
             />
           </div>
         ) : null}

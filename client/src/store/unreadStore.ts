@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
 import type { DecryptedMessage } from '@/types/chat'
+import { createSafeJSONStorage } from '@/lib/safe-zustand-storage'
 
 /**
  * UNREAD STORE — sync/unread layer
@@ -138,7 +139,7 @@ export const useUnreadStore = create<UnreadState>()(
     {
       name: 'p13-unread-store',
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      storage: createSafeJSONStorage(),
       partialize: (state) => ({
         unreadByChat: state.unreadByChat,
         unreadTotal: state.unreadTotal,

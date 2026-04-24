@@ -48,20 +48,26 @@ export function PostRegisterVaultPrompt({
     setExportState('done')
   }
 
+  const overlayClass = isMd3
+    ? 'bg-[color-mix(in_srgb,var(--void)_65%,transparent)] backdrop-blur-sm'
+    : isRetro
+      ? 'p13-classic-overlay'
+      : 'bg-[color-mix(in_srgb,var(--void)_85%,transparent)]'
+
   return (
-    <div className={`fixed inset-0 z-[120] flex items-center justify-center px-6 py-8 ${isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_65%,transparent)] backdrop-blur-sm' : 'bg-black/85'}`}>
+    <div className={`fixed inset-0 z-[120] flex items-center justify-center px-6 py-8 ${overlayClass}`}>
       <div className={`w-full max-w-md space-y-4 p-8 ${
         isMd3
           ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'
           : isRetro
-            ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+            ? 'p13-classic-window'
             : 'border border-neon-red/60 bg-[#0a0a0a] font-mono'
       }`}>
-        <div className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : isRetro ? 'tracking-[0.02em] text-[#0f2f4f]' : 'uppercase tracking-[0.2em] text-neon-red'}`}>
+        <div className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : isRetro ? 'p13-classic-copy' : 'uppercase tracking-[0.2em] text-neon-red'}`}>
           [ КРИТИЧНО :: РЕЗЕРВНАЯ КОПИЯ КЛЮЧА ]
         </div>
         <p className="text-sm leading-relaxed text-text-muted">
-          Твой приватный ключ хранится <strong className={isRetro ? 'text-[#0f2f4f]' : 'text-text-primary'}>только в этом браузере</strong>.
+          Твой приватный ключ хранится <strong className={isRetro ? 'p13-classic-copy' : 'text-text-primary'}>только в этом браузере</strong>.
           Сервер его не знает и восстановить не сможет.
         </p>
         <p className="text-xs leading-relaxed text-text-muted">
@@ -85,7 +91,7 @@ export function PostRegisterVaultPrompt({
           onClick={exportVault}
           className={`mt-2 w-full border px-3 py-3 text-xs transition-colors ${
             isRetro
-              ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+              ? 'p13-classic-button'
               : 'border-neon-cyan bg-transparent font-mono uppercase tracking-wider text-neon-cyan hover:bg-neon-cyan/10'
           }`}
         >
@@ -95,7 +101,7 @@ export function PostRegisterVaultPrompt({
           onClick={onDismiss}
           className={`w-full border px-3 py-2 text-xs ${
             isRetro
-              ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+              ? 'p13-classic-button'
               : `border-neon-cyan font-mono uppercase tracking-wider text-neon-cyan ${exportState === 'done' ? 'bg-neon-cyan/10' : 'bg-transparent'}`
           }`}
         >
@@ -103,7 +109,7 @@ export function PostRegisterVaultPrompt({
         </button>
         <button
           onClick={onDismiss}
-          className={`w-full border px-3 py-2 text-[11px] ${isRetro ? 'border-[#838892] bg-[#d4d0c8] font-["Tahoma"] text-[#3f4752]' : 'border-border-strong bg-transparent font-mono uppercase tracking-wider text-text-muted'}`}
+          className={`w-full border px-3 py-2 text-[11px] ${isRetro ? 'p13-classic-button p13-classic-button--muted' : 'border-border-strong bg-transparent font-mono uppercase tracking-wider text-text-muted'}`}
         >
           Я понимаю риск, пропустить
         </button>

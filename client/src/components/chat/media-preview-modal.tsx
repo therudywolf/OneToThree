@@ -117,8 +117,8 @@ export function MediaPreviewModal({
     try {
       await onSend(caption.trim())
       setCaption('')
-    } catch (error) {
-      setSendError(error instanceof Error ? error.message : t('mediaPreview.sendFailed'))
+    } catch {
+      setSendError(t('mediaPreview.sendFailed'))
     } finally {
       setSending(false)
     }

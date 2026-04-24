@@ -5,6 +5,7 @@ import {
 } from '@/lib/client-device'
 import { sanitizeFetchHeaderRecord } from '@/lib/http-fetch-headers'
 import { canonicalUserId } from '@/lib/user-id'
+import { clearNativeSessionCookie, warmNativeSessionCookies } from '@/lib/native-session'
 
 /**
  * Browser calls to the Fastify API (cross-origin; session cookie is host-scoped to API origin).
@@ -111,6 +112,7 @@ export async function verifyChallenge(
     }
   }
   if (data.user?.id && data.user.username) {
+    await warmNativeSessionCookies()
     return {
       kind: 'session',
       user: {
@@ -148,6 +150,7 @@ export async function complete2faLogin(
   if (!data.user?.id || !data.user.username) {
     throw new Error('INVALID_2FA_RESPONSE')
   }
+  await warmNativeSessionCookies()
   return {
     user: {
       id: canonicalUserId(data.user.id),
@@ -167,6 +170,7 @@ export async function fetchMe(): Promise<{
     avatar_key?: string | null
   }
 }> {
+  await warmNativeSessionCookies()
   const res = await fetchWithTimeout(`${API_URL}/auth/me`, {
     method: 'GET',
     credentials: 'include',
@@ -223,6 +227,7 @@ export async function logoutApi(): Promise<void> {
     method: 'POST',
     credentials: 'include',
   })
+  await clearNativeSessionCookie()
 }
 
 /** Drop the session cookie without auth. Used on login page to clear stale sessions. */
@@ -231,6 +236,7 @@ export async function clearSessionApi(): Promise<void> {
     method: 'POST',
     credentials: 'include',
   })
+  await clearNativeSessionCookie()
 }
 
 /** Short-lived JWT for WebSocket when the upgrade cannot send cookies. */

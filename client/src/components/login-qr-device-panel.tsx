@@ -8,6 +8,7 @@ import { buildQrLoginUrl, extractQrLoginToken, postQrLogin } from '@/lib/api/aut
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import jsQR from 'jsqr'
+import { explainDeviceLinkError } from '@/lib/device-link-errors'
 
 /**
  * PROJECT 13 :: NODE_LINKING_INTERFACE
@@ -66,7 +67,16 @@ export function LoginQrDevicePanel() {
   const router = useRouter()
   const { refresh } = useAuth()
 
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const w = window as Window & {
+      Capacitor?: { isNativePlatform?: () => boolean }
+    }
+    return Boolean(
+      w.Capacitor?.isNativePlatform?.() ||
+        window.matchMedia('(max-width: 768px)').matches
+    )
+  })
   const [signalToken, setSignalToken] = useState('')
   const [isBusy, setIsBusy] = useState(false)
   const [errorLog, setErrorLog] = useState<string | null>(null)
@@ -131,8 +141,8 @@ export function LoginQrDevicePanel() {
       router.replace('/')
       router.refresh()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message.replace(/_/g, ' ') : t('errors.generic')
-      setErrorLog(`BIND_FAULT // ${msg.toUpperCase()}`)
+      const code = err instanceof Error ? err.message : ''
+      setErrorLog(explainDeviceLinkError(code, t))
     } finally {
       setIsBusy(false)
     }
@@ -286,11 +296,16 @@ export function LoginQrDevicePanel() {
           }`}
         >
           <span>{t('login.qrLinkSection')}</span>
-          <span className="text-xs opacity-50">{isExpanded ? '[ − ]' : '[ + ]'}</span>
+          <span className="text-right text-[8px] opacity-70">
+            {isExpanded ? '[ − ]' : `// ${t('login.qrLinkRecommended')}`}
+          </span>
         </button>
 
         {isExpanded && (
           <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-top-1">
+            <p className="text-[9px] leading-relaxed text-text-muted/70">
+              {t('login.mobileEntryRecommendation')}
+            </p>
             {/* QR Camera Scanner */}
             <div className="space-y-3">
               {scanning ? (

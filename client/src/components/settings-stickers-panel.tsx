@@ -5,18 +5,8 @@ import { RefreshCw, Trash2 } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import { cloneStickerPack, fetchStickerPacks, deleteStickerPack, refreshStickerPack, type StickerPack } from '@/lib/api/stickers'
+import { explainStickerError, formatStickerAccessScope } from '@/lib/sticker-errors'
 import { toastError, toastSuccess } from '@/store/toastStore'
-
-function normalizeStickerActionError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : 'REQUEST_FAILED'
-  if (msg === 'FORBIDDEN' || msg.startsWith('DELETE_PACK_403') || msg.startsWith('REFRESH_PACK_403')) {
-    return 'Owner-only action'
-  }
-  if (msg === 'DATABASE_SCHEMA_MISMATCH' || msg.startsWith('FETCH_PACKS_503')) {
-    return 'Sticker DB schema is outdated on server. Apply migrations and restart API.'
-  }
-  return msg
-}
 
 export function SettingsStickersPanel() {
   const { t } = useTranslation()
@@ -36,7 +26,7 @@ export function SettingsStickersPanel() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'LOAD_FAILED'
       setLoadError(msg)
-      toastError(normalizeStickerActionError(e), { title: 'Stickers' })
+      toastError(explainStickerError(msg, t), { title: t('settings.stickersTitle') })
     } finally {
       setLoading(false)
     }
@@ -46,7 +36,7 @@ export function SettingsStickersPanel() {
 
   const handleDelete = async (pack: StickerPack) => {
     if (pack.accessScope !== 'owned') {
-      toastError('Owner-only action', { title: 'Stickers' })
+      toastError(t('settings.stickersOwnerOnly'), { title: t('settings.stickersTitle') })
       return
     }
     if (deletingId) return
@@ -55,7 +45,8 @@ export function SettingsStickersPanel() {
       await deleteStickerPack(pack.id)
       setPacks((prev) => prev.filter((p) => p.id !== pack.id))
     } catch (e) {
-      toastError(normalizeStickerActionError(e), { title: 'Stickers' })
+      const msg = e instanceof Error ? e.message : 'REQUEST_FAILED'
+      toastError(explainStickerError(msg, t), { title: t('settings.stickersTitle') })
     } finally {
       setDeletingId(null)
     }
@@ -63,16 +54,17 @@ export function SettingsStickersPanel() {
 
   const handleRefresh = async (pack: StickerPack) => {
     if (pack.accessScope !== 'owned') {
-      toastError('Owner-only action', { title: 'Stickers' })
+      toastError(t('settings.stickersOwnerOnly'), { title: t('settings.stickersTitle') })
       return
     }
     if (refreshingId) return
     setRefreshingId(pack.id)
     try {
-      const res = await refreshStickerPack(pack.id)
-      toastSuccess(`Refreshed: ${res.count} stickers`, { title: pack.title })
+      await refreshStickerPack(pack.id)
+      toastSuccess(t('settings.stickersRefreshDone'), { title: pack.title })
     } catch (e) {
-      toastError(normalizeStickerActionError(e), { title: 'Stickers' })
+      const msg = e instanceof Error ? e.message : 'REQUEST_FAILED'
+      toastError(explainStickerError(msg, t), { title: t('settings.stickersTitle') })
     } finally {
       setRefreshingId(null)
     }
@@ -86,7 +78,8 @@ export function SettingsStickersPanel() {
       toastSuccess(out.already_owned ? t('stickers.alreadyMine') : t('stickers.addedMine'), { title: pack.title })
       await load()
     } catch (e) {
-      toastError(normalizeStickerActionError(e), { title: 'Stickers' })
+      const msg = e instanceof Error ? e.message : 'CLONE_PACK_FAILED'
+      toastError(explainStickerError(msg, t), { title: t('settings.stickersTitle') })
     } finally {
       setCloningId(null)
     }
@@ -199,7 +192,9 @@ export function SettingsStickersPanel() {
                         </span>
                         <span className="sm:hidden">+</span>
                       </button>
-                      <span className={mutedCls}>{pack.accessScope ?? 'shared'}</span>
+                      <span className={mutedCls}>
+                        {formatStickerAccessScope(pack.accessScope, t)}
+                      </span>
                     </>
                   )}
                 </div>

@@ -1,5 +1,10 @@
 import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
+import {
+  getCachedStickerBlob,
+  invalidateCachedStickerBlob,
+  setCachedStickerBlob,
+} from '@/lib/sticker-cache'
 
 export type StickerFormat = 'tgs' | 'lottie' | 'static' | 'webm'
 
@@ -194,6 +199,14 @@ export async function fetchStickerAssetUrl(mediaKey: string): Promise<string> {
 
 const stickerBlobUrlByMediaKey = new Map<string, string>()
 
+function rememberStickerObjectUrl(mediaKey: string, blob: Blob): string {
+  const existing = stickerBlobUrlByMediaKey.get(mediaKey)
+  if (existing) return existing
+  const objectUrl = URL.createObjectURL(blob)
+  stickerBlobUrlByMediaKey.set(mediaKey, objectUrl)
+  return objectUrl
+}
+
 /** Authenticated GET that streams sticker bytes (same-origin or credentialed fetch). */
 export function stickerMediaFetchUrl(mediaKey: string): string {
   const q = new URLSearchParams({ media_key: mediaKey })
@@ -202,16 +215,18 @@ export function stickerMediaFetchUrl(mediaKey: string): string {
 
 /**
  * URL safe to assign to <img>/<video>/<fetch> for a sticker `mediaKey`.
- * When the API is same-origin (`API_URL` starts with `/`), returns `/api/stickers/media?...`.
- * Otherwise loads via credentialed fetch and returns a `blob:` URL (page CSP often blocks
- * cross-origin S3 in `img-src`, and `<img>` cannot send auth to a sibling API host reliably).
+ * Uses a persistent IndexedDB cache first, then falls back to an authenticated fetch.
+ * Returning `blob:` URLs keeps the rendering path identical across same-origin and
+ * cross-origin deployments and allows sticker packs to stay warm after reopen.
  */
 export async function loadStickerDisplayUrl(mediaKey: string): Promise<string> {
-  if (API_URL.startsWith('/')) {
-    return stickerMediaFetchUrl(mediaKey)
-  }
   const cached = stickerBlobUrlByMediaKey.get(mediaKey)
   if (cached) return cached
+
+  const cachedBlob = await getCachedStickerBlob(mediaKey)
+  if (cachedBlob?.blob) {
+    return rememberStickerObjectUrl(mediaKey, cachedBlob.blob)
+  }
 
   const res = await fetchWithTimeout(stickerMediaFetchUrl(mediaKey), {
     credentials: 'include',
@@ -221,20 +236,18 @@ export async function loadStickerDisplayUrl(mediaKey: string): Promise<string> {
     throw new Error(err.error ?? `MEDIA_${res.status}`)
   }
   const blob = await res.blob()
-  const objectUrl = URL.createObjectURL(blob)
-  stickerBlobUrlByMediaKey.set(mediaKey, objectUrl)
-  return objectUrl
+  await setCachedStickerBlob(mediaKey, blob, blob.type || 'application/octet-stream')
+  return rememberStickerObjectUrl(mediaKey, blob)
 }
 
 /** Drop cached `blob:` URL (if any) and fetch sticker media again. */
 export async function reloadStickerDisplayUrl(mediaKey: string): Promise<string> {
-  if (!API_URL.startsWith('/')) {
-    const old = stickerBlobUrlByMediaKey.get(mediaKey)
-    if (old) {
-      URL.revokeObjectURL(old)
-      stickerBlobUrlByMediaKey.delete(mediaKey)
-    }
+  const old = stickerBlobUrlByMediaKey.get(mediaKey)
+  if (old) {
+    URL.revokeObjectURL(old)
+    stickerBlobUrlByMediaKey.delete(mediaKey)
   }
+  await invalidateCachedStickerBlob(mediaKey)
   return loadStickerDisplayUrl(mediaKey)
 }
 

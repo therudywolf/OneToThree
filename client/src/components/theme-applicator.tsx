@@ -13,6 +13,7 @@ import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 export function ThemeApplicator() {
   const theme = useThemeStore((s) => s.theme)
   const shellMode = useThemeStore((s) => s.shellMode)
+  const platformProfile = useThemeStore((s) => s.platformProfile)
   const accentPreset = useThemeStore((s) => s.accentPreset)
   const primaryColorOverride = useThemeStore((s) => s.primaryColorOverride)
   const accentColorOverride = useThemeStore((s) => s.accentColorOverride)
@@ -22,6 +23,7 @@ export function ThemeApplicator() {
 
   useEffect(() => {
     const html = document.documentElement
+    const isMobileTelegramProfile = platformProfile === 'mobile-tg-ios'
     const resolved = resolveThemeAppearance({
       theme,
       shellMode,
@@ -40,6 +42,7 @@ export function ThemeApplicator() {
     html.setAttribute('data-theme', resolved.id)
     html.setAttribute('data-palette', resolved.id)
     html.setAttribute('data-shell', resolved.shell.id)
+    html.setAttribute('data-platform-profile', platformProfile)
     html.setAttribute('data-motion', resolved.motionMode)
     html.style.colorScheme = resolved.scheme
 
@@ -119,11 +122,50 @@ export function ThemeApplicator() {
     html.style.setProperty('--page-glow-secondary', resolved.tokens.pageGlowSecondary)
     html.style.setProperty(
       '--p13-mobile-header-bg',
-      `color-mix(in srgb, ${resolved.tokens.surface} 82%, transparent)`
+      isMobileTelegramProfile
+        ? `color-mix(in srgb, ${resolved.tokens.surface} 74%, transparent)`
+        : `color-mix(in srgb, ${resolved.tokens.surface} 82%, transparent)`
     )
-    html.style.setProperty('--p13-touch-target', `${TELEGRAM_BEHAVIOR.mobile.touchTargetPx}px`)
-    html.style.setProperty('--p13-mobile-sheet-duration', `${TELEGRAM_BEHAVIOR.mobile.sheetAnimationMs}ms`)
-    html.style.setProperty('--p13-keyboard-settle-duration', `${TELEGRAM_BEHAVIOR.mobile.keyboardSettleMs}ms`)
+    html.style.setProperty(
+      '--p13-touch-target',
+      `${isMobileTelegramProfile ? 48 : TELEGRAM_BEHAVIOR.mobile.touchTargetPx}px`
+    )
+    html.style.setProperty(
+      '--p13-mobile-sheet-duration',
+      `${isMobileTelegramProfile ? 260 : TELEGRAM_BEHAVIOR.mobile.sheetAnimationMs}ms`
+    )
+    html.style.setProperty(
+      '--p13-keyboard-settle-duration',
+      `${isMobileTelegramProfile ? 220 : TELEGRAM_BEHAVIOR.mobile.keyboardSettleMs}ms`
+    )
+    html.style.setProperty(
+      '--p13-header-pad',
+      resolved.shell.id === 'md3'
+        ? (isMobileTelegramProfile ? '10px 14px' : '8px 12px')
+        : (isMobileTelegramProfile ? '8px 10px' : '6px 8px')
+    )
+    html.style.setProperty(
+      '--p13-row-pad',
+      resolved.shell.id === 'md3'
+        ? (isMobileTelegramProfile ? '12px 16px' : '10px 14px')
+        : (isMobileTelegramProfile ? '12px 14px 12px 16px' : '10px 12px 10px 14px')
+    )
+    html.style.setProperty(
+      '--p13-msg-gap',
+      isMobileTelegramProfile ? '12px' : resolved.shell.id === 'md3' ? '10px' : '12px'
+    )
+    html.style.setProperty(
+      '--p13-msg-gap-run',
+      isMobileTelegramProfile ? '12px' : resolved.shell.id === 'md3' ? '10px' : '12px'
+    )
+    html.style.setProperty(
+      '--p13-date-divider-gap-top',
+      isMobileTelegramProfile ? '18px' : resolved.shell.id === 'md3' ? '16px' : '14px'
+    )
+    html.style.setProperty(
+      '--p13-date-divider-gap-bottom',
+      isMobileTelegramProfile ? '12px' : resolved.shell.id === 'md3' ? '10px' : '8px'
+    )
 
     // --- motion (shell-aware: MD3 uses Material 3 spec timings) ---
     const isMd3Shell = resolved.shell.id === 'md3'
@@ -184,6 +226,7 @@ export function ThemeApplicator() {
     backgroundColorOverride,
     motionMode,
     primaryColorOverride,
+    platformProfile,
     shellMode,
     theme,
   ])

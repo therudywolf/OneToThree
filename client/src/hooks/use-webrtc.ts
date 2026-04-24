@@ -5,6 +5,7 @@ import { getFmSocket } from '@/lib/api/socket'
 import { startOutgoingRingtone } from '@/lib/call-ringtones'
 import { isAndroidMobile as _isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS as _isIOSOrIPadOS } from '@/lib/ios'
+import { useTranslation } from '@/hooks/use-translation'
 import { getUserMediaConstraints, loadMediaPrefs } from '@/lib/media-devices'
 import {
   isMediaPermissionDenied,
@@ -14,8 +15,11 @@ import {
 import { useCallStore } from '@/store/callStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { lookupUsers } from '@/lib/api/users'
-import { getIceServers } from '@/lib/ice-servers'
+import { deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
+import { getIceConfig, type IceTransportPolicy } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
+import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
+import { toastWarn } from '@/store/toastStore'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
@@ -67,12 +71,20 @@ function normalizeIceServers(servers: RTCIceServer[]): RTCIceServer[] {
   })
 }
 
-async function getSignalRelays(): Promise<RTCIceServer[]> {
+async function getSignalRelays(): Promise<{
+  iceServers: RTCIceServer[]
+  transportPolicy: IceTransportPolicy
+  hasRelay: boolean
+}> {
   // ICE/TURN credentials must come from `/api/ice-servers` (Cloudflare short-lived
   // or coturn HMAC); never embed TURN passwords in the client bundle.
-  const servers = await getIceServers()
+  const config = await getIceConfig()
   notifyIfIceStunOnlyOnce()
-  return normalizeIceServers(servers)
+  return {
+    iceServers: normalizeIceServers(config.iceServers),
+    transportPolicy: config.transportPolicy,
+    hasRelay: config.hasRelay,
+  }
 }
 
 function terminateFeed(stream: MediaStream | null) {
@@ -101,6 +113,9 @@ type SignalPayload =
   | { kind: 'answer'; sdp: string }
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null }
   | { kind: 'media_state'; media: 'audio' | 'video'; enabled: boolean }
+  | { kind: 'relay_offer' }
+  | { kind: 'relay_answer' }
+  | { kind: 'relay_frame'; ciphertext: string; iv: string; sampleRate: number }
 
 function transmitSignal(targetUserId: string, signalData: SignalPayload) {
   getFmSocket().send({ type: 'webrtc_signal', targetUserId, signalData })
@@ -121,6 +136,7 @@ async function tuneOpusBitrate(pc: RTCPeerConnection): Promise<void> {
 }
 
 export function useWebRTC(userId: string | null) {
+  const { t } = useTranslation()
   const [peerReady, setPeerReady] = useState(false)
   const [mediaAccessError, setMediaAccessError] = useState<string | null>(null)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
@@ -137,6 +153,11 @@ export function useWebRTC(userId: string | null) {
 
   const iceRetryTimersRef = useRef(new Map<string, number>())
   const connectTimeoutRef = useRef<number | null>(null)
+  const relayPlayersRef = useRef(new Map<string, AudioRelayPlayer>())
+  const relayCapturesRef = useRef(new Map<string, AudioRelayCaptureController>())
+  const relayKeysRef = useRef(new Map<string, Promise<CryptoKey | null>>())
+  const relayPeersRef = useRef(new Set<string>())
+  const relayAwaitingAnswerRef = useRef(new Set<string>())
   const {
     setIncomingCall, reset: resetCallStore, addPeerConnection,
     removePeerConnection, setRemoteStream, removeRemoteStream,
@@ -146,6 +167,70 @@ export function useWebRTC(userId: string | null) {
     setPeerConnectionType, clearPeerConnectionType,
     setCallStartTime, setMiniPlayer: _setMiniPlayer,
   } = useCallStore()
+
+  const resolveRelaySharedKey = useCallback(async (peerId: string): Promise<CryptoKey | null> => {
+    const cached = relayKeysRef.current.get(peerId)
+    if (cached) return cached
+    const task = (async () => {
+      const ownPrivateKey = useSessionStore.getState().unwrappedPrivateKey
+      if (!ownPrivateKey) return null
+      const [peer] = await lookupUsers([peerId])
+      if (!peer?.ecdh_public_key_jwk) return null
+      const peerPublicKey = await importEcdhPublicKey(peer.ecdh_public_key_jwk)
+      return deriveSharedSecret(ownPrivateKey, peerPublicKey)
+    })().catch(() => null)
+    relayKeysRef.current.set(peerId, task)
+    return task
+  }, [])
+
+  const stopRelayPeer = useCallback((peerId: string) => {
+    relayCapturesRef.current.get(peerId)?.stop()
+    relayCapturesRef.current.delete(peerId)
+    relayPlayersRef.current.get(peerId)?.stop()
+    relayPlayersRef.current.delete(peerId)
+    relayKeysRef.current.delete(peerId)
+    relayPeersRef.current.delete(peerId)
+    relayAwaitingAnswerRef.current.delete(peerId)
+  }, [])
+
+  const ensureRelayPlayer = useCallback((peerId: string) => {
+    const existing = relayPlayersRef.current.get(peerId)
+    if (existing) return existing
+    const player = new AudioRelayPlayer()
+    relayPlayersRef.current.set(peerId, player)
+    relayPeersRef.current.add(peerId)
+    setRemoteStream(peerId, player.stream)
+    setPeerConnectionType(peerId, 'relay')
+    return player
+  }, [setPeerConnectionType, setRemoteStream])
+
+  const startRelayCapture = useCallback(async (peerId: string, stream: MediaStream) => {
+    if (relayCapturesRef.current.has(peerId)) return true
+    const sharedKey = await resolveRelaySharedKey(peerId)
+    if (!sharedKey) return false
+    let busy = false
+    const capture = await startAudioRelayCapture(stream, ({ sampleRate, pcm }) => {
+      if (busy) return
+      busy = true
+      void (async () => {
+        try {
+          const encrypted = await encryptBytes(sharedKey, pcm)
+          transmitSignal(peerId, {
+            kind: 'relay_frame',
+            ciphertext: encrypted.ciphertext,
+            iv: encrypted.iv,
+            sampleRate,
+          })
+        } finally {
+          busy = false
+        }
+      })()
+    })
+    relayCapturesRef.current.set(peerId, capture)
+    relayPeersRef.current.add(peerId)
+    setPeerConnectionType(peerId, 'relay')
+    return true
+  }, [resolveRelaySharedKey, setPeerConnectionType])
 
   const flushIceQueue = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const queue = pendingIceRef.current[peerId]
@@ -180,8 +265,9 @@ export function useWebRTC(userId: string | null) {
     removeRemoteStream(peerId)
     clearRemotePeerMedia(peerId)
     clearPeerConnectionType(peerId)
+    stopRelayPeer(peerId)
     delete pendingIceRef.current[peerId]
-  }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearPeerConnectionType])
+  }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearPeerConnectionType, stopRelayPeer])
 
   const revertToOptics = useCallback(() => {
     const orig = originalOpticsRef.current
@@ -220,6 +306,7 @@ export function useWebRTC(userId: string | null) {
     if (chatId) getFmSocket().send({ type: 'call_leave', chat_id: chatId })
 
     Array.from(pcsRef.current.keys()).forEach(purgePeer)
+    Array.from(relayPeersRef.current).forEach(purgePeer)
     
     const state = useCallStore.getState()
     terminateFeed(state.localStream)
@@ -313,6 +400,84 @@ export function useWebRTC(userId: string | null) {
     }
   }, [setRemoteStream, purgePeer, setReconnecting, setConnectionLost, setIceRetryCount])
 
+  const establishAudioRelay = useCallback(async (peerId: string, chatId: string, requestedVideo: boolean) => {
+    let stream: MediaStream
+    try {
+      stream = await captureLocalFeed(getUserMediaConstraints({ video: false, hd: false }))
+    } catch (err) {
+      setMediaAccessError(isMediaPermissionDenied(err) ? MEDIA_PERMISSION_DENIED_CODE : MEDIA_ACCESS_ERROR_MESSAGE)
+      return
+    }
+
+    const sharedKey = await resolveRelaySharedKey(peerId)
+    if (!sharedKey) {
+      terminateFeed(stream)
+      setMediaAccessError('CALL_RELAY_KEY_UNAVAILABLE')
+      setIsCalling(false)
+      return
+    }
+
+    relayKeysRef.current.set(peerId, Promise.resolve(sharedKey))
+    relayPeersRef.current.add(peerId)
+    relayAwaitingAnswerRef.current.add(peerId)
+    setLocalStream(stream)
+    setIsCalling(true)
+    setCallStartTime(Date.now())
+    setPeerConnectionType(peerId, 'relay')
+    getFmSocket().send({
+      type: 'call_invite',
+      chat_id: chatId,
+      is_video: false,
+    })
+    transmitSignal(peerId, { kind: 'relay_offer' })
+    ringStopRef.current = startOutgoingRingtone()
+    if (requestedVideo) {
+      toastWarn(t('call.audioRelayFallback'), { title: t('call.iceRelayTitle') })
+    }
+    connectTimeoutRef.current = window.setTimeout(() => {
+      const hasRemote = Boolean(useCallStore.getState().remoteStreams[peerId])
+      if (!hasRemote && useCallStore.getState().isCalling) {
+        console.warn('[SYS.RELAY] 30s connection timeout — no relay audio frames')
+        severAllLinks()
+      }
+    }, 30_000)
+  }, [resolveRelaySharedKey, setCallStartTime, setIsCalling, setLocalStream, setPeerConnectionType, severAllLinks, t])
+
+  const acceptAudioRelay = useCallback(async (peerId: string) => {
+    let stream: MediaStream
+    try {
+      stream = await captureLocalFeed(getUserMediaConstraints({ video: false, hd: false }))
+    } catch (err) {
+      setMediaAccessError(isMediaPermissionDenied(err) ? MEDIA_PERMISSION_DENIED_CODE : MEDIA_ACCESS_ERROR_MESSAGE)
+      setIncomingCall(null)
+      return
+    }
+
+    const sharedKey = await resolveRelaySharedKey(peerId)
+    if (!sharedKey) {
+      terminateFeed(stream)
+      setMediaAccessError('CALL_RELAY_KEY_UNAVAILABLE')
+      setIncomingCall(null)
+      return
+    }
+
+    relayKeysRef.current.set(peerId, Promise.resolve(sharedKey))
+    relayPeersRef.current.add(peerId)
+    setLocalStream(stream)
+    setIsCalling(true)
+    setCallStartTime(Date.now())
+    setPeerConnectionType(peerId, 'relay')
+    const started = await startRelayCapture(peerId, stream)
+    if (!started) {
+      terminateFeed(stream)
+      setMediaAccessError('CALL_RELAY_KEY_UNAVAILABLE')
+      setIncomingCall(null)
+      return
+    }
+    transmitSignal(peerId, { kind: 'relay_answer' })
+    setIncomingCall(null)
+  }, [resolveRelaySharedKey, setCallStartTime, setIncomingCall, setIsCalling, setLocalStream, setPeerConnectionType, startRelayCapture])
+
   // Socket Subscription Layer
   useEffect(() => {
     if (!userId) return
@@ -348,12 +513,59 @@ export function useWebRTC(userId: string | null) {
           sdp?: string
           isVideo?: boolean
           candidate?: RTCIceCandidateInit
+          ciphertext?: string
+          iv?: string
+          sampleRate?: number
         }
         if (fromUserId === userId) return
 
         if (data.kind === 'media_state') {
           const update = data.media === 'audio' ? { micMuted: !data.enabled } : { cameraOff: !data.enabled }
           useCallStore.getState().setRemotePeerMedia(fromUserId, update)
+          return
+        }
+
+        if (data.kind === 'relay_offer') {
+          setIncomingCall({ peerId: fromUserId, isVideo: false, offer: null, transport: 'audio_relay' })
+          void lookupUsers([fromUserId]).then(([u]) => {
+            if (u && useCallStore.getState().incomingCall?.peerId === fromUserId) {
+              setIncomingCall({ peerId: fromUserId, isVideo: false, offer: null, transport: 'audio_relay', peerUsername: u.username })
+            }
+          }).catch(() => { /* best-effort */ })
+          return
+        }
+
+        if (data.kind === 'relay_answer') {
+          relayAwaitingAnswerRef.current.delete(fromUserId)
+          ringStopRef.current?.()
+          if (connectTimeoutRef.current) {
+            clearTimeout(connectTimeoutRef.current)
+            connectTimeoutRef.current = null
+          }
+          const localStream = useCallStore.getState().localStream
+          if (localStream) {
+            const started = await startRelayCapture(fromUserId, localStream)
+            if (!started) {
+              setMediaAccessError('CALL_RELAY_KEY_UNAVAILABLE')
+            }
+          }
+          return
+        }
+
+        if (data.kind === 'relay_frame' && data.ciphertext && data.iv && typeof data.sampleRate === 'number') {
+          const sharedKey = await resolveRelaySharedKey(fromUserId)
+          if (!sharedKey) return
+          const pcm = await decryptBytes(sharedKey, data.ciphertext, data.iv)
+          const player = ensureRelayPlayer(fromUserId)
+          await player.pushFrame(pcm, data.sampleRate)
+          ringStopRef.current?.()
+          if (connectTimeoutRef.current) {
+            clearTimeout(connectTimeoutRef.current)
+            connectTimeoutRef.current = null
+          }
+          setReconnecting(false)
+          setConnectionLost(false)
+          setIceRetryCount(0)
           return
         }
 
@@ -373,7 +585,7 @@ export function useWebRTC(userId: string | null) {
             await pc.setLocalDescription(answer)
             transmitSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
           } else {
-            setIncomingCall({ peerId: fromUserId, isVideo: !!data.isVideo, offer: { type: 'offer', sdp: data.sdp ?? '' } })
+            setIncomingCall({ peerId: fromUserId, isVideo: !!data.isVideo, offer: { type: 'offer', sdp: data.sdp ?? '' }, transport: 'webrtc' })
             void lookupUsers([fromUserId]).then(([u]) => {
               if (u) {
                 const cur = useCallStore.getState().incomingCall
@@ -389,7 +601,19 @@ export function useWebRTC(userId: string | null) {
         }
       }
     })
-  }, [userId, setIncomingCall, purgePeer, flushIceQueue, severAllLinks])
+  }, [
+    userId,
+    setIncomingCall,
+    purgePeer,
+    flushIceQueue,
+    severAllLinks,
+    resolveRelaySharedKey,
+    ensureRelayPlayer,
+    startRelayCapture,
+    setReconnecting,
+    setConnectionLost,
+    setIceRetryCount,
+  ])
 
   const applyQualityConstraints = useCallback((level: '720p' | '480p' | '360p' | 'audio_only') => {
     const local = useCallStore.getState().localStream
@@ -573,22 +797,29 @@ export function useWebRTC(userId: string | null) {
   }, [userId, severAllLinks])
 
   const establishLink = useCallback(async (recipients: string[], isVideo: boolean, chatId?: string) => {
+    let signalConfig: Awaited<ReturnType<typeof getSignalRelays>>
+    try {
+      signalConfig = await getSignalRelays()
+    } catch (err) {
+      setMediaAccessError(err instanceof Error ? err.message : 'ICE_SERVERS_UNAVAILABLE')
+      setIsCalling(false)
+      return
+    }
+
+    if (recipients.length === 1 && chatId && !signalConfig.hasRelay) {
+      const peerId = recipients.find((id) => id !== userId)
+      if (peerId) {
+        await establishAudioRelay(peerId, chatId, isVideo)
+        return
+      }
+    }
+
     let stream: MediaStream
     try {
       const prefs = loadMediaPrefs()
       stream = await captureLocalFeed(getUserMediaConstraints({ video: isVideo, hd: !prefs.lowBandwidth }))
     } catch (err) {
       setMediaAccessError(isMediaPermissionDenied(err) ? MEDIA_PERMISSION_DENIED_CODE : MEDIA_ACCESS_ERROR_MESSAGE)
-      return
-    }
-
-    let relays: RTCIceServer[]
-    try {
-      relays = await getSignalRelays()
-    } catch (err) {
-      terminateFeed(stream)
-      setMediaAccessError(err instanceof Error ? err.message : 'ICE_SERVERS_UNAVAILABLE')
-      setIsCalling(false)
       return
     }
     setLocalStream(stream)
@@ -598,7 +829,10 @@ export function useWebRTC(userId: string | null) {
     for (const peerId of recipients) {
       if (peerId === userId || pcsRef.current.has(peerId)) continue
       
-      const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
+      const pc = new RTCPeerConnection({
+        iceServers: signalConfig.iceServers,
+        iceTransportPolicy: signalConfig.transportPolicy,
+      })
       pcsRef.current.set(peerId, pc)
       addPeerConnection(peerId, pc)
       setupPeerLink(peerId, pc)
@@ -627,11 +861,25 @@ export function useWebRTC(userId: string | null) {
     } else {
       severAllLinks()
     }
-  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime])
+  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime, establishAudioRelay])
 
   const acceptLink = useCallback(async () => {
     const inc = useCallStore.getState().incomingCall
     if (!inc) return
+
+    if (inc.transport === 'audio_relay') {
+      await acceptAudioRelay(inc.peerId)
+      return
+    }
+
+    let signalConfig: Awaited<ReturnType<typeof getSignalRelays>>
+    try {
+      signalConfig = await getSignalRelays()
+    } catch (err) {
+      setMediaAccessError(err instanceof Error ? err.message : 'ICE_SERVERS_UNAVAILABLE')
+      setIncomingCall(null)
+      return
+    }
 
     let stream: MediaStream
     try {
@@ -642,18 +890,11 @@ export function useWebRTC(userId: string | null) {
       setIncomingCall(null)
       return
     }
-
-    let relays: RTCIceServer[]
-    try {
-      relays = await getSignalRelays()
-    } catch (err) {
-      terminateFeed(stream)
-      setMediaAccessError(err instanceof Error ? err.message : 'ICE_SERVERS_UNAVAILABLE')
-      setIncomingCall(null)
-      return
-    }
     setLocalStream(stream)
-    const pc = new RTCPeerConnection({ iceServers: relays, iceTransportPolicy: 'relay' })
+    const pc = new RTCPeerConnection({
+      iceServers: signalConfig.iceServers,
+      iceTransportPolicy: signalConfig.transportPolicy,
+    })
 
     pcsRef.current.set(inc.peerId, pc)
     addPeerConnection(inc.peerId, pc)
@@ -676,7 +917,7 @@ export function useWebRTC(userId: string | null) {
     } finally {
       setIncomingCall(null)
     }
-  }, [setLocalStream, addPeerConnection, setupPeerLink, flushIceQueue, purgePeer, setIncomingCall, setIsCalling])
+  }, [acceptAudioRelay, setLocalStream, addPeerConnection, setupPeerLink, flushIceQueue, purgePeer, setIncomingCall, setIsCalling])
 
   const toggleMute = useCallback(() => {
     const local = useCallStore.getState().localStream
@@ -684,6 +925,7 @@ export function useWebRTC(userId: string | null) {
     local.getAudioTracks().forEach(t => (t.enabled = !t.enabled))
     const enabled = local.getAudioTracks()[0]?.enabled ?? true
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'audio', enabled }))
+    relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'media_state', media: 'audio', enabled }))
   }, [])
 
   const toggleOptics = useCallback(() => {
@@ -692,6 +934,7 @@ export function useWebRTC(userId: string | null) {
     local.getVideoTracks().forEach(t => (t.enabled = !t.enabled))
     const enabled = local.getVideoTracks()[0]?.enabled ?? false
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'video', enabled }))
+    relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'media_state', media: 'video', enabled }))
   }, [])
 
   return {

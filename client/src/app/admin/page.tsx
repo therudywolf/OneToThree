@@ -91,8 +91,8 @@ function UserDetailModal({ node, onClose, onBanToggle, onRoleChange, onExpunge, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-void/90 px-4 backdrop-blur-sm" role="dialog">
-      <div className="relative w-full max-w-2xl max-h-[90dvh] overflow-y-auto border border-border-strong bg-void p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-void/90 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-4" role="dialog">
+      <div className="relative w-full max-w-2xl max-h-[92dvh] overflow-y-auto border border-border-strong bg-void p-4 shadow-2xl sm:p-6">
         <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
 
         <header className="mb-4 flex items-center justify-between border-b border-border-strong pb-4">
@@ -143,9 +143,9 @@ function UserDetailModal({ node, onClose, onBanToggle, onRoleChange, onExpunge, 
               {devices.length === 0 ? (
                 <p className="text-[10px] text-text-muted/50">NO_REGISTERED_DEVICES</p>
               ) : (
-                <div className="space-y-1">
-                  {devices.map(d => (
-                    <div key={d.id} className={`flex items-start justify-between gap-2 border px-3 py-2 text-[9px] ${d.revoked_at ? 'border-border-strong opacity-50' : 'border-neon-cyan/20'}`}>
+            <div className="space-y-1">
+              {devices.map(d => (
+                    <div key={d.id} className={`flex flex-col gap-2 border px-3 py-2 text-[9px] sm:flex-row sm:items-start sm:justify-between ${d.revoked_at ? 'border-border-strong opacity-50' : 'border-neon-cyan/20'}`}>
                       <div className="flex-1 min-w-0">
                         <p className="text-text-primary truncate">{d.device_name || d.id.slice(0, 16)}</p>
                         <p className="text-text-muted/70 truncate">{d.ip_address ?? '—'} · {d.user_agent?.slice(0, 50) ?? '—'}</p>
@@ -388,11 +388,11 @@ export default function AdminPage() {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="SEARCH_HANDLE…"
-                className="ml-auto border border-border-strong bg-void px-3 py-1.5 text-[10px] text-text-primary placeholder:text-text-muted/40 focus:border-neon-cyan focus:outline-none"
+                className="w-full border border-border-strong bg-void px-3 py-1.5 text-[10px] text-text-primary placeholder:text-text-muted/40 focus:border-neon-cyan focus:outline-none sm:ml-auto sm:w-auto sm:min-w-[16rem]"
               />
             </div>
             <div className="overflow-x-auto border border-border-strong bg-void">
-              <table className="min-w-[52rem] w-full text-left">
+              <table className="min-w-[44rem] w-full text-left">
                 <thead>
                   <tr className="border-b border-border-strong text-[9px] uppercase tracking-[0.2em] text-text-muted/70">
                     <th className="px-4 py-3 font-normal">HANDLE</th>
@@ -520,7 +520,7 @@ export default function AdminPage() {
           <div>
             <h2 className="mb-4 text-[10px] uppercase tracking-[0.3em] text-text-muted/70">:: INCIDENT_QUEUE ({incidents.length})</h2>
             <div className="overflow-x-auto border border-border-strong">
-              <table className="min-w-[48rem] w-full text-left">
+              <table className="min-w-[40rem] w-full text-left">
                 <thead>
                   <tr className="border-b border-border-strong text-[9px] uppercase tracking-[0.2em] text-text-muted/60">
                     <th className="px-4 py-3 font-normal">ID</th>
@@ -559,7 +559,7 @@ export default function AdminPage() {
           <div>
             <h2 className="mb-4 text-[10px] uppercase tracking-[0.3em] text-text-muted/70">:: LOGIN_AUDIT_LOG (last {loginEvents.length})</h2>
             <div className="overflow-x-auto border border-border-strong">
-              <table className="min-w-[48rem] w-full text-left">
+              <table className="min-w-[40rem] w-full text-left">
                 <thead>
                   <tr className="border-b border-border-strong text-[9px] uppercase tracking-[0.2em] text-text-muted/60">
                     <th className="px-4 py-3 font-normal">OUTCOME</th>

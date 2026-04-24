@@ -40,10 +40,12 @@ import {
   THEMES,
   type ThemeId,
   type MotionMode,
+  type PlatformProfileId,
 } from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { getTrustedPeerCount } from '@/lib/trust-store'
 import { PortalRoot } from '@/components/portal-root'
+import { explainSettingsError } from '@/lib/settings-errors'
 
 type Props = { userId: string; username: string; onClose: () => void }
 type SettingsTabId =
@@ -143,6 +145,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     setTheme,
     shellMode,
     setShellMode,
+    platformProfile,
+    setPlatformProfile,
     accentPreset,
     setAccentPreset,
     primaryColorOverride,
@@ -170,6 +174,22 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     { id: 'md3', label: 'MATERIAL 3', hint: 'Google Sans / rounded / flat' },
     { id: 'retro', label: 'RETRO', hint: 'Classic amber monitor / vintage UI' },
   ]
+  const platformProfiles: ReadonlyArray<{
+    id: PlatformProfileId
+    label: string
+    hint: string
+  }> = [
+    {
+      id: 'desktop-tg',
+      label: t('settings.appearancePlatformDesktop'),
+      hint: t('settings.appearancePlatformDesktopHint'),
+    },
+    {
+      id: 'mobile-tg-ios',
+      label: t('settings.appearancePlatformMobile'),
+      hint: t('settings.appearancePlatformMobileHint'),
+    },
+  ]
   const palettesForStyle = useMemo(() => {
     if (appearanceStyle === 'retro') return THEMES.filter((cfg) => cfg.id === 'retro')
     if (appearanceStyle === 'terminal') {
@@ -188,7 +208,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         last_seen_privacy?: string | null
         social_links?: Array<{ platform: string; url: string }>; error?: string
       }
-      if (!r.ok) { setError(d.error ?? t('settings.loadFailed')); return }
+      if (!r.ok) { setError(explainSettingsError(d.error ?? '', t, 'settings.loadFailed')); return }
       const value = readDiscoverableFromPayload(d.is_discoverable)
       setDiscoverable(value)
       updateUser({ is_discoverable: value })
@@ -248,7 +268,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setTotpSetup({ qr_data_url: d.qr_data_url, secret: d.secret })
       setTotpEnableCode('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally { setTotpBusy(false) }
   }
 
@@ -272,7 +292,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally { setTotpBusy(false) }
   }
 
@@ -296,7 +316,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally { setTotpBusy(false) }
   }
 
@@ -323,7 +343,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setChangePinSuccess(true)
       setTimeout(() => setChangePinSuccess(false), 2000)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally { setChangePinBusy(false) }
   }
 
@@ -343,7 +363,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       if (typeof d.hide_presence !== 'boolean') throw new Error(t('settings.toggleFailed'))
       setHidePresence(d.hide_presence)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
-    } catch (e) { setError(e instanceof Error ? e.message : t('settings.unknown')) }
+    } catch (e) { setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed')) }
     finally { setBusy(false) }
   }
 
@@ -362,7 +382,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       if (typeof d.disable_read_receipts !== 'boolean') throw new Error(t('settings.toggleFailed'))
       setDisableReadReceipts(d.disable_read_receipts)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
-    } catch (e) { setError(e instanceof Error ? e.message : t('settings.unknown')) }
+    } catch (e) { setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed')) }
     finally { setBusy(false) }
   }
 
@@ -382,7 +402,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       setDiscoverable(d.is_discoverable)
       updateUser({ is_discoverable: d.is_discoverable })
       setSaved(true); setTimeout(() => setSaved(false), 1500)
-    } catch (e) { setError(e instanceof Error ? e.message : t('settings.unknown')) }
+    } catch (e) { setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed')) }
     finally { setBusy(false) }
   }
 
@@ -400,7 +420,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       if (typeof d.allow_device_linking !== 'boolean') throw new Error(t('settings.toggleFailed'))
       setAllowNewDeviceLinking(d.allow_device_linking)
       setSaved(true); setTimeout(() => setSaved(false), 1500)
-    } catch (e) { setError(e instanceof Error ? e.message : t('settings.unknown')) }
+    } catch (e) { setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed')) }
     finally { setBusy(false) }
   }
 
@@ -787,7 +807,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         const r = await setupRecoveryKey()
                         setRecoveryKey(r.recovery_key)
                       } catch (e) {
-                        setError(e instanceof Error ? e.message : t('settings.unknown'))
+                        setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
                       } finally { setRecoveryBusy(false) }
                     }}
                     className={`w-full py-2 text-[10px] font-medium uppercase tracking-widest transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-full border border-[color-mix(in_srgb,var(--primary)_40%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]' : 'border border-neon-cyan bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'}`}
@@ -1117,7 +1137,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   setProfileBusy(true); setError(null)
                   void patchMyProfile({ bio, status_text: statusText, display_name: displayName || undefined, last_seen_privacy: lastSeenPrivacy, social_links: socialLinks.filter((l) => l.url.trim()) })
                     .then(() => { setSaved(true); setTimeout(() => setSaved(false), 1500) })
-                    .catch((e) => { setError(e instanceof Error ? e.message : t('profile.saveFailed')) })
+                    .catch((e) => { setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'profile.saveFailed')) })
                     .finally(() => setProfileBusy(false))
                 }}
                 className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
@@ -1221,6 +1241,43 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                             <span className="text-[8px] text-text-muted">{sp.hint}</span>
                           </span>
                           {appearanceStyle === sp.id && <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className={`rounded-[var(--radius-md)] border p-3 ${isRetro ? 'border-[#7a8089] bg-[#c9c5bd]' : 'border-neon-cyan/20 bg-void/30'}`}>
+                    <div className="mb-2">
+                      <p className={`text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'text-[#243a57]' : 'text-neon-cyan/70'}`}>
+                        {t('settings.appearancePlatformTitle')}
+                      </p>
+                      <p className="mt-1 text-[9px] text-text-muted">
+                        {t('settings.appearancePlatformHint')}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                      {platformProfiles.map((profile) => (
+                        <button
+                          key={profile.id}
+                          type="button"
+                          onClick={() => setPlatformProfile(profile.id)}
+                          className={`flex items-start gap-3 border px-3 py-2.5 text-left font-mono text-[10px] uppercase tracking-widest transition-all duration-150 ${
+                            platformProfile === profile.id
+                              ? (isMd3
+                                ? 'border-transparent bg-[color-mix(in_srgb,var(--neon-red)_16%,transparent)] text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]'
+                                : 'border-neon-cyan text-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.2)]')
+                              : (isMd3
+                                ? 'border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                                : 'border-neon-red/25 text-neon-red/50 hover:border-neon-red/60 hover:text-neon-red')
+                          }`}
+                        >
+                          <span className="flex flex-col">
+                            <span>{profile.label}</span>
+                            <span className="text-[8px] text-text-muted">{profile.hint}</span>
+                          </span>
+                          {platformProfile === profile.id ? (
+                            <span className={`ml-auto ${isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan'}`}>◆</span>
+                          ) : null}
                         </button>
                       ))}
                     </div>

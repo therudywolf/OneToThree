@@ -74,6 +74,22 @@ describe('theme appearance resolution', () => {
     expect(resolved.shell.id).toBe('terminal')
   })
 
+  it('keeps platform profile orthogonal to palette and shell state', () => {
+    const resolved = resolveThemeAppearance({
+      theme: 'cyberpunk2077',
+      shellMode: 'md3',
+      accentPreset: 'theme',
+      primaryColorOverride: null,
+      accentColorOverride: null,
+      accentSoftColorOverride: null,
+      backgroundColorOverride: null,
+      motionMode: 'full',
+    })
+
+    expect(resolved.id).toBe('cyberpunk2077')
+    expect(resolved.shell.id).toBe('md3')
+  })
+
   it('applies explicit accentSoft override and exposes 4-color preview', () => {
     const resolved = resolveThemeAppearance({
       theme: 'pixel',

@@ -244,6 +244,8 @@ const en = {
   'chat.inputPlaceholder': 'Type a message...',
   'chat.burnTimerLabel': 'Delete after',
   'chat.originalDeleted': 'Message deleted',
+  'chat.deleteForMeConfirm': 'Delete this message only for you?',
+  'chat.deleteForAllConfirm': 'Delete this message for everyone?',
   'chat.decryptFailed': 'Message could not be decrypted',
   'chat.decryptFailedPreview': '🔒 Encrypted message',
   'chat.newChat': 'New Chat',

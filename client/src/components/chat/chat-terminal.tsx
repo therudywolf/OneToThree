@@ -528,12 +528,18 @@ export function ChatTerminal({
           }
           break
         case 'deleteForMe':
+          if (!window.confirm(t('chat.deleteForMeConfirm'))) {
+            break
+          }
           removeMessage(msg.id)
           void deleteCachedMessage(msg.id)
           toastSuccess(t('chat.originalDeleted'))
           break
         case 'deleteForAll':
           if (mine) {
+            if (!window.confirm(t('chat.deleteForAllConfirm'))) {
+              break
+            }
             void (async () => {
               try {
                 await deleteMessage(msg.id, true)

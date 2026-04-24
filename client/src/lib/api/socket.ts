@@ -218,13 +218,25 @@ class FmSocketClient {
   private wantOpen = false
   private outboundQueue: string[] = []
   private onlineOutboxListenerAttached = false
+  private onlineOutboxHandler: (() => void) | null = null
 
   private ensureOnlineOutboxFlush(): void {
     if (this.onlineOutboxListenerAttached || typeof window === 'undefined') return
-    this.onlineOutboxListenerAttached = true
-    window.addEventListener('online', () => {
+    const onOnline = () => {
       void flushOutboxPending()
-    })
+    }
+    this.onlineOutboxListenerAttached = true
+    this.onlineOutboxHandler = onOnline
+    window.addEventListener('online', onOnline)
+  }
+
+  private detachOnlineOutboxFlush(): void {
+    if (!this.onlineOutboxListenerAttached || typeof window === 'undefined') return
+    if (this.onlineOutboxHandler) {
+      window.removeEventListener('online', this.onlineOutboxHandler)
+    }
+    this.onlineOutboxHandler = null
+    this.onlineOutboxListenerAttached = false
   }
 
   subscribe(fn: (m: WsInboundMessage) => void): () => void {
@@ -238,6 +250,7 @@ class FmSocketClient {
       this.refCount--
       if (this.refCount <= 0) {
         this.wantOpen = false
+        this.detachOnlineOutboxFlush()
         this.shutdownSocket()
       }
     }

@@ -108,6 +108,9 @@ export const DOCK_BREAKPOINT = '(min-width: 1280px)'
 export function matchesDockViewport(): boolean {
   if (typeof window === 'undefined') return false
   try {
+    const profile =
+      document.documentElement.getAttribute('data-platform-profile') ?? 'desktop-tg'
+    if (profile !== 'desktop-tg') return false
     return window.matchMedia(DOCK_BREAKPOINT).matches
   } catch {
     return false

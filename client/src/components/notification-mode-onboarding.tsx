@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useTranslation } from '@/hooks/use-translation'
 import { setNotificationMode, type NotificationMode } from '@/lib/push-subscription'
+import { explainSettingsError } from '@/lib/settings-errors'
 
 type Props = {
   open: boolean
@@ -23,14 +24,14 @@ export function NotificationModeOnboarding({ open, onDone }: Props) {
       await setNotificationMode(mode)
       onDone()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'NOTIFICATION_MODE_SAVE_FAILED')
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/65 p-4">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[color-mix(in_srgb,var(--void)_65%,transparent)] p-4">
       <div className="w-full max-w-xl border border-border-strong bg-surface p-5">
         <h3 className="text-sm font-semibold text-text-primary">{t('settings.notificationModeTitle')}</h3>
         <p className="mt-2 text-xs text-text-muted">{t('settings.notificationModeFirstRunHint')}</p>

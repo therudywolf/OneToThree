@@ -6,6 +6,7 @@ import { LoginQrDevicePanel } from '@/components/login-qr-device-panel'
 import { LocaleToggle } from '@/components/locale-toggle'
 import { WelcomeScreen } from '@/components/onboarding/welcome-screen'
 import { useThemeStore } from '@/store/themeStore'
+import { useTranslation } from '@/hooks/use-translation'
 
 /**
  * ONETOTHREE :: GATEWAY_NODE
@@ -14,7 +15,9 @@ import { useThemeStore } from '@/store/themeStore'
  */
 
 export default function LoginPage() {
+  const { t } = useTranslation()
   const [showWelcome, setShowWelcome] = useState(false)
+  const [preferDeviceLinking, setPreferDeviceLinking] = useState(false)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
 
@@ -25,10 +28,50 @@ export default function LoginPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const w = window as Window & {
+      Capacitor?: { isNativePlatform?: () => boolean }
+    }
+    const sync = () => {
+      setPreferDeviceLinking(
+        Boolean(
+          w.Capacitor?.isNativePlatform?.() ||
+            window.matchMedia('(max-width: 768px)').matches
+        )
+      )
+    }
+    sync()
+    window.addEventListener('resize', sync)
+    return () => window.removeEventListener('resize', sync)
+  }, [])
+
   const dismissWelcome = () => {
     localStorage.setItem('p13:onboarding_shown', 'true')
     setShowWelcome(false)
   }
+
+  const credentialBlock = (
+    <div className={`p-1 backdrop-blur-sm ${
+      isMd3
+        ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-2)]'
+        : 'border border-border-strong bg-void/40'
+    }`}>
+      <div className={`${isMd3 ? 'rounded-[24px] p-6' : 'border border-border-strong p-6'}`}>
+        <LoginForm />
+      </div>
+    </div>
+  )
+
+  const linkDeviceBlock = (
+    <div className={`p-6 transition-all ${
+      isMd3
+        ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-2)]'
+        : 'border border-border-strong bg-void/50 shadow-2xl hover:border-neon-cyan/30'
+    }`}>
+      <LoginQrDevicePanel />
+    </div>
+  )
 
   return (
     <main className={`relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-16 selection:bg-neon-red selection:text-text-primary ${
@@ -78,32 +121,38 @@ export default function LoginPage() {
 
       {/* AUTH_BLOCKS :: Основные модули входа */}
       <section className="relative z-10 flex w-full max-w-sm flex-col gap-6">
-        {/* Модуль стандартных учетных данных */}
-        <div className={`p-1 backdrop-blur-sm ${
-          isMd3
-            ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-2)]'
-            : 'border border-border-strong bg-void/40'
-        }`}>
-          <div className={`${isMd3 ? 'rounded-[24px] p-6' : 'border border-border-strong p-6'}`}>
-            <LoginForm />
+        {preferDeviceLinking ? (
+          <div className={`border p-4 text-[10px] ${
+            isMd3
+              ? 'rounded-3xl border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[color-mix(in_srgb,var(--surface)_92%,transparent)] text-[var(--on-surface)]'
+              : 'border-neon-cyan/30 bg-void/60 font-mono text-neon-cyan'
+          }`}>
+            <p className={`text-[10px] ${isMd3 ? 'font-medium' : 'uppercase tracking-[0.25em]'}`}>
+              {t('login.mobileEntryTitle')}
+            </p>
+            <p className="mt-2 text-[10px] leading-relaxed text-text-muted">
+              {t('login.mobileEntryRecommendation')}
+            </p>
+            <div className="mt-3 grid gap-2 text-[9px] text-text-muted">
+              <div>1. {t('login.mobileEntryPrimary')}</div>
+              <div>2. {t('login.mobileEntrySecondary')}</div>
+              <div>3. {t('login.mobileEntryTertiary')}</div>
+            </div>
           </div>
-        </div>
+        ) : null}
+
+        {preferDeviceLinking ? linkDeviceBlock : credentialBlock}
 
         {/* Разделитель контуров */}
         <div className="flex items-center gap-4 px-2">
           <div className="h-[1px] flex-1 bg-void" />
-          <span className="text-[9px] uppercase tracking-widest text-text-muted/70">OR_BIND_DEVICE</span>
+          <span className="text-[9px] uppercase tracking-widest text-text-muted/70">
+            {preferDeviceLinking ? t('login.mobileEntryDividerPasswords') : t('login.mobileEntryDividerDevice')}
+          </span>
           <div className="h-[1px] flex-1 bg-void" />
         </div>
 
-        {/* Модуль аппаратной привязки (QR) */}
-        <div className={`p-6 transition-all ${
-          isMd3
-            ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-2)]'
-            : 'border border-border-strong bg-void/50 shadow-2xl hover:border-neon-cyan/30'
-        }`}>
-          <LoginQrDevicePanel />
-        </div>
+        {preferDeviceLinking ? credentialBlock : linkDeviceBlock}
       </section>
 
       {/* FOOTER_DECOR :: Системные метаданные */}

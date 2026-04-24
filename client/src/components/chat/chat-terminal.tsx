@@ -43,6 +43,7 @@ import { cloneStickerPack } from '@/lib/api/stickers'
 import { addGifFavorite, type GifHit } from '@/lib/api/gif'
 import { toastError, toastSuccess } from '@/store/toastStore'
 import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
+import { explainStickerError } from '@/lib/sticker-errors'
 
 const OLDER_PAGE_SIZE = 25
 const OLDER_RAM_CAP = 200
@@ -559,7 +560,10 @@ export function ChatTerminal({
                   { title: 'Stickers' }
                 )
               } catch (err) {
-                toastError(err instanceof Error ? err.message : 'STICKER_SAVE_FAILED', { title: 'Stickers' })
+                toastError(
+                  explainStickerError(err instanceof Error ? err.message : 'STICKER_SAVE_FAILED', t),
+                  { title: 'Stickers' }
+                )
               }
             })()
             break
@@ -570,8 +574,8 @@ export function ChatTerminal({
             try {
               await addGifFavorite(gif)
               toastSuccess(t('gif.addedToFavorites'), { title: 'GIF' })
-            } catch (err) {
-              toastError(err instanceof Error ? err.message : 'GIF_FAVORITE_ADD_FAILED', { title: 'GIF' })
+            } catch {
+              toastError(t('gif.favoriteAddFailed'), { title: 'GIF' })
             }
           })()
           break

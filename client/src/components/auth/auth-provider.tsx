@@ -14,6 +14,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { AuthHttpError, fetchMe, logoutApi } from '@/lib/api/auth'
 import { wipeAllClientLocalState } from '@/lib/client-wipe'
 import { invalidateAvatarCache, clearAllAvatarCache } from '@/lib/avatar-cache'
+import { clearNativeSessionCookie, warmNativeSessionCookies } from '@/lib/native-session'
 
 /** * `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional).
  * `has_passkeys` indicates if the user has enrolled WebAuthn devices.
@@ -109,13 +110,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (bootstrappedRef.current) return
     bootstrappedRef.current = true
     setLoading(true)
-    void refresh()
+    void warmNativeSessionCookies().finally(() => refresh())
   }, [refresh])
 
   const logout = useCallback(async () => {
     refreshGeneration.current++
     redirectedRef.current = true
     await logoutApi()
+    await clearNativeSessionCookie()
     setUser(null)
     setLoading(false)
     // Clear all cached avatars on logout to prevent memory leaks

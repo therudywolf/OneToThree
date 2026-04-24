@@ -1,7 +1,8 @@
 'use client'
 
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { createSafeJSONStorage } from '@/lib/safe-zustand-storage'
 
 /**
  * PROJECT 13 :: LINGUISTIC_PROTOCOL_CORE
@@ -35,7 +36,7 @@ export const useLocaleStore = create<LinguisticState>()(
     }),
     {
       name: 'fm_linguistic_config',
-      storage: createJSONStorage(() => localStorage),
+      storage: createSafeJSONStorage(),
       // Изолируем только необходимые данные для сохранения
       partialize: (state) => ({ module: state.module }),
     }

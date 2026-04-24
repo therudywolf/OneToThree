@@ -8,6 +8,7 @@
 
 import { useState, useRef } from 'react'
 import { useAuth } from '@/components/auth/auth-provider'
+import { useTranslation } from '@/hooks/use-translation'
 import { readVaultBlob } from '@/lib/vault'
 import { unwrapPrivateJwkWithPin } from '@/lib/vault'
 import { useThemeStore } from '@/store/themeStore'
@@ -21,6 +22,7 @@ type Props = {
 
 export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
   const { user } = useAuth()
+  const { t } = useTranslation()
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -53,13 +55,9 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
         msg.includes('unwrap') ||
         msg.includes('OperationError')
       ) {
-        setError(
-          msg === 'NO_LOCAL_VAULT'
-            ? 'Хранилище не найдено в этом браузере.'
-            : 'Неверный vault-пароль.'
-        )
+        setError(msg === 'NO_LOCAL_VAULT' ? t('settings.noLocalVault') : t('settings.killPinBad'))
       } else {
-        setError(msg || 'VAULT_VERIFY_FAILED')
+        setError(t('errors.boundaryGeneric'))
       }
     } finally {
       setBusy(false)
@@ -71,11 +69,11 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
       isMd3
         ? 'rounded-2xl border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface-variant)]'
         : isRetro
-          ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+          ? 'p13-classic-window'
           : 'border border-neon-cyan/40 bg-void font-mono'
     }`}>
       <div>
-        <p className={`text-[9px] ${isRetro ? 'tracking-[0.02em] text-[#0f2f4f]' : 'uppercase tracking-widest text-neon-cyan/80'}`}>
+        <p className={`text-[9px] ${isRetro ? 'p13-classic-copy' : 'uppercase tracking-widest text-neon-cyan/80'}`}>
           [ ПОДТВЕРЖДЕНИЕ ЛИЧНОСТИ ]
         </p>
         <p className="mt-1 text-[9px] text-text-muted">{actionLabel}</p>
@@ -94,7 +92,7 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
           isMd3
             ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
             : isRetro
-              ? 'border border-[#6f747c] bg-[#ffffff] font-["Tahoma"] text-[#0f2f4f] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6]'
+              ? 'p13-classic-input p13-classic-copy'
               : 'border border-neon-cyan/30 bg-void text-neon-cyan focus:border-neon-cyan'
         }`}
       />
@@ -110,24 +108,28 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
           disabled={busy || !pin.trim()}
           className={`flex-1 border px-3 py-1.5 text-[9px] disabled:opacity-40 transition-colors ${
             isRetro
-              ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+              ? 'p13-classic-button'
               : 'border-neon-cyan bg-void uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'
           }`}
         >
-          {busy ? '...' : '[ ПОДТВЕРДИТЬ ]'}
+          {busy ? '...' : chromeLabel(t('common.confirm'))}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className={`flex-1 border px-3 py-1.5 text-[9px] transition-colors ${
             isRetro
-              ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#3f4752] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+              ? 'p13-classic-button p13-classic-button--muted'
               : 'border-border-strong bg-void uppercase tracking-widest text-text-muted hover:bg-elevated/30'
           }`}
         >
-          [ ОТМЕНА ]
+          {chromeLabel(t('common.cancel'))}
         </button>
       </div>
     </div>
   )
+}
+
+function chromeLabel(label: string): string {
+  return `[ ${label} ]`
 }

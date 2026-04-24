@@ -4,9 +4,13 @@ import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { postQrLogin } from '@/lib/api/auth-qr'
 import { complete2faLogin } from '@/lib/api/auth'
+import { useTranslation } from '@/hooks/use-translation'
+import { explainDeviceLinkError } from '@/lib/device-link-errors'
+import { explainLoginError } from '@/lib/login-errors'
 import { useThemeStore } from '@/store/themeStore'
 
 function QrLoginInner() {
+  const { t } = useTranslation()
   const router = useRouter()
   const params = useSearchParams()
   const token = params.get('link_token')
@@ -26,7 +30,7 @@ function QrLoginInner() {
 
     if (!token) {
       setStatus('error')
-      setErrorMsg('INVALID_LINK — токен отсутствует')
+      setErrorMsg(t('login.qrAuthInvalidLink'))
       return
     }
 
@@ -43,23 +47,15 @@ function QrLoginInner() {
       .catch((err: unknown) => {
         setStatus('error')
         const code = err instanceof Error ? err.message : 'QR_LOGIN_FAILED'
-        const codeMap: Record<string, string> = {
-          INVALID_OR_EXPIRED_TOKEN: 'QR-код истёк или уже использован. Попроси новый.',
-          BANNED_USER: 'Аккаунт заблокирован.',
-          DEVICE_REVOKED: 'Это устройство было отозвано.',
-          CLIENT_DEVICE_ID_REQUIRED: 'Ошибка идентификации устройства — попробуй снова.',
-          TOTP_STATE_INVALID: 'На сервере повреждено состояние TOTP у этого аккаунта.',
-          QR_LOGIN_FAILED: 'QR-вход не удался.',
-        }
-        setErrorMsg(codeMap[code] ?? 'Нет соединения с сервером.')
+        setErrorMsg(explainDeviceLinkError(code, t))
       })
-  }, [token, router])
+  }, [token, router, t])
 
   async function submitTotp() {
     if (!pendingToken || verifyingTotp) return
     const code = totpCode.replace(/\D/g, '').slice(0, 6)
     if (code.length !== 6) {
-      setErrorMsg('Введите ровно 6 цифр.')
+      setErrorMsg(t('login.totpSixDigits'))
       return
     }
     setVerifyingTotp(true)
@@ -70,15 +66,7 @@ function QrLoginInner() {
       setTimeout(() => router.replace('/'), 1200)
     } catch (err: unknown) {
       const codeText = err instanceof Error ? err.message : 'TOTP_VERIFY_FAILED'
-      const codeMap: Record<string, string> = {
-        INVALID_PENDING_TOKEN: 'Шаг подтверждения просрочен. Отсканируй QR заново.',
-        TOTP_INVALID: 'Неверный или просроченный код.',
-        TOTP_ALREADY_USED: 'Этот код уже использован. Дождись нового.',
-        TOTP_NOT_CONFIGURED: 'На сервере не настроен TOTP для этого аккаунта.',
-        CLIENT_DEVICE_ID_REQUIRED: 'Не удалось зарегистрировать это устройство.',
-        DEVICE_REVOKED: 'Это устройство отозвано и не может войти.',
-      }
-      setErrorMsg(codeMap[codeText] ?? 'Ошибка проверки TOTP.')
+      setErrorMsg(explainLoginError(codeText, t))
     } finally {
       setVerifyingTotp(false)
     }
@@ -86,38 +74,39 @@ function QrLoginInner() {
 
   return (
     <main className={`flex min-h-dvh flex-col items-center justify-center gap-4 px-6 py-8 ${
-      isRetro ? 'bg-[#0e3f86] font-["Tahoma"] text-[#f4f7ff]' : 'bg-[#0a0a0a] font-mono text-neon-cyan'
+      isRetro ? 'bg-void font-["Tahoma"] text-text-primary' : 'bg-void font-mono text-text-primary'
     }`}>
-      <div className={`text-[11px] ${isRetro ? 'tracking-[0.03em]' : 'uppercase tracking-[0.2em] text-text-muted'}`}>QR :: DEVICE LINK</div>
+      <div className={`text-[11px] ${isRetro ? 'tracking-[0.03em]' : 'uppercase tracking-[0.2em] text-text-muted'}`}>
+        {t('login.qrLinkSection')}
+      </div>
 
       {status === 'pending' && (
         <>
-          <div className="animate-pulse text-sm">[ АВТОРИЗАЦИЯ... ]</div>
+          <div className="animate-pulse text-sm">{t('login.qrAuthPending')}</div>
           <div className="max-w-sm text-center text-xs leading-relaxed text-text-muted">
-            Этот браузер получает сессию от устройства, которое сгенерировало QR-код.
-            Пароль не нужен — доверие делегировано через токен. История и ключи
-            сквозного шифрования на новом устройстве подтягиваются отдельно (см.
-            настройки синхронизации и устройств).
+            {t('login.qrAuthPendingHint')}
           </div>
         </>
       )}
 
       {status === 'ok' && (
         <>
-          <div className="text-base text-neon-cyan">[ OK :: СЕССИЯ ПОЛУЧЕНА ]</div>
-          <div className="text-xs text-text-muted">Перенаправление на главную...</div>
+          <div className="text-base text-neon-cyan">{t('login.qrAuthSuccess')}</div>
+          <div className="text-xs text-text-muted">{t('login.qrAuthRedirecting')}</div>
         </>
       )}
 
       {status === 'totp' && (
         <>
-          <div className="text-base text-neon-cyan">[ TOTP :: ПОДТВЕРЖДЕНИЕ ]</div>
+          <div className="text-base text-neon-cyan">{t('login.totpTitle')}</div>
           <div className="max-w-sm text-center text-xs leading-relaxed text-text-muted">
-            Этот аккаунт защищён двухфакторной аутентификацией. Введи 6-значный код из приложения-аутентификатора.
+            {t('login.totpDescription')}
           </div>
           <input
             className={`w-56 border px-4 py-3 text-center text-base tracking-[0.35em] outline-none ${
-              isRetro ? 'border-[#6f747c] bg-[#ffffff] text-[#15385f]' : 'border-neon-cyan/40 bg-[#111] text-neon-cyan'
+              isRetro
+                ? 'border-border-strong bg-surface text-text-primary'
+                : 'border-border-strong bg-surface text-text-primary'
             }`}
             type="text"
             inputMode="numeric"
@@ -136,14 +125,16 @@ function QrLoginInner() {
           <a
             href="#submit"
             className={`mt-4 border px-5 py-2 text-xs uppercase tracking-widest ${verifyingTotp ? 'opacity-60' : 'opacity-100'} ${
-              isRetro ? 'border-[#6f747c] bg-[#d4d0c8] text-[#15385f]' : 'border-neon-cyan text-neon-cyan'
+              isRetro
+                ? 'border-border-strong bg-surface text-text-primary'
+                : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'
             }`}
             onClick={(e) => {
               e.preventDefault()
               void submitTotp()
             }}
           >
-            {verifyingTotp ? '[ ПРОВЕРКА... ]' : '[ ПОДТВЕРДИТЬ ]'}
+            {verifyingTotp ? t('login.authLoading') : t('login.totpSubmit')}
           </a>
           {errorMsg ? <div className="max-w-sm text-center text-sm leading-relaxed text-neon-red">{errorMsg}</div> : null}
         </>
@@ -151,12 +142,21 @@ function QrLoginInner() {
 
       {status === 'error' && (
         <>
-          <div className="text-base text-neon-red">[ ОШИБКА ]</div>
+          <div className="text-base text-neon-red">{t('login.qrAuthError')}</div>
           <div className="max-w-sm text-center text-sm leading-relaxed text-neon-red">{errorMsg}</div>
           <div className="max-w-sm text-center text-xs leading-relaxed text-text-muted">
-            QR действителен 5 минут и одноразовый. Зайди в настройки → Устройства → Добавить устройство и сгенерируй новый.
+            {t('login.qrAuthRenewHint')}
           </div>
-          <a href="/login" className={`mt-3 border px-5 py-2 text-xs uppercase tracking-widest ${isRetro ? 'border-[#6f747c] bg-[#d4d0c8] text-[#15385f]' : 'border-neon-cyan text-neon-cyan'}`}>[ НА ВХОД ]</a>
+          <a
+            href="/login"
+            className={`mt-3 border px-5 py-2 text-xs uppercase tracking-widest ${
+              isRetro
+                ? 'border-border-strong bg-surface text-text-primary'
+                : 'border-neon-cyan text-neon-cyan hover:bg-neon-cyan/10'
+            }`}
+          >
+            {t('login.signIn')}
+          </a>
         </>
       )}
     </main>
@@ -164,14 +164,15 @@ function QrLoginInner() {
 }
 
 export default function QrLoginPage() {
+  const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
   return (
     <Suspense
       fallback={
-        <main className={`flex min-h-dvh items-center justify-center ${isRetro ? 'bg-[#0e3f86] font-["Tahoma"] text-[#f4f7ff]' : 'bg-[#0a0a0a] font-mono text-neon-cyan'}`}>
-          [ QR :: ЗАГРУЗКА... ]
+        <main className={`flex min-h-dvh items-center justify-center ${isRetro ? 'bg-void font-["Tahoma"] text-text-primary' : 'bg-void font-mono text-text-primary'}`}>
+          {t('login.authLoading')}
         </main>
       }
     >

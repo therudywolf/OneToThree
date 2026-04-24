@@ -11,6 +11,7 @@ import { persistVaultBlobByLoginUsername, type VaultBlob } from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { PostRegisterVaultPrompt } from '@/components/post-register-vault-prompt'
+import { explainLoginError } from '@/lib/login-errors'
 import { useThemeStore } from '@/store/themeStore'
 
 /**
@@ -78,22 +79,6 @@ export function LoginForm() {
     }
   }, [authLoading, user, router, showVaultPrompt])
 
-  const mapFault = (code: string): string => {
-    const registry: Record<string, string> = {
-      USERNAME_REQUIRED:      t('login.usernameRequired'),
-      PASSWORD_REQUIRED:      t('login.passwordRequired'),
-      PIN_MIN_8:              t('login.pinMin8'),
-      NO_LOCAL_VAULT:         t('login.noLocalVault'),
-      VAULT_ALREADY_EXISTS:   t('login.vaultExists'),
-      UNWRAP_FAILED:          t('login.unwrapFailed'),
-      INVALID_VAULT_FORMAT:   t('login.invalidVaultFormat'),
-      VAULT_VERSION_MISMATCH: t('login.vaultVersionMismatch'),
-      TOTP_INVALID:           t('login.totpInvalid'),
-      DEVICE_REVOKED:         t('login.deviceRevoked'),
-    }
-    return registry[code] ?? code.replace(/_/g, ' ')
-  }
-
   const resetForm = () => {
     setVaultPassword('')
     setConfirmVaultPassword('')
@@ -151,7 +136,7 @@ export function LoginForm() {
           setInfoLog(t('login.accountExists'))
           return
         }
-        setErrorLog(mapFault(res.error))
+        setErrorLog(explainLoginError(res.error, t))
         return
       }
       if (mode === 'GENESIS') {
@@ -169,7 +154,7 @@ export function LoginForm() {
         setInfoLog(t('login.accountExists'))
         return
       }
-      setErrorLog(msg || 'SYS_FAULT')
+      setErrorLog(explainLoginError(msg || 'SYS_FAULT', t))
     } finally {
       setIsBusy(false)
       lock.current = false
@@ -188,11 +173,11 @@ export function LoginForm() {
         code: totpCode.replace(/\D/g, '').slice(0, 6),
         canonicalHandle: handle.trim(),
       })
-      if (!r.ok) { setErrorLog(mapFault(r.error)); return }
+      if (!r.ok) { setErrorLog(explainLoginError(r.error, t)); return }
       await refresh()
       router.refresh()
     } catch (err: unknown) {
-      setErrorLog(err instanceof Error ? err.message : 'MFA_FAULT')
+      setErrorLog(explainLoginError(err instanceof Error ? err.message : 'MFA_FAULT', t))
     } finally {
       setIsBusy(false)
       lock.current = false

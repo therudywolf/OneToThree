@@ -1,7 +1,8 @@
 'use client'
 
 import { create } from 'zustand'
-import { createJSONStorage, persist } from 'zustand/middleware'
+import { persist } from 'zustand/middleware'
+import { createSafeJSONStorage } from '@/lib/safe-zustand-storage'
 
 export type ThemeId =
   | 'default'
@@ -18,6 +19,7 @@ export type ThemeId =
   | 'md3light'
 
 export type MotionMode = 'full' | 'reduced'
+export type PlatformProfileId = 'desktop-tg' | 'mobile-tg-ios'
 
 /**
  * Shell mode = typography + shape + "CRT" chrome for the entire UI.
@@ -485,6 +487,7 @@ export type ResolvedThemeAppearance = {
 type ChromaticState = {
   theme: ThemeId
   shellMode: ShellModeId
+  platformProfile: PlatformProfileId
   accentPreset: AccentPresetId
   primaryColorOverride: string | null
   accentColorOverride: string | null
@@ -493,6 +496,7 @@ type ChromaticState = {
   motionMode: MotionMode
   setTheme: (id: ThemeId) => void
   setShellMode: (mode: ShellModeId) => void
+  setPlatformProfile: (profile: PlatformProfileId) => void
   setAccentPreset: (id: AccentPresetId) => void
   setPrimaryColorOverride: (value: string | null) => void
   setAccentColorOverride: (value: string | null) => void
@@ -511,6 +515,30 @@ function inferShellFromLegacyTheme(theme: ThemeId | undefined): ShellModeId {
   if (theme === 'md3dark' || theme === 'md3light') return 'md3'
   if (theme === 'cyberpunk2077') return 'terminal'
   return 'terminal'
+}
+
+function inferDefaultPlatformProfile(): PlatformProfileId {
+  if (typeof window === 'undefined') return 'desktop-tg'
+
+  const hasCapacitor = Boolean(
+    (window as typeof window & {
+      Capacitor?: { isNativePlatform?: () => boolean }
+    }).Capacitor?.isNativePlatform?.()
+  )
+  if (hasCapacitor) return 'mobile-tg-ios'
+
+  const isNarrowViewport =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 768px)').matches
+  if (isNarrowViewport) return 'mobile-tg-ios'
+
+  const userAgent =
+    typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : ''
+  if (/iphone|ipad|ipod|android|mobile/.test(userAgent)) {
+    return 'mobile-tg-ios'
+  }
+
+  return 'desktop-tg'
 }
 
 export function resolveThemeAppearance(input: Pick<
@@ -617,6 +645,7 @@ export const useThemeStore = create<ChromaticState>()(
     (set) => ({
       theme: 'default',
       shellMode: 'terminal',
+      platformProfile: inferDefaultPlatformProfile(),
       accentPreset: 'theme',
       primaryColorOverride: null,
       accentColorOverride: null,
@@ -625,6 +654,7 @@ export const useThemeStore = create<ChromaticState>()(
       motionMode: 'full',
       setTheme: (id) => set({ theme: id }),
       setShellMode: (mode) => set({ shellMode: mode }),
+      setPlatformProfile: (profile) => set({ platformProfile: profile }),
       setAccentPreset: (id) => {
         const preset = ACCENT_PRESET_BY_ID[id]
         set({
@@ -666,11 +696,12 @@ export const useThemeStore = create<ChromaticState>()(
     }),
     {
       name: 'fm_chromatic_config',
-      version: 2,
-      storage: createJSONStorage(() => localStorage),
+      version: 3,
+      storage: createSafeJSONStorage(),
       partialize: (state) => ({
         theme: state.theme,
         shellMode: state.shellMode,
+        platformProfile: state.platformProfile,
         accentPreset: state.accentPreset,
         primaryColorOverride: state.primaryColorOverride,
         accentColorOverride: state.accentColorOverride,
@@ -684,6 +715,16 @@ export const useThemeStore = create<ChromaticState>()(
           const state = persisted as Partial<ChromaticState>
           if (state.shellMode === undefined) {
             state.shellMode = inferShellFromLegacyTheme(state.theme)
+          }
+          if (state.platformProfile === undefined) {
+            state.platformProfile = inferDefaultPlatformProfile()
+          }
+          return state
+        }
+        if (fromVersion < 3) {
+          const state = persisted as Partial<ChromaticState>
+          if (state.platformProfile === undefined) {
+            state.platformProfile = inferDefaultPlatformProfile()
           }
           return state
         }

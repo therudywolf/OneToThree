@@ -8,6 +8,12 @@
     "cleartext": false
   },
   "plugins": {
+    "CapacitorCookies": {
+      "enabled": true
+    },
+    "CapacitorHttp": {
+      "enabled": true
+    },
     "PushNotifications": {
       "presentationOptions": ["badge", "sound", "alert"]
     },

@@ -58,16 +58,31 @@ export const viewport: Viewport = {
 const themeInitScript = `
 (function() {
   try {
+    var inferPlatformProfile = function() {
+      try {
+        if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) {
+          return 'mobile-tg-ios';
+        }
+        if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+          return 'mobile-tg-ios';
+        }
+        var ua = (navigator.userAgent || '').toLowerCase();
+        if (/iphone|ipad|ipod|android|mobile/.test(ua)) {
+          return 'mobile-tg-ios';
+        }
+      } catch (e) {}
+      return 'desktop-tg';
+    };
     var raw = localStorage.getItem('fm_chromatic_config');
-    if (!raw) return;
-    var cfg = JSON.parse(raw);
-    var state = cfg && cfg.state;
-    if (!state) return;
+    var cfg = raw ? JSON.parse(raw) : null;
+    var state = cfg && cfg.state ? cfg.state : {};
     var theme = state.theme;
     var shell = state.shellMode;
+    var platformProfile = state.platformProfile || inferPlatformProfile();
     var motion = state.motionMode;
     var validThemes = ['default','cyberpunk2077','retro','matrix','dracula','midnight','synthwave','hacker','pixel','nord','md3dark','md3light'];
     var validShells = ['terminal','md3'];
+    var validPlatformProfiles = ['desktop-tg','mobile-tg-ios'];
     if (theme && validThemes.indexOf(theme) !== -1) {
       document.documentElement.setAttribute('data-theme', theme);
     }
@@ -81,6 +96,9 @@ const themeInitScript = `
     if (motion === 'reduced') {
       document.documentElement.setAttribute('data-motion', 'reduced');
     }
+    if (platformProfile && validPlatformProfiles.indexOf(platformProfile) !== -1) {
+      document.documentElement.setAttribute('data-platform-profile', platformProfile);
+    }
   } catch(e) {}
 })();
 `.trim()
@@ -91,7 +109,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" data-theme="default" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
+    <html lang="en" data-theme="default" data-platform-profile="desktop-tg" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
       <head>
         {/* CHROMATIC_INIT :: blocking theme bootstrap — must be first in <head> */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />

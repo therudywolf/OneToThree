@@ -2,6 +2,7 @@ import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 import { authDeviceHeaders } from '@/lib/client-device'
 import { sanitizeFetchHeaderRecord } from '@/lib/http-fetch-headers'
+import { warmNativeSessionCookies } from '@/lib/native-session'
 
 function browserOrigin(): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
@@ -103,5 +104,6 @@ export async function postQrLogin(token: string): Promise<
   if (!res.ok || !data.user) {
     throw new Error(data.error ?? 'QR_LOGIN_FAILED')
   }
+  await warmNativeSessionCookies()
   return { ok: true, user: data.user }
 }

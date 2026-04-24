@@ -49,7 +49,7 @@ const nextConfig = {
     form-action 'self';
     frame-ancestors 'none';
     media-src 'self' blob: ${storageOrigin} ${giphyOrigin};
-    connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin} ${giphyApiOrigin};
+    connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin} ${giphyApiOrigin};
     worker-src 'self' blob:;
     upgrade-insecure-requests;
 `.replace(/\n/g, "");

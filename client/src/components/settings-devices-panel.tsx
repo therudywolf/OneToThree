@@ -16,6 +16,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { readVaultBlob, unwrapPrivateJwkWithPin } from '@/lib/vault'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { VaultPinGate } from '@/components/vault-pin-gate'
+import { explainSettingsError } from '@/lib/settings-errors'
 import { useThemeStore } from '@/store/themeStore'
 
 type Props = { userId: string; active: boolean }
@@ -52,7 +53,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       const d = await fetchDevices()
       setDevices(d.devices)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -81,7 +82,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
         await load()
         await refresh()
       } catch (e) {
-        setError(e instanceof Error ? e.message : t('settings.unknown'))
+        setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
       } finally {
         setBusyAction(null)
       }
@@ -101,7 +102,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
           window.location.href = '/login'
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : t('settings.unknown'))
+        setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
       } finally {
         setBusyId(null)
       }
@@ -125,7 +126,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       await load()
       await refresh()
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally {
       setBusyId(null)
       setBusyAction(null)
@@ -145,7 +146,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       await clearRevokedDevices()
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('settings.unknown'))
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally {
       setBusyAction(null)
     }
@@ -169,11 +170,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       await load()
     } catch (e) {
       const msg = e instanceof Error ? e.message : t('settings.unknown')
-      if (msg.includes('decrypt') || msg.includes('unwrap') || msg.includes('OperationError')) {
-        setReauthError(t('settings.killPinBad'))
-      } else {
-        setReauthError(msg)
-      }
+      setReauthError(explainSettingsError(msg, t, 'settings.toggleFailed'))
     } finally {
       setReauthBusy(false)
     }

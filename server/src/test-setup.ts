@@ -44,17 +44,30 @@ if (!process.env.VITEST_REDIS_URL) {
     connect_timeout: 2,
   })
   try {
-    const hasSeq = await sql<{ exists: boolean }[]>`
-      SELECT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'messages'
-          AND column_name = 'seq'
-      ) AS exists
-    `
-    if (!hasSeq[0]?.exists) {
+    async function hasColumn(table: string, column: string): Promise<boolean> {
+      const rows = await sql<{ exists: boolean }[]>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = ${table}
+            AND column_name = ${column}
+        ) AS exists
+      `
+      return rows[0]?.exists === true
+    }
+
+    if (!await hasColumn('messages', 'seq')) {
       await sql`ALTER TABLE messages ADD COLUMN seq BIGSERIAL`
+    }
+
+    if (!await hasColumn('chats', 'invite_slug')) {
+      await sql`ALTER TABLE chats ADD COLUMN invite_slug text`
+      await sql`CREATE UNIQUE INDEX IF NOT EXISTS chats_invite_slug_unique ON chats (invite_slug)`
+    }
+
+    if (!await hasColumn('chats', 'invite_one_time')) {
+      await sql`ALTER TABLE chats ADD COLUMN invite_one_time boolean NOT NULL DEFAULT false`
     }
   } catch {
     // best-effort for environments without a running local DB

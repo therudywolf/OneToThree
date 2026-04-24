@@ -71,3 +71,12 @@ Android WebView must keep the same theme behavior as Web/PWA:
 - same persisted shell/palette selection,
 - same runtime theme switching,
 - same visual tokens for all supported themes.
+
+## Native auth/session bridge
+
+Android shell enables both native Capacitor cookie and HTTP bridges:
+
+- `CapacitorCookies.enabled = true`
+- `CapacitorHttp.enabled = true`
+
+This keeps `fm_session` stable for cross-site API requests from the native WebView and avoids relying on brittle browser-managed third-party cookie behavior during login/device-link flows.

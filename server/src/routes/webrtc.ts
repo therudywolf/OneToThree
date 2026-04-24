@@ -19,6 +19,10 @@ const DEFAULT_ICE_SERVERS: Array<{
   username?: string
   credential?: string
 }> = []
+const DEFAULT_STUN_SERVER_URLS = [
+  'stun:stun.cloudflare.com:3478',
+  'stun:stun.l.google.com:19302',
+]
 const MAX_TURN_URL_CANDIDATES = 24
 
 function parseTurnUrls(raw: string | undefined): string[] {
@@ -151,6 +155,19 @@ function collectCoturnIceServers(userId: string): IceServerConfig[] {
   return []
 }
 
+function collectStunIceServers(): IceServerConfig[] {
+  const raw = parseTurnUrls(process.env.STUN_URLS)
+  const urls = Array.from(
+    new Set(
+      (raw.length > 0 ? raw : DEFAULT_STUN_SERVER_URLS)
+        .map((url) => url.trim())
+        .filter((url) => /^stun:/i.test(url) && isAllowedIceUrl(url))
+    )
+  )
+  if (urls.length === 0) return []
+  return [{ urls }]
+}
+
 export const webrtcRoutes: FastifyPluginAsync = async (app) => {
   /**
    * GET /api/turn — issue ICE server configuration for WebRTC peering.
@@ -245,12 +262,22 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
         }
       }
       if (!source || iceServers.length === 0) {
-        request.log.error('ice-servers failed: relay not configured')
-        return reply.status(503).send({ error: 'TURN_NOT_CONFIGURED' })
+        const stunFallback = collectStunIceServers()
+        if (stunFallback.length === 0) {
+          request.log.error('ice-servers failed: relay not configured and no stun fallback')
+          return reply.status(503).send({ error: 'ICE_SERVERS_UNAVAILABLE' })
+        }
+        iceServers.push(...stunFallback)
+        request.log.warn('ice-servers resolved in stun-only mode')
       }
 
       reply.header('cache-control', 'private, max-age=0, must-revalidate')
-      return reply.send({ iceServers, source, expiresAt })
+      return reply.send({
+        iceServers,
+        source,
+        expiresAt,
+        transportPolicy: source ? 'relay' : 'all',
+      })
     } catch (err) {
       request.log.error({ err }, 'ice-servers route failed unexpectedly')
       return reply.status(503).send({ error: 'ICE_SERVERS_UNAVAILABLE' })

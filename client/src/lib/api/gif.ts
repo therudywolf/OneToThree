@@ -16,7 +16,6 @@ export type GifFavorite = GifHit & { createdAt: string }
 
 const GIPHY_API = 'https://api.giphy.com/v1/gifs/search'
 const GIPHY_TRENDING_API = 'https://api.giphy.com/v1/gifs/trending'
-const LEGACY_DEV_PUBLIC_KEY = 'dc6zaTOxFJmzC'
 const FALLBACK_GIFS: GifHit[] = [
   { id: 'fallback-1', title: 'happy cat', previewUrl: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif', originalUrl: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif' },
   { id: 'fallback-2', title: 'thumbs up', previewUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif', originalUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
@@ -61,10 +60,7 @@ function fallbackSearch(query: string, limit: number): GifHit[] {
 
 function resolveGiphyApiKey(): string {
   const configured = process.env.NEXT_PUBLIC_GIPHY_API_KEY?.trim()
-  if (configured) return configured
-  // Always keep a provider key fallback so GIF search performs real network requests
-  // even when env configuration is temporarily missing.
-  return LEGACY_DEV_PUBLIC_KEY
+  return configured ?? ''
 }
 
 export async function searchGifs(query: string, limit = 24): Promise<GifSearchResult> {

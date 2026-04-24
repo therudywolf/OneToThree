@@ -23,16 +23,27 @@ export type IceBackendSource =
   | 'coturn'
   | undefined
 
+export type IceTransportPolicy = 'all' | 'relay'
+
+export type IceConfig = {
+  iceServers: RTCIceServer[]
+  backendSource: IceBackendSource
+  transportPolicy: IceTransportPolicy
+  hasRelay: boolean
+}
+
 interface IceCacheEntry {
   fetchedAt: number
   expiresAt: number | null
   payload: RTCIceServer[]
   /** Set when the last successful JSON parse included `source`, or on fetch failure. */
   backendSource: IceBackendSource
+  transportPolicy: IceTransportPolicy
+  hasRelay: boolean
 }
 
 let cache: IceCacheEntry | null = null
-let inflight: Promise<RTCIceServer[]> | null = null
+let inflight: Promise<IceConfig> | null = null
 
 function isAllowedUrl(url: string): boolean {
   return /^(stun|turn|turns):/i.test(url)
@@ -78,13 +89,20 @@ function listContainsTurnRelay(servers: RTCIceServer[]): boolean {
  *
  * Throws on network/auth/config errors.
  */
-export async function getIceServers(options?: { forceRefresh?: boolean }): Promise<RTCIceServer[]> {
+export async function getIceConfig(options?: { forceRefresh?: boolean }): Promise<IceConfig> {
   const now = Date.now()
   if (!options?.forceRefresh && cache) {
     const freshEnough =
       now - cache.fetchedAt < CACHE_WINDOW_MS &&
       (cache.expiresAt === null || cache.expiresAt - REFRESH_SAFETY_MS > now)
-    if (freshEnough) return cache.payload
+    if (freshEnough) {
+      return {
+        iceServers: cache.payload,
+        backendSource: cache.backendSource,
+        transportPolicy: cache.transportPolicy,
+        hasRelay: cache.hasRelay,
+      }
+    }
   }
 
   if (inflight) return inflight
@@ -100,32 +118,44 @@ export async function getIceServers(options?: { forceRefresh?: boolean }): Promi
         iceServers?: unknown
         expiresAt?: number | null
         source?: string
+        transportPolicy?: string
       }
       const servers = normalizeList(payload.iceServers)
       const merged = mergeUnique(servers)
-      if (!listContainsTurnRelay(merged)) {
-        throw new Error('ICE_NO_TURN_RELAY')
-      }
+      const hasRelay = listContainsTurnRelay(merged)
       let backendSource: IceBackendSource
       if (payload.source === 'cloudflare' || payload.source === 'coturn') {
         backendSource = payload.source
-      } else if (listContainsTurnRelay(merged)) {
-        backendSource = undefined
       } else {
         backendSource = undefined
       }
+      const transportPolicy: IceTransportPolicy =
+        payload.transportPolicy === 'relay' || (payload.transportPolicy !== 'all' && hasRelay)
+          ? 'relay'
+          : 'all'
       cache = {
         fetchedAt: now,
         expiresAt: typeof payload.expiresAt === 'number' ? payload.expiresAt : null,
         payload: merged,
         backendSource,
+        transportPolicy,
+        hasRelay,
       }
-      return merged
+      return {
+        iceServers: merged,
+        backendSource,
+        transportPolicy,
+        hasRelay,
+      }
     } finally {
       inflight = null
     }
   })()
   return inflight
+}
+
+export async function getIceServers(options?: { forceRefresh?: boolean }): Promise<RTCIceServer[]> {
+  return (await getIceConfig(options)).iceServers
 }
 
 function mergeUnique(list: RTCIceServer[]): RTCIceServer[] {
@@ -146,13 +176,17 @@ export function getLastIceBackendSource(): IceBackendSource {
   return cache?.backendSource
 }
 
+export function getLastIceTransportPolicy(): IceTransportPolicy {
+  return cache?.transportPolicy ?? 'all'
+}
+
 /** True when the last fetch had no TURN relay (symmetric NAT calls may fail). */
 export function lastIceFetchWasStunOnly(): boolean {
   if (!cache) return false
-  if (cache.backendSource === 'cloudflare' || cache.backendSource === 'coturn') {
+  if (cache.hasRelay) {
     return false
   }
-  return !listContainsTurnRelay(cache.payload)
+  return true
 }
 
 /** Exposed for tests and dev-tools reset. */

@@ -121,6 +121,15 @@ export async function buildApp() {
     )
   )
 
+  const invalidCorsOrigins = corsOriginsRaw.filter(
+    (raw) => normalizeMobileOrigin(raw) === null
+  )
+  if (invalidCorsOrigins.length > 0) {
+    throw new Error(
+      `CORS_ORIGIN contains invalid origin URL(s) — each entry must be a full URL with scheme (e.g. https://app.example.com), not a bare hostname. Invalid: ${invalidCorsOrigins.join(', ')}`
+    )
+  }
+
   const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsList : true
   const apiOrigin = normalizeHttpOrigin(process.env.NEXT_PUBLIC_API_URL)
   const storageOrigin = normalizeHttpOrigin(process.env.MINIO_PUBLIC_URL)

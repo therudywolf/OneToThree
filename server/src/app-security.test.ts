@@ -55,4 +55,13 @@ describe('app security contracts', () => {
       /TOTP_WRAP_KEY must be set in production/
     )
   })
+
+  it('rejects malformed CORS_ORIGIN entries at build time', async () => {
+    process.env.NODE_ENV = 'test'
+    process.env.REDIS_URL = 'redis://localhost:6379'
+    process.env.CORS_ORIGIN = 'https://good.example,not-a-url'
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'vitest-jwt-secret-must-be-32-chars-min!!'
+
+    await expect(buildApp()).rejects.toThrow(/CORS_ORIGIN contains invalid origin URL/)
+  })
 })

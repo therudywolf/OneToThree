@@ -318,6 +318,13 @@ async function getChatMemberIds(chatId: string): Promise<string[]> {
   return rows.map((m) => m.userId)
 }
 
+function ensureGroupCallTargetInRoom(
+  roomId: string,
+  targetUserId: string
+): boolean {
+  return isUserInRoom(roomId, targetUserId)
+}
+
 export const wsRoutes: FastifyPluginAsync = async (app) => {
   /** WebSocket endpoint handling chat events, read receipts, and WebRTC signaling. */
   app.get('/ws', { websocket: true }, (ws: WebSocket, request: FastifyRequest) => {
@@ -723,6 +730,10 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
             return
           }
+          if (!ensureGroupCallTargetInRoom(room_id, target_user_id)) {
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
+            return
+          }
           sendToUser(target_user_id, {
             type: 'group_call:offer',
             room_id,
@@ -740,6 +751,10 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
             return
           }
+          if (!ensureGroupCallTargetInRoom(room_id, target_user_id)) {
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
+            return
+          }
           sendToUser(target_user_id, {
             type: 'group_call:answer',
             room_id,
@@ -753,6 +768,10 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (gcIce.success) {
           const { room_id, target_user_id, candidate } = gcIce.data
           if (!isUserInRoom(room_id, user.id)) return
+          if (!ensureGroupCallTargetInRoom(room_id, target_user_id)) {
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
+            return
+          }
           sendToUser(target_user_id, {
             type: 'group_call:ice',
             room_id,

@@ -82,8 +82,15 @@ export const users = pgTable('users', {
   recoveryKeySetAt: timestamp('recovery_key_set_at', { withTimezone: true }),
   /** Short bio / about text. */
   bio: text('bio'),
+  /** Optional user-facing display name distinct from immutable username/handle. */
+  displayName: text('display_name'),
   /** Custom status text (e.g. "busy", "do not disturb", free-form). */
   statusText: text('status_text'),
+  /**
+   * Controls who can see presence / last-seen metadata when ghost mode is off.
+   * Stored as text for migration simplicity; routes validate the allowed values.
+   */
+  lastSeenPrivacy: text('last_seen_privacy').notNull().default('everyone'),
   /** JSON array of {platform,url} social links. */
   socialLinks: text('social_links'),
   createdAt: timestamp('created_at', { withTimezone: true })

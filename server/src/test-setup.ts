@@ -69,6 +69,24 @@ if (!process.env.VITEST_REDIS_URL) {
     if (!await hasColumn('chats', 'invite_one_time')) {
       await sql`ALTER TABLE chats ADD COLUMN invite_one_time boolean NOT NULL DEFAULT false`
     }
+
+    if (!await hasColumn('users', 'display_name')) {
+      await sql`ALTER TABLE users ADD COLUMN display_name text`
+    }
+
+    if (!await hasColumn('users', 'last_seen_privacy')) {
+      await sql`ALTER TABLE users ADD COLUMN last_seen_privacy text NOT NULL DEFAULT 'everyone'`
+    }
+
+    await sql`
+      ALTER TABLE users
+      DROP CONSTRAINT IF EXISTS users_last_seen_privacy_check
+    `
+    await sql`
+      ALTER TABLE users
+      ADD CONSTRAINT users_last_seen_privacy_check
+      CHECK (last_seen_privacy IN ('everyone', 'contacts', 'nobody'))
+    `
   } catch {
     // best-effort for environments without a running local DB
   } finally {

@@ -8,6 +8,7 @@ import { create } from 'zustand'
 
 export type InboundLinkRequest = {
   peerId: string
+  chatId?: string
   peerUsername?: string
   isVideo?: boolean
   offer?: RTCSessionDescriptionInit | null

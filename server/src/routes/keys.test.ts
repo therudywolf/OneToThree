@@ -102,4 +102,52 @@ describe('keys routes', () => {
         .where(and(eq(users.id, target.id)))
     }
   })
+
+  it('treats same-generation identity publish with identical keys as idempotent', async () => {
+    if (!dbAvailable) return
+    const user = await createUser(`keys-idem-${Date.now().toString(36)}`)
+    const token = await app!.jwt.sign({ sub: user.id, username: user.username, jti: randomUUID() })
+    const cookie = `fm_session=${token}`
+    const body = {
+      signing_public_key: 'A'.repeat(43),
+      exchange_public_key: 'B'.repeat(43),
+      generation: 1,
+    }
+
+    try {
+      await request(app!.server)
+        .post('/api/keys/identity')
+        .set('Cookie', cookie)
+        .send(body)
+        .expect(200)
+
+      const repeated = await request(app!.server)
+        .post('/api/keys/identity')
+        .set('Cookie', cookie)
+        .send(body)
+        .expect(200)
+
+      expect(repeated.body.ok).toBe(true)
+      expect(repeated.body.unchanged).toBe(true)
+
+      const rows = await db
+        .select({
+          generation: identityKeys.generation,
+          signingPublicKey: identityKeys.signingPublicKey,
+          exchangePublicKey: identityKeys.exchangePublicKey,
+        })
+        .from(identityKeys)
+        .where(eq(identityKeys.userId, user.id))
+
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toEqual({
+        generation: 1,
+        signingPublicKey: body.signing_public_key,
+        exchangePublicKey: body.exchange_public_key,
+      })
+    } finally {
+      await db.delete(identityKeys).where(eq(identityKeys.userId, user.id))
+      await db.delete(users).where(eq(users.id, user.id))
+    }
+  })
 })

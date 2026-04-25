@@ -18,7 +18,7 @@
  *   - `GET /keys/bundle/:userId` pops an OPK atomically inside a tx and
  *     returns it in a single response. The response MUST NOT be cacheable.
  */
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { desc, eq, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -71,11 +71,23 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       .where(eq(identityKeys.userId, u.id))
       .limit(1)
 
-    if (existing && body.data.generation <= existing.generation) {
+    if (existing && body.data.generation < existing.generation) {
       return reply.status(409).send({
         error: 'IDENTITY_STALE_GENERATION',
         current: existing.generation,
       })
+    }
+    if (existing && body.data.generation === existing.generation) {
+      const unchanged =
+        existing.signingPublicKey === body.data.signing_public_key &&
+        existing.exchangePublicKey === body.data.exchange_public_key
+      if (!unchanged) {
+        return reply.status(409).send({
+          error: 'IDENTITY_STALE_GENERATION',
+          current: existing.generation,
+        })
+      }
+      return reply.send({ ok: true, unchanged: true })
     }
 
     await db
@@ -213,24 +225,33 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
           .limit(1)
         if (!spk) return { identity, spk: null, opk: null }
 
-        const [opk] = await tx
-          .select()
-          .from(oneTimePrekeys)
-          .where(eq(oneTimePrekeys.userId, req.params.userId))
-          .orderBy(asc(oneTimePrekeys.preKeyId))
-          .limit(1)
-        if (opk) {
-          await tx
-            .delete(oneTimePrekeys)
-            .where(
-              and(
-                eq(oneTimePrekeys.userId, req.params.userId),
-                eq(oneTimePrekeys.preKeyId, opk.preKeyId)
-              )
-            )
-        }
+        const popped = await tx.execute(
+          sql<{ preKeyId: number; publicKey: string }>`
+          DELETE FROM onetime_prekeys
+          WHERE (user_id, pre_key_id) IN (
+            SELECT user_id, pre_key_id
+            FROM onetime_prekeys
+            WHERE user_id = ${req.params.userId}
+            ORDER BY pre_key_id ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+          )
+          RETURNING
+            pre_key_id AS "preKeyId",
+            public_key AS "publicKey"
+        `)
+        const [opkRow] = popped
 
-        return { identity, spk, opk: opk ?? null }
+        return {
+          identity,
+          spk,
+          opk: opkRow
+            ? {
+                preKeyId: opkRow.preKeyId,
+                publicKey: opkRow.publicKey,
+              }
+            : null,
+        }
       })
 
       if (!bundle) return reply.status(404).send({ error: 'NO_IDENTITY' })

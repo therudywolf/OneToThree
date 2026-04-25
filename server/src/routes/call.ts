@@ -17,8 +17,11 @@
  * messenger usable when LiveKit is not yet deployed.
  */
 import { createHmac, randomUUID } from 'node:crypto'
+import { and, eq } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
+import { db } from '../db/index.js'
+import { chatMembers } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { readSecret } from '../lib/read-secret.js'
 import { getRedis } from '../lib/redis.js'
@@ -56,6 +59,11 @@ function signLivekitToken(
 
 const callSessionFallback = new Map<string, string>()
 
+function resolveAuthorizedRoomId(room: string): string | null {
+  const candidate = room.includes(':') ? room.slice(room.lastIndexOf(':') + 1) : room
+  return z.string().uuid().safeParse(candidate).success ? candidate : null
+}
+
 export const callRoutes: FastifyPluginAsync = async (app) => {
   app.post('/call/token', async (req, reply) => {
     const u = await getAuthUser(req, reply)
@@ -64,6 +72,19 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
     const parsed = tokenBodySchema.safeParse(req.body)
     if (!parsed.success) {
       return reply.status(400).send({ error: 'BAD_BODY' })
+    }
+
+    const roomId = resolveAuthorizedRoomId(parsed.data.room)
+    if (!roomId) {
+      return reply.status(400).send({ error: 'ROOM_NOT_AUTHORIZABLE' })
+    }
+    const [membership] = await db
+      .select({ chatId: chatMembers.chatId })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, roomId), eq(chatMembers.userId, u.id)))
+      .limit(1)
+    if (!membership) {
+      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
     }
 
     const apiKey = readSecret('LIVEKIT_API_KEY')
@@ -84,9 +105,9 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       sub: u.id,
       nbf: now - 5,
       exp: now + ttlSeconds,
-      jti: `${u.id}.${parsed.data.room}.${now}`,
+      jti: `${u.id}.${roomId}.${now}`,
       video: {
-        room: parsed.data.room,
+        room: roomId,
         roomJoin: true,
         canPublish: parsed.data.can_publish,
         canSubscribe: parsed.data.can_subscribe,
@@ -98,7 +119,7 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
     // The session UUID is stored in Redis with a TTL so each call activation
     // gets a fresh key (forward secrecy: former participants cannot decrypt
     // future calls in the same room).
-    const redisKey = `call:session:${parsed.data.room}`
+    const redisKey = `call:session:${roomId}`
     const redis = getRedis()
     const CALL_SESSION_TTL = 60 * 60 * 8 // 8 hours
     let callSessionId: string
@@ -112,21 +133,21 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       }
     } else {
       // No Redis — fall back to a per-process map (single-node dev only)
-      callSessionId = callSessionFallback.get(parsed.data.room) ?? (() => {
+      callSessionId = callSessionFallback.get(roomId) ?? (() => {
         const id = randomUUID()
-        callSessionFallback.set(parsed.data.room, id)
+        callSessionFallback.set(roomId, id)
         return id
       })()
     }
     const e2eeKey = createHmac('sha256', apiSecret)
-      .update(`e2ee:${parsed.data.room}:${callSessionId}`)
+      .update(`e2ee:${roomId}:${callSessionId}`)
       .digest('base64')
 
     reply.header('Cache-Control', 'no-store')
     return reply.send({
       token,
       url: livekitUrl,
-      room: parsed.data.room,
+      room: roomId,
       ttl_seconds: ttlSeconds,
       call_e2ee_key: e2eeKey,
     })

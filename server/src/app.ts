@@ -108,6 +108,31 @@ export async function buildApp() {
     process.env.CORS_ORIGIN?.split(',')
       .map((o) => o.trim())
       .filter(Boolean) ?? []
+  const corsOriginsValid = corsOriginsRaw.filter(
+    (raw) => normalizeMobileOrigin(raw) !== null
+  )
+  const invalidCorsOrigins = corsOriginsRaw.filter(
+    (raw) => normalizeMobileOrigin(raw) === null
+  )
+  if (invalidCorsOrigins.length > 0) {
+    process.stderr.write(
+      `${JSON.stringify({
+        level: 'warn',
+        msg: 'CORS_ORIGIN: ignoring entries that are not valid origin URLs (need scheme, e.g. https://app.example.com)',
+        dropped: invalidCorsOrigins,
+      })}\n`
+    )
+  }
+  if (
+    process.env.NODE_ENV === 'production' &&
+    corsOriginsRaw.length > 0 &&
+    corsOriginsValid.length === 0
+  ) {
+    throw new Error(
+      `CORS_ORIGIN has no valid origins after parsing — fix or remove invalid entries. Raw: ${corsOriginsRaw.join(', ')}`
+    )
+  }
+
   const allowMobileCors =
     (process.env.CORS_ALLOW_MOBILE_APP ?? '1').trim() !== '0'
   const mobileCorsOrigins = allowMobileCors
@@ -115,22 +140,13 @@ export async function buildApp() {
     : []
   const corsOriginsList = Array.from(
     new Set(
-      [...corsOriginsRaw, ...mobileCorsOrigins]
+      [...corsOriginsValid, ...mobileCorsOrigins]
         .map((o) => normalizeMobileOrigin(o))
         .filter((o): o is string => !!o)
     )
   )
 
-  const invalidCorsOrigins = corsOriginsRaw.filter(
-    (raw) => normalizeMobileOrigin(raw) === null
-  )
-  if (invalidCorsOrigins.length > 0) {
-    throw new Error(
-      `CORS_ORIGIN contains invalid origin URL(s) — each entry must be a full URL with scheme (e.g. https://app.example.com), not a bare hostname. Invalid: ${invalidCorsOrigins.join(', ')}`
-    )
-  }
-
-  const corsOrigins = corsOriginsRaw.length > 0 ? corsOriginsList : true
+  const corsOrigins = corsOriginsValid.length > 0 ? corsOriginsList : true
   const apiOrigin = normalizeHttpOrigin(process.env.NEXT_PUBLIC_API_URL)
   const storageOrigin = normalizeHttpOrigin(process.env.MINIO_PUBLIC_URL)
   const connectSrc = new Set<string>(["'self'", 'wss:', 'https:', 'https://cdn.jsdelivr.net/npm/'])

@@ -410,7 +410,13 @@ case "$CMD" in
     "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
 
     log "Пересборка и запуск только затронутых сервисов: ${UPDATE_SERVICES[*]}"
-    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans "${UPDATE_SERVICES[@]}"
+    if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans "${UPDATE_SERVICES[@]}"; then
+      err "docker compose up не удался (см. выше)."
+      sep
+      log "Последние строки логов API (диагностика):"
+      "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs api --tail 150 2>&1 || true
+      exit 1
+    fi
 
     log "Проверяю состояние сервисов после обновления..."
     if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >/dev/null 2>&1; then
@@ -1012,7 +1018,13 @@ if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps --quiet 2>/dev/null
   FIRST_RUN=true
 fi
 
-"${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans
+if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans; then
+  err "docker compose up не удался (см. выше)."
+  sep
+  log "Последние строки логов API (диагностика):"
+  "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs api --tail 150 2>&1 || true
+  exit 1
+fi
 
 # =============================================================================
 # ОЖИДАНИЕ ГОТОВНОСТИ

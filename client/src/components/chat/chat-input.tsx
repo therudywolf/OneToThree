@@ -20,6 +20,7 @@ import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 import type { GifHit } from '@/lib/api/gif'
+import { buildGifProxyUrl } from '@/lib/api/gif'
 import { useThemeStore } from '@/store/themeStore'
 import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 
@@ -294,7 +295,9 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   }
 
   const sendGif = useCallback(async (gif: GifHit) => {
-    const response = await fetch(gif.originalUrl)
+    const response = await fetch(buildGifProxyUrl(gif.originalUrl), {
+      credentials: 'include',
+    })
     if (!response.ok) {
       throw new Error(`GIF_FETCH_${response.status}`)
     }

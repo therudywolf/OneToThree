@@ -9,7 +9,7 @@
 
 import { API_URL } from '@/lib/api/auth'
 import type { SendChatMessageBody } from '@/lib/api/messages'
-import { buildDrFanoutSlots, buildFanoutSlots } from './fanout-crypto'
+import { buildDrFanoutSlots, buildFanoutSlotsDetailed } from './fanout-crypto'
 import { getClientDeviceId } from './client-device'
 import { enqueueOutbox, registerOutboxSync } from './outbox'
 import type { ApiMessageRow } from './decrypt-chat-api-message'
@@ -35,8 +35,13 @@ export type SendMessageOptions = {
 }
 
 export type SendResult =
-  | { ok: true; message: ApiMessageRow }
+  | { ok: true; message: ApiMessageRow; partialDelivery?: PartialDeliveryWarning }
   | { ok: false; error: string }
+
+export type PartialDeliveryWarning = {
+  failedDeviceIds: string[]
+  attemptedDeviceIds: string[]
+}
 
 export type SendChatMessageTransportInput = {
   chat_id: string
@@ -63,6 +68,7 @@ export type SendChatMessageTransportResult = {
   via: 'REST' | 'QUEUED'
   serverMessage?: ApiMessageRow
   outboxId?: string
+  partialDelivery?: PartialDeliveryWarning
 }
 
 /**
@@ -79,25 +85,32 @@ export async function sendMessageRest(opts: SendMessageOptions): Promise<SendRes
     media_original_bytes: opts.mediaOriginalBytes,
     burn_at: opts.burnAt ?? null,
   }
+  let partialDelivery: PartialDeliveryWarning | undefined
 
   if (opts.mode === 'fanout') {
     if (!opts.senderPrivateKey || !opts.myUserId || !opts.peerUserId) {
       return { ok: false, error: 'FANOUT_MISSING_KEYS' }
     }
     const excludeDeviceId = getClientDeviceId() ?? undefined
-    const ciphertexts = await buildFanoutSlots(
+    const fanout = await buildFanoutSlotsDetailed(
       opts.senderPrivateKey,
       opts.myUserId,
       opts.peerUserId,
       opts.plaintext,
       excludeDeviceId
     )
-    if (ciphertexts.length === 0) {
+    if (fanout.failedDeviceIds.length > 0) {
+      partialDelivery = {
+        failedDeviceIds: fanout.failedDeviceIds,
+        attemptedDeviceIds: fanout.attemptedDeviceIds,
+      }
+    }
+    if (fanout.slots.length === 0) {
       // Device registry unavailable or empty: keep a single-ciphertext fallback
       body.content = opts.content ?? null
       body.iv = opts.iv ?? null
     } else {
-      body.ciphertexts = ciphertexts
+      body.ciphertexts = fanout.slots
     }
   } else {
     // Legacy mode: group_e2e or public_open
@@ -117,7 +130,7 @@ export async function sendMessageRest(opts: SendMessageOptions): Promise<SendRes
       return { ok: false, error: err.error ?? 'SEND_FAILED' }
     }
     const data = (await res.json()) as { message: ApiMessageRow }
-    return { ok: true, message: data.message }
+    return { ok: true, message: data.message, partialDelivery }
   } catch {
     return { ok: false, error: 'NETWORK_ERROR' }
   }
@@ -160,6 +173,7 @@ export async function sendChatMessageOverTransport(
     media_original_bytes: input.media_original_bytes,
     burn_at: input.burn_at ?? null,
   }
+  let partialDelivery: PartialDeliveryWarning | undefined
 
   if (input.transport_mode === 'DIRECT') {
     if (!input.my_user_id || !input.peer_user_id) {
@@ -185,15 +199,21 @@ export async function sendChatMessageOverTransport(
       if (!input.plaintext?.length) throw new Error('DIRECT_PLAINTEXT_REQUIRED')
       if (!input.sender_private_key) throw new Error('DIRECT_FANOUT_KEYS_REQUIRED')
       const excludeDeviceId = getClientDeviceId() ?? undefined
-      const ciphertexts = await buildFanoutSlots(
+      const fanout = await buildFanoutSlotsDetailed(
         input.sender_private_key,
         input.my_user_id,
         input.peer_user_id,
         input.plaintext,
         excludeDeviceId
       )
-      if (ciphertexts.length === 0) throw new Error('DIRECT_FANOUT_UNAVAILABLE')
-      body.ciphertexts = ciphertexts
+      if (fanout.slots.length === 0) throw new Error('DIRECT_FANOUT_UNAVAILABLE')
+      if (fanout.failedDeviceIds.length > 0) {
+        partialDelivery = {
+          failedDeviceIds: fanout.failedDeviceIds,
+          attemptedDeviceIds: fanout.attemptedDeviceIds,
+        }
+      }
+      body.ciphertexts = fanout.slots
       body.content = null
       body.iv = null
     }
@@ -206,17 +226,23 @@ export async function sendChatMessageOverTransport(
       throw new Error('SELF_FANOUT_KEYS_REQUIRED')
     }
     const excludeDeviceId = getClientDeviceId() ?? undefined
-    const ciphertexts = await buildFanoutSlots(
+    const fanout = await buildFanoutSlotsDetailed(
       input.sender_private_key,
       input.my_user_id,
       input.my_user_id,
       input.plaintext,
       excludeDeviceId
     )
-    if (ciphertexts.length === 0) {
+    if (fanout.slots.length === 0) {
       throw new Error('SELF_FANOUT_UNAVAILABLE')
     }
-    body.ciphertexts = ciphertexts
+    if (fanout.failedDeviceIds.length > 0) {
+      partialDelivery = {
+        failedDeviceIds: fanout.failedDeviceIds,
+        attemptedDeviceIds: fanout.attemptedDeviceIds,
+      }
+    }
+    body.ciphertexts = fanout.slots
     body.content = null
     body.iv = null
   }
@@ -226,6 +252,7 @@ export async function sendChatMessageOverTransport(
     return {
       via: 'REST',
       serverMessage: sent.message,
+      partialDelivery,
     }
   }
 
@@ -234,7 +261,7 @@ export async function sendChatMessageOverTransport(
     void registerOutboxSync().catch(() => {
       /* best effort */
     })
-    return { via: 'QUEUED', outboxId }
+    return { via: 'QUEUED', outboxId, partialDelivery }
   }
 
   throw new Error(sent.error)

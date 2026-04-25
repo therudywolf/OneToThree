@@ -1,5 +1,5 @@
 # OneToThree Full Product Audit
-Date: 2026-04-24
+Date: 2026-04-25
 Scope: codebase-wide static audit + local verification of build, tests, security lint, dependency audit
 
 ## 1. Scope and coverage
@@ -32,13 +32,16 @@ This pass combined:
 
 - `npm run typecheck` — `PASS`
 - `npm run lint` — `PASS`
-- `npm run test:unit:client` — `PASS` (`16` files / `77` tests)
-- `npm run test:server` — `PASS` (`26` files / `71` tests)
+- `npm run test:unit:client` — `PASS` (`16` files / `78` tests)
+- `npm run test:server` — `PASS` (`27` files / `74` tests)
 - `npm run build` — `PASS`
 - `npm run build:client:export` — `PASS`
-- `npm run audit:security` — `FAIL`, `161` arbitrary-color violations
+- `npm run android:build:debug` — `PASS`
+- Debug APK built at `mobile/capacitor/android/app/build/outputs/apk/debug/app-debug.apk`
+- Debug APK SHA-256: `a84e01c526a1d37be0e1c34928339a83e32e334da3480118856122b3832e3a33`
+- `npm run audit:security` — `PASS`, `0` token/color violations
 - `client` non-dev `npm audit` — `0` known vulnerabilities
-- `server` non-dev `npm audit` — `12` vulnerabilities (`10 moderate`, `2 low`)
+- `server` non-dev `npm audit` — `10` vulnerabilities (`8 moderate`, `2 low`)
 
 Operational note:
 
@@ -69,17 +72,22 @@ The following older findings are no longer current based on code review and/or f
   - online listener cleanup was fixed in this pass.
 - `client/src/components/chat/chat-terminal.tsx`
   - delete actions now have explicit confirmation UX.
+- `client/src/components/chat/chat-input.tsx`, `client/src/lib/api/gif.ts`, `server/src/routes/gif.ts`
+  - GIF send path no longer depends on browser direct-fetch to third-party origins; fallback GIFs can now be proxied and sent through the authenticated API path.
+- `client/src/components/chat/composer-picker-panel.tsx`
+  - sticky degraded GIF banner was removed when fallback GIFs are still usable.
+- `client/src/app/globals.css`
+  - collapsed desktop sidebar now truly shrinks below the old `15rem` floor.
+- `mobile/capacitor/package.json`
+  - Android debug build script now works in Linux/WSL instead of assuming `gradlew.bat`.
 
 ## 4. Current open findings
 
 ### Critical / high
 
 - `server/src/lib/totp-crypto.ts`
-  - TOTP secret encryption is implemented, but if `TOTP_WRAP_KEY` is missing the code still falls back to plaintext storage.
-  - Risk class: production configuration weakness with direct 2FA compromise potential.
-- `client/src/lib/fanout-crypto.ts`
-  - partial per-device fan-out encryption failures still only warn in logs.
-  - Result: sender can believe a direct message succeeded while one or more recipient devices remain undecryptable.
+  - new production boot now hard-fails without `TOTP_WRAP_KEY`, and production writes no longer fall back to plaintext.
+  - residual risk is historical: legacy plaintext TOTP rows, if any were written before this change, still need migration / rotation review.
 - `client/src/hooks/use-webrtc.ts`, `client/src/lib/call-audio-relay.ts`, `server/src/routes/ws.ts`
   - 1:1 encrypted audio relay fallback exists and improves survivability without TURN, but group/video hard NAT coverage is still incomplete.
   - Risk class: functionality/reliability, not cryptographic break.
@@ -95,11 +103,11 @@ The following older findings are no longer current based on code review and/or f
 - `client/src/components/chat/composer-picker-panel.tsx`
 - `client/src/components/chat/create-group-modal.tsx`
 - `client/src/components/chat/message-actions.tsx`
-  - These files dominate the current `audit:security` output and still carry hardcoded colors / theme drift.
-  - Risk class: UI inconsistency, poor theme completeness, maintainability drag.
+  - These files were cleaned up enough to make `audit:security` green.
+  - Remaining risk is behavioral and parity polish, not token drift.
 
 - `server` dependency tree
-  - `npm audit` reports `12` non-dev vulnerabilities:
+  - `npm audit` reports `10` non-dev vulnerabilities:
     - `firebase-admin`
     - `@google-cloud/firestore`
     - `@google-cloud/storage`
@@ -108,10 +116,12 @@ The following older findings are no longer current based on code review and/or f
     - `retry-request`
     - `teeny-request`
     - `uuid`
-    - `fast-xml-parser`
-    - `@aws-sdk/xml-builder`
     - plus low-severity transitive `http-proxy-agent` and `@tootallnate/once`
   - Risk class: dependency hygiene / future patch requirement.
+
+- `client/src/lib/fanout-crypto.ts`, `client/src/lib/chat-message-transport.ts`, `client/src/hooks/use-send-message.ts`, `client/src/hooks/use-send-media.ts`
+  - partial per-device fan-out delivery is now surfaced to the sender with warning toasts, but there is still no guided recovery flow beyond that warning.
+  - Risk class: medium; sender awareness is fixed, remediation UX is still thin.
 
 ### Medium / operational
 
@@ -172,6 +182,7 @@ Strong areas:
 - core build/test pipeline is green,
 - server integration coverage is materially healthier,
 - client unit harness is stable again,
+- Android debug APK builds successfully in the current environment,
 - STUN-only + encrypted 1:1 audio relay gives a viable no-TURN fallback for basic voice.
 
 Weak areas still open:
@@ -183,8 +194,9 @@ Weak areas still open:
 
 ## 8. Recommended next actions
 
-1. Finish theme/token cleanup in the files leading `audit:security`.
-2. Run real-device Android regression matrix end-to-end.
-3. Run real network validation of 1:1 encrypted audio relay over multiple routes.
-4. Upgrade or constrain the `server` dependency subtree flagged by `npm audit`.
-5. Decide whether missing `TOTP_WRAP_KEY` should hard-fail in production instead of silently degrading.
+1. Run real-device Android regression matrix end-to-end.
+2. Run real network validation of 1:1 encrypted audio relay over multiple routes.
+3. Upgrade or constrain the remaining `server` dependency subtree flagged by `npm audit`.
+4. Review and migrate any legacy plaintext TOTP rows created before the new fail-closed rule.
+5. Continue Telegram Desktop / iOS parity polish on calls, settings, and mobile gestures.
+6. Keep claims honest using `docs/CALLS_AND_CRYPTO_AUDIT_2026-04-24.md` as the source of truth for call-security wording.

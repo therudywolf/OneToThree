@@ -14,9 +14,10 @@ import {
 } from '@/lib/decrypt-chat-api-message'
 import { cacheMessage } from '@/lib/message-cache'
 import { vibrateShort } from '@/lib/vibrate'
+import { useTranslation } from '@/hooks/use-translation'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
-import { toastError } from '@/store/toastStore'
+import { toastError, toastWarn } from '@/store/toastStore'
 import type { DecryptedMessage } from '@/types/chat'
 
 /**
@@ -29,6 +30,7 @@ export function useSendMessage(
   cryptoCtx: ChatCryptoContext | null,
   directPeerUserId: string | null
 ) {
+  const { t } = useTranslation()
   const activeChatId = useSessionStore(s => s.activeChatId)
   const userId = useSessionStore(s => s.userId)
   const unwrappedPrivateKey = useSessionStore(s => s.unwrappedPrivateKey)
@@ -123,6 +125,12 @@ export function useSendMessage(
         via = result.via
         serverMessage = result.serverMessage
         outboxId = result.outboxId
+        if (result.partialDelivery && result.partialDelivery.failedDeviceIds.length > 0) {
+          toastWarn(
+            `${t('chat.partialDeliveryWarning')} (${result.partialDelivery.failedDeviceIds.length}/${result.partialDelivery.attemptedDeviceIds.length})`,
+            { title: t('chat.partialDeliveryTitle'), ttlMs: 7000 }
+          )
+        }
       } catch (err) {
         toastError(explainSendError(err), { title: 'SEND FAILED' })
         return
@@ -189,6 +197,7 @@ export function useSendMessage(
       directPeerUserId,
       cryptoCtx,
       appendMessage,
+      t,
     ]
   )
 

@@ -235,6 +235,9 @@ const en = {
   'chat.contextReply': 'Reply',
   'chat.contextDeleteMe': 'Delete for Me',
   'chat.contextDeleteEveryone': 'Delete for Everyone',
+  'chat.partialDeliveryTitle': 'Delivery',
+  'chat.partialDeliveryWarning':
+    'Some linked devices did not receive this message. History may stay incomplete on those devices until they refresh their keys.',
   'chat.emptyTitle': 'Select a chat',
   'chat.emptySubtitle': 'Choose a chat from the list',
   'chat.noLogsTitle': 'No Messages',

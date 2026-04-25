@@ -235,6 +235,9 @@ const ru = {
   'chat.contextReply': 'Ответить',
   'chat.contextDeleteMe': 'Удалить у меня',
   'chat.contextDeleteEveryone': 'Удалить у всех',
+  'chat.partialDeliveryTitle': 'Доставка',
+  'chat.partialDeliveryWarning':
+    'Не все привязанные устройства получили это сообщение. На этих устройствах история может быть неполной, пока они не обновят свои ключи.',
   'chat.emptyTitle': 'Выберите чат',
   'chat.emptySubtitle': 'Выберите чат из списка слева',
   'chat.noLogsTitle': 'Нет сообщений',

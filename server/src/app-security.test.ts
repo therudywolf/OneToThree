@@ -6,12 +6,14 @@ const originalNodeEnv = process.env.NODE_ENV
 const originalCorsOrigin = process.env.CORS_ORIGIN
 const originalRedisUrl = process.env.REDIS_URL
 const originalJwtSecret = process.env.JWT_SECRET
+const originalTotpWrapKey = process.env.TOTP_WRAP_KEY
 
 afterEach(() => {
   process.env.NODE_ENV = originalNodeEnv
   process.env.CORS_ORIGIN = originalCorsOrigin
   process.env.REDIS_URL = originalRedisUrl
   process.env.JWT_SECRET = originalJwtSecret
+  process.env.TOTP_WRAP_KEY = originalTotpWrapKey
 })
 
 describe('app security contracts', () => {
@@ -40,6 +42,17 @@ describe('app security contracts', () => {
 
     expect(() => assertProdSecurityEnv()).toThrow(
       /REDIS_URL must be set in production/
+    )
+  })
+
+  it('requires TOTP_WRAP_KEY in production mode', () => {
+    process.env.NODE_ENV = 'production'
+    process.env.CORS_ORIGIN = 'https://example.com'
+    process.env.REDIS_URL = 'redis://localhost:6379'
+    delete process.env.TOTP_WRAP_KEY
+
+    expect(() => assertProdSecurityEnv()).toThrow(
+      /TOTP_WRAP_KEY must be set in production/
     )
   })
 })

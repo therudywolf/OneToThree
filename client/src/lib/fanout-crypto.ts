@@ -55,16 +55,22 @@ export type FanoutSlot = {
   iv: string
 }
 
+export type FanoutBuildResult = {
+  slots: FanoutSlot[]
+  failedDeviceIds: string[]
+  attemptedDeviceIds: string[]
+}
+
 /**
  * Encrypt `plaintext` for every device in `targetDevices`.
  * Uses ECDH(senderPrivateKey, deviceEcdhPublicKey) → AES-GCM.
  * Returns array of { device_id, ciphertext, iv } ready for POST /messages/send.
  */
-export async function encryptFanout(
+export async function encryptFanoutDetailed(
   senderPrivateKey: CryptoKey,
   targetDevices: DeviceSlot[],
   plaintext: string
-): Promise<FanoutSlot[]> {
+): Promise<FanoutBuildResult> {
   const results = await Promise.allSettled(
     targetDevices.map(async (dev) => {
       const peerPub = await importEcdhPublicKey(dev.ecdh_public_key)
@@ -83,10 +89,23 @@ export async function encryptFanout(
   const slots = results
     .filter((r): r is PromiseFulfilledResult<FanoutSlot> => r.status === 'fulfilled')
     .map((r) => r.value)
+  const failedDeviceIds = failed.map(({ dev }) => dev.device_id)
   if (slots.length === 0 && targetDevices.length > 0) {
     throw new Error('FANOUT_ALL_SLOTS_FAILED')
   }
-  return slots
+  return {
+    slots,
+    failedDeviceIds,
+    attemptedDeviceIds: targetDevices.map((dev) => dev.device_id),
+  }
+}
+
+export async function encryptFanout(
+  senderPrivateKey: CryptoKey,
+  targetDevices: DeviceSlot[],
+  plaintext: string
+): Promise<FanoutSlot[]> {
+  return (await encryptFanoutDetailed(senderPrivateKey, targetDevices, plaintext)).slots
 }
 
 /**
@@ -109,13 +128,13 @@ function dedupeDevicesById(devices: DeviceSlot[]): DeviceSlot[] {
  * `myUserId` and `peerUserId` are the two participants.
  * `excludeDeviceId` is kept for backward compatibility and ignored.
  */
-export async function buildFanoutSlots(
+export async function buildFanoutSlotsDetailed(
   senderPrivateKey: CryptoKey,
   myUserId: string,
   peerUserId: string,
   plaintext: string,
   _excludeDeviceId?: string
-): Promise<FanoutSlot[]> {
+): Promise<FanoutBuildResult> {
   const [myDevices, peerDevices] = await Promise.all([
     fetchUserDevices(myUserId),
     fetchUserDevices(peerUserId),
@@ -127,8 +146,28 @@ export async function buildFanoutSlots(
     ...myDevices,
   ])
 
-  if (allDevices.length === 0) return []
-  return encryptFanout(senderPrivateKey, allDevices, plaintext)
+  if (allDevices.length === 0) {
+    return { slots: [], failedDeviceIds: [], attemptedDeviceIds: [] }
+  }
+  return encryptFanoutDetailed(senderPrivateKey, allDevices, plaintext)
+}
+
+export async function buildFanoutSlots(
+  senderPrivateKey: CryptoKey,
+  myUserId: string,
+  peerUserId: string,
+  plaintext: string,
+  _excludeDeviceId?: string
+): Promise<FanoutSlot[]> {
+  return (
+    await buildFanoutSlotsDetailed(
+      senderPrivateKey,
+      myUserId,
+      peerUserId,
+      plaintext,
+      _excludeDeviceId
+    )
+  ).slots
 }
 
 /** Sentinel IV that marks a device slot as carrying a DR v2 ciphertext. */

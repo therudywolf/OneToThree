@@ -41,7 +41,7 @@ import { ForwardModal } from '@/components/chat/forward-modal'
 import { ThreadPanel } from '@/components/chat/thread-panel'
 import { cloneStickerPack } from '@/lib/api/stickers'
 import { addGifFavorite, type GifHit } from '@/lib/api/gif'
-import { toastError, toastSuccess } from '@/store/toastStore'
+import { toastError, toastSuccess, toastWarn } from '@/store/toastStore'
 import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 import { explainStickerError } from '@/lib/sticker-errors'
 
@@ -645,7 +645,7 @@ export function ChatTerminal({
         meta.ctx
       )
 
-      await sendChatMessageOverTransport({
+      const result = await sendChatMessageOverTransport({
         chat_id: chatId,
         transport_mode: meta.ctx.mode,
         plaintext: text,
@@ -656,8 +656,14 @@ export function ChatTerminal({
         iv,
         reply_to_id: null,
       })
+      if (result.partialDelivery && result.partialDelivery.failedDeviceIds.length > 0) {
+        toastWarn(
+          `${t('chat.partialDeliveryWarning')} (${result.partialDelivery.failedDeviceIds.length}/${result.partialDelivery.attemptedDeviceIds.length})`,
+          { title: t('chat.partialDeliveryTitle'), ttlMs: 7000 }
+        )
+      }
     },
-    [userId, privateKeyForForward]
+    [userId, privateKeyForForward, t]
   )
 
   const handleToggleReaction = useCallback(

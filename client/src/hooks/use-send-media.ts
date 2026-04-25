@@ -22,7 +22,8 @@ import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { vibrateShort } from '@/lib/vibrate'
 import { explainSendError } from '@/lib/explain-send-error'
-import { toastError } from '@/store/toastStore'
+import { useTranslation } from '@/hooks/use-translation'
+import { toastError, toastWarn } from '@/store/toastStore'
 import type { DecryptedMessage } from '@/types/chat'
 
 /**
@@ -239,6 +240,7 @@ export function useSendMedia(
   cryptoCtx: ChatCryptoContext | null,
   directPeerUserId: string | null
 ) {
+  const { t } = useTranslation()
   const activeChatId = useSessionStore(s => s.activeChatId)
   const userId = useSessionStore(s => s.userId)
   const unwrappedPrivateKey = useSessionStore(s => s.unwrappedPrivateKey)
@@ -295,7 +297,7 @@ export function useSendMedia(
         })
         await injectWithRetry(uploadUrl, prepared.mimeType, prepared.uploadPayload)
 
-        const { via, serverMessage, outboxId } = await sendChatMessageOverTransport({
+        const result = await sendChatMessageOverTransport({
           chat_id: ctx.activeChatId,
           transport_mode: ctx.cryptoCtx.mode,
           plaintext: transportPlaintext,
@@ -309,6 +311,13 @@ export function useSendMedia(
           media_iv: prepared.mediaIvB64,
           media_original_bytes: prepared.workSize,
         })
+        const { via, serverMessage, outboxId, partialDelivery } = result
+        if (partialDelivery && partialDelivery.failedDeviceIds.length > 0) {
+          toastWarn(
+            `${t('chat.partialDeliveryWarning')} (${partialDelivery.failedDeviceIds.length}/${partialDelivery.attemptedDeviceIds.length})`,
+            { title: t('chat.partialDeliveryTitle'), ttlMs: 7000 }
+          )
+        }
 
         if (via === 'REST' && serverMessage) {
           const decrypted = await decryptApiMessageRow(ctx.unwrappedPrivateKey, ctx.cryptoCtx, serverMessage)
@@ -346,7 +355,7 @@ export function useSendMedia(
         throw err
       }
     },
-    [activeChatId, userId, unwrappedPrivateKey, directPeerUserId, cryptoCtx, appendMessage]
+    [activeChatId, userId, unwrappedPrivateKey, directPeerUserId, cryptoCtx, appendMessage, t]
   )
 
   /**
@@ -432,7 +441,7 @@ export function useSendMedia(
         // Album uses the first item's path/iv as primary media_* fields so the
         // server/legacy clients still see a valid media reference.
         const first = uploaded[0]
-        const { via, serverMessage, outboxId } = await sendChatMessageOverTransport({
+        const result = await sendChatMessageOverTransport({
           chat_id: ctx.activeChatId,
           transport_mode: ctx.cryptoCtx.mode,
           plaintext: transportPlaintext,
@@ -446,6 +455,13 @@ export function useSendMedia(
           media_iv: first.mediaIvB64,
           media_original_bytes: first.workSize,
         })
+        const { via, serverMessage, outboxId, partialDelivery } = result
+        if (partialDelivery && partialDelivery.failedDeviceIds.length > 0) {
+          toastWarn(
+            `${t('chat.partialDeliveryWarning')} (${partialDelivery.failedDeviceIds.length}/${partialDelivery.attemptedDeviceIds.length})`,
+            { title: t('chat.partialDeliveryTitle'), ttlMs: 7000 }
+          )
+        }
 
         if (via === 'REST' && serverMessage) {
           const decrypted = await decryptApiMessageRow(ctx.unwrappedPrivateKey, ctx.cryptoCtx, serverMessage)
@@ -483,7 +499,7 @@ export function useSendMedia(
         throw err
       }
     },
-    [activeChatId, userId, unwrappedPrivateKey, directPeerUserId, cryptoCtx, appendMessage, transmitBinary]
+    [activeChatId, userId, unwrappedPrivateKey, directPeerUserId, cryptoCtx, appendMessage, t, transmitBinary]
   )
 
   return { transmitBinary, sendMedia: transmitBinary, transmitAlbum, sendAlbum: transmitAlbum }

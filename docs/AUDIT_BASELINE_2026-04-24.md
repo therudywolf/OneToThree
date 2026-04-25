@@ -1,5 +1,5 @@
 # OneToThree Audit Baseline
-Date: 2026-04-24
+Date: 2026-04-25
 Scope: UI, UX, security, performance, errors
 Source of truth: current repo state, local static checks, existing runtime audit docs
 
@@ -10,11 +10,11 @@ Source of truth: current repo state, local static checks, existing runtime audit
 - `npm run build`: `PASS`
 - `npm run build:client:export`: `PASS`
 - `npm run test:unit:client`: `PASS`
-  - `16` files, `77` tests green after safe persist storage for zustand stores and native-session coverage.
+  - `16` files, `78` tests green after safe persist storage for zustand stores, native-session coverage, and partial fan-out transport warnings.
 - `npm run test:server`: `PASS`
-  - `26` files, `71` tests green after test DB bootstrap now auto-aligns missing compatibility columns and `/api/ice-servers` now has explicit stun-only coverage.
-- `npm run audit:security`: `FAIL`
-  - `161` violations, still dominated by retro/call/admin hardcoded colors and theme drift, but reduced further after picker/menu cleanup.
+  - `27` files, `74` tests green after test DB bootstrap now auto-aligns missing compatibility columns, `/api/ice-servers` has explicit stun-only coverage, and TOTP wrap-key production contracts are enforced.
+- `npm run audit:security`: `PASS`
+  - `0` violations after retro/call/admin/auth/onboarding surfaces were moved to named classic classes and runtime theme tokens.
 
 ## Backlog
 
@@ -22,8 +22,8 @@ Source of truth: current repo state, local static checks, existing runtime audit
 
 | Area | Status | Severity | Evidence | Owner |
 |---|---|---:|---|---|
-| Theme consistency across surfaces | reproduced | high | `audit:security` still reports 161 token/color violations; legacy `[data-theme]` CSS still overlaps runtime token applicator | client/ui |
-| Retro theme completeness | partially fixed | high | shared retro visual kit now covers auth/device-link/forward flows, but calls, admin, picker, and message action surfaces still hardcode colors | client/ui |
+| Theme consistency across surfaces | partially fixed | medium | token audit is now green, but legacy `[data-theme]` CSS still overlaps the runtime token applicator and needs structural cleanup rather than color cleanup | client/ui |
+| Retro theme completeness | partially fixed | medium | shared retro visual kit now covers auth, device-link, calls, admin, picker, message actions, and onboarding previews; remaining work is parity polish, not hardcoded-color cleanup | client/ui |
 | MD3 completeness | reproduced | high | runtime audit reports mixed terminal/md3 surfaces, especially settings/modals/pickers | client/ui |
 | Settings navigation and visual hierarchy | reproduced | high | `docs/RUNTIME_UI_UX_AUDIT_2026-04-23.md` items 13, 17, 24, 25 | client/ui |
 | Telegram Desktop / iOS parity | partially fixed | medium | desktop sidebar resize now uses pointer-based clamped drag with double-click collapse; mobile/modal surfaces improved in create-group and message actions, but full shell parity still incomplete | client/ui |
@@ -44,7 +44,7 @@ Source of truth: current repo state, local static checks, existing runtime audit
 
 | Area | Status | Severity | Evidence | Owner |
 |---|---|---:|---|---|
-| TOTP secret at rest | reproduced | critical | `AUDIT.md` item C1; schema and crypto audit already identify plaintext risk | server/security |
+| TOTP secret at rest | partially fixed | medium | new production boot now hard-fails without `TOTP_WRAP_KEY`, but legacy plaintext rows still require migration/rotation review | server/security |
 | Step-up protection coverage | reproduced | high | `AUDIT.md` item H2/M5 | server/auth |
 | SSRF redirect re-validation | reproduced | high | `AUDIT.md` item H5 | server/security |
 | Route membership/authorization hardening gaps | reproduced | high | `AUDIT.md` item H4 and prior review notes | server/api |
@@ -69,6 +69,7 @@ Source of truth: current repo state, local static checks, existing runtime audit
 | Docker/web clean build blocker | already fixed | critical | `native-session` no longer imports `@capacitor/core` at compile time; clean Next web build path is restored | client/auth |
 | GIF provider reliability | partially fixed | high | legacy public Giphy fallback removed and connect-src now allows provider media, but live send/render verification is still required | client/media |
 | Phone login reliability | partially fixed | high | Android-first auth UI and native cookie/session bridge landed, but cold-install/relaunch/two-device runtime replay on a real device is still pending | client/auth + android |
+| Partial device delivery visibility | partially fixed | medium | sender now gets a warning toast when per-device fan-out encryption fails for some linked devices, but there is still no recovery UI beyond the warning | client/chat |
 | Group/channel creation stability | reproduced | high | runtime audit critical item 5 | client/chat + server/chat |
 
 ## Current Execution Notes

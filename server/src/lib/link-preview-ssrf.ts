@@ -79,6 +79,13 @@ export type PinnedHttpResult = {
   dispose: () => void
 }
 
+export type PinnedHttpBinaryResult = {
+  statusCode: number
+  headers: http.IncomingHttpHeaders
+  bodyBuffer: () => Promise<Buffer>
+  dispose: () => void
+}
+
 /**
  * HTTP(S) GET with TLS SNI / Host set to `url.hostname`, TCP connected to `pinned`
  * so a second DNS lookup cannot rebind to a blocked address.
@@ -160,6 +167,84 @@ export function requestGetPinned(
   })
 }
 
+export function requestGetPinnedBinary(
+  url: URL,
+  pinned: { address: string; family: 4 | 6 },
+  signal: AbortSignal,
+  maxBytes: number
+): Promise<PinnedHttpBinaryResult> {
+  const isHttps = url.protocol === 'https:'
+  const defaultPort = isHttps ? 443 : 80
+  const port = url.port ? Number.parseInt(url.port, 10) : defaultPort
+  const path = `${url.pathname}${url.search}` || '/'
+  const hostHeader = url.host
+
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error('AbortError'))
+      return
+    }
+
+    const baseOpts: http.RequestOptions = {
+      agent: false,
+      hostname: pinned.address,
+      port,
+      method: 'GET',
+      path,
+      timeout: 5_000,
+      headers: {
+        Host: hostHeader,
+        'User-Agent': 'OneToThree-GifProxy/1.0',
+        Connection: 'close',
+      },
+    }
+
+    const req = isHttps
+      ? https.request(
+          {
+            ...baseOpts,
+            servername: url.hostname,
+            rejectUnauthorized: true,
+          },
+          (res) => {
+            cleanup()
+            resolve({
+              statusCode: res.statusCode ?? 0,
+              headers: res.headers,
+              bodyBuffer: () => readBodyLimitedBuffer(res, maxBytes, signal),
+              dispose: () => res.destroy(),
+            })
+          }
+        )
+      : http.request(baseOpts, (res) => {
+          cleanup()
+          resolve({
+            statusCode: res.statusCode ?? 0,
+            headers: res.headers,
+            bodyBuffer: () => readBodyLimitedBuffer(res, maxBytes, signal),
+            dispose: () => res.destroy(),
+          })
+        })
+
+    const cleanup = () => signal.removeEventListener('abort', onAbort)
+    const onAbort = () => {
+      cleanup()
+      req.destroy()
+      reject(new Error('AbortError'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+
+    req.on('error', (err) => {
+      cleanup()
+      reject(err)
+    })
+    req.on('timeout', () => {
+      req.destroy(new Error('TIMEOUT'))
+    })
+    req.end()
+  })
+}
+
 async function readBodyLimited(
   res: http.IncomingMessage,
   maxBytes: number,
@@ -175,4 +260,21 @@ async function readBodyLimited(
     chunks.push(buf)
   }
   return Buffer.concat(chunks).toString('utf8')
+}
+
+async function readBodyLimitedBuffer(
+  res: http.IncomingMessage,
+  maxBytes: number,
+  signal: AbortSignal
+): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  let total = 0
+  for await (const chunk of res) {
+    if (signal.aborted) throw new Error('AbortError')
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+    total += buf.length
+    if (total > maxBytes) throw new Error('BODY_TOO_LARGE')
+    chunks.push(buf)
+  }
+  return Buffer.concat(chunks)
 }

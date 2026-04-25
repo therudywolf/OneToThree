@@ -1,10 +1,11 @@
 # OneToThree Unfinished Work
-Date: 2026-04-24
+Date: 2026-04-25
 Status: open items after the current implementation and audit pass
 
 ## 1. Release blockers still open
 
 - Real Android runtime validation is still missing:
+  - debug APK is now built successfully at `mobile/capacitor/android/app/build/outputs/apk/debug/app-debug.apk`,
   - cold install,
   - relaunch with restored session,
   - QR add-device approval,
@@ -19,20 +20,17 @@ Status: open items after the current implementation and audit pass
   - `client/src/lib/call-audio-relay.ts`
   - `server/src/routes/ws.ts`
   - hard NAT video/group scenarios still benefit from proper TURN/SFU.
-- Theme/token debt remains the biggest visible frontend backlog:
-  - `npm run audit:security` still reports `161` arbitrary-color violations,
-  - main files: `client/src/app/admin/page.tsx`, `client/src/components/call/active-call-overlay.tsx`, `client/src/components/call/group-call-banner.tsx`, `client/src/components/call/incoming-call-modal.tsx`, `client/src/components/chat/composer-picker-panel.tsx`, `client/src/components/chat/create-group-modal.tsx`, `client/src/components/chat/message-actions.tsx`.
+- Theme/token debt is no longer a release blocker:
+  - `npm run audit:security` now reports `0` violations,
+  - remaining frontend backlog is parity polish, responsive behavior, and live runtime verification.
 
 ## 2. Security and reliability items still open
 
-- `server/src/lib/totp-crypto.ts`
-  - if `TOTP_WRAP_KEY` is absent, new TOTP secrets still fall back to plaintext storage.
-  - This is configuration-sensitive and must be treated as a production hard requirement.
 - `client/src/lib/fanout-crypto.ts`
-  - partial per-device fan-out encryption failures still only log warnings;
-  - UI does not yet surface `failedDeviceIds` or partial-delivery risk to the sender.
-- `server/` dependency tree still has `12` non-dev advisories from `npm audit`:
-  - `10 moderate`, `2 low`,
+  - sender-visible warnings now exist for partial per-device fan-out delivery failures,
+  - but the UI still does not offer an active recovery flow beyond the warning toast.
+- `server/` dependency tree still has `10` non-dev advisories from `npm audit`:
+  - `8 moderate`, `2 low`,
   - mostly in the `firebase-admin` / Google transport subtree:
     - `firebase-admin`
     - `@google-cloud/firestore`
@@ -42,9 +40,10 @@ Status: open items after the current implementation and audit pass
     - `retry-request`
     - `teeny-request`
     - `uuid`
-    - `fast-xml-parser`
-    - `@aws-sdk/xml-builder`
 - `client/` non-dev dependency audit is currently clean: `0` known vulnerabilities from `npm audit`.
+- `server/src/lib/totp-crypto.ts`
+  - new production boot now hard-fails without `TOTP_WRAP_KEY`,
+  - remaining work is operational: review and migrate any legacy plaintext TOTP rows created before this change.
 
 ## 3. UI / UX parity still open
 
@@ -81,12 +80,13 @@ Status: open items after the current implementation and audit pass
 - `npm run test:server` — pass
 - `npm run build` — pass
 - `npm run build:client:export` — pass
-- `npm run audit:security` — fail, `161` violations
+- `npm run android:build:debug` — pass
+- `npm run audit:security` — pass, `0` violations
 
 ## 6. Recommended next execution order
 
-1. Finish token/theme cleanup in the files leading `audit:security`.
-2. Run real-device Android auth/media/call matrix.
-3. Run real network validation for 1:1 encrypted audio relay.
-4. Upgrade or pin the vulnerable `server` dependency subtree.
-5. Decide whether `TOTP_WRAP_KEY` should become fail-closed in production boot instead of warn-and-fallback.
+1. Run real-device Android auth/media/call matrix.
+2. Run real network validation for 1:1 encrypted audio relay.
+3. Upgrade or pin the vulnerable `server` dependency subtree.
+4. Review and migrate any legacy plaintext TOTP rows created before the new fail-closed rule.
+5. Continue Telegram Desktop / iOS parity polish on calls, settings, and mobile gestures.

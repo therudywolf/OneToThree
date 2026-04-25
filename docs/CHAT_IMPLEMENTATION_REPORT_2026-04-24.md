@@ -179,19 +179,47 @@ Primary files:
   - `client/src/locales/en.ts`
   - `client/src/locales/ru.ts`
 
+### 2.9 GIF transport, true desktop collapse, and Android artifact build
+
+- GIF send path now goes through an authenticated same-origin proxy instead of direct browser fetches to third-party GIF origins.
+  - this avoids the previous `fetch(gif.originalUrl)` CORS breakage during send.
+- The picker no longer surfaces the sticky degraded GIF banner when fallback GIFs are usable.
+- Desktop sidebar collapse now truly reaches the Telegram-style compact rail because the previous CSS `min-width: 15rem` blocker was removed for the collapsed state.
+- Android debug build path was made cross-platform:
+  - WSL/Linux now uses `./gradlew`,
+  - Windows keeps `gradlew.bat`.
+- A fresh debug APK was built successfully.
+
+Primary files:
+
+- `server/src/routes/gif.ts`
+- `server/src/lib/link-preview-ssrf.ts`
+- `server/src/app.ts`
+- `client/src/lib/api/gif.ts`
+- `client/src/components/chat/chat-input.tsx`
+- `client/src/components/chat/composer-picker-panel.tsx`
+- `client/src/components/chat/chat-app.tsx`
+- `client/src/components/chat/chat-sidebar.tsx`
+- `client/src/app/globals.css`
+- `mobile/capacitor/package.json`
+- `mobile/capacitor/scripts/run-gradle.mjs`
+
 ## 3. Verification Snapshot
 
 Verified during or at the end of the thread:
 
 - `npm run typecheck` — PASS
 - `npm run lint` — PASS
-- `npm run test:unit:client` — PASS (`16` files / `77` tests)
-- `npm run test:server` — PASS (`26` files / `71` tests)
+- `npm run test:unit:client` — PASS (`16` files / `78` tests)
+- `npm run test:server` — PASS (`27` files / `74` tests)
 - `npm run build` — PASS
 - `npm run build:client:export` — PASS
-- `npm run audit:security` — FAIL, but improved to `161` violations
+- `npm run android:build:debug` — PASS
+- APK artifact — `mobile/capacitor/android/app/build/outputs/apk/debug/app-debug.apk`
+- APK SHA-256 — `a84e01c526a1d37be0e1c34928339a83e32e334da3480118856122b3832e3a33`
+- `npm run audit:security` — PASS, `0` violations
 - `client` non-dev `npm audit` — `0` vulnerabilities
-- `server` non-dev `npm audit` — `12` vulnerabilities (`10 moderate`, `2 low`)
+- `server` non-dev `npm audit` — `10` vulnerabilities (`8 moderate`, `2 low`)
 
 Environment note:
 
@@ -204,7 +232,9 @@ The project is materially better, but the original roadmap is still not fully ex
 
 Open items with the highest remaining leverage:
 
-- Retro/MD3 token debt still exists in call surfaces and admin surfaces.
+- Hardcoded color/token debt is now closed in the audited client surfaces; remaining work is layout/interaction parity and live runtime validation.
+- Production TOTP writes no longer degrade to plaintext without `TOTP_WRAP_KEY`; only legacy rows, if any exist from older deployments, still need review/migration.
+- Partial per-device fan-out failures are now visible to the sender through warning toasts, but there is still no guided recovery UI.
 - Group/video calls behind hard symmetric NAT still benefit from real TURN/SFU and are not fully covered by the new 1:1 audio relay fallback.
 - Real-device Android runtime still needs manual verification:
   - cold install
@@ -221,15 +251,15 @@ Open items with the highest remaining leverage:
 - Do not revert unrelated existing worktree changes; this tree is intentionally dirty.
 - The browser-use plugin skill was checked, but in this session no callable browser inspection tool surfaced beyond normal developer tools, so most final audit work remained code-first rather than live-browser-first.
 - The new call fallback is intentionally scoped to 1:1 encrypted audio relay. Do not oversell it as full SFU replacement.
-- If continuing the theme cleanup, start with the files still leading `audit:security`:
-  - `client/src/components/call/active-call-overlay.tsx`
-  - `client/src/components/call/group-call-banner.tsx`
-  - `client/src/components/call/incoming-call-modal.tsx`
-  - `client/src/app/admin/page.tsx`
-  - remaining retro branches in `client/src/components/chat/composer-picker-panel.tsx`
+- If continuing frontend polish, focus next on:
+  - real-device Android auth/media/call replay,
+  - Telegram Desktop / iOS interaction parity,
+  - remaining call/admin/settings ergonomics and responsiveness.
 
 ## 6. Canonical Audit Reference
 
 Updated baseline lives here:
 
 - `docs/AUDIT_BASELINE_2026-04-24.md`
+- dedicated calls / crypto audit lives here:
+  - `docs/CALLS_AND_CRYPTO_AUDIT_2026-04-24.md`

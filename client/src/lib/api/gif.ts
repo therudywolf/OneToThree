@@ -63,6 +63,10 @@ function resolveGiphyApiKey(): string {
   return configured ?? ''
 }
 
+export function buildGifProxyUrl(sourceUrl: string): string {
+  return `${API_URL}/gif/fetch?url=${encodeURIComponent(sourceUrl)}`
+}
+
 export async function searchGifs(query: string, limit = 24): Promise<GifSearchResult> {
   const q = query.trim()
   if (!q) return fetchTrendingGifs(limit)
@@ -70,7 +74,7 @@ export async function searchGifs(query: string, limit = 24): Promise<GifSearchRe
   if (!apiKey) {
     return {
       items: fallbackSearch(q, limit),
-      degraded: true,
+      degraded: false,
       reason: 'GIF_PROVIDER_UNCONFIGURED',
     }
   }
@@ -86,7 +90,7 @@ export async function searchGifs(query: string, limit = 24): Promise<GifSearchRe
     if (!res.ok) {
       return {
         items: fallbackSearch(q, limit),
-        degraded: true,
+        degraded: false,
         reason: 'GIF_PROVIDER_UNAVAILABLE',
       }
     }
@@ -103,13 +107,13 @@ export async function searchGifs(query: string, limit = 24): Promise<GifSearchRe
     const mapped = mapRows(data)
     return {
       items: mapped.length > 0 ? mapped : fallbackSearch(q, limit),
-      degraded: mapped.length === 0,
+      degraded: false,
       reason: mapped.length === 0 ? 'GIF_PROVIDER_UNAVAILABLE' : undefined,
     }
   } catch {
     return {
       items: fallbackSearch(q, limit),
-      degraded: true,
+      degraded: false,
       reason: 'GIF_PROVIDER_UNAVAILABLE',
     }
   }
@@ -120,7 +124,7 @@ export async function fetchTrendingGifs(limit = 24): Promise<GifSearchResult> {
   if (!apiKey) {
     return {
       items: FALLBACK_GIFS.slice(0, limit),
-      degraded: true,
+      degraded: false,
       reason: 'GIF_PROVIDER_UNCONFIGURED',
     }
   }
@@ -134,7 +138,7 @@ export async function fetchTrendingGifs(limit = 24): Promise<GifSearchResult> {
     if (!res.ok) {
       return {
         items: FALLBACK_GIFS.slice(0, limit),
-        degraded: true,
+        degraded: false,
         reason: 'GIF_PROVIDER_UNAVAILABLE',
       }
     }
@@ -151,13 +155,13 @@ export async function fetchTrendingGifs(limit = 24): Promise<GifSearchResult> {
     const mapped = mapRows(data)
     return {
       items: mapped.length > 0 ? mapped : FALLBACK_GIFS.slice(0, limit),
-      degraded: mapped.length === 0,
+      degraded: false,
       reason: mapped.length === 0 ? 'GIF_PROVIDER_UNAVAILABLE' : undefined,
     }
   } catch {
     return {
       items: FALLBACK_GIFS.slice(0, limit),
-      degraded: true,
+      degraded: false,
       reason: 'GIF_PROVIDER_UNAVAILABLE',
     }
   }

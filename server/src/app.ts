@@ -23,11 +23,13 @@ import { keysRoutes } from './routes/keys.js'
 import { callRoutes } from './routes/call.js'
 import { stickersRoutes } from './routes/stickers.js'
 import { gifFavoritesRoutes } from './routes/gif-favorites.js'
+import { gifRoutes } from './routes/gif.js'
 import { sql } from 'drizzle-orm'
 import { linkPreviewRoutes } from './routes/link-preview.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { requireSecret } from './lib/read-secret.js'
+import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
 import { db } from './db/index.js'
 
 function normalizeHttpOrigin(raw: string | undefined): string | null {
@@ -79,6 +81,8 @@ export function assertProdSecurityEnv(): void {
       throw new Error('REDIS_URL must be set in production (security-critical state storage)')
     }
   }
+
+  assertTotpWrapKeySecurityEnv()
 }
 
 export async function buildApp() {
@@ -214,6 +218,7 @@ export async function buildApp() {
   await app.register(callRoutes, { prefix: '/api' })
   await app.register(stickersRoutes, { prefix: '/api/stickers' })
   await app.register(gifFavoritesRoutes, { prefix: '/api/gif-favorites' })
+  await app.register(gifRoutes, { prefix: '/api/gif' })
 
   app.get('/health', async () => ({ ok: true }))
 

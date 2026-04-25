@@ -27,6 +27,16 @@ function getWrapKey(): Buffer | null {
   return _wrapKey
 }
 
+export function assertTotpWrapKeySecurityEnv(): void {
+  if (process.env.NODE_ENV !== 'production') return
+  const key = loadWrapKey()
+  if (!key) {
+    throw new Error(
+      'TOTP_WRAP_KEY must be set in production (required for 2FA secret encryption)'
+    )
+  }
+}
+
 /**
  * Encrypt a TOTP plaintext secret for at-rest storage.
  * Returns `enc:v1:<base64url_iv>.<base64url_ciphertext+tag>`.
@@ -36,9 +46,7 @@ export function encryptTotpSecret(secret: string): string {
   const key = getWrapKey()
   if (!key) {
     if (process.env.NODE_ENV === 'production') {
-      process.stderr.write(
-        `${JSON.stringify({ level: 'warn', msg: '[totp-crypto] TOTP_WRAP_KEY is unset — storing TOTP secret as plaintext' })}\n`
-      )
+      throw new Error('TOTP_WRAP_KEY is required in production to encrypt TOTP secrets')
     }
     return secret
   }

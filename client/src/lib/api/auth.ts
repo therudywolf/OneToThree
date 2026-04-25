@@ -6,6 +6,7 @@ import {
 import { sanitizeFetchHeaderRecord } from '@/lib/http-fetch-headers'
 import { canonicalUserId } from '@/lib/user-id'
 import { clearNativeSessionCookie, warmNativeSessionCookies } from '@/lib/native-session'
+import { normalizeApiRoot as normalizeConfiguredApiRoot } from '@/lib/api/url'
 
 /**
  * Browser calls to the Fastify API (cross-origin; session cookie is host-scoped to API origin).
@@ -21,11 +22,7 @@ function normalizeApiRoot(): string {
     typeof process !== 'undefined'
       ? process.env.NEXT_PUBLIC_API_URL?.trim()
       : undefined
-  if (!raw || raw === 'same-origin') {
-    return '/api'
-  }
-  const base = raw.replace(/\/$/, '')
-  return `${base}/api`
+  return normalizeConfiguredApiRoot(raw)
 }
 
 export const API_URL = normalizeApiRoot()

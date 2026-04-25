@@ -2,6 +2,7 @@
 
 import { flushOutboxPending } from '@/lib/outbox'
 import { fetchWsTicket } from './auth'
+import { normalizeHttpOrigin } from '@/lib/api/url'
 
 let warnedMissingWsEnv = false
 
@@ -15,13 +16,15 @@ function httpOrigin(): string {
     typeof process !== 'undefined'
       ? process.env.NEXT_PUBLIC_WS_ORIGIN?.trim()
       : undefined
-  if (wsOnly) return wsOnly.replace(/\/$/, '')
+  const wsOrigin = normalizeHttpOrigin(wsOnly)
+  if (wsOrigin) return wsOrigin
 
   const api =
     typeof process !== 'undefined'
       ? process.env.NEXT_PUBLIC_API_URL?.trim()
       : undefined
-  if (api) return api.replace(/\/$/, '')
+  const apiOrigin = normalizeHttpOrigin(api)
+  if (apiOrigin) return apiOrigin
 
   const isProd = process.env.NODE_ENV === 'production'
 

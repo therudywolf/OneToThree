@@ -1,5 +1,7 @@
 'use client'
 
+import { normalizeHttpOrigin } from '@/lib/api/url'
+
 const SESSION_COOKIE = 'fm_session'
 
 type CapacitorCookieBridge = {
@@ -65,13 +67,9 @@ export function resolveNativeSessionOrigins(): string[] {
     typeof process !== 'undefined'
       ? process.env.NEXT_PUBLIC_API_URL?.trim()
       : undefined
-  if (apiRoot && apiRoot !== 'same-origin') {
-    try {
-      const parsed = new URL(apiRoot)
-      if (isHttpOrigin(parsed.origin)) origins.add(parsed.origin)
-    } catch {
-      // ignore invalid env
-    }
+  const apiOrigin = normalizeHttpOrigin(apiRoot)
+  if (apiOrigin) {
+    origins.add(apiOrigin)
   }
 
   if (window.location?.origin && isHttpOrigin(window.location.origin)) {

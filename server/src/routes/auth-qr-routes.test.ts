@@ -48,6 +48,42 @@ describe('auth QR routes', () => {
     expect(res.body.error).toBe('INVALID_OR_EXPIRED_TOKEN')
   })
 
+  it('POST /api/auth/qr-login returns encrypted vault handoff when present', async () => {
+    const username = `qrv${Date.now().toString(36)}`
+    const [created] = await db
+      .insert(users)
+      .values({
+        username,
+        publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+      })
+      .returning({ id: users.id })
+    const vaultBlob = JSON.stringify({
+      version: 5,
+      saltB64: 'salt',
+      ivB64: 'iv',
+      ciphertextB64: 'cipher',
+    })
+    const token = randomUUID()
+    await saveQrLinkToken(token, {
+      sub: created.id,
+      username,
+      exp: Date.now() + 60_000,
+      vault_blob: vaultBlob,
+    })
+
+    const res = await request(app!.server)
+      .post('/api/auth/qr-login')
+      .set('X-Client-Device-Id', 'vitest-qr-vault-device')
+      .send({ link_token: token })
+      .expect(200)
+
+    expect(res.body.user?.username).toBe(username)
+    expect(res.body.vault_blob).toBe(vaultBlob)
+
+    await db.delete(users).where(eq(users.id, created.id))
+    _resetQrLinkStoreForTests()
+  })
+
   it('POST /api/auth/qr-login returns 2FA pending payload for TOTP-protected users', async () => {
     const username = `qr${Date.now().toString(36)}`
     const [created] = await db

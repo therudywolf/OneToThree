@@ -8,6 +8,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { useAuth } from '@/components/auth/auth-provider'
 import { signMessageWithVaultPin } from '@/lib/vault-signing'
+import { readVaultBlob } from '@/lib/vault'
 import { useThemeStore } from '@/store/themeStore'
 import { explainDeviceLinkError } from '@/lib/device-link-errors'
 
@@ -34,11 +35,20 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     setLoading(true)
     setErr(null)
     try {
+      const vaultBlob = readVaultBlob(user.id)
+      if (!vaultBlob) throw new Error('VAULT_NOT_FOUND')
+
       const nonce = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
       const signature = await signMessageWithVaultPin(user.id, vaultPin, nonce)
-      const payload: { nonce: string; signature: string; totp_code?: string } = {
+      const payload: {
+        nonce: string
+        signature: string
+        totp_code?: string
+        vault_blob?: string
+      } = {
         nonce,
         signature,
+        vault_blob: JSON.stringify(vaultBlob),
       }
       const code = totpCode.trim().replace(/\D/g, '').slice(0, 6)
       if (code.length === 6) payload.totp_code = code

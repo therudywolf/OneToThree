@@ -75,6 +75,7 @@ const qrGenerateBodySchema = z.object({
   nonce: z.string().min(1),
   signature: z.string().min(1),
   totp_code: totpCodeSchema.optional(),
+  vault_blob: z.string().min(1).max(65_536).optional(),
 })
 
 const qrLoginBodySchema = z.object({
@@ -91,11 +92,17 @@ type Pending2faResponse = {
 async function buildPending2faResponse(
   reply: FastifyReply,
   userId: string,
-  username: string
+  username: string,
+  qrVaultBlob?: string
 ): Promise<Pending2faResponse> {
   const canonicalId = normalizeUuid(userId)
   const pendingToken = await reply.jwtSign(
-    { sub: canonicalId, username, scope: '2fa_pending' },
+    {
+      sub: canonicalId,
+      username,
+      scope: '2fa_pending',
+      ...(qrVaultBlob ? { qr_vault_blob: qrVaultBlob } : {}),
+    },
     { expiresIn: PENDING_2FA_MAX_AGE_S }
   )
   return { requires2FA: true, userId: canonicalId, pendingToken }
@@ -110,7 +117,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
-    const { nonce, signature, totp_code } = parsed.data
+    const { nonce, signature, totp_code, vault_blob } = parsed.data
 
     const [row] = await db
       .select({
@@ -147,6 +154,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       sub: normalizeUuid(user.id),
       username: user.username,
       exp: Date.now() + QR_LINK_TTL_S * 1000,
+      ...(vault_blob ? { vault_blob } : {}),
     }
     await saveQrLinkToken(token, payload)
 
@@ -183,7 +191,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
     if (row.isTotpEnabled) {
       if (!row.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
-      return reply.send(await buildPending2faResponse(reply, row.id, row.username))
+      return reply.send(await buildPending2faResponse(reply, row.id, row.username, entry.vault_blob))
     }
 
     const canonicalId = normalizeUuid(row.id)
@@ -198,7 +206,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       { expiresIn: SESSION_MAX_AGE_S }
     )
     commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
-    return reply.send({ ok: true, user: { id: canonicalId, username: row.username } })
+    return reply.send({
+      ok: true,
+      user: { id: canonicalId, username: row.username },
+      ...(entry.vault_blob ? { vault_blob: entry.vault_blob } : {}),
+    })
   })
 
   app.get('/ws-ticket', async (request, reply) => {
@@ -401,9 +413,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const parsed = login2faBodySchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
-    let payload: { sub: string; username: string; scope?: string }
+    let payload: { sub: string; username: string; scope?: string; qr_vault_blob?: string }
     try {
-      payload = await request.server.jwt.verify<{ sub: string; username: string; scope?: string }>(parsed.data.pending_token)
+      payload = await request.server.jwt.verify<{
+        sub: string
+        username: string
+        scope?: string
+        qr_vault_blob?: string
+      }>(parsed.data.pending_token)
     } catch {
       return reply.status(401).send({ error: 'INVALID_PENDING_TOKEN' })
     }
@@ -442,7 +459,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     )
     commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
     await recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'success', deviceId: dev.deviceId })
-    return reply.send({ user: { id: canonicalId, username: row.username } })
+    return reply.send({
+      user: { id: canonicalId, username: row.username },
+      ...(payload.qr_vault_blob ? { vault_blob: payload.qr_vault_blob } : {}),
+    })
   })
 
   await app.register(

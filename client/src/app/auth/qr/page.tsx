@@ -2,8 +2,13 @@
 
 import { useEffect, useRef, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { postQrLogin } from '@/lib/api/auth-qr'
-import { complete2faLogin } from '@/lib/api/auth'
+import {
+  hasLocalVaultForQrUser,
+  persistQrVaultHandoff,
+  postQrLogin,
+} from '@/lib/api/auth-qr'
+import { clearSessionApi, complete2faLogin } from '@/lib/api/auth'
+import { useAuth } from '@/components/auth/auth-provider'
 import { useTranslation } from '@/hooks/use-translation'
 import { explainDeviceLinkError } from '@/lib/device-link-errors'
 import { explainLoginError } from '@/lib/login-errors'
@@ -14,6 +19,7 @@ function QrLoginInner() {
   const router = useRouter()
   const params = useSearchParams()
   const token = params.get('link_token')
+  const { user, loading: authLoading, refresh } = useAuth()
   const didRun = useRef(false)
   const [status, setStatus] = useState<'pending' | 'totp' | 'ok' | 'error'>('pending')
   const [errorMsg, setErrorMsg] = useState('')
@@ -25,6 +31,7 @@ function QrLoginInner() {
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
 
   useEffect(() => {
+    if (authLoading) return
     if (didRun.current) return
     didRun.current = true
 
@@ -34,13 +41,30 @@ function QrLoginInner() {
       return
     }
 
+    if (user && hasLocalVaultForQrUser(user)) {
+      setStatus('error')
+      setErrorMsg(t('login.qrAlreadySignedIn'))
+      return
+    }
+
     void postQrLogin(token)
-      .then((result) => {
+      .then(async (result) => {
         if (result.ok === 'needs_2fa') {
           setPendingToken(result.pendingToken)
           setStatus('totp')
           return
         }
+        if (result.vaultHandoff === 'missing' || result.vaultHandoff === 'invalid') {
+          void clearSessionApi().catch(() => {})
+          setStatus('error')
+          setErrorMsg(
+            result.vaultHandoff === 'invalid'
+              ? t('login.qrVaultInvalid')
+              : t('login.qrVaultMissing')
+          )
+          return
+        }
+        await refresh()
         setStatus('ok')
         setTimeout(() => router.replace('/'), 1200)
       })
@@ -49,7 +73,7 @@ function QrLoginInner() {
         const code = err instanceof Error ? err.message : 'QR_LOGIN_FAILED'
         setErrorMsg(explainDeviceLinkError(code, t))
       })
-  }, [token, router, t])
+  }, [authLoading, token, refresh, router, t, user])
 
   async function submitTotp() {
     if (!pendingToken || verifyingTotp) return
@@ -61,7 +85,19 @@ function QrLoginInner() {
     setVerifyingTotp(true)
     setErrorMsg('')
     try {
-      await complete2faLogin(pendingToken, code)
+      const result = await complete2faLogin(pendingToken, code)
+      const vaultHandoff = persistQrVaultHandoff(result.user, result.vault_blob)
+      if (vaultHandoff === 'missing' || vaultHandoff === 'invalid') {
+        await clearSessionApi().catch(() => {})
+        setStatus('error')
+        setErrorMsg(
+          vaultHandoff === 'invalid'
+            ? t('login.qrVaultInvalid')
+            : t('login.qrVaultMissing')
+        )
+        return
+      }
+      await refresh()
       setStatus('ok')
       setTimeout(() => router.replace('/'), 1200)
     } catch (err: unknown) {

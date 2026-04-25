@@ -146,6 +146,9 @@ const en = {
   'login.qrAuthError': 'QR sign-in failed.',
   'login.qrAuthRenewHint': 'QR links are single-use and expire after 5 minutes. Open Settings -> Devices -> Add device on your primary device to generate a new one.',
   'login.qrAuthInvalidLink': 'This QR link is invalid or incomplete. Generate a new device link on your primary device.',
+  'login.qrAlreadySignedIn': 'This device already has an active session and local vault. Open the QR link on a new device or sign out first.',
+  'login.qrVaultMissing': 'The QR session did not include the encrypted vault. Update the app on the primary device and generate a new QR code, or import the vault file manually.',
+  'login.qrVaultInvalid': 'The transferred QR vault is damaged or uses an unknown format. Generate a new QR code on the primary device.',
   'login.qrTokenPlaceholder': 'code from QR screen',
   'login.qrLinkSubmit': 'Link',
   'login.qrOrManual': 'or manual code',
@@ -426,7 +429,7 @@ const en = {
   'settings.devicesRevokeConfirm': 'Revoke this device? It will be disconnected.',
   'settings.linkDeviceCta': 'Add Device',
   'settings.linkDeviceTitle': 'Link New Device',
-  'settings.linkDeviceHint': 'Scan from new device. Code expires in 5 minutes.',
+  'settings.linkDeviceHint': 'Scan from the new device. QR transfers the session and encrypted vault; the vault password is still required. Code expires in 5 minutes.',
   'settings.devicesReauthorize': 'Re-authorize',
   'settings.devicesReauthorizeHint': 'Enter your vault password to re-authorize this device. It will need to re-link (scan QR) but will no longer be blocked.',
 

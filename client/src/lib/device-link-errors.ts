@@ -5,6 +5,7 @@ type DeviceLinkTranslationKey =
   | 'login.qrLinkExpired'
   | 'login.qrLinkDisabled'
   | 'login.qrLinkDeviceIdError'
+  | 'login.qrVaultMissing'
   | 'login.deviceRevoked'
   | 'login.signatureInvalid'
   | 'login.totpInvalid'
@@ -30,6 +31,9 @@ export function explainDeviceLinkError(code: string, t: Translator): string {
   }
   if (normalized === 'CLIENT_DEVICE_ID_REQUIRED') {
     return t('login.qrLinkDeviceIdError')
+  }
+  if (normalized === 'VAULT_NOT_FOUND') {
+    return t('login.qrVaultMissing')
   }
   if (normalized === 'DEVICE_REVOKED') {
     return t('login.deviceRevoked')

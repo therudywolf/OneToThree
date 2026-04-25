@@ -268,10 +268,19 @@ ensure_secret_stub "cloudflare_turn_key_id"
 ensure_secret_stub "cloudflare_turn_api_token"
 # totp_wrap_key is mandatory — auto-generate if missing so api container
 # can mount /run/secrets/totp_wrap_key and encrypt TOTP secrets at rest.
-if [[ -d "$SECRETS_DIR" ]] && [[ ! -s "$SECRETS_DIR/totp_wrap_key" ]]; then
-  printf '%s' "$(openssl rand -hex 32)" > "$SECRETS_DIR/totp_wrap_key"
-  chmod 600 "$SECRETS_DIR/totp_wrap_key"
-  warn "Сгенерирован TOTP_WRAP_KEY (AES-256-GCM ключ шифрования TOTP секретов в БД)."
+# (Runs for every command, including `update`, which exits before the later
+# «АВТОГЕНЕРАЦИЯ СЕКРЕТОВ» block — so this must stay self-contained.)
+if [[ -d "$SECRETS_DIR" ]]; then
+  if [[ ! -s "$SECRETS_DIR/totp_wrap_key" ]]; then
+    printf '%s' "$(openssl rand -hex 32)" > "$SECRETS_DIR/totp_wrap_key"
+    chmod 600 "$SECRETS_DIR/totp_wrap_key"
+    warn "Сгенерирован TOTP_WRAP_KEY (AES-256-GCM ключ шифрования TOTP секретов в БД)."
+  else
+    tw="$(tr -d '\r\n\t ' < "$SECRETS_DIR/totp_wrap_key" || true)"
+    if [[ ${#tw} -ne 64 ]] || ! [[ "$tw" =~ ^[0-9a-fA-F]{64}$ ]]; then
+      die "Неверный формат secrets/totp_wrap_key: нужны ровно 64 hex-символа (openssl rand -hex 32). Без этого API в production не стартует. Если файл испорчен, а 2FA уже использовалась, восстановите прежний ключ из backup — иначе зашифрованные TOTP в БД не расшифровать."
+    fi
+  fi
 fi
 
 # =============================================================================

@@ -16,6 +16,11 @@
 #   ./start.sh status   — состояние контейнеров
 #   ./start.sh update   — git pull + пересборка + перезапуск
 #   ./start.sh backup   — резервная копия БД
+#
+# Compose подставляет ${TURN_PASSWORD} и др. в docker-compose.prod.yml из файла
+# `.env` в корне репозитория. Скрипт зеркалит .env.prod → .env и подтягивает TURN_*
+# из ./secrets/, чтобы даже «голый» docker compose -f docker-compose.prod.yml ps
+# не падал на интерполяции coturn.
 # =============================================================================
 set -euo pipefail
 
@@ -162,6 +167,36 @@ detect_public_ip() {
   return 1
 }
 
+# Compose substitutes ${VAR:?…} in docker-compose.prod.yml from the shell environment
+# and from a file named `.env` in the project root. Service-level `env_file:` does not
+# supply those values for YAML interpolation; only `--env-file`, exported vars, or `.env` do.
+# Mirror ${ENV_FILE} → `.env` and refresh TURN_* from ./secrets so
+# `docker compose -f docker-compose.prod.yml ps` works without extra flags.
+prime_compose_interpolation_env() {
+  [[ -f "$ENV_FILE" ]] || return 0
+
+  if [[ -f "$SECRETS_DONE" ]]; then
+    if [[ -f "$SECRETS_DIR/turn_password" ]] && [[ -s "$SECRETS_DIR/turn_password" ]]; then
+      local tp cur
+      tp="$(tr -d '\r\n' < "$SECRETS_DIR/turn_password")"
+      cur="$(val_for_key TURN_PASSWORD)"
+      if [[ -z "$cur" ]] || is_placeholder "$cur" || [[ "$cur" != "$tp" ]]; then
+        update_key TURN_PASSWORD "$tp"
+      fi
+    fi
+    if [[ -f "$SECRETS_DIR/turn_external_ip" ]] && [[ -s "$SECRETS_DIR/turn_external_ip" ]]; then
+      local te cur_ip
+      te="$(tr -d '\r\n' < "$SECRETS_DIR/turn_external_ip")"
+      cur_ip="$(val_for_key TURN_EXTERNAL_IP)"
+      if [[ -z "$cur_ip" ]] || is_placeholder "$cur_ip"; then
+        update_key TURN_EXTERNAL_IP "$te"
+      fi
+    fi
+  fi
+
+  cp -f "$ENV_FILE" "${ROOT}/.env"
+}
+
 append_service_once() {
   local service="$1"
   local existing
@@ -284,6 +319,23 @@ if [[ -d "$SECRETS_DIR" ]]; then
 fi
 
 # =============================================================================
+# ЗАВИСИМОСТИ (до диспетчера: stop/status/update выходят раньше блока «up» ниже)
+# =============================================================================
+for cmd in docker openssl curl; do
+  command -v "$cmd" >/dev/null 2>&1 || die "Не найдена команда: $cmd. Установите и повторите."
+done
+
+if docker compose version >/dev/null 2>&1; then
+  DC=(docker compose)
+elif command -v docker-compose >/dev/null 2>&1; then
+  DC=(docker-compose)
+else
+  die "Docker Compose не найден. Установите Docker Desktop или плагин compose."
+fi
+
+docker info >/dev/null 2>&1 || die "Docker демон не запущен. Запустите Docker и повторите."
+
+# =============================================================================
 # КОМАНДЫ
 # =============================================================================
 CMD="${1:-up}"
@@ -300,25 +352,27 @@ case "$CMD" in
     ;;
 esac
 
+prime_compose_interpolation_env
+
 case "$CMD" in
   stop)
     log "Останавливаю стек..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down
     ok "Стек остановлен."
     exit 0
     ;;
   restart)
     log "Перезапускаю без пересборки..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart
     ok "Перезапущено."
     exit 0
     ;;
   logs)
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f --tail=100
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f --tail=100
     exit 0
     ;;
   status)
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
     exit 0
     ;;
   update)
@@ -330,6 +384,7 @@ case "$CMD" in
     fi
     git fetch --all --prune
     git pull --ff-only origin "$CURRENT_BRANCH"
+    prime_compose_interpolation_env
     prompt_and_save_telegram_token 1 || true
     CURRENT_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
     detect_update_services "${PREVIOUS_HEAD}..${CURRENT_HEAD}"
@@ -341,24 +396,24 @@ case "$CMD" in
     # deterministically on every `./start.sh update`.
     if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -qx 'db-migrate'; then
       log "Пересборка образа миграций (без кэша)..."
-      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
+      "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
     else
       log "Пересобираю образ миграций (кэшированно) — на всякий случай."
-      docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build db-migrate
+      "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build db-migrate
     fi
 
     log "Запускаю инфраструктуру (БД, Redis, MinIO)..."
     # НИКОГДА не используем 'down -v' — это удалит данные
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d db redis minio
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d db redis minio
 
     log "Жду готовности БД и применяю миграции (идемпотентно)..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
 
     log "Пересборка и запуск только затронутых сервисов: ${UPDATE_SERVICES[*]}"
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans "${UPDATE_SERVICES[@]}"
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans "${UPDATE_SERVICES[@]}"
 
     log "Проверяю состояние сервисов после обновления..."
-    if ! docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >/dev/null 2>&1; then
+    if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >/dev/null 2>&1; then
       die "Сервисы не отвечают после update. Проверьте ./start.sh logs"
     fi
 
@@ -375,9 +430,10 @@ case "$CMD" in
     ;;
   tg)
     [[ -f "$ENV_FILE" ]] || die "Не найден ${ENV_FILE}. Сначала выполните ./start.sh up"
+    prime_compose_interpolation_env
     prompt_and_save_telegram_token 0
     log "Перезапускаю API для применения TELEGRAM_BOT_TOKEN..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate api
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate api
     ok "TELEGRAM_BOT_TOKEN применён."
     exit 0
     ;;
@@ -387,7 +443,7 @@ case "$CMD" in
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     BACKUP_FILE="${BACKUP_DIR}/db_${TIMESTAMP}.sql.gz"
     log "Создаю резервную копию базы данных..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
       exec -T db \
       pg_dump -U "$(val_for_key POSTGRES_USER)" "$(val_for_key POSTGRES_DB)" \
       | gzip > "$BACKUP_FILE"
@@ -480,8 +536,8 @@ case "$CMD" in
     fi
 
     log "Останавливаю контейнеры..."
-    docker compose -f "$COMPOSE_FILE" --env-file "${ENV_FILE:-.env.prod}" down --remove-orphans 2>/dev/null || true
-    docker compose -f "$COMPOSE_FILE" --env-file "${ENV_FILE:-.env.prod}" rm -f 2>/dev/null || true
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "${ENV_FILE:-.env.prod}" down --remove-orphans 2>/dev/null || true
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "${ENV_FILE:-.env.prod}" rm -f 2>/dev/null || true
 
     log "Удаляю volumes..."
     for vol in forestmessenger_pgdata forestmessenger_redis_data forestmessenger_minio_data forestmessenger_caddy_data forestmessenger_caddy_config; do
@@ -584,29 +640,10 @@ case "$CMD" in
 esac
 
 # =============================================================================
-# ПРОВЕРКА ЗАВИСИМОСТЕЙ
+# ПРОВЕРКА VOLUMES (данные НЕ удаляются при обновлении)
 # =============================================================================
 sep
 echo -e "${BLD}  OneToThree — Production Launcher${NC}"
-sep
-
-for cmd in docker openssl curl; do
-  command -v "$cmd" >/dev/null 2>&1 || die "Не найдена команда: $cmd. Установите и повторите."
-done
-
-if docker compose version >/dev/null 2>&1; then
-  DC=(docker compose)
-elif command -v docker-compose >/dev/null 2>&1; then
-  DC=(docker-compose)
-else
-  die "Docker Compose не найден. Установите Docker Desktop или плагин compose."
-fi
-
-docker info >/dev/null 2>&1 || die "Docker демон не запущен. Запустите Docker и повторите."
-
-# =============================================================================
-# ПРОВЕРКА VOLUMES (данные НЕ удаляются при обновлении)
-# =============================================================================
 sep
 log "Проверяю сохранность данных..."
 
@@ -968,6 +1005,8 @@ sep
 log "Запускаю стек..."
 echo ""
 
+prime_compose_interpolation_env
+
 FIRST_RUN=false
 if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps --quiet 2>/dev/null | grep -q .; then
   FIRST_RUN=true
@@ -985,7 +1024,7 @@ wait_healthy() {
   printf "  %-14s " "$label"
 
   local container
-  container=$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$service" 2>/dev/null | head -1)
+  container=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$service" 2>/dev/null | head -1)
 
   if [[ -z "$container" ]]; then
     echo -e " ${YEL}⚠ не найден${NC}"
@@ -1024,7 +1063,7 @@ wait_healthy() {
 
 all_healthy=true
 for svc in db redis minio api web; do
-  cid=$(docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$svc" 2>/dev/null | head -1)
+  cid=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$svc" 2>/dev/null | head -1)
   if [[ -n "$cid" ]]; then
     st=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null)
     [[ "$st" != "healthy" && "$st" != "running" ]] && all_healthy=false

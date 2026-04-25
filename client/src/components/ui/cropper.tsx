@@ -118,15 +118,15 @@ export function AvatarCropModal({
 
   return (
     <div
-      className={`fixed inset-0 z-[200] flex items-center justify-center px-4 backdrop-blur-sm ${isRetro ? 'bg-[#0e2f6f]/80' : 'bg-void/95'}`}
+      className={`fixed inset-0 z-[200] flex items-center justify-center px-4 backdrop-blur-sm ${isRetro ? 'p13-classic-overlay' : 'bg-void/95'}`}
       role="dialog"
       aria-modal="true"
     >
-      <div className={`relative w-full max-w-md p-6 ${isRetro ? 'p13-window bg-[#d4d0c8]' : 'border border-border-strong bg-void shadow-2xl'}`}>
+      <div className={`relative w-full max-w-md p-6 ${isRetro ? 'p13-window' : 'border border-border-strong bg-void shadow-2xl'}`}>
         {/* TOP_DECOR_LINE */}
         <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50" />
 
-        <header className={`mb-6 flex items-center gap-2 border-b pb-4 ${isRetro ? 'p13-titlebar border-[#001f57] px-2 pt-2' : 'border-border-strong'}`}>
+        <header className={`mb-6 flex items-center gap-2 border-b pb-4 ${isRetro ? 'p13-titlebar px-2 pt-2' : 'border-border-strong'}`}>
           <span className="h-2 w-2 animate-pulse bg-neon-cyan shadow-[0_0_8px_rgba(0,255,255,0.4)]" />
           <p className="text-[10px] uppercase tracking-[0.4em] text-text-muted">
             SYS.OPTICS // {isProcessing ? 'PROCESSING' : 'CALIBRATION'}

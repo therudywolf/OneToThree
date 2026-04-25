@@ -280,10 +280,10 @@ export function LoginQrDevicePanel() {
   return (
     <div className={`mt-8 w-full p-1 transition-all ${
       isRetro
-        ? 'border border-[#7d828a] bg-[#cfc9bc]'
+        ? 'p13-classic-strip'
         : 'border border-border-strong bg-void/40 backdrop-blur-sm hover:border-border-strong'
     }`}>
-      <div className={isRetro ? 'border border-[#7d828a] bg-[#d4d0c8] p-4' : 'border border-border-strong p-4'}>
+      <div className={isRetro ? 'p13-window p-4' : 'border border-border-strong p-4'}>
 
         <button
           type="button"
@@ -291,7 +291,7 @@ export function LoginQrDevicePanel() {
           data-testid="qr-link-toggle"
           className={`flex w-full items-center justify-between text-[10px] transition-colors ${
             isRetro
-              ? 'font-["Tahoma"] tracking-[0.03em] text-[#123659] hover:text-[#7f1d1d]'
+              ? 'p13-classic-copy-strong hover:text-[var(--danger)]'
               : 'font-mono uppercase tracking-[0.3em] text-neon-cyan hover:text-neon-red'
           }`}
         >
@@ -313,7 +313,7 @@ export function LoginQrDevicePanel() {
                   <p className="text-[9px] leading-relaxed text-neon-cyan uppercase tracking-widest">
                     // {t('login.qrScanHint')}
                   </p>
-                  <div className={`relative overflow-hidden ${isRetro ? 'border border-[#7d828a] bg-[#ffffff]' : 'border border-neon-cyan/40 bg-void'}`}>
+                  <div className={`relative overflow-hidden ${isRetro ? 'p13-classic-input' : 'border border-neon-cyan/40 bg-void'}`}>
                     <video
                       ref={videoRef}
                       className="w-full max-h-[240px] object-cover"
@@ -335,7 +335,7 @@ export function LoginQrDevicePanel() {
                     onClick={stopScanner}
                     className={`w-full border py-2 text-[10px] transition-all ${
                       isRetro
-                        ? 'border-[#7d828a] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#7f1d1d] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                        ? 'p13-classic-button p13-classic-button--danger'
                         : 'border-neon-red/50 bg-void font-mono uppercase tracking-[0.3em] text-neon-red hover:bg-neon-red/10'
                     }`}
                   >
@@ -349,7 +349,7 @@ export function LoginQrDevicePanel() {
                   disabled={isBusy}
                   className={`w-full border py-2.5 text-[10px] transition-all disabled:opacity-20 ${
                     isRetro
-                      ? 'border-[#7d828a] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                      ? 'p13-classic-button'
                       : 'border-neon-cyan/60 bg-void font-mono uppercase tracking-[0.3em] text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'
                   }`}
                 >
@@ -391,7 +391,7 @@ export function LoginQrDevicePanel() {
                     spellCheck={false}
                     className={`w-full border p-3 text-xs text-text-primary outline-none placeholder:text-text-muted/50 ${
                       isRetro
-                        ? 'border-[#7d828a] bg-[#ffffff] font-["Tahoma"] focus:border-[#355f94]'
+                        ? 'p13-classic-input'
                         : 'bg-void border-border-strong font-mono focus:border-neon-cyan/50'
                     }`}
                   />
@@ -410,7 +410,7 @@ export function LoginQrDevicePanel() {
                 disabled={isBusy || !signalToken.trim()}
                 className={`group relative w-full overflow-hidden border py-2.5 text-[10px] transition-all disabled:opacity-20 ${
                   isRetro
-                    ? 'border-[#7d828a] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                    ? 'p13-classic-button'
                     : 'border-neon-cyan bg-void font-mono uppercase tracking-[0.3em] text-neon-cyan hover:bg-neon-cyan hover:text-text-primary'
                 }`}
               >

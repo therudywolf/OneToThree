@@ -599,6 +599,7 @@ export function ChatSidebar({
   const visibleFolders = folders.length
     ? folders
     : [{ id: 'all', name: t('sidebar.channels'), chatIds: [], excludedChatIds: [], isSystem: true, rule: { includeDirect: true, includeGroups: true, includeChannels: true, includeSaved: false, includeMuted: true, includeRead: true } }]
+  const showExpandedSidebarChrome = !isCollapsed
 
   return (
     <aside className={`relative flex h-full w-full min-w-0 flex-row ${isMd3 ? 'border-r border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-r border-neon-cyan/30 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_92%,transparent),color-mix(in_srgb,var(--void)_84%,transparent))] backdrop-blur-xl shadow-[8px_0_40px_rgba(0,0,0,0.32),1px_0_0_rgba(255,255,255,0.02)]'}`}>
@@ -766,40 +767,44 @@ export function ChatSidebar({
 
       {/* Right panel — search + chat list + compose */}
       <div className="p13-sidebar-main flex flex-col flex-1 min-w-0">
-      <div
-        className={`p13-sidebar-top sticky top-0 z-10 border-b px-4 py-2 ${
-          isMd3
-            ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]'
-            : 'border-neon-cyan/30 bg-void'
-        }`}
-      >
-        <p className={`p13-sidebar-top-label ${isMd3 ? 'text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--on-surface)]' : 'font-mono text-[11px] uppercase tracking-[0.3em] text-neon-cyan'}`}>
-          {t('sidebar.channels')}
-        </p>
-      </div>
+      {showExpandedSidebarChrome ? (
+        <div
+          className={`p13-sidebar-top sticky top-0 z-10 border-b px-4 py-2 ${
+            isMd3
+              ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]'
+              : 'border-neon-cyan/30 bg-void'
+          }`}
+        >
+          <p className={`p13-sidebar-top-label ${isMd3 ? 'text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--on-surface)]' : 'font-mono text-[11px] uppercase tracking-[0.3em] text-neon-cyan'}`}>
+            {t('sidebar.channels')}
+          </p>
+        </div>
+      ) : null}
 
       {/* Search */}
-      <div className={`p13-sidebar-search border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/25'}`}>
-        <label className="sr-only" htmlFor="ghost-search">
-          {t('sidebar.localGhostSearch')}
-        </label>
-        <div className={`relative flex items-center overflow-hidden border ${isMd3 ? 'rounded-full border-transparent bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] shadow-none' : 'rounded-2xl border-border-strong/5 bg-surface/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'}`}>
-          {isSearching ? (
-            <Loader2 className="absolute left-3 h-3.5 w-3.5 animate-spin text-neon-cyan/50" />
-          ) : (
-            <Search className="absolute left-3 h-3.5 w-3.5 text-neon-cyan/50" />
-          )}
-          <input
-            id="ghost-search"
-            className={`w-full bg-transparent px-3 py-2 pl-9 text-[11px] focus:outline-none ${isMd3 ? 'text-[var(--on-surface)] placeholder:text-text-muted' : 'text-neon-cyan placeholder:text-neon-cyan/30'}`}
-            placeholder={t('sidebar.localGhostSearch')}
-            value={sanitizeTextInput(localGhostQuery)}
-            onChange={(e) => setLocalGhostQuery(sanitizeTextInput(e.target.value))}
-            autoComplete="off"
-            spellCheck="false"
-          />
+      {showExpandedSidebarChrome ? (
+        <div className={`p13-sidebar-search border-b px-4 py-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/15 bg-void/25'}`}>
+          <label className="sr-only" htmlFor="ghost-search">
+            {t('sidebar.localGhostSearch')}
+          </label>
+          <div className={`relative flex items-center overflow-hidden border ${isMd3 ? 'rounded-full border-transparent bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] shadow-none' : 'rounded-2xl border-border-strong/5 bg-surface/[0.02] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'}`}>
+            {isSearching ? (
+              <Loader2 className="absolute left-3 h-3.5 w-3.5 animate-spin text-neon-cyan/50" />
+            ) : (
+              <Search className="absolute left-3 h-3.5 w-3.5 text-neon-cyan/50" />
+            )}
+            <input
+              id="ghost-search"
+              className={`w-full bg-transparent px-3 py-2 pl-9 text-[11px] focus:outline-none ${isMd3 ? 'text-[var(--on-surface)] placeholder:text-text-muted' : 'text-neon-cyan placeholder:text-neon-cyan/30'}`}
+              placeholder={t('sidebar.localGhostSearch')}
+              value={sanitizeTextInput(localGhostQuery)}
+              onChange={(e) => setLocalGhostQuery(sanitizeTextInput(e.target.value))}
+              autoComplete="off"
+              spellCheck="false"
+            />
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Saved Messages — Telegram-style self-chat.
        *
@@ -812,29 +817,31 @@ export function ChatSidebar({
        *   2. Otherwise hit the API, and surface failures to the operator so
        *      the button is never silent-broken.
        */}
-      <button
-        type="button"
-        onClick={async () => {
-          const existingSelf = chats.find((c) => isSavedMessagesChat(c, userId))
-          if (existingSelf) {
-            navigateToChat(existingSelf.id)
-            return
-          }
-          try {
-            const self = await fetchOrCreateSelfChat()
-            navigateToChat(self.id)
-            void reload()
-          } catch (err) {
-            console.error('[saved-messages] open failed', err)
-            // Re-throw so React error boundary can surface it; swallowing made
-            // the button look dead in the wild.
-          }
-        }}
-        className={`p13-sidebar-saved mx-3 mt-3 flex items-center gap-2 px-3 py-2.5 text-left text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-accent-2/40 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent-2)_16%,transparent),color-mix(in_srgb,var(--accent-2)_8%,transparent))] font-mono uppercase tracking-widest text-neon-cyan/80 hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan'}`}
-      >
-        <Star className="h-3.5 w-3.5 text-accent-2 fill-accent-2" />
-        {t('sidebar.savedMessages')}
-      </button>
+      {showExpandedSidebarChrome ? (
+        <button
+          type="button"
+          onClick={async () => {
+            const existingSelf = chats.find((c) => isSavedMessagesChat(c, userId))
+            if (existingSelf) {
+              navigateToChat(existingSelf.id)
+              return
+            }
+            try {
+              const self = await fetchOrCreateSelfChat()
+              navigateToChat(self.id)
+              void reload()
+            } catch (err) {
+              console.error('[saved-messages] open failed', err)
+              // Re-throw so React error boundary can surface it; swallowing made
+              // the button look dead in the wild.
+            }
+          }}
+          className={`p13-sidebar-saved mx-3 mt-3 flex items-center gap-2 px-3 py-2.5 text-left text-[10px] transition-colors ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border border-accent-2/40 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--accent-2)_16%,transparent),color-mix(in_srgb,var(--accent-2)_8%,transparent))] font-mono uppercase tracking-widest text-neon-cyan/80 hover:border-accent-2/40 hover:bg-accent-2/15 hover:text-neon-cyan'}`}
+        >
+          <Star className="h-3.5 w-3.5 text-accent-2 fill-accent-2" />
+          {t('sidebar.savedMessages')}
+        </button>
+      ) : null}
 
       {/* Chat List */}
       <nav ref={chatListScrollRef as React.RefObject<HTMLElement>} className={`p13-sidebar-chatlist custom-scrollbar min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] ${isCollapsed ? 'px-1 pb-2 pt-2' : 'px-3 pb-3 pt-3'}`}>
@@ -867,7 +874,8 @@ export function ChatSidebar({
           </div>
         ) : null}
 
-        {ghostHitChatIds !== null &&
+        {showExpandedSidebarChrome &&
+        ghostHitChatIds !== null &&
         sanitizeTextInput(localGhostQuery).trim().length >= 2 &&
         sidebarChatsFiltered.length === 0 ? (
             <p className={`mx-1 mt-2 border px-4 py-6 text-center text-[10px] uppercase tracking-widest ${isMd3 ? 'rounded-2xl border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_5%,transparent)] text-[var(--on-surface-variant)]' : 'border-neon-red/30 bg-danger/30 font-mono text-neon-red'}`}>
@@ -1006,7 +1014,7 @@ export function ChatSidebar({
       </nav>
 
       {/* Active Chat Controls */}
-      {activeChatId ? (
+      {showExpandedSidebarChrome && activeChatId ? (
       <div className={`p13-sidebar-bottom-actions border-t p-3 space-y-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-void/20'}`}>
           {chats.find((c) => c.id === activeChatId)?.is_group ? (
             <>
@@ -1091,6 +1099,7 @@ export function ChatSidebar({
       ) : null}
 
       {/* Global Actions */}
+      {showExpandedSidebarChrome ? (
       <div className={`p13-sidebar-bottom-actions p13-sidebar-global-actions border-t p-3 space-y-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))]'}`}>
 
         {/* Admin link — only for admins, mobile-first placement */}
@@ -1220,6 +1229,7 @@ export function ChatSidebar({
           </button>
         </div>
       </div>
+      ) : null}
 
       </div>{/* end right panel */}
 

@@ -7,8 +7,8 @@
     "sync": "npx cap sync android",
     "copy": "npx cap copy android",
     "open:android": "npx cap open android",
-    "build:debug": "cd android && gradlew.bat assembleDebug",
-    "build:release": "cd android && gradlew.bat assembleRelease"
+    "build:debug": "node ./scripts/run-gradle.mjs assembleDebug",
+    "build:release": "node ./scripts/run-gradle.mjs assembleRelease"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",

@@ -164,7 +164,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : isRetro
-            ? 'bg-[color-mix(in_srgb,var(--void)_45%,#0b2d74)]'
+            ? 'p13-classic-overlay'
             : 'bg-void/90 backdrop-blur-sm'
       }`}
       role="dialog"
@@ -174,15 +174,15 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
         isMd3
           ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
           : isRetro
-            ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_18px_40px_rgba(0,0,0,0.34)]'
+            ? 'p13-classic-window'
             : 'border border-border-strong bg-void shadow-2xl'
       }`}>
         {/* TOP_DECOR */}
-        <div className={`absolute top-0 left-0 h-[1px] w-full ${isRetro ? 'bg-[#9abcf2] opacity-100' : 'bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50'}`} />
+        <div className={`absolute top-0 left-0 h-[1px] w-full ${isRetro ? 'p13-classic-accent-fill opacity-100' : 'bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50'}`} />
 
         <header className={`mb-6 flex items-start justify-between pb-4 ${isMd3 ? 'border-b border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-b border-border-strong'}`}>
           <div className="space-y-1">
-            <h2 className={`text-[10px] ${isMd3 ? 'tracking-wide text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] tracking-[0.05em] text-[#1a2f48]' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>
+            <h2 className={`text-[10px] ${isMd3 ? 'tracking-wide text-[var(--on-surface)]' : isRetro ? 'p13-classic-copy-deep tracking-[0.05em]' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>
               {t('group.title')}
             </h2>
             <p className={`text-[9px] ${isMd3 ? 'tracking-normal text-text-muted' : 'font-mono text-text-muted/70'}`}>
@@ -192,7 +192,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className={`transition-colors ${isRetro ? 'font-["Tahoma"] text-[#273b53] hover:text-[#8f1f23]' : 'text-text-muted/70 hover:text-neon-red'}`}
+            className={`transition-colors ${isRetro ? 'p13-classic-copy-soft hover:text-[var(--danger)]' : 'text-text-muted/70 hover:text-neon-red'}`}
           >
             {isRetro ? '✕' : '[X]'}
           </button>
@@ -267,7 +267,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
                 id="grp-radar"
                 className={`w-full border px-3 py-2 text-xs outline-none transition-all ${
                   isRetro
-                    ? 'border-[#6f747c] bg-[#ffffff] font-["Tahoma"] text-[#1a1a1a] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6]'
+                    ? 'p13-classic-input'
                     : 'border-border-strong bg-void font-mono text-text-primary focus:border-neon-red/50'
                 }`}
                 value={searchQuery}
@@ -284,7 +284,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </div>
 
           {/* RADAR_RESULTS */}
-          <div className={`max-h-44 overflow-y-auto border ${isRetro ? 'border-[#8e939c] bg-[#ebe7de]' : 'border-border-strong bg-void/40'}`}>
+          <div className={`max-h-44 overflow-y-auto border ${isRetro ? 'p13-classic-inset' : 'border-border-strong bg-void/40'}`}>
             {radarResults.length === 0 ? (
               <p className="p-4 text-center font-mono text-[10px] text-text-muted/50">
                 {t('group.noHits')}
@@ -299,9 +299,10 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
                     onClick={() => toggleNode(node)}
                     className={`flex w-full items-center justify-between border-b px-4 py-2.5 text-left text-xs transition-colors last:border-b-0 ${
                       isRetro
-                        ? `border-[#b1b5bc] font-["Tahoma"] ${isSelected ? 'bg-[#0a4ea1] text-[#f4f7ff]' : 'text-[#2a2f36] hover:bg-[#ddd9d1]'}`
+                        ? 'p13-classic-list-option'
                         : `border-border-strong font-mono hover:bg-surface/[0.03] ${isSelected ? 'text-neon-cyan' : 'text-text-muted'}`
                     }`}
+                    data-active={isRetro ? (isSelected ? 'true' : 'false') : undefined}
                   >
                     <span>{node.username}</span>
                     {createMode !== 'channel' && (
@@ -316,7 +317,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </div>
 
           {/* SELECTION_SUMMARY */}
-          <div className={`rounded border px-3 py-2 ${isRetro ? 'border-[#8e939c] bg-[#ebe7de]' : 'border-border-strong bg-void/30'}`}>
+          <div className={`rounded border px-3 py-2 ${isRetro ? 'p13-classic-inset' : 'border-border-strong bg-void/30'}`}>
             <p className="text-[9px] uppercase tracking-widest text-text-muted/70">{t('group.selectedLabel')}</p>
             <p className="mt-1 break-words font-mono text-[10px] text-neon-cyan">
               {selectedNodes.length === 0
@@ -356,7 +357,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
               onClick={onClose}
               className={`min-h-11 px-6 text-[10px] transition-all sm:w-auto ${
                 isRetro
-                  ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] text-[#2a3e56] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff] hover:bg-[#e2ded6]'
+                  ? 'p13-classic-button'
                   : 'border border-border-strong bg-void font-mono uppercase tracking-widest text-text-muted/70 hover:border-neon-red hover:text-neon-red'
               }`}
             >

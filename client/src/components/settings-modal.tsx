@@ -497,8 +497,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const settingsBtn = isMd3
     ? 'min-h-11 whitespace-nowrap rounded-full border border-[color-mix(in_srgb,var(--on-surface)_18%,transparent)] px-4 py-2 text-[13px] font-medium tracking-normal transition-colors'
     : isRetro
-      ? 'min-h-11 whitespace-nowrap rounded-none border border-[#6f747c] bg-[#d4d0c8] px-3 py-1.5 font-["Tahoma"] text-[11px] tracking-[0.02em] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff] transition-all duration-150'
-    : 'min-h-11 whitespace-nowrap border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
+      ? 'p13-classic-button min-h-11 whitespace-nowrap rounded-none px-3 py-1.5 text-[11px] transition-all duration-150'
+      : 'min-h-11 whitespace-nowrap border px-3 py-1.5 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out'
   const resolvedTheme = resolveThemeAppearance({
     theme,
     shellMode,
@@ -574,7 +574,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : isRetro
-            ? 'bg-[#008080]/75'
+            ? 'p13-classic-overlay'
             : 'bg-void/90'
       }`}
       role="dialog" aria-modal="true" aria-label={t('common.settings')}
@@ -586,21 +586,21 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
           className={`terminal-panel p13-settings-modal ${isMd3 ? 'md3-settings' : ''} flex h-[min(100dvh,100vh)] w-full min-w-0 max-w-[min(1200px,98vw)] flex-col overflow-hidden lg:h-[min(92dvh,92vh)] ${
-        isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!rounded-none !border-[#6f747c] !bg-[#d4d0c8] !shadow-none' : ''}`}
+        isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!p13-classic-window !rounded-none !shadow-none' : ''}`}
       >
         {/* ── Header ── */}
-        <header className={`flex shrink-0 items-start justify-between gap-2 border-b pb-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#001f57] bg-[#0a4ea1] px-3 pt-2' : 'border-neon-red/40'}`}>
-          <p className={`min-w-0 break-words text-xs ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : isRetro ? 'font-["Tahoma"] tracking-[0.04em] text-[#f4f7ff]' : 'uppercase tracking-[0.35em] text-neon-cyan'}`}>
+        <header className={`flex shrink-0 items-start justify-between gap-2 border-b pb-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'p13-classic-titlebar px-3 pt-2' : 'border-neon-red/40'}`}>
+          <p className={`min-w-0 break-words text-xs ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : isRetro ? 'p13-classic-title-copy' : 'uppercase tracking-[0.35em] text-neon-cyan'}`}>
             {t('common.settings')} :: {username}
           </p>
           <button type="button" onClick={onClose}
-            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'rounded-full px-2 py-1 text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'border border-[#6f747c] bg-[#d4d0c8] px-2 py-0.5 font-["Tahoma"] text-[#10243a] shadow-none' : 'font-mono text-neon-red hover:text-neon-cyan'}`}>
+            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'rounded-full px-2 py-1 text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'p13-classic-button px-2 py-0.5 shadow-none' : 'font-mono text-neon-red hover:text-neon-cyan'}`}>
             {isMd3 || isRetro ? '✕' : '[X]'}
           </button>
         </header>
 
         <div className="p13-settings-layout min-h-0 flex-1 overflow-hidden xl:grid xl:grid-cols-[16rem_minmax(0,1fr)]">
-          <aside className={`hidden min-h-0 border-r p-2 xl:flex xl:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
+          <aside className={`hidden min-h-0 border-r p-2 xl:flex xl:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-border-strong' : 'border-neon-cyan/20'}`}>
             <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
               {SETTINGS_TABS.map((tab) => (
                 <button
@@ -624,9 +624,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </aside>
 
           <div className="p13-settings-content min-h-0 flex flex-col">
-            <div className={`border-b p-2 xl:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-[#7a8089]' : 'border-neon-cyan/20'}`}>
+            <div className={`border-b p-2 xl:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-border-strong' : 'border-neon-cyan/20'}`}>
               {mobileSettingsView === 'list' ? (
-                <p className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] text-[#1c3653]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
+                <p className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'p13-classic-copy-deep' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>
                   {t('common.settings')}
                 </p>
               ) : (
@@ -1205,8 +1205,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       ))}
                     </select>
                   </div>
-                  <div className={`rounded-[var(--radius-md)] border p-3 ${isRetro ? 'border-[#7a8089] bg-[#c9c5bd]' : 'border-neon-cyan/20 bg-void/30'}`}>
-                    <p className={`mb-2 text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'text-[#243a57]' : 'text-neon-cyan/70'}`}>
+                  <div className={`rounded-[var(--radius-md)] border p-3 ${isRetro ? 'p13-classic-strip' : 'border-neon-cyan/20 bg-void/30'}`}>
+                    <p className={`mb-2 text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'p13-classic-copy-soft' : 'text-neon-cyan/70'}`}>
                       {t('settings.appearanceShellTitle')}
                     </p>
                     <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
@@ -1246,9 +1246,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     </div>
                   </div>
 
-                  <div className={`rounded-[var(--radius-md)] border p-3 ${isRetro ? 'border-[#7a8089] bg-[#c9c5bd]' : 'border-neon-cyan/20 bg-void/30'}`}>
+                  <div className={`rounded-[var(--radius-md)] border p-3 ${isRetro ? 'p13-classic-strip' : 'border-neon-cyan/20 bg-void/30'}`}>
                     <div className="mb-2">
-                      <p className={`text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'text-[#243a57]' : 'text-neon-cyan/70'}`}>
+                      <p className={`text-[9px] uppercase tracking-[0.28em] ${isRetro ? 'p13-classic-copy-soft' : 'text-neon-cyan/70'}`}>
                         {t('settings.appearancePlatformTitle')}
                       </p>
                       <p className="mt-1 text-[9px] text-text-muted">

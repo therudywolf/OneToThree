@@ -209,13 +209,13 @@ export function LoginForm() {
               isMd3
                 ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
                 : isRetro
-                  ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_16px_34px_rgba(0,0,0,0.3)]'
+                  ? 'p13-classic-window'
                   : 'border border-border-strong bg-void shadow-2xl'
             }`}
             initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
           >
-            <header className={`mb-8 border-b pb-4 ${isRetro ? 'border-[#001f57] bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)] px-2 pt-2' : 'border-border-strong'}`}>
-              <p className={`text-[10px] ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] tracking-[0.06em] text-[#f4f7ff]' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>{t('login.totpTitle')}</p>
+            <header className={`mb-8 border-b pb-4 ${isRetro ? 'p13-classic-titlebar px-2 pt-2' : 'border-border-strong'}`}>
+              <p className={`text-[10px] ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'p13-classic-title-copy' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>{t('login.totpTitle')}</p>
             </header>
             <div className="space-y-6">
               <div className="space-y-2">
@@ -230,7 +230,7 @@ export function LoginForm() {
                     isMd3
                       ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] tracking-[0.3em] text-[var(--on-surface)]'
                       : isRetro
-                        ? 'border border-[#6f747c] bg-[#ffffff] font-["Tahoma"] tracking-[0.35em] text-[#0f2f4f] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6]'
+                        ? 'p13-classic-input tracking-[0.35em] p-3'
                         : 'bg-void border border-border-strong font-mono tracking-[0.6em] text-neon-cyan focus:border-neon-cyan/50'
                   }`}
                   placeholder="000000" autoComplete="one-time-code" autoFocus
@@ -243,7 +243,7 @@ export function LoginForm() {
                 {t('login.totpSubmit')}
               </TerminalGlitchButton>
               <button type="button" onClick={() => setStage('IDENTITY')}
-                className={`w-full text-[9px] ${isRetro ? 'font-["Tahoma"] tracking-normal text-[#3f4752] hover:text-[#8f1f23]' : 'uppercase tracking-widest text-text-muted/70 hover:text-neon-red'}`}>
+                className={`w-full text-[9px] ${isRetro ? 'p13-classic-copy-muted hover:text-[var(--neon-red)]' : 'uppercase tracking-widest text-text-muted/70 hover:text-neon-red'}`}>
                 {t('common.back')}
               </button>
             </div>
@@ -259,18 +259,18 @@ export function LoginForm() {
               isMd3
                 ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
                 : isRetro
-                  ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_16px_34px_rgba(0,0,0,0.3)]'
+                  ? 'p13-classic-window'
                   : 'border border-border-strong bg-void shadow-2xl'
             }`}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
           >
-            <div className={`absolute top-0 left-0 h-[1px] w-full ${isRetro ? 'bg-[#9abcf2] opacity-100' : 'bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50'}`} />
+            <div className={`absolute top-0 left-0 h-[1px] w-full ${isRetro ? 'p13-classic-accent-fill opacity-100' : 'bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50'}`} />
 
-            <header className={`mb-8 border-b pb-4 ${isRetro ? 'border-[#001f57] bg-[linear-gradient(180deg,#0a4ea1,#0b3f87)] px-2 pt-2' : 'border-border-strong'}`}>
-              <p className={`text-[10px] ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'font-["Tahoma"] tracking-[0.06em] text-[#f4f7ff]' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>
+            <header className={`mb-8 border-b pb-4 ${isRetro ? 'p13-classic-titlebar px-2 pt-2' : 'border-border-strong'}`}>
+              <p className={`text-[10px] ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'p13-classic-title-copy' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>
                 {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
               </p>
-              <p className={`mt-1 text-[8px] ${isRetro ? 'font-["Tahoma"] tracking-normal text-[#edf4ff]' : 'text-text-muted/70 tracking-widest'}`}>E2E // ECDSA P-256 // ZERO-TRUST</p>
+              <p className={`mt-1 text-[8px] ${isRetro ? 'p13-classic-title-copy-soft tracking-normal' : 'text-text-muted/70 tracking-widest'}`}>E2E // ECDSA P-256 // ZERO-TRUST</p>
             </header>
 
             <div className="space-y-6">
@@ -293,7 +293,7 @@ export function LoginForm() {
                   type="text" required autoFocus
                   value={handle}
                   onChange={(e) => setHandle(e.target.value)}
-                  className={isRetro ? 'w-full border border-[#6f747c] bg-[#ffffff] px-3 py-2 font-["Tahoma"] text-[11px] text-[#1a1a1a] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6] outline-none' : 'terminal-input'}
+                  className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
                   placeholder={t('login.handlePlaceholder')}
                   autoComplete="username"
                 />
@@ -321,7 +321,7 @@ export function LoginForm() {
                   type="password" required
                   value={vaultPassword}
                   onChange={(e) => setVaultPassword(e.target.value)}
-                  className={isRetro ? 'w-full border border-[#6f747c] bg-[#ffffff] px-3 py-2 font-["Tahoma"] text-[11px] text-[#1a1a1a] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6] outline-none' : 'terminal-input'}
+                  className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
                   placeholder="••••••••"
                   autoComplete={mode === 'ACCESS' ? 'current-password' : 'new-password'}
                 />
@@ -336,7 +336,7 @@ export function LoginForm() {
                     type="password" required
                     value={confirmVaultPassword}
                     onChange={(e) => setConfirmVaultPassword(e.target.value)}
-                    className={isRetro ? 'w-full border border-[#6f747c] bg-[#ffffff] px-3 py-2 font-["Tahoma"] text-[11px] text-[#1a1a1a] shadow-[inset_1px_1px_0_#7b818a,inset_-1px_-1px_0_#f6f6f6] outline-none' : 'terminal-input'}
+                    className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
                     placeholder="••••••••"
                     autoComplete="new-password"
                   />

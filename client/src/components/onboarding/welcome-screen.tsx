@@ -332,7 +332,7 @@ function ShellStep({
               {/* Mini preview pane */}
               <div
                 className={`mb-4 h-20 w-full overflow-hidden ${
-                  pTerminal ? 'rounded-none bg-void' : pRetro ? 'rounded-none bg-[#efe5bf]' : 'rounded-[14px] bg-surface'
+                  pTerminal ? 'rounded-none bg-void' : pRetro ? 'p13-classic-preview-pane rounded-none' : 'rounded-[14px] bg-surface'
                 } relative`}
               >
                 {pTerminal ? (
@@ -345,11 +345,11 @@ function ShellStep({
                   </>
                 ) : pRetro ? (
                   <>
-                    <div className="absolute inset-0 bg-[linear-gradient(180deg,#f7efce_0%,#e8dbab_100%)]" />
-                    <div className="absolute left-2 top-2 h-4 w-16 border border-[#8a7a4b] bg-[#efe2b7]" />
-                    <div className="absolute left-2 top-8 h-2 w-24 bg-[#8a7a4b]/65" />
-                    <div className="absolute left-2 top-12 h-2 w-20 bg-[#6c5a2e]/55" />
-                    <div className="absolute right-2 bottom-2 h-4 w-12 border border-[#8a7a4b] bg-[#e3d39f]" />
+                    <div className="p13-classic-preview-canvas absolute inset-0" />
+                    <div className="p13-classic-preview-chip absolute left-2 top-2 h-4 w-16" />
+                    <div className="p13-classic-preview-bar-primary absolute left-2 top-8 h-2 w-24" />
+                    <div className="p13-classic-preview-bar-secondary absolute left-2 top-12 h-2 w-20" />
+                    <div className="p13-classic-preview-badge absolute right-2 bottom-2 h-4 w-12" />
                   </>
                 ) : (
                   <>

@@ -73,7 +73,6 @@ export function ComposerPickerPanel({
   const [gifBusy, setGifBusy] = useState(false)
   const [gifErr, setGifErr] = useState<string | null>(null)
   const [gifs, setGifs] = useState<GifHit[]>([])
-  const [gifDegraded, setGifDegraded] = useState(false)
   const [gifFavorites, setGifFavorites] = useState<GifHit[]>([])
   const [gifFavBusyId, setGifFavBusyId] = useState<string | null>(null)
 
@@ -194,14 +193,12 @@ export function ComposerPickerPanel({
     let cancelled = false
     setGifBusy(true)
     setGifErr(null)
-    setGifDegraded(false)
     const timer = setTimeout(() => {
       const run = isTrendingMode ? fetchTrendingGifs(48) : searchGifs(q, 48)
       void run
         .then((result) => {
           if (cancelled) return
           setGifs(result.items)
-          setGifDegraded(result.degraded)
         })
         .catch((e) => {
           if (!cancelled) {
@@ -282,12 +279,12 @@ export function ComposerPickerPanel({
       className={`inline-flex h-9 items-center justify-center rounded px-3 font-mono text-[10px] uppercase tracking-widest transition-colors ${
         tab === id
           ? isRetro
-            ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] normal-case text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+            ? 'p13-classic-button'
             : isTerminal
             ? 'bg-neon-cyan/15 text-neon-cyan'
-            : 'bg-[var(--md3-primary-container,#2a3441)] text-[var(--on-surface)]'
+            : 'bg-[var(--secondary-container)] text-[var(--on-secondary-container)]'
           : isRetro
-            ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] normal-case text-[#3f4752] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+            ? 'p13-classic-button p13-classic-button--muted'
             : 'text-text-muted hover:text-neon-cyan/80'
       }`}
     >
@@ -309,7 +306,7 @@ export function ComposerPickerPanel({
             <div
               className={`min-h-0 overflow-hidden rounded border ${
                 isRetro
-                  ? 'border-[#6f747c] bg-[#d4d0c8]'
+                  ? 'p13-classic-menu'
                   : isTerminal
                     ? 'border-neon-cyan/15 bg-void/60'
                     : 'border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_4%,transparent)]'
@@ -340,7 +337,7 @@ export function ComposerPickerPanel({
                 onClick={() => void onImport()}
                 className={`inline-flex h-10 shrink-0 items-center justify-center rounded px-3 text-[10px] disabled:opacity-40 ${
                   isRetro
-                    ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                    ? 'p13-classic-button'
                     : 'border border-neon-cyan/40 font-mono uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'
                 }`}
               >
@@ -369,10 +366,10 @@ export function ComposerPickerPanel({
                     className={`inline-flex h-8 max-w-[12rem] items-center gap-1.5 truncate rounded px-2 text-[10px] ${
                       selectedPackId === p.id
                         ? isRetro
-                          ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#123659] shadow-[inset_1px_1px_0_#7d7d7d,inset_-1px_-1px_0_#ffffff]'
+                          ? 'p13-classic-button'
                           : 'bg-neon-cyan/20 text-neon-cyan'
                         : isRetro
-                          ? 'border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] normal-case tracking-[0.02em] text-[#3f4752] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                          ? 'p13-classic-button p13-classic-button--muted'
                           : 'bg-void/50 text-text-muted hover:text-neon-cyan/90'
                     }`}
                     title={p.title}
@@ -603,11 +600,6 @@ export function ComposerPickerPanel({
               <div className="py-2 font-mono text-[10px] text-danger/90">{gifErr}</div>
             ) : gifs.length > 0 ? (
               <>
-                {gifDegraded ? (
-                  <div className="py-2 font-mono text-[10px] text-text-muted">
-                    {t('composer.gifFallbackMode')}
-                  </div>
-                ) : null}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {gifs.map((g) => (
                     <div key={g.id} className="relative">
@@ -655,10 +647,6 @@ export function ComposerPickerPanel({
                   ))}
                 </div>
               </>
-            ) : gifDegraded ? (
-              <div className="py-2 font-mono text-[10px] text-text-muted">
-                {t('composer.gifFallbackMode')}
-              </div>
             ) : gifQuery.trim().length < 2 ? (
               <div className="py-4 text-center font-mono text-[10px] text-text-muted">{t('composer.gifPopular')}</div>
             ) : (

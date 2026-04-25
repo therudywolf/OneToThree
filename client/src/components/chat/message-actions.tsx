@@ -164,7 +164,7 @@ export function MessageActions({
           isMd3
             ? 'rounded-2xl border border-[color-mix(in_srgb,var(--on-surface)_14%,transparent)] bg-[var(--surface-elevated)] shadow-[var(--md3-elevation-3)]'
             : isRetro
-              ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff,0_6px_14px_rgba(0,0,0,0.24)]'
+              ? 'p13-classic-menu shadow-[0_6px_14px_rgba(0,0,0,0.24)]'
               : 'border border-neon-cyan/60 bg-void shadow-[0_0_24px_rgba(0,255,255,0.1)]'
         }`}
         role="menu"
@@ -185,8 +185,8 @@ export function MessageActions({
                       : 'rounded-xl text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
                     : isRetro
                       ? action.danger
-                        ? 'font-["Tahoma"] text-[11px] text-[#8f1f23] hover:bg-[#eadfdc]'
-                        : 'font-["Tahoma"] text-[11px] text-[#1e2f44] hover:bg-[#e8e4dc]'
+                        ? 'p13-classic-menu-item p13-classic-menu-item--danger'
+                        : 'p13-classic-menu-item'
                       : action.danger
                         ? 'font-mono text-[10px] uppercase tracking-widest text-danger hover:bg-neon-red/10 hover:text-neon-red'
                         : 'font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10'
@@ -234,8 +234,8 @@ export function QuickReactBar({ onReact }: QuickReactProps) {
       className={`flex items-center gap-0.5 px-1 py-0.5 ${
         isMd3
           ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,var(--surface))] shadow-[var(--md3-elevation-2)]'
-          : isRetro
-            ? 'border border-[#6f747c] bg-[#d4d0c8] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+        : isRetro
+            ? 'p13-classic-menu'
             : 'border border-neon-cyan/40 bg-void shadow-[0_0_12px_rgba(0,255,255,0.08)]'
       }`}
     >
@@ -251,7 +251,7 @@ export function QuickReactBar({ onReact }: QuickReactProps) {
             isMd3
               ? 'rounded-full hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:scale-110'
               : isRetro
-                ? 'rounded-none border border-transparent hover:border-[#9aa0aa] hover:bg-[#ece9e2] hover:scale-105'
+                ? 'p13-classic-react-btn hover:scale-105'
                 : 'hover:scale-125'
           }`}
         >

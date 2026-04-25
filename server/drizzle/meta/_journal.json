@@ -274,6 +274,27 @@
       "when": 1777058400000,
       "tag": "0039_native_push_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1777084100000,
+      "tag": "0033_chats_discussion_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1777084110000,
+      "tag": "0036_sticker_pack_shares",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1777084120000,
+      "tag": "0040_users_display_name_last_seen_privacy",
+      "breakpoints": true
     }
   ]
 }

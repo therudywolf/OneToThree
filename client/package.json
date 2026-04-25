@@ -64,5 +64,9 @@
     "typescript": "^5.9.3",
     "vitest": "^3.2.4",
     "web-push": "^3.6.7"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "postcss": "^8.5.10"
   }
 }

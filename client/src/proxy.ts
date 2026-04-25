@@ -5,6 +5,7 @@
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
+import { normalizeApiRoot } from '@/lib/api/url'
 
 const SESSION_COOKIE = 'fm_session'
 const PUBLIC_PATHS = new Set<string>(['/login'])
@@ -20,8 +21,7 @@ function isBypassPath(pathname: string): boolean {
 
 function resolveApiBase(request: NextRequest): string {
   const fromEnv = process.env.NEXT_PUBLIC_API_URL?.trim()
-  if (fromEnv) return `${fromEnv.replace(/\/$/, '')}/api`
-  return `${request.nextUrl.origin}/api`
+  return normalizeApiRoot(fromEnv, { sameOriginFallback: `${request.nextUrl.origin}/api` })
 }
 
 /** [AUTH_SCAN] :: Верификация сессии через API шлюз */

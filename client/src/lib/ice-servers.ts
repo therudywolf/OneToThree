@@ -15,9 +15,11 @@
 // ---------------------------------------------------------------------------
 
 import { API_URL } from '@/lib/api/auth'
+import { DEFAULT_PUBLIC_API_ROOT, normalizeApiRoot, normalizeHttpOrigin } from '@/lib/api/url'
 
 const CACHE_WINDOW_MS = 30_000
 const REFRESH_SAFETY_MS = 60_000
+const PRODUCTION_APP_ORIGINS = new Set(['https://onetothree.ru', 'https://www.onetothree.ru'])
 
 /** Mirrors server `GET /api/ice-servers` `source` (plus client-only states). */
 export type IceBackendSource =
@@ -42,6 +44,17 @@ interface IceCacheEntry {
   backendSource: IceBackendSource
   transportPolicy: IceTransportPolicy
   hasRelay: boolean
+}
+
+type WindowWithCapacitor = typeof window & {
+  Capacitor?: { isNativePlatform?: () => boolean }
+}
+
+type IceEndpointPayload = {
+  iceServers?: unknown
+  expiresAt?: number | null
+  source?: string
+  transportPolicy?: string
 }
 
 let cache: IceCacheEntry | null = null
@@ -86,6 +99,53 @@ function listContainsTurnRelay(servers: RTCIceServer[]): boolean {
   return false
 }
 
+function isNativeCapacitorPlatform(): boolean {
+  if (typeof window === 'undefined') return false
+  return Boolean((window as WindowWithCapacitor).Capacitor?.isNativePlatform?.())
+}
+
+function currentHttpOrigin(): string | null {
+  if (typeof window === 'undefined') return null
+  return normalizeHttpOrigin(window.location?.origin)
+}
+
+function isSameOriginApiRoot(apiRoot: string, origin: string): boolean {
+  if (apiRoot.startsWith('/')) return true
+  return normalizeHttpOrigin(apiRoot) === origin
+}
+
+function shouldUseDirectApiFallback(primaryRoot: string): boolean {
+  if (primaryRoot === DEFAULT_PUBLIC_API_ROOT) return false
+
+  const origin = currentHttpOrigin()
+  if (!origin) return false
+  if (!isSameOriginApiRoot(primaryRoot, origin)) return false
+
+  return PRODUCTION_APP_ORIGINS.has(origin) || isNativeCapacitorPlatform()
+}
+
+function resolveIceEndpointCandidates(): string[] {
+  const primaryRoot = normalizeApiRoot(API_URL)
+  const roots = [primaryRoot]
+  if (shouldUseDirectApiFallback(primaryRoot)) {
+    roots.push(DEFAULT_PUBLIC_API_ROOT)
+  }
+
+  return Array.from(new Set(roots)).map((root) => `${root}/ice-servers`)
+}
+
+async function fetchIcePayload(endpoint: string): Promise<IceEndpointPayload> {
+  const res = await fetch(endpoint, {
+    method: 'GET',
+    credentials: 'include',
+    headers: { accept: 'application/json' },
+  })
+  if (!res.ok) {
+    throw new Error(`ICE_FETCH_${res.status}`)
+  }
+  return (await res.json()) as IceEndpointPayload
+}
+
 /**
  * Fetch (or return cached) ICE servers for a new RTCPeerConnection.
  *
@@ -110,18 +170,23 @@ export async function getIceConfig(options?: { forceRefresh?: boolean }): Promis
   if (inflight) return inflight
   inflight = (async () => {
     try {
-      const res = await fetch(`${API_URL}/ice-servers`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: { accept: 'application/json' },
-      })
-      if (!res.ok) throw new Error(`ICE_FETCH_${res.status}`)
-      const payload = (await res.json()) as {
-        iceServers?: unknown
-        expiresAt?: number | null
-        source?: string
-        transportPolicy?: string
+      const endpoints = resolveIceEndpointCandidates()
+      let payload: IceEndpointPayload | null = null
+      let lastError: unknown = null
+
+      for (const endpoint of endpoints) {
+        try {
+          payload = await fetchIcePayload(endpoint)
+          break
+        } catch (error) {
+          lastError = error
+        }
       }
+
+      if (!payload) {
+        throw lastError instanceof Error ? lastError : new Error('ICE_FETCH_FAILED')
+      }
+
       const servers = normalizeList(payload.iceServers)
       const merged = mergeUnique(servers)
       const hasRelay = listContainsTurnRelay(merged)

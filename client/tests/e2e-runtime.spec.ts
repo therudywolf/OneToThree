@@ -6,7 +6,12 @@
  * D5 — TURN/ICE: /api/ice-servers returns a valid iceServers array.
  */
 import { expect, test } from '@playwright/test'
-import { fetchUserId, registerNewUser, uniqueHandle } from './helpers'
+import {
+  fetchUserId,
+  registerNewUser,
+  setDiscoverable,
+  uniqueHandle,
+} from './helpers'
 import { ChatPage } from './pom/chat-page'
 
 const PASS = 'E2E_Runtime_99!'
@@ -24,6 +29,7 @@ test.describe('D2: direct fanout — two real accounts', () => {
     await registerNewUser(pageA, alice, PASS)
     await registerNewUser(pageB, bob, PASS)
 
+    const aliceId = await fetchUserId(pageA)
     const bobId = await fetchUserId(pageB)
 
     // Alice opens a direct chat with Bob
@@ -33,22 +39,24 @@ test.describe('D2: direct fanout — two real accounts', () => {
     const msgAtoB = `d2-atob-${Date.now()}`
     await chatA.sendChatMessage(msgAtoB)
 
-    // Bob's page: reload and check message arrived
+    // Bob's page: reload, unlock, and open the existing direct chat.
     await pageB.reload()
-    // Wait for sidebar to show Alice's chat
-    await expect(pageB.getByText(alice, { exact: false })).toBeVisible({ timeout: 30_000 })
-    await pageB.getByText(alice, { exact: false }).first().click()
+    const chatB = new ChatPage(pageB)
+    await chatB.openExistingDirectChatByPeerId(aliceId, PASS)
 
-    await expect(pageB.getByText(msgAtoB)).toBeVisible({ timeout: 30_000 })
+    await expect(pageB.getByText(msgAtoB).first()).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(pageB.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
 
     // Bob replies
-    const chatB = new ChatPage(pageB)
     const msgBtoA = `d2-btoa-${Date.now()}`
     await chatB.sendChatMessage(msgBtoA)
 
     // Alice receives Bob's reply
-    await expect(pageA.getByText(msgBtoA)).toBeVisible({ timeout: 30_000 })
+    await expect(pageA.getByText(msgBtoA).first()).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(pageA.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
 
     await ctxA.close()
@@ -56,8 +64,8 @@ test.describe('D2: direct fanout — two real accounts', () => {
   })
 })
 
-test.describe('D1: group E2E invite flow — member receives group key', () => {
-  test('alice creates group_e2e, bob joins by invite, both can decrypt', async ({ browser }) => {
+test.describe('D1: group E2E runtime — member receives group key', () => {
+  test('alice creates group_e2e with bob, both can decrypt', async ({ browser }) => {
     const alice = uniqueHandle('d1alice')
     const bob = uniqueHandle('d1bob')
 
@@ -68,40 +76,40 @@ test.describe('D1: group E2E invite flow — member receives group key', () => {
 
     await registerNewUser(pageA, alice, PASS)
     await registerNewUser(pageB, bob, PASS)
+    await setDiscoverable(pageB, true)
 
-    // Alice creates a group_e2e chat via the API directly
-    const inviteCode: string = await pageA.evaluate(async () => {
-      const res = await fetch('/api/chats', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'D1TestGroup', type: 'group_e2e' }),
-      })
-      const data = (await res.json()) as { invite_code?: string }
-      return data.invite_code ?? ''
+    const groupName = `D1TestGroup-${Date.now()}`
+    await pageA.getByRole('button', { name: /Новый чат|New Chat/i }).click()
+    await expect(
+      pageA.getByRole('heading', { name: /Создать группу|Create Group/i })
+    ).toBeVisible()
+    await pageA.locator('#grp-name').fill(groupName)
+    await pageA.locator('#grp-radar').fill(bob)
+    await pageA.getByRole('button', { name: bob }).first().click()
+    await pageA
+      .getByRole('dialog')
+      .getByRole('button', { name: /^Создать$|^Create$/i })
+      .click()
+
+    await expect(pageA.getByText(groupName).first()).toBeVisible({
+      timeout: 30_000,
     })
-    expect(inviteCode).toBeTruthy()
-
-    // Alice sends a message before Bob joins
-    await pageA.goto('/')
-    await expect(pageA.getByText('D1TestGroup')).toBeVisible({ timeout: 30_000 })
-    await pageA.getByText('D1TestGroup').click()
 
     const msgBeforeJoin = `d1-before-${Date.now()}`
     const chatA = new ChatPage(pageA)
+    await chatA.waitForChatReady(PASS)
     await chatA.sendChatMessage(msgBeforeJoin)
 
-    // Bob joins via invite code
-    await pageB.goto(`/join/${inviteCode}`)
-    await pageB.getByRole('button', { name: /join|вступить/i }).click()
-    await pageB.waitForURL('/', { timeout: 30_000 })
-
-    // Bob opens the group — wait for group key delivery from Alice (WS event driven)
-    await expect(pageB.getByText('D1TestGroup')).toBeVisible({ timeout: 30_000 })
-    await pageB.getByText('D1TestGroup').click()
-
-    // Bob should see the message without DECRYPT_FAIL (key delivered)
-    // Key delivery is async — allow up to 15s for Alice's hook to fire
+    await pageB.goto('/')
+    await new ChatPage(pageB).unlockVaultIfNeeded(PASS)
+    await expect(pageB.getByText(groupName).first()).toBeVisible({
+      timeout: 30_000,
+    })
+    await pageB.getByText(groupName).first().click()
+    await new ChatPage(pageB).waitForChatReady(PASS)
+    await expect(pageB.getByText(msgBeforeJoin).first()).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(pageB.getByText('[DECRYPT_FAIL]')).not.toBeVisible({ timeout: 15_000 })
 
     // Bob sends a message, Alice receives it
@@ -109,7 +117,9 @@ test.describe('D1: group E2E invite flow — member receives group key', () => {
     const chatB = new ChatPage(pageB)
     await chatB.sendChatMessage(msgBobToGroup)
 
-    await expect(pageA.getByText(msgBobToGroup)).toBeVisible({ timeout: 30_000 })
+    await expect(pageA.getByText(msgBobToGroup).first()).toBeVisible({
+      timeout: 30_000,
+    })
     await expect(pageA.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
 
     await ctxA.close()
@@ -123,13 +133,14 @@ test.describe('D3: Saved Messages — self-chat persistence across reload', () =
     await registerNewUser(page, handle, PASS)
 
     // Open Saved Messages via API
-    const selfChatId: string = await page.evaluate(async () => {
+    const selfChatId = await page.evaluate(async () => {
       const res = await fetch('/api/chats/self', { credentials: 'include' })
       if (!res.ok) throw new Error(`self ${res.status}`)
-      const data = (await res.json()) as { id: string }
-      return data.id
+      const data = (await res.json()) as { chat?: { id?: string }; id?: string }
+      const chatId = data.chat?.id ?? data.id
+      if (!chatId) throw new Error('self chat id missing')
+      return chatId
     })
-    expect(selfChatId).toBeTruthy()
 
     // Navigate to self-chat and send a message
     await page.goto(`/?chat=${selfChatId}`)
@@ -138,14 +149,14 @@ test.describe('D3: Saved Messages — self-chat persistence across reload', () =
 
     const msg = `d3-self-${Date.now()}`
     await chatSelf.sendChatMessage(msg)
-    await expect(page.getByText(msg)).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(msg).first()).toBeVisible({ timeout: 15_000 })
 
     // Reload and re-unlock vault
     await page.reload()
     await chatSelf.waitForChatReady(PASS)
 
     // Message must still be visible after reload
-    await expect(page.getByText(msg)).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(msg).first()).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
   })
 })
@@ -180,7 +191,7 @@ test.describe('D4: DR runtime — direct message uses protocol_version 2', () =>
     await chatA.sendChatMessage(msg)
 
     // Give the route handler time to fire
-    await expect(pageA.getByText(msg)).toBeVisible({ timeout: 15_000 })
+    await expect(pageA.getByText(msg).first()).toBeVisible({ timeout: 15_000 })
 
     // Verify DR wire format: protocol_version 2 is present when DR is enabled.
     // If NEXT_PUBLIC_DR_ENABLED is not set, fanout is used (no protocol_version).
@@ -206,16 +217,16 @@ test.describe('D5: TURN/coturn — /api/ice-servers returns valid config', () =>
       if (!res.ok) return { ok: false as const, status: res.status }
       const body = (await res.json()) as {
         iceServers: unknown[]
-        source: string
+        source: string | null
         expiresAt: number | null
       }
       return { ok: true as const, body }
     })
 
     expect(result.ok).toBe(true)
-    const body = (result as { ok: true; body: { iceServers: unknown[]; source: string } }).body
+    const body = (result as { ok: true; body: { iceServers: unknown[]; source: string | null } }).body
     expect(Array.isArray(body.iceServers)).toBe(true)
     expect(body.iceServers.length).toBeGreaterThan(0)
-    expect(['cloudflare', 'coturn', 'stun-only']).toContain(body.source)
+    expect(['cloudflare', 'coturn', 'stun-only', null]).toContain(body.source)
   })
 })

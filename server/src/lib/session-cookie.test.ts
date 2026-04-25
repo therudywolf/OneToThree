@@ -29,6 +29,27 @@ describe('sessionCookieSetOptions', () => {
     expect(line).toMatch(/Domain=\.onetothree\.ru/)
   })
 
+  it('uses SameSite=Lax for insecure local HTTP so browsers keep the cookie', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('CORS_ALLOW_MOBILE_APP', '1')
+    vi.stubEnv('COOKIE_SECURE', '0')
+    const { sessionCookieSetOptions } = await import('./session-cookie.js')
+    const opts = sessionCookieSetOptions(60)
+    const line = serialize('fm_session', 'x'.repeat(40), opts)
+    expect(line).toMatch(/SameSite=Lax/i)
+    expect(line).not.toMatch(/;\s*Secure/i)
+  })
+
+  it('uses SameSite=None only when the cookie is Secure', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('CORS_ALLOW_MOBILE_APP', '1')
+    const { sessionCookieSetOptions } = await import('./session-cookie.js')
+    const opts = sessionCookieSetOptions(60)
+    const line = serialize('fm_session', 'x'.repeat(40), opts)
+    expect(line).toMatch(/SameSite=None/i)
+    expect(line).toMatch(/;\s*Secure/i)
+  })
+
   it('rejects non-positive maxAge', async () => {
     vi.stubEnv('NODE_ENV', 'development')
     const { sessionCookieSetOptions } = await import('./session-cookie.js')

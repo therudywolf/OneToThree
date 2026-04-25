@@ -11,21 +11,22 @@ export class ChatPage {
 
   txForm(): Locator {
     return this.page.locator('form').filter({
-      has: this.page.getByRole('button', { name: /send/i }).or(
-        this.page.getByTitle(/send/i)
-      ),
+      has: this.page.locator('textarea'),
     })
   }
 
   async unlockVaultIfNeeded(passphrase?: string): Promise<void> {
     if (!passphrase) return
-    const dialog = this.page.getByRole('dialog', { name: /Key vault/i })
-    const count = await dialog.count()
-    if (count === 0) return
-    if (!(await dialog.first().isVisible().catch(() => false))) return
-    await this.page.locator('#vault-pin').fill(passphrase)
+    const pinInput = this.page.locator('#vault-pin')
+    const hasVaultPrompt = await pinInput
+      .waitFor({ state: 'visible', timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (!hasVaultPrompt) return
+
+    await pinInput.fill(passphrase)
     await this.page.getByRole('button', { name: /UNLOCK/i }).click()
-    await expect(dialog.first()).not.toBeVisible({ timeout: 60_000 })
+    await expect(pinInput).not.toBeVisible({ timeout: 60_000 })
   }
 
   async waitForChatReady(passphrase?: string): Promise<void> {
@@ -97,7 +98,11 @@ export class ChatPage {
   async sendChatMessage(plain: string): Promise<void> {
     const form = this.txForm()
     await form.locator('textarea').fill(plain)
-    await this.page.getByTitle(/send/i).click()
+    const sendButton = this.page
+      .getByRole('button', { name: /send|отправить/i })
+      .last()
+    await expect(sendButton).toBeEnabled({ timeout: 15_000 })
+    await sendButton.click()
   }
 
   attachFileInput(): Locator {

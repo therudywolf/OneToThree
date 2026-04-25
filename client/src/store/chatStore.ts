@@ -115,7 +115,7 @@ export const useChatStore = create<ChatState>((set) => {
         const t = new Date(n.burn_at).getTime()
         return Number.isFinite(t) && now > t
       })
-      expired.forEach((n) => void deleteCachedMessage(n.id))
+      expired.forEach((n) => void deleteCachedMessage(n.id, n.chat_id))
       if (expired.length === 0) return s
       const idsToDrop = new Set(expired.map((n) => n.id))
       return { messages: s.messages.filter((n) => !idsToDrop.has(n.id)) }

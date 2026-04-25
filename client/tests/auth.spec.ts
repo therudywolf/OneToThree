@@ -16,10 +16,21 @@ test.describe('auth / registration', () => {
     expect(loginVault).toBeTruthy()
     expect(loginVault!.length).toBeGreaterThan(20)
 
-    await expect(
-      page.getByText(new RegExp(`ONETOTHREE :: E2E :: @${handle}`))
-    ).toBeVisible({
+    const me = await page.evaluate(async () => {
+      const r = await fetch('/api/auth/me', { credentials: 'include' })
+      if (!r.ok) throw new Error(`me ${r.status}`)
+      return (await r.json()) as { user?: { username?: string } }
+    })
+    expect(me.user?.username).toBe(handle)
+
+    await expect(page.getByRole('button', { name: /Lock vault/i })).toBeVisible({
       timeout: 30_000,
     })
+    await expect(
+      page.getByRole('button', { name: /Новый чат|New chat/i })
+    ).toBeVisible()
+    await expect(
+      page.getByText(/Выберите чат|Select chat/i).first()
+    ).toBeVisible()
   })
 })

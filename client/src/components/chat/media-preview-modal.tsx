@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send, X, FileText, ChevronRight } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
+import { explainSendError } from '@/lib/explain-send-error'
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -117,8 +118,8 @@ export function MediaPreviewModal({
     try {
       await onSend(caption.trim())
       setCaption('')
-    } catch {
-      setSendError(t('mediaPreview.sendFailed'))
+    } catch (err) {
+      setSendError(explainSendError(err) || t('mediaPreview.sendFailed'))
     } finally {
       setSending(false)
     }

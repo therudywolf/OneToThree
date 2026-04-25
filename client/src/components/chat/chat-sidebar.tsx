@@ -315,9 +315,20 @@ export function ChatSidebar({
 
   useEffect(() => {
     const onCached = (e: Event) => {
-      const chatId = (e as CustomEvent<{ chatId: string }>).detail?.chatId
+      const detail = (e as CustomEvent<{
+        chatId: string
+        deletedMessageId?: string
+      }>).detail
+      const chatId = detail?.chatId
       if (!chatId) return
+      if (detail.deletedMessageId) {
+        setLastMessages((prev) => {
+          if (prev[chatId]?.id !== detail.deletedMessageId) return prev
+          return { ...prev, [chatId]: null }
+        })
+      }
       void getLastCachedMessageForChat(chatId).then((msg) => {
+        if (msg?.id === detail.deletedMessageId) return
         setLastMessages((prev) => ({ ...prev, [chatId]: msg }))
       })
     }
@@ -691,6 +702,7 @@ export function ChatSidebar({
         <button
           type="button"
           title={t('common.settings')}
+          aria-label={t('common.settings')}
           onClick={() => {
             onOpenSettings?.()
             onNavigate?.()

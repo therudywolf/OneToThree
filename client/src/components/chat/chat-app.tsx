@@ -1033,7 +1033,8 @@ export function ChatApp({
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            aria-label="CFG"
+            aria-label={t('common.openSettings')}
+            title={t('common.openSettings')}
             className="p13-icon-btn touch-manipulation"
           >
             <Settings className="h-4 w-4" aria-hidden />

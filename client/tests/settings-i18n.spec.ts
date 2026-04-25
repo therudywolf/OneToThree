@@ -3,21 +3,20 @@ import { registerNewUser, uniqueHandle } from './helpers'
 import { SettingsPage } from './pom/settings-page'
 
 test.describe('settings / i18n & discoverability', () => {
-  test('Globe → RU: settings dialog and strings translate', async ({ page }) => {
+  test('settings language selector translates dialog strings', async ({ page }) => {
     const handle = uniqueHandle('p19i18n')
     const passphrase = 'E2E_Strong_Pass_99!'
     await registerNewUser(page, handle, passphrase)
 
-    await expect(page.getByRole('button', { name: 'EN' })).toBeVisible({
-      timeout: 15_000,
-    })
-    await page.getByRole('button', { name: /Toggle language|Переключить язык/i }).click()
-    await expect(page.getByRole('button', { name: 'RU' })).toBeVisible()
-
     const settings = new SettingsPage(page)
     await settings.open()
+    await settings.languageSelect().selectOption('en')
+    await expect(page.getByRole('dialog', { name: /Settings/i })).toBeVisible()
+    await expect(page.getByText(/Profile Visibility/i).first()).toBeVisible()
+
+    await settings.languageSelect().selectOption('ru')
     await expect(page.getByRole('dialog', { name: /Настройки/i })).toBeVisible()
-    await expect(page.getByText(/Обнаруживаемость/i).first()).toBeVisible()
+    await expect(page.getByText(/Видимость профиля/i).first()).toBeVisible()
     await settings.close()
   })
 

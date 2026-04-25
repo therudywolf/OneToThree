@@ -9,14 +9,20 @@ if (!task) {
   process.exit(1)
 }
 
+if (!/^[A-Za-z0-9_:.-]+$/.test(task)) {
+  console.error(`[android] Invalid Gradle task name: ${task}`)
+  process.exit(1)
+}
+
 const androidDir = resolve(process.cwd(), 'android')
 const isWindows = platform() === 'win32'
-const command = isWindows ? 'gradlew.bat' : './gradlew'
+const command = isWindows ? process.env.ComSpec || 'cmd.exe' : './gradlew'
+const args = isWindows ? ['/d', '/s', '/c', 'gradlew.bat', task] : [task]
 
-const child = spawn(command, [task], {
+const child = spawn(command, args, {
   cwd: androidDir,
   stdio: 'inherit',
-  shell: isWindows,
+  shell: false,
 })
 
 child.on('exit', (code, signal) => {

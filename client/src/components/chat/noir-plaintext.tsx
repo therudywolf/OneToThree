@@ -5,6 +5,7 @@ import emojiRegex from 'emoji-regex'
 import { Copy, Check } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { sanitizeText } from '@/lib/sanitize'
+import { API_URL } from '@/lib/api/auth'
 
 type Props = {
   text: string
@@ -80,8 +81,9 @@ function LinkPreviewCard({ url }: { url: string }) {
     setLoaded(true)
     // Attempt to fetch OG meta via a lightweight proxy/api — gracefully degrade
     const controller = new AbortController()
-    void fetch(`/api/link-preview?url=${encodeURIComponent(url)}`, {
+    void fetch(`${API_URL}/link-preview?url=${encodeURIComponent(url)}`, {
       signal: controller.signal,
+      credentials: 'include',
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {

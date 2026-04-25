@@ -14,6 +14,8 @@
 // (e.g. joining a group call with 5 existing participants).
 // ---------------------------------------------------------------------------
 
+import { API_URL } from '@/lib/api/auth'
+
 const CACHE_WINDOW_MS = 30_000
 const REFRESH_SAFETY_MS = 60_000
 
@@ -108,7 +110,7 @@ export async function getIceConfig(options?: { forceRefresh?: boolean }): Promis
   if (inflight) return inflight
   inflight = (async () => {
     try {
-      const res = await fetch('/api/ice-servers', {
+      const res = await fetch(`${API_URL}/ice-servers`, {
         method: 'GET',
         credentials: 'include',
         headers: { accept: 'application/json' },

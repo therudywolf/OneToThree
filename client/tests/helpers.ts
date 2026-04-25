@@ -63,6 +63,7 @@ export async function registerNewUser(
   await page.evaluate((id) => {
     localStorage.setItem(`p13:onboarded:${id}`, '1')
   }, userId)
+  await dismissStartGuideIfPresent(page)
 }
 
 /** Same-origin `/api` so `fm_session` from the page origin (e.g. :3000) is sent. */
@@ -75,6 +76,19 @@ export async function fetchUserId(page: Page): Promise<string> {
   })
   if (!data) throw new Error('no user id from /api/auth/me')
   return data
+}
+
+async function dismissStartGuideIfPresent(page: Page): Promise<void> {
+  const skipGuide = page.getByRole('button', { name: /Skip|Пропустить/i })
+  const guideVisible = await skipGuide
+    .waitFor({ state: 'visible', timeout: 2_000 })
+    .then(() => true)
+    .catch(() => false)
+
+  if (!guideVisible) return
+
+  await skipGuide.click()
+  await expect(skipGuide).not.toBeVisible({ timeout: 10_000 })
 }
 
 export async function setDiscoverable(page: Page, value: boolean): Promise<void> {

@@ -3,6 +3,8 @@ name: Production checks
 on:
   push:
     branches: [main, master, ver2]
+  pull_request:
+    branches: [main, master, ver2]
 
 permissions:
   contents: read
@@ -69,6 +71,27 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+
+  android-debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - run: npm ci
+      - run: npm run android:build:debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OneToThree-debug-apk
+          path: mobile/capacitor/android/app/build/outputs/apk/debug/app-debug.apk
 
   test:
     runs-on: ubuntu-latest

@@ -1,44 +1,31 @@
 const isStaticExport = process.env.NEXT_EXPORT === '1'
 
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  reactStrictMode: true,
-  typescript: {
-    ignoreBuildErrors: false,
-  },
-  devIndicators: false,
-  compiler: {
-    removeConsole:
-      process.env.NODE_ENV === 'production'
-        ? { exclude: ['error', 'warn'] }
-        : false,
-  },
-  output: isStaticExport ? 'export' : 'standalone',
-  outputFileTracingRoot: __dirname,
-  async rewrites() {
-    if (isStaticExport) return []
-    const internal =
-      process.env.API_INTERNAL_URL?.trim() ||
-      process.env.API_URL?.trim() ||
-      'http://127.0.0.1:8080'
-    const base = internal.replace(/\/$/, '')
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${base}/api/:path*`,
+const serverRoutesConfig = isStaticExport
+  ? {}
+  : {
+      async rewrites() {
+        const internal =
+          process.env.API_INTERNAL_URL?.trim() ||
+          process.env.API_URL?.trim() ||
+          'http://127.0.0.1:8080'
+        const base = internal.replace(/\/$/, '')
+        return [
+          {
+            source: '/api/:path*',
+            destination: `${base}/api/:path*`,
+          },
+        ]
       },
-    ]
-  },
-  async headers() {
-    const apiOrigin =
-      process.env.NEXT_PUBLIC_API_URL?.trim() || 'https://api.onetothree.ru'
-    const storageOrigin =
-      process.env.MINIO_PUBLIC_URL?.trim() || 'https://s3.onetothree.ru'
-    const giphyOrigin = 'https://*.giphy.com'
-    const giphyApiOrigin = 'https://api.giphy.com'
-    const wsOrigin = apiOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
+      async headers() {
+        const apiOrigin =
+          process.env.NEXT_PUBLIC_API_URL?.trim() || 'https://api.onetothree.ru'
+        const storageOrigin =
+          process.env.MINIO_PUBLIC_URL?.trim() || 'https://s3.onetothree.ru'
+        const giphyOrigin = 'https://*.giphy.com'
+        const giphyApiOrigin = 'https://api.giphy.com'
+        const wsOrigin = apiOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
 
-    const cspHeader = `
+        const cspHeader = `
     default-src 'self';
     script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/ blob:;
     style-src 'self' 'unsafe-inline';
@@ -54,28 +41,46 @@ const nextConfig = {
     upgrade-insecure-requests;
 `.replace(/\n/g, "");
 
-    return [
-      {
-        source: '/:path*',
-        headers: [
+        return [
           {
-            key: 'Content-Security-Policy',
-            value: cspHeader,
+            source: '/:path*',
+            headers: [
+              {
+                key: 'Content-Security-Policy',
+                value: cspHeader,
+              },
+              { key: 'X-Frame-Options', value: 'DENY' },
+              { key: 'X-Content-Type-Options', value: 'nosniff' },
+              {
+                key: 'Referrer-Policy',
+                value: 'strict-origin-when-cross-origin',
+              },
+              {
+                key: 'Permissions-Policy',
+                value: 'camera=(self), microphone=(self), geolocation=()',
+              },
+            ],
           },
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin',
-          },
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(self), microphone=(self), geolocation=()',
-          },
-        ],
+        ]
       },
-    ]
+    }
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  typescript: {
+    ignoreBuildErrors: false,
   },
+  devIndicators: false,
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === 'production'
+        ? { exclude: ['error', 'warn'] }
+        : false,
+  },
+  output: isStaticExport ? 'export' : 'standalone',
+  outputFileTracingRoot: __dirname,
+  ...serverRoutesConfig,
 }
 
 let withPWA

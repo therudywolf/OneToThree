@@ -35,10 +35,12 @@ interface GhostLogsDb extends DBSchema {
 }
 
 let connection: Promise<IDBPDatabase<GhostLogsDb>> | null = null
+const deletedMessageIds = new Set<string>()
 
 /** [WIPE_PROTOCOL] :: Стерилизация локального кэша */
 export async function purgeLocalMessageCache(): Promise<void> {
   connection = null
+  deletedMessageIds.clear()
   if (typeof indexedDB === 'undefined') return
   await deleteDB(CORE_NAME)
 }
@@ -128,13 +130,15 @@ async function indexNodeContent(msg: DecryptedMessage): Promise<void> {
 
 export async function cacheMessages(nodes: DecryptedMessage[]): Promise<void> {
   if (typeof indexedDB === 'undefined' || nodes.length === 0) return
+  const liveNodes = nodes.filter((node) => !deletedMessageIds.has(node.id))
+  if (liveNodes.length === 0) return
   const conn = await initConnection()
   const tx = conn.transaction('message_feed', 'readwrite')
-  for (const node of nodes) await tx.store.put(node)
+  for (const node of liveNodes) await tx.store.put(node)
   await tx.done
-  for (const node of nodes) scheduleTrace(() => indexNodeContent(node))
+  for (const node of liveNodes) scheduleTrace(() => indexNodeContent(node))
   if (typeof window !== 'undefined') {
-    const affectedChats = new Set(nodes.map((n) => n.chat_id))
+    const affectedChats = new Set(liveNodes.map((n) => n.chat_id))
     for (const chatId of affectedChats) {
       window.dispatchEvent(new CustomEvent(MESSAGE_CACHED_EVENT, { detail: { chatId } }))
     }
@@ -145,6 +149,7 @@ export const MESSAGE_CACHED_EVENT = 'p13:message-cached'
 
 export async function cacheMessage(node: DecryptedMessage): Promise<void> {
   if (typeof indexedDB === 'undefined') return
+  if (deletedMessageIds.has(node.id)) return
   const conn = await initConnection()
   await conn.put('message_feed', node)
   scheduleTrace(() => indexNodeContent(node))
@@ -207,12 +212,21 @@ export async function getLastCachedMessageForChat(chatId: string): Promise<Decry
 }
 
 /** Delete a single cached message by id. */
-export async function deleteCachedMessage(messageId: string): Promise<void> {
+export async function deleteCachedMessage(messageId: string, chatId?: string): Promise<void> {
   if (typeof indexedDB === 'undefined') return
+  deletedMessageIds.add(messageId)
   const conn = await initConnection()
+  const existing = await conn.get('message_feed', messageId)
   const tx = conn.transaction('message_feed', 'readwrite')
   await tx.store.delete(messageId)
   await tx.done
+  await purgeTraceForNode(conn, messageId)
+  const affectedChatId = existing?.chat_id ?? chatId
+  if (typeof window !== 'undefined' && affectedChatId) {
+    window.dispatchEvent(new CustomEvent(MESSAGE_CACHED_EVENT, {
+      detail: { chatId: affectedChatId, deletedMessageId: messageId },
+    }))
+  }
 }
 
 export async function searchLocalMessages(query: string) {

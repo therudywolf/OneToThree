@@ -63,9 +63,11 @@ function sessionCookieDomain(): string | undefined {
 function sessionCookieSameSite(): CookieSerializeOptions['sameSite'] {
   const allowMobileCors =
     (process.env.CORS_ALLOW_MOBILE_APP ?? '1').trim() !== '0'
-  if (allowMobileCors) {
+  if (allowMobileCors && sessionCookieSecure()) {
     // Capacitor runs on localhost/capacitor origins; session must be
     // cross-site compatible for authenticated API fetches from native WebView.
+    // Browsers reject SameSite=None unless Secure is also set, so plain HTTP
+    // local dev/e2e must fall back to Lax or the session cookie is dropped.
     return 'none'
   }
   const prod = process.env.NODE_ENV === 'production'

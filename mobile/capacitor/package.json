@@ -11,11 +11,11 @@
     "build:release": "node ./scripts/run-gradle.mjs assembleRelease"
   },
   "dependencies": {
-    "@capacitor/android": "^7.4.3",
-    "@capacitor/cli": "^7.4.3",
-    "@capacitor/core": "^7.4.3",
-    "@capacitor/push-notifications": "^7.0.3",
-    "@capacitor/splash-screen": "^7.0.3",
-    "@capacitor/status-bar": "^7.0.3"
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/cli": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/push-notifications": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2"
   }
 }

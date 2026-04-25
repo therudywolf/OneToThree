@@ -23,7 +23,8 @@ test.describe('verification plan (UI contracts)', () => {
     await registerNewUser(page, handle, passphrase)
     await page.setViewportSize({ width: 390, height: 700 })
     await page
-      .getByRole('button', { name: /CFG|НАСТРОЙКИ/i })
+      .getByRole('button', { name: /Settings|Настройки|CFG/i })
+      .first()
       .click()
     const dlg = page.getByRole('dialog', { name: /Settings|Настройки/i })
     await expect(dlg).toBeVisible({ timeout: 30_000 })
@@ -33,6 +34,6 @@ test.describe('verification plan (UI contracts)', () => {
       .locator('.terminal-panel')
       .first()
       .evaluate((el) => (el as HTMLElement).className)
-    expect(panelCls).toMatch(/max-h-\[min/)
+    expect(panelCls).toMatch(/h-\[min\(100dvh,100vh\)\]/)
   })
 })

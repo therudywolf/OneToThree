@@ -532,7 +532,7 @@ export function ChatTerminal({
             break
           }
           removeMessage(msg.id)
-          void deleteCachedMessage(msg.id)
+          void deleteCachedMessage(msg.id, msg.chat_id)
           toastSuccess(t('chat.originalDeleted'))
           break
         case 'deleteForAll':
@@ -544,7 +544,7 @@ export function ChatTerminal({
               try {
                 await deleteMessage(msg.id, true)
                 removeMessage(msg.id)
-                await deleteCachedMessage(msg.id)
+                await deleteCachedMessage(msg.id, msg.chat_id)
                 toastSuccess(t('chat.originalDeleted'))
               } catch {
                 toastError('DELETE_FOR_ALL_FAILED')

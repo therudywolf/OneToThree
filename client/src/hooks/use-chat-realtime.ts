@@ -77,7 +77,7 @@ export function useChatRealtime(
       }
       if (msg.type === 'message_deleted') {
         if (msg.chat_id === activeChatId) removeMessage(msg.message_id)
-        void deleteCachedMessage(msg.message_id)
+        void deleteCachedMessage(msg.message_id, msg.chat_id)
         return
       }
       if (msg.type === 'message_read_update') {

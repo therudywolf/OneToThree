@@ -1459,7 +1459,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   {!settingsReady ? ':: …' : discoverableOn ? t('settings.discoverableBadgeOn') : t('settings.discoverableBadgeOff')}
                 </p>
               </div>
-              <button type="button" role="switch" aria-checked={discoverableOn}
+              <button type="button" role="switch" aria-label={t('settings.discoverable')} aria-checked={discoverableOn}
                 disabled={busy || !settingsReady} onClick={() => void toggleDiscoverable()}
                 className={`shrink-0 self-start border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-widest transition-all duration-200 ease-in-out hover:scale-[1.02] active:scale-95 ${
                   !settingsReady ? 'border-border-strong bg-void text-text-muted/70'

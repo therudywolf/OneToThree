@@ -12,11 +12,41 @@ const TINY_WAV = Buffer.from(
   'base64'
 )
 
+function minioHealthUrl(): string {
+  const explicit = process.env.PLAYWRIGHT_MINIO_HEALTH_URL?.trim()
+  if (explicit) return explicit
+
+  const base =
+    process.env.MINIO_PUBLIC_URL?.trim() ||
+    process.env.MINIO_ENDPOINT?.trim() ||
+    'http://127.0.0.1:9000'
+  const normalizedBase = /^https?:\/\//i.test(base) ? base : `http://${base}`
+  return new URL('/minio/health/live', normalizedBase).toString()
+}
+
+async function isMinioAvailable(url: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 2_000)
+  try {
+    const response = await fetch(url, { signal: controller.signal })
+    return response.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 test.describe('media / smoke', () => {
   test('direct chat delivers image and audio attachments with captions', async ({
     browser,
   }) => {
     test.setTimeout(240_000)
+    const healthUrl = minioHealthUrl()
+    test.skip(
+      !(await isMinioAvailable(healthUrl)),
+      `MinIO is not available at ${healthUrl}; media smoke requires object storage`
+    )
 
     const passphrase = 'E2E_Strong_Pass_99!'
     const alice = uniqueHandle('aliceMedia')

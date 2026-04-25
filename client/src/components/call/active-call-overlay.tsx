@@ -372,9 +372,9 @@ export function ActiveCallOverlay({
   return (
     <PortalRoot>
       <RelayToast />
-      <div className={`fixed inset-0 z-[200] flex flex-col ${isRetro ? 'bg-[#0f356f] font-["Tahoma"]' : 'bg-void'} ${isMd3 ? '' : 'font-mono'}`} role="dialog">
+      <div className={`fixed inset-0 z-[200] flex flex-col ${isRetro ? 'p13-classic-overlay font-["Tahoma"]' : 'bg-void'} ${isMd3 ? '' : 'font-mono'}`} role="dialog">
         {/* HEADER BAR */}
-        <div className={`flex shrink-0 items-center justify-between border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] ${isRetro ? 'p13-titlebar border-[#001f57]' : 'border-border-strong bg-void/50 backdrop-blur-md'}`}>
+        <div className={`flex shrink-0 items-center justify-between border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] ${isRetro ? 'p13-titlebar' : 'border-border-strong bg-void/50 backdrop-blur-md'}`}>
           <div className="flex items-center gap-3">
             <span className="relative flex h-2.5 w-2.5">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isMd3 ? 'bg-[var(--primary)]' : 'bg-neon-cyan'} opacity-75`}></span>
@@ -518,8 +518,8 @@ export function ActiveCallOverlay({
           isMd3
             ? 'gap-2 rounded-[28px] bg-[var(--surface-container-high)]/95 px-3 py-2'
             : isRetro
-              ? 'p13-classic-menu gap-1 bg-[#d4d0c8] px-2 py-2'
-            : 'border border-border-strong bg-void/90'
+              ? 'p13-classic-menu gap-1 px-2 py-2'
+              : 'border border-border-strong bg-void/90'
         }`}>
 
           <button

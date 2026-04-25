@@ -30,14 +30,14 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
       className="overflow-hidden"
     >
       <div className={`p13-group-call-banner flex items-center justify-between border-b px-4 py-2 ${
-        isRetro ? 'border-[#7a8089] bg-[#d4d0c8]' : 'border-neon-cyan/20 bg-neon-cyan/5'
+        isRetro ? 'p13-classic-strip border-b-0' : 'border-neon-cyan/20 bg-neon-cyan/5'
       }`}>
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
-            <span className={`absolute inline-flex h-full w-full opacity-75 ${isRetro ? 'bg-[#0a4ea1]' : 'animate-ping bg-neon-cyan'}`} />
-            <span className={`relative inline-flex h-2 w-2 ${isRetro ? 'bg-[#0a4ea1]' : 'bg-neon-cyan'}`} />
+            <span className={`absolute inline-flex h-full w-full opacity-75 ${isRetro ? 'p13-classic-accent-fill' : 'animate-ping bg-neon-cyan'}`} />
+            <span className={`relative inline-flex h-2 w-2 ${isRetro ? 'p13-classic-accent-fill' : 'bg-neon-cyan'}`} />
           </span>
-          <span className={`text-[10px] ${isRetro ? 'font-["Tahoma"] tracking-[0.02em] text-[#123659]' : 'font-mono uppercase tracking-wider text-neon-cyan'}`}>
+          <span className={`text-[10px] ${isRetro ? 'p13-classic-copy-strong' : 'font-mono uppercase tracking-wider text-neon-cyan'}`}>
             {t('groupCall.activeCall')}
           </span>
           <span className="flex items-center gap-1 font-mono text-[10px] text-text-muted">
@@ -50,7 +50,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
             onClick={onJoinVoice}
             className={`flex items-center gap-1.5 border px-3 py-1 text-[10px] transition-colors ${
               isRetro
-                ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#123659] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                ? 'p13-classic-button'
                 : 'border-neon-cyan/50 bg-neon-cyan/10 font-mono uppercase tracking-wider text-neon-cyan hover:bg-neon-cyan/20'
             }`}
           >
@@ -61,7 +61,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
             onClick={onJoinVideo}
             className={`flex items-center gap-1.5 border px-3 py-1 text-[10px] transition-colors ${
               isRetro
-                ? 'border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] tracking-[0.02em] text-[#8f1f23] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff]'
+                ? 'p13-classic-button p13-classic-button--danger'
                 : 'border-neon-red/50 bg-neon-red/10 font-mono uppercase tracking-wider text-neon-red hover:bg-neon-red/20'
             }`}
           >

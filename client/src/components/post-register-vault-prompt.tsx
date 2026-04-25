@@ -61,7 +61,7 @@ export function PostRegisterVaultPrompt({
           ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'
           : isRetro
             ? 'p13-classic-window'
-            : 'border border-neon-red/60 bg-[#0a0a0a] font-mono'
+            : 'border border-neon-red/60 bg-void font-mono'
       }`}>
         <div className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)] tracking-normal' : isRetro ? 'p13-classic-copy' : 'uppercase tracking-[0.2em] text-neon-red'}`}>
           [ КРИТИЧНО :: РЕЗЕРВНАЯ КОПИЯ КЛЮЧА ]

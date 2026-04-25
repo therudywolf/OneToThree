@@ -309,7 +309,7 @@ export default function AdminPage() {
   ]
 
   return (
-    <div className={`min-h-dvh text-xs text-text-muted selection:bg-neon-red selection:text-text-primary ${isRetro ? 'p13-window bg-[#c0c0c0] font-["Tahoma"]' : 'bg-void font-mono'}`}>
+    <div className={`min-h-dvh text-xs text-text-muted selection:bg-neon-red selection:text-text-primary ${isRetro ? 'p13-window font-["Tahoma"]' : 'bg-void font-mono'}`}>
       {detailNode && (
         <UserDetailModal
           node={detailNode}
@@ -322,7 +322,7 @@ export default function AdminPage() {
         />
       )}
 
-      <header className={`sticky top-0 z-10 border-b px-4 py-3 md:px-8 flex items-center justify-between gap-4 ${isRetro ? 'p13-titlebar border-[#001f57]' : 'border-border-strong bg-void/95 backdrop-blur-sm'}`}>
+      <header className={`sticky top-0 z-10 border-b px-4 py-3 md:px-8 flex items-center justify-between gap-4 ${isRetro ? 'p13-titlebar' : 'border-border-strong bg-void/95 backdrop-blur-sm'}`}>
         <div className="flex items-center gap-3">
           <div className="h-6 w-0.5 bg-neon-red shadow-[0_0_8px_rgba(255,0,0,0.5)]" />
           <div>
@@ -353,7 +353,7 @@ export default function AdminPage() {
       )}
 
       {/* TABS */}
-      <div className={`border-b px-4 md:px-8 ${isRetro ? 'border-[#7a8089] bg-[#d4d0c8]' : 'border-border-strong'}`}>
+      <div className={`border-b px-4 md:px-8 ${isRetro ? 'p13-classic-strip border-x-0 border-t-0' : 'border-border-strong'}`}>
         <div className="flex gap-0 overflow-x-auto">
           {tabs.map(t => (
             <button

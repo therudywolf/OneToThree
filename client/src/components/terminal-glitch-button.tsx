@@ -47,7 +47,7 @@ export function TerminalGlitchButton({
         isMd3
           ? 'rounded-full border border-[color-mix(in_srgb,var(--on-surface)_22%,transparent)] bg-[var(--surface-elevated)] font-medium text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
           : isRetro
-            ? 'rounded-none border border-[#6f747c] bg-[#d4d0c8] font-["Tahoma"] text-[11px] tracking-[0.02em] text-[#10243a] shadow-[inset_-1px_-1px_0_#7d7d7d,inset_1px_1px_0_#ffffff] hover:bg-[#e2ded6] active:shadow-[inset_-1px_-1px_0_#ffffff,inset_1px_1px_0_#7d7d7d]'
+            ? 'p13-classic-button rounded-none text-[11px] active:translate-y-px'
             : 'rounded-none border border-neon-red bg-void font-mono uppercase tracking-widest text-neon-red hover:border-neon-cyan hover:text-neon-cyan'
       } ${className}`}
     >

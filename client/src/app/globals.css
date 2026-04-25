@@ -1764,6 +1764,11 @@ select {
     max-width: min(30rem, calc(100vw - 35rem));
     flex-shrink: 0;
   }
+  .chat-layout-sidebar[data-collapsed='true'] {
+    width: var(--p13-sb-w, 5.5rem);
+    min-width: var(--p13-sb-w, 5.5rem);
+    max-width: var(--p13-sb-w, 5.5rem);
+  }
   .chat-layout-main {
     min-width: 34rem;
   }
@@ -3532,8 +3537,28 @@ select {
   color: #f4f7ff;
   font-family: Tahoma, "MS Sans Serif", sans-serif;
 }
+.p13-classic-title-copy {
+  color: #f4f7ff;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  letter-spacing: 0.04em;
+}
+.p13-classic-title-copy-soft {
+  color: #e8eefb;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  letter-spacing: 0.02em;
+}
 .p13-classic-copy {
   color: #0f2f4f;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  letter-spacing: 0.02em;
+}
+.p13-classic-copy-strong {
+  color: #123659;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  letter-spacing: 0.02em;
+}
+.p13-classic-copy-deep {
+  color: #1a2f48;
   font-family: Tahoma, "MS Sans Serif", sans-serif;
   letter-spacing: 0.02em;
 }
@@ -3547,11 +3572,30 @@ select {
   font-family: Tahoma, "MS Sans Serif", sans-serif;
   letter-spacing: 0.02em;
 }
+.p13-classic-copy-panel {
+  color: #20466d;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  letter-spacing: 0.02em;
+}
+.p13-classic-copy-danger {
+  color: #8f1f23;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  letter-spacing: 0.02em;
+}
 .p13-classic-inset {
   border: 1px solid #9ea4ad;
   background: #ece9e2;
   color: #33465b;
   font-family: Tahoma, "MS Sans Serif", sans-serif;
+}
+.p13-classic-strip {
+  border: 1px solid #7a8089;
+  background: #d4d0c8;
+  color: #233e5e;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+}
+.p13-classic-accent-fill {
+  background: #0a4ea1;
 }
 .p13-classic-button {
   border: 1px solid #6f747c;
@@ -3582,6 +3626,67 @@ select {
 }
 .p13-classic-button--danger {
   color: #8f1f23;
+}
+.p13-classic-list-option {
+  border-bottom: 1px solid #b1b5bc;
+  color: #2a2f36;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  letter-spacing: 0.02em;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.p13-classic-list-option:hover {
+  background: #ddd9d1;
+}
+.p13-classic-list-option[data-active='true'] {
+  background: #0a4ea1;
+  color: #f4f7ff;
+}
+.p13-classic-menu-item {
+  color: #1e2f44;
+  font-family: Tahoma, "MS Sans Serif", sans-serif;
+  font-size: 11px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.p13-classic-menu-item:hover {
+  background: #e8e4dc;
+}
+.p13-classic-menu-item--danger {
+  color: #8f1f23;
+}
+.p13-classic-menu-item--danger:hover {
+  background: #eadfdc;
+}
+.p13-classic-react-btn {
+  border: 1px solid transparent;
+  border-radius: 0;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    transform 120ms ease;
+}
+.p13-classic-react-btn:hover {
+  border-color: #9aa0aa;
+  background: #ece9e2;
+}
+.p13-classic-preview-pane {
+  background: #efe5bf;
+}
+.p13-classic-preview-canvas {
+  background: linear-gradient(180deg, #f7efce 0%, #e8dbab 100%);
+}
+.p13-classic-preview-chip {
+  border: 1px solid #8a7a4b;
+  background: #efe2b7;
+}
+.p13-classic-preview-bar-primary {
+  background: rgba(138, 122, 75, 0.65);
+}
+.p13-classic-preview-bar-secondary {
+  background: rgba(108, 90, 46, 0.55);
+}
+.p13-classic-preview-badge {
+  border: 1px solid #8a7a4b;
+  background: #e3d39f;
 }
 
 /* Retro must stay flat: no blur, glow, vignette, or dim overlays. */

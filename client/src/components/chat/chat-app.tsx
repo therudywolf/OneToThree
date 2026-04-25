@@ -135,6 +135,8 @@ const DockPanel = dynamic(
 const DESKTOP_MIN_MAIN_PANE_WIDTH = 560
 const DESKTOP_FRAME_GUTTER = 32
 const DOCK_PANEL_RESERVE_WIDTH = 360
+const SIDEBAR_COLLAPSE_THRESHOLD =
+  Math.round((TELEGRAM_BEHAVIOR.sidebar.minWidth + TELEGRAM_BEHAVIOR.sidebar.collapsedWidth) / 2)
 
 export function ChatApp({
   userId,
@@ -230,13 +232,30 @@ export function ChatApp({
     setSidebarCollapsed(saved === '1')
   }, [])
 
+  const applySidebarDragState = useCallback((requested: number, persist: boolean) => {
+    if (requested <= SIDEBAR_COLLAPSE_THRESHOLD) {
+      setSidebarCollapsed(true)
+      if (persist) {
+        localStorage.setItem('p13_sidebar_collapsed', '1')
+      }
+      return
+    }
+    const next = clampSidebarWidthForViewport(requested)
+    setSidebarCollapsed(false)
+    setSidebarWidth(next)
+    if (persist) {
+      localStorage.setItem('p13_sidebar_width', String(next))
+      localStorage.setItem('p13_sidebar_collapsed', '0')
+    }
+  }, [clampSidebarWidthForViewport])
+
   const handleSidebarResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (sidebarCollapsed || e.button !== 0) return
+    if (e.button !== 0) return
     if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches) return
     e.preventDefault()
     e.currentTarget.setPointerCapture?.(e.pointerId)
     const startX = e.clientX
-    const startWidth = sidebarWidth
+    const startWidth = sidebarCollapsed ? TELEGRAM_BEHAVIOR.sidebar.collapsedWidth : sidebarWidth
     sidebarDragRef.current = { startX, startWidth }
     setSidebarResizeActive(true)
     const previousCursor = document.body.style.cursor
@@ -245,14 +264,11 @@ export function ChatApp({
     document.body.style.userSelect = 'none'
     const onMove = (mv: PointerEvent) => {
       const delta = mv.clientX - startX
-      const next = clampSidebarWidthForViewport(startWidth + delta)
-      setSidebarWidth(next)
+      applySidebarDragState(startWidth + delta, false)
     }
     const onUp = (up: PointerEvent) => {
       const delta = up.clientX - startX
-      const final = clampSidebarWidthForViewport(startWidth + delta)
-      setSidebarWidth(final)
-      localStorage.setItem('p13_sidebar_width', String(final))
+      applySidebarDragState(startWidth + delta, true)
       sidebarDragRef.current = null
       setSidebarResizeActive(false)
       document.body.style.cursor = previousCursor
@@ -264,7 +280,7 @@ export function ChatApp({
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
-  }, [clampSidebarWidthForViewport, sidebarCollapsed, sidebarWidth])
+  }, [applySidebarDragState, sidebarCollapsed, sidebarWidth])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1075,12 +1091,12 @@ export function ChatApp({
         </div>
         {/* Sidebar resize handle — desktop only */}
         <div
-          className={`chat-layout-divider hidden md:block shrink-0 transition-colors touch-none z-10 ${
-            sidebarCollapsed ? 'cursor-default opacity-40' : 'cursor-ew-resize'
+          className={`chat-layout-divider hidden md:block shrink-0 cursor-ew-resize transition-colors touch-none z-10 ${
+            sidebarCollapsed ? 'opacity-70' : ''
           }`}
           onPointerDown={handleSidebarResizeStart}
           onDoubleClick={toggleSidebarCollapsed}
-          title={sidebarCollapsed ? 'Double-click to expand sidebar' : 'Drag to resize sidebar. Double-click to collapse.'}
+          title={sidebarCollapsed ? 'Drag or double-click to expand sidebar.' : 'Drag to resize sidebar. Double-click to collapse.'}
           data-dragging={sidebarResizeActive ? 'true' : 'false'}
         />
         <div

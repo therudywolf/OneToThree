@@ -4,6 +4,8 @@ export type QrLinkPayload = {
   sub: string
   username: string
   exp: number
+  /** Opaque encrypted vault handoff. The server stores ciphertext only, TTL-bound. */
+  vault_blob?: string
 }
 
 const KEY_PREFIX = 'fm:qr:link:'

@@ -127,7 +127,7 @@ export async function verifyChallenge(
 export async function complete2faLogin(
   pendingToken: string,
   code: string
-): Promise<{ user: { id: string; username: string } }> {
+): Promise<{ user: { id: string; username: string }; vault_blob?: string }> {
   const res = await fetchWithTimeout(`${API_URL}/auth/login/2fa`, {
     method: 'POST',
     headers: sanitizeFetchHeaderRecord({
@@ -142,6 +142,7 @@ export async function complete2faLogin(
   })
   const data = (await res.json().catch(() => ({}))) as {
     user?: { id: string; username: string }
+    vault_blob?: string
     error?: string
   }
   if (!res.ok) {
@@ -151,11 +152,15 @@ export async function complete2faLogin(
     throw new Error('INVALID_2FA_RESPONSE')
   }
   await warmNativeSessionCookies()
+  const user = {
+    id: canonicalUserId(data.user.id),
+    username: data.user.username,
+  }
   return {
-    user: {
-      id: canonicalUserId(data.user.id),
-      username: data.user.username,
-    },
+    user,
+    ...(typeof data.vault_blob === 'string' && data.vault_blob.trim()
+      ? { vault_blob: data.vault_blob }
+      : {}),
   }
 }
 

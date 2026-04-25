@@ -2,13 +2,11 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useAuth } from '@/components/auth/auth-provider'
 import { ensureClientDeviceId } from '@/lib/api/auth'
-import { buildQrLoginUrl, extractQrLoginToken, postQrLogin } from '@/lib/api/auth-qr'
+import { extractQrLoginToken } from '@/lib/api/auth-qr'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import jsQR from 'jsqr'
-import { explainDeviceLinkError } from '@/lib/device-link-errors'
 
 /**
  * PROJECT 13 :: NODE_LINKING_INTERFACE
@@ -65,7 +63,6 @@ function diagnoseMediaError(err: unknown): string {
 export function LoginQrDevicePanel() {
   const { t } = useTranslation()
   const router = useRouter()
-  const { refresh } = useAuth()
 
   const [isExpanded, setIsExpanded] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -132,21 +129,12 @@ export function LoginQrDevicePanel() {
 
     try {
       ensureClientDeviceId()
-      const result = await postQrLogin(token)
-      if (result.ok === 'needs_2fa') {
-        router.push(buildQrLoginUrl(token))
-        return
-      }
-      await refresh()
-      router.replace('/')
-      router.refresh()
+      router.push(`/auth/qr?link_token=${encodeURIComponent(token)}`)
     } catch (err: unknown) {
-      const code = err instanceof Error ? err.message : ''
-      setErrorLog(explainDeviceLinkError(code, t))
-    } finally {
+      setErrorLog(err instanceof Error ? err.message : t('errors.boundaryGeneric'))
       setIsBusy(false)
     }
-  }, [refresh, router, t])
+  }, [router, t])
 
   const handleScanHit = useCallback((raw: string) => {
     const token = extractQrLoginToken(raw)

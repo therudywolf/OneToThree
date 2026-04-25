@@ -59,8 +59,8 @@ const getLoginSlot = (handle: string) => `${VAULT_PREFIX}:login:${handle.trim().
 
 // --- STORAGE_INTERFACE ---
 
-/** Parse raw JSON from localStorage into a VaultBlob, defaulting version to 1 for legacy blobs. */
-function parseVaultBlobJson(raw: string): VaultBlob | null {
+/** Parse raw JSON into a VaultBlob, defaulting version to 1 for legacy blobs. */
+export function parseVaultBlobJson(raw: string): VaultBlob | null {
   try {
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object' || !parsed.saltB64 || !parsed.ivB64 || !parsed.ciphertextB64) {

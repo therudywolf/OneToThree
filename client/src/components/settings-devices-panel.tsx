@@ -248,7 +248,7 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
       <div className={`p-3 space-y-1 ${isMd3 ? 'rounded-[20px] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-cyan/10 bg-void/60'}`}>
         <p className="text-[9px] uppercase tracking-widest text-neon-cyan/70">[ ДОБАВИТЬ УСТРОЙСТВО :: QR ]</p>
         <p className="text-[9px] text-text-muted leading-relaxed">
-          Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер и отсканируй его камерой или через приложение. Новое устройство получит сессию, а для аккаунтов с 2FA дополнительно потребуется TOTP-код. QR действителен <span className="text-text-primary">5 минут</span> и одноразовый.
+          Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер или приложение и отсканируй его. Новое устройство получит сессию и зашифрованный vault-контейнер; для разблокировки ключей всё равно нужен vault-пароль, а для аккаунтов с 2FA дополнительно потребуется TOTP-код. QR действителен <span className="text-text-primary">5 минут</span> и одноразовый.
         </p>
       </div>
 

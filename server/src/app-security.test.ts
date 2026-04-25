@@ -73,6 +73,37 @@ describe('app security contracts', () => {
     await closeRedis()
   }, 10_000)
 
+  it('allows Capacitor mobile origins in CORS preflight', async () => {
+    process.env.NODE_ENV = 'test'
+    process.env.REDIS_URL = ''
+    process.env.CORS_ORIGIN = 'https://app.example'
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'vitest-jwt-secret-must-be-32-chars-min!!'
+
+    const app = await buildApp()
+    await app.ready()
+
+    for (const origin of ['capacitor://localhost', 'https://localhost']) {
+      const res = await app.inject({
+        method: 'OPTIONS',
+        url: '/api/auth/challenge',
+        headers: {
+          origin,
+          'access-control-request-method': 'POST',
+          'access-control-request-headers': 'content-type,x-client-device-id,x-device-name',
+        },
+      })
+      expect(res.statusCode).toBe(204)
+      expect(res.headers['access-control-allow-origin']).toBe(origin)
+      expect(res.headers['access-control-allow-credentials']).toBe('true')
+    }
+
+    await Promise.race([
+      app.close(),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+    ])
+    await closeRedis()
+  }, 10_000)
+
   it('refuses production boot when every CORS_ORIGIN entry is invalid', async () => {
     process.env.NODE_ENV = 'production'
     process.env.REDIS_URL = 'redis://localhost:6379'

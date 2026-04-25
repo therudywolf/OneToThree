@@ -2,7 +2,7 @@
 // Copyright (C) 2026 therudywolf
 
 import cookie from '@fastify/cookie'
-import cors from '@fastify/cors'
+import cors, { type FastifyCorsOptions } from '@fastify/cors'
 import helmet from '@fastify/helmet'
 import jwt from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
@@ -56,6 +56,7 @@ function normalizeMobileOrigin(raw: string): string | null {
     ) {
       return null
     }
+    if (u.protocol === 'capacitor:') return `${u.protocol}//${u.host}`
     return u.origin
   } catch {
     return null
@@ -146,7 +147,20 @@ export async function buildApp() {
     )
   )
 
-  const corsOrigins = corsOriginsValid.length > 0 ? corsOriginsList : true
+  const corsOriginSet = new Set(corsOriginsList)
+  const corsOrigins: FastifyCorsOptions['origin'] =
+    corsOriginsValid.length > 0
+      ? (
+          origin: string | undefined,
+          callback: (err: Error | null, allow: string | boolean | RegExp) => void
+        ) => {
+          if (!origin) {
+            callback(null, true)
+            return
+          }
+          callback(null, corsOriginSet.has(origin))
+        }
+      : true
   const apiOrigin = normalizeHttpOrigin(process.env.NEXT_PUBLIC_API_URL)
   const storageOrigin = normalizeHttpOrigin(process.env.MINIO_PUBLIC_URL)
   const connectSrc = new Set<string>(["'self'", 'wss:', 'https:', 'https://cdn.jsdelivr.net/npm/'])

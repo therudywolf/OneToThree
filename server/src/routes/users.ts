@@ -24,6 +24,10 @@ import {
   rewritePresignedUrlToPublicBase,
 } from '../lib/s3.js'
 import { getRelatedUserIds } from '../lib/presence.js'
+import {
+  normalizeLastSeenPrivacy,
+  shouldMaskPresenceForViewer,
+} from '../lib/presence.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import { clearFmSessionCookie } from '../lib/session-cookie.js'
@@ -253,7 +257,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         statusText: users.statusText,
         socialLinks: users.socialLinks,
         hidePresence: users.hidePresence,
+        displayName: users.displayName,
         lastSeenAt: users.lastSeenAt,
+        lastSeenPrivacy: users.lastSeenPrivacy,
       })
       .from(users)
       .where(eq(users.username, params.data.username))
@@ -262,7 +268,16 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (!row) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
 
     const isSelf = row.id === auth.id
-    const mask = !isSelf && row.hidePresence === true
+    const viewerIsRelated = isSelf
+      ? true
+      : new Set(await getRelatedUserIds(row.id)).has(auth.id)
+    const mask = shouldMaskPresenceForViewer({
+      viewerId: auth.id,
+      subjectId: row.id,
+      hidePresence: row.hidePresence === true,
+      lastSeenPrivacy: row.lastSeenPrivacy,
+      viewerIsRelated,
+    })
 
     let socialLinks: Array<{ platform: string; url: string }> = []
     if (row.socialLinks) {
@@ -271,6 +286,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
     return reply.send({
       username: row.username,
+      display_name: row.displayName ?? null,
       avatar_key: row.avatarKey,
       bio: row.bio ?? null,
       status_text: row.statusText ?? null,
@@ -292,6 +308,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         bio: users.bio,
         statusText: users.statusText,
         socialLinks: users.socialLinks,
+        displayName: users.displayName,
+        lastSeenPrivacy: users.lastSeenPrivacy,
       })
       .from(users)
       .where(eq(users.id, user.id))
@@ -309,6 +327,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       allow_device_linking: row?.allowDeviceLinking ?? false,
       bio: row?.bio ?? null,
       status_text: row?.statusText ?? null,
+      display_name: row?.displayName ?? null,
+      last_seen_privacy: normalizeLastSeenPrivacy(row?.lastSeenPrivacy),
       social_links: socialLinks,
     })
   })
@@ -335,14 +355,12 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (parsed.data.disable_read_receipts !== undefined) updates.disableReadReceipts = parsed.data.disable_read_receipts
     if (parsed.data.allow_device_linking !== undefined) updates.allowDeviceLinking = parsed.data.allow_device_linking
     if (parsed.data.bio !== undefined) updates.bio = parsed.data.bio || null
+    if (parsed.data.display_name !== undefined) updates.displayName = parsed.data.display_name || null
     if (parsed.data.status_text !== undefined) updates.statusText = parsed.data.status_text || null
+    if (parsed.data.last_seen_privacy !== undefined) updates.lastSeenPrivacy = parsed.data.last_seen_privacy
     if (parsed.data.social_links !== undefined) updates.socialLinks = JSON.stringify(parsed.data.social_links)
 
-    const ignoredOnlyFields = parsed.data.display_name !== undefined || parsed.data.last_seen_privacy !== undefined
     if (Object.keys(updates).length === 0) {
-      if (ignoredOnlyFields) {
-        return reply.send({ ok: true, is_discoverable: false, hide_presence: false, disable_read_receipts: false, allow_device_linking: false, bio: null, status_text: null, social_links: [] })
-      }
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
     if (parsed.data.allow_device_linking !== undefined) {
@@ -363,7 +381,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         disableReadReceipts: users.disableReadReceipts,
         allowDeviceLinking: users.allowDeviceLinking,
         bio: users.bio,
+        displayName: users.displayName,
         statusText: users.statusText,
+        lastSeenPrivacy: users.lastSeenPrivacy,
         socialLinks: users.socialLinks,
       })
 
@@ -389,7 +409,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       disable_read_receipts: after?.disableReadReceipts ?? false,
       allow_device_linking: after?.allowDeviceLinking ?? false,
       bio: after?.bio ?? null,
+      display_name: after?.displayName ?? null,
       status_text: after?.statusText ?? null,
+      last_seen_privacy: normalizeLastSeenPrivacy(after?.lastSeenPrivacy),
       social_links: socialLinksOut,
     })
   })
@@ -441,14 +463,24 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (requested.length === 0) return reply.send({ users: [] })
 
     const rows = await db
-      .select({ id: users.id, lastSeenAt: users.lastSeenAt, hidePresence: users.hidePresence })
+      .select({
+        id: users.id,
+        lastSeenAt: users.lastSeenAt,
+        hidePresence: users.hidePresence,
+        lastSeenPrivacy: users.lastSeenPrivacy,
+      })
       .from(users)
       .where(inArray(users.id, requested))
 
     return reply.send({
       users: rows.map((u) => {
-        const isSelf = u.id === auth.id
-        const mask = !isSelf && u.hidePresence === true
+        const mask = shouldMaskPresenceForViewer({
+          viewerId: auth.id,
+          subjectId: u.id,
+          hidePresence: u.hidePresence === true,
+          lastSeenPrivacy: u.lastSeenPrivacy,
+          viewerIsRelated: related.has(u.id),
+        })
         return {
           id: u.id,
           last_seen_at: mask ? null : u.lastSeenAt == null ? null : u.lastSeenAt instanceof Date ? u.lastSeenAt.toISOString() : String(u.lastSeenAt),

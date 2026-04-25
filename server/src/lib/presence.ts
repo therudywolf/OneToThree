@@ -3,6 +3,8 @@ import { db } from '../db/index.js'
 import { chatMembers, users } from '../db/schema.js'
 import { sendToUser } from '../ws/registry.js'
 
+export type LastSeenPrivacy = 'everyone' | 'contacts' | 'nobody'
+
 /** Distinct user ids that share at least one chat with `userId` (excluding self). */
 export async function getRelatedUserIds(userId: string): Promise<string[]> {
   const mine = await db
@@ -53,6 +55,26 @@ export async function touchLastSeenPing(
   return touchLastSeen(userId)
 }
 
+export function normalizeLastSeenPrivacy(value: string | null | undefined): LastSeenPrivacy {
+  if (value === 'contacts' || value === 'nobody') return value
+  return 'everyone'
+}
+
+export function shouldMaskPresenceForViewer(input: {
+  viewerId: string
+  subjectId: string
+  hidePresence: boolean
+  lastSeenPrivacy: string | null | undefined
+  viewerIsRelated: boolean
+}): boolean {
+  if (input.viewerId === input.subjectId) return false
+  if (input.hidePresence) return true
+  const privacy = normalizeLastSeenPrivacy(input.lastSeenPrivacy)
+  if (privacy === 'nobody') return true
+  if (privacy === 'contacts' && !input.viewerIsRelated) return true
+  return false
+}
+
 export async function broadcastOnlineStatusChange(
   relatedUserIds: string[],
   payload: {
@@ -62,15 +84,23 @@ export async function broadcastOnlineStatusChange(
   }
 ): Promise<void> {
   const [subject] = await db
-    .select({ hidePresence: users.hidePresence })
+    .select({
+      hidePresence: users.hidePresence,
+      lastSeenPrivacy: users.lastSeenPrivacy,
+    })
     .from(users)
     .where(eq(users.id, payload.user_id))
     .limit(1)
-  const hide = subject?.hidePresence === true
   const sid = payload.user_id
 
   for (const peer of relatedUserIds) {
-    const mask = hide && peer !== sid
+    const mask = shouldMaskPresenceForViewer({
+      viewerId: peer,
+      subjectId: sid,
+      hidePresence: subject?.hidePresence === true,
+      lastSeenPrivacy: subject?.lastSeenPrivacy,
+      viewerIsRelated: peer !== sid,
+    })
     sendToUser(peer, {
       type: 'online_status_change',
       user_id: sid,

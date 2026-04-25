@@ -20,6 +20,7 @@ import { getIceConfig, type IceTransportPolicy } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import { toastWarn } from '@/store/toastStore'
+import { buildCallLeaveMessage, upsertIncomingCall } from '@/lib/incoming-call'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
@@ -478,6 +479,12 @@ export function useWebRTC(userId: string | null) {
     setIncomingCall(null)
   }, [resolveRelaySharedKey, setCallStartTime, setIncomingCall, setIsCalling, setLocalStream, setPeerConnectionType, startRelayCapture])
 
+  const rejectLink = useCallback(() => {
+    const leave = buildCallLeaveMessage(useCallStore.getState().incomingCall)
+    if (leave) getFmSocket().send(leave)
+    setIncomingCall(null)
+  }, [setIncomingCall])
+
   // Socket Subscription Layer
   useEffect(() => {
     if (!userId) return
@@ -488,10 +495,22 @@ export function useWebRTC(userId: string | null) {
         const state = useCallStore.getState()
         if (state.isCalling || state.incomingCall) return
         const peerId = msg.from_user_id
-        setIncomingCall({ peerId, isVideo: msg.is_video, offer: null })
+        setIncomingCall({
+          peerId,
+          chatId: msg.chat_id,
+          isVideo: msg.is_video,
+          offer: null,
+        })
         void lookupUsers([peerId]).then(([u]) => {
-          if (u && useCallStore.getState().incomingCall?.peerId === peerId) {
-            setIncomingCall({ peerId, isVideo: msg.is_video, offer: null, peerUsername: u.username })
+          const current = useCallStore.getState().incomingCall
+          if (u && current?.peerId === peerId) {
+            setIncomingCall(upsertIncomingCall(current, {
+              peerId,
+              chatId: msg.chat_id,
+              isVideo: msg.is_video,
+              offer: null,
+              peerUsername: u.username,
+            }))
           }
         }).catch(() => { /* best-effort */ })
       }
@@ -526,10 +545,23 @@ export function useWebRTC(userId: string | null) {
         }
 
         if (data.kind === 'relay_offer') {
-          setIncomingCall({ peerId: fromUserId, isVideo: false, offer: null, transport: 'audio_relay' })
+          const current = useCallStore.getState().incomingCall
+          setIncomingCall(upsertIncomingCall(current, {
+            peerId: fromUserId,
+            isVideo: false,
+            offer: null,
+            transport: 'audio_relay',
+          }))
           void lookupUsers([fromUserId]).then(([u]) => {
-            if (u && useCallStore.getState().incomingCall?.peerId === fromUserId) {
-              setIncomingCall({ peerId: fromUserId, isVideo: false, offer: null, transport: 'audio_relay', peerUsername: u.username })
+            const active = useCallStore.getState().incomingCall
+            if (u && active?.peerId === fromUserId) {
+              setIncomingCall(upsertIncomingCall(active, {
+                peerId: fromUserId,
+                isVideo: false,
+                offer: null,
+                transport: 'audio_relay',
+                peerUsername: u.username,
+              }))
             }
           }).catch(() => { /* best-effort */ })
           return
@@ -585,11 +617,22 @@ export function useWebRTC(userId: string | null) {
             await pc.setLocalDescription(answer)
             transmitSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
           } else {
-            setIncomingCall({ peerId: fromUserId, isVideo: !!data.isVideo, offer: { type: 'offer', sdp: data.sdp ?? '' }, transport: 'webrtc' })
+            const current = useCallStore.getState().incomingCall
+            setIncomingCall(upsertIncomingCall(current, {
+              peerId: fromUserId,
+              isVideo: !!data.isVideo,
+              offer: { type: 'offer', sdp: data.sdp ?? '' },
+              transport: 'webrtc',
+            }))
             void lookupUsers([fromUserId]).then(([u]) => {
               if (u) {
                 const cur = useCallStore.getState().incomingCall
-                if (cur?.peerId === fromUserId) setIncomingCall({ ...cur, peerUsername: u.username })
+                if (cur?.peerId === fromUserId) {
+                  setIncomingCall(upsertIncomingCall(cur, {
+                    peerId: fromUserId,
+                    peerUsername: u.username,
+                  }))
+                }
               }
             }).catch(() => { /* best-effort */ })
           }
@@ -943,7 +986,7 @@ export function useWebRTC(userId: string | null) {
     clearMediaAccessError: () => setMediaAccessError(null),
     initiateCall: establishLink,
     acceptIncomingCall: acceptLink,
-    rejectIncomingCall: () => setIncomingCall(null),
+    rejectIncomingCall: rejectLink,
     endCall: severAllLinks,
     toggleMuteMic: toggleMute,
     toggleCamera: toggleOptics,

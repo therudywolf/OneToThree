@@ -78,6 +78,9 @@ const pendingIce = new Map<string, RTCIceCandidateInit[]>()
 /** Disconnect timers for peer connections. */
 const disconnectTimers = new Map<string, number>()
 
+/** Peers whose first offer is sent explicitly instead of relying on negotiationneeded. */
+const pendingInitialOffers = new Set<string>()
+
 /** Audio analysers for speaking detection. */
 const audioAnalysers = new Map<string, { analyser: AnalyserNode; context: AudioContext; interval: number }>()
 
@@ -92,6 +95,25 @@ async function ensureIceServers(): Promise<RTCIceServer[]> {
 
 function sendGroupCallSignal(payload: object) {
   getFmSocket().send(payload)
+}
+
+async function sendGroupOffer(
+  roomId: string,
+  peerId: string,
+  pc: RTCPeerConnection,
+  options?: RTCOfferOptions
+): Promise<void> {
+  if (pc.signalingState !== 'stable') return
+  const store = useGroupCallStore.getState()
+  const offer = await pc.createOffer(options)
+  await pc.setLocalDescription(offer)
+  sendGroupCallSignal({
+    type: 'group_call:offer',
+    room_id: roomId,
+    target_user_id: peerId,
+    sdp: offer.sdp ?? '',
+    is_video: store.isVideo,
+  })
 }
 
 /** Create and wire up a peer connection for a specific user in the group call. */
@@ -140,6 +162,7 @@ function createPeerConnection(
       console.warn(`[GC.ICE] Connection failed to ${peerId.slice(0, 8)}, attempting restart`)
       try {
         pc.restartIce()
+        void sendGroupOffer(roomId, peerId, pc, { iceRestart: true })
       } catch {
         cleanupPeer(peerId)
       }
@@ -163,16 +186,9 @@ function createPeerConnection(
   // Negotiation needed (for polite peer)
   pc.onnegotiationneeded = async () => {
     if (pc.signalingState !== 'stable') return
+    if (pendingInitialOffers.has(peerId)) return
     try {
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      sendGroupCallSignal({
-        type: 'group_call:offer',
-        room_id: roomId,
-        target_user_id: peerId,
-        sdp: offer.sdp ?? '',
-        is_video: store.isVideo,
-      })
+      await sendGroupOffer(roomId, peerId, pc)
     } catch (err) {
       console.error('[GC.SIGNAL] Negotiation failure:', err)
     }
@@ -373,7 +389,15 @@ export async function handleParticipantList(
 
     // Create peer connection and send offer
     if (store.localStream) {
-      createPeerConnection(roomId, p.userId, store.localStream, iceServers)
+      pendingInitialOffers.add(p.userId)
+      const pc = createPeerConnection(roomId, p.userId, store.localStream, iceServers)
+      void sendGroupOffer(roomId, p.userId, pc)
+        .catch((err) => {
+          console.error('[GC.SIGNAL] Initial offer failure:', err)
+        })
+        .finally(() => {
+          pendingInitialOffers.delete(p.userId)
+        })
     }
   }
 }

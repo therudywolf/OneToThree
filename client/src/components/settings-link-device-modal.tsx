@@ -11,6 +11,7 @@ import { signMessageWithVaultPin } from '@/lib/vault-signing'
 import { readVaultBlob } from '@/lib/vault'
 import { useThemeStore } from '@/store/themeStore'
 import { explainDeviceLinkError } from '@/lib/device-link-errors'
+import { PortalRoot } from '@/components/portal-root'
 
 type Props = { onClose: () => void }
 
@@ -73,8 +74,9 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   }, [verified, vaultPin])
 
   return (
+    <PortalRoot>
     <div
-      className={`fixed inset-0 z-[110] flex items-center justify-center px-3 py-6 ${
+      className={`custom-scrollbar fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto px-3 py-6 ${
         isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : isRetro ? 'p13-classic-overlay' : 'bg-void/92'
       }`}
       role="dialog"
@@ -85,7 +87,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: 'easeOut' }}
-        className={`terminal-panel flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-hidden p-4 ${
+        className={`terminal-panel custom-scrollbar my-auto flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-y-auto p-4 ${
           isMd3
             ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'
           : isRetro
@@ -168,5 +170,6 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         )}
       </motion.div>
     </div>
+    </PortalRoot>
   )
 }

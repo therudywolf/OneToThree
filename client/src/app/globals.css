@@ -3196,10 +3196,16 @@ select {
   bottom: calc(100% + 4px);
   left: 0;
   z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border: 1px solid color-mix(in srgb, var(--neon-cyan) 50%, transparent);
   box-shadow: 0 0 16px color-mix(in srgb, var(--neon-cyan) 12%, transparent);
   background: var(--void);
   overflow: hidden;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 [data-shell="md3"] .p13-emoji-popup {
   border: none;
@@ -3214,6 +3220,24 @@ select {
     inset 1px 1px 0 #ffffff,
     0 10px 20px rgba(0, 0, 0, 0.28);
   background: #d4d0c8;
+}
+
+.p13-picker-scroll {
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767px) {
+  .p13-emoji-popup {
+    position: fixed;
+    left: max(0.5rem, env(safe-area-inset-left, 0px));
+    right: max(0.5rem, env(safe-area-inset-right, 0px));
+    bottom: calc(4.75rem + var(--p13-keyboard-inset, 0px) + env(safe-area-inset-bottom, 0px));
+    width: auto !important;
+    height: min(68dvh, max(12rem, calc(var(--p13-app-height, 100dvh) - 6rem - var(--p13-keyboard-inset, 0px)))) !important;
+    max-height: max(12rem, calc(var(--p13-app-height, 100dvh) - 6rem - var(--p13-keyboard-inset, 0px)));
+  }
 }
 
 /* --- Recording bar (locked) --------------------------------- */

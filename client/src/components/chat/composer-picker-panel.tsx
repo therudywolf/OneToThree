@@ -300,7 +300,7 @@ export function ComposerPickerPanel({
         {tabBtn('gif', t('composer.tabGif'))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="p13-picker-scroll min-h-0 flex-1 overflow-y-auto">
         {tab === 'emoji' ? (
           <div className="flex h-full min-h-0 flex-col gap-2 p-2">
             <div
@@ -322,7 +322,7 @@ export function ComposerPickerPanel({
         ) : null}
 
         {tab === 'sticker' ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
+          <div className="flex min-h-full flex-col gap-2 p-2">
             <div className="flex flex-wrap gap-1">
               <input
                 type="text"
@@ -397,7 +397,7 @@ export function ComposerPickerPanel({
               stickersLoading ? (
                 <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
               ) : (
-                <div className="min-h-0 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
                   {favoriteStickers.length > 0 ? (
                     <div className="mb-2">
                       <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-text-muted">
@@ -536,7 +536,7 @@ export function ComposerPickerPanel({
         ) : null}
 
         {tab === 'gif' ? (
-          <div className="flex min-h-0 flex-col gap-2 p-2">
+          <div className="flex min-h-full flex-col gap-2 p-2">
             {gifFavorites.length > 0 ? (
               <div className="space-y-1">
                 <p className="font-mono text-[9px] uppercase tracking-widest text-text-muted">{t('gif.favorites')}</p>

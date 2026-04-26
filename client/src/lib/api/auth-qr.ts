@@ -96,6 +96,16 @@ export function persistQrVaultHandoff(
 ): QrVaultHandoffStatus {
   if (typeof window === 'undefined') return vaultBlobRaw?.trim() ? 'invalid' : 'missing'
 
+  const raw = vaultBlobRaw?.trim()
+  if (raw) {
+    const parsed = parseVaultBlobJson(raw)
+    if (!parsed) return 'invalid'
+
+    persistVaultBlob(user.id, parsed)
+    persistVaultBlobByLoginUsername(user.username, parsed)
+    return 'restored'
+  }
+
   const existing = readVaultBlob(user.id) ?? readVaultBlobByLoginUsername(user.username)
   if (existing) {
     persistVaultBlob(user.id, existing)
@@ -103,15 +113,7 @@ export function persistQrVaultHandoff(
     return 'existing'
   }
 
-  const raw = vaultBlobRaw?.trim()
-  if (!raw) return 'missing'
-
-  const parsed = parseVaultBlobJson(raw)
-  if (!parsed) return 'invalid'
-
-  persistVaultBlob(user.id, parsed)
-  persistVaultBlobByLoginUsername(user.username, parsed)
-  return 'restored'
+  return 'missing'
 }
 
 export async function postQrGenerate(params: {

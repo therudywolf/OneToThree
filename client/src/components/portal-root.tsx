@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { cleanupBackdropOverflow, ensureBackdropCleanup } from '@/lib/backdrop-cleanup'
+import { ensureBackdropCleanup } from '@/lib/backdrop-cleanup'
 
 type PortalRootProps = {
   children: React.ReactNode
@@ -14,33 +14,28 @@ type PortalRootProps = {
  */
 export function PortalRoot({ children }: PortalRootProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const [container, setContainer] = useState<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    // Create a portal container if it doesn't exist
-    if (!containerRef.current) {
-      const container = document.createElement('div')
-      container.id = 'fm-portal-root'
-      container.style.position = 'relative'
-      container.style.zIndex = '1000'
-      document.body.appendChild(container)
-      containerRef.current = container
-    }
+    const node = document.createElement('div')
+    node.dataset.fmPortalRoot = 'true'
+    node.style.position = 'relative'
+    node.style.zIndex = '1000'
+    document.body.appendChild(node)
+    containerRef.current = node
+    setContainer(node)
 
     return () => {
-      // Cleanup: remove container and ensure backdrop is clean
       if (containerRef.current && containerRef.current.parentNode) {
         containerRef.current.parentNode.removeChild(containerRef.current)
-        containerRef.current = null
       }
-      // Ensure body overflow is restored and dark filters are removed
-      cleanupBackdropOverflow()
+      containerRef.current = null
+      // Do not unlock the page while another dialog portal is still mounted.
       ensureBackdropCleanup()
     }
   }, [])
 
-  if (!containerRef.current) {
-    return null
-  }
+  if (!container) return null
 
-  return createPortal(children, containerRef.current)
+  return createPortal(children, container)
 }

@@ -154,6 +154,7 @@ export function useWebRTC(userId: string | null) {
 
   const iceRetryTimersRef = useRef(new Map<string, number>())
   const connectTimeoutRef = useRef<number | null>(null)
+  const pendingInitialOfferRef = useRef(new Set<string>())
   const relayPlayersRef = useRef(new Map<string, AudioRelayPlayer>())
   const relayCapturesRef = useRef(new Map<string, AudioRelayCaptureController>())
   const relayKeysRef = useRef(new Map<string, Promise<CryptoKey | null>>())
@@ -314,17 +315,27 @@ export function useWebRTC(userId: string | null) {
     resetCallStore()
   }, [purgePeer, resetCallStore, revertToOptics])
 
+  const createAndSendOffer = useCallback(async (
+    peerId: string,
+    pc: RTCPeerConnection,
+    options?: RTCOfferOptions
+  ) => {
+    if (pc.signalingState !== 'stable') return
+    const offer = await pc.createOffer(options)
+    await pc.setLocalDescription(offer)
+    transmitSignal(peerId, {
+      kind: 'offer',
+      sdp: offer.sdp ?? '',
+      isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length,
+    })
+  }, [])
+
   const setupPeerLink = useCallback((peerId: string, pc: RTCPeerConnection) => {
     pc.onnegotiationneeded = async () => {
       if (pc.signalingState !== 'stable') return
+      if (pendingInitialOfferRef.current.has(peerId)) return
       try {
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        transmitSignal(peerId, {
-          kind: 'offer',
-          sdp: offer.sdp ?? '',
-          isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length,
-        })
+        await createAndSendOffer(peerId, pc)
       } catch (err) {
         console.error('[SYS.SIGNAL] Negotiation failure:', err)
       }
@@ -353,9 +364,7 @@ export function useWebRTC(userId: string | null) {
           setReconnecting(true)
           try {
             pc.restartIce()
-            const offer = await pc.createOffer({ iceRestart: true })
-            await pc.setLocalDescription(offer)
-            transmitSignal(peerId, { kind: 'offer', sdp: offer.sdp ?? '', isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length })
+            await createAndSendOffer(peerId, pc, { iceRestart: true })
           } catch {
             console.warn('[SYS.ICE] ICE restart offer failed for', peerId.slice(0, 8))
           }
@@ -370,9 +379,7 @@ export function useWebRTC(userId: string | null) {
           const retryTimer = window.setTimeout(async () => {
             try {
               pc.restartIce()
-              const offer = await pc.createOffer({ iceRestart: true })
-              await pc.setLocalDescription(offer)
-              transmitSignal(peerId, { kind: 'offer', sdp: offer.sdp ?? '', isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length })
+              await createAndSendOffer(peerId, pc, { iceRestart: true })
             } catch {
               console.warn('[SYS.ICE] ICE restart retry failed for', peerId.slice(0, 8))
             }
@@ -399,7 +406,7 @@ export function useWebRTC(userId: string | null) {
         candidate: ev.candidate ? ev.candidate.toJSON() : null,
       })
     }
-  }, [setRemoteStream, purgePeer, setReconnecting, setConnectionLost, setIceRetryCount])
+  }, [createAndSendOffer, setRemoteStream, purgePeer, setReconnecting, setConnectionLost, setIceRetryCount])
 
   const establishAudioRelay = useCallback(async (peerId: string, chatId: string, requestedVideo: boolean) => {
     let stream: MediaStream
@@ -804,11 +811,7 @@ export function useWebRTC(userId: string | null) {
         if (s === 'disconnected' || s === 'failed') {
           try {
             pc.restartIce()
-            void (async () => {
-              const offer = await pc.createOffer({ iceRestart: true })
-              await pc.setLocalDescription(offer)
-              transmitSignal(peerId, { kind: 'offer', sdp: offer.sdp ?? '', isVideo: !!useCallStore.getState().localStream?.getVideoTracks().length })
-            })()
+            void createAndSendOffer(peerId, pc, { iceRestart: true })
           } catch {
             console.warn('[SYS.ICE] Visibility-triggered restart failed for', peerId.slice(0, 8))
           }
@@ -817,7 +820,7 @@ export function useWebRTC(userId: string | null) {
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [])
+  }, [createAndSendOffer])
 
   // Clean up call on page unload / tab close
   useEffect(() => {
@@ -840,17 +843,27 @@ export function useWebRTC(userId: string | null) {
   }, [userId, severAllLinks])
 
   const establishLink = useCallback(async (recipients: string[], isVideo: boolean, chatId?: string) => {
+    const peerIds = recipients.filter((id) => id !== userId && !pcsRef.current.has(id))
+    if (peerIds.length === 0) {
+      severAllLinks()
+      return
+    }
+
     let signalConfig: Awaited<ReturnType<typeof getSignalRelays>>
     try {
       signalConfig = await getSignalRelays()
     } catch (err) {
+      if (peerIds.length === 1 && chatId) {
+        await establishAudioRelay(peerIds[0]!, chatId, isVideo)
+        return
+      }
       setMediaAccessError(err instanceof Error ? err.message : 'ICE_SERVERS_UNAVAILABLE')
       setIsCalling(false)
       return
     }
 
     if (recipients.length === 1 && chatId && !signalConfig.hasRelay) {
-      const peerId = recipients.find((id) => id !== userId)
+      const peerId = peerIds[0]
       if (peerId) {
         await establishAudioRelay(peerId, chatId, isVideo)
         return
@@ -869,27 +882,40 @@ export function useWebRTC(userId: string | null) {
     setIsCalling(true)
     setCallStartTime(Date.now())
 
-    for (const peerId of recipients) {
-      if (peerId === userId || pcsRef.current.has(peerId)) continue
+    if (chatId) {
+      getFmSocket().send({
+        type: 'call_invite',
+        chat_id: chatId,
+        is_video: isVideo,
+      })
+    }
+
+    const offerTasks: Promise<void>[] = []
+    for (const peerId of peerIds) {
       
       const pc = new RTCPeerConnection({
         iceServers: signalConfig.iceServers,
         iceTransportPolicy: signalConfig.transportPolicy,
       })
+      pendingInitialOfferRef.current.add(peerId)
       pcsRef.current.set(peerId, pc)
       addPeerConnection(peerId, pc)
       setupPeerLink(peerId, pc)
       stream.getTracks().forEach(t => pc.addTrack(t, stream))
+      offerTasks.push(
+        createAndSendOffer(peerId, pc)
+          .catch((err) => {
+            console.error('[SYS.SIGNAL] Initial offer failure:', err)
+          })
+          .finally(() => {
+            pendingInitialOfferRef.current.delete(peerId)
+          })
+      )
     }
 
+    await Promise.allSettled(offerTasks)
+
     if (pcsRef.current.size > 0) {
-      if (chatId) {
-        getFmSocket().send({
-          type: 'call_invite',
-          chat_id: chatId,
-          is_video: isVideo,
-        })
-      }
       ringStopRef.current = startOutgoingRingtone()
       // 30s timeout: if no peer reaches 'connected', hang up
       connectTimeoutRef.current = window.setTimeout(() => {
@@ -904,7 +930,7 @@ export function useWebRTC(userId: string | null) {
     } else {
       severAllLinks()
     }
-  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime, establishAudioRelay])
+  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime, establishAudioRelay, createAndSendOffer])
 
   const acceptLink = useCallback(async () => {
     const inc = useCallStore.getState().incomingCall

@@ -5,7 +5,7 @@ import {
   persistQrVaultHandoff,
   resolveQrLoginOrigin,
 } from './auth-qr'
-import { readVaultBlob, readVaultBlobByLoginUsername } from '@/lib/vault'
+import { persistVaultBlob, readVaultBlob, readVaultBlobByLoginUsername } from '@/lib/vault'
 
 const TOKEN = '00000000-0000-4000-8000-000000000001'
 const VAULT_BLOB = JSON.stringify({
@@ -14,6 +14,12 @@ const VAULT_BLOB = JSON.stringify({
   ivB64: 'iv',
   ciphertextB64: 'cipher',
 })
+const STALE_VAULT_BLOB = {
+  version: 5,
+  saltB64: 'old-salt',
+  ivB64: 'old-iv',
+  ciphertextB64: 'old-cipher',
+}
 
 function stubWindow(origin: string) {
   const store = new Map<string, string>()
@@ -69,6 +75,20 @@ describe('auth QR helpers', () => {
 
   it('persists encrypted vault handoff by user id and username', () => {
     stubWindow('https://onetothree.ru')
+
+    const status = persistQrVaultHandoff(
+      { id: 'user-1', username: 'alice' },
+      VAULT_BLOB
+    )
+
+    expect(status).toBe('restored')
+    expect(readVaultBlob('user-1')?.ciphertextB64).toBe('cipher')
+    expect(readVaultBlobByLoginUsername('alice')?.ciphertextB64).toBe('cipher')
+  })
+
+  it('prefers QR vault handoff over stale local vault cache', () => {
+    stubWindow('https://onetothree.ru')
+    persistVaultBlob('user-1', STALE_VAULT_BLOB)
 
     const status = persistQrVaultHandoff(
       { id: 'user-1', username: 'alice' },

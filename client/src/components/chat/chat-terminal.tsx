@@ -433,6 +433,8 @@ export function ChatTerminal({
   // so that incoming messages don't keep shifting the marker down.
   const [firstUnreadAnchorId, setFirstUnreadAnchorId] = useState<string | null>(null)
   const firstUnreadIdRef = useRef<string | null>(null)
+  // Tracks whether we already scrolled to the first-unread anchor for this chat open.
+  const didScrollToUnreadRef = useRef(false)
 
   useLayoutEffect(() => {
     setOlderMessages([])
@@ -441,6 +443,7 @@ export function ChatTerminal({
     lastMsgKeyRef.current = null
     firstMessagesRenderRef.current = true
     firstUnreadIdRef.current = null
+    didScrollToUnreadRef.current = false
     setFirstUnreadAnchorId(null)
     isNearBottomRef.current = true
     setHasNewBelow(false)
@@ -490,6 +493,29 @@ export function ChatTerminal({
       firstUnreadIdRef.current = ''
     }
   }, [messages, activeChatId, readAtOverrides, userId])
+
+  // Once the first-unread anchor is resolved, scroll so the unread divider is
+  // visible at the top of the viewport (instead of staying at the bottom).
+  useEffect(() => {
+    if (!firstUnreadAnchorId || didScrollToUnreadRef.current) return
+    didScrollToUnreadRef.current = true
+    // Double-rAF to let any pending scroll-to-bottom rAFs from the layout
+    // effect complete first, then override with our unread position.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const scrollEl = ref.current
+        if (!scrollEl) return
+        const target = scrollEl.querySelector<HTMLElement>(
+          `[data-message-id="${CSS.escape(firstUnreadAnchorId)}"]`
+        )
+        if (!target) return
+        target.scrollIntoView({ block: 'start' })
+        // Pull back slightly so the "Unread messages" divider above is visible.
+        scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop - 52)
+        isNearBottomRef.current = false
+      })
+    })
+  }, [firstUnreadAnchorId])
 
   // Keep unread divider in sync: if the anchored unread message becomes read,
   // move anchor to next unread or hide the divider completely.

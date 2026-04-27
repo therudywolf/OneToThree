@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { and, asc, count, desc, eq, ilike, inArray, max, ne, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, ilike, inArray, isNull, max, ne, or, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -278,6 +278,33 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       )
     }
 
+    // Unread count per chat: messages not sent by user, not yet read,
+    // delivered to this device (or any device for group chats as fallback).
+    const unreadCountByChat = new Map<string, number>()
+    if (chatIds.length > 0) {
+      try {
+        const unreadRows = await db
+          .select({
+            chatId: messages.chatId,
+            cnt: count(),
+          })
+          .from(messages)
+          .where(
+            and(
+              inArray(messages.chatId, chatIds),
+              isNull(messages.readAt),
+              ne(messages.senderId, user.id)
+            )
+          )
+          .groupBy(messages.chatId)
+        for (const r of unreadRows) {
+          unreadCountByChat.set(r.chatId, r.cnt)
+        }
+      } catch {
+        // non-fatal: unread counts fall back to 0
+      }
+    }
+
     return reply.send({
       chats: rows.map((c) => {
         const isGroup = isGroupType(c.type)
@@ -302,6 +329,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           is_self: isSelf,
           muted_until: c.mutedUntil ?? null,
           last_message_at: lastMessageAtByChat.get(c.id) ?? null,
+          unread_count: unreadCountByChat.get(c.id) ?? 0,
           my_role: c.myRole,
           invite_code: showInvite ? c.inviteCode : null,
           invite_slug: showInvite ? c.inviteSlug : null,

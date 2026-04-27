@@ -31,6 +31,8 @@ export type ApiChatRow = {
   invite_slug?: string | null
   /** Server bump when group membership requires key rotation (group_e2e). */
   key_epoch?: number
+  /** Unread delivery count for this device (messages delivered but not yet read). */
+  unread_count?: number
 }
 
 /** Client-side helper: is this chat currently muted? */

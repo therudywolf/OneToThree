@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { DecryptedMessage } from '@/types/chat'
+import type { ApiChatRow } from '@/lib/api/chats'
 import { createSafeJSONStorage } from '@/lib/safe-zustand-storage'
 
 /**
@@ -55,6 +56,8 @@ export type UnreadState = {
   setHistoryDecryptBusy: (busy: boolean) => void
   updateReadAtOverride: (nodeId: string, timestamp: string) => void
   clearReadAtOverrides: () => void
+  /** Seed unread counts from server-reported delivery counts at startup. */
+  seedUnreadFromApi: (chats: ApiChatRow[], activeChatId: string | null) => void
   reset: () => void
 }
 
@@ -122,6 +125,30 @@ export const useUnreadStore = create<UnreadState>()(
         }),
 
       setHistoryDecryptBusy: (busy) => set({ historyDecryptBusy: busy }),
+
+      seedUnreadFromApi: (chats, activeChatId) =>
+        set((s) => {
+          const nextUnread = { ...s.unreadByChat }
+          let changed = false
+          for (const chat of chats) {
+            const serverCount = chat.unread_count ?? 0
+            if (serverCount <= 0) continue
+            // Don't seed the currently-open chat (user is looking at it).
+            if (chat.id === activeChatId) continue
+            const existing = nextUnread[chat.id]
+            // Only override if server count is higher than what we already track.
+            if (!existing || existing.total < serverCount) {
+              nextUnread[chat.id] = {
+                total: serverCount,
+                mentions: existing?.mentions ?? 0,
+                threads: existing?.threads ?? {},
+              }
+              changed = true
+            }
+          }
+          if (!changed) return s
+          return { unreadByChat: nextUnread, unreadTotal: countUnreadTotal(nextUnread) }
+        }),
 
       updateReadAtOverride: (nodeId, timestamp) =>
         set((s) => ({ readAtOverrides: { ...s.readAtOverrides, [nodeId]: timestamp } })),

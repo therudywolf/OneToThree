@@ -639,8 +639,14 @@ case "$CMD" in
   up|"")
     : # продолжаем ниже
     ;;
+  build-apk)
+    exec "$ROOT/scripts/build-apk.sh" "${@:2}"
+    ;;
+  build-apk-release)
+    exec "$ROOT/scripts/build-apk.sh" release "${@:2}"
+    ;;
   *)
-    echo "Использование: ./start.sh [install|up|quick|tg|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|backup|clean|uninstall]"
+    echo "Использование: ./start.sh [install|up|quick|tg|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|backup|clean|uninstall|build-apk|build-apk-release <keystore>]"
     exit 1
     ;;
 esac

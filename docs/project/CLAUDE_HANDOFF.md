@@ -112,4 +112,4 @@ Last updated: 2026-04-22e (relay-only calls update)
 - Do not revert unrelated user changes.
 - Если снова появится `[DECRYPT_FAIL]` — проверить, передаётся ли `drCtx` в конкретный decrypt-path.
 - Не смешивать shell rules: MD3 и terminal токены изолированы по `[data-shell]`.
-- HAR-трейсы в `/mnt/c/Users/rudywolf/Workspace/OneToThree/Har/` для диагностики runtime-багов.
+- Локальные HAR-трейсы после cleanup лежат в `/mnt/c/Users/rudywolf/Workspace/OneToThree/_local/diagnostics/har/` и не коммитятся.

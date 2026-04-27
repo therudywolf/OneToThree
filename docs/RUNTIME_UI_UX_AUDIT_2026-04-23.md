@@ -204,7 +204,7 @@ Scope: live manual testing on `onetothree.ru` + production logs + adaptive check
 
 ## Notes
 
-- This audit intentionally records runtime/visual defects only (not full security audit items from `AUDIT.md`).
+- This audit intentionally records runtime/visual defects only (not full security audit items from `docs/audits/AUDIT.md`).
 - Keep this file as the implementation checklist source for upcoming UI/UX and call stabilization work.
 
 ---

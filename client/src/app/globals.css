@@ -2025,12 +2025,52 @@ select {
 }
 
 .chat-scroll,
-.custom-scrollbar,
 .p13-settings-scroll {
   min-height: 0;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+}
+
+.custom-scrollbar {
+  -webkit-overflow-scrolling: touch;
+}
+
+.p13-modal-root,
+.p13-settings-root {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767px) {
+  .p13-settings-root {
+    top: var(--p13-visual-top, 0px);
+    bottom: auto;
+    align-items: stretch;
+    justify-content: flex-start;
+    height: var(--p13-visual-height, 100dvh);
+    max-height: var(--p13-visual-height, 100dvh);
+    min-height: 0;
+    overflow: hidden;
+    padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .p13-settings-root > .p13-settings-modal,
+  .p13-settings-root > .p13-dialog-panel {
+    height: 100% !important;
+    max-height: 100% !important;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .p13-modal-root {
+    top: var(--p13-visual-top, 0px);
+    bottom: auto;
+    height: var(--p13-visual-height, 100dvh);
+    max-height: var(--p13-visual-height, 100dvh);
+    overflow-y: auto;
+  }
 }
 
 @media (max-width: 430px) {

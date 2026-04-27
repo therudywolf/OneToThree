@@ -12,6 +12,7 @@ import { readVaultBlob } from '@/lib/vault'
 import { useThemeStore } from '@/store/themeStore'
 import { explainDeviceLinkError } from '@/lib/device-link-errors'
 import { PortalRoot } from '@/components/portal-root'
+import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 
 type Props = { onClose: () => void }
 
@@ -30,6 +31,8 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   const themeId = useThemeStore((s) => s.theme)
   const isMd3 = shellMode === 'md3'
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
+
+  useEffect(() => acquireBodyScrollLock(), [])
 
   async function generateQr() {
     if (!user?.id || !vaultPin) return
@@ -76,7 +79,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   return (
     <PortalRoot>
     <div
-      className={`custom-scrollbar fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto px-3 py-6 ${
+      className={`p13-settings-root custom-scrollbar fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto px-3 py-6 ${
         isMd3 ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm' : isRetro ? 'p13-classic-overlay' : 'bg-void/92'
       }`}
       role="dialog"

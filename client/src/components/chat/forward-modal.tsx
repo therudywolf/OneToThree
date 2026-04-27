@@ -7,6 +7,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import { fetchChatsList, type ApiChatRow } from '@/lib/api/chats'
 import type { DecryptedMessage } from '@/types/chat'
+import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 
 type Props = {
   message: DecryptedMessage
@@ -27,6 +28,8 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [sent, setSent] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => acquireBodyScrollLock(), [])
 
   useEffect(() => {
     void fetchChatsList()
@@ -63,7 +66,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className={`fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto px-3 py-4 ${
+        className={`p13-modal-root fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto px-3 py-4 ${
           isMd3
             ? 'bg-[color-mix(in_srgb,var(--void)_40%,transparent)] backdrop-blur-sm'
             : isRetro

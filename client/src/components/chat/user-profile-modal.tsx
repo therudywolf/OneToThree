@@ -19,6 +19,7 @@ import { fetchSharedMedia, type SharedMediaRow } from '@/lib/api/messages'
 import { useTranslation } from '@/hooks/use-translation'
 import { UserAvatar } from '@/components/user-avatar'
 import { sanitizeText, sanitizeUrl } from '@/lib/sanitize'
+import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 
 type Props = {
   userId: string
@@ -58,6 +59,8 @@ export function UserProfileModal({
   const [filesLoading, setFilesLoading] = useState(false)
   const [mediaLoaded, setMediaLoaded] = useState(false)
   const [filesLoaded, setFilesLoaded] = useState(false)
+
+  useEffect(() => acquireBodyScrollLock(), [])
 
   useEffect(() => {
     let cancelled = false

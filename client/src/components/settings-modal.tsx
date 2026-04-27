@@ -45,6 +45,7 @@ import {
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { getTrustedPeerCount } from '@/lib/trust-store'
 import { PortalRoot } from '@/components/portal-root'
+import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 import { explainSettingsError } from '@/lib/settings-errors'
 
 type Props = { userId: string; username: string; onClose: () => void }
@@ -228,6 +229,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   }, [t, updateUser])
 
   useEffect(() => { void loadSettingsFromApi() }, [userId, loadSettingsFromApi])
+
+  useEffect(() => acquireBodyScrollLock(), [])
 
   useEffect(() => {
     void (async () => {
@@ -570,7 +573,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   return (
     <PortalRoot>
     <div
-      className={`custom-scrollbar fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden px-3 py-6 sm:px-4 ${
+      className={`p13-settings-root custom-scrollbar fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden px-3 py-6 sm:px-4 ${
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : isRetro

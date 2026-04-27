@@ -1,5 +1,10 @@
 'use client'
 
+import {
+  forceReleaseBodyScrollLocks,
+  hasActiveBodyScrollLocks,
+} from '@/lib/body-scroll-lock'
+
 /**
  * PROJECT 13 :: OPTICAL_SHROUD_CLEANUP
  * Level: Interface Layer (DOM Cleanup)
@@ -11,8 +16,7 @@
 export function purgeInterfaceOverflow(): void {
   if (typeof document === 'undefined') return
   
-  // Возвращаем исходное состояние основным контейнерам узла
-  document.body.style.overflow = ''
+  forceReleaseBodyScrollLocks()
   document.documentElement.style.overflow = ''
 }
 
@@ -28,7 +32,7 @@ export function monitorStrayPortals(): void {
     // Ищем любые активные шлюзы (диалоги)
     const activePortals = document.querySelectorAll('[role="dialog"]')
     
-    if (activePortals.length === 0) {
+    if (activePortals.length === 0 && !hasActiveBodyScrollLocks()) {
       purgeInterfaceOverflow()
     }
   })

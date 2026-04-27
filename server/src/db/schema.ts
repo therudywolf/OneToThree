@@ -74,8 +74,8 @@ export const users = pgTable('users', {
   hidePresence: boolean('hide_presence').notNull().default(false),
   /** When true, don't send read receipts to peers. */
   disableReadReceipts: boolean('disable_read_receipts').notNull().default(false),
-  /** Server-side gate for issuing new device-link tokens. */
-  allowDeviceLinking: boolean('allow_device_linking').notNull().default(false),
+  /** Server-side gate for issuing new device-link tokens. Default true — vault PIN is the real guard. */
+  allowDeviceLinking: boolean('allow_device_linking').notNull().default(true),
   /** Recovery key material (server stores only KDF salt+hash, never plaintext key). */
   recoveryKeySalt: text('recovery_key_salt'),
   recoveryKeyHash: text('recovery_key_hash'),

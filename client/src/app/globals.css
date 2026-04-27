@@ -2413,6 +2413,14 @@ select {
   --p13-date-divider-gap-top: 14px;
   --p13-date-divider-gap-bottom: 8px;
 
+  /* message meta colors — terminal defaults (neon) */
+  --p13-msg-meta-fg: color-mix(in srgb, var(--neon-cyan) 80%, transparent);
+  --p13-msg-sender-mine: color-mix(in srgb, var(--neon-cyan) 80%, transparent);
+  --p13-msg-sender-peer: color-mix(in srgb, var(--neon-cyan) 90%, transparent);
+  --p13-reply-border: color-mix(in srgb, var(--neon-cyan) 30%, transparent);
+  --p13-reply-text: color-mix(in srgb, var(--neon-cyan) 60%, transparent);
+  --p13-reply-author: var(--neon-red);
+
   /* first-paint text-shadow for CRT vibe (palette hue agnostic) */
   --p13-body-text-shadow: 0 0 1px color-mix(in srgb, var(--neon-cyan) calc(var(--text-shadow-intensity, 0.35) * 100%), transparent);
 }
@@ -2508,6 +2516,14 @@ select {
   --p13-date-divider-gap-bottom: 10px;
 
   --p13-body-text-shadow: none;
+
+  /* message meta colors — MD3 defaults (muted on-surface) */
+  --p13-msg-meta-fg: var(--p13-text-secondary);
+  --p13-msg-sender-mine: var(--p13-text-secondary);
+  --p13-msg-sender-peer: color-mix(in srgb, var(--neon-cyan) 70%, var(--on-surface));
+  --p13-reply-border: color-mix(in srgb, var(--on-surface) 25%, transparent);
+  --p13-reply-text: color-mix(in srgb, var(--on-surface) 55%, transparent);
+  --p13-reply-author: color-mix(in srgb, var(--neon-red) 80%, var(--on-surface));
 
   /* Material Design 3 elevation scale (tonal surface overlays, spec dp 0-5) */
   --md3-elevation-0: none;
@@ -2639,10 +2655,26 @@ select {
 
 .p13-msg-meta {
   margin-bottom: var(--p13-msg-meta-gap);
+  color: var(--p13-msg-meta-fg);
 }
 
 [data-run-continuation="true"] .p13-msg-meta {
   display: none;
+}
+
+/* shell-aware sender name and reply quote colors */
+.p13-msg-meta--mine {
+  color: var(--p13-msg-sender-mine);
+}
+.p13-msg-meta--peer {
+  color: var(--p13-msg-sender-peer);
+}
+.p13-reply-quote {
+  border-left: 2px solid var(--p13-reply-border);
+  color: var(--p13-reply-text);
+}
+.p13-reply-quote-author {
+  color: var(--p13-reply-author);
 }
 
 /* Specificity-boosted via [data-shell] parent selector so that legacy

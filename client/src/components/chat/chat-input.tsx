@@ -701,12 +701,20 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
               className="flex-1 min-h-6 max-h-[120px] resize-none bg-transparent border-0 outline-none text-[color:var(--on-surface)] placeholder:text-[color:var(--text-muted)] disabled:cursor-not-allowed"
               style={{ fontSize: 'max(16px, 1em)' }}
               value={messageText}
+              inputMode="text"
+              enterKeyHint="send"
               onChange={(e) => {
                 const next = e.target.value
                 setMessageText(next)
                 onDraftChanged(next)
                 e.target.style.height = 'auto'
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
+              }}
+              onFocus={() => {
+                // Scroll composer into view when keyboard opens on mobile
+                setTimeout(() => {
+                  inputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+                }, 300)
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {

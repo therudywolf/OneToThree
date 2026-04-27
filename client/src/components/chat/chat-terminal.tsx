@@ -1291,8 +1291,8 @@ export function ChatTerminal({
                   <div
                     className={`p13-msg-meta p13-label flex items-center gap-2 px-1 text-[11px] ${
                       mine
-                        ? 'flex-row-reverse justify-end text-right text-neon-cyan/80'
-                        : 'justify-start text-left text-neon-cyan/90'
+                        ? 'p13-msg-meta--mine flex-row-reverse justify-end text-right'
+                        : 'p13-msg-meta--peer justify-start text-left'
                     }`}
                   >
                     <button
@@ -1319,7 +1319,7 @@ export function ChatTerminal({
                     {roleGlyph(m.sender_id)}
                     <button
                       type="button"
-                      className="cursor-pointer hover:text-neon-red transition-colors"
+                      className="cursor-pointer transition-colors hover:opacity-80"
                       onClick={(e) => { e.stopPropagation(); openProfile(m.sender_id) }}
                     >
                       {senderLabel}
@@ -1333,19 +1333,19 @@ export function ChatTerminal({
                   >
                     {replyMsg ? (
                       <div
-                        className="mb-1 cursor-pointer border-l border-neon-cyan/30 pl-2 text-[10px] text-neon-cyan/60 hover:text-neon-cyan/90"
+                        className="p13-reply-quote mb-1 cursor-pointer pl-2 text-[10px]"
                         onClick={() => setThreadRoot(replyMsg)}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => e.key === 'Enter' && setThreadRoot(replyMsg)}
                       >
-                        <span className="text-danger">
+                        <span className="p13-reply-quote-author">
                           ↳ {labelForSender(replyMsg.sender_id)}:
                         </span>{' '}
                         {replySnippet(replyMsg)}
                       </div>
                     ) : m.reply_to_id ? (
-                      <div className="mb-1 text-[10px] text-danger">
+                      <div className="p13-reply-quote mb-1 pl-2 text-[10px] opacity-60">
                         ↳ [{t('chat.originalDeleted')}]
                       </div>
                     ) : null}
@@ -1445,8 +1445,8 @@ export function ChatTerminal({
                   <div
                     className={`p13-msg-meta p13-label flex items-center gap-1.5 px-1 text-[10px] ${
                       mine
-                        ? 'flex-row-reverse justify-end text-right text-neon-cyan/70'
-                        : 'justify-start text-left text-neon-cyan/80'
+                        ? 'p13-msg-meta--mine flex-row-reverse justify-end text-right'
+                        : 'p13-msg-meta--peer justify-start text-left'
                     }`}
                   >
                     <button
@@ -1473,7 +1473,7 @@ export function ChatTerminal({
                     {roleGlyph(group.originId)}
                     <button
                       type="button"
-                      className="cursor-pointer hover:text-neon-red transition-colors"
+                      className="cursor-pointer transition-colors hover:opacity-80"
                       onClick={(e) => { e.stopPropagation(); openProfile(group.originId) }}
                     >
                       {senderLabel}

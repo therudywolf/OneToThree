@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock, X } from 'lucide-react'
+import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -414,9 +414,18 @@ export function ChatApp({
   }, [searchParams, setActiveChatId])
 
   useEffect(() => {
-    setMobileSidebarOpen(false)
-    setMobileSearchOpen(false)
-    setHeaderProfileOpen(false)
+    if (activeChatId) {
+      // Chat opened — hide mobile overlay
+      setMobileSidebarOpen(false)
+      setMobileSearchOpen(false)
+      setHeaderProfileOpen(false)
+    } else {
+      // No chat selected — on narrow screens auto-show the chat list
+      const isMobileWidth = typeof window !== 'undefined' && window.innerWidth < 768
+      if (isMobileWidth) {
+        setMobileSidebarOpen(true)
+      }
+    }
     if (!activeChatId && matchesDockViewport()) {
       const store = useDockStore.getState()
       if (store.slot === 'search' || store.slot === 'profile') store.close()
@@ -839,15 +848,26 @@ export function ChatApp({
         style={{ minHeight: `${TELEGRAM_BEHAVIOR.mobile.headerHeightPx}px` }}
       >
 
-        {/* Burger — mobile only */}
-        <button
-          type="button"
-          className="p13-icon-btn touch-manipulation md:hidden"
-          aria-label={t('call.openChannels')}
-          onClick={openMobileSidebar}
-        >
-          <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden />
-        </button>
+        {/* Back/Burger — mobile only */}
+        {activeChatId ? (
+          <button
+            type="button"
+            className="p13-icon-btn touch-manipulation md:hidden"
+            aria-label={t('common.back')}
+            onClick={() => setActiveChatId(null)}
+          >
+            <ArrowLeft className="h-5 w-5" strokeWidth={1.5} aria-hidden />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="p13-icon-btn touch-manipulation md:hidden"
+            aria-label={t('call.openChannels')}
+            onClick={openMobileSidebar}
+          >
+            <Menu className="h-5 w-5" strokeWidth={1.5} aria-hidden />
+          </button>
+        )}
 
         {/* CENTER: peer nick — always visible, takes remaining space */}
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">

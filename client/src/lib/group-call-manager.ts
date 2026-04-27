@@ -14,6 +14,15 @@ import { useGroupCallStore } from '@/store/groupCallStore'
 import type { GroupCallParticipant as _GroupCallParticipant } from '@/store/groupCallStore'
 import { getIceServers } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
+import {
+  joinLiveKitCall,
+  leaveLiveKitCall,
+  toggleLiveKitMute,
+  toggleLiveKitVideo,
+  startLiveKitScreenShare,
+  isLiveKitActive,
+} from '@/lib/livekit-call-manager'
+import { fetchCallConfig } from '@/lib/api/call'
 
 function hasTransportParam(url: string): boolean {
   return /[?&]transport=/i.test(url)
@@ -315,16 +324,26 @@ function cleanupAll() {
 
 // --- Public API ---
 
-/** Join a group call room. Initiates connections to all existing participants. */
+/** Join a group call room. Uses LiveKit SFU when available, mesh WebRTC as fallback. */
 export async function joinGroupCall(
   roomId: string,
   isVideo: boolean
 ): Promise<boolean> {
   const store = useGroupCallStore.getState()
-
-  // Don't join if already in a call
   if (store.isInGroupCall) return false
 
+  // Try LiveKit SFU first — hides participant IPs from each other
+  try {
+    const cfg = await fetchCallConfig()
+    if (cfg.livekit_enabled && cfg.livekit_url) {
+      const ok = await joinLiveKitCall(roomId, isVideo)
+      if (ok) return true
+    }
+  } catch {
+    // LiveKit unavailable — fall through to mesh
+  }
+
+  // Mesh WebRTC fallback
   let stream: MediaStream
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -343,7 +362,6 @@ export async function joinGroupCall(
   store.setRoomId(roomId)
   store.setIsVideo(isVideo)
 
-  // Signal server to join the room
   sendGroupCallSignal({
     type: 'group_call:join',
     room_id: roomId,
@@ -355,7 +373,11 @@ export async function joinGroupCall(
 
 /** Leave the current group call. */
 export function leaveGroupCall() {
-  cleanupAll()
+  if (isLiveKitActive()) {
+    leaveLiveKitCall()
+  } else {
+    cleanupAll()
+  }
 }
 
 /** Handle incoming participant list (received after joining). Create offers to all existing participants. */
@@ -529,6 +551,10 @@ export function handleSpeakingChange(roomId: string, userId: string, isSpeaking:
 
 /** Toggle local microphone mute. */
 export function toggleGroupCallMute() {
+  if (isLiveKitActive()) {
+    void toggleLiveKitMute()
+    return
+  }
   const store = useGroupCallStore.getState()
   if (!store.localStream || !store.roomId) return
 
@@ -545,6 +571,10 @@ export function toggleGroupCallMute() {
 
 /** Toggle local camera on/off. */
 export function toggleGroupCallVideo() {
+  if (isLiveKitActive()) {
+    void toggleLiveKitVideo()
+    return
+  }
   const store = useGroupCallStore.getState()
   if (!store.localStream || !store.roomId) return
 
@@ -561,6 +591,10 @@ export function toggleGroupCallVideo() {
 
 /** Start screen sharing in the group call. */
 export async function startGroupCallScreenShare(): Promise<boolean> {
+  if (isLiveKitActive()) {
+    await startLiveKitScreenShare()
+    return true
+  }
   const store = useGroupCallStore.getState()
   if (!store.localStream || !store.roomId) return false
 

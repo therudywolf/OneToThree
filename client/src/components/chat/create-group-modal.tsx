@@ -160,7 +160,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
   return (
     <div
       ref={trapRef}
-      className={`fixed inset-0 z-[120] flex items-end justify-center px-3 py-3 sm:items-center sm:px-4 ${
+      className={`fixed inset-0 z-[120] flex items-end justify-center overflow-y-auto px-3 py-3 sm:items-center sm:px-4 ${
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : isRetro
@@ -170,7 +170,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
       role="dialog"
       aria-modal="true"
     >
-      <div className={`relative flex max-h-[min(92dvh,100vh-0.75rem)] w-full max-w-xl flex-col overflow-hidden p-4 sm:p-6 ${
+      <div className={`p13-dialog-panel relative my-auto flex w-full max-w-xl flex-col overflow-hidden p-4 sm:p-6 ${
         isMd3
           ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
           : isRetro
@@ -198,7 +198,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
           </button>
         </header>
 
-        <form onSubmit={(ev) => void handleGenesis(ev)} className="custom-scrollbar min-h-0 space-y-5 overflow-y-auto pr-1">
+        <form onSubmit={(ev) => void handleGenesis(ev)} className="p13-dialog-scroll custom-scrollbar space-y-5 pr-1">
           <div className={`p-3 ${isMd3 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-border-strong bg-void transition-colors hover:border-border-strong'}`}>
             <div className="flex flex-wrap gap-2">
               <button

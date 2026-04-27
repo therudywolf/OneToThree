@@ -541,7 +541,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       className="p13-composer chat-compose-shell sticky bottom-0 z-10 shrink-0 touch-manipulation p-2 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))]"
       style={{
         paddingBottom:
-          'calc(max(0.5rem, env(safe-area-inset-bottom)) + var(--p13-keyboard-inset, 0px))',
+          'var(--p13-composer-bottom-inset, max(0.5rem, env(safe-area-inset-bottom, 0px)))',
       }}
     >
       {previewFile && (

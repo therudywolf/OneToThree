@@ -10,6 +10,9 @@
   --p13-safe-bottom: env(safe-area-inset-bottom, 0px);
   --p13-vh: 1vh;
   --p13-app-height: calc(var(--p13-vh, 1vh) * 100);
+  --p13-visual-height: var(--p13-app-height);
+  --p13-visual-top: 0px;
+  --p13-composer-bottom-inset: max(0.5rem, env(safe-area-inset-bottom, 0px));
   --neon-red: #ff0000;
   --neon-cyan: #00ffff;
   --neon-amber: #ffbf47;
@@ -886,8 +889,8 @@ textarea {
   padding-bottom: 0;
 }
 .p13-app-shell {
-  height: var(--p13-app-height, 100dvh);
-  max-height: var(--p13-app-height, 100dvh);
+  height: var(--p13-visual-height, var(--p13-app-height, 100dvh));
+  max-height: var(--p13-visual-height, var(--p13-app-height, 100dvh));
   min-height: 0;
 }
 [data-shell="terminal"] .chat-safe-shell::before {
@@ -1727,6 +1730,14 @@ select {
 /* ===== RESPONSIVE LAYOUT ===== */
 
 @media (max-width: 767px) {
+  .fixed[role="dialog"] {
+    max-height: var(--p13-visual-height, 100dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+
   .chat-layout-sidebar {
     display: none;
   }
@@ -1741,8 +1752,27 @@ select {
     padding-left: var(--p13-safe-left, env(safe-area-inset-left, 0px));
     padding-right: var(--p13-safe-right, env(safe-area-inset-right, 0px));
   }
+  .chat-layout-sidebar {
+    top: var(--p13-visual-top, 0px);
+    bottom: auto;
+    height: var(--p13-visual-height, var(--p13-app-height, 100dvh)) !important;
+    max-height: var(--p13-visual-height, var(--p13-app-height, 100dvh)) !important;
+    min-height: 0;
+  }
+  .chat-layout-main,
+  .chat-ultrawide-container,
+  .p13-sidebar-main,
+  .p13-settings-layout,
+  .p13-settings-content {
+    min-height: 0;
+  }
+  .p13-settings-modal {
+    height: var(--p13-visual-height, 100dvh) !important;
+    max-height: var(--p13-visual-height, 100dvh) !important;
+  }
   .p13-settings-scroll {
     scrollbar-gutter: auto;
+    padding-bottom: calc(1rem + var(--p13-safe-bottom, env(safe-area-inset-bottom, 0px)));
   }
   .chat-scroll,
   .custom-scrollbar,
@@ -1981,9 +2011,24 @@ select {
   scrollbar-gutter: stable both-edges;
 }
 
+.p13-dialog-panel {
+  max-height: min(92dvh, calc(var(--p13-visual-height, 100dvh) - 0.75rem));
+  min-height: 0;
+}
+
+.p13-dialog-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
 .chat-scroll,
 .custom-scrollbar,
 .p13-settings-scroll {
+  min-height: 0;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
 }
@@ -3223,6 +3268,8 @@ select {
 }
 
 .p13-picker-scroll {
+  min-height: 0;
+  overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;

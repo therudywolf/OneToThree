@@ -87,7 +87,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.22, ease: 'easeOut' }}
-        className={`terminal-panel custom-scrollbar my-auto flex max-h-[min(90dvh,90vh)] w-full max-w-md flex-col overflow-y-auto p-4 ${
+        className={`terminal-panel p13-dialog-panel p13-dialog-scroll custom-scrollbar my-auto flex w-full max-w-md flex-col p-4 ${
           isMd3
             ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'
           : isRetro

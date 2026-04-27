@@ -63,7 +63,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className={`fixed inset-0 z-[130] flex items-center justify-center px-3 ${
+        className={`fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto px-3 py-4 ${
           isMd3
             ? 'bg-[color-mix(in_srgb,var(--void)_40%,transparent)] backdrop-blur-sm'
             : isRetro
@@ -75,7 +75,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
-          className={`w-full max-w-sm ${
+          className={`p13-dialog-panel flex w-full max-w-sm flex-col overflow-hidden ${
             isMd3
               ? 'rounded-[28px] bg-[var(--surface-container-high)] p-5 shadow-[var(--md3-elevation-3)]'
             : isRetro
@@ -101,7 +101,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
               <span className={`${isMd3 ? 'font-sans' : isRetro ? '' : 'font-mono'} text-[10px] leading-none`}>✕</span>
             </button>
           </header>
-          <div className={isRetro ? 'p-4' : ''}>
+          <div className={`min-h-0 ${isRetro ? 'p-4' : ''}`}>
 
           {/* Snippet preview */}
           {text.trim() && (
@@ -124,7 +124,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
           ) : filtered.length === 0 ? (
             <p className={`text-center text-[9px] text-text-muted/70 py-4 ${isMd3 ? '' : 'font-mono'}`}>{t('forward.noChats')}</p>
           ) : (
-            <div className="max-h-52 space-y-1 overflow-y-auto">
+            <div className="p13-dialog-scroll max-h-52 space-y-1">
               {filtered.map((c) => {
                 const isSent = sent.has(c.id)
                 const isBusy = busy === c.id

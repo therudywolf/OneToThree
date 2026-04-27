@@ -153,11 +153,11 @@ export function IdentityModal({
     return (
       <div
         ref={trapRef}
-        className="fixed inset-0 z-[140] flex items-center justify-center bg-void/40 px-4 backdrop-blur-sm"
+        className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-void/40 px-4 py-4 backdrop-blur-sm"
         role="dialog"
         aria-modal="true"
       >
-        <div className="relative w-full max-w-md rounded-[28px] bg-[var(--surface)] p-6 shadow-[var(--md3-elevation-3,0_8px_24px_rgba(0,0,0,0.18))]">
+        <div className="p13-dialog-panel p13-dialog-scroll relative w-full max-w-md rounded-[28px] bg-[var(--surface)] p-6 shadow-[var(--md3-elevation-3,0_8px_24px_rgba(0,0,0,0.18))]">
           <header className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className={`h-2.5 w-2.5 rounded-full ${isTrusted ? 'bg-neon-cyan/70' : 'animate-pulse bg-neon-red'}`} />
@@ -259,11 +259,11 @@ export function IdentityModal({
   return (
     <div
       ref={trapRef}
-      className="fixed inset-0 z-[140] flex items-center justify-center bg-void/90 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-void/90 px-4 py-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-md border border-border-strong bg-void p-6 shadow-2xl">
+      <div className="p13-dialog-panel p13-dialog-scroll relative w-full max-w-md border border-border-strong bg-void p-6 shadow-2xl">
         {/* TOP_DECOR_LINE */}
         <div className="absolute top-0 left-0 h-[1px] w-full bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50" />
 

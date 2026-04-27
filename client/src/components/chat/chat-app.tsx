@@ -38,6 +38,7 @@ import { ChatTerminal } from '@/components/chat/chat-terminal'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
 import { scrollToMessage } from '@/lib/chat-scroll'
+import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
 import { IdentityModal } from '@/components/chat/identity-modal'
@@ -424,11 +425,7 @@ export function ChatApp({
 
   useEffect(() => {
     if (!mobileOverlayOpen) return
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prevOverflow
-    }
+    return acquireBodyScrollLock()
   }, [mobileOverlayOpen])
 
   useEffect(() => {

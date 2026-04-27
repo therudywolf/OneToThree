@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
@@ -29,9 +30,7 @@ export function useFocusTrap<T extends HTMLElement>(
       first?.focus()
     }
 
-    // Lock body scroll.
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const releaseBodyScrollLock = acquireBodyScrollLock()
 
     function handleKeyDown(e: KeyboardEvent) {
       if (!containerRef.current) return
@@ -64,7 +63,7 @@ export function useFocusTrap<T extends HTMLElement>(
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true)
-      document.body.style.overflow = prevOverflow
+      releaseBodyScrollLock()
       previouslyFocused?.focus()
     }
   }, [active, onClose])

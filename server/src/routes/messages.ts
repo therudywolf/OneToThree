@@ -133,6 +133,21 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const burn = parseOptionalBurnAt(p.burn_at ?? null)
     if (!burn.ok) return reply.status(400).send({ error: burn.error })
 
+    // Pin sender's ECDH key at send time so decryption survives multi-device key rotation.
+    const [senderDevice] = callerDeviceId
+      ? await db
+          .select({ ecdhPublicKey: devices.ecdhPublicKey })
+          .from(devices)
+          .where(and(eq(devices.id, callerDeviceId), eq(devices.userId, user.id)))
+          .limit(1)
+      : []
+    const [senderUser] = await db
+      .select({ ecdhPublicKeyJwk: users.ecdhPublicKeyJwk })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+    const senderEcdhKey = senderDevice?.ecdhPublicKey ?? senderUser?.ecdhPublicKeyJwk ?? null
+
     const persisted = await persistChatMessageAndFanOut({
       chatId: p.chat_id,
       senderId: user.id,
@@ -148,6 +163,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       protocolVersion: p.protocol_version ?? 1,
       drHeader: p.dr_header ?? null,
       drInit: p.dr_init ?? null,
+      senderEcdhPublicKeyJwk: senderEcdhKey,
     })
     if (!persisted.ok) return reply.status(500).send({ error: 'INSERT_FAILED' })
 
@@ -281,11 +297,11 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         deliveryDeviceId: messageDeliveries.deviceId,
         deliveryCiphertext: messageDeliveries.ciphertext,
         deliveryIv: messageDeliveries.iv,
-        senderEcdhPublicKeyJwk: users.ecdhPublicKeyJwk,
+        // Use key pinned at send time — survives multi-device key rotation
+        senderEcdhPublicKeyJwk: messages.senderEcdhPublicKeyJwk,
       })
       .from(messages)
       .innerJoin(messageDeliveries, eq(messages.id, messageDeliveries.messageId))
-      .innerJoin(users, eq(users.id, messages.senderId))
       .innerJoin(
         chatMembers,
         and(eq(chatMembers.chatId, messages.chatId), eq(chatMembers.userId, user.id))
@@ -579,10 +595,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         drInit: messages.drInit,
         deliveryCiphertext: messageDeliveries.ciphertext,
         deliveryIv: messageDeliveries.iv,
-        senderEcdhPublicKeyJwk: users.ecdhPublicKeyJwk,
+        senderEcdhPublicKeyJwk: messages.senderEcdhPublicKeyJwk,
       })
       .from(messages)
-      .innerJoin(users, eq(users.id, messages.senderId))
       .leftJoin(
         messageDeliveries,
         callerDeviceId

@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "sender_ecdh_public_key_jwk" text;

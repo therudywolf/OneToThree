@@ -10,29 +10,29 @@
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 12.01 | Scroll to first unread при открытии диалога | `chat-terminal.tsx` | [ ] |
-| 12.02 | Unread badge — синхронизация с реальным состоянием | `unreadStore.ts`, `use-chat-realtime.ts` | [ ] |
-| 12.03 | GIF proxy endpoint на сервере (CORS + fallback) | `server/src/routes/storage.ts` | [ ] |
-| 12.04 | Sticker preview — диагностика loadStickerDisplayUrl | `sticker-bubble.tsx`, `api/stickers.ts` | [ ] |
-| 12.05 | APK login — cookie/session handshake через Capacitor | `native-session.ts`, `auth.ts` | [ ] |
-| 12.06 | QR — диагностика и фикс link_token flow | `login-qr-device-panel.tsx`, `auth/qr/page.tsx` | [ ] |
+| 12.01 | Scroll to first unread при открытии диалога | `chat-terminal.tsx` | [x] commit 24c5645 |
+| 12.02 | Unread badge — синхронизация с реальным состоянием | `unreadStore.ts`, `chats.ts` | [x] commit f627a4f |
+| 12.03 | GIF proxy endpoint на сервере (CORS + fallback) | `server/src/routes/gif.ts` | [x] уже реализован |
+| 12.04 | Sticker preview — диагностика loadStickerDisplayUrl | — | [!] нет стикер-паков (нужен TELEGRAM_BOT_TOKEN) |
+| 12.05 | APK login — QR linking починен (allowDeviceLinking=true) | `schema.ts`, migration 0042 | [x] commit 37670b7 |
+| 12.06 | QR — allowDeviceLinking был false по умолчанию | `schema.ts`, migration 0042 | [x] commit 37670b7 |
 
 ### P1 — UI/UX
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 12.07 | Retro тема — полный рестайл под Win98/XP/ICQ/Winamp | `globals.css` | [ ] |
-| 12.08 | Mobile — sidebar open/close, safe areas, overflow | `chat-app.tsx`, CSS | [ ] |
-| 12.09 | Mobile — composer input height, keyboard jump | `chat-input.tsx`, CSS | [ ] |
-| 12.10 | MD3 shell — message bubbles polish (both shells) | `globals.css` | [ ] |
+| 12.07 | Retro тема — полный рестайл под Win98/XP/ICQ/Winamp | `globals.css` | [x] commit 24c5645 |
+| 12.08 | Mobile — back button + auto-open sidebar | `chat-app.tsx` | [x] commit 55c89a7 |
+| 12.09 | Mobile — composer input height, keyboard jump | `chat-input.tsx`, CSS | [x] commit 8ed76ea |
+| 12.10 | MD3 shell — message bubbles polish (both shells) | `globals.css` | [x] commit 8ed76ea |
 
 ### P2 — Features / Audit
 
 | # | Задача | Файлы | Статус |
 |---|--------|-------|--------|
-| 12.11 | Calls SFU — LiveKit client wiring (3+ участника) | `use-group-call.ts`, `use-webrtc.ts` | [ ] |
-| 12.12 | Security audit: DR bootstrap, TOFU, vault v4 upgrade | `dr-bootstrap.ts`, `trust-store.ts` | [ ] |
-| 12.13 | Full typecheck + lint + tests green | — | [ ] |
+| 12.11 | Calls SFU — LiveKit client wiring (3+ участника) | `livekit-call-manager.ts`, `group-call-manager.ts` | [x] commit d09ba40 |
+| 12.12 | Security audit: DR bootstrap, TOFU, vault v4 upgrade | `vault-modal.tsx`, `trust-store.ts` | [x] commit a62f656 |
+| 12.13 | Full typecheck + lint + tests green | — | [~] typecheck clean; tests need DB |
 
 ---
 
@@ -41,6 +41,8 @@
 | Дата | Что сделано |
 |------|-------------|
 | 2026-04-27 | Sprint 12 план создан; анализ 11 открытых проблем |
+| 2026-04-28 | 12.01 scroll to unread; 12.02 unread badge; 12.05/06 QR/device linking; 12.07 retro theme; 12.08 mobile back button — предыдущая сессия |
+| 2026-04-28 | 12.09 keyboard UX (enterKeyHint, scrollIntoView); 12.10 shell-aware bubble meta colors; 12.11 LiveKit SFU wiring; 12.12 vault upgrade race fix + security audit |
 
 ---
 

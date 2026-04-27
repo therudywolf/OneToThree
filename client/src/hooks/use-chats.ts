@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchChatsList, type ApiChatRow } from '@/lib/api/chats'
 import { getFmSocket } from '@/lib/api/socket'
 import { setMutedChatsSnapshot } from '@/lib/muted-chats'
+import { useUnreadStore } from '@/store/unreadStore'
+import { useSessionStore } from '@/store/sessionStore'
 
 // Coalesce bursty `chats_updated` events into a single refetch. The server can
 // emit this for every membership/message-touch in a busy group; without a
@@ -13,6 +15,8 @@ const CHATS_RELOAD_DEBOUNCE_MS = 350
 export function useChats(userId: string | null) {
   const [chats, setChats] = useState<ApiChatRow[]>([])
   const [initialLoading, setInitialLoading] = useState(true)
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+  const seedUnreadFromApi = useUnreadStore((s) => s.seedUnreadFromApi)
 
   const reload = useCallback(async () => {
     if (!userId) {
@@ -24,17 +28,17 @@ export function useChats(userId: string | null) {
     try {
       const rows = await fetchChatsList()
       setChats(rows)
-      // Mirror mute state to the non-reactive cache used by the realtime
-      // notification path so it doesn't have to re-subscribe on every list
-      // update.
       setMutedChatsSnapshot(rows)
+      // Seed unread counts from server-reported delivery counts so badges are
+      // accurate on startup even when messages arrived while the app was closed.
+      seedUnreadFromApi(rows, activeChatId)
     } catch {
       setChats([])
       setMutedChatsSnapshot([])
     } finally {
       setInitialLoading(false)
     }
-  }, [userId])
+  }, [userId, activeChatId, seedUnreadFromApi])
 
   useEffect(() => {
     void reload()

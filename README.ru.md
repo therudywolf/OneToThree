@@ -4,6 +4,8 @@
 
 **[English documentation → README.md](./README.md)**
 
+Дополнительная проектная документация разложена в [docs/README.md](./docs/README.md).
+
 ---
 
 ## Содержание
@@ -168,7 +170,7 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 8. **Health-проверки** — ожидает готовности PostgreSQL, MinIO, API и Next.js
 9. **Статус** — выводит состояние контейнеров, URL сайта и полезные команды
 
-> Подробное руководство для начинающих, включая настройку VPS и установку Docker, см. в [FIRST_START.ru.md](./FIRST_START.ru.md).
+> Подробное руководство для начинающих, включая настройку VPS и установку Docker, см. в [docs/guides/FIRST_START.ru.md](./docs/guides/FIRST_START.ru.md).
 
 ---
 
@@ -188,7 +190,7 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 > **Предупреждение:** Никогда не запускайте `docker compose down -v` — флаг `-v` удаляет все тома и данные.
 
-Подробные инструкции по обновлению, откату и предварительным проверкам см. в [UPDATE.ru.md](./UPDATE.ru.md).
+Подробные инструкции по обновлению, откату и предварительным проверкам см. в [docs/guides/UPDATE.ru.md](./docs/guides/UPDATE.ru.md).
 
 ---
 
@@ -269,7 +271,7 @@ gunzip -c backups/db_20260101_120000.sql.gz | \
 - **db-migrate** — одноразовый контейнер, выполняющий миграции Drizzle ORM при старте
 - **coturn** — TURN/STUN-сервер для обхода NAT в WebRTC (host-сеть для UDP)
 
-Подробная архитектура описана в [ARCHITECTURE.md](./ARCHITECTURE.md).
+Подробная архитектура описана в [docs/project/ARCHITECTURE.md](./docs/project/ARCHITECTURE.md).
 
 ---
 

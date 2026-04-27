@@ -45,9 +45,9 @@ Source of truth: current repo state, local static checks, existing runtime audit
 | Area | Status | Severity | Evidence | Owner |
 |---|---|---:|---|---|
 | TOTP secret at rest | partially fixed | medium | new production boot now hard-fails without `TOTP_WRAP_KEY`, but legacy plaintext rows still require migration/rotation review | server/security |
-| Step-up protection coverage | reproduced | high | `AUDIT.md` item H2/M5 | server/auth |
-| SSRF redirect re-validation | reproduced | high | `AUDIT.md` item H5 | server/security |
-| Route membership/authorization hardening gaps | reproduced | high | `AUDIT.md` item H4 and prior review notes | server/api |
+| Step-up protection coverage | reproduced | high | `docs/audits/AUDIT.md` item H2/M5 | server/auth |
+| SSRF redirect re-validation | reproduced | high | `docs/audits/AUDIT.md` item H5 | server/security |
+| Route membership/authorization hardening gaps | reproduced | high | `docs/audits/AUDIT.md` item H4 and prior review notes | server/api |
 | Privacy-safe push payload discipline | partially fixed | medium | `client/public/push-handler.js` improved; server payload contract still needs full enforcement verification | server/push |
 | Calls without TURN | partially fixed | high | `/api/ice-servers` now falls back to STUN + `transportPolicy=all`; 1:1 calls now have encrypted audio relay fallback over existing `wss/https` signaling, but group/video still benefit from proper TURN/SFU | client/call + server/ws |
 
@@ -55,7 +55,7 @@ Source of truth: current repo state, local static checks, existing runtime audit
 
 | Area | Status | Severity | Evidence | Owner |
 |---|---|---:|---|---|
-| Sidebar virtualization | reproduced | high | listed in `AUDIT.md` H9; current sidebar still renders dense lists directly | client/chat |
+| Sidebar virtualization | reproduced | high | listed in `docs/audits/AUDIT.md` H9; current sidebar still renders dense lists directly | client/chat |
 | Listener/timer cleanup | reproduced | medium | audit items for online/devicechange/webrtc cleanup exist; not all retested in current run | client/runtime |
 | Sticker/GIF/media warm-path caching | partially fixed | medium | IndexedDB sticker cache exists now, GIF favorites/search/send path is normalized, but live reopen/offline validation is still pending | client/media |
 | Live runtime perf profile | blocked by env | medium | no fresh local two-account/browser runtime capture in this run | qa/perf |

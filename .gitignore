@@ -55,6 +55,9 @@ Screen/
 *.har
 *.png.tmp
 
+# Consolidated local workspace artifacts moved out of the project root
+_local/
+
 # OS & logs
 .DS_Store
 Thumbs.db

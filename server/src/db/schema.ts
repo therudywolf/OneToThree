@@ -612,7 +612,7 @@ export const groupMessages = pgTable(
 
 /* ──────────────────────────────────────────────────────────────────────────
  *  Double Ratchet / X3DH key directory
- *  Added in protocol_version=2. See MIGRATION_NOTES.md — phase 3.2.
+ *  Added in protocol_version=2. See docs/project/MIGRATION_NOTES.md — phase 3.2.
  * ────────────────────────────────────────────────────────────────────────── */
 
 /**

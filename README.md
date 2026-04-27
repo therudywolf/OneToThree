@@ -4,6 +4,8 @@ Self-hosted end-to-end encrypted messenger. The server stores only ciphertext �
 
 **[Русская документация → README.ru.md](./README.ru.md)**
 
+Additional project docs are organized in [docs/README.md](./docs/README.md).
+
 ---
 
 ## Table of Contents
@@ -168,7 +170,7 @@ When you run `./start.sh` for the first time, here is what happens step by step:
 8. **Health check** — waits for PostgreSQL, MinIO, API, and Next.js to report healthy
 9. **Status** — prints container status, site URL, and helpful commands
 
-> For a detailed beginner guide including VPS setup and Docker installation, see [FIRST_START.md](./FIRST_START.md).
+> For a detailed beginner guide including VPS setup and Docker installation, see [docs/guides/FIRST_START.md](./docs/guides/FIRST_START.md).
 
 ---
 
@@ -188,7 +190,7 @@ This command:
 
 > **Warning:** Never run `docker compose down -v` — the `-v` flag deletes all volumes and data.
 
-For detailed update procedures, rollback instructions, and pre-update checklists, see [UPDATE.md](./UPDATE.md).
+For detailed update procedures, rollback instructions, and pre-update checklists, see [docs/guides/UPDATE.md](./docs/guides/UPDATE.md).
 
 ---
 
@@ -286,7 +288,7 @@ The stack consists of 7 Docker containers:
 - **db-migrate** — one-shot container that runs Drizzle ORM migrations on startup
 - **coturn** — TURN/STUN server for WebRTC NAT traversal (host networking for UDP)
 
-For full architecture details, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+For full architecture details, see [docs/project/ARCHITECTURE.md](./docs/project/ARCHITECTURE.md).
 
 ---
 

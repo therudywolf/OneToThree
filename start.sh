@@ -917,6 +917,23 @@ if is_placeholder "$VPUB" || is_placeholder "$VPRIV"; then
   fi
 fi
 
+LK_KEY=$(val_for_key LIVEKIT_API_KEY)
+LK_SECRET=$(val_for_key LIVEKIT_API_SECRET)
+if [[ -z "${LK_KEY:-}" ]] || is_placeholder "$LK_KEY"; then
+  NEW_LK_KEY="devkey-$(openssl rand -hex 8)"
+  update_key LIVEKIT_API_KEY "$NEW_LK_KEY"
+  printf '%s' "$NEW_LK_KEY" > "$SECRETS_DIR/livekit_api_key"
+  chmod 600 "$SECRETS_DIR/livekit_api_key"
+  ok "LIVEKIT_API_KEY сгенерирован."
+fi
+if [[ -z "${LK_SECRET:-}" ]] || is_placeholder "$LK_SECRET"; then
+  NEW_LK_SECRET="$(openssl rand -hex 32)"
+  update_key LIVEKIT_API_SECRET "$NEW_LK_SECRET"
+  printf '%s' "$NEW_LK_SECRET" > "$SECRETS_DIR/livekit_api_secret"
+  chmod 600 "$SECRETS_DIR/livekit_api_secret"
+  ok "LIVEKIT_API_SECRET сгенерирован."
+fi
+
 DB_URL=$(val_for_key DATABASE_URL)
 if echo "$DB_URL" | grep -q "CHANGE_ME"; then
   PG_USER=$(val_for_key POSTGRES_USER)

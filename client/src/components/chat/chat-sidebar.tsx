@@ -778,7 +778,7 @@ export function ChatSidebar({
       ) : null}
 
       {/* Right panel — search + chat list + compose */}
-      <div className="p13-sidebar-main flex flex-col flex-1 min-w-0">
+      <div className="p13-sidebar-main flex min-h-0 flex-1 flex-col min-w-0">
       {showExpandedSidebarChrome ? (
         <div
           className={`p13-sidebar-top sticky top-0 z-10 border-b px-4 py-2 ${

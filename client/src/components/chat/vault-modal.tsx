@@ -239,7 +239,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
   return (
     <div
       ref={trapRef}
-      className={`fixed inset-0 z-[200] flex items-center justify-center px-4 ${
+      className={`fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto px-4 py-4 ${
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : 'bg-void/95 backdrop-blur-md'
@@ -248,7 +248,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
       aria-modal="true"
       aria-label="Key vault"
     >
-      <div className={`w-full max-w-sm space-y-6 p-6 ${
+      <div className={`p13-dialog-panel p13-dialog-scroll w-full max-w-sm space-y-6 p-6 ${
         isMd3
           ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
           : 'border border-neon-cyan/40 bg-void shadow-[0_0_30px_rgba(0,255,255,0.05)]'

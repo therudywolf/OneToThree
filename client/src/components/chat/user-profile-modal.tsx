@@ -126,7 +126,7 @@ export function UserProfileModal({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
-        className="fixed inset-0 z-[150] flex items-end justify-center bg-void/90 backdrop-blur-sm md:items-center"
+        className="fixed inset-0 z-[150] flex items-end justify-center overflow-y-auto bg-void/90 backdrop-blur-sm md:items-center"
         role="dialog"
         aria-modal="true"
         aria-label={`${t('profile.title')} :: ${username}`}
@@ -137,7 +137,7 @@ export function UserProfileModal({
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 60 }}
           transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-          className="terminal-panel relative flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden border border-neon-cyan/40 bg-void shadow-[0_0_30px_rgba(0,255,255,0.05)] md:max-h-[85vh] md:rounded-none"
+          className="terminal-panel p13-dialog-panel relative my-auto flex w-full max-w-md flex-col overflow-hidden border border-neon-cyan/40 bg-void shadow-[0_0_30px_rgba(0,255,255,0.05)] md:max-h-[85vh] md:rounded-none"
           onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
         >
           {/* Close / drag handle for mobile */}
@@ -155,7 +155,7 @@ export function UserProfileModal({
           </button>
 
           {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto overscroll-y-contain px-6 pb-4">
+          <div className="p13-dialog-scroll flex-1 px-6 pb-4">
             {/* Avatar */}
             <div className="flex justify-center pt-4">
               <button

@@ -24,6 +24,7 @@ export type PersistedMessageRow = {
   protocolVersion: number
   drHeader: string | null
   drInit: string | null
+  senderEcdhPublicKeyJwk: string | null
 }
 
 export type PersistChatMessageInput = {
@@ -43,6 +44,8 @@ export type PersistChatMessageInput = {
   drHeader?: string | null
   /** JSON X3DH init payload for v2 first message; ignored for v1. */
   drInit?: string | null
+  /** Sender's ECDH public key JWK at send time — persisted so decryption survives multi-device key rotation. */
+  senderEcdhPublicKeyJwk?: string | null
 }
 
 function rowToWireMessage(row: PersistedMessageRow) {
@@ -121,6 +124,7 @@ export async function persistChatMessageAndFanOut(
         protocolVersion,
         drHeader: protocolVersion === 2 ? input.drHeader ?? null : null,
         drInit: protocolVersion === 2 ? input.drInit ?? null : null,
+        senderEcdhPublicKeyJwk: input.senderEcdhPublicKeyJwk ?? null,
       })
       .returning({
         id: messages.id,
@@ -139,6 +143,7 @@ export async function persistChatMessageAndFanOut(
         protocolVersion: messages.protocolVersion,
         drHeader: messages.drHeader,
         drInit: messages.drInit,
+        senderEcdhPublicKeyJwk: messages.senderEcdhPublicKeyJwk,
       })
 
     if (!inserted) return null

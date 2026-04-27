@@ -305,6 +305,11 @@ export const messages = pgTable(
      * every v1 message.
      */
     drInit: text('dr_init'),
+    /**
+     * Sender's ECDH public key JWK at time of send — pinned so decryption
+     * survives device key rotation (multi-device fix).
+     */
+    senderEcdhPublicKeyJwk: text('sender_ecdh_public_key_jwk'),
     /** Burn-after-read: hide locally after this time (server metadata). */
     burnAt: timestamp('burn_at', { withTimezone: true }),
     /** Direct E2E: set when the peer reads (first read wins). Null in group chats. */

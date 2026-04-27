@@ -206,18 +206,14 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       callerDeviceId && p.ciphertexts?.length
         ? p.ciphertexts.find((slot) => slot.device_id === callerDeviceId) ?? null
         : null
-    const [senderKeyRow] = await db
-      .select({ ecdhPublicKeyJwk: users.ecdhPublicKeyJwk })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
 
     return reply.send({
       message: {
         ...persistedRowToClientJson(persisted.row),
         device_ciphertext: callerSlot?.ciphertext ?? null,
         device_iv: callerSlot?.iv ?? null,
-        sender_ecdh_public_key_jwk: senderKeyRow?.ecdhPublicKeyJwk ?? null,
+        // Use key pinned at send time (stored in messages row by persistChatMessageAndFanOut)
+        sender_ecdh_public_key_jwk: senderEcdhKey,
       },
     })
   })

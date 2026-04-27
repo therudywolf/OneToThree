@@ -26,6 +26,7 @@ import {
   persistVaultBlob,
   VaultVersionMismatchError,
 } from '@/lib/vault'
+import { runPostLoginVaultSync } from '@/lib/vault-sync'
 import {
   enrollWebAuthnVaultUnlock,
   hasWebAuthnVaultMeta,
@@ -171,7 +172,12 @@ export function VaultModal({ userId, displayHandle }: Props) {
       const plain = await unwrapPrivateJwkWithPin(blob, pin)
       if (blob.version < CURRENT_VAULT_VERSION) {
         upgradeVaultBlob(blob, pin)
-          .then((upgraded) => persistVaultBlob(userId, upgraded))
+          .then((upgraded) => {
+            persistVaultBlob(userId, upgraded)
+            // Sync upgraded blob to server immediately — runPostLoginVaultSync
+            // may already have run before Argon2id finished.
+            return runPostLoginVaultSync(userId)
+          })
           .catch(() => { /* non-fatal — user stays on legacy vault */ })
       }
       await applyPlaintext(plain)

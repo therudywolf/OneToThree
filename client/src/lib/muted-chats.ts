@@ -37,3 +37,21 @@ export function isChatIdMuted(chatId: string): boolean {
   if (t === undefined) return false
   return t > Date.now()
 }
+
+/**
+ * Update a single chat's mute entry without replacing the whole map.
+ * Called immediately after a successful PATCH /chats/:id/mute so that
+ * notification suppression kicks in before the next full chats reload.
+ */
+export function patchMutedChat(chatId: string, mutedUntil: string | null): void {
+  if (!mutedUntil) {
+    mutedUntilByChat.delete(chatId)
+    return
+  }
+  const t = Date.parse(mutedUntil)
+  if (!Number.isFinite(t) || t <= Date.now()) {
+    mutedUntilByChat.delete(chatId)
+  } else {
+    mutedUntilByChat.set(chatId, t)
+  }
+}

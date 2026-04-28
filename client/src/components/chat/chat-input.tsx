@@ -726,7 +726,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
 
         {/* Burn timer picker */}
         {!isRecordingUI ? (
-          <div ref={burnMenuRef} className={`relative shrink-0 ${isMd3 ? 'order-2b' : ''}`}>
+          <div ref={burnMenuRef} className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
             <button
               type="button"
               className={`p13-icon-btn ${burnTimerSecs ? 'text-orange-400' : ''}`}

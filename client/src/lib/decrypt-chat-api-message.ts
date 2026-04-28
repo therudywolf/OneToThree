@@ -135,15 +135,22 @@ async function decryptRowPlaintext(
   }
 
   // v1 fan-out: per-device ECDH slot (DIRECT and SELF both use fan-out delivery).
+  // For messages sent after migration 0043 the sender key is pinned in the DB row.
+  // For older messages (sender_ecdh_public_key_jwk = null) fall back to the current
+  // peer/self key from the crypto context — same as the pre-migration behaviour.
   if (
     (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') &&
     row.device_ciphertext &&
-    row.device_iv &&
-    row.sender_ecdh_public_key_jwk
+    row.device_iv
   ) {
+    const fallbackKey =
+      cryptoCtx.mode === 'DIRECT'
+        ? cryptoCtx.peerPublicKeyJwk
+        : cryptoCtx.selfPublicKeyJwk
+    const senderKey = row.sender_ecdh_public_key_jwk ?? fallbackKey
     return decryptFanoutSlot(
       unwrappedPrivateKey,
-      row.sender_ecdh_public_key_jwk,
+      senderKey,
       row.device_ciphertext,
       row.device_iv
     )

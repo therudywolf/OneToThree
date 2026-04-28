@@ -94,3 +94,6 @@ blob-report/
 # Cursor agent scratch
 .agent-tmp/
 CLAUDE.md
+
+# artifacts/ is a local build cache — releases/ is the committed folder
+artifacts/

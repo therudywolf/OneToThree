@@ -104,7 +104,9 @@ else
 fi
 
 if [[ -f "$APK_PATH" ]]; then
-  DEST="$ROOT/onetothree-${BUILD_TYPE}.apk"
+  RELEASES_DIR="$ROOT/releases/android"
+  mkdir -p "$RELEASES_DIR"
+  DEST="$RELEASES_DIR/onetothree-${BUILD_TYPE}.apk"
   cp "$APK_PATH" "$DEST"
   ok "APK ready: $DEST"
 else

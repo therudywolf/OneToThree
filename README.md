@@ -18,6 +18,7 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 - [First Run Walkthrough](#first-run-walkthrough)
 - [Updating](#updating)
 - [Backup & Restore](#backup--restore)
+- [Android App](#android-app)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
 - [Security](#security)
@@ -48,8 +49,10 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 | Media storage | MinIO (S3-compatible) |
 | Reverse proxy | Caddy 2 (automatic TLS via Let's Encrypt) |
 | TURN server | coturn (WebRTC relay for NAT traversal) |
+| SFU (optional) | LiveKit (server-side media routing for group calls) |
 | Orchestration | Docker Compose |
-| Cryptography | Web Crypto API — AES-GCM-256, ECDH P-256, ECDSA, PBKDF2 |
+| Cryptography | Web Crypto API — AES-GCM-256, ECDH P-256, ECDSA, Argon2id |
+| Mobile | Capacitor (Android APK) |
 
 ---
 
@@ -108,11 +111,11 @@ chmod +x ./start.sh
 ```
 
 On **first run**, the script automatically:
-1. Runs `generate-secrets.sh` — generates all passwords and secrets (DB, MinIO, JWT, TURN, VAPID)
+1. Generates all secrets — DB password, MinIO password, JWT secret, TURN password, VAPID keys, LiveKit keys
 2. Asks for your domain, ACME email, server IP, and VAPID contact email
 3. Displays all credentials **once** — save them immediately!
 4. Stores secrets in `./secrets/` (chmod 700, never committed to git)
-5. Syncs secrets into `.env.prod` for backward compatibility
+5. Writes `.env.prod` with all required values
 6. Builds and starts all 7 containers
 7. Waits for health checks to pass
 
@@ -148,6 +151,8 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 | `./start.sh status` | Show container status |
 | `./start.sh update` | Pull latest code, rebuild images, restart (data preserved) |
 | `./start.sh backup` | Dump database to `backups/db_TIMESTAMP.sql.gz` |
+| `./start.sh build-apk` | Build Android debug APK (requires Java 17 + Android SDK) |
+| `./start.sh build-apk-release <keystore>` | Build signed release APK |
 
 ---
 
@@ -157,13 +162,13 @@ When you run `./start.sh` for the first time, here is what happens step by step:
 
 1. **Dependency check** — verifies Docker, Docker Compose, openssl, and curl are installed
 2. **Volume check** — reports whether existing data volumes are found (they won't exist on first run)
-3. **Secret generation** — launches `generate-secrets.sh`:
-   - Generates: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_PASSWORD`
+3. **Secret generation**:
+   - Auto-generates: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_PASSWORD`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
    - Prompts you for: domain, ACME email, TURN external IP, VAPID contact email
    - Generates VAPID key pair (via Docker — requires pulling `node:20-alpine`)
    - Writes all secrets to `./secrets/` as individual files (Docker secrets format)
    - Displays credentials in a bordered box — **save them now**
-4. **Env file sync** — creates `.env.prod` from template and fills in values from `./secrets/`
+4. **Env file sync** — creates `.env.prod` with all required values
 5. **Validation** — checks all required fields are populated
 6. **TURN check** — warns if TURN and API share the same hostname (Cloudflare conflict)
 7. **Build & start** — runs `docker compose up -d --build`
@@ -237,6 +242,31 @@ gunzip -c backups/db_20260101_120000.sql.gz | \
 
 ---
 
+## Android App
+
+A native Android app is available as an APK (built with Capacitor).
+
+### Install a pre-built APK
+
+Pre-built debug APKs are in [`releases/android/`](./releases/android/).
+
+1. Enable "Install from unknown sources" on your Android device.
+2. Transfer and install the `.apk` file.
+3. Set the server URL when prompted on first launch.
+
+### Build from source
+
+Prerequisites: Java 17+, Android SDK, `ANDROID_HOME` environment variable set.
+
+```bash
+./start.sh build-apk             # debug APK  (reads .env.prod for server URL)
+./start.sh build-apk-release <keystore>  # signed release APK
+```
+
+The APK is placed at `releases/android/onetothree-debug.apk` (or `onetothree-release.apk`).
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -296,7 +326,7 @@ For full architecture details, see [docs/project/ARCHITECTURE.md](./docs/project
 
 OneToThree uses a **zero-trust server model**:
 
-- **Private keys never leave the browser.** The key vault is encrypted locally with PBKDF2 (600k iterations) + AES-GCM-256.
+- **Private keys never leave the browser.** The key vault is encrypted locally with Argon2id (t=3, m=64 MiB) + AES-GCM-256; legacy vaults are auto-upgraded on unlock.
 - **Server stores only ciphertext.** Messages, media, and group keys are opaque encrypted blobs.
 - **Authentication via ECDSA challenge-response.** No passwords are ever sent to the server.
 - **Media is encrypted before upload** to MinIO with per-file unique keys.

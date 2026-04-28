@@ -573,7 +573,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   return (
     <PortalRoot>
     <div
-      className={`p13-settings-root custom-scrollbar fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-6 lg:items-center ${
+      className={`p13-settings-root custom-scrollbar fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-6 ${
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : isRetro

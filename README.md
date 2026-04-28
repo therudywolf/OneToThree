@@ -4,6 +4,8 @@ Self-hosted end-to-end encrypted messenger. The server stores only ciphertext �
 
 **[Русская документация → README.ru.md](./README.ru.md)**
 
+**[Deploy / Update / Android APK guide → DEPLOY.md](./DEPLOY.md)**
+
 Additional project docs are organized in [docs/README.md](./docs/README.md).
 
 ---

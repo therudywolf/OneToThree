@@ -4,6 +4,8 @@
 
 **[English documentation → README.md](./README.md)**
 
+**[Гайд по деплою / обновлению / Android APK → DEPLOY.ru.md](./DEPLOY.ru.md)**
+
 Дополнительная проектная документация разложена в [docs/README.md](./docs/README.md).
 
 ---

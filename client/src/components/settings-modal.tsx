@@ -573,7 +573,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   return (
     <PortalRoot>
     <div
-      className={`p13-settings-root custom-scrollbar fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden px-3 py-6 sm:px-4 ${
+      className={`p13-settings-root custom-scrollbar fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-4 sm:py-6 lg:items-center ${
         isMd3
           ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'
           : isRetro
@@ -588,7 +588,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         onKeyDown={handleModalKeyDown}
         initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-          className={`terminal-panel p13-settings-modal ${isMd3 ? 'md3-settings' : ''} flex h-[min(100dvh,100vh)] w-full min-w-0 max-w-[min(1200px,98vw)] flex-col overflow-hidden lg:h-[min(92dvh,92vh)] ${
+          className={`terminal-panel p13-settings-modal ${isMd3 ? 'md3-settings' : ''} flex h-[calc(100dvh-1.5rem)] max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-[min(1200px,98vw)] flex-col overflow-hidden sm:h-[calc(100dvh-3rem)] sm:max-h-[calc(100dvh-3rem)] lg:h-[min(92dvh,92vh)] lg:max-h-[min(92dvh,92vh)] ${
         isMd3 ? '!rounded-[28px] !border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] !bg-[var(--surface)]' : isRetro ? '!p13-classic-window !rounded-none !shadow-none' : ''}`}
       >
         {/* ── Header ── */}

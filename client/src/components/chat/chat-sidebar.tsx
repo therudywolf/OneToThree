@@ -961,6 +961,11 @@ export function ChatSidebar({
                     {!c.is_group && pres?.online ? (
                        <span className={`p13-sidebar-presence-dot absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 ${isMd3 ? 'border-[var(--surface)] bg-[var(--success)]' : 'border-border-strong bg-neon-cyan shadow-[0_0_8px_rgba(34,211,238,0.8)]'}`} />
                     ) : null}
+                    {isCollapsed && unreadTotal > 0 ? (
+                      <span className={`p13-sidebar-collapsed-badge absolute -top-1 -right-1.5 flex min-w-[1.1rem] items-center justify-center px-1 py-[1px] text-[9px] font-bold leading-none ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
+                        {unreadTotal > 99 ? '99+' : unreadTotal}
+                      </span>
+                    ) : null}
                   </div>
 
                   {!isCollapsed ? (

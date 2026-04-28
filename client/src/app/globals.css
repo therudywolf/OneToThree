@@ -1786,17 +1786,17 @@ select {
 @media (min-width: 768px) {
   .chat-layout-sidebar {
     width: var(--p13-sb-w, 21rem);
-    min-width: 15rem;
-    max-width: min(30rem, calc(100vw - 35rem));
+    min-width: 14rem;
+    max-width: min(30rem, calc(100vw - 24rem));
     flex-shrink: 0;
   }
   .chat-layout-sidebar[data-collapsed='true'] {
-    width: var(--p13-sb-w, 5.5rem);
-    min-width: var(--p13-sb-w, 5.5rem);
-    max-width: var(--p13-sb-w, 5.5rem);
+    width: var(--p13-sb-w, 4.5rem);
+    min-width: var(--p13-sb-w, 4.5rem);
+    max-width: var(--p13-sb-w, 4.5rem);
   }
   .chat-layout-main {
-    min-width: 34rem;
+    min-width: 22rem;
   }
   .chat-layout-sidebar[data-collapsed='true'] input,
   .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-meta,

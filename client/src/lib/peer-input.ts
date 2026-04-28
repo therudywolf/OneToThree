@@ -41,7 +41,7 @@ export function scanPeerIdentity(raw: string): string {
       const base =
         typeof window !== 'undefined' && window.location?.origin
           ? `${window.location.origin}/`
-          : 'https://onetothree.ru/'
+          : `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/`
       const probe = /^https?:\/\//i.test(signal)
         ? new URL(signal)
         : new URL(signal, base)

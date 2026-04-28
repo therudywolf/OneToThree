@@ -10,11 +10,13 @@ function iceResponse(body: unknown, init?: ResponseInit): Response {
 
 async function loadIceServersModule(options: {
   apiUrl?: string
+  appUrl?: string
   windowOrigin?: string
   native?: boolean
 }) {
   vi.resetModules()
   vi.stubEnv('NEXT_PUBLIC_API_URL', options.apiUrl ?? '')
+  vi.stubEnv('NEXT_PUBLIC_APP_URL', options.appUrl ?? '')
 
   if (options.windowOrigin) {
     vi.stubGlobal('window', {
@@ -50,6 +52,7 @@ describe('ICE server resolver', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const { getIceConfig } = await loadIceServersModule({
+      appUrl: 'https://onetothree.ru',
       windowOrigin: 'https://onetothree.ru',
     })
 

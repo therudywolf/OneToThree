@@ -1,0 +1,178 @@
+param(
+  [Parameter(Position = 0)]
+  [ValidateSet("debug", "release")]
+  [string]$BuildType = "debug",
+
+  [Parameter(Position = 1)]
+  [string]$KeystorePath
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$ClientDir = Join-Path $Root "client"
+$CapDir = Join-Path $Root "mobile/capacitor"
+$AndroidDir = Join-Path $CapDir "android"
+$EnvFile = Join-Path $Root ".env.prod"
+
+function Write-Info([string]$Message) {
+  Write-Host "▶ $Message" -ForegroundColor Blue
+}
+
+function Write-Ok([string]$Message) {
+  Write-Host "✓ $Message" -ForegroundColor Green
+}
+
+function Fail([string]$Message) {
+  Write-Host "✗ $Message" -ForegroundColor Red
+  exit 1
+}
+
+function Assert-Command([string]$Name, [string]$Hint) {
+  if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+    Fail $Hint
+  }
+}
+
+function Get-EnvValue([string]$Path, [string]$Key) {
+  if (-not (Test-Path $Path)) {
+    return ""
+  }
+
+  $line = Get-Content -Path $Path | Where-Object { $_ -match "^\s*$([regex]::Escape($Key))=" } | Select-Object -First 1
+  if (-not $line) {
+    return ""
+  }
+
+  $value = $line.Substring($line.IndexOf("=") + 1)
+  return $value.Trim().Trim('"')
+}
+
+function Invoke-Step([string]$Exe, [string[]]$Args) {
+  & $Exe @Args
+  if ($LASTEXITCODE -ne 0) {
+    $joined = if ($Args.Count -gt 0) { "$Exe $($Args -join ' ')" } else { $Exe }
+    Fail "Command failed: $joined"
+  }
+}
+
+Assert-Command -Name "java" -Hint "Java not found. Install JDK 17+ and set JAVA_HOME."
+Assert-Command -Name "node" -Hint "Node.js not found in PATH."
+Assert-Command -Name "npx" -Hint "npx not found in PATH."
+
+if (-not $env:ANDROID_HOME -and -not $env:ANDROID_SDK_ROOT) {
+  Fail "ANDROID_HOME or ANDROID_SDK_ROOT must be set."
+}
+
+$ApiUrl = Get-EnvValue -Path $EnvFile -Key "NEXT_PUBLIC_API_URL"
+$AppUrl = Get-EnvValue -Path $EnvFile -Key "NEXT_PUBLIC_APP_URL"
+$VapidKey = Get-EnvValue -Path $EnvFile -Key "NEXT_PUBLIC_VAPID_PUBLIC_KEY"
+$TurnUrls = Get-EnvValue -Path $EnvFile -Key "NEXT_PUBLIC_TURN_URLS"
+$TurnUser = Get-EnvValue -Path $EnvFile -Key "NEXT_PUBLIC_TURN_USERNAME"
+$TurnPass = Get-EnvValue -Path $EnvFile -Key "NEXT_PUBLIC_TURN_PASSWORD"
+
+if ([string]::IsNullOrWhiteSpace($ApiUrl)) {
+  Fail "NEXT_PUBLIC_API_URL missing in .env.prod. Run start.sh first and configure env."
+}
+
+if ([string]::IsNullOrWhiteSpace($AppUrl)) {
+  $AppUrl = $ApiUrl
+}
+
+Write-Info "API URL: $ApiUrl"
+Write-Info "Building $BuildType APK..."
+
+$envBackup = @{
+  NEXT_EXPORT = $env:NEXT_EXPORT
+  NEXT_PUBLIC_API_URL = $env:NEXT_PUBLIC_API_URL
+  NEXT_PUBLIC_APP_URL = $env:NEXT_PUBLIC_APP_URL
+  NEXT_PUBLIC_WS_ORIGIN = $env:NEXT_PUBLIC_WS_ORIGIN
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY = $env:NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  NEXT_PUBLIC_TURN_URLS = $env:NEXT_PUBLIC_TURN_URLS
+  NEXT_PUBLIC_TURN_USERNAME = $env:NEXT_PUBLIC_TURN_USERNAME
+  NEXT_PUBLIC_TURN_PASSWORD = $env:NEXT_PUBLIC_TURN_PASSWORD
+}
+
+try {
+  Write-Info "Step 1/3: Next.js build..."
+  Push-Location $ClientDir
+  $env:NEXT_EXPORT = "1"
+  $env:NEXT_PUBLIC_API_URL = $ApiUrl
+  $env:NEXT_PUBLIC_APP_URL = $AppUrl
+  $env:NEXT_PUBLIC_WS_ORIGIN = $ApiUrl
+  $env:NEXT_PUBLIC_VAPID_PUBLIC_KEY = $VapidKey
+  $env:NEXT_PUBLIC_TURN_URLS = $TurnUrls
+  $env:NEXT_PUBLIC_TURN_USERNAME = $TurnUser
+  $env:NEXT_PUBLIC_TURN_PASSWORD = $TurnPass
+  Invoke-Step -Exe "npx" -Args @("next", "build", "--webpack")
+  Pop-Location
+  Write-Ok "Next.js build complete."
+
+  Write-Info "Step 2/3: Capacitor sync..."
+  Push-Location $CapDir
+  Invoke-Step -Exe "npx" -Args @("cap", "sync", "android", "--no-build")
+  Pop-Location
+  Write-Ok "Capacitor sync complete."
+
+  Write-Info "Step 3/3: Gradle assemble..."
+  Push-Location $AndroidDir
+
+  if ($BuildType -eq "release") {
+    if ([string]::IsNullOrWhiteSpace($KeystorePath)) {
+      Fail "Release build requires keystore path: .\scripts\build-apk.ps1 release C:\path\to\keystore.jks"
+    }
+
+    $resolvedKeystore = (Resolve-Path $KeystorePath -ErrorAction SilentlyContinue)
+    if (-not $resolvedKeystore) {
+      Fail "Keystore not found: $KeystorePath"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($env:RELEASE_STORE_PASSWORD)) {
+      Fail "RELEASE_STORE_PASSWORD is required for release build."
+    }
+
+    $releaseAlias = if ([string]::IsNullOrWhiteSpace($env:RELEASE_KEY_ALIAS)) { "p13release" } else { $env:RELEASE_KEY_ALIAS }
+    $releaseKeyPassword = if ([string]::IsNullOrWhiteSpace($env:RELEASE_KEY_PASSWORD)) { $env:RELEASE_STORE_PASSWORD } else { $env:RELEASE_KEY_PASSWORD }
+
+    Invoke-Step -Exe ".\gradlew.bat" -Args @(
+      "assembleRelease",
+      "-PRELEASE_STORE_FILE=$($resolvedKeystore.Path)",
+      "-PRELEASE_STORE_PASSWORD=$($env:RELEASE_STORE_PASSWORD)",
+      "-PRELEASE_KEY_ALIAS=$releaseAlias",
+      "-PRELEASE_KEY_PASSWORD=$releaseKeyPassword"
+    )
+    $apkPath = Join-Path $AndroidDir "app/build/outputs/apk/release/app-release.apk"
+  } else {
+    Invoke-Step -Exe ".\gradlew.bat" -Args @("assembleDebug")
+    $apkPath = Join-Path $AndroidDir "app/build/outputs/apk/debug/app-debug.apk"
+  }
+
+  Pop-Location
+
+  if (-not (Test-Path $apkPath)) {
+    Fail "APK not found at: $apkPath"
+  }
+
+  $ReleasesDir = Join-Path $Root "releases/android"
+  if (-not (Test-Path $ReleasesDir)) {
+    New-Item -ItemType Directory -Path $ReleasesDir | Out-Null
+  }
+
+  $dest = Join-Path $ReleasesDir "onetothree-$BuildType.apk"
+  Copy-Item -Path $apkPath -Destination $dest -Force
+  Write-Ok "APK ready: $dest"
+} finally {
+  if ((Get-Location).Path -ne $Root) {
+    Set-Location $Root
+  }
+
+  foreach ($key in $envBackup.Keys) {
+    $old = $envBackup[$key]
+    if ($null -eq $old) {
+      Remove-Item "Env:$key" -ErrorAction SilentlyContinue
+    } else {
+      Set-Item -Path "Env:$key" -Value $old
+    }
+  }
+}

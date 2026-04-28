@@ -137,8 +137,8 @@ const DockPanel = dynamic(
   { ssr: false, loading: () => null }
 )
 
-const DESKTOP_MIN_MAIN_PANE_WIDTH = 560
-const DESKTOP_FRAME_GUTTER = 32
+const DESKTOP_MIN_MAIN_PANE_WIDTH = 352
+const DESKTOP_FRAME_GUTTER = 16
 const DOCK_PANEL_RESERVE_WIDTH = 360
 const SIDEBAR_COLLAPSE_THRESHOLD =
   Math.round((TELEGRAM_BEHAVIOR.sidebar.minWidth + TELEGRAM_BEHAVIOR.sidebar.collapsedWidth) / 2)

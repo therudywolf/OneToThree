@@ -1,4 +1,8 @@
-CREATE TYPE "public"."native_push_platform" AS ENUM('android');--> statement-breakpoint
+DO $$ BEGIN
+  CREATE TYPE "public"."native_push_platform" AS ENUM('android');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;--> statement-breakpoint
 CREATE TABLE "gif_favorites" (
 	"user_id" uuid NOT NULL,
 	"gif_id" text NOT NULL,

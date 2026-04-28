@@ -91,9 +91,8 @@ test-results/
 blob-report/
 **/playwright/.cache/
 
-# Cursor agent scratch
+# Agent scratch directories
 .agent-tmp/
-CLAUDE.md
 
 # artifacts/ is a local build cache — releases/ is the committed folder
 artifacts/

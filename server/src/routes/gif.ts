@@ -89,7 +89,62 @@ async function fetchGifBinaryWithSafeRedirects(
   throw new Error('TOO_MANY_REDIRECTS')
 }
 
+const gifSearchSchema = z.object({
+  q: z.string().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(24),
+})
+
+type GiphyRow = {
+  id: string
+  title?: string
+  images?: { fixed_width?: { url?: string }; original?: { url?: string } }
+}
+
+function mapGiphyRows(rows: GiphyRow[]) {
+  return rows
+    .map((r) => ({
+      id: r.id,
+      title: r.title ?? 'gif',
+      previewUrl: r.images?.fixed_width?.url ?? '',
+      originalUrl: r.images?.original?.url ?? '',
+    }))
+    .filter((r) => r.previewUrl && r.originalUrl)
+}
+
 export const gifRoutes: FastifyPluginAsync = async (app) => {
+  app.get(
+    '/search',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const user = await getAuthUser(request, reply)
+      if (!assertAuthed(reply, user)) return
+
+      const apiKey = (process.env.GIPHY_API_KEY ?? '').trim()
+      if (!apiKey) {
+        return reply.status(503).send({ error: 'GIF_PROVIDER_UNCONFIGURED', items: [] })
+      }
+
+      const parsed = gifSearchSchema.safeParse(request.query)
+      if (!parsed.success) return reply.status(400).send({ error: 'INVALID_QUERY' })
+
+      const { q, limit } = parsed.data
+      const endpoint = q?.trim()
+        ? 'https://api.giphy.com/v1/gifs/search'
+        : 'https://api.giphy.com/v1/gifs/trending'
+      const params = new URLSearchParams({ api_key: apiKey, limit: String(limit), rating: 'pg-13' })
+      if (q?.trim()) params.set('q', q.trim())
+
+      try {
+        const res = await fetch(`${endpoint}?${params}`, { signal: AbortSignal.timeout(8000) })
+        if (!res.ok) return reply.status(502).send({ error: 'GIF_PROVIDER_UNAVAILABLE', items: [] })
+        const data = (await res.json()) as { data?: GiphyRow[] }
+        return reply.send({ items: mapGiphyRows(data.data ?? []) })
+      } catch {
+        return reply.status(502).send({ error: 'GIF_PROVIDER_UNAVAILABLE', items: [] })
+      }
+    }
+  )
+
   app.get(
     '/fetch',
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },

@@ -948,6 +948,12 @@ if is_placeholder "$VPUB" || is_placeholder "$VPRIV"; then
   fi
 fi
 
+GIPHY_KEY=$(val_for_key GIPHY_API_KEY)
+if [[ -z "${GIPHY_KEY:-}" ]]; then
+  warn "GIPHY_API_KEY не задан — поиск GIF будет работать только с 10 заглушками."
+  warn "  Бесплатный ключ: https://developers.giphy.com/"
+fi
+
 LK_KEY=$(val_for_key LIVEKIT_API_KEY)
 LK_SECRET=$(val_for_key LIVEKIT_API_SECRET)
 if [[ -z "${LK_KEY:-}" ]] || is_placeholder "$LK_KEY"; then

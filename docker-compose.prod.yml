@@ -190,6 +190,7 @@ services:
       CLOUDFLARE_TURN_KEY_ID_FILE: /run/secrets/cloudflare_turn_key_id
       CLOUDFLARE_TURN_API_TOKEN_FILE: /run/secrets/cloudflare_turn_api_token
       TOTP_WRAP_KEY_FILE: /run/secrets/totp_wrap_key
+      GIPHY_API_KEY: ${GIPHY_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
@@ -229,7 +230,7 @@ services:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
         NEXT_PUBLIC_WS_ORIGIN: ${NEXT_PUBLIC_WS_ORIGIN:-}
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
-        NEXT_PUBLIC_GIPHY_API_KEY: ${NEXT_PUBLIC_GIPHY_API_KEY:-}
+        NEXT_PUBLIC_LIVEKIT_URL: ${NEXT_PUBLIC_LIVEKIT_URL:-}
         MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
         NEXT_PUBLIC_DR_ENABLED: ${NEXT_PUBLIC_DR_ENABLED:-1}
     restart: always

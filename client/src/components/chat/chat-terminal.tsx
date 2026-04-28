@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal, Lock } from 'lucide-react'
+import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal, Lock, Flame } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useUnreadStore } from '@/store/unreadStore'
@@ -98,6 +98,16 @@ function mimeFromPathAndType(
   return 'application/octet-stream'
 }
 
+function formatBurnCountdown(burnAt: string): string {
+  const ms = new Date(burnAt).getTime() - Date.now()
+  if (ms <= 0) return '0s'
+  const s = Math.ceil(ms / 1000)
+  if (s < 60)    return `${s}s`
+  if (s < 3600)  return `${Math.ceil(s / 60)}m`
+  if (s < 86400) return `${Math.ceil(s / 3600)}h`
+  return `${Math.ceil(s / 86400)}d`
+}
+
 export function ChatTerminal({
   userId,
   sharedKey,
@@ -149,6 +159,23 @@ export function ChatTerminal({
   const { t, module: locale } = useTranslation()
   const messages = useChatStore((s) => s.messages)
   const removeMessage = useChatStore((s) => s.removeMessage)
+
+  // Tick counter so burn-timer countdowns re-render every second.
+  const [, setBurnTick] = useState(0)
+  useEffect(() => {
+    const hasBurning = messages.some((m) => m.burn_at)
+    if (!hasBurning) return
+    const id = setInterval(() => {
+      const now = Date.now()
+      messages.forEach((m) => {
+        if (m.burn_at && new Date(m.burn_at).getTime() <= now) {
+          removeMessage(m.id)
+        }
+      })
+      setBurnTick((t) => t + 1)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [messages, removeMessage])
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const historyDecryptBusy = useUnreadStore((s) => s.historyDecryptBusy)
@@ -1349,8 +1376,14 @@ export function ChatTerminal({
                         ↳ [{t('chat.originalDeleted')}]
                       </div>
                     ) : null}
-                    <div className="p13-label mb-1 text-[10px] opacity-70">
+                    <div className="p13-label mb-1 flex items-center gap-1.5 text-[10px] opacity-70">
                       {formatMessageTimestamp(m.created_at, locale)}
+                      {m.burn_at ? (
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-500/20 px-1.5 py-0.5 text-orange-400 font-semibold">
+                          <Flame className="h-2.5 w-2.5" />
+                          {formatBurnCountdown(m.burn_at)}
+                        </span>
+                      ) : null}
                     </div>
                     {stickerEnv ? <StickerBubble envelope={stickerEnv} /> : null}
                     {m.plaintext === '[DECRYPT_FAIL]' ? (

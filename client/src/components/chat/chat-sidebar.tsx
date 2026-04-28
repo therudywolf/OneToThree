@@ -459,7 +459,7 @@ export function ChatSidebar({
   const virtualizer = useVirtualizer({
     count: sidebarChatsFiltered.length,
     getScrollElement: useCallback(() => chatListScrollRef.current, []),
-    estimateSize: () => (isCollapsed ? 52 : 64),
+    estimateSize: () => (isCollapsed ? 64 : 68),
     overscan: 5,
   })
 
@@ -937,64 +937,61 @@ export function ChatSidebar({
             >
               <button
                 type="button"
-                className={`min-w-0 flex-1 text-left text-xs outline-none ${isCollapsed ? 'px-1 py-2' : 'px-3 py-3'} ${isMd3 ? 'font-sans' : 'font-mono'}`}
+                className={`min-w-0 flex-1 text-left outline-none ${isCollapsed ? 'px-2 py-2' : 'px-3 py-2.5'} ${isMd3 ? 'font-sans' : 'font-mono'}`}
                 aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {
                   navigateToChat(c.id)
                 }}
               >
                 <span className={`inline-flex min-w-0 items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
-                  <div className="relative">
+                  <div className="relative shrink-0">
                     {peerId ? (
                       <UserAvatar
                         userId={peerId}
                         username={peerName || '…'}
                         avatarKey={resolved?.avatar_key ?? null}
-                        size={28}
+                        size={isCollapsed ? 48 : 44}
                       />
                     ) : c.is_group ? (
-                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)] font-sans font-semibold' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan'}`}>
+                      <div className={`flex shrink-0 items-center justify-center ${isCollapsed ? 'h-12 w-12 text-[14px]' : 'h-11 w-11 text-[13px]'} ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)] font-sans font-semibold' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan'}`}>
                         {isMd3 ? (c.name?.slice(0, 2)?.toUpperCase() || 'GR') : 'GRP'}
                       </div>
                     ) : null}
 
                     {!c.is_group && pres?.online ? (
-                       <span className={`p13-sidebar-presence-dot absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full border-2 ${isMd3 ? 'border-[var(--surface)] bg-[var(--success)]' : 'border-border-strong bg-neon-cyan shadow-[0_0_8px_rgba(34,211,238,0.8)]'}`} />
+                       <span className={`p13-sidebar-presence-dot absolute bottom-0 right-0 block h-3 w-3 rounded-full border-2 ${isMd3 ? 'border-[var(--surface)] bg-[var(--success)]' : 'border-border-strong bg-neon-cyan shadow-[0_0_8px_rgba(34,211,238,0.8)]'}`} />
                     ) : null}
                     {isCollapsed && unreadTotal > 0 ? (
-                      <span className={`p13-sidebar-collapsed-badge absolute -top-1 -right-1.5 flex min-w-[1.1rem] items-center justify-center px-1 py-[1px] text-[9px] font-bold leading-none ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
+                      <span className={`p13-sidebar-collapsed-badge absolute -top-1 -right-1 flex min-w-[1.25rem] items-center justify-center px-1 py-[1px] text-[10px] font-bold leading-none ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded-full border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
                         {unreadTotal > 99 ? '99+' : unreadTotal}
                       </span>
                     ) : null}
                   </div>
 
                   {!isCollapsed ? (
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
                     {/* Row 1: name + timestamp */}
-                    <span className="inline-flex min-w-0 items-center gap-1">
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
                       {!c.is_group && trustedPeerIds.has(peerId ?? '') ? (
-                        <ShieldCheck className="h-3 w-3 text-neon-cyan shrink-0" />
+                        <ShieldCheck className="h-3.5 w-3.5 text-neon-cyan shrink-0" />
                       ) : null}
                       {!c.is_group && approvedPeerIds.has(peerId ?? '') ? (
-                        <UserCheck className="h-3 w-3 text-accent-2 shrink-0" />
+                        <UserCheck className="h-3.5 w-3.5 text-accent-2 shrink-0" />
                       ) : null}
-                      <span className={`p13-sidebar-title min-w-0 flex-1 truncate text-[12px] font-medium ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan/85')}`}>
+                      <span className={`p13-sidebar-title min-w-0 flex-1 truncate text-[14px] leading-tight ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'font-medium text-[var(--on-surface)]' : 'font-medium text-neon-cyan/90')}`}>
                         {listTitle}
                       </span>
-                      {isPinned ? (
-                        <Pin className="h-2.5 w-2.5 shrink-0 text-neon-cyan/60" />
-                      ) : null}
                       {isMuted ? (
-                        <BellOff className="h-2.5 w-2.5 shrink-0 text-text-muted/60" />
+                        <BellOff className="h-3 w-3 shrink-0 text-text-muted/60" />
                       ) : null}
-                      <span className={`p13-sidebar-timestamp ml-2 hidden max-w-[5.5rem] shrink-0 truncate text-[10px] tabular-nums sm:inline ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
+                      <span className={`p13-sidebar-timestamp ml-1 hidden shrink-0 text-[11px] tabular-nums sm:inline ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
                         {formatChatTs(lastMessages[c.id]?.created_at ?? c.last_message_at)}
                       </span>
                     </span>
 
                     {/* Row 2: last message preview + unread badge */}
-                    <span className="inline-flex min-w-0 items-center gap-1">
-                      <span className={`p13-sidebar-meta truncate text-[11px] ${isMd3 ? 'text-text-muted' : 'text-text-muted/60'}`}>
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <span className={`p13-sidebar-meta min-w-0 flex-1 truncate text-[13px] leading-snug ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
                         {previewText(c) || (
                           pres && !pres.online ? (
                             <>
@@ -1006,23 +1003,26 @@ export function ChatSidebar({
                           ) : c.is_group ? `${c.member_ids.length} ${t('sidebar.members')}` : ''
                         )}
                       </span>
-                      {unreadTotal > 0 ? (
-                        <span className="ml-auto inline-flex shrink-0 items-center gap-1">
-                          {threadTotal > 0 ? (
-                            <span className={`p13-sidebar-thread-badge rounded px-1 py-[1px] text-[8px] font-bold ${isMd3 ? 'bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)]' : 'border border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'}`}>
-                              T{threadTotal}
-                            </span>
-                          ) : null}
-                          {mentionTotal > 0 ? (
-                            <span className="p13-sidebar-mention-badge rounded border border-accent-2/40 bg-accent-2/15 px-1 py-[1px] text-[8px] font-bold text-accent-2">
-                              @{mentionTotal}
-                            </span>
-                          ) : null}
-                          <span className={`p13-sidebar-unread-badge min-w-[1.45rem] px-1.5 py-[1px] text-center text-[9px] font-bold ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded border border-neon-cyan/60 bg-void text-neon-cyan'}`}>
+                      <span className="ml-auto inline-flex shrink-0 items-center gap-1">
+                        {isPinned && unreadTotal === 0 ? (
+                          <Pin className="h-3 w-3 text-text-muted/60" />
+                        ) : null}
+                        {threadTotal > 0 ? (
+                          <span className={`p13-sidebar-thread-badge rounded-full px-1.5 py-[1px] text-[9px] font-bold leading-none ${isMd3 ? 'bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)]' : 'border border-neon-cyan/50 bg-neon-cyan/10 text-neon-cyan'}`}>
+                            T{threadTotal}
+                          </span>
+                        ) : null}
+                        {mentionTotal > 0 ? (
+                          <span className="p13-sidebar-mention-badge rounded-full border border-accent-2/40 bg-accent-2/15 px-1.5 py-[1px] text-[9px] font-bold leading-none text-accent-2">
+                            @{mentionTotal}
+                          </span>
+                        ) : null}
+                        {unreadTotal > 0 ? (
+                          <span className={`p13-sidebar-unread-badge inline-flex h-[20px] min-w-[20px] items-center justify-center px-1.5 text-[11px] font-bold leading-none ${isMuted ? (isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_28%,transparent)] text-[var(--surface)]' : 'rounded-full border border-text-muted/40 bg-void text-text-muted') : (isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'rounded-full border border-neon-cyan/60 bg-void text-neon-cyan')}`}>
                             {unreadTotal > 99 ? '99+' : unreadTotal}
                           </span>
-                        </span>
-                      ) : null}
+                        ) : null}
+                      </span>
                     </span>
                   </span>
                   ) : null}

@@ -1,8 +1,8 @@
 export const TELEGRAM_BEHAVIOR = {
   sidebar: {
-    minWidth: 224,
+    minWidth: 240,
     maxWidth: 480,
-    collapsedWidth: 72,
+    collapsedWidth: 88,
   },
   mobile: {
     touchTargetPx: 44,

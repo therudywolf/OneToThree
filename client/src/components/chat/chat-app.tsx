@@ -1166,58 +1166,89 @@ export function ChatApp({
         >
           {/* ─── DESKTOP CHAT HEADER (md+) ─────────────────────────────────────── */}
           {activeChatId ? (
-            <div className={`p13-desktop-chat-header hidden md:flex shrink-0 items-center gap-2 px-4 py-2.5 border-b ${
+            <div className={`p13-desktop-chat-header hidden md:flex shrink-0 items-center gap-3 px-4 py-2.5 border-b ${
               isMd3
                 ? 'border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'
                 : 'border-border-strong bg-void'
-            }`}>
+            }`}
+            style={{ minHeight: '56px' }}>
               {/* Peer identity / chat name */}
-              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSelfChat) return
+                  if (peerIdentity) {
+                    openPeerProfile(peerIdentity.userId)
+                  } else if (activeRow?.is_group) {
+                    window.dispatchEvent(new Event('p13_open_group_settings'))
+                  }
+                }}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
                 {isSelfChat ? (
-                  <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-accent-2'}`}>
-                    <Star className="h-4 w-4 fill-accent-2 shrink-0" />
-                    <span>{t('sidebar.savedMessages')}</span>
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${isMd3 ? 'bg-[color-mix(in_srgb,var(--accent-2)_18%,transparent)] text-[var(--accent-2)]' : 'border border-accent-2/40 bg-void text-accent-2'}`}>
+                    <Star className="h-5 w-5 fill-current" />
                   </div>
                 ) : peerIdentity ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => openPeerProfile(peerIdentity.userId)}
-                      className={`inline-flex items-center gap-1.5 text-[13px] font-semibold transition-colors ${
-                        isMd3
-                          ? 'text-[var(--on-surface)] hover:text-[var(--primary)]'
-                          : 'text-neon-cyan hover:text-neon-red font-mono'
-                      }`}
-                    >
-                      {peerIdentity.verified ? <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" /> : null}
-                      {peerApproved ? <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" /> : null}
-                      <span className="truncate max-w-xs">
-                        {isMd3 ? peerIdentity.username : `@${peerIdentity.username}`}
+                  <div className="relative shrink-0">
+                    <UserAvatar
+                      userId={peerIdentity.userId}
+                      username={peerIdentity.username}
+                      avatarKey={null}
+                      size={40}
+                    />
+                    {peerPresenceRow?.online ? (
+                      <span className={`absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full border-2 ${isMd3 ? 'border-[var(--surface)] bg-[var(--success)]' : 'border-border-strong bg-neon-cyan shadow-[0_0_6px_rgba(34,211,238,0.7)]'}`} />
+                    ) : null}
+                  </div>
+                ) : activeRow?.is_group ? (
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${isMd3 ? 'bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan font-mono'}`}>
+                    {activeRow.name?.slice(0, 2)?.toUpperCase() || 'GR'}
+                  </div>
+                ) : null}
+
+                <div className="flex min-w-0 flex-1 flex-col">
+                  {isSelfChat ? (
+                    <span className={`truncate text-[14px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-accent-2'}`}>
+                      {t('sidebar.savedMessages')}
+                    </span>
+                  ) : peerIdentity ? (
+                    <>
+                      <span className={`inline-flex items-center gap-1.5 truncate text-[14px] font-semibold ${
+                        isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan font-mono'
+                      }`}>
+                        {peerIdentity.verified ? <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" /> : null}
+                        {peerApproved ? <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" /> : null}
+                        <span className="truncate">
+                          {isMd3 ? peerIdentity.username : `@${peerIdentity.username}`}
+                        </span>
                       </span>
-                    </button>
-                    {peerPresenceRow ? (
-                      <span className={`flex items-center gap-1.5 text-[11px] ${isMd3 ? 'text-text-muted' : 'font-mono text-[10px]'}`}>
-                        {peerPresenceRow.online ? (
-                          <>
-                            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-neon-cyan/70 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-                            <span className={isMd3 ? 'text-neon-cyan/80' : 'text-neon-cyan/75'}>
+                      {peerPresenceRow ? (
+                        <span className={`truncate text-[12px] ${isMd3 ? 'text-text-muted' : 'font-mono text-[11px] text-text-muted/70'}`}>
+                          {peerPresenceRow.online ? (
+                            <span className={isMd3 ? 'text-[var(--success)]' : 'text-neon-cyan/80'}>
                               {isMd3 ? 'online' : 'ONLINE'}
                             </span>
-                          </>
-                        ) : (
-                          <span className="text-text-muted/80 whitespace-nowrap text-[10px]">
-                            {formatLastSeen(peerPresenceRow.last_seen_at)}
-                          </span>
-                        )}
+                          ) : (
+                            <span>{formatLastSeen(peerPresenceRow.last_seen_at)}</span>
+                          )}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : activeRow ? (
+                    <>
+                      <span className={`truncate text-[14px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-neon-cyan'}`}>
+                        {activeRow.name ?? activeRow.id}
                       </span>
-                    ) : null}
-                  </>
-                ) : activeRow ? (
-                  <span className={`truncate text-[13px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-neon-cyan'}`}>
-                    {activeRow.name ?? activeRow.id}
-                  </span>
-                ) : null}
-              </div>
+                      {activeRow.is_group ? (
+                        <span className={`truncate text-[12px] ${isMd3 ? 'text-text-muted' : 'font-mono text-[11px] text-text-muted/70'}`}>
+                          {activeRow.member_ids.length} {t('sidebar.members')}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+              </button>
 
               {/* Right: search + identity + calls */}
               <div className="flex shrink-0 items-center gap-1 max-[1180px]:gap-0.5">

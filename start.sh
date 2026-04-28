@@ -217,7 +217,12 @@ prime_compose_interpolation_env() {
     fi
   fi
 
-  cp -f "$ENV_FILE" "${ROOT}/.env"
+  # Docker Compose .env interpolation does NOT strip inline `# ...` comments —
+  # `KEY=value  # note` would interpolate the literal string including the comment.
+  # Sanitize a copy for Compose so build-args / interpolation stay clean while
+  # the human-edited .env.prod can keep its inline annotations.
+  sed -E '/^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=/ { s/[[:space:]]+#.*$//; s/[[:space:]]+$//; }' \
+    "$ENV_FILE" > "${ROOT}/.env"
 }
 
 append_service_once() {

@@ -18,10 +18,11 @@ Project documentation is grouped by purpose so the repository root stays focused
 - `guides/SMOKE_DOCKER.md` — Docker smoke test checklist.
 - `guides/android-release-runbook.md` — Android APK build and release guide.
 
-## Audits & History
+## Audits & Security
 
-Dated investigation reports and sprint archives live in `audits/`.
-See `audits/AUDIT.md` for the main security backlog.
+- `audits/AUDIT.md` — security backlog (open issues tracked here).
+- `audits/SECURITY_AUDIT.md` — rolling security notes per component.
+- `security-review/` — threat model, crypto traceability, CI quality gates.
 
 ## Releases
 

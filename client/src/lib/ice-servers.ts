@@ -19,7 +19,15 @@ import { DEFAULT_PUBLIC_API_ROOT, normalizeApiRoot, normalizeHttpOrigin } from '
 
 const CACHE_WINDOW_MS = 30_000
 const REFRESH_SAFETY_MS = 60_000
-const PRODUCTION_APP_ORIGINS = new Set(['https://onetothree.ru', 'https://www.onetothree.ru'])
+function isConfiguredAppOrigin(origin: string): boolean {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (!appUrl) return false
+  try {
+    return new URL(appUrl).origin === origin
+  } catch {
+    return false
+  }
+}
 
 /** Mirrors server `GET /api/ice-servers` `source` (plus client-only states). */
 export type IceBackendSource =
@@ -121,7 +129,7 @@ function shouldUseDirectApiFallback(primaryRoot: string): boolean {
   if (!origin) return false
   if (!isSameOriginApiRoot(primaryRoot, origin)) return false
 
-  return PRODUCTION_APP_ORIGINS.has(origin) || isNativeCapacitorPlatform()
+  return isConfiguredAppOrigin(origin) || isNativeCapacitorPlatform()
 }
 
 function resolveIceEndpointCandidates(): string[] {

@@ -14,8 +14,6 @@ export type GifSearchResult = {
 
 export type GifFavorite = GifHit & { createdAt: string }
 
-const GIPHY_API = 'https://api.giphy.com/v1/gifs/search'
-const GIPHY_TRENDING_API = 'https://api.giphy.com/v1/gifs/trending'
 const FALLBACK_GIFS: GifHit[] = [
   { id: 'fallback-1', title: 'happy cat', previewUrl: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif', originalUrl: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif' },
   { id: 'fallback-2', title: 'thumbs up', previewUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif', originalUrl: 'https://media.giphy.com/media/111ebonMs90YLu/giphy.gif' },
@@ -29,27 +27,6 @@ const FALLBACK_GIFS: GifHit[] = [
   { id: 'fallback-10', title: 'yes', previewUrl: 'https://media.giphy.com/media/13HgwGsXF0aiGY/giphy.gif', originalUrl: 'https://media.giphy.com/media/13HgwGsXF0aiGY/giphy.gif' },
 ]
 
-function mapRows(data: {
-  data?: Array<{
-    id: string
-    title?: string
-    images?: {
-      fixed_width?: { url?: string }
-      original?: { url?: string }
-    }
-  }>
-}): GifHit[] {
-  const rows = data.data ?? []
-  return rows
-    .map((r) => ({
-      id: r.id,
-      title: r.title ?? 'gif',
-      previewUrl: r.images?.fixed_width?.url ?? '',
-      originalUrl: r.images?.original?.url ?? '',
-    }))
-    .filter((r) => Boolean(r.previewUrl && r.originalUrl))
-}
-
 function fallbackSearch(query: string, limit: number): GifHit[] {
   const q = query.trim().toLowerCase()
   if (!q) return FALLBACK_GIFS.slice(0, limit)
@@ -58,113 +35,32 @@ function fallbackSearch(query: string, limit: number): GifHit[] {
   return (matched.length > 0 ? matched : FALLBACK_GIFS).slice(0, limit)
 }
 
-function resolveGiphyApiKey(): string {
-  const configured = process.env.NEXT_PUBLIC_GIPHY_API_KEY?.trim()
-  return configured ?? ''
-}
-
 export function buildGifProxyUrl(sourceUrl: string): string {
   return `${API_URL}/gif/fetch?url=${encodeURIComponent(sourceUrl)}`
 }
 
 export async function searchGifs(query: string, limit = 24): Promise<GifSearchResult> {
   const q = query.trim()
-  if (!q) return fetchTrendingGifs(limit)
-  const apiKey = resolveGiphyApiKey()
-  if (!apiKey) {
-    return {
-      items: fallbackSearch(q, limit),
-      degraded: false,
-      reason: 'GIF_PROVIDER_UNCONFIGURED',
-    }
-  }
-  const params = new URLSearchParams({
-    api_key: apiKey,
-    q,
-    limit: String(Math.max(1, Math.min(50, limit))),
-    rating: 'pg-13',
-    lang: 'en',
-  })
   try {
-    const res = await fetchWithTimeout(`${GIPHY_API}?${params.toString()}`)
+    const params = new URLSearchParams({ limit: String(Math.max(1, Math.min(50, limit))) })
+    if (q) params.set('q', q)
+    const res = await fetchWithTimeout(`${API_URL}/gif/search?${params}`, { credentials: 'include' })
+    if (res.status === 503) {
+      return { items: fallbackSearch(q, limit), degraded: false, reason: 'GIF_PROVIDER_UNCONFIGURED' }
+    }
     if (!res.ok) {
-      return {
-        items: fallbackSearch(q, limit),
-        degraded: false,
-        reason: 'GIF_PROVIDER_UNAVAILABLE',
-      }
+      return { items: fallbackSearch(q, limit), degraded: false, reason: 'GIF_PROVIDER_UNAVAILABLE' }
     }
-    const data = (await res.json()) as {
-      data?: Array<{
-        id: string
-        title?: string
-        images?: {
-          fixed_width?: { url?: string }
-          original?: { url?: string }
-        }
-      }>
-    }
-    const mapped = mapRows(data)
-    return {
-      items: mapped.length > 0 ? mapped : fallbackSearch(q, limit),
-      degraded: false,
-      reason: mapped.length === 0 ? 'GIF_PROVIDER_UNAVAILABLE' : undefined,
-    }
+    const data = (await res.json()) as { items?: GifHit[]; error?: string }
+    const items = data.items ?? []
+    return { items: items.length > 0 ? items : fallbackSearch(q, limit), degraded: false }
   } catch {
-    return {
-      items: fallbackSearch(q, limit),
-      degraded: false,
-      reason: 'GIF_PROVIDER_UNAVAILABLE',
-    }
+    return { items: fallbackSearch(q, limit), degraded: false, reason: 'GIF_PROVIDER_UNAVAILABLE' }
   }
 }
 
 export async function fetchTrendingGifs(limit = 24): Promise<GifSearchResult> {
-  const apiKey = resolveGiphyApiKey()
-  if (!apiKey) {
-    return {
-      items: FALLBACK_GIFS.slice(0, limit),
-      degraded: false,
-      reason: 'GIF_PROVIDER_UNCONFIGURED',
-    }
-  }
-  const params = new URLSearchParams({
-    api_key: apiKey,
-    limit: String(Math.max(1, Math.min(50, limit))),
-    rating: 'pg-13',
-  })
-  try {
-    const res = await fetchWithTimeout(`${GIPHY_TRENDING_API}?${params.toString()}`)
-    if (!res.ok) {
-      return {
-        items: FALLBACK_GIFS.slice(0, limit),
-        degraded: false,
-        reason: 'GIF_PROVIDER_UNAVAILABLE',
-      }
-    }
-    const data = (await res.json()) as {
-      data?: Array<{
-        id: string
-        title?: string
-        images?: {
-          fixed_width?: { url?: string }
-          original?: { url?: string }
-        }
-      }>
-    }
-    const mapped = mapRows(data)
-    return {
-      items: mapped.length > 0 ? mapped : FALLBACK_GIFS.slice(0, limit),
-      degraded: false,
-      reason: mapped.length === 0 ? 'GIF_PROVIDER_UNAVAILABLE' : undefined,
-    }
-  } catch {
-    return {
-      items: FALLBACK_GIFS.slice(0, limit),
-      degraded: false,
-      reason: 'GIF_PROVIDER_UNAVAILABLE',
-    }
-  }
+  return searchGifs('', limit)
 }
 
 export async function fetchGifFavorites(): Promise<GifFavorite[]> {

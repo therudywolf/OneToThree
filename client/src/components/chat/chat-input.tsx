@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square } from 'lucide-react'
+import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Flame } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
 import { useTranslation } from '@/hooks/use-translation'
@@ -67,6 +67,9 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const isMd3 = shellMode === 'md3'
   const [messageText, setMessageText] = useState('')
   const [composerPickerOpen, setComposerPickerOpen] = useState(false)
+  const [burnTimerSecs, setBurnTimerSecs] = useState<number | null>(null)
+  const [burnMenuOpen, setBurnMenuOpen] = useState(false)
+  const burnMenuRef = useRef<HTMLDivElement>(null)
 
   const isRecordingRef = useRef(false)
   const [isRecordingUI, setIsRecordingUI] = useState(false)
@@ -162,6 +165,39 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [composerPickerOpen])
+
+  useEffect(() => {
+    if (!burnMenuOpen) return
+    const close = (e: MouseEvent) => {
+      if (burnMenuRef.current?.contains(e.target as Node)) return
+      setBurnMenuOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [burnMenuOpen])
+
+  const makeBurnAt = (secs: number | null): string | null => {
+    if (!secs) return null
+    return new Date(Date.now() + secs * 1000).toISOString()
+  }
+
+  const BURN_OPTIONS: Array<{ secs: number | null; labelKey: string }> = [
+    { secs: null,    labelKey: 'chat.burnTimerOff' },
+    { secs: 5,       labelKey: 'chat.burnTimer5s'  },
+    { secs: 30,      labelKey: 'chat.burnTimer30s' },
+    { secs: 60,      labelKey: 'chat.burnTimer1m'  },
+    { secs: 3600,    labelKey: 'chat.burnTimer1h'  },
+    { secs: 86400,   labelKey: 'chat.burnTimer1d'  },
+    { secs: 604800,  labelKey: 'chat.burnTimer1w'  },
+  ]
+
+  function formatBurnTimerShort(secs: number | null): string {
+    if (!secs) return ''
+    if (secs < 60)   return `${secs}s`
+    if (secs < 3600) return `${secs / 60}m`
+    if (secs < 86400) return `${secs / 3600}h`
+    return `${secs / 86400}d`
+  }
 
   useEffect(() => {
     if (!composerPickerOpen) return
@@ -399,7 +435,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       if (editingMessage) {
         await submitEdit(editingMessage.id, messageText)
       } else {
-        await sendText(messageText, replyTo?.id ?? null)
+        await sendText(messageText, replyTo?.id ?? null, { burn_at: makeBurnAt(burnTimerSecs) })
       }
       onSubmitOrClear()
       setMessageText('')
@@ -444,7 +480,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     setSendingText(true)
     const task = editingMessage
       ? submitEdit(editingMessage.id, messageText)
-      : sendText(messageText, replyTo?.id ?? null)
+      : sendText(messageText, replyTo?.id ?? null, { burn_at: makeBurnAt(burnTimerSecs) })
     void task
       .then(() => {
         onSubmitOrClear()
@@ -687,6 +723,44 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
             <Paperclip className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Burn timer picker */}
+        {!isRecordingUI ? (
+          <div ref={burnMenuRef} className={`relative shrink-0 ${isMd3 ? 'order-2b' : ''}`}>
+            <button
+              type="button"
+              className={`p13-icon-btn ${burnTimerSecs ? 'text-orange-400' : ''}`}
+              disabled={disabled}
+              onClick={() => setBurnMenuOpen((o) => !o)}
+              title={t('chat.burnTimerLabel')}
+            >
+              <Flame className={`h-4 w-4 ${burnTimerSecs ? 'fill-orange-400/30 text-orange-400' : ''}`} />
+              {burnTimerSecs ? (
+                <span className="absolute -top-1 -right-1 rounded-full bg-orange-500 px-1 text-[9px] font-bold leading-tight text-white">
+                  {formatBurnTimerShort(burnTimerSecs)}
+                </span>
+              ) : null}
+            </button>
+            {burnMenuOpen ? (
+              <div className="absolute bottom-full mb-2 left-0 z-50 min-w-[160px] rounded-lg border border-[color:var(--border)] bg-[color:var(--surface)] shadow-xl">
+                <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-text-muted">
+                  {t('chat.burnTimerLabel')}
+                </div>
+                {BURN_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.labelKey}
+                    type="button"
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:opacity-70 transition-opacity ${burnTimerSecs === opt.secs ? 'text-orange-400 font-semibold' : 'text-[color:var(--on-surface)]'}`}
+                    onClick={() => { setBurnTimerSecs(opt.secs); setBurnMenuOpen(false) }}
+                  >
+                    {opt.secs ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" /> : <span className="h-3.5 w-3.5 shrink-0" />}
+                    {t(opt.labelKey as Parameters<typeof t>[0])}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Input field */}
         <div className={`relative flex-1 ${isMd3 ? 'order-2' : ''}`}>

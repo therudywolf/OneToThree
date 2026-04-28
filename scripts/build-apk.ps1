@@ -17,15 +17,15 @@ $AndroidDir = Join-Path $CapDir "android"
 $EnvFile = Join-Path $Root ".env.prod"
 
 function Write-Info([string]$Message) {
-  Write-Host "▶ $Message" -ForegroundColor Blue
+  Write-Host "[INFO] $Message" -ForegroundColor Blue
 }
 
 function Write-Ok([string]$Message) {
-  Write-Host "✓ $Message" -ForegroundColor Green
+  Write-Host "[OK] $Message" -ForegroundColor Green
 }
 
 function Fail([string]$Message) {
-  Write-Host "✗ $Message" -ForegroundColor Red
+  Write-Host "[ERR] $Message" -ForegroundColor Red
   exit 1
 }
 
@@ -46,20 +46,28 @@ function Get-EnvValue([string]$Path, [string]$Key) {
   }
 
   $value = $line.Substring($line.IndexOf("=") + 1)
-  return $value.Trim().Trim('"')
+  # Strip inline " # comment" — .env.prod keeps human annotations after values
+  # but build-time interpolation must not bake them into NEXT_PUBLIC_* vars.
+  $value = $value -replace '\s+#.*$', ''
+  return $value.Trim().Trim('"').Trim()
 }
 
-function Invoke-Step([string]$Exe, [string[]]$Args) {
-  & $Exe @Args
+function Invoke-Step([string]$Exe, [string[]]$CommandArgs) {
+  & $Exe @CommandArgs
   if ($LASTEXITCODE -ne 0) {
-    $joined = if ($Args.Count -gt 0) { "$Exe $($Args -join ' ')" } else { $Exe }
+    $argsList = @($CommandArgs)
+    $joinedArgs = ""
+    if ($argsList.Count -gt 0) {
+      $joinedArgs = [string]::Join(" ", $argsList)
+    }
+    $joined = if ([string]::IsNullOrWhiteSpace($joinedArgs)) { $Exe } else { "$Exe $joinedArgs" }
     Fail "Command failed: $joined"
   }
 }
 
 Assert-Command -Name "java" -Hint "Java not found. Install JDK 17+ and set JAVA_HOME."
 Assert-Command -Name "node" -Hint "Node.js not found in PATH."
-Assert-Command -Name "npx" -Hint "npx not found in PATH."
+Assert-Command -Name "npm" -Hint "npm not found in PATH."
 
 if (-not $env:ANDROID_HOME -and -not $env:ANDROID_SDK_ROOT) {
   Fail "ANDROID_HOME or ANDROID_SDK_ROOT must be set."
@@ -105,13 +113,13 @@ try {
   $env:NEXT_PUBLIC_TURN_URLS = $TurnUrls
   $env:NEXT_PUBLIC_TURN_USERNAME = $TurnUser
   $env:NEXT_PUBLIC_TURN_PASSWORD = $TurnPass
-  Invoke-Step -Exe "npx" -Args @("next", "build", "--webpack")
+  Invoke-Step -Exe "npm" -CommandArgs @("exec", "--", "next", "build", "--webpack")
   Pop-Location
   Write-Ok "Next.js build complete."
 
   Write-Info "Step 2/3: Capacitor sync..."
   Push-Location $CapDir
-  Invoke-Step -Exe "npx" -Args @("cap", "sync", "android", "--no-build")
+  Invoke-Step -Exe "npm" -CommandArgs @("exec", "--", "cap", "sync", "android")
   Pop-Location
   Write-Ok "Capacitor sync complete."
 
@@ -135,7 +143,7 @@ try {
     $releaseAlias = if ([string]::IsNullOrWhiteSpace($env:RELEASE_KEY_ALIAS)) { "p13release" } else { $env:RELEASE_KEY_ALIAS }
     $releaseKeyPassword = if ([string]::IsNullOrWhiteSpace($env:RELEASE_KEY_PASSWORD)) { $env:RELEASE_STORE_PASSWORD } else { $env:RELEASE_KEY_PASSWORD }
 
-    Invoke-Step -Exe ".\gradlew.bat" -Args @(
+    Invoke-Step -Exe ".\gradlew.bat" -CommandArgs @(
       "assembleRelease",
       "-PRELEASE_STORE_FILE=$($resolvedKeystore.Path)",
       "-PRELEASE_STORE_PASSWORD=$($env:RELEASE_STORE_PASSWORD)",
@@ -144,7 +152,7 @@ try {
     )
     $apkPath = Join-Path $AndroidDir "app/build/outputs/apk/release/app-release.apk"
   } else {
-    Invoke-Step -Exe ".\gradlew.bat" -Args @("assembleDebug")
+    Invoke-Step -Exe ".\gradlew.bat" -CommandArgs @("assembleDebug")
     $apkPath = Join-Path $AndroidDir "app/build/outputs/apk/debug/app-debug.apk"
   }
 

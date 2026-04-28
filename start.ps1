@@ -14,11 +14,19 @@ $ApkBuilder = Join-Path $Root "scripts/build-apk.ps1"
 
 switch ($Command) {
   "build-apk" {
-    & $ApkBuilder @Args
+    if ($Args -and $Args.Count -gt 0) {
+      & $ApkBuilder @Args
+    } else {
+      & $ApkBuilder
+    }
     exit $LASTEXITCODE
   }
   "build-apk-release" {
-    & $ApkBuilder "release" @Args
+    if ($Args -and $Args.Count -gt 0) {
+      & $ApkBuilder "release" @Args
+    } else {
+      & $ApkBuilder "release"
+    }
     exit $LASTEXITCODE
   }
   default {

@@ -23,20 +23,22 @@ const serverRoutesConfig = isStaticExport
           process.env.MINIO_PUBLIC_URL?.trim() || 'https://s3.onetothree.ru'
         const giphyOrigin = 'https://*.giphy.com'
         const giphyApiOrigin = 'https://api.giphy.com'
+        const tenorMediaOrigin = 'https://media.tenor.com https://*.tenor.com'
+        const tenorApiOrigin = 'https://api.tenor.com https://tenor.googleapis.com'
         const wsOrigin = apiOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
 
         const cspHeader = `
     default-src 'self';
     script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/ blob:;
     style-src 'self' 'unsafe-inline';
-    img-src 'self' blob: data: https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin};
+    img-src 'self' blob: data: https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin} ${tenorMediaOrigin};
     font-src 'self';
     object-src 'none';
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
-    media-src 'self' blob: ${storageOrigin} ${giphyOrigin};
-    connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin} ${giphyApiOrigin};
+    media-src 'self' blob: ${storageOrigin} ${giphyOrigin} ${tenorMediaOrigin};
+    connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin} ${giphyApiOrigin} ${tenorMediaOrigin} ${tenorApiOrigin};
     worker-src 'self' blob:;
     upgrade-insecure-requests;
 `.replace(/\n/g, "");

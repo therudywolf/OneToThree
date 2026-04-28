@@ -5,6 +5,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useShell } from '@/components/ui/shell'
 import { useThemeStore } from '@/store/themeStore'
 import { ChatEmojiPicker } from '@/components/chat/chat-emoji-picker'
+import { StickerPreview } from '@/components/chat/sticker-preview'
 import {
   cloneStickerPack,
   fetchPackStickers,
@@ -375,12 +376,14 @@ export function ComposerPickerPanel({
                     title={p.title}
                   >
                     {packPreviewById[p.id] ? (
-                      <img
-                        src={packPreviewById[p.id]}
-                        alt=""
-                        className="h-5 w-5 shrink-0 rounded object-cover"
-                        loading="lazy"
-                      />
+                      <span className="block h-5 w-5 shrink-0 overflow-hidden rounded">
+                        <StickerPreview
+                          url={packPreviewById[p.id]}
+                          format={p.format}
+                          className="h-5 w-5 object-contain"
+                          fallbackEmoji=""
+                        />
+                      </span>
                     ) : null}
                     <span className="truncate">{p.title}</span>
                     {p.accessScope === 'shared' ? (
@@ -415,7 +418,13 @@ export function ComposerPickerPanel({
                             }}
                             className="p13-sticker-tile flex aspect-square items-center justify-center rounded"
                           >
-                            <img src={fav.src} alt="" className="max-h-full max-w-full object-contain" loading="lazy" />
+                            <StickerPreview
+                              url={fav.src}
+                              format={fav.format}
+                              mediaKey={fav.sticker.mediaKey}
+                              fallbackEmoji={fav.sticker.emoji}
+                              className="max-h-full max-w-full object-contain"
+                            />
                           </button>
                         ))}
                       </div>
@@ -443,7 +452,8 @@ export function ComposerPickerPanel({
                   <div className="grid grid-cols-5 gap-1 sm:grid-cols-6">
                   {stickers.map((s) => {
                     const stickerSrc = stickerSrcById[s.id] ?? s.url
-                    const isWebm = /\.webm($|\?)/i.test(stickerSrc) || /\.webm$/i.test(s.mediaKey)
+                    const packMeta = packs.find((p) => p.id === selectedPackId)
+                    const stickerFormat: StickerPack['format'] = packMeta?.format ?? 'static'
                     return (
                     <button
                       key={s.id}
@@ -485,46 +495,24 @@ export function ComposerPickerPanel({
                       >
                         {favoriteStickers.some((f) => f.sticker.id === s.id) ? '★' : '☆'}
                       </span>
-                      {isWebm ? (
-                        <video
-                          src={stickerSrc}
-                          className="max-h-full max-w-full object-contain"
-                          muted
-                          autoPlay
-                          loop
-                          playsInline
-                          preload="metadata"
-                          onError={() => {
-                            if (stickerRetryById[s.id]) return
-                            setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
-                            void reloadStickerDisplayUrl(s.mediaKey)
-                              .then((url) => {
-                                setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
-                              })
-                              .catch(() => {
-                                // non-fatal; keep placeholder if both URLs fail
-                              })
-                          }}
-                        />
-                      ) : (
-                        <img
-                          src={stickerSrc}
-                          alt=""
-                          className="max-h-full max-w-full object-contain"
-                          loading="lazy"
-                          onError={() => {
-                            if (stickerRetryById[s.id]) return
-                            setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
-                            void reloadStickerDisplayUrl(s.mediaKey)
-                              .then((url) => {
-                                setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
-                              })
-                              .catch(() => {
-                                // non-fatal; keep placeholder if both URLs fail
-                              })
-                          }}
-                        />
-                      )}
+                      <StickerPreview
+                        url={stickerSrc}
+                        format={stickerFormat}
+                        mediaKey={s.mediaKey}
+                        fallbackEmoji={s.emoji}
+                        className="max-h-full max-w-full object-contain"
+                        onLoadError={() => {
+                          if (stickerRetryById[s.id]) return
+                          setStickerRetryById((prev) => ({ ...prev, [s.id]: true }))
+                          void reloadStickerDisplayUrl(s.mediaKey)
+                            .then((url) => {
+                              setStickerSrcById((prev) => ({ ...prev, [s.id]: url }))
+                            })
+                            .catch(() => {
+                              // non-fatal; keep placeholder if both URLs fail
+                            })
+                        }}
+                      />
                     </button>
                     )
                   })}

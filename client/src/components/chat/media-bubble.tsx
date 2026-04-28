@@ -415,18 +415,31 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                 <SkipForward className="h-3 w-3" />
               </button>
             ) : null}
-            <div className="flex h-7 flex-1 items-end gap-[1px]">
-              {barHeights.map((h, i) => (
-                <div
-                  key={i}
-                  className="min-w-[2px] flex-1 rounded-[1px] bg-neon-cyan"
-                  style={{
-                    height: `${Math.round(h * 100)}%`,
-                    opacity: playing ? 0.6 + (i % 5) * 0.08 : 0.2,
-                    transition: 'opacity 0.2s',
-                  }}
-                />
-              ))}
+            <div
+              className="flex h-7 flex-1 cursor-pointer items-end gap-[1px]"
+              onClick={(e) => {
+                const el = audioRef.current
+                if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                el.currentTime = ratio * el.duration
+              }}
+              title="Click to seek"
+            >
+              {barHeights.map((h, i) => {
+                const barPos = i / barHeights.length
+                const played = barPos < progress / 100
+                return (
+                  <div
+                    key={i}
+                    className="min-w-[2px] flex-1 rounded-[1px] transition-colors duration-100"
+                    style={{
+                      height: `${Math.round(h * 100)}%`,
+                      backgroundColor: played ? 'var(--neon-cyan, #22d3ee)' : 'color-mix(in srgb, var(--neon-cyan, #22d3ee) 28%, transparent)',
+                    }}
+                  />
+                )
+              })}
             </div>
             <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/70">
               {formatTime(currentSec)} / {formatTime(duration)}

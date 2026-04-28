@@ -234,6 +234,11 @@ export async function presignPutObject(params: {
   })
   return getSignedUrl(params.client, cmd, {
     expiresIn: params.expiresIn ?? DEFAULT_PRESIGN_PUT_TTL_S,
+    // Exclude content-length from the SigV4 signature. When the request goes through
+    // Cloudflare or a reverse proxy the content-length header may be rewritten, which
+    // would cause a SignatureDoesNotMatch 403. ContentType IS signed to prevent MIME
+    // substitution attacks, but content-length is redundant given the object key is unique.
+    unsignableHeaders: new Set(['content-length']),
   })
 }
 

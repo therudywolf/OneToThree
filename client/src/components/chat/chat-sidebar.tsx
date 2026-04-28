@@ -903,6 +903,7 @@ export function ChatSidebar({
           const unreadTotal = unread?.total ?? 0
           const mentionTotal = unread?.mentions ?? 0
           const threadTotal = unread ? Object.values(unread.threads).reduce((acc, v) => acc + v, 0) : 0
+          const isMuted = isChatMuted(c)
           const peerId = !c.is_group
             ? c.member_ids.find((id) => id !== userId)
             : null
@@ -977,6 +978,9 @@ export function ChatSidebar({
                       </span>
                       {isPinned ? (
                         <Pin className="h-2.5 w-2.5 shrink-0 text-neon-cyan/60" />
+                      ) : null}
+                      {isMuted ? (
+                        <BellOff className="h-2.5 w-2.5 shrink-0 text-text-muted/60" />
                       ) : null}
                       <span className={`p13-sidebar-timestamp ml-2 hidden max-w-[5.5rem] shrink-0 truncate text-[10px] tabular-nums sm:inline ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
                         {formatChatTs(lastMessages[c.id]?.created_at ?? c.last_message_at)}

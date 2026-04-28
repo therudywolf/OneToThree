@@ -45,11 +45,8 @@ export async function searchGifs(query: string, limit = 24): Promise<GifSearchRe
     const params = new URLSearchParams({ limit: String(Math.max(1, Math.min(50, limit))) })
     if (q) params.set('q', q)
     const res = await fetchWithTimeout(`${API_URL}/gif/search?${params}`, { credentials: 'include' })
-    if (res.status === 503) {
-      return { items: fallbackSearch(q, limit), degraded: false, reason: 'GIF_PROVIDER_UNCONFIGURED' }
-    }
     if (!res.ok) {
-      return { items: fallbackSearch(q, limit), degraded: false, reason: 'GIF_PROVIDER_UNAVAILABLE' }
+      return { items: fallbackSearch(q, limit), degraded: true, reason: 'GIF_PROVIDER_UNAVAILABLE' }
     }
     const data = (await res.json()) as { items?: GifHit[]; error?: string }
     const items = data.items ?? []

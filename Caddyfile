@@ -6,6 +6,10 @@
 	email {env.ACME_EMAIL}
 }
 
+# DOMAIN is injected from .env.prod via the caddy service environment in
+# docker-compose.prod.yml.  Caddy expands {$DOMAIN} at startup so a single
+# Caddyfile serves any deployment domain without editing this file.
+
 (security_headers) {
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -13,22 +17,22 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net/npm/; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://cdn.jsdelivr.net https://s3.onetothree.ru https://*.giphy.com; media-src 'self' blob: https://s3.onetothree.ru https://*.giphy.com; connect-src 'self' wss: https: https://s3.onetothree.ru; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net/npm/; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://cdn.jsdelivr.net https://s3.{$DOMAIN} https://*.giphy.com; media-src 'self' blob: https://s3.{$DOMAIN} https://*.giphy.com; connect-src 'self' wss: https: https://s3.{$DOMAIN}; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
 		-Server
 	}
 }
 
-onetothree.ru {
+{$DOMAIN} {
 	import security_headers
 	reverse_proxy web:3000
 }
 
-api.onetothree.ru {
+api.{$DOMAIN} {
 	import security_headers
 	reverse_proxy api:8080
 }
 
-s3.onetothree.ru {
+s3.{$DOMAIN} {
 	import security_headers
 	reverse_proxy minio:9000 {
 		header_up Host {host}
@@ -42,17 +46,17 @@ s3.onetothree.ru {
 #
 # In Cloudflare this subdomain MUST be gray-cloud (DNS only); otherwise
 # UDP relay from the client will be dropped.
-turn.onetothree.ru {
+turn.{$DOMAIN} {
 	tls {
 		issuer acme
 	}
-	respond "TURN endpoint — use turn:turn.onetothree.ru:3478 or turns:turn.onetothree.ru:5349" 404
+	respond "TURN endpoint — use turn:turn.{$DOMAIN}:3478 or turns:turn.{$DOMAIN}:5349" 404
 }
 
 # LiveKit SFU signaling (WebSocket over TLS). The LiveKit server listens on
 # host port 7880; Caddy terminates TLS and proxies WebSocket upgrades through.
 # In Cloudflare this subdomain MUST be gray-cloud (DNS only) — SFU media is UDP.
-lk.onetothree.ru {
+lk.{$DOMAIN} {
 	import security_headers
 	reverse_proxy host.docker.internal:7880 {
 		transport http {

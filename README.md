@@ -81,7 +81,7 @@ cd OneToThree
 
 ### 2. Set up DNS
 
-Create four A records pointing to your server IP:
+Create five A records pointing to your server IP:
 
 | Record | Type | Value | Cloudflare proxy |
 |--------|------|-------|------------------|
@@ -89,19 +89,29 @@ Create four A records pointing to your server IP:
 | `api.example.com` | A | `YOUR_SERVER_IP` | Orange cloud (proxied) OK |
 | `s3.example.com` | A | `YOUR_SERVER_IP` | Orange cloud (proxied) OK |
 | `turn.example.com` | A | `YOUR_SERVER_IP` | **Gray cloud (DNS only) — REQUIRED** |
+| `lk.example.com` | A | `YOUR_SERVER_IP` | **Gray cloud (DNS only) — REQUIRED** |
 
-> **Important:** The `turn.*` record **must not** be proxied. Cloudflare's proxy blocks UDP traffic required for WebRTC calls. All other records can be proxied.
+> **Important:** The `turn.*` and `lk.*` records **must not** be proxied. Cloudflare blocks UDP — TURN relay and LiveKit media will not work behind the proxy. All other records can be proxied.
 
 ### 3. Open firewall ports
 
 ```bash
+# Web (Caddy — HTTP challenge + HTTPS)
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
+
+# TURN / STUN relay (coturn — WebRTC NAT traversal)
 sudo ufw allow 3478/tcp
 sudo ufw allow 3478/udp
 sudo ufw allow 5349/tcp
 sudo ufw allow 49152:65535/udp
+
+# LiveKit SFU — media and ICE/TCP fallback (if using SFU for calls)
+sudo ufw allow 7881/tcp
+sudo ufw allow 50000:50100/udp
 ```
+
+> **`lk.*`** DNS record must also be **Gray cloud (DNS only)** in Cloudflare — same reason as `turn.*`. UDP media ports cannot pass through Cloudflare's proxy.
 
 ### 4. Launch
 

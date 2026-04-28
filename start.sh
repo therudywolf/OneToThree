@@ -802,6 +802,8 @@ if [[ -f "$SECRETS_DONE" ]] && [[ -f "$ENV_FILE" ]]; then
   sync_secret_to_env "telegram_bot_token"   "TELEGRAM_BOT_TOKEN"
   if [[ -f "$SECRETS_DIR/domain" ]]; then
     DOMAIN_VAL=$(cat "$SECRETS_DIR/domain")
+    # Always keep DOMAIN in sync — Caddyfile and docker-compose use {$DOMAIN} / ${DOMAIN}.
+    update_key DOMAIN "${DOMAIN_VAL}"
     current_api=$(val_for_key NEXT_PUBLIC_API_URL)
     if is_placeholder "$current_api" || [[ -z "$current_api" ]]; then
       update_key NEXT_PUBLIC_API_URL "https://api.${DOMAIN_VAL}"

@@ -38,10 +38,10 @@ services:
     networks:
       - app_network
     extra_hosts:
-      - 'onetothree.ru:host-gateway'
-      - 'api.onetothree.ru:host-gateway'
-      - 's3.onetothree.ru:host-gateway'
-      - 'turn.onetothree.ru:host-gateway'
+      - '${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 's3.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
     healthcheck:
       test:
         [
@@ -93,10 +93,10 @@ services:
     networks:
       - app_network
     extra_hosts:
-      - 'onetothree.ru:host-gateway'
-      - 'api.onetothree.ru:host-gateway'
-      - 's3.onetothree.ru:host-gateway'
-      - 'turn.onetothree.ru:host-gateway'
+      - '${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 's3.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
     healthcheck:
       test: ['CMD', 'mc', 'ready', 'local']
       interval: 5s
@@ -127,10 +127,10 @@ services:
     networks:
       - app_network
     extra_hosts:
-      - 'onetothree.ru:host-gateway'
-      - 'api.onetothree.ru:host-gateway'
-      - 's3.onetothree.ru:host-gateway'
-      - 'turn.onetothree.ru:host-gateway'
+      - '${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 's3.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
 
   api:
     build:
@@ -171,7 +171,7 @@ services:
       # never pass the password as a plaintext env var.
       POSTGRES_USER: ${POSTGRES_USER:-forest}
       POSTGRES_DB: ${POSTGRES_DB:-forest}
-      CORS_ORIGIN: ${CORS_ORIGIN:-https://onetothree.ru}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
       MINIO_ENDPOINT: http://minio:9000
       REDIS_URL: redis://redis:6379
       JWT_SECRET_FILE: /run/secrets/jwt_secret
@@ -202,10 +202,10 @@ services:
     networks:
       - app_network
     extra_hosts:
-      - 'onetothree.ru:host-gateway'
-      - 'api.onetothree.ru:host-gateway'
-      - 's3.onetothree.ru:host-gateway'
-      - 'turn.onetothree.ru:host-gateway'
+      - '${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 's3.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
     healthcheck:
       test:
         [
@@ -218,18 +218,19 @@ services:
       start_period: 45s
 
   # Next.js embeds NEXT_PUBLIC_* at build time from .env.prod (see args below). TURN ICE must use a
-  # dedicated DNS name (e.g. turn.onetothree.ru), not api.* — see coturn comments (Cloudflare / UDP).
+  # dedicated DNS name (e.g. turn.DOMAIN), not api.* — see coturn comments (Cloudflare / UDP).
+  # All NEXT_PUBLIC_* are set by start.sh from the DOMAIN secret — no fallback needed here.
   web:
     build:
       context: ./client
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.onetothree.ru}
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://onetothree.ru}
-        NEXT_PUBLIC_WS_ORIGIN: ${NEXT_PUBLIC_WS_ORIGIN:-https://api.onetothree.ru}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-}
+        NEXT_PUBLIC_WS_ORIGIN: ${NEXT_PUBLIC_WS_ORIGIN:-}
         NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}
         NEXT_PUBLIC_GIPHY_API_KEY: ${NEXT_PUBLIC_GIPHY_API_KEY:-}
-        MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-https://s3.onetothree.ru}
+        MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
         NEXT_PUBLIC_DR_ENABLED: ${NEXT_PUBLIC_DR_ENABLED:-1}
     restart: always
     dns:
@@ -249,10 +250,10 @@ services:
     networks:
       - app_network
     extra_hosts:
-      - 'onetothree.ru:host-gateway'
-      - 'api.onetothree.ru:host-gateway'
-      - 's3.onetothree.ru:host-gateway'
-      - 'turn.onetothree.ru:host-gateway'
+      - '${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 's3.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
     healthcheck:
       test:
         [
@@ -292,7 +293,7 @@ services:
     command:
       - -n
       - --log-file=stdout
-      - --realm=${TURN_REALM:-onetothree.ru}
+      - --realm=${TURN_REALM:-${DOMAIN:-onetothree.ru}}
       - --user=${TURN_USERNAME:-turn}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.prod}
       - --external-ip=${TURN_EXTERNAL_IP:?set TURN_EXTERNAL_IP in .env.prod}
     healthcheck:
@@ -344,6 +345,7 @@ services:
       - 1.1.1.1
     environment:
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+      DOMAIN: ${DOMAIN:-onetothree.ru}
     cpu_shares: 256
     cpus: '1.0'
     mem_limit: 256m
@@ -365,10 +367,10 @@ services:
     networks:
       - app_network
     extra_hosts:
-      - 'onetothree.ru:host-gateway'
-      - 'api.onetothree.ru:host-gateway'
-      - 's3.onetothree.ru:host-gateway'
-      - 'turn.onetothree.ru:host-gateway'
+      - '${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 's3.${DOMAIN:-onetothree.ru}:host-gateway'
+      - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
       # lk.onetothree.ru is reverse-proxied to livekit (host network, :7880)
       # through host.docker.internal — required on Linux VPS, no-op on Docker
       # Desktop where it's auto-provided.

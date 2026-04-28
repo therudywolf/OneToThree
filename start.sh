@@ -194,6 +194,29 @@ prime_compose_interpolation_env() {
     fi
   fi
 
+  # Sync DOMAIN — required by Caddyfile ({$DOMAIN}) and docker-compose.prod.yml.
+  # Derive it from secrets/domain, then COOKIE_DOMAIN, then CORS_ORIGIN.
+  local cur_domain
+  cur_domain="$(val_for_key DOMAIN)"
+  if [[ -z "$cur_domain" ]]; then
+    if [[ -f "$SECRETS_DIR/domain" ]] && [[ -s "$SECRETS_DIR/domain" ]]; then
+      cur_domain="$(tr -d '\r\n' < "$SECRETS_DIR/domain")"
+    fi
+    if [[ -z "$cur_domain" ]]; then
+      local cookie_domain
+      cookie_domain="$(val_for_key COOKIE_DOMAIN)"
+      [[ -n "$cookie_domain" ]] && cur_domain="${cookie_domain#.}"
+    fi
+    if [[ -z "$cur_domain" ]]; then
+      local cors_origin
+      cors_origin="$(val_for_key CORS_ORIGIN)"
+      [[ -n "$cors_origin" ]] && cur_domain="$(echo "$cors_origin" | sed 's|https\?://||' | cut -d'/' -f1)"
+    fi
+    if [[ -n "$cur_domain" ]] && ! is_placeholder "$cur_domain"; then
+      update_key DOMAIN "$cur_domain"
+    fi
+  fi
+
   cp -f "$ENV_FILE" "${ROOT}/.env"
 }
 

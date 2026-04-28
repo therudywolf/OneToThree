@@ -557,6 +557,15 @@ const ru = {
   'offline.banner': 'Нет подключения. Сообщения отправятся при восстановлении.',
   'chat.scrollToBottom': 'Новые сообщения',
   'chat.emptyGroupHint': 'Добавьте участников и начните общение',
+  'chat.muteFor': 'Отключить уведомления',
+  'chat.mute1h': '1 час',
+  'chat.mute8h': '8 часов',
+  'chat.mute24h': '24 часа',
+  'chat.mute7d': '7 дней',
+  'chat.muteForever': 'Навсегда',
+  'chat.unmute': 'Включить уведомления',
+  'chat.delete': 'Удалить чат',
+  'chat.confirmDelete': 'Удалить этот чат? Это действие необратимо.',
 
   // [VAULT - BIOMETRIC]
   'vault.biometricAvailable': 'Доступна биометрическая разблокировка.',

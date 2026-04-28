@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft } from 'lucide-react'
+import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft, MoreVertical, BellOff, Bell, Trash2 } from 'lucide-react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -22,6 +22,9 @@ import { useChatAesKey } from '@/hooks/use-chat-aes-key'
 import {
   fetchChatDetail,
   fetchPeerIdsForChat,
+  setChatMute,
+  isChatMuted,
+  deleteChat,
   type ChatMemberRole,
 } from '@/lib/api/chats'
 import { lookupUsers } from '@/lib/api/users'
@@ -183,7 +186,7 @@ export function ChatApp({
   useMobileViewport()
   useAppBadge(userId)
   const vaultState = useCryptoVault(userId, user?.username ?? username)
-  const { chats, reload } = useChats(userId)
+  const { chats, reload, patchChat } = useChats(userId)
   usePresenceSync(userId, chats)
   const [memberRoleByUser, setMemberRoleByUser] = useState<
     Record<string, ChatMemberRole>
@@ -196,6 +199,8 @@ export function ChatApp({
   const [headerProfileOpen, setHeaderProfileOpen] = useState(false)
   const [md3HeaderCondensed, setMd3HeaderCondensed] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
+  const [chatMenuOpen, setChatMenuOpen] = useState(false)
+  const chatMenuRef = useRef<HTMLDivElement>(null)
   const dockSlot = useDockStore((s) => s.slot)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
@@ -634,6 +639,17 @@ export function ChatApp({
     return () => window.clearInterval(id)
   }, [])
 
+  useEffect(() => {
+    if (!chatMenuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (chatMenuRef.current && !chatMenuRef.current.contains(e.target as Node)) {
+        setChatMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [chatMenuOpen])
+
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
   const isSelfChat = activeRow != null && isSavedMessagesChat(activeRow, userId)
   const { typingUsers, peerPresence } = usePresenceStore(
@@ -691,6 +707,30 @@ export function ChatApp({
       .catch(() => { if (!cancelled) setMemberRoleByUser({}) })
     return () => { cancelled = true }
   }, [activeChatId, activeRow?.is_group, groupDetailTick])
+
+  async function handleMuteChat(until: string | 'forever' | null) {
+    if (!activeChatId) return
+    try {
+      const result = await setChatMute(activeChatId, until)
+      patchChat(activeChatId, { muted_until: result.muted_until })
+    } catch {
+      // ignore
+    }
+    setChatMenuOpen(false)
+  }
+
+  async function handleDeleteChat() {
+    if (!activeChatId) return
+    if (!window.confirm(t('chat.confirmDelete'))) return
+    try {
+      await deleteChat(activeChatId)
+      setActiveChatId(null)
+      await reload()
+    } catch {
+      // ignore
+    }
+    setChatMenuOpen(false)
+  }
 
   async function handleVoiceCall() {
     if (!activeChatId) return
@@ -1233,6 +1273,89 @@ export function ChatApp({
                     onVoiceCall={() => void (activeRow?.is_group ? handleGroupVoiceCall() : handleVoiceCall())}
                     onVideoCall={() => void handleVideoCall()}
                   />
+                ) : null}
+                {/* Per-chat more options */}
+                {activeChatId && activeRow ? (
+                  <div ref={chatMenuRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setChatMenuOpen((v) => !v)}
+                      className="p13-icon-btn"
+                      aria-label="Chat options"
+                      title="Chat options"
+                    >
+                      <MoreVertical className="h-4 w-4" strokeWidth={1.5} />
+                    </button>
+                    {chatMenuOpen ? (
+                      <div className={`absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded shadow-lg border ${
+                        isMd3
+                          ? 'bg-[var(--surface)] border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] text-[var(--on-surface)]'
+                          : 'bg-void border-neon-cyan/30 font-mono text-[11px]'
+                      }`}>
+                        {/* Mute options */}
+                        {isChatMuted(activeRow) ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleMuteChat(null)}
+                            className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
+                              isMd3
+                                ? 'hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-sm'
+                                : 'hover:bg-neon-cyan/10 text-neon-cyan/80 uppercase tracking-wider'
+                            }`}
+                          >
+                            <Bell className="h-3.5 w-3.5 shrink-0" />
+                            {t('chat.unmute')}
+                          </button>
+                        ) : (
+                          <>
+                            <div className={`px-3 pt-2 pb-1 text-[10px] ${isMd3 ? 'text-text-muted' : 'text-neon-cyan/40 uppercase tracking-widest'}`}>
+                              {t('chat.muteFor')}
+                            </div>
+                            {[
+                              { label: t('chat.mute1h'), hours: 1 },
+                              { label: t('chat.mute8h'), hours: 8 },
+                              { label: t('chat.mute24h'), hours: 24 },
+                              { label: t('chat.mute7d'), hours: 168 },
+                              { label: t('chat.muteForever'), forever: true },
+                            ].map((opt) => (
+                              <button
+                                key={opt.label}
+                                type="button"
+                                onClick={() => {
+                                  const until = opt.forever
+                                    ? 'forever'
+                                    : new Date(Date.now() + opt.hours! * 3600_000).toISOString()
+                                  void handleMuteChat(until)
+                                }}
+                                className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
+                                  isMd3
+                                    ? 'hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-sm'
+                                    : 'hover:bg-neon-cyan/10 text-neon-cyan/80 uppercase tracking-wider'
+                                }`}
+                              >
+                                <BellOff className="h-3.5 w-3.5 shrink-0" />
+                                {opt.label}
+                              </button>
+                            ))}
+                          </>
+                        )}
+                        <div className={`my-1 border-t ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]' : 'border-neon-cyan/20'}`} />
+                        {/* Delete chat */}
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteChat()}
+                          className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${
+                            isMd3
+                              ? 'hover:bg-[color-mix(in_srgb,var(--neon-red)_8%,transparent)] text-sm text-[var(--neon-red)]'
+                              : 'hover:bg-neon-red/10 text-neon-red/80 uppercase tracking-wider'
+                          }`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                          {t('chat.delete')}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             </div>

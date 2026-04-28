@@ -557,6 +557,15 @@ const en = {
   'offline.banner': 'No connection. Messages will be sent when reconnected.',
   'chat.scrollToBottom': 'New messages',
   'chat.emptyGroupHint': 'Add members and start chatting',
+  'chat.muteFor': 'Mute notifications',
+  'chat.mute1h': '1 hour',
+  'chat.mute8h': '8 hours',
+  'chat.mute24h': '24 hours',
+  'chat.mute7d': '7 days',
+  'chat.muteForever': 'Mute forever',
+  'chat.unmute': 'Unmute',
+  'chat.delete': 'Delete chat',
+  'chat.confirmDelete': 'Delete this chat? This cannot be undone.',
 
   // [VAULT - BIOMETRIC]
   'vault.biometricAvailable': 'Biometric unlock available.',

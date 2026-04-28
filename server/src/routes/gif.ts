@@ -94,6 +94,29 @@ const gifSearchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(24),
 })
 
+// Tenor v1 demo key — documented public key, no registration required
+const TENOR_DEMO_KEY = 'LIVDSRZULELA'
+
+type TenorResult = {
+  id: string
+  title?: string
+  media?: Array<{ gif?: { url?: string }; tinygif?: { url?: string } }>
+}
+
+function mapTenorResults(results: TenorResult[]) {
+  return results
+    .map((r) => {
+      const media = r.media?.[0]
+      return {
+        id: r.id,
+        title: r.title ?? 'gif',
+        previewUrl: media?.tinygif?.url ?? media?.gif?.url ?? '',
+        originalUrl: media?.gif?.url ?? '',
+      }
+    })
+    .filter((r) => r.previewUrl && r.originalUrl)
+}
+
 type GiphyRow = {
   id: string
   title?: string
@@ -111,6 +134,31 @@ function mapGiphyRows(rows: GiphyRow[]) {
     .filter((r) => r.previewUrl && r.originalUrl)
 }
 
+async function searchViaTenor(q: string | undefined, limit: number) {
+  const key = (process.env.TENOR_API_KEY ?? '').trim() || TENOR_DEMO_KEY
+  const endpoint = q?.trim()
+    ? 'https://api.tenor.com/v1/search'
+    : 'https://api.tenor.com/v1/trending'
+  const params = new URLSearchParams({ key, limit: String(limit), media_filter: 'minimal', contentfilter: 'medium' })
+  if (q?.trim()) params.set('q', q.trim())
+  const res = await fetch(`${endpoint}?${params}`, { signal: AbortSignal.timeout(8000) })
+  if (!res.ok) throw new Error('TENOR_UNAVAILABLE')
+  const data = (await res.json()) as { results?: TenorResult[] }
+  return mapTenorResults(data.results ?? [])
+}
+
+async function searchViaGiphy(q: string | undefined, limit: number, apiKey: string) {
+  const endpoint = q?.trim()
+    ? 'https://api.giphy.com/v1/gifs/search'
+    : 'https://api.giphy.com/v1/gifs/trending'
+  const params = new URLSearchParams({ api_key: apiKey, limit: String(limit), rating: 'pg-13' })
+  if (q?.trim()) params.set('q', q.trim())
+  const res = await fetch(`${endpoint}?${params}`, { signal: AbortSignal.timeout(8000) })
+  if (!res.ok) throw new Error('GIPHY_UNAVAILABLE')
+  const data = (await res.json()) as { data?: GiphyRow[] }
+  return mapGiphyRows(data.data ?? [])
+}
+
 export const gifRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     '/search',
@@ -119,26 +167,18 @@ export const gifRoutes: FastifyPluginAsync = async (app) => {
       const user = await getAuthUser(request, reply)
       if (!assertAuthed(reply, user)) return
 
-      const apiKey = (process.env.GIPHY_API_KEY ?? '').trim()
-      if (!apiKey) {
-        return reply.status(503).send({ error: 'GIF_PROVIDER_UNCONFIGURED', items: [] })
-      }
-
       const parsed = gifSearchSchema.safeParse(request.query)
       if (!parsed.success) return reply.status(400).send({ error: 'INVALID_QUERY' })
 
       const { q, limit } = parsed.data
-      const endpoint = q?.trim()
-        ? 'https://api.giphy.com/v1/gifs/search'
-        : 'https://api.giphy.com/v1/gifs/trending'
-      const params = new URLSearchParams({ api_key: apiKey, limit: String(limit), rating: 'pg-13' })
-      if (q?.trim()) params.set('q', q.trim())
+      const giphyKey = (process.env.GIPHY_API_KEY ?? '').trim()
 
       try {
-        const res = await fetch(`${endpoint}?${params}`, { signal: AbortSignal.timeout(8000) })
-        if (!res.ok) return reply.status(502).send({ error: 'GIF_PROVIDER_UNAVAILABLE', items: [] })
-        const data = (await res.json()) as { data?: GiphyRow[] }
-        return reply.send({ items: mapGiphyRows(data.data ?? []) })
+        // Tenor is the default (free, no registration). Giphy used only when GIPHY_API_KEY is set.
+        const items = giphyKey
+          ? await searchViaGiphy(q, limit, giphyKey)
+          : await searchViaTenor(q, limit)
+        return reply.send({ items })
       } catch {
         return reply.status(502).send({ error: 'GIF_PROVIDER_UNAVAILABLE', items: [] })
       }

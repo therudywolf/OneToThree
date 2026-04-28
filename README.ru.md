@@ -18,6 +18,7 @@
 - [Что происходит при первом запуске](#что-происходит-при-первом-запуске)
 - [Обновление](#обновление)
 - [Резервное копирование и восстановление](#резервное-копирование-и-восстановление)
+- [Android-приложение](#android-приложение)
 - [Устранение неполадок](#устранение-неполадок)
 - [Архитектура](#архитектура)
 - [Безопасность](#безопасность)
@@ -48,8 +49,10 @@
 | Хранилище медиа | MinIO (S3-совместимое) |
 | Обратный прокси | Caddy 2 (автоматический TLS через Let's Encrypt) |
 | TURN-сервер | coturn (WebRTC-релей для обхода NAT) |
+| SFU (опционально) | LiveKit (серверная маршрутизация медиа для групповых звонков) |
 | Оркестрация | Docker Compose |
-| Криптография | Web Crypto API — AES-GCM-256, ECDH P-256, ECDSA, PBKDF2 |
+| Криптография | Web Crypto API — AES-GCM-256, ECDH P-256, ECDSA, Argon2id |
+| Мобильное приложение | Capacitor (Android APK) |
 
 ---
 
@@ -108,11 +111,11 @@ chmod +x ./start.sh
 ```
 
 При **первом запуске** скрипт автоматически:
-1. Запускает `generate-secrets.sh` — генерирует все пароли и секреты (БД, MinIO, JWT, TURN, VAPID)
+1. Генерирует все секреты — пароль БД, MinIO, JWT, TURN, VAPID, LiveKit
 2. Запрашивает домен, email для ACME, IP сервера и контактный email для VAPID
 3. Показывает все учётные данные **один раз** — сохраните их немедленно!
 4. Записывает секреты в `./secrets/` (chmod 700, никогда не коммитятся в git)
-5. Синхронизирует секреты в `.env.prod` для обратной совместимости
+5. Создаёт `.env.prod` со всеми необходимыми значениями
 6. Собирает и запускает все 7 контейнеров
 7. Ожидает прохождения health-проверок
 
@@ -148,6 +151,8 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 | `./start.sh status` | Статус контейнеров |
 | `./start.sh update` | Загрузить обновления, пересобрать, перезапустить (данные сохраняются) |
 | `./start.sh backup` | Дамп базы данных в `backups/db_TIMESTAMP.sql.gz` |
+| `./start.sh build-apk` | Собрать Android debug APK (требует Java 17 + Android SDK) |
+| `./start.sh build-apk-release <keystore>` | Собрать подписанный release APK |
 
 ---
 
@@ -157,13 +162,13 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 1. **Проверка зависимостей** — убеждается, что Docker, Docker Compose, openssl и curl установлены
 2. **Проверка томов** — сообщает, найдены ли существующие тома с данными (при первом запуске их не будет)
-3. **Генерация секретов** — запускает `generate-secrets.sh`:
-   - Генерирует: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_PASSWORD`
+3. **Генерация секретов**:
+   - Автоматически генерирует: `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `TURN_PASSWORD`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
    - Запрашивает: домен, email для ACME, внешний IP для TURN, контактный email для VAPID
    - Генерирует пару VAPID-ключей (через Docker — потребуется загрузка `node:20-alpine`)
    - Записывает все секреты в `./secrets/` как отдельные файлы (формат Docker secrets)
    - Показывает учётные данные в рамке — **сохраните их сейчас**
-4. **Синхронизация env-файла** — создаёт `.env.prod` из шаблона и заполняет значениями из `./secrets/`
+4. **Создание env-файла** — записывает `.env.prod` со всеми необходимыми значениями
 5. **Валидация** — проверяет, что все обязательные поля заполнены
 6. **Проверка TURN** — предупреждает, если TURN и API используют одно имя хоста (конфликт Cloudflare)
 7. **Сборка и запуск** — выполняет `docker compose up -d --build`
@@ -217,6 +222,31 @@ gunzip -c backups/db_20260101_120000.sql.gz | \
 > docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
 >   alpine tar czf /backup/minio_YYYYMMDD.tar.gz -C /data .
 > ```
+
+---
+
+## Android-приложение
+
+Нативное Android-приложение доступно в виде APK (собрано с Capacitor).
+
+### Установить готовый APK
+
+Готовые debug-APK находятся в [`releases/android/`](./releases/android/).
+
+1. Включите «Установку из неизвестных источников» на устройстве.
+2. Перенесите и установите `.apk`.
+3. При первом запуске укажите адрес вашего сервера.
+
+### Собрать из исходников
+
+Требования: Java 17+, Android SDK, переменная окружения `ANDROID_HOME`.
+
+```bash
+./start.sh build-apk                       # debug APK  (берёт URL сервера из .env.prod)
+./start.sh build-apk-release <keystore>    # подписанный release APK
+```
+
+APK сохраняется в `releases/android/onetothree-debug.apk` (или `onetothree-release.apk`).
 
 ---
 

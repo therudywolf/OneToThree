@@ -70,6 +70,7 @@ import {
 } from '@/lib/push-subscription'
 import { NotificationModeOnboarding } from '@/components/notification-mode-onboarding'
 import { requestAndroidEssentialPermissionsOnce } from '@/lib/native-permissions'
+import { patchMutedChat } from '@/lib/muted-chats'
 
 const VaultModal = dynamic(
   () => import('@/components/chat/vault-modal').then((m) => m.VaultModal),
@@ -713,6 +714,7 @@ export function ChatApp({
     try {
       const result = await setChatMute(activeChatId, until)
       patchChat(activeChatId, { muted_until: result.muted_until })
+      patchMutedChat(activeChatId, result.muted_until)
     } catch {
       // ignore
     }

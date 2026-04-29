@@ -202,6 +202,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /bundle/:userId ─────────────────────────────────────────────────
   app.get<{ Params: { userId: string } }>(
     '/bundle/:userId',
+    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const u = await getAuthUser(req, reply)
       if (!u || !assertAuthed(reply, u)) return

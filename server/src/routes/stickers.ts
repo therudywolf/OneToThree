@@ -590,7 +590,7 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
    * Returns 403 PACK_NOT_PUBLIC when the pack has not been made public by its owner.
    * Used by the share-link landing page before the user logs in.
    */
-  app.get('/packs/:packId/preview', async (request, reply) => {
+  app.get('/packs/:packId/preview', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
 

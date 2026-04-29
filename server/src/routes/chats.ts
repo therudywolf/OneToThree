@@ -625,7 +625,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.post('/', async (request, reply) => {
+  app.post('/', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -1424,7 +1424,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // Public group / channel discovery
-  app.get('/discover', async (request, reply) => {
+  app.get('/discover', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 

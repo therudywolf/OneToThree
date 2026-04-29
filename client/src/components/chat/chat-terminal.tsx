@@ -21,6 +21,9 @@ import { getDownloadUrl } from '@/lib/api/storage'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { lookupUsers } from '@/lib/api/users'
 import { NoirPlaintext } from '@/components/chat/noir-plaintext'
+import { LinkPreviewCard } from '@/components/chat/link-preview-card'
+import { extractFirstUrl } from '@/lib/api/link-preview'
+import { getChatPrivacy } from '@/lib/chat-privacy'
 import { CollapsibleText } from '@/components/chat/collapsible-text'
 import { MessageStatus } from '@/components/chat/message-status'
 import { MessageReactions } from '@/components/chat/message-reactions'
@@ -245,6 +248,49 @@ export function ChatTerminal({
   const [threadRoot, setThreadRoot] = useState<DecryptedMessage | null>(null)
 
   const isGroup = activeChat?.is_group ?? false
+  // Privacy flags drive the no-copy / blank-on-blur DOM behaviour. Stored in
+  // localStorage; per-chat override falls back to global. Honest UX: best
+  // effort, no cryptographic guarantee — see lib/chat-privacy.ts.
+  const [privacy, setPrivacy] = useState(() =>
+    activeChatId ? getChatPrivacy(activeChatId) : { noCopy: false, blankOnBlur: false }
+  )
+  useEffect(() => {
+    if (!activeChatId) return
+    setPrivacy(getChatPrivacy(activeChatId))
+  }, [activeChatId])
+  const [hideForBlur, setHideForBlur] = useState(false)
+  useEffect(() => {
+    if (!privacy.blankOnBlur) {
+      setHideForBlur(false)
+      return
+    }
+    const onVis = () => setHideForBlur(document.visibilityState !== 'visible' || !document.hasFocus())
+    onVis()
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('blur', onVis)
+    window.addEventListener('focus', onVis)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('blur', onVis)
+      window.removeEventListener('focus', onVis)
+    }
+  }, [privacy.blankOnBlur])
+  // Block clipboard when noCopy is on. Targets bubble text only — captions
+  // in the composer remain copy-able by design (you wrote it, you own it).
+  useEffect(() => {
+    if (!privacy.noCopy) return
+    const el = ref.current
+    if (!el) return
+    const block = (e: Event) => { e.preventDefault() }
+    el.addEventListener('copy', block)
+    el.addEventListener('cut', block)
+    el.addEventListener('contextmenu', block)
+    return () => {
+      el.removeEventListener('copy', block)
+      el.removeEventListener('cut', block)
+      el.removeEventListener('contextmenu', block)
+    }
+  }, [privacy.noCopy])
   const isSelfChat = activeChat != null && isSavedMessagesChat(activeChat, userId)
 
   useReadReceipts(ref, { enabled: !isGroup })
@@ -1097,7 +1143,9 @@ export function ChatTerminal({
       <div
         ref={ref}
         data-stabilizing="true"
-        className="p13-chat-scroll chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 text-sm [-webkit-overflow-scrolling:touch] sm:px-4"
+        data-privacy-no-copy={privacy.noCopy ? 'true' : undefined}
+        data-privacy-blanked={hideForBlur ? 'true' : undefined}
+        className={`p13-chat-scroll chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 text-sm [-webkit-overflow-scrolling:touch] sm:px-4 ${privacy.noCopy ? 'select-none' : ''}`}
         onClick={() => { if (reactingMsgId) setReactingMsgId(null) }}
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />
@@ -1379,14 +1427,20 @@ export function ChatTerminal({
                         {t('chat.decryptFailed')}
                       </span>
                     ) : m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv ? (
-                      <CollapsibleText text={m.plaintext}>
-                        {(visibleText) => (
-                          <NoirPlaintext
-                            text={visibleText}
-                            className="whitespace-pre-wrap break-words"
-                          />
-                        )}
-                      </CollapsibleText>
+                      <>
+                        <CollapsibleText text={m.plaintext}>
+                          {(visibleText) => (
+                            <NoirPlaintext
+                              text={visibleText}
+                              className="whitespace-pre-wrap break-words"
+                            />
+                          )}
+                        </CollapsibleText>
+                        {(() => {
+                          const url = extractFirstUrl(m.plaintext)
+                          return url ? <LinkPreviewCard url={url} /> : null
+                        })()}
+                      </>
                     ) : null}
                     {m.media_path && m.media_iv && m.media_type ? (
                       <MediaMessage

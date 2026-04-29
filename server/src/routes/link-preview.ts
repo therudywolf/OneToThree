@@ -121,8 +121,15 @@ export const linkPreviewRoutes: FastifyPluginAsync = async (app) => {
         const image =
           html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]*)"/)?.[1] ??
           null
+        const siteName =
+          html.match(/<meta[^>]+property="og:site_name"[^>]+content="([^"]*)"/)?.[1] ??
+          null
 
-        return reply.send({ title, description, image })
+        // 5-minute cache so multiple recipients viewing the same chat
+        // don't all stampede the upstream and don't all leak their
+        // viewer-fingerprint to it.
+        reply.header('Cache-Control', 'public, max-age=300')
+        return reply.send({ title, description, image, siteName, url })
       } catch (e) {
         const msg = e instanceof Error ? e.message : ''
         if (msg === 'SSRF_BLOCKED') {

@@ -10,6 +10,7 @@ type DeviceLinkTranslationKey =
   | 'login.signatureInvalid'
   | 'login.totpInvalid'
   | 'login.totpVerifyFailed'
+  | 'login.legacyVaultNoEcdsa'
 
 type Translator = (key: DeviceLinkTranslationKey) => string
 
@@ -46,6 +47,9 @@ export function explainDeviceLinkError(code: string, t: Translator): string {
   }
   if (normalized === 'TOTP_INVALID' || normalized === 'TOTP_ALREADY_USED') {
     return t('login.totpInvalid')
+  }
+  if (normalized === 'ECDSA_KEY_MISSING_IN_VAULT') {
+    return t('login.legacyVaultNoEcdsa')
   }
   return t('errors.boundaryGeneric')
 }

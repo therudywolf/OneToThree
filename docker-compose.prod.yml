@@ -291,8 +291,11 @@ services:
     volumes:
       - ./docker/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
       - ./docker/coturn/tls:/etc/coturn/tls:ro
+      - ./docker/coturn/entrypoint.sh:/usr/local/bin/forest-coturn-entrypoint.sh:ro
+    entrypoint: ['/usr/local/bin/forest-coturn-entrypoint.sh']
+    # entrypoint adds --no-tls automatically when certs are absent.
+    # After running scripts/sync-turn-certs.sh, restart coturn to activate TURNS on 5349.
     command:
-      - -n
       - --log-file=stdout
       - --realm=${TURN_REALM:-${DOMAIN:-onetothree.ru}}
       - --user=${TURN_USERNAME:-turn}:${TURN_PASSWORD:?set TURN_PASSWORD in .env.prod}

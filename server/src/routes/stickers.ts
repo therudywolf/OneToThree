@@ -553,6 +553,74 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(201).send({ pack_id: clonedPackId, cloned: true, count: sourceStickers.length })
   })
 
+  /**
+   * PATCH /api/stickers/packs/:packId/visibility
+   * Body: { is_public: boolean }
+   * Owner only. Makes a pack publicly discoverable via share link.
+   */
+  app.patch('/packs/:packId/visibility', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const body = z.object({ is_public: z.boolean() }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const [pack] = await db
+      .select({ id: stickerPacks.id, ownerId: stickerPacks.ownerId })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+
+    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    await db
+      .update(stickerPacks)
+      .set({ isPublic: body.data.is_public })
+      .where(eq(stickerPacks.id, params.data.packId))
+
+    return reply.send({ pack_id: params.data.packId, is_public: body.data.is_public })
+  })
+
+  /**
+   * GET /api/stickers/packs/:packId/preview — unauthenticated public pack info.
+   * Returns 403 PACK_NOT_PUBLIC when the pack has not been made public by its owner.
+   * Used by the share-link landing page before the user logs in.
+   */
+  app.get('/packs/:packId/preview', async (request, reply) => {
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const [row] = await db
+      .select({
+        id: stickerPacks.id,
+        title: stickerPacks.title,
+        format: stickerPacks.format,
+        isPublic: stickerPacks.isPublic,
+      })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+
+    if (!row) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (!row.isPublic) return reply.status(403).send({ error: 'PACK_NOT_PUBLIC' })
+
+    const stickerRows = await db
+      .select({ id: stickers.id })
+      .from(stickers)
+      .where(eq(stickers.packId, params.data.packId))
+
+    return reply.send({
+      id: row.id,
+      title: row.title,
+      format: row.format,
+      sticker_count: stickerRows.length,
+    })
+  })
+
   /** DELETE /api/stickers/packs/:packId — delete a pack and its stickers (owner only) */
   app.delete('/packs/:packId', async (request, reply) => {
     const user = await getAuthUser(request, reply)

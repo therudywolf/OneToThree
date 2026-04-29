@@ -1,12 +1,28 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Trash2 } from 'lucide-react'
+import { RefreshCw, Trash2, Globe, Lock, Link2 } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
-import { cloneStickerPack, fetchStickerPacks, deleteStickerPack, refreshStickerPack, type StickerPack } from '@/lib/api/stickers'
+import {
+  cloneStickerPack,
+  fetchStickerPacks,
+  deleteStickerPack,
+  refreshStickerPack,
+  setPackVisibility,
+  importTelegramStickerPack,
+  type StickerPack,
+} from '@/lib/api/stickers'
 import { explainStickerError, formatStickerAccessScope } from '@/lib/sticker-errors'
 import { toastError, toastSuccess } from '@/store/toastStore'
+
+const NEXT_PUBLIC_APP_URL =
+  typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_APP_URL ?? '' : ''
+
+function buildShareLink(packId: string): string {
+  const base = NEXT_PUBLIC_APP_URL.replace(/\/$/, '')
+  return `${base}/stickers/add/${packId}`
+}
 
 export function SettingsStickersPanel() {
   const { t } = useTranslation()
@@ -16,7 +32,11 @@ export function SettingsStickersPanel() {
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [cloningId, setCloningId] = useState<string | null>(null)
+  const [visibilityId, setVisibilityId] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+
+  const [importInput, setImportInput] = useState('')
+  const [importing, setImporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -85,6 +105,61 @@ export function SettingsStickersPanel() {
     }
   }
 
+  const handleToggleVisibility = async (pack: StickerPack) => {
+    if (visibilityId) return
+    setVisibilityId(pack.id)
+    const makePublic = !pack.isPublic
+    try {
+      await setPackVisibility(pack.id, makePublic)
+      setPacks((prev) =>
+        prev.map((p) => (p.id === pack.id ? { ...p, isPublic: makePublic } : p))
+      )
+      toastSuccess(
+        makePublic ? t('settings.stickersPublished') : t('settings.stickersUnpublished'),
+        { title: pack.title }
+      )
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'REQUEST_FAILED'
+      toastError(explainStickerError(msg, t), { title: t('settings.stickersTitle') })
+    } finally {
+      setVisibilityId(null)
+    }
+  }
+
+  const handleCopyLink = async (pack: StickerPack) => {
+    const url = buildShareLink(pack.id)
+    try {
+      await navigator.clipboard.writeText(url)
+      toastSuccess(t('settings.stickersCopied'), { title: pack.title })
+    } catch {
+      toastError(url, { title: pack.title })
+    }
+  }
+
+  const handleImport = async () => {
+    const raw = importInput.trim()
+    if (!raw || importing) return
+    setImporting(true)
+    try {
+      const out = await importTelegramStickerPack(raw)
+      toastSuccess(
+        out.imported ? t('settings.stickersImportDone') : t('settings.stickersImportAlready'),
+        { title: t('settings.stickersImportTitle') }
+      )
+      setImportInput('')
+      await load()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'IMPORT_FAILED'
+      if (msg.includes('TELEGRAM_BOT_TOKEN_NOT_CONFIGURED')) {
+        toastError(t('settings.stickersImportNoBotToken'), { title: t('settings.stickersImportTitle') })
+      } else {
+        toastError(explainStickerError(msg, t), { title: t('settings.stickersImportTitle') })
+      }
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const border = isMd3
     ? 'border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
     : 'border-neon-cyan/20'
@@ -101,6 +176,38 @@ export function SettingsStickersPanel() {
 
   return (
     <div className="space-y-4">
+      {/* Import from Telegram */}
+      <div className={`border p-3 ${border} ${isMd3 ? 'rounded-2xl' : ''}`}>
+        <p className={`mb-2 ${labelCls}`}>{t('settings.stickersImportTitle')}</p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={importInput}
+            onChange={(e) => setImportInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleImport() }}
+            placeholder={t('settings.stickersImportPlaceholder')}
+            className={`min-w-0 flex-1 px-3 py-1.5 text-[11px] focus:outline-none ${
+              isMd3
+                ? 'rounded-full border border-[color-mix(in_srgb,var(--on-surface)_20%,transparent)] bg-[var(--surface-variant)] text-[var(--on-surface)]'
+                : 'border border-neon-cyan/25 bg-void font-mono text-neon-cyan placeholder:text-text-muted/60'
+            }`}
+          />
+          <button
+            type="button"
+            disabled={!importInput.trim() || importing}
+            onClick={() => void handleImport()}
+            className={`shrink-0 ${btnBase} ${
+              isMd3
+                ? 'bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)] disabled:opacity-40'
+                : 'border-neon-cyan/30 text-neon-cyan/70 hover:border-neon-cyan/60 hover:text-neon-cyan disabled:opacity-40'
+            }`}
+          >
+            {importing ? t('settings.stickersImporting') : t('settings.stickersImportBtn')}
+          </button>
+        </div>
+      </div>
+
+      {/* Pack list */}
       <div className={`border p-3 ${border} ${isMd3 ? 'rounded-2xl' : ''}`}>
         <p className={`mb-3 ${labelCls}`}>{t('settings.stickersTitle')}</p>
 
@@ -137,44 +244,80 @@ export function SettingsStickersPanel() {
                   <p className={mutedCls}>
                     {pack.format.toUpperCase()}
                     {pack.tgSource ? ` · @${pack.tgSource}` : ''}
+                    {pack.accessScope === 'owned' && pack.isPublic ? ' · 🌐' : ''}
                   </p>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1">
-                  {pack.tgSource && pack.accessScope === 'owned' ? (
-                    <button
-                      type="button"
-                      disabled={!!refreshingId}
-                      onClick={() => void handleRefresh(pack)}
-                      title={t('settings.stickersRefresh')}
-                      className={`${btnBase} ${
-                        isMd3
-                          ? 'bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)] disabled:opacity-40'
-                          : 'border-neon-cyan/30 text-neon-cyan/70 hover:border-neon-cyan/60 hover:text-neon-cyan disabled:opacity-40'
-                      }`}
-                    >
-                      <RefreshCw className={`h-3 w-3 ${refreshingId === pack.id ? 'animate-spin' : ''}`} />
-                      <span className="hidden sm:inline">
-                        {refreshingId === pack.id ? t('settings.stickersRefreshing') : t('settings.stickersRefresh')}
-                      </span>
-                    </button>
-                  ) : null}
-
+                <div className="flex shrink-0 flex-wrap items-center gap-1">
                   {pack.accessScope === 'owned' ? (
-                    <button
-                      type="button"
-                      disabled={!!deletingId}
-                      onClick={() => void handleDelete(pack)}
-                      title={t('settings.stickersDelete')}
-                      className={`${btnBase} ${
-                        isMd3
-                          ? 'bg-[color-mix(in_srgb,var(--danger,#f44336)_10%,transparent)] text-[var(--danger,#f44336)] hover:bg-[color-mix(in_srgb,var(--danger,#f44336)_18%,transparent)] disabled:opacity-40'
-                          : 'border-neon-red/30 text-neon-red/70 hover:border-neon-red/60 hover:text-neon-red disabled:opacity-40'
-                      }`}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      <span className="hidden sm:inline">{t('settings.stickersDelete')}</span>
-                    </button>
+                    <>
+                      {/* Toggle public/private */}
+                      <button
+                        type="button"
+                        disabled={!!visibilityId}
+                        onClick={() => void handleToggleVisibility(pack)}
+                        title={pack.isPublic ? t('settings.stickersMakePrivate') : t('settings.stickersMakePublic')}
+                        className={`${btnBase} ${
+                          pack.isPublic
+                            ? isMd3
+                              ? 'bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_28%,transparent)] disabled:opacity-40'
+                              : 'border-neon-cyan/50 text-neon-cyan hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-40'
+                            : isMd3
+                              ? 'bg-transparent text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] disabled:opacity-40'
+                              : 'border-neon-cyan/20 text-neon-cyan/40 hover:border-neon-cyan/40 hover:text-neon-cyan/70 disabled:opacity-40'
+                        }`}
+                      >
+                        {pack.isPublic ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                      </button>
+
+                      {/* Copy share link (only when public) */}
+                      {pack.isPublic && (
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyLink(pack)}
+                          title={t('settings.stickersCopyLink')}
+                          className={`${btnBase} ${
+                            isMd3
+                              ? 'bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)]'
+                              : 'border-neon-cyan/30 text-neon-cyan/70 hover:border-neon-cyan/60 hover:text-neon-cyan'
+                          }`}
+                        >
+                          <Link2 className="h-3 w-3" />
+                        </button>
+                      )}
+
+                      {/* Refresh from Telegram */}
+                      {pack.tgSource && (
+                        <button
+                          type="button"
+                          disabled={!!refreshingId}
+                          onClick={() => void handleRefresh(pack)}
+                          title={t('settings.stickersRefresh')}
+                          className={`${btnBase} ${
+                            isMd3
+                              ? 'bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)] disabled:opacity-40'
+                              : 'border-neon-cyan/30 text-neon-cyan/70 hover:border-neon-cyan/60 hover:text-neon-cyan disabled:opacity-40'
+                          }`}
+                        >
+                          <RefreshCw className={`h-3 w-3 ${refreshingId === pack.id ? 'animate-spin' : ''}`} />
+                        </button>
+                      )}
+
+                      {/* Delete */}
+                      <button
+                        type="button"
+                        disabled={!!deletingId}
+                        onClick={() => void handleDelete(pack)}
+                        title={t('settings.stickersDelete')}
+                        className={`${btnBase} ${
+                          isMd3
+                            ? 'bg-[color-mix(in_srgb,var(--danger,#f44336)_10%,transparent)] text-[var(--danger,#f44336)] hover:bg-[color-mix(in_srgb,var(--danger,#f44336)_18%,transparent)] disabled:opacity-40'
+                            : 'border-neon-red/30 text-neon-red/70 hover:border-neon-red/60 hover:text-neon-red disabled:opacity-40'
+                        }`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </>
                   ) : (
                     <>
                       <button

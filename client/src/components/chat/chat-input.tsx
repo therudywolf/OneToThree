@@ -401,7 +401,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     }
   }
 
-  const ALBUM_HARD_CAP = 9
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return
     const all = Array.from(e.target.files)
@@ -419,6 +418,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   // for the 3x3 grid layout used by AlbumBubble. Larger picks fall back to
   // sequential single sends (no grouping).
   const ALBUM_MAX = 9
+  const ALBUM_HARD_CAP = ALBUM_MAX
   const canAlbum = (items: QueuedFile[]) =>
     items.length >= 2 &&
     items.length <= ALBUM_MAX &&
@@ -455,6 +455,32 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const handlePreviewCancel = useCallback(() => setFileQueue([]), [])
   const handleRemoveFromQueue = useCallback((index: number) => {
     setFileQueue((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+  const handleReorderQueue = useCallback((from: number, to: number) => {
+    setFileQueue((prev) => {
+      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+  }, [])
+  const handleAddMoreToQueue = useCallback((files: File[]) => {
+    setFileQueue((prev) => {
+      const room = ALBUM_HARD_CAP - prev.length
+      if (room <= 0) {
+        toastError(`Album already has ${ALBUM_HARD_CAP} items`, { title: 'Media' })
+        return prev
+      }
+      const accepted = files.slice(0, room)
+      if (files.length > room) {
+        toastError(`${files.length - room} dropped (cap ${ALBUM_HARD_CAP})`, { title: 'Media' })
+      }
+      return [
+        ...prev,
+        ...accepted.map((file) => ({ file, mediaType: detectMediaType(file) })),
+      ]
+    })
   }, [])
 
   async function onSubmit(e: React.FormEvent) {
@@ -617,6 +643,8 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           mediaType={previewFile.mediaType}
           queue={fileQueue}
           onRemoveFromQueue={handleRemoveFromQueue}
+          onReorder={handleReorderQueue}
+          onAddMore={handleAddMoreToQueue}
           onSend={handlePreviewSend}
           onCancel={handlePreviewCancel}
         />

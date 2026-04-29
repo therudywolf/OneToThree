@@ -18,6 +18,7 @@ import {
 } from '@/lib/api/stickers'
 import {
   addGifFavorite,
+  buildGifProxyUrl,
   fetchGifFavorites,
   fetchTrendingGifs,
   removeGifFavorite,
@@ -547,7 +548,7 @@ export function ComposerPickerPanel({
                         }}
                         title={g.title}
                       >
-                        <img src={g.previewUrl} alt={g.title} className="h-20 w-full object-cover" loading="lazy" />
+                        <img src={buildGifProxyUrl(g.previewUrl)} alt={g.title} className="h-20 w-full object-cover" loading="lazy" />
                       </button>
                       <button
                         type="button"
@@ -607,7 +608,7 @@ export function ComposerPickerPanel({
                         }}
                         title={g.title}
                       >
-                        <img src={g.previewUrl} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
+                        <img src={buildGifProxyUrl(g.previewUrl)} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
                       </button>
                       <button
                         type="button"

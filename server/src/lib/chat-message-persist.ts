@@ -81,6 +81,7 @@ function rowToWireMessage(row: PersistedMessageRow) {
     protocol_version: row.protocolVersion,
     dr_header: row.drHeader,
     dr_init: row.drInit,
+    sender_ecdh_public_key_jwk: row.senderEcdhPublicKeyJwk,
   }
 }
 

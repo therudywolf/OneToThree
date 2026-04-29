@@ -926,7 +926,7 @@ export function ChatSidebar({
               ref={(el) => { if (el) virtualizer.measureElement(el) }}
               data-chat-list-item
               data-active={activeChatId === c.id ? 'true' : 'false'}
-              className={`p13-sidebar-row chat-list-item group ${isCollapsed ? '' : 'overflow-hidden'} ${
+              className={`p13-sidebar-row chat-list-item group overflow-hidden ${
                 isPinned ? 'ring-1 ring-inset ring-[color:var(--neon-cyan)]/20' : ''
               }`}
               style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${virtualRow.start}px)` }}

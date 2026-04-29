@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Pin, PinOff, Star, StarOff, Bell, BellOff } from 'lucide-react'
+import { Pin, PinOff, Star, StarOff, Bell, BellOff, Eye, EyeOff } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
+import { getChatPrivacy, setChatPrivacyOverride } from '@/lib/chat-privacy'
 
 export type ChatRowContextMenuProps = {
   x: number
   y: number
+  chatId: string
   isPinned: boolean
   isFavorite: boolean
   isMuted: boolean
@@ -20,6 +22,7 @@ export type ChatRowContextMenuProps = {
 export function ChatRowContextMenu({
   x,
   y,
+  chatId,
   isPinned,
   isFavorite,
   isMuted,
@@ -28,6 +31,7 @@ export function ChatRowContextMenu({
   onMute,
   onClose,
 }: ChatRowContextMenuProps) {
+  const privacy = getChatPrivacy(chatId)
   const { t } = useTranslation()
   const isMd3 = useThemeStore((s) => s.shellMode) === 'md3'
   const menuRef = useRef<HTMLDivElement>(null)
@@ -91,6 +95,18 @@ export function ChatRowContextMenu({
       label: isMuted ? t('sidebar.unmute') : t('sidebar.mute'),
       action: onMute,
       active: isMuted,
+    },
+    {
+      icon: privacy.noCopy ? EyeOff : Eye,
+      label: privacy.noCopy ? 'Privacy: copy ON' : 'Privacy: block copy',
+      action: () => setChatPrivacyOverride(chatId, { ...privacy, noCopy: !privacy.noCopy }),
+      active: privacy.noCopy,
+    },
+    {
+      icon: privacy.blankOnBlur ? EyeOff : Eye,
+      label: privacy.blankOnBlur ? 'Privacy: blur OFF' : 'Privacy: blur on blur',
+      action: () => setChatPrivacyOverride(chatId, { ...privacy, blankOnBlur: !privacy.blankOnBlur }),
+      active: privacy.blankOnBlur,
     },
   ]
 

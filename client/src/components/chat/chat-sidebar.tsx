@@ -1281,6 +1281,7 @@ export function ChatSidebar({
           <ChatRowContextMenu
             x={rowContextMenu.x}
             y={rowContextMenu.y}
+            chatId={c.id}
             isPinned={isPinnedCtx}
             isFavorite={Boolean(c.is_favorite)}
             isMuted={isMutedCtx}

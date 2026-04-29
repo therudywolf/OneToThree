@@ -164,11 +164,24 @@ export async function cryptoLogin(
 
     // Upload ECDH public key so this device is reachable for fan-out
     // encryption. On register: freshly generated key. On login: the key
-    // already stored in the vault (captured earlier in ecdhPrivateJwkForVault).
+    // already stored in the vault.
+    //
+    // BLOCKING by design (was previously fire-and-forget): if this races
+    // with the chat bootstrap's first send, the server records `null` as
+    // the sender ECDH key and recipients can't decrypt. Failure here is
+    // not "non-fatal" — we surface it so the UI can ask the user to retry
+    // before they start typing.
     if (ecdhPrivateJwkForVault) {
       try {
-        await patchMyEcdhPublicKey(exportEcdhPublicJwkFromPrivateKeyString(ecdhPrivateJwkForVault))
-      } catch { /* non-fatal */ }
+        await patchMyEcdhPublicKey(
+          exportEcdhPublicJwkFromPrivateKeyString(ecdhPrivateJwkForVault)
+        )
+      } catch (e) {
+        return {
+          ok: false,
+          error: e instanceof Error ? e.message : 'ECDH_KEY_UPLOAD_FAILED',
+        }
+      }
     }
 
     mirrorVaultLoginToUserId(canonicalHandle, user.id)

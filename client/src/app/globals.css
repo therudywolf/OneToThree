@@ -1888,6 +1888,34 @@ select {
   visibility: hidden;
 }
 
+/* Privacy: blank chat content when the page loses focus / visibility.
+ * Best-effort defence against casual screen-share; OS-level capture is
+ * NOT blocked. The viewport is replaced with a uniform tint so observers
+ * can't read message bodies. */
+.chat-scroll[data-privacy-blanked="true"] > * {
+  filter: blur(20px) brightness(0.4);
+  pointer-events: none;
+  user-select: none;
+}
+.chat-scroll[data-privacy-blanked="true"]::after {
+  content: 'paused (privacy)';
+  position: sticky;
+  top: 50%;
+  left: 50%;
+  display: block;
+  margin: 0 auto;
+  width: max-content;
+  padding: 6px 14px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  background: color-mix(in srgb, var(--void) 80%, transparent);
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--neon-cyan) 30%, transparent);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
 /* Temporary spotlight on a message the user jumped to (reply, search result).
  * Added and removed by `scrollToMessage` in `lib/chat-scroll.ts`. Kept out of
  * component styles because the selector targets an arbitrary `[data-message-id]`

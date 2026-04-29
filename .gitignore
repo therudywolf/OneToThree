@@ -51,6 +51,7 @@ logs/
 
 # Debug / analysis artifacts (HAR traces, screenshots — never commit)
 Har/
+Debug/
 Screen/
 *.har
 *.png.tmp
@@ -94,5 +95,6 @@ blob-report/
 # Agent scratch directories
 .agent-tmp/
 
-# artifacts/ is a local build cache — releases/ is the committed folder
+# artifacts/ is a local build cache; releases/ contains debug builds (not committed)
 artifacts/
+releases/

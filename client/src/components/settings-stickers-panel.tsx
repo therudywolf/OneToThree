@@ -16,11 +16,9 @@ import {
 import { explainStickerError, formatStickerAccessScope } from '@/lib/sticker-errors'
 import { toastError, toastSuccess } from '@/store/toastStore'
 
-const NEXT_PUBLIC_APP_URL =
-  typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_APP_URL ?? '' : ''
-
 function buildShareLink(packId: string): string {
-  const base = NEXT_PUBLIC_APP_URL.replace(/\/$/, '')
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
+  const base = appUrl || (typeof window !== 'undefined' ? window.location.origin : '')
   return `${base}/stickers/add/${packId}`
 }
 

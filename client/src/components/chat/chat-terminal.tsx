@@ -24,6 +24,7 @@ import { NoirPlaintext } from '@/components/chat/noir-plaintext'
 import { LinkPreviewCard } from '@/components/chat/link-preview-card'
 import { extractFirstUrl } from '@/lib/api/link-preview'
 import { getChatPrivacy } from '@/lib/chat-privacy'
+import { setNativeFlagSecure } from '@/lib/native-flag-secure'
 import { CollapsibleText } from '@/components/chat/collapsible-text'
 import { MessageStatus } from '@/components/chat/message-status'
 import { MessageReactions } from '@/components/chat/message-reactions'
@@ -290,6 +291,14 @@ export function ChatTerminal({
       el.removeEventListener('cut', block)
       el.removeEventListener('contextmenu', block)
     }
+  }, [privacy.noCopy])
+  // Native (Android) FLAG_SECURE bridge — actually blocks screenshots
+  // when running inside Capacitor with the Privacy plugin installed.
+  // Web is a no-op. On chat exit / privacy toggle off, FLAG_SECURE is
+  // released so the rest of the app stays screenshot-able.
+  useEffect(() => {
+    void setNativeFlagSecure(privacy.noCopy)
+    return () => { void setNativeFlagSecure(false) }
   }, [privacy.noCopy])
   const isSelfChat = activeChat != null && isSavedMessagesChat(activeChat, userId)
 

@@ -358,9 +358,7 @@ export function ChatTerminal({
       if (raf) cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
         snapToBottom()
-        // Second pass for late-decoding media that mutates height a frame
-        // after the bubble mounts.
-        raf = requestAnimationFrame(snapToBottom)
+        raf = 0
       })
     }
 
@@ -414,10 +412,7 @@ export function ChatTerminal({
     const sentByMe = newest.sender_id === userId
     if (sentByMe || wasPinnedRef.current) {
       // Pin — re-snap on the next frame to catch the late-mounted bubble.
-      requestAnimationFrame(() => {
-        snapToBottom()
-        requestAnimationFrame(snapToBottom)
-      })
+      requestAnimationFrame(snapToBottom)
       wasPinnedRef.current = true
       setHasNewBelow(false)
       setNewMsgCount(0)
@@ -512,26 +507,26 @@ export function ChatTerminal({
     // Hide the scroll container for one synchronous paint so we can position
     // without the user seeing a flight-from-middle-to-bottom animation. We
     // flip it back to visible inside a rAF once we've committed a scrollTop.
+    wasPinnedRef.current = true
     const el = ref.current
     if (el) {
       el.setAttribute('data-stabilizing', 'true')
-      // Apply snap BEFORE the paint. The second rAF un-hides it after layout.
+      // Apply snap synchronously before the paint, then confirm once in rAF.
       el.scrollTop = el.scrollHeight
-      requestAnimationFrame(() => {
+      const raf = requestAnimationFrame(() => {
         if (!ref.current) return
         ref.current.scrollTop = ref.current.scrollHeight
-        requestAnimationFrame(() => {
-          if (!ref.current) return
-          ref.current.scrollTop = ref.current.scrollHeight
-          ref.current.setAttribute('data-stabilizing', 'false')
-        })
+        ref.current.setAttribute('data-stabilizing', 'false')
       })
       // Safety net: never leave the chat permanently invisible if the rAF
-      // chain above is starved (heavy decrypt / suspended tab / etc.).
+      // is starved (heavy decrypt / suspended tab / etc.).
       const safety = window.setTimeout(() => {
         ref.current?.setAttribute('data-stabilizing', 'false')
       }, 280)
-      return () => window.clearTimeout(safety)
+      return () => {
+        cancelAnimationFrame(raf)
+        window.clearTimeout(safety)
+      }
     } else {
       scrollToBottomInstant()
     }

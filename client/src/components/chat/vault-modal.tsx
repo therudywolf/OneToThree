@@ -117,9 +117,17 @@ export function VaultModal({ userId, displayHandle }: Props) {
       setUnwrappedPrivateKey(key)
 
       // Upload ECDH public key so fan-out can find this device.
-      try {
-        await patchMyEcdhPublicKey(exportEcdhPublicJwkFromPrivateKeyString(ecdhJwk))
-      } catch { /* non-fatal: server may be offline */ }
+      // Retry once — transient network errors are common on vault unlock.
+      let ecdhUploaded = false
+      for (let attempt = 0; attempt < 2 && !ecdhUploaded; attempt++) {
+        try {
+          await patchMyEcdhPublicKey(exportEcdhPublicJwkFromPrivateKeyString(ecdhJwk))
+          ecdhUploaded = true
+        } catch { /* retry */ }
+      }
+      if (!ecdhUploaded) {
+        console.warn('[vault] ECDH key upload failed — this device may miss future messages')
+      }
 
       // Derive DR identity from vault ECDH key and activate it in-memory.
       try {

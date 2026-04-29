@@ -8,7 +8,7 @@ export function fetchWithTimeout(
   input: RequestInfo | URL,
   init?: RequestInit & { timeoutMs?: number }
 ): Promise<Response> {
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: callerSignal, ...rest } = init ?? {}
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: callerSignal, cache, ...rest } = init ?? {}
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
@@ -18,7 +18,13 @@ export function fetchWithTimeout(
     callerSignal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
-  return fetch(input, { ...rest, signal: controller.signal }).finally(() =>
-    clearTimeout(timer)
-  )
+  // Authenticated session traffic must NEVER be served from the HTTP or
+  // Service-Worker cache — a stale `/auth/me` 401 would persist past a fresh
+  // login. Callers can opt back in to caching by passing an explicit
+  // `cache:` value (e.g. `'force-cache'` for static media manifests).
+  return fetch(input, {
+    ...rest,
+    cache: cache ?? 'no-store',
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timer))
 }

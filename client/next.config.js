@@ -106,23 +106,18 @@ try {
         },
       },
       {
-        urlPattern: /^https?:\/\/[^/]+\/api\/(?!messages\/send).*/,
-        handler: 'NetworkFirst',
-        options: {
-          cacheName: 'p13-api',
-          networkTimeoutSeconds: 3,
-          cacheableResponse: { statuses: [0, 200] },
-          expiration: {
-            maxEntries: 60,
-            maxAgeSeconds: 60 * 5,
-          },
-        },
+        // /api/* must NEVER be cached by the SW. Auth (`/auth/me`,
+        // `/auth/challenge`, ...) and every authenticated GET would otherwise
+        // serve a stale 401/200 from a previous session, leaving the UI in a
+        // permanently "not logged in" state right after a successful login.
+        urlPattern: /^https?:\/\/[^/]+\/api\//,
+        handler: 'NetworkOnly',
       },
       {
         urlPattern: /(_rsc=|__rsc=)/,
         handler: 'NetworkOnly',
         options: {
-          cacheableResponse: { statuses: [0, 200] },
+          cacheableResponse: { statuses: [200] },
         },
       },
       {

@@ -61,19 +61,18 @@ function sessionCookieDomain(): string | undefined {
 }
 
 function sessionCookieSameSite(): CookieSerializeOptions['sameSite'] {
-  const allowMobileCors =
-    (process.env.CORS_ALLOW_MOBILE_APP ?? '1').trim() !== '0'
-  if (allowMobileCors && sessionCookieSecure()) {
-    // Capacitor runs on localhost/capacitor origins; session must be
-    // cross-site compatible for authenticated API fetches from native WebView.
-    // Browsers reject SameSite=None unless Secure is also set, so plain HTTP
-    // local dev/e2e must fall back to Lax or the session cookie is dropped.
-    return 'none'
-  }
-  const prod = process.env.NODE_ENV === 'production'
-  const domain = sessionCookieDomain()
-  if (domain) return 'lax'
-  return prod ? 'strict' : 'lax'
+  // SameSite=None requires Secure (browsers reject otherwise). Whenever the
+  // cookie is going out over HTTPS we default to None so cross-site fetches
+  // from the web app origin to the API origin (and from Capacitor WebViews)
+  // actually carry the session. Strict would silently drop the cookie on
+  // those requests and leave the client in a "still not logged in" loop
+  // immediately after a successful POST /auth/verify.
+  if (sessionCookieSecure()) return 'none'
+
+  // Plain HTTP path (local dev / e2e). A parent-domain cookie can still be
+  // shared between sibling subdomains as long as both are same-site, so Lax
+  // is enough. Without a parent domain we keep Lax in dev for ergonomics.
+  return 'lax'
 }
 
 function sessionCookieSecure(): boolean {

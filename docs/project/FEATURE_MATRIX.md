@@ -1,6 +1,6 @@
 # OneToThree Feature Matrix
 
-Last updated: 2026-04-21
+Last updated: 2026-04-30
 
 Legend:
 - `implemented`: done and covered by checks
@@ -58,17 +58,19 @@ Legend:
 | Feature | Status | Notes |
 |---|---|---|
 | P2P audio/video calls | implemented | Full mesh; UDP/TCP/TLS ICE fallback matrix |
-| TURN relay (coturn) | implemented | `turns://` over 5349; DNS-only required on Cloudflare |
-| LiveKit SFU (3+ participants) | partial | Server-side token issuance ready; client Call UI uses mesh |
+| TURN relay (coturn) | implemented | Plain TURN always active; TURNS:5349 activates automatically after `sync-turn-certs.sh` |
+| LiveKit SFU (3+ participants) | implemented | Token issuance + client integration; `joinGroupCall` tries SFU first, mesh fallback |
 | Call E2EE via sender keys | missing | Architecture documented in `MIGRATION_NOTES.md` phase 4.3 |
 
 ### Stickers
 
 | Feature | Status | Notes |
 |---|---|---|
-| Sticker pack DB schema | partial | Tables exist (`sticker_packs`, `stickers`); `p13: 'sticker'` envelope defined |
-| Telegram sticker import | missing | Bot API token required; import pipeline not built |
-| Sticker picker UI / Lottie player | missing | |
+| Sticker pack DB schema | implemented | Tables + routes fully wired; send/receive/clone/share pipeline complete |
+| Telegram sticker import | implemented | Requires `TELEGRAM_BOT_TOKEN`; available in settings panel and composer picker |
+| Sticker share links | implemented | `/stickers/add/[packId]` landing page; owner controls visibility via Globe toggle |
+| Sticker picker UI | implemented | Picker in composer; pack management in Settings → Stickers |
+| Lottie / TGS animation player | missing | `.tgs` animated stickers show placeholder; static stickers work |
 
 ### Notifications & PWA
 

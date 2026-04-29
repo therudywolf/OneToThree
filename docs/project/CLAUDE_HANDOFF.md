@@ -1,6 +1,6 @@
 # CLAUDE HANDOFF — START HERE
 
-Last updated: 2026-04-22e (relay-only calls update)
+Last updated: 2026-04-30 (post round6 sweep)
 
 ## Goal
 
@@ -8,9 +8,9 @@ Last updated: 2026-04-22e (relay-only calls update)
 
 ## Source Of Truth
 
-1. `WORKPLAN.md` — полный бэклог и структура спринтов.
-2. `AGENT_PROGRESS.md` — краткий снимок состояния + риски.
-3. Этот файл — чеклист запуска для Claude.
+1. `ARCHITECTURE.md` — полная архитектура.
+2. `FEATURE_MATRIX.md` — статус фич.
+3. `CLAUDE.md` — правила разработки (прочти перед стартом!).
 
 ---
 
@@ -26,90 +26,68 @@ Last updated: 2026-04-22e (relay-only calls update)
 **Правила:**
 - Каждый UI/UX коммит тестируется в **обоих** шеллах.
 - Стили изолированы строго: `[data-shell="md3"]` и `[data-shell="terminal"]`.
-- `[data-theme="md3dark/light"]` и `[data-theme="cyberpunk"]` — только palette-токены, никаких компонентных правил.
-- Никаких утечек: MD3 не должен получать monospace, terminal не должен получать Google Sans.
+- `[data-theme="..."]` — только palette-токены, никаких компонентных правил.
 
 ---
 
-## Текущее состояние (2026-04-22)
+## Текущее состояние (2026-04-30, после rounds 2–6)
 
-### Инциденты и хотфиксы (добавлено 2026-04-22d)
+### Закрыто в rounds 2–6
 
-- [x] **`start.sh update` падал на миграции**: `type "channel_role" already exists`.
-  - Причина: дублирующая DDL в `server/drizzle/0035_same_molly_hayes.sql`.
-  - Фикс: миграция сделана идемпотентной (`IF NOT EXISTS`/`duplicate_object` guards).
-  - Коммит: `03611fe` (`fix(db): make 0035 migration idempotent`).
-- [x] После фикса миграций `db-migrate` проходит успешно на проде (по логам `start.sh update`).
-- [ ] **Открытый блокер media upload**: `STORAGE_PUT_403 SignatureDoesNotMatch` при `PUT` в `s3.onetothree.ru` (HAR: `Har/gs.har`, `Har/gol.har`).
-  - Диагностика: presigned URL подписывает `content-length` (`X-Amz-SignedHeaders=content-length;host`), что ломается за proxy/CDN.
-  - Кодовый фикс подготовлен локально: убрать `ContentLength` из presign PUT (`server/src/lib/s3.ts`, `server/src/routes/storage.ts`).
-  - Требуется: commit+push+deploy, затем повторный runtime тест медиа/ГС.
-- [ ] **Открытый UX/runtime дефект**: сообщение может становиться пустым/`[DECRYPT_FAIL]` после возврата в чат.
-  - Кодовый фикс подготовлен локально: fallback из message cache по `message.id` в `use-load-chat-messages`.
-  - Требуется: commit+push+deploy и повторная проверка сценария.
+- [x] GIF-превью в picker — прокси через `/api/gif/fetch`
+- [x] Мульти-девайс расшифровка — `sender_ecdh_public_key_jwk` в WS broadcast; retry на upload ECDH ключа
+- [x] Sidebar в коллапсированном режиме — overflow-hidden корректен
+- [x] Скролл-движок — single rAF, sync snap при переключении чата
+- [x] Документы-«мусор» от AI удалены из git (`docs/audits/`, `docs/security-review/`)
+- [x] coturn: `docker/coturn/entrypoint.sh` — TLS включается автоматически при наличии сертификатов, без него запускается в plain режиме
+- [x] Стикеры: импорт из Telegram (настройки + picker), toggle public/private, share-link (`/stickers/add/[packId]`)
+- [x] Ошибка `ECDSA_KEY_MISSING_IN_VAULT` при привязке устройства — внятное сообщение
+- [x] `TELEGRAM_BOT_TOKEN` добавлен в `.env.prod.example` и `docker-compose.prod.yml`
 
-### Call transport policy update (2026-04-22e)
+### Открытые задачи
 
-- [x] Принята новая политика: **звонки только через relay/TURN**, без STUN-only и без клиентских fallback-веток.
-- [x] Реализовано:
-  - `server/src/routes/webrtc.ts` — `/api/turn` и `/api/ice-servers` возвращают `503 TURN_NOT_CONFIGURED`, если relay не настроен.
-  - `client/src/lib/ice-servers.ts` — убран fallback на public STUN; `getIceServers()` теперь требует TURN relay.
-  - `client/src/hooks/use-webrtc.ts` — убран runtime fallback/auto-switch path при ICE-fail/timeout.
-- [x] Локальная проверка: `typecheck` + `lint` (client) PASS, `server/src/routes/webrtc.test.ts` PASS.
-- [!] ВАЖНО: это **жёсткий режим**. Если TURN (Cloudflare TURN/coturn) недоступен, звонок не поднимется.
+#### Runtime / Инфраструктура
 
-### Закрыто (Sprint 8)
-- [x] `[DECRYPT_FAIL]` при повторном входе в чат
-- [x] MD3: чаты не открывались (та же причина — async drCtx)
-- [x] MD3 left rail кнопки — пересчитан размер
-- [x] Sidebar action buttons overlap — CSS фикс
-- [x] Theme isolation MD3/Cyberpunk — убраны все утечки из `[data-theme]`
+1. **Звонки TURNS:443** — P2P через TURN работает при открытых 3478 UDP/TCP. Для fallback через 443:
+   - `turn.DOMAIN` в DNS должен быть **DNS only** (серое облако в Cloudflare)
+   - Запустить `scripts/sync-turn-certs.sh` — копирует cert из Caddy volume в `./docker/coturn/tls/`
+   - `docker compose restart coturn` — скрипт автоматически включит TLS
+   - LiveKit SFU уже работает через 443 (Caddy → `lk.DOMAIN`); для него нужны `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` в secrets
 
-### Открыто — приоритет 1 (Runtime)
-→ Sprint 10 в WORKPLAN.md
+2. **Привязка устройства** — работает для vault v2+. LEGACY vault → понятное сообщение, нужно перерегистрироваться.
 
-1. Invite flow (`join/[code]`) — runtime не валидировался
-2. Direct fanout 2+ устройства — runtime не валидировался
-3. Saved Messages мульти-девайс — runtime не валидировался
+3. **Деплой** — `./start.sh update` на продакшене после каждого push.
 
-### Открыто — приоритет 2 (UI/UX обоих шеллов)
-→ Sprint 9 в WORKPLAN.md
+#### UI / UX (оба шелла)
 
-4. MD3: message bubbles, hover actions, desktop header, micro-spacing
-5. Cyberpunk: terminal bubbles, ASCII-header, cursor blink, CRT на touch
-6. Safety numbers UI страница (оба шелла)
-7. TOFU warning при смене ключа (оба шелла)
-8. Mobile touch pass (оба шелла)
+4. **Sticker Lottie player**: `.tgs` анимированные стикеры показываются как placeholder — Lottie/rlottie renderer не подключён.
+5. **Safety numbers**: страница верификации в `identity-modal.tsx` — протестировать оба шелла.
+6. **MD3**: message bubbles и hover actions — полировка не завершена.
 
-### Открыто — приоритет 3 (Crypto/DR)
-→ Sprint 5 в WORKPLAN.md
+#### Архитектура
 
-9. DR send path завершить (feature-flagged, не закончен)
-10. Vault upgrade v1-v3 → v4 сценарный тест
-
-### Открыто — приоритет 4 (Infra)
-11. TURN/coturn runtime верификация
+7. **Double Ratchet send path**: send использует v1 fan-out. DR v2 только принимает. Для полного DR нужно переключить `encryptOutboundText` → `encryptOutboundTextV2` в send hooks — крупное изменение, отложено.
 
 ---
 
-## Как Стартовать (exact order)
+## Как деплоить на прод
 
-1. Прочитать этот файл + `AGENT_PROGRESS.md`.
-2. Прогнать качество базы:
-   ```
-   npm run typecheck -w project-13-client
-   npm run lint -w project-13-client
-   npm run test -w project-13-server
-   ```
-3. Взять задачу из Sprint 10 (runtime) или Sprint 9 (UI) по приоритету.
-4. При любых UI-правках: проверить **оба шелла** — MD3 и terminal.
-5. Обновить `WORKPLAN.md` + `AGENT_PROGRESS.md` после каждого значимого шага.
+```bash
+# На сервере:
+./start.sh update
 
----
+# Включить TURNS после получения cert Caddy:
+./scripts/sync-turn-certs.sh
+docker compose -f docker-compose.prod.yml restart coturn
+```
 
-## Important Notes
+## Ключевые env переменные
 
-- Do not revert unrelated user changes.
-- Если снова появится `[DECRYPT_FAIL]` — проверить, передаётся ли `drCtx` в конкретный decrypt-path.
-- Не смешивать shell rules: MD3 и terminal токены изолированы по `[data-shell]`.
-- Локальные HAR-трейсы после cleanup лежат в `/mnt/c/Users/rudywolf/Workspace/OneToThree/_local/diagnostics/har/` и не коммитятся.
+| Переменная | Назначение | Обязательно |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | Импорт стикер-паков из Telegram | нет |
+| `GIPHY_API_KEY` | Поиск GIF | нет |
+| `LIVEKIT_URL` | WSS URL LiveKit SFU | нет (P2P fallback) |
+| `TURN_USERNAME` / `TURN_PASSWORD` | TURN credentials (lt-cred-mech) | да |
+| `TURN_EXTERNAL_IP` | Публичный IP для coturn NAT traversal | да |
+| `NEXT_PUBLIC_TURN_URLS` | TURN URL список для браузера | да |

@@ -222,6 +222,30 @@ export async function buildApp() {
 
   await app.register(cookie)
 
+  // One-shot startup diagnostics for the most-misconfigured knobs. Helps
+  // operators spot the "logs in but client says still anonymous" class of
+  // bugs: CORS origin missing, COOKIE_DOMAIN unset across sibling subdomains,
+  // mobile-CORS toggle disagreeing with cookie SameSite policy.
+  app.log.info(
+    {
+      corsOrigins: corsOriginsList,
+      cookieDomain: process.env.COOKIE_DOMAIN?.trim() || null,
+      cookieSecure: process.env.COOKIE_SECURE === '1' || process.env.NODE_ENV === 'production',
+      allowMobileCors: (process.env.CORS_ALLOW_MOBILE_APP ?? '1').trim() !== '0',
+      apiPublicUrl: process.env.NEXT_PUBLIC_API_URL?.trim() || null,
+    },
+    '[boot] effective auth/CORS config'
+  )
+  if (
+    process.env.NODE_ENV === 'production' &&
+    corsOriginsList.some((o) => !o.startsWith('http://localhost')) &&
+    !process.env.COOKIE_DOMAIN?.trim()
+  ) {
+    app.log.warn(
+      'COOKIE_DOMAIN is unset but CORS allows non-localhost origins — set COOKIE_DOMAIN to the registrable parent (e.g. onetothree.ru) so the session cookie is shared between sibling subdomains.'
+    )
+  }
+
   const jwtSecret = requireSecret('JWT_SECRET')
   if (jwtSecret.length < 32) {
     throw new Error(

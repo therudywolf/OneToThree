@@ -346,13 +346,12 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const ids = parsed.data.message_ids
     const sess = await verifySessionJwt(request)
     const callerDeviceId = sess?.device_id ?? null
-    const whereClause = callerDeviceId
-      ? and(
-          eq(messageDeliveries.userId, user.id),
-          eq(messageDeliveries.deviceId, callerDeviceId),
-          inArray(messageDeliveries.messageId, ids)
-        )
-      : and(eq(messageDeliveries.userId, user.id), inArray(messageDeliveries.messageId, ids))
+    if (!callerDeviceId) return reply.status(400).send({ error: 'DEVICE_SESSION_REQUIRED' })
+    const whereClause = and(
+      eq(messageDeliveries.userId, user.id),
+      eq(messageDeliveries.deviceId, callerDeviceId),
+      inArray(messageDeliveries.messageId, ids)
+    )
     const updated = await db
       .update(messageDeliveries)
       .set({ deliveredAt: new Date() })

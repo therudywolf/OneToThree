@@ -197,7 +197,8 @@ function namedCurveFromJwk(jwk: JsonWebKey): EcdhCurve {
 
 /** Import a stored ECDH public JWK (e.g. from `users.public_key_jwk`). */
 export async function importEcdhPublicKey(jwkString: string): Promise<CryptoKey> {
-  const jwk = JSON.parse(jwkString) as JsonWebKey
+  let jwk: JsonWebKey
+  try { jwk = JSON.parse(jwkString) as JsonWebKey } catch { throw new Error('INVALID_JWK_FORMAT') }
   const namedCurve = namedCurveFromJwk(jwk)
   return getSubtle().importKey(
     'jwk',
@@ -210,7 +211,8 @@ export async function importEcdhPublicKey(jwkString: string): Promise<CryptoKey>
 
 /** Strip private component `d` from an ECDH private JWK to publish the public half. */
 export function exportEcdhPublicJwkFromPrivateKeyString(jwkString: string): string {
-  const jwk = JSON.parse(jwkString) as JsonWebKey & { d?: string }
+  let jwk: JsonWebKey & { d?: string }
+  try { jwk = JSON.parse(jwkString) as JsonWebKey & { d?: string } } catch { throw new Error('INVALID_JWK_FORMAT') }
   const { d: _d, ...pub } = jwk
   if (!pub.x || !pub.y || pub.kty !== 'EC') {
     throw new Error('INVALID_ECDH_JWK')
@@ -254,7 +256,8 @@ async function _importEcdhPrivateKeyRaw(
  * into working memory.
  */
 export async function importEcdhPrivateKey(jwkString: string): Promise<CryptoKey> {
-  const jwk = JSON.parse(jwkString) as JsonWebKey
+  let jwk: JsonWebKey
+  try { jwk = JSON.parse(jwkString) as JsonWebKey } catch { throw new Error('INVALID_JWK_FORMAT') }
   const namedCurve = namedCurveFromJwk(jwk)
   return _importEcdhPrivateKeyRaw(jwk, namedCurve, false)
 }
@@ -502,7 +505,8 @@ export async function exportEcdsaPublicKeyJwk(key: CryptoKey): Promise<string> {
 export async function importEcdsaPrivateKeyForSign(
   jwkString: string
 ): Promise<CryptoKey> {
-  const jwk = JSON.parse(jwkString) as JsonWebKey
+  let jwk: JsonWebKey
+  try { jwk = JSON.parse(jwkString) as JsonWebKey } catch { throw new Error('INVALID_JWK_FORMAT') }
   return getSubtle().importKey(
     'jwk',
     jwk,

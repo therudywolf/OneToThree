@@ -163,6 +163,27 @@ export function useSendMessage(
           vibrateShort(18)
         } catch (err) {
           console.error('>> [SYS.CRYPTO] FEEDBACK_DECRYPT_FAILURE:', err)
+          // Decrypt failed but the send succeeded — still surface the message
+          // in the feed with the original plaintext so the sender isn't left
+          // with a blank chat after sending.
+          if (serverMessage) {
+            appendMessage({
+              id: serverMessage.id,
+              chat_id: serverMessage.chat_id,
+              sender_id: serverMessage.sender_id,
+              reply_to_id: serverMessage.reply_to_id ?? null,
+              plaintext: content,
+              created_at: serverMessage.created_at,
+              read_at: serverMessage.read_at ?? null,
+              media_path: serverMessage.media_path ?? null,
+              media_type: null,
+              media_iv: serverMessage.media_iv ?? null,
+              media_original_bytes: serverMessage.media_original_bytes ?? null,
+              burn_at: serverMessage.burn_at ?? null,
+              is_pinned: serverMessage.is_pinned ?? false,
+              reactions: serverMessage.reactions ?? {},
+            })
+          }
         }
       }
 

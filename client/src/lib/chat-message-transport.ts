@@ -8,6 +8,7 @@
  */
 
 import { API_URL } from '@/lib/api/auth'
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import type { SendChatMessageBody } from '@/lib/api/messages'
 import { buildDrFanoutSlots, buildFanoutSlotsDetailed } from './fanout-crypto'
 import { getClientDeviceId } from './client-device'
@@ -119,7 +120,7 @@ export async function sendMessageRest(opts: SendMessageOptions): Promise<SendRes
   }
 
   try {
-    const res = await fetch(`${API_URL}/messages/send`, {
+    const res = await fetchWithTimeout(`${API_URL}/messages/send`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -140,7 +141,7 @@ async function postUnifiedSend(
   body: Record<string, unknown>
 ): Promise<{ ok: true; message: ApiMessageRow } | { ok: false; error: string; network: boolean }> {
   try {
-    const res = await fetch(`${API_URL}/messages/send`, {
+    const res = await fetchWithTimeout(`${API_URL}/messages/send`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },

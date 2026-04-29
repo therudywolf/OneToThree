@@ -99,6 +99,12 @@ export async function buildApp() {
   const app = Fastify({
     logger: true,
     trustProxy,
+    // Default body cap; routes that need more (vault sync, prekey upload)
+    // bump it via per-route `bodyLimit`. The Fastify default of 1 MiB was
+    // fine for everything except `/messages/send` for PUBLIC chats (which
+    // can ship attachment-encoded plaintext) — explicit cap keeps abuse
+    // bounded while letting individual routes opt into more.
+    bodyLimit: 1 * 1024 * 1024,
   })
 
   registerGlobalErrorHandler(app)

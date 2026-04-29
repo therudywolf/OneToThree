@@ -148,7 +148,11 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   })
 
   // ── POST /one-time ──────────────────────────────────────────────────────
-  app.post('/one-time', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (req, reply) => {
+  app.post('/one-time', {
+    // 200 OPKs * ~140 bytes each + JSON overhead → 64 KiB is plenty.
+    bodyLimit: 64 * 1024,
+    config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+  }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
     const body = opkBodySchema.safeParse(req.body)

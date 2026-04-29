@@ -152,10 +152,32 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       if (row) row.sharedUserId = null
     }
     if (!row) return null
-    const canRead =
+
+    // Owner / explicit share / public — fast path.
+    let canRead =
       row.ownerId === userId ||
       row.sharedUserId === userId ||
       row.isPublic
+
+    // Implicit access: if I'm in any chat with the pack owner I can read.
+    // Lets a sticker recipient clone the sender's pack without a prior
+    // /grant-chat call (works retroactively for stickers sent before
+    // grant-chat shipped).
+    if (!canRead && row.ownerId && row.ownerId !== userId) {
+      const [mineChats, theirChats] = await Promise.all([
+        db
+          .select({ chatId: chatMembers.chatId })
+          .from(chatMembers)
+          .where(eq(chatMembers.userId, userId)),
+        db
+          .select({ chatId: chatMembers.chatId })
+          .from(chatMembers)
+          .where(eq(chatMembers.userId, row.ownerId)),
+      ])
+      const theirSet = new Set(theirChats.map((c) => c.chatId))
+      if (mineChats.some((c) => theirSet.has(c.chatId))) canRead = true
+    }
+
     return { ...row, canRead }
   }
 

@@ -41,48 +41,14 @@ function isVisualSegment(msg: DecryptedMessage): boolean {
 export const groupMessages = aggregateTransmissions
 
 export function aggregateTransmissions(feed: DecryptedMessage[]): AggregatedNode[] {
-  const result: AggregatedNode[] = []
-  let buffer: DecryptedMessage[] = []
-  
-  const flushBuffer = () => {
-    if (buffer.length === 0) return
-    
-    if (buffer.length === 1) {
-      result.push({ type: 'UNIT', message: buffer[0] })
-    } else {
-      result.push({
-        type: 'COLLECTION',
-        messages: [...buffer],
-        originId: buffer[0].sender_id,
-        timestamp: new Date(buffer[0].created_at)
-      })
-    }
-    buffer = []
-  }
-
-  for (const packet of feed) {
-    const isVisual = isVisualSegment(packet)
-    const packetTime = new Date(packet.created_at).getTime()
-    
-    // Проверка условий для вхождения в текущую коллекцию
-    const canCluster = buffer.length > 0 &&
-      packet.sender_id === buffer[0].sender_id &&
-      isVisual &&
-      (packetTime - new Date(buffer[buffer.length - 1].created_at).getTime()) <= 60000
-
-    if (canCluster) {
-      buffer.push(packet)
-    } else {
-      flushBuffer()
-      
-      if (isVisual) {
-        buffer = [packet]
-      } else {
-        result.push({ type: 'UNIT', message: packet })
-      }
-    }
-  }
-
-  flushBuffer()
-  return result
+  // Important: we no longer cluster two separate single-image sends into a
+  // visual COLLECTION. Albums must be created at SEND time (the explicit
+  // ALBUM envelope path produces a single message that AlbumBubble renders
+  // as one card). Two consecutive solo photos stay two distinct bubbles —
+  // matches Telegram behaviour where only "selected together" → one card.
+  return feed.map((message) => ({ type: 'UNIT', message }))
 }
+
+// Keep `isVisualSegment` exported for any future callers; it is a no-op for
+// the current renderer but the helper is used in tests.
+export { isVisualSegment }

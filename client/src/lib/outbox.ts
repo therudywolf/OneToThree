@@ -12,6 +12,7 @@
 import { openDB, deleteDB } from 'idb'
 import type { IDBPDatabase, DBSchema } from 'idb'
 import { API_URL } from '@/lib/api/auth'
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import type { SendChatMessageBody } from '@/lib/api/messages'
 
 const DB_NAME = 'p13-outbox'
@@ -162,7 +163,7 @@ export async function flushOutboxPending(): Promise<void> {
       if (state.nextRetry > now) continue
       attempted++
       try {
-        const res = await fetch(`${API_URL}/messages/send`, {
+        const res = await fetchWithTimeout(`${API_URL}/messages/send`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },

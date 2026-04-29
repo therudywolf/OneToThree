@@ -1,4 +1,5 @@
 import { API_URL } from '@/lib/api/auth'
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { clearAllMediaCache } from '@/lib/media-cache'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { deleteWebAuthnMetaDb } from '@/lib/webauthn-vault'
@@ -42,7 +43,7 @@ export async function nuclearWipeClient(options?: {
 }): Promise<void> {
   if (options?.revokeServerSessions !== false) {
     try {
-      await fetch(`${API_URL}/users/me/sessions`, {
+      await fetchWithTimeout(`${API_URL}/users/me/sessions`, {
         method: 'DELETE',
         credentials: 'include',
         keepalive: true,

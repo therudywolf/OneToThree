@@ -109,6 +109,16 @@ async function buildPending2faResponse(
 }
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
+  // Hard no-store on every auth response. Matters most for `/auth/me` which
+  // a NetworkFirst Service Worker would otherwise stash and serve back to a
+  // freshly logged-in client as a stale 401 — leaving the UI permanently
+  // "not logged in" right after a successful POST /auth/verify.
+  app.addHook('onSend', async (_request, reply, payload) => {
+    reply.header('Cache-Control', 'no-store, no-cache, must-revalidate')
+    reply.header('Pragma', 'no-cache')
+    return payload
+  })
+
   app.post('/qr-generate', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

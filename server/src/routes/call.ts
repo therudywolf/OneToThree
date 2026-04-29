@@ -65,7 +65,7 @@ function resolveAuthorizedRoomId(room: string): string | null {
 }
 
 export const callRoutes: FastifyPluginAsync = async (app) => {
-  app.post('/call/token', async (req, reply) => {
+  app.post('/call/token', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
 

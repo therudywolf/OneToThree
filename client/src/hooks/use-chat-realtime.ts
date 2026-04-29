@@ -229,7 +229,7 @@ export function useChatRealtime(
           is_pinned: (m as { is_pinned?: boolean }).is_pinned ?? false,
           reactions: (m as { reactions?: Record<string, string[]> }).reactions ?? {},
         }
-        await cacheMessage(row)
+        await cacheMessage(row).catch(() => { /* best-effort */ })
         appendMessage(row)
         if (userId && m.sender_id !== userId) {
           void acknowledgeMessagesDelivered([m.id]).catch(() => { /* best-effort */ })

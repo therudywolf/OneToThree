@@ -459,7 +459,7 @@ export function ChatSidebar({
   const virtualizer = useVirtualizer({
     count: sidebarChatsFiltered.length,
     getScrollElement: useCallback(() => chatListScrollRef.current, []),
-    estimateSize: () => (isCollapsed ? 64 : 68),
+    estimateSize: () => (isCollapsed ? 56 : 68),
     overscan: 5,
   })
 
@@ -926,7 +926,7 @@ export function ChatSidebar({
               ref={(el) => { if (el) virtualizer.measureElement(el) }}
               data-chat-list-item
               data-active={activeChatId === c.id ? 'true' : 'false'}
-              className={`p13-sidebar-row chat-list-item group overflow-hidden ${
+              className={`p13-sidebar-row chat-list-item group ${isCollapsed ? '' : 'overflow-hidden'} ${
                 isPinned ? 'ring-1 ring-inset ring-[color:var(--neon-cyan)]/20' : ''
               }`}
               style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${virtualRow.start}px)` }}
@@ -937,7 +937,8 @@ export function ChatSidebar({
             >
               <button
                 type="button"
-                className={`min-w-0 flex-1 text-left outline-none ${isCollapsed ? 'px-2 py-2' : 'px-3 py-2.5'} ${isMd3 ? 'font-sans' : 'font-mono'}`}
+                className={`min-w-0 flex-1 text-left outline-none ${isCollapsed ? 'px-1 py-1.5' : 'px-3 py-2.5'} ${isMd3 ? 'font-sans' : 'font-mono'}`}
+                title={isCollapsed ? listTitle : undefined}
                 aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {
                   navigateToChat(c.id)
@@ -950,10 +951,10 @@ export function ChatSidebar({
                         userId={peerId}
                         username={peerName || '…'}
                         avatarKey={resolved?.avatar_key ?? null}
-                        size={isCollapsed ? 48 : 44}
+                        size={isCollapsed ? 44 : 44}
                       />
                     ) : c.is_group ? (
-                      <div className={`flex shrink-0 items-center justify-center ${isCollapsed ? 'h-12 w-12 text-[14px]' : 'h-11 w-11 text-[13px]'} ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)] font-sans font-semibold' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan'}`}>
+                      <div className={`flex shrink-0 items-center justify-center h-11 w-11 text-[13px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)] font-sans font-semibold' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan'}`}>
                         {isMd3 ? (c.name?.slice(0, 2)?.toUpperCase() || 'GR') : 'GRP'}
                       </div>
                     ) : null}

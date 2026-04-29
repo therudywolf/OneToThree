@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Flame } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
+import { parseStickerEnvelope } from '@/lib/attachment-envelope'
+import { grantStickerPackToChat } from '@/lib/api/stickers'
 import { useTypingIndicator } from '@/hooks/use-typing-indicator'
 import { useTranslation } from '@/hooks/use-translation'
 import { useMediaRecorder } from '@/hooks/use-media-recorder'
@@ -102,6 +105,22 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const editingMessage = useChatStore((s) => s.editingMessage)
   const setEditingMessage = useChatStore((s) => s.setEditingMessage)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
+  const activeChatId = useSessionStore((s) => s.activeChatId)
+
+  // Best-effort: when sending a sticker JSON envelope, grant the recipient(s)
+  // implicit access to the underlying pack so the asset doesn't 403 on their
+  // side. Server validates that the caller owns/sees the pack and is in the
+  // chat — failure is silently swallowed (sticker still ships).
+  const sendSticker = useCallback(
+    async (json: string) => {
+      const env = parseStickerEnvelope(json)
+      if (env && activeChatId) {
+        void grantStickerPackToChat(env.packId, activeChatId)
+      }
+      await sendText(json)
+    },
+    [activeChatId, sendText]
+  )
 
   // When a message is staged for editing, load its plaintext into the
   // composer and switch submit into "save edit" mode.
@@ -677,7 +696,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                     store.openComposer({
                       onEmoji: (emoji) => insertEmoji(emoji),
                       onStickerSend: async (json) => {
-                        await sendText(json)
+                        await sendSticker(json)
                       },
                       onGifPick: async (gif) => {
                         await sendGif(gif)
@@ -698,7 +717,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                   layout="modal"
                   onEmoji={(emoji) => insertEmoji(emoji)}
                   onStickerSend={async (json) => {
-                    await sendText(json)
+                    await sendSticker(json)
                     setComposerPickerOpen(false)
                   }}
                   onGifPick={async (gif) => {

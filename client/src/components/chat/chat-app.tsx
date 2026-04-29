@@ -1465,7 +1465,15 @@ export function ChatApp({
             sendMedia={sendMedia}
             sendAlbum={sendAlbum}
             composeDisabled={!activeChatId || !!ctxError}
-            typingLabel={scratchers.length > 0 ? scratchers[0].username : null}
+            typingLabel={
+              scratchers.length === 0
+                ? null
+                : scratchers.length === 1
+                  ? scratchers[0].username
+                  : scratchers.length === 2
+                    ? `${scratchers[0].username}, ${scratchers[1].username}`
+                    : `${scratchers[0].username} +${scratchers.length - 1}`
+            }
           />
         </div>
         {/* Right dock — visible only at xl+ (see DOCK_BREAKPOINT). On smaller

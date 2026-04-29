@@ -21,7 +21,10 @@ export const TELEGRAM_BEHAVIOR = {
     recordHoldMs: 180,
   },
   autoscroll: {
-    stickPx: 240,
+    // TG-Desktop uses ~80px — autoscroll snaps to bottom only when the user
+    // is already pinned there. Higher values make incoming messages feel
+    // like they "yank" the viewport when the user is reading older context.
+    stickPx: 96,
   },
 } as const
 

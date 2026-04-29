@@ -269,17 +269,25 @@ export function ChatTerminal({
     })
   }, [])
 
-  const handleScroll = useCallback(() => {
+  // Live "near bottom" probe — used by autoscroll handlers instead of a
+  // stale ref so content growth that happens between scroll events still
+  // makes the right decision.
+  const isNearBottomNow = useCallback(() => {
     const el = ref.current
-    if (!el) return
-    const near =
+    if (!el) return true
+    return (
       el.scrollHeight - el.scrollTop - el.clientHeight < AUTOSCROLL_STICK_PX
+    )
+  }, [AUTOSCROLL_STICK_PX])
+
+  const handleScroll = useCallback(() => {
+    const near = isNearBottomNow()
     isNearBottomRef.current = near
     if (near) {
       setHasNewBelow(false)
       setNewMsgCount(0)
     }
-  }, [])
+  }, [isNearBottomNow])
 
   useEffect(() => {
     const el = ref.current
@@ -309,7 +317,9 @@ export function ChatTerminal({
       ref.current.scrollTop = ref.current.scrollHeight
     }
     const schedule = () => {
-      if (!isNearBottomRef.current) return
+      // Re-check live — `isNearBottomRef` is only updated on scroll events,
+      // so it can lie when content grows without the user touching anything.
+      if (!isNearBottomNow() && !isNearBottomRef.current) return
       if (raf) cancelAnimationFrame(raf)
       // Double RAF absorbs layout jumps chained off the same frame
       // (bubble mounts → its avatar image decodes one frame later).
@@ -360,7 +370,7 @@ export function ChatTerminal({
       el.removeEventListener('loadedmetadata', onMediaLoad, true)
       if (raf) cancelAnimationFrame(raf)
     }
-  }, [])
+  }, [isNearBottomNow])
 
   useEffect(() => {
     if (messages.length === 0) {
@@ -385,9 +395,16 @@ export function ChatTerminal({
     if (prevKey === key) return // same tail → nothing new
 
     const sentByMe = newest.sender_id === userId
+    const nearBottom = isNearBottomNow() || isNearBottomRef.current
 
-    if (isNearBottomRef.current || sentByMe) {
-      scrollToBottomInstant()
+    if (nearBottom || sentByMe) {
+      // TG behaviour: own sends always smooth-snap; incoming snaps instant
+      // so the user never sees the bubble appear off-screen.
+      if (sentByMe && ref.current) {
+        ref.current.scrollTo({ top: ref.current.scrollHeight, behavior: 'smooth' })
+      } else {
+        scrollToBottomInstant()
+      }
       isNearBottomRef.current = true
       setHasNewBelow(false)
       setNewMsgCount(0)
@@ -395,7 +412,7 @@ export function ChatTerminal({
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + 1)
     }
-  }, [messages, userId, scrollToBottomInstant])
+  }, [messages, userId, scrollToBottomInstant, isNearBottomNow])
 
   const scrollToBottom = useCallback(() => {
     const el = ref.current
@@ -493,6 +510,12 @@ export function ChatTerminal({
           ref.current.setAttribute('data-stabilizing', 'false')
         })
       })
+      // Safety net: never leave the chat permanently invisible if the rAF
+      // chain above is starved (heavy decrypt / suspended tab / etc.).
+      const safety = window.setTimeout(() => {
+        ref.current?.setAttribute('data-stabilizing', 'false')
+      }, 280)
+      return () => window.clearTimeout(safety)
     } else {
       scrollToBottomInstant()
     }

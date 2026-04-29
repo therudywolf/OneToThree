@@ -364,6 +364,25 @@ export async function shareStickerPack(packId: string, userId: string): Promise<
   }
 }
 
+/**
+ * Best-effort: grant pack visibility to every other member of `chatId` so
+ * recipients can resolve sticker assets without 403. Failure is non-fatal —
+ * the sticker still sends, recipients just see the broken-asset placeholder
+ * with a "clone pack" CTA.
+ */
+export async function grantStickerPackToChat(packId: string, chatId: string): Promise<void> {
+  try {
+    await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/grant-chat`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId }),
+    })
+  } catch {
+    /* non-fatal */
+  }
+}
+
 export async function unshareStickerPack(packId: string, userId: string): Promise<void> {
   const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/shares/${userId}`, {
     method: 'DELETE',

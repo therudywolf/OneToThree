@@ -94,24 +94,31 @@ const gifSearchSchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(24),
 })
 
-// Tenor v1 demo key — documented public key, no registration required
-const TENOR_DEMO_KEY = 'LIVDSRZULELA'
+// Tenor v2 lives behind tenor.googleapis.com and requires an API key.
+// v1 (api.tenor.com) was sunset by Google in 2023 — we no longer fall back
+// to the legacy demo key. If TENOR_API_KEY is not configured the endpoint
+// returns an empty array so the picker shows its empty state cleanly.
 
-type TenorResult = {
+type TenorV2Result = {
   id: string
   title?: string
-  media?: Array<{ gif?: { url?: string }; tinygif?: { url?: string } }>
+  content_description?: string
+  media_formats?: {
+    gif?: { url?: string }
+    tinygif?: { url?: string }
+    mediumgif?: { url?: string }
+  }
 }
 
-function mapTenorResults(results: TenorResult[]) {
+function mapTenorResults(results: TenorV2Result[]) {
   return results
     .map((r) => {
-      const media = r.media?.[0]
+      const m = r.media_formats ?? {}
       return {
         id: r.id,
-        title: r.title ?? 'gif',
-        previewUrl: media?.tinygif?.url ?? media?.gif?.url ?? '',
-        originalUrl: media?.gif?.url ?? '',
+        title: r.title || r.content_description || 'gif',
+        previewUrl: m.tinygif?.url ?? m.mediumgif?.url ?? m.gif?.url ?? '',
+        originalUrl: m.gif?.url ?? m.mediumgif?.url ?? '',
       }
     })
     .filter((r) => r.previewUrl && r.originalUrl)
@@ -135,15 +142,21 @@ function mapGiphyRows(rows: GiphyRow[]) {
 }
 
 async function searchViaTenor(q: string | undefined, limit: number) {
-  const key = (process.env.TENOR_API_KEY ?? '').trim() || TENOR_DEMO_KEY
+  const key = (process.env.TENOR_API_KEY ?? '').trim()
+  if (!key) return []
   const endpoint = q?.trim()
-    ? 'https://api.tenor.com/v1/search'
-    : 'https://api.tenor.com/v1/trending'
-  const params = new URLSearchParams({ key, limit: String(limit), media_filter: 'minimal', contentfilter: 'medium' })
+    ? 'https://tenor.googleapis.com/v2/search'
+    : 'https://tenor.googleapis.com/v2/featured'
+  const params = new URLSearchParams({
+    key,
+    limit: String(limit),
+    media_filter: 'tinygif,mediumgif,gif',
+    contentfilter: 'medium',
+  })
   if (q?.trim()) params.set('q', q.trim())
   const res = await fetch(`${endpoint}?${params}`, { signal: AbortSignal.timeout(8000) })
   if (!res.ok) throw new Error('TENOR_UNAVAILABLE')
-  const data = (await res.json()) as { results?: TenorResult[] }
+  const data = (await res.json()) as { results?: TenorV2Result[] }
   return mapTenorResults(data.results ?? [])
 }
 

@@ -51,7 +51,7 @@ export function useChatRealtime(
         const uname =
           msg.username?.trim() || known || `user_${msg.user_id.slice(0, 8)}`
         usernameCacheRef.current[msg.user_id] = uname
-        setTypingUser(activeChatId, msg.user_id, uname, 3000)
+        setTypingUser(activeChatId, msg.user_id, uname, 6000)
         if (!known) {
           void lookupUsers([msg.user_id])
             .then((rows) => {

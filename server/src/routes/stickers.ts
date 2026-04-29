@@ -3,7 +3,7 @@ import { and, asc, eq, or } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { stickerPackShares, stickerPacks, stickers, users } from '../db/schema.js'
+import { chatMembers, stickerPackShares, stickerPacks, stickers, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import {
   createS3Client,
@@ -640,6 +640,66 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
         )
       )
     return reply.status(204).send()
+  })
+
+  /**
+   * POST /api/stickers/packs/:packId/grant-chat
+   * Body: { chat_id: uuid }
+   * Grants implicit pack access to every other member of the chat. Called by
+   * the sender right before posting a sticker so recipients can fetch the
+   * media via /asset-url and offer "add to my collection" without a 403.
+   *
+   * Caller must (a) have read access to the pack, and (b) be a member of
+   * the chat. We never grant for chats the caller is not in, and we never
+   * grant to revoked/missing users (FK enforces).
+   */
+  app.post('/packs/:packId/grant-chat', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const body = z.object({ chat_id: z.string().uuid() }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const source = await getAccessiblePack(params.data.packId, user.id)
+    if (!source) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (!source.canRead) return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    const callerMembership = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, body.data.chat_id), eq(chatMembers.userId, user.id)))
+      .limit(1)
+    if (callerMembership.length === 0) {
+      return reply.status(403).send({ error: 'NOT_CHAT_MEMBER' })
+    }
+
+    const members = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, body.data.chat_id))
+
+    const recipients = members
+      .map((m) => m.userId)
+      .filter((id) => id !== user.id && id !== source.ownerId)
+
+    if (recipients.length === 0) {
+      return reply.send({ ok: true, granted: 0 })
+    }
+
+    try {
+      await db
+        .insert(stickerPackShares)
+        .values(recipients.map((uid) => ({ packId: params.data.packId, userId: uid })))
+        .onConflictDoNothing()
+    } catch (err) {
+      // Schema may not yet include sticker_pack_shares in fresh dev DBs;
+      // grant is a non-fatal best-effort.
+      if (!isMissingSharesTableError(err)) throw err
+    }
+
+    return reply.send({ ok: true, granted: recipients.length })
   })
 
   /**

@@ -25,7 +25,7 @@ export const usePresenceStore = create<PresenceState>((set) => ({
   typingUsers: {},
   peerPresence: {},
 
-  setTypingUser: (chatId, uid, uname, ttl = 3000) =>
+  setTypingUser: (chatId, uid, uname, ttl = 6000) =>
     set((s) => ({
       typingUsers: {
         ...s.typingUsers,

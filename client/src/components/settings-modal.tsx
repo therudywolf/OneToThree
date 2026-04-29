@@ -602,7 +602,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           </button>
         </header>
 
-        <div className="p13-settings-layout min-h-0 flex-1 overflow-hidden xl:grid xl:grid-cols-[16rem_minmax(0,1fr)]">
+        <div className="p13-settings-layout flex min-h-0 flex-1 flex-col overflow-hidden xl:grid xl:grid-cols-[16rem_minmax(0,1fr)]">
           <aside className={`hidden min-h-0 border-r p-2 xl:flex xl:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-border-strong' : 'border-neon-cyan/20'}`}>
             <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
               {SETTINGS_TABS.map((tab) => (
@@ -626,7 +626,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             </div>
           </aside>
 
-          <div className="p13-settings-content min-h-0 flex flex-col">
+          <div className="p13-settings-content min-h-0 min-w-0 flex flex-1 flex-col overflow-hidden">
             <div className={`border-b p-2 xl:hidden ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-border-strong' : 'border-neon-cyan/20'}`}>
               {mobileSettingsView === 'list' ? (
                 <p className={`text-[11px] ${isMd3 ? 'text-[var(--on-surface)]' : isRetro ? 'p13-classic-copy-deep' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>

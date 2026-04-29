@@ -2,7 +2,9 @@ export const TELEGRAM_BEHAVIOR = {
   sidebar: {
     minWidth: 240,
     maxWidth: 480,
-    collapsedWidth: 88,
+    // Just enough to fit a 44px avatar with 10px breathing room either side.
+    // 88px was too wide and made the "compact" mode feel like a half-sidebar.
+    collapsedWidth: 64,
   },
   mobile: {
     touchTargetPx: 44,
@@ -21,10 +23,10 @@ export const TELEGRAM_BEHAVIOR = {
     recordHoldMs: 180,
   },
   autoscroll: {
-    // TG-Desktop uses ~80px — autoscroll snaps to bottom only when the user
-    // is already pinned there. Higher values make incoming messages feel
-    // like they "yank" the viewport when the user is reading older context.
-    stickPx: 96,
+    // 64px = roughly half of one bubble. Tight enough that "scrolled up"
+    // really means the user wanted to read older content; loose enough that
+    // a wheel tick at the bottom doesn't accidentally unpin.
+    stickPx: 64,
   },
 } as const
 

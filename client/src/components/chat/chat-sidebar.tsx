@@ -459,7 +459,7 @@ export function ChatSidebar({
   const virtualizer = useVirtualizer({
     count: sidebarChatsFiltered.length,
     getScrollElement: useCallback(() => chatListScrollRef.current, []),
-    estimateSize: () => (isCollapsed ? 56 : 68),
+    estimateSize: () => (isCollapsed ? 64 : 68),
     overscan: 5,
   })
 
@@ -937,7 +937,7 @@ export function ChatSidebar({
             >
               <button
                 type="button"
-                className={`min-w-0 flex-1 text-left outline-none ${isCollapsed ? 'px-1 py-1.5' : 'px-3 py-2.5'} ${isMd3 ? 'font-sans' : 'font-mono'}`}
+                className={`min-w-0 flex-1 text-left outline-none ${isCollapsed ? 'px-2 py-2.5' : 'px-3 py-2.5'} ${isMd3 ? 'font-sans' : 'font-mono'}`}
                 title={isCollapsed ? listTitle : undefined}
                 aria-label={`${t('common.openChatAria')} ${listTitle}`}
                 onClick={() => {

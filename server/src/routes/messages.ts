@@ -80,7 +80,13 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
    * Accepts both legacy (single content+iv) and fan-out (ciphertexts[]) modes.
    * When ciphertexts[] is present, writes message_deliveries rows per device.
    */
-  app.post('/send', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/send', {
+    // 2 MiB cap covers the worst case of a 1 MiB attachment envelope
+    // base64-encoded for PUBLIC chats. DIRECT/group fan-out ciphertext
+    // arrays stay well below this.
+    bodyLimit: 2 * 1024 * 1024,
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const sess = await verifySessionJwt(request)

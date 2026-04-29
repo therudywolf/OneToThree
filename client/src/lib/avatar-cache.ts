@@ -8,6 +8,7 @@
  */
 
 import { fetchAvatarDownloadUrl } from '@/lib/api/avatar'
+import { fetchWithTimeout } from '@/lib/api/fetch'
 
 /** [ICON_REGISTRY] :: Дешифрованные blob-ссылки аватаров */
 const ICON_REGISTRY = new Map<string, string>()
@@ -52,7 +53,9 @@ async function downloadIconSegment(userId: string): Promise<string | null> {
     if (!signedUrl) return null
 
     // Захват бинарного сегмента
-    const response = await fetch(signedUrl)
+    // Avatar bytes can use the SW/HTTP cache (signed URL is short-lived but
+    // bytes themselves are stable for the URL's lifetime).
+    const response = await fetchWithTimeout(signedUrl, { cache: 'default' })
     if (!response.ok) throw new Error(`SIGNAL_FETCH_FAULT: ${response.status}`)
 
     const blob = await response.blob()

@@ -220,15 +220,18 @@ export function ChatTerminal({
     username: string
     avatarKey?: string | null
   } | null>(null)
-  const isNearBottomRef = useRef(true)
+  // === Autoscroll state ===
+  //
+  // `wasPinnedRef` is the SOURCE OF TRUTH for "is the user currently
+  // following the bottom of the conversation". It flips to false only when
+  // the user explicitly scrolls away (wheel / touchmove / scroll event that
+  // ends with a non-bottom position) and back to true when they hit the
+  // bottom again. Content growth NEVER mutates this ref — that was the
+  // root cause of the previous flakiness.
+  const wasPinnedRef = useRef(true)
   const [hasNewBelow, setHasNewBelow] = useState(false)
-  // NOTE: we intentionally do NOT drive auto-scroll by `messages.length` —
-  // the chat store is a ring buffer capped at RAM_CACHE_LIMIT (50). Once
-  // the cap is hit, the length stays constant even as new messages arrive
-  // (the oldest is evicted on every append), so a length-based diff would
-  // silently stop autoscrolling after the 50th message. We track identity
-  // of the tail instead (id + created_at) which changes on every real
-  // arrival.
+  // Tail identity (id, created_at). Survives the 50-msg ring buffer where
+  // `messages.length` stays constant while the tail rotates.
   const lastMsgKeyRef = useRef<string | null>(null)
   const firstMessagesRenderRef = useRef(true)
   const swipeRef = useRef<{ startX: number; startY: number; msgId: string } | null>(null)
@@ -246,119 +249,82 @@ export function ChatTerminal({
 
   useReadReceipts(ref, { enabled: !isGroup })
 
-  // Threshold (in px from the bottom) where we still consider the user
-  // "at bottom" and allow auto-scroll to continue.  A loose value (240px)
-  // keeps the experience close to Telegram-like: even if someone is browsing
-  // the last couple of bubbles, new incoming messages still pull them to the
-  // bottom instead of showing the "new messages below" chip.
+  // px-from-bottom that still counts as "at the tail". 64px is enough to
+  // forgive a half-bubble visible while still feeling like the user is
+  // tracking the live conversation; tighter values caused the chat to flag
+  // itself "scrolled up" on a single accidental wheel tick.
   const AUTOSCROLL_STICK_PX = TELEGRAM_BEHAVIOR.autoscroll.stickPx
 
-  const scrollToBottomInstant = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    // Double-RAF: first frame for layout flush (avatars / bubble borders),
-    // second frame for late-loading content that mutates height after paint.
-    el.scrollTop = el.scrollHeight
-    requestAnimationFrame(() => {
-      if (!ref.current) return
-      ref.current.scrollTop = ref.current.scrollHeight
-      requestAnimationFrame(() => {
-        if (!ref.current) return
-        ref.current.scrollTop = ref.current.scrollHeight
-      })
-    })
-  }, [])
-
-  // Live "near bottom" probe — used by autoscroll handlers instead of a
-  // stale ref so content growth that happens between scroll events still
-  // makes the right decision.
-  const isNearBottomNow = useCallback(() => {
+  /** True iff the scroller is currently within AUTOSCROLL_STICK_PX of the bottom. */
+  const measureAtBottom = useCallback(() => {
     const el = ref.current
     if (!el) return true
-    return (
-      el.scrollHeight - el.scrollTop - el.clientHeight < AUTOSCROLL_STICK_PX
-    )
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= AUTOSCROLL_STICK_PX
   }, [AUTOSCROLL_STICK_PX])
 
-  const handleScroll = useCallback(() => {
-    const near = isNearBottomNow()
-    isNearBottomRef.current = near
-    if (near) {
-      setHasNewBelow(false)
-      setNewMsgCount(0)
-    }
-  }, [isNearBottomNow])
+  /** Hard snap to bottom. Used everywhere — smooth scroll races with
+   *  resize observers and made the viewport jitter. */
+  const snapToBottom = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [])
 
+  // 1) USER SCROLL — the only signal that flips `wasPinnedRef`.
+  //    We update on every scroll event, but only after the user has actually
+  //    moved (programmatic snapToBottom calls also fire `scroll`; we filter
+  //    by checking position).
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    el.addEventListener('scroll', handleScroll, { passive: true })
-    return () => el.removeEventListener('scroll', handleScroll)
-  }, [handleScroll])
+    const onScroll = () => {
+      const atBottom = measureAtBottom()
+      wasPinnedRef.current = atBottom
+      if (atBottom) {
+        setHasNewBelow(false)
+        setNewMsgCount(0)
+      }
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [measureAtBottom])
 
-  // Autoscroll on content growth. Three independent signals feed the same
-  // debounced flush:
-  //   1. MutationObserver on the scroll container — catches new <MessageRow>
-  //      children being mounted (the actual "new message" event).
-  //   2. ResizeObserver on *all* direct children — catches a bubble growing
-  //      vertically after its image finishes decoding.
-  //   3. Bubbled <img>/<video> load / loadedmetadata — the cheapest signal
-  //      for late-decoding media on older Safari where the observers lag.
-  //
-  // In every case we only scroll when the user was already pinned near the
-  // bottom — we NEVER override an explicit scroll-up by the user.
+  // 2) CONTENT GROWTH — autoscroll only if the user was pinned at the bottom
+  //    BEFORE the growth. We snapshot `wasPinnedRef` at the start of each
+  //    observed mutation so a mid-growth `scroll` event (fired by browsers
+  //    when the document height changes) can't poison the decision.
   useEffect(() => {
     const el = ref.current
     if (!el) return
 
     let raf = 0
-    const flush = () => {
-      if (!ref.current) return
-      ref.current.scrollTop = ref.current.scrollHeight
-    }
-    const schedule = () => {
-      // Re-check live — `isNearBottomRef` is only updated on scroll events,
-      // so it can lie when content grows without the user touching anything.
-      if (!isNearBottomNow() && !isNearBottomRef.current) return
+    const followIfPinned = () => {
+      if (!wasPinnedRef.current) return
       if (raf) cancelAnimationFrame(raf)
-      // Double RAF absorbs layout jumps chained off the same frame
-      // (bubble mounts → its avatar image decodes one frame later).
       raf = requestAnimationFrame(() => {
-        flush()
-        raf = requestAnimationFrame(flush)
+        snapToBottom()
+        // Second pass for late-decoding media that mutates height a frame
+        // after the bubble mounts.
+        raf = requestAnimationFrame(snapToBottom)
       })
     }
 
-    let ro: ResizeObserver | null = null
-    if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(schedule)
-      ro.observe(el)
-      // Observe every current direct child so media re-layout inside a
-      // specific bubble fires the handler even if the container height
-      // stays constant.
-      Array.from(el.children).forEach((child) => ro!.observe(child))
-    }
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(followIfPinned) : null
+    ro?.observe(el)
 
-    // MutationObserver picks up newly appended message rows — unlike
-    // ResizeObserver this fires IMMEDIATELY on mount, before media decode.
     const mo = new MutationObserver((records) => {
       for (const rec of records) {
-        rec.addedNodes.forEach((node) => {
-          if (node instanceof Element && ro) {
-            ro.observe(node)
-          }
+        rec.addedNodes.forEach((n) => {
+          if (n instanceof Element && ro) ro.observe(n)
         })
       }
-      schedule()
+      followIfPinned()
     })
     mo.observe(el, { childList: true, subtree: false })
 
-    // Late media decode fallback.
     const onMediaLoad = (ev: Event) => {
-      const tgt = ev.target as Element | null
-      if (!tgt) return
-      if (tgt.tagName !== 'IMG' && tgt.tagName !== 'VIDEO') return
-      schedule()
+      const t = ev.target as Element | null
+      if (t && (t.tagName === 'IMG' || t.tagName === 'VIDEO')) followIfPinned()
     }
     el.addEventListener('load', onMediaLoad, true)
     el.addEventListener('loadedmetadata', onMediaLoad, true)
@@ -370,49 +336,44 @@ export function ChatTerminal({
       el.removeEventListener('loadedmetadata', onMediaLoad, true)
       if (raf) cancelAnimationFrame(raf)
     }
-  }, [isNearBottomNow])
+  }, [snapToBottom])
 
+  // 3) NEW MESSAGE — the dominant trigger. Scroll if (a) sent by me, OR
+  //    (b) the user was already at the bottom. Otherwise show the
+  //    "N new messages below" chip without yanking their viewport.
   useEffect(() => {
     if (messages.length === 0) {
       lastMsgKeyRef.current = null
       return
     }
-
     const newest = messages[messages.length - 1]
-    // Identity key is (id, created_at) — survives the ring-buffer eviction
-    // where length stays constant while the tail rotates.
     const key = `${newest.id}:${newest.created_at}`
-    const prevKey = lastMsgKeyRef.current
-    lastMsgKeyRef.current = key
-
-    // First render of this chat — useLayoutEffect below already snapped
-    // us to the bottom. Don't fight it.
     if (firstMessagesRenderRef.current) {
       firstMessagesRenderRef.current = false
+      lastMsgKeyRef.current = key
       return
     }
-
-    if (prevKey === key) return // same tail → nothing new
+    if (lastMsgKeyRef.current === key) return
+    lastMsgKeyRef.current = key
 
     const sentByMe = newest.sender_id === userId
-    const nearBottom = isNearBottomNow() || isNearBottomRef.current
-
-    if (nearBottom || sentByMe) {
-      // TG behaviour: own sends always smooth-snap; incoming snaps instant
-      // so the user never sees the bubble appear off-screen.
-      if (sentByMe && ref.current) {
-        ref.current.scrollTo({ top: ref.current.scrollHeight, behavior: 'smooth' })
-      } else {
-        scrollToBottomInstant()
-      }
-      isNearBottomRef.current = true
+    if (sentByMe || wasPinnedRef.current) {
+      // Pin — re-snap on the next frame to catch the late-mounted bubble.
+      requestAnimationFrame(() => {
+        snapToBottom()
+        requestAnimationFrame(snapToBottom)
+      })
+      wasPinnedRef.current = true
       setHasNewBelow(false)
       setNewMsgCount(0)
     } else {
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + 1)
     }
-  }, [messages, userId, scrollToBottomInstant, isNearBottomNow])
+  }, [messages, userId, snapToBottom])
+
+  // Backwards-compat alias used by the chat-switch layout effect below.
+  const scrollToBottomInstant = snapToBottom
 
   const scrollToBottom = useCallback(() => {
     const el = ref.current
@@ -489,7 +450,7 @@ export function ChatTerminal({
     firstUnreadIdRef.current = null
     didScrollToUnreadRef.current = false
     setFirstUnreadAnchorId(null)
-    isNearBottomRef.current = true
+    wasPinnedRef.current = true
     setHasNewBelow(false)
     setNewMsgCount(0)
 
@@ -562,7 +523,7 @@ export function ChatTerminal({
         target.scrollIntoView({ block: 'start' })
         // Pull back slightly so the "Unread messages" divider above is visible.
         scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop - 52)
-        isNearBottomRef.current = false
+        wasPinnedRef.current = false
       })
     })
   }, [firstUnreadAnchorId])

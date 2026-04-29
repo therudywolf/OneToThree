@@ -5,6 +5,7 @@
  */
 
 import { API_URL } from '@/lib/api/auth'
+import { fetchWithTimeout } from '@/lib/api/fetch'
 
 const RETRY_DELAYS_MS = [250, 800, 1600] as const
 
@@ -235,7 +236,7 @@ async function parsePushFault(res: Response): Promise<{ error?: string }> {
 
 async function requestPushSync(path: '/push/subscribe' | '/push/unsubscribe', init: RequestInit): Promise<void> {
   await withRetry(async () => {
-    const res = await fetch(`${API_URL}${path}`, init)
+    const res = await fetchWithTimeout(`${API_URL}${path}`, init)
     if (res.ok) return
 
     const fault = await parsePushFault(res)
@@ -247,7 +248,7 @@ async function requestPushSync(path: '/push/subscribe' | '/push/unsubscribe', in
 
 async function requestNativePushSync(path: '/push/native/register' | '/push/native/unregister', init: RequestInit): Promise<void> {
   await withRetry(async () => {
-    const res = await fetch(`${API_URL}${path}`, init)
+    const res = await fetchWithTimeout(`${API_URL}${path}`, init)
     if (res.ok) return
     const fault = await parsePushFault(res)
     const err = new Error(fault.error ?? `NATIVE_PUSH_REQUEST_FAILED_${res.status}`) as PushHttpError

@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 
 import { API_URL } from '@/lib/api/auth'
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { DEFAULT_PUBLIC_API_ROOT, normalizeApiRoot, normalizeHttpOrigin } from '@/lib/api/url'
 
 const CACHE_WINDOW_MS = 30_000
@@ -143,7 +144,7 @@ function resolveIceEndpointCandidates(): string[] {
 }
 
 async function fetchIcePayload(endpoint: string): Promise<IceEndpointPayload> {
-  const res = await fetch(endpoint, {
+  const res = await fetchWithTimeout(endpoint, {
     method: 'GET',
     credentials: 'include',
     headers: { accept: 'application/json' },

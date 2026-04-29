@@ -1,6 +1,7 @@
 'use client'
 
 import { API_URL } from '@/lib/api/auth'
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import {
   decryptMessage,
   deriveSharedSecret,
@@ -42,7 +43,7 @@ export async function buildChatCryptoContext(
   myUserId: string,
   privateKey: CryptoKey
 ): Promise<ChatCryptoContext | null> {
-  const response = await fetch(`${API_URL}/chats/${chatId}`, { credentials: 'include' })
+  const response = await fetchWithTimeout(`${API_URL}/chats/${chatId}`, { credentials: 'include' })
   if (!response.ok) return null
 
   const { chat, members } = (await response.json()) as SectorDetailResponse
@@ -124,7 +125,7 @@ export async function buildChatCryptoContextWithMeta(
   peerUserId: string | null
   chatType: string
 } | null> {
-  const response = await fetch(`${API_URL}/chats/${chatId}`, { credentials: 'include' })
+  const response = await fetchWithTimeout(`${API_URL}/chats/${chatId}`, { credentials: 'include' })
   if (!response.ok) return null
   const { chat, members } = (await response.json()) as SectorDetailResponse
 

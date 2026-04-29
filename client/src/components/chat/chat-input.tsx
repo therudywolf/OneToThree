@@ -401,15 +401,27 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     }
   }
 
+  const ALBUM_HARD_CAP = 9
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return
-    setFileQueue(Array.from(e.target.files).map((file) => ({ file, mediaType: detectMediaType(file) })))
+    const all = Array.from(e.target.files)
+    if (all.length > ALBUM_HARD_CAP) {
+      toastError(`Max ${ALBUM_HARD_CAP} files per album. ${all.length - ALBUM_HARD_CAP} dropped.`, { title: 'Media' })
+    }
+    const queued = all
+      .slice(0, ALBUM_HARD_CAP)
+      .map((file) => ({ file, mediaType: detectMediaType(file) }))
+    setFileQueue(queued)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  // TG-Desktop caps albums at 10; we use 9 because it's the visual sweet spot
+  // for the 3x3 grid layout used by AlbumBubble. Larger picks fall back to
+  // sequential single sends (no grouping).
+  const ALBUM_MAX = 9
   const canAlbum = (items: QueuedFile[]) =>
     items.length >= 2 &&
-    items.length <= 10 &&
+    items.length <= ALBUM_MAX &&
     items.every((it) => it.mediaType === 'image' || it.mediaType === 'video')
 
   const handlePreviewSend = useCallback(async (caption: string) => {

@@ -17,6 +17,7 @@
  */
 
 import { API_URL } from '@/lib/api/auth'
+import { fetchWithTimeout } from '@/lib/api/fetch'
 import { deriveSharedSecret, encryptMessage, decryptMessage, importEcdhPublicKey } from './crypto'
 
 export type DeviceSlot = {
@@ -30,7 +31,7 @@ export type DeviceSlot = {
  * Returns only devices that have an ecdh_public_key.
  */
 export async function fetchUserDevices(userId: string): Promise<DeviceSlot[]> {
-  const res = await fetch(`${API_URL}/users/${userId}/devices`, { credentials: 'include' })
+  const res = await fetchWithTimeout(`${API_URL}/users/${userId}/devices`, { credentials: 'include' })
   if (!res.ok) return []
   const { devices } = (await res.json()) as {
     devices?: Array<{

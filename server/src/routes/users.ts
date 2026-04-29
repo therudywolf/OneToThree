@@ -92,7 +92,12 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   const s3 = createS3Client()
   const presignS3 = createS3ClientForPresigning()
 
-  app.post('/me/vault/change-pin', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async (request, reply) => {
+  app.post('/me/vault/change-pin', {
+    // Vault blob is opaque ciphertext; ~512 KiB ceiling protects against
+    // pathological PBKDF2/Argon2 wrapping payloads.
+    bodyLimit: 512 * 1024,
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 

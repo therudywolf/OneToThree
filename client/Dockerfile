@@ -36,6 +36,14 @@ ENV NEXT_PUBLIC_GIPHY_API_KEY=$NEXT_PUBLIC_GIPHY_API_KEY
 ENV MINIO_PUBLIC_URL=$MINIO_PUBLIC_URL
 ENV NEXT_PUBLIC_DR_ENABLED=$NEXT_PUBLIC_DR_ENABLED
 
+# NEXT_PUBLIC_API_URL is baked into the client bundle at build time. If it
+# leaks through as empty the SPA silently points at the upstream default
+# `https://api.onetothree.ru` and any non-default deployment is unreachable.
+# Fail fast so the misconfig surfaces in CI/build logs rather than at runtime
+# as "click login, nothing happens".
+RUN test -n "${NEXT_PUBLIC_API_URL}" \
+  || (echo "[build] FATAL: NEXT_PUBLIC_API_URL build-arg is empty. Set it in docker-compose args." && exit 1)
+
 RUN printf '%s\n' \
   "NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}" \
   "NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}" \

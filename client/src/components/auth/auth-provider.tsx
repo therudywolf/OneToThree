@@ -109,6 +109,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (bootstrappedRef.current) return
     bootstrappedRef.current = true
+    // One-shot diagnostic line so a deploy with the wrong NEXT_PUBLIC_API_URL
+    // is obvious in the browser console — this is the #1 cause of the
+    // "click login, nothing happens" misconfig.
+    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      try {
+        console.info('[p13:boot]', {
+          page: window.location.origin,
+          api: process.env.NEXT_PUBLIC_API_URL?.trim() || '(same-origin /api proxy)',
+          ws: process.env.NEXT_PUBLIC_WS_ORIGIN?.trim() || '(derived from API_URL)',
+        })
+      } catch { /* ignore */ }
+    }
     setLoading(true)
     void warmNativeSessionCookies().finally(() => refresh())
   }, [refresh])

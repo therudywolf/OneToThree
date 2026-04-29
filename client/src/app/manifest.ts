@@ -48,15 +48,6 @@ export default function manifest(): MetadataRoute.Manifest {
         ],
       },
     ],
-    screenshots: [
-      {
-        src: '/og.png',
-        sizes: '1200x630',
-        type: 'image/png',
-        label: 'OneToThree home screen',
-      },
-    ],
-
     /**
      * RESOURCE_ASSETS
      * Иконки должны удовлетворять обоим типам: 'any' для точности

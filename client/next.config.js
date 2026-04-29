@@ -93,6 +93,13 @@ try {
     skipWaiting: true,
     disable: process.env.NODE_ENV === 'development',
     importScripts: ['/push-handler.js'],
+    // The default `cacheStartUrl: true` registers a NetworkFirst handler for
+    // `/` that morphs `opaqueredirect` into a `200`. If the home route ever
+    // serves an auth-guard redirect (e.g. `/` → `/login`) that fake-200 gets
+    // cached and pins the PWA on the login screen even after the user has a
+    // valid session. Skip it — the precache + standard NetworkOnly fallback
+    // are enough.
+    cacheStartUrl: false,
     runtimeCaching: [
       {
         urlPattern: /^https?:\/\/[^/]+\/(_next\/static|icon-\d+\.png|wolf-logo\.png|manifest\.webmanifest)/,

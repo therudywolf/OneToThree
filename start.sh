@@ -234,6 +234,47 @@ append_service_once() {
   UPDATE_SERVICES+=("$service")
 }
 
+wait_healthy() {
+  local service="$1" label="${2:-$1}" max_wait="${3:-120}"
+  local elapsed=0 interval=3
+  printf "  %-14s " "$label"
+
+  local container
+  container=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$service" 2>/dev/null | head -1)
+
+  if [[ -z "$container" ]]; then
+    echo -e " ${YEL}⚠ не найден${NC}"
+    return 1
+  fi
+
+  while true; do
+    local health_status
+    health_status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "unknown")
+
+    case "$health_status" in
+      healthy)   echo -e " ${GRN}✓ healthy${NC}"; return 0 ;;
+      unhealthy) echo -e " ${RED}✗ unhealthy${NC}"
+                 docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' "$container" 2>/dev/null | tail -3
+                 return 1 ;;
+      running)   echo -e " ${GRN}✓ running${NC}"; return 0 ;;
+      starting)  ;;
+    esac
+
+    sleep "$interval"
+    elapsed=$((elapsed + interval))
+    printf "."
+    if [[ "$elapsed" -ge "$max_wait" ]]; then
+      health_status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "unknown")
+      if [[ "$health_status" == "healthy" || "$health_status" == "running" ]]; then
+        echo -e " ${GRN}✓ ${health_status}${NC}"
+        return 0
+      fi
+      echo -e " ${YEL}⚠ timeout (${health_status})${NC}"
+      return 1
+    fi
+  done
+}
+
 detect_update_services() {
   local diff_range="$1"
   local changed_file
@@ -446,20 +487,66 @@ case "$CMD" in
       exit 1
     fi
 
-    log "Проверяю состояние сервисов после обновления..."
-    if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps >/dev/null 2>&1; then
-      die "Сервисы не отвечают после update. Проверьте ./start.sh logs"
+    # Wait for all updated services to become healthy
+    sep
+    log "Жду готовности обновлённых сервисов..."
+    UPDATE_OK=true
+    for _svc in db redis minio api web; do
+      if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -qx "$_svc"; then
+        _label="$_svc"
+        case "$_svc" in
+          db)    _label="ПостгреС" ; _wait=60  ;;
+          redis) _label="Redis"    ; _wait=60  ;;
+          minio) _label="MinIO"    ; _wait=60  ;;
+          api)   _label="API"      ; _wait=120 ;;
+          web)   _label="Next.js"  ; _wait=180 ;;
+        esac
+        wait_healthy "$_svc" "$_label" "$_wait" || UPDATE_OK=false
+      fi
+    done
+
+    # HTTP smoke test — verify the API /health endpoint is reachable
+    _api_url="$(val_for_key NEXT_PUBLIC_API_URL)"
+    if [[ -n "$_api_url" ]]; then
+      log "Smoke-тест: GET ${_api_url}/health"
+      if curl -fsS --max-time 15 "${_api_url}/health" >/dev/null 2>&1; then
+        ok "Smoke-тест: /health — OK"
+      else
+        warn "Smoke-тест: /health не ответил (сервис может ещё стартовать). Проверьте: ./start.sh logs"
+        UPDATE_OK=false
+      fi
     fi
 
-    # `${#arr[@]:-0}` is not valid bash — length and default-value cannot be
-    # combined on the same expansion.  Check unbound/unset first.
+    # Auto-sync TURN TLS certs when Caddy is up but certs not yet copied
+    _turn_tls_dir="${ROOT}/docker/coturn/tls"
+    if [[ ! -f "${_turn_tls_dir}/fullchain.pem" || ! -f "${_turn_tls_dir}/privkey.pem" ]]; then
+      _caddy_cid=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q caddy 2>/dev/null | head -1 || true)
+      if [[ -n "$_caddy_cid" ]]; then
+        log "Попытка автосинхронизации TLS-сертификатов TURN..."
+        if bash "${ROOT}/scripts/sync-turn-certs.sh" --quiet 2>/dev/null; then
+          ok "TURN TLS-сертификаты синхронизированы — перезапускаю coturn."
+          "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart coturn 2>/dev/null || true
+        else
+          warn "TURN TLS ещё не готовы (Caddy не получил cert). После выдачи cert: ./scripts/sync-turn-certs.sh && docker compose restart coturn"
+        fi
+      fi
+    fi
+
     if [[ -n "${UPDATE_HINTS+x}" && ${#UPDATE_HINTS[@]} -gt 0 ]]; then
       for hint in "${UPDATE_HINTS[@]}"; do
         warn "$hint"
       done
     fi
 
-    ok "Обновление завершено. Данные сохранены."
+    sep
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
+    sep
+
+    if [[ "$UPDATE_OK" == true ]]; then
+      ok "Обновление завершено. Все проверки прошли. Данные сохранены."
+    else
+      warn "Обновление применено, но некоторые проверки не прошли. Проверьте: ./start.sh logs"
+    fi
     exit 0
     ;;
   tg)
@@ -1088,49 +1175,6 @@ fi
 # =============================================================================
 # ОЖИДАНИЕ ГОТОВНОСТИ
 # =============================================================================
-
-wait_healthy() {
-  local service="$1" label="${2:-$1}" max_wait="${3:-120}"
-  local elapsed=0 interval=3
-  printf "  %-14s " "$label"
-
-  local container
-  container=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q "$service" 2>/dev/null | head -1)
-
-  if [[ -z "$container" ]]; then
-    echo -e " ${YEL}⚠ не найден${NC}"
-    return 1
-  fi
-
-  while true; do
-    local health_status
-    health_status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "unknown")
-
-    case "$health_status" in
-      healthy)   echo -e " ${GRN}✓ healthy${NC}"; return 0 ;;
-      unhealthy) echo -e " ${RED}✗ unhealthy${NC}"
-                 docker inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' "$container" 2>/dev/null | tail -3
-                 return 1 ;;
-      running)
-        echo -e " ${GRN}✓ running${NC}"; return 0 ;;
-      starting)
-        ;;
-    esac
-
-    sleep "$interval"
-    elapsed=$((elapsed + interval))
-    printf "."
-    if [[ "$elapsed" -ge "$max_wait" ]]; then
-      health_status=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "unknown")
-      if [[ "$health_status" == "healthy" || "$health_status" == "running" ]]; then
-        echo -e " ${GRN}✓ ${health_status}${NC}"
-        return 0
-      fi
-      echo -e " ${YEL}⚠ timeout (${health_status})${NC}"
-      return 1
-    fi
-  done
-}
 
 all_healthy=true
 for svc in db redis minio api web; do

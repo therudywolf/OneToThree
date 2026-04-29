@@ -393,3 +393,32 @@ export async function unshareStickerPack(packId: string, userId: string): Promis
     throw new Error(err.error ?? `UNSHARE_PACK_${res.status}`)
   }
 }
+
+export async function setPackVisibility(packId: string, isPublic: boolean): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/visibility`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_public: isPublic }),
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `SET_VISIBILITY_${res.status}`)
+  }
+}
+
+export type PackPreview = {
+  id: string
+  title: string
+  format: string
+  sticker_count: number
+}
+
+export async function fetchPackPreview(packId: string): Promise<PackPreview> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/preview`)
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `PREVIEW_${res.status}`)
+  }
+  return (await res.json()) as PackPreview
+}

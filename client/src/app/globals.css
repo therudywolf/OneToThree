@@ -1791,9 +1791,9 @@ select {
     flex-shrink: 0;
   }
   .chat-layout-sidebar[data-collapsed='true'] {
-    width: var(--p13-sb-w, 5.5rem);
-    min-width: var(--p13-sb-w, 5.5rem);
-    max-width: var(--p13-sb-w, 5.5rem);
+    width: var(--p13-sb-w, 7.5rem);
+    min-width: var(--p13-sb-w, 7.5rem);
+    max-width: var(--p13-sb-w, 7.5rem);
   }
   .chat-layout-main {
     min-width: 22rem;

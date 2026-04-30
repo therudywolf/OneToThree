@@ -150,6 +150,12 @@ export const MESSAGE_CACHED_EVENT = 'p13:message-cached'
 export async function cacheMessage(node: DecryptedMessage): Promise<void> {
   if (typeof indexedDB === 'undefined') return
   if (deletedMessageIds.has(node.id)) return
+  // Never persist DECRYPT_FAIL into IndexedDB. If a row failed once due to a
+  // transient state (key rotation, missing history, race with vault unlock),
+  // the next page load might decrypt it successfully via the candidate-key
+  // fallback — but only if no stale failure row is sitting in the cache to
+  // shadow it. cacheMessages() in the bulk path applies the same guard.
+  if (node.plaintext === '[DECRYPT_FAIL]') return
   const conn = await initConnection()
   await conn.put('message_feed', node)
   scheduleTrace(() => indexNodeContent(node))

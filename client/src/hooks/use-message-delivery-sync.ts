@@ -6,7 +6,7 @@ import {
   fetchPendingDeliveries,
 } from '@/lib/api/messages'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
-import { decryptApiMessageRows, type DrContext } from '@/lib/decrypt-chat-api-message'
+import { decryptApiMessageRows, type DrContext, type DecryptHints } from '@/lib/decrypt-chat-api-message'
 import { BATCH_WORKER_MIN } from '@/lib/crypto-batch-worker'
 import { getFmSocket } from '@/lib/api/socket'
 import { cacheMessage } from '@/lib/message-cache'
@@ -21,7 +21,8 @@ async function pullPendingForChat(
   cryptoCtx: ChatCryptoContext,
   drCtx: DrContext | undefined,
   appendMessage: (m: DecryptedMessage) => void,
-  setDecryptBusy?: (busy: boolean) => void
+  setDecryptBusy?: (busy: boolean) => void,
+  hints?: DecryptHints
 ): Promise<void> {
   const rows = await fetchPendingDeliveries(chatId)
   if (rows.length === 0) return
@@ -38,7 +39,8 @@ async function pullPendingForChat(
       unwrappedPrivateKey,
       cryptoCtx,
       rows,
-      drCtx
+      drCtx,
+      hints
     )
   } finally {
     if (showBusy) setDecryptBusy?.(false)
@@ -62,6 +64,7 @@ export function useMessageDeliverySync(
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const userId = useSessionStore((s) => s.userId)
+  const myEcdhPublicKeyJwk = useSessionStore((s) => s.myEcdhPublicKeyJwk)
   const appendMessage = useChatStore((s) => s.appendMessage)
   const setHistoryDecryptBusy = useUnreadStore((s) => s.setHistoryDecryptBusy)
   const prevConnected = useRef(false)
@@ -74,6 +77,7 @@ export function useMessageDeliverySync(
         const chatId = useSessionStore.getState().activeChatId
         const pk = useSessionStore.getState().unwrappedPrivateKey
         const ownerUserId = useSessionStore.getState().userId
+        const myPub = useSessionStore.getState().myEcdhPublicKeyJwk
         const ctx = cryptoCtx
         const drCtx: DrContext | undefined =
           ownerUserId && directPeerUserId
@@ -86,7 +90,8 @@ export function useMessageDeliverySync(
             ctx,
             drCtx,
             appendMessage,
-            setHistoryDecryptBusy
+            setHistoryDecryptBusy,
+            { myUserId: ownerUserId ?? undefined, myEcdhPublicKeyJwk: myPub }
           ).catch(() => {
             /* ignore transient sync errors */
           })
@@ -110,7 +115,8 @@ export function useMessageDeliverySync(
       cryptoCtx,
       drCtx,
       appendMessage,
-      setHistoryDecryptBusy
+      setHistoryDecryptBusy,
+      { myUserId: userId ?? undefined, myEcdhPublicKeyJwk }
     ).catch(() => {
       /* ignore */
     })
@@ -120,6 +126,7 @@ export function useMessageDeliverySync(
     directPeerUserId,
     unwrappedPrivateKey,
     userId,
+    myEcdhPublicKeyJwk,
     appendMessage,
     setHistoryDecryptBusy,
   ])

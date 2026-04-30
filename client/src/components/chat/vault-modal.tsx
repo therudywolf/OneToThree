@@ -90,6 +90,7 @@ type Props = {
 export function VaultModal({ userId, displayHandle }: Props) {
   const { t } = useTranslation()
   const setUnwrappedPrivateKey = useSessionStore((s) => s.setUnwrappedPrivateKey)
+  const setMyEcdhPublicKeyJwk = useSessionStore((s) => s.setMyEcdhPublicKeyJwk)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
   const BiometricIcon = useBiometricIcon()
@@ -116,12 +117,17 @@ export function VaultModal({ userId, displayHandle }: Props) {
       const key = await importEcdhPrivateKey(ecdhJwk)
       setUnwrappedPrivateKey(key)
 
+      // Cache the matching public JWK so the decrypt path can do a sender-aware
+      // fallback (self-sent legacy DIRECT messages need MY public key, not peer's).
+      const myPubJwk = exportEcdhPublicJwkFromPrivateKeyString(ecdhJwk)
+      setMyEcdhPublicKeyJwk(myPubJwk)
+
       // Upload ECDH public key so fan-out can find this device.
       // Retry once — transient network errors are common on vault unlock.
       let ecdhUploaded = false
       for (let attempt = 0; attempt < 2 && !ecdhUploaded; attempt++) {
         try {
-          await patchMyEcdhPublicKey(exportEcdhPublicJwkFromPrivateKeyString(ecdhJwk))
+          await patchMyEcdhPublicKey(myPubJwk)
           ecdhUploaded = true
         } catch { /* retry */ }
       }
@@ -161,7 +167,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
 
       setPin('')
     },
-    [setUnwrappedPrivateKey, t, userId]
+    [setUnwrappedPrivateKey, setMyEcdhPublicKeyJwk, t, userId]
   )
 
   async function handleUnlock(e: React.FormEvent) {

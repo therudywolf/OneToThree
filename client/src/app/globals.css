@@ -1952,14 +1952,6 @@ select {
   border-left: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
 }
 
-/* First-paint stabilization: the scroll container renders with
- * visibility:hidden until chat-terminal runs its synchronous
- * scroll-positioning useLayoutEffect.  This ELIMINATES the
- * "chat flies down from the middle" visible jump on chat switch. */
-.chat-scroll[data-stabilizing="true"] {
-  visibility: hidden;
-}
-
 /* Privacy: blank chat content when the page loses focus / visibility.
  * Best-effort defence against casual screen-share; OS-level capture is
  * NOT blocked. The viewport is replaced with a uniform tint so observers
@@ -2089,6 +2081,11 @@ select {
 
 .chat-scroll {
   overflow-x: hidden;
+  /* Sticky/anchor positioning is owned by useStickyScroll. Disable browser
+   * native scroll anchoring so the two systems do not double-correct
+   * scrollTop on layout mutations (Safari's anchoring is incomplete and
+   * Chrome's would race our restoreNow rAF). */
+  overflow-anchor: none;
 }
 
 .p13-settings-modal {

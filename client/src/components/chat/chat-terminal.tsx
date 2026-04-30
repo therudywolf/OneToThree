@@ -33,6 +33,7 @@ import { UserAvatar } from '@/components/user-avatar'
 import { createDirectE2EChat, fetchChatsList, type ApiChatRow, type ChatMemberRole } from '@/lib/api/chats'
 import { canonicalUserId } from '@/lib/user-id'
 import { useReadReceipts } from '@/hooks/use-read-receipts'
+import { useStickyScroll } from '@/hooks/use-sticky-scroll'
 import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
 import { MediaLightbox } from '@/components/chat/media-lightbox'
@@ -226,13 +227,10 @@ export function ChatTerminal({
   } | null>(null)
   // === Autoscroll state ===
   //
-  // `wasPinnedRef` is the SOURCE OF TRUTH for "is the user currently
-  // following the bottom of the conversation". It flips to false only when
-  // the user explicitly scrolls away (wheel / touchmove / scroll event that
-  // ends with a non-bottom position) and back to true when they hit the
-  // bottom again. Content growth NEVER mutates this ref — that was the
-  // root cause of the previous flakiness.
-  const wasPinnedRef = useRef(true)
+  // Sticky/anchor scroll is owned by useStickyScroll (see ./use-sticky-scroll
+  // for the design). chat-terminal only tracks "did the tail change?" and the
+  // floating "new messages below" chip; everything position-related lives in
+  // the hook.
   const [hasNewBelow, setHasNewBelow] = useState(false)
   // Tail identity (id, created_at). Survives the 50-msg ring buffer where
   // `messages.length` stays constant while the tail rotates.
@@ -241,7 +239,6 @@ export function ChatTerminal({
   const swipeRef = useRef<{ startX: number; startY: number; msgId: string } | null>(null)
   const [swipingMsgId, setSwipingMsgId] = useState<string | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
-  const prevScrollHeightRef = useRef(0)
 
   // Forward modal
   const [forwardMsg, setForwardMsg] = useState<DecryptedMessage | null>(null)
@@ -304,96 +301,23 @@ export function ChatTerminal({
 
   useReadReceipts(ref, { enabled: !isGroup })
 
-  // px-from-bottom that still counts as "at the tail". 64px is enough to
-  // forgive a half-bubble visible while still feeling like the user is
-  // tracking the live conversation; tighter values caused the chat to flag
-  // itself "scrolled up" on a single accidental wheel tick.
-  const AUTOSCROLL_STICK_PX = TELEGRAM_BEHAVIOR.autoscroll.stickPx
-
-  /** True iff the scroller is currently within AUTOSCROLL_STICK_PX of the bottom. */
-  const measureAtBottom = useCallback(() => {
-    const el = ref.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= AUTOSCROLL_STICK_PX
-  }, [AUTOSCROLL_STICK_PX])
-
-  /** Hard snap to bottom. Used everywhere — smooth scroll races with
-   *  resize observers and made the viewport jitter. */
-  const snapToBottom = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
+  const onAtBottomChange = useCallback((atBottom: boolean) => {
+    if (atBottom) {
+      setHasNewBelow(false)
+      setNewMsgCount(0)
+    }
   }, [])
+  const sticky = useStickyScroll(ref, {
+    thresholdPx: TELEGRAM_BEHAVIOR.autoscroll.stickPx,
+    onAtBottomChange,
+  })
+  const { isAtBottomRef, jumpToBottom, smoothToBottom, captureAnchor } = sticky
 
-  // 1) USER SCROLL — the only signal that flips `wasPinnedRef`.
-  //    We update on every scroll event, but only after the user has actually
-  //    moved (programmatic snapToBottom calls also fire `scroll`; we filter
-  //    by checking position).
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const onScroll = () => {
-      const atBottom = measureAtBottom()
-      wasPinnedRef.current = atBottom
-      if (atBottom) {
-        setHasNewBelow(false)
-        setNewMsgCount(0)
-      }
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [measureAtBottom])
-
-  // 2) CONTENT GROWTH — autoscroll only if the user was pinned at the bottom
-  //    BEFORE the growth. We snapshot `wasPinnedRef` at the start of each
-  //    observed mutation so a mid-growth `scroll` event (fired by browsers
-  //    when the document height changes) can't poison the decision.
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-
-    let raf = 0
-    const followIfPinned = () => {
-      if (!wasPinnedRef.current) return
-      if (raf) cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => {
-        snapToBottom()
-        raf = 0
-      })
-    }
-
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(followIfPinned) : null
-    ro?.observe(el)
-
-    const mo = new MutationObserver((records) => {
-      for (const rec of records) {
-        rec.addedNodes.forEach((n) => {
-          if (n instanceof Element && ro) ro.observe(n)
-        })
-      }
-      followIfPinned()
-    })
-    mo.observe(el, { childList: true, subtree: false })
-
-    const onMediaLoad = (ev: Event) => {
-      const t = ev.target as Element | null
-      if (t && (t.tagName === 'IMG' || t.tagName === 'VIDEO')) followIfPinned()
-    }
-    el.addEventListener('load', onMediaLoad, true)
-    el.addEventListener('loadedmetadata', onMediaLoad, true)
-
-    return () => {
-      ro?.disconnect()
-      mo.disconnect()
-      el.removeEventListener('load', onMediaLoad, true)
-      el.removeEventListener('loadedmetadata', onMediaLoad, true)
-      if (raf) cancelAnimationFrame(raf)
-    }
-  }, [snapToBottom])
-
-  // 3) NEW MESSAGE — the dominant trigger. Scroll if (a) sent by me, OR
-  //    (b) the user was already at the bottom. Otherwise show the
-  //    "N new messages below" chip without yanking their viewport.
+  // NEW MESSAGE arrival.
+  //   - sent by me            → force-jump to bottom
+  //   - sent by peer & sticky → hook's RO will re-snap on layout change;
+  //                             nothing to do here.
+  //   - sent by peer & !sticky → flag "N new messages below" chip
   useEffect(() => {
     if (messages.length === 0) {
       lastMsgKeyRef.current = null
@@ -410,28 +334,19 @@ export function ChatTerminal({
     lastMsgKeyRef.current = key
 
     const sentByMe = newest.sender_id === userId
-    if (sentByMe || wasPinnedRef.current) {
-      // Pin — re-snap on the next frame to catch the late-mounted bubble.
-      requestAnimationFrame(snapToBottom)
-      wasPinnedRef.current = true
-      setHasNewBelow(false)
-      setNewMsgCount(0)
-    } else {
+    if (sentByMe) {
+      jumpToBottom()
+    } else if (!isAtBottomRef.current) {
       setHasNewBelow(true)
       setNewMsgCount((prev) => prev + 1)
     }
-  }, [messages, userId, snapToBottom])
-
-  // Backwards-compat alias used by the chat-switch layout effect below.
-  const scrollToBottomInstant = snapToBottom
+  }, [messages, userId, jumpToBottom, isAtBottomRef])
 
   const scrollToBottom = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    smoothToBottom()
     setHasNewBelow(false)
     setNewMsgCount(0)
-  }, [])
+  }, [smoothToBottom])
 
   const renderMessages = useMemo(() => {
     const map = new Map<string, DecryptedMessage>()
@@ -500,37 +415,13 @@ export function ChatTerminal({
     firstUnreadIdRef.current = null
     didScrollToUnreadRef.current = false
     setFirstUnreadAnchorId(null)
-    wasPinnedRef.current = true
     setHasNewBelow(false)
     setNewMsgCount(0)
-
-    // Hide the scroll container for one synchronous paint so we can position
-    // without the user seeing a flight-from-middle-to-bottom animation. We
-    // flip it back to visible inside a rAF once we've committed a scrollTop.
-    wasPinnedRef.current = true
-    const el = ref.current
-    if (el) {
-      el.setAttribute('data-stabilizing', 'true')
-      // Apply snap synchronously before the paint, then confirm once in rAF.
-      el.scrollTop = el.scrollHeight
-      const raf = requestAnimationFrame(() => {
-        if (!ref.current) return
-        ref.current.scrollTop = ref.current.scrollHeight
-        ref.current.setAttribute('data-stabilizing', 'false')
-      })
-      // Safety net: never leave the chat permanently invisible if the rAF
-      // is starved (heavy decrypt / suspended tab / etc.).
-      const safety = window.setTimeout(() => {
-        ref.current?.setAttribute('data-stabilizing', 'false')
-      }, 280)
-      return () => {
-        cancelAnimationFrame(raf)
-        window.clearTimeout(safety)
-      }
-    } else {
-      scrollToBottomInstant()
-    }
-  }, [activeChatId, scrollToBottomInstant])
+    // Snap to the tail synchronously before the next paint. The hook's
+    // ResizeObserver keeps us pinned as decrypted bubbles mount in (since
+    // jumpToBottom set isAtBottomRef=true), so no flicker.
+    jumpToBottom()
+  }, [activeChatId, jumpToBottom])
 
   // On first batch of loaded messages for this chat, compute the first-unread
   // anchor (oldest message not read by me) if there is one. This lets us
@@ -560,8 +451,10 @@ export function ChatTerminal({
   useEffect(() => {
     if (!firstUnreadAnchorId || didScrollToUnreadRef.current) return
     didScrollToUnreadRef.current = true
-    // Double-rAF to let any pending scroll-to-bottom rAFs from the layout
-    // effect complete first, then override with our unread position.
+    // Double-rAF to let pending hook restorations complete first, then place
+    // the unread divider 52px below the viewport top via the sticky API
+    // (which also captures it as the restoration anchor for any subsequent
+    // layout changes — late media decode, etc).
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const scrollEl = ref.current
@@ -570,13 +463,10 @@ export function ChatTerminal({
           `[data-message-id="${CSS.escape(firstUnreadAnchorId)}"]`
         )
         if (!target) return
-        target.scrollIntoView({ block: 'start' })
-        // Pull back slightly so the "Unread messages" divider above is visible.
-        scrollEl.scrollTop = Math.max(0, scrollEl.scrollTop - 52)
-        wasPinnedRef.current = false
+        sticky.scrollToElement(target, 52)
       })
     })
-  }, [firstUnreadAnchorId])
+  }, [firstUnreadAnchorId, sticky])
 
   // Keep unread divider in sync: if the anchored unread message becomes read,
   // move anchor to next unread or hide the divider completely.
@@ -1044,8 +934,11 @@ export function ChatTerminal({
         const first = entries[0]
         if (!first?.isIntersecting) return
         if (loadingOlder || !hasMoreOlder || !oldestLoaded) return
-        const scrollEl = ref.current
-        if (scrollEl) prevScrollHeightRef.current = scrollEl.scrollHeight
+        // Capture the topmost visible bubble as the anchor. The hook's
+        // ResizeObserver fires after React commits the prepended rows; it
+        // restores this same bubble to the same offset-within-viewport so
+        // the user's reading position never jumps. No scrollHeight math.
+        captureAnchor()
         setLoadingOlder(true)
         void getOlderCachedMessages(
           activeChatId,
@@ -1065,12 +958,6 @@ export function ChatTerminal({
             if (rows.length < OLDER_PAGE_SIZE) {
               setHasMoreOlder(false)
             }
-            requestAnimationFrame(() => {
-              if (scrollEl) {
-                const newHeight = scrollEl.scrollHeight
-                scrollEl.scrollTop += newHeight - prevScrollHeightRef.current
-              }
-            })
           })
           .finally(() => setLoadingOlder(false))
       },
@@ -1085,6 +972,7 @@ export function ChatTerminal({
     oldestLoaded?.id,
     oldestLoaded?.created_at,
     olderMessages.length,
+    captureAnchor,
   ])
 
   if (!activeChatId) {
@@ -1146,7 +1034,6 @@ export function ChatTerminal({
       ) : null}
       <div
         ref={ref}
-        data-stabilizing="true"
         data-privacy-no-copy={privacy.noCopy ? 'true' : undefined}
         data-privacy-blanked={hideForBlur ? 'true' : undefined}
         className={`p13-chat-scroll chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 text-sm [-webkit-overflow-scrolling:touch] sm:px-4 ${privacy.noCopy ? 'select-none' : ''}`}

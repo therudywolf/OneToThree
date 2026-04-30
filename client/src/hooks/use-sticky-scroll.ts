@@ -179,14 +179,18 @@ export function useStickyScroll(
   }, [scrollRef, measureAtBottom, captureAnchor])
 
   // === User input listener ===
-  // Mark events as user-driven for one frame, and cancel any in-flight
-  // programmatic smooth scroll the moment the user touches the wheel/screen.
+  // Mark events as user-driven for ~120ms — long enough for momentum scroll
+  // events to fire and be classified as user-driven by the scroll listener.
+  // (rAF-based reset would race with the scroll rAF and clear the flag
+  // before the scroll handler reads it.)
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
+    let clearTimer: ReturnType<typeof setTimeout> | null = null
     const markUser = () => {
       userInputRef.current = true
-      requestAnimationFrame(() => { userInputRef.current = false })
+      if (clearTimer) clearTimeout(clearTimer)
+      clearTimer = setTimeout(() => { userInputRef.current = false }, 120)
       if (smoothInflightRef.current) {
         smoothInflightRef.current = false
         const top = el.scrollTop
@@ -200,6 +204,7 @@ export function useStickyScroll(
     el.addEventListener('mousedown', markUser, opts)
     el.addEventListener('keydown', markUser)
     return () => {
+      if (clearTimer) clearTimeout(clearTimer)
       el.removeEventListener('wheel', markUser, opts)
       el.removeEventListener('touchstart', markUser, opts)
       el.removeEventListener('mousedown', markUser, opts)

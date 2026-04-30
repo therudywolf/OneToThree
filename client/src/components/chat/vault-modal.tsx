@@ -8,6 +8,7 @@ import {
   importEcdhPrivateKey,
 } from '@/lib/crypto'
 import { patchMyEcdhPublicKey } from '@/lib/api/users'
+import { listEcdhPublicKeys, recordEcdhPublicKey } from '@/lib/ecdh-key-history'
 import { parseVaultPlaintext } from '@/lib/vault-keyring'
 import {
   deriveDrBundleFromEcdhJwk,
@@ -91,6 +92,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
   const { t } = useTranslation()
   const setUnwrappedPrivateKey = useSessionStore((s) => s.setUnwrappedPrivateKey)
   const setMyEcdhPublicKeyJwk = useSessionStore((s) => s.setMyEcdhPublicKeyJwk)
+  const setPriorMyEcdhPublicKeysJwk = useSessionStore((s) => s.setPriorMyEcdhPublicKeysJwk)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
   const BiometricIcon = useBiometricIcon()
@@ -121,6 +123,17 @@ export function VaultModal({ userId, displayHandle }: Props) {
       // fallback (self-sent legacy DIRECT messages need MY public key, not peer's).
       const myPubJwk = exportEcdhPublicJwkFromPrivateKeyString(ecdhJwk)
       setMyEcdhPublicKeyJwk(myPubJwk)
+      // Append-only history so historical messages encrypted to a previous
+      // ECDH public key (after a vault re-import on the same device) can
+      // still be decrypted via the fallback path.
+      try {
+        await recordEcdhPublicKey(userId, myPubJwk)
+        const all = await listEcdhPublicKeys(userId)
+        // Exclude the active key from the prior list — it's already in `myEcdhPublicKeyJwk`.
+        setPriorMyEcdhPublicKeysJwk(all.filter((k) => k !== myPubJwk))
+      } catch {
+        /* best-effort: history is a recovery aid, not a hard requirement */
+      }
 
       // Upload ECDH public key so fan-out can find this device.
       // Retry once — transient network errors are common on vault unlock.
@@ -167,7 +180,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
 
       setPin('')
     },
-    [setUnwrappedPrivateKey, setMyEcdhPublicKeyJwk, t, userId]
+    [setUnwrappedPrivateKey, setMyEcdhPublicKeyJwk, setPriorMyEcdhPublicKeysJwk, t, userId]
   )
 
   async function handleUnlock(e: React.FormEvent) {

@@ -65,6 +65,7 @@ export function useMessageDeliverySync(
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const userId = useSessionStore((s) => s.userId)
   const myEcdhPublicKeyJwk = useSessionStore((s) => s.myEcdhPublicKeyJwk)
+  const priorMyEcdhPublicKeysJwk = useSessionStore((s) => s.priorMyEcdhPublicKeysJwk)
   const appendMessage = useChatStore((s) => s.appendMessage)
   const setHistoryDecryptBusy = useUnreadStore((s) => s.setHistoryDecryptBusy)
   const prevConnected = useRef(false)
@@ -91,7 +92,11 @@ export function useMessageDeliverySync(
             drCtx,
             appendMessage,
             setHistoryDecryptBusy,
-            { myUserId: ownerUserId ?? undefined, myEcdhPublicKeyJwk: myPub }
+            {
+              myUserId: ownerUserId ?? undefined,
+              myEcdhPublicKeyJwk: myPub,
+              priorMyEcdhPublicKeysJwk: useSessionStore.getState().priorMyEcdhPublicKeysJwk,
+            }
           ).catch(() => {
             /* ignore transient sync errors */
           })
@@ -116,7 +121,7 @@ export function useMessageDeliverySync(
       drCtx,
       appendMessage,
       setHistoryDecryptBusy,
-      { myUserId: userId ?? undefined, myEcdhPublicKeyJwk }
+      { myUserId: userId ?? undefined, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk }
     ).catch(() => {
       /* ignore */
     })
@@ -127,6 +132,7 @@ export function useMessageDeliverySync(
     unwrappedPrivateKey,
     userId,
     myEcdhPublicKeyJwk,
+    priorMyEcdhPublicKeysJwk,
     appendMessage,
     setHistoryDecryptBusy,
   ])

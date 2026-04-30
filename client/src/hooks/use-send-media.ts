@@ -245,6 +245,7 @@ export function useSendMedia(
   const userId = useSessionStore(s => s.userId)
   const unwrappedPrivateKey = useSessionStore(s => s.unwrappedPrivateKey)
   const myEcdhPublicKeyJwk = useSessionStore(s => s.myEcdhPublicKeyJwk)
+  const priorMyEcdhPublicKeysJwk = useSessionStore(s => s.priorMyEcdhPublicKeysJwk)
   const appendMessage = useChatStore(s => s.appendMessage)
 
   const transmitBinary = useCallback(
@@ -321,7 +322,7 @@ export function useSendMedia(
         }
 
         if (via === 'REST' && serverMessage) {
-          const decrypted = await decryptApiMessageRow(ctx.unwrappedPrivateKey, ctx.cryptoCtx, serverMessage, undefined, { myUserId: ctx.userId, myEcdhPublicKeyJwk })
+          const decrypted = await decryptApiMessageRow(ctx.unwrappedPrivateKey, ctx.cryptoCtx, serverMessage, undefined, { myUserId: ctx.userId, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk })
           const node =
             (ctx.cryptoCtx.mode === 'DIRECT' || ctx.cryptoCtx.mode === 'SELF') &&
             (decrypted.plaintext === '' || decrypted.plaintext === '[DECRYPT_FAIL]')
@@ -356,7 +357,7 @@ export function useSendMedia(
         throw err
       }
     },
-    [activeChatId, userId, unwrappedPrivateKey, myEcdhPublicKeyJwk, directPeerUserId, cryptoCtx, appendMessage, t]
+    [activeChatId, userId, unwrappedPrivateKey, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk, directPeerUserId, cryptoCtx, appendMessage, t]
   )
 
   /**
@@ -465,7 +466,7 @@ export function useSendMedia(
         }
 
         if (via === 'REST' && serverMessage) {
-          const decrypted = await decryptApiMessageRow(ctx.unwrappedPrivateKey, ctx.cryptoCtx, serverMessage, undefined, { myUserId: ctx.userId, myEcdhPublicKeyJwk })
+          const decrypted = await decryptApiMessageRow(ctx.unwrappedPrivateKey, ctx.cryptoCtx, serverMessage, undefined, { myUserId: ctx.userId, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk })
           const node =
             (ctx.cryptoCtx.mode === 'DIRECT' || ctx.cryptoCtx.mode === 'SELF') &&
             (decrypted.plaintext === '' || decrypted.plaintext === '[DECRYPT_FAIL]')
@@ -500,7 +501,7 @@ export function useSendMedia(
         throw err
       }
     },
-    [activeChatId, userId, unwrappedPrivateKey, myEcdhPublicKeyJwk, directPeerUserId, cryptoCtx, appendMessage, t, transmitBinary]
+    [activeChatId, userId, unwrappedPrivateKey, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk, directPeerUserId, cryptoCtx, appendMessage, t, transmitBinary]
   )
 
   return { transmitBinary, sendMedia: transmitBinary, transmitAlbum, sendAlbum: transmitAlbum }

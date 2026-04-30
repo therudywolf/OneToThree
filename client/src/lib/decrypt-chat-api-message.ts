@@ -101,6 +101,16 @@ type DrContext = { ownerUserId: string; peerUserId: string }
 export type DecryptHints = {
   myUserId?: string
   myEcdhPublicKeyJwk?: string | null
+  /**
+   * Historical public ECDH JWKs this client has used in the past (newest
+   * first). When the active ECDH key has rotated, the receiver's vault still
+   * contains the same private key but old messages may have been encrypted
+   * with an earlier device-side public key. The decrypt fallback walks this
+   * list to recover those rows.
+   */
+  priorMyEcdhPublicKeysJwk?: string[]
+  /** Historical peer ECDH JWKs (same intent, but for the other party). */
+  priorPeerEcdhPublicKeysJwk?: string[]
 }
 
 async function decryptJobsOnMain(
@@ -162,7 +172,10 @@ async function decryptRowPlaintext(
   ) {
     let fallbackKey: string
     if (cryptoCtx.mode === 'SELF') {
-      fallbackKey = cryptoCtx.selfPublicKeyJwk
+      // Prefer the just-unlocked vault key over the server-cached value.
+      // After an ECDH key rotation, server may still return the old jwk in
+      // chat members; the hint always matches the private key in memory.
+      fallbackKey = hints?.myEcdhPublicKeyJwk ?? cryptoCtx.selfPublicKeyJwk
     } else if (
       hints?.myUserId &&
       hints?.myEcdhPublicKeyJwk &&
@@ -172,47 +185,41 @@ async function decryptRowPlaintext(
     } else {
       fallbackKey = cryptoCtx.peerPublicKeyJwk
     }
+    // Build the ordered candidate list of "sender public keys" to try. The
+    // first one is the best guess (pinned-or-fallback). Subsequent entries
+    // cover key-rotation edge cases on either side. Walking the list with a
+    // single try/catch keeps the rotation safety net uniform across SELF and
+    // DIRECT modes.
     const senderKey = row.sender_ecdh_public_key_jwk ?? fallbackKey
-    try {
-      return await decryptFanoutSlot(
-        unwrappedPrivateKey,
-        senderKey,
-        row.device_ciphertext,
-        row.device_iv
-      )
-    } catch (err) {
-      // If pinning was wrong (rare, but observed), retry with the other party's
-      // current key so historical messages survive identity mismatches.
-      if (
-        cryptoCtx.mode === 'DIRECT' &&
-        row.sender_ecdh_public_key_jwk &&
-        senderKey !== cryptoCtx.peerPublicKeyJwk
-      ) {
-        try {
-          return await decryptFanoutSlot(
-            unwrappedPrivateKey,
-            cryptoCtx.peerPublicKeyJwk,
-            row.device_ciphertext,
-            row.device_iv
-          )
-        } catch { /* fall through to original error */ }
-      }
-      if (
-        cryptoCtx.mode === 'DIRECT' &&
-        hints?.myEcdhPublicKeyJwk &&
-        senderKey !== hints.myEcdhPublicKeyJwk
-      ) {
-        try {
-          return await decryptFanoutSlot(
-            unwrappedPrivateKey,
-            hints.myEcdhPublicKeyJwk,
-            row.device_ciphertext,
-            row.device_iv
-          )
-        } catch { /* fall through to original error */ }
-      }
-      throw err
+    const candidates: string[] = [senderKey]
+    const pushUnique = (k: string | null | undefined) => {
+      if (k && !candidates.includes(k)) candidates.push(k)
     }
+    if (cryptoCtx.mode === 'DIRECT') {
+      pushUnique(cryptoCtx.peerPublicKeyJwk)
+      pushUnique(hints?.myEcdhPublicKeyJwk)
+      hints?.priorMyEcdhPublicKeysJwk?.forEach(pushUnique)
+      hints?.priorPeerEcdhPublicKeysJwk?.forEach(pushUnique)
+    } else if (cryptoCtx.mode === 'SELF') {
+      pushUnique(cryptoCtx.selfPublicKeyJwk)
+      pushUnique(hints?.myEcdhPublicKeyJwk)
+      hints?.priorMyEcdhPublicKeysJwk?.forEach(pushUnique)
+    }
+
+    let lastErr: unknown
+    for (const key of candidates) {
+      try {
+        return await decryptFanoutSlot(
+          unwrappedPrivateKey,
+          key,
+          row.device_ciphertext,
+          row.device_iv
+        )
+      } catch (err) {
+        lastErr = err
+      }
+    }
+    throw lastErr ?? new Error('FANOUT_DECRYPT_NO_CANDIDATE')
   }
 
   return decryptInboundText(unwrappedPrivateKey, cryptoCtx, c, iv)

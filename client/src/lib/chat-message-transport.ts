@@ -63,6 +63,10 @@ export type SendChatMessageTransportInput = {
   protocol_version?: 1 | 2
   dr_header?: string | null
   dr_init?: string | null
+  /** Sender's ECDH public JWK at send time. Stamped on the outbox entry so
+   *  a queued send is dropped (instead of replayed) if the user re-imports
+   *  their vault while the message was waiting for connectivity. */
+  my_ecdh_public_key_jwk?: string | null
 }
 
 export type SendChatMessageTransportResult = {
@@ -258,7 +262,10 @@ export async function sendChatMessageOverTransport(
   }
 
   if (sent.network) {
-    const outboxId = await enqueueOutbox(body as SendChatMessageBody)
+    const outboxId = await enqueueOutbox(
+      body as SendChatMessageBody,
+      input.my_ecdh_public_key_jwk ?? null
+    )
     void registerOutboxSync().catch(() => {
       /* best effort */
     })

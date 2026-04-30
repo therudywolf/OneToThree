@@ -629,6 +629,7 @@ export function ChatTerminal({
         sender_private_key: privateKeyForForward,
         my_user_id: userId,
         peer_user_id: meta.peerUserId ?? undefined,
+        my_ecdh_public_key_jwk: useSessionStore.getState().myEcdhPublicKeyJwk,
         content: encrypted_content,
         iv,
         reply_to_id: null,

@@ -9,6 +9,7 @@ import {
 } from '@/lib/crypto'
 import { patchMyEcdhPublicKey } from '@/lib/api/users'
 import { listEcdhPublicKeys, recordEcdhPublicKey } from '@/lib/ecdh-key-history'
+import { purgeOutboxStaleForKey } from '@/lib/outbox'
 import { parseVaultPlaintext } from '@/lib/vault-keyring'
 import {
   deriveDrBundleFromEcdhJwk,
@@ -134,6 +135,14 @@ export function VaultModal({ userId, displayHandle }: Props) {
       } catch {
         /* best-effort: history is a recovery aid, not a hard requirement */
       }
+
+      // If the user re-imported their vault while messages were waiting in
+      // the outbox, the queued ciphertexts[] were encrypted to the previous
+      // ECDH public key and recipients cannot decrypt them. Drop those
+      // entries rather than silently poisoning conversations.
+      void purgeOutboxStaleForKey(myPubJwk).catch(() => {
+        /* best-effort: outbox is recoverable after reload anyway */
+      })
 
       // Upload ECDH public key so fan-out can find this device.
       // Retry once — transient network errors are common on vault unlock.

@@ -23,6 +23,13 @@ export type OutboxEntry = {
   id: string
   body: SendChatMessageBody
   created_at: string
+  /** Snapshot of the sender's ECDH public JWK at enqueue time. If this no
+   *  longer matches the active vault key (e.g. user re-imported their vault
+   *  while messages were queued), the pre-encrypted ciphertexts[] in `body`
+   *  are unrecoverable on the recipient side and the entry must be dropped
+   *  rather than replayed. Optional for backward compat with entries
+   *  enqueued before this field existed. */
+  sender_ecdh_public_key_jwk?: string | null
 }
 
 interface OutboxDb extends DBSchema {
@@ -51,15 +58,46 @@ function getDb(): Promise<IDBPDatabase<OutboxDb>> {
 }
 
 /** Enqueue a message that failed to send. */
-export async function enqueueOutbox(body: SendChatMessageBody): Promise<string> {
+export async function enqueueOutbox(
+  body: SendChatMessageBody,
+  senderEcdhPublicKeyJwk?: string | null
+): Promise<string> {
   const db = await getDb()
   const id = crypto.randomUUID()
   await db.put(STORE_NAME, {
     id,
     body,
     created_at: new Date().toISOString(),
+    sender_ecdh_public_key_jwk: senderEcdhPublicKeyJwk ?? null,
   })
   return id
+}
+
+/**
+ * Drop any queued entries that were encrypted with a previous ECDH public
+ * key. Replaying them would write ciphertexts[] the recipient cannot
+ * decrypt — better to lose the queued send than poison the conversation.
+ *
+ * Called from vault-modal at unlock. Returns the number of dropped entries
+ * so the caller can surface a toast if needed.
+ */
+export async function purgeOutboxStaleForKey(
+  activeEcdhPublicKeyJwk: string
+): Promise<number> {
+  if (typeof indexedDB === 'undefined' || !activeEcdhPublicKeyJwk) return 0
+  const db = await getDb()
+  const all = await db.getAll(STORE_NAME)
+  let dropped = 0
+  for (const entry of all) {
+    const stamped = entry.sender_ecdh_public_key_jwk
+    // null/undefined => legacy entry without the snapshot. Drop it on the
+    // first key check so we don't replay something we cannot validate.
+    if (!stamped || stamped !== activeEcdhPublicKeyJwk) {
+      await db.delete(STORE_NAME, entry.id)
+      dropped++
+    }
+  }
+  return dropped
 }
 
 /** Read all pending outbox entries. */

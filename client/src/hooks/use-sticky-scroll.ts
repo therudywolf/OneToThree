@@ -77,12 +77,14 @@ export function useStickyScroll(
   const captureAnchor = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
-    const top = el.scrollTop
+    const elRect = el.getBoundingClientRect()
     const bubbles = el.querySelectorAll<HTMLElement>('[data-message-id]')
     for (let i = 0; i < bubbles.length; i++) {
       const b = bubbles[i]
-      if (b.offsetTop + b.offsetHeight > top) {
-        anchorRef.current = { el: b, offsetWithinViewport: b.offsetTop - top }
+      const r = b.getBoundingClientRect()
+      // First bubble whose bottom edge is below the viewport top.
+      if (r.bottom > elRect.top) {
+        anchorRef.current = { el: b, offsetWithinViewport: r.top - elRect.top }
         return
       }
     }
@@ -100,8 +102,13 @@ export function useStickyScroll(
     }
     const a = anchorRef.current
     if (!a || !a.el.isConnected) return
-    const target = a.el.offsetTop - a.offsetWithinViewport
-    if (el.scrollTop !== target) el.scrollTop = target
+    const elRect = el.getBoundingClientRect()
+    const aRect = a.el.getBoundingClientRect()
+    // Where the anchor currently sits in the viewport.
+    const currentOffset = aRect.top - elRect.top
+    // Adjust scrollTop so anchor lands at its captured offset.
+    const delta = currentOffset - a.offsetWithinViewport
+    if (delta !== 0) el.scrollTop += delta
   }, [scrollRef])
 
   const jumpToBottom = useCallback(() => {
@@ -130,7 +137,10 @@ export function useStickyScroll(
     const el = scrollRef.current
     if (!el || !target.isConnected) return
     smoothInflightRef.current = false
-    el.scrollTop = Math.max(0, target.offsetTop - viewportOffset)
+    const elRect = el.getBoundingClientRect()
+    const tRect = target.getBoundingClientRect()
+    const currentOffset = tRect.top - elRect.top
+    el.scrollTop = Math.max(0, el.scrollTop + currentOffset - viewportOffset)
     const atBottom = measureAtBottom()
     const prev = isAtBottomRef.current
     isAtBottomRef.current = atBottom

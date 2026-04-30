@@ -249,7 +249,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
    * Stage 5: GET /sync/pending
    * Now also returns per-device ciphertext slot for the caller's current device.
    */
-  app.get('/sync/pending', async (request, reply) => {
+  app.get('/sync/pending', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 

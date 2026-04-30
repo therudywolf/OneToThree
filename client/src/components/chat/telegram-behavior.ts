@@ -2,9 +2,12 @@ export const TELEGRAM_BEHAVIOR = {
   sidebar: {
     minWidth: 240,
     maxWidth: 480,
-    // Just enough to fit a 44px avatar with 10px breathing room either side.
-    // 88px was too wide and made the "compact" mode feel like a half-sidebar.
-    collapsedWidth: 64,
+    // Total collapsed-mode width. Must accommodate the 56px folder/icon nav
+    // rail (Tailwind w-14, never collapsed) PLUS a 44px avatar centered in
+    // its column with ~10px padding on each side: 56 + 64 = 120.
+    // The matching CSS lives in globals.css under data-collapsed='true' and
+    // the @media (min-width: 768px) and (max-width: 1024px) icon-only block.
+    collapsedWidth: 120,
   },
   mobile: {
     touchTargetPx: 44,

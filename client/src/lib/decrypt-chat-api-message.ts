@@ -92,6 +92,17 @@ function apiRowToDecrypted(
 
 type DrContext = { ownerUserId: string; peerUserId: string }
 
+/**
+ * Optional hints used to choose the correct ECDH peer key for legacy DIRECT
+ * messages whose `sender_ecdh_public_key_jwk` was not pinned at send time
+ * (pre-migration 0043). Without these the fallback path always used the
+ * peer key, which made every self-sent legacy slot fail to decrypt.
+ */
+export type DecryptHints = {
+  myUserId?: string
+  myEcdhPublicKeyJwk?: string | null
+}
+
 async function decryptJobsOnMain(
   aesKey: CryptoKey,
   jobs: { index: number; content: string; iv: string }[]
@@ -111,7 +122,8 @@ async function decryptRowPlaintext(
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
   row: ApiMessageRow,
-  drCtx?: DrContext
+  drCtx?: DrContext,
+  hints?: DecryptHints
 ): Promise<string> {
   const c = row.device_ciphertext ?? row.content
   const iv = row.device_iv ?? row.iv
@@ -136,24 +148,71 @@ async function decryptRowPlaintext(
 
   // v1 fan-out: per-device ECDH slot (DIRECT and SELF both use fan-out delivery).
   // For messages sent after migration 0043 the sender key is pinned in the DB row.
-  // For older messages (sender_ecdh_public_key_jwk = null) fall back to the current
-  // peer/self key from the crypto context — same as the pre-migration behaviour.
+  // For older messages (sender_ecdh_public_key_jwk = null) the correct fallback
+  // depends on who sent the message:
+  //   - sender is me  → use MY public key (self-fanout slot was encrypted with
+  //                     ECDH(myPriv, myPub); decrypt needs myPub on the public side)
+  //   - sender is peer → use peer public key
+  // Without sender-aware selection, every self-sent legacy slot decrypted with
+  // the peer key, producing [DECRYPT_FAIL] on every page reload.
   if (
     (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') &&
     row.device_ciphertext &&
     row.device_iv
   ) {
-    const fallbackKey =
-      cryptoCtx.mode === 'DIRECT'
-        ? cryptoCtx.peerPublicKeyJwk
-        : cryptoCtx.selfPublicKeyJwk
+    let fallbackKey: string
+    if (cryptoCtx.mode === 'SELF') {
+      fallbackKey = cryptoCtx.selfPublicKeyJwk
+    } else if (
+      hints?.myUserId &&
+      hints?.myEcdhPublicKeyJwk &&
+      row.sender_id === hints.myUserId
+    ) {
+      fallbackKey = hints.myEcdhPublicKeyJwk
+    } else {
+      fallbackKey = cryptoCtx.peerPublicKeyJwk
+    }
     const senderKey = row.sender_ecdh_public_key_jwk ?? fallbackKey
-    return decryptFanoutSlot(
-      unwrappedPrivateKey,
-      senderKey,
-      row.device_ciphertext,
-      row.device_iv
-    )
+    try {
+      return await decryptFanoutSlot(
+        unwrappedPrivateKey,
+        senderKey,
+        row.device_ciphertext,
+        row.device_iv
+      )
+    } catch (err) {
+      // If pinning was wrong (rare, but observed), retry with the other party's
+      // current key so historical messages survive identity mismatches.
+      if (
+        cryptoCtx.mode === 'DIRECT' &&
+        row.sender_ecdh_public_key_jwk &&
+        senderKey !== cryptoCtx.peerPublicKeyJwk
+      ) {
+        try {
+          return await decryptFanoutSlot(
+            unwrappedPrivateKey,
+            cryptoCtx.peerPublicKeyJwk,
+            row.device_ciphertext,
+            row.device_iv
+          )
+        } catch { /* fall through to original error */ }
+      }
+      if (
+        cryptoCtx.mode === 'DIRECT' &&
+        hints?.myEcdhPublicKeyJwk &&
+        senderKey !== hints.myEcdhPublicKeyJwk
+      ) {
+        try {
+          return await decryptFanoutSlot(
+            unwrappedPrivateKey,
+            hints.myEcdhPublicKeyJwk,
+            row.device_ciphertext,
+            row.device_iv
+          )
+        } catch { /* fall through to original error */ }
+      }
+      throw err
+    }
   }
 
   return decryptInboundText(unwrappedPrivateKey, cryptoCtx, c, iv)
@@ -167,7 +226,8 @@ export async function decryptApiMessageRows(
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
   rows: ApiMessageRow[],
-  drCtx?: DrContext
+  drCtx?: DrContext,
+  hints?: DecryptHints
 ): Promise<DecryptedMessage[]> {
   if (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') {
     return Promise.all(
@@ -175,7 +235,7 @@ export async function decryptApiMessageRows(
         try {
           return apiRowToDecrypted(
             m,
-            await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx)
+            await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx, hints)
           )
         } catch {
           return apiRowToDecrypted(m, '[DECRYPT_FAIL]')
@@ -248,7 +308,8 @@ export async function decryptApiMessageRow(
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
   m: ApiMessageRow,
-  drCtx?: DrContext
+  drCtx?: DrContext,
+  hints?: DecryptHints
 ): Promise<DecryptedMessage> {
   let plaintext = ''
   if (
@@ -256,7 +317,7 @@ export async function decryptApiMessageRow(
     (m.content != null && m.iv != null && m.content !== '')
   ) {
     try {
-      plaintext = await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx)
+      plaintext = await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx, hints)
     } catch {
       plaintext = '[DECRYPT_FAIL]'
     }

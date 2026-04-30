@@ -24,6 +24,7 @@ export function useChatRealtime(
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const userId = useSessionStore((s) => s.userId)
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
+  const myEcdhPublicKeyJwk = useSessionStore((s) => s.myEcdhPublicKeyJwk)
   const appendMessage = useChatStore((s) => s.appendMessage)
   const removeMessage = useChatStore((s) => s.removeMessage)
   const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
@@ -164,7 +165,8 @@ export function useChatRealtime(
               unwrappedPrivateKey,
               cryptoCtx,
               pending,
-              drCtx
+              drCtx,
+              { myUserId: userId ?? undefined, myEcdhPublicKeyJwk }
             )
             const ids: string[] = []
             for (let i = 0; i < rows.length; i++) {
@@ -252,6 +254,7 @@ export function useChatRealtime(
     trackInboundUnread,
     triggerBackgroundPush,
     unwrappedPrivateKey,
+    myEcdhPublicKeyJwk,
     updateMessageReadAt,
     updateMessageReactions,
     userId,

@@ -34,6 +34,7 @@ export function useSendMessage(
   const activeChatId = useSessionStore(s => s.activeChatId)
   const userId = useSessionStore(s => s.userId)
   const unwrappedPrivateKey = useSessionStore(s => s.unwrappedPrivateKey)
+  const myEcdhPublicKeyJwk = useSessionStore(s => s.myEcdhPublicKeyJwk)
   const appendMessage = useChatStore(s => s.appendMessage)
   const lastDispatchRef = useRef<{ key: string; at: number }>({ key: '', at: 0 })
 
@@ -142,7 +143,9 @@ export function useSendMessage(
           const decrypted = await decryptApiMessageRow(
             unwrappedPrivateKey,
             cryptoCtx,
-            serverMessage
+            serverMessage,
+            undefined,
+            { myUserId: userId, myEcdhPublicKeyJwk }
           )
           const node =
             (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') &&
@@ -215,6 +218,7 @@ export function useSendMessage(
       activeChatId,
       userId,
       unwrappedPrivateKey,
+      myEcdhPublicKeyJwk,
       directPeerUserId,
       cryptoCtx,
       appendMessage,

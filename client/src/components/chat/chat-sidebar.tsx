@@ -171,6 +171,10 @@ export function ChatSidebar({
   } | null>(null)
   const [fabOpen, setFabOpen] = useState(false)
   const fabRef = useRef<HTMLDivElement>(null)
+  // Second FAB anchor lives in the icon-only footer; both share fabOpen so
+  // only one popover is visually open at a time (collapsed mode hides the
+  // expanded footer via CSS).
+  const fabIconRef = useRef<HTMLDivElement>(null)
   const [exploreOpen, setExploreOpen] = useState(false)
   const [groupSettingsOpen, setGroupSettingsOpen] = useState(false)
 
@@ -474,7 +478,10 @@ export function ChatSidebar({
   useEffect(() => {
     if (!fabOpen) return
     function handleDown(e: MouseEvent | TouchEvent) {
-      if (fabRef.current && !fabRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      const insideExpanded = fabRef.current?.contains(target) ?? false
+      const insideIcon = fabIconRef.current?.contains(target) ?? false
+      if (!insideExpanded && !insideIcon) {
         setFabOpen(false)
       }
     }
@@ -1252,6 +1259,118 @@ export function ChatSidebar({
         </div>
       </div>
       ) : null}
+
+      {/* Icon-only footer — visible only when the sidebar is collapsed
+          (JS data-collapsed='true' OR viewport @media 768-1024). Mirrors
+          the most-used global actions (admin link + FAB "+") so the
+          collapsed sidebar never feels truncated. The popover opens to
+          the RIGHT because the column is too narrow for above/below. */}
+      <div
+        className={`p13-sidebar-icon-footer flex shrink-0 flex-col items-center gap-2 border-t px-1.5 py-3 ${
+          isMd3
+            ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]'
+            : 'border-neon-cyan/20 bg-void/40'
+        }`}
+      >
+        {isAdmin ? (
+          <Link
+            href="/admin"
+            title={isMd3 ? 'Warden' : '[ WARDEN ]'}
+            aria-label={isMd3 ? 'Warden' : '[ WARDEN ]'}
+            className={`inline-flex h-9 w-9 items-center justify-center transition-colors ${
+              isMd3
+                ? 'rounded-full bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)] hover:bg-[color-mix(in_srgb,var(--danger)_20%,transparent)]'
+                : 'rounded-xl border border-danger/40 bg-void text-danger hover:border-neon-red hover:bg-neon-red/10'
+            }`}
+          >
+            <ShieldAlert className="h-4 w-4" aria-hidden />
+          </Link>
+        ) : null}
+
+        <div ref={fabIconRef} className="relative">
+          {fabOpen ? (
+            <div
+              className={`p13-sidebar-icon-fab-menu absolute bottom-0 left-full z-50 ml-2 min-w-[12rem] overflow-hidden ${
+                isMd3
+                  ? 'rounded-2xl bg-[var(--surface-container-high)] shadow-[var(--md3-elevation-3)]'
+                  : 'border border-neon-cyan/30 bg-void shadow-[0_4px_20px_rgba(0,0,0,0.7)]'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => { setFabOpen(false); setGroupModalOpen(true) }}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
+                  isMd3
+                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
+                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                }`}
+              >
+                <Users className="h-3.5 w-3.5 shrink-0" />
+                {t('sidebar.createGroupE2e')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFabOpen(false); setGroupModalOpen(true) }}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
+                  isMd3
+                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
+                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                }`}
+              >
+                <Megaphone className="h-3.5 w-3.5 shrink-0" />
+                {t('sidebar.createChannel')}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setFabOpen(false)
+                  const link = `${window.location.origin}/?invite=${encodeURIComponent(userId)}`
+                  try {
+                    await navigator.clipboard.writeText(link)
+                    setCreateErr('INVITE_LINK_COPIED')
+                  } catch {
+                    setCreateErr(link)
+                  }
+                }}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
+                  isMd3
+                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
+                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                }`}
+              >
+                <Lock className="h-3.5 w-3.5 shrink-0" />
+                {t('sidebar.copyMyInvite')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setFabOpen(false); setExploreOpen(true) }}
+                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
+                  isMd3
+                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
+                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+                }`}
+              >
+                <Search className="h-3.5 w-3.5 shrink-0" />
+                {t('explore.title')}
+              </button>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setFabOpen((o) => !o)}
+            title={t('sidebar.newChat')}
+            aria-label={t('sidebar.newChat')}
+            aria-expanded={fabOpen}
+            className={`inline-flex h-10 w-10 items-center justify-center transition-colors ${
+              isMd3
+                ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-2)] hover:brightness-110'
+                : 'rounded-xl border border-neon-cyan/60 bg-void text-neon-cyan hover:bg-neon-cyan/10'
+            }`}
+          >
+            <MessageSquarePlus className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+      </div>
 
       </div>{/* end right panel */}
 

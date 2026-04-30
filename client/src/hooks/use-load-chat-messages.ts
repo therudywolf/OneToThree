@@ -27,6 +27,7 @@ export function useLoadChatMessages(
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const userId = useSessionStore((s) => s.userId)
   const myEcdhPublicKeyJwk = useSessionStore((s) => s.myEcdhPublicKeyJwk)
+  const priorMyEcdhPublicKeysJwk = useSessionStore((s) => s.priorMyEcdhPublicKeysJwk)
   const setMessages = useChatStore((s) => s.setMessages)
   const setHistoryDecryptBusy = useUnreadStore((s) => s.setHistoryDecryptBusy)
 
@@ -84,7 +85,7 @@ export function useLoadChatMessages(
             cryptoCtx,
             rows,
             drCtx,
-            { myUserId: userId ?? undefined, myEcdhPublicKeyJwk }
+            { myUserId: userId ?? undefined, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk }
           )
         } finally {
           if (showDecryptBusy) setHistoryDecryptBusy(false)
@@ -152,5 +153,6 @@ export function useLoadChatMessages(
     setHistoryDecryptBusy,
     userId,
     myEcdhPublicKeyJwk,
+    priorMyEcdhPublicKeysJwk,
   ])
 }

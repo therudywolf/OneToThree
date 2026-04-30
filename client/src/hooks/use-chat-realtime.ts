@@ -25,6 +25,7 @@ export function useChatRealtime(
   const userId = useSessionStore((s) => s.userId)
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const myEcdhPublicKeyJwk = useSessionStore((s) => s.myEcdhPublicKeyJwk)
+  const priorMyEcdhPublicKeysJwk = useSessionStore((s) => s.priorMyEcdhPublicKeysJwk)
   const appendMessage = useChatStore((s) => s.appendMessage)
   const removeMessage = useChatStore((s) => s.removeMessage)
   const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
@@ -151,11 +152,17 @@ export function useChatRealtime(
 
       void (async () => {
         if ((m.content == null || m.content === '') && m.sender_id === userId) {
-          // Fan-out WS events do not carry the sender's own slot.
-          // The active sender tab already appended the REST-confirmed row.
-          return
+          // Fan-out WS events do not carry the sender's own slot. If THIS tab
+          // sent the message, the REST handler already appended the row, so
+          // skip. But OTHER devices/tabs of the same user did NOT — they need
+          // to pull the pending delivery slot to render the message.
+          const alreadyInStore = useChatStore
+            .getState()
+            .messages.some((x) => x.id === m.id)
+          if (alreadyInStore) return
+          // Fall through into the pending-pull branch below.
         }
-        if ((m.content == null || m.content === '') && m.sender_id !== userId) {
+        if ((m.content == null || m.content === '')) {
           if (pendingPullRef.current) return
           pendingPullRef.current = true
           try {
@@ -166,7 +173,7 @@ export function useChatRealtime(
               cryptoCtx,
               pending,
               drCtx,
-              { myUserId: userId ?? undefined, myEcdhPublicKeyJwk }
+              { myUserId: userId ?? undefined, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk }
             )
             const ids: string[] = []
             for (let i = 0; i < rows.length; i++) {
@@ -255,6 +262,7 @@ export function useChatRealtime(
     triggerBackgroundPush,
     unwrappedPrivateKey,
     myEcdhPublicKeyJwk,
+    priorMyEcdhPublicKeysJwk,
     updateMessageReadAt,
     updateMessageReactions,
     userId,

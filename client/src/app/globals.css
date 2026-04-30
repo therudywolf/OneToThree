@@ -1783,6 +1783,9 @@ select {
   }
 }
 
+/* Compact icon-only footer: hidden by default; revealed in collapsed states. */
+.p13-sidebar-icon-footer { display: none; }
+
 @media (min-width: 768px) {
   .chat-layout-sidebar {
     width: var(--p13-sb-w, 21rem);
@@ -1794,6 +1797,9 @@ select {
     width: var(--p13-sb-w, 7.5rem);
     min-width: var(--p13-sb-w, 7.5rem);
     max-width: var(--p13-sb-w, 7.5rem);
+  }
+  .chat-layout-sidebar[data-collapsed='true'] .p13-sidebar-icon-footer {
+    display: flex;
   }
   .chat-layout-main {
     min-width: 22rem;
@@ -1881,6 +1887,9 @@ select {
   .chat-layout-sidebar .p13-sidebar-saved,
   .chat-layout-sidebar .p13-sidebar-global-actions {
     display: none !important;
+  }
+  .chat-layout-sidebar .p13-sidebar-icon-footer {
+    display: flex !important;
   }
 
   .chat-layout-sidebar .p13-sidebar-main {

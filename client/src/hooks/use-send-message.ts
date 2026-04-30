@@ -116,6 +116,7 @@ export function useSendMessage(
           sender_private_key: unwrappedPrivateKey,
           my_user_id: userId,
           peer_user_id: directPeerUserId ?? undefined,
+          my_ecdh_public_key_jwk: myEcdhPublicKeyJwk,
           content: encrypted_content,
           iv,
           protocol_version,

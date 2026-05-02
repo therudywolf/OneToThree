@@ -50,7 +50,10 @@ const sendMessageBodySchema = z.object({
   protocol_version: z.union([z.literal(1), z.literal(2)]).optional(),
   dr_header: z.string().min(1).max(4096).nullable().optional(),
   dr_init: z.string().min(1).max(8192).nullable().optional(),
-})
+}).refine(
+  (v) => v.protocol_version !== 2 || (typeof v.dr_header === 'string' && v.dr_header.length > 0),
+  { message: 'DR_HEADER_REQUIRED_FOR_V2', path: ['dr_header'] }
+)
 
 const deliveredAckSchema = z.object({
   message_ids: z.array(z.string().uuid()).min(1).max(200),

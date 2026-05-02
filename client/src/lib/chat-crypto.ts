@@ -274,6 +274,7 @@ export async function decryptInboundTextV2(
     encrypted_content: string
     iv: string
     dr_header: string | null
+    dr_init?: string | null
   },
   ctx: { ownerUserId: string; peerUserId: string | null }
 ): Promise<string> {
@@ -281,12 +282,34 @@ export async function decryptInboundTextV2(
     if (!ctx.peerUserId || !envelope.dr_header) {
       throw new Error('ERR_DR_METADATA_MISSING')
     }
-    const { decryptFromPeer } = await import('@/lib/ratchet/session-manager')
-    return decryptFromPeer(ctx.ownerUserId, ctx.peerUserId, {
+    const sm = await import('@/lib/ratchet/session-manager')
+    let drInit: import('@/lib/ratchet/session-manager').DrInitWirePayload | undefined
+    if (envelope.dr_init) {
+      try {
+        const parsed = JSON.parse(envelope.dr_init)
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          parsed.p13 === 'dr-init' &&
+          parsed.v === 1 &&
+          typeof parsed.initiatorIdentityExchange === 'string' &&
+          typeof parsed.initiatorIdentitySigning === 'string' &&
+          typeof parsed.initiatorEphemeralPublic === 'string' &&
+          typeof parsed.signedPrekeyId === 'number' &&
+          (parsed.oneTimePrekeyId === null || typeof parsed.oneTimePrekeyId === 'number')
+        ) {
+          drInit = parsed
+        }
+      } catch {
+        /* malformed dr_init — fall through; session manager will throw if needed */
+      }
+    }
+    return sm.decryptFromPeer(ctx.ownerUserId, ctx.peerUserId, {
       protocolVersion: 2,
       drHeader: envelope.dr_header,
       iv: envelope.iv,
       encrypted_content: envelope.encrypted_content,
+      drInit,
     })
   }
   return decryptInboundText(privateKey, frame, envelope.encrypted_content, envelope.iv)

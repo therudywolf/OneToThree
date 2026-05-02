@@ -219,6 +219,22 @@ async function decryptRowPlaintext(
         lastErr = err
       }
     }
+    // All candidate ECDH public keys failed. Emit a single diagnostic so a
+    // surge of [DECRYPT_FAIL] rows is visible in the console instead of being
+    // silently swallowed by the row-level try/catch in decryptApiMessageRows.
+    if (typeof console !== 'undefined') {
+      console.warn(
+        '[fanout] decrypt failed across all candidate keys',
+        {
+          messageId: row.id,
+          chatId: row.chat_id,
+          senderId: row.sender_id,
+          candidateCount: candidates.length,
+          pinned: Boolean(row.sender_ecdh_public_key_jwk),
+          error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+        }
+      )
+    }
     throw lastErr ?? new Error('FANOUT_DECRYPT_NO_CANDIDATE')
   }
 

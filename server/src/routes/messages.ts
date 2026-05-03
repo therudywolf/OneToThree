@@ -756,7 +756,17 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         { type: 'message_deleted', message_id: messageId, chat_id: msg.chatId }
       )
     } else {
-      await db.delete(messages).where(and(eq(messages.id, messageId), eq(messages.senderId, user.id)))
+      // for_everyone:false is implemented as a self-delete restricted to
+      // the sender. If the requester is not the sender, the row is left
+      // untouched — surface that to the caller instead of pretending the
+      // delete succeeded (audit C.P2).
+      const deleted = await db
+        .delete(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.senderId, user.id)))
+        .returning({ id: messages.id })
+      if (deleted.length === 0) {
+        return reply.status(403).send({ error: 'NOT_SENDER' })
+      }
     }
 
     return reply.send({ ok: true })

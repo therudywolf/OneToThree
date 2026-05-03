@@ -141,10 +141,13 @@ export async function buildFanoutSlotsDetailed(
     fetchUserDevices(peerUserId),
   ])
 
+  // Self-chat (peerUserId === myUserId) returns the same device set on both
+  // sides; if a recovery race leaves divergent ECDH keys for the same
+  // device id, prefer myDevices (the sender's authoritative view of their
+  // own keys) by listing it first into the first-write-wins dedupe.
   const allDevices = dedupeDevicesById([
-    ...peerDevices,
-    // Own devices too, so the sender can decrypt their own history after reload.
     ...myDevices,
+    ...peerDevices,
   ])
 
   if (allDevices.length === 0) {

@@ -44,8 +44,6 @@ const confirmBodySchema = z.object({
   signature: z.string().min(1),
   /** Optional metadata. */
   device_name: z.string().min(1).max(255).optional(),
-  user_agent: z.string().max(1024).optional(),
-  ip_address: z.string().max(255).optional(),
 })
 
 /**
@@ -158,9 +156,11 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         new_device_pubkey,
         signature,
         device_name,
-        user_agent,
-        ip_address,
       } = parsed.data
+      // user_agent / ip_address must be derived server-side; trusting body
+      // values lets the new-device caller forge audit-log entries.
+      const userAgent = (request.headers['user-agent'] ?? '').toString().slice(0, 1024) || null
+      const ipAddress = (request.ip ?? '').toString().slice(0, 255) || null
 
       // 1. Consume token — one-time, atomic GETDEL in Redis
       const userId = await consumeLinkToken(link_token)
@@ -203,8 +203,8 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
           deviceName: label,
           isMaster: false,
           lastActive: now,
-          userAgent: user_agent ?? null,
-          ipAddress: ip_address ?? null,
+          userAgent,
+          ipAddress,
           e2eePublicKey: new_device_pubkey,
           linkedAt: now,
           label,

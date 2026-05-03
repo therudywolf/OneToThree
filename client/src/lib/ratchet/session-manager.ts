@@ -42,9 +42,10 @@ import {
 } from './keys'
 import { putSessionRecord, getSessionRecord } from './session-store'
 import { x3dhInitiator, x3dhResponder, type PreKeyBundle } from './x3dh'
+import { DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
 
 const PROTOCOL_VERSION = 2
-const DR_IV_SENTINEL = 'dr:v2'
+const DR_IV_SENTINEL = DR_SLOT_SENTINEL
 const ENCODER = new TextEncoder()
 const DECODER = new TextDecoder()
 

@@ -495,6 +495,15 @@ export function ChatTerminal({
   const handleMessageAction = useCallback(
     (action: string, msg: DecryptedMessage) => {
       const mine = msg.sender_id === userId
+      // Undecryptable rows: only deletes are meaningful. Block everything
+      // else defensively in case a stale UI element triggered it.
+      if (
+        msg.plaintext === '[DECRYPT_FAIL]' &&
+        action !== 'deleteForMe' &&
+        action !== 'deleteForAll'
+      ) {
+        return
+      }
       switch (action) {
         case 'reply':
           setReplyTo(msg)
@@ -647,6 +656,10 @@ export function ChatTerminal({
   const handleToggleReaction = useCallback(
     (emoji: string, msgId: string) => {
       if (!activeChat?.id) return
+      // Don't react on rows that never decrypted — the server-stored row is
+      // unreadable to all participants and the reaction would be meaningless.
+      const target = useChatStore.getState().messages.find((n) => n.id === msgId)
+      if (target && target.plaintext === '[DECRYPT_FAIL]') return
       getFmSocket().send({
         type: 'toggle_reaction',
         message_id: msgId,
@@ -1195,24 +1208,28 @@ export function ChatTerminal({
                 <div className={`p13-hover-actions absolute -top-8 z-10 hidden md:flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150 ${
                   mine ? 'right-0' : 'left-0'
                 }`}>
-                  <button
-                    type="button"
-                    title={t('msgAction.reply')}
-                    aria-label={t('msgAction.reply')}
-                    onClick={(e) => { e.stopPropagation(); handleMessageAction('reply', m) }}
-                    className="p13-icon-btn h-7 w-7"
-                  >
-                    <Reply className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  </button>
-                  <button
-                    type="button"
-                    title={t('msgAction.react')}
-                    aria-label={t('msgAction.react')}
-                    onClick={(e) => { e.stopPropagation(); setReactingMsgId(m.id) }}
-                    className="p13-icon-btn h-7 w-7"
-                  >
-                    <SmilePlus className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  </button>
+                  {m.plaintext !== '[DECRYPT_FAIL]' ? (
+                    <>
+                      <button
+                        type="button"
+                        title={t('msgAction.reply')}
+                        aria-label={t('msgAction.reply')}
+                        onClick={(e) => { e.stopPropagation(); handleMessageAction('reply', m) }}
+                        className="p13-icon-btn h-7 w-7"
+                      >
+                        <Reply className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      </button>
+                      <button
+                        type="button"
+                        title={t('msgAction.react')}
+                        aria-label={t('msgAction.react')}
+                        onClick={(e) => { e.stopPropagation(); setReactingMsgId(m.id) }}
+                        className="p13-icon-btn h-7 w-7"
+                      >
+                        <SmilePlus className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     title="More actions"

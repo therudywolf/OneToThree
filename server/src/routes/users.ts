@@ -688,6 +688,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/me/devices/:deviceId', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
 
     const params = z.object({ deviceId: uuidSchema }).safeParse(request.params)
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })

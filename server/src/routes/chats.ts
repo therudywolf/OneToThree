@@ -434,7 +434,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.post('/:chatId/favorite', async (request, reply) => {
+  app.post('/:chatId/favorite', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
@@ -457,7 +457,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, is_favorite: true })
   })
 
-  app.delete('/:chatId/favorite', async (request, reply) => {
+  app.delete('/:chatId/favorite', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
@@ -482,7 +482,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
   const muteBodySchema = z.object({
     muted_until: z.union([z.string().datetime(), z.literal('forever'), z.null()]),
   })
-  app.patch('/:chatId/mute', async (request, reply) => {
+  app.patch('/:chatId/mute', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
@@ -865,7 +865,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.post('/:chatId/invite', async (request, reply) => {
+  app.post('/:chatId/invite', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
@@ -936,7 +936,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ invite_code: fresh.inviteCode })
   })
 
-  app.patch('/:chatId/invite-slug', async (request, reply) => {
+  app.patch('/:chatId/invite-slug', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
@@ -962,7 +962,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ invite_slug: nextSlug })
   })
 
-  app.post('/:chatId/leave', async (request, reply) => {
+  app.post('/:chatId/leave', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
@@ -1083,7 +1083,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  app.patch('/:chatId/members/:userId/role', async (request, reply) => {
+  app.patch('/:chatId/members/:userId/role', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema, userId: uuidSchema }).safeParse(request.params)
@@ -1199,7 +1199,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(403).send({ error: 'FORBIDDEN' })
   })
 
-  app.delete('/:chatId/members/:userId', async (request, reply) => {
+  app.delete('/:chatId/members/:userId', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema, userId: uuidSchema }).safeParse(request.params)
@@ -1263,7 +1263,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  app.put('/:chatId/members/:userId/wrapped-key', async (request, reply) => {
+  app.put('/:chatId/members/:userId/wrapped-key', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema, userId: uuidSchema }).safeParse(request.params)
@@ -1308,7 +1308,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  app.delete('/:chatId', async (request, reply) => {
+  app.delete('/:chatId', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ chatId: uuidSchema }).safeParse(request.params)

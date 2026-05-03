@@ -8,6 +8,8 @@ import {
   hashPublicKeyJwk,
 } from '@/lib/crypto'
 import {
+  acknowledgeTrustRegistryCorruption,
+  isTrustRegistryCorrupt,
   resolveTrustStatus,
   revokeVerifiedTrust,
   setVerifiedHash,
@@ -131,7 +133,19 @@ export function IdentityModal({
       return
     }
     
-    setVerifiedHash(peerUserId, keyHash)
+    // If the registry was previously detected corrupt, the user has now
+    // visually confirmed at least one safety number — accept that as the
+    // explicit re-verification gate the audit requires before silently
+    // re-pinning peers.
+    if (isTrustRegistryCorrupt()) {
+      acknowledgeTrustRegistryCorruption()
+    }
+    try {
+      setVerifiedHash(peerUserId, keyHash)
+    } catch (err) {
+      console.error('[SYS.TRUST] pin rejected:', err)
+      return
+    }
     setIsTrusted(true)
     setIsCompromised(false)
     onTrustChanged?.(true)

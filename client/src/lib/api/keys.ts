@@ -87,3 +87,16 @@ export function fetchInventory() {
 export function fetchBundle(userId: string) {
   return getJson<BundleResponse>(`/keys/bundle/${userId}`)
 }
+
+export interface IdentityResponse {
+  user_id: string
+  identity: {
+    signing_public_key: string
+    exchange_public_key: string
+    generation: number
+  }
+}
+
+export function fetchIdentity(userId: string) {
+  return getJson<IdentityResponse>(`/keys/identity/${userId}`)
+}

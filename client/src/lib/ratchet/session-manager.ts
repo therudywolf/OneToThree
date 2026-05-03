@@ -559,6 +559,17 @@ export async function acceptIncomingInit(
   if (existing) return
   if (!_ownIdentity || !_ownSignedPreKey) throw new Error('RATCHET_NO_IDENTITY')
   if (init.signedPrekeyId !== _ownSignedPreKeyId) throw new Error('RATCHET_UNKNOWN_SPK')
+  // Verify the wire-supplied initiator identity matches what the server has
+  // published for this peer. Without this, an authenticated attacker can post
+  // a forged `dr_init` and bootstrap a session under any identity they choose;
+  // Bob's TOFU pin would then lock in the attacker's keys.
+  const identity = await keysApi.fetchIdentity(peerId)
+  if (
+    identity.identity.signing_public_key !== init.initiatorIdentitySigning ||
+    identity.identity.exchange_public_key !== init.initiatorIdentityExchange
+  ) {
+    throw new Error('X3DH_IDENTITY_MISMATCH')
+  }
   let otpKeyPair: KeyPair | null = null
   if (init.oneTimePrekeyId != null && _ownOtpDeriver) {
     const priv = _ownOtpDeriver(init.oneTimePrekeyId)
@@ -581,9 +592,12 @@ export async function decryptFromPeer(
   if (wire.drInit) {
     try {
       await acceptIncomingInit(ownerId, peerId, wire.drInit)
-    } catch {
-      // acceptIncomingInit failing is non-fatal; fall through and see if
-      // a session exists anyway (e.g. race with another device).
+    } catch (err) {
+      // Identity mismatch is fatal — never fall through to plaintext under
+      // a wire-claimed identity that doesn't match the published bundle.
+      if (err instanceof Error && err.message === 'X3DH_IDENTITY_MISMATCH') throw err
+      // Other failures are non-fatal; fall through and see if a session exists
+      // anyway (e.g. race with another device).
     }
   }
   const session = await loadSession(ownerId, peerId)

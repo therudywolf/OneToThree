@@ -5,6 +5,7 @@
  *  POST /api/keys/signed-prekey        publish / rotate signed pre-key
  *  POST /api/keys/one-time             upload N one-time pre-keys in bulk
  *  GET  /api/keys/inventory            how many OPKs remain (auth, current user)
+ *  GET  /api/keys/identity/:userId     identity-only fetch (no OPK consumption)
  *  GET  /api/keys/bundle/:userId       atomic bundle fetch (identity + SPK + popped OPK)
  *
  * All keys are transported as base64url strings (32 bytes each, 44 chars).
@@ -198,6 +199,36 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       max: MAX_OPKS_PER_USER,
     })
   })
+
+  // ── GET /identity/:userId ───────────────────────────────────────────────
+  // Identity-only lookup used by responders to verify the identity claimed in
+  // an X3DH `dr_init` payload. Does NOT pop a one-time prekey.
+  app.get<{ Params: { userId: string } }>(
+    '/identity/:userId',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const u = await getAuthUser(req, reply)
+      if (!u || !assertAuthed(reply, u)) return
+      if (!z.string().uuid().safeParse(req.params.userId).success) {
+        return reply.status(400).send({ error: 'BAD_USER_ID' })
+      }
+      const [identity] = await db
+        .select()
+        .from(identityKeys)
+        .where(eq(identityKeys.userId, req.params.userId))
+        .limit(1)
+      if (!identity) return reply.status(404).send({ error: 'NO_IDENTITY' })
+      reply.header('Cache-Control', 'no-store')
+      return reply.send({
+        user_id: req.params.userId,
+        identity: {
+          signing_public_key: identity.signingPublicKey,
+          exchange_public_key: identity.exchangePublicKey,
+          generation: identity.generation,
+        },
+      })
+    }
+  )
 
   // ── GET /bundle/:userId ─────────────────────────────────────────────────
   app.get<{ Params: { userId: string } }>(

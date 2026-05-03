@@ -14,9 +14,6 @@ import {
 import { isJtiDenied } from '../lib/jwt-denylist.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { markMessageReadByReader } from '../lib/mark-message-read.js'
-import { parseOptionalBurnAt } from '../lib/burn-at.js'
-import { persistChatMessageAndFanOut } from '../lib/chat-message-persist.js'
-import { resolveMediaOriginalBytes } from '../lib/message-send-helpers.js'
 import {
   broadcastOnlineStatusChange,
   clearPingWriteAt,
@@ -117,22 +114,6 @@ async function resolveWsUser(request: FastifyRequest): Promise<WsAuthResult | nu
     return null
   }
 }
-
-const chatMessageInSchema = z.object({
-  type: z.literal('chat_message'),
-  chat_id: z.string().uuid(),
-  content: z.string().nullable().optional(),
-  iv: z.string().nullable().optional(),
-  media_path: z.string().nullable().optional(),
-  media_type: z.string().nullable().optional(),
-  media_iv: z.string().nullable().optional(),
-  reply_to_id: z.string().uuid().nullable().optional(),
-  media_original_bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
-  burn_at: z.string().nullable().optional(),
-  protocol_version: z.union([z.literal(1), z.literal(2)]).optional(),
-  dr_header: z.string().min(1).max(4096).nullable().optional(),
-  dr_init: z.string().min(1).max(8192).nullable().optional(),
-})
 
 const webrtcSignalSchema = z.object({
   type: z.literal('webrtc_signal'),
@@ -379,61 +360,19 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           return
         }
 
-        const chatParsed = chatMessageInSchema.safeParse(json)
-        if (chatParsed.success) {
-          const p = chatParsed.data
-          if (!(await isMemberOfChat(p.chat_id, user.id))) {
-            request.log.warn(
-              { correlationId, chatId: p.chat_id, userId: user.id },
-              'ws: not a member for chat_message'
-            )
-            safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
-            return
-          }
-
-          // In direct chats, enforce block check against the other member
-          const memberIds = await getChatMemberIds(p.chat_id)
-          if (memberIds.length === 2) {
-            const peerId = memberIds.find((id) => id !== user.id)
-            if (peerId && await isBlocked(user.id, peerId)) {
-              safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
-              return
-            }
-          }
-
-          const burn = parseOptionalBurnAt(p.burn_at ?? null)
-          if (!burn.ok) {
-            safeSend(ws, JSON.stringify({ type: 'error', error: burn.error }))
-            return
-          }
-
-          const persisted = await persistChatMessageAndFanOut({
-            chatId: p.chat_id,
-            senderId: user.id,
-            replyToId: p.reply_to_id ?? null,
-            content: p.content ?? null,
-            iv: p.iv ?? null,
-            mediaPath: p.media_path ?? null,
-            mediaType: p.media_type ?? null,
-            mediaIv: p.media_iv ?? null,
-            mediaOriginalBytes: resolveMediaOriginalBytes(
-              p.media_path ?? null,
-              p.media_original_bytes
-            ),
-            burnAt: burn.date,
-            protocolVersion: p.protocol_version ?? 1,
-            drHeader: p.dr_header ?? null,
-            drInit: p.dr_init ?? null,
-          })
-
-          if (!persisted.ok) {
-            request.log.error(
-              { correlationId, chatId: p.chat_id, userId: user.id },
-              'ws: insert failed for chat_message'
-            )
-            safeSend(ws, JSON.stringify({ type: 'error', error: 'INSERT_FAILED' }))
-            return
-          }
+        // chat_message frames are intentionally not accepted over WS — the
+        // REST POST /messages/send path is the single source of truth and
+        // enforces fan-out, channel-role, and DR-header validation that this
+        // handler historically bypassed (audit 2026-05-03 A.P0 #2).
+        if (
+          json &&
+          typeof json === 'object' &&
+          (json as { type?: unknown }).type === 'chat_message'
+        ) {
+          safeSend(
+            ws,
+            JSON.stringify({ type: 'error', error: 'CHAT_MESSAGE_OVER_WS_FORBIDDEN' })
+          )
           return
         }
 

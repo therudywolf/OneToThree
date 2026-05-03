@@ -7,9 +7,11 @@
 
 import { openDB, type IDBPDatabase } from 'idb'
 import {
+  CURRENT_VAULT_VERSION,
   persistVaultBlob,
   readVaultBlob,
   unwrapPrivateJwkWithPin,
+  upgradeVaultBlob,
   wrapPrivateJwkWithPin,
 } from '@/lib/vault'
 import { emitHapticPulse } from '@/lib/vibrate'
@@ -198,6 +200,15 @@ export async function interceptBiometricSignal(nodeId: string): Promise<string> 
   if (!container) throw new Error('VAULT_OFFLINE')
 
   const plain = await unwrapPrivateJwkWithPin(container, ephemeralPin)
+  // Force-upgrade legacy blobs (v1–v4) to current vault version so chain-of-
+  // custody guarantees from v5 (Argon2id + AAD) cover the WebAuthn unlock
+  // path too. Audit A.P2: previously only the PIN unlock path performed the
+  // rewrap, so biometric users stayed on the older format indefinitely.
+  if (container.version < CURRENT_VAULT_VERSION) {
+    upgradeVaultBlob(container, ephemeralPin)
+      .then((upgraded) => persistVaultBlob(nodeId, upgraded))
+      .catch(() => { /* non-fatal — user stays on legacy vault */ })
+  }
   emitHapticPulse(20) // Подтверждение линка
   return plain
 }

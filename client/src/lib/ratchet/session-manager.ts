@@ -271,7 +271,20 @@ async function loadSession(
       return JSON.parse(DECODER.decode(plain)) as SerializedSession
     }
     if (view.length > 0 && view[0] === PLAIN_MAGIC) {
-      return JSON.parse(DECODER.decode(view)) as SerializedSession
+      const session = JSON.parse(DECODER.decode(view)) as SerializedSession
+      // Rewrap legacy plaintext records on first read so chain keys do not
+      // remain at rest unencrypted in IndexedDB. Only attempt the rewrap
+      // when the vault wrap key is available; otherwise the record stays
+      // as-is until the next read with a vault unlocked.
+      if (sessionWrapKey) {
+        try {
+          await saveSession(ownerId, peerId, session)
+          console.warn('[ratchet] rewrapped legacy plaintext session record')
+        } catch {
+          // Non-fatal: the in-memory session is still usable for this turn.
+        }
+      }
+      return session
     }
     return null
   } catch {

@@ -141,7 +141,16 @@ export function MessageActions({
       danger: true,
     },
   ]
-  const visibleActions = actions.filter((a) => a.show)
+  // Undecryptable rows ([DECRYPT_FAIL]) cannot be safely interacted with:
+  // forwarding/replying/reacting/pinning/deleting-for-all all reference a
+  // payload that no participant can read. Only "delete for me" (local hide)
+  // and "delete for all" (own message removal) make sense.
+  const isUndecryptable = message.plaintext === '[DECRYPT_FAIL]'
+  const visibleActions = actions.filter((a) => {
+    if (!a.show) return false
+    if (isUndecryptable && a.key !== 'deleteForMe' && a.key !== 'deleteForAll') return false
+    return true
+  })
   const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 400
   const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 400
   const compactViewport = viewportWidth < 640

@@ -645,12 +645,15 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
 
   /**
    * POST /messages/:messageId/pin
-   * Toggles `is_pinned` for a 1-to-1 chat message. Any chat member can
-   * pin/unpin — there is no "admin" concept in direct_e2e chats. Broadcast
-   * `message_pin_changed` to everyone in the chat so their UIs update the
-   * pinned-header and the in-bubble badge.
+   * Toggles `is_pinned`. Authorization depends on chat type:
+   *   - direct_e2e:  any member can pin (no admin concept in 1:1)
+   *   - group_e2e:   owner / admin only
+   *   - channel:     owner / editor only (subscribers never write)
+   *   - public_open: any member can pin
+   * Broadcast `message_pin_changed` to everyone in the chat so their UIs
+   * update the pinned-header and the in-bubble badge.
    */
-  app.post('/:messageId/pin', async (request, reply) => {
+  app.post('/:messageId/pin', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const params = z.object({ messageId: uuidSchema }).safeParse(request.params)
@@ -668,12 +671,29 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       .limit(1)
     if (!msg) return reply.status(404).send({ error: 'MESSAGE_NOT_FOUND' })
 
-    const memberOk = await db
-      .select({ one: chatMembers.userId })
+    const [chatRow] = await db
+      .select({ type: chats.type })
+      .from(chats)
+      .where(eq(chats.id, msg.chatId))
+      .limit(1)
+    if (!chatRow) return reply.status(404).send({ error: 'CHAT_NOT_FOUND' })
+
+    const [membership] = await db
+      .select({ role: chatMembers.role, channelRole: chatMembers.channelRole })
       .from(chatMembers)
       .where(and(eq(chatMembers.chatId, msg.chatId), eq(chatMembers.userId, user.id)))
       .limit(1)
-    if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+    if (!membership) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+
+    if (chatRow.type === 'group_e2e') {
+      if (membership.role !== 'owner' && membership.role !== 'admin') {
+        return reply.status(403).send({ error: 'PIN_FORBIDDEN' })
+      }
+    } else if (chatRow.type === 'channel') {
+      if (membership.channelRole !== 'owner' && membership.channelRole !== 'editor') {
+        return reply.status(403).send({ error: 'PIN_FORBIDDEN' })
+      }
+    }
 
     const nextPinned = !msg.isPinned
     await db

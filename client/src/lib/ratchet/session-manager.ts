@@ -116,11 +116,24 @@ interface SerializedSession {
   ratchet: SerializedRatchetState
   /**
    * Populated by the initiator after `bootstrapSession`. Attached to the
-   * first outbound message so the responder can run X3DH; cleared after
-   * the first successful `encryptForPeer`.
+   * first N outbound messages so the responder can run X3DH even if earlier
+   * sends were dropped on the wire or stuck in an offline outbox; cleared
+   * once `pendingInitAcked` is set by the first inbound DR message.
    */
   pendingInit?: SerializedInitPayload
+  /** Number of outbound messages that have carried `pendingInit` so far. */
+  pendingInitSends?: number
+  /** Set true once an inbound DR message confirms the responder has the session. */
+  pendingInitAcked?: boolean
 }
+
+/**
+ * Outbound resend budget for X3DH metadata. Beyond this we stop attaching
+ * `dr_init` to avoid leaking the ephemeral material indefinitely; if the
+ * session is still not ACKed after this many sends, the user-visible chain
+ * has bigger problems than a missing handshake.
+ */
+const PENDING_INIT_MAX_RESENDS = 3
 
 function encodeKeyPair(pair: KeyPair): SerializedKeyPair {
   return { privateKey: b64urlEncode(pair.privateKey), publicKey: b64urlEncode(pair.publicKey) }
@@ -539,7 +552,7 @@ export async function encryptForPeer(
     iv: DR_IV_SENTINEL,
     encrypted_content: b64urlEncode(msg.ciphertext),
   }
-  if (session.pendingInit) {
+  if (session.pendingInit && !session.pendingInitAcked) {
     wire.drInit = {
       p13: 'dr-init',
       v: 1,
@@ -549,11 +562,15 @@ export async function encryptForPeer(
       signedPrekeyId: session.pendingInit.signedPrekeyId,
       oneTimePrekeyId: session.pendingInit.oneTimePrekeyId,
     }
-    // Once the responder has seen the X3DH metadata (via subsequent
-    // receive-side ratchet advance), further sends don't need it.  We clear
-    // eagerly rather than tracking an ACK so offline-queue scenarios don't
-    // leak the ephemeral metadata repeatedly.
-    delete session.pendingInit
+    // Track resend budget so an offline-queue scenario doesn't leak the
+    // ephemeral metadata indefinitely. The responder ACKs implicitly via
+    // the first inbound DR message (see decryptFromPeer).
+    const sends = (session.pendingInitSends ?? 0) + 1
+    session.pendingInitSends = sends
+    if (sends >= PENDING_INIT_MAX_RESENDS) {
+      delete session.pendingInit
+      delete session.pendingInitSends
+    }
   }
   await saveSession(ownerId, peerId, session)
   return wire
@@ -620,6 +637,13 @@ export async function decryptFromPeer(
   const ciphertext = b64urlDecode(wire.encrypted_content)
   const plaintext = await decryptRatchet(ratchet, { header, ciphertext })
   session.ratchet = serializeRatchet(ratchet)
+  // First successful inbound DR message proves the responder has the X3DH
+  // session — we no longer need to resend pendingInit on subsequent sends.
+  if (session.pendingInit && !session.pendingInitAcked) {
+    session.pendingInitAcked = true
+    delete session.pendingInit
+    delete session.pendingInitSends
+  }
   await saveSession(ownerId, peerId, session)
   return DECODER.decode(plaintext)
 }

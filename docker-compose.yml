@@ -12,6 +12,10 @@ services:
       POSTGRES_DB: forest
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # DEV ONLY — host port for psql/Drizzle Studio access from the host
+    # machine. Prod (docker-compose.prod.yml) intentionally does not
+    # expose 5432 publicly; the database is reachable only over the
+    # internal app_network bridge.
     ports:
       - "5432:5432"
     networks:

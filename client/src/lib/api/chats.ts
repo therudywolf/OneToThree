@@ -348,7 +348,12 @@ export async function joinChatByInviteCode(code: string): Promise<{
   const trimmed = code.trim()
   const res = await fetchWithTimeout(
     `${API_URL}/chats/join/${encodeURIComponent(trimmed)}`,
-    { credentials: 'include' }
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    }
   )
   const data = (await res.json().catch(() => ({}))) as {
     chat_id?: string

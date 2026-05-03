@@ -193,7 +193,6 @@ export type LinkConfirmParams = {
   /** Old device signature over SHA-256(new_device_client_key + "." + new_device_pubkey + "." + link_token), base64url. */
   signature: string
   device_name?: string
-  user_agent?: string
 }
 
 export type LinkConfirmResult = {
@@ -214,7 +213,8 @@ export async function linkConfirm(params: LinkConfirmParams): Promise<LinkConfir
     signature: params.signature,
   }
   if (params.device_name) body.device_name = params.device_name
-  if (params.user_agent) body.user_agent = params.user_agent
+  // user_agent / ip_address are derived server-side from the request to
+  // prevent forged audit-log entries.
 
   const res = await fetchWithTimeout(`${API_URL}/devices/link/confirm`, {
     method: 'POST',

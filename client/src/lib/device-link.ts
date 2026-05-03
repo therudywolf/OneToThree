@@ -96,6 +96,5 @@ export async function confirmDeviceLink(
     new_device_pubkey: pubkey,
     signature: payload.signature,
     device_name: getDeviceDisplayLabel(),
-    user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
   })
 }

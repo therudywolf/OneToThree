@@ -518,7 +518,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.get('/join/:code', async (request, reply) => {
+  app.post('/join/:code', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 

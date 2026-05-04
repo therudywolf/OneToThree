@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { Theme } from 'emoji-picker-react'
+import { EmojiStyle, Theme } from 'emoji-picker-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 
@@ -36,6 +36,7 @@ export function ChatEmojiPicker({ height, onPick }: ChatEmojiPickerProps) {
         onEmojiClick={(data: { emoji: string }) => onPick(data.emoji)}
         skinTonesDisabled
         lazyLoadEmojis
+        emojiStyle={EmojiStyle.NATIVE}
         previewConfig={{ showPreview: false }}
         searchPlaceholder={locale === 'ru' ? 'Поиск эмодзи' : 'Search emoji'}
         width="100%"

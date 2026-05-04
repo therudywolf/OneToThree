@@ -5,6 +5,12 @@ export const metadata: Metadata = {
   title: 'Add sticker pack',
 }
 
+export const dynamic = 'force-static'
+
+export function generateStaticParams() {
+  return [{ packId: '_' }]
+}
+
 export default async function StickerAddPage({
   params,
 }: {

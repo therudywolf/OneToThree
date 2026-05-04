@@ -31,7 +31,7 @@ const serverRoutesConfig = isStaticExport
     default-src 'self';
     script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/ blob:;
     style-src 'self' 'unsafe-inline';
-    img-src 'self' blob: data: https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin} ${tenorMediaOrigin};
+    img-src 'self' blob: data: https://cdn.jsdelivr.net ${apiOrigin} ${storageOrigin} ${giphyOrigin} ${tenorMediaOrigin};
     font-src 'self';
     object-src 'none';
     base-uri 'self';

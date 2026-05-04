@@ -62,6 +62,21 @@ export type FanoutBuildResult = {
   attemptedDeviceIds: string[]
 }
 
+export type DrFanoutSafety =
+  | {
+      safe: true
+      slots: DeviceSlot[]
+      myDeviceCount: number
+      peerDeviceCount: number
+    }
+  | {
+      safe: false
+      reason: 'NO_DEVICE_SLOTS' | 'MULTI_DEVICE_UNSAFE'
+      slots: DeviceSlot[]
+      myDeviceCount: number
+      peerDeviceCount: number
+    }
+
 /**
  * Encrypt `plaintext` for every device in `targetDevices`.
  * Uses ECDH(senderPrivateKey, deviceEcdhPublicKey) → AES-GCM.
@@ -178,6 +193,51 @@ export async function buildFanoutSlots(
 export const DR_SLOT_SENTINEL = 'dr:v2'
 
 /**
+ * DR v2 sessions are local to one browser/device. Until ratchet state is
+ * synchronized per device, it is only safe when both participants have a
+ * single active ECDH device. Multi-device chats must use v1 per-device fanout.
+ */
+export async function getDrFanoutSafety(
+  myUserId: string,
+  peerUserId: string
+): Promise<DrFanoutSafety> {
+  const [myDevicesRaw, peerDevicesRaw] = await Promise.all([
+    fetchUserDevices(myUserId),
+    fetchUserDevices(peerUserId),
+  ])
+  const myDevices = dedupeDevicesById(myDevicesRaw)
+  const peerDevices = peerUserId === myUserId ? myDevices : dedupeDevicesById(peerDevicesRaw)
+  const slots = dedupeDevicesById([...peerDevices, ...myDevices])
+
+  if (slots.length === 0) {
+    return {
+      safe: false,
+      reason: 'NO_DEVICE_SLOTS',
+      slots,
+      myDeviceCount: myDevices.length,
+      peerDeviceCount: peerDevices.length,
+    }
+  }
+
+  if (myDevices.length > 1 || peerDevices.length > 1) {
+    return {
+      safe: false,
+      reason: 'MULTI_DEVICE_UNSAFE',
+      slots,
+      myDeviceCount: myDevices.length,
+      peerDeviceCount: peerDevices.length,
+    }
+  }
+
+  return {
+    safe: true,
+    slots,
+    myDeviceCount: myDevices.length,
+    peerDeviceCount: peerDevices.length,
+  }
+}
+
+/**
  * Build fan-out delivery slots for a Double Ratchet v2 message.
  * Unlike v1, the DR ciphertext is the SAME for all devices — the slot only
  * identifies WHICH device the message is addressed to.  Decryption uses the
@@ -188,13 +248,14 @@ export async function buildDrFanoutSlots(
   peerUserId: string,
   drCiphertext: string
 ): Promise<FanoutSlot[]> {
-  const [myDevices, peerDevices] = await Promise.all([
-    fetchUserDevices(myUserId),
-    fetchUserDevices(peerUserId),
-  ])
-  const allDevices = dedupeDevicesById([...peerDevices, ...myDevices])
-  if (allDevices.length === 0) return []
-  return allDevices.map((dev) => ({
+  const safety = await getDrFanoutSafety(myUserId, peerUserId)
+  if (!safety.safe) {
+    if (safety.reason === 'MULTI_DEVICE_UNSAFE') {
+      throw new Error('DR_MULTI_DEVICE_UNSAFE')
+    }
+    return []
+  }
+  return safety.slots.map((dev) => ({
     device_id: dev.device_id,
     ciphertext: drCiphertext,
     iv: DR_SLOT_SENTINEL,

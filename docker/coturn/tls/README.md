@@ -10,13 +10,16 @@ At container start coturn expects:
 
 ## Recommended workflow (production)
 
-1. Let Caddy acquire and maintain a certificate for `turn.onetothree.ru`.
+1. Let Caddy acquire and maintain a certificate for `turn.<DOMAIN>`.
    Caddy persists the cert bundle inside the `caddy_data` Docker volume at
-   `/data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/turn.onetothree.ru/`.
-2. Run `scripts/sync-turn-certs.sh` (operator script) on the host — it
-   copies `fullchain.pem` / `privkey.pem` from the Caddy volume into
-   `docker/coturn/tls/` and `docker compose restart coturn`.
-3. Schedule the sync script via cron (daily) so coturn picks up renewed
-   certificates transparently.
+   `/data/caddy/certificates/<issuer>/turn.<DOMAIN>/`.
+2. Run `./start.sh turn-sync` or `scripts/sync-turn-certs.sh` on the host.
+   The script resolves the TURN hostname from `.env.prod`, copies
+   `fullchain.pem` / `privkey.pem` from the Caddy volume into
+   `docker/coturn/tls/`, and restarts coturn only when material changed.
+3. `./start.sh update` also retries this sync after Caddy starts. Keep a daily
+   cron for renewals, for example:
+
+   `0 4 * * * cd /opt/forest && ./start.sh turn-sync >/dev/null 2>&1`
 
 Never commit real certificate material to the repository.

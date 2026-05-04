@@ -15,6 +15,7 @@
 #   ./start.sh logs     — хвост логов всех сервисов
 #   ./start.sh status   — состояние контейнеров
 #   ./start.sh update   — git pull + пересборка + перезапуск
+#   ./start.sh turn-sync — синхронизировать TLS cert Caddy → coturn
 #   ./start.sh backup   — резервная копия БД
 #
 # Compose подставляет ${TURN_PASSWORD} и др. в docker-compose.prod.yml из файла
@@ -275,6 +276,35 @@ wait_healthy() {
   done
 }
 
+sync_turn_tls_with_retry() {
+  local max_wait="${1:-180}"
+  local interval="${2:-10}"
+  local elapsed=0
+  local caddy_cid
+
+  caddy_cid=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q caddy 2>/dev/null | head -1 || true)
+  if [[ -z "$caddy_cid" ]]; then
+    warn "TURN TLS sync пропущен: контейнер Caddy не запущен."
+    return 1
+  fi
+
+  log "Синхронизация TLS-сертификатов TURN из Caddy volume..."
+  while true; do
+    if bash "${ROOT}/scripts/sync-turn-certs.sh" --quiet; then
+      ok "TURN TLS-сертификаты синхронизированы."
+      return 0
+    fi
+
+    if [[ "$elapsed" -ge "$max_wait" ]]; then
+      warn "TURN TLS ещё не готовы после ${max_wait}s. Проверьте DNS/ACME и повторите: ./start.sh turn-sync"
+      return 1
+    fi
+
+    sleep "$interval"
+    elapsed=$((elapsed + interval))
+  done
+}
+
 detect_update_services() {
   local diff_range="$1"
   local changed_file
@@ -312,7 +342,7 @@ detect_update_services() {
         append_service_once caddy
         ;;
       docker/coturn/tls/*|scripts/sync-turn-certs.sh)
-        UPDATE_HINTS+=("TURN TLS-материалы изменились — выполните ./scripts/sync-turn-certs.sh и перезапустите coturn.")
+        UPDATE_HINTS+=("TURN TLS-материалы изменились — запускаю автоматическую синхронизацию через ./start.sh turn-sync.")
         append_service_once coturn
         ;;
       docker/coturn/*)
@@ -444,6 +474,10 @@ case "$CMD" in
     "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
     exit 0
     ;;
+  turn-sync|repair-turn-tls)
+    sync_turn_tls_with_retry "${TURN_TLS_SYNC_WAIT:-300}" "${TURN_TLS_SYNC_INTERVAL:-10}" || exit 1
+    exit 0
+    ;;
   update)
     log "Получаю обновления из git..."
     CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
@@ -517,19 +551,10 @@ case "$CMD" in
       fi
     fi
 
-    # Auto-sync TURN TLS certs when Caddy is up but certs not yet copied
-    _turn_tls_dir="${ROOT}/docker/coturn/tls"
-    if [[ ! -f "${_turn_tls_dir}/fullchain.pem" || ! -f "${_turn_tls_dir}/privkey.pem" ]]; then
-      _caddy_cid=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q caddy 2>/dev/null | head -1 || true)
-      if [[ -n "$_caddy_cid" ]]; then
-        log "Попытка автосинхронизации TLS-сертификатов TURN..."
-        if bash "${ROOT}/scripts/sync-turn-certs.sh" --quiet 2>/dev/null; then
-          ok "TURN TLS-сертификаты синхронизированы — перезапускаю coturn."
-          "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart coturn 2>/dev/null || true
-        else
-          warn "TURN TLS ещё не готовы (Caddy не получил cert). После выдачи cert: ./scripts/sync-turn-certs.sh && docker compose restart coturn"
-        fi
-      fi
+    # Sync TURN TLS after Caddy has had time to obtain/renew the certificate.
+    # The sync script restarts coturn once only when the copied material changed.
+    if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -Eqx 'caddy|coturn'; then
+      sync_turn_tls_with_retry "${TURN_TLS_SYNC_WAIT:-180}" "${TURN_TLS_SYNC_INTERVAL:-10}" || UPDATE_OK=false
     fi
 
     if [[ -n "${UPDATE_HINTS+x}" && ${#UPDATE_HINTS[@]} -gt 0 ]]; then
@@ -761,7 +786,7 @@ case "$CMD" in
     exec "$ROOT/scripts/build-apk.sh" release "${@:2}"
     ;;
   *)
-    echo "Использование: ./start.sh [install|up|quick|tg|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|backup|clean|uninstall|build-apk|build-apk-release <keystore>]"
+    echo "Использование: ./start.sh [install|up|quick|tg|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|turn-sync|backup|clean|uninstall|build-apk|build-apk-release <keystore>]"
     exit 1
     ;;
 esac

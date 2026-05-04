@@ -279,9 +279,9 @@ services:
   # this server's IP and set it to "DNS only" (gray cloud). Orange-cloud proxy
   # drops UDP and blocks TURN. Apex + api.* can remain orange.
   #
-  # TLS material (for turns:// fallback on 5349) is the same certificate
-  # Caddy obtains via ACME — we mount `caddy_data` read-only and point coturn
-  # at the Let's Encrypt `current/` directory.
+  # TLS material (for turns:// fallback on 5349) is copied from the Caddy
+  # ACME volume into ./docker/coturn/tls by scripts/sync-turn-certs.sh or
+  # ./start.sh turn-sync. coturn starts without TLS until those files exist.
   coturn:
     image: coturn/coturn:4.6
     restart: always
@@ -295,7 +295,7 @@ services:
       - ./docker/coturn/entrypoint.sh:/usr/local/bin/forest-coturn-entrypoint.sh:ro
     entrypoint: ['/usr/local/bin/forest-coturn-entrypoint.sh']
     # entrypoint adds --no-tls automatically when certs are absent.
-    # After running scripts/sync-turn-certs.sh, restart coturn to activate TURNS on 5349.
+    # The sync script restarts coturn when it copies changed certificate material.
     command:
       - --log-file=stdout
       - --realm=${TURN_REALM:-${DOMAIN:-onetothree.ru}}

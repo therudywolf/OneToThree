@@ -1,5 +1,14 @@
 const isStaticExport = process.env.NEXT_EXPORT === '1'
 
+function normalizeOrigin(value, fallback) {
+  const raw = value?.trim() || fallback
+  try {
+    return new URL(raw).origin
+  } catch {
+    return fallback
+  }
+}
+
 const serverRoutesConfig = isStaticExport
   ? {}
   : {
@@ -17,10 +26,14 @@ const serverRoutesConfig = isStaticExport
         ]
       },
       async headers() {
-        const apiOrigin =
-          process.env.NEXT_PUBLIC_API_URL?.trim() || 'https://api.onetothree.ru'
-        const storageOrigin =
-          process.env.MINIO_PUBLIC_URL?.trim() || 'https://s3.onetothree.ru'
+        const apiOrigin = normalizeOrigin(
+          process.env.NEXT_PUBLIC_API_URL,
+          'https://api.onetothree.ru'
+        )
+        const storageOrigin = normalizeOrigin(
+          process.env.MINIO_PUBLIC_URL,
+          'https://s3.onetothree.ru'
+        )
         const giphyOrigin = 'https://*.giphy.com'
         const giphyApiOrigin = 'https://api.giphy.com'
         const tenorMediaOrigin = 'https://media.tenor.com https://*.tenor.com'

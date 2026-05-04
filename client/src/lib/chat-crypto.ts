@@ -242,6 +242,20 @@ export async function encryptOutboundTextV2(
   // — fall straight through to the symmetric v1 path.
   if (frame.mode === 'DIRECT' && ctx.peerUserId) {
     try {
+      const { getDrFanoutSafety } = await import('@/lib/fanout-crypto')
+      const safety = await getDrFanoutSafety(ctx.ownerUserId, ctx.peerUserId)
+      if (!safety.safe) {
+        if (
+          typeof console !== 'undefined' &&
+          safety.reason === 'MULTI_DEVICE_UNSAFE'
+        ) {
+          console.warn('[ratchet] DR v2 disabled for multi-device direct chat', {
+            myDeviceCount: safety.myDeviceCount,
+            peerDeviceCount: safety.peerDeviceCount,
+          })
+        }
+        throw new Error('RATCHET_NO_SESSION')
+      }
       const { encryptForPeer } = await import('@/lib/ratchet/session-manager')
       const wire = await encryptForPeer(ctx.ownerUserId, ctx.peerUserId, plaintext)
       return {

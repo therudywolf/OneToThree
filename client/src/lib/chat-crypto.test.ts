@@ -14,17 +14,43 @@ type DecryptFromPeerArgs = [
 const decryptFromPeerMock = vi.fn<(...args: DecryptFromPeerArgs) => Promise<string>>(
   async () => 'plaintext-out'
 )
+const encryptForPeerMock = vi.fn(async () => ({
+  protocolVersion: 2,
+  encrypted_content: 'DR_CIPHERTEXT',
+  iv: 'dr:v2',
+  drHeader: 'DR_HEADER',
+  drInit: null,
+}))
+const getDrFanoutSafetyMock = vi.fn<() => Promise<unknown>>(async () => ({
+  safe: true,
+  slots: [{ device_id: 'peer-device', ecdh_public_key: 'peer-key' }],
+  myDeviceCount: 1,
+  peerDeviceCount: 1,
+}))
 
 vi.mock('@/lib/ratchet/session-manager', () => ({
   decryptFromPeer: decryptFromPeerMock,
+  encryptForPeer: encryptForPeerMock,
 }))
 
-import { decryptInboundTextV2 } from '@/lib/chat-crypto'
+vi.mock('@/lib/fanout-crypto', () => ({
+  getDrFanoutSafety: getDrFanoutSafetyMock,
+}))
+
+import { decryptInboundTextV2, encryptOutboundTextV2 } from '@/lib/chat-crypto'
 import { generateKeyPairIsolated } from '@/lib/crypto'
 
 describe('decryptInboundTextV2', () => {
   beforeEach(() => {
     decryptFromPeerMock.mockClear()
+    encryptForPeerMock.mockClear()
+    getDrFanoutSafetyMock.mockClear()
+    getDrFanoutSafetyMock.mockResolvedValue({
+      safe: true,
+      slots: [{ device_id: 'peer-device', ecdh_public_key: 'peer-key' }],
+      myDeviceCount: 1,
+      peerDeviceCount: 1,
+    })
   })
 
   it('rejects v2 envelope with missing dr_header', async () => {
@@ -131,5 +157,64 @@ describe('decryptInboundTextV2', () => {
     )
     const payloadArg = decryptFromPeerMock.mock.calls[0]![2]
     expect(payloadArg.drInit).toBeUndefined()
+  })
+})
+
+describe('encryptOutboundTextV2', () => {
+  beforeEach(() => {
+    encryptForPeerMock.mockClear()
+    getDrFanoutSafetyMock.mockClear()
+    getDrFanoutSafetyMock.mockResolvedValue({
+      safe: true,
+      slots: [{ device_id: 'peer-device', ecdh_public_key: 'peer-key' }],
+      myDeviceCount: 1,
+      peerDeviceCount: 1,
+    })
+  })
+
+  it('uses DR v2 only when the fan-out plan is single-device safe', async () => {
+    const me = await generateKeyPairIsolated()
+
+    const encrypted = await encryptOutboundTextV2(
+      me.privateKey,
+      'hello',
+      { mode: 'DIRECT', peerPublicKeyJwk: me.publicJwk },
+      { ownerUserId: 'u-self', peerUserId: 'u-peer' }
+    )
+
+    expect(getDrFanoutSafetyMock).toHaveBeenCalledWith('u-self', 'u-peer')
+    expect(encryptForPeerMock).toHaveBeenCalledWith('u-self', 'u-peer', 'hello')
+    expect(encrypted).toMatchObject({
+      protocol_version: 2,
+      encrypted_content: 'DR_CIPHERTEXT',
+      iv: 'dr:v2',
+      dr_header: 'DR_HEADER',
+      dr_init: null,
+    })
+  })
+
+  it('falls back to v1 before advancing ratchet state in multi-device chats', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const me = await generateKeyPairIsolated()
+    getDrFanoutSafetyMock.mockResolvedValueOnce({
+      safe: false,
+      reason: 'MULTI_DEVICE_UNSAFE',
+      slots: [],
+      myDeviceCount: 2,
+      peerDeviceCount: 1,
+    })
+
+    const encrypted = await encryptOutboundTextV2(
+      me.privateKey,
+      'hello',
+      { mode: 'DIRECT', peerPublicKeyJwk: me.publicJwk },
+      { ownerUserId: 'u-self', peerUserId: 'u-peer' }
+    )
+
+    expect(encryptForPeerMock).not.toHaveBeenCalled()
+    expect(encrypted.protocol_version).toBe(1)
+    expect(encrypted.dr_header).toBeNull()
+    expect(encrypted.dr_init).toBeNull()
+    warn.mockRestore()
   })
 })

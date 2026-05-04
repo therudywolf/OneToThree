@@ -685,6 +685,53 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
+  app.post('/me/devices/:deviceId/reauthorize', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+
+    const params = z.object({ deviceId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const deviceId = normalizeUuid(params.data.deviceId)
+
+    const [target] = await db
+      .select({
+        id: devices.id,
+        isMaster: devices.isMaster,
+        revokedAt: devices.revokedAt,
+      })
+      .from(devices)
+      .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+      .limit(1)
+    if (!target) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
+    if (target.isMaster) return reply.status(403).send({ error: 'CANNOT_REAUTHORIZE_MASTER_DEVICE' })
+    if (!target.revokedAt) return reply.status(409).send({ error: 'DEVICE_NOT_REVOKED' })
+
+    const now = new Date()
+    await db.transaction(async (tx) => {
+      await tx
+        .update(devices)
+        .set({
+          revokedAt: null,
+          e2eePublicKey: null,
+          ecdhPublicKey: null,
+          linkedAt: null,
+          historySyncEnabledAt: null,
+          lastActive: now,
+        })
+        .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
+      await tx.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, deviceId))
+    })
+
+    sendToUser(user.id, { type: 'server_notice', notice: 'device_reauthorized', device_id: deviceId })
+    return reply.send({
+      ok: true,
+      device_id: deviceId,
+      requires_relink: true,
+    })
+  })
+
   app.delete('/me/devices/:deviceId', { config: { rateLimit: { max: 10, timeWindow: '5 minutes' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

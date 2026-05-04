@@ -9,7 +9,7 @@
  *   — Consumes link_token (one-time).
  *   — Verifies ECDSA signature from the OLD device over:
  *       SHA-256(new_device_client_key + "." + new_device_pubkey + "." + link_token)
- *   — Inserts new device row with e2ee_public_key.
+ *   — Inserts or refreshes the new device row with e2ee_public_key.
  *   — Returns 200 with user_id.
  */
 
@@ -138,8 +138,8 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
    *  1. link_token is consumed atomically (one-time, TTL-bound in Redis)
    *  2. OLD device proves control by signing a deterministic digest that
    *     binds the new device's identity (client key + pubkey) to the token
-   *  3. New device row is created with e2ee_public_key set
-   *  4. Conflict on (userId, clientDeviceKey) is silently ignored (idempotent)
+   *  3. New device row is created or refreshed with e2ee_public_key set
+   *  4. Conflict on (userId, clientDeviceKey) refreshes metadata and clears revocation
    */
   app.post(
     '/link/confirm',
@@ -190,7 +190,9 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
       }
 
-      // 4. Insert new device row — ignore conflict (same device confirming twice)
+      // 4. Insert or refresh device row. Refreshing the conflict path is
+      // required for a previously revoked browser profile to complete QR
+      // re-link with the same stable client_device_key.
       const label = device_name?.trim() || 'Linked device'
       const now = new Date()
 
@@ -210,7 +212,23 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
           label,
           migrated: false,
         })
-        .onConflictDoNothing()
+        .onConflictDoUpdate({
+          target: [devices.userId, devices.clientDeviceKey],
+          set: {
+            deviceName: label,
+            isMaster: false,
+            lastActive: now,
+            userAgent,
+            ipAddress,
+            revokedAt: null,
+            e2eePublicKey: new_device_pubkey,
+            ecdhPublicKey: null,
+            linkedAt: now,
+            historySyncEnabledAt: null,
+            label,
+            migrated: false,
+          },
+        })
 
       return reply.send({ ok: true, user_id: userId })
     }

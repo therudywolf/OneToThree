@@ -17,7 +17,7 @@
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(self), microphone=(self), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net/npm/; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://cdn.jsdelivr.net https://api.{$DOMAIN} https://s3.{$DOMAIN} https://*.giphy.com https://media.tenor.com https://*.tenor.com; media-src 'self' blob: https://s3.{$DOMAIN} https://*.giphy.com https://media.tenor.com https://*.tenor.com; connect-src 'self' https://api.{$DOMAIN} wss://api.{$DOMAIN} https://cdn.jsdelivr.net https://s3.{$DOMAIN} wss://lk.{$DOMAIN} https://lk.{$DOMAIN} https://*.giphy.com https://api.giphy.com https://media.tenor.com https://*.tenor.com https://api.tenor.com https://tenor.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://cdn.jsdelivr.net/npm/; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://cdn.jsdelivr.net https://api.{$DOMAIN} https://s3.{$DOMAIN} https://*.giphy.com https://media.tenor.com https://*.tenor.com; media-src 'self' blob: https://api.{$DOMAIN} https://s3.{$DOMAIN} https://*.giphy.com https://media.tenor.com https://*.tenor.com; connect-src 'self' https://api.{$DOMAIN} wss://api.{$DOMAIN} https://cdn.jsdelivr.net https://s3.{$DOMAIN} wss://lk.{$DOMAIN} https://lk.{$DOMAIN} https://*.giphy.com https://api.giphy.com https://media.tenor.com https://*.tenor.com https://api.tenor.com https://tenor.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
 		-Server
 	}
 }

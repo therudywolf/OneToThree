@@ -77,7 +77,7 @@ describe('webrtc turn route', () => {
     process.env.TURN_USERNAME = 'turn-user'
     process.env.TURN_SECRET = 'turn-pass'
     process.env.TURN_ENABLE_TLS_FALLBACK = '1'
-    process.env.TURN_TLS_PORTS = '443,5349'
+    delete process.env.TURN_TLS_PORTS
 
     try {
       const res = await request(app!.server)
@@ -92,7 +92,7 @@ describe('webrtc turn route', () => {
       expect(relay).toBeTruthy()
       expect(relay!.urls).toContain('turn:turn.example.test:3478?transport=udp')
       expect(relay!.urls).toContain('turn:turn.example.test:3478?transport=tcp')
-      expect(relay!.urls).toContain('turns:turn.example.test:443?transport=tcp')
+      expect(relay!.urls).not.toContain('turns:turn.example.test:443?transport=tcp')
       expect(relay!.urls).toContain('turns:turn.example.test:5349?transport=tcp')
     } finally {
       process.env.TURN_URLS = prev.TURN_URLS

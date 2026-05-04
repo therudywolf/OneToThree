@@ -169,13 +169,22 @@ export async function buildApp() {
       : true
   const apiOrigin = normalizeHttpOrigin(process.env.NEXT_PUBLIC_API_URL)
   const storageOrigin = normalizeHttpOrigin(process.env.MINIO_PUBLIC_URL)
+  const gifMediaOrigins = ['https://*.giphy.com', 'https://media.tenor.com', 'https://*.tenor.com']
+  const gifApiOrigins = ['https://api.giphy.com', 'https://api.tenor.com', 'https://tenor.googleapis.com']
   const connectSrc = new Set<string>(["'self'", 'wss:', 'https:', 'https://cdn.jsdelivr.net/npm/'])
-  const imgSrc = new Set<string>(["'self'", 'blob:', 'data:', 'https://cdn.jsdelivr.net'])
+  const imgSrc = new Set<string>(["'self'", 'blob:', 'data:', 'https://cdn.jsdelivr.net', ...gifMediaOrigins])
+  const mediaSrc = new Set<string>(["'self'", 'blob:', ...gifMediaOrigins])
   for (const origin of corsOriginsList) connectSrc.add(origin)
-  if (apiOrigin) connectSrc.add(apiOrigin)
+  for (const origin of gifApiOrigins) connectSrc.add(origin)
+  if (apiOrigin) {
+    connectSrc.add(apiOrigin)
+    imgSrc.add(apiOrigin)
+    mediaSrc.add(apiOrigin)
+  }
   if (storageOrigin) {
     connectSrc.add(storageOrigin)
     imgSrc.add(storageOrigin)
+    mediaSrc.add(storageOrigin)
   }
 
   // Localhost bypass: only safe when the API is not reachable from untrusted clients
@@ -202,7 +211,7 @@ export async function buildApp() {
         formAction: ["'self'"],
         frameAncestors: ["'none'"],
         connectSrc: Array.from(connectSrc),
-        mediaSrc: ["'self'", "blob:"],
+        mediaSrc: Array.from(mediaSrc),
         workerSrc: ["'self'", "blob:"],
         upgradeInsecureRequests: [],
       },

@@ -7,13 +7,22 @@ const originalCorsOrigin = process.env.CORS_ORIGIN
 const originalRedisUrl = process.env.REDIS_URL
 const originalJwtSecret = process.env.JWT_SECRET
 const originalTotpWrapKey = process.env.TOTP_WRAP_KEY
+const originalApiUrl = process.env.NEXT_PUBLIC_API_URL
+const originalMinioPublicUrl = process.env.MINIO_PUBLIC_URL
+
+function restoreEnv(key: string, value: string | undefined) {
+  if (value === undefined) delete process.env[key]
+  else process.env[key] = value
+}
 
 afterEach(() => {
-  process.env.NODE_ENV = originalNodeEnv
-  process.env.CORS_ORIGIN = originalCorsOrigin
-  process.env.REDIS_URL = originalRedisUrl
-  process.env.JWT_SECRET = originalJwtSecret
-  process.env.TOTP_WRAP_KEY = originalTotpWrapKey
+  restoreEnv('NODE_ENV', originalNodeEnv)
+  restoreEnv('CORS_ORIGIN', originalCorsOrigin)
+  restoreEnv('REDIS_URL', originalRedisUrl)
+  restoreEnv('JWT_SECRET', originalJwtSecret)
+  restoreEnv('TOTP_WRAP_KEY', originalTotpWrapKey)
+  restoreEnv('NEXT_PUBLIC_API_URL', originalApiUrl)
+  restoreEnv('MINIO_PUBLIC_URL', originalMinioPublicUrl)
 })
 
 describe('app security contracts', () => {
@@ -28,6 +37,32 @@ describe('app security contracts', () => {
     const res = await app.inject({ method: 'GET', url: '/health' })
     expect(res.statusCode).toBe(200)
     expect(res.headers['x-request-id']).toBeTruthy()
+    await Promise.race([
+      app.close(),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+    ])
+    await closeRedis()
+  }, 10_000)
+
+  it('allows proxied gif previews in API CSP', async () => {
+    process.env.NODE_ENV = 'test'
+    process.env.REDIS_URL = ''
+    process.env.CORS_ORIGIN = 'https://onetothree.ru'
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.onetothree.ru'
+    process.env.MINIO_PUBLIC_URL = 'https://s3.onetothree.ru'
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'vitest-jwt-secret-must-be-32-chars-min!!'
+
+    const app = await buildApp()
+    await app.ready()
+    const res = await app.inject({ method: 'GET', url: '/health' })
+    const csp = String(res.headers['content-security-policy'] ?? '')
+
+    expect(res.statusCode).toBe(200)
+    expect(csp).toContain("img-src 'self' blob: data: https://cdn.jsdelivr.net")
+    expect(csp).toContain('https://api.onetothree.ru')
+    expect(csp).toContain('https://s3.onetothree.ru')
+    expect(csp).toContain('https://media.tenor.com')
+    expect(csp).toContain('media-src')
     await Promise.race([
       app.close(),
       new Promise<void>((resolve) => setTimeout(resolve, 2000)),

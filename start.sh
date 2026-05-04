@@ -141,7 +141,49 @@ prompt_and_save_telegram_token() {
 
 build_turn_urls() {
   local host="$1"
-  echo "turn:${host}:3478,turn:${host}:3478?transport=tcp,turns:${host}:443?transport=tcp,turns:${host}:5349?transport=tcp"
+  echo "turn:${host}:3478,turn:${host}:3478?transport=tcp,turns:${host}:5349?transport=tcp"
+}
+
+turn_443_fallback_allowed() {
+  local raw
+  raw="$(printf '%s' "$(val_for_key TURN_ALLOW_443_FALLBACK)" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    1|true|yes|on) return 0 ;;
+  esac
+  return 1
+}
+
+sanitize_turn_url_fallbacks() {
+  local key raw part clean out changed
+  local -a _turn_parts
+  turn_443_fallback_allowed && return 0
+
+  for key in NEXT_PUBLIC_TURN_URLS TURN_URLS; do
+    raw="$(val_for_key "$key")"
+    [[ -n "$raw" ]] && ! is_placeholder "$raw" || continue
+    out=""
+    changed=0
+    IFS=',' read -r -a _turn_parts <<< "$raw"
+    for part in "${_turn_parts[@]}"; do
+      clean="$(trim_value "$part")"
+      [[ -n "$clean" ]] || continue
+      case "$clean" in
+        turns:*:443|turns:*:443\?*|turns://*:443|turns://*:443\?*)
+          changed=1
+          continue
+          ;;
+      esac
+      if [[ -z "$out" ]]; then
+        out="$clean"
+      else
+        out="${out},${clean}"
+      fi
+    done
+    if [[ "$changed" -eq 1 && -n "$out" ]]; then
+      update_key "$key" "$out"
+      ok "${key}: удалён стандартный turns:*:443 fallback (порт 443 занят Caddy)."
+    fi
+  done
 }
 
 looks_like_ip() {
@@ -235,6 +277,15 @@ append_service_once() {
   UPDATE_SERVICES+=("$service")
 }
 
+append_hint_once() {
+  local hint="$1"
+  local existing
+  for existing in "${UPDATE_HINTS[@]:-}"; do
+    [[ "$existing" == "$hint" ]] && return 0
+  done
+  UPDATE_HINTS+=("$hint")
+}
+
 wait_healthy() {
   local service="$1" label="${2:-$1}" max_wait="${3:-120}"
   local elapsed=0 interval=3
@@ -274,6 +325,61 @@ wait_healthy() {
       return 1
     fi
   done
+}
+
+reload_caddy_config() {
+  local caddy_cid
+  caddy_cid=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q caddy 2>/dev/null | head -1 || true)
+  if [[ -z "$caddy_cid" ]]; then
+    warn "Caddy reload пропущен: контейнер не запущен."
+    return 1
+  fi
+
+  log "Перезагружаю Caddy config..."
+  if "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    ok "Caddy config применён без перезапуска контейнера."
+    return 0
+  fi
+
+  warn "Caddy reload не удался, перезапускаю контейнер Caddy."
+  "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart caddy >/dev/null
+  ok "Caddy перезапущен."
+}
+
+verify_preview_csp() {
+  local app_url api_url storage_url headers csp
+  app_url="$(val_for_key NEXT_PUBLIC_APP_URL)"
+  if [[ -z "$app_url" ]] || is_placeholder "$app_url"; then
+    app_url="$(val_for_key CORS_ORIGIN)"
+  fi
+  api_url="$(val_for_key NEXT_PUBLIC_API_URL)"
+  storage_url="$(val_for_key MINIO_PUBLIC_URL)"
+  app_url="${app_url%%,*}"
+  api_url="${api_url%%,*}"
+  storage_url="${storage_url%%,*}"
+  [[ -n "$app_url" && -n "$api_url" ]] || return 0
+
+  log "Smoke-тест CSP: ${app_url}"
+  headers="$(curl -fsSI --max-time 15 "$app_url" 2>/dev/null || true)"
+  if [[ -z "$headers" ]]; then
+    warn "Smoke-тест CSP не получил headers от ${app_url}."
+    return 1
+  fi
+  csp="$(printf '%s\n' "$headers" | awk 'BEGIN{IGNORECASE=1} /^content-security-policy:/ {sub(/^[^:]*:[[:space:]]*/, ""); print; exit}')"
+  if [[ -z "$csp" ]]; then
+    warn "Smoke-тест CSP: header Content-Security-Policy отсутствует."
+    return 1
+  fi
+
+  if [[ "$csp" != *"$api_url"* || "$csp" != *"https://media.tenor.com"* ]]; then
+    warn "Smoke-тест CSP: preview origins отсутствуют в CSP (api/tenor)."
+    return 1
+  fi
+  if [[ -n "$storage_url" && "$csp" != *"$storage_url"* ]]; then
+    warn "Smoke-тест CSP: storage origin отсутствует в CSP."
+    return 1
+  fi
+  ok "Smoke-тест CSP — OK"
 }
 
 sync_turn_tls_with_retry() {
@@ -321,7 +427,7 @@ detect_update_services() {
   local curr_head="${diff_range##*..}"
   if [[ -n "$prev_head" && "$prev_head" == "$curr_head" ]]; then
     UPDATE_SERVICES=(api web caddy coturn livekit db-migrate)
-    UPDATE_HINTS+=("git HEAD не изменился — запускаю полный rebuild (включая db-migrate, миграции идемпотентны).")
+    append_hint_once "git HEAD не изменился — запускаю полный rebuild (включая db-migrate, миграции идемпотентны)."
     return
   fi
 
@@ -342,7 +448,7 @@ detect_update_services() {
         append_service_once caddy
         ;;
       docker/coturn/tls/*|scripts/sync-turn-certs.sh)
-        UPDATE_HINTS+=("TURN TLS-материалы изменились — запускаю автоматическую синхронизацию через ./start.sh turn-sync.")
+        append_hint_once "TURN TLS-материалы изменились — запускаю автоматическую синхронизацию через ./start.sh turn-sync."
         append_service_once coturn
         ;;
       docker/coturn/*)
@@ -489,6 +595,8 @@ case "$CMD" in
     git pull --ff-only origin "$CURRENT_BRANCH"
     prime_compose_interpolation_env
     prompt_and_save_telegram_token 1 || true
+    sanitize_turn_url_fallbacks
+    prime_compose_interpolation_env
     CURRENT_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
     detect_update_services "${PREVIOUS_HEAD}..${CURRENT_HEAD}"
 
@@ -520,11 +628,11 @@ case "$CMD" in
       "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs api --tail 150 2>&1 || true
       exit 1
     fi
-
     # Wait for all updated services to become healthy
     sep
     log "Жду готовности обновлённых сервисов..."
     UPDATE_OK=true
+    reload_caddy_config || UPDATE_OK=false
     for _svc in db redis minio api web; do
       if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -qx "$_svc"; then
         _label="$_svc"
@@ -550,6 +658,7 @@ case "$CMD" in
         UPDATE_OK=false
       fi
     fi
+    verify_preview_csp || UPDATE_OK=false
 
     # Sync TURN TLS after Caddy has had time to obtain/renew the certificate.
     # The sync script restarts coturn once only when the copied material changed.
@@ -1017,6 +1126,7 @@ if is_placeholder "$TURN_URLS_VAL" && ! is_placeholder "$TURN_PUB_URLS"; then
   update_key TURN_URLS "$TURN_PUB_URLS"
   ok "TURN_URLS синхронизирован из NEXT_PUBLIC_TURN_URLS."
 fi
+sanitize_turn_url_fallbacks
 
 VPUB=$(val_for_key VAPID_PUBLIC_KEY)
 VPRIV=$(val_for_key VAPID_PRIVATE_KEY)
@@ -1196,6 +1306,7 @@ if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove
   "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs api --tail 150 2>&1 || true
   exit 1
 fi
+reload_caddy_config || true
 
 # =============================================================================
 # ОЖИДАНИЕ ГОТОВНОСТИ

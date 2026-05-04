@@ -274,6 +274,8 @@ services:
   #   - TCP 3478, 5349 (STUN/TURN + TURNS).
   #   - UDP 3478 for STUN.
   #   - UDP 49160-49200 for RELAY media. Must be NOT blocked by Cloudflare Proxy.
+  #   - Do not advertise turns:*:443 in the default one-host deploy: Caddy owns
+  #     host :443. Use turns:*:5349 unless you run TURN on a separate :443 IP.
   #
   # CRITICAL (Cloudflare): create hostname `turn.onetothree.ru` pointing at
   # this server's IP and set it to "DNS only" (gray cloud). Orange-cloud proxy

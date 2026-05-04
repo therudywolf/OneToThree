@@ -146,4 +146,86 @@ describe('group call websocket signaling', () => {
       await db.delete(users).where(eq(users.id, outsider.id))
     }
   })
+
+  it('relays encrypted group audio frames only to active room targets', async () => {
+    if (!dbAvailable) return
+    const sender = await createUser(`gc-relay-a-${Date.now().toString(36)}`)
+    const target = await createUser(`gc-relay-b-${Date.now().toString(36)}`)
+    const outsider = await createUser(`gc-relay-c-${Date.now().toString(36)}`)
+    const [chat] = await db
+      .insert(chats)
+      .values({ type: 'group_e2e', name: null })
+      .returning({ id: chats.id })
+
+    await db.insert(chatMembers).values([
+      { chatId: chat.id, userId: sender.id, encryptedGroupKey: null, role: 'owner' },
+      { chatId: chat.id, userId: target.id, encryptedGroupKey: null, role: 'member' },
+    ])
+
+    const senderCookie = `fm_session=${await app!.jwt.sign({ sub: sender.id, username: sender.username, jti: randomUUID() })}`
+    const targetCookie = `fm_session=${await app!.jwt.sign({ sub: target.id, username: target.username, jti: randomUUID() })}`
+    const outsiderCookie = `fm_session=${await app!.jwt.sign({ sub: outsider.id, username: outsider.username, jti: randomUUID() })}`
+    const wsUrl = `${baseUrl.replace(/^http/, 'ws')}/api/ws`
+
+    let senderWs: WebSocket | null = null
+    let targetWs: WebSocket | null = null
+    let outsiderWs: WebSocket | null = null
+
+    try {
+      senderWs = await openWs(wsUrl, senderCookie)
+      targetWs = await openWs(wsUrl, targetCookie)
+      outsiderWs = await openWs(wsUrl, outsiderCookie)
+      const senderMessages = collectMessages(senderWs)
+      const targetMessages = collectMessages(targetWs)
+      const outsiderMessages = collectMessages(outsiderWs)
+
+      senderWs.send(JSON.stringify({ type: 'group_call:join', room_id: chat.id, is_video: false }))
+      targetWs.send(JSON.stringify({ type: 'group_call:join', room_id: chat.id, is_video: false }))
+
+      await waitForMessage(senderMessages, (msg) => msg.type === 'group_call:participant_list')
+      await waitForMessage(targetMessages, (msg) => msg.type === 'group_call:participant_list')
+
+      senderWs.send(JSON.stringify({
+        type: 'group_call:relay_frame',
+        room_id: chat.id,
+        target_user_id: target.id,
+        ciphertext: 'cipher',
+        iv: 'iv',
+        sample_rate: 48000,
+      }))
+
+      const frame = await waitForMessage(
+        targetMessages,
+        (msg) => msg.type === 'group_call:relay_frame'
+      )
+      expect(frame.from_user_id).toBe(sender.id)
+      expect(frame.ciphertext).toBe('cipher')
+
+      senderWs.send(JSON.stringify({
+        type: 'group_call:relay_frame',
+        room_id: chat.id,
+        target_user_id: outsider.id,
+        ciphertext: 'bad',
+        iv: 'iv',
+        sample_rate: 48000,
+      }))
+      const error = await waitForMessage(
+        senderMessages,
+        (msg) => msg.type === 'error' && msg.error === 'TARGET_NOT_IN_CALL'
+      )
+      expect(error.error).toBe('TARGET_NOT_IN_CALL')
+
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      expect(outsiderMessages.some((msg) => msg.type === 'group_call:relay_frame')).toBe(false)
+    } finally {
+      senderWs?.close()
+      targetWs?.close()
+      outsiderWs?.close()
+      await db.delete(chatMembers).where(eq(chatMembers.chatId, chat.id))
+      await db.delete(chats).where(eq(chats.id, chat.id))
+      await db.delete(users).where(eq(users.id, sender.id))
+      await db.delete(users).where(eq(users.id, target.id))
+      await db.delete(users).where(eq(users.id, outsider.id))
+    }
+  })
 })

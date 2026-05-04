@@ -43,6 +43,10 @@ export type IceConfig = {
   backendSource: IceBackendSource
   transportPolicy: IceTransportPolicy
   hasRelay: boolean
+  mediaMode?: 'origin_safe' | 'self_hosted' | 'cloudflare'
+  originSafe: boolean
+  p2pAllowed: boolean
+  relayFallback?: 'websocket_audio'
 }
 
 interface IceCacheEntry {
@@ -53,6 +57,10 @@ interface IceCacheEntry {
   backendSource: IceBackendSource
   transportPolicy: IceTransportPolicy
   hasRelay: boolean
+  mediaMode?: 'origin_safe' | 'self_hosted' | 'cloudflare'
+  originSafe: boolean
+  p2pAllowed: boolean
+  relayFallback?: 'websocket_audio'
 }
 
 type WindowWithCapacitor = typeof window & {
@@ -64,6 +72,10 @@ type IceEndpointPayload = {
   expiresAt?: number | null
   source?: string
   transportPolicy?: string
+  mediaMode?: string
+  originSafe?: boolean
+  p2pAllowed?: boolean
+  relayFallback?: string | null
 }
 
 let cache: IceCacheEntry | null = null
@@ -172,6 +184,10 @@ export async function getIceConfig(options?: { forceRefresh?: boolean }): Promis
         backendSource: cache.backendSource,
         transportPolicy: cache.transportPolicy,
         hasRelay: cache.hasRelay,
+        mediaMode: cache.mediaMode,
+        originSafe: cache.originSafe,
+        p2pAllowed: cache.p2pAllowed,
+        relayFallback: cache.relayFallback,
       }
     }
   }
@@ -216,12 +232,23 @@ export async function getIceConfig(options?: { forceRefresh?: boolean }): Promis
         backendSource,
         transportPolicy,
         hasRelay,
+        mediaMode:
+          payload.mediaMode === 'origin_safe' || payload.mediaMode === 'self_hosted' || payload.mediaMode === 'cloudflare'
+            ? payload.mediaMode
+            : undefined,
+        originSafe: Boolean(payload.originSafe),
+        p2pAllowed: payload.p2pAllowed !== false,
+        relayFallback: payload.relayFallback === 'websocket_audio' ? 'websocket_audio' : undefined,
       }
       return {
         iceServers: merged,
         backendSource,
         transportPolicy,
         hasRelay,
+        mediaMode: cache.mediaMode,
+        originSafe: cache.originSafe,
+        p2pAllowed: cache.p2pAllowed,
+        relayFallback: cache.relayFallback,
       }
     } finally {
       inflight = null

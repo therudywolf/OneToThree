@@ -84,8 +84,8 @@ const ru = {
   'call.relayDegradation': 'Соединение переключено на сервер \u2014 шифрование сохранено',
   'call.iceRelayTitle': 'Звонки',
   'call.iceRelayMissing':
-    'Нет TURN-реле (только STUN). 1:1 звонки перейдут на зашифрованное аудио-реле, но видео и групповые звонки за симметричным NAT могут не установиться. Для полного покрытия настройте Cloudflare Realtime или coturn на отдельном имени с серым облаком.',
-  'call.audioRelayFallback': 'TURN недоступен. Переключаю звонок на зашифрованное аудио-реле.',
+    'Включён origin-safe режим звонков. 1:1 сначала пробует прямое зашифрованное P2P, затем переключается на зашифрованное аудио-реле через WebSocket.',
+  'call.audioRelayFallback': 'Прямой медиаканал недоступен. Переключаю на зашифрованное аудио-реле.',
   'call.activePeer': 'Активный звонок',
   'call.returnToCall': 'Вернуться к звонку',
 
@@ -734,6 +734,7 @@ const ru = {
   'groupCall.noParticipants': 'Нет других участников',
   'groupCall.maxParticipants': 'Максимум 8 участников',
   'groupCall.screenShareActive': 'Демонстрация экрана активна',
+  'groupCall.audioRelay': 'Зашифрованное аудио-реле',
 
   // [MESSAGE STATES]
   'msg.sending': 'Отправка',

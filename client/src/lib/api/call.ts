@@ -4,6 +4,10 @@ import { API_URL } from './auth'
 export type CallConfig = {
   livekit_enabled: boolean
   livekit_url: string | null
+  media_mode?: 'origin_safe' | 'self_hosted' | 'cloudflare'
+  origin_safe?: boolean
+  mesh_fallback_enabled?: boolean
+  group_relay_enabled?: boolean
 }
 
 export type CallTokenResponse = {
@@ -26,6 +30,13 @@ export async function fetchCallConfig(): Promise<CallConfig> {
   return {
     livekit_enabled: Boolean(data.livekit_enabled),
     livekit_url: typeof data.livekit_url === 'string' ? data.livekit_url : null,
+    media_mode:
+      data.media_mode === 'origin_safe' || data.media_mode === 'self_hosted' || data.media_mode === 'cloudflare'
+        ? data.media_mode
+        : undefined,
+    origin_safe: Boolean(data.origin_safe),
+    mesh_fallback_enabled: Boolean(data.mesh_fallback_enabled),
+    group_relay_enabled: Boolean(data.group_relay_enabled),
   }
 }
 

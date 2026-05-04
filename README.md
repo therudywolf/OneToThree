@@ -93,7 +93,9 @@ Create five A records pointing to your server IP:
 | `turn.example.com` | A | `YOUR_SERVER_IP` | **Gray cloud (DNS only) — REQUIRED** |
 | `lk.example.com` | A | `YOUR_SERVER_IP` | **Gray cloud (DNS only) — REQUIRED** |
 
-> **Important:** The `turn.*` and `lk.*` records **must not** be proxied. Cloudflare blocks UDP — TURN relay and LiveKit media will not work behind the proxy. All other records can be proxied.
+> **Default call mode:** production uses `CALL_MEDIA_MODE=origin_safe`. In this mode `turn.*` and `lk.*` are not advertised to browsers: 1:1 calls try encrypted direct P2P first and fall back to encrypted WebSocket audio relay; group calls use encrypted WebSocket audio relay. The origin IP stays behind orange-cloud.
+>
+> **Legacy self-hosted media:** if you explicitly set `CALL_MEDIA_MODE=self_hosted`, then `turn.*` and `lk.*` records **must not** be proxied. Cloudflare blocks UDP — TURN relay and LiveKit media will not work behind the proxy, and the media host IP will be visible.
 
 ### 3. Open firewall ports
 
@@ -284,7 +286,7 @@ The APK is placed at `releases/android/onetothree-debug.apk` (or `onetothree-rel
 | Symptom | Fix |
 |---------|-----|
 | Caddy fails to get TLS certificate | Confirm DNS A records resolve to this server. Ensure ports 80 and 443 are open. Check logs: `./start.sh logs` and look for Caddy errors. |
-| WebRTC calls don't connect | Ensure `turn.*` DNS is set to **DNS only** (gray cloud) in Cloudflare. Verify `TURN_EXTERNAL_IP` matches your server's public IP (`curl -s ifconfig.me`). Check that ports 3478 and 49152–65535/udp are open. |
+| WebRTC calls don't connect | In default `CALL_MEDIA_MODE=origin_safe`, 1:1 calls may fall back from P2P/video to encrypted WebSocket audio relay when NAT blocks direct media. In `CALL_MEDIA_MODE=self_hosted`, ensure `turn.*` DNS is **DNS only** and ports 3478 + relay UDP range are open. |
 | Login redirect loop on `/login` | Verify `COOKIE_DOMAIN` is set to `.your-domain.com` (with leading dot) in `.env.prod`. Rebuild the API container after changes. |
 | `relation "users" does not exist` | Database migration failed. Check: `docker compose -f docker-compose.prod.yml logs db-migrate` |
 | Media shows "File expired" | The object was purged by the retention policy, or the peer needs to re-send the file. |

@@ -12,6 +12,7 @@ import {
   Users,
   MoreVertical,
   Hand,
+  Radio,
   X,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -263,6 +264,7 @@ export function GroupCallScreen({
   const remoteStreams = useGroupCallStore((s) => s.remoteStreams)
   const participants = useGroupCallStore((s) => s.participants)
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
+  const transport = useGroupCallStore((s) => s.transport)
   const showParticipantPanel = useGroupCallStore((s) => s.showParticipantPanel)
   const setShowParticipantPanel = useGroupCallStore((s) => s.setShowParticipantPanel)
 
@@ -324,6 +326,7 @@ export function GroupCallScreen({
   }, [participants, useDominantSpeaker, spotlightId])
 
   const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
+  const isAudioRelay = transport === 'audio_relay'
   const videoOff =
     localStream?.getVideoTracks().length === 0 ||
     (localStream?.getVideoTracks().some((t) => !t.enabled) ?? true)
@@ -360,6 +363,14 @@ export function GroupCallScreen({
                 <Monitor className="h-3 w-3 text-neon-cyan" />
                 <span className="font-mono text-[9px] uppercase tracking-wider text-neon-cyan">
                   {t('call.screenSharing')}
+                </span>
+              </span>
+            )}
+            {isAudioRelay && (
+              <span className="flex items-center gap-1.5 border border-accent-2/40 bg-accent-2/15 px-2 py-0.5">
+                <Radio className="h-3 w-3 text-accent-2" />
+                <span className="font-mono text-[9px] uppercase tracking-wider text-accent-2">
+                  {t('groupCall.audioRelay')}
                 </span>
               </span>
             )}
@@ -499,12 +510,13 @@ export function GroupCallScreen({
 
           {/* Camera */}
           <button
-            onClick={onToggleVideo}
+            onClick={isAudioRelay ? undefined : onToggleVideo}
+            disabled={isAudioRelay}
             className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
-              videoOff
+              isAudioRelay || videoOff
                 ? 'bg-void/50 text-text-muted/70 hover:bg-elevated'
                 : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
-            }`}
+            } disabled:cursor-not-allowed disabled:opacity-50`}
             title={videoOff ? t('call.videoOn') : t('call.videoOff')}
             aria-label={videoOff ? t('call.videoOn') : t('call.videoOff')}
           >
@@ -512,7 +524,7 @@ export function GroupCallScreen({
           </button>
 
           {/* Screen Share (desktop only) */}
-          {!isMobileDevice && (
+          {!isMobileDevice && !isAudioRelay && (
             <button
               onClick={handleScreenShareToggle}
               className={`hidden sm:flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${

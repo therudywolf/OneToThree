@@ -15,11 +15,14 @@ export type GroupCallParticipant = {
   connectionState: RTCIceConnectionState | 'new' | 'pending'
 }
 
+export type GroupCallTransport = 'mesh' | 'livekit' | 'audio_relay'
+
 export type GroupCallState = {
   // [CALL_STATE]
   isInGroupCall: boolean
   roomId: string | null
   isVideo: boolean
+  transport: GroupCallTransport
 
   // [STREAMS]
   localStream: MediaStream | null
@@ -41,6 +44,7 @@ export type GroupCallState = {
   setIsInGroupCall: (active: boolean) => void
   setRoomId: (roomId: string | null) => void
   setIsVideo: (isVideo: boolean) => void
+  setTransport: (transport: GroupCallTransport) => void
   setLocalStream: (stream: MediaStream | null) => void
   setRemoteStream: (userId: string, stream: MediaStream) => void
   removeRemoteStream: (userId: string) => void
@@ -61,6 +65,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   isInGroupCall: false,
   roomId: null,
   isVideo: false,
+  transport: 'mesh',
   localStream: null,
   remoteStreams: {},
   participants: {},
@@ -73,6 +78,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   setIsInGroupCall: (active) => set({ isInGroupCall: active }),
   setRoomId: (roomId) => set({ roomId }),
   setIsVideo: (isVideo) => set({ isVideo }),
+  setTransport: (transport) => set({ transport }),
   setLocalStream: (stream) => set({ localStream: stream }),
   setRemoteStream: (userId, stream) =>
     set((s) => ({ remoteStreams: { ...s.remoteStreams, [userId]: stream } })),
@@ -131,6 +137,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
       isInGroupCall: false,
       roomId: null,
       isVideo: false,
+      transport: 'mesh',
       localStream: null,
       remoteStreams: {},
       participants: {},

@@ -5,8 +5,9 @@
  * Level: Transmission Layer (Full Mesh WebRTC)
  * Vibe: Clinical Steel / Terminal Noir
  *
- * Manages N-1 peer connections for group calls (up to 8 participants).
- * Each participant creates a direct WebRTC connection to every other participant.
+ * Manages group media. In origin-safe Cloudflare orange-cloud deployments it
+ * uses pairwise encrypted audio frames over the app WebSocket. In explicit
+ * self-hosted mode it can still use LiveKit or the legacy mesh fallback.
  */
 
 import { getFmSocket } from '@/lib/api/socket'
@@ -14,6 +15,10 @@ import { useGroupCallStore } from '@/store/groupCallStore'
 import type { GroupCallParticipant as _GroupCallParticipant } from '@/store/groupCallStore'
 import { getIceServers } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
+import { lookupUsers } from '@/lib/api/users'
+import { deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
+import { useSessionStore } from '@/store/sessionStore'
+import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import {
   joinLiveKitCall,
   leaveLiveKitCall,
@@ -94,6 +99,10 @@ const audioAnalysers = new Map<string, { analyser: AnalyserNode; context: AudioC
 
 /** Cached ICE servers for this session. */
 let cachedIceServers: RTCIceServer[] | null = null
+let groupRelayMode = false
+const relayPlayers = new Map<string, AudioRelayPlayer>()
+const relayCaptures = new Map<string, AudioRelayCaptureController>()
+const relayKeys = new Map<string, Promise<CryptoKey | null>>()
 
 async function ensureIceServers(): Promise<RTCIceServer[]> {
   if (cachedIceServers) return cachedIceServers
@@ -103,6 +112,72 @@ async function ensureIceServers(): Promise<RTCIceServer[]> {
 
 function sendGroupCallSignal(payload: object) {
   getFmSocket().send(payload)
+}
+
+async function resolveRelaySharedKey(peerId: string): Promise<CryptoKey | null> {
+  const cached = relayKeys.get(peerId)
+  if (cached) return cached
+  const task = (async () => {
+    const ownPrivateKey = useSessionStore.getState().unwrappedPrivateKey
+    if (!ownPrivateKey) return null
+    const [peer] = await lookupUsers([peerId])
+    if (!peer?.ecdh_public_key_jwk) return null
+    const peerPublicKey = await importEcdhPublicKey(peer.ecdh_public_key_jwk)
+    return deriveSharedSecret(ownPrivateKey, peerPublicKey)
+  })().catch(() => null)
+  relayKeys.set(peerId, task)
+  return task
+}
+
+function ensureRelayPlayer(peerId: string): AudioRelayPlayer {
+  const existing = relayPlayers.get(peerId)
+  if (existing) return existing
+  const player = new AudioRelayPlayer()
+  relayPlayers.set(peerId, player)
+  useGroupCallStore.getState().setRemoteStream(peerId, player.stream)
+  return player
+}
+
+function stopRelayPeer(peerId: string) {
+  relayCaptures.get(peerId)?.stop()
+  relayCaptures.delete(peerId)
+  relayPlayers.get(peerId)?.stop()
+  relayPlayers.delete(peerId)
+  relayKeys.delete(peerId)
+}
+
+async function startRelayCaptureForPeer(peerId: string): Promise<boolean> {
+  const store = useGroupCallStore.getState()
+  if (!groupRelayMode || !store.roomId || !store.localStream) return false
+  if (relayCaptures.has(peerId)) return true
+
+  const sharedKey = await resolveRelaySharedKey(peerId)
+  if (!sharedKey) return false
+
+  let busy = false
+  const capture = await startAudioRelayCapture(store.localStream, ({ sampleRate, pcm }) => {
+    if (busy) return
+    busy = true
+    void (async () => {
+      try {
+        const encrypted = await encryptBytes(sharedKey, pcm)
+        const roomId = useGroupCallStore.getState().roomId
+        if (!roomId) return
+        sendGroupCallSignal({
+          type: 'group_call:relay_frame',
+          room_id: roomId,
+          target_user_id: peerId,
+          ciphertext: encrypted.ciphertext,
+          iv: encrypted.iv,
+          sample_rate: sampleRate,
+        })
+      } finally {
+        busy = false
+      }
+    })()
+  })
+  relayCaptures.set(peerId, capture)
+  return true
 }
 
 async function sendGroupOffer(
@@ -277,6 +352,7 @@ function cleanupPeer(peerId: string) {
 
   // Clean speaking detection
   cleanupSpeakingDetection(peerId)
+  stopRelayPeer(peerId)
 
   // Close peer connection
   const pc = store.peerConnections[peerId]
@@ -310,15 +386,48 @@ function cleanupAll() {
   for (const peerId of Object.keys(store.peerConnections)) {
     cleanupPeer(peerId)
   }
+  for (const peerId of Array.from(new Set([...relayPlayers.keys(), ...relayCaptures.keys()]))) {
+    stopRelayPeer(peerId)
+  }
 
   // Stop local stream
   terminateFeed(store.localStream)
 
   // Clear cached ICE servers
   cachedIceServers = null
+  groupRelayMode = false
 
   // Reset store
   store.reset()
+}
+
+async function joinGroupAudioRelayCall(roomId: string): Promise<boolean> {
+  const store = useGroupCallStore.getState()
+  let stream: MediaStream
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: false,
+    })
+  } catch (err) {
+    console.error('[GC.RELAY] Failed to get audio media:', err)
+    return false
+  }
+
+  groupRelayMode = true
+  store.setLocalStream(stream)
+  store.setIsInGroupCall(true)
+  store.setRoomId(roomId)
+  store.setIsVideo(false)
+  store.setTransport('audio_relay')
+
+  sendGroupCallSignal({
+    type: 'group_call:join',
+    room_id: roomId,
+    is_video: false,
+  })
+
+  return true
 }
 
 // --- Public API ---
@@ -331,15 +440,20 @@ export async function joinGroupCall(
   const store = useGroupCallStore.getState()
   if (store.isInGroupCall) return false
 
-  // Try LiveKit SFU first — hides participant IPs from each other
+  // In origin-safe orange-cloud mode, do not advertise self-hosted LiveKit/coturn.
+  // Group calls run as E2E pairwise encrypted audio over the existing WebSocket.
   try {
     const cfg = await fetchCallConfig()
+    if (cfg.origin_safe || cfg.group_relay_enabled) {
+      return joinGroupAudioRelayCall(roomId)
+    }
     if (cfg.livekit_enabled && cfg.livekit_url) {
       const ok = await joinLiveKitCall(roomId, isVideo)
       if (ok) return true
     }
+    if (cfg.mesh_fallback_enabled === false) return false
   } catch {
-    // LiveKit unavailable — fall through to mesh
+    return joinGroupAudioRelayCall(roomId)
   }
 
   // Mesh WebRTC fallback
@@ -360,6 +474,7 @@ export async function joinGroupCall(
   store.setIsInGroupCall(true)
   store.setRoomId(roomId)
   store.setIsVideo(isVideo)
+  store.setTransport('mesh')
 
   sendGroupCallSignal({
     type: 'group_call:join',
@@ -393,7 +508,7 @@ export async function handleParticipantList(
   const store = useGroupCallStore.getState()
   if (store.roomId !== roomId) return
 
-  const iceServers = await ensureIceServers()
+  const iceServers = groupRelayMode ? [] : await ensureIceServers()
 
   for (const p of participants) {
     if (p.userId === myUserId) continue
@@ -407,6 +522,11 @@ export async function handleParticipantList(
       isSpeaking: false,
       connectionState: 'new',
     })
+
+    if (groupRelayMode) {
+      void startRelayCaptureForPeer(p.userId)
+      continue
+    }
 
     // Create peer connection and send offer
     if (store.localStream) {
@@ -437,6 +557,10 @@ export function handleMemberJoin(roomId: string, userId: string, username: strin
     connectionState: 'pending',
   })
 
+  if (groupRelayMode) {
+    void startRelayCaptureForPeer(userId)
+  }
+
   // The new member will send us an offer; we wait for it.
 }
 
@@ -456,6 +580,7 @@ export async function handleGroupCallOffer(
 ) {
   const store = useGroupCallStore.getState()
   if (store.roomId !== roomId || !store.localStream) return
+  if (groupRelayMode) return
 
   let pc = store.peerConnections[fromUserId]
 
@@ -489,6 +614,7 @@ export async function handleGroupCallAnswer(
 ) {
   const store = useGroupCallStore.getState()
   if (store.roomId !== roomId) return
+  if (groupRelayMode) return
 
   const pc = store.peerConnections[fromUserId]
   if (!pc) return
@@ -509,6 +635,7 @@ export async function handleGroupCallIce(
 ) {
   const store = useGroupCallStore.getState()
   if (store.roomId !== roomId) return
+  if (groupRelayMode) return
 
   const pc = store.peerConnections[fromUserId]
   const iceCandidate = candidate as RTCIceCandidateInit
@@ -594,6 +721,7 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
     await startLiveKitScreenShare()
     return true
   }
+  if (groupRelayMode) return false
   const store = useGroupCallStore.getState()
   if (!store.localStream || !store.roomId) return false
 
@@ -634,6 +762,27 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
       console.error('[GC.MEDIA] Screen share failed:', err)
     }
     return false
+  }
+}
+
+export async function handleGroupCallRelayFrame(
+  roomId: string,
+  fromUserId: string,
+  ciphertext: string,
+  iv: string,
+  sampleRate: number
+): Promise<void> {
+  const store = useGroupCallStore.getState()
+  if (!groupRelayMode || store.roomId !== roomId) return
+  const sharedKey = await resolveRelaySharedKey(fromUserId)
+  if (!sharedKey) return
+  try {
+    const pcm = await decryptBytes(sharedKey, ciphertext, iv)
+    const player = ensureRelayPlayer(fromUserId)
+    await player.pushFrame(pcm, sampleRate)
+    store.updateParticipant(fromUserId, { connectionState: 'connected' })
+  } catch (err) {
+    console.warn('[GC.RELAY] Failed to decrypt relay frame for', fromUserId.slice(0, 8), err)
   }
 }
 

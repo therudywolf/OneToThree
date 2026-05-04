@@ -206,6 +206,15 @@ const groupCallSpeakingSchema = z.object({
   is_speaking: z.boolean(),
 })
 
+const groupCallRelayFrameSchema = z.object({
+  type: z.literal('group_call:relay_frame'),
+  room_id: z.string().uuid(),
+  target_user_id: z.string().uuid(),
+  ciphertext: z.string().min(1).max(16_384),
+  iv: z.string().min(1).max(256),
+  sample_rate: z.number().int().min(8_000).max(192_000),
+})
+
 const toggleReactionSchema = z.object({
   type: z.literal('toggle_reaction'),
   message_id: z.string().uuid(),
@@ -253,6 +262,9 @@ function resolveWsRateLimit(json: unknown): number {
     signalData?: { kind?: unknown } | null
   }
   if (entry.type === 'webrtc_signal' && entry.signalData?.kind === 'relay_frame') {
+    return WS_RATE_LIMIT_RELAY_MAX
+  }
+  if (entry.type === 'group_call:relay_frame') {
     return WS_RATE_LIMIT_RELAY_MAX
   }
   return WS_RATE_LIMIT_MAX
@@ -760,6 +772,25 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             room_id,
             user_id: user.id,
             is_speaking,
+          })
+          return
+        }
+
+        const gcRelayFrame = groupCallRelayFrameSchema.safeParse(json)
+        if (gcRelayFrame.success) {
+          const { room_id, target_user_id, ciphertext, iv, sample_rate } = gcRelayFrame.data
+          if (!isUserInRoom(room_id, user.id)) return
+          if (!ensureGroupCallTargetInRoom(room_id, target_user_id)) {
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
+            return
+          }
+          sendToUser(target_user_id, {
+            type: 'group_call:relay_frame',
+            room_id,
+            from_user_id: user.id,
+            ciphertext,
+            iv,
+            sample_rate,
           })
           return
         }

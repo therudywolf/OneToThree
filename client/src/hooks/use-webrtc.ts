@@ -75,6 +75,9 @@ async function getSignalRelays(): Promise<{
   iceServers: RTCIceServer[]
   transportPolicy: IceTransportPolicy
   hasRelay: boolean
+  originSafe: boolean
+  p2pAllowed: boolean
+  relayFallback?: 'websocket_audio'
 }> {
   // ICE/TURN credentials must come from `/api/ice-servers` (Cloudflare short-lived
   // or coturn HMAC); never embed TURN passwords in the client bundle.
@@ -84,6 +87,9 @@ async function getSignalRelays(): Promise<{
     iceServers: normalizeIceServers(config.iceServers),
     transportPolicy: config.transportPolicy,
     hasRelay: config.hasRelay,
+    originSafe: config.originSafe,
+    p2pAllowed: config.p2pAllowed,
+    relayFallback: config.relayFallback,
   }
 }
 
@@ -159,6 +165,7 @@ export function useWebRTC(userId: string | null) {
   const relayKeysRef = useRef(new Map<string, Promise<CryptoKey | null>>())
   const relayPeersRef = useRef(new Set<string>())
   const relayAwaitingAnswerRef = useRef(new Set<string>())
+  const p2pFallbackStartedRef = useRef(new Set<string>())
   const {
     setIncomingCall, reset: resetCallStore, addPeerConnection,
     removePeerConnection, setRemoteStream, removeRemoteStream,
@@ -267,6 +274,7 @@ export function useWebRTC(userId: string | null) {
     clearRemotePeerMedia(peerId)
     clearPeerConnectionType(peerId)
     stopRelayPeer(peerId)
+    p2pFallbackStartedRef.current.delete(peerId)
     delete pendingIceRef.current[peerId]
   }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearPeerConnectionType, stopRelayPeer])
 
@@ -308,6 +316,7 @@ export function useWebRTC(userId: string | null) {
 
     Array.from(pcsRef.current.keys()).forEach(purgePeer)
     Array.from(relayPeersRef.current).forEach(purgePeer)
+    p2pFallbackStartedRef.current.clear()
     
     const state = useCallStore.getState()
     terminateFeed(state.localStream)
@@ -450,6 +459,28 @@ export function useWebRTC(userId: string | null) {
     }, 30_000)
   }, [resolveRelaySharedKey, setCallStartTime, setIsCalling, setLocalStream, setPeerConnectionType, severAllLinks, t])
 
+  const fallbackToAudioRelay = useCallback(async (peerId: string, chatId: string, requestedVideo: boolean) => {
+    if (relayPeersRef.current.has(peerId) || relayAwaitingAnswerRef.current.has(peerId)) return
+    if (p2pFallbackStartedRef.current.has(peerId)) return
+    p2pFallbackStartedRef.current.add(peerId)
+    ringStopRef.current?.()
+
+    const pc = pcsRef.current.get(peerId)
+    if (pc) {
+      try { pc.close() } catch { /* noop */ }
+      pcsRef.current.delete(peerId)
+    }
+    removePeerConnection(peerId)
+    removeRemoteStream(peerId)
+    clearRemotePeerMedia(peerId)
+    clearPeerConnectionType(peerId)
+    delete pendingIceRef.current[peerId]
+
+    const local = useCallStore.getState().localStream
+    terminateFeed(local)
+    await establishAudioRelay(peerId, chatId, requestedVideo)
+  }, [clearPeerConnectionType, clearRemotePeerMedia, establishAudioRelay, removePeerConnection, removeRemoteStream])
+
   const acceptAudioRelay = useCallback(async (peerId: string) => {
     let stream: MediaStream
     try {
@@ -551,6 +582,31 @@ export function useWebRTC(userId: string | null) {
         }
 
         if (data.kind === 'relay_offer') {
+          if (useCallStore.getState().isCalling) {
+            const pc = pcsRef.current.get(fromUserId)
+            if (pc) {
+              try { pc.close() } catch { /* noop */ }
+              pcsRef.current.delete(fromUserId)
+              removePeerConnection(fromUserId)
+            }
+            removeRemoteStream(fromUserId)
+            clearRemotePeerMedia(fromUserId)
+            clearPeerConnectionType(fromUserId)
+            delete pendingIceRef.current[fromUserId]
+
+            const localStream = useCallStore.getState().localStream
+            if (localStream) {
+              const started = await startRelayCapture(fromUserId, localStream)
+              if (started) {
+                transmitSignal(fromUserId, { kind: 'relay_answer' })
+                ensureRelayPlayer(fromUserId)
+              } else {
+                setMediaAccessError('CALL_RELAY_KEY_UNAVAILABLE')
+              }
+            }
+            return
+          }
+
           const current = useCallStore.getState().incomingCall
           setIncomingCall(upsertIncomingCall(current, {
             peerId: fromUserId,
@@ -662,6 +718,11 @@ export function useWebRTC(userId: string | null) {
     setReconnecting,
     setConnectionLost,
     setIceRetryCount,
+    removePeerConnection,
+    removeRemoteStream,
+    clearRemotePeerMedia,
+    clearPeerConnectionType,
+    setMediaAccessError,
   ])
 
   const applyQualityConstraints = useCallback((level: '720p' | '480p' | '360p' | 'audio_only') => {
@@ -861,7 +922,7 @@ export function useWebRTC(userId: string | null) {
       return
     }
 
-    if (recipients.length === 1 && chatId && !signalConfig.hasRelay) {
+    if (recipients.length === 1 && chatId && !signalConfig.hasRelay && !signalConfig.p2pAllowed) {
       const peerId = peerIds[0]
       if (peerId) {
         await establishAudioRelay(peerId, chatId, isVideo)
@@ -923,13 +984,18 @@ export function useWebRTC(userId: string | null) {
         )
         if (!anyConnected && useCallStore.getState().isCalling) {
           console.warn('[SYS.ICE] 30s connection timeout — no peers connected')
-          severAllLinks()
+          const fallbackPeerId = peerIds.length === 1 ? peerIds[0] : null
+          if (fallbackPeerId && chatId && !signalConfig.hasRelay && signalConfig.relayFallback === 'websocket_audio') {
+            void fallbackToAudioRelay(fallbackPeerId, chatId, isVideo)
+          } else {
+            severAllLinks()
+          }
         }
       }, 30_000)
     } else {
       severAllLinks()
     }
-  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime, establishAudioRelay, createAndSendOffer])
+  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime, establishAudioRelay, createAndSendOffer, fallbackToAudioRelay])
 
   const acceptLink = useCallback(async () => {
     const inc = useCallStore.getState().incomingCall

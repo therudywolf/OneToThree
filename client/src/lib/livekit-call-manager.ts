@@ -180,6 +180,7 @@ export async function joinLiveKitCall(
     store.setIsInGroupCall(true)
     store.setRoomId(roomId)
     store.setIsVideo(isVideo)
+    store.setTransport('livekit')
   } catch {
     await room.disconnect()
     activeRoom = null

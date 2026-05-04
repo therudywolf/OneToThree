@@ -50,7 +50,7 @@ const serverRoutesConfig = isStaticExport
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
-    media-src 'self' blob: ${storageOrigin} ${giphyOrigin} ${tenorMediaOrigin};
+    media-src 'self' blob: ${apiOrigin} ${storageOrigin} ${giphyOrigin} ${tenorMediaOrigin};
     connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin} ${giphyApiOrigin} ${tenorMediaOrigin} ${tenorApiOrigin};
     worker-src 'self' blob:;
     upgrade-insecure-requests;

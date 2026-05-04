@@ -58,7 +58,6 @@ function normalizeTurnUrl(url: string): string[] {
   const list = [withTransport(url, 'udp'), withTransport(url, 'tcp')]
   const host = extractTurnHost(url)
   if (host) {
-    list.push(`turns:${host}:443?transport=tcp`)
     list.push(`turns:${host}:5349?transport=tcp`)
   }
   return list

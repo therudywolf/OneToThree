@@ -118,10 +118,10 @@ function collectCoturnIceServers(userId: string): IceServerConfig[] {
   const rawPassword = envStaticPassword || readSecret('TURN_PASSWORD')?.trim()
 
   const includeTlsFallback = (process.env.TURN_ENABLE_TLS_FALLBACK ?? '1') !== '0'
-  const parsedTlsPorts = parseTurnUrls(process.env.TURN_TLS_PORTS ?? '443,5349')
+  const parsedTlsPorts = parseTurnUrls(process.env.TURN_TLS_PORTS ?? '5349')
     .map((n) => Number.parseInt(n, 10))
     .filter((n) => Number.isFinite(n) && n > 0 && n <= 65535)
-  const tlsPorts = parsedTlsPorts.length > 0 ? parsedTlsPorts : [443, 5349]
+  const tlsPorts = parsedTlsPorts.length > 0 ? parsedTlsPorts : [5349]
 
   const allCandidates = rawUrls
     .flatMap((v) => parseTurnUrls(v))

@@ -25,6 +25,7 @@ import { chatMembers } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { readSecret } from '../lib/read-secret.js'
 import { getRedis } from '../lib/redis.js'
+import { getCallMediaMode } from '../lib/call-media-mode.js'
 
 const tokenBodySchema = z.object({
   room: z
@@ -90,7 +91,7 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
     const apiKey = readSecret('LIVEKIT_API_KEY')
     const apiSecret = readSecret('LIVEKIT_API_SECRET')
     const livekitUrl = process.env.LIVEKIT_URL?.trim()
-    if (!apiKey || !apiSecret || !livekitUrl) {
+    if (getCallMediaMode() !== 'self_hosted' || !apiKey || !apiSecret || !livekitUrl) {
       return reply.status(503).send({ error: 'LIVEKIT_NOT_CONFIGURED' })
     }
     if (apiSecret.length < 32) {
@@ -158,9 +159,14 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
     if (!u || !assertAuthed(reply, u)) return
     const cfgKey = readSecret('LIVEKIT_API_KEY')
     const cfgSecret = readSecret('LIVEKIT_API_SECRET')
+    const mediaMode = getCallMediaMode()
     return reply.send({
-      livekit_enabled: Boolean(cfgKey && cfgSecret && process.env.LIVEKIT_URL),
+      media_mode: mediaMode,
+      origin_safe: mediaMode === 'origin_safe',
+      livekit_enabled: mediaMode === 'self_hosted' && Boolean(cfgKey && cfgSecret && process.env.LIVEKIT_URL),
       livekit_url: process.env.LIVEKIT_URL ?? null,
+      mesh_fallback_enabled: mediaMode === 'self_hosted',
+      group_relay_enabled: mediaMode === 'origin_safe',
     })
   })
 }

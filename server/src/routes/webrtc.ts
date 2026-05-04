@@ -7,6 +7,7 @@ import {
   issueCloudflareTurnCredentials,
   type IceServerConfig,
 } from '../lib/cloudflare-turn.js'
+import { getCallMediaMode, isOriginSafeCallMediaMode } from '../lib/call-media-mode.js'
 
 /**
  * PROJECT 13 :: WEBRTC_ICE_NEGOTIATOR
@@ -185,6 +186,13 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
       return
     }
 
+    if (isOriginSafeCallMediaMode()) {
+      return reply.status(503).send({
+        error: 'TURN_DISABLED_IN_ORIGIN_SAFE_MODE',
+        mediaMode: getCallMediaMode(),
+      })
+    }
+
     const iceServers: IceServerConfig[] = [...DEFAULT_ICE_SERVERS]
     let source: 'cloudflare' | 'coturn' | null = null
     let expiresAt: number | null = null
@@ -243,8 +251,28 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
       const iceServers: IceServerConfig[] = [...DEFAULT_ICE_SERVERS]
       let source: 'cloudflare' | 'coturn' | null = null
       let expiresAt: number | null = null
+      const mediaMode = getCallMediaMode()
 
-      if (isCloudflareTurnConfigured()) {
+      if (mediaMode === 'origin_safe') {
+        const stunServers = collectStunIceServers()
+        if (stunServers.length === 0) {
+          request.log.error('ice-servers origin-safe mode failed: no stun servers configured')
+          return reply.status(503).send({ error: 'ICE_SERVERS_UNAVAILABLE' })
+        }
+        reply.header('cache-control', 'private, max-age=0, must-revalidate')
+        return reply.send({
+          iceServers: stunServers,
+          source: null,
+          expiresAt: null,
+          transportPolicy: 'all',
+          mediaMode,
+          originSafe: true,
+          p2pAllowed: true,
+          relayFallback: 'websocket_audio',
+        })
+      }
+
+      if (mediaMode === 'cloudflare' && isCloudflareTurnConfigured()) {
         try {
           const cf = await issueCloudflareTurnCredentials()
           iceServers.push(...cf.iceServers)
@@ -254,7 +282,7 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
           request.log.warn({ err }, 'ice-servers cloudflare failed, checking coturn')
         }
       }
-      if (!source) {
+      if (!source && mediaMode === 'self_hosted') {
         const coturn = collectCoturnIceServers(user.id)
         if (coturn.length > 0) {
           iceServers.push(...coturn)
@@ -277,6 +305,10 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
         source,
         expiresAt,
         transportPolicy: source ? 'relay' : 'all',
+        mediaMode,
+        originSafe: false,
+        p2pAllowed: !source,
+        relayFallback: source ? null : 'websocket_audio',
       })
     } catch (err) {
       request.log.error({ err }, 'ice-servers route failed unexpectedly')

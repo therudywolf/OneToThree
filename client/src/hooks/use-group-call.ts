@@ -15,6 +15,7 @@ import {
   handleMuteChange,
   handleVideoToggle,
   handleSpeakingChange,
+  handleGroupCallRelayFrame,
   toggleGroupCallMute,
   toggleGroupCallVideo,
   startGroupCallScreenShare,
@@ -81,6 +82,16 @@ export function useGroupCall(userId: string | null) {
 
         case 'group_call:speaking':
           handleSpeakingChange(msg.room_id, msg.user_id, msg.is_speaking)
+          break
+
+        case 'group_call:relay_frame':
+          await handleGroupCallRelayFrame(
+            msg.room_id,
+            msg.from_user_id,
+            msg.ciphertext,
+            msg.iv,
+            msg.sample_rate
+          )
           break
 
         case 'group_call:active':

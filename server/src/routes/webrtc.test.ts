@@ -14,6 +14,7 @@ describe('webrtc turn route', () => {
     API_TOKEN: process.env.CLOUDFLARE_TURN_API_TOKEN,
     KEY_ID_FILE: process.env.CLOUDFLARE_TURN_KEY_ID_FILE,
     API_TOKEN_FILE: process.env.CLOUDFLARE_TURN_API_TOKEN_FILE,
+    CALL_MEDIA_MODE: process.env.CALL_MEDIA_MODE,
   }
 
   async function createSessionCookie(label: string): Promise<{ cookie: string; userId: string }> {
@@ -39,6 +40,7 @@ describe('webrtc turn route', () => {
     delete process.env.CLOUDFLARE_TURN_API_TOKEN
     delete process.env.CLOUDFLARE_TURN_KEY_ID_FILE
     delete process.env.CLOUDFLARE_TURN_API_TOKEN_FILE
+    process.env.CALL_MEDIA_MODE = 'self_hosted'
     app = await buildApp()
     await app.ready()
   })
@@ -49,6 +51,7 @@ describe('webrtc turn route', () => {
     process.env.CLOUDFLARE_TURN_API_TOKEN = cfPrev.API_TOKEN
     process.env.CLOUDFLARE_TURN_KEY_ID_FILE = cfPrev.KEY_ID_FILE
     process.env.CLOUDFLARE_TURN_API_TOKEN_FILE = cfPrev.API_TOKEN_FILE
+    process.env.CALL_MEDIA_MODE = cfPrev.CALL_MEDIA_MODE
   })
 
   it('GET /api/turn requires session', async () => {
@@ -303,6 +306,45 @@ describe('webrtc turn route', () => {
       process.env.TURN_USERNAME = prev.TURN_USERNAME
       process.env.TURN_SECRET = prev.TURN_SECRET
       process.env.TURN_AUTH_SECRET = prev.TURN_AUTH_SECRET
+      process.env.STUN_URLS = prev.STUN_URLS
+      await db.delete(users).where(eq(users.id, userId))
+    }
+  })
+
+  it('GET /api/ice-servers in origin-safe mode does not advertise self-hosted TURN', async () => {
+    const { cookie, userId } = await createSessionCookie('safe')
+    const prev = {
+      CALL_MEDIA_MODE: process.env.CALL_MEDIA_MODE,
+      TURN_URLS: process.env.TURN_URLS,
+      TURN_USERNAME: process.env.TURN_USERNAME,
+      TURN_SECRET: process.env.TURN_SECRET,
+      STUN_URLS: process.env.STUN_URLS,
+    }
+    process.env.CALL_MEDIA_MODE = 'origin_safe'
+    process.env.TURN_URLS = 'turn:turn.example.test:3478'
+    process.env.TURN_USERNAME = 'turn-user'
+    process.env.TURN_SECRET = 'turn-pass'
+    process.env.STUN_URLS = 'stun:stun.example.test:3478'
+
+    try {
+      const res = await request(app!.server)
+        .get('/api/ice-servers')
+        .set('Cookie', cookie)
+        .expect(200)
+
+      expect(res.body.source).toBeNull()
+      expect(res.body.originSafe).toBe(true)
+      expect(res.body.relayFallback).toBe('websocket_audio')
+      const urls = (res.body.iceServers as Array<{ urls: string[] | string }>).flatMap((s) =>
+        Array.isArray(s.urls) ? s.urls : [s.urls]
+      )
+      expect(urls.some((u) => String(u).startsWith('turn:'))).toBe(false)
+      expect(urls).toContain('stun:stun.example.test:3478')
+    } finally {
+      process.env.CALL_MEDIA_MODE = prev.CALL_MEDIA_MODE
+      process.env.TURN_URLS = prev.TURN_URLS
+      process.env.TURN_USERNAME = prev.TURN_USERNAME
+      process.env.TURN_SECRET = prev.TURN_SECRET
       process.env.STUN_URLS = prev.STUN_URLS
       await db.delete(users).where(eq(users.id, userId))
     }

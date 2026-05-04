@@ -30,9 +30,11 @@ describe('call token route', () => {
     API_KEY: process.env.LIVEKIT_API_KEY,
     API_SECRET: process.env.LIVEKIT_API_SECRET,
     URL: process.env.LIVEKIT_URL,
+    CALL_MEDIA_MODE: process.env.CALL_MEDIA_MODE,
   }
 
   beforeAll(async () => {
+    process.env.CALL_MEDIA_MODE = 'self_hosted'
     process.env.LIVEKIT_API_KEY = 'test-livekit-api-key'
     process.env.LIVEKIT_API_SECRET = 'test-livekit-secret-must-be-32-chars'
     process.env.LIVEKIT_URL = 'wss://livekit.example.test'
@@ -50,6 +52,7 @@ describe('call token route', () => {
     process.env.LIVEKIT_API_KEY = livekitPrev.API_KEY
     process.env.LIVEKIT_API_SECRET = livekitPrev.API_SECRET
     process.env.LIVEKIT_URL = livekitPrev.URL
+    process.env.CALL_MEDIA_MODE = livekitPrev.CALL_MEDIA_MODE
   })
 
   it('authorizes only chat members and canonicalizes authorized room ids', async () => {

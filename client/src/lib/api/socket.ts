@@ -194,6 +194,14 @@ export type WsInboundMessage =
       is_speaking: boolean
     }
   | {
+      type: 'group_call:relay_frame'
+      room_id: string
+      from_user_id: string
+      ciphertext: string
+      iv: string
+      sample_rate: number
+    }
+  | {
       type: 'group_call:active'
       room_id: string
       participant_count: number

@@ -8,12 +8,12 @@
 // CF orange-cloud proxy (their edge network routes UDP for their own
 // services).  We issue short-lived credentials per call via the REST API:
 //
-//   POST https://rtc.live.cloudflare.com/v1/turn/keys/{TURN_KEY_ID}/credentials/generate
+//   POST https://rtc.live.cloudflare.com/v1/turn/keys/{TURN_KEY_ID}/credentials/generate-ice-servers
 //     headers: Authorization: Bearer {TURN_API_TOKEN}
 //     body:    { "ttl": <seconds, 60..86400> }
 //   response:  { iceServers: { urls: [...], username, credential } }
 //
-// Docs: https://developers.cloudflare.com/calls/turn/
+// Docs: https://developers.cloudflare.com/realtime/turn/generate-credentials/
 //
 // Configuration (Docker-secrets-first):
 //   CLOUDFLARE_TURN_KEY_ID_FILE      → /run/secrets/cloudflare_turn_key_id
@@ -85,7 +85,7 @@ export async function issueCloudflareTurnCredentials(opts?: {
   const ttlSeconds = clampTtl(opts?.ttlSeconds ?? DEFAULT_TTL_SECONDS)
 
   inflight = (async (): Promise<CloudflareTurnResult> => {
-    const url = `${CF_TURN_API}/${encodeURIComponent(keyId)}/credentials/generate`
+    const url = `${CF_TURN_API}/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 8_000)
     let response: Response

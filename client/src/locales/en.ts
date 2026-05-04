@@ -84,8 +84,8 @@ const en = {
   'call.relayDegradation': 'Connection switched to relay \u2014 still encrypted',
   'call.iceRelayTitle': 'Calls',
   'call.iceRelayMissing':
-    'No TURN relay configured (only STUN). 1:1 calls will fall back to encrypted audio relay, but video and group calls may still fail behind symmetric NAT. Configure Cloudflare Realtime or a DNS-only coturn hostname for full coverage.',
-  'call.audioRelayFallback': 'TURN unavailable. Falling back to encrypted audio relay.',
+    'Origin-safe call mode is active. 1:1 calls try direct encrypted P2P first, then fall back to encrypted audio relay over WebSocket.',
+  'call.audioRelayFallback': 'Direct media path unavailable. Switching to encrypted audio relay.',
   'call.activePeer': 'Active call',
   'call.returnToCall': 'Return to call',
 
@@ -734,6 +734,7 @@ const en = {
   'groupCall.noParticipants': 'No other participants',
   'groupCall.maxParticipants': 'Maximum 8 participants',
   'groupCall.screenShareActive': 'Screen sharing active',
+  'groupCall.audioRelay': 'Encrypted audio relay',
 
   // [MESSAGE STATES]
   'msg.sending': 'Sending',

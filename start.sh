@@ -186,6 +186,21 @@ sanitize_turn_url_fallbacks() {
   done
 }
 
+call_media_mode() {
+  local mode
+  mode="$(val_for_key CALL_MEDIA_MODE)"
+  mode="$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
+  case "$mode" in
+    self_hosted|self-hosted|livekit|coturn) echo "self_hosted" ;;
+    cloudflare|cloudflare_realtime|cloudflare-realtime) echo "cloudflare" ;;
+    *) echo "origin_safe" ;;
+  esac
+}
+
+uses_self_hosted_call_media() {
+  [[ "$(call_media_mode)" == "self_hosted" ]]
+}
+
 looks_like_ip() {
   local value="$1"
   [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$value" == *:* ]]
@@ -387,6 +402,11 @@ sync_turn_tls_with_retry() {
   local interval="${2:-10}"
   local elapsed=0
   local caddy_cid
+
+  if ! uses_self_hosted_call_media; then
+    ok "TURN TLS sync пропущен: CALL_MEDIA_MODE=$(call_media_mode), self-hosted TURN не рекламируется."
+    return 0
+  fi
 
   caddy_cid=$("${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps -q caddy 2>/dev/null | head -1 || true)
   if [[ -z "$caddy_cid" ]]; then
@@ -662,7 +682,7 @@ case "$CMD" in
 
     # Sync TURN TLS after Caddy has had time to obtain/renew the certificate.
     # The sync script restarts coturn once only when the copied material changed.
-    if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -Eqx 'caddy|coturn'; then
+    if uses_self_hosted_call_media && printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -Eqx 'caddy|coturn'; then
       sync_turn_tls_with_retry "${TURN_TLS_SYNC_WAIT:-180}" "${TURN_TLS_SYNC_INTERVAL:-10}" || UPDATE_OK=false
     fi
 

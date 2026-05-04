@@ -122,4 +122,89 @@ describe('devices link routes', () => {
     await db.delete(devices).where(eq(devices.userId, u.id))
     await db.delete(users).where(eq(users.id, u.id))
   })
+
+  it('refreshes an existing revoked device row during confirm', async () => {
+    const username = `relink${Date.now().toString(36)}`
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    const [u] = await db
+      .insert(users)
+      .values({
+        username,
+        publicKeyJwk: JSON.stringify(publicKey.export({ format: 'jwk' })),
+        allowDeviceLinking: true,
+      })
+      .returning({ id: users.id, username: users.username })
+
+    const newDeviceClientKey = `device-${randomUUID()}`
+    const [revokedDevice] = await db
+      .insert(devices)
+      .values({
+        userId: u.id,
+        clientDeviceKey: newDeviceClientKey,
+        deviceName: 'Revoked device',
+        isMaster: false,
+        revokedAt: new Date(),
+        e2eePublicKey: JSON.stringify({ old: true }),
+        ecdhPublicKey: JSON.stringify({ old: true }),
+      })
+      .returning({ id: devices.id })
+
+    const token = await app!.jwt.sign({
+      sub: u.id,
+      username: u.username,
+      jti: randomUUID(),
+    })
+
+    const nonce = randomUUID()
+    const init = await request(app!.server)
+      .post('/api/devices/link/init')
+      .set('Cookie', `fm_session=${token}`)
+      .send({ nonce, signature: signB64(nonce, privateKey) })
+      .expect(200)
+
+    const linkToken = init.body.link_token as string
+    const newDevicePubkey = JSON.stringify({
+      kty: 'EC',
+      crv: 'P-256',
+      x: randomUUID(),
+      y: randomUUID(),
+    })
+    const digestPayload = `${newDeviceClientKey}.${newDevicePubkey}.${linkToken}`
+    const digest = createHash('sha256').update(digestPayload, 'utf8').digest('base64url')
+
+    const confirm = await request(app!.server)
+      .post('/api/devices/link/confirm')
+      .send({
+        link_token: linkToken,
+        new_device_client_key: newDeviceClientKey,
+        new_device_pubkey: newDevicePubkey,
+        signature: signB64(digest, privateKey),
+        device_name: 'Re-linked device',
+      })
+      .expect(200)
+
+    expect(confirm.body.ok).toBe(true)
+    const [deviceRow] = await db
+      .select({
+        id: devices.id,
+        deviceName: devices.deviceName,
+        revokedAt: devices.revokedAt,
+        e2eePublicKey: devices.e2eePublicKey,
+        ecdhPublicKey: devices.ecdhPublicKey,
+        linkedAt: devices.linkedAt,
+      })
+      .from(devices)
+      .where(and(eq(devices.userId, u.id), eq(devices.clientDeviceKey, newDeviceClientKey)))
+      .limit(1)
+
+    expect(deviceRow?.id).toBe(revokedDevice.id)
+    expect(deviceRow?.deviceName).toBe('Re-linked device')
+    expect(deviceRow?.revokedAt).toBeNull()
+    expect(deviceRow?.e2eePublicKey).toBe(newDevicePubkey)
+    expect(deviceRow?.ecdhPublicKey).toBeNull()
+    expect(deviceRow?.linkedAt).toBeInstanceOf(Date)
+
+    await db.delete(devices).where(eq(devices.userId, u.id))
+    await db.delete(users).where(eq(users.id, u.id))
+  })
 })

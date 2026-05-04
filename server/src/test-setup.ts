@@ -61,6 +61,10 @@ if (!process.env.VITEST_REDIS_URL) {
       await sql`ALTER TABLE messages ADD COLUMN seq BIGSERIAL`
     }
 
+    if (!await hasColumn('messages', 'sender_ecdh_public_key_jwk')) {
+      await sql`ALTER TABLE messages ADD COLUMN sender_ecdh_public_key_jwk text`
+    }
+
     if (!await hasColumn('chats', 'invite_slug')) {
       await sql`ALTER TABLE chats ADD COLUMN invite_slug text`
       await sql`CREATE UNIQUE INDEX IF NOT EXISTS chats_invite_slug_unique ON chats (invite_slug)`

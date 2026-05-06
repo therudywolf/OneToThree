@@ -2,7 +2,6 @@
   "appId": "ru.onetothree.app",
   "appName": "OneToThree",
   "webDir": "../../client/out",
-  "bundledWebRuntime": false,
   "server": {
     "androidScheme": "https",
     "cleartext": false

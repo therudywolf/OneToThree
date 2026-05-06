@@ -552,8 +552,12 @@ export function resolveThemeAppearance(input: Pick<
   | 'motionMode'
 > & { shellMode?: ShellModeId }): ResolvedThemeAppearance {
   const base = THEME_BY_ID[input.theme] ?? THEME_BY_ID.default
-  const shellId: ShellModeId =
+  // retro theme is terminal-only; override any stored md3 shellMode to prevent
+  // the MD3 layout shell from being applied when the user switches to retro.
+  const rawShellId: ShellModeId =
     input.shellMode ?? inferShellFromLegacyTheme(input.theme)
+  const shellId: ShellModeId =
+    input.theme === 'retro' && rawShellId === 'md3' ? 'terminal' : rawShellId
   const shell = SHELL_PRESET_BY_ID[shellId] ?? SHELL_PRESET_BY_ID.terminal
   const preset =
     input.accentPreset !== 'theme'
@@ -652,7 +656,11 @@ export const useThemeStore = create<ChromaticState>()(
       accentSoftColorOverride: null,
       backgroundColorOverride: null,
       motionMode: 'full',
-      setTheme: (id) => set({ theme: id }),
+      setTheme: (id) => set((s) => ({
+        theme: id,
+        // retro is terminal-only; auto-coerce shell so the stored value stays consistent
+        shellMode: id === 'retro' && s.shellMode === 'md3' ? 'terminal' : s.shellMode,
+      })),
       setShellMode: (mode) => set({ shellMode: mode }),
       setPlatformProfile: (profile) => set({ platformProfile: profile }),
       setAccentPreset: (id) => {

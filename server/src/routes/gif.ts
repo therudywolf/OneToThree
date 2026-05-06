@@ -38,7 +38,12 @@ function isAllowedGifHost(hostname: string): boolean {
 function isLikelyGifRequest(url: URL, contentType: string): boolean {
   const pathname = url.pathname.toLowerCase()
   const type = contentType.toLowerCase()
-  return pathname.endsWith('.gif') || type.includes('image/gif')
+  return (
+    pathname.endsWith('.gif') ||
+    pathname.endsWith('.webp') ||
+    type.includes('image/gif') ||
+    type.includes('image/webp')
+  )
 }
 
 async function fetchGifBinaryWithSafeRedirects(

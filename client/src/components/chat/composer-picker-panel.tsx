@@ -548,7 +548,19 @@ export function ComposerPickerPanel({
                         }}
                         title={g.title}
                       >
-                        <img src={buildGifProxyUrl(g.previewUrl)} alt={g.title} className="h-20 w-full object-cover" loading="lazy" />
+                        <img
+                          src={buildGifProxyUrl(g.previewUrl)}
+                          onError={(e) => {
+                            const img = e.currentTarget
+                            if (!img.dataset.directFallback) {
+                              img.dataset.directFallback = '1'
+                              img.src = g.previewUrl
+                            }
+                          }}
+                          alt={g.title}
+                          className="h-20 w-full object-cover"
+                          loading="lazy"
+                        />
                       </button>
                       <button
                         type="button"
@@ -608,7 +620,19 @@ export function ComposerPickerPanel({
                         }}
                         title={g.title}
                       >
-                        <img src={buildGifProxyUrl(g.previewUrl)} alt={g.title} className="h-24 w-full object-cover" loading="lazy" />
+                        <img
+                          src={buildGifProxyUrl(g.previewUrl)}
+                          onError={(e) => {
+                            const img = e.currentTarget
+                            if (!img.dataset.directFallback) {
+                              img.dataset.directFallback = '1'
+                              img.src = g.previewUrl
+                            }
+                          }}
+                          alt={g.title}
+                          className="h-24 w-full object-cover"
+                          loading="lazy"
+                        />
                       </button>
                       <button
                         type="button"

@@ -38,7 +38,8 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
       <PortalRoot>
         <div
           ref={trapRef}
-          className="fixed inset-0 z-[250] flex items-end justify-center bg-[color-mix(in_srgb,var(--void)_50%,transparent)] px-4 pb-8 backdrop-blur-md sm:items-center sm:pb-0"
+          className="fixed inset-0 z-[250] flex items-end justify-center bg-[color-mix(in_srgb,var(--void)_50%,transparent)] px-4 backdrop-blur-md sm:items-center"
+          style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}
           role="dialog"
           aria-modal="true"
           aria-label={t('call.incomingCall')}

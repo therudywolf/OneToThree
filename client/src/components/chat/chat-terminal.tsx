@@ -1050,7 +1050,11 @@ export function ChatTerminal({
         ref={ref}
         data-privacy-no-copy={privacy.noCopy ? 'true' : undefined}
         data-privacy-blanked={hideForBlur ? 'true' : undefined}
-        className={`p13-chat-scroll chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain px-2 pb-4 pt-3 text-sm [-webkit-overflow-scrolling:touch] sm:px-4 ${privacy.noCopy ? 'select-none' : ''}`}
+        className={`p13-chat-scroll chat-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain pb-4 pt-3 text-sm [-webkit-overflow-scrolling:touch] ${privacy.noCopy ? 'select-none' : ''}`}
+        style={{
+          paddingLeft: 'max(0.5rem, env(safe-area-inset-left, 0px))',
+          paddingRight: 'max(0.5rem, env(safe-area-inset-right, 0px))',
+        }}
         onClick={() => { if (reactingMsgId) setReactingMsgId(null) }}
       >
         <div ref={topSentinelRef} className="h-1 w-full" aria-hidden />

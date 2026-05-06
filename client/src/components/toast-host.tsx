@@ -21,7 +21,8 @@ export function ToastHost() {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed left-1/2 top-3 z-[120] flex w-[min(calc(100vw-1rem),420px)] -translate-x-1/2 flex-col gap-1.5"
+      className="pointer-events-none fixed left-1/2 z-[120] flex w-[min(calc(100vw-1rem),420px)] -translate-x-1/2 flex-col gap-1.5"
+      style={{ top: 'max(0.75rem, env(safe-area-inset-top, 0.75rem))' }}
     >
       {toasts.map((t) => {
         const cls =

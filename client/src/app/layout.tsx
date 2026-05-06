@@ -101,6 +101,27 @@ const themeInitScript = `
     }
   } catch(e) {}
 })();
+
+/* iOS PWA viewport height fix — update --p13-vh on resize & orientation change */
+(function() {
+  var updateViewportHeight = function() {
+    try {
+      var vhValue = window.innerHeight / 100;
+      document.documentElement.style.setProperty('--p13-vh', vhValue + 'px');
+    } catch (e) {}
+  };
+  updateViewportHeight();
+  window.addEventListener('resize', updateViewportHeight);
+  window.addEventListener('orientationchange', updateViewportHeight);
+  /* iOS Safari keyboard show/hide — update every 100ms for 1s on focus/blur */
+  document.addEventListener('focusin', function() {
+    var count = 10;
+    var timer = setInterval(function() {
+      updateViewportHeight();
+      if (--count <= 0) clearInterval(timer);
+    }, 100);
+  });
+})();
 `.trim()
 
 export default function RootLayout({

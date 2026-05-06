@@ -3990,6 +3990,28 @@ select {
   background: transparent !important;
 }
 
+/* Retro theme: mobile touch-target sizes & readability fixes */
+@media (max-width: 767px) {
+  [data-theme="retro"] .p13-icon-btn,
+  [data-theme="retro"] button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  [data-theme="retro"] .p13-sidebar-row {
+    min-height: 52px;
+  }
+  [data-theme="retro"] .p13-composer-input textarea,
+  [data-theme="retro"] .p13-composer-input input {
+    font-size: 16px !important; /* prevent iOS zoom on focus */
+  }
+  /* Simplify Win98 inset shadows on mobile for performance */
+  [data-theme="retro"] .p13-bubble--mine,
+  [data-theme="retro"] .p13-bubble--peer,
+  [data-theme="retro"] .terminal-panel {
+    box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 #808080 !important;
+  }
+}
+
 [data-theme="cyberpunk2077"] .chat-layout-main {
   position: relative;
 }

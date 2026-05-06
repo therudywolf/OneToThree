@@ -461,7 +461,10 @@ export function UserProfileModal({
           ) : null}
 
           {/* Footer hint */}
-          <div className="shrink-0 border-t border-neon-cyan/20 px-6 py-2 text-center">
+          <div
+            className="shrink-0 border-t border-neon-cyan/20 px-6 pt-2 text-center md:pb-2"
+            style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0.5rem))' }}
+          >
             <p className="font-mono text-[8px] text-text-muted/70 uppercase tracking-widest">
               [ {t('profile.tapToClose')} ]
             </p>

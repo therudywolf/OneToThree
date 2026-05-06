@@ -868,7 +868,7 @@ export function ChatApp({
           we use a full-height sheet so the chat stays reachable behind it. */}
       {mobileSearchOpen ? (
         <div
-          className="p13-search-overlay fixed inset-0 z-[120] flex flex-col bg-void/95 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-sm motion-safe:animate-[p13-mobile-sheet-in_var(--motion-base)_ease-out] xl:hidden"
+          className="p13-search-overlay fixed inset-0 z-[120] flex flex-col bg-void/95 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] backdrop-blur-sm motion-safe:animate-[p13-mobile-sheet-in_var(--motion-base)_ease-out] xl:hidden"
           style={{ animationDuration: 'var(--p13-mobile-sheet-duration, 220ms)' }}
           role="dialog"
           aria-modal="true"

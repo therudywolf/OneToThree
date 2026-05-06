@@ -87,7 +87,9 @@ const themeInitScript = `
       document.documentElement.setAttribute('data-theme', theme);
     }
     if (shell && validShells.indexOf(shell) !== -1) {
-      document.documentElement.setAttribute('data-shell', shell);
+      /* retro theme is terminal-only: force terminal shell even if md3 was stored */
+      var effectiveShell = (theme === 'retro' && shell === 'md3') ? 'terminal' : shell;
+      document.documentElement.setAttribute('data-shell', effectiveShell);
     } else if (theme === 'md3dark' || theme === 'md3light') {
       document.documentElement.setAttribute('data-shell', 'md3');
     } else if (theme) {

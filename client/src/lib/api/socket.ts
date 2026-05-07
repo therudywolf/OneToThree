@@ -107,6 +107,7 @@ export type WsInboundMessage =
       is_video: boolean
     }
   | { type: 'call_leave'; chat_id: string; from_user_id: string }
+  | { type: 'call_reject'; chat_id: string; from_user_id: string }
   | {
       type: 'message_read'
       chat_id: string

@@ -28,6 +28,7 @@ import {
   registerUserSocket,
   sendToUser,
 } from '../ws/registry.js'
+import { sendPushToUser } from '../lib/push.js'
 import {
   joinRoom,
   leaveRoom,
@@ -129,6 +130,11 @@ const callInviteSchema = z.object({
 
 const callLeaveSchema = z.object({
   type: z.literal('call_leave'),
+  chat_id: z.string().uuid(),
+})
+
+const callRejectSchema = z.object({
+  type: z.literal('call_reject'),
   chat_id: z.string().uuid(),
 })
 
@@ -465,6 +471,22 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             from_user_id: user.id,
             is_video,
           })
+          // Push notification for offline members
+          const callerName = user.username
+          const pushPromises = otherIds
+            .filter((id) => !hasActiveSocket(id))
+            .map((id) =>
+              sendPushToUser(id, {
+                type: 'incoming_call',
+                title: is_video ? `📹 ${callerName}` : `📞 ${callerName}`,
+                body: is_video ? 'Входящий видеозвонок' : 'Входящий голосовой звонок',
+                url: `/?chat=${chat_id}`,
+                icon: '/icons/icon-192x192.png',
+                chat_id,
+                caller_name: callerName,
+              }).catch((err) => request.log.warn({ err, targetUserId: id }, 'ws: call_invite push failed'))
+            )
+          void Promise.allSettled(pushPromises)
           return
         }
 
@@ -477,6 +499,21 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           )
           broadcastToUsers(otherIds, {
             type: 'call_leave',
+            chat_id,
+            from_user_id: user.id,
+          })
+          return
+        }
+
+        const rejectParsed = callRejectSchema.safeParse(json)
+        if (rejectParsed.success) {
+          const { chat_id } = rejectParsed.data
+          if (!(await isMemberOfChat(chat_id, user.id))) return
+          const otherIds = (await getChatMemberIds(chat_id)).filter(
+            (id) => id !== user.id
+          )
+          broadcastToUsers(otherIds, {
+            type: 'call_reject',
             chat_id,
             from_user_id: user.id,
           })

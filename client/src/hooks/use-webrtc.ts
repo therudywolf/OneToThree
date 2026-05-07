@@ -20,7 +20,7 @@ import { getIceConfig, type IceTransportPolicy } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import { toastWarn } from '@/store/toastStore'
-import { buildCallLeaveMessage, upsertIncomingCall } from '@/lib/incoming-call'
+import { buildCallLeaveMessage, buildCallRejectMessage, upsertIncomingCall } from '@/lib/incoming-call'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
@@ -517,8 +517,8 @@ export function useWebRTC(userId: string | null) {
   }, [resolveRelaySharedKey, setCallStartTime, setIncomingCall, setIsCalling, setLocalStream, setPeerConnectionType, startRelayCapture])
 
   const rejectLink = useCallback(() => {
-    const leave = buildCallLeaveMessage(useCallStore.getState().incomingCall)
-    if (leave) getFmSocket().send(leave)
+    const reject = buildCallRejectMessage(useCallStore.getState().incomingCall)
+    if (reject) getFmSocket().send(reject)
     setIncomingCall(null)
   }, [setIncomingCall])
 
@@ -558,6 +558,15 @@ export function useWebRTC(userId: string | null) {
         if (pcsRef.current.size === 0 && useCallStore.getState().isCalling) {
           severAllLinks()
         }
+      }
+
+      if (msg.type === 'call_reject') {
+        // Remote peer explicitly declined — clean up and notify the caller
+        purgePeer(msg.from_user_id)
+        if (useCallStore.getState().isCalling) {
+          severAllLinks()
+        }
+        toastWarn(t('call.rejected'), { title: t('call.rejectedTitle') })
       }
 
       if (msg.type === 'webrtc_signal') {

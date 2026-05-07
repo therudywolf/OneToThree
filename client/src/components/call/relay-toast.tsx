@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { Radio, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useCallStore } from '@/store/callStore'
+import { useThemeStore } from '@/store/themeStore'
 import { useTranslation } from '@/hooks/use-translation'
 
 /**
@@ -13,6 +14,7 @@ import { useTranslation } from '@/hooks/use-translation'
  */
 export function RelayToast() {
   const { t } = useTranslation()
+  const isMd3 = useThemeStore((s) => s.shellMode === 'md3')
   const showRelayToast = useCallStore((s) => s.showRelayToast)
   const setShowRelayToast = useCallStore((s) => s.setShowRelayToast)
 
@@ -33,14 +35,14 @@ export function RelayToast() {
           className="fixed top-4 left-1/2 -translate-x-1/2 z-[220] flex items-center gap-2 bg-accent-2/15 border border-accent-2/40 backdrop-blur-xl shadow-2xl px-4 py-2 max-w-sm"
         >
           <Radio className="h-4 w-4 text-accent-2 flex-shrink-0" />
-          <span className="font-mono text-[10px] uppercase tracking-wider text-accent-2">
+          <span className={`${isMd3 ? '' : 'font-mono '}text-[10px] uppercase tracking-wider text-accent-2`}>
             {t('call.relayDegradation')}
           </span>
           <button
             onClick={() => setShowRelayToast(false)}
             className="ml-2 p-0.5 text-accent-2/60 hover:text-accent-2 transition-colors flex-shrink-0"
             title={t('common.dismiss')}
-          >
+       >
             <X className="h-3 w-3" />
           </button>
         </motion.div>

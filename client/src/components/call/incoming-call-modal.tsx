@@ -87,7 +87,7 @@ export function IncomingCallModal({ onAccept, onReject }: Props) {
     <PortalRoot>
       <div
         ref={trapRef}
-        className={`fixed inset-0 z-[250] flex items-center justify-center px-4 backdrop-blur-md ${isRetro ? 'p13-classic-overlay' : 'bg-void/90 font-mono'}`}
+        className={`fixed inset-0 z-[250] flex items-center justify-center px-4 backdrop-blur-md ${isRetro ? 'p13-classic-overlay' : isMd3 ? 'bg-void/90' : 'bg-void/90 font-mono'}`}
         role="dialog"
         aria-modal="true"
         aria-label="Incoming connection"

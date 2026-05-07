@@ -816,6 +816,4 @@ export const pollVotes = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.pollId, t.userId, t.optionIndex] }),
-    pollIdx: index('poll_votes_poll_idx').on(t.pollId),
-  })
-)
+    pollIdx: index('poll_votes_poll_idx').on(t.pollId)

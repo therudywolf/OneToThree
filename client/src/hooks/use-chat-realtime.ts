@@ -101,6 +101,15 @@ export function useChatRealtime(
         }
         return
       }
+      if (msg.type === 'poll_updated') {
+        // Dispatch a custom DOM event so PollBubble instances can refresh
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('p13:poll_updated', { detail: { poll_id: msg.poll_id, results: msg.results } })
+          )
+        }
+        return
+      }
       if (msg.type === 'message_read_update') {
         if (msg.chat_id !== activeChatId) return
         updateMessageReadAt(msg.message_id, msg.read_at)

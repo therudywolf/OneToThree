@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, ShieldOff, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft, MoreVertical, BellOff, Bell, Trash2 } from 'lucide-react'
+import { Menu, ShieldCheck, ShieldOff, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft, MoreVertical, BellOff, Bell, Trash2, Megaphone } from 'lucide-react'
 import { MobileBottomNav, type MobileNavTab } from '@/components/chat/mobile-bottom-nav'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
@@ -665,6 +665,10 @@ export function ChatApp({
 
   const activeRow = chats.find((c) => c.id === activeChatId) ?? null
   const isSelfChat = activeRow != null && isSavedMessagesChat(activeRow, userId)
+  // Channel subscriber gating: subscribers cannot post; editors/owners can
+  const isChannel = activeRow?.type === 'channel'
+  const myChannelRole = activeRow?.my_channel_role ?? null
+  const isChannelSubscriber = isChannel && myChannelRole === 'subscriber'
   const { typingUsers, peerPresence } = usePresenceStore(
     useShallow((s) => ({
       typingUsers: s.typingUsers,
@@ -1260,7 +1264,9 @@ export function ChatApp({
                   ) : activeRow ? (
                     <>
                       <span className={`inline-flex items-center gap-1.5 truncate text-[14px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-neon-cyan'}`}>
-                        {cryptoCtx?.mode === 'SECTOR' ? (
+                        {isChannel ? (
+                          <Megaphone className="h-3.5 w-3.5 shrink-0 text-neon-cyan/80" aria-label="Channel" />
+                        ) : cryptoCtx?.mode === 'SECTOR' ? (
                           <Lock className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="End-to-end encrypted group" />
                         ) : cryptoCtx?.mode === 'PUBLIC' ? (
                           <ShieldOff className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Not end-to-end encrypted" />
@@ -1269,6 +1275,9 @@ export function ChatApp({
                       </span>
                       {activeRow.is_group ? (
                         <span className={`truncate text-[12px] ${isMd3 ? 'text-text-muted' : 'font-mono text-[11px] text-text-muted/70'}`}>
+                          {isChannel && isChannelSubscriber ? (
+                            <span className="mr-1 opacity-60">[read-only]</span>
+                          ) : null}
                           {activeRow.member_ids.length} {t('sidebar.members')}
                         </span>
                       ) : null}
@@ -1491,7 +1500,7 @@ export function ChatApp({
             sendText={sendText}
             sendMedia={sendMedia}
             sendAlbum={sendAlbum}
-            composeDisabled={!activeChatId || !!ctxError}
+            composeDisabled={!activeChatId || !!ctxError || isChannelSubscriber}
             typingLabel={
               scratchers.length === 0
                 ? null

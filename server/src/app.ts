@@ -26,6 +26,7 @@ import { gifFavoritesRoutes } from './routes/gif-favorites.js'
 import { gifRoutes } from './routes/gif.js'
 import { sql } from 'drizzle-orm'
 import { linkPreviewRoutes } from './routes/link-preview.js'
+import { pollsRoutes } from './routes/polls.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { requireSecret } from './lib/read-secret.js'
@@ -297,6 +298,7 @@ export async function buildApp() {
   await app.register(stickersRoutes, { prefix: '/api/stickers' })
   await app.register(gifFavoritesRoutes, { prefix: '/api/gif-favorites' })
   await app.register(gifRoutes, { prefix: '/api/gif' })
+  await app.register(pollsRoutes, { prefix: '/api/polls' })
 
   app.get('/health', async () => ({ ok: true }))
 
@@ -318,7 +320,3 @@ export async function buildApp() {
       )
       done()
     })
-  }
-
-  return app
-}

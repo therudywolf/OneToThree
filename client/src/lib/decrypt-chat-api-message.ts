@@ -141,6 +141,9 @@ async function decryptRowPlaintext(
   const iv = row.device_iv ?? row.iv
   if (c == null || iv == null || c === '') return ''
 
+  // Poll sentinel: content is plain JSON, no encryption needed.
+  if (iv === 'poll:v1') return c
+
   // v2 DR: device slot carries the DR ciphertext directly (sentinel IV).
   if (
     row.protocol_version === 2 &&

@@ -21,6 +21,7 @@ type Props = {
   userId: string
   onClose: () => void
   onCreated: (chatId: string) => void
+  initialMode?: 'group' | 'channel'
 }
 
 /** [ERROR_MAPPER] :: Преобразование системных отказов в понятные стае коды */
@@ -50,7 +51,7 @@ function mapSystemError(raw: string, t: (k: TranslationKey) => string): string {
   return key ? t(key) : raw
 }
 
-export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
+export function CreateGroupModal({ userId, onClose, onCreated, initialMode = 'group' }: Props) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
@@ -60,7 +61,7 @@ export function CreateGroupModal({ userId, onClose, onCreated }: Props) {
   const { createGroup, busy, error, clearError, reset } = useCreateGroup(userId)
   
   const [channelName, setChannelName] = useState('')
-  const [createMode, setCreateMode] = useState<'group' | 'channel'>('group')
+  const [createMode, setCreateMode] = useState<'group' | 'channel'>(initialMode)
   const [searchQuery, setSearchQuery] = useState('')
   const [radarResults, setRadarResults] = useState<SearchUserRow[]>([])
   const [isSearching, setIsSearching] = useState(false)

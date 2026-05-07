@@ -320,3 +320,7 @@ export async function buildApp() {
       )
       done()
     })
+  }
+
+  return app
+}

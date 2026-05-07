@@ -313,6 +313,11 @@ export const messages = pgTable(
     senderEcdhPublicKeyJwk: text('sender_ecdh_public_key_jwk'),
     /** Burn-after-read: hide locally after this time (server metadata). */
     burnAt: timestamp('burn_at', { withTimezone: true }),
+    /**
+     * Burn-after-read duration in seconds. When set, burn_at is computed server-side
+     * as read_at + burnDurationSecs. Takes precedence over a client-supplied burn_at.
+     */
+    burnDurationSecs: integer('burn_duration_secs'),
     /** Direct E2E: set when the peer reads (first read wins). Null in group chats. */
     readAt: timestamp('read_at', { withTimezone: true }),
     /** Pinned in chat header. Any member can pin/unpin. */

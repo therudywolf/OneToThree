@@ -59,6 +59,7 @@ export type SendChatMessageTransportInput = {
   reply_to_id?: string | null
   media_original_bytes?: number
   burn_at?: string | null
+  burn_duration_secs?: number | null
   /** DR v2 fields — populated by encryptOutboundTextV2 */
   protocol_version?: 1 | 2
   dr_header?: string | null
@@ -177,6 +178,7 @@ export async function sendChatMessageOverTransport(
     reply_to_id: input.reply_to_id ?? null,
     media_original_bytes: input.media_original_bytes,
     burn_at: input.burn_at ?? null,
+    burn_duration_secs: input.burn_duration_secs ?? null,
   }
   let partialDelivery: PartialDeliveryWarning | undefined
 

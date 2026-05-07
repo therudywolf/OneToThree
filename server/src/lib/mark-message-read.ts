@@ -11,6 +11,7 @@ export type MarkReadResult =
       sender_id: string
       reader_id: string
       read_at: string
+      burn_at?: string | null
     }
   | { ok: false; error: string }
 
@@ -89,7 +90,7 @@ export async function markMessageReadByReader(
         ne(messages.senderId, readerId)
       )
     )
-    .returning({ readAt: messages.readAt })
+    .returning({ readAt: messages.readAt, burnAt: messages.burnAt })
 
   let readAtIso: string
   if (updated?.readAt) {
@@ -109,8 +110,15 @@ export async function markMessageReadByReader(
       sender_id: msg.senderId,
       reader_id: readerId,
       read_at: ts(row.readAt),
+      burn_at: row.readAt ? null : null,
     }
   }
+
+  const burnAtIso = updated?.burnAt instanceof Date
+    ? updated.burnAt.toISOString()
+    : updated?.burnAt != null
+    ? String(updated.burnAt)
+    : null
 
   sendToUser(msg.senderId, {
     type: 'message_read_update',
@@ -118,6 +126,17 @@ export async function markMessageReadByReader(
     message_id: msg.id,
     reader_id: readerId,
     read_at: readAtIso,
+    ...(burnAtIso ? { burn_at: burnAtIso } : {}),
+  })
+
+  // Notify reader's own sockets so their UI starts the burn countdown
+  sendToUser(readerId, {
+    type: 'message_read_update',
+    chat_id: msg.chatId,
+    message_id: msg.id,
+    reader_id: readerId,
+    read_at: readAtIso,
+    ...(burnAtIso ? { burn_at: burnAtIso } : {}),
   })
 
   return {
@@ -127,6 +146,7 @@ export async function markMessageReadByReader(
     sender_id: msg.senderId,
     reader_id: readerId,
     read_at: readAtIso,
+    burn_at: burnAtIso,
   }
 }
 

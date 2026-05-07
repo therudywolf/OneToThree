@@ -34,7 +34,7 @@ export function PostRegisterVaultPrompt({
       return
     }
     const payload = JSON.stringify(
-      { userId, vault: blob, exported_at: new Date().toISOString() },
+      { userId, username: user?.username ?? null, vault: blob, exported_at: new Date().toISOString() },
       null,
       2
     )

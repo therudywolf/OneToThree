@@ -19,6 +19,7 @@ export type PersistedMessageRow = {
   mediaIv: string | null
   mediaOriginalBytes: number | null
   burnAt: Date | null
+  burnDurationSecs: number | null
   readAt: Date | null
   createdAt: Date
   protocolVersion: number
@@ -38,6 +39,8 @@ export type PersistChatMessageInput = {
   mediaIv?: string | null
   mediaOriginalBytes?: number | null
   burnAt?: Date | null
+  /** Duration in seconds for burn-after-read. When set, burn_at is computed at read time. */
+  burnDurationSecs?: number | null
   /** Protocol version (1 = legacy static ECDH, 2 = Double Ratchet). */
   protocolVersion?: number
   /** Base64url header for v2; ignored for v1. */
@@ -122,6 +125,7 @@ export async function persistChatMessageAndFanOut(
         mediaIv: input.mediaIv ?? null,
         mediaOriginalBytes: input.mediaOriginalBytes ?? null,
         burnAt: input.burnAt ?? null,
+        burnDurationSecs: input.burnDurationSecs ?? null,
         protocolVersion,
         drHeader: protocolVersion === 2 ? input.drHeader ?? null : null,
         drInit: protocolVersion === 2 ? input.drInit ?? null : null,
@@ -139,6 +143,7 @@ export async function persistChatMessageAndFanOut(
         mediaIv: messages.mediaIv,
         mediaOriginalBytes: messages.mediaOriginalBytes,
         burnAt: messages.burnAt,
+        burnDurationSecs: messages.burnDurationSecs,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
         protocolVersion: messages.protocolVersion,

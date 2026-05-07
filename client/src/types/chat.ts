@@ -53,6 +53,7 @@ export type DecryptedMessage = {
   media_original_bytes?: number | null
   read_at?: string | null
   burn_at?: string | null
+  burn_duration_secs?: number | null
   /** Emoji reactions — map of emoji to array of user IDs who reacted */
   reactions?: Record<string, string[]>
   /** Server-side "pinned in chat" flag; toggled via POST /messages/:id/pin. */

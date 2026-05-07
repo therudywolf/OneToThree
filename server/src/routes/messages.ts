@@ -32,6 +32,7 @@ const sendMessageBodySchema = z.object({
   reply_to_id: z.string().uuid().nullable().optional(),
   media_original_bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   burn_at: z.string().nullable().optional(),
+  burn_duration_secs: z.number().int().min(1).max(2592000).nullable().optional(),
   // Stage 5: per-device fan-out ciphertexts
   ciphertexts: z
     .array(
@@ -139,7 +140,12 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const burn = parseOptionalBurnAt(p.burn_at ?? null)
+    // burn_duration_secs takes precedence: server computes burn_at at read time.
+    // burn_at (legacy absolute) is accepted only when no duration is given.
+    const burnDurationSecs = p.burn_duration_secs ?? null
+    const burn = burnDurationSecs == null
+      ? parseOptionalBurnAt(p.burn_at ?? null)
+      : { ok: true as const, date: null }  // burn_at will be set at read time
     if (!burn.ok) return reply.status(400).send({ error: burn.error })
 
     // Pin sender's ECDH key at send time so decryption survives multi-device key rotation.
@@ -169,6 +175,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       mediaIv: p.media_iv ?? null,
       mediaOriginalBytes: resolveMediaOriginalBytes(p.media_path ?? null, p.media_original_bytes),
       burnAt: burn.date,
+      burnDurationSecs,
       protocolVersion: p.protocol_version ?? 1,
       drHeader: p.dr_header ?? null,
       drInit: p.dr_init ?? null,
@@ -295,6 +302,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         mediaType: messages.mediaType,
         mediaIv: messages.mediaIv,
         burnAt: messages.burnAt,
+        burnDurationSecs: messages.burnDurationSecs,
         readAt: messages.readAt,
         createdAt: messages.createdAt,
         protocolVersion: messages.protocolVersion,
@@ -331,6 +339,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         media_iv: m.mediaIv,
         read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
         burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
+        burn_duration_secs: m.burnDurationSecs ?? null,
         created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
         protocol_version: m.protocolVersion,
         dr_header: m.drHeader,
@@ -400,7 +409,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       }
       return reply.status(status[result.error] ?? 400).send({ error: result.error })
     }
-    return reply.send({ ok: true, read_at: result.read_at })
+    return reply.send({ ok: true, read_at: result.read_at, burn_at: result.burn_at ?? null })
   })
 
   app.post('/batch-read', async (request, reply) => {
@@ -592,6 +601,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         mediaType: messages.mediaType,
         mediaIv: messages.mediaIv,
         burnAt: messages.burnAt,
+        burnDurationSecs: messages.burnDurationSecs,
         readAt: messages.readAt,
         isPinned: messages.isPinned,
         pinnedAt: messages.pinnedAt,
@@ -633,6 +643,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         sender_ecdh_public_key_jwk: m.senderEcdhPublicKeyJwk ?? null,
         read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
         burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
+        burn_duration_secs: m.burnDurationSecs ?? null,
         is_pinned: m.isPinned,
         pinned_at: m.pinnedAt == null ? null : m.pinnedAt instanceof Date ? m.pinnedAt.toISOString() : String(m.pinnedAt),
         created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),

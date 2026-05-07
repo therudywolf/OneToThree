@@ -95,15 +95,45 @@ export function LoginForm() {
       if (!file) return
       setErrorLog(null)
       try {
-        const data = JSON.parse(await file.text()) as { username?: string; vault?: VaultBlob }
-        if (!data.vault?.ciphertextB64) throw new Error('INVALID_STRUCTURE')
-        const nick = parseNickname(data.username?.trim() || handle.trim())
-        if (!nick.ok) throw new Error(nick.error)
-        persistVaultBlobByLoginUsername(nick.value, data.vault)
+        const raw = JSON.parse(await file.text()) as {
+          username?: string | null
+          userId?: string | null
+          vault?: VaultBlob
+          ciphertextB64?: string  // raw blob (no wrapper)
+          saltB64?: string
+          ivB64?: string
+          version?: number
+        }
+
+        // Support both wrapped { vault: VaultBlob } and raw VaultBlob formats
+        const blob: VaultBlob | null = raw.vault?.ciphertextB64
+          ? raw.vault
+          : raw.ciphertextB64 && raw.saltB64 && raw.ivB64
+          ? (raw as unknown as VaultBlob)
+          : null
+
+        if (!blob?.ciphertextB64) {
+          setErrorLog(t('settings.importFailed') + ': неверный формат файла')
+          return
+        }
+
+        // Prefer explicit username → fall back to handle field
+        const nameCandidate = raw.username?.trim() || handle.trim()
+        if (!nameCandidate) {
+          setErrorLog(t('login.usernameRequired') + ' — введите ник перед импортом ключа')
+          return
+        }
+        const nick = parseNickname(nameCandidate)
+        if (!nick.ok) {
+          setErrorLog(t('settings.importFailed') + ': ' + nick.error)
+          return
+        }
+        persistVaultBlobByLoginUsername(nick.value, blob)
         setHandle(nick.value)
         setVaultLinkOk(true)
-      } catch {
-        setErrorLog(t('settings.importFailed'))
+      } catch (e) {
+        console.error('[vault-import]', e)
+        setErrorLog(t('settings.importFailed') + ': ' + (e instanceof Error ? e.message : String(e)))
       }
     }
     input.click()

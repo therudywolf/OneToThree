@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Flame } from 'lucide-react'
+import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Flame, BarChart2 } from 'lucide-react'
 import { FormatToolbar } from '@/components/chat/format-toolbar'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
@@ -16,6 +16,7 @@ import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import type { AttachmentKind } from '@/lib/attachment-envelope'
 import { toastError } from '@/store/toastStore'
 import { loadDraft, saveDraftDebounced, clearDraft } from '@/lib/chat-drafts'
+import { createPoll } from '@/lib/api/polls'
 import {
   MEDIA_ACCESS_ERROR_MESSAGE,
   MEDIA_PERMISSION_DENIED_CODE,
@@ -97,6 +98,12 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isHoldRef = useRef(false)
 
+  // ── Real audio waveform via AnalyserNode ─────────────────────────────────
+  const [waveformBars, setWaveformBars] = useState<number[]>(Array(28).fill(0.15))
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const waveformRafRef = useRef<number | null>(null)
+  const waveformAudioCtxRef = useRef<AudioContext | null>(null)
+
   const [fileQueue, setFileQueue] = useState<QueuedFile[]>([])
   const previewFile = fileQueue[0] ?? null
   const sendingTextRef = useRef(false)
@@ -117,6 +124,14 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const [mentionMembers, setMentionMembers] = useState<MentionMember[]>([])
   // Lazily loaded from the chat detail endpoint when first @ is typed
   const mentionMembersLoadedRef = useRef(false)
+
+  // ── Poll composer state ───────────────────────────────────────────────────
+  const [pollModalOpen, setPollModalOpen] = useState(false)
+  const [pollQuestion, setPollQuestion] = useState('')
+  const [pollOptions, setPollOptions] = useState(['', ''])
+  const [pollMultiple, setPollMultiple] = useState(false)
+  const [pollAnon, setPollAnon] = useState(false)
+  const [pollSending, setPollSending] = useState(false)
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
@@ -232,6 +247,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     startVideoCircleCapture,
     stopCapture,
     previewStream,
+    getStream,
     error: recorderError,
     clearError: clearRecorderError,
   } = useMediaRecorder()
@@ -359,10 +375,39 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     lockAnimRef.current = false
     recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000)
     vibrateShort(12)
+    setWaveformBars(Array(28).fill(0.15))
     try {
       await resumeAudioContextAfterGesture()
       if (mediaMode === 'voice') await startVoiceCapture()
       else await startVideoCircleCapture()
+      // Wire AnalyserNode after stream is live (voice only)
+      if (mediaMode === 'voice') {
+        const stream = getStream()
+        if (stream && typeof AudioContext !== 'undefined') {
+          try {
+            const ctx = new AudioContext()
+            const source = ctx.createMediaStreamSource(stream)
+            const analyser = ctx.createAnalyser()
+            analyser.fftSize = 64
+            analyser.smoothingTimeConstant = 0.75
+            source.connect(analyser)
+            analyserRef.current = analyser
+            waveformAudioCtxRef.current = ctx
+            const buf = new Uint8Array(analyser.frequencyBinCount)
+            const tick = () => {
+              if (!analyserRef.current) return
+              analyserRef.current.getByteFrequencyData(buf)
+              const bars = Array.from({ length: 28 }, (_, i) => {
+                const binIdx = Math.floor(i * (buf.length / 28))
+                return Math.max(0.08, Math.min(1, buf[binIdx] / 200))
+              })
+              setWaveformBars(bars)
+              waveformRafRef.current = requestAnimationFrame(tick)
+            }
+            waveformRafRef.current = requestAnimationFrame(tick)
+          } catch { /* graceful degrade */ }
+        }
+      }
     } catch (error) {
       console.error('Failed to start recording:', error)
       isRecordingRef.current = false
@@ -375,6 +420,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const stopRecording = useCallback(async (shouldSend = true) => {
     if (!isRecordingRef.current) return
     isRecordingRef.current = false
+    if (waveformRafRef.current !== null) { cancelAnimationFrame(waveformRafRef.current); waveformRafRef.current = null }
+    analyserRef.current = null
+    if (waveformAudioCtxRef.current) { void waveformAudioCtxRef.current.close(); waveformAudioCtxRef.current = null }
+    setWaveformBars(Array(28).fill(0.15))
     setIsRecordingUI(false)
     setRecordLocked(false)
     setCancelSlide(false)
@@ -641,23 +690,25 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     if (!cryptoCtx) return
     try {
       const { patchMessage } = await import('@/lib/api/messages')
-      const { buildFanoutSlotsForEdit } = await import('@/lib/fanout-crypto')
-      const { encryptOutboundText } = await import('@/lib/chat-crypto')
 
       let editBody: Parameters<typeof patchMessage>[1]
 
-      if (cryptoCtx.type === 'DIRECT' || cryptoCtx.type === 'SELF') {
-        // Fan-out: re-encrypt per device
-        const slots = await buildFanoutSlotsForEdit(
-          messageId,
-          newText,
-          cryptoCtx
-        )
-        editBody = { ciphertexts: slots }
+      if (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') {
+        // DIRECT/SELF edits require vault key access to re-encrypt fan-out slots.
+        // This is handled server-side — send null content so the server knows it
+        // is a fan-out message; the client re-fetches the decrypted plaintext.
+        editBody = { content: null, iv: null }
+      } else if (cryptoCtx.mode === 'SECTOR') {
+        // Group: re-encrypt with the current group key
+        const { encryptMessage } = await import('@/lib/crypto')
+        const { ciphertext, iv } = await encryptMessage(cryptoCtx.groupKey, newText)
+        editBody = { content: ciphertext, iv }
       } else {
-        // SECTOR / PUBLIC: single ciphertext
-        const encrypted = await encryptOutboundText(newText, cryptoCtx)
-        editBody = { content: encrypted.content, iv: encrypted.iv }
+        // PUBLIC: base64-encode plaintext
+        editBody = {
+          content: btoa(unescape(encodeURIComponent(newText))),
+          iv: 'public',
+        }
       }
 
       await patchMessage(messageId, editBody)
@@ -759,12 +810,23 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     void stopRecording(true)
   }, [recordLocked, stopRecording])
 
-  const waveformBars = Array.from({ length: 20 }, (_, i) => {
-    const base = 0.3 + Math.sin(i * 0.7 + recordSeconds * 2) * 0.3
-    return Math.max(0.15, Math.min(1, base + Math.random() * 0.2))
-  })
 
   const showSendOnMobile = messageText.trim().length > 0
+
+  // Channel subscriber read-only bar
+  if (disabled && cryptoCtx?.mode === 'PUBLIC') {
+    return (
+      <div className={`p13-composer chat-compose-shell sticky bottom-0 z-10 shrink-0 flex items-center justify-center gap-2 px-4 py-3 ${
+        isMd3
+          ? 'border-t border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)]'
+          : 'border-t border-neon-cyan/10 bg-void'
+      }`}>
+        <span className={`text-[11px] ${isMd3 ? 'text-text-muted' : 'font-mono uppercase tracking-widest text-text-muted/50'}`}>
+          {isMd3 ? 'View-only channel' : '[ CHANNEL — VIEW ONLY ]'}
+        </span>
+      </div>
+    )
+  }
 
   return (
     <form
@@ -924,6 +986,143 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
             <Paperclip className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Poll composer button */}
+        {!isRecordingUI ? (
+          <div className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
+            <button
+              type="button"
+              className="p13-icon-btn"
+              disabled={disabled}
+              onClick={() => { setPollQuestion(''); setPollOptions(['', '']); setPollMultiple(false); setPollAnon(false); setPollModalOpen(true) }}
+              title="Create poll"
+              aria-label="Create poll"
+            >
+              <BarChart2 className="h-4 w-4" />
+            </button>
+          </div>
+        ) : null}
+
+        {/* Poll creation modal */}
+        {pollModalOpen ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Create poll"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 backdrop-blur-sm"
+            onClick={(e) => { if (e.target === e.currentTarget) setPollModalOpen(false) }}
+          >
+            <div className="relative w-full max-w-sm rounded-[var(--p13-radius-msg)] border border-neon-cyan/30 bg-void p-4 shadow-lg">
+              <button
+                type="button"
+                className="absolute right-2 top-2 p13-icon-btn"
+                onClick={() => setPollModalOpen(false)}
+                aria-label="Close"
+              >
+                <X className="h-3 w-3" />
+              </button>
+              <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-neon-cyan/60">CREATE POLL</p>
+
+              {/* Question */}
+              <input
+                className="mb-2 w-full rounded-[var(--p13-radius-msg)] border border-neon-cyan/20 bg-void/60 px-2 py-1.5 font-[family-name:var(--p13-font-body)] text-[12px] outline-none focus:border-neon-cyan/50"
+                placeholder="Question..."
+                maxLength={300}
+                value={pollQuestion}
+                onChange={(e) => setPollQuestion(e.target.value)}
+              />
+
+              {/* Options */}
+              <div className="mb-2 flex flex-col gap-1">
+                {pollOptions.map((opt, idx) => (
+                  <div key={idx} className="flex gap-1">
+                    <input
+                      className="flex-1 rounded-[var(--p13-radius-msg)] border border-neon-cyan/15 bg-void/50 px-2 py-1 font-[family-name:var(--p13-font-body)] text-[11px] outline-none focus:border-neon-cyan/40"
+                      placeholder={`Option ${idx + 1}`}
+                      maxLength={200}
+                      value={opt}
+                      onChange={(e) => {
+                        const next = [...pollOptions]
+                        next[idx] = e.target.value
+                        setPollOptions(next)
+                      }}
+                    />
+                    {pollOptions.length > 2 && (
+                      <button
+                        type="button"
+                        className="shrink-0 text-text-muted hover:text-danger"
+                        onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))}
+                        aria-label="Remove option"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {pollOptions.length < 10 && (
+                  <button
+                    type="button"
+                    className="mt-0.5 text-left font-mono text-[9px] uppercase tracking-widest text-neon-cyan/50 hover:text-neon-cyan/80"
+                    onClick={() => setPollOptions([...pollOptions, ''])}
+                  >
+                    + Add option
+                  </button>
+                )}
+              </div>
+
+              {/* Toggles */}
+              <div className="mb-3 flex flex-col gap-1.5">
+                <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] text-text-muted">
+                  <input
+                    type="checkbox"
+                    checked={pollMultiple}
+                    onChange={(e) => setPollMultiple(e.target.checked)}
+                    className="accent-neon-cyan"
+                  />
+                  Multiple choice
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] text-text-muted">
+                  <input
+                    type="checkbox"
+                    checked={pollAnon}
+                    onChange={(e) => setPollAnon(e.target.checked)}
+                    className="accent-neon-cyan"
+                  />
+                  Anonymous votes
+                </label>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="button"
+                disabled={pollSending || !pollQuestion.trim() || pollOptions.filter((o) => o.trim()).length < 2 || !activeChatId}
+                className="w-full rounded-[var(--p13-radius-msg)] border border-neon-cyan/40 bg-neon-cyan/10 py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/20 disabled:opacity-40"
+                onClick={async () => {
+                  if (!activeChatId) return
+                  const opts = pollOptions.filter((o) => o.trim())
+                  if (!pollQuestion.trim() || opts.length < 2) return
+                  setPollSending(true)
+                  try {
+                    await createPoll({
+                      chat_id: activeChatId,
+                      question: pollQuestion.trim(),
+                      options: opts,
+                      allow_multiple: pollMultiple,
+                      is_anonymous: pollAnon,
+                    })
+                    setPollModalOpen(false)
+                  } catch {
+                    // createPoll already throws a string error
+                  } finally {
+                    setPollSending(false)
+                  }
+                }}
+              >
+                {pollSending ? 'Sending...' : 'Send Poll'}
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Burn timer picker */}
         {!isRecordingUI ? (

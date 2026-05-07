@@ -89,16 +89,26 @@ export async function bindBiometricAuthority(
   if (!container) return { ok: false, error: 'VAULT_NOT_FOUND' }
 
   let plainPayload: string
+  // H-03: zero PIN bytes from memory immediately after key derivation
+  const pinBytes = new TextEncoder().encode(pin)
   try {
     plainPayload = await unwrapPrivateJwkWithPin(container, pin)
   } catch {
     return { ok: false, error: 'VAULT_UNWRAP_FAULT' }
+  } finally {
+    pinBytes.fill(0)
   }
 
   // [2] GENERATE_EPHEMERAL_KEY :: Создание быстрого ПИН-кода для LargeBlob
   const ephemeralPinSource = crypto.getRandomValues(new Uint8Array(32))
   const ephemeralPin = toB64(new Uint8Array(ephemeralPinSource.buffer))
-  const bioContainer = await wrapPrivateJwkWithPin(plainPayload, ephemeralPin)
+  // H-03: zero PIN bytes from memory immediately after key derivation
+  let bioContainer: Awaited<ReturnType<typeof wrapPrivateJwkWithPin>>
+  try {
+    bioContainer = await wrapPrivateJwkWithPin(plainPayload, ephemeralPin)
+  } finally {
+    ephemeralPinSource.fill(0)
+  }
 
   // [3] HARDWARE_GENESIS :: Запрос создания аппаратного ключа
   const challengeSource = crypto.getRandomValues(new Uint8Array(32))
@@ -193,13 +203,24 @@ export async function interceptBiometricSignal(nodeId: string): Promise<string> 
   if (!blobBuf) throw new Error('LARGE_BLOB_READ_FAULT')
 
   // [2] DECODE_EPHEMERAL_LINK :: Превращение блоба в ПИН-код
-  const ephemeralPin = new TextDecoder().decode(new Uint8Array(blobBuf))
-  
+  // H-03: zero PIN bytes from memory immediately after key derivation
+  const ephemeralPinBytes = new Uint8Array(blobBuf)
+  const ephemeralPin = new TextDecoder().decode(ephemeralPinBytes)
+
   // [3] OPEN_VAULT :: Вскрытие контейнера
   const container = readVaultBlob(nodeId)
-  if (!container) throw new Error('VAULT_OFFLINE')
+  if (!container) {
+    ephemeralPinBytes.fill(0)
+    throw new Error('VAULT_OFFLINE')
+  }
 
-  const plain = await unwrapPrivateJwkWithPin(container, ephemeralPin)
+  let plain: string
+  try {
+    plain = await unwrapPrivateJwkWithPin(container, ephemeralPin)
+  } finally {
+    // H-03: zero PIN bytes from memory immediately after key derivation
+    ephemeralPinBytes.fill(0)
+  }
   // Force-upgrade legacy blobs (v1–v4) to current vault version so chain-of-
   // custody guarantees from v5 (Argon2id + AAD) cover the WebAuthn unlock
   // path too. Audit A.P2: previously only the PIN unlock path performed the

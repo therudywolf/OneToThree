@@ -37,6 +37,41 @@ type SectorDetailResponse = {
   }>
 }
 
+/**
+ * [TRUST_VERIFICATION] :: Проверка отпечатка в локальном реестре доверия.
+ * Сравниваются только криптографически значимые поля JWK (kty/crv/x/y),
+ * чтобы избежать ложных тревог при разных необязательных полях (key_ops, ext…).
+ * Бросает исключение при несовпадении закреплённого и полученного ключа.
+ *
+ * Named `assertTrustOrThrow` to make the throwing contract explicit at call
+ * sites. Both `buildChatCryptoContext` and `buildChatCryptoContextWithMeta`
+ * must call this so that neither the primary path nor the meta/forward path
+ * can bypass trust verification.
+ */
+function assertTrustOrThrow(peerUserId: string, receivedJwk: string): void {
+  const registryRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('p13_trust_registry') : null
+  if (!registryRaw) return
+  try {
+    const registry = JSON.parse(registryRaw)
+    const pinnedSignal = registry[peerUserId]
+    if (!pinnedSignal) return
+    const keyFields = ['crv', 'kty', 'x', 'y'] as const
+    const extractKey = (jwkStr: string) => {
+      try {
+        const parsed = JSON.parse(jwkStr) as Record<string, unknown>
+        return JSON.stringify(Object.fromEntries(keyFields.map((k) => [k, parsed[k] ?? null])))
+      } catch {
+        return jwkStr
+      }
+    }
+    if (extractKey(pinnedSignal) !== extractKey(receivedJwk)) {
+      throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('MISMATCH')) throw err
+  }
+}
+
 /** [CALIBRATE_FRAME] :: Снятие показаний и построение крипто-контекста для сектора */
 export async function buildChatCryptoContext(
   chatId: string,
@@ -64,35 +99,7 @@ export async function buildChatCryptoContext(
     const peer = members.find((m) => m.user_id !== myUserId)
     if (!peer?.ecdh_public_key_jwk) throw new Error('ERR_MISSING_PEER_SIGNAL')
 
-    /** [TRUST_VERIFICATION] :: Проверка отпечатка в локальном реестре */
-    const registryRaw = localStorage.getItem('p13_trust_registry')
-    if (registryRaw) {
-      try {
-        const registry = JSON.parse(registryRaw)
-        const pinnedSignal = registry[peer.user_id]
-        
-        if (pinnedSignal) {
-          // Compare only the key-material fields (kty/crv/x/y for EC keys).
-          // Ignoring extra JWK metadata (key_ops, use, ext…) prevents false
-          // MISMATCH alerts when the server re-uploads the same key with
-          // different optional fields.
-          const keyFields = ['crv', 'kty', 'x', 'y'] as const
-          const extractKey = (jwkStr: string) => {
-            try {
-              const parsed = JSON.parse(jwkStr) as Record<string, unknown>
-              return JSON.stringify(Object.fromEntries(keyFields.map((k) => [k, parsed[k] ?? null])))
-            } catch {
-              return jwkStr
-            }
-          }
-          if (extractKey(pinnedSignal) !== extractKey(peer.ecdh_public_key_jwk)) {
-            throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
-          }
-        }
-      } catch (err) {
-        if (err instanceof Error && err.message.includes('MISMATCH')) throw err
-      }
-    }
+    assertTrustOrThrow(peer.user_id, peer.ecdh_public_key_jwk)
 
     return { mode: 'DIRECT', peerPublicKeyJwk: peer.ecdh_public_key_jwk }
   }
@@ -145,6 +152,10 @@ export async function buildChatCryptoContextWithMeta(
     }
     const peer = members.find((m) => m.user_id !== myUserId)
     if (!peer?.ecdh_public_key_jwk) throw new Error('ERR_MISSING_PEER_SIGNAL')
+
+    /** [TRUST_VERIFICATION] :: Forward/media paths must also verify the trust registry */
+    assertTrustOrThrow(peer.user_id, peer.ecdh_public_key_jwk)
+
     return {
       ctx: { mode: 'DIRECT', peerPublicKeyJwk: peer.ecdh_public_key_jwk },
       peerUserId: peer.user_id,

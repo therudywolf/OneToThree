@@ -106,6 +106,21 @@ export async function getAuthUser(
   const id = normalizeUuid(p.sub)
 
   if (p.device_id) {
+    // Fast Redis check: reject immediately if device was recently revoked,
+    // without waiting for the DB round-trip in assertDeviceActiveForUser.
+    const { getRedis } = await import('./redis.js')
+    const r = getRedis()
+    if (r) {
+      const revokedAt = await r.get(`device:revoked:${p.device_id}`)
+      if (revokedAt) {
+        if (reply) {
+          clearFmSessionCookie(reply)
+          void reply.status(401).send({ error: 'DEVICE_REVOKED' })
+        }
+        return null
+      }
+    }
+
     const ok = await assertDeviceActiveForUser(id, p.device_id)
     if (!ok) {
       if (reply) {

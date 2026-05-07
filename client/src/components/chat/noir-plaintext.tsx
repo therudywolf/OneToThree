@@ -66,7 +66,7 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 
 function InlineCode({ code }: { code: string }) {
   return (
-    <code className="border border-neon-cyan/20 bg-void/70 px-1 py-0.5 font-mono text-[11px] text-neon-cyan/80">
+    <code className="p13-inline-code border border-neon-cyan/20 bg-void/70 px-1 py-0.5 font-mono text-[11px] text-neon-cyan/80">
       {code}
     </code>
   )

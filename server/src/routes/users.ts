@@ -368,7 +368,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
-    if (parsed.data.allow_device_linking !== undefined) {
+    if (parsed.data.allow_device_linking !== undefined || parsed.data.ecdh_public_key_jwk !== undefined) {
       const stepUp = await requireTotpStepUp(request, user.id)
       if (!stepUp.ok) return sendStepUpError(reply, stepUp)
     }
@@ -433,7 +433,12 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const uuidQuery = uuidSchema.safeParse(q)
     if (uuidQuery.success) {
       const id = uuidQuery.data
-      const whereExpr = viewer != null ? and(eq(users.id, id), ne(users.id, viewer.id)) : eq(users.id, id)
+      // Allow finding yourself by UUID (e.g. to verify your own keys), but enforce
+      // is_discoverable for any other user — UUID lookup exposes the ECDH public key
+      // and must be subject to the same privacy constraint as username search.
+      const whereExpr = viewer != null
+        ? and(eq(users.id, id), ne(users.id, viewer.id), eq(users.isDiscoverable, true))
+        : and(eq(users.id, id), eq(users.isDiscoverable, true))
       const [row] = await db
         .select({ id: users.id, username: users.username, public_key_jwk: users.publicKeyJwk, ecdh_public_key_jwk: users.ecdhPublicKeyJwk })
         .from(users)
@@ -761,6 +766,13 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
     if (!updated) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
 
+    // Immediately invalidate any active JWT for the revoked device via Redis.
+    const { getRedis } = await import('../lib/redis.js')
+    const r = getRedis()
+    if (r) {
+      await r.set(`device:revoked:${deviceId}`, Date.now().toString(), 'EX', 86400 + 60)
+    }
+
     sendToUser(user.id, { type: 'server_notice', notice: 'device_revoked', device_id: deviceId })
     return reply.send({ ok: true })
   })
@@ -793,6 +805,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+
     const params = z.object({ sessionId: uuidSchema }).safeParse(request.params)
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
     const sessionId = normalizeUuid(params.data.sessionId)
@@ -814,8 +829,15 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+
     const sess = await verifySessionJwt(request)
     const currentDeviceId = sess?.device_id ? normalizeUuid(sess.device_id) : null
+
+    // Immediately invalidate JWTs for all revoked devices via Redis.
+    const { getRedis } = await import('../lib/redis.js')
+    const r = getRedis()
 
     if (currentDeviceId) {
       const revokedRows = await db
@@ -825,6 +847,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         .returning({ id: devices.id })
       const ids = revokedRows.map((r) => r.id)
       if (ids.length) await db.delete(messageDeliveries).where(inArray(messageDeliveries.deviceId, ids))
+      if (r && ids.length) {
+        const now = Date.now().toString()
+        await Promise.all(ids.map((id) => r.set(`device:revoked:${id}`, now, 'EX', 86400 + 60)))
+      }
     } else {
       const revokedRows = await db
         .update(devices)
@@ -833,6 +859,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         .returning({ id: devices.id })
       const ids = revokedRows.map((r) => r.id)
       if (ids.length) await db.delete(messageDeliveries).where(inArray(messageDeliveries.deviceId, ids))
+      if (r && ids.length) {
+        const now = Date.now().toString()
+        await Promise.all(ids.map((id) => r.set(`device:revoked:${id}`, now, 'EX', 86400 + 60)))
+      }
       clearFmSessionCookie(reply)
     }
     return reply.send({ ok: true })
@@ -910,6 +940,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const parsed = z.object({ confirm_username: z.string().min(1) }).safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
     if (parsed.data.confirm_username !== user.username) return reply.status(400).send({ error: 'USERNAME_MISMATCH' })
+
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
 
     const mediaRows = await db
       .select({ mediaPath: messages.mediaPath })

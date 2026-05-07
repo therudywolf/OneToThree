@@ -5,6 +5,8 @@ import {
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
 import { decryptFanoutSlot, DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
+import { resolveTrustStatus } from '@/lib/trust-store'
+import { sha256 } from '@noble/hashes/sha2'
 import {
   BATCH_WORKER_MIN,
   decryptTextBatchInWorker,
@@ -191,6 +193,23 @@ async function decryptRowPlaintext(
     // single try/catch keeps the rotation safety net uniform across SELF and
     // DIRECT modes.
     const senderKey = row.sender_ecdh_public_key_jwk ?? fallbackKey
+
+    // M-04: verify sender_ecdh_public_key_jwk against trust store before
+    // decryption. Only the pinned (server-supplied) key is checked — fallback
+    // keys from hints are pre-vetted by the local vault.
+    if (row.sender_ecdh_public_key_jwk) {
+      const keyBytes = new TextEncoder().encode(row.sender_ecdh_public_key_jwk)
+      const digest = sha256(keyBytes)
+      const fingerprint = 'sha256:' + Array.from(digest).map((b) => b.toString(16).padStart(2, '0')).join('')
+      const trustStatus = resolveTrustStatus(row.sender_id, fingerprint)
+      if (trustStatus.revokedByKeyChange) {
+        // Key has changed since last pin — abort decryption to prevent MitM.
+        return '[KEY_CHANGE_DETECTED]'
+      }
+      // TOFU: !trustStatus.is_verified is expected on first encounter;
+      // the trust-store write path pins on explicit user verification.
+    }
+
     const candidates: string[] = [senderKey]
     const pushUnique = (k: string | null | undefined) => {
       if (k && !candidates.includes(k)) candidates.push(k)

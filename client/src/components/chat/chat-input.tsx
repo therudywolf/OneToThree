@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Send, Paperclip, Smile, Mic, Video, Lock, X, Square, Flame } from 'lucide-react'
+import { FormatToolbar } from '@/components/chat/format-toolbar'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { parseStickerEnvelope } from '@/lib/attachment-envelope'
@@ -95,6 +96,12 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const sendingTextRef = useRef(false)
   const [sendingText, setSendingText] = useState(false)
   const sendingMediaRef = useRef(false)
+
+  const [formatToolbar, setFormatToolbar] = useState<{ visible: boolean; top: number; left: number }>({
+    visible: false,
+    top: 0,
+    left: 0,
+  })
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
@@ -331,6 +338,43 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     const s = sec % 60
     return `${m}:${s.toString().padStart(2, '0')}`
   }
+
+  const applyFormat = useCallback((tag: string) => {
+    const ta = inputRef.current
+    if (!ta) return
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    const selected = ta.value.slice(start, end)
+    if (!selected) return
+    const wrapped = `${tag}${selected}${tag}`
+    const newValue = ta.value.slice(0, start) + wrapped + ta.value.slice(end)
+    setMessageText(newValue)
+    onDraftChanged(newValue)
+    requestAnimationFrame(() => {
+      ta.focus()
+      ta.selectionStart = start + tag.length
+      ta.selectionEnd = end + tag.length
+    })
+    setFormatToolbar((prev) => ({ ...prev, visible: false }))
+  }, [onDraftChanged])
+
+  const handleTextareaSelect = useCallback(() => {
+    const ta = inputRef.current
+    if (!ta) return
+    const start = ta.selectionStart
+    const end = ta.selectionEnd
+    if (start === end) {
+      setFormatToolbar((prev) => ({ ...prev, visible: false }))
+      return
+    }
+    // Position toolbar above the textarea
+    const rect = ta.getBoundingClientRect()
+    const formRect = containerRef.current?.getBoundingClientRect()
+    if (!formRect) return
+    const relTop = rect.top - formRect.top - 44 // 44px toolbar height + gap
+    const relLeft = Math.max(0, rect.left - formRect.left)
+    setFormatToolbar({ visible: true, top: relTop, left: relLeft })
+  }, [])
 
   const insertEmoji = (emoji: string) => {
     setMessageText((prev) => {
@@ -823,6 +867,11 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
 
         {/* Input field */}
         <div className={`relative flex-1 ${isMd3 ? 'order-2' : ''}`}>
+          <FormatToolbar
+            visible={formatToolbar.visible}
+            position={{ top: formatToolbar.top, left: formatToolbar.left }}
+            onFormat={applyFormat}
+          />
           <div
             className={`p13-composer-input relative ${
               isRecordingUI ? 'ring-1 ring-danger/40' : ''
@@ -843,6 +892,13 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 e.target.style.height = 'auto'
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
               }}
+              onSelect={handleTextareaSelect}
+              onBlur={() => {
+                // Delay hide so toolbar click can fire first
+                setTimeout(() => {
+                  setFormatToolbar((prev) => ({ ...prev, visible: false }))
+                }, 150)
+              }}
               onFocus={() => {
                 // Scroll composer into view when keyboard opens on mobile
                 setTimeout(() => {
@@ -850,6 +906,22 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 }, 300)
               }}
               onKeyDown={(e) => {
+                // Formatting hotkeys
+                if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+                  e.preventDefault()
+                  applyFormat('**')
+                  return
+                }
+                if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+                  e.preventDefault()
+                  applyFormat('_')
+                  return
+                }
+                if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+                  e.preventDefault()
+                  applyFormat('`')
+                  return
+                }
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   if (messageText.trim() && !disabled && !sendingTextRef.current) void onSubmit(e as unknown as React.FormEvent)

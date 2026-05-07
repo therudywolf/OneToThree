@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft, MoreVertical, BellOff, Bell, Trash2 } from 'lucide-react'
+import { Menu, ShieldCheck, ShieldOff, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft, MoreVertical, BellOff, Bell, Trash2 } from 'lucide-react'
+import { MobileBottomNav, type MobileNavTab } from '@/components/chat/mobile-bottom-nav'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
 import { runPostLoginVaultSync } from '@/lib/vault-sync'
@@ -196,6 +197,7 @@ export function ChatApp({
   const [peerAvatarKey, setPeerAvatarKey] = useState<string | null>(null)
   const [peerApproved, setPeerApproved] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [mobileNavTab, setMobileNavTab] = useState<MobileNavTab>('chats')
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [headerProfileOpen, setHeaderProfileOpen] = useState(false)
   const [md3HeaderCondensed, setMd3HeaderCondensed] = useState(false)
@@ -312,6 +314,16 @@ export function ChatApp({
     setMobileSearchOpen(false)
     setMobileSidebarOpen(true)
   }, [])
+
+  const handleMobileNavTabChange = useCallback((tab: MobileNavTab) => {
+    setMobileNavTab(tab)
+    if (tab === 'chats') {
+      openMobileSidebar()
+    } else if (tab === 'settings') {
+      setSettingsOpen(true)
+    }
+    // 'contacts' and 'calls' are future expansion points
+  }, [openMobileSidebar])
   const closeMobileOverlays = useCallback(() => {
     setMobileSidebarOpen(false)
     setMobileSearchOpen(false)
@@ -936,7 +948,11 @@ export function ChatApp({
                 }`}
               >
                 {peerIdentity.verified ? (
-                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" />
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="Verified &amp; end-to-end encrypted" />
+                ) : (cryptoCtx?.mode === 'DIRECT' || cryptoCtx?.mode === 'SELF') ? (
+                  <Lock className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="End-to-end encrypted" />
+                ) : cryptoCtx?.mode === 'PUBLIC' ? (
+                  <ShieldOff className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Not end-to-end encrypted" />
                 ) : null}
                 {peerApproved ? (
                   <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" />
@@ -1217,7 +1233,13 @@ export function ChatApp({
                       <span className={`inline-flex items-center gap-1.5 truncate text-[14px] font-semibold ${
                         isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan font-mono'
                       }`}>
-                        {peerIdentity.verified ? <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-neon-cyan" /> : null}
+                        {peerIdentity.verified ? (
+                          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="Verified &amp; end-to-end encrypted" />
+                        ) : (cryptoCtx?.mode === 'DIRECT' || cryptoCtx?.mode === 'SELF') ? (
+                          <Lock className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="End-to-end encrypted" />
+                        ) : cryptoCtx?.mode === 'PUBLIC' ? (
+                          <ShieldOff className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Not end-to-end encrypted" />
+                        ) : null}
                         {peerApproved ? <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" /> : null}
                         <span className="truncate">
                           {isMd3 ? peerIdentity.username : `@${peerIdentity.username}`}
@@ -1237,7 +1259,12 @@ export function ChatApp({
                     </>
                   ) : activeRow ? (
                     <>
-                      <span className={`truncate text-[14px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-neon-cyan'}`}>
+                      <span className={`inline-flex items-center gap-1.5 truncate text-[14px] font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono tracking-wider text-neon-cyan'}`}>
+                        {cryptoCtx?.mode === 'SECTOR' ? (
+                          <Lock className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="End-to-end encrypted group" />
+                        ) : cryptoCtx?.mode === 'PUBLIC' ? (
+                          <ShieldOff className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Not end-to-end encrypted" />
+                        ) : null}
                         {activeRow.name ?? activeRow.id}
                       </span>
                       {activeRow.is_group ? (
@@ -1480,6 +1507,11 @@ export function ChatApp({
             screens the `useDockStore` consumers should open modals instead. */}
         <DockPanelXlOnly />
       </div>
+      <MobileBottomNav
+        activeTab={mobileNavTab}
+        onTabChange={handleMobileNavTabChange}
+        unreadCount={unreadTotal}
+      />
     </div>
   )
 }

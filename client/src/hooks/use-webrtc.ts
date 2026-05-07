@@ -903,6 +903,11 @@ export function useWebRTC(userId: string | null) {
   }, [userId, severAllLinks])
 
   const establishLink = useCallback(async (recipients: string[], isVideo: boolean, chatId?: string) => {
+    if (!navigator.onLine) {
+      toastWarn(t('call.noNetwork'), { title: t('call.iceRelayTitle') })
+      return
+    }
+
     const peerIds = recipients.filter((id) => id !== userId && !pcsRef.current.has(id))
     if (peerIds.length === 0) {
       severAllLinks()

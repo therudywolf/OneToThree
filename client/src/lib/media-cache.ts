@@ -1,6 +1,7 @@
 'use client'
 
 import Dexie, { type Table } from 'dexie'
+import { isAppleNode } from '@/lib/ios'
 
 /**
  * PROJECT 13 :: DIGITAL_DEN_STORAGE
@@ -8,8 +9,20 @@ import Dexie, { type Table } from 'dexie'
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
-/** Лимит «Норы»: 1 GiB для дешифрованных бинарных сегментов. */
-export const DEN_CAPACITY_LIMIT = 1024 * 1024 * 1024
+/**
+ * Resolve the media cache byte limit at module initialisation time.
+ * iOS / iPadOS Safari imposes a much tighter Storage quota than desktop
+ * browsers, so we cap the den at 40 MiB there to avoid silent eviction.
+ * All other platforms get 512 MiB (previously 1 GiB — reduced to stay
+ * comfortably below typical browser quota limits on low-memory desktops).
+ */
+function resolveMediaCacheLimit(): number {
+  if (typeof navigator === 'undefined') return 512 * 1024 * 1024
+  return isAppleNode() ? 40 * 1024 * 1024 : 512 * 1024 * 1024
+}
+
+/** Лимит «Норы»: платформозависимый лимит для дешифрованных бинарных сегментов. */
+export const DEN_CAPACITY_LIMIT = resolveMediaCacheLimit()
 /** Максимальное количество записей, чтобы IndexedDB не захлебнулась. */
 export const DEN_ENTRY_LIMIT = 200
 

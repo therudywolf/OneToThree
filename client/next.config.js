@@ -26,44 +26,14 @@ const serverRoutesConfig = isStaticExport
         ]
       },
       async headers() {
-        const apiOrigin = normalizeOrigin(
-          process.env.NEXT_PUBLIC_API_URL,
-          'https://api.onetothree.ru'
-        )
-        const storageOrigin = normalizeOrigin(
-          process.env.MINIO_PUBLIC_URL,
-          'https://s3.onetothree.ru'
-        )
-        const giphyOrigin = 'https://*.giphy.com'
-        const giphyApiOrigin = 'https://api.giphy.com'
-        const tenorMediaOrigin = 'https://media.tenor.com https://*.tenor.com'
-        const tenorApiOrigin = 'https://api.tenor.com https://tenor.googleapis.com'
-        const wsOrigin = apiOrigin.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
-
-        const cspHeader = `
-    default-src 'self';
-    script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/npm/ blob:;
-    style-src 'self' 'unsafe-inline';
-    img-src 'self' blob: data: https://cdn.jsdelivr.net ${apiOrigin} ${storageOrigin} ${giphyOrigin} ${tenorMediaOrigin};
-    font-src 'self';
-    object-src 'none';
-    base-uri 'self';
-    form-action 'self';
-    frame-ancestors 'none';
-    media-src 'self' blob: ${apiOrigin} ${storageOrigin} ${giphyOrigin} ${tenorMediaOrigin};
-    connect-src 'self' ${apiOrigin} ${wsOrigin} https://cdn.jsdelivr.net ${storageOrigin} ${giphyOrigin} ${giphyApiOrigin} ${tenorMediaOrigin} ${tenorApiOrigin};
-    worker-src 'self' blob:;
-    upgrade-insecure-requests;
-`.replace(/\n/g, "");
-
+        // NOTE: Content-Security-Policy is now managed by src/middleware.ts
+        // using per-request nonces (PWA-01). Do NOT add a static CSP here —
+        // a static header would override the middleware nonce and break inline
+        // scripts that rely on the nonce attribute.
         return [
           {
             source: '/:path*',
             headers: [
-              {
-                key: 'Content-Security-Policy',
-                value: cspHeader,
-              },
               { key: 'X-Frame-Options', value: 'DENY' },
               { key: 'X-Content-Type-Options', value: 'nosniff' },
               {

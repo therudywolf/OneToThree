@@ -287,6 +287,60 @@ export async function deriveSharedSecret(
 }
 
 /**
+ * Derive a 256-bit AES-GCM key from ECDH output via HKDF-SHA-256.
+ * Complies with NIST SP 800-56C: the raw ECDH shared secret is used only as
+ * key material input to HKDF; it never feeds AES-GCM directly.
+ *
+ * Used by fan-out v2 encryption/decryption.  All other call sites (group key
+ * wrapping, etc.) continue to use the legacy deriveSharedSecret().
+ *
+ * [Stage 1] extractable: false – the derived key is ephemeral.
+ */
+export async function deriveSharedSecretHkdf(
+  privateKey: CryptoKey,
+  publicKey: CryptoKey
+): Promise<CryptoKey> {
+  const subtle = getSubtle()
+
+  // Step 1: extract raw ECDH shared secret bits (256 bits / 32 bytes for P-256)
+  const ecdhBits = await subtle.deriveBits(
+    { name: 'ECDH', public: publicKey },
+    privateKey,
+    256
+  )
+
+  // Step 2: import those bytes as HKDF key material
+  const hkdfKey = await subtle.importKey(
+    'raw',
+    ecdhBits,
+    'HKDF',
+    false,
+    ['deriveBits']
+  )
+
+  // Step 3: HKDF-SHA-256 with a fixed salt and application-specific info label
+  const okm = await subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(32),
+      info: new TextEncoder().encode('ForestMsg/fanout/1'),
+    },
+    hkdfKey,
+    256
+  )
+
+  // Step 4: import the output keying material as an AES-GCM key
+  return subtle.importKey(
+    'raw',
+    okm,
+    { name: 'AES-GCM', length: AES_GCM_KEY_LENGTH },
+    false,   // ← Stage 1: ephemeral, never exported
+    ['encrypt', 'decrypt']
+  )
+}
+
+/**
  * AES-GCM encrypt UTF-8 text. IV is random per message.
  */
 export async function encryptMessage(

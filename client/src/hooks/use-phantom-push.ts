@@ -16,33 +16,29 @@ export function usePhantomIntercept() {
   /** * [EMIT_SIGNAL] :: Генерация системного уведомления.
    * Срабатывает только если вкладка скрыта (document.hidden).
    */
-  const emitPhantomSignal = useCallback((label: string, content: string, targetUrl?: string) => {
+  const emitPhantomSignal = useCallback((label: string, _content: string, targetUrl?: string) => {
     const isPhantom = document.hidden
     const hasAuthority = 'Notification' in window && Notification.permission === 'granted'
 
     if (isPhantom && hasAuthority) {
-      const signal = new Notification(label, {
-        body: content,
-        icon: '/icon-192.png', // Системная метка узла
-        badge: '/icon-192.png',
-        tag: 'p13-intercept', // Группировка сигналов в один стек
-        silent: false, // Оставляем системный акустический отклик
-      })
-
-      signal.onclick = function () {
-        /** [FOCUS_LOCK] :: Возврат к активному терминалу при перехвате */
-        if (targetUrl) {
-          try {
-            const nextUrl = new URL(targetUrl, window.location.origin).href
-            if (window.location.href !== nextUrl) {
-              window.location.assign(nextUrl)
-            }
-          } catch {
-            /* ignore malformed local notification url */
-          }
-        }
-        window.focus()
-        this.close()
+      // Use SW showNotification() instead of new Notification() to ensure
+      // notifications work in all contexts (including iOS PWA) and to avoid
+      // leaking plaintext message content in the notification body.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then((registration) => {
+          registration.showNotification(label, {
+            // SECURITY: never pass plaintext message content in body —
+            // notification payloads are visible to the OS notification center.
+            body: 'New message',
+            icon: '/icon-192.png',
+            badge: '/icon-192.png',
+            tag: 'p13-intercept',
+            silent: false,
+            data: { url: targetUrl || '/' },
+          })
+        }).catch(() => {
+          /* SW not yet active — notification silently dropped */
+        })
       }
     }
   }, [])

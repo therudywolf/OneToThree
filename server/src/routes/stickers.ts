@@ -42,7 +42,7 @@ function tgFormat(s: TgSticker): 'tgs' | 'webm' | 'static' {
 async function tgApiGet<T>(token: string, method: string, params: Record<string, string>): Promise<T> {
   const url = new URL(`${TG_API}/bot${token}/${method}`)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-  const res = await fetch(url.toString())
+  const res = await fetch(url.toString(), { signal: AbortSignal.timeout(5000) })
   if (!res.ok) throw new Error(`TG_API_HTTP_${res.status}`)
   const json = (await res.json()) as { ok: boolean; result: T; description?: string }
   if (!json.ok) throw new Error(`TG_API_ERROR: ${json.description ?? 'unknown'}`)
@@ -54,7 +54,7 @@ async function downloadTgFile(token: string, fileId: string): Promise<{ data: Bu
   const filePath = file.file_path
   if (!filePath) throw new Error('TG_FILE_PATH_EMPTY')
   const ext = filePath.split('.').pop() ?? 'bin'
-  const res = await fetch(`${TG_API}/file/bot${token}/${filePath}`)
+  const res = await fetch(`${TG_API}/file/bot${token}/${filePath}`, { signal: AbortSignal.timeout(5000) })
   if (!res.ok) throw new Error(`TG_FILE_DOWNLOAD_${res.status}`)
   const data = Buffer.from(await res.arrayBuffer())
   return { data, ext }

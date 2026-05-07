@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal, Lock, Flame } from 'lucide-react'
+import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal, Lock, ShieldOff, Flame } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useUnreadStore } from '@/store/unreadStore'
@@ -1524,6 +1524,15 @@ export function ChatTerminal({
       ) : null}
 
       <div className="shrink-0 bg-void">
+        {cryptoCtx?.mode === 'PUBLIC' && (
+          <div
+            role="alert"
+            className="flex items-center gap-2 border-t border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-400"
+          >
+            <ShieldOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>This conversation is not end-to-end encrypted. Messages may be visible to the server.</span>
+          </div>
+        )}
         <ChatInput
           sendText={sendText}
           sendMedia={sendMedia}

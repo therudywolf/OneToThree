@@ -146,11 +146,13 @@ self.addEventListener('push', (event) => {
           vibrate: [200, 100, 200, 100, 200],
         })
       } else {
+        const chatId = payload.data?.chat_id || 'general'
         await self.registration.showNotification(payload.title, {
           body: payload.body,
           icon: payload.icon || '/wolf-logo.png',
           badge: '/wolf-logo.png',
-          tag: 'forest-msg',
+          tag: `chat-${chatId}`,
+          renotify: true,  // Sound/vibration on each new message in the same chat
           data: { ...payload.data, url: notifUrl },
           requireInteraction: false,
         })

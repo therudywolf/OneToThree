@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
@@ -28,6 +29,8 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [sent, setSent] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+
+  const trapRef = useFocusTrap<HTMLDivElement>(true, onClose)
 
   useEffect(() => acquireBodyScrollLock(), [])
 
@@ -75,9 +78,12 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
         }`}
       >
         <motion.div
+          ref={trapRef}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 12 }}
+          role="dialog"
+          aria-modal="true"
           className={`p13-dialog-panel flex w-full max-w-sm flex-col overflow-hidden ${
             isMd3
               ? 'rounded-[28px] bg-[var(--surface-container-high)] p-5 shadow-[var(--md3-elevation-3)]'

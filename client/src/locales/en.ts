@@ -81,6 +81,7 @@ const en = {
   'call.endCall': 'End Call',
   'call.reconnecting': 'Reconnecting...',
   'call.connectionLost': 'Connection lost',
+  'call.noNetwork': 'No network connection. Please check your internet and try again.',
   'call.relayDegradation': 'Connection switched to relay \u2014 still encrypted',
   'call.iceRelayTitle': 'Calls',
   'call.iceRelayMissing':

@@ -43,6 +43,10 @@ export function isPrivateOrLoopbackAddress(addr: string): boolean {
   if (lower.startsWith('fe80:')) return true
   // IPv4-mapped already handled; remaining IPv6 documentation / unspecified
   if (lower === '::') return true
+  // NAT64 (RFC 6052, 64:ff9b::/96 and 64:ff9b:1::/48) — can reach RFC-1918 space via gateway
+  if (lower.startsWith('64:ff9b:')) return true
+  // 6to4 (RFC 3056, 2002::/16) — embeds IPv4 address; can encode private ranges
+  if (lower.startsWith('2002:')) return true
   return false
 }
 

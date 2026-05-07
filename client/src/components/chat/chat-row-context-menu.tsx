@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Pin, PinOff, Star, StarOff, Bell, BellOff, Eye, EyeOff } from 'lucide-react'
+import { Pin, PinOff, Star, StarOff, Bell, BellOff, Eye, EyeOff, Archive, ArchiveRestore } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import { getChatPrivacy, setChatPrivacyOverride } from '@/lib/chat-privacy'
@@ -13,9 +13,11 @@ export type ChatRowContextMenuProps = {
   isPinned: boolean
   isFavorite: boolean
   isMuted: boolean
+  isArchived?: boolean
   onPin: () => void
   onFavorite: () => void
   onMute: () => void
+  onArchive?: () => void
   onClose: () => void
 }
 
@@ -26,9 +28,11 @@ export function ChatRowContextMenu({
   isPinned,
   isFavorite,
   isMuted,
+  isArchived = false,
   onPin,
   onFavorite,
   onMute,
+  onArchive,
   onClose,
 }: ChatRowContextMenuProps) {
   const privacy = getChatPrivacy(chatId)
@@ -96,6 +100,16 @@ export function ChatRowContextMenu({
       action: onMute,
       active: isMuted,
     },
+    ...(onArchive
+      ? [
+          {
+            icon: isArchived ? ArchiveRestore : Archive,
+            label: isArchived ? 'Unarchive' : 'Archive',
+            action: onArchive,
+            active: isArchived,
+          },
+        ]
+      : []),
     {
       icon: privacy.noCopy ? EyeOff : Eye,
       label: privacy.noCopy ? 'Privacy: copy ON' : 'Privacy: block copy',

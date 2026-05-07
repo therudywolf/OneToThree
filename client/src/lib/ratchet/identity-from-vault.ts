@@ -36,6 +36,10 @@ export interface DerivedDrBundle {
 /**
  * Derive one OTP private key by id (1-based). Deterministic: same vault → same key.
  * Alice consumes an OTP id from the server bundle; Bob re-derives the private key here.
+ *
+ * @deprecated OTP prekeys must be randomly generated, not derived.
+ * Use generateX25519KeyPair() and store private keys in the local bundle.
+ * This function remains only for migration of old sessions.
  */
 export function deriveOtpPrivKey(dBytes: Uint8Array, id: number): Uint8Array {
   const idBuf = ENC.encode(String(id))

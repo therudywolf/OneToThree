@@ -174,6 +174,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
           id: users.id,
           publicKeyJwk: users.publicKeyJwk,
           isBanned: users.isBanned,
+          allowDeviceLinking: users.allowDeviceLinking,
         })
         .from(users)
         .where(eq(users.id, userId))
@@ -181,6 +182,9 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
 
       if (!userRow || userRow.isBanned) {
         return reply.status(401).send({ error: 'USER_NOT_FOUND_OR_BANNED' })
+      }
+      if (!userRow.allowDeviceLinking) {
+        return reply.status(403).send({ error: 'DEVICE_LINKING_DISABLED' })
       }
 
       // 3. Verify old-device signature over deterministic message

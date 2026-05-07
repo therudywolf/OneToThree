@@ -2,6 +2,7 @@
 // Copyright (C) 2026 therudywolf
 
 import type { Metadata, Viewport } from 'next'
+import { headers } from 'next/headers'
 import { AuthProvider } from '@/components/auth/auth-provider'
 import { Auth401Interceptor } from '@/components/auth/auth-401-interceptor'
 import { ErrorBoundary } from '@/components/error-boundary'
@@ -126,16 +127,21 @@ const themeInitScript = `
 })();
 `.trim()
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // PWA-01: read the per-request nonce injected by middleware so we can stamp
+  // it on the blocking theme-init <script> tag, satisfying the nonce-based CSP.
+  const headersList = await headers()
+  const nonce = headersList.get('x-nonce') ?? ''
+
   return (
     <html lang="en" data-theme="default" data-platform-profile="desktop-tg" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
       <head>
         {/* CHROMATIC_INIT :: blocking theme bootstrap — must be first in <head> */}
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="relative min-h-dvh overflow-x-hidden bg-void font-mono antialiased supports-[height:100dvh]:min-h-[100dvh]">
         

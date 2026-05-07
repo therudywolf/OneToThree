@@ -65,8 +65,10 @@ export function verifyNonceSignatureEcdsaP256(
 export function safeEqualNonce(a: string, b: string): boolean {
   const ba = Buffer.from(a, 'utf8')
   const bb = Buffer.from(b, 'utf8')
-  if (ba.length !== bb.length) return false
-  return timingSafeEqual(ba, bb)
+  const maxLen = Math.max(ba.length, bb.length)
+  const padA = Buffer.concat([ba, Buffer.alloc(maxLen - ba.length)])
+  const padB = Buffer.concat([bb, Buffer.alloc(maxLen - bb.length)])
+  return timingSafeEqual(padA, padB) && ba.length === bb.length
 }
 
 /** Timing-safe UTF-8 string compare when lengths match (e.g. public JWK equality). */
@@ -80,14 +82,6 @@ export function safeEqualUtf8(a: string, b: string): boolean {
 function decodeSignatureBuffer(signatureInput: string): Buffer | null {
   const s = signatureInput.trim()
   if (s.length === 0) return null
-
-  if (/^[0-9a-fA-F]+$/.test(s) && s.length >= 64 && s.length % 2 === 0) {
-    try {
-      return Buffer.from(s, 'hex')
-    } catch {
-      return null
-    }
-  }
 
   const standard = Buffer.from(s, 'base64')
   if (standard.length > 0) return standard

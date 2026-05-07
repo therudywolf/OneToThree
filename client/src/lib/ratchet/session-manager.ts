@@ -230,6 +230,9 @@ export function clearOwnDrIdentity(): void {
   _ownIdentity = null
   _ownSignedPreKey = null
   _ownOtpDeriver = null
+  // Also zeroize the session wrap key so chain keys cannot be decrypted after
+  // logout even if IndexedDB remains accessible in the same process.
+  sessionWrapKey = null
 }
 
 const WRAP_MAGIC = 0xF0 // leading byte marker "wrapped v1"

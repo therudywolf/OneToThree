@@ -10,6 +10,20 @@
  */
 
 import { openDB, deleteDB } from 'idb'
+
+/**
+ * Canonicalise a JWK string by sorting its keys before comparison.
+ * Prevents false key-mismatch due to different JSON field ordering
+ * (e.g. server and client serialise the same JWK with different key order).
+ */
+function normalizeJwk(jwk: string): string {
+  try {
+    const parsed = JSON.parse(jwk) as Record<string, unknown>
+    return JSON.stringify(parsed, Object.keys(parsed).sort())
+  } catch {
+    return jwk
+  }
+}
 import type { IDBPDatabase, DBSchema } from 'idb'
 import { API_URL } from '@/lib/api/auth'
 import { fetchWithTimeout } from '@/lib/api/fetch'
@@ -57,6 +71,21 @@ function getDb(): Promise<IDBPDatabase<OutboxDb>> {
   return conn
 }
 
+/**
+ * Detect whether Background Sync API is unavailable (iOS Safari / some
+ * Chromium variants that never shipped it). On these platforms messages
+ * silently queue but will only be retried on next manual page load —
+ * a toast informs the user.
+ */
+function shouldShowOutboxQueueToast(): boolean {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  const hasBgSync =
+    'serviceWorker' in navigator &&
+    'SyncManager' in window
+  return isIos || !hasBgSync
+}
+
 /** Enqueue a message that failed to send. */
 export async function enqueueOutbox(
   body: SendChatMessageBody,
@@ -70,6 +99,22 @@ export async function enqueueOutbox(
     created_at: new Date().toISOString(),
     sender_ecdh_public_key_jwk: senderEcdhPublicKeyJwk ?? null,
   })
+
+  // Notify user on platforms without Background Sync so they know
+  // the message is queued and will be sent when connectivity returns.
+  if (shouldShowOutboxQueueToast()) {
+    // Lazy import to avoid bundling toastStore into SW context
+    try {
+      const { toastInfo } = await import('@/store/toastStore')
+      toastInfo('Message queued — will send when back online', {
+        title: 'Outbox',
+        ttlMs: 6000,
+      })
+    } catch {
+      /* ignore — toast is best-effort */
+    }
+  }
+
   return id
 }
 
@@ -92,7 +137,7 @@ export async function purgeOutboxStaleForKey(
     const stamped = entry.sender_ecdh_public_key_jwk
     // null/undefined => legacy entry without the snapshot. Drop it on the
     // first key check so we don't replay something we cannot validate.
-    if (!stamped || stamped !== activeEcdhPublicKeyJwk) {
+    if (!stamped || normalizeJwk(stamped) !== normalizeJwk(activeEcdhPublicKeyJwk)) {
       await db.delete(STORE_NAME, entry.id)
       dropped++
     }

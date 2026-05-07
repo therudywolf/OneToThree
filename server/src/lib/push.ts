@@ -173,8 +173,14 @@ export async function sendNativePushToUser(
           },
           data,
         })
-      } catch {
-        // Keep token for now; cleanup can be added with Firebase error code handling.
+      } catch (err: unknown) {
+        const code = (err as { errorInfo?: { code?: string } }).errorInfo?.code
+        if (
+          code === 'messaging/registration-token-not-registered' ||
+          code === 'messaging/invalid-registration-token'
+        ) {
+          await db.delete(nativePushTokens).where(eq(nativePushTokens.token, row.token))
+        }
       }
     })
   )

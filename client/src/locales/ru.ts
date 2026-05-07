@@ -81,6 +81,7 @@ const ru = {
   'call.endCall': 'Завершить звонок',
   'call.reconnecting': 'Переподключение...',
   'call.connectionLost': 'Соединение потеряно',
+  'call.noNetwork': 'Нет подключения к сети. Проверьте интернет и попробуйте снова.',
   'call.relayDegradation': 'Соединение переключено на сервер \u2014 шифрование сохранено',
   'call.iceRelayTitle': 'Звонки',
   'call.iceRelayMissing':

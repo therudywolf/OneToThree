@@ -96,7 +96,7 @@ export function IdentityModal({
         if (myUserId) {
           const fpBytes = await sessionFingerprint(myUserId, peerUserId)
           if (fpBytes && !cancelled) {
-            const drNum = computeSafetyNumber(fpBytes.slice(0, 32), fpBytes.slice(32, 64))
+            const drNum = computeSafetyNumber(fpBytes.slice(0, 32), fpBytes.slice(32, 64), myUserId, peerUserId)
             setDrSafetyNumber(drNum)
           }
           // TOFU: check if server bundle identity differs from session identity

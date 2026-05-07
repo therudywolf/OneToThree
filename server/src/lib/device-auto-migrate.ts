@@ -13,8 +13,16 @@ import { eq, count } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { devices } from '../db/schema.js'
 
-const MIGRATED_CLIENT_KEY = 'migrated'
 const MIGRATED_LABEL = 'Primary device (migrated)'
+
+/**
+ * Returns a deterministic, user-scoped client device key for auto-migrated
+ * devices, preventing collisions with attacker-supplied X-Client-Device-Id
+ * headers that could contain the bare string 'migrated'.
+ */
+function getMigratedClientKey(userId: string): string {
+  return `migrated:${userId}`
+}
 
 /**
  * If the user has no device rows, create one seeded from their login public key.
@@ -35,7 +43,7 @@ export async function maybeAutoMigrateDevice(
 
     await db.insert(devices).values({
       userId,
-      clientDeviceKey: MIGRATED_CLIENT_KEY,
+      clientDeviceKey: getMigratedClientKey(userId),
       deviceName: MIGRATED_LABEL,
       isMaster: true,
       migrated: true,

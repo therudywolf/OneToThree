@@ -15,6 +15,7 @@ import { AuthHttpError, fetchMe, logoutApi } from '@/lib/api/auth'
 import { wipeAllClientLocalState } from '@/lib/client-wipe'
 import { invalidateAvatarCache, clearAllAvatarCache } from '@/lib/avatar-cache'
 import { clearNativeSessionCookie, warmNativeSessionCookies } from '@/lib/native-session'
+import { clearOwnDrIdentity } from '@/lib/ratchet/session-manager'
 
 /** * `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional).
  * `has_passkeys` indicates if the user has enrolled WebAuthn devices.
@@ -130,6 +131,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     redirectedRef.current = true
     await logoutApi()
     await clearNativeSessionCookie()
+    // Zeroize in-memory DR identity and session wrap key so chain keys cannot
+    // be decrypted from IndexedDB after the session ends.
+    clearOwnDrIdentity()
     setUser(null)
     setLoading(false)
     // Clear all cached avatars on logout to prevent memory leaks

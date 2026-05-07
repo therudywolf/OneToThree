@@ -4102,3 +4102,24 @@ select {
   transition-duration: 0ms !important;
   scroll-behavior: auto !important;
 }
+
+/* ── MD3 shell: NoirPlaintext code overrides (FIX UI-04) ──────────────────── */
+[data-shell="md3"] .p13-inline-code {
+  border-color: color-mix(in srgb, var(--on-surface) 15%, transparent);
+  background-color: color-mix(in srgb, var(--on-surface) 8%, transparent);
+  color: var(--on-surface);
+}
+
+[data-shell="md3"] .code-block {
+  border-color: color-mix(in srgb, var(--on-surface) 12%, transparent);
+  background-color: color-mix(in srgb, var(--on-surface) 6%, transparent);
+  color: var(--on-surface);
+}
+
+[data-shell="md3"] .code-block .copy-btn {
+  color: var(--on-surface-variant);
+}
+
+[data-shell="md3"] .code-block > span /* lang label */ {
+  color: color-mix(in srgb, var(--on-surface) 45%, transparent);
+}

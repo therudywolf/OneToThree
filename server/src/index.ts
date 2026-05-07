@@ -4,6 +4,7 @@
 import 'dotenv/config'
 import { buildApp } from './app.js'
 import { scheduleMediaRetentionPurge } from './lib/media-retention-purge.js'
+import { purgeExpiredBurnMessages } from './lib/burn-at.js'
 import { closeRedis } from './lib/redis.js'
 
 async function main() {
@@ -11,6 +12,16 @@ async function main() {
   const port = Number(process.env.PORT) || 8080
   await app.listen({ port, host: '0.0.0.0' })
   scheduleMediaRetentionPurge(app.log)
+
+  // Purge burn-at expired messages every 60 seconds.
+  setInterval(async () => {
+    try {
+      await purgeExpiredBurnMessages()
+    } catch (err) {
+      app.log.warn({ err: String(err) }, '[burn-at] purge failed')
+    }
+  }, 60_000)
+
   app.log.info(
     `[Project 13] API ready — http://0.0.0.0:${port} (One to Three · zero-trust lane)`
   )

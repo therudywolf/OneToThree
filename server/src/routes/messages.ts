@@ -132,7 +132,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     if (isDirectChat && (!p.ciphertexts || p.ciphertexts.length === 0)) {
       return reply.status(400).send({ error: 'DIRECT_FANOUT_REQUIRED' })
     }
-    if (allMembers.length === 2) {
+    if (isDirectChat) {
       const peerId = allMembers.find((m) => m.userId !== user.id)?.userId
       if (peerId && (await isBlocked(user.id, peerId))) {
         return reply.status(403).send({ error: 'BLOCKED' })

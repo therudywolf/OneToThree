@@ -21,7 +21,16 @@ import {
   Megaphone,
   Radio,
   Folder,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react'
+import {
+  getArchivedChatIds,
+  archiveChat,
+  unarchiveChat,
+  isChatArchived,
+  CHAT_ARCHIVE_EVENT,
+} from '@/lib/chat-archive'
 import { ChatRowContextMenu } from '@/components/chat/chat-row-context-menu'
 import Link from 'next/link'
 import { useSessionStore } from '@/store/sessionStore'
@@ -169,6 +178,8 @@ export function ChatSidebar({
     x: number
     y: number
   } | null>(null)
+  const [archivedChatIds, setArchivedChatIds] = useState<Set<string>>(getArchivedChatIds)
+  const [showArchive, setShowArchive] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
   const fabRef = useRef<HTMLDivElement>(null)
   // Second FAB anchor lives in the icon-only footer; both share fabOpen so
@@ -185,6 +196,16 @@ export function ChatSidebar({
       /* ignore quota */
     }
   }, [pinnedIds])
+
+  useEffect(() => {
+    const sync = () => setArchivedChatIds(getArchivedChatIds())
+    window.addEventListener(CHAT_ARCHIVE_EVENT, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(CHAT_ARCHIVE_EVENT, sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
 
   useEffect(() => {
     setGroupSettingsOpen(false)
@@ -418,7 +439,12 @@ export function ChatSidebar({
     return msg.plaintext?.slice(0, 60) ?? ''
   }
 
-  const sidebarChats = orderedSidebarChats(chats, pinnedIds)
+  const allSidebarChats = orderedSidebarChats(chats, pinnedIds)
+  // In normal view: hide archived chats. In archive view: show only archived.
+  const sidebarChats = showArchive
+    ? allSidebarChats.filter((c) => archivedChatIds.has(c.id))
+    : allSidebarChats.filter((c) => !archivedChatIds.has(c.id))
+  const archivedCount = allSidebarChats.filter((c) => archivedChatIds.has(c.id)).length
 
   useEffect(() => {
     const q = sanitizeTextInput(localGhostQuery).trim()
@@ -859,6 +885,32 @@ export function ChatSidebar({
         >
           <Star className="h-3.5 w-3.5 text-accent-2 fill-accent-2" />
           {t('sidebar.savedMessages')}
+        </button>
+      ) : null}
+
+      {/* Archived chats button — only shown when there are archived chats */}
+      {showExpandedSidebarChrome && archivedCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setShowArchive((v) => !v)}
+          className={`p13-sidebar-archive mx-3 mt-1 flex items-center gap-2 px-3 py-2 text-left text-[10px] transition-colors ${
+            showArchive
+              ? isMd3
+                ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] font-semibold'
+                : 'border border-neon-cyan/60 bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan'
+              : isMd3
+              ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)] text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+              : 'border border-neon-cyan/20 bg-transparent font-mono uppercase tracking-widest text-neon-cyan/60 hover:border-neon-cyan/40 hover:text-neon-cyan/80'
+          }`}
+        >
+          {showArchive ? (
+            <ArchiveRestore className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Archive className="h-3.5 w-3.5 shrink-0" />
+          )}
+          <span>
+            {showArchive ? 'Back to chats' : `Archived (${archivedCount})`}
+          </span>
         </button>
       ) : null}
 
@@ -1396,6 +1448,7 @@ export function ChatSidebar({
         if (!c) return null
         const isPinnedCtx = pinnedIds.includes(c.id)
         const isMutedCtx = isChatMuted(c)
+        const isArchivedCtx = archivedChatIds.has(c.id)
         return (
           <ChatRowContextMenu
             x={rowContextMenu.x}
@@ -1404,9 +1457,21 @@ export function ChatSidebar({
             isPinned={isPinnedCtx}
             isFavorite={Boolean(c.is_favorite)}
             isMuted={isMutedCtx}
+            isArchived={isArchivedCtx}
             onPin={() => togglePin(c.id)}
             onFavorite={() => void toggleFavorite(c.id, Boolean(c.is_favorite))}
             onMute={() => void toggleMute(c.id, isMutedCtx)}
+            onArchive={() => {
+              if (isArchivedCtx) {
+                unarchiveChat(c.id)
+              } else {
+                archiveChat(c.id)
+                // If we archived the active chat, switch to archive view
+                if (activeChatId === c.id) setShowArchive(true)
+              }
+              setArchivedChatIds(getArchivedChatIds())
+              setRowContextMenu(null)
+            }}
             onClose={() => setRowContextMenu(null)}
           />
         )

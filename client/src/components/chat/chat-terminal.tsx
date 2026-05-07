@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal, Lock, ShieldOff, Flame } from 'lucide-react'
+import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal, Lock, ShieldOff, Flame,
+  PhoneMissed,} from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useUnreadStore } from '@/store/unreadStore'
@@ -1157,6 +1158,9 @@ export function ChatTerminal({
                 return parsed?.type === 'poll' && parsed?.poll_id ? parsed.poll_id : null
               } catch { return null }
             })()
+            const missedCallMeta = m.kind === 'call_missed'
+              ? (m.kindMeta as { is_video?: boolean } | undefined)
+              : null
             const mine = m.sender_id === userId
             const senderLabel = labelForSender(m.sender_id)
             const showUnreadDivider =
@@ -1338,6 +1342,12 @@ export function ChatTerminal({
                         </span>
                       ) : null}
                     </div>
+                    {missedCallMeta ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-neon-red/10 border border-neon-red/30 px-3 py-1.5 text-neon-red text-[11px] font-mono uppercase tracking-wider">
+                        <PhoneMissed className="h-3.5 w-3.5 shrink-0" />
+                        {missedCallMeta.is_video ? t('call.missedVideo') : t('call.missedAudio')}
+                      </span>
+                    ) : null}
                     {stickerEnv ? <StickerBubble envelope={stickerEnv} /> : null}
                     {pollEnv ? <PollBubble pollId={pollEnv} /> : null}
                     {m.plaintext === '[DECRYPT_FAIL]' ? (

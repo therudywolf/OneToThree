@@ -60,6 +60,10 @@ export type DecryptedMessage = {
   is_pinned?: boolean
   /** True if queued for Background Sync (not yet delivered to server) */
   _pending?: boolean
+  /** System message kind (e.g. 'call_missed'). Present only on system:v1 messages. */
+  kind?: string
+  /** Extra data for system messages (e.g. { is_video: boolean }). */
+  kindMeta?: Record<string, unknown>
 }
 
 export type ChannelNode = {

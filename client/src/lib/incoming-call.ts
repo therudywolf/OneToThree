@@ -23,3 +23,11 @@ export function buildCallLeaveMessage(request: InboundLinkRequest | null) {
     chat_id: request.chatId,
   }
 }
+
+export function buildCallRejectMessage(request: InboundLinkRequest | null) {
+  if (!request?.chatId) return null
+  return {
+    type: 'call_reject' as const,
+    chat_id: request.chatId,
+  }
+}

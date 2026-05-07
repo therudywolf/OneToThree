@@ -4,6 +4,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { WebSocket } from 'ws'
 import { z } from 'zod'
 import { db } from '../db/index.js'
+import { persistChatMessageAndFanOut } from '../lib/chat-message-persist.js'
 import { chatMembers, messageReactions, messages, users } from '../db/schema.js'
 import {
   getAuthUser,
@@ -12,6 +13,7 @@ import {
   type AuthUser,
 } from '../lib/auth-user.js'
 import { isJtiDenied } from '../lib/jwt-denylist.js'
+import { getRedis } from '../lib/redis.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { markMessageReadByReader } from '../lib/mark-message-read.js'
 import {
@@ -487,6 +489,16 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               }).catch((err) => request.log.warn({ err, targetUserId: id }, 'ws: call_invite push failed'))
             )
           void Promise.allSettled(pushPromises)
+          // C-2: track active call in Redis for missed-call detection (90s TTL)
+          const redis = getRedis()
+          if (redis) {
+            await redis.set(
+              `call:active:${chat_id}:${user.id}`,
+              is_video ? '1' : '0',
+              'EX',
+              90
+            )
+          }
           return
         }
 
@@ -502,6 +514,23 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             chat_id,
             from_user_id: user.id,
           })
+          // C-2: if caller leaves and nobody answered, insert missed-call system message
+          const redis = getRedis()
+          if (redis) {
+            const redisKey = `call:active:${chat_id}:${user.id}`
+            const isVideoStr = await redis.get(redisKey)
+            if (isVideoStr !== null) {
+              // key still exists → nobody answered
+              await redis.del(redisKey)
+              const isVideo = isVideoStr === '1'
+              await persistChatMessageAndFanOut({
+                chatId: chat_id,
+                senderId: user.id,
+                content: JSON.stringify({ kind: 'call_missed', is_video: isVideo }),
+                iv: 'system:v1',
+              })
+            }
+          }
           return
         }
 

@@ -89,6 +89,8 @@ const en = {
   'call.audioRelayFallback': 'Direct media path unavailable. Switching to encrypted audio relay.',
   'call.activePeer': 'Active call',
   'call.returnToCall': 'Return to call',
+  'call.missedAudio': 'Missed call',
+  'call.missedVideo': 'Missed video call',
   'call.rejectedTitle': 'Calls',
   'call.rejected': 'Call declined by the other party.',
 

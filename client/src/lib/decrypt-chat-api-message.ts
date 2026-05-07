@@ -69,6 +69,16 @@ function apiRowToDecrypted(
   m: ApiMessageRow,
   plaintext: string
 ): DecryptedMessage {
+  // Parse system:v1 messages to expose kind/kindMeta
+  let kind: string | undefined
+  let kindMeta: Record<string, unknown> | undefined
+  if (m.iv === 'system:v1' && plaintext) {
+    try {
+      const parsed = JSON.parse(plaintext) as Record<string, unknown>
+      kind = typeof parsed.kind === 'string' ? parsed.kind : undefined
+      kindMeta = parsed
+    } catch { /* not JSON — ignore */ }
+  }
   return {
     id: m.id,
     chat_id: m.chat_id,
@@ -91,6 +101,7 @@ function apiRowToDecrypted(
     burn_duration_secs: m.burn_duration_secs ?? null,
     is_pinned: m.is_pinned ?? false,
     reactions: m.reactions ?? {},
+    ...(kind !== undefined ? { kind, kindMeta } : {}),
   }
 }
 
@@ -145,6 +156,9 @@ async function decryptRowPlaintext(
 
   // Poll sentinel: content is plain JSON, no encryption needed.
   if (iv === 'poll:v1') return c
+
+  // System message sentinel: content is plain JSON (missed call, etc.).
+  if (iv === 'system:v1') return c ?? ''
 
   // v2 DR: device slot carries the DR ciphertext directly (sentinel IV).
   if (

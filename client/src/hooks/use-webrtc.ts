@@ -16,7 +16,7 @@ import { useCallStore } from '@/store/callStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { lookupUsers } from '@/lib/api/users'
 import { deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
-import { getIceConfig, type IceTransportPolicy } from '@/lib/ice-servers'
+import { getIceConfig, normalizeIceServers, type IceTransportPolicy } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import { toastWarn } from '@/store/toastStore'
@@ -28,48 +28,7 @@ import { buildCallLeaveMessage, buildCallRejectMessage, upsertIncomingCall } fro
  * Vibe: Clinical Steel / Terminal Noir
  */
 
-function hasTransportParam(url: string): boolean {
-  return /[?&]transport=/i.test(url)
-}
 
-function withTransport(url: string, transport: 'udp' | 'tcp'): string {
-  if (hasTransportParam(url)) return url
-  return `${url}${url.includes('?') ? '&' : '?'}transport=${transport}`
-}
-
-function extractTurnHost(url: string): string | null {
-  const stripped = url.replace(/^turns?:\/\//i, '').replace(/^turns?:/i, '')
-  const authority = stripped.split('/')[0]?.split('?')[0] ?? ''
-  if (!authority) return null
-  if (authority.startsWith('[')) {
-    const end = authority.indexOf(']')
-    if (end > 0) return authority.slice(0, end + 1)
-    return null
-  }
-  return authority.split(':')[0] ?? null
-}
-
-function normalizeTurnUrl(url: string): string[] {
-  if (url.startsWith('turns:')) {
-    return [hasTransportParam(url) ? url : withTransport(url, 'tcp')]
-  }
-  if (!url.startsWith('turn:')) return [url]
-  if (hasTransportParam(url)) return [url]
-  const list = [withTransport(url, 'udp'), withTransport(url, 'tcp')]
-  const host = extractTurnHost(url)
-  if (host) {
-    list.push(`turns:${host}:5349?transport=tcp`)
-  }
-  return list
-}
-
-function normalizeIceServers(servers: RTCIceServer[]): RTCIceServer[] {
-  return servers.map((server) => {
-    const baseUrls = Array.isArray(server.urls) ? server.urls : [server.urls]
-    const urls = Array.from(new Set(baseUrls.flatMap((u) => normalizeTurnUrl(String(u)))))
-    return { ...server, urls }
-  })
-}
 
 async function getSignalRelays(): Promise<{
   iceServers: RTCIceServer[]

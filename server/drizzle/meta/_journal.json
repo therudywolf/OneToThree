@@ -309,6 +309,13 @@
       "when": 1777333817391,
       "tag": "0043_broken_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1746662400000,
+      "tag": "0044_burn_duration_secs",
+      "breakpoints": true
     }
   ]
 }

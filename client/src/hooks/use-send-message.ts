@@ -45,7 +45,7 @@ export function useSendMessage(
     async (
       body: string,
       replyToId?: string | null,
-      meta?: { burn_mark?: string | null; burn_at?: string | null }
+      meta?: { burn_duration_secs?: number | null }
     ) => {
       const content = body.trim()
       const dispatchKey = `${activeChatId ?? 'none'}::${replyToId ?? 'none'}::${content}`
@@ -102,7 +102,7 @@ export function useSendMessage(
         return
       }
 
-      const burnAt = meta?.burn_at ?? meta?.burn_mark
+      const burnDurationSecs = meta?.burn_duration_secs ?? null
 
       // [2] TRANSPORT_DISPATCH :: Выброс пакета в эфир (WS/REST/QUEUE)
       let via: 'REST' | 'QUEUED'
@@ -123,7 +123,7 @@ export function useSendMessage(
           dr_header,
           dr_init,
           reply_to_id: replyToId ?? null,
-          ...(burnAt ? { burn_at: burnAt } : {}),
+          ...(burnDurationSecs != null ? { burn_duration_secs: burnDurationSecs } : {}),
         })
         via = result.via
         serverMessage = result.serverMessage
@@ -208,7 +208,8 @@ export function useSendMessage(
           media_original_bytes: null,
           reply_to_id: replyToId ?? null,
           read_at: null,
-          burn_at: burnAt ?? null,
+          burn_at: null,
+          burn_duration_secs: burnDurationSecs ?? null,
           reactions: {},
           created_at: new Date().toISOString(),
           _pending: true,

@@ -88,6 +88,7 @@ export type ChatState = {
   setReplyTo: (node: DecryptedMessage | null) => void
   setEditingMessage: (node: DecryptedMessage | null) => void
   updateMessageReadAt: (nodeId: string, timestamp: string) => void
+  updateMessageBurnAt: (nodeId: string, burnAt: string) => void
   updateMessageReactions: (nodeId: string, reactions: Record<string, string[]>) => void
   updateMessagePlaintext: (nodeId: string, plaintext: string, editedAt?: string) => void
   setChatSoundEnabled: (enabled: boolean) => void
@@ -130,6 +131,12 @@ export const useChatStore = create<ChatState>((set) => {
       messages: s.messages.map((n) => n.id === nodeId ? { ...n, read_at: timestamp } : n),
     }))
     useUnreadStore.getState().updateReadAtOverride(nodeId, timestamp)
+  }
+
+  const updateMessageBurnAt = (nodeId: string, burnAt: string) => {
+    set((s) => ({
+      messages: s.messages.map((n) => n.id === nodeId ? { ...n, burn_at: burnAt } : n),
+    }))
   }
 
   const updateMessageReactions = (nodeId: string, reactions: Record<string, string[]>) =>
@@ -177,6 +184,7 @@ export const useChatStore = create<ChatState>((set) => {
     setReplyTo,
     setEditingMessage,
     updateMessageReadAt,
+    updateMessageBurnAt,
     updateMessageReactions,
     updateMessagePlaintext,
     setChatSoundEnabled,

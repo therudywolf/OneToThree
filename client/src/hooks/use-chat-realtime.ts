@@ -29,6 +29,7 @@ export function useChatRealtime(
   const appendMessage = useChatStore((s) => s.appendMessage)
   const removeMessage = useChatStore((s) => s.removeMessage)
   const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
+  const updateMessageBurnAt = useChatStore((s) => s.updateMessageBurnAt)
   const updateMessageReactions = useChatStore((s) => s.updateMessageReactions)
   const updateMessagePlaintext = useChatStore((s) => s.updateMessagePlaintext)
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
@@ -113,10 +114,19 @@ export function useChatRealtime(
       if (msg.type === 'message_read_update') {
         if (msg.chat_id !== activeChatId) return
         updateMessageReadAt(msg.message_id, msg.read_at)
+        // If the server computed burn_at at read time, propagate it to the store
+        if (msg.burn_at) {
+          updateMessageBurnAt(msg.message_id, msg.burn_at)
+        }
         const row = useChatStore
           .getState()
           .messages.find((x) => x.id === msg.message_id)
-        if (row) void cacheMessage({ ...row, read_at: msg.read_at })
+        const updatedRow = {
+          ...row,
+          read_at: msg.read_at,
+          ...(msg.burn_at ? { burn_at: msg.burn_at } : {}),
+        }
+        if (row) void cacheMessage(updatedRow as typeof row)
         return
       }
       if (msg.type === 'reaction_update') {
@@ -292,6 +302,7 @@ export function useChatRealtime(
     myEcdhPublicKeyJwk,
     priorMyEcdhPublicKeysJwk,
     updateMessageReadAt,
+    updateMessageBurnAt,
     updateMessageReactions,
     userId,
   ])

@@ -142,7 +142,7 @@ export function ChatTerminal({
   sendText: (
     t: string,
     replyToId?: string | null,
-    opts?: { burn_at?: string | null }
+    opts?: { burn_duration_secs?: number | null }
   ) => Promise<void>
   sendMedia: (
     blob: Blob,

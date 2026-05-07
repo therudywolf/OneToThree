@@ -119,6 +119,7 @@ export type WsInboundMessage =
       message_id: string
       reader_id: string
       read_at: string
+      burn_at?: string | null
     }
   | {
       type: 'online_status_change'

@@ -50,7 +50,7 @@ type Props = {
   sendText: (
     t: string,
     replyToId?: string | null,
-    opts?: { burn_at?: string | null }
+    opts?: { burn_duration_secs?: number | null }
   ) => Promise<void>
   sendMedia: (
     blob: Blob,
@@ -299,10 +299,8 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     return () => document.removeEventListener('mousedown', close)
   }, [burnMenuOpen])
 
-  const makeBurnAt = (secs: number | null): string | null => {
-    if (!secs) return null
-    return new Date(Date.now() + secs * 1000).toISOString()
-  }
+  /** Returns seconds for burn-after-READ (server sets burn_at at read time). */
+  const makeBurnDuration = (secs: number | null): number | null => secs ?? null
 
   const BURN_OPTIONS: Array<{ secs: number | null; labelKey: string }> = [
     { secs: null,    labelKey: 'chat.burnTimerOff' },
@@ -666,7 +664,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       if (editingMessage) {
         await submitEdit(editingMessage.id, messageText)
       } else {
-        await sendText(messageText, replyTo?.id ?? null, { burn_at: makeBurnAt(burnTimerSecs) })
+        await sendText(messageText, replyTo?.id ?? null, { burn_duration_secs: makeBurnDuration(burnTimerSecs) })
       }
       onSubmitOrClear()
       setMessageText('')
@@ -729,7 +727,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     setSendingText(true)
     const task = editingMessage
       ? submitEdit(editingMessage.id, messageText)
-      : sendText(messageText, replyTo?.id ?? null, { burn_at: makeBurnAt(burnTimerSecs) })
+      : sendText(messageText, replyTo?.id ?? null, { burn_duration_secs: makeBurnDuration(burnTimerSecs) })
     void task
       .then(() => {
         onSubmitOrClear()

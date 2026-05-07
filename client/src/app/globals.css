@@ -4123,3 +4123,29 @@ select {
 [data-shell="md3"] .code-block > span /* lang label */ {
   color: color-mix(in srgb, var(--on-surface) 45%, transparent);
 }
+
+/* ── Poll bubble — both shells ───────────────────────────────────────────────────────────────────────────────── */
+.poll-badge {
+  border: 1px solid rgba(0, 255, 255, 0.25);
+  border-radius: 2px;
+  color: rgba(0, 255, 255, 0.5);
+  font-family: var(--p13-font-mono, monospace);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  padding: 1px 4px;
+}
+.poll-badge--closed {
+  border-color: rgba(255, 100, 100, 0.3);
+  color: rgba(255, 100, 100, 0.5);
+}
+
+[data-shell="md3"] .poll-bubble {
+  background: var(--md3-surface-container, #1e1e2e);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+[data-shell="terminal"] .poll-bubble {
+  border: 1px solid rgba(0, 255, 255, 0.12);
+  padding: 10px;
+}

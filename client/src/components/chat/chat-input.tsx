@@ -1357,14 +1357,4 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           type="button"
           disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
           className={`p13-icon-btn p13-icon-btn--primary shrink-0 ${
-            showSendOnMobile ? 'inline-flex' : 'hidden'
-          } ${isMd3 ? 'order-4' : ''}`}
-          title={t('common.send')}
-          onClick={handleSendClick}
-        >
-          <Send className="h-4 w-4" />
-        </button>
-      </div>
-    </form>
-  )
-}
+            showSendOnMobile ? 'inline-flex' : 'hidd

@@ -1,6 +1,6 @@
 # OneToThree Feature Matrix
 
-Last updated: 2026-04-30
+Last updated: 2026-05-07
 
 Legend:
 - `implemented`: done and covered by checks
@@ -41,17 +41,17 @@ Legend:
 | Media messages (image/video/audio/file) | implemented | Client-side encrypted; MinIO presigned PUT |
 | Message search | implemented | Local client-side only (IndexedDB index); server endpoint removed (410 Gone) |
 | Failed send retry (IndexedDB outbox) | implemented | Background Sync API |
-| Double Ratchet v2 (X3DH + DR) | partial | Gated by `NEXT_PUBLIC_DR_ENABLED=1`; send path still uses v1 fan-out |
+| Double Ratchet v2 (X3DH + DR) | implemented | Always-on (flag removed 2026-04-22); `use-send-message` → `encryptOutboundTextV2` → `encryptForPeer`; gated to single-device chats via `getDrFanoutSafety` |
 
 ### Groups & Channels
 
 | Feature | Status | Notes |
 |---|---|---|
-| Group chats (SECTOR) | partial | Core entity exists; role/mod tooling incomplete |
-| Channels (broadcast, Telegram-style) | partial | `chat_type = 'channel'` DB enum + schema exists; UI create/discovery not shipped |
-| Open groups / public discovery | stub | `public_open` type exists; discovery UI not built |
-| Closed groups | partial | Invite-only join; no moderation UI |
-| Member roles / moderation | missing | Schema has `channel_role`; no enforcement UI |
+| Group chats (SECTOR) | implemented | E2E group key wrapped per member; role management (kick, promote, transfer) in `group-chat-settings.tsx` |
+| Channels (broadcast, Telegram-style) | implemented | DB + server routes complete; subscriber gating (read-only bar, `my_channel_role`); creation modal with channel tab; Megaphone header icon |
+| Open groups / public discovery | implemented | `ExploreModal` + `discoverChats` API; FAB "Explore" button in sidebar |
+| Closed groups | implemented | Invite-only join; admin/kick/promote UI in group settings |
+| Member roles / moderation | implemented | `group-chat-settings.tsx`: kick, promote to admin/owner, transfer ownership, channel feed role; server PATCH/DELETE /chats/:id/members/:userId |
 
 ### Calls / WebRTC
 
@@ -60,7 +60,7 @@ Legend:
 | P2P audio/video calls | implemented | Full mesh; UDP/TCP/TLS ICE fallback matrix |
 | TURN relay (coturn) | implemented | Plain TURN always active; TURNS:5349 activates automatically after `sync-turn-certs.sh` |
 | LiveKit SFU (3+ participants) | implemented | Token issuance + client integration; `joinGroupCall` tries SFU first, mesh fallback |
-| Call E2EE via sender keys | missing | Architecture documented in `MIGRATION_NOTES.md` phase 4.3 |
+| Call E2EE via Insertable Streams | implemented | LiveKit `ExternalE2EEKeyProvider`; server derives HMAC-SHA256 room key per session (Redis TTL); client imports as AES-GCM CryptoKey and passes to Room e2ee options |
 
 ### Stickers
 
@@ -70,7 +70,7 @@ Legend:
 | Telegram sticker import | implemented | Requires `TELEGRAM_BOT_TOKEN`; available in settings panel and composer picker |
 | Sticker share links | implemented | `/stickers/add/[packId]` landing page; owner controls visibility via Globe toggle |
 | Sticker picker UI | implemented | Picker in composer; pack management in Settings → Stickers |
-| Lottie / TGS animation player | missing | `.tgs` animated stickers show placeholder; static stickers work |
+| Lottie / TGS animation player | implemented | `sticker-preview.tsx` lazy-loads `lottie-web` + `pako`; TGS gunzip → Lottie JSON; plays in loop with autoplay |
 
 ### Notifications & PWA
 

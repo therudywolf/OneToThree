@@ -26,6 +26,8 @@ export type ApiChatRow = {
   last_message_at?: string | null
   /** Group / public: server-side pack role. */
   my_role?: ChatMemberRole
+  /** Channel: posting permission for the current user ('subscriber' | 'editor' | 'owner'). Non-null only for type === 'channel'. */
+  my_channel_role?: 'subscriber' | 'editor' | 'owner' | null
   /** Group: invite slug when you may manage links. */
   invite_code?: string | null
   invite_slug?: string | null
@@ -235,8 +237,7 @@ export async function createChannelChat(params: {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      // Channel UI currently uses the public-open backend flow.
-      type: 'public_open',
+      type: 'channel',
       name: params.name.trim() || null,
       member_ids: params.memberIds.map(canonicalUserId),
     }),

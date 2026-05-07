@@ -10,6 +10,7 @@ import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
 import { parseAttachmentEnvelope, parseStickerEnvelope } from '@/lib/attachment-envelope'
 import { StickerBubble } from '@/components/chat/sticker-bubble'
+import { PollBubble } from '@/components/chat/poll-bubble'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { deleteMessage } from '@/lib/api/chats'
 import {
@@ -1149,6 +1150,13 @@ export function ChatTerminal({
             const m = group.message
             const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
             const stickerEnv = m.plaintext ? parseStickerEnvelope(m.plaintext) : null
+            const pollEnv = (() => {
+              if (!m.plaintext) return null
+              try {
+                const parsed = JSON.parse(m.plaintext) as { type?: string; poll_id?: string }
+                return parsed?.type === 'poll' && parsed?.poll_id ? parsed.poll_id : null
+              } catch { return null }
+            })()
             const mine = m.sender_id === userId
             const senderLabel = labelForSender(m.sender_id)
             const showUnreadDivider =
@@ -1331,6 +1339,7 @@ export function ChatTerminal({
                       ) : null}
                     </div>
                     {stickerEnv ? <StickerBubble envelope={stickerEnv} /> : null}
+                    {pollEnv ? <PollBubble pollId={pollEnv} /> : null}
                     {m.plaintext === '[DECRYPT_FAIL]' ? (
                       <span
                         className="inline-flex items-center gap-1.5 text-text-muted/60 text-[11px] italic"
@@ -1339,7 +1348,7 @@ export function ChatTerminal({
                         <Lock className="h-3 w-3 shrink-0 text-text-muted/50" aria-hidden />
                         {t('chat.decryptFailed')}
                       </span>
-                    ) : m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv ? (
+                    ) : m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv && !pollEnv ? (
                       <>
                         <CollapsibleText text={m.plaintext}>
                           {(visibleText) => (

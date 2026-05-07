@@ -31,7 +31,7 @@ const inviteSlugPatchSchema = z.object({
 
 const createChatSchema = z
   .object({
-    type: z.enum(['direct_e2e', 'group_e2e', 'public_open']),
+    type: z.enum(['direct_e2e', 'group_e2e', 'public_open', 'channel']),
     name: z.string().max(256).optional().nullable(),
     member_ids: z.array(uuidSchema).optional(),
     members: z
@@ -65,7 +65,7 @@ const createChatSchema = z
           path: ['members'],
         })
       }
-    } else if (data.type === 'public_open') {
+    } else if (data.type === 'public_open' || data.type === 'channel') {
       if (!data.member_ids?.length) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -77,7 +77,7 @@ const createChatSchema = z
   })
 
 function isGroupType(t: string): boolean {
-  return t === 'group_e2e' || t === 'public_open'
+  return t === 'group_e2e' || t === 'public_open' || t === 'channel'
 }
 
 /** If a direct_e2e chat already links exactly these two users, return it (idempotent create). */
@@ -191,6 +191,7 @@ type UserChatRow = {
   inviteCode: string | null
   inviteSlug: string | null
   myRole: ChatMemberRole
+  myChannelRole: string | null
   isFavorite: boolean
   mutedUntil: string | null
 }
@@ -206,6 +207,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
       inviteCode: chats.inviteCode,
       inviteSlug: chats.inviteSlug,
       myRole: chatMembers.role,
+      myChannelRole: chatMembers.channelRole,
       favoriteUserId: chatFavorites.userId,
       mutedUntil: chatMembers.mutedUntil,
     })
@@ -226,6 +228,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
     inviteCode: r.inviteCode,
     inviteSlug: r.inviteSlug,
     myRole: r.myRole,
+    myChannelRole: r.myChannelRole ?? null,
     isFavorite: Boolean(r.favoriteUserId),
     mutedUntil: r.mutedUntil instanceof Date ? r.mutedUntil.toISOString() : r.mutedUntil,
   }))
@@ -331,6 +334,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           last_message_at: lastMessageAtByChat.get(c.id) ?? null,
           unread_count: unreadCountByChat.get(c.id) ?? 0,
           my_role: c.myRole,
+          my_channel_role: c.myChannelRole ?? null,
           invite_code: showInvite ? c.inviteCode : null,
           invite_slug: showInvite ? c.inviteSlug : null,
           key_epoch: c.keyEpoch,
@@ -536,7 +540,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       .where(or(eq(chats.inviteCode, trimmed), eq(chats.inviteSlug, trimmed)))
       .limit(1)
 
-    if (!chat || (chat.type !== 'group_e2e' && chat.type !== 'public_open')) {
+    if (!chat || (chat.type !== 'group_e2e' && chat.type !== 'public_open' && chat.type !== 'channel')) {
       return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
     }
 
@@ -563,6 +567,8 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           userId: user.id,
           encryptedGroupKey: null,
           role: 'member',
+          // Joining a channel via invite link -> subscriber by default
+          ...(chat.type === 'channel' ? { channelRole: 'subscriber' as const } : {}),
         })
         .onConflictDoNothing()
         .returning({ userId: chatMembers.userId })
@@ -781,7 +787,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         .status(400)
         .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
     }
-    if (type === 'public_open' && uniqueIds.length < 1) {
+    if ((type === 'public_open' || type === 'channel') && uniqueIds.length < 1) {
       return reply.status(400).send({ error: 'PUBLIC_REQUIRES_MEMBERS' })
     }
 
@@ -821,7 +827,8 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const isPublicOpen = type === 'public_open'
-    const inviteCode = isPublicOpen ? await generateUniqueInviteCode() : null
+    const isChannel = type === 'channel'
+    const inviteCode = (isPublicOpen || isChannel) ? await generateUniqueInviteCode() : null
 
     const [created] = await db.transaction(async (tx) => {
       const inserted = await tx
@@ -840,7 +847,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           chatId: chat.id,
           userId: uid,
           encryptedGroupKey: null as string | null,
-          role: isPublicOpen && uid === authId ? ('owner' as const) : ('member' as const),
+          role: (isPublicOpen || isChannel) && uid === authId ? ('owner' as const) : ('member' as const),
+          // Channel: creator is owner, everyone else is subscriber
+          ...(isChannel ? { channelRole: uid === authId ? ('owner' as const) : ('subscriber' as const) } : {}),
         }))
       )
       return inserted

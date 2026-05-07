@@ -152,6 +152,7 @@ export function ChatSidebar({
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState<string | null>(null)
   const [groupModalOpen, setGroupModalOpen] = useState(false)
+  const [groupModalMode, setGroupModalMode] = useState<'group' | 'channel'>('group')
   const [busy, setBusy] = useState(false)
   const [trustedPeerIds, setTrustedPeerIds] = useState<Set<string>>(new Set())
   const [approvedPeerIds, setApprovedPeerIds] = useState<Set<string>>(new Set())
@@ -650,6 +651,7 @@ export function ChatSidebar({
       {groupModalOpen ? (
         <CreateGroupModal
           userId={userId}
+          initialMode={groupModalMode}
           onClose={() => setGroupModalOpen(false)}
           onCreated={(id) => {
             navigateToChat(id)
@@ -932,7 +934,7 @@ export function ChatSidebar({
             </p>
             <button
               type="button"
-              onClick={() => setGroupModalOpen(true)}
+              onClick={() => { setGroupModalMode('group'); setGroupModalOpen(true) }}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 transition-colors ${
                 isMd3
                   ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)] shadow-[var(--md3-elevation-2)] hover:brightness-110'
@@ -1239,7 +1241,7 @@ export function ChatSidebar({
             }`}>
               <button
                 type="button"
-                onClick={() => { setFabOpen(false); setGroupModalOpen(true) }}
+                onClick={() => { setFabOpen(false); setGroupModalMode('group'); setGroupModalOpen(true) }}
                 className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
                   isMd3
                     ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
@@ -1251,7 +1253,7 @@ export function ChatSidebar({
               </button>
               <button
                 type="button"
-                onClick={() => { setFabOpen(false); setGroupModalOpen(true) }}
+                onClick={() => { setFabOpen(false); setGroupModalMode('channel'); setGroupModalOpen(true) }}
                 className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
                   isMd3
                     ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
@@ -1350,7 +1352,7 @@ export function ChatSidebar({
             >
               <button
                 type="button"
-                onClick={() => { setFabOpen(false); setGroupModalOpen(true) }}
+                onClick={() => { setFabOpen(false); setGroupModalMode('group'); setGroupModalOpen(true) }}
                 className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
                   isMd3
                     ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
@@ -1362,7 +1364,7 @@ export function ChatSidebar({
               </button>
               <button
                 type="button"
-                onClick={() => { setFabOpen(false); setGroupModalOpen(true) }}
+                onClick={() => { setFabOpen(false); setGroupModalMode('channel'); setGroupModalOpen(true) }}
                 className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
                   isMd3
                     ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'

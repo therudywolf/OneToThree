@@ -282,7 +282,7 @@ export async function buildFanoutSlotsForEdit(
     newPlaintext
   )
   return slots.map((s) => ({
-    device_id: s.deviceId,
+    device_id: s.device_id,
     ciphertext: s.ciphertext,
     iv: s.iv,
   }))

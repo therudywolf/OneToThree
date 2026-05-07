@@ -4,6 +4,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -782,5 +783,39 @@ export const messageThreads = pgTable(
   (t) => ({
     channelIdx: index('message_threads_channel_idx').on(t.channelId),
     groupIdx: index('message_threads_group_idx').on(t.groupId),
+  })
+)
+
+export const polls = pgTable(
+  'polls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chatId: uuid('chat_id').notNull().references(() => chats.id, { onDelete: 'cascade' }),
+    messageId: uuid('message_id').references(() => messages.id, { onDelete: 'set null' }),
+    createdBy: uuid('created_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    question: varchar('question', { length: 300 }).notNull(),
+    options: jsonb('options').notNull().$type<string[]>(),
+    allowMultiple: boolean('allow_multiple').notNull().default(false),
+    isAnonymous: boolean('is_anonymous').notNull().default(false),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    chatIdx: index('polls_chat_idx').on(t.chatId),
+    msgIdx: index('polls_message_idx').on(t.messageId),
+  })
+)
+
+export const pollVotes = pgTable(
+  'poll_votes',
+  {
+    pollId: uuid('poll_id').notNull().references(() => polls.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    optionIndex: integer('option_index').notNull(),
+    votedAt: timestamp('voted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.pollId, t.userId, t.optionIndex] }),
+    pollIdx: index('poll_votes_poll_idx').on(t.pollId),
   })
 )

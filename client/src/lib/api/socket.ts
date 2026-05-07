@@ -82,6 +82,18 @@ export type WsInboundMessage =
   | { type: 'member_joined'; chat_id: string; user_id: string }
   | { type: 'message_deleted'; message_id: string; chat_id: string }
   | {
+      type: 'message_edited'
+      chat_id: string
+      message_id: string
+      content: string | null
+      edited_at: string
+    }
+  | {
+      type: 'poll_updated'
+      poll_id: string
+      results: Record<string, number>
+    }
+  | {
       type: 'message_pin_changed'
       chat_id: string
       message_id: string

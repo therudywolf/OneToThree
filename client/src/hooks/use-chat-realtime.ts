@@ -30,6 +30,7 @@ export function useChatRealtime(
   const removeMessage = useChatStore((s) => s.removeMessage)
   const updateMessageReadAt = useChatStore((s) => s.updateMessageReadAt)
   const updateMessageReactions = useChatStore((s) => s.updateMessageReactions)
+  const updateMessagePlaintext = useChatStore((s) => s.updateMessagePlaintext)
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
   const setTypingUser = usePresenceStore((s) => s.setTypingUser)
   const clearTypingUser = usePresenceStore((s) => s.clearTypingUser)
@@ -80,6 +81,24 @@ export function useChatRealtime(
       if (msg.type === 'message_deleted') {
         if (msg.chat_id === activeChatId) removeMessage(msg.message_id)
         void deleteCachedMessage(msg.message_id, msg.chat_id)
+        return
+      }
+      if (msg.type === 'message_edited') {
+        if (msg.chat_id !== activeChatId) return
+        // For non-fan-out chats the server sends new plaintext; for fan-out
+        // chats the client must re-fetch the updated delivery slot. For now,
+        // update if a plaintext is provided directly (PUBLIC/SECTOR chats).
+        if (msg.content !== undefined && msg.content !== null) {
+          // TODO: decrypt group-encrypted content before storing plaintext
+          updateMessagePlaintext(msg.message_id, msg.content, msg.edited_at)
+        } else {
+          // Fan-out (DIRECT): just stamp editedAt so the "edited" label shows
+          updateMessagePlaintext(
+            msg.message_id,
+            useChatStore.getState().messages.find((m) => m.id === msg.message_id)?.plaintext ?? '',
+            msg.edited_at
+          )
+        }
         return
       }
       if (msg.type === 'message_read_update') {

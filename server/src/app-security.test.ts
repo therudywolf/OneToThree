@@ -59,6 +59,8 @@ describe('app security contracts', () => {
 
     expect(res.statusCode).toBe(200)
     expect(csp).toContain("img-src 'self' blob: data: https://cdn.jsdelivr.net")
+    expect(csp).not.toContain("'unsafe-inline' https://cdn.jsdelivr.net")
+    expect(csp).toContain("script-src 'self'")
     expect(csp).toContain('https://api.onetothree.ru')
     expect(csp).toContain('https://s3.onetothree.ru')
     expect(csp).toContain('https://media.tenor.com')

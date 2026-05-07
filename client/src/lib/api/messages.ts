@@ -163,6 +163,35 @@ export type MediaArchiveRow = {
   created_at: string
 }
 
+export type EditMessageBody = {
+  /** Per-device ciphertexts for DIRECT (fan-out) chats. */
+  ciphertexts?: Array<{ device_id: string; ciphertext: string; iv: string }>
+  /** Re-encrypted content for SECTOR/PUBLIC chats. */
+  content?: string | null
+  iv?: string | null
+}
+
+/** PATCH /api/messages/:messageId — edit a message the caller sent. */
+export async function patchMessage(
+  messageId: string,
+  body: EditMessageBody
+): Promise<{ edited_at: string }> {
+  const res = await fetchWithTimeout(`${API_URL}/messages/${messageId}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    edited_at?: string
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'EDIT_MESSAGE_FAILED')
+  }
+  return { edited_at: data.edited_at! }
+}
+
 /** GET /api/messages/:chatId/media — voice/video archive (newest first). */
 export async function fetchChatMediaArchive(
   chatId: string

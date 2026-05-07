@@ -439,4 +439,15 @@ class FmSocketClient {
     const MAX_MS = 30_000
     const exp = BASE_MS * 2 ** (this.attempt - 1)
     const capped = Math.min(MAX_MS, exp)
-    const jit
+    const jitterFactor = 0.8 + Math.random() * 0.4
+    const delayMs = Math.min(MAX_MS, Math.round(capped * jitterFactor))
+    this.scheduleConnect(delayMs)
+  }
+}
+
+let singleton: FmSocketClient | null = null
+
+export function getFmSocket(): FmSocketClient {
+  if (!singleton) singleton = new FmSocketClient()
+  return singleton
+}

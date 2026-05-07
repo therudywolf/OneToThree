@@ -1357,4 +1357,15 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           type="button"
           disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
           className={`p13-icon-btn p13-icon-btn--primary shrink-0 ${
-            showSendOnMobile ? 'inline-flex' : 'hidd
+            showSendOnMobile ? 'inline-flex' : 'hidden'
+          } md:inline-flex ${isMd3 ? 'order-5' : ''}`}
+          onClick={(e) => void onSubmit(e as unknown as React.FormEvent)}
+          aria-label={t('common.send')}
+          title={t('common.send')}
+        >
+          <Send className="h-4 w-4" />
+        </button>
+      </div>
+    </form>
+  )
+}

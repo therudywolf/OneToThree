@@ -104,6 +104,7 @@ function PeerTile({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const isMd3 = useThemeStore((s) => s.shellMode) === 'md3'
   const hasVideo = stream.getVideoTracks().length > 0
   const [tapCount, setTapCount] = useState(0)
   const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -182,7 +183,7 @@ function PeerTile({
     >
       {/* NODE HEADER */}
       <div className="absolute top-0 left-0 w-full z-10 flex items-center justify-between border-b border-border-strong/5 bg-void/80 px-2 py-1 opacity-100 transition-opacity duration-300 md:opacity-0 md:group-hover:opacity-100">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-text-primary/70">
+        <p className={`${isMd3 ? '' : 'font-mono '}text-[10px] uppercase tracking-widest text-text-primary/70`}>
           <span className={isRemote ? 'text-neon-cyan' : 'text-text-muted'}>[{label}]</span> :: {peerId.slice(0, 8)}
         </p>
         {isRemote && onFullscreenToggle && (
@@ -215,7 +216,7 @@ function PeerTile({
             <div className="mx-auto h-10 w-10 border border-border-strong bg-void flex items-center justify-center">
               <span className="block w-2 h-2 bg-neon-red animate-pulse" />
             </div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted/70">VIDEO_OFFLINE</p>
+            <p className={`${isMd3 ? '' : 'font-mono '}text-[10px] uppercase tracking-widest text-text-muted/70`}>VIDEO_OFFLINE</p>
           </div>
         </div>
       )}
@@ -224,7 +225,7 @@ function PeerTile({
       <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 z-10">
         {/* P2P / Relay indicator per tile */}
         {connectionType && connectionType !== 'unknown' && (
-          <span className={`flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider backdrop-blur-md ${
+          <span className={`flex items-center gap-1 border px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider backdrop-blur-md ${
             connectionType === 'p2p'
               ? 'border-success/40 bg-void/90 text-success'
               : 'border-accent-2/40 bg-void/90 text-accent-2'
@@ -234,12 +235,12 @@ function PeerTile({
           </span>
         )}
         {remoteMicMuted && (
-          <span className="border border-neon-red/50 bg-void/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
+          <span className={`border border-neon-red/50 bg-void/90 px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md`}>
             AUDIO_CUT
           </span>
         )}
         {remoteCamOff && hasVideo && (
-          <span className="border border-neon-red/50 bg-void/90 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md">
+          <span className={`border border-neon-red/50 bg-void/90 px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md`}>
             FEED_LOST
           </span>
         )}
@@ -395,7 +396,7 @@ export function ActiveCallOverlay({
             {isScreenSharing && (
               <span className="flex items-center gap-1.5 border border-neon-cyan/50 bg-neon-cyan/10 px-2 py-0.5">
                 <Monitor className="h-3 w-3 text-neon-cyan" />
-                <span className="font-mono text-[9px] uppercase tracking-wider text-neon-cyan">{t('call.screenSharing')}</span>
+                <span className={`${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-cyan`}>{t('call.screenSharing')}</span>
               </span>
             )}
 
@@ -417,7 +418,7 @@ export function ActiveCallOverlay({
                     ? <Lock className="h-3 w-3 text-success" />
                     : <Radio className="h-3 w-3 text-accent-2" />
                   }
-                  <span className={`font-mono text-[9px] uppercase tracking-wider ${
+                  <span className={`${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider ${
                     connType === 'p2p' ? 'text-success' : 'text-accent-2'
                   }`}>{info.label}</span>
                 </span>
@@ -428,26 +429,26 @@ export function ActiveCallOverlay({
             <span className={`inline-block h-2 w-2 rounded-full ${DOT_COLORS[getQualityDotColor(connectionQuality)]}`} title={t('call.quality')} />
 
             {/* Quality badge */}
-            <span className="border border-border-strong bg-void/80 px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-text-muted">
+            <span className={`border border-border-strong bg-void/80 px-2 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-text-muted`}>
               {qualityLabel(qualityLevel, t)}
             </span>
 
             {isConnectionLost && (
               <span className="flex items-center gap-1.5 border border-neon-red/50 bg-danger/30 px-2 py-0.5">
                 <WifiOff className="h-3 w-3 text-neon-red" />
-                <span className="font-mono text-[9px] uppercase tracking-wider text-neon-red">{t('call.connectionLost')}</span>
+                <span className={`${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-red`}>{t('call.connectionLost')}</span>
               </span>
             )}
             {isReconnecting && !isConnectionLost && (
               <span className="flex items-center gap-1.5 border border-accent-2/40 bg-accent-2/15 px-2 py-0.5 animate-pulse">
                 <RefreshCw className="h-3 w-3 text-accent-2 animate-spin" />
-                <span className="font-mono text-[9px] uppercase tracking-wider text-accent-2">{t('call.reconnecting')}</span>
+                <span className={`${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-accent-2`}>{t('call.reconnecting')}</span>
               </span>
             )}
             {!isReconnecting && !isConnectionLost && connectionQuality?.poor && (
               <span className="flex items-center gap-1.5 border border-accent-2/40 bg-accent-2/15 px-2 py-0.5">
                 <WifiOff className="h-3 w-3 text-accent-2" />
-                <span className="font-mono text-[9px] uppercase tracking-wider text-accent-2">POOR_LINK</span>
+                <span className={`${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-accent-2`}>POOR_LINK</span>
               </span>
             )}
             <p className="text-xs text-neon-cyan/70 tracking-wider">

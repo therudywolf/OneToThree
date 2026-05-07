@@ -19,6 +19,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
+  const isMd3 = shellMode === 'md3'
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
 
   return (
@@ -37,10 +38,10 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
             <span className={`absolute inline-flex h-full w-full opacity-75 ${isRetro ? 'p13-classic-accent-fill' : 'animate-ping bg-neon-cyan'}`} />
             <span className={`relative inline-flex h-2 w-2 ${isRetro ? 'p13-classic-accent-fill' : 'bg-neon-cyan'}`} />
           </span>
-          <span className={`text-[10px] ${isRetro ? 'p13-classic-copy-strong' : 'font-mono uppercase tracking-wider text-neon-cyan'}`}>
+          <span className={`text-[10px] ${isRetro ? 'p13-classic-copy-strong' : isMd3 ? 'text-[var(--primary)] font-medium' : 'font-mono uppercase tracking-wider text-neon-cyan'}`}>
             {t('groupCall.activeCall')}
           </span>
-          <span className="flex items-center gap-1 font-mono text-[10px] text-text-muted">
+          <span className={`flex items-center gap-1 ${isMd3 ? '' : 'font-mono '}text-[10px] text-text-muted`}>
             <Users className="h-3 w-3" />
             {participantCount}
           </span>
@@ -51,6 +52,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
             className={`flex items-center gap-1.5 border px-3 py-1 text-[10px] transition-colors ${
               isRetro
                 ? 'p13-classic-button'
+                : isMd3 ? 'rounded-full border-[var(--primary)]/50 bg-[var(--primary-container)] text-[var(--on-primary-container)] hover:bg-[var(--primary-container)]/80'
                 : 'border-neon-cyan/50 bg-neon-cyan/10 font-mono uppercase tracking-wider text-neon-cyan hover:bg-neon-cyan/20'
             }`}
           >
@@ -62,6 +64,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
             className={`flex items-center gap-1.5 border px-3 py-1 text-[10px] transition-colors ${
               isRetro
                 ? 'p13-classic-button p13-classic-button--danger'
+                : isMd3 ? 'rounded-full border-[var(--error)]/50 bg-[var(--error-container)] text-[var(--on-error-container)] hover:opacity-90'
                 : 'border-neon-red/50 bg-neon-red/10 font-mono uppercase tracking-wider text-neon-red hover:bg-neon-red/20'
             }`}
           >

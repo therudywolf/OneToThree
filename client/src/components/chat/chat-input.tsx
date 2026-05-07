@@ -15,6 +15,7 @@ import { vibrateShort } from '@/lib/vibrate'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import type { AttachmentKind } from '@/lib/attachment-envelope'
 import { toastError } from '@/store/toastStore'
+import { loadDraft, saveDraftDebounced, clearDraft } from '@/lib/chat-drafts'
 import {
   MEDIA_ACCESS_ERROR_MESSAGE,
   MEDIA_PERMISSION_DENIED_CODE,
@@ -27,6 +28,11 @@ import type { GifHit } from '@/lib/api/gif'
 import { buildGifProxyUrl } from '@/lib/api/gif'
 import { useThemeStore } from '@/store/themeStore'
 import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
+import {
+  MentionsPopover,
+  parseMentionTrigger,
+  type MentionMember,
+} from '@/components/chat/mentions-popover'
 
 function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
   if (file.type.startsWith('image/')) return 'image'
@@ -103,6 +109,15 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     left: 0,
   })
 
+  // ── @mentions autocomplete state ──────────────────────────────────────────
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionTriggerStart, setMentionTriggerStart] = useState(0)
+  const [mentionActiveIdx, setMentionActiveIdx] = useState(0)
+  const [mentionMembers, setMentionMembers] = useState<MentionMember[]>([])
+  // Lazily loaded from the chat detail endpoint when first @ is typed
+  const mentionMembersLoadedRef = useRef(false)
+
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLFormElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -127,6 +142,72 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       await sendText(json)
     },
     [activeChatId, sendText]
+  )
+
+  // Load saved draft when the active chat changes (don't overwrite an in-progress edit).
+  useEffect(() => {
+    if (!activeChatId || editingMessage) return
+    const draft = loadDraft(activeChatId)
+    setMessageText(draft)
+    mentionMembersLoadedRef.current = false // reset on chat switch
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChatId])
+
+  // Lazily fetch chat members for @mention autocomplete
+  const loadMentionMembers = useCallback(async () => {
+    if (!activeChatId || mentionMembersLoadedRef.current) return
+    mentionMembersLoadedRef.current = true
+    try {
+      const { fetchChatDetail } = await import('@/lib/api/chats')
+      const detail = await fetchChatDetail(activeChatId)
+      setMentionMembers(
+        (detail.members ?? []).map((m) => ({
+          userId: m.user_id,
+          username: m.username ?? m.user_id.slice(0, 8),
+          displayName: m.username,
+        }))
+      )
+    } catch {
+      // Non-fatal: autocomplete just won't show
+    }
+  }, [activeChatId])
+
+  // Handle @mention trigger detection when text changes
+  const handleMentionCheck = useCallback(
+    (text: string, cursorPos: number) => {
+      const parsed = parseMentionTrigger(text, cursorPos)
+      if (parsed.trigger) {
+        void loadMentionMembers()
+        setMentionOpen(true)
+        setMentionQuery(parsed.query)
+        setMentionTriggerStart(parsed.triggerStart)
+        setMentionActiveIdx(0)
+      } else {
+        setMentionOpen(false)
+      }
+    },
+    [loadMentionMembers]
+  )
+
+  const handleMentionSelect = useCallback(
+    (member: MentionMember) => {
+      setMentionOpen(false)
+      // Replace the @query fragment with @username
+      const before = messageText.slice(0, mentionTriggerStart)
+      const after = messageText.slice(
+        mentionTriggerStart + 1 + mentionQuery.length // skip '@' + query
+      )
+      const newText = `${before}@${member.username} ${after}`
+      setMessageText(newText)
+      requestAnimationFrame(() => {
+        const el = inputRef.current
+        if (!el) return
+        const pos = before.length + member.username.length + 2 // '@' + name + ' '
+        try { el.setSelectionRange(pos, pos) } catch { /* noop */ }
+        el.focus()
+      })
+    },
+    [messageText, mentionTriggerStart, mentionQuery]
   )
 
   // When a message is staged for editing, load its plaintext into the
@@ -542,6 +623,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       setMessageText('')
       setReplyTo(null)
       setEditingMessage(null)
+      if (activeChatId) clearDraft(activeChatId)
       if (inputRef.current) {
         inputRef.current.style.height = 'auto'
         inputRef.current.focus()
@@ -552,24 +634,39 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     }
   }
 
-  // Edit existing message over REST. Server re-encrypts with the same session
-  // key on its side if needed. We optimistically update via the chat store
-  // when the server accepts.
+  // Edit existing message. Re-encrypts the new plaintext with the same
+  // crypto context as the original send (fan-out for DIRECT, group key for
+  // SECTOR, plaintext for PUBLIC) and PATCHes the server.
   async function submitEdit(messageId: string, newText: string) {
+    if (!cryptoCtx) return
     try {
-      const { API_URL } = await import('@/lib/api/auth')
-      const res = await fetch(`${API_URL}/messages/${messageId}`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plaintext: newText }),
-      })
-      if (!res.ok) {
-        const { error } = (await res.json().catch(() => ({}))) as { error?: string }
-        toastError(error ?? 'EDIT_FAILED', { title: 'EDIT' })
+      const { patchMessage } = await import('@/lib/api/messages')
+      const { buildFanoutSlotsForEdit } = await import('@/lib/fanout-crypto')
+      const { encryptOutboundText } = await import('@/lib/chat-crypto')
+
+      let editBody: Parameters<typeof patchMessage>[1]
+
+      if (cryptoCtx.type === 'DIRECT' || cryptoCtx.type === 'SELF') {
+        // Fan-out: re-encrypt per device
+        const slots = await buildFanoutSlotsForEdit(
+          messageId,
+          newText,
+          cryptoCtx
+        )
+        editBody = { ciphertexts: slots }
+      } else {
+        // SECTOR / PUBLIC: single ciphertext
+        const encrypted = await encryptOutboundText(newText, cryptoCtx)
+        editBody = { content: encrypted.content, iv: encrypted.iv }
       }
-    } catch {
-      toastError('Network error during edit.', { title: 'EDIT' })
+
+      await patchMessage(messageId, editBody)
+
+      // Optimistic update: update plaintext in store
+      useChatStore.getState().updateMessagePlaintext(messageId, newText)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'EDIT_FAILED'
+      toastError(msg, { title: 'EDIT' })
     }
   }
 
@@ -588,6 +685,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         setMessageText('')
         setReplyTo(null)
         setEditingMessage(null)
+        if (activeChatId) clearDraft(activeChatId)
         if (inputRef.current) {
           inputRef.current.style.height = 'auto'
           inputRef.current.focus()
@@ -597,7 +695,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         sendingTextRef.current = false
         setSendingText(false)
       })
-  }, [messageText, disabled, sendText, replyTo, onSubmitOrClear, setReplyTo, editingMessage, setEditingMessage])
+  }, [messageText, disabled, sendText, replyTo, onSubmitOrClear, setReplyTo, editingMessage, setEditingMessage, activeChatId])
 
   const handleContextMenu = (e: React.MouseEvent) => e.preventDefault()
 
@@ -877,6 +975,14 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
               isRecordingUI ? 'ring-1 ring-danger/40' : ''
             }`}
           >
+            <MentionsPopover
+              open={mentionOpen}
+              members={mentionMembers}
+              query={mentionQuery}
+              activeIndex={mentionActiveIdx}
+              onSelect={handleMentionSelect}
+              onClose={() => setMentionOpen(false)}
+            />
             <textarea
               ref={inputRef}
               rows={1}
@@ -889,6 +995,12 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 const next = e.target.value
                 setMessageText(next)
                 onDraftChanged(next)
+                // Persist draft (debounced) — cleared on send
+                if (activeChatId && !editingMessage) {
+                  saveDraftDebounced(activeChatId, next)
+                }
+                // @mention trigger detection
+                handleMentionCheck(next, e.target.selectionStart ?? next.length)
                 e.target.style.height = 'auto'
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
               }}
@@ -906,6 +1018,39 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 }, 300)
               }}
               onKeyDown={(e) => {
+                // @mention popover navigation
+                if (mentionOpen) {
+                  const filtered = mentionQuery
+                    ? mentionMembers.filter(
+                        (m) =>
+                          m.username.toLowerCase().startsWith(mentionQuery.toLowerCase()) ||
+                          (m.displayName?.toLowerCase().startsWith(mentionQuery.toLowerCase()) ?? false)
+                      )
+                    : mentionMembers.slice(0, 8)
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setMentionActiveIdx((i) => (i + 1) % Math.max(filtered.length, 1))
+                    return
+                  }
+                  if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setMentionActiveIdx((i) => (i - 1 + Math.max(filtered.length, 1)) % Math.max(filtered.length, 1))
+                    return
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab') {
+                    const chosen = filtered[mentionActiveIdx]
+                    if (chosen) {
+                      e.preventDefault()
+                      handleMentionSelect(chosen)
+                      return
+                    }
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setMentionOpen(false)
+                    return
+                  }
+                }
                 // Formatting hotkeys
                 if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
                   e.preventDefault()

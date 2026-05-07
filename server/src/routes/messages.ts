@@ -719,6 +719,106 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, is_pinned: nextPinned })
   })
 
+  // ── PATCH /:messageId — edit message content ─────────────────────────────
+  // Only the original sender may edit. Content re-encryption is the client's
+  // responsibility; we accept the same fan-out shape as the send endpoint.
+  // editedAt is set server-side so clients cannot spoof timestamps.
+  // WS event `message_edited` is broadcast to all chat members.
+  const editMessageBodySchema = z.object({
+    // For DIRECT fan-out chats: new per-device ciphertexts.
+    ciphertexts: z
+      .array(
+        z.object({
+          device_id: z.string().uuid(),
+          ciphertext: z.string().min(1),
+          iv: z.string().min(1),
+        })
+      )
+      .max(50)
+      .optional(),
+    // For SECTOR (group) and PUBLIC chats: single ciphertext / plaintext.
+    content: z.string().nullable().optional(),
+    iv: z.string().nullable().optional(),
+  })
+
+  app.patch('/:messageId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ messageId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { messageId } = params.data
+
+    const parsed = editMessageBodySchema.safeParse(request.body ?? {})
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY', details: parsed.error })
+    const body = parsed.data
+
+    // Load message + verify sender
+    const [msg] = await db
+      .select({
+        id: messages.id,
+        chatId: messages.chatId,
+        senderId: messages.senderId,
+      })
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1)
+    if (!msg) return reply.status(404).send({ error: 'MESSAGE_NOT_FOUND' })
+    if (msg.senderId !== user.id) return reply.status(403).send({ error: 'NOT_SENDER' })
+
+    // Verify membership
+    const memberOk = await db
+      .select({ one: chatMembers.userId })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, msg.chatId), eq(chatMembers.userId, user.id)))
+      .limit(1)
+    if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+
+    const now = new Date()
+
+    // Update the message row (legacy / group content or just editedAt for fan-out)
+    await db
+      .update(messages)
+      .set({
+        content: body.content ?? undefined,
+        iv: body.iv ?? undefined,
+        editedAt: now,
+      })
+      .where(eq(messages.id, messageId))
+
+    // Update per-device delivery rows for fan-out (DIRECT chats)
+    if (body.ciphertexts && body.ciphertexts.length > 0) {
+      for (const slot of body.ciphertexts) {
+        await db
+          .update(messageDeliveries)
+          .set({ ciphertext: slot.ciphertext, iv: slot.iv })
+          .where(
+            and(
+              eq(messageDeliveries.messageId, messageId),
+              eq(messageDeliveries.deviceId, slot.device_id)
+            )
+          )
+      }
+    }
+
+    // Broadcast to all chat members
+    const members = await db
+      .select({ userId: chatMembers.userId })
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, msg.chatId))
+    broadcastToUsers(members.map((m) => m.userId), {
+      type: 'message_edited',
+      message_id: messageId,
+      chat_id: msg.chatId,
+      edited_at: now.toISOString(),
+      // Include updated content for non-fan-out chats so clients don't need to re-fetch
+      content: body.content ?? undefined,
+      iv: body.iv ?? undefined,
+    })
+
+    return reply.send({ ok: true, edited_at: now.toISOString() })
+  })
+
   app.delete('/:messageId', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

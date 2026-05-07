@@ -263,6 +263,32 @@ export async function buildDrFanoutSlots(
 }
 
 /**
+ * Re-encrypt plaintext for all devices of a direct chat so the edit PATCH
+ * body carries fresh per-device ciphertexts. Re-uses the same HKDF fan-out
+ * path as the original send (C-02).
+ *
+ * The crypto context must be DIRECT or SELF. Returns the ciphertexts array
+ * shaped for `patchMessage()`.
+ */
+export async function buildFanoutSlotsForEdit(
+  _messageId: string,
+  newPlaintext: string,
+  cryptoCtx: { type: 'DIRECT' | 'SELF'; myPrivateKey: CryptoKey; myUserId: string; peerId: string }
+): Promise<Array<{ device_id: string; ciphertext: string; iv: string }>> {
+  const { slots } = await buildFanoutSlotsDetailed(
+    cryptoCtx.myPrivateKey,
+    cryptoCtx.myUserId,
+    cryptoCtx.peerId,
+    newPlaintext
+  )
+  return slots.map((s) => ({
+    device_id: s.deviceId,
+    ciphertext: s.ciphertext,
+    iv: s.iv,
+  }))
+}
+
+/**
  * Decrypt a single device_ciphertext from a pending sync row.
  * Called by the receiver with their own ECDH private key and the sender's ECDH public key.
  *

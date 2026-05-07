@@ -105,11 +105,8 @@ export function MessageActions({
       icon: Copy,
       show: !!message.plaintext,
     },
-    // Edit hidden until the server `PATCH /messages/:id` endpoint exists and
-    // the client knows how to re-encrypt under the current chat transport.
-    // The composer-side infra (`editingMessage` in chatStore, edit banner)
-    // is already in place so toggling `show: true` will light it up.
-    { key: 'edit', label: t('msgAction.edit'), icon: Pencil, show: false },
+    // Edit: only the sender can edit their own text messages.
+    { key: 'edit', label: t('msgAction.edit'), icon: Pencil, show: isMine && !!message.plaintext },
     // Forward: client-side re-encryption under the target chat's crypto context
     // (see `handleForward` in chat-terminal.tsx). No dedicated server endpoint —
     // the standard `/messages/send` pipeline handles it because forwarding is

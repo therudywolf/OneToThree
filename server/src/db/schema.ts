@@ -318,6 +318,8 @@ export const messages = pgTable(
     isPinned: boolean('is_pinned').notNull().default(false),
     /** Timestamp of the most recent pin toggle (null if never pinned). */
     pinnedAt: timestamp('pinned_at', { withTimezone: true }),
+    /** Set when the sender edits the message content; null for unedited. */
+    editedAt: timestamp('edited_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

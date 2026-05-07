@@ -89,6 +89,7 @@ export type ChatState = {
   setEditingMessage: (node: DecryptedMessage | null) => void
   updateMessageReadAt: (nodeId: string, timestamp: string) => void
   updateMessageReactions: (nodeId: string, reactions: Record<string, string[]>) => void
+  updateMessagePlaintext: (nodeId: string, plaintext: string, editedAt?: string) => void
   setChatSoundEnabled: (enabled: boolean) => void
   setChatSoundScheme: (scheme: ChatSoundSchemeId) => void
   /** Resets message layer; also resets all sub-stores. */
@@ -136,6 +137,15 @@ export const useChatStore = create<ChatState>((set) => {
       messages: s.messages.map((n) => n.id === nodeId ? { ...n, reactions } : n),
     }))
 
+  const updateMessagePlaintext = (nodeId: string, plaintext: string, editedAt?: string) =>
+    set((s) => ({
+      messages: s.messages.map((n) =>
+        n.id === nodeId
+          ? { ...n, plaintext, ...(editedAt ? { edited_at: editedAt } : {}) }
+          : n
+      ),
+    }))
+
   const setChatSoundEnabled = (enabled: boolean) => {
     try { localStorage.setItem(CHAT_SOUND_KEY, String(enabled)) } catch { /* ignore */ }
     set({ chatSoundEnabled: enabled })
@@ -168,6 +178,7 @@ export const useChatStore = create<ChatState>((set) => {
     setEditingMessage,
     updateMessageReadAt,
     updateMessageReactions,
+    updateMessagePlaintext,
     setChatSoundEnabled,
     setChatSoundScheme,
     reset,

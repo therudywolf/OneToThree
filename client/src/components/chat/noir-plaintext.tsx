@@ -18,6 +18,8 @@ const CODE_BLOCK_RE = /```(\w+)?\n([\s\S]*?)```/g
 const INLINE_CODE_RE = /`([^`\n]+)`/g
 /** URL regex */
 const URL_RE = /https?:\/\/[^\s<>)"'\]]+/g
+/** Spoiler: ||hidden text|| (Telegram-style) */
+const SPOILER_RE = /\|\|([^|]+)\|\|/g
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   const { t } = useTranslation()
@@ -119,6 +121,32 @@ function LinkPreviewCard({ url }: { url: string }) {
   )
 }
 
+function SpoilerSpan({ text: spoilerText }: { text: string }) {
+  const [revealed, setRevealed] = useState(false)
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={revealed ? undefined : 'Click to reveal spoiler'}
+      onClick={() => setRevealed((r) => !r)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setRevealed((r) => !r) }}
+      style={{
+        cursor: 'pointer',
+        borderRadius: '3px',
+        padding: '0 2px',
+        userSelect: revealed ? 'text' : 'none',
+        backgroundColor: revealed ? 'rgba(120,120,200,0.18)' : 'currentColor',
+        color: revealed ? 'inherit' : 'transparent',
+        filter: revealed ? 'none' : 'blur(4px)',
+        transition: 'filter 200ms, background-color 200ms, color 200ms',
+      }}
+      aria-label={revealed ? spoilerText : 'Spoiler — click to reveal'}
+    >
+      {spoilerText}
+    </span>
+  )
+}
+
 function LinkSpan({ url }: { url: string }) {
   // Trim trailing punctuation that's likely not part of URL
   const cleanUrl = url.replace(/[.,;:!?)]+$/, '')
@@ -204,10 +232,23 @@ export function NoirPlaintext({ text, className = '' }: Props) {
         }
       }
 
+      // Find all spoilers (||text||)
+      const spoilerMatches: Array<{ start: number; end: number; text: string }> = []
+      const spoilerRe = new RegExp(SPOILER_RE.source, 'g')
+      let spoilerMatch: RegExpExecArray | null
+      while ((spoilerMatch = spoilerRe.exec(chunk)) !== null) {
+        spoilerMatches.push({
+          start: spoilerMatch.index,
+          end: spoilerMatch.index + spoilerMatch[0].length,
+          text: spoilerMatch[1],
+        })
+      }
+
       // Merge and sort all special ranges
       const specials = [
         ...inlineMatches.map((m) => ({ ...m, type: 'code' as const })),
         ...urlMatches.map((m) => ({ ...m, type: 'url' as const })),
+        ...spoilerMatches.map((m) => ({ ...m, type: 'spoiler' as const })),
       ].sort((a, b) => a.start - b.start)
 
       let pos = 0
@@ -222,6 +263,8 @@ export function NoirPlaintext({ text, className = '' }: Props) {
 
         if (s.type === 'code') {
           nodes.push(<InlineCode key={`ic-${nodeKey++}`} code={s.code} />)
+        } else if (s.type === 'spoiler') {
+          nodes.push(<SpoilerSpan key={`sp-${nodeKey++}`} text={s.text} />)
         } else {
           nodes.push(<LinkSpan key={`url-${nodeKey++}`} url={s.url} />)
         }

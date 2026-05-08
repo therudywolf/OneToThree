@@ -5,7 +5,7 @@ import type { WebSocket } from 'ws'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { persistChatMessageAndFanOut } from '../lib/chat-message-persist.js'
-import { chatMembers, messageReactions, messages, users } from '../db/schema.js'
+import { callSessions, chatMembers, messageReactions, messages, users } from '../db/schema.js'
 import {
   getAuthUser,
   isUserDeviceSessionValid,
@@ -324,10 +324,10 @@ async function getChatMemberIds(chatId: string): Promise<string[]> {
   return rows.map((m) => m.userId)
 }
 
-function ensureGroupCallTargetInRoom(
+async function ensureGroupCallTargetInRoom(
   roomId: string,
   targetUserId: string
-): boolean {
+): Promise<boolean> {
   return isUserInRoom(roomId, targetUserId)
 }
 
@@ -534,6 +534,14 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
                 content: JSON.stringify({ kind: 'call_missed', is_video: isVideo }),
                 iv: 'system:v1',
               })
+              // C-7: log missed call session
+              await db.insert(callSessions).values({
+                chatId: chat_id,
+                initiatedBy: user.id,
+                callType: isVideo ? 'video' : 'audio',
+                participantIds: [user.id],
+                endReason: 'missed',
+              }).catch(() => { /* non-fatal */ })
             }
           }
           return
@@ -551,6 +559,14 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             chat_id,
             from_user_id: user.id,
           })
+          // C-7: log rejected call session (best-effort)
+          await db.insert(callSessions).values({
+            chatId: chat_id,
+            initiatedBy: user.id,
+            callType: 'audio',
+            participantIds: [user.id],
+            endReason: 'rejected',
+          }).catch(() => { /* non-fatal */ })
           return
         }
 
@@ -711,7 +727,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
-          const participants = joinRoom(room_id, user.id, user.username)
+          const participants = await joinRoom(room_id, user.id, user.username)
           // Send current participant list to the joiner
           sendToUser(user.id, {
             type: 'group_call:participant_list',
@@ -719,7 +735,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             participants,
           })
           // Notify all other room participants that someone joined
-          const otherIds = getRoomParticipantIds(room_id).filter(id => id !== user.id)
+          const otherIds = (await getRoomParticipantIds(room_id)).filter(id => id !== user.id)
           broadcastToUsers(otherIds, {
             type: 'group_call:member_join',
             room_id,
@@ -728,7 +744,8 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           })
           // Also broadcast to all chat members that a call is active
           const chatMemberIds = await getChatMemberIds(room_id)
-          const nonCallMembers = chatMemberIds.filter(id => !isUserInRoom(room_id, id))
+          const roomIds = new Set(await getRoomParticipantIds(room_id))
+          const nonCallMembers = chatMemberIds.filter(id => !roomIds.has(id))
           broadcastToUsers(nonCallMembers, {
             type: 'group_call:active',
             room_id,
@@ -740,7 +757,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcLeave = groupCallLeaveSchema.safeParse(json)
         if (gcLeave.success) {
           const { room_id } = gcLeave.data
-          const remaining = leaveRoom(room_id, user.id)
+          const remaining = await leaveRoom(room_id, user.id)
           const otherIds = remaining.map(p => p.userId)
           broadcastToUsers(otherIds, {
             type: 'group_call:member_leave',
@@ -756,7 +773,8 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             })
           } else {
             const chatMemberIds = await getChatMemberIds(room_id)
-            const nonCallMembers = chatMemberIds.filter(id => !isUserInRoom(room_id, id))
+            const remainingIds = new Set(remaining.map(p => p.userId))
+            const nonCallMembers = chatMemberIds.filter(id => !remainingIds.has(id))
             broadcastToUsers(nonCallMembers, {
               type: 'group_call:active',
               room_id,
@@ -769,11 +787,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcOffer = groupCallOfferSchema.safeParse(json)
         if (gcOffer.success) {
           const { room_id, target_user_id, sdp, is_video } = gcOffer.data
-          if (!isUserInRoom(room_id, user.id)) {
+          if (!(await isUserInRoom(room_id, user.id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
             return
           }
-          if (!ensureGroupCallTargetInRoom(room_id, target_user_id)) {
+          if (!(await ensureGroupCallTargetInRoom(room_id, target_user_id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
           }
@@ -790,11 +808,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcAnswer = groupCallAnswerSchema.safeParse(json)
         if (gcAnswer.success) {
           const { room_id, target_user_id, sdp } = gcAnswer.data
-          if (!isUserInRoom(room_id, user.id)) {
+          if (!(await isUserInRoom(room_id, user.id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
             return
           }
-          if (!ensureGroupCallTargetInRoom(room_id, target_user_id)) {
+          if (!(await ensureGroupCallTargetInRoom(room_id, target_user_id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
           }
@@ -810,8 +828,8 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcIce = groupCallIceSchema.safeParse(json)
         if (gcIce.success) {
           const { room_id, target_user_id, candidate } = gcIce.data
-          if (!isUserInRoom(room_id, user.id)) return
-          if (!ensureGroupCallTargetInRoom(room_id, target_user_id)) {
+          if (!(await isUserInRoom(room_id, user.id))) return
+          if (!(await ensureGroupCallTargetInRoom(room_id, target_user_id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
           }
@@ -827,9 +845,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcMute = groupCallMuteSchema.safeParse(json)
         if (gcMute.success) {
           const { room_id, is_muted } = gcMute.data
-          if (!isUserInRoom(room_id, user.id)) return
-          updateParticipantState(room_id, user.id, { isMuted: is_muted })
-          const otherIds = getRoomParticipantIds(room_id).filter(id => id !== user.id)
+          if (!(await isUserInRoom(room_id, user.id))) return
+          await updateParticipantState(room_id, user.id, { isMuted: is_muted })
+          const otherIds = (await getRoomParticipantIds(room_id)).filter(id => id !== user.id)
           broadcastToUsers(otherIds, {
             type: 'group_call:mute',
             room_id,
@@ -842,9 +860,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcVideo = groupCallVideoToggleSchema.safeParse(json)
         if (gcVideo.success) {
           const { room_id, is_video_off } = gcVideo.data
-          if (!isUserInRoom(room_id, user.id)) return
-          updateParticipantState(room_id, user.id, { isVideoOff: is_video_off })
-          const otherIds = getRoomParticipantIds(room_id).filter(id => id !== user.id)
+          if (!(await isUserInRoom(room_id, user.id))) return
+          await updateParticipantState(room_id, user.id, { isVideoOff: is_video_off })
+          const otherIds = (await getRoomParticipantIds(room_id)).filter(id => id !== user.id)
           broadcastToUsers(otherIds, {
             type: 'group_call:video_toggle',
             room_id,
@@ -857,8 +875,8 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcSpeaking = groupCallSpeakingSchema.safeParse(json)
         if (gcSpeaking.success) {
           const { room_id, is_speaking } = gcSpeaking.data
-          if (!isUserInRoom(room_id, user.id)) return
-          const otherIds = getRoomParticipantIds(room_id).filter(id => id !== user.id)
+          if (!(await isUserInRoom(room_id, user.id))) return
+          const otherIds = (await getRoomParticipantIds(room_id)).filter(id => id !== user.id)
           broadcastToUsers(otherIds, {
             type: 'group_call:speaking',
             room_id,
@@ -871,8 +889,8 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcRelayFrame = groupCallRelayFrameSchema.safeParse(json)
         if (gcRelayFrame.success) {
           const { room_id, target_user_id, ciphertext, iv, sample_rate } = gcRelayFrame.data
-          if (!isUserInRoom(room_id, user.id)) return
-          if (!ensureGroupCallTargetInRoom(room_id, target_user_id)) {
+          if (!(await isUserInRoom(room_id, user.id))) return
+          if (!(await ensureGroupCallTargetInRoom(room_id, target_user_id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
           }
@@ -918,7 +936,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         clearPingWriteAt(uid)
         void (async () => {
           // Clean up group call rooms when user's last socket closes
-          const leftRooms = leaveAllRooms(uid)
+          const leftRooms = await leaveAllRooms(uid)
           for (const [roomId, remaining] of leftRooms) {
             const otherIds = remaining.map(p => p.userId)
             broadcastToUsers(otherIds, {

@@ -14,6 +14,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 
 export const chatTypeEnum = pgEnum('chat_type', [
   'direct_e2e',
@@ -822,5 +823,25 @@ export const pollVotes = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.pollId, t.userId, t.optionIndex] }),
     pollIdx: index('poll_votes_poll_idx').on(t.pollId),
+  })
+)
+
+export const callSessions = pgTable(
+  'call_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chatId: uuid('chat_id').notNull().references(() => chats.id, { onDelete: 'cascade' }),
+    initiatedBy: uuid('initiated_by').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    durationSecs: integer('duration_secs'),
+    callType: text('call_type').notNull().default('audio'),
+    participantIds: uuid('participant_ids').array().notNull().default(sql`'{}'::uuid[]`),
+    endReason: text('end_reason'),
+  },
+  (t) => ({
+    chatIdx: index('call_sessions_chat_idx').on(t.chatId),
+    initiatedByIdx: index('call_sessions_initiated_by_idx').on(t.initiatedBy),
+    startedAtIdx: index('call_sessions_started_at_idx').on(t.startedAt),
   })
 )

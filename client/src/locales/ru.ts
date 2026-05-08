@@ -89,6 +89,8 @@ const ru = {
   'call.audioRelayFallback': 'Прямой медиаканал недоступен. Переключаю на зашифрованное аудио-реле.',
   'call.activePeer': 'Активный звонок',
   'call.returnToCall': 'Вернуться к звонку',
+  'call.dndOn': 'Включить режим «Не беспокоить» (автоотклонение звонков)',
+  'call.dndOff': 'Выключить режим «Не беспокоить»',
   'call.missedAudio': 'Пропущенный звонок',
   'call.missedVideo': 'Пропущенный видеозвонок',
   'call.rejectedTitle': 'Звонки',

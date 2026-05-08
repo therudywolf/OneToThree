@@ -78,6 +78,7 @@ type SignalPayload =
   | { kind: 'answer'; sdp: string }
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null }
   | { kind: 'media_state'; media: 'audio' | 'video'; enabled: boolean }
+  | { kind: 'screen_share'; active: boolean }
   | { kind: 'relay_offer' }
   | { kind: 'relay_answer' }
   | { kind: 'relay_frame'; ciphertext: string; iv: string; sampleRate: number }
@@ -262,6 +263,8 @@ export function useWebRTC(userId: string | null) {
     originalOpticsRef.current = null
     screenFeedRef.current = null
     setIsScreenSharing(false)
+    pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: false }))
+    relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'screen_share', active: false }))
   }, [setLocalStream])
 
   const severAllLinks = useCallback(() => {
@@ -490,6 +493,11 @@ export function useWebRTC(userId: string | null) {
       if (msg.type === 'call_invite') {
         const state = useCallStore.getState()
         if (state.isCalling || state.incomingCall) return
+        // C-9: DND — auto-reject without showing the modal
+        if (state.dndEnabled) {
+          getFmSocket().send({ type: 'call_reject', chat_id: msg.chat_id })
+          return
+        }
         const peerId = msg.from_user_id
         setIncomingCall({
           peerId,
@@ -528,12 +536,21 @@ export function useWebRTC(userId: string | null) {
         toastWarn(t('call.rejected'), { title: t('call.rejectedTitle') })
       }
 
+      if (msg.type === 'call_cancel_on_other_devices') {
+        // Another device of ours accepted this call — dismiss modal on this device
+        const inc = useCallStore.getState().incomingCall
+        if (inc?.chatId === msg.chat_id) {
+          setIncomingCall(null)
+        }
+      }
+
       if (msg.type === 'webrtc_signal') {
         const { fromUserId, signalData: rawSignal } = msg
         const data = rawSignal as {
           kind: string
           media?: string
           enabled?: boolean
+          active?: boolean
           sdp?: string
           isVideo?: boolean
           candidate?: RTCIceCandidateInit
@@ -546,6 +563,11 @@ export function useWebRTC(userId: string | null) {
         if (data.kind === 'media_state') {
           const update = data.media === 'audio' ? { micMuted: !data.enabled } : { cameraOff: !data.enabled }
           useCallStore.getState().setRemotePeerMedia(fromUserId, update)
+          return
+        }
+
+        if (data.kind === 'screen_share') {
+          useCallStore.getState().setRemotePeerMedia(fromUserId, { screenSharing: data.active })
           return
         }
 
@@ -973,6 +995,9 @@ export function useWebRTC(userId: string | null) {
   const acceptLink = useCallback(async () => {
     const inc = useCallStore.getState().incomingCall
     if (!inc) return
+
+    // C-4: notify server so other devices of this user dismiss the incoming-call modal
+    if (inc.chatId) getFmSocket().send({ type: 'call_accept', chat_id: inc.chatId })
 
     if (inc.transport === 'audio_relay') {
       await acceptAudioRelay(inc.peerId)

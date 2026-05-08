@@ -13,6 +13,7 @@ import {
   Settings,
   Lock,
   Bell,
+  PhoneOff,
   BellOff,
   UserCheck,
   Inbox,
@@ -44,6 +45,7 @@ import { GroupChatSettings } from '@/components/chat/group-chat-settings'
 import { UserAvatar } from '@/components/user-avatar'
 import { lookupUsers, searchUsers } from '@/lib/api/users'
 import { useTranslation } from '@/hooks/use-translation'
+import { useCallStore } from '@/store/callStore'
 import { ChatRowSkeleton } from '@/components/ui/skeleton'
 import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
@@ -174,6 +176,8 @@ export function ChatSidebar({
   const [lastMessages, setLastMessages] = useState<Record<string, DecryptedMessage | null>>({})
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
+  const dndEnabled = useCallStore((s) => s.dndEnabled)
+  const setDndEnabled = useCallStore((s) => s.setDndEnabled)
   const [rowContextMenu, setRowContextMenu] = useState<{
     chatId: string
     x: number
@@ -762,6 +766,22 @@ export function ChatSidebar({
           }`}
         >
           {pushEnabled ? <Bell className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} /> : <BellOff className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />}
+        </button>
+        <button
+          type="button"
+          title={dndEnabled ? t('call.dndOff') : t('call.dndOn')}
+          onClick={() => setDndEnabled(!dndEnabled)}
+          className={`inline-flex items-center justify-center transition-colors ${
+            dndEnabled
+              ? isMd3
+                ? 'h-8 w-8 rounded-full bg-[var(--error-container)] text-[var(--on-error-container)]'
+                : 'h-10 w-10 rounded-xl border border-neon-red bg-neon-red/15 text-neon-red'
+              : isMd3
+                ? 'h-8 w-8 rounded-full text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+                : 'h-10 w-10 rounded-xl border border-neon-cyan/25 text-neon-cyan/75 hover:border-neon-cyan hover:text-neon-cyan'
+          }`}
+        >
+          <PhoneOff className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
         </button>
         <button
           type="button"
@@ -1475,7 +1495,7 @@ export function ChatSidebar({
               setRowContextMenu(null)
             }}
             onClose={() => setRowContextMenu(null)}
-          />
+/>
         )
       })() : null}
     </aside>

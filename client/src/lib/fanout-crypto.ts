@@ -314,3 +314,4 @@ export async function decryptFanoutSlot(
   const sharedKey = await deriveSharedSecret(receiverPrivateKey, senderPub)
   return decryptMessage(sharedKey, ciphertext, iv)
 }
+

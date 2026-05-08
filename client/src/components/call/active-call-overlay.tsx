@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Mic,
   MicOff,
+  MonitorUp,
   Monitor,
   PhoneOff,
   RefreshCw,
@@ -78,6 +79,7 @@ function PeerTile({
   muted = false,
   remoteMicMuted = false,
   remoteCamOff = false,
+  remoteScreenSharing = false,
   isFullscreen = false,
   onFullscreenToggle,
   isDragging = false,
@@ -93,6 +95,7 @@ function PeerTile({
   muted?: boolean
   remoteMicMuted?: boolean
   remoteCamOff?: boolean
+  remoteScreenSharing?: boolean
   isFullscreen?: boolean
   onFullscreenToggle?: () => void
   isDragging?: boolean
@@ -242,6 +245,12 @@ function PeerTile({
         {remoteCamOff && hasVideo && (
           <span className={`border border-neon-red/50 bg-void/90 px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md`}>
             FEED_LOST
+          </span>
+        )}
+        {remoteScreenSharing && (
+          <span className={`flex items-center gap-1 border border-neon-cyan/50 bg-void/90 px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-cyan backdrop-blur-md`}>
+            <MonitorUp className="h-2.5 w-2.5" />
+            SCREEN
           </span>
         )}
       </div>
@@ -469,7 +478,9 @@ export function ActiveCallOverlay({
                     <PeerTile
                       key={id} peerId={id} stream={stream} label="REMOTE_LINK"
                       remoteMicMuted={remotePeerMedia[id]?.micMuted}
-                      remoteCamOff={remotePeerMedia[id]?.cameraOff} layout={layout}
+                      remoteCamOff={remotePeerMedia[id]?.cameraOff}
+                      remoteScreenSharing={remotePeerMedia[id]?.screenSharing}
+                      layout={layout}
                       connectionType={peerConnectionTypes[id]}
                     />
                   ))
@@ -490,6 +501,7 @@ export function ActiveCallOverlay({
                         peerId={id} stream={stream} label="REMOTE_LINK"
                         remoteMicMuted={remotePeerMedia[id]?.micMuted}
                         remoteCamOff={remotePeerMedia[id]?.cameraOff}
+                        remoteScreenSharing={remotePeerMedia[id]?.screenSharing}
                         onFocusToggle={() => setFocusedPeerId(id)} layout="grid"
                         connectionType={peerConnectionTypes[id]}
                       />
@@ -506,6 +518,7 @@ export function ActiveCallOverlay({
                   key={id} peerId={id} stream={stream} label="REMOTE_LINK"
                   remoteMicMuted={remotePeerMedia[id]?.micMuted}
                   remoteCamOff={remotePeerMedia[id]?.cameraOff}
+                  remoteScreenSharing={remotePeerMedia[id]?.screenSharing}
                   onFocusToggle={() => setFocusedPeerId(id)} layout={layout}
                   connectionType={peerConnectionTypes[id]}
                 />

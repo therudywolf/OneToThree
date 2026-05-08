@@ -108,6 +108,7 @@ export type WsInboundMessage =
     }
   | { type: 'call_leave'; chat_id: string; from_user_id: string }
   | { type: 'call_reject'; chat_id: string; from_user_id: string }
+  | { type: 'call_cancel_on_other_devices'; chat_id: string }
   | {
       type: 'message_read'
       chat_id: string

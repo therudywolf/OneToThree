@@ -98,3 +98,15 @@ blob-report/
 # artifacts/ is a local build cache; releases/ contains debug builds (not committed)
 artifacts/
 releases/
+
+# Temporary session commit/deploy scripts (personal automation — not for public repo)
+commit-*.bat
+commit-*.ps1
+git-commit-*.ps1
+git-push-*.bat
+git-run.ps1
+check-prod.ps1
+deploy-prod.ps1
+
+# Internal planning docs (session artifacts — not for public repo)
+IMPLEMENTATION_PLAN.md

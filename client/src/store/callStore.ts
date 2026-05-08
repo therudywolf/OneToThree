@@ -19,6 +19,7 @@ export type InboundLinkRequest = {
 export type NodeMediaState = {
   micMuted: boolean
   cameraOff: boolean
+  screenSharing: boolean
 }
 
 /** Connection quality stats from RTCPeerConnection getStats(). */
@@ -58,6 +59,9 @@ export type CallProtocolState = {
   callStartTime: number | null
   showRelayToast: boolean
 
+  // [DND]
+  dndEnabled: boolean
+
   // [ACTIONS]
   setLocalStream: (feed: MediaStream | null) => void
   setRemoteStream: (peerId: string, feed: MediaStream) => void
@@ -83,6 +87,7 @@ export type CallProtocolState = {
   setMiniPlayer: (value: boolean) => void
   setCallStartTime: (time: number | null) => void
   setShowRelayToast: (value: boolean) => void
+  setDndEnabled: (v: boolean) => void
 
   /** Полная деактивация протокола и очистка контура */
   reset: () => void
@@ -91,6 +96,7 @@ export type CallProtocolState = {
 const INITIAL_MEDIA_STATE = (): NodeMediaState => ({
   micMuted: false,
   cameraOff: false,
+  screenSharing: false,
 })
 
 const QUALITY_STORAGE_KEY = 'p13_quality_level'
@@ -100,6 +106,11 @@ function loadQualityLevel(): QualityLevel {
   const v = window.localStorage.getItem(QUALITY_STORAGE_KEY)
   if (v === '720p' || v === '480p' || v === '360p' || v === 'audio_only') return v
   return 'auto'
+}
+
+function loadDndEnabled(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem('p13:dnd') === '1'
 }
 
 export const useCallStore = create<CallProtocolState>((set, get) => {
@@ -135,6 +146,10 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
   const setMiniPlayer = (value: boolean) => set({ isMiniPlayer: value })
   const setCallStartTime = (time: number | null) => set({ callStartTime: time })
   const setShowRelayToast = (value: boolean) => set({ showRelayToast: value })
+  const setDndEnabled = (v: boolean) => {
+    try { window.localStorage.setItem('p13:dnd', v ? '1' : '0') } catch { /* storage unavailable */ }
+    set({ dndEnabled: v })
+  }
   const reset = () => {
     // FIX 9: Close peer connections and stop media tracks before clearing state
     const state = get()
@@ -170,6 +185,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     isMiniPlayer: false,
     callStartTime: null,
     showRelayToast: false,
+    dndEnabled: loadDndEnabled(),
 
     setLocalStream,
     setRemoteStream,
@@ -190,6 +206,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     setMiniPlayer,
     setCallStartTime,
     setShowRelayToast,
+    setDndEnabled,
     reset,
   }
 })

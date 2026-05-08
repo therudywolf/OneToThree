@@ -140,6 +140,11 @@ const callRejectSchema = z.object({
   chat_id: z.string().uuid(),
 })
 
+const callAcceptSchema = z.object({
+  type: z.literal('call_accept'),
+  chat_id: z.string().uuid(),
+})
+
 const messageReadSchema = z.object({
   type: z.literal('message_read'),
   chat_id: z.string().uuid(),
@@ -546,6 +551,27 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             chat_id,
             from_user_id: user.id,
           })
+          return
+        }
+
+        const acceptParsed = callAcceptSchema.safeParse(json)
+        if (acceptParsed.success) {
+          const { chat_id } = acceptParsed.data
+          if (!(await isMemberOfChat(chat_id, user.id))) return
+          // C-4: cancel the incoming-call modal on all OTHER devices of this user
+          broadcastToUsers([user.id], {
+            type: 'call_cancel_on_other_devices',
+            chat_id,
+          })
+          // Also delete any pending missed-call Redis key (call was answered)
+          const redis = getRedis()
+          if (redis) {
+            const members = await getChatMemberIds(chat_id)
+            const callerIds = members.filter((id) => id !== user.id)
+            await Promise.all(
+              callerIds.map((callerId) => redis.del(`call:active:${chat_id}:${callerId}`))
+            )
+          }
           return
         }
 

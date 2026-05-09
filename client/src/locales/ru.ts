@@ -291,6 +291,14 @@ const ru = {
   'media.prevVoice': 'Предыдущее голосовое',
   'media.nextVoice': 'Следующее голосовое',
   'media.pendingSync': 'Отправится при подключении...',
+  'media.evictedPlaceholder': 'Медиа очищено сервером. Восстановите его из локального кеша.',
+  'media.restoreServer': 'Восстановить на сервере',
+  'media.restoring': 'Восстановление...',
+
+  'mobileNav.chats': 'Чаты',
+  'mobileNav.contacts': 'Контакты',
+  'mobileNav.calls': 'Звонки',
+  'mobileNav.settings': 'Настройки',
 
   'emoji.pickerToggle': 'Эмодзи',
   'emoji.pickerAria': 'Вставить эмодзи',

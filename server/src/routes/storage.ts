@@ -100,6 +100,18 @@ const uploadBodySchema = z.object({
   fileSize: z.number().int().positive().max(ABSOLUTE_MAX_UPLOAD_BYTES),
 })
 
+const restoreUrlBodySchema = z.object({
+  filePath: z.string().min(1).max(2048),
+  fileType: z.string().min(1).max(256),
+  fileSize: z.number().int().positive().max(ABSOLUTE_MAX_UPLOAD_BYTES),
+})
+
+const restoreCompleteBodySchema = z.object({
+  filePath: z.string().min(1).max(2048),
+  fileType: z.string().min(1).max(256),
+  fileSize: z.number().int().positive().max(ABSOLUTE_MAX_UPLOAD_BYTES),
+})
+
 export const storageRoutes: FastifyPluginAsync = async (app) => {
   /** Server-side S3 ops (bucket, head) — internal `MINIO_ENDPOINT`. */
   const client = createS3Client()
@@ -294,6 +306,120 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     }
 
     return reply.send({ downloadUrl })
+  })
+
+  app.post('/restore-url', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    await ensureBucketOnce()
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const parsed = restoreUrlBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const filePath = parsed.data.filePath.trim()
+    if (filePath.includes('..') || filePath.includes('\\') || !CHAT_OBJECT_KEY_RE.test(filePath)) {
+      return reply.status(400).send({ error: 'INVALID_PATH' })
+    }
+    if (!isAllowedMimeType(parsed.data.fileType)) {
+      return reply.status(400).send({ error: 'MIME_TYPE_NOT_ALLOWED' })
+    }
+
+    const [claim] = await db
+      .select({ messageId: messages.id })
+      .from(messages)
+      .innerJoin(
+        chatMembers,
+        and(
+          eq(chatMembers.chatId, messages.chatId),
+          eq(chatMembers.userId, user.id)
+        )
+      )
+      .where(eq(messages.mediaPath, filePath))
+      .limit(1)
+
+    if (!claim) {
+      return reply.status(410).send({ error: 'FILE_EXPIRED' })
+    }
+
+    const [att] = await db
+      .select({ id: attachments.id, bucket: attachments.bucket, evictedAt: attachments.evictedAt })
+      .from(attachments)
+      .where(eq(attachments.objectKey, filePath))
+      .limit(1)
+
+    if (!att) {
+      return reply.status(404).send({ error: 'ATTACHMENT_NOT_FOUND' })
+    }
+    if (!att.evictedAt) {
+      return reply.status(409).send({ error: 'MEDIA_ALREADY_PRESENT' })
+    }
+
+    const uploadUrl = rewritePresignedUrlToPublicBase(
+      await presignPutObject({
+        client: presignClient,
+        bucket: att.bucket || bucket,
+        key: filePath,
+        contentType: parsed.data.fileType,
+      })
+    )
+
+    return reply.send({ uploadUrl, filePath, bucket: att.bucket || bucket })
+  })
+
+  app.post('/restore-complete', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
+    await ensureBucketOnce()
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const parsed = restoreCompleteBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const filePath = parsed.data.filePath.trim()
+    if (filePath.includes('..') || filePath.includes('\\') || !CHAT_OBJECT_KEY_RE.test(filePath)) {
+      return reply.status(400).send({ error: 'INVALID_PATH' })
+    }
+    if (!isAllowedMimeType(parsed.data.fileType)) {
+      return reply.status(400).send({ error: 'MIME_TYPE_NOT_ALLOWED' })
+    }
+
+    const [claim] = await db
+      .select({ messageId: messages.id })
+      .from(messages)
+      .innerJoin(
+        chatMembers,
+        and(
+          eq(chatMembers.chatId, messages.chatId),
+          eq(chatMembers.userId, user.id)
+        )
+      )
+      .where(eq(messages.mediaPath, filePath))
+      .limit(1)
+
+    if (!claim) {
+      return reply.status(410).send({ error: 'FILE_EXPIRED' })
+    }
+
+    const restored = await db
+      .update(attachments)
+      .set({
+        contentType: parsed.data.fileType,
+        sizeBytes: parsed.data.fileSize,
+        evictedAt: null,
+        lastAccessedAt: sql`now()`,
+      })
+      .where(eq(attachments.objectKey, filePath))
+      .returning({ id: attachments.id })
+
+    if (!restored.length) {
+      return reply.status(404).send({ error: 'ATTACHMENT_NOT_FOUND' })
+    }
+
+    maybeTriggerEviction(request.log)
+    return reply.send({ ok: true })
   })
 
   app.get('/avatar-url', async (request, reply) => {

@@ -17,6 +17,11 @@ import {
   rewritePresignedUrlToPublicBase,
 } from '../lib/s3.js'
 import { maybeTriggerEviction } from '../lib/media-lru-evict.js'
+import {
+  categorizeMime,
+  categoryLimitBytes,
+  effectiveMaxUploadBytes,
+} from '../lib/media-limits.js'
 
 /** Object key: chats/{chatId}/{userId}/{uuid}{ext} */
 const CHAT_OBJECT_KEY_RE =
@@ -76,15 +81,19 @@ function isAllowedMimeType(mime: string): boolean {
   return ALLOWED_MIME_PREFIXES.some((prefix) => lower.startsWith(prefix))
 }
 
-/** Maximum allowed upload size in bytes (100 MiB). */
-const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
+/**
+ * Schema-level outer ceiling — the actual per-category cap is enforced after
+ * MIME categorization (see {@link categoryLimitBytes}). This bound is just to
+ * stop comically large requests at the parser.
+ */
+const ABSOLUTE_MAX_UPLOAD_BYTES = effectiveMaxUploadBytes()
 
 const uploadBodySchema = z.object({
   fileName: z.string().min(1).max(512),
   fileType: z.string().min(1).max(256),
   chatId: z.string().uuid(),
   /** Required so presigned PUT can enforce Content-Length (SigV4 body size). */
-  fileSize: z.number().int().positive().max(MAX_UPLOAD_BYTES),
+  fileSize: z.number().int().positive().max(ABSOLUTE_MAX_UPLOAD_BYTES),
 })
 
 export const storageRoutes: FastifyPluginAsync = async (app) => {
@@ -126,6 +135,20 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     }
     if (!isAllowedMimeType(fileType)) {
       return reply.status(400).send({ error: 'MIME_TYPE_NOT_ALLOWED' })
+    }
+
+    // Sprint M1-3 — per-category byte ceiling. Schema already capped the
+    // global maximum; this narrows it (e.g. an image declared 200 MiB is
+    // rejected even though videos can go that large).
+    const category = categorizeMime(fileType)
+    const categoryLimit = categoryLimitBytes(category)
+    if (fileSize > categoryLimit) {
+      return reply.status(413).send({
+        error: 'CATEGORY_LIMIT_EXCEEDED',
+        category,
+        limit_bytes: categoryLimit,
+        size_bytes: fileSize,
+      })
     }
 
     const member = await db

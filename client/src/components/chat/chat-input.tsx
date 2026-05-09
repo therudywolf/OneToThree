@@ -21,6 +21,8 @@ import {
   MEDIA_ACCESS_ERROR_MESSAGE,
   MEDIA_PERMISSION_DENIED_CODE,
   MEDIA_TOO_LARGE_CODE,
+  describeLimitError,
+  validateFileForUpload,
 } from '@/lib/media-limits'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
@@ -544,12 +546,38 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     )
   }, [sendMedia])
 
+  /**
+   * Sprint M1-3 — validate every incoming file (size by category, image
+   * dimensions, video duration) before it joins the queue. Invalid files
+   * are dropped with a per-file toast naming the exact reason.
+   */
+  const acceptIncomingFiles = useCallback(
+    async (raw: File[]) => {
+      const overflowDropped = Math.max(0, raw.length - ALBUM_HARD_CAP)
+      if (overflowDropped > 0) {
+        toastError(
+          `Max ${ALBUM_HARD_CAP} files per album. ${overflowDropped} dropped.`,
+          { title: 'Media' }
+        )
+      }
+      const accepted: QueuedFile[] = []
+      for (const file of raw.slice(0, ALBUM_HARD_CAP)) {
+        const err = await validateFileForUpload(file)
+        if (err) {
+          toastError(`${file.name}: ${describeLimitError(err)}`, { title: 'Media' })
+          continue
+        }
+        accepted.push({ file, mediaType: detectMediaType(file) })
+      }
+      if (accepted.length > 0) setFileQueue(accepted)
+    },
+    [setFileQueue]
+  )
+
   const handlePaste = (e: React.ClipboardEvent) => {
     if (!e.clipboardData?.files.length) return
-    const queued: QueuedFile[] = Array.from(e.clipboardData.files).map((file) => ({ file, mediaType: detectMediaType(file) }))
-    if (queued.length === 0) return
     e.preventDefault()
-    setFileQueue(queued)
+    void acceptIncomingFiles(Array.from(e.clipboardData.files))
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -564,7 +592,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     e.preventDefault(); e.stopPropagation()
     containerRef.current?.classList.remove('drag-over')
     if (!e.dataTransfer?.files.length) return
-    setFileQueue(Array.from(e.dataTransfer.files).map((file) => ({ file, mediaType: detectMediaType(file) })))
+    void acceptIncomingFiles(Array.from(e.dataTransfer.files))
   }
 
   const handleAttachClick = () => {
@@ -575,14 +603,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.length) return
-    const all = Array.from(e.target.files)
-    if (all.length > ALBUM_HARD_CAP) {
-      toastError(`Max ${ALBUM_HARD_CAP} files per album. ${all.length - ALBUM_HARD_CAP} dropped.`, { title: 'Media' })
-    }
-    const queued = all
-      .slice(0, ALBUM_HARD_CAP)
-      .map((file) => ({ file, mediaType: detectMediaType(file) }))
-    setFileQueue(queued)
+    void acceptIncomingFiles(Array.from(e.target.files))
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 

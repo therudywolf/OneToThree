@@ -57,3 +57,42 @@ export async function decryptTextBatchInWorker(
     }
   })
 }
+
+export async function encryptFanoutInWorker(
+  privateKey: CryptoKey,
+  devices: { device_id: string; ecdh_public_key: string }[],
+  plaintext: string
+): Promise<{
+  slots: Array<{ device_id: string; ciphertext: string; iv: string }>
+  failedDeviceIds: string[]
+}> {
+  const w = getWorker()
+  const id =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`
+
+  return new Promise((resolve, reject) => {
+    const onMsg = (ev: MessageEvent) => {
+      const d = ev.data as
+        | {
+            id: string
+            ok: true
+            slots: Array<{ device_id: string; ciphertext: string; iv: string }>
+            failedDeviceIds: string[]
+          }
+        | { id: string; ok: false; error?: string }
+      if (!d || d.id !== id) return
+      w.removeEventListener('message', onMsg)
+      if (d.ok) resolve({ slots: d.slots, failedDeviceIds: d.failedDeviceIds })
+      else reject(new Error(d.error ?? 'worker fanout failed'))
+    }
+    w.addEventListener('message', onMsg)
+    try {
+      w.postMessage({ type: 'fanout-encrypt' as const, id, privateKey, devices, plaintext })
+    } catch (e) {
+      w.removeEventListener('message', onMsg)
+      reject(e instanceof Error ? e : new Error(String(e)))
+    }
+  })
+}

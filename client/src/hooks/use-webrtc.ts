@@ -20,7 +20,7 @@ import { getIceConfig, normalizeIceServers, type IceTransportPolicy } from '@/li
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import { toastWarn } from '@/store/toastStore'
-import { buildCallLeaveMessage, buildCallRejectMessage, upsertIncomingCall } from '@/lib/incoming-call'
+import { buildCallRejectMessage, upsertIncomingCall } from '@/lib/incoming-call'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL

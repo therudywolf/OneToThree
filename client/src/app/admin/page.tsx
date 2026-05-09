@@ -19,6 +19,7 @@ import {
   fetchAdminUserStorageUsage,
   fetchAdminUsers,
   patchAdminUserRole,
+  patchAdminUserStorageQuota,
   patchUserBan,
   postAdminMediaEvict,
   postAdminPurgeUser,
@@ -175,6 +176,8 @@ function UserDetailModal({ node, onClose, onBanToggle, onRoleChange, onExpunge, 
                 </div>
               )}
             </div>
+
+            <StorageQuotaPanel userId={node.id} />
 
             <div>
               <p className="mb-2 text-[9px] uppercase tracking-widest text-text-muted/70">LOGIN_HISTORY (last 50)</p>
@@ -640,6 +643,92 @@ export default function AdminPage() {
           SYS.ADMIN // NODAL_CONTROL_V5.0 // ONETOTHREE
         </p>
       </footer>
+    </div>
+  )
+}
+
+/**
+ * Sprint A1-5 — per-user storage quota override editor.
+ * NULL = use env default; 0 = explicit unlimited (skips per-user check);
+ * any positive number = hard cap in MiB.
+ */
+function StorageQuotaPanel({ userId }: { userId: string }) {
+  const [mib, setMib] = useState<string>('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const apply = useCallback(
+    async (mode: 'set' | 'clear' | 'unlimited') => {
+      setBusy(true)
+      setMsg(null)
+      try {
+        const quotaBytes =
+          mode === 'clear'
+            ? null
+            : mode === 'unlimited'
+            ? 0
+            : Math.max(0, Math.floor(Number.parseFloat(mib) * 1024 * 1024))
+        if (mode === 'set' && (!Number.isFinite(quotaBytes) || quotaBytes! <= 0)) {
+          setMsg('Введите положительное число в MiB.')
+          return
+        }
+        const res = await patchAdminUserStorageQuota(userId, quotaBytes)
+        setMsg(
+          res.storage_quota_bytes == null
+            ? 'Override cleared (uses env default).'
+            : res.storage_quota_bytes === 0
+            ? 'Set to UNLIMITED for this user.'
+            : `Quota set to ${(res.storage_quota_bytes / 1024 / 1024).toFixed(0)} MiB.`
+        )
+      } catch (err) {
+        setMsg(err instanceof Error ? err.message : 'PATCH_FAILED')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [userId, mib]
+  )
+
+  return (
+    <div className="border border-border-strong p-3">
+      <p className="mb-2 text-[9px] uppercase tracking-widest text-text-muted/70">
+        STORAGE_QUOTA_OVERRIDE
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          placeholder="MiB"
+          value={mib}
+          onChange={(e) => setMib(e.target.value)}
+          className="w-28 border border-border-strong bg-void px-2 py-1 font-mono text-[10px] text-text-secondary outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => void apply('set')}
+          disabled={busy}
+          className="border border-neon-cyan/60 px-3 py-1 text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-50"
+        >
+          [ SET ]
+        </button>
+        <button
+          type="button"
+          onClick={() => void apply('unlimited')}
+          disabled={busy}
+          className="border border-neon-amber/60 px-3 py-1 text-[9px] uppercase tracking-widest text-neon-amber hover:bg-neon-amber/10 disabled:opacity-50"
+        >
+          [ UNLIMITED ]
+        </button>
+        <button
+          type="button"
+          onClick={() => void apply('clear')}
+          disabled={busy}
+          className="border border-border-strong px-3 py-1 text-[9px] uppercase tracking-widest text-text-muted hover:border-text-secondary disabled:opacity-50"
+        >
+          [ CLEAR ]
+        </button>
+      </div>
+      {msg && <p className="mt-2 text-[10px] text-text-muted">{msg}</p>}
     </div>
   )
 }

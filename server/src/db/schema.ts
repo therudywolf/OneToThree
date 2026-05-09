@@ -95,6 +95,13 @@ export const users = pgTable('users', {
   lastSeenPrivacy: text('last_seen_privacy').notNull().default('everyone'),
   /** JSON array of {platform,url} social links. */
   socialLinks: text('social_links'),
+  /**
+   * Sprint A1-5 — per-user override for media storage quota in bytes.
+   * NULL means "use global default" (env MEDIA_QUOTA_PER_USER_BYTES).
+   * The check runs additively on top of the global LRU quota: the user
+   * can never exceed this slice regardless of overall usage.
+   */
+  storageQuotaBytes: bigint('storage_quota_bytes', { mode: 'number' }),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

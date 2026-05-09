@@ -252,6 +252,24 @@ export async function deleteAdminDevice(deviceId: string): Promise<void> {
 }
 
 
+/* ────────────── Sprint A1-5 — Per-user storage quota ────────────── */
+
+export async function patchAdminUserStorageQuota(
+  userId: string,
+  quotaBytes: number | null
+): Promise<{ id: string; storage_quota_bytes: number | null }> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/${userId}/storage-quota`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quota_bytes: quotaBytes }),
+  })
+  const data = (await res.json().catch(() => ({}))) as
+    | { id?: string; storage_quota_bytes?: number | null; error?: string }
+  if (!res.ok || !data.id) throw new Error(data.error ?? 'QUOTA_PATCH_FAILED')
+  return { id: data.id, storage_quota_bytes: data.storage_quota_bytes ?? null }
+}
+
 /* ────────────── Sprint A1-2 — Reports investigation ────────────── */
 
 export type AdminReportContext = {

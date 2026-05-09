@@ -489,6 +489,35 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, device_id: updated.id })
   })
 
+  /**
+   * PATCH /api/admin/users/:id/storage-quota — Sprint A1-5.
+   * Body: { quota_bytes: number | null }
+   *   number > 0  — explicit per-user cap.
+   *   number == 0 — unlimited (no per-user cap, only global).
+   *   null        — clear override; falls back to MEDIA_QUOTA_PER_USER_BYTES env.
+   */
+  app.patch('/users/:id/storage-quota', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    const params = z.object({ id: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const body = z
+      .object({ quota_bytes: z.number().int().min(0).max(1_000_000_000_000).nullable() })
+      .safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const [updated] = await db
+      .update(users)
+      .set({ storageQuotaBytes: body.data.quota_bytes })
+      .where(eq(users.id, params.data.id))
+      .returning({
+        id: users.id,
+        storage_quota_bytes: users.storageQuotaBytes,
+      })
+    if (!updated) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+    return reply.send(updated)
+  })
+
   /** GET /api/admin/kpi — Sprint A1-4 dashboard aggregates. */
   app.get('/kpi', async (request, reply) => {
     const admin = await requireAdmin(request, reply)

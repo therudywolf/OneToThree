@@ -2,8 +2,20 @@ import {
   createPublicKey,
   createVerify,
   timingSafeEqual,
-  type JsonWebKey,
 } from 'node:crypto'
+
+/**
+ * Minimal JWK shape we need — `node:crypto` does not re-export `JsonWebKey`
+ * across all TypeScript versions / @types/node combos, and lib.dom may not
+ * be available in pure-Node tsconfigs.
+ */
+type JsonWebKey = {
+  kty?: string
+  crv?: string
+  x?: string
+  y?: string
+  d?: string
+}
 
 /**
  * Verifies ECDSA P-256 + SHA-256 over UTF-8 nonce bytes.

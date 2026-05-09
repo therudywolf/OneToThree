@@ -1,40 +1,11 @@
 param(
-  [Parameter(Position = 0)]
-  [string]$Command = "help",
-
   [Parameter(ValueFromRemainingArguments = $true)]
-  [string[]]$Args
+  [string[]]$StartArgs
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $Root = $PSScriptRoot
-$ApkBuilder = Join-Path $Root "scripts/build-apk.ps1"
-
-switch ($Command) {
-  "build-apk" {
-    if ($Args -and $Args.Count -gt 0) {
-      & $ApkBuilder @Args
-    } else {
-      & $ApkBuilder
-    }
-    exit $LASTEXITCODE
-  }
-  "build-apk-release" {
-    if ($Args -and $Args.Count -gt 0) {
-      & $ApkBuilder "release" @Args
-    } else {
-      & $ApkBuilder "release"
-    }
-    exit $LASTEXITCODE
-  }
-  default {
-    Write-Host "Usage:" -ForegroundColor Yellow
-    Write-Host "  .\start.ps1 build-apk"
-    Write-Host "  .\start.ps1 build-apk-release <keystore-path>"
-    Write-Host ""
-    Write-Host "Linux/macOS launcher remains in ./start.sh."
-    exit 1
-  }
-}
+& node (Join-Path $Root "scripts/start.mjs") @StartArgs
+exit $LASTEXITCODE

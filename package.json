@@ -43,7 +43,14 @@
     "check:locales": "node scripts/check-locale-keys.mjs",
     "check:drizzle": "node scripts/check-drizzle-journal.mjs",
     "backup": "npx tsx scripts/backup.ts",
-    "cors:smoke": "node scripts/cors-preflight-smoke.mjs"
+    "cors:smoke": "node scripts/cors-preflight-smoke.mjs",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "client/src/**/*.{ts,tsx}": "npm run lint -w project-13-client -- --fix",
+    "client/tests/**/*.ts": "npm run lint -w project-13-client -- --fix",
+    "server/src/**/*.ts": "npm run lint -w project-13-server -- --fix",
+    "client/src/locales/*.{ts,tsx}": "npm run check:locales"
   },
   "devDependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -53,6 +60,8 @@
     "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "fastify": "5.8.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.3",
     "web-push": "^3.6.7"
   },
   "overrides": {

@@ -16,11 +16,16 @@ const CLIENT_ENV_EXAMPLE = path.join(ROOT, 'client', '.env.local.example')
 const CLIENT_ENV = path.join(ROOT, 'client', '.env.local')
 
 function requireWebPush() {
-  const candidates = [
-    path.join(ROOT, 'node_modules', 'web-push'),
-    path.join(ROOT, 'server', 'node_modules', 'web-push'),
-  ]
-  for (const c of candidates) {
+  const searchRoots = [ROOT, path.join(ROOT, 'server'), path.join(ROOT, 'client')]
+  const candidates = []
+  for (const base of searchRoots) {
+    try {
+      candidates.push(require.resolve('web-push', { paths: [base] }))
+    } catch {
+      candidates.push(path.join(base, 'node_modules', 'web-push'))
+    }
+  }
+  for (const c of Array.from(new Set(candidates))) {
     try {
       const mod = require(c)
       const api = mod && typeof mod === 'object' ? mod : {}

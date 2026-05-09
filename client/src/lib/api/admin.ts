@@ -252,6 +252,54 @@ export async function deleteAdminDevice(deviceId: string): Promise<void> {
 }
 
 
+/* ────────────── Sprint A1-2 — Reports investigation ────────────── */
+
+export type AdminReportContext = {
+  report: AdminReportRow
+  reporter: { username: string; banned: boolean } | null
+  reported: { username: string; banned: boolean; role: 'user' | 'admin' } | null
+  open_reports_against_reported: number
+  recent_logins_by_reported: Array<{
+    outcome: string
+    ip_address: string | null
+    user_agent: string | null
+    created_at: string
+  }>
+}
+
+export async function fetchAdminReportContext(
+  reportId: string
+): Promise<AdminReportContext> {
+  const res = await fetchWithTimeout(
+    `${API_URL}/admin/reports/${reportId}/context`,
+    { credentials: 'include' }
+  )
+  const data = (await res.json().catch(() => ({}))) as
+    | (AdminReportContext & { error?: string })
+    | { error?: string }
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? 'REPORT_CONTEXT_FAILED')
+  return data as AdminReportContext
+}
+
+export async function patchAdminReport(
+  reportId: string,
+  opts: { status?: 'open' | 'closed'; banReported?: boolean }
+): Promise<{ report: AdminReportRow; ban_applied: boolean }> {
+  const body: Record<string, unknown> = {}
+  if (opts.status) body.status = opts.status
+  if (opts.banReported != null) body.ban_reported = opts.banReported
+  const res = await fetchWithTimeout(`${API_URL}/admin/reports/${reportId}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json().catch(() => ({}))) as
+    | { report?: AdminReportRow; ban_applied?: boolean; error?: string }
+  if (!res.ok || !data.report) throw new Error(data.error ?? 'REPORT_PATCH_FAILED')
+  return { report: data.report, ban_applied: !!data.ban_applied }
+}
+
 /* ────────────── Sprint A1-4 — KPI dashboard ────────────── */
 
 export type AdminKpiResponse = {

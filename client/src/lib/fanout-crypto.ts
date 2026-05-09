@@ -19,6 +19,7 @@
 import { API_URL } from '@/lib/api/auth'
 import { fetchWithTimeout } from '@/lib/api/fetch'
 import { deriveSharedSecret, deriveSharedSecretHkdf, encryptMessage, decryptMessage, importEcdhPublicKey } from './crypto'
+import { getCachedPeerPublicKey, getCachedSharedSecretHkdf } from './shared-secret-cache'
 
 export type DeviceSlot = {
   device_id: string
@@ -89,8 +90,12 @@ export async function encryptFanoutDetailed(
 ): Promise<FanoutBuildResult> {
   const results = await Promise.allSettled(
     targetDevices.map(async (dev) => {
-      const peerPub = await importEcdhPublicKey(dev.ecdh_public_key)
-      const sharedKey = await deriveSharedSecretHkdf(senderPrivateKey, peerPub)
+      const peerPub = await getCachedPeerPublicKey(dev.ecdh_public_key)
+      const sharedKey = await getCachedSharedSecretHkdf(
+        senderPrivateKey,
+        dev.ecdh_public_key,
+        peerPub
+      )
       const { ciphertext, iv } = await encryptMessage(sharedKey, plaintext)
       return { device_id: dev.device_id, ciphertext, iv: 'v2:' + iv } satisfies FanoutSlot
     })
@@ -303,11 +308,15 @@ export async function decryptFanoutSlot(
   if (!senderEcdhPublicKeyJwk || !ciphertext || !iv) {
     throw new Error('FANOUT_SLOT_INVALID_INPUT')
   }
-  const senderPub = await importEcdhPublicKey(senderEcdhPublicKeyJwk)
+  const senderPub = await getCachedPeerPublicKey(senderEcdhPublicKeyJwk)
   if (iv.startsWith('v2:')) {
-    // v2: HKDF-derived key path (C-02 fix)
+    // v2: HKDF-derived key path (C-02 fix). Sprint C1-2 — cached.
     const actualIv = iv.slice(3)
-    const sharedKey = await deriveSharedSecretHkdf(receiverPrivateKey, senderPub)
+    const sharedKey = await getCachedSharedSecretHkdf(
+      receiverPrivateKey,
+      senderEcdhPublicKeyJwk,
+      senderPub
+    )
     return decryptMessage(sharedKey, ciphertext, actualIv)
   }
   // Legacy v1: raw ECDH shared secret (backward compat for existing messages)

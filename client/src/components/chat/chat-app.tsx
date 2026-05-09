@@ -980,7 +980,7 @@ export function ChatApp({
                   {peerPresenceRow.online ? (
                     <>
                       <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neon-cyan/15 shadow-[0_0_8px_rgba(34,211,238,0.85)]" />
-                      <span className="text-neon-cyan/75">online</span>
+                      <span className="text-neon-cyan/75">{t('presence.online')}</span>
                     </>
                   ) : (
                     <span className="text-danger/90 whitespace-nowrap">
@@ -998,7 +998,7 @@ export function ChatApp({
               </span>
               <span className={`hidden sm:flex items-center gap-1 font-mono text-[9px] ${isMd3 ? 'text-text-muted' : 'text-neon-cyan/50'}`}>
                 <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-neon-cyan/20 shadow-[0_0_6px_rgba(34,211,238,0.7)]" />
-                online
+                {t('presence.online')}
               </span>
             </div>
           )}
@@ -1056,9 +1056,9 @@ export function ChatApp({
                 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'
                 : 'border border-neon-cyan/30 bg-void font-mono uppercase tracking-[0.16em] text-neon-cyan/80'
             }`}
-            title={mentionTotal > 0 ? `Mentions: ${mentionTotal}` : 'Unread messages'}
+            title={mentionTotal > 0 ? `${t('chat.mentions')}: ${mentionTotal}` : t('chat.unreadMessages')}
           >
-            <span className="opacity-80">Inbox</span>
+            <span className="opacity-80">{t('chat.inbox')}</span>
             <span
               className={`px-1.5 py-[1px] ${
                 isMd3
@@ -1084,8 +1084,8 @@ export function ChatApp({
           <button
             type="button"
             onClick={() => setUnwrappedPrivateKey(null)}
-            aria-label="Lock vault"
-            title="Lock vault"
+            aria-label={t('chat.lockVault')}
+            title={t('chat.lockVault')}
             className={`inline-flex h-9 items-center gap-1.5 px-3 text-[10px] transition-colors ${
               isMd3
                 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
@@ -1093,7 +1093,7 @@ export function ChatApp({
             }`}
           >
             <Lock className="h-3.5 w-3.5" aria-hidden />
-            <span className="hidden md:inline">Vault</span>
+            <span className="hidden md:inline">{t('chat.vault')}</span>
           </button>
 
           <div
@@ -1102,7 +1102,7 @@ export function ChatApp({
                 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
                 : 'border border-neon-cyan/25 bg-void'
             }`}
-            title={isOnline ? 'Online' : 'Offline'}
+            title={isOnline ? t('presence.online') : t('presence.offline')}
           >
             <UserAvatar
               userId={userId}
@@ -1115,7 +1115,7 @@ export function ChatApp({
             </span>
             <span className={`inline-flex items-center gap-1 text-[9px] ${isMd3 ? 'text-text-muted' : 'font-mono text-neon-cyan/65'}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${isOnline ? 'bg-neon-cyan' : 'bg-neon-red'}`} />
-              {isOnline ? 'online' : 'offline'}
+              {isOnline ? t('presence.online') : t('presence.offline')}
             </span>
           </div>
 

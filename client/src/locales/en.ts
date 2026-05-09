@@ -272,6 +272,12 @@ const en = {
   'chat.newChat': 'New Chat',
   'chat.startChatHint': 'Start a new chat',
   'chat.attachFile': 'Attach file',
+  'chat.inbox': 'Inbox',
+  'chat.mentions': 'Mentions',
+  'chat.lockVault': 'Lock vault',
+  'chat.vault': 'Vault',
+  'presence.online': 'Online',
+  'presence.offline': 'Offline',
 
   // [MEDIA CONTROLS]
   'media.capture': 'Capture',

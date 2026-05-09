@@ -826,6 +826,59 @@ export const pollVotes = pgTable(
   })
 )
 
+/**
+ * Sprint M1 — server-side media lifecycle index.
+ *
+ * One row per uploaded object. Lets the server enforce a global storage quota
+ * by evicting the least-recently-accessed objects (LRU): on eviction we delete
+ * the S3 blob and stamp `evicted_at`, but keep the row so `/download-url` can
+ * return a stable "placeholder" response for the client to render.
+ *
+ * `message_id` is null until the uploader actually sends a message referencing
+ * the file (orphan upload — eligible for early eviction).
+ */
+export const attachments = pgTable(
+  'attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Chat where the upload was authorized. Cascades to drop rows when chat is deleted. */
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chats.id, { onDelete: 'cascade' }),
+    /** User who created the upload-url. */
+    uploaderId: uuid('uploader_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Bucket name (so eviction can address the right bucket without env at scan time). */
+    bucket: text('bucket').notNull(),
+    /** S3 object key — `chats/{chatId}/{userId}/{uuid}{ext}`. Unique. */
+    objectKey: text('object_key').notNull(),
+    contentType: text('content_type').notNull(),
+    /** Client-declared upload size (bytes). Used for quota math; not authoritative. */
+    sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+    /** Set when the uploader's message is persisted; null = orphan. */
+    messageId: uuid('message_id').references(() => messages.id, {
+      onDelete: 'set null',
+    }),
+    /** Touched on every successful presigned download — drives LRU eviction. */
+    lastAccessedAt: timestamp('last_accessed_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Set when the S3 object has been deleted; row stays as a placeholder marker. */
+    evictedAt: timestamp('evicted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    objectKeyUnique: uniqueIndex('attachments_object_key_unique').on(t.objectKey),
+    lastAccessedIdx: index('attachments_last_accessed_idx').on(t.lastAccessedAt),
+    evictedIdx: index('attachments_evicted_idx').on(t.evictedAt),
+    messageIdx: index('attachments_message_id_idx').on(t.messageId),
+    chatIdx: index('attachments_chat_id_idx').on(t.chatId),
+  })
+)
+
 export const callSessions = pgTable(
   'call_sessions',
   {

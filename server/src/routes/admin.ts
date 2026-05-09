@@ -26,6 +26,7 @@ import {
   getHighWatermark,
   getQuotaBytes,
   getTargetRatio,
+  runOrphanAttachmentCleanup,
 } from '../lib/media-lru-evict.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
@@ -561,6 +562,28 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       log: request.log,
       targetBytes: body.data.target_bytes,
       maxToEvict: body.data.max_to_evict,
+    })
+    return reply.send(result)
+  })
+
+  /**
+   * POST /api/admin/media/cleanup-orphans — delete upload-url objects that
+   * never became message attachments.
+   */
+  app.post('/media/cleanup-orphans', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    const body = z
+      .object({
+        max_age_hours: z.number().int().positive().max(24 * 30).optional(),
+        max_to_delete: z.number().int().positive().max(50_000).optional(),
+      })
+      .safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+    const result = await runOrphanAttachmentCleanup({
+      log: request.log,
+      maxAgeHours: body.data.max_age_hours,
+      maxToDelete: body.data.max_to_delete,
     })
     return reply.send(result)
   })

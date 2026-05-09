@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, lt, sql } from 'drizzle-orm'
 import type { FastifyBaseLogger } from 'fastify'
 import { db } from '../db/index.js'
 import { attachments, users } from '../db/schema.js'
@@ -25,6 +25,7 @@ const DEFAULT_QUOTA = 10 * 1024 * 1024 * 1024 // 10 GiB
 const DEFAULT_HIGH_WATERMARK = 0.9
 const DEFAULT_TARGET_RATIO = 0.8
 const DEFAULT_BATCH = 32
+const DEFAULT_ORPHAN_MAX_AGE_HOURS = 24
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name]?.trim()
@@ -50,6 +51,10 @@ export function getHighWatermark(): number {
 
 export function getTargetRatio(): number {
   return envFloat('MEDIA_QUOTA_TARGET_RATIO', DEFAULT_TARGET_RATIO)
+}
+
+function getOrphanMaxAgeHours(): number {
+  return envInt('MEDIA_ORPHAN_MAX_AGE_HOURS', DEFAULT_ORPHAN_MAX_AGE_HOURS)
 }
 
 /**
@@ -184,4 +189,93 @@ export function maybeTriggerEviction(log: FastifyBaseLogger): void {
       log.warn({ err: String(err) }, 'media LRU evict trigger failed')
     }
   })()
+}
+
+/**
+ * Deletes uploaded objects that never became message attachments. Unlike LRU
+ * eviction, orphan cleanup removes the DB row too because no message can render
+ * a placeholder for it.
+ */
+export async function runOrphanAttachmentCleanup(opts: {
+  log: FastifyBaseLogger
+  maxAgeHours?: number
+  maxToDelete?: number
+}): Promise<{ deleted: number; freedBytes: number }> {
+  const maxAgeHours = opts.maxAgeHours ?? getOrphanMaxAgeHours()
+  const cutoff = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000)
+  const cap = opts.maxToDelete ?? 500
+
+  const client = createS3Client()
+  const fallbackBucket = getBucketName()
+  await ensureBucketExists(client, fallbackBucket)
+
+  let deleted = 0
+  let freedBytes = 0
+
+  while (deleted < cap) {
+    const batch = await db
+      .select({
+        id: attachments.id,
+        bucket: attachments.bucket,
+        objectKey: attachments.objectKey,
+        sizeBytes: attachments.sizeBytes,
+      })
+      .from(attachments)
+      .where(
+        and(
+          isNull(attachments.messageId),
+          isNull(attachments.evictedAt),
+          lt(attachments.createdAt, cutoff)
+        )
+      )
+      .orderBy(asc(attachments.createdAt))
+      .limit(Math.min(DEFAULT_BATCH, cap - deleted))
+
+    if (batch.length === 0) break
+
+    for (const row of batch) {
+      await deleteObjectIfExists({
+        client,
+        bucket: row.bucket || fallbackBucket,
+        key: row.objectKey,
+      })
+      await db.delete(attachments).where(eq(attachments.id, row.id))
+      deleted++
+      freedBytes += Number(row.sizeBytes) || 0
+    }
+  }
+
+  if (deleted > 0) {
+    opts.log.info(
+      { deleted, freedBytes, maxAgeHours, cutoff: cutoff.toISOString() },
+      'orphan attachment cleanup completed'
+    )
+  }
+
+  return { deleted, freedBytes }
+}
+
+export function scheduleOrphanAttachmentCleanup(
+  log: FastifyBaseLogger,
+  opts?: { intervalMs?: number; initialDelayMs?: number }
+): () => void {
+  const intervalMs = opts?.intervalMs ?? 6 * 60 * 60 * 1000
+  const initialDelayMs = opts?.initialDelayMs ?? 2 * 60 * 1000
+
+  let timer: ReturnType<typeof setInterval> | null = null
+  const run = () => {
+    void runOrphanAttachmentCleanup({ log }).catch((err) => {
+      log.warn({ err: String(err) }, 'orphan attachment cleanup failed')
+    })
+  }
+
+  const t0 = setTimeout(() => {
+    run()
+    timer = setInterval(run, intervalMs)
+  }, initialDelayMs)
+
+  return () => {
+    clearTimeout(t0)
+    if (timer) clearInterval(timer)
+  }
 }

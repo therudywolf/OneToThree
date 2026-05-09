@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { chatMembers, messages, users } from '../db/schema.js'
+import { attachments, chatMembers, messages, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import {
@@ -108,7 +108,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
-    const { fileName: rawFileName, fileType, chatId, fileSize: _fileSize } = parsed.data
+    const { fileName: rawFileName, fileType, chatId, fileSize } = parsed.data
     const fileName = sanitizeFileName(rawFileName)
 
     const mimeLower = fileType.toLowerCase().split(';')[0].trim()
@@ -148,6 +148,23 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
         contentType: fileType,
       })
     )
+
+    // Sprint M1 — register the upload in the lifecycle index. We trust the
+    // client-declared size here; presigned PUTs cannot enforce Content-Length
+    // without breaking the proxy path (see s3.ts unsignableHeaders comment).
+    // A background reconciler may later correct sizeBytes from S3 HEAD.
+    try {
+      await db.insert(attachments).values({
+        chatId,
+        uploaderId: user.id,
+        bucket,
+        objectKey: key,
+        contentType: fileType,
+        sizeBytes: fileSize,
+      })
+    } catch (err) {
+      request.log.warn({ err, key }, '[storage] attachments insert failed')
+    }
 
     return reply.send({
       uploadUrl,
@@ -194,6 +211,24 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(410).send({ error: 'FILE_EXPIRED' })
     }
 
+    // Sprint M1 — eviction check. If the LRU evictor deleted the S3 object,
+    // the row is kept as a tombstone so we can return a stable
+    // MEDIA_EVICTED signal — the client renders a placeholder and may offer
+    // re-upload from its local IndexedDB cache.
+    const [att] = await db
+      .select({ evictedAt: attachments.evictedAt, id: attachments.id })
+      .from(attachments)
+      .where(eq(attachments.objectKey, filePath))
+      .limit(1)
+
+    if (att?.evictedAt) {
+      return reply.status(410).send({
+        error: 'MEDIA_EVICTED',
+        attachmentId: att.id,
+        evictedAt: att.evictedAt,
+      })
+    }
+
     const downloadUrl = rewritePresignedUrlToPublicBase(
       await presignGetObject({
         client: presignClient,
@@ -201,6 +236,16 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
         key: filePath,
       })
     )
+
+    if (att) {
+      // Touch LRU asynchronously — failing to update should never block delivery.
+      db.update(attachments)
+        .set({ lastAccessedAt: sql`now()` })
+        .where(eq(attachments.id, att.id))
+        .catch((err) =>
+          request.log.warn({ err, key: filePath }, '[storage] last_accessed touch failed')
+        )
+    }
 
     return reply.send({ downloadUrl })
   })

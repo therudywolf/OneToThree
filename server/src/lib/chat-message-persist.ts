@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { chatMembers, messages } from '../db/schema.js'
+import { attachments, chatMembers, messages } from '../db/schema.js'
 import { sendNativePushToUser, sendPushToUser } from './push.js'
 import {
   broadcastToUsers,
@@ -153,6 +153,15 @@ export async function persistChatMessageAndFanOut(
       })
 
     if (!inserted) return null
+
+    // Sprint M1 — link the lifecycle row to its message so eviction can
+    // distinguish orphan uploads (no message_id) from referenced media.
+    if (inserted.mediaPath) {
+      await tx
+        .update(attachments)
+        .set({ messageId: inserted.id })
+        .where(eq(attachments.objectKey, inserted.mediaPath))
+    }
 
     return inserted as PersistedMessageRow
   })

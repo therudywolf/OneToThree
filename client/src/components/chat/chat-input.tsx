@@ -25,6 +25,7 @@ import {
   validateFileForUpload,
 } from '@/lib/media-limits'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
+import { UploadProgressList } from '@/components/chat/upload-progress-list'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
 import type { GifHit } from '@/lib/api/gif'
@@ -860,6 +861,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           'var(--p13-composer-bottom-inset, max(0.5rem, env(safe-area-inset-bottom, 0px)))',
       }}
     >
+      <UploadProgressList />
       {previewFile && (
         <MediaPreviewModal
           file={previewFile.file}

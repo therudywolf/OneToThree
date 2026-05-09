@@ -24,7 +24,44 @@ import { vibrateShort } from '@/lib/vibrate'
 import { explainSendError } from '@/lib/explain-send-error'
 import { useTranslation } from '@/hooks/use-translation'
 import { toastError, toastWarn } from '@/store/toastStore'
+import { useUploadProgressStore } from '@/store/uploadProgressStore'
 import type { DecryptedMessage } from '@/types/chat'
+
+/**
+ * Sprint M1-5 — register a presigned PUT in the global upload-progress
+ * store so the chat input can render a progress bar with cancel.
+ *
+ * The caller never holds the AbortController itself: cancelUpload(id) on
+ * the store reaches the controller via the shared map.
+ */
+async function trackedInject(
+  id: string,
+  fileName: string,
+  url: string,
+  mime: string,
+  payload: ArrayBuffer
+): Promise<void> {
+  const store = useUploadProgressStore.getState()
+  const controller = new AbortController()
+  store.addUpload(id, fileName, payload.byteLength, controller)
+  try {
+    await injectWithRetry(url, mime, payload, 3, {
+      signal: controller.signal,
+      onProgress: (loaded, total) => {
+        useUploadProgressStore.getState().setProgress(id, loaded, total)
+      },
+    })
+    useUploadProgressStore.getState().setStatus(id, 'done')
+    setTimeout(() => useUploadProgressStore.getState().removeUpload(id), 1500)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    const status: 'cancelled' | 'error' =
+      msg === 'UPLOAD_CANCELLED' ? 'cancelled' : 'error'
+    useUploadProgressStore.getState().setStatus(id, status, msg)
+    setTimeout(() => useUploadProgressStore.getState().removeUpload(id), 4000)
+    throw err
+  }
+}
 
 /**
  * PROJECT 13 :: BINARY_TRANSMISSION_PROTOCOL
@@ -89,34 +126,77 @@ const getSubtle = (): SubtleCrypto => {
  * attempt × 3 attempts gives a hard 90 s ceiling; below that we still
  * surface a real error through the `SEND FAILED` toast.
  */
+/**
+ * Sprint M1-5 — XHR-based upload (vs the previous fetch impl) so we can
+ * surface real-time `progress` events to the UI and honour an
+ * AbortSignal for user-initiated cancel. Retry semantics preserved.
+ */
+async function injectOnce(opts: {
+  url: string
+  mime: string
+  payload: ArrayBuffer
+  timeoutMs: number
+  signal?: AbortSignal
+  onProgress?: (loaded: number, total: number) => void
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (opts.signal?.aborted) {
+      reject(new Error('UPLOAD_CANCELLED'))
+      return
+    }
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', opts.url)
+    xhr.setRequestHeader('Content-Type', opts.mime)
+    xhr.timeout = opts.timeoutMs
+    if (opts.onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) opts.onProgress?.(e.loaded, e.total)
+      }
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve()
+      else reject(new Error(`STORAGE_PUT_${xhr.status}: ${xhr.responseText.slice(0, 256)}`))
+    }
+    xhr.onerror = () => reject(new Error('STORAGE_PUT_NETWORK'))
+    xhr.ontimeout = () => reject(new Error('STORAGE_PUT_TIMEOUT'))
+    xhr.onabort = () => reject(new Error('UPLOAD_CANCELLED'))
+    const onAbort = () => xhr.abort()
+    opts.signal?.addEventListener('abort', onAbort, { once: true })
+    xhr.send(opts.payload)
+  })
+}
+
 async function injectWithRetry(
   url: string,
   mime: string,
   payload: ArrayBuffer,
-  maxAttempts = 3
+  maxAttempts = 3,
+  hooks?: {
+    signal?: AbortSignal
+    onProgress?: (loaded: number, total: number) => void
+  }
 ): Promise<void> {
   const PER_ATTEMPT_TIMEOUT_MS = 30000
   let attempt = 0
   let lastError: unknown
   while (attempt < maxAttempts) {
+    if (hooks?.signal?.aborted) throw new Error('UPLOAD_CANCELLED')
     attempt++
-    const ac = new AbortController()
-    const timeoutId = setTimeout(() => ac.abort(new Error('STORAGE_PUT_TIMEOUT')), PER_ATTEMPT_TIMEOUT_MS)
     try {
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': mime },
-        body: payload,
-        signal: ac.signal,
+      await injectOnce({
+        url,
+        mime,
+        payload,
+        timeoutMs: PER_ATTEMPT_TIMEOUT_MS,
+        signal: hooks?.signal,
+        onProgress: hooks?.onProgress,
       })
-      clearTimeout(timeoutId)
-      if (response.ok) return
-      const log = await response.text().catch(() => '')
-      lastError = new Error(`STORAGE_PUT_${response.status}: ${log.slice(0, 256)}`)
-      console.error(`>> [SYS.STORAGE] PUT_FAULT [${response.status}]:`, log.slice(0, 256))
+      return
     } catch (err) {
-      clearTimeout(timeoutId)
       lastError = err
+      const msg = err instanceof Error ? err.message : String(err)
+      // Don't retry user-initiated cancels.
+      if (msg === 'UPLOAD_CANCELLED') throw err
       console.error('>> [SYS.STORAGE] INJECTION_INTERRUPTED:', err)
     }
     await new Promise((r) => setTimeout(r, 400 * attempt))
@@ -297,7 +377,13 @@ export function useSendMedia(
           fileType: prepared.mimeType,
           fileSize: prepared.workSize,
         })
-        await injectWithRetry(uploadUrl, prepared.mimeType, prepared.uploadPayload)
+        await trackedInject(
+          `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          prepared.label,
+          uploadUrl,
+          prepared.mimeType,
+          prepared.uploadPayload
+        )
 
         const result = await sendChatMessageOverTransport({
           chat_id: ctx.activeChatId,
@@ -414,7 +500,13 @@ export function useSendMedia(
               fileType: p.mimeType,
               fileSize: p.workSize,
             })
-            await injectWithRetry(uploadUrl, p.mimeType, p.uploadPayload)
+            await trackedInject(
+              `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              p.label,
+              uploadUrl,
+              p.mimeType,
+              p.uploadPayload
+            )
             return { ...p, filePath }
           })
         )

@@ -88,6 +88,8 @@ export type TransmitOptions = {
    * Explicit attachment kind. If omitted, it is inferred from `segmentClass`/MIME.
    */
   kind?: AttachmentKind
+  /** Sprint M1-6 — when true, skip image compression and send the original bytes. */
+  sendOriginal?: boolean
 }
 
 function ensureExtension(name: string, mime: string): string {
@@ -260,7 +262,8 @@ async function prepareEncryptedBlob(
   const shouldCompressImage =
     segmentClass === 'image' &&
     rawBlob.size > IMAGE_COMPRESSION_THRESHOLD_BYTES &&
-    normalizedMime !== 'image/gif'
+    normalizedMime !== 'image/gif' &&
+    !options.sendOriginal
   if (shouldCompressImage) {
     const source = rawBlob instanceof File ? rawBlob : new File([rawBlob], label, { type: mimeType })
     try {

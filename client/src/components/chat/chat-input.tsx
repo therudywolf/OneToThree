@@ -59,13 +59,23 @@ type Props = {
     blob: Blob,
     mediaType: 'audio' | 'video' | 'image' | 'file',
     caption?: string,
-    options?: { fileName?: string; fileType?: string; kind?: AttachmentKind }
+    options?: {
+      fileName?: string
+      fileType?: string
+      kind?: AttachmentKind
+      sendOriginal?: boolean
+    }
   ) => Promise<void>
   sendAlbum?: (
     items: Array<{
       blob: Blob
       segmentClass: 'audio' | 'video' | 'image' | 'file'
-      options?: { label?: string; mime?: string; kind?: AttachmentKind }
+      options?: {
+        label?: string
+        mime?: string
+        kind?: AttachmentKind
+        sendOriginal?: boolean
+      }
     }>,
     caption?: string
   ) => Promise<void>
@@ -618,33 +628,41 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     items.length <= ALBUM_MAX &&
     items.every((it) => it.mediaType === 'image' || it.mediaType === 'video')
 
-  const handlePreviewSend = useCallback(async (caption: string) => {
-    if (sendingMediaRef.current || fileQueue.length === 0) return
-    sendingMediaRef.current = true
-    try {
-      if (sendAlbum && canAlbum(fileQueue)) {
-        await sendAlbum(
-          fileQueue.map((it) => ({
-            blob: it.file,
-            segmentClass: it.mediaType,
-            options: { label: it.file.name, mime: it.file.type },
-          })),
-          caption || undefined,
-        )
-        setFileQueue([])
-        return
+  const handlePreviewSend = useCallback(
+    async (caption: string, opts: { sendOriginal: boolean }) => {
+      if (sendingMediaRef.current || fileQueue.length === 0) return
+      sendingMediaRef.current = true
+      try {
+        if (sendAlbum && canAlbum(fileQueue)) {
+          await sendAlbum(
+            fileQueue.map((it) => ({
+              blob: it.file,
+              segmentClass: it.mediaType,
+              options: {
+                label: it.file.name,
+                mime: it.file.type,
+                sendOriginal: opts.sendOriginal,
+              },
+            })),
+            caption || undefined,
+          )
+          setFileQueue([])
+          return
+        }
+        const item = fileQueue[0]
+        if (!item) return
+        await sendMedia(item.file, item.mediaType, caption || undefined, {
+          fileName: item.file.name,
+          fileType: item.file.type,
+          sendOriginal: opts.sendOriginal,
+        })
+        setFileQueue((prev) => prev.slice(1))
+      } finally {
+        sendingMediaRef.current = false
       }
-      const item = fileQueue[0]
-      if (!item) return
-      await sendMedia(item.file, item.mediaType, caption || undefined, {
-        fileName: item.file.name,
-        fileType: item.file.type,
-      })
-      setFileQueue((prev) => prev.slice(1))
-    } finally {
-      sendingMediaRef.current = false
-    }
-  }, [sendMedia, sendAlbum, fileQueue])
+    },
+    [sendMedia, sendAlbum, fileQueue],
+  )
 
   const handlePreviewCancel = useCallback(() => setFileQueue([]), [])
   const handleRemoveFromQueue = useCallback((index: number) => {

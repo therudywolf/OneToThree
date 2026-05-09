@@ -31,6 +31,39 @@ import { toastError, toastSuccess } from '@/store/toastStore'
 type Tab = 'emoji' | 'sticker' | 'gif'
 const STICKER_FAVORITES_KEY = 'p13:favorite-stickers:v1'
 
+/* Sprint M1-10 — most-recently-used stickers / GIFs persisted across reloads. */
+const STICKER_RECENTS_KEY = 'p13:recent-stickers:v1'
+const GIF_RECENTS_KEY = 'p13:recent-gifs:v1'
+const RECENTS_MAX = 50
+
+type RecentSticker = {
+  sticker: Sticker
+  packId: string
+  format: StickerPack['format']
+  src: string
+}
+
+function loadRecents<T>(key: string): T[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as T[]
+    return Array.isArray(parsed) ? parsed.slice(0, RECENTS_MAX) : []
+  } catch {
+    return []
+  }
+}
+
+function persistRecents<T>(key: string, items: T[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(items.slice(0, RECENTS_MAX)))
+  } catch {
+    /* quota — drop silently */
+  }
+}
+
 export type ComposerPickerPanelProps = {
   layout: 'dock' | 'modal'
   onEmoji: (emoji: string) => void
@@ -77,6 +110,32 @@ export function ComposerPickerPanel({
   const [gifs, setGifs] = useState<GifHit[]>([])
   const [gifFavorites, setGifFavorites] = useState<GifHit[]>([])
   const [gifFavBusyId, setGifFavBusyId] = useState<string | null>(null)
+  const [recentStickers, setRecentStickers] = useState<RecentSticker[]>([])
+  const [recentGifs, setRecentGifs] = useState<GifHit[]>([])
+
+  // Sprint M1-10 — load MRU state on mount.
+  useEffect(() => {
+    setRecentStickers(loadRecents<RecentSticker>(STICKER_RECENTS_KEY))
+    setRecentGifs(loadRecents<GifHit>(GIF_RECENTS_KEY))
+  }, [])
+
+  const pushRecentSticker = useCallback((entry: RecentSticker) => {
+    setRecentStickers((prev) => {
+      const filtered = prev.filter((r) => r.sticker.id !== entry.sticker.id)
+      const next = [entry, ...filtered].slice(0, RECENTS_MAX)
+      persistRecents(STICKER_RECENTS_KEY, next)
+      return next
+    })
+  }, [])
+
+  const pushRecentGif = useCallback((g: GifHit) => {
+    setRecentGifs((prev) => {
+      const filtered = prev.filter((r) => r.id !== g.id)
+      const next = [g, ...filtered].slice(0, RECENTS_MAX)
+      persistRecents(GIF_RECENTS_KEY, next)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -402,6 +461,39 @@ export function ComposerPickerPanel({
                 <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
               ) : (
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
+                  {recentStickers.length > 0 ? (
+                    <div className="mb-2">
+                      <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-text-muted">
+                        Recent
+                      </p>
+                      <div className="grid grid-cols-6 gap-1">
+                        {recentStickers.slice(0, 18).map((rec) => (
+                          <button
+                            key={`recent-st-${rec.sticker.id}`}
+                            type="button"
+                            title={rec.sticker.emoji || 'sticker'}
+                            onClick={() => {
+                              const json = buildStickerPlaintext(rec.sticker, rec.packId, rec.format)
+                              void (async () => {
+                                await onStickerSend(json)
+                                pushRecentSticker(rec)
+                                onAfterStickerSend?.()
+                              })()
+                            }}
+                            className="p13-sticker-tile flex aspect-square items-center justify-center rounded"
+                          >
+                            <StickerPreview
+                              url={rec.src}
+                              format={rec.format}
+                              mediaKey={rec.sticker.mediaKey}
+                              fallbackEmoji={rec.sticker.emoji}
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {favoriteStickers.length > 0 ? (
                     <div className="mb-2">
                       <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-text-muted">
@@ -415,7 +507,10 @@ export function ComposerPickerPanel({
                             title={fav.sticker.emoji || 'sticker'}
                             onClick={() => {
                               const json = buildStickerPlaintext(fav.sticker, fav.packId, fav.format)
-                              void onStickerSend(json)
+                              void (async () => {
+                                await onStickerSend(json)
+                                pushRecentSticker(fav)
+                              })()
                             }}
                             className="p13-sticker-tile flex aspect-square items-center justify-center rounded"
                           >
@@ -467,6 +562,12 @@ export function ComposerPickerPanel({
                         void (async () => {
                           try {
                             await onStickerSend(json)
+                            pushRecentSticker({
+                              sticker: s,
+                              packId: selectedPackId,
+                              format: packMeta.format,
+                              src: stickerSrc,
+                            })
                             onAfterStickerSend?.()
                           } catch (e) {
                             toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'Stickers' })
@@ -526,6 +627,41 @@ export function ComposerPickerPanel({
 
         {tab === 'gif' ? (
           <div className="flex min-h-full flex-col gap-2 p-2">
+            {recentGifs.length > 0 ? (
+              <div className="space-y-1">
+                <p className="font-mono text-[9px] uppercase tracking-widest text-text-muted">Recent</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {recentGifs.slice(0, 9).map((g) => (
+                    <button
+                      key={`rec-gif-${g.id}`}
+                      type="button"
+                      className="p13-media-tile rounded"
+                      title={g.title}
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            if (onGifPick) await onGifPick(g)
+                            else onEmoji(` ${g.originalUrl} `)
+                            pushRecentGif(g)
+                            onAfterStickerSend?.()
+                          } catch (e) {
+                            toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })
+                          }
+                        })()
+                      }}
+                    >
+                      <img
+                        src={buildGifProxyUrl(g.previewUrl)}
+                        alt={g.title}
+                        loading="lazy"
+                        className="aspect-video w-full rounded object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {gifFavorites.length > 0 ? (
               <div className="space-y-1">
                 <p className="font-mono text-[9px] uppercase tracking-widest text-text-muted">{t('gif.favorites')}</p>
@@ -540,6 +676,7 @@ export function ComposerPickerPanel({
                             try {
                               if (onGifPick) await onGifPick(g)
                               else onEmoji(` ${g.originalUrl} `)
+                              pushRecentGif(g)
                               onAfterStickerSend?.()
                             } catch (e) {
                               toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })
@@ -612,6 +749,7 @@ export function ComposerPickerPanel({
                             try {
                               if (onGifPick) await onGifPick(g)
                               else onEmoji(` ${g.originalUrl} `)
+                              pushRecentGif(g)
                               onAfterStickerSend?.()
                             } catch (e) {
                               toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'GIF' })

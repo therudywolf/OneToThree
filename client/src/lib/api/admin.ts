@@ -216,3 +216,51 @@ export async function deleteAdminDevice(deviceId: string): Promise<void> {
   const data = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) throw new Error(data.error ?? 'ADMIN_DEVICE_REVOKE_FAILED')
 }
+
+
+/* ────────────── Sprint A1-1 — Media storage admin ────────────── */
+
+export type AdminMediaQuotaResponse = {
+  usage_bytes: number
+  quota_bytes: number
+  high_watermark_bytes: number
+  target_bytes: number
+  pct_used: number
+}
+
+export type AdminMediaEvictResponse = {
+  evicted: number
+  freedBytes: number
+  finalUsage: number
+}
+
+export async function fetchAdminMediaQuota(): Promise<AdminMediaQuotaResponse> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/media/quota`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as
+    | (AdminMediaQuotaResponse & { error?: string })
+    | { error?: string }
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? 'ADMIN_MEDIA_QUOTA_FAILED')
+  return data as AdminMediaQuotaResponse
+}
+
+export async function postAdminMediaEvict(opts?: {
+  targetBytes?: number
+  maxToEvict?: number
+}): Promise<AdminMediaEvictResponse> {
+  const body: Record<string, number> = {}
+  if (opts?.targetBytes != null) body.target_bytes = opts.targetBytes
+  if (opts?.maxToEvict != null) body.max_to_evict = opts.maxToEvict
+  const res = await fetchWithTimeout(`${API_URL}/admin/media/evict`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json().catch(() => ({}))) as
+    | (AdminMediaEvictResponse & { error?: string })
+    | { error?: string }
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? 'ADMIN_MEDIA_EVICT_FAILED')
+  return data as AdminMediaEvictResponse
+}

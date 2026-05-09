@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth/auth-provider'
 import {
   deleteAdminDevice,
   fetchAdminLoginEvents,
+  fetchAdminMediaQuota,
   fetchAdminReports,
   fetchAdminSystemStats,
   fetchAdminUserDevices,
@@ -15,17 +16,19 @@ import {
   fetchAdminUsers,
   patchAdminUserRole,
   patchUserBan,
+  postAdminMediaEvict,
   postAdminPurgeUser,
   type AdminDeviceRow,
   type AdminLoginEventRow,
+  type AdminMediaQuotaResponse,
   type AdminReportRow,
-  type AdminSystemStats,
   type AdminStorageUserRow,
+  type AdminSystemStats,
   type AdminUserRow,
 } from '@/lib/api/admin'
 import { useThemeStore } from '@/store/themeStore'
 
-type Tab = 'nodes' | 'incidents' | 'login-events' | 'system'
+type Tab = 'nodes' | 'incidents' | 'login-events' | 'system' | 'storage'
 
 function fmtBytes(n: bigint | number): string {
   const v = typeof n === 'bigint' ? Number(n) : n
@@ -304,6 +307,7 @@ export default function AdminPage() {
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'nodes', label: 'NODES', count: nodes.length },
     { id: 'system', label: 'SYSTEM' },
+    { id: 'storage', label: 'STORAGE' },
     { id: 'incidents', label: 'INCIDENTS', count: incidents.filter(r => r.status === 'open').length || undefined },
     { id: 'login-events', label: 'LOGIN_LOG', count: loginEvents.length || undefined },
   ]
@@ -554,6 +558,9 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* STORAGE TAB — Sprint A1-1 */}
+        {tab === 'storage' && <StoragePanel onError={(msg) => setErrorLog(msg)} />}
+
         {/* LOGIN EVENTS TAB */}
         {tab === 'login-events' && (
           <div>
@@ -599,6 +606,146 @@ export default function AdminPage() {
           SYS.ADMIN // NODAL_CONTROL_V5.0 // ONETOTHREE
         </p>
       </footer>
+    </div>
+  )
+}
+
+/**
+ * Sprint A1-1 — admin storage panel.
+ * Shows current usage / quota / watermarks pulled from /api/admin/media/quota
+ * and exposes a force-eviction action backed by /api/admin/media/evict.
+ */
+function StoragePanel({ onError }: { onError: (msg: string) => void }) {
+  const [quota, setQuota] = useState<AdminMediaQuotaResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [evicting, setEvicting] = useState(false)
+  const [lastEvict, setLastEvict] = useState<{ evicted: number; freedBytes: number } | null>(null)
+  const [overrideTarget, setOverrideTarget] = useState<string>('')
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      const q = await fetchAdminMediaQuota()
+      setQuota(q)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'STORAGE_LOAD_FAILED')
+    } finally {
+      setLoading(false)
+    }
+  }, [onError])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const runEvict = useCallback(async () => {
+    setEvicting(true)
+    try {
+      const targetBytes = overrideTarget.trim()
+        ? Number.parseInt(overrideTarget.trim(), 10)
+        : undefined
+      const result = await postAdminMediaEvict(
+        Number.isFinite(targetBytes) ? { targetBytes: targetBytes as number } : undefined
+      )
+      setLastEvict({ evicted: result.evicted, freedBytes: result.freedBytes })
+      await refresh()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'EVICT_FAILED')
+    } finally {
+      setEvicting(false)
+    }
+  }, [overrideTarget, refresh, onError])
+
+  if (loading) {
+    return (
+      <div className="text-[10px] uppercase tracking-widest text-text-muted/50">
+        [ LOADING_STORAGE_TELEMETRY... ]
+      </div>
+    )
+  }
+  if (!quota) {
+    return (
+      <div className="text-[10px] uppercase tracking-widest text-neon-red">
+        STORAGE_TELEMETRY_UNAVAILABLE
+      </div>
+    )
+  }
+
+  const pct = Math.round(quota.pct_used * 100)
+  const isHigh = quota.usage_bytes >= quota.high_watermark_bytes
+  const barColor = isHigh ? 'bg-neon-red' : pct >= 70 ? 'bg-neon-amber' : 'bg-neon-cyan'
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-[10px] uppercase tracking-[0.3em] text-text-muted/70">
+        :: MEDIA_STORAGE_TELEMETRY
+      </h2>
+
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between text-[10px] uppercase tracking-widest text-text-muted">
+          <span>USAGE</span>
+          <span className={isHigh ? 'text-neon-red' : 'text-text-secondary'}>
+            {fmtBytes(quota.usage_bytes)} / {fmtBytes(quota.quota_bytes)} ({pct}%)
+          </span>
+        </div>
+        <div className="h-3 w-full overflow-hidden border border-border-strong bg-void">
+          <div
+            className={`h-full transition-all ${barColor}`}
+            style={{ width: `${Math.min(100, pct)}%` }}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-2 text-[9px] uppercase tracking-widest">
+          <div className="border border-border-strong p-3">
+            <div className="text-text-muted/60">HIGH_WATERMARK (auto-evict trigger)</div>
+            <div className="mt-1 text-text-secondary">{fmtBytes(quota.high_watermark_bytes)}</div>
+          </div>
+          <div className="border border-border-strong p-3">
+            <div className="text-text-muted/60">TARGET (evict-to floor)</div>
+            <div className="mt-1 text-text-secondary">{fmtBytes(quota.target_bytes)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border border-border-strong p-3 space-y-2">
+        <div className="text-[10px] uppercase tracking-[0.3em] text-text-muted/70">
+          :: FORCE_LRU_EVICT
+        </div>
+        <p className="text-[10px] text-text-muted/60">
+          Drop least-recently-accessed attachments until usage falls under the target.
+          Orphan uploads (no message) are evicted first; live media is replaced with a
+          MEDIA_EVICTED placeholder for the recipient.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="number"
+            placeholder="target_bytes (optional)"
+            value={overrideTarget}
+            onChange={(e) => setOverrideTarget(e.target.value)}
+            className="border border-border-strong bg-void px-2 py-1 font-mono text-[10px] text-text-secondary outline-none focus:border-neon-cyan/50"
+          />
+          <button
+            type="button"
+            onClick={() => void runEvict()}
+            disabled={evicting}
+            className="border border-neon-amber/60 px-3 py-1 text-[9px] uppercase tracking-widest text-neon-amber transition-colors hover:border-neon-amber hover:bg-neon-amber/10 disabled:opacity-50"
+          >
+            {evicting ? '[ EVICTING... ]' : '[ RUN EVICT ]'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="border border-border-strong px-3 py-1 text-[9px] uppercase tracking-widest text-text-muted hover:border-neon-cyan hover:text-neon-cyan"
+          >
+            [ REFRESH ]
+          </button>
+        </div>
+        {lastEvict && (
+          <div className="text-[10px] text-text-muted/70">
+            Last run: evicted <span className="text-neon-cyan">{lastEvict.evicted}</span> attachments,
+            freed <span className="text-neon-cyan">{fmtBytes(lastEvict.freedBytes)}</span>.
+          </div>
+        )}
+      </div>
     </div>
   )
 }

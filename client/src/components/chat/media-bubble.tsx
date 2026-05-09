@@ -281,6 +281,21 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   }
 
   if (!objectUrl) {
+    // Sprint M1-8 — render the tiny base64 JPEG preview blurred while we
+    // decrypt + decode the real image. Falls back to the text shimmer when
+    // the sender's client predates the placeholder field.
+    if (envelope?.thumbhash) {
+      return (
+        <div ref={sentinelRef} className="mt-2 max-w-xs overflow-hidden rounded">
+          <img
+            src={envelope.thumbhash}
+            alt=""
+            aria-hidden
+            className="h-auto w-full max-h-[300px] object-cover blur-md scale-110"
+          />
+        </div>
+      )
+    }
     return (
       <div
         ref={sentinelRef}

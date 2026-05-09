@@ -57,12 +57,41 @@ if (!process.env.VITEST_REDIS_URL) {
       return rows[0]?.exists === true
     }
 
+    async function hasTable(table: string): Promise<boolean> {
+      const rows = await sql<{ exists: boolean }[]>`
+        SELECT to_regclass(${`public.${table}`}) IS NOT NULL AS exists
+      `
+      return rows[0]?.exists === true
+    }
+
+    async function hasIndex(index: string): Promise<boolean> {
+      const rows = await sql<{ exists: boolean }[]>`
+        SELECT EXISTS (
+          SELECT 1
+          FROM pg_indexes
+          WHERE schemaname = 'public'
+            AND indexname = ${index}
+        ) AS exists
+      `
+      return rows[0]?.exists === true
+    }
+
+    await sql`SELECT pg_advisory_lock(hashtext('p13_test_setup_schema_compat'))`
+
     if (!await hasColumn('messages', 'seq')) {
       await sql`ALTER TABLE messages ADD COLUMN seq BIGSERIAL`
     }
 
     if (!await hasColumn('messages', 'sender_ecdh_public_key_jwk')) {
       await sql`ALTER TABLE messages ADD COLUMN sender_ecdh_public_key_jwk text`
+    }
+
+    if (!await hasColumn('messages', 'burn_duration_secs')) {
+      await sql`ALTER TABLE messages ADD COLUMN burn_duration_secs integer`
+    }
+
+    if (!await hasColumn('messages', 'edited_at')) {
+      await sql`ALTER TABLE messages ADD COLUMN edited_at timestamp with time zone`
     }
 
     if (!await hasColumn('chats', 'invite_slug')) {
@@ -82,6 +111,43 @@ if (!process.env.VITEST_REDIS_URL) {
       await sql`ALTER TABLE users ADD COLUMN last_seen_privacy text NOT NULL DEFAULT 'everyone'`
     }
 
+    if (!await hasColumn('users', 'storage_quota_bytes')) {
+      await sql`ALTER TABLE users ADD COLUMN storage_quota_bytes bigint`
+    }
+
+    if (!await hasTable('attachments')) {
+      await sql`
+        CREATE TABLE attachments (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+          chat_id uuid NOT NULL REFERENCES chats(id) ON DELETE cascade,
+          uploader_id uuid NOT NULL REFERENCES users(id) ON DELETE cascade,
+          bucket text NOT NULL,
+          object_key text NOT NULL,
+          content_type text NOT NULL,
+          size_bytes bigint NOT NULL,
+          message_id uuid REFERENCES messages(id) ON DELETE set null,
+          last_accessed_at timestamp with time zone DEFAULT now() NOT NULL,
+          evicted_at timestamp with time zone,
+          created_at timestamp with time zone DEFAULT now() NOT NULL
+        )
+      `
+    }
+    if (!await hasIndex('attachments_object_key_unique')) {
+      await sql`CREATE UNIQUE INDEX attachments_object_key_unique ON attachments (object_key)`
+    }
+    if (!await hasIndex('attachments_last_accessed_idx')) {
+      await sql`CREATE INDEX attachments_last_accessed_idx ON attachments (last_accessed_at)`
+    }
+    if (!await hasIndex('attachments_evicted_idx')) {
+      await sql`CREATE INDEX attachments_evicted_idx ON attachments (evicted_at)`
+    }
+    if (!await hasIndex('attachments_message_id_idx')) {
+      await sql`CREATE INDEX attachments_message_id_idx ON attachments (message_id)`
+    }
+    if (!await hasIndex('attachments_chat_id_idx')) {
+      await sql`CREATE INDEX attachments_chat_id_idx ON attachments (chat_id)`
+    }
+
     await sql`
       ALTER TABLE users
       DROP CONSTRAINT IF EXISTS users_last_seen_privacy_check
@@ -91,6 +157,7 @@ if (!process.env.VITEST_REDIS_URL) {
       ADD CONSTRAINT users_last_seen_privacy_check
       CHECK (last_seen_privacy IN ('everyone', 'contacts', 'nobody'))
     `
+    await sql`SELECT pg_advisory_unlock(hashtext('p13_test_setup_schema_compat'))`
   } catch {
     // best-effort for environments without a running local DB
   } finally {

@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify'
 import { and, eq, inArray } from 'drizzle-orm'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
-import { chatMembers, chats, devices, messages, users } from '../db/schema.js'
+import { chatMembers, chats, devices, messageDeliveries, messages, users } from '../db/schema.js'
 
 describe('messages flow routes', () => {
   let app: FastifyInstance | undefined
@@ -91,6 +91,7 @@ describe('messages flow routes', () => {
             iv: 'iv-test',
           },
         ],
+        burn_duration_secs: 30,
       })
       .expect(200)
 
@@ -99,6 +100,13 @@ describe('messages flow routes', () => {
     expect(sent.body?.message?.device_iv).toBe('iv-self')
     expect(sent.body?.message?.sender_ecdh_public_key_jwk).toBeTruthy()
     const messageId = sent.body.message.id as string
+    const [stored] = await db
+      .select({ burnAt: messages.burnAt, burnDurationSecs: messages.burnDurationSecs })
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1)
+    expect(stored?.burnAt).toBeNull()
+    expect(stored?.burnDurationSecs).toBe(30)
 
     const listForPeer = await request(app!.server)
       .get(`/api/messages/${chat.id}`)
@@ -121,6 +129,7 @@ describe('messages flow routes', () => {
     expect(search.body?.error).toBe('SEARCH_SERVER_SIDE_REMOVED')
     void messageId
 
+    await db.delete(messageDeliveries).where(eq(messageDeliveries.messageId, messageId))
     await db.delete(messages).where(and(eq(messages.chatId, chat.id), inArray(messages.senderId, [u1.id, u2.id])))
     await db.delete(devices).where(inArray(devices.id, [u1Device.id, u2Device.id]))
     await db.delete(chatMembers).where(eq(chatMembers.chatId, chat.id))

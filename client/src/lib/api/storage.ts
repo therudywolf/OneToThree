@@ -74,3 +74,43 @@ export async function getDownloadUrl(filePath: string): Promise<string> {
   }
   return data.downloadUrl
 }
+
+export async function postRestoreUrl(body: {
+  filePath: string
+  fileType: string
+  fileSize: number
+}): Promise<UploadUrlResponse> {
+  const res = await fetchWithTimeout(`${API_URL}/storage/restore-url`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json().catch(() => ({}))) as UploadUrlResponse & {
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'RESTORE_URL_FAILED')
+  }
+  if (!data.uploadUrl || !data.filePath) {
+    throw new Error('INVALID_RESTORE_URL_RESPONSE')
+  }
+  return data
+}
+
+export async function postRestoreComplete(body: {
+  filePath: string
+  fileType: string
+  fileSize: number
+}): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/storage/restore-complete`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'RESTORE_COMPLETE_FAILED')
+  }
+}

@@ -92,6 +92,8 @@ body {
   transition:
     background-color var(--motion-base) ease,
     color var(--motion-fast) ease;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
 }
 
 /* ===== CHROMATIC PROTOCOLS ===== */
@@ -891,6 +893,35 @@ textarea {
   height: var(--p13-visual-height, var(--p13-app-height, 100dvh));
   max-height: var(--p13-visual-height, var(--p13-app-height, 100dvh));
   min-height: 0;
+}
+@supports (height: 100svh) {
+  :root {
+    --p13-small-viewport-height: 100svh;
+  }
+}
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .p13-app-shell {
+    height: min(
+      var(--p13-visual-height, var(--p13-app-height, 100dvh)),
+      var(--p13-small-viewport-height, 100dvh)
+    );
+    max-height: min(
+      var(--p13-visual-height, var(--p13-app-height, 100dvh)),
+      var(--p13-small-viewport-height, 100dvh)
+    );
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  [data-keyboard-open="true"] .p13-mobile-bottom-nav {
+    display: none;
+  }
 }
 [data-shell="terminal"] .chat-safe-shell::before {
   content: '';

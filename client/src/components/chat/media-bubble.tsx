@@ -7,7 +7,7 @@ import {
   decryptBinary,
   importAesGcm256RawKey,
 } from '@/lib/crypto'
-import { getDownloadUrl, MediaEvictedError } from '@/lib/api/storage'
+import { getDownloadUrl, MediaEvictedError, postRestoreComplete, postRestoreUrl } from '@/lib/api/storage'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { MediaEvictedPlaceholder } from '@/components/chat/media-evicted-placeholder'
 import { useTranslation } from '@/hooks/use-translation'
@@ -15,6 +15,34 @@ import { classifyAttachment, parseAlbumEnvelope, parseAttachmentEnvelope } from 
 import type { DecryptedMessage } from '@/types/chat'
 import { SkipBack, SkipForward, FileText, Download } from 'lucide-react'
 import { AlbumBubble } from '@/components/chat/album-bubble'
+
+async function encryptWithExistingIv(
+  key: CryptoKey,
+  plain: ArrayBuffer,
+  ivBase64: string
+): Promise<ArrayBuffer> {
+  const iv = new Uint8Array(base64ToArrayBuffer(ivBase64))
+  return crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource },
+    key,
+    plain as BufferSource
+  )
+}
+
+async function putRestoredMedia(
+  uploadUrl: string,
+  mimeType: string,
+  payload: ArrayBuffer
+): Promise<void> {
+  const res = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': mimeType },
+    body: payload,
+  })
+  if (!res.ok) {
+    throw new Error(`RESTORE_PUT_${res.status}`)
+  }
+}
 
 function mimeFromPathAndType(
   mediaPath: string,
@@ -131,9 +159,12 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const cachedBlobRef = useRef<Blob | null>(null)
   const [videoNoteExpanded, setVideoNoteExpanded] = useState(false)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [visible, setVisible] = useState(false)
+  const [serverEvicted, setServerEvicted] = useState(false)
+  const [restoring, setRestoring] = useState(false)
 
   const barHeights = useMemo(() => barHeightsFromId(message.id, 28), [message.id])
 
@@ -160,13 +191,24 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     if (!isPublicMedia && !sharedKey) return
     setLoadErr(false)
     setEvicted(false)
+    setServerEvicted(false)
     setObjectUrl(null)
     try {
       const cached = await getCachedMedia(message.id)
       if (cached?.blob) {
+        cachedBlobRef.current = cached.blob
         const url = URL.createObjectURL(cached.blob)
         blobUrlRef.current = url
         setObjectUrl(url)
+        try {
+          await getDownloadUrl(mediaPath)
+        } catch (err) {
+          if (err instanceof MediaEvictedError) {
+            setServerEvicted(true)
+            return
+          }
+          throw err
+        }
         return
       }
 
@@ -222,6 +264,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
       const mime = rawMime.split(';')[0]
       const blob = new Blob([plain], { type: mime })
       await setCachedMedia(message.id, blob, mime)
+      cachedBlobRef.current = blob
       const url = URL.createObjectURL(blob)
       blobUrlRef.current = url
       setObjectUrl(url)
@@ -229,6 +272,50 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
       setLoadErr(true)
     }
   }, [mediaPath, mediaIv, sharedKey, mediaType, message.id, envelope, isPublicMedia])
+
+  const restoreToServer = useCallback(async () => {
+    if (!mediaPath || !mediaIv || restoring) return
+    const cachedBlob = cachedBlobRef.current
+    if (!cachedBlob) return
+    if (!isPublicMedia && !sharedKey) return
+    setRestoring(true)
+    setLoadErr(false)
+    try {
+      const plain = await cachedBlob.arrayBuffer()
+      let payload: ArrayBuffer
+      if (isPublicMedia) {
+        payload = plain
+      } else if (envelope) {
+        const wrapPlain = await decryptBinary(
+          sharedKey!,
+          base64ToArrayBuffer(envelope.wrapCt),
+          envelope.wrapIv
+        )
+        const fileKey = await importAesGcm256RawKey(wrapPlain, ['encrypt'])
+        payload = await encryptWithExistingIv(fileKey, plain, mediaIv)
+      } else {
+        payload = await encryptWithExistingIv(sharedKey!, plain, mediaIv)
+      }
+
+      const restore = await postRestoreUrl({
+        filePath: mediaPath,
+        fileType: effectiveMime,
+        fileSize: payload.byteLength,
+      })
+      await putRestoredMedia(restore.uploadUrl, effectiveMime, payload)
+      await postRestoreComplete({
+        filePath: mediaPath,
+        fileType: effectiveMime,
+        fileSize: payload.byteLength,
+      })
+      setServerEvicted(false)
+      setEvicted(false)
+    } catch {
+      setLoadErr(true)
+    } finally {
+      setRestoring(false)
+    }
+  }, [effectiveMime, envelope, isPublicMedia, mediaIv, mediaPath, restoring, sharedKey])
 
   useEffect(() => {
     if (!visible || !mediaPath || !mediaIv) return
@@ -318,6 +405,16 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
 
   const displayName = envelope?.fileName ?? mediaPath.split('/').pop() ?? 'FILE'
   const displaySize = envelope?.fileSize
+  const restoreControl = serverEvicted ? (
+    <button
+      type="button"
+      onClick={() => void restoreToServer()}
+      disabled={restoring}
+      className="p13-media-action-btn flex min-h-8 items-center gap-1 px-2 font-mono text-[9px] uppercase tracking-widest disabled:opacity-50"
+    >
+      {restoring ? t('media.restoring') : t('media.restoreServer')}
+    </button>
+  ) : null
 
   if (isImage) {
     return (
@@ -348,7 +445,8 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             style={{ opacity: 0.01, transition: 'opacity 0.2s ease' }}
           />
         </div>
-        <div className="mt-2 flex justify-end">
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          {restoreControl}
           <a
             href={objectUrl}
             download={displayName}
@@ -497,6 +595,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             />
           </div>
         </div>
+        {restoreControl ? <div className="mt-2 flex justify-end">{restoreControl}</div> : null}
         {caption ? <MediaCaption text={caption} /> : null}
       </div>
     )
@@ -625,6 +724,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               ) : null}
             </div>
           </motion.div>
+          {restoreControl ? <div className="mt-2 flex justify-end">{restoreControl}</div> : null}
           {caption ? <MediaCaption text={caption} /> : null}
         </div>
       )
@@ -652,7 +752,8 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             })}
           />
         </div>
-        <div className="mt-2 flex justify-end">
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          {restoreControl}
           <a
             href={objectUrl}
             download={displayName}
@@ -695,6 +796,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
           </a>
         </div>
       </div>
+      {restoreControl ? <div className="mt-2 flex justify-end">{restoreControl}</div> : null}
       {caption ? <MediaCaption text={caption} /> : null}
     </div>
   )

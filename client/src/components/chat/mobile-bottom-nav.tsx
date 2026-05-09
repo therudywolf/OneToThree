@@ -2,6 +2,7 @@
 
 import { MessageCircle, Users, Phone, Settings } from 'lucide-react'
 import { useThemeStore } from '@/store/themeStore'
+import { useTranslation } from '@/hooks/use-translation'
 
 export type MobileNavTab = 'chats' | 'contacts' | 'calls' | 'settings'
 
@@ -13,17 +14,18 @@ interface MobileBottomNavProps {
 
 export function MobileBottomNav({ activeTab, onTabChange, unreadCount = 0 }: MobileBottomNavProps) {
   const isMd3 = useThemeStore((s) => s.shellMode) === 'md3'
+  const { t } = useTranslation()
 
   const tabs: Array<{ id: MobileNavTab; icon: typeof MessageCircle; label: string; badge?: number }> = [
-    { id: 'chats', icon: MessageCircle, label: 'Chats', badge: unreadCount },
-    { id: 'contacts', icon: Users, label: 'Contacts' },
-    { id: 'calls', icon: Phone, label: 'Calls' },
-    { id: 'settings', icon: Settings, label: 'Settings' },
+    { id: 'chats', icon: MessageCircle, label: t('mobileNav.chats'), badge: unreadCount },
+    { id: 'contacts', icon: Users, label: t('mobileNav.contacts') },
+    { id: 'calls', icon: Phone, label: t('mobileNav.calls') },
+    { id: 'settings', icon: Settings, label: t('mobileNav.settings') },
   ]
 
   return (
     <nav
-      className={`md:hidden flex shrink-0 items-center justify-around border-t pb-[env(safe-area-inset-bottom)] ${
+      className={`p13-mobile-bottom-nav md:hidden flex shrink-0 items-center justify-around border-t pb-[max(0.25rem,env(safe-area-inset-bottom))] ${
         isMd3
           ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]'
           : 'border-neon-cyan/20 bg-void'
@@ -39,7 +41,7 @@ export function MobileBottomNav({ activeTab, onTabChange, unreadCount = 0 }: Mob
             aria-label={label}
             aria-current={isActive ? 'page' : undefined}
             onClick={() => onTabChange(id)}
-            className={`relative flex flex-col items-center gap-0.5 px-4 py-2 text-[10px] transition-colors min-h-[44px] min-w-[44px] touch-manipulation ${
+            className={`relative flex min-h-[48px] min-w-[44px] flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[10px] transition-colors touch-manipulation ${
               isActive
                 ? isMd3
                   ? 'text-[var(--primary)]'
@@ -58,7 +60,7 @@ export function MobileBottomNav({ activeTab, onTabChange, unreadCount = 0 }: Mob
               className={`${
                 isMd3
                   ? 'text-[10px]'
-                  : 'font-mono text-[9px] uppercase tracking-[0.12em]'
+                  : 'font-mono text-[9px] uppercase tracking-[0.08em]'
               } ${isActive && isMd3 ? 'font-semibold' : ''}`}
             >
               {label}

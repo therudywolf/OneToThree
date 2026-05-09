@@ -291,6 +291,14 @@ const en = {
   'media.prevVoice': 'Previous voice message',
   'media.nextVoice': 'Next voice message',
   'media.pendingSync': 'Sending when online...',
+  'media.evictedPlaceholder': 'Media cleaned by the server. Restore it from the local cache.',
+  'media.restoreServer': 'Restore on server',
+  'media.restoring': 'Restoring...',
+
+  'mobileNav.chats': 'Chats',
+  'mobileNav.contacts': 'Contacts',
+  'mobileNav.calls': 'Calls',
+  'mobileNav.settings': 'Settings',
 
   'emoji.pickerToggle': 'Emoji',
   'emoji.pickerAria': 'Insert emoji',

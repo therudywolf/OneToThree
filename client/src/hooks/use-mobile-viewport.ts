@@ -18,7 +18,10 @@ function computeVisibleHeightPx(): number {
   if (typeof window === 'undefined') return 0
   const vv = window.visualViewport
   const height = vv?.height ?? window.innerHeight
-  return Math.max(320, Math.round(height))
+  const viewportHeight = Math.max(320, Math.round(height))
+  const layoutHeight = Math.max(320, window.innerHeight || viewportHeight)
+  if (isTextEntryFocused()) return viewportHeight
+  return Math.max(viewportHeight, layoutHeight)
 }
 
 function computeViewportTopPx(): number {
@@ -71,7 +74,8 @@ export function useMobileViewport() {
       window.setTimeout(applyViewportVars, 200)
     }
     const onFocus = () => applyViewportVars()
-    const onPageShow = () => applyViewportVars()
+    const onBlur = () => window.setTimeout(applyViewportVars, 80)
+    const onPageShow = () => window.setTimeout(applyViewportVars, 0)
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
         applyViewportVars()
@@ -82,11 +86,12 @@ export function useMobileViewport() {
     window.addEventListener('resize', onResize)
     window.addEventListener('orientationchange', onOrientation)
     window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
     window.addEventListener('pageshow', onPageShow)
     window.visualViewport?.addEventListener('resize', onResize)
     window.visualViewport?.addEventListener('scroll', onResize)
     document.addEventListener('focusin', onResize)
-    document.addEventListener('focusout', onResize)
+    document.addEventListener('focusout', onBlur)
     document.addEventListener('visibilitychange', onVisibility)
 
     return () => {
@@ -94,11 +99,12 @@ export function useMobileViewport() {
       window.removeEventListener('resize', onResize)
       window.removeEventListener('orientationchange', onOrientation)
       window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
       window.removeEventListener('pageshow', onPageShow)
       window.visualViewport?.removeEventListener('resize', onResize)
       window.visualViewport?.removeEventListener('scroll', onResize)
       document.removeEventListener('focusin', onResize)
-      document.removeEventListener('focusout', onResize)
+      document.removeEventListener('focusout', onBlur)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])

@@ -566,8 +566,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       const overflowDropped = Math.max(0, raw.length - ALBUM_HARD_CAP)
       if (overflowDropped > 0) {
         toastError(
-          `Max ${ALBUM_HARD_CAP} files per album. ${overflowDropped} dropped.`,
-          { title: 'Media' }
+          t('media.albumOverflowDropped')
+            .replace('{max}', String(ALBUM_HARD_CAP))
+            .replace('{count}', String(overflowDropped)),
+          { title: t('media.title') }
         )
       }
       const accepted: QueuedFile[] = []

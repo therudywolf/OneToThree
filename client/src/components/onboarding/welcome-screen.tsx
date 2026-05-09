@@ -299,9 +299,24 @@ function ShellStep({
   isTerminal: boolean
 }) {
   const styleOptions: Array<{ id: WelcomeStyleId; label: string; hint: string; previewKind: 'terminal' | 'md3' | 'retro' }> = [
-    { id: 'terminal', label: 'TERMINAL', hint: 'Monospace / CRT / sharp corners', previewKind: 'terminal' },
-    { id: 'md3', label: 'MATERIAL 3', hint: 'Google Sans / rounded / flat', previewKind: 'md3' },
-    { id: 'retro', label: 'RETRO', hint: 'Classic amber monitor / vintage UI', previewKind: 'retro' },
+    {
+      id: 'terminal',
+      label: t('settings.appearanceShellTerminal'),
+      hint: t('settings.appearanceShellTerminalHint'),
+      previewKind: 'terminal',
+    },
+    {
+      id: 'md3',
+      label: t('settings.appearanceShellMd3'),
+      hint: t('settings.appearanceShellMd3Hint'),
+      previewKind: 'md3',
+    },
+    {
+      id: 'retro',
+      label: t('settings.appearanceShellRetro'),
+      hint: t('settings.appearanceShellRetroHint'),
+      previewKind: 'retro',
+    },
   ]
 
   return (

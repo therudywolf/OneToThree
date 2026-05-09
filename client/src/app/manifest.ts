@@ -13,7 +13,7 @@ export default function manifest(): MetadataRoute.Manifest {
     id: 'p13_core_node',
     name: 'OneToThree',
     short_name: 'OneToThree',
-    description: 'Clinical-grade zero-trust E2E transmission node',
+    description: 'Защищенный E2E-мессенджер OneToThree',
     lang: 'ru',
     dir: 'ltr',
     start_url: '/?source=pwa',
@@ -30,18 +30,18 @@ export default function manifest(): MetadataRoute.Manifest {
     },
     shortcuts: [
       {
-        name: 'New chat',
-        short_name: 'Chat',
-        description: 'Open the main chat surface',
+        name: 'Новый чат',
+        short_name: 'Чат',
+        description: 'Открыть основной экран чатов',
         url: '/?action=new-chat',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
         ],
       },
       {
-        name: 'My devices',
-        short_name: 'Devices',
-        description: 'Linked devices management',
+        name: 'Мои устройства',
+        short_name: 'Устройства',
+        description: 'Управление привязанными устройствами',
         url: '/?panel=devices',
         icons: [
           { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },

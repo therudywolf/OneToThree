@@ -1138,7 +1138,7 @@ export function ChatApp({
           <button
             type="button"
             className="fixed inset-0 z-40 touch-none bg-void/75 md:hidden"
-            aria-label="Close channel list"
+            aria-label={t('sidebar.closeChannelList')}
             onClick={closeMobileOverlays}
           />
         ) : null}
@@ -1187,7 +1187,7 @@ export function ChatApp({
           }`}
           onPointerDown={handleSidebarResizeStart}
           onDoubleClick={toggleSidebarCollapsed}
-          title={sidebarCollapsed ? 'Drag or double-click to expand sidebar.' : 'Drag to resize sidebar. Double-click to collapse.'}
+          title={sidebarCollapsed ? t('sidebar.resizeExpandHint') : t('sidebar.resizeCollapseHint')}
           data-dragging={sidebarResizeActive ? 'true' : 'false'}
         />
         <div

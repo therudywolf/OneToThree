@@ -187,6 +187,121 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ reports: rows })
   })
 
+  /**
+   * GET /api/admin/reports/:id/context — Sprint A1-2.
+   * Bundles everything the moderator needs to triage one report:
+   *   - report itself + reporter / reported usernames and ban state
+   *   - count of other open reports against the same target
+   *   - last 20 login events by the target (IP / outcome / UA)
+   */
+  app.get('/reports/:id/context', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+
+    const params = z.object({ id: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const [row] = await db
+      .select({
+        id: reports.id,
+        reporter_id: reports.reporterId,
+        reported_id: reports.reportedId,
+        reason: reports.reason,
+        status: reports.status,
+        created_at: reports.createdAt,
+      })
+      .from(reports)
+      .where(eq(reports.id, params.data.id))
+      .limit(1)
+    if (!row) return reply.status(404).send({ error: 'REPORT_NOT_FOUND' })
+
+    const [reporter] = await db
+      .select({ username: users.username, banned: users.isBanned })
+      .from(users)
+      .where(eq(users.id, row.reporter_id))
+      .limit(1)
+    const [reported] = await db
+      .select({ username: users.username, banned: users.isBanned, role: users.role })
+      .from(users)
+      .where(eq(users.id, row.reported_id))
+      .limit(1)
+
+    const [openCount] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(reports)
+      .where(
+        and(
+          eq(reports.reportedId, row.reported_id),
+          eq(reports.status, 'open')
+        )
+      )
+
+    const recentLogins = await db
+      .select({
+        outcome: loginEvents.outcome,
+        ip_address: loginEvents.ipAddress,
+        user_agent: loginEvents.userAgent,
+        created_at: loginEvents.createdAt,
+      })
+      .from(loginEvents)
+      .where(eq(loginEvents.userId, row.reported_id))
+      .orderBy(desc(loginEvents.createdAt))
+      .limit(20)
+
+    return reply.send({
+      report: row,
+      reporter: reporter ?? null,
+      reported: reported ?? null,
+      open_reports_against_reported: Number(openCount?.c ?? 0),
+      recent_logins_by_reported: recentLogins,
+    })
+  })
+
+  /**
+   * PATCH /api/admin/reports/:id — Sprint A1-2.
+   * Close a report (status='closed') and optionally ban the reported
+   * user in the same call. Returns the updated row.
+   */
+  app.patch('/reports/:id', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+
+    const params = z.object({ id: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const body = z
+      .object({
+        status: z.enum(['open', 'closed']).optional(),
+        ban_reported: z.boolean().optional(),
+      })
+      .safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const [updated] = await db
+      .update(reports)
+      .set(body.data.status ? { status: body.data.status } : {})
+      .where(eq(reports.id, params.data.id))
+      .returning({
+        id: reports.id,
+        reporter_id: reports.reporterId,
+        reported_id: reports.reportedId,
+        reason: reports.reason,
+        status: reports.status,
+        created_at: reports.createdAt,
+      })
+    if (!updated) return reply.status(404).send({ error: 'REPORT_NOT_FOUND' })
+
+    let banApplied = false
+    if (body.data.ban_reported) {
+      if (updated.reported_id === admin.id) {
+        return reply.status(400).send({ error: 'CANNOT_BAN_SELF' })
+      }
+      await db.update(users).set({ isBanned: true }).where(eq(users.id, updated.reported_id))
+      banApplied = true
+    }
+
+    return reply.send({ report: updated, ban_applied: banApplied })
+  })
+
   /** GET /api/admin/users/:id/devices — all devices for a user */
   app.get('/users/:id/devices', async (request, reply) => {
     const admin = await requireAdmin(request, reply)

@@ -7,6 +7,8 @@ import { useAuth } from '@/components/auth/auth-provider'
 import {
   adminLoginEventsCsvUrl,
   deleteAdminDevice,
+  fetchAdminReportContext,
+  patchAdminReport,
   fetchAdminKpi,
   fetchAdminLoginEvents,
   fetchAdminMediaQuota,
@@ -25,6 +27,7 @@ import {
   type AdminLoginEventFilters,
   type AdminLoginEventRow,
   type AdminMediaQuotaResponse,
+  type AdminReportContext,
   type AdminReportRow,
   type AdminStorageUserRow,
   type AdminSystemStats,
@@ -211,6 +214,7 @@ export default function AdminPage() {
   const [errorLog, setErrorLog] = useState<string | null>(null)
   const [lockId, setLockId] = useState<string | null>(null)
   const [detailNode, setDetailNode] = useState<AdminUserRow | null>(null)
+  const [activeReportId, setActiveReportId] = useState<string | null>(null)
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
@@ -327,6 +331,17 @@ export default function AdminPage() {
           onExpunge={expungeNode}
           isSelf={detailNode.id === user.id}
           lockId={lockId}
+        />
+      )}
+      {activeReportId && (
+        <ReportInvestigationModal
+          reportId={activeReportId}
+          onClose={() => setActiveReportId(null)}
+          onResolved={(updated) => {
+            setIncidents((prev) => prev.map((r) => (r.id === updated.id ? updated : r)))
+            setActiveReportId(null)
+          }}
+          onError={(msg) => setErrorLog(msg)}
         />
       )}
 
@@ -547,13 +562,17 @@ export default function AdminPage() {
                       </td>
                     </tr>
                   ) : incidents.map(inc => (
-                    <tr key={inc.id} className="text-[9px] hover:bg-surface/[0.03]">
+                    <tr
+                      key={inc.id}
+                      className="cursor-pointer text-[9px] hover:bg-surface/[0.03]"
+                      onClick={() => setActiveReportId(inc.id)}
+                    >
                       <td className="px-4 py-3 text-neon-red font-bold">{inc.id.slice(0, 8)}</td>
                       <td className="px-4 py-3 text-text-muted">{inc.reported_id.slice(0, 8)}…</td>
                       <td className="px-4 py-3">
                         <span className={`uppercase ${inc.status === 'open' ? 'text-neon-amber' : 'text-text-muted/50'}`}>{inc.status}</span>
                       </td>
-                      <td className="px-4 py-3 max-w-xs truncate text-text-muted italic">"{inc.reason}"</td>
+                      <td className="px-4 py-3 max-w-xs truncate text-text-muted italic">&quot;{inc.reason}&quot;</td>
                       <td className="px-4 py-3 text-text-muted/50">{fmtDate(inc.created_at)}</td>
                     </tr>
                   ))}
@@ -621,6 +640,189 @@ export default function AdminPage() {
           SYS.ADMIN // NODAL_CONTROL_V5.0 // ONETOTHREE
         </p>
       </footer>
+    </div>
+  )
+}
+
+/**
+ * Sprint A1-2 — report investigation modal.
+ * One-click triage: shows context (reporter, reported, ban state, history of
+ * other open reports against same target, last 20 logins), then close /
+ * close+ban actions hit the new PATCH endpoint.
+ */
+function ReportInvestigationModal({
+  reportId,
+  onClose,
+  onResolved,
+  onError,
+}: {
+  reportId: string
+  onClose: () => void
+  onResolved: (report: AdminReportRow) => void
+  onError: (msg: string) => void
+}) {
+  const [ctx, setCtx] = useState<AdminReportContext | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setCtx(await fetchAdminReportContext(reportId))
+      } catch (err) {
+        onError(err instanceof Error ? err.message : 'CONTEXT_FAILED')
+        onClose()
+      }
+    })()
+  }, [reportId, onClose, onError])
+
+  const resolve = useCallback(
+    async (banReported: boolean) => {
+      setBusy(true)
+      try {
+        const result = await patchAdminReport(reportId, {
+          status: 'closed',
+          banReported,
+        })
+        onResolved(result.report)
+      } catch (err) {
+        onError(err instanceof Error ? err.message : 'PATCH_FAILED')
+      } finally {
+        setBusy(false)
+      }
+    },
+    [reportId, onResolved, onError]
+  )
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border border-neon-cyan/30 bg-void p-4 text-text-secondary"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-[11px] uppercase tracking-[0.3em] text-neon-cyan">
+            :: INCIDENT_INVESTIGATION
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="border border-border-strong px-2 py-1 text-[9px] uppercase text-text-muted hover:border-neon-red hover:text-neon-red"
+          >
+            [ CLOSE ]
+          </button>
+        </div>
+
+        {!ctx ? (
+          <div className="text-[10px] uppercase tracking-widest text-text-muted/60">
+            [ LOADING_CONTEXT... ]
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="border border-border-strong p-3">
+              <div className="text-[8px] uppercase text-text-muted/60">REASON</div>
+              <p className="mt-1 italic text-text-secondary">&quot;{ctx.report.reason}&quot;</p>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                <div>
+                  <div className="text-text-muted/60 uppercase">REPORTER</div>
+                  <div className="text-text-secondary">
+                    {ctx.reporter?.username ?? ctx.report.reporter_id.slice(0, 8)}
+                    {ctx.reporter?.banned ? ' (banned)' : ''}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-text-muted/60 uppercase">REPORTED</div>
+                  <div className="text-text-secondary">
+                    {ctx.reported?.username ?? ctx.report.reported_id.slice(0, 8)}
+                    {ctx.reported?.banned ? ' (banned)' : ''}
+                    {ctx.reported?.role === 'admin' ? ' [admin]' : ''}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-text-muted/60 uppercase">STATUS</div>
+                  <div
+                    className={
+                      ctx.report.status === 'open'
+                        ? 'text-neon-amber uppercase'
+                        : 'text-text-muted/50 uppercase'
+                    }
+                  >
+                    {ctx.report.status}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-text-muted/60 uppercase">OTHER_OPEN_VS_TARGET</div>
+                  <div
+                    className={
+                      ctx.open_reports_against_reported > 1
+                        ? 'text-neon-red'
+                        : 'text-text-secondary'
+                    }
+                  >
+                    {ctx.open_reports_against_reported}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-border-strong p-3">
+              <div className="mb-2 text-[10px] uppercase tracking-widest text-text-muted/70">
+                Recent logins by reported (last 20)
+              </div>
+              {ctx.recent_logins_by_reported.length === 0 ? (
+                <div className="text-[10px] text-text-muted/40">NO_EVENTS</div>
+              ) : (
+                <div className="max-h-48 overflow-y-auto text-[10px]">
+                  <table className="w-full">
+                    <tbody>
+                      {ctx.recent_logins_by_reported.map((ev, i) => (
+                        <tr key={i} className="border-b border-border-strong/40">
+                          <td className={`py-1 pr-2 uppercase ${outcomeColor(ev.outcome)}`}>
+                            {ev.outcome}
+                          </td>
+                          <td className="py-1 pr-2 font-mono text-text-muted">
+                            {ev.ip_address ?? '—'}
+                          </td>
+                          <td className="py-1 pr-2 text-text-muted/50">
+                            {fmtDate(ev.created_at)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {ctx.report.status === 'open' ? (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void resolve(false)}
+                  disabled={busy}
+                  className="border border-neon-cyan/60 px-3 py-1 text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-50"
+                >
+                  [ CLOSE_REPORT ]
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void resolve(true)}
+                  disabled={busy || !!ctx.reported?.banned}
+                  className="border border-neon-red/60 px-3 py-1 text-[9px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-30"
+                >
+                  [ CLOSE + BAN_TARGET ]
+                </button>
+              </div>
+            ) : (
+              <div className="text-[10px] uppercase tracking-widest text-text-muted/60">
+                Report already closed.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth/auth-provider'
 import {
   adminLoginEventsCsvUrl,
   deleteAdminDevice,
+  fetchAdminKpi,
   fetchAdminLoginEvents,
   fetchAdminMediaQuota,
   fetchAdminReports,
@@ -20,6 +21,7 @@ import {
   postAdminMediaEvict,
   postAdminPurgeUser,
   type AdminDeviceRow,
+  type AdminKpiResponse,
   type AdminLoginEventFilters,
   type AdminLoginEventRow,
   type AdminMediaQuotaResponse,
@@ -476,6 +478,7 @@ export default function AdminPage() {
         {/* SYSTEM TAB */}
         {tab === 'system' && (
           <div className="space-y-6">
+            <KpiDashboard onError={(msg) => setErrorLog(msg)} />
             <h2 className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan">:: RESOURCE_TELEMETRY</h2>
             {sysPulse ? (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -618,6 +621,63 @@ export default function AdminPage() {
           SYS.ADMIN // NODAL_CONTROL_V5.0 // ONETOTHREE
         </p>
       </footer>
+    </div>
+  )
+}
+
+/**
+ * Sprint A1-4 — top-of-SYSTEM KPI strip. 24h activity, 7d growth,
+ * attachments and login health. Pulled from /api/admin/kpi.
+ */
+function KpiDashboard({ onError }: { onError: (msg: string) => void }) {
+  const [kpi, setKpi] = useState<AdminKpiResponse | null>(null)
+  useEffect(() => {
+    void (async () => {
+      try {
+        setKpi(await fetchAdminKpi())
+      } catch (err) {
+        onError(err instanceof Error ? err.message : 'KPI_LOAD_FAILED')
+      }
+    })()
+  }, [onError])
+  if (!kpi) return null
+  const failPct =
+    kpi.successful_logins_24h + kpi.failed_logins_24h > 0
+      ? Math.round(
+          (kpi.failed_logins_24h /
+            (kpi.successful_logins_24h + kpi.failed_logins_24h)) *
+            100
+        )
+      : 0
+  const card = (label: string, value: string | number, sub?: string, danger?: boolean) => (
+    <div
+      className={`border p-4 ${danger ? 'border-neon-red bg-neon-red/5' : 'border-border-strong'}`}
+    >
+      <p className="text-[8px] uppercase text-text-muted/60">{label}</p>
+      <p className={`text-2xl font-bold ${danger ? 'text-neon-red' : 'text-text-primary'}`}>
+        {value}
+      </p>
+      {sub && <p className="mt-1 text-[9px] text-text-muted">{sub}</p>}
+    </div>
+  )
+  return (
+    <div className="space-y-3">
+      <h2 className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan">:: KPI_24H</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {card('MESSAGES_24H', kpi.messages_24h, `${kpi.messages_7d} / 7d`)}
+        {card('ACTIVE_USERS_24H', kpi.active_users_24h, `${kpi.new_users_7d} new / 7d`)}
+        {card(
+          'ATTACHMENTS',
+          kpi.attachments_total,
+          `${kpi.attachments_evicted_total} evicted`
+        )}
+        {card(
+          'LOGIN_FAIL_RATE_24H',
+          `${failPct}%`,
+          `${kpi.failed_logins_24h} fail / ${kpi.successful_logins_24h} ok`,
+          failPct >= 30
+        )}
+      </div>
     </div>
   )
 }

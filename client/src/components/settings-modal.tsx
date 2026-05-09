@@ -171,9 +171,21 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     label: string
     hint: string
   }> = [
-    { id: 'terminal', label: 'CYBERPUNK', hint: 'Monospace / CRT / sharp corners' },
-    { id: 'md3', label: 'MATERIAL 3', hint: 'Google Sans / rounded / flat' },
-    { id: 'retro', label: 'RETRO', hint: 'Classic amber monitor / vintage UI' },
+    {
+      id: 'terminal',
+      label: t('settings.appearanceShellTerminal'),
+      hint: t('settings.appearanceShellTerminalHint'),
+    },
+    {
+      id: 'md3',
+      label: t('settings.appearanceShellMd3'),
+      hint: t('settings.appearanceShellMd3Hint'),
+    },
+    {
+      id: 'retro',
+      label: t('settings.appearanceShellRetro'),
+      hint: t('settings.appearanceShellRetroHint'),
+    },
   ]
   const platformProfiles: ReadonlyArray<{
     id: PlatformProfileId

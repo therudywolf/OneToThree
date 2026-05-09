@@ -20,7 +20,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'OneToThree',
-  description: 'Clinical-grade zero-trust E2E transmission node',
+  description: 'Защищенный E2E-мессенджер OneToThree',
   manifest: '/manifest.webmanifest',
   icons: {
     icon: [
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: 'onetothree',
+    title: 'OneToThree',
     statusBarStyle: 'black-translucent',
   },
   other: {
@@ -80,6 +80,10 @@ const themeInitScript = `
     var shell = state.shellMode;
     var platformProfile = state.platformProfile || inferPlatformProfile();
     var motion = state.motionMode;
+    var localeRaw = localStorage.getItem('fm_linguistic_config');
+    var localeCfg = localeRaw ? JSON.parse(localeRaw) : null;
+    var localeState = localeCfg && localeCfg.state ? localeCfg.state : {};
+    var locale = localeState.module === 'en' ? 'en' : 'ru';
     var validThemes = ['default','cyberpunk2077','retro','matrix','dracula','midnight','synthwave','hacker','pixel','nord','md3dark','md3light'];
     var validShells = ['terminal','md3'];
     var validPlatformProfiles = ['desktop-tg','mobile-tg-ios'];
@@ -101,6 +105,7 @@ const themeInitScript = `
     if (platformProfile && validPlatformProfiles.indexOf(platformProfile) !== -1) {
       document.documentElement.setAttribute('data-platform-profile', platformProfile);
     }
+    document.documentElement.setAttribute('lang', locale);
   } catch(e) {}
 })();
 
@@ -137,7 +142,7 @@ export default async function RootLayout({
   const nonce = headersList.get('x-nonce') ?? ''
 
   return (
-    <html lang="en" data-theme="default" data-platform-profile="desktop-tg" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
+    <html lang="ru" data-theme="default" data-platform-profile="desktop-tg" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
       <head>
         {/* CHROMATIC_INIT :: blocking theme bootstrap — must be first in <head> */}
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />

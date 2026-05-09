@@ -272,6 +272,12 @@ const ru = {
   'chat.newChat': 'Новый чат',
   'chat.startChatHint': 'Начните новый чат',
   'chat.attachFile': 'Прикрепить файл',
+  'chat.inbox': 'Входящие',
+  'chat.mentions': 'Упоминания',
+  'chat.lockVault': 'Заблокировать хранилище',
+  'chat.vault': 'Хранилище',
+  'presence.online': 'Онлайн',
+  'presence.offline': 'Офлайн',
 
   // [MEDIA CONTROLS]
   'media.capture': 'Съёмка',

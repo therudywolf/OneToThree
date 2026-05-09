@@ -20,6 +20,7 @@ import { API_URL } from '@/lib/api/auth'
 import { fetchWithTimeout } from '@/lib/api/fetch'
 import { deriveSharedSecret, encryptMessage, decryptMessage } from './crypto'
 import { getCachedPeerPublicKey, getCachedSharedSecretHkdf } from './shared-secret-cache'
+import { encryptFanoutInWorker } from './crypto-batch-worker'
 
 export type DeviceSlot = {
   device_id: string
@@ -88,6 +89,22 @@ export async function encryptFanoutDetailed(
   targetDevices: DeviceSlot[],
   plaintext: string
 ): Promise<FanoutBuildResult> {
+  if (targetDevices.length >= 2) {
+    try {
+      const workerResult = await encryptFanoutInWorker(senderPrivateKey, targetDevices, plaintext)
+      if (workerResult.slots.length > 0 || targetDevices.length === 0) {
+        return {
+          slots: workerResult.slots,
+          failedDeviceIds: workerResult.failedDeviceIds,
+          attemptedDeviceIds: targetDevices.map((dev) => dev.device_id),
+        }
+      }
+    } catch {
+      // Fall through to the main-thread path when workers are unavailable
+      // (private browsing, older WebViews, or structured-clone restrictions).
+    }
+  }
+
   const results = await Promise.allSettled(
     targetDevices.map(async (dev) => {
       const peerPub = await getCachedPeerPublicKey(dev.ecdh_public_key)
@@ -319,7 +336,7 @@ export async function decryptFanoutSlot(
     )
     return decryptMessage(sharedKey, ciphertext, actualIv)
   }
-  // Legacy v1: raw ECDH shared secret (backward compat for existing messages)
+  // Legacy slots no longer use raw ECDH; deriveSharedSecret is the HKDF v2 alias.
   const sharedKey = await deriveSharedSecret(receiverPrivateKey, senderPub)
   return decryptMessage(sharedKey, ciphertext, iv)
 }

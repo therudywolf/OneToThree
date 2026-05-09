@@ -268,31 +268,9 @@ export async function importEcdhPrivateKey(jwkString: string): Promise<CryptoKey
 export const importEcdhPrivateKeyNonExtractable = importEcdhPrivateKey
 
 /**
- * Derive a 256-bit AES-GCM shared secret from ECDH (your private key + peer public key).
- *
- * [Stage 1] extractable: false – the derived key is ephemeral and must never
- * leave the JS heap. It is used directly for encrypt/decrypt and then GC'd.
- */
-export async function deriveSharedSecret(
-  privateKey: CryptoKey,
-  publicKey: CryptoKey
-): Promise<CryptoKey> {
-  return getSubtle().deriveKey(
-    { name: 'ECDH', public: publicKey },
-    privateKey,
-    { name: 'AES-GCM', length: AES_GCM_KEY_LENGTH },
-    false,   // ← Stage 1: ephemeral secret, never exported
-    ['encrypt', 'decrypt']
-  )
-}
-
-/**
  * Derive a 256-bit AES-GCM key from ECDH output via HKDF-SHA-256.
  * Complies with NIST SP 800-56C: the raw ECDH shared secret is used only as
  * key material input to HKDF; it never feeds AES-GCM directly.
- *
- * Used by fan-out v2 encryption/decryption.  All other call sites (group key
- * wrapping, etc.) continue to use the legacy deriveSharedSecret().
  *
  * [Stage 1] extractable: false – the derived key is ephemeral.
  */
@@ -339,6 +317,12 @@ export async function deriveSharedSecretHkdf(
     ['encrypt', 'decrypt']
   )
 }
+
+/**
+ * Compatibility export for older call sites. The v1 raw-ECDH AES derivation
+ * has been removed; all shared-secret derivation now goes through HKDF v2.
+ */
+export const deriveSharedSecret = deriveSharedSecretHkdf
 
 /**
  * AES-GCM encrypt UTF-8 text. IV is random per message.

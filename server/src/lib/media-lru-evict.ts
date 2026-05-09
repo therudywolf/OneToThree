@@ -1,7 +1,7 @@
-import { asc, eq, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, sql } from 'drizzle-orm'
 import type { FastifyBaseLogger } from 'fastify'
 import { db } from '../db/index.js'
-import { attachments } from '../db/schema.js'
+import { attachments, users } from '../db/schema.js'
 import {
   createS3Client,
   deleteObjectIfExists,
@@ -50,6 +50,37 @@ export function getHighWatermark(): number {
 
 export function getTargetRatio(): number {
   return envFloat('MEDIA_QUOTA_TARGET_RATIO', DEFAULT_TARGET_RATIO)
+}
+
+/**
+ * Sprint A1-5 — default per-user storage quota when users.storage_quota_bytes
+ * is NULL. 0 / unset means "no per-user cap, only the global pool applies".
+ */
+export function getDefaultUserQuotaBytes(): number {
+  return envInt('MEDIA_QUOTA_PER_USER_BYTES', 0)
+}
+
+/** Live bytes belonging to a single user (orphan + linked, excluding evicted). */
+export async function getUserUsageBytes(userId: string): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<string>`coalesce(sum(${attachments.sizeBytes}), 0)` })
+    .from(attachments)
+    .where(and(eq(attachments.uploaderId, userId), isNull(attachments.evictedAt)))
+  return Number(row?.total ?? 0)
+}
+
+/**
+ * Resolve the effective per-user quota: explicit users.storage_quota_bytes if set,
+ * else MEDIA_QUOTA_PER_USER_BYTES env, else 0 (= no per-user limit).
+ */
+export async function getUserQuotaBytes(userId: string): Promise<number> {
+  const [row] = await db
+    .select({ q: users.storageQuotaBytes })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+  if (row?.q != null && Number.isFinite(Number(row.q))) return Number(row.q)
+  return getDefaultUserQuotaBytes()
 }
 
 /** Sum of `size_bytes` for live (non-evicted) attachments. */

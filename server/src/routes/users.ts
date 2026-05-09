@@ -301,6 +301,26 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
+  /**
+   * Sprint A1-5 — exposes the user's media-storage budget so the client can
+   * pre-warn before the next upload trips USER_QUOTA_EXCEEDED on the server.
+   */
+  app.get('/me/storage-status', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const { getUserQuotaBytes, getUserUsageBytes } = await import('../lib/media-lru-evict.js')
+    const [quota, used] = await Promise.all([
+      getUserQuotaBytes(user.id),
+      getUserUsageBytes(user.id),
+    ])
+    return reply.send({
+      used_bytes: used,
+      quota_bytes: quota,
+      pct_used: quota > 0 ? +(used / quota).toFixed(4) : 0,
+      unlimited: quota === 0,
+    })
+  })
+
   app.get('/me/settings', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

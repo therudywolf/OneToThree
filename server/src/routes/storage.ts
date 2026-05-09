@@ -16,7 +16,11 @@ import {
   presignPutObject,
   rewritePresignedUrlToPublicBase,
 } from '../lib/s3.js'
-import { maybeTriggerEviction } from '../lib/media-lru-evict.js'
+import {
+  getUserQuotaBytes,
+  getUserUsageBytes,
+  maybeTriggerEviction,
+} from '../lib/media-lru-evict.js'
 import {
   categorizeMime,
   categoryLimitBytes,
@@ -149,6 +153,20 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
         limit_bytes: categoryLimit,
         size_bytes: fileSize,
       })
+    }
+
+    // Sprint A1-5 — per-user quota check (0 = unlimited).
+    const userQuota = await getUserQuotaBytes(user.id)
+    if (userQuota > 0) {
+      const used = await getUserUsageBytes(user.id)
+      if (used + fileSize > userQuota) {
+        return reply.status(413).send({
+          error: 'USER_QUOTA_EXCEEDED',
+          quota_bytes: userQuota,
+          used_bytes: used,
+          incoming_bytes: fileSize,
+        })
+      }
     }
 
     const member = await db

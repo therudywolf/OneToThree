@@ -96,10 +96,35 @@ try {
         },
       },
       {
-        // /api/* must NEVER be cached by the SW. Auth (`/auth/me`,
-        // `/auth/challenge`, ...) and every authenticated GET would otherwise
-        // serve a stale 401/200 from a previous session, leaving the UI in a
-        // permanently "not logged in" state right after a successful login.
+        urlPattern: ({ url, request }) =>
+          request.method === 'GET' &&
+          /^\/api\/(users\/[^/]+\/devices|users\/[^/]+\/profile|users\/me\/devices|storage\/avatar-url|stickers|gif)(\/|\?|$)/.test(url.pathname + url.search),
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'p13-readonly-api',
+          cacheableResponse: { statuses: [200] },
+          expiration: {
+            maxEntries: 160,
+            maxAgeSeconds: 5 * 60,
+          },
+        },
+      },
+      {
+        urlPattern: ({ url, request }) =>
+          request.method === 'GET' &&
+          /^\/(chats|avatars|stickers)\//.test(url.pathname),
+        handler: 'CacheFirst',
+        options: {
+          cacheName: 'p13-presigned-media',
+          cacheableResponse: { statuses: [200] },
+          expiration: {
+            maxEntries: 300,
+            maxAgeSeconds: 60 * 60 * 24 * 7,
+          },
+        },
+      },
+      {
+        // Auth, mutations, chat history, and presign endpoints remain network-only.
         urlPattern: /^https?:\/\/[^/]+\/api\//,
         handler: 'NetworkOnly',
       },

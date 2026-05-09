@@ -85,6 +85,13 @@ function isAllowedMimeType(mime: string): boolean {
   return ALLOWED_MIME_PREFIXES.some((prefix) => lower.startsWith(prefix))
 }
 
+function weakDownloadEtag(parts: Array<string | number | Date | null | undefined>): string {
+  const raw = parts
+    .map((part) => (part instanceof Date ? part.toISOString() : String(part ?? '')))
+    .join(':')
+  return `W/"${Buffer.from(raw).toString('base64url')}"`
+}
+
 /**
  * Schema-level outer ceiling — the actual per-category cap is enforced after
  * MIME categorization (see {@link categoryLimitBytes}). This bound is just to
@@ -274,10 +281,24 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     // MEDIA_EVICTED signal — the client renders a placeholder and may offer
     // re-upload from its local IndexedDB cache.
     const [att] = await db
-      .select({ evictedAt: attachments.evictedAt, id: attachments.id })
+      .select({
+        evictedAt: attachments.evictedAt,
+        id: attachments.id,
+        sizeBytes: attachments.sizeBytes,
+        contentType: attachments.contentType,
+      })
       .from(attachments)
       .where(eq(attachments.objectKey, filePath))
       .limit(1)
+
+    const etag = att
+      ? weakDownloadEtag([att.id, filePath, att.sizeBytes, att.contentType, att.evictedAt])
+      : weakDownloadEtag([filePath, 'legacy'])
+    reply.header('ETag', etag)
+    reply.header('Cache-Control', 'private, max-age=60, stale-while-revalidate=300')
+    if (request.headers['if-none-match'] === etag && !att?.evictedAt) {
+      return reply.status(304).send()
+    }
 
     if (att?.evictedAt) {
       return reply.status(410).send({

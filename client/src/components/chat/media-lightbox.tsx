@@ -179,7 +179,10 @@ export function MediaLightbox({
     dragRef.current = null
   }, [])
 
-  // Touch pinch-to-zoom
+  // Sprint M1-7 — single-finger swipe to navigate when not zoomed.
+  const swipeRef = useRef<{ startX: number; startY: number } | null>(null)
+  const SWIPE_THRESHOLD_PX = 60
+
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX
@@ -187,6 +190,14 @@ export function MediaLightbox({
       pinchRef.current = {
         initialDistance: Math.hypot(dx, dy),
         initialZoom: zoom,
+      }
+      swipeRef.current = null
+      return
+    }
+    if (e.touches.length === 1 && zoom <= 1) {
+      swipeRef.current = {
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
       }
     }
   }, [zoom])
@@ -205,9 +216,20 @@ export function MediaLightbox({
     }
   }, [resetPan])
 
-  const handleTouchEnd = useCallback(() => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     pinchRef.current = null
-  }, [])
+    const swipe = swipeRef.current
+    swipeRef.current = null
+    if (!swipe || zoom > 1) return
+    const t = e.changedTouches[0]
+    if (!t) return
+    const dx = t.clientX - swipe.startX
+    const dy = t.clientY - swipe.startY
+    if (Math.abs(dx) < SWIPE_THRESHOLD_PX) return
+    if (Math.abs(dy) > Math.abs(dx)) return
+    if (dx > 0) void navigatePrev()
+    else void navigateNext()
+  }, [zoom, navigatePrev, navigateNext])
 
   // Mouse wheel zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -299,6 +321,34 @@ export function MediaLightbox({
       {media.length > 1 && (
         <div className="absolute bottom-4 right-4 z-10 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/80 bg-void/50 px-2 py-1 border border-neon-cyan/20">
           {currentIndex + 1} / {media.length}
+        </div>
+      )}
+
+      {/* Sprint M1-7 — dot pagination, only for short albums (≤10) to avoid visual clutter. */}
+      {media.length > 1 && media.length <= 10 && (
+        <div
+          className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-1.5 rounded-full bg-void/40 px-2 py-1 backdrop-blur"
+          role="tablist"
+          aria-label="Album items"
+        >
+          {media.map((m, i) => (
+            <button
+              key={m.id}
+              type="button"
+              role="tab"
+              aria-selected={i === currentIndex}
+              aria-label={`Item ${i + 1}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onNavigate(i)
+              }}
+              className={
+                i === currentIndex
+                  ? 'h-2 w-2 rounded-full bg-neon-cyan'
+                  : 'h-2 w-2 rounded-full bg-neon-cyan/30 hover:bg-neon-cyan/60'
+              }
+            />
+          ))}
         </div>
       )}
 

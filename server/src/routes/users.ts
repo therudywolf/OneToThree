@@ -289,6 +289,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       try { socialLinks = JSON.parse(row.socialLinks) as typeof socialLinks } catch { /* ignore */ }
     }
 
+    // Sprint M2-1 — profile mostly static; allow browser to keep a fresh
+    // copy for ~30s before re-fetching. Presence is masked / re-evaluated
+    // server-side, so a brief stale window is acceptable.
+    reply.header('Cache-Control', 'private, max-age=30')
     return reply.send({
       username: row.username,
       display_name: row.displayName ?? null,

@@ -330,6 +330,9 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       })
     )
 
+    // Sprint M2-1 — avatars rotate infrequently; let the browser cache the
+    // presigned URL response for ~30 minutes (half of the upstream TTL).
+    reply.header('Cache-Control', 'private, max-age=1800')
     return reply.send({ downloadUrl })
   })
 }

@@ -15,6 +15,7 @@ import {
 } from '../lib/auth-user.js'
 import { adminPurgeUser } from '../lib/admin-purge-user.js'
 import {
+  collectKpi,
   collectSystemStats,
   collectUserStorageUsage,
 } from '../lib/admin-system-stats.js'
@@ -371,6 +372,14 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
     if (!updated) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
     return reply.send({ ok: true, device_id: updated.id })
+  })
+
+  /** GET /api/admin/kpi — Sprint A1-4 dashboard aggregates. */
+  app.get('/kpi', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    const kpi = await collectKpi()
+    return reply.send(kpi)
   })
 
   /** GET /api/admin/media/quota — current usage, quota, watermarks. */

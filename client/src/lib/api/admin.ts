@@ -252,6 +252,28 @@ export async function deleteAdminDevice(deviceId: string): Promise<void> {
 }
 
 
+/* ────────────── Sprint A1-4 — KPI dashboard ────────────── */
+
+export type AdminKpiResponse = {
+  messages_24h: number
+  messages_7d: number
+  active_users_24h: number
+  new_users_7d: number
+  attachments_total: number
+  attachments_evicted_total: number
+  successful_logins_24h: number
+  failed_logins_24h: number
+}
+
+export async function fetchAdminKpi(): Promise<AdminKpiResponse> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/kpi`, { credentials: 'include' })
+  const data = (await res.json().catch(() => ({}))) as
+    | (AdminKpiResponse & { error?: string })
+    | { error?: string }
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? 'ADMIN_KPI_FAILED')
+  return data as AdminKpiResponse
+}
+
 /* ────────────── Sprint A1-1 — Media storage admin ────────────── */
 
 export type AdminMediaQuotaResponse = {

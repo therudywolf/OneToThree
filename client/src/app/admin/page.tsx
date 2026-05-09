@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth/auth-provider'
 import {
+  adminLoginEventsCsvUrl,
   deleteAdminDevice,
   fetchAdminLoginEvents,
   fetchAdminMediaQuota,
@@ -19,6 +20,7 @@ import {
   postAdminMediaEvict,
   postAdminPurgeUser,
   type AdminDeviceRow,
+  type AdminLoginEventFilters,
   type AdminLoginEventRow,
   type AdminMediaQuotaResponse,
   type AdminReportRow,
@@ -565,6 +567,16 @@ export default function AdminPage() {
         {tab === 'login-events' && (
           <div>
             <h2 className="mb-4 text-[10px] uppercase tracking-[0.3em] text-text-muted/70">:: LOGIN_AUDIT_LOG (last {loginEvents.length})</h2>
+            <LoginEventsFilters
+              onApply={async (f) => {
+                try {
+                  const events = await fetchAdminLoginEvents(f)
+                  setLoginEvents(events)
+                } catch (e) {
+                  setErrorLog(e instanceof Error ? e.message : 'FILTER_FAILED')
+                }
+              }}
+            />
             <div className="overflow-x-auto border border-border-strong">
               <table className="min-w-[40rem] w-full text-left">
                 <thead>
@@ -606,6 +618,140 @@ export default function AdminPage() {
           SYS.ADMIN // NODAL_CONTROL_V5.0 // ONETOTHREE
         </p>
       </footer>
+    </div>
+  )
+}
+
+/**
+ * Sprint A1-3 — login-events filter bar with CSV export.
+ * Renders a small toolbar above the audit table; on apply it calls the
+ * provided async callback (parent owns the row state).
+ */
+function LoginEventsFilters({
+  onApply,
+}: {
+  onApply: (filters: AdminLoginEventFilters) => Promise<void>
+}) {
+  const [outcome, setOutcome] = useState('')
+  const [ip, setIp] = useState('')
+  const [userId, setUserId] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [limit, setLimit] = useState('200')
+  const [busy, setBusy] = useState(false)
+
+  const buildFilters = useCallback((): AdminLoginEventFilters => {
+    const f: AdminLoginEventFilters = {}
+    if (outcome.trim()) f.outcome = outcome.trim()
+    if (ip.trim()) f.ip = ip.trim()
+    if (userId.trim()) f.userId = userId.trim()
+    if (from.trim()) f.from = new Date(from).toISOString()
+    if (to.trim()) f.to = new Date(to).toISOString()
+    const n = Number.parseInt(limit, 10)
+    if (Number.isFinite(n) && n > 0) f.limit = n
+    return f
+  }, [outcome, ip, userId, from, to, limit])
+
+  const apply = useCallback(async () => {
+    setBusy(true)
+    try {
+      await onApply(buildFilters())
+    } finally {
+      setBusy(false)
+    }
+  }, [buildFilters, onApply])
+
+  const reset = useCallback(async () => {
+    setOutcome('')
+    setIp('')
+    setUserId('')
+    setFrom('')
+    setTo('')
+    setLimit('200')
+    setBusy(true)
+    try {
+      await onApply({})
+    } finally {
+      setBusy(false)
+    }
+  }, [onApply])
+
+  const csvHref = adminLoginEventsCsvUrl(buildFilters())
+
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-2 border border-border-strong bg-surface/30 p-3 md:grid-cols-6">
+      <select
+        value={outcome}
+        onChange={(e) => setOutcome(e.target.value)}
+        className="border border-border-strong bg-void px-2 py-1 font-mono text-[10px] text-text-secondary outline-none"
+      >
+        <option value="">ANY OUTCOME</option>
+        <option value="success">success</option>
+        <option value="fail_signature">fail_signature</option>
+        <option value="fail_totp">fail_totp</option>
+        <option value="fail_banned">fail_banned</option>
+        <option value="fail_device_revoked">fail_device_revoked</option>
+      </select>
+      <input
+        type="text"
+        placeholder="IP (substring)"
+        value={ip}
+        onChange={(e) => setIp(e.target.value)}
+        className="border border-border-strong bg-void px-2 py-1 font-mono text-[10px] text-text-secondary outline-none"
+      />
+      <input
+        type="text"
+        placeholder="USER_ID (uuid)"
+        value={userId}
+        onChange={(e) => setUserId(e.target.value)}
+        className="border border-border-strong bg-void px-2 py-1 font-mono text-[10px] text-text-secondary outline-none"
+      />
+      <input
+        type="datetime-local"
+        value={from}
+        onChange={(e) => setFrom(e.target.value)}
+        className="border border-border-strong bg-void px-2 py-1 font-mono text-[10px] text-text-secondary outline-none"
+      />
+      <input
+        type="datetime-local"
+        value={to}
+        onChange={(e) => setTo(e.target.value)}
+        className="border border-border-strong bg-void px-2 py-1 font-mono text-[10px] text-text-secondary outline-none"
+      />
+      <input
+        type="number"
+        min={1}
+        max={1000}
+        value={limit}
+        onChange={(e) => setLimit(e.target.value)}
+        className="border border-border-strong bg-void px-2 py-1 font-mono text-[10px] text-text-secondary outline-none"
+      />
+      <div className="col-span-2 flex flex-wrap gap-2 md:col-span-6">
+        <button
+          type="button"
+          onClick={() => void apply()}
+          disabled={busy}
+          className="border border-neon-cyan/60 px-3 py-1 text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-50"
+        >
+          [ APPLY ]
+        </button>
+        <button
+          type="button"
+          onClick={() => void reset()}
+          disabled={busy}
+          className="border border-border-strong px-3 py-1 text-[9px] uppercase tracking-widest text-text-muted hover:border-text-secondary"
+        >
+          [ RESET ]
+        </button>
+        <a
+          href={csvHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="border border-neon-amber/60 px-3 py-1 text-[9px] uppercase tracking-widest text-neon-amber hover:bg-neon-amber/10"
+        >
+          [ EXPORT_CSV ]
+        </a>
+      </div>
     </div>
   )
 }

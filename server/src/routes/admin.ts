@@ -235,10 +235,47 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ events: rows })
   })
 
-  /** GET /api/admin/login-events — all recent login events (last 200) */
+  /**
+   * GET /api/admin/login-events — recent login events with optional filters.
+   * Query: outcome=success|fail_signature|...; ip=substring; user_id=uuid;
+   *        from=ISO; to=ISO; limit=1..1000 (default 200).
+   * Sprint A1-3 — also serves text/csv when `Accept: text/csv` or `format=csv`.
+   */
   app.get('/login-events', async (request, reply) => {
     const admin = await requireAdmin(request, reply)
     if (!admin) return
+
+    const q = z
+      .object({
+        outcome: z.string().min(1).max(40).optional(),
+        ip: z.string().min(1).max(64).optional(),
+        user_id: uuidSchema.optional(),
+        from: z.string().datetime().optional(),
+        to: z.string().datetime().optional(),
+        limit: z.coerce.number().int().min(1).max(1000).optional(),
+        format: z.enum(['json', 'csv']).optional(),
+      })
+      .safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ error: 'INVALID_QUERY' })
+
+    const conditions = []
+    if (q.data.outcome) {
+      conditions.push(
+        eq(loginEvents.outcome, q.data.outcome as typeof loginEvents.outcome.enumValues[number])
+      )
+    }
+    if (q.data.user_id) conditions.push(eq(loginEvents.userId, q.data.user_id))
+    if (q.data.ip) {
+      conditions.push(sql`${loginEvents.ipAddress} ILIKE ${`%${q.data.ip}%`}`)
+    }
+    if (q.data.from) {
+      conditions.push(sql`${loginEvents.createdAt} >= ${q.data.from}::timestamptz`)
+    }
+    if (q.data.to) {
+      conditions.push(sql`${loginEvents.createdAt} <= ${q.data.to}::timestamptz`)
+    }
+
+    const where = conditions.length ? and(...conditions) : undefined
 
     const rows = await db
       .select({
@@ -250,8 +287,31 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         created_at: loginEvents.createdAt,
       })
       .from(loginEvents)
+      .where(where)
       .orderBy(desc(loginEvents.createdAt))
-      .limit(200)
+      .limit(q.data.limit ?? 200)
+
+    const wantsCsv =
+      q.data.format === 'csv' || /text\/csv/i.test(request.headers.accept ?? '')
+    if (wantsCsv) {
+      const escape = (v: unknown) => {
+        if (v == null) return ''
+        const s = String(v).replace(/"/g, '""')
+        return /[",\n]/.test(s) ? `"${s}"` : s
+      }
+      const header = 'id,user_id,outcome,ip_address,user_agent,created_at\n'
+      const body = rows
+        .map((r) =>
+          [r.id, r.user_id, r.outcome, r.ip_address, r.user_agent, r.created_at]
+            .map(escape)
+            .join(',')
+        )
+        .join('\n')
+      return reply
+        .type('text/csv; charset=utf-8')
+        .header('Content-Disposition', 'attachment; filename="login-events.csv"')
+        .send(header + body + '\n')
+    }
 
     return reply.send({ events: rows })
   })

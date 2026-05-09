@@ -188,11 +188,45 @@ export async function fetchAdminUserLoginHistory(userId: string): Promise<AdminL
   return data.events ?? []
 }
 
-export async function fetchAdminLoginEvents(): Promise<AdminLoginEventRow[]> {
-  const res = await fetchWithTimeout(`${API_URL}/admin/login-events`, { credentials: 'include' })
+export type AdminLoginEventFilters = {
+  outcome?: string
+  ip?: string
+  userId?: string
+  from?: string
+  to?: string
+  limit?: number
+}
+
+function loginEventsQuery(f?: AdminLoginEventFilters): string {
+  if (!f) return ''
+  const q = new URLSearchParams()
+  if (f.outcome) q.set('outcome', f.outcome)
+  if (f.ip) q.set('ip', f.ip)
+  if (f.userId) q.set('user_id', f.userId)
+  if (f.from) q.set('from', f.from)
+  if (f.to) q.set('to', f.to)
+  if (f.limit) q.set('limit', String(f.limit))
+  const s = q.toString()
+  return s ? `?${s}` : ''
+}
+
+export async function fetchAdminLoginEvents(
+  filters?: AdminLoginEventFilters
+): Promise<AdminLoginEventRow[]> {
+  const res = await fetchWithTimeout(
+    `${API_URL}/admin/login-events${loginEventsQuery(filters)}`,
+    { credentials: 'include' }
+  )
   const data = (await res.json().catch(() => ({}))) as { events?: AdminLoginEventRow[]; error?: string }
   if (!res.ok) throw new Error(data.error ?? 'ADMIN_LOGIN_EVENTS_FAILED')
   return data.events ?? []
+}
+
+/** URL the browser can hit directly to download the filtered set as CSV. */
+export function adminLoginEventsCsvUrl(filters?: AdminLoginEventFilters): string {
+  const qs = loginEventsQuery(filters)
+  const sep = qs ? '&' : '?'
+  return `${API_URL}/admin/login-events${qs}${sep}format=csv`
 }
 
 export async function patchAdminUserRole(userId: string, role: 'user' | 'admin'): Promise<AdminUserRow> {

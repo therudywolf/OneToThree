@@ -16,6 +16,7 @@ import {
   presignPutObject,
   rewritePresignedUrlToPublicBase,
 } from '../lib/s3.js'
+import { maybeTriggerEviction } from '../lib/media-lru-evict.js'
 
 /** Object key: chats/{chatId}/{userId}/{uuid}{ext} */
 const CHAT_OBJECT_KEY_RE =
@@ -165,6 +166,10 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     } catch (err) {
       request.log.warn({ err, key }, '[storage] attachments insert failed')
     }
+
+    // Sprint M1-2 — async eviction trigger if quota is at high watermark.
+    // Fire-and-forget so the upload path stays sub-100ms.
+    maybeTriggerEviction(request.log)
 
     return reply.send({
       uploadUrl,

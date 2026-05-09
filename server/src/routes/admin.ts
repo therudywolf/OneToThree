@@ -19,6 +19,13 @@ import {
   collectUserStorageUsage,
 } from '../lib/admin-system-stats.js'
 import { createS3Client } from '../lib/s3.js'
+import {
+  evictLruUntilUnderTarget,
+  getCurrentUsageBytes,
+  getHighWatermark,
+  getQuotaBytes,
+  getTargetRatio,
+} from '../lib/media-lru-evict.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
 async function requireAdmin(
@@ -304,5 +311,44 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
     if (!updated) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
     return reply.send({ ok: true, device_id: updated.id })
+  })
+
+  /** GET /api/admin/media/quota — current usage, quota, watermarks. */
+  app.get('/media/quota', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    const usage = await getCurrentUsageBytes()
+    const quota = getQuotaBytes()
+    const high = Math.floor(quota * getHighWatermark())
+    const target = Math.floor(quota * getTargetRatio())
+    return reply.send({
+      usage_bytes: usage,
+      quota_bytes: quota,
+      high_watermark_bytes: high,
+      target_bytes: target,
+      pct_used: quota > 0 ? +(usage / quota).toFixed(4) : 0,
+    })
+  })
+
+  /**
+   * POST /api/admin/media/evict — force LRU eviction down to target.
+   * Body: { target_bytes?: number, max_to_evict?: number }
+   */
+  app.post('/media/evict', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+    const body = z
+      .object({
+        target_bytes: z.number().int().nonnegative().optional(),
+        max_to_evict: z.number().int().positive().max(50_000).optional(),
+      })
+      .safeParse(request.body ?? {})
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+    const result = await evictLruUntilUnderTarget({
+      log: request.log,
+      targetBytes: body.data.target_bytes,
+      maxToEvict: body.data.max_to_evict,
+    })
+    return reply.send(result)
   })
 }

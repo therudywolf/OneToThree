@@ -21,6 +21,7 @@ import { isMediaTooLarge, MEDIA_TOO_LARGE_CODE } from '@/lib/media-limits'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { vibrateShort } from '@/lib/vibrate'
+import { generateTinyPreview } from '@/lib/tiny-preview'
 import { explainSendError } from '@/lib/explain-send-error'
 import { useTranslation } from '@/hooks/use-translation'
 import { toastError, toastWarn } from '@/store/toastStore'
@@ -244,6 +245,8 @@ type EncryptedBlob = {
   mimeType: string
   workSize: number
   label: string
+  /** Sprint M1-8 — base64 data URL for blurred placeholder. Image segments only. */
+  tinyPreview?: string
 }
 
 async function prepareEncryptedBlob(
@@ -278,6 +281,18 @@ async function prepareEncryptedBlob(
   }
   if (isMediaTooLarge(workBlob.size)) throw new Error(MEDIA_TOO_LARGE_CODE)
 
+  // Sprint M1-8 — only generate tiny placeholder for raster images. Skip
+  // GIFs (already small) and non-image segments. Best-effort, never blocks.
+  let tinyPreview: string | undefined
+  if (segmentClass === 'image' && normalizedMime !== 'image/gif') {
+    try {
+      const preview = await generateTinyPreview(workBlob)
+      if (preview) tinyPreview = preview
+    } catch {
+      /* ignore — placeholder is purely cosmetic */
+    }
+  }
+
   const isPublicMode = cryptoCtx.mode === 'PUBLIC'
 
   if (isPublicMode) {
@@ -290,6 +305,7 @@ async function prepareEncryptedBlob(
       mimeType,
       workSize: workBlob.size,
       label,
+      tinyPreview,
     }
   }
 
@@ -316,6 +332,7 @@ async function prepareEncryptedBlob(
     mimeType,
     workSize: workBlob.size,
     label,
+    tinyPreview,
   }
 }
 
@@ -366,6 +383,7 @@ export function useSendMedia(
           wrapCt: prepared.wrapCt,
           kind,
           ...(caption ? { caption } : {}),
+          ...(prepared.tinyPreview ? { thumbhash: prepared.tinyPreview } : {}),
         }
         const transportPlaintext = JSON.stringify(envelope)
         const { encrypted_content, iv: envelopeIv } = await encryptOutboundText(

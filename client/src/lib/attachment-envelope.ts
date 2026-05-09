@@ -35,6 +35,12 @@ export type AttachmentEnvelopeV1 = {
    * If absent, renderers fall back to MIME / filename heuristics.
    */
   kind?: AttachmentKind
+  /**
+   * Sprint M1-8 — base64 data URL of a downscaled JPEG (32x32, q=0.5)
+   * used as a blurred placeholder while the encrypted image is decrypted
+   * and decoded. ~700 bytes typical; capped at 4 KiB by the producer.
+   */
+  thumbhash?: string
 }
 
 export type AlbumItemV1 = {
@@ -113,6 +119,9 @@ export function parseAttachmentEnvelope(
         ? { caption: o.caption.slice(0, 512) }
         : {}),
       ...(kind ? { kind } : {}),
+      ...(typeof o.thumbhash === 'string' && o.thumbhash.startsWith('data:')
+        ? { thumbhash: o.thumbhash.slice(0, 4096) }
+        : {}),
     }
   } catch {
     return null

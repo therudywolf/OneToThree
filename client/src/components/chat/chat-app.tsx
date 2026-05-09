@@ -618,13 +618,19 @@ export function ChatApp({
       blob: Blob,
       mediaType: 'audio' | 'video' | 'image' | 'file',
       caption?: string,
-      options?: { fileName?: string; fileType?: string; kind?: import('@/lib/attachment-envelope').AttachmentKind },
+      options?: {
+        fileName?: string
+        fileType?: string
+        kind?: import('@/lib/attachment-envelope').AttachmentKind
+        sendOriginal?: boolean
+      },
     ) => {
       await rawSendMedia(blob, mediaType, {
         label: options?.fileName,
         mime: options?.fileType,
         caption: caption?.trim() || undefined,
         ...(options?.kind ? { kind: options.kind } : {}),
+        ...(options?.sendOriginal ? { sendOriginal: true } : {}),
       })
     },
     [rawSendMedia],
@@ -635,7 +641,12 @@ export function ChatApp({
       items: Array<{
         blob: Blob
         segmentClass: 'audio' | 'video' | 'image' | 'file'
-        options?: { label?: string; mime?: string; kind?: import('@/lib/attachment-envelope').AttachmentKind }
+        options?: {
+          label?: string
+          mime?: string
+          kind?: import('@/lib/attachment-envelope').AttachmentKind
+          sendOriginal?: boolean
+        }
       }>,
       caption?: string,
     ) => {

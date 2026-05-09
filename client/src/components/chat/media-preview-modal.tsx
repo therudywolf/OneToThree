@@ -27,7 +27,7 @@ type Props = {
   onReorder?: (from: number, to: number) => void
   /** Append more files to the queue (TG-style "+ add more"). */
   onAddMore?: (files: File[]) => void
-  onSend: (caption: string) => Promise<void>
+  onSend: (caption: string, opts: { sendOriginal: boolean }) => Promise<void>
   onCancel: () => void
 }
 
@@ -160,6 +160,10 @@ export function MediaPreviewModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  // Sprint M1-6 — TG-style "Send as file" toggle. When on, image
+  // compression and resize are skipped so the recipient receives the
+  // exact original bytes.
+  const [sendOriginal, setSendOriginal] = useState(false)
   const captionRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -192,7 +196,7 @@ export function MediaPreviewModal({
     setSendError(null)
     setSending(true)
     try {
-      await onSend(caption.trim())
+      await onSend(caption.trim(), { sendOriginal })
       setCaption('')
     } catch (err) {
       setSendError(explainSendError(err) || t('mediaPreview.sendFailed'))
@@ -281,6 +285,18 @@ export function MediaPreviewModal({
             className="w-full resize-none border border-border-strong bg-void px-2 py-1.5 font-mono text-[13px] text-neon-cyan outline-none focus:border-neon-cyan/50 placeholder:text-text-muted/70"
           />
           {sendError ? <p className="text-[9px] text-neon-red">{sendError}</p> : null}
+          {queue.some((q) => q.mediaType === 'image') && (
+            <label className="flex items-center gap-1.5 font-mono text-[10px] text-text-muted/80 select-none">
+              <input
+                type="checkbox"
+                checked={sendOriginal}
+                onChange={(e) => setSendOriginal(e.target.checked)}
+                disabled={sending}
+                className="h-3 w-3 accent-neon-cyan"
+              />
+              Отправить как файл (без сжатия)
+            </label>
+          )}
           <button
             type="button"
             onClick={() => void handleSend()}
@@ -369,6 +385,18 @@ export function MediaPreviewModal({
             disabled={sending}
           />
           {sendError ? <p className="text-[9px] text-neon-red">{sendError}</p> : null}
+          {(mediaType === 'image' || queue.some((q) => q.mediaType === 'image')) && (
+            <label className="flex items-center gap-1.5 font-mono text-[10px] text-text-muted/80 select-none">
+              <input
+                type="checkbox"
+                checked={sendOriginal}
+                onChange={(e) => setSendOriginal(e.target.checked)}
+                disabled={sending}
+                className="h-3 w-3 accent-neon-cyan"
+              />
+              Отправить как файл (без сжатия)
+            </label>
+          )}
           {/* type=button + single onClick only, no onTouchEnd */}
           <button
             type="button"

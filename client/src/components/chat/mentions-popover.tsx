@@ -24,7 +24,7 @@ interface MentionsPopoverProps {
   query: string          // text after the @ trigger
   activeIndex: number
   onSelect: (member: MentionMember) => void
-  onClose: () => void
+  onClose?: () => void
 }
 
 export function MentionsPopover({
@@ -33,7 +33,6 @@ export function MentionsPopover({
   query,
   activeIndex,
   onSelect,
-  onClose,
 }: MentionsPopoverProps) {
   const listRef = useRef<HTMLUListElement>(null)
 
@@ -81,7 +80,6 @@ export function MentionsPopover({
             }}
           >
             {m.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={m.avatarUrl}
                 alt=""

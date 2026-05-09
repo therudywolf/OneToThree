@@ -178,7 +178,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     const draft = loadDraft(activeChatId)
     setMessageText(draft)
     mentionMembersLoadedRef.current = false // reset on chat switch
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChatId])
 
   // Lazily fetch chat members for @mention autocomplete
@@ -758,33 +757,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       toastError(msg, { title: 'EDIT' })
     }
   }
-
-  // Explicit send handler for mobile — single onClick, no onTouchEnd to avoid double-fire
-  const handleSendClick = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    if (!messageText.trim() || disabled || sendingTextRef.current) return
-    sendingTextRef.current = true
-    setSendingText(true)
-    const task = editingMessage
-      ? submitEdit(editingMessage.id, messageText)
-      : sendText(messageText, replyTo?.id ?? null, { burn_duration_secs: makeBurnDuration(burnTimerSecs) })
-    void task
-      .then(() => {
-        onSubmitOrClear()
-        setMessageText('')
-        setReplyTo(null)
-        setEditingMessage(null)
-        if (activeChatId) clearDraft(activeChatId)
-        if (inputRef.current) {
-          inputRef.current.style.height = 'auto'
-          inputRef.current.focus()
-        }
-      })
-      .finally(() => {
-        sendingTextRef.current = false
-        setSendingText(false)
-      })
-  }, [messageText, disabled, sendText, replyTo, onSubmitOrClear, setReplyTo, editingMessage, setEditingMessage, activeChatId])
 
   const handleContextMenu = (e: React.MouseEvent) => e.preventDefault()
 

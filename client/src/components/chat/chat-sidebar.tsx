@@ -29,7 +29,6 @@ import {
   getArchivedChatIds,
   archiveChat,
   unarchiveChat,
-  isChatArchived,
   CHAT_ARCHIVE_EVENT,
 } from '@/lib/chat-archive'
 import { ChatRowContextMenu } from '@/components/chat/chat-row-context-menu'

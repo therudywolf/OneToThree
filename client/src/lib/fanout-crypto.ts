@@ -18,7 +18,7 @@
 
 import { API_URL } from '@/lib/api/auth'
 import { fetchWithTimeout } from '@/lib/api/fetch'
-import { deriveSharedSecret, deriveSharedSecretHkdf, encryptMessage, decryptMessage, importEcdhPublicKey } from './crypto'
+import { deriveSharedSecret, encryptMessage, decryptMessage } from './crypto'
 import { getCachedPeerPublicKey, getCachedSharedSecretHkdf } from './shared-secret-cache'
 
 export type DeviceSlot = {
@@ -323,4 +323,3 @@ export async function decryptFanoutSlot(
   const sharedKey = await deriveSharedSecret(receiverPrivateKey, senderPub)
   return decryptMessage(sharedKey, ciphertext, iv)
 }
-

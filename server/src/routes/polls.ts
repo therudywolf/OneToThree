@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { chatMembers, polls, pollVotes } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
@@ -21,7 +21,6 @@ async function getPollResults(pollId: string, viewerId: string, isAnonymous: boo
     .where(eq(pollVotes.pollId, pollId))
 
   const countMap = new Map<number, number>()
-  const voterSet = new Set<string>()
   const myVotes: number[] = []
 
   // For anon polls we re-query just the viewer's votes; for public we use all rows

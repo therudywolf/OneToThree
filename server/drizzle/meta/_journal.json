@@ -236,64 +236,64 @@
     {
       "idx": 33,
       "version": "7",
+      "when": 1777084100000,
+      "tag": "0033_chats_discussion_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
       "when": 1776688570000,
       "tag": "0034_chats_key_epoch",
       "breakpoints": true
     },
     {
-      "idx": 34,
+      "idx": 35,
       "version": "7",
       "when": 1776688580000,
       "tag": "0035_messages_pinned_and_muted",
       "breakpoints": true
     },
     {
-      "idx": 35,
-      "version": "7",
-      "when": 1776869710793,
-      "tag": "0035_same_molly_hayes",
-      "breakpoints": true
-    },
-    {
       "idx": 36,
-      "version": "7",
-      "when": 1776964200000,
-      "tag": "0037_gif_favorites",
-      "breakpoints": true
-    },
-    {
-      "idx": 37,
-      "version": "7",
-      "when": 1776964300000,
-      "tag": "0038_chats_invite_slug",
-      "breakpoints": true
-    },
-    {
-      "idx": 38,
-      "version": "7",
-      "when": 1777058400000,
-      "tag": "0039_native_push_tokens",
-      "breakpoints": true
-    },
-    {
-      "idx": 39,
-      "version": "7",
-      "when": 1777084100000,
-      "tag": "0033_chats_discussion_link",
-      "breakpoints": true
-    },
-    {
-      "idx": 40,
       "version": "7",
       "when": 1777084110000,
       "tag": "0036_sticker_pack_shares",
       "breakpoints": true
     },
     {
-      "idx": 41,
+      "idx": 37,
+      "version": "7",
+      "when": 1776964200000,
+      "tag": "0037_gif_favorites",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1776964300000,
+      "tag": "0038_chats_invite_slug",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1777058400000,
+      "tag": "0039_native_push_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
       "version": "7",
       "when": 1777084120000,
       "tag": "0040_users_display_name_last_seen_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1776869710793,
+      "tag": "0041_same_molly_hayes",
       "breakpoints": true
     },
     {

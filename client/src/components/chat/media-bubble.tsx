@@ -7,8 +7,9 @@ import {
   decryptBinary,
   importAesGcm256RawKey,
 } from '@/lib/crypto'
-import { getDownloadUrl } from '@/lib/api/storage'
+import { getDownloadUrl, MediaEvictedError } from '@/lib/api/storage'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
+import { MediaEvictedPlaceholder } from '@/components/chat/media-evicted-placeholder'
 import { useTranslation } from '@/hooks/use-translation'
 import { classifyAttachment, parseAlbumEnvelope, parseAttachmentEnvelope } from '@/lib/attachment-envelope'
 import type { DecryptedMessage } from '@/types/chat'
@@ -122,6 +123,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   const blobUrlRef = useRef<string | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [loadErr, setLoadErr] = useState(false)
+  const [evicted, setEvicted] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -157,6 +159,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     if (!mediaPath || !mediaIv) return
     if (!isPublicMedia && !sharedKey) return
     setLoadErr(false)
+    setEvicted(false)
     setObjectUrl(null)
     try {
       const cached = await getCachedMedia(message.id)
@@ -167,7 +170,18 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
         return
       }
 
-      const downloadUrl = await getDownloadUrl(mediaPath)
+      let downloadUrl: string
+      try {
+        downloadUrl = await getDownloadUrl(mediaPath)
+      } catch (err) {
+        // Sprint M1-4 — server-side LRU evicted the blob. We have no local
+        // copy (cache lookup above returned nothing), so render placeholder.
+        if (err instanceof MediaEvictedError) {
+          setEvicted(true)
+          return
+        }
+        throw err
+      }
       const res = await fetch(downloadUrl)
       if (res.status === 404 || res.status === 410) {
         setLoadErr(true)
@@ -246,6 +260,14 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     return (
       <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-text-muted">
         {t('errors.signalLost')}
+      </div>
+    )
+  }
+
+  if (evicted) {
+    return (
+      <div ref={sentinelRef}>
+        <MediaEvictedPlaceholder />
       </div>
     )
   }

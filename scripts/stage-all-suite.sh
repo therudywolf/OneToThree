@@ -94,7 +94,7 @@ fi
 echo "[stage-all] docker install smoke..."
 (
   cd "${ROOT_DIR}"
-  ./start.sh install
+  ./startup.sh install
 )
 
 echo "[stage-all] docker health check..."

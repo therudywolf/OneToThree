@@ -21,7 +21,7 @@
 | Пароль отправляется на сервер | **Никогда** — используется ECDSA challenge-response | Передаётся хеш | Передаётся хеш | Передаётся хеш |
 | Шифрование медиа | **Отдельный ключ на каждый файл** | Да | Нет по умолчанию | Да |
 | Звонки | **WebRTC + DTLS-SRTP** | WebRTC | Проприетарная реализация | Обычно через Jitsi/bridge |
-| Развёртывание | **`./start.sh`** | Н/Д | Н/Д | Несколько сервисов |
+| Развёртывание | **`./startup.sh`** | Н/Д | Н/Д | Несколько сервисов |
 
 ---
 
@@ -427,16 +427,16 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 - На auth endpoints включён rate limiting.
 - Контейнеры используют DNS pinning на `host-gateway`.
 
-### `start.sh` — production launcher
+### `startup.sh` — production launcher
 
 ```bash
-./start.sh              # Собрать и запустить все сервисы
-./start.sh stop         # Остановить контейнеры
-./start.sh restart      # Перезапустить без пересборки
-./start.sh logs         # Смотреть логи
-./start.sh status       # Проверить статус и health
-./start.sh update       # git pull + rebuild + restart
-./start.sh backup       # Резервная копия PostgreSQL
+./startup.sh              # Собрать и запустить все сервисы
+./startup.sh stop         # Остановить контейнеры
+./startup.sh restart      # Перезапустить без пересборки
+./startup.sh logs         # Смотреть логи
+./startup.sh status       # Проверить статус и health
+./startup.sh update       # git pull + rebuild + restart
+./startup.sh backup       # Резервная копия PostgreSQL
 ```
 
 При первом запуске скрипт автоматически генерирует `JWT_SECRET`, `WEBHOOK_SECRET`, VAPID-ключи, синхронизирует связанные переменные окружения и валидирует обязательные поля перед стартом.
@@ -493,17 +493,17 @@ git clone https://github.com/user/OneToThree.git
 cd OneToThree
 
 # 2. Конфигурация
-cp .env.prod.example .env.prod
+./startup.sh
 # Заполните обязательные поля:
 # POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD,
 # TURN_EXTERNAL_IP, TURN_PASSWORD,
 # CORS_ORIGIN, VAPID_SUBJECT
 
 # 3. Запуск
-./start.sh
+./startup.sh
 
 # 4. Проверка
-./start.sh status
+./startup.sh status
 ```
 
 ### Переменные окружения
@@ -640,9 +640,9 @@ OneToThree/
 ├── docker-compose.yml         # dev
 ├── docker-compose.prod.yml    # production
 ├── Caddyfile                  # reverse proxy + TLS
-├── start.sh                   # production launcher
+├── startup.sh                   # production launcher
 ├── drizzle.config.ts          # конфиг ORM
-├── .env.prod.example          # шаблон окружения
+├── config/env/                 # шаблоны окружения
 └── FOSS.md                    # техническая документация
 ```
 

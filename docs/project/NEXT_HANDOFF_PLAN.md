@@ -40,7 +40,7 @@ Recent completed baseline:
 ## Operating Rules
 
 1. Keep changes small and grouped by purpose. Prefer separate commits for security, tests, UI/i18n, cleanup.
-2. Do not rewrite user environment files or secrets. `.env`, `.env.prod`, `secrets/`, and local artifacts may exist.
+2. Keep runtime configuration generated through `./startup.sh`. Do not commit `.env`, `.env.prod`, `.env.mesh`, `secrets/`, or local build artifacts.
 3. Do not delete files just because `ts-prune` reports them. Next app entries, config files, barrel exports, and public API helpers produce false positives.
 4. After changing schema or migrations, run `npm run check:drizzle`.
 5. After changing strings, run `npm run check:locales`.

@@ -46,7 +46,7 @@ if (process.platform === 'win32') {
     runPowerShell('scripts/build-apk.ps1', ['release', ...args.slice(1)])
   } else {
     console.error('Windows launcher supports: build-apk, build-apk-release <keystore-path>')
-    console.error('Production stack commands run on Linux/macOS/WSL via ./start.sh.')
+    console.error('Production stack commands run on Linux/macOS/WSL via ./startup.sh.')
     process.exit(1)
   }
 } else {

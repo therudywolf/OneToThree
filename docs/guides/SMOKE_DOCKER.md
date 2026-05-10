@@ -1,6 +1,6 @@
 # Smoke checks (Docker / staging)
 
-Use after `./start.sh update` or an equivalent `docker compose` stack with `api`, `web`, `db`, `redis`, `minio`.
+Use after `./startup.sh update` or an equivalent `docker compose` stack with `api`, `web`, `db`, `redis`, `minio`.
 
 ## Build verification
 

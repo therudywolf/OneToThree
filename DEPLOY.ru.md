@@ -99,8 +99,8 @@ sudo ufw reload
 ### 4 · Запустить
 
 ```bash
-chmod +x ./start.sh
-./start.sh
+chmod +x ./startup.sh
+./startup.sh
 ```
 
 При первом запуске скрипт делает всё автоматически:
@@ -138,10 +138,10 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 ```bash
 # Рекомендуется: сначала сделайте резервную копию
-./start.sh backup
+./startup.sh backup
 
 # Обновление
-./start.sh update
+./startup.sh update
 ```
 
 Занимает 2–5 минут. Ваши данные в безопасности — базы данных и медиафайлы
@@ -151,7 +151,7 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 ### Что происходит внутри
 
-`./start.sh update` выполняет следующее:
+`./startup.sh update` выполняет следующее:
 
 1. `git pull origin main` — загружает последний код
 2. Синхронизирует `DOMAIN` и все производные переменные в `.env.prod` (ручное редактирование не нужно)
@@ -189,7 +189,7 @@ gunzip -c backups/db_ГГГГММДД_HHMMSS.sql.gz | \
 ```bash
 git checkout main
 git pull
-./start.sh update
+./startup.sh update
 ```
 
 ---
@@ -240,10 +240,10 @@ adb install -r -d releases/android/OneToThree-debug-2026-04-27.apk
 #    NEXT_PUBLIC_API_URL=https://api.вашдомен.com
 
 # 2. Собрать debug APK
-./start.sh build-apk
+./startup.sh build-apk
 
 # 3. Или собрать подписанный release APK (нужен keystore)
-./start.sh build-apk-release /путь/к/release.keystore
+./startup.sh build-apk-release /путь/к/release.keystore
 # Перед запуском установите переменные:
 #   export RELEASE_STORE_PASSWORD=...
 #   export RELEASE_KEY_ALIAS=upload

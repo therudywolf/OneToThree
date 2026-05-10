@@ -206,16 +206,10 @@ Pre-built debug APKs are in [`releases/android/`](./releases/android/).
    Settings → About phone → tap *Build number* seven times
 2. Enable **USB debugging**: Settings → Developer options → USB debugging
 3. Connect via USB and tap **Allow** on the fingerprint prompt on the phone
-4. Run the PowerShell installer (Windows) or use ADB directly:
-
-```powershell
-# Windows — from the releases/android/ directory:
-.\install-apk.ps1
-```
+4. Install the newest APK with ADB:
 
 ```bash
-# Linux / macOS:
-adb install -r -d releases/android/OneToThree-debug-2026-04-27.apk
+adb install -r -d releases/android/onetothree-debug.apk
 ```
 
 5. Open the app → enter your server URL (e.g. `https://yourdomain.com`) → register
@@ -250,7 +244,14 @@ adb install -r -d releases/android/OneToThree-debug-2026-04-27.apk
 #   export RELEASE_KEY_PASSWORD=...
 ```
 
-The APK lands at `releases/android/onetothree-debug.apk` (or `onetothree-release.apk`).
+On Windows, the shortest path is:
+
+```powershell
+.\apkbuild.ps1
+.\apkbuild.ps1 -Release -KeystorePath C:\keys\onetothree.jks
+```
+
+The APK lands in `releases/android/` as `onetothree-debug.apk` / `onetothree-release.apk` plus an immutable `onetothree-<type>-YYYYMMDD-HHMM-<gitsha>.apk` and matching `.sha256` files.
 
 **What the build script does:**
 
@@ -261,24 +262,13 @@ The APK lands at `releases/android/onetothree-debug.apk` (or `onetothree-release
 
 ---
 
-### ADB install (Windows)
+### ADB install
 
-The PowerShell script `releases/android/install-apk.ps1` handles everything:
+Use Android platform-tools from any OS:
 
-- Finds ADB in PATH or common Android SDK locations automatically
-- Lists connected devices; lets you pick if multiple are connected
-- Detects unauthorized/offline device states with clear instructions
-- Installs with `adb install -r -d` and shows actionable error hints
-
-```powershell
-# Basic usage — finds newest APK automatically:
-.\install-apk.ps1
-
-# Specific APK:
-.\install-apk.ps1 -ApkPath ".\onetothree-release.apk"
-
-# Specific device (useful with emulators):
-.\install-apk.ps1 -DeviceSerial "emulator-5554"
+```bash
+adb devices
+adb install -r -d releases/android/onetothree-debug.apk
 ```
 
 **Common errors:**

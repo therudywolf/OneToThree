@@ -96,9 +96,8 @@ blob-report/
 # Agent scratch directories
 .agent-tmp/
 
-# artifacts/ is a local build cache; releases/ contains debug builds (not committed)
+# artifacts/ is a local build cache. releases/ contains publishable APKs.
 artifacts/
-releases/
 
 # Temporary session commit/deploy scripts (personal automation — not for public repo)
 commit-*.bat

@@ -34,6 +34,32 @@ val_for_key() {
   grep "^${1}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '\r'
 }
 
+copy_apk_artifacts() {
+  local source_apk="$1"
+  local kind="$2"
+  local releases_dir="$ROOT/releases/android"
+  local stable_name="${APK_OUTPUT_NAME:-onetothree-${kind}.apk}"
+  [[ "$stable_name" == *.apk ]] || stable_name="${stable_name}.apk"
+
+  mkdir -p "$releases_dir"
+  cp "$source_apk" "$releases_dir/$stable_name"
+  sha256sum "$releases_dir/$stable_name" > "$releases_dir/$stable_name.sha256"
+
+  if [[ "${APK_NO_VERSIONED_COPY:-0}" != "1" ]]; then
+    local stamp sha versioned_name
+    stamp="$(date +%Y%m%d-%H%M)"
+    sha="$(git -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || printf 'nogit')"
+    versioned_name="onetothree-${kind}-${stamp}-${sha}.apk"
+    cp "$source_apk" "$releases_dir/$versioned_name"
+    sha256sum "$releases_dir/$versioned_name" > "$releases_dir/$versioned_name.sha256"
+    ok "APK ready: releases/android/$versioned_name"
+    ok "SHA256 : releases/android/$versioned_name.sha256"
+  fi
+
+  ok "APK ready: releases/android/$stable_name"
+  ok "SHA256 : releases/android/$stable_name.sha256"
+}
+
 # -- read runtime config from .env.prod --
 [[ -f "$ENV_FILE" ]] || die ".env.prod not found — run ./startup.sh first."
 API_URL="$(val_for_key NEXT_PUBLIC_API_URL)"
@@ -63,6 +89,8 @@ if [[ -z "${ANDROID_HOME:-}" ]] && [[ -z "${ANDROID_SDK_ROOT:-}" ]]; then
 
   DOCKER_ENV=(
     -e BUILD_TYPE="$BUILD_TYPE"
+    -e APK_OUTPUT_NAME="${APK_OUTPUT_NAME:-}"
+    -e APK_NO_VERSIONED_COPY="${APK_NO_VERSIONED_COPY:-0}"
     -e NEXT_PUBLIC_API_URL="$API_URL"
     -e NEXT_PUBLIC_APP_URL="${APP_URL:-$API_URL}"
     -e NEXT_PUBLIC_WS_ORIGIN="${API_URL}"
@@ -93,8 +121,7 @@ if [[ -z "${ANDROID_HOME:-}" ]] && [[ -z "${ANDROID_SDK_ROOT:-}" ]]; then
     "$BUILDER_IMG" \
     bash /workspace/scripts/build-apk-inner.sh
 
-  APK_OUT="$ROOT/releases/android/onetothree-${BUILD_TYPE}.apk"
-  [[ -f "$APK_OUT" ]] && ok "Done — APK: releases/android/onetothree-${BUILD_TYPE}.apk" || die "APK not found after build."
+  find "$ROOT/releases/android" -maxdepth 1 -type f -name "onetothree-${BUILD_TYPE}*.apk" | grep -q . && ok "Done — APK artifacts are in releases/android" || die "APK not found after build."
   exit 0
 fi
 
@@ -149,7 +176,4 @@ else
 fi
 
 [[ -f "$APK_PATH" ]] || die "APK not found at $APK_PATH"
-RELEASES_DIR="$ROOT/releases/android"
-mkdir -p "$RELEASES_DIR"
-cp "$APK_PATH" "$RELEASES_DIR/onetothree-${BUILD_TYPE}.apk"
-ok "APK ready: releases/android/onetothree-${BUILD_TYPE}.apk"
+copy_apk_artifacts "$APK_PATH" "$BUILD_TYPE"

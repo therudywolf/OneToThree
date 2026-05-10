@@ -57,7 +57,7 @@ Last updated: 2026-05-07
 2. **Polls migration** — после deploy нужно запустить `npm run db:push` или применить
    `server/src/db/migrations/0015_polls.sql` вручную.
 
-3. **Деплой** — `./start.sh update` на продакшене после каждого push.
+3. **Деплой** — `./startup.sh update` на продакшене после каждого push.
 
 #### UI / UX (оба шелла)
 
@@ -73,7 +73,7 @@ Last updated: 2026-05-07
 
 ```bash
 # На сервере:
-./start.sh update
+./startup.sh update
 
 # Применить polls migration:
 npm run db:push   # или docker exec -it db psql -f 0015_polls.sql

@@ -35,7 +35,7 @@ val_for_key() {
 }
 
 # -- read runtime config from .env.prod --
-[[ -f "$ENV_FILE" ]] || die ".env.prod not found — run ./start.sh first."
+[[ -f "$ENV_FILE" ]] || die ".env.prod not found — run ./startup.sh first."
 API_URL="$(val_for_key NEXT_PUBLIC_API_URL)"
 APP_URL="$(val_for_key NEXT_PUBLIC_APP_URL)"
 VAPID_KEY="$(val_for_key NEXT_PUBLIC_VAPID_PUBLIC_KEY)"

@@ -221,7 +221,7 @@ services:
 
   # Next.js embeds NEXT_PUBLIC_* at build time from .env.prod (see args below). TURN ICE must use a
   # dedicated DNS name (e.g. turn.DOMAIN), not api.* — see coturn comments (Cloudflare / UDP).
-  # All NEXT_PUBLIC_* are set by start.sh from the DOMAIN secret — no fallback needed here.
+  # All NEXT_PUBLIC_* are set by startup.sh from the DOMAIN secret — no fallback needed here.
   web:
     build:
       context: ./client
@@ -283,7 +283,7 @@ services:
   #
   # TLS material (for turns:// fallback on 5349) is copied from the Caddy
   # ACME volume into ./docker/coturn/tls by scripts/sync-turn-certs.sh or
-  # ./start.sh turn-sync. coturn starts without TLS until those files exist.
+  # ./startup.sh turn-sync. coturn starts without TLS until those files exist.
   coturn:
     image: coturn/coturn:4.6
     restart: always

@@ -13,13 +13,13 @@ At container start coturn expects:
 1. Let Caddy acquire and maintain a certificate for `turn.<DOMAIN>`.
    Caddy persists the cert bundle inside the `caddy_data` Docker volume at
    `/data/caddy/certificates/<issuer>/turn.<DOMAIN>/`.
-2. Run `./start.sh turn-sync` or `scripts/sync-turn-certs.sh` on the host.
+2. Run `./startup.sh turn-sync` or `scripts/sync-turn-certs.sh` on the host.
    The script resolves the TURN hostname from `.env.prod`, copies
    `fullchain.pem` / `privkey.pem` from the Caddy volume into
    `docker/coturn/tls/`, and restarts coturn only when material changed.
-3. `./start.sh update` also retries this sync after Caddy starts. Keep a daily
+3. `./startup.sh update` also retries this sync after Caddy starts. Keep a daily
    cron for renewals, for example:
 
-   `0 4 * * * cd /opt/forest && ./start.sh turn-sync >/dev/null 2>&1`
+   `0 4 * * * cd /opt/forest && ./startup.sh turn-sync >/dev/null 2>&1`
 
 Never commit real certificate material to the repository.

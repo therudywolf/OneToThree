@@ -81,7 +81,7 @@ $TurnUser = Get-EnvValue -Path $EnvFile -Key "NEXT_PUBLIC_TURN_USERNAME"
 $TurnPass = Get-EnvValue -Path $EnvFile -Key "NEXT_PUBLIC_TURN_PASSWORD"
 
 if ([string]::IsNullOrWhiteSpace($ApiUrl)) {
-  Fail "NEXT_PUBLIC_API_URL missing in .env.prod. Run start.sh first and configure env."
+  Fail "NEXT_PUBLIC_API_URL missing in .env.prod. Run startup.sh first and configure env."
 }
 
 if ([string]::IsNullOrWhiteSpace($AppUrl)) {

@@ -6,7 +6,7 @@ COPY package.json package-lock.json* ./
 # Prefer deterministic `npm ci`, but if package-lock is out-of-sync with
 # package.json (common after dependabot PRs or new feature deps that weren't
 # pre-locked), self-heal by rebuilding the lockfile and retrying.  This keeps
-# `./start.sh update` idempotent across arbitrary dependency changes.
+# `./startup.sh update` idempotent across arbitrary dependency changes.
 RUN npm ci --no-audit --no-fund \
   || (echo '[deps] lockfile drift detected, regenerating...' \
       && npm install --package-lock-only --no-audit --no-fund \

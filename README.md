@@ -16,7 +16,7 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 - [Stack](#stack)
 - [Requirements](#requirements)
 - [Quick Deploy (5 minutes)](#quick-deploy-5-minutes)
-- [start.sh Commands](#startsh-commands)
+- [startup.sh Commands](#startupsh-commands)
 - [First Run Walkthrough](#first-run-walkthrough)
 - [Updating](#updating)
 - [Backup & Restore](#backup--restore)
@@ -37,7 +37,7 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 - **Multi-device** — QR-based device linking, device revocation
 - **2FA** — optional TOTP (RFC 6238)
 - **PWA** — installable on mobile, push notifications via Web Push (VAPID)
-- **Self-hosted** — single `./start.sh` command, automatic TLS via Let's Encrypt
+- **Self-hosted** — single `./startup.sh` command, automatic TLS via Let's Encrypt
 
 ---
 
@@ -120,8 +120,8 @@ sudo ufw allow 50000:50100/udp
 ### 4. Launch
 
 ```bash
-chmod +x ./start.sh
-./start.sh
+chmod +x ./startup.sh
+./startup.sh
 ```
 
 On **first run**, the script automatically:
@@ -137,7 +137,7 @@ TLS certificates are obtained automatically from Let's Encrypt. First run takes 
 
 ### 5. Save your credentials
 
-The credentials are shown **only once** during the first run. Copy them to a secure password manager immediately. If you lose them, delete `./secrets/` and re-run `./start.sh` to regenerate (existing data will be inaccessible with new DB passwords).
+The credentials are shown **only once** during the first run. Copy them to a secure password manager immediately. If you lose them, delete `./secrets/` and re-run `./startup.sh` to regenerate (existing data will be inaccessible with new DB passwords).
 
 ### 6. Register and become admin
 
@@ -154,25 +154,25 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 ---
 
-## start.sh Commands
+## startup.sh Commands
 
 | Command | Description |
 |---------|-------------|
-| `./start.sh` | Start the stack (builds images if needed) |
-| `./start.sh stop` | Stop all containers |
-| `./start.sh restart` | Restart containers without rebuilding |
-| `./start.sh logs` | Tail live logs from all services |
-| `./start.sh status` | Show container status |
-| `./start.sh update` | Pull latest code, rebuild images, restart (data preserved) |
-| `./start.sh backup` | Dump database to `backups/db_TIMESTAMP.sql.gz` |
-| `./start.sh build-apk` | Build Android debug APK (requires Java 17 + Android SDK) |
-| `./start.sh build-apk-release <keystore>` | Build signed release APK |
+| `./startup.sh` | Start the stack (builds images if needed) |
+| `./startup.sh stop` | Stop all containers |
+| `./startup.sh restart` | Restart containers without rebuilding |
+| `./startup.sh logs` | Tail live logs from all services |
+| `./startup.sh status` | Show container status |
+| `./startup.sh update` | Pull latest code, rebuild images, restart (data preserved) |
+| `./startup.sh backup` | Dump database to `backups/db_TIMESTAMP.sql.gz` |
+| `./startup.sh build-apk` | Build Android debug APK (requires Java 17 + Android SDK) |
+| `./startup.sh build-apk-release <keystore>` | Build signed release APK |
 
 ---
 
 ## First Run Walkthrough
 
-When you run `./start.sh` for the first time, here is what happens step by step:
+When you run `./startup.sh` for the first time, here is what happens step by step:
 
 1. **Dependency check** — verifies Docker, Docker Compose, openssl, and curl are installed
 2. **Volume check** — reports whether existing data volumes are found (they won't exist on first run)
@@ -196,7 +196,7 @@ When you run `./start.sh` for the first time, here is what happens step by step:
 ## Updating
 
 ```bash
-./start.sh update
+./startup.sh update
 ```
 
 This command:
@@ -218,7 +218,7 @@ For detailed update procedures, rollback instructions, and pre-update checklists
 ### Create a backup
 
 ```bash
-./start.sh backup
+./startup.sh backup
 ```
 
 This creates a compressed PostgreSQL dump at `backups/db_YYYYMMDD_HHMMSS.sql.gz`.
@@ -229,7 +229,7 @@ Set the `BACKUP_PASSPHRASE` environment variable to enable AES-256-CBC encryptio
 
 ```bash
 export BACKUP_PASSPHRASE="your-strong-passphrase"
-./start.sh backup
+./startup.sh backup
 ```
 
 When set, the backup script pipes the archive through `openssl enc -aes-256-cbc -pbkdf2` producing a `.tar.gz.enc` file. To decrypt:
@@ -273,8 +273,8 @@ Pre-built debug APKs are in [`releases/android/`](./releases/android/).
 Prerequisites: Java 17+, Android SDK, `ANDROID_HOME` environment variable set.
 
 ```bash
-./start.sh build-apk             # debug APK  (reads .env.prod for server URL)
-./start.sh build-apk-release <keystore>  # signed release APK
+./startup.sh build-apk             # debug APK  (reads .env.prod for server URL)
+./startup.sh build-apk-release <keystore>  # signed release APK
 ```
 
 The APK is placed at `releases/android/onetothree-debug.apk` (or `onetothree-release.apk`).
@@ -285,14 +285,14 @@ The APK is placed at `releases/android/onetothree-debug.apk` (or `onetothree-rel
 
 | Symptom | Fix |
 |---------|-----|
-| Caddy fails to get TLS certificate | Confirm DNS A records resolve to this server. Ensure ports 80 and 443 are open. Check logs: `./start.sh logs` and look for Caddy errors. |
+| Caddy fails to get TLS certificate | Confirm DNS A records resolve to this server. Ensure ports 80 and 443 are open. Check logs: `./startup.sh logs` and look for Caddy errors. |
 | WebRTC calls don't connect | In default `CALL_MEDIA_MODE=origin_safe`, 1:1 calls may fall back from P2P/video to encrypted WebSocket audio relay when NAT blocks direct media. In `CALL_MEDIA_MODE=self_hosted`, ensure `turn.*` DNS is **DNS only** and ports 3478 + relay UDP range are open. |
 | Login redirect loop on `/login` | Verify `COOKIE_DOMAIN` is set to `.your-domain.com` (with leading dot) in `.env.prod`. Rebuild the API container after changes. |
 | `relation "users" does not exist` | Database migration failed. Check: `docker compose -f docker-compose.prod.yml logs db-migrate` |
 | Media shows "File expired" | The object was purged by the retention policy, or the peer needs to re-send the file. |
 | Wrong client IPs in logs | Set `TRUST_PROXY=1` in `.env.prod` so Fastify reads the `X-Forwarded-For` header from Caddy. |
-| Containers keep restarting | Check resource limits. The stack needs at least 4 GB RAM. Run `./start.sh logs` to find the failing service. |
-| `./start.sh` says secrets not initialized | Delete `./secrets/` and re-run `./start.sh` to regenerate all secrets. |
+| Containers keep restarting | Check resource limits. The stack needs at least 4 GB RAM. Run `./startup.sh logs` to find the failing service. |
+| `./startup.sh` says secrets not initialized | Delete `./secrets/` and re-run `./startup.sh` to regenerate all secrets. |
 
 ---
 

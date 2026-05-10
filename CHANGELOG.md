@@ -114,7 +114,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Presigned PUT URL flow (server never touches plaintext media bytes)
 - Media served from isolated `s3.` subdomain (XSS prevention)
 - Docker secrets for all credentials
-- `generate-secrets.sh` and `start.sh` one-command deploy
+- `startup.sh` one-command deploy with internal secret generation
 - `db-migrate` one-shot container for Drizzle ORM migrations
 - Automated backup script with optional AES-256-CBC encryption
 

@@ -40,7 +40,7 @@ LIVEKIT_API_SECRET_VAL="$(read_secret LIVEKIT_API_SECRET_FILE LIVEKIT_API_SECRET
 # LiveKit keys (empty or missing secret files), do NOT restart-loop — park
 # the container in an idle sleep so compose reports it as Up but it never
 # tries to read tokens.  Operator can later `echo "key" > secrets/livekit_api_key`
-# (and the secret_stub in start.sh) and `docker restart forestmessenger-livekit-1`
+# (and the secret_stub in startup.sh) and `docker restart forestmessenger-livekit-1`
 # to bring the SFU online.  The messenger itself falls back to coturn or
 # Cloudflare Calls TURN for 1-to-1 calls in this mode.
 if [ -z "${LIVEKIT_API_KEY_VAL}" ] || [ -z "${LIVEKIT_API_SECRET_VAL}" ]; then

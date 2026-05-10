@@ -5,9 +5,7 @@
 # Generates all required secrets, writes them as individual files in ./secrets/
 # (Docker secrets format — one value per file), and displays them ONCE.
 #
-# Usage:
-#   chmod +x generate-secrets.sh
-#   ./generate-secrets.sh
+# Internal helper. Run project setup through ./startup.sh.
 #
 # Secrets are NEVER committed to git (./secrets/ is in .gitignore).
 # =============================================================================
@@ -197,7 +195,7 @@ echo -e "${BLD}╚════════════════════�
 echo ""
 echo -e "  Secrets stored in ${CYN}${SECRETS_DIR}/${NC} and used by Docker."
 echo -e "  The secrets directory is in .gitignore — ${BLD}never committed${NC}."
-echo -e "  Make an encrypted copy with ${BLD}./start.sh backup-secrets${NC} before first production rollout."
+echo -e "  Make an encrypted copy with ${BLD}./startup.sh backup-secrets${NC} before first production rollout."
 echo ""
 
 touch "$SECRETS_DONE"

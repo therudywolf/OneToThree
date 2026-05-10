@@ -24,7 +24,7 @@ OneToThree is:
 | Password sent to server | **Never** — ECDSA challenge | Hashed | Hashed | Hashed |
 | Media encrypted | **Per-file unique key** | Yes | No (default) | Yes |
 | Calls | **WebRTC DTLS-SRTP** | WebRTC | Proprietary | Jitsi bridge |
-| Single-binary deploy | **`./start.sh`** | N/A | N/A | Multiple services |
+| Single-binary deploy | **`./startup.sh`** | N/A | N/A | Multiple services |
 
 ---
 
@@ -620,16 +620,16 @@ docker-compose.prod.yml — 7 services
 - **Rate limiting:** Fastify rate-limit on auth endpoints (10 attempts/minute for 2FA)
 - **DNS pinning:** All containers resolve `*.onetothree.ru` to host-gateway
 
-### start.sh — Production Launcher
+### startup.sh — Production Launcher
 
 ```
-./start.sh              Build and start all services
-./start.sh stop         Stop all containers
-./start.sh restart      Restart without rebuild
-./start.sh logs         Tail logs from all services
-./start.sh status       Show container health status
-./start.sh update       git pull + rebuild + restart
-./start.sh backup       Backup PostgreSQL (gzipped SQL)
+./startup.sh              Build and start all services
+./startup.sh stop         Stop all containers
+./startup.sh restart      Restart without rebuild
+./startup.sh logs         Tail logs from all services
+./startup.sh status       Show container health status
+./startup.sh update       git pull + rebuild + restart
+./startup.sh backup       Backup PostgreSQL (gzipped SQL)
 ```
 
 **First-run automation:**
@@ -702,19 +702,18 @@ git clone https://github.com/user/OneToThree.git
 cd OneToThree
 
 # 2. Configure
-cp .env.prod.example .env.prod
-# Edit .env.prod — fill in 6 required fields:
+./startup.sh
 #   POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD,
 #   TURN_EXTERNAL_IP, TURN_PASSWORD,
 #   CORS_ORIGIN (your domain), VAPID_SUBJECT (your email)
 
 # 3. Launch
-./start.sh
+./startup.sh
 # Generates JWT_SECRET, WEBHOOK_SECRET, VAPID keys automatically
 # Runs migrations, builds containers, starts everything
 
 # 4. Verify
-./start.sh status
+./startup.sh status
 # All services should show "healthy"
 ```
 
@@ -903,9 +902,9 @@ OneToThree/
 ├── docker-compose.yml         # Development
 ├── docker-compose.prod.yml    # Production (7 services)
 ├── Caddyfile                  # Reverse proxy + TLS
-├── start.sh                   # Production launcher
+├── startup.sh                   # Production launcher
 ├── drizzle.config.ts          # ORM config
-├── .env.prod.example          # Environment template
+├── config/env/                 # Environment templates
 └── FOSS.md                    # ← You are here
 ```
 

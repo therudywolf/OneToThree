@@ -99,8 +99,8 @@ sudo ufw reload
 ### 4 · Launch
 
 ```bash
-chmod +x ./start.sh
-./start.sh
+chmod +x ./startup.sh
+./startup.sh
 ```
 
 The script does everything on first run:
@@ -138,10 +138,10 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 ```bash
 # Optional but recommended: back up first
-./start.sh backup
+./startup.sh backup
 
 # Update
-./start.sh update
+./startup.sh update
 ```
 
 Takes 2–5 minutes. Your data is safe — databases and media live in Docker
@@ -151,7 +151,7 @@ named volumes that are never touched by image rebuilds.
 
 ### What happens internally
 
-`./start.sh update` runs:
+`./startup.sh update` runs:
 
 1. `git pull origin main` — pulls the latest code
 2. Re-syncs `DOMAIN` and all derived vars in `.env.prod` (no manual editing needed)
@@ -189,7 +189,7 @@ Return to tracking `main` once the issue is resolved upstream:
 ```bash
 git checkout main
 git pull
-./start.sh update
+./startup.sh update
 ```
 
 ---
@@ -240,10 +240,10 @@ adb install -r -d releases/android/OneToThree-debug-2026-04-27.apk
 #    NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 
 # 2. Build debug APK
-./start.sh build-apk
+./startup.sh build-apk
 
 # 3. Or build a signed release APK (requires a keystore)
-./start.sh build-apk-release /path/to/release.keystore
+./startup.sh build-apk-release /path/to/release.keystore
 # Set env vars before running:
 #   export RELEASE_STORE_PASSWORD=...
 #   export RELEASE_KEY_ALIAS=upload

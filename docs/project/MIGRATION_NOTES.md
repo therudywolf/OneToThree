@@ -246,17 +246,17 @@
 - **`docker/coturn/turnserver.conf`**: убран `realm=${TURN_REALM:-…}`
   (coturn не делает substitution; realm задаётся CLI-флагом в
   compose-`command:`).
-- **`generate-secrets.sh`**: теперь генерит `secrets/livekit_api_key`
+- **`startup.sh`**: теперь генерит `secrets/livekit_api_key` через внутренний helper
   (`APIforest_*`) и `secrets/livekit_api_secret` (hex-64). Существующие
   инсталляции: удалите `./secrets/.initialized` и заново инициализируйте
   LiveKit-ключи либо допишите файлы вручную.
-- **`start.sh update`**: `detect_update_services` теперь распознаёт
+- **`startup.sh update`**: `detect_update_services` теперь распознаёт
   `docker/livekit/*` → перезапуск `livekit`, и выводит warning о
   необходимости вручную синхронизировать TURN TLS
   (`scripts/sync-turn-certs.sh`) при изменениях `docker/coturn/tls/*`.
   Дефолтный список сервисов при «пустом» диффе расширен до
   `(api web caddy coturn livekit)`.
-- **`start.sh`** доменная синхронизация дополнительно заполняет
+- **`startup.sh`** доменная синхронизация дополнительно заполняет
   `LIVEKIT_URL=wss://lk.<domain>` и `NEXT_PUBLIC_LIVEKIT_URL` — клиенту
   не нужно иметь секреты, ему нужен только публичный URL.
 
@@ -275,4 +275,4 @@ npm run db:generate
 npm run db:push
 ```
 
-В проде — через `start.sh` (flag `--migrate`) и обязательный backup перед применением.
+В проде — через `startup.sh` (flag `--migrate`) и обязательный backup перед применением.

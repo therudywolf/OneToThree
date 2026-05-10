@@ -14,7 +14,7 @@ A step-by-step guide for deploying Forest Messenger on a fresh VPS. This guide a
 - [4. Configure Cloudflare (if used)](#4-configure-cloudflare-if-used)
 - [5. Open Firewall Ports](#5-open-firewall-ports)
 - [6. Clone the Repository](#6-clone-the-repository)
-- [7. Run start.sh](#7-run-startsh)
+- [7. Run startup.sh](#7-run-startupsh)
 - [8. Save Your Credentials](#8-save-your-credentials)
 - [9. Verify Everything Works](#9-verify-everything-works)
 - [10. Make Yourself Admin](#10-make-yourself-admin)
@@ -168,11 +168,11 @@ cd OneToThree
 
 ---
 
-## 7. Run start.sh
+## 7. Run startup.sh
 
 ```bash
-chmod +x ./start.sh
-./start.sh
+chmod +x ./startup.sh
+./startup.sh
 ```
 
 ### What each prompt means
@@ -238,9 +238,9 @@ During the first run, you'll see a box like this:
 **Copy all of these to a secure password manager immediately.** They are shown only once and cannot be retrieved later.
 
 If you lose them:
-1. Stop the stack: `./start.sh stop`
+1. Stop the stack: `./startup.sh stop`
 2. Delete secrets: `rm -rf ./secrets/`
-3. Re-run: `./start.sh`
+3. Re-run: `./startup.sh`
 4. This generates new secrets — but **existing database data will be inaccessible** with a new DB password
 
 ---
@@ -249,7 +249,7 @@ If you lose them:
 
 Run through this checklist:
 
-- [ ] `./start.sh status` — all containers show "healthy" or "Up"
+- [ ] `./startup.sh status` — all containers show "healthy" or "Up"
 - [ ] Open `https://your-domain.com` in a browser — the registration page loads
 - [ ] Check the TLS certificate — the lock icon shows a valid Let's Encrypt cert
 - [ ] Register a new account — the registration flow completes successfully
@@ -306,6 +306,6 @@ After installation, the app:
 ## What's Next
 
 - **Invite users** — share the registration link or have them search for your username
-- **Set up backups** — run `./start.sh backup` regularly or set up a cron job
-- **Keep updated** — run `./start.sh update` periodically to get new features and security fixes
+- **Set up backups** — run `./startup.sh backup` regularly or set up a cron job
+- **Keep updated** — run `./startup.sh update` periodically to get new features and security fixes
 - **Read the security model** — see [SECURITY.md](./SECURITY.md) for full details on the encryption architecture

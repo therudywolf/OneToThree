@@ -3,20 +3,20 @@
 # OneToThree (Forest Messenger) — Production Launcher
 # =============================================================================
 # Первый запуск:
-#   ./start.sh install  — генерирует секреты (покажет пароли один раз), запускает стек
-#   ./start.sh          — то же самое, короткий путь
+#   ./startup.sh install  — генерирует секреты (покажет пароли один раз), запускает стек
+#   ./startup.sh          — то же самое, короткий путь
 #
 # Сброс и чистый старт:
-#   ./start.sh clean    — удаляет volumes и секреты, готов к свежему деплою
+#   ./startup.sh clean    — удаляет volumes и секреты, готов к свежему деплою
 #
 # Управление:
-#   ./start.sh stop     — остановить
-#   ./start.sh restart  — перезапустить без пересборки
-#   ./start.sh logs     — хвост логов всех сервисов
-#   ./start.sh status   — состояние контейнеров
-#   ./start.sh update   — git pull + пересборка + перезапуск
-#   ./start.sh turn-sync — синхронизировать TLS cert Caddy → coturn
-#   ./start.sh backup   — резервная копия БД
+#   ./startup.sh stop     — остановить
+#   ./startup.sh restart  — перезапустить без пересборки
+#   ./startup.sh logs     — хвост логов всех сервисов
+#   ./startup.sh status   — состояние контейнеров
+#   ./startup.sh update   — git pull + пересборка + перезапуск
+#   ./startup.sh turn-sync — синхронизировать TLS cert Caddy → coturn
+#   ./startup.sh backup   — резервная копия БД
 #
 # Compose подставляет ${TURN_PASSWORD} и др. в docker-compose.prod.yml из файла
 # `.env` в корне репозитория. Скрипт зеркалит .env.prod → .env и подтягивает TURN_*
@@ -48,6 +48,8 @@ ENV_FILE="${ENV_FILE:-.env.prod}"
 COMPOSE_FILE="docker-compose.prod.yml"
 MESH_ENV_FILE="${MESH_ENV_FILE:-.env.mesh}"
 MESH_COMPOSE_FILE="docker-compose.mesh.yml"
+ENV_TEMPLATE="${ENV_TEMPLATE:-config/env/.env.prod.example}"
+MESH_ENV_TEMPLATE="${MESH_ENV_TEMPLATE:-config/env/.env.mesh.example}"
 SECRETS_DIR="${ROOT}/secrets"
 SECRETS_DONE="${SECRETS_DIR}/.initialized"
 SECRETS_BACKUP_DIR="${ROOT}/secrets-backups"
@@ -422,7 +424,7 @@ sync_turn_tls_with_retry() {
     fi
 
     if [[ "$elapsed" -ge "$max_wait" ]]; then
-      warn "TURN TLS ещё не готовы после ${max_wait}s. Проверьте DNS/ACME и повторите: ./start.sh turn-sync"
+      warn "TURN TLS ещё не готовы после ${max_wait}s. Проверьте DNS/ACME и повторите: ./startup.sh turn-sync"
       return 1
     fi
 
@@ -468,7 +470,7 @@ detect_update_services() {
         append_service_once caddy
         ;;
       docker/coturn/tls/*|scripts/sync-turn-certs.sh)
-        append_hint_once "TURN TLS-материалы изменились — запускаю автоматическую синхронизацию через ./start.sh turn-sync."
+        append_hint_once "TURN TLS-материалы изменились — запускаю автоматическую синхронизацию через ./startup.sh turn-sync."
         append_service_once coturn
         ;;
       docker/coturn/*)
@@ -624,7 +626,7 @@ case "$CMD" in
     # run it (drizzle's hash table deduplicates applied migrations, so repeat
     # runs on a caught-up schema are a no-op).  This guarantees that pending
     # migrations from any prior failed/skipped update are caught up
-    # deterministically on every `./start.sh update`.
+    # deterministically on every `./startup.sh update`.
     if printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -qx 'db-migrate'; then
       log "Пересборка образа миграций (без кэша)..."
       "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
@@ -674,7 +676,7 @@ case "$CMD" in
       if curl -fsS --max-time 15 "${_api_url}/health" >/dev/null 2>&1; then
         ok "Smoke-тест: /health — OK"
       else
-        warn "Smoke-тест: /health не ответил (сервис может ещё стартовать). Проверьте: ./start.sh logs"
+        warn "Smoke-тест: /health не ответил (сервис может ещё стартовать). Проверьте: ./startup.sh logs"
         UPDATE_OK=false
       fi
     fi
@@ -699,12 +701,12 @@ case "$CMD" in
     if [[ "$UPDATE_OK" == true ]]; then
       ok "Обновление завершено. Все проверки прошли. Данные сохранены."
     else
-      warn "Обновление применено, но некоторые проверки не прошли. Проверьте: ./start.sh logs"
+      warn "Обновление применено, но некоторые проверки не прошли. Проверьте: ./startup.sh logs"
     fi
     exit 0
     ;;
   tg)
-    [[ -f "$ENV_FILE" ]] || die "Не найден ${ENV_FILE}. Сначала выполните ./start.sh up"
+    [[ -f "$ENV_FILE" ]] || die "Не найден ${ENV_FILE}. Сначала выполните ./startup.sh up"
     prime_compose_interpolation_env
     prompt_and_save_telegram_token 0
     log "Перезапускаю API для применения TELEGRAM_BOT_TOKEN..."
@@ -727,7 +729,7 @@ case "$CMD" in
     exit 0
     ;;
   backup-secrets)
-    [[ -f "$SECRETS_DONE" ]] || die "Секреты ещё не инициализированы. Сначала выполните ./start.sh install"
+    [[ -f "$SECRETS_DONE" ]] || die "Секреты ещё не инициализированы. Сначала выполните ./startup.sh install"
     mkdir -p "$SECRETS_BACKUP_DIR"
     chmod 700 "$SECRETS_BACKUP_DIR"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -768,7 +770,7 @@ case "$CMD" in
     ;;
   restore-secrets)
     ARCHIVE_PATH="${2:-}"
-    [[ -n "$ARCHIVE_PATH" ]] || die "Укажите путь: ./start.sh restore-secrets <path-to-backup.tar.enc>"
+    [[ -n "$ARCHIVE_PATH" ]] || die "Укажите путь: ./startup.sh restore-secrets <path-to-backup.tar.enc>"
     [[ -f "$ARCHIVE_PATH" ]] || die "Файл не найден: $ARCHIVE_PATH"
 
     warn "Восстановление перезапишет локальные ./secrets и может обновить ${ENV_FILE}/${MESH_ENV_FILE}."
@@ -839,7 +841,7 @@ case "$CMD" in
     fi
 
     echo ""
-    ok "Готово. Запустите ./start.sh для свежего деплоя."
+    ok "Готово. Запустите ./startup.sh для свежего деплоя."
     exit 0
     ;;
   mesh)
@@ -860,11 +862,11 @@ case "$CMD" in
     docker info >/dev/null 2>&1 || die "Docker демон не запущен."
 
     if [[ ! -f "$MESH_ENV_FILE" ]]; then
-      [[ -f ".env.mesh.example" ]] || die "Не найден .env.mesh.example"
-      cp ".env.mesh.example" "$MESH_ENV_FILE"
+      [[ -f "$MESH_ENV_TEMPLATE" ]] || die "Не найден ${MESH_ENV_TEMPLATE}"
+      cp "$MESH_ENV_TEMPLATE" "$MESH_ENV_FILE"
       warn "Создан ${MESH_ENV_FILE}. Заполните TURN_REALM, TURN_EXTERNAL_IP и TURN_PASSWORD."
       warn "Для полного cluster mesh используйте cluster_join_token и internal_api_signing_key из ./secrets."
-      echo -e "  Затем повторите: ${BLD}./start.sh mesh${NC}"
+      echo -e "  Затем повторите: ${BLD}./startup.sh mesh${NC}"
       exit 0
     fi
 
@@ -915,7 +917,7 @@ case "$CMD" in
     exec "$ROOT/scripts/build-apk.sh" release "${@:2}"
     ;;
   *)
-    echo "Использование: ./start.sh [install|up|quick|tg|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|turn-sync|backup|clean|uninstall|build-apk|build-apk-release <keystore>]"
+    echo "Использование: ./startup.sh [install|up|quick|tg|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|turn-sync|backup|clean|uninstall|build-apk|build-apk-release <keystore>]"
     exit 1
     ;;
 esac
@@ -967,12 +969,12 @@ if [[ ! -f "$SECRETS_DONE" ]]; then
     done
     echo ""
     warn "Новые секреты не совпадут со старыми данными в volumes."
-    warn "Рекомендация: ${BLD}./start.sh clean${NC} для полного сброса."
+    warn "Рекомендация: ${BLD}./startup.sh clean${NC} для полного сброса."
     echo ""
     echo -ne "  Продолжить всё равно? (y/N): "
     read -r CONTINUE_STALE
     if [[ "$CONTINUE_STALE" != "y" && "$CONTINUE_STALE" != "Y" ]]; then
-      echo "  Отменено. Запустите ${BLD}./start.sh clean${NC} для сброса."
+      echo "  Отменено. Запустите ${BLD}./startup.sh clean${NC} для сброса."
       exit 0
     fi
   fi
@@ -986,14 +988,14 @@ if [[ ! -f "$SECRETS_DONE" ]]; then
   sep
   log "Секреты не инициализированы. Запускаю генерацию..."
   echo ""
-  if [[ -x "./generate-secrets.sh" ]]; then
-    ./generate-secrets.sh
+  if [[ -x "./scripts/generate-secrets.sh" ]]; then
+    ./scripts/generate-secrets.sh
   else
-    chmod +x ./generate-secrets.sh 2>/dev/null || true
-    bash ./generate-secrets.sh
+    chmod +x ./scripts/generate-secrets.sh 2>/dev/null || true
+    bash ./scripts/generate-secrets.sh
   fi
   if [[ ! -f "$SECRETS_DONE" ]]; then
-    die "Генерация секретов не завершена. Проверьте generate-secrets.sh."
+    die "Генерация секретов не завершена. Проверьте scripts/generate-secrets.sh."
   fi
   ok "Docker secrets готовы."
 else
@@ -1007,8 +1009,8 @@ fi
 # ENV ФАЙЛ — создать из шаблона если нет
 # =============================================================================
 if [[ ! -f "$ENV_FILE" ]]; then
-  [[ -f ".env.prod.example" ]] || die "Не найден .env.prod.example — репозиторий повреждён."
-  cp ".env.prod.example" "$ENV_FILE"
+  [[ -f "$ENV_TEMPLATE" ]] || die "Не найден ${ENV_TEMPLATE} — репозиторий повреждён."
+  cp "$ENV_TEMPLATE" "$ENV_FILE"
   if [[ ! -f "$SECRETS_DONE" ]]; then
     echo ""
     warn "Создан ${ENV_FILE} из шаблона."
@@ -1388,14 +1390,14 @@ if [[ -n "$TURN_RELAY_IP" ]]; then
   echo -e "  ${BLD}TURN relay IP:${NC} ${DIM}${TURN_RELAY_IP}${NC}"
 fi
 echo ""
-echo -e "  ${DIM}./start.sh logs    — просмотр логов${NC}"
-echo -e "  ${DIM}./start.sh stop    — остановить${NC}"
-echo -e "  ${DIM}./start.sh update  — обновить${NC}"
-echo -e "  ${DIM}./start.sh backup  — резервная копия БД${NC}"
-echo -e "  ${DIM}./start.sh backup-secrets — зашифрованный backup секретов${NC}"
+echo -e "  ${DIM}./startup.sh logs    — просмотр логов${NC}"
+echo -e "  ${DIM}./startup.sh stop    — остановить${NC}"
+echo -e "  ${DIM}./startup.sh update  — обновить${NC}"
+echo -e "  ${DIM}./startup.sh backup  — резервная копия БД${NC}"
+echo -e "  ${DIM}./startup.sh backup-secrets — зашифрованный backup секретов${NC}"
 echo ""
 echo -e "  ${DIM}Данные хранятся в Docker volumes и НЕ удаляются при обновлении.${NC}"
-echo -e "  ${DIM}./start.sh clean   — полный сброс (ОСТОРОЖНО)${NC}"
+echo -e "  ${DIM}./startup.sh clean   — полный сброс (ОСТОРОЖНО)${NC}"
 
 if [[ "$FIRST_RUN" == true ]]; then
   echo ""
@@ -1405,6 +1407,6 @@ fi
 if [[ "$CADDY_TLS_WARNING" == true ]]; then
   echo ""
   echo -e "  ${YEL}Caddy сообщает об ошибках получения TLS-сертификата.${NC}"
-  echo -e "  ${YEL}Проверьте DNS/Cloudflare и доступность 80/443, затем посмотрите: ./start.sh logs${NC}"
+  echo -e "  ${YEL}Проверьте DNS/Cloudflare и доступность 80/443, затем посмотрите: ./startup.sh logs${NC}"
 fi
 echo ""

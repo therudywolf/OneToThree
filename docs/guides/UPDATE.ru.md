@@ -34,7 +34,7 @@
 Всегда создавайте резервную копию перед обновлением:
 
 ```bash
-./start.sh backup
+./startup.sh backup
 ```
 
 Создаёт сжатый дамп базы данных в `backups/db_YYYYMMDD_HHMMSS.sql.gz`.
@@ -43,7 +43,7 @@
 
 ```bash
 # База данных
-./start.sh backup
+./startup.sh backup
 
 # Медиа (том MinIO)
 docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
@@ -55,7 +55,7 @@ docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
 ## Команда обновления
 
 ```bash
-./start.sh update
+./startup.sh update
 ```
 
 Одна команда — и всё.
@@ -64,7 +64,7 @@ docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
 
 ## Что происходит внутри
 
-Команда `./start.sh update` выполняет следующие шаги:
+Команда `./startup.sh update` выполняет следующие шаги:
 
 1. **`git pull origin master`** — загружает последний исходный код
 2. **`docker compose up -d --build --remove-orphans`** — пересобирает Docker-образы из обновлённого кода и перезапускает контейнеры; удаляет контейнеры от удалённых сервисов
@@ -80,10 +80,10 @@ docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
 
 ```bash
 # Проверить, что все контейнеры здоровы
-./start.sh status
+./startup.sh status
 
 # Проверить логи на наличие ошибок
-./start.sh logs
+./startup.sh logs
 
 # Убедиться, что сайт загружается
 curl -sI https://ваш-домен.ru | head -5
@@ -136,7 +136,7 @@ gunzip -c backups/db_YYYYMMDD_HHMMSS.sql.gz | \
 ```bash
 git checkout master
 git pull origin master
-./start.sh update
+./startup.sh update
 ```
 
 ---

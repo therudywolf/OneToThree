@@ -34,7 +34,7 @@ Update whenever there are security patches, bug fixes, or new features you want.
 Always create a backup before updating:
 
 ```bash
-./start.sh backup
+./startup.sh backup
 ```
 
 This creates a compressed database dump at `backups/db_YYYYMMDD_HHMMSS.sql.gz`.
@@ -43,7 +43,7 @@ For a full backup including media files:
 
 ```bash
 # Database
-./start.sh backup
+./startup.sh backup
 
 # Media (MinIO volume)
 docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
@@ -55,7 +55,7 @@ docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
 ## Update Command
 
 ```bash
-./start.sh update
+./startup.sh update
 ```
 
 That's it. One command.
@@ -64,7 +64,7 @@ That's it. One command.
 
 ## What Happens Internally
 
-The `./start.sh update` command runs the following steps:
+The `./startup.sh update` command runs the following steps:
 
 1. **`git pull origin master`** — downloads the latest source code
 2. **`docker compose up -d --build --remove-orphans`** — rebuilds Docker images from the updated code and restarts containers; removes any orphaned containers from removed services
@@ -80,10 +80,10 @@ After the update completes:
 
 ```bash
 # Check all containers are healthy
-./start.sh status
+./startup.sh status
 
 # Check logs for errors
-./start.sh logs
+./startup.sh logs
 
 # Verify the site loads
 curl -sI https://your-domain.com | head -5
@@ -136,7 +136,7 @@ Once the issue is resolved upstream:
 ```bash
 git checkout master
 git pull origin master
-./start.sh update
+./startup.sh update
 ```
 
 ---

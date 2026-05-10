@@ -630,6 +630,8 @@ docker-compose.prod.yml — 7 services
 ./startup.sh status       Show container health status
 ./startup.sh update       git pull + rebuild + restart
 ./startup.sh backup       Backup PostgreSQL (gzipped SQL)
+./startup.sh build-apk    Build Android debug APK into releases/android
+./startup.sh build-apk-release <keystore>  Build signed Android APK
 ```
 
 **First-run automation:**
@@ -638,6 +640,7 @@ docker-compose.prod.yml — 7 services
 - Syncs `DATABASE_URL` from `POSTGRES_*` variables
 - Syncs `NEXT_PUBLIC_TURN_*` from `TURN_*` variables
 - Validates required fields before starting
+- Creates runtime `.env.prod` from `config/env/.env.prod.example`; committed templates live under `config/env/`
 
 ---
 
@@ -701,18 +704,12 @@ Create these DNS records pointing to your server IP:
 git clone https://github.com/user/OneToThree.git
 cd OneToThree
 
-# 2. Configure
-./startup.sh
-#   POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD,
-#   TURN_EXTERNAL_IP, TURN_PASSWORD,
-#   CORS_ORIGIN (your domain), VAPID_SUBJECT (your email)
-
-# 3. Launch
+# 2. Configure and launch
 ./startup.sh
 # Generates JWT_SECRET, WEBHOOK_SECRET, VAPID keys automatically
 # Runs migrations, builds containers, starts everything
 
-# 4. Verify
+# 3. Verify
 ./startup.sh status
 # All services should show "healthy"
 ```
@@ -902,9 +899,11 @@ OneToThree/
 ├── docker-compose.yml         # Development
 ├── docker-compose.prod.yml    # Production (7 services)
 ├── Caddyfile                  # Reverse proxy + TLS
-├── startup.sh                   # Production launcher
+├── startup.sh                 # Production launcher
+├── apkbuild.ps1               # Windows APK build helper
 ├── drizzle.config.ts          # ORM config
-├── config/env/                 # Environment templates
+├── config/env/                # Environment templates
+├── releases/android/          # APK release artifacts and checksums
 └── FOSS.md                    # ← You are here
 ```
 
@@ -912,7 +911,27 @@ OneToThree/
 
 ## Mobile Strategy
 
-### Current: PWA (Progressive Web App)
+### Current: PWA + Android APK
+
+The web app is a full-featured PWA. Android packaging is provided through
+Capacitor; release artifacts are written to `releases/android/`.
+
+```bash
+./startup.sh build-apk
+./startup.sh build-apk-release /path/to/release.keystore
+```
+
+On Windows:
+
+```powershell
+.\apkbuild.ps1
+.\apkbuild.ps1 -Release -KeystorePath C:\keys\onetothree.jks
+```
+
+Each build creates a stable APK name (`onetothree-debug.apk` or
+`onetothree-release.apk`), a timestamped GitHub Release artifact, and matching
+`.sha256` files.
+
 OneToThree ships as a full-featured PWA installable on Android and iOS.
 
 | Feature | Android Chrome | iOS Safari (16.4+) |

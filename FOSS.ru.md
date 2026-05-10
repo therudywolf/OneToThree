@@ -437,9 +437,11 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 ./startup.sh status       # Проверить статус и health
 ./startup.sh update       # git pull + rebuild + restart
 ./startup.sh backup       # Резервная копия PostgreSQL
+./startup.sh build-apk    # Собрать debug APK в releases/android
+./startup.sh build-apk-release <keystore>  # Собрать подписанный APK
 ```
 
-При первом запуске скрипт автоматически генерирует `JWT_SECRET`, `WEBHOOK_SECRET`, VAPID-ключи, синхронизирует связанные переменные окружения и валидирует обязательные поля перед стартом.
+При первом запуске скрипт автоматически создаёт runtime `.env.prod` из `config/env/.env.prod.example`, генерирует `JWT_SECRET`, `WEBHOOK_SECRET`, VAPID-ключи, синхронизирует связанные переменные окружения и валидирует обязательные поля перед стартом.
 
 ---
 
@@ -492,17 +494,10 @@ TURN-хост **обязательно** должен быть в режиме *
 git clone https://github.com/user/OneToThree.git
 cd OneToThree
 
-# 2. Конфигурация
-./startup.sh
-# Заполните обязательные поля:
-# POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD,
-# TURN_EXTERNAL_IP, TURN_PASSWORD,
-# CORS_ORIGIN, VAPID_SUBJECT
-
-# 3. Запуск
+# 2. Конфигурация и запуск
 ./startup.sh
 
-# 4. Проверка
+# 3. Проверка
 ./startup.sh status
 ```
 
@@ -640,9 +635,11 @@ OneToThree/
 ├── docker-compose.yml         # dev
 ├── docker-compose.prod.yml    # production
 ├── Caddyfile                  # reverse proxy + TLS
-├── startup.sh                   # production launcher
+├── startup.sh                 # production launcher
+├── apkbuild.ps1               # Windows helper для APK
 ├── drizzle.config.ts          # конфиг ORM
-├── config/env/                 # шаблоны окружения
+├── config/env/                # шаблоны окружения
+├── releases/android/          # APK-артефакты и checksum-файлы
 └── FOSS.md                    # техническая документация
 ```
 
@@ -652,7 +649,21 @@ OneToThree/
 
 ### Текущее состояние: PWA
 
-Проект поставляется как полноценная PWA, устанавливаемая на Android и iOS.
+Проект поставляется как полноценная PWA, устанавливаемая на Android и iOS. Для Android также поддерживается Capacitor APK, артефакты сборки складываются в `releases/android/`.
+
+```bash
+./startup.sh build-apk
+./startup.sh build-apk-release /path/to/release.keystore
+```
+
+На Windows:
+
+```powershell
+.\apkbuild.ps1
+.\apkbuild.ps1 -Release -KeystorePath C:\keys\onetothree.jks
+```
+
+Каждая сборка создаёт стабильное имя (`onetothree-debug.apk` или `onetothree-release.apk`), timestamped-артефакт для GitHub Release и соответствующие `.sha256` файлы.
 
 | Возможность | Android Chrome | iOS Safari (16.4+) |
 |---|---|---|

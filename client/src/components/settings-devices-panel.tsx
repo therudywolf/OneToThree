@@ -246,20 +246,28 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
 
       {/* Объяснение QR-входа */}
       <div className={`p-3 space-y-1 ${isMd3 ? 'rounded-[20px] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-cyan/10 bg-void/60'}`}>
-        <p className="text-[9px] uppercase tracking-widest text-neon-cyan/70">[ ДОБАВИТЬ УСТРОЙСТВО :: QR ]</p>
+        <p className="text-[9px] uppercase tracking-widest text-neon-cyan/70">
+          [ {t('settings.linkDeviceQrTitle')} ]
+        </p>
         <p className="text-[9px] text-text-muted leading-relaxed">
-          Нажми «Добавить устройство» — появится QR-код. Открой на новом устройстве браузер или приложение и отсканируй его. Новое устройство получит сессию и зашифрованный vault-контейнер; для разблокировки ключей всё равно нужен vault-пароль, а для аккаунтов с 2FA дополнительно потребуется TOTP-код. QR действителен <span className="text-text-primary">5 минут</span> и одноразовый.
+          {t('settings.linkDeviceQrBody')}{' '}
+          <span className="text-text-primary">{t('settings.linkDeviceQrTtl')}</span>
+          {t('settings.linkDeviceQrBodySuffix')}
         </p>
       </div>
 
       {/* Объяснение резервного ключа */}
       <div className={`p-3 space-y-1 ${isMd3 ? 'rounded-[20px] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]' : 'border border-neon-red/20 bg-void/60'}`}>
-        <p className="text-[9px] uppercase tracking-widest text-neon-red/80">[ РЕЗЕРВНАЯ КОПИЯ КЛЮЧА ]</p>
+        <p className="text-[9px] uppercase tracking-widest text-neon-red/80">
+          [ {t('settings.vaultBackupTitle')} ]
+        </p>
         <p className="text-[9px] text-text-muted leading-relaxed">
-          Твой приватный ключ хранится <span className="text-text-primary">только локально</span> в этом браузере. Сервер его не знает и восстановить не может. Скачай резервную копию и храни в надёжном месте — без неё при потере браузера аккаунт будет недоступен навсегда.
+          {t('settings.vaultBackupBodyPrefix')}{' '}
+          <span className="text-text-primary">{t('settings.vaultBackupLocalOnly')}</span>{' '}
+          {t('settings.vaultBackupBodySuffix')}
         </p>
         <p className="text-[9px] text-text-muted/70">
-          Файл зашифрован твоим vault-паролем — без него он бесполезен для посторонних.
+          {t('settings.vaultBackupEncryptedHint')}
         </p>
       </div>
 

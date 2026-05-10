@@ -784,7 +784,7 @@ export function ChatSidebar({
         </button>
         <button
           type="button"
-          title="Lock vault"
+          title={t('chat.lockVault')}
           onClick={() => {
             onLockVault?.()
             onNavigate?.()
@@ -812,22 +812,22 @@ export function ChatSidebar({
               setRenamingFolderId(folder.id)
               setRenamingFolderName(folder.name)
               setFolderMenu(null)
-            }}>Переименовать</button>
+            }}>{t('folders.rename')}</button>
           <button type="button" className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
             onClick={() => {
               const copy = duplicateChatFolder(folderMenu.folderId)
               if (copy) { setFolders(loadChatFolders()); setActiveFolderId(copy.id) }
               setFolderMenu(null)
-            }}>Дублировать</button>
+            }}>{t('folders.duplicate')}</button>
           <button type="button" className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
-            onClick={() => { resetChatFolderRules(folderMenu.folderId); setFolders(loadChatFolders()); setFolderMenu(null) }}>Сбросить правила</button>
+            onClick={() => { resetChatFolderRules(folderMenu.folderId); setFolders(loadChatFolders()); setFolderMenu(null) }}>{t('folders.resetRules')}</button>
           <button type="button" className="block w-full px-2 py-1 text-left text-[10px] hover:bg-neon-cyan/10"
             onClick={() => {
               deleteChatFolder(folderMenu.folderId)
               setFolders(loadChatFolders())
               if (activeFolderId === folderMenu.folderId) setActiveFolderId('all')
               setFolderMenu(null)
-            }}>Удалить</button>
+            }}>{t('common.delete')}</button>
         </div>
       ) : null}
 

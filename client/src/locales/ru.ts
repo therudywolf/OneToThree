@@ -23,7 +23,9 @@ const ru = {
   'common.clear': 'Очистить',
   'common.confirm': 'Подтвердить',
   'common.send': 'Отправить',
+  'common.delete': 'Удалить',
   'common.loading': 'Загрузка...',
+  'common.systemTag': '[ СИСТЕМА ]',
 
   // [SETTINGS]
   'settings.logoutSystem': 'Выйти из аккаунта',
@@ -31,6 +33,13 @@ const ru = {
   // [NOTIFICATIONS]
   'pushOnboarding.banner': 'Включите уведомления для новых сообщений',
   'pushOnboarding.enable': 'Включить',
+  'pwa.installAria': 'Установить приложение',
+  'pwa.iosInstallPrefix': 'iOS: нажмите',
+  'pwa.shareAction': 'Поделиться',
+  'pwa.addToHomeScreen': 'На экран Домой',
+  'pwa.iosInstallSuffix': 'Safari не поддерживает системное окно установки.',
+  'pwa.nativeInstallHint': 'Установите OneToThree, чтобы запускать его полноэкранно с иконки.',
+  'pwa.installAction': 'Установить',
 
   // [ERRORS]
   'errors.boundaryGeneric': 'Что-то пошло не так. Перезагрузите страницу.',
@@ -451,6 +460,11 @@ const ru = {
   'settings.loadFailed': 'Ошибка загрузки настроек.',
   'settings.vaultBackup': 'Резервная копия ключа',
   'settings.vaultBackupHint': 'Зашифрованный файл. Храните в надёжном месте.',
+  'settings.vaultBackupTitle': 'РЕЗЕРВНАЯ КОПИЯ КЛЮЧА',
+  'settings.vaultBackupBodyPrefix': 'Ваш приватный ключ хранится',
+  'settings.vaultBackupLocalOnly': 'только локально',
+  'settings.vaultBackupBodySuffix': 'в этом браузере. Сервер его не знает и восстановить не может. Скачайте резервную копию и храните в надежном месте; без нее при потере браузера аккаунт будет недоступен навсегда.',
+  'settings.vaultBackupEncryptedHint': 'Файл зашифрован vault-паролем; без него резервная копия бесполезна для посторонних.',
 
   'settings.vaultImport': 'Импорт',
   'settings.tabDevices': 'Устройства',
@@ -464,6 +478,10 @@ const ru = {
   'settings.linkDeviceCta': 'Добавить устройство',
   'settings.linkDeviceTitle': 'Привязка нового устройства',
   'settings.linkDeviceHint': 'Сканируйте с нового устройства. QR передаст сессию и зашифрованный vault; пароль vault всё равно понадобится. Код действует 5 минут.',
+  'settings.linkDeviceQrTitle': 'ДОБАВИТЬ УСТРОЙСТВО :: QR',
+  'settings.linkDeviceQrBody': 'Нажмите «Добавить устройство» — появится QR-код. Откройте на новом устройстве браузер или приложение и отсканируйте его. Новое устройство получит сессию и зашифрованный vault-контейнер; для разблокировки ключей всё равно нужен vault-пароль, а для аккаунтов с 2FA дополнительно потребуется TOTP-код. QR действителен',
+  'settings.linkDeviceQrTtl': '5 минут',
+  'settings.linkDeviceQrBodySuffix': 'и одноразовый.',
   'settings.devicesReauthorize': 'Восстановить',
   'settings.devicesReauthorizeHint': 'Введите пароль хранилища для восстановления устройства. Ему потребуется заново привязаться (QR), но оно больше не будет заблокировано.',
 
@@ -520,6 +538,17 @@ const ru = {
   'settings.tabMedia': 'Камера и микрофон',
   'settings.tabStickers': 'Стикеры',
   'settings.tabFolders': 'Папки',
+  'folders.title': 'Папки',
+  'folders.newPlaceholder': 'Новая папка',
+  'folders.create': 'Создать',
+  'folders.deleteFolder': 'Удалить папку',
+  'folders.systemLocked': 'Системную папку нельзя удалить или изменить.',
+  'folders.manualChats': 'Ручное добавление чатов',
+  'folders.includeManual': 'Включить вручную',
+  'folders.exclude': 'Исключить из папки',
+  'folders.rename': 'Переименовать',
+  'folders.duplicate': 'Дублировать',
+  'folders.resetRules': 'Сбросить правила',
   'settings.stickersTitle': 'Стикер-паки',
   'settings.stickersEmpty': 'Стикер-паки ещё не добавлены.',
   'settings.stickersRefresh': 'Обновить из Telegram',
@@ -602,6 +631,8 @@ const ru = {
   'media.fileExpiredServer': 'Файл удалён с сервера. Срок хранения истёк.',
 
   'offline.banner': 'Нет подключения. Сообщения отправятся при восстановлении.',
+  'offline.recoveringQueue': ':: ОЧЕРЕДЬ_ВОССТАНОВЛЕНИЯ — {count} ОЖИДАЕТ',
+  'offline.reconnecting': ':: СОКЕТ_ОТКЛЮЧЕН — ПОДКЛЮЧАЕМСЯ…',
   'chat.scrollToBottom': 'Новые сообщения',
   'chat.emptyGroupHint': 'Добавьте участников и начните общение',
   'chat.muteFor': 'Отключить уведомления',

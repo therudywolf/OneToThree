@@ -18,6 +18,32 @@ log()  { printf '\033[0;34m[docker] ▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[0;32m[docker] ✓ %s\033[0m\n' "$*"; }
 die()  { printf '\033[0;31m[docker] ✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
+copy_apk_artifacts() {
+  local source_apk="$1"
+  local kind="$2"
+  local releases_dir="$ROOT/releases/android"
+  local stable_name="${APK_OUTPUT_NAME:-onetothree-${kind}.apk}"
+  [[ "$stable_name" == *.apk ]] || stable_name="${stable_name}.apk"
+
+  mkdir -p "$releases_dir"
+  cp "$source_apk" "$releases_dir/$stable_name"
+  sha256sum "$releases_dir/$stable_name" > "$releases_dir/$stable_name.sha256"
+
+  if [[ "${APK_NO_VERSIONED_COPY:-0}" != "1" ]]; then
+    local stamp sha versioned_name
+    stamp="$(date +%Y%m%d-%H%M)"
+    sha="$(git -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || printf 'nogit')"
+    versioned_name="onetothree-${kind}-${stamp}-${sha}.apk"
+    cp "$source_apk" "$releases_dir/$versioned_name"
+    sha256sum "$releases_dir/$versioned_name" > "$releases_dir/$versioned_name.sha256"
+    ok "APK ready: releases/android/$versioned_name"
+    ok "SHA256 : releases/android/$versioned_name.sha256"
+  fi
+
+  ok "APK ready: releases/android/$stable_name"
+  ok "SHA256 : releases/android/$stable_name.sha256"
+}
+
 # ── 1. Client deps ─────────────────────────────────────────────────────────
 log "Installing client dependencies…"
 cd "$CLIENT_DIR"
@@ -71,8 +97,4 @@ fi
 
 # ── 6. Copy to releases/ ──────────────────────────────────────────────────
 [[ -f "$APK_PATH" ]] || die "APK not found at $APK_PATH"
-RELEASES_DIR="$ROOT/releases/android"
-mkdir -p "$RELEASES_DIR"
-DEST="$RELEASES_DIR/onetothree-${BUILD_TYPE}.apk"
-cp "$APK_PATH" "$DEST"
-ok "APK ready: releases/android/onetothree-${BUILD_TYPE}.apk"
+copy_apk_artifacts "$APK_PATH" "$BUILD_TYPE"

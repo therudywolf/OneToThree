@@ -4,7 +4,11 @@ param(
   [string]$BuildType = "debug",
 
   [Parameter(Position = 1)]
-  [string]$KeystorePath
+  [string]$KeystorePath,
+
+  [string]$OutputName = "",
+
+  [switch]$NoVersionedCopy
 )
 
 Set-StrictMode -Version Latest
@@ -65,9 +69,61 @@ function Invoke-Step([string]$Exe, [string[]]$CommandArgs) {
   }
 }
 
+function Get-GitShortSha {
+  $git = Get-Command git -ErrorAction SilentlyContinue
+  if (-not $git) {
+    return "nogit"
+  }
+
+  $sha = & git -C $Root rev-parse --short=8 HEAD 2>$null
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sha)) {
+    return "nogit"
+  }
+
+  return $sha.Trim()
+}
+
+function Copy-ApkArtifact([string]$SourceApk, [string]$ReleaseDir, [string]$Kind, [string]$NameOverride, [bool]$SkipVersionedCopy) {
+  if (-not (Test-Path $ReleaseDir)) {
+    New-Item -ItemType Directory -Path $ReleaseDir | Out-Null
+  }
+
+  $stableName = if ([string]::IsNullOrWhiteSpace($NameOverride)) { "onetothree-$Kind.apk" } else { $NameOverride }
+  if (-not $stableName.EndsWith(".apk", [StringComparison]::OrdinalIgnoreCase)) {
+    $stableName = "$stableName.apk"
+  }
+
+  $stablePath = Join-Path $ReleaseDir $stableName
+  Copy-Item -Path $SourceApk -Destination $stablePath -Force
+
+  $artifactPaths = @($stablePath)
+  if (-not $SkipVersionedCopy) {
+    $stamp = Get-Date -Format "yyyyMMdd-HHmm"
+    $sha = Get-GitShortSha
+    $versionedPath = Join-Path $ReleaseDir "onetothree-$Kind-$stamp-$sha.apk"
+    Copy-Item -Path $SourceApk -Destination $versionedPath -Force
+    $artifactPaths += $versionedPath
+  }
+
+  foreach ($artifact in $artifactPaths) {
+    $hash = Get-FileHash -Algorithm SHA256 -Path $artifact
+    Set-Content -Path "$artifact.sha256" -Value "$($hash.Hash.ToLowerInvariant())  $(Split-Path -Leaf $artifact)" -Encoding ascii
+  }
+
+  return $artifactPaths
+}
+
 Assert-Command -Name "java" -Hint "Java not found. Install JDK 17+ and set JAVA_HOME."
 Assert-Command -Name "node" -Hint "Node.js not found in PATH."
 Assert-Command -Name "npm" -Hint "npm not found in PATH."
+
+if ([string]::IsNullOrWhiteSpace($OutputName) -and -not [string]::IsNullOrWhiteSpace($env:APK_OUTPUT_NAME)) {
+  $OutputName = $env:APK_OUTPUT_NAME
+}
+
+if (-not $NoVersionedCopy.IsPresent -and $env:APK_NO_VERSIONED_COPY -eq "1") {
+  $NoVersionedCopy = $true
+}
 
 if (-not $env:ANDROID_HOME -and -not $env:ANDROID_SDK_ROOT) {
   Fail "ANDROID_HOME or ANDROID_SDK_ROOT must be set."
@@ -163,13 +219,11 @@ try {
   }
 
   $ReleasesDir = Join-Path $Root "releases/android"
-  if (-not (Test-Path $ReleasesDir)) {
-    New-Item -ItemType Directory -Path $ReleasesDir | Out-Null
+  $artifacts = Copy-ApkArtifact -SourceApk $apkPath -ReleaseDir $ReleasesDir -Kind $BuildType -NameOverride $OutputName -SkipVersionedCopy:$NoVersionedCopy.IsPresent
+  foreach ($artifact in $artifacts) {
+    Write-Ok "APK ready: $artifact"
+    Write-Ok "SHA256 : $artifact.sha256"
   }
-
-  $dest = Join-Path $ReleasesDir "onetothree-$BuildType.apk"
-  Copy-Item -Path $apkPath -Destination $dest -Force
-  Write-Ok "APK ready: $dest"
 } finally {
   if ((Get-Location).Path -ne $Root) {
     Set-Location $Root

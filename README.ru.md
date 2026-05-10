@@ -256,7 +256,14 @@ gunzip -c backups/db_20260101_120000.sql.gz | \
 ./startup.sh build-apk-release <keystore>    # подписанный release APK
 ```
 
-APK сохраняется в `releases/android/onetothree-debug.apk` (или `onetothree-release.apk`).
+На Windows используйте быструю обёртку:
+
+```powershell
+.\apkbuild.ps1
+.\apkbuild.ps1 -Release -KeystorePath C:\keys\onetothree.jks
+```
+
+APK сохраняется в `releases/android/`: стабильное имя плюс timestamped-артефакт для GitHub Release, рядом создаётся `.sha256`.
 
 ---
 

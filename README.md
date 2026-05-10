@@ -277,7 +277,14 @@ Prerequisites: Java 17+, Android SDK, `ANDROID_HOME` environment variable set.
 ./startup.sh build-apk-release <keystore>  # signed release APK
 ```
 
-The APK is placed at `releases/android/onetothree-debug.apk` (or `onetothree-release.apk`).
+On Windows, use the quick wrapper:
+
+```powershell
+.\apkbuild.ps1
+.\apkbuild.ps1 -Release -KeystorePath C:\keys\onetothree.jks
+```
+
+The APK is placed in `releases/android/` as a stable filename plus a timestamped GitHub release artifact, each with a `.sha256` file.
 
 ---
 

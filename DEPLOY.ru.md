@@ -206,16 +206,10 @@ git pull
    Настройки → О телефоне → нажмите *Номер сборки* семь раз
 2. Включите **Отладку по USB**: Настройки → Параметры разработчика → Отладка по USB
 3. Подключите по USB и нажмите **Разрешить** в диалоге на телефоне
-4. Запустите PowerShell-установщик (Windows) или используйте ADB напрямую:
-
-```powershell
-# Windows — из папки releases/android/:
-.\install-apk.ps1
-```
+4. Установите свежий APK через ADB:
 
 ```bash
-# Linux / macOS:
-adb install -r -d releases/android/OneToThree-debug-2026-04-27.apk
+adb install -r -d releases/android/onetothree-debug.apk
 ```
 
 5. Откройте приложение → введите URL вашего сервера (например `https://вашдомен.com`) → зарегистрируйтесь
@@ -250,7 +244,14 @@ adb install -r -d releases/android/OneToThree-debug-2026-04-27.apk
 #   export RELEASE_KEY_PASSWORD=...
 ```
 
-APK сохраняется в `releases/android/onetothree-debug.apk` (или `onetothree-release.apk`).
+На Windows самый короткий путь:
+
+```powershell
+.\apkbuild.ps1
+.\apkbuild.ps1 -Release -KeystorePath C:\keys\onetothree.jks
+```
+
+APK сохраняется в `releases/android/`: `onetothree-debug.apk` / `onetothree-release.apk`, неизменяемая копия `onetothree-<type>-YYYYMMDD-HHMM-<gitsha>.apk` и `.sha256` для каждого файла.
 
 **Что делает скрипт сборки:**
 
@@ -261,24 +262,13 @@ APK сохраняется в `releases/android/onetothree-debug.apk` (или `o
 
 ---
 
-### Установка через ADB (Windows)
+### Установка через ADB
 
-PowerShell-скрипт `releases/android/install-apk.ps1` делает всё автоматически:
+Используйте Android platform-tools на любой ОС:
 
-- Находит ADB в PATH или в стандартных расположениях Android SDK
-- Показывает список подключённых устройств; предлагает выбрать если их несколько
-- Определяет состояния `unauthorized`/`offline` с чёткими инструкциями
-- Устанавливает через `adb install -r -d` и показывает подсказки при ошибках
-
-```powershell
-# Базовое использование — находит APK автоматически:
-.\install-apk.ps1
-
-# Конкретный APK:
-.\install-apk.ps1 -ApkPath ".\onetothree-release.apk"
-
-# Конкретное устройство (удобно с эмуляторами):
-.\install-apk.ps1 -DeviceSerial "emulator-5554"
+```bash
+adb devices
+adb install -r -d releases/android/onetothree-debug.apk
 ```
 
 **Частые ошибки:**

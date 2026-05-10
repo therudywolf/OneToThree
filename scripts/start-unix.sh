@@ -14,7 +14,8 @@
 #   ./startup.sh restart  — перезапустить без пересборки
 #   ./startup.sh logs     — хвост логов всех сервисов
 #   ./startup.sh status   — состояние контейнеров
-#   ./startup.sh update   — git pull + пересборка + перезапуск
+#   ./startup.sh doctor   — диагностика host/docker/env
+#   ./startup.sh update   — git pull + миграции + пересборка + перезапуск
 #   ./startup.sh turn-sync — синхронизировать TLS cert Caddy → coturn
 #   ./startup.sh backup   — резервная копия БД
 #
@@ -53,6 +54,50 @@ MESH_ENV_TEMPLATE="${MESH_ENV_TEMPLATE:-config/env/.env.mesh.example}"
 SECRETS_DIR="${ROOT}/secrets"
 SECRETS_DONE="${SECRETS_DIR}/.initialized"
 SECRETS_BACKUP_DIR="${ROOT}/secrets-backups"
+
+usage() {
+  cat <<'EOF'
+Использование: ./startup.sh <command> [options]
+
+Основные команды:
+  up | install | quick            Создать env/secrets, собрать и запустить стек
+  update [options]                Обновить код, миграции, образы и сервисы
+  stop                            Остановить стек
+  restart                         Перезапустить контейнеры без пересборки
+  status | ps                     Показать статус compose-сервисов
+  logs [service]                  Логи всех сервисов или одного сервиса
+  doctor                          Диагностика Docker/env/git/диска перед update
+
+Сервисные команды:
+  pull                            Только git fetch + ff-only pull
+  migrate                         Поднять инфраструктуру и прогнать db-migrate
+  rebuild [service...]            Пересобрать и перезапустить сервисы
+  prune                           Удалить неиспользуемые Docker images/build cache
+  turn-sync                       Синхронизировать TLS Caddy -> coturn
+  tg                              Задать TELEGRAM_BOT_TOKEN и пересоздать API
+  backup                          Backup PostgreSQL в backups/
+  backup-secrets                  Зашифрованный backup secrets/.env
+  restore-secrets <file>          Восстановить backup секретов
+  mesh                            Запустить helper-node TURN mesh
+  clean | uninstall               Полный сброс volumes/secrets (опасно)
+  build-apk                       Собрать debug APK
+  build-apk-release <keystore>    Собрать signed release APK
+
+Опции update:
+  --full                          Полный rebuild основных сервисов
+  --no-pull                       Не делать git pull, обновить текущий checkout
+  --no-cache                      Пересобрать затронутые образы без cache
+  --skip-smoke                    Не проверять HTTP /health и preview CSP
+  --skip-turn-sync                Не синхронизировать TURN TLS после update
+
+Примеры:
+  ./startup.sh doctor
+  ./startup.sh update --full
+  ./startup.sh update --no-pull --no-cache
+  ./startup.sh logs api
+  ./startup.sh rebuild api web
+EOF
+}
 
 # =============================================================================
 # УТИЛИТЫ ЧТЕНИЯ/ЗАПИСИ ENV
@@ -399,6 +444,65 @@ verify_preview_csp() {
   ok "Smoke-тест CSP — OK"
 }
 
+run_doctor() {
+  local ok_all=true
+  sep
+  echo -e "${BLD}  OneToThree — doctor${NC}"
+  sep
+
+  if command -v git >/dev/null 2>&1; then
+    ok "git: $(git --version)"
+    local branch dirty
+    branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    [[ -n "$branch" ]] && ok "git branch: $branch" || { warn "git branch не определён"; ok_all=false; }
+    dirty="$(git status --porcelain 2>/dev/null || true)"
+    [[ -z "$dirty" ]] && ok "git worktree clean" || warn "git worktree содержит локальные изменения"
+  else
+    err "git не найден"
+    ok_all=false
+  fi
+
+  if command -v docker >/dev/null 2>&1 && docker --version >/dev/null 2>&1; then
+    ok "docker: $(docker --version)"
+    if docker info >/dev/null 2>&1; then
+      ok "Docker daemon доступен"
+    else
+      err "Docker daemon недоступен"
+      ok_all=false
+    fi
+  else
+    err "docker не найден"
+    ok_all=false
+  fi
+
+  ok "compose: ${DC[*]}"
+  command -v openssl >/dev/null 2>&1 && ok "openssl: $(openssl version | awk '{print $1, $2}')" || { err "openssl не найден"; ok_all=false; }
+  command -v curl >/dev/null 2>&1 && ok "curl найден" || { err "curl не найден"; ok_all=false; }
+
+  [[ -f "$ENV_TEMPLATE" ]] && ok "env template: $ENV_TEMPLATE" || { err "нет env template: $ENV_TEMPLATE"; ok_all=false; }
+  [[ -f "$ENV_FILE" ]] && ok "runtime env: $ENV_FILE" || warn "runtime env ещё не создан: $ENV_FILE"
+  [[ -d "$SECRETS_DIR" ]] && ok "secrets dir: $SECRETS_DIR" || warn "secrets dir ещё не создан"
+
+  local free_kb free_gb
+  free_kb="$(df -Pk "$ROOT" | awk 'NR==2 {print $4}')"
+  free_gb=$((free_kb / 1024 / 1024))
+  if (( free_gb < 5 )); then
+    warn "Свободно ${free_gb}GB: для rebuild желательно 5GB+"
+  else
+    ok "Свободное место: ${free_gb}GB"
+  fi
+
+  if [[ -f "$ENV_FILE" ]]; then
+    prime_compose_interpolation_env
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" config >/dev/null \
+      && ok "docker compose config валиден" \
+      || { err "docker compose config невалиден"; ok_all=false; }
+  fi
+
+  sep
+  [[ "$ok_all" == true ]] && ok "doctor: критичных проблем не найдено" || die "doctor: есть критичные проблемы"
+}
+
 sync_turn_tls_with_retry() {
   local max_wait="${1:-180}"
   local interval="${2:-10}"
@@ -503,6 +607,18 @@ detect_update_services() {
   fi
 }
 
+STARTUP_CMD="${1:-up}"
+case "$STARTUP_CMD" in
+  help|-h|--help)
+    usage
+    exit 0
+    ;;
+esac
+if [[ "$STARTUP_CMD" == "update" && "${2:-}" =~ ^(-h|--help)$ ]]; then
+  usage
+  exit 0
+fi
+
 # Ensure docker-compose secret files exist for features that may not be
 # configured yet (LiveKit, Cloudflare Calls TURN).  Empty stubs are fine — the
 # server's readSecret() treats empty-file-contents as "not set" and falls back
@@ -524,15 +640,21 @@ ensure_secret_stub() {
     warn "Создан пустой secret stub: $path (заполните позже при необходимости)"
   fi
 }
-ensure_secret_stub "livekit_api_key"
-ensure_secret_stub "livekit_api_secret"
-ensure_secret_stub "cloudflare_turn_key_id"
-ensure_secret_stub "cloudflare_turn_api_token"
+case "$STARTUP_CMD" in
+  doctor|pull|status|ps|logs|stop)
+    ;;
+  *)
+    ensure_secret_stub "livekit_api_key"
+    ensure_secret_stub "livekit_api_secret"
+    ensure_secret_stub "cloudflare_turn_key_id"
+    ensure_secret_stub "cloudflare_turn_api_token"
+    ;;
+esac
 # totp_wrap_key is mandatory — auto-generate if missing so api container
 # can mount /run/secrets/totp_wrap_key and encrypt TOTP secrets at rest.
 # (Runs for every command, including `update`, which exits before the later
 # «АВТОГЕНЕРАЦИЯ СЕКРЕТОВ» block — so this must stay self-contained.)
-if [[ -d "$SECRETS_DIR" ]]; then
+if [[ -d "$SECRETS_DIR" && "$STARTUP_CMD" != "doctor" ]]; then
   if [[ ! -s "$SECRETS_DIR/totp_wrap_key" ]]; then
     printf '%s' "$(openssl rand -hex 32)" > "$SECRETS_DIR/totp_wrap_key"
     chmod 600 "$SECRETS_DIR/totp_wrap_key"
@@ -560,12 +682,40 @@ else
   die "Docker Compose не найден. Установите Docker Desktop или плагин compose."
 fi
 
-docker info >/dev/null 2>&1 || die "Docker демон не запущен. Запустите Docker и повторите."
+if ! docker info >/dev/null 2>&1; then
+  if [[ "$STARTUP_CMD" == "doctor" ]]; then
+    warn "Docker демон не запущен; doctor покажет это как ошибку."
+  else
+    die "Docker демон не запущен. Запустите Docker и повторите."
+  fi
+fi
 
 # =============================================================================
 # КОМАНДЫ
 # =============================================================================
-CMD="${1:-up}"
+CMD="$STARTUP_CMD"
+[[ $# -gt 0 ]] && shift
+
+UPDATE_FULL=false
+UPDATE_PULL=true
+UPDATE_NO_CACHE=false
+UPDATE_SMOKE=true
+UPDATE_TURN_SYNC=true
+
+if [[ "$CMD" == "update" ]]; then
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --full) UPDATE_FULL=true ;;
+      --no-pull) UPDATE_PULL=false ;;
+      --no-cache) UPDATE_NO_CACHE=true ;;
+      --skip-smoke) UPDATE_SMOKE=false ;;
+      --skip-turn-sync) UPDATE_TURN_SYNC=false ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "Неизвестная опция update: $1" ;;
+    esac
+    shift
+  done
+fi
 
 case "$CMD" in
   install)
@@ -595,11 +745,61 @@ case "$CMD" in
     exit 0
     ;;
   logs)
-    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f --tail=100
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f --tail=100 "$@"
     exit 0
     ;;
   status)
     "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
+    exit 0
+    ;;
+  ps)
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
+    exit 0
+    ;;
+  help|-h|--help)
+    usage
+    exit 0
+    ;;
+  doctor)
+    run_doctor
+    exit 0
+    ;;
+  pull)
+    CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    [[ -n "$CURRENT_BRANCH" && "$CURRENT_BRANCH" != "HEAD" ]] || die "Не удалось определить текущую git-ветку."
+    git fetch --all --prune
+    git pull --ff-only origin "$CURRENT_BRANCH"
+    ok "Git checkout обновлён: $CURRENT_BRANCH"
+    exit 0
+    ;;
+  migrate)
+    [[ -f "$ENV_FILE" ]] || die "Не найден ${ENV_FILE}. Сначала выполните ./startup.sh up"
+    prime_compose_interpolation_env
+    log "Запускаю инфраструктуру (БД, Redis, MinIO)..."
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d db redis minio
+    log "Прогоняю db-migrate..."
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
+    ok "Миграции применены."
+    exit 0
+    ;;
+  rebuild)
+    [[ -f "$ENV_FILE" ]] || die "Не найден ${ENV_FILE}. Сначала выполните ./startup.sh up"
+    prime_compose_interpolation_env
+    if [[ $# -gt 0 ]]; then
+      REBUILD_SERVICES=("$@")
+    else
+      REBUILD_SERVICES=(api web caddy coturn livekit db-migrate)
+    fi
+    log "Пересборка и запуск: ${REBUILD_SERVICES[*]}"
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans "${REBUILD_SERVICES[@]}"
+    "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
+    exit 0
+    ;;
+  prune)
+    warn "Будут удалены неиспользуемые Docker images и build cache. Volumes не трогаются."
+    docker image prune -f
+    docker builder prune -f
+    ok "Docker prune завершён."
     exit 0
     ;;
   turn-sync|repair-turn-tls)
@@ -607,20 +807,31 @@ case "$CMD" in
     exit 0
     ;;
   update)
+    log "Проверяю окружение перед update..."
+    run_doctor
     log "Получаю обновления из git..."
     CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     PREVIOUS_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
     if [[ -z "$CURRENT_BRANCH" || "$CURRENT_BRANCH" == "HEAD" ]]; then
       die "Не удалось определить текущую git-ветку. Выполните update вручную."
     fi
-    git fetch --all --prune
-    git pull --ff-only origin "$CURRENT_BRANCH"
+    if [[ "$UPDATE_PULL" == true ]]; then
+      git fetch --all --prune
+      git pull --ff-only origin "$CURRENT_BRANCH"
+    else
+      warn "Git pull пропущен (--no-pull)."
+    fi
     prime_compose_interpolation_env
     prompt_and_save_telegram_token 1 || true
     sanitize_turn_url_fallbacks
     prime_compose_interpolation_env
     CURRENT_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
-    detect_update_services "${PREVIOUS_HEAD}..${CURRENT_HEAD}"
+    if [[ "$UPDATE_FULL" == true ]]; then
+      UPDATE_SERVICES=(api web caddy coturn livekit db-migrate)
+      UPDATE_HINTS=("Запрошен --full: пересобираю основные сервисы.")
+    else
+      detect_update_services "${PREVIOUS_HEAD}..${CURRENT_HEAD}"
+    fi
 
     # We always rebuild db-migrate (cheap — most layers are cached) and always
     # run it (drizzle's hash table deduplicates applied migrations, so repeat
@@ -632,7 +843,11 @@ case "$CMD" in
       "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
     else
       log "Пересобираю образ миграций (кэшированно) — на всякий случай."
-      "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build db-migrate
+      if [[ "$UPDATE_NO_CACHE" == true ]]; then
+        "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache db-migrate
+      else
+        "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build db-migrate
+      fi
     fi
 
     log "Запускаю инфраструктуру (БД, Redis, MinIO)..."
@@ -643,6 +858,10 @@ case "$CMD" in
     "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up db-migrate --force-recreate
 
     log "Пересборка и запуск только затронутых сервисов: ${UPDATE_SERVICES[*]}"
+    if [[ "$UPDATE_NO_CACHE" == true ]]; then
+      log "Предварительная пересборка без cache: ${UPDATE_SERVICES[*]}"
+      "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" build --no-cache "${UPDATE_SERVICES[@]}"
+    fi
     if ! "${DC[@]}" -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --build --remove-orphans "${UPDATE_SERVICES[@]}"; then
       err "docker compose up не удался (см. выше)."
       sep
@@ -669,23 +888,29 @@ case "$CMD" in
       fi
     done
 
-    # HTTP smoke test — verify the API /health endpoint is reachable
-    _api_url="$(val_for_key NEXT_PUBLIC_API_URL)"
-    if [[ -n "$_api_url" ]]; then
-      log "Smoke-тест: GET ${_api_url}/health"
-      if curl -fsS --max-time 15 "${_api_url}/health" >/dev/null 2>&1; then
-        ok "Smoke-тест: /health — OK"
-      else
-        warn "Smoke-тест: /health не ответил (сервис может ещё стартовать). Проверьте: ./startup.sh logs"
-        UPDATE_OK=false
+    if [[ "$UPDATE_SMOKE" == true ]]; then
+      # HTTP smoke test — verify the API /health endpoint is reachable
+      _api_url="$(val_for_key NEXT_PUBLIC_API_URL)"
+      if [[ -n "$_api_url" ]]; then
+        log "Smoke-тест: GET ${_api_url}/health"
+        if curl -fsS --max-time 15 "${_api_url}/health" >/dev/null 2>&1; then
+          ok "Smoke-тест: /health — OK"
+        else
+          warn "Smoke-тест: /health не ответил (сервис может ещё стартовать). Проверьте: ./startup.sh logs"
+          UPDATE_OK=false
+        fi
       fi
+      verify_preview_csp || UPDATE_OK=false
+    else
+      warn "Smoke-тесты пропущены (--skip-smoke)."
     fi
-    verify_preview_csp || UPDATE_OK=false
 
     # Sync TURN TLS after Caddy has had time to obtain/renew the certificate.
     # The sync script restarts coturn once only when the copied material changed.
-    if uses_self_hosted_call_media && printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -Eqx 'caddy|coturn'; then
+    if [[ "$UPDATE_TURN_SYNC" == true ]] && uses_self_hosted_call_media && printf '%s\n' "${UPDATE_SERVICES[@]}" | grep -Eqx 'caddy|coturn'; then
       sync_turn_tls_with_retry "${TURN_TLS_SYNC_WAIT:-180}" "${TURN_TLS_SYNC_INTERVAL:-10}" || UPDATE_OK=false
+    elif [[ "$UPDATE_TURN_SYNC" != true ]]; then
+      warn "TURN TLS sync пропущен (--skip-turn-sync)."
     fi
 
     if [[ -n "${UPDATE_HINTS+x}" && ${#UPDATE_HINTS[@]} -gt 0 ]]; then
@@ -911,13 +1136,13 @@ case "$CMD" in
     : # продолжаем ниже
     ;;
   build-apk)
-    exec "$ROOT/scripts/build-apk.sh" "${@:2}"
+    exec "$ROOT/scripts/build-apk.sh" "$@"
     ;;
   build-apk-release)
-    exec "$ROOT/scripts/build-apk.sh" release "${@:2}"
+    exec "$ROOT/scripts/build-apk.sh" release "$@"
     ;;
   *)
-    echo "Использование: ./startup.sh [install|up|quick|tg|mesh|backup-secrets|restore-secrets <file>|stop|restart|logs|status|update|turn-sync|backup|clean|uninstall|build-apk|build-apk-release <keystore>]"
+    usage
     exit 1
     ;;
 esac

@@ -160,6 +160,12 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 | `./startup.sh logs` | Живые логи всех сервисов |
 | `./startup.sh status` | Статус контейнеров |
 | `./startup.sh update` | Загрузить обновления, пересобрать, перезапустить (данные сохраняются) |
+| `./startup.sh update --full` | Принудительно пересобрать основные сервисы |
+| `./startup.sh update --no-pull` | Пересобрать текущий checkout без `git pull` |
+| `./startup.sh doctor` | Проверить Docker, git, env, compose config и место на диске |
+| `./startup.sh migrate` | Поднять инфраструктуру и выполнить только миграции БД |
+| `./startup.sh rebuild [service...]` | Пересобрать выбранные сервисы или основные сервисы без аргументов |
+| `./startup.sh prune` | Удалить неиспользуемые Docker images/build cache, не трогая volumes |
 | `./startup.sh backup` | Дамп базы данных в `backups/db_TIMESTAMP.sql.gz` |
 | `./startup.sh build-apk` | Собрать Android debug APK через Docker, если локального Android SDK нет |
 | `./startup.sh build-apk-release <keystore>` | Собрать подписанный release APK |
@@ -193,6 +199,9 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 ```bash
 ./startup.sh update
+./startup.sh update --full          # полный rebuild
+./startup.sh update --no-cache      # пересборка затронутых образов без cache
+./startup.sh update --skip-smoke    # пропустить HTTP smoke checks
 ```
 
 Эта команда:

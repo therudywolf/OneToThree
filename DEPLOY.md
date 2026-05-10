@@ -153,11 +153,14 @@ named volumes that are never touched by image rebuilds.
 
 `./startup.sh update` runs:
 
-1. `git pull origin main` — pulls the latest code
-2. Re-syncs `DOMAIN` and all derived vars in `.env.prod` (no manual editing needed)
-3. Auto-generates any missing secrets (e.g. new keys added in this release)
-4. `docker compose up -d --build --remove-orphans` — rebuilds images, restarts services
-5. `db-migrate` container runs Drizzle ORM migrations automatically on startup
+1. Runs `doctor` checks for git, Docker, env, compose config, and disk space
+2. `git fetch --all --prune` + ff-only pull of the current branch
+3. Re-syncs `DOMAIN` and all derived vars in `.env.prod`
+4. Builds and runs `db-migrate` idempotently
+5. Rebuilds/restarts only affected services, or all core services with `--full`
+6. Runs health, API `/health`, CSP, and optional TURN TLS checks
+
+Useful modes: `--full`, `--no-pull`, `--no-cache`, `--skip-smoke`, `--skip-turn-sync`.
 
 > **Never** run `docker compose down -v` — the `-v` flag deletes all volumes and data.
 

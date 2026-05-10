@@ -153,11 +153,14 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 `./startup.sh update` выполняет следующее:
 
-1. `git pull origin main` — загружает последний код
-2. Синхронизирует `DOMAIN` и все производные переменные в `.env.prod` (ручное редактирование не нужно)
-3. Генерирует отсутствующие секреты (например, новые ключи, добавленные в этой версии)
-4. `docker compose up -d --build --remove-orphans` — пересобирает образы, перезапускает сервисы
-5. Контейнер `db-migrate` автоматически применяет новые Drizzle ORM-миграции при старте
+1. Запускает `doctor`: git, Docker, env, compose config и место на диске
+2. Делает `git fetch --all --prune` и ff-only pull текущей ветки
+3. Синхронизирует `DOMAIN` и все производные переменные в `.env.prod`
+4. Собирает и запускает `db-migrate` идемпотентно
+5. Пересобирает/перезапускает только затронутые сервисы или все основные через `--full`
+6. Выполняет health, API `/health`, CSP и опциональную TURN TLS проверку
+
+Полезные режимы: `--full`, `--no-pull`, `--no-cache`, `--skip-smoke`, `--skip-turn-sync`.
 
 > **Никогда** не запускайте `docker compose down -v` — флаг `-v` удаляет все тома с данными.
 

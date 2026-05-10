@@ -432,6 +432,9 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 `startup.sh` — Bash/Docker entrypoint. Он не должен требовать Node.js на хосте;
 сборка приложения выполняется внутри Docker-образов.
 
+Полезные режимы update: `--full`, `--no-pull`, `--no-cache`, `--skip-smoke`,
+`--skip-turn-sync`.
+
 ```bash
 ./startup.sh              # Собрать и запустить все сервисы
 ./startup.sh stop         # Остановить контейнеры
@@ -439,6 +442,10 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 ./startup.sh logs         # Смотреть логи
 ./startup.sh status       # Проверить статус и health
 ./startup.sh update       # git pull + rebuild + restart
+./startup.sh doctor       # Диагностика Docker/git/env/диска
+./startup.sh migrate      # Выполнить только db-migrate
+./startup.sh rebuild api web  # Пересобрать выбранные сервисы
+./startup.sh prune        # Удалить неиспользуемый Docker cache/images
 ./startup.sh backup       # Резервная копия PostgreSQL
 ./startup.sh build-apk    # Собрать debug APK в releases/android
 ./startup.sh build-apk-release <keystore>  # Собрать подписанный APK

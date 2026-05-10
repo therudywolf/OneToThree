@@ -625,6 +625,9 @@ docker-compose.prod.yml — 7 services
 `startup.sh` is a Bash/Docker entrypoint. It must not require Node.js on the host;
 application builds run inside Docker images.
 
+Useful update modes: `--full`, `--no-pull`, `--no-cache`, `--skip-smoke`,
+and `--skip-turn-sync`.
+
 ```
 ./startup.sh              Build and start all services
 ./startup.sh stop         Stop all containers
@@ -632,6 +635,10 @@ application builds run inside Docker images.
 ./startup.sh logs         Tail logs from all services
 ./startup.sh status       Show container health status
 ./startup.sh update       git pull + rebuild + restart
+./startup.sh doctor       Diagnose Docker/git/env/disk before update
+./startup.sh migrate      Run db-migrate only
+./startup.sh rebuild api web  Rebuild selected services
+./startup.sh prune        Remove unused Docker build cache/images
 ./startup.sh backup       Backup PostgreSQL (gzipped SQL)
 ./startup.sh build-apk    Build Android debug APK into releases/android
 ./startup.sh build-apk-release <keystore>  Build signed Android APK

@@ -222,10 +222,10 @@ adb install -r -d releases/android/onetothree-debug.apk
 
 | Tool | Version |
 |------|---------|
-| Java JDK | 17 or 21 |
-| Android SDK | Build-Tools 34+ |
-| `ANDROID_HOME` | env var pointing to SDK root |
-| Node.js | 20+ |
+| Docker | Required; used for the Android builder image when no local SDK is configured |
+| Java JDK | Optional for native host build; 17 or 21 |
+| Android SDK | Optional for native host build; Build-Tools 34+ |
+| `ANDROID_HOME` | Optional; when unset, Docker build is used |
 
 **Steps:**
 

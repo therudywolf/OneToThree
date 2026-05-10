@@ -4,9 +4,8 @@
   Builds a fresh Android APK and places it in releases/android.
 
 .DESCRIPTION
-  Thin Windows convenience wrapper for the project startup flow. It keeps the
-  build procedure centralized by delegating to scripts/start.mjs, the same
-  dispatcher used by ./startup.sh.
+  Thin Windows convenience wrapper for Android APK builds. Production stack
+  commands stay on ./startup.sh and require only Docker on the host.
 
 .EXAMPLE
   .\apkbuild.ps1
@@ -36,19 +35,15 @@ function Write-Step([string]$Message) {
   Write-Host "[APK] $Message" -ForegroundColor Cyan
 }
 
-if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-  Fail "Node.js not found in PATH. Install Node.js 20+ first."
-}
-
 $commandArgs = @()
 if ($Release) {
-  $commandArgs += "build-apk-release"
+  $commandArgs += "release"
   if ([string]::IsNullOrWhiteSpace($KeystorePath)) {
     Fail "Release build requires -KeystorePath C:\path\to\keystore.jks"
   }
   $commandArgs += $KeystorePath
 } else {
-  $commandArgs += "build-apk"
+  $commandArgs += "debug"
 }
 
 $envBackup = @{
@@ -65,8 +60,8 @@ try {
     $env:APK_NO_VERSIONED_COPY = "1"
   }
 
-  Write-Step "Delegating to startup build flow..."
-  & node (Join-Path $Root "scripts/start.mjs") @commandArgs
+  Write-Step "Building APK..."
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts/build-apk.ps1") @commandArgs
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
   }

@@ -222,10 +222,10 @@ adb install -r -d releases/android/onetothree-debug.apk
 
 | Инструмент | Версия |
 |-----------|--------|
-| Java JDK | 17 или 21 |
-| Android SDK | Build-Tools 34+ |
-| `ANDROID_HOME` | переменная окружения → путь к SDK |
-| Node.js | 20+ |
+| Docker | Обязателен; используется Android builder image, если локальный SDK не настроен |
+| Java JDK | Опционально для нативной сборки на хосте; 17 или 21 |
+| Android SDK | Опционально для нативной сборки на хосте; Build-Tools 34+ |
+| `ANDROID_HOME` | Опционально; если не задан, используется Docker-сборка |
 
 **Шаги:**
 

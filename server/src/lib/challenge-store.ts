@@ -63,5 +63,3 @@ function pruneMem(): void {
   }
 }
 
-/** Test hook */
-export const pendingChallenges = mem

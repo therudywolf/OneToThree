@@ -38,20 +38,4 @@ export function monitorStrayPortals(): void {
   })
 }
 
-/** * [RESET_OPTICAL_FILTERS] 
- * Снятие затемняющих фильтров и очистка фона после закрытия сессии.
- */
-export function resetOpticalFilters(): void {
-  if (typeof document === 'undefined') return
-
-  const nodeRoot = document.body
-
-  // Стерилизация фона — убираем любые инъекции стилей (черный фон, блюр и т.д.)
-  nodeRoot.style.backgroundColor = ''
-  
-  // Гарантированный сброс блокировок скролла
-  purgeInterfaceOverflow()
-}
-
-export const cleanupBackdropOverflow = purgeInterfaceOverflow
 export const ensureBackdropCleanup = monitorStrayPortals

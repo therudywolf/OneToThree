@@ -161,7 +161,7 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 | `./startup.sh status` | Статус контейнеров |
 | `./startup.sh update` | Загрузить обновления, пересобрать, перезапустить (данные сохраняются) |
 | `./startup.sh backup` | Дамп базы данных в `backups/db_TIMESTAMP.sql.gz` |
-| `./startup.sh build-apk` | Собрать Android debug APK (требует Java 17 + Android SDK) |
+| `./startup.sh build-apk` | Собрать Android debug APK через Docker, если локального Android SDK нет |
 | `./startup.sh build-apk-release <keystore>` | Собрать подписанный release APK |
 
 ---
@@ -249,7 +249,7 @@ gunzip -c backups/db_20260101_120000.sql.gz | \
 
 ### Собрать из исходников
 
-Требования: Java 17+, Android SDK, переменная окружения `ANDROID_HOME`.
+Требование: Docker. Локальные Java/Android SDK опциональны; если `ANDROID_HOME` не задан, сборка идёт в Docker Android builder image.
 
 ```bash
 ./startup.sh build-apk                       # debug APK  (берёт URL сервера из .env.prod)

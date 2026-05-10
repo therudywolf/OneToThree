@@ -622,6 +622,9 @@ docker-compose.prod.yml — 7 services
 
 ### startup.sh — Production Launcher
 
+`startup.sh` is a Bash/Docker entrypoint. It must not require Node.js on the host;
+application builds run inside Docker images.
+
 ```
 ./startup.sh              Build and start all services
 ./startup.sh stop         Stop all containers
@@ -914,7 +917,8 @@ OneToThree/
 ### Current: PWA + Android APK
 
 The web app is a full-featured PWA. Android packaging is provided through
-Capacitor; release artifacts are written to `releases/android/`.
+Capacitor; release artifacts are written to `releases/android/`. APK builds use
+the Docker Android builder when no local Android SDK is configured.
 
 ```bash
 ./startup.sh build-apk

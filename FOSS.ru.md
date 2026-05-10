@@ -429,6 +429,9 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 
 ### `startup.sh` — production launcher
 
+`startup.sh` — Bash/Docker entrypoint. Он не должен требовать Node.js на хосте;
+сборка приложения выполняется внутри Docker-образов.
+
 ```bash
 ./startup.sh              # Собрать и запустить все сервисы
 ./startup.sh stop         # Остановить контейнеры
@@ -649,7 +652,7 @@ OneToThree/
 
 ### Текущее состояние: PWA
 
-Проект поставляется как полноценная PWA, устанавливаемая на Android и iOS. Для Android также поддерживается Capacitor APK, артефакты сборки складываются в `releases/android/`.
+Проект поставляется как полноценная PWA, устанавливаемая на Android и iOS. Для Android также поддерживается Capacitor APK, артефакты сборки складываются в `releases/android/`. Если локальный Android SDK не настроен, сборка идёт через Docker Android builder.
 
 ```bash
 ./startup.sh build-apk

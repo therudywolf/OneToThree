@@ -165,7 +165,7 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 | `./startup.sh status` | Show container status |
 | `./startup.sh update` | Pull latest code, rebuild images, restart (data preserved) |
 | `./startup.sh backup` | Dump database to `backups/db_TIMESTAMP.sql.gz` |
-| `./startup.sh build-apk` | Build Android debug APK (requires Java 17 + Android SDK) |
+| `./startup.sh build-apk` | Build Android debug APK through Docker when no local Android SDK is present |
 | `./startup.sh build-apk-release <keystore>` | Build signed release APK |
 
 ---
@@ -270,7 +270,7 @@ Pre-built debug APKs are in [`releases/android/`](./releases/android/).
 
 ### Build from source
 
-Prerequisites: Java 17+, Android SDK, `ANDROID_HOME` environment variable set.
+Prerequisites: Docker. A local Java/Android SDK is optional; if `ANDROID_HOME` is not set, the build runs in the Docker Android builder image.
 
 ```bash
 ./startup.sh build-apk             # debug APK  (reads .env.prod for server URL)

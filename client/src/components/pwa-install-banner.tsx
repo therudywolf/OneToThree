@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Download, Share2, X } from 'lucide-react'
 import { usePwaInstall } from '@/hooks/use-pwa-install'
+import { useTranslation } from '@/hooks/use-translation'
 import { isIOSOrIPadOS } from '@/lib/ios'
 
 const DISMISS_KEY = 'p13:pwa-install-banner-dismissed'
@@ -19,6 +20,7 @@ function isIosSafariLike(): boolean {
 }
 
 export function PwaInstallBanner() {
+  const { t } = useTranslation()
   const { isInstallable: canNativeInstall, triggerIntegration: promptInstall, purgeIntegration: clearDeferred } = usePwaInstall()
   const [dismissed, setDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
@@ -53,7 +55,7 @@ export function PwaInstallBanner() {
     <div
       className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[85] border-t border-neon-cyan/50 bg-void/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_32px_rgba(0,0,0,0.85)] backdrop-blur-sm md:px-6"
       role="region"
-      aria-label="Install application"
+      aria-label={t('pwa.installAria')}
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-4">
         <div className="flex min-w-0 items-start gap-2">
@@ -73,15 +75,16 @@ export function PwaInstallBanner() {
           <div className="min-w-0 font-mono text-[10px] uppercase leading-snug tracking-[0.2em] text-neon-cyan/90">
             {showIosHint ? (
               <>
-                <span className="text-neon-red">[ SYSTEM ]</span> iOS: tap{' '}
-                <span className="text-neon-cyan">Share</span> →{' '}
-                <span className="text-neon-cyan">&quot;Add to Home Screen&quot;</span>{' '}
-                — Safari does not support the store install prompt.
+                <span className="text-neon-red">{t('common.systemTag')}</span>{' '}
+                {t('pwa.iosInstallPrefix')}{' '}
+                <span className="text-neon-cyan">{t('pwa.shareAction')}</span> →{' '}
+                <span className="text-neon-cyan">&quot;{t('pwa.addToHomeScreen')}&quot;</span>{' '}
+                — {t('pwa.iosInstallSuffix')}
               </>
             ) : (
               <>
-                <span className="text-neon-red">[ SYSTEM ]</span> Install Project 13
-                for a fullscreen app icon and faster launch.
+                <span className="text-neon-red">{t('common.systemTag')}</span>{' '}
+                {t('pwa.nativeInstallHint')}
               </>
             )}
           </div>
@@ -93,14 +96,14 @@ export function PwaInstallBanner() {
               onClick={() => void promptInstall()}
               className="border border-neon-cyan bg-void px-4 py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan shadow-[0_0_12px_rgba(34,211,238,0.2)] hover:bg-neon-cyan/10"
             >
-              [ INSTALL ]
+              [ {t('pwa.installAction')} ]
             </button>
           ) : null}
           <button
             type="button"
             onClick={dismiss}
             className="border border-danger/40 p-2 text-danger hover:border-neon-red hover:text-neon-red"
-            aria-label="Dismiss"
+            aria-label={t('common.dismiss')}
           >
             <X className="h-4 w-4" strokeWidth={1.5} />
           </button>

@@ -14,12 +14,14 @@ import {
   type ChatFolder,
 } from '@/lib/chat-folders'
 import { useThemeStore } from '@/store/themeStore'
+import { useTranslation } from '@/hooks/use-translation'
 
 type Props = {
   userId: string
 }
 
 export function SettingsChatFoldersPanel({ userId }: Props) {
+  const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
   const [folders, setFolders] = useState<ChatFolder[]>([])
@@ -102,12 +104,12 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
   return (
     <div className={`space-y-4 ${isMd3 ? 'md3-pane-enter' : ''}`}>
       <div className="border border-neon-cyan/30 p-3 space-y-2">
-        <p className="text-xs uppercase tracking-widest text-neon-cyan">Папки</p>
+        <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('folders.title')}</p>
         <div className="flex gap-2">
           <input
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="Новая папка"
+            placeholder={t('folders.newPlaceholder')}
             className={`flex-1 px-2 py-1 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'terminal-input'}`}
           />
           <button
@@ -121,7 +123,7 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
             }}
             className={`px-3 py-1 text-[10px] ${isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'border border-neon-cyan text-neon-cyan font-mono uppercase tracking-widest'}`}
           >
-            Создать
+            {t('folders.create')}
           </button>
         </div>
       </div>
@@ -239,15 +241,15 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                   }}
                   className={`w-full py-1 text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]' : 'border border-danger/50 text-danger font-mono uppercase tracking-widest'}`}
                 >
-                  Удалить папку
+                  {t('folders.deleteFolder')}
                 </button>
               </>
             ) : (
-              <p className="text-[10px] text-text-muted">Системная папка. Нельзя удалять и менять правила.</p>
+              <p className="text-[10px] text-text-muted">{t('folders.systemLocked')}</p>
             )}
 
             <div className="border-t border-border-strong/30 pt-2">
-              <p className="mb-2 text-[10px] text-text-muted">Ручное добавление чатов</p>
+              <p className="mb-2 text-[10px] text-text-muted">{t('folders.manualChats')}</p>
               <div className="max-h-40 overflow-y-auto space-y-1">
                 {chats.map((c) => {
                   const checked = activeFolder.chatIds.includes(c.id)
@@ -263,14 +265,14 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                         checked={checked}
                         disabled={activeFolder.isSystem}
                         onChange={() => toggleChat(c.id)}
-                        title="Включить вручную"
+                        title={t('folders.includeManual')}
                       />
                       <input
                         type="checkbox"
                         checked={excluded}
                         disabled={activeFolder.isSystem}
                         onChange={() => toggleExcluded(c.id)}
-                        title="Исключить из папки"
+                        title={t('folders.exclude')}
                       />
                       <span className="truncate">
                         {displayName}

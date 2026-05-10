@@ -84,7 +84,7 @@ export function PushOnboardingBanner() {
       <div className="flex min-w-0 items-center gap-2">
         <Bell className="h-4 w-4 shrink-0 text-neon-cyan" strokeWidth={1.5} />
         <span className="min-w-0 leading-snug">
-          <span className="text-neon-red">[ SYSTEM ]</span>{' '}
+          <span className="text-neon-red">{t('common.systemTag')}</span>{' '}
           {t('pushOnboarding.banner')}
         </span>
       </div>

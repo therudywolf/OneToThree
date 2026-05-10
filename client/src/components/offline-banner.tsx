@@ -24,8 +24,8 @@ export function OfflineBanner() {
             {!is_online
               ? t('offline.banner')
               : is_linked
-                ? `:: RECOVERING_QUEUE — ${buffer_depth} PENDING`
-                : ':: SOCKET_DISCONNECTED — RECONNECTING…'}
+                ? t('offline.recoveringQueue').replace('{count}', String(buffer_depth))
+                : t('offline.reconnecting')}
           </div>
         </motion.div>
       ) : null}

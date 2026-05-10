@@ -23,7 +23,9 @@ const en = {
   'common.clear': 'Clear',
   'common.confirm': 'Confirm',
   'common.send': 'Send',
+  'common.delete': 'Delete',
   'common.loading': 'Loading...',
+  'common.systemTag': '[ SYSTEM ]',
 
   // [SETTINGS]
   'settings.logoutSystem': 'Sign Out',
@@ -31,6 +33,13 @@ const en = {
   // [NOTIFICATIONS]
   'pushOnboarding.banner': 'Enable notifications for new messages',
   'pushOnboarding.enable': 'Enable',
+  'pwa.installAria': 'Install application',
+  'pwa.iosInstallPrefix': 'iOS: tap',
+  'pwa.shareAction': 'Share',
+  'pwa.addToHomeScreen': 'Add to Home Screen',
+  'pwa.iosInstallSuffix': 'Safari does not support the store install prompt.',
+  'pwa.nativeInstallHint': 'Install OneToThree for a fullscreen app icon and faster launch.',
+  'pwa.installAction': 'Install',
 
   // [ERRORS]
   'errors.boundaryGeneric': 'Something went wrong. Please reload the page.',
@@ -451,6 +460,11 @@ const en = {
   'settings.loadFailed': 'Failed to load settings.',
   'settings.vaultBackup': 'Backup Key',
   'settings.vaultBackupHint': 'Encrypted file. Keep it in a safe place.',
+  'settings.vaultBackupTitle': 'KEY BACKUP',
+  'settings.vaultBackupBodyPrefix': 'Your private key is stored',
+  'settings.vaultBackupLocalOnly': 'only locally',
+  'settings.vaultBackupBodySuffix': 'in this browser. The server does not know it and cannot restore it. Download a backup and keep it safe; without it, losing this browser means losing account access permanently.',
+  'settings.vaultBackupEncryptedHint': 'The file is encrypted with your vault password; without it, the backup is useless to anyone else.',
 
   'settings.vaultImport': 'Import',
   'settings.tabDevices': 'Devices',
@@ -464,6 +478,10 @@ const en = {
   'settings.linkDeviceCta': 'Add Device',
   'settings.linkDeviceTitle': 'Link New Device',
   'settings.linkDeviceHint': 'Scan from the new device. QR transfers the session and encrypted vault; the vault password is still required. Code expires in 5 minutes.',
+  'settings.linkDeviceQrTitle': 'ADD DEVICE :: QR',
+  'settings.linkDeviceQrBody': 'Tap “Add Device” to show a QR code. Open the browser or app on the new device and scan it. The new device receives the session and encrypted vault container; unlocking keys still requires the vault password, and accounts with 2FA also require a TOTP code. QR is valid for',
+  'settings.linkDeviceQrTtl': '5 minutes',
+  'settings.linkDeviceQrBodySuffix': 'and can be used once.',
   'settings.devicesReauthorize': 'Re-authorize',
   'settings.devicesReauthorizeHint': 'Enter your vault password to re-authorize this device. It will need to re-link (scan QR) but will no longer be blocked.',
 
@@ -519,6 +537,17 @@ const en = {
   'settings.tabMedia': 'Camera & Mic',
   'settings.tabStickers': 'Stickers',
   'settings.tabFolders': 'Folders',
+  'folders.title': 'Folders',
+  'folders.newPlaceholder': 'New folder',
+  'folders.create': 'Create',
+  'folders.deleteFolder': 'Delete folder',
+  'folders.systemLocked': 'System folder. Rules and deletion are locked.',
+  'folders.manualChats': 'Manual chat membership',
+  'folders.includeManual': 'Include manually',
+  'folders.exclude': 'Exclude from folder',
+  'folders.rename': 'Rename',
+  'folders.duplicate': 'Duplicate',
+  'folders.resetRules': 'Reset rules',
   'settings.stickersTitle': 'Sticker Packs',
   'settings.stickersEmpty': 'No sticker packs imported yet.',
   'settings.stickersRefresh': 'Refresh from Telegram',
@@ -602,6 +631,8 @@ const en = {
   'media.fileExpiredServer': 'File removed from server. Retention period expired.',
 
   'offline.banner': 'No connection. Messages will be sent when reconnected.',
+  'offline.recoveringQueue': ':: RECOVERING_QUEUE — {count} PENDING',
+  'offline.reconnecting': ':: SOCKET_DISCONNECTED — RECONNECTING…',
   'chat.scrollToBottom': 'New messages',
   'chat.emptyGroupHint': 'Add members and start chatting',
   'chat.muteFor': 'Mute notifications',

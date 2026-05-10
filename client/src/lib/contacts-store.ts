@@ -65,6 +65,3 @@ export function revokeContact(userId: string): void {
   writeRegistry(registry)
 }
 
-export function listApprovedContacts(): string[] {
-  return Object.keys(readRegistry())
-}

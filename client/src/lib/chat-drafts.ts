@@ -50,22 +50,6 @@ export function clearDraft(chatId: string): void {
   }
 }
 
-/** Returns true if there is a non-empty draft stored for the given chat. */
-export function hasDraft(chatId: string): boolean {
-  return loadDraft(chatId).trim().length > 0
-}
-
-/** Return all chat IDs that currently have a draft saved. */
-export function getDraftChatIds(): string[] {
-  try {
-    return Object.keys(localStorage)
-      .filter((k) => k.startsWith(KEY_PREFIX))
-      .map((k) => k.slice(KEY_PREFIX.length))
-  } catch {
-    return []
-  }
-}
-
 // ─── Debounced save ──────────────────────────────────────────────────────────
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -86,13 +70,4 @@ export function saveDraftDebounced(
     saveDraft(chatId, text)
   }, delayMs)
   timers.set(chatId, t)
-}
-
-/** Flush any pending debounced save immediately (call on beforeunload etc.). */
-export function flushDraft(chatId: string): void {
-  const t = timers.get(chatId)
-  if (t !== undefined) {
-    clearTimeout(t)
-    timers.delete(chatId)
-  }
 }

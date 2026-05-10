@@ -150,18 +150,3 @@ export async function updateParticipantState(
   await r.hset(key, userId, JSON.stringify(participant))
   await r.expire(key, ROOM_TTL)
 }
-
-/** Get all active room IDs (for diagnostics). */
-export async function getActiveRoomIds(): Promise<string[]> {
-  const r = redis()
-  if (!r) return []
-  const keys = await r.keys('group-call:room:*')
-  return keys.map(k => k.replace('group-call:room:', ''))
-}
-
-/** Get participant count for a room. */
-export async function getRoomSize(roomId: string): Promise<number> {
-  const r = redis()
-  if (!r) return 0
-  return r.hlen(roomKey(roomId))
-}

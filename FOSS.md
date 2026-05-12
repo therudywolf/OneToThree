@@ -1,8 +1,8 @@
-#  One To Three — Project 13 (OneToThree)
+# OneToThree
 
 **License: [GNU Affero General Public License v3.0 (AGPL-3.0-only)](./LICENSE)**
 
-### Clinical-grade zero-trust E2E messenger — self-hosted, open-source, no phone number required
+### Zero-trust E2EE messenger — self-hosted, open-source, no phone number required
 
 ---
 
@@ -63,7 +63,7 @@ OneToThree is:
 | **react-image-crop** | 11.0.10 | Avatar upload cropping |
 | **browser-image-compression** | 2.0.2 | Client-side image optimization before upload |
 | **next-pwa** | 5.6.0 | Service worker, offline support, push handler |
-| **Web Crypto API** | Native | All encryption — AES-GCM, ECDH, ECDSA, PBKDF2 |
+| **Web Crypto API** | Native | All encryption — AES-GCM, ECDH, ECDSA, Argon2id |
 | **Web Workers** | Native | Off-main-thread batch decryption (crypto.worker.ts) |
 | **Playwright** | 1.59.1 | End-to-end testing |
 | **Vitest** | 3.2.4 | Unit testing |
@@ -110,7 +110,7 @@ OneToThree is:
 | **AES-GCM-256** | All message content, all media files, vault encryption |
 | **ECDH P-256** | Key agreement for direct chats and group key wrapping |
 | **ECDSA P-256 + SHA-256** | Passwordless authentication (challenge-response) |
-| **PBKDF2 (600k iterations, SHA-256)** | Vault passphrase → AES wrapping key derivation |
+| **Argon2id (t=3, m=64 MiB, p=1)** | Vault passphrase → AES wrapping key derivation |
 | **WebRTC + DTLS-SRTP** | Voice/video calls (always E2EE) |
 | **VAPID / Web Push** | Background push notifications |
 | **TOTP RFC 6238** | Two-factor authentication |
@@ -169,7 +169,7 @@ OneToThree is:
 │                                             │
 │  ◆ All encryption / decryption              │
 │  ◆ Private key generation & storage         │
-│  ◆ Vault lock/unlock (PBKDF2 + AES-GCM)    │
+│  ◆ Vault lock/unlock (Argon2id + AES-GCM)   │
 │  ◆ Message encrypt before send              │
 │  ◆ Media encrypt before upload              │
 │  ◆ WebRTC peer connection (calls)           │
@@ -213,7 +213,7 @@ No password is ever sent to the server. Authentication uses a digital signature 
    │                         │                  │                         │
    │  generate ECDSA P-256   │                  │   read vault from       │
    │  generate ECDH  P-256   │                  │   localStorage          │
-   │                         │                  │   PIN → PBKDF2 →        │
+   │                         │                  │   PIN → Argon2id →       │
    │  POST /auth/challenge   │                  │   decrypt vault         │
    │ ───────────────────────►│                  │                         │
    │                         │                  │  POST /auth/challenge   │
@@ -235,7 +235,7 @@ No password is ever sent to the server. Authentication uses a digital signature 
    │ ◄───────────────────────│                  │   { token, user }       │
    │                         │                  │ ◄───────────────────────│
    │  encrypt vault:         │                  │                         │
-  │  PBKDF2(pin, salt, 600k)│
+  │  Argon2id(pin,salt)     │
    │    → AES-GCM wrap keys  │
    │  store in localStorage  │
 ```
@@ -249,10 +249,10 @@ The vault holds both private keys (ECDSA + ECDH) encrypted with a user-chosen PI
 
 ```
                          ┌──────────────────────────────────────┐
-  User PIN ─────────────►│  PBKDF2                              │
-                         │  • 210,000 iterations                │
-  Random salt (16 B) ───►│  • SHA-256                           │
-                         │  • Output: 256-bit AES key           │
+  User PIN ─────────────►│  Argon2id                            │
+                         │  • t=3, m=64 MiB, p=1               │
+  Random salt (16 B) ───►│  • Output: 256-bit AES key           │
+                         │                                      │
                          └─────────────┬────────────────────────┘
                                        │
                                        ▼
@@ -266,7 +266,7 @@ The vault holds both private keys (ECDSA + ECDH) encrypted with a user-chosen PI
                          ┌──────────────────────────────────────┐
                          │  VaultBlob (stored in localStorage)   │
                          │  {                                    │
-                         │    version: 2,                        │
+                         │    version: 4,                        │
                          │    saltB64:  "...",   // 16 bytes     │
                          │    ivB64:    "...",   // 12 bytes     │
                          │    ciphertextB64: "..." // sealed JWK │
@@ -274,10 +274,10 @@ The vault holds both private keys (ECDSA + ECDH) encrypted with a user-chosen PI
                          └──────────────────────────────────────┘
 ```
 
-**Vault V2 payload structure:**
+**Vault V4 payload structure:**
 ```json
 {
-  "v": 2,
+  "v": 4,
   "ecdsaPrivateJwk": "<JWK string — signing key>",
   "ecdhPrivateJwk":  "<JWK string — encryption key>"
 }
@@ -433,7 +433,7 @@ Groups use a shared symmetric key. The creator distributes it encrypted per-memb
 | Symmetric cipher | AES-GCM-256 (256-bit key, 12-byte IV, 128-bit auth tag) |
 | Key agreement | ECDH P-256 |
 | Authentication | ECDSA P-256 + SHA-256 |
-| Vault KDF | PBKDF2-SHA-256, 210,000 iterations, 16-byte random salt |
+| Vault KDF | Argon2id (t=3, m=64 MiB, p=1), 16-byte random salt |
 | Group key wrap | Ephemeral ECDH → AES-GCM-256 per member |
 | Call encryption | DTLS-SRTP (WebRTC standard — always E2EE) |
 | Key fingerprint | SHA-256 of canonicalized JWK → 6-block safety number |
@@ -450,7 +450,7 @@ Groups use a shared symmetric key. The creator distributes it encrypted per-memb
 - ✅ AES-256-GCM with random 12-byte IVs, no IV reuse
 - ✅ ECDSA P-256 challenge-response (password never sent to server)
 - ✅ Per-file encryption keys (compromise of one file doesn't expose others)
-- ✅ PBKDF2-SHA256 with 600,000 iterations (updated from 210k)
+- ✅ Argon2id (t=3, m=64 MiB, p=1) vault KDF; legacy PBKDF2 vaults auto-upgraded on unlock
 - ✅ Parameterized SQL via Drizzle ORM (no SQL injection)
 - ✅ httpOnly, Secure, SameSite=Strict cookies
 - ✅ HSTS with preload, 2-year max-age
@@ -459,7 +459,7 @@ Groups use a shared symmetric key. The creator distributes it encrypted per-memb
 - ✅ JWT server-side revocation via jti denylist
 - ✅ Vault PIN change mechanism
 - ✅ CSP unsafe-eval removed from production
-- ✅ PBKDF2 iterations increased to 600k
+- ✅ Vault KDF upgraded from PBKDF2 to Argon2id
 - ✅ Session lifetime reduced to 24h sliding window
 - ✅ TOTP secret only persisted after successful verification
 - ✅ Permissions-Policy allows camera/mic for WebRTC
@@ -485,7 +485,7 @@ Groups use a shared symmetric key. The creator distributes it encrypted per-memb
 | **Push Notifications** | `lib/push-subscription.ts`, `hooks/use-phantom-push.ts` | `routes/push.ts`, `lib/push.ts` | VAPID, Web Push API |
 | **2FA (TOTP)** | `components/settings-modal.tsx` | `routes/auth.ts` | TOTP RFC 6238 (otplib) |
 | **Multi-Device** | `components/settings-devices-panel.tsx`, `components/settings-link-device-modal.tsx` | `routes/auth.ts`, `lib/qr-link-store.ts`, `routes/devices.ts` | QR linking, vault sync, key re-wrapping |
-| **Vault Encryption** | `lib/vault.ts`, `lib/vault-keyring.ts` | `routes/vault.ts` | PBKDF2 210k + AES-GCM-256 |
+| **Vault Encryption** | `lib/vault.ts`, `lib/vault-keyring.ts` | `routes/vault.ts` | Argon2id + AES-GCM-256 |
 | **Passwordless Auth** | `lib/auth/crypto-login.ts` | `routes/auth.ts`, `lib/ecdsa-verify.ts`, `lib/challenge-store.ts` | ECDSA P-256 challenge-response |
 | **Read Receipts** | `hooks/use-read-receipts.ts` | `routes/messages.ts` (direct chats only) | WebSocket `message_read` |
 | **Typing Indicators** | `hooks/use-typing-indicator.ts` | `routes/ws.ts` | WebSocket `typing_start/stop` |
@@ -513,7 +513,7 @@ This is the most important section. OneToThree operates on a **zero-trust server
 │                                                                             │
 │  ✅ Encrypted message blobs     (AES-GCM ciphertext + IV — cannot decrypt)  │
 │  ✅ Encrypted media blobs       (AES-GCM ciphertext — stored in MinIO)      │
-│  ✅ Encrypted vault backup      (PBKDF2-wrapped — server cannot unlock)     │
+│  ✅ Encrypted vault backup      (Argon2id-wrapped — server cannot unlock)    │
 │  ✅ Encrypted group keys        (per-member ECDH-wrapped — server has no    │
 │                                  private keys to unwrap)                    │
 │  ✅ ECDSA public keys           (for challenge verification only)           │
@@ -531,7 +531,7 @@ This is the most important section. OneToThree operates on a **zero-trust server
 │  ❌ Message plaintext           (encrypted before leaving browser)          │
 │  ❌ Media content               (encrypted before upload to S3)             │
 │  ❌ Private keys                (generated and stored only in browser)      │
-│  ❌ Vault passphrase / PIN      (PBKDF2 derivation happens in browser)      │
+│  ❌ Vault passphrase / PIN      (Argon2id derivation happens in browser)     │
 │  ❌ Group key plaintext         (ECDH unwrapping happens in browser)        │
 │  ❌ Call audio / video           (DTLS-SRTP — peer-to-peer or via TURN,     │
 │                                  but always encrypted end-to-end)           │
@@ -549,7 +549,7 @@ An attacker who gains full database access obtains:
 |---|---|
 | Messages table | **No** — AES-GCM-256 ciphertext, no key |
 | Media in MinIO | **No** — AES-GCM-256 encrypted blobs |
-| Vault backups | **No** — PBKDF2 (600k iter) + AES-GCM-256, needs user PIN |
+| Vault backups | **No** — Argon2id + AES-GCM-256, needs user PIN |
 | Public keys | **No** — cannot derive private keys from public keys |
 | Group key payloads | **No** — ECDH-wrapped, needs member private key |
 | Usernames | **Yes** — usernames are plaintext |
@@ -711,7 +711,7 @@ Create these DNS records pointing to your server IP:
 
 ```bash
 # 1. Clone
-git clone https://github.com/user/OneToThree.git
+git clone https://github.com/therudywolf/OneToThree.git
 cd OneToThree
 
 # 2. Configure and launch
@@ -758,7 +758,7 @@ cd OneToThree
 - [x] 2FA / TOTP (RFC 6238)
 - [x] Multi-device with QR linking
 - [x] Passwordless auth (ECDSA challenge-response)
-- [x] Vault encryption (PBKDF2 600k + AES-GCM)
+- [x] Vault encryption (Argon2id + AES-GCM-256)
 - [x] Offline outbox (IndexedDB queue)
 - [x] Read receipts (direct chats)
 - [x] Typing indicators
@@ -775,15 +775,23 @@ cd OneToThree
 - [x] Next/prev voice message navigation
 - [x] Swipe-to-lock recording (voice + circles)
 - [x] Background Sync service worker for offline queue
+- [x] Double Ratchet v2 (X3DH + Signal DR) — always-on for 1:1 chats
+- [x] Stickers — Telegram import, Lottie/TGS player, share links
+- [x] Polls — create, vote, real-time results via WebSocket
+- [x] Channels — Telegram-style broadcast with subscriber gating
+- [x] Message editing with edit history
+- [x] @mentions with notification highlighting
+- [x] Draft messages (per-chat auto-saved)
+- [x] Spoiler text (hidden until tapped)
+- [x] Group calls with LiveKit SFU (E2EE room key)
+- [x] Media lifecycle — LRU eviction, orphan cleanup, local restore
 
 ### In Progress / Planned
 
-- [ ] **WebAuthn vault unlock** — infrastructure exists (`webauthn-vault.ts`), not yet wired to UI
-- [ ] **Sticker support** — locale strings exist, implementation pending
-- [ ] **Social links API** — user profile supports `social_links` field, frontend rendering partial
-- [ ] **Media retention purge** — `media-retention-purge.ts` exists, needs scheduling/config
+- [ ] **WebAuthn vault unlock** — infrastructure exists (`webauthn-vault.ts`), UI wiring pending
+- [ ] **Media retention purge scheduling** — `media-retention-purge.ts` exists, needs cron/config
 - [ ] **Redis-backed multi-node** — QR store supports Redis, full horizontal scaling untested
-- [ ] **Group admin permissions** — role system exists (owner/admin/member), granular permissions TBD
+- [ ] **Full offline mode** — service worker + outbox shipped, cached message viewing without network pending
 
 ---
 

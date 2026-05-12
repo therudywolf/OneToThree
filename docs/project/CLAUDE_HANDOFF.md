@@ -1,6 +1,6 @@
 # CLAUDE HANDOFF — START HERE
 
-Last updated: 2026-05-07
+Last updated: 2026-05-12
 
 ## Goal
 
@@ -54,10 +54,7 @@ Last updated: 2026-05-07
    - `docker compose restart coturn` — скрипт автоматически включит TLS
    - LiveKit SFU уже работает через 443 (Caddy → `lk.DOMAIN`); нужны `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` в secrets
 
-2. **Polls migration** — после deploy нужно запустить `npm run db:push` или применить
-   `server/src/db/migrations/0015_polls.sql` вручную.
-
-3. **Деплой** — `./startup.sh update` на продакшене после каждого push.
+2. **Деплой** — `./startup.sh update` на продакшене после каждого push. Migrations run automatically via `db-migrate` container.
 
 #### UI / UX (оба шелла)
 
@@ -74,9 +71,6 @@ Last updated: 2026-05-07
 ```bash
 # На сервере:
 ./startup.sh update
-
-# Применить polls migration:
-npm run db:push   # или docker exec -it db psql -f 0015_polls.sql
 
 # Включить TURNS после получения cert Caddy:
 ./scripts/sync-turn-certs.sh

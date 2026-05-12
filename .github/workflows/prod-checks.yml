@@ -2,9 +2,9 @@ name: Production checks
 
 on:
   push:
-    branches: [main, master, ver2]
+    branches: [main]
   pull_request:
-    branches: [main, master, ver2]
+    branches: [main]
 
 permissions:
   contents: read

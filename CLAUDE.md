@@ -75,8 +75,7 @@ npm run audit:security    # security lint audit
 npm run audit:security:strict  # strict mode (STRICT=1)
 npm run backup            # run backup script
 
-# Enable Double Ratchet (off by default)
-NEXT_PUBLIC_DR_ENABLED=1 npm run dev:client
+# Double Ratchet is always enabled for 1:1 chats
 ```
 
 ## Architecture
@@ -105,7 +104,7 @@ Device ECDH keys are uploaded to the server via `PATCH /users/me` (`ecdh_public_
 
 **Vault**: Vault blobs are versioned. Legacy v1-v3 use PBKDF2 (600k) + AES-256-GCM; current v4 uses Argon2id (t=3, m=64 MiB, p=1) + AES-256-GCM. `upgradeVaultBlob()` re-wraps legacy blobs to v4. Vault is optionally synced server-side as an opaque blob (server cannot decrypt). Vault unlock triggers ECDH key re-upload.
 
-**Double Ratchet (v2)** (`client/src/lib/ratchet/`): Signal-compatible (X3DH + DR) implementation, gated by `NEXT_PUBLIC_DR_ENABLED` env flag (default: off). On vault unlock, `dr-bootstrap.ts` is invoked to:
+**Double Ratchet (v2)** (`client/src/lib/ratchet/`): Signal-compatible (X3DH + DR) implementation, always enabled for 1:1 chats. On vault unlock, `dr-bootstrap.ts` is invoked to:
   1. Generate or load the local DR identity bundle (Ed25519 + X25519 + signed prekey + OTPKs)
   2. Persist the bundle to IndexedDB (`forest-dr-identity` store) wrapped with a vault-derived AES-GCM key
   3. Publish public halves to `/api/keys`; replenish one-time prekeys if server reports < 5 remaining

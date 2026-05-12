@@ -106,8 +106,8 @@
 - `scripts/audit-security-lint.mjs` обновлён: `console.debug` разрешён,
   `console.log` / `console.info` запрещены. Сейчас в коде **0 нарушений**,
   `STRICT=1 npm run audit:security:strict` проходит.
-- `.eslintrc.json` клиента получил правила `no-restricted-syntax`,
-  запрещающие хардкод цветов и `[#hex]` литералы в будущем.
+- Theme token enforcement (no hardcoded colors, no `[#hex]` literals) is handled
+  by `scripts/audit-security-lint.mjs` (`STRICT=1` mode).
 
 ## Фаза 3.1 — библиотека Double Ratchet
 

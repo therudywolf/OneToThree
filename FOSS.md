@@ -992,7 +992,18 @@ OneToThree ships as a full-featured PWA installable on Android and iOS.
 
 ## License
 
-This project is open source. See the LICENSE file for details.
+OneToThree is free software: you can redistribute it and/or modify it under the
+terms of the **GNU Affero General Public License v3.0** as published by the Free
+Software Foundation.
+
+This is a **copyleft** license. If you modify OneToThree and run your modified
+version as a network service, you **must** make the complete source code of your
+modified version available to all users of that service under the same AGPLv3
+terms.
+
+- SPDX identifier: `AGPL-3.0-only`
+- Full text: [LICENSE](./LICENSE)
+- Copyright (C) 2026 therudywolf
 
 ---
 
@@ -1000,6 +1011,6 @@ This project is open source. See the LICENSE file for details.
 
 **OneToThree** — *Your messages. Your server. Your keys.*
 
-Built by [rudywolf](https://github.com/rudywolf)
+Built by [therudywolf](https://github.com/therudywolf)
 
 </div>

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 therudywolf
+
 /**
  * Double Ratchet session manager — bridges the pure ratchet library
  * (`double-ratchet.ts`, `x3dh.ts`) with the server key directory (`/api/keys`)

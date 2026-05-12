@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 therudywolf
+
 /**
  * X3DH (Extended Triple Diffie-Hellman) — Signal's asymmetric handshake used
  * to bootstrap a Double Ratchet session. Only the essentials are here;

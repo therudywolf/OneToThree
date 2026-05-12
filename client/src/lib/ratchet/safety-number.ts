@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Copyright (C) 2026 therudywolf
+
 /**
  * Safety Numbers — stable, human-verifiable fingerprint of a pair of
  * identities. Mirrors Signal's 60-digit format but uses base-10 instead of

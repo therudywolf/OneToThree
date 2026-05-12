@@ -1,4 +1,4 @@
-# One To Three — Проект 13 (OneToThree)
+# OneToThree
 
 **Лицензия: [GNU Affero General Public License v3.0 (AGPL-3.0-only)](./LICENSE)**
 
@@ -60,7 +60,7 @@
 | **react-image-crop** | 11.0.10 | Кроп аватаров |
 | **browser-image-compression** | 2.0.2 | Клиентская оптимизация изображений перед загрузкой |
 | **next-pwa** | 5.6.0 | Service Worker, офлайн-режим и push-обработчики |
-| **Web Crypto API** | Native | Вся криптография: AES-GCM, ECDH, ECDSA, PBKDF2 |
+| **Web Crypto API** | Native | Вся криптография: AES-GCM, ECDH, ECDSA, Argon2id |
 | **Web Workers** | Native | Расшифровка вне главного потока |
 | **Playwright** | 1.59.1 | End-to-end тестирование |
 | **Vitest** | 3.2.4 | Unit-тестирование |
@@ -107,7 +107,7 @@
 | **AES-GCM-256** | Все сообщения, медиафайлы и шифрование vault |
 | **ECDH P-256** | Обмен ключами в direct chats и упаковка групповых ключей |
 | **ECDSA P-256 + SHA-256** | Беспарольная аутентификация через challenge-response |
-| **PBKDF2 (600k итераций, SHA-256)** | Вывод ключа из passphrase для шифрования vault |
+| **Argon2id (t=3, m=64 MiB, p=1)** | Вывод ключа из passphrase для шифрования vault |
 | **WebRTC + DTLS-SRTP** | Голосовые и видеозвонки |
 | **VAPID / Web Push** | Push-уведомления в фоне |
 | **TOTP RFC 6238** | Двухфакторная аутентификация |
@@ -210,7 +210,7 @@
    │                         │                  │                         │
    │ generate ECDSA P-256    │                  │ читает vault из         │
    │ generate ECDH  P-256    │                  │ localStorage            │
-   │                         │                  │ PIN → PBKDF2 →          │
+   │                         │                  │ PIN → Argon2id →         │
    │ POST /auth/challenge    │                  │ расшифровка vault       │
    │ ───────────────────────►│                  │                         │
    │                         │                  │ POST /auth/challenge    │
@@ -241,8 +241,8 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 
 ```text
                          ┌──────────────────────────────────────┐
-  PIN пользователя ────► │ PBKDF2                               │
-                         │ • 600 000 итераций                   │
+  PIN пользователя ────► │ Argon2id                             │
+                         │ • t=3, m=64 MiB, p=1                │
   Случайная salt (16 B)► │ • SHA-256                            │
                          │ • Выход: 256-битный AES-ключ         │
                          └─────────────┬────────────────────────┘
@@ -289,7 +289,7 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 | Симметричный шифр | AES-GCM-256 (256-битный ключ, 12-байтный IV, 128-битный auth tag) |
 | Обмен ключами | ECDH P-256 |
 | Аутентификация | ECDSA P-256 + SHA-256 |
-| KDF для vault | PBKDF2-SHA-256, 600 000 итераций, salt 16 байт |
+| KDF для vault | Argon2id (t=3, m=64 MiB, p=1), salt 16 байт |
 | Упаковка групповых ключей | Ephemeral ECDH → AES-GCM-256 для каждого участника |
 | Шифрование звонков | DTLS-SRTP |
 | Fingerprint ключа | SHA-256 от canonicalized JWK → safety number из 6 блоков |
@@ -316,7 +316,7 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 - ✅ Server-side revocation JWT через denylist по `jti`.
 - ✅ Механизм смены PIN для vault.
 - ✅ Удалён `unsafe-eval` из production CSP.
-- ✅ Увеличено число итераций PBKDF2 до 600k.
+- ✅ Vault KDF обновлён с PBKDF2 на Argon2id; legacy vaults обновляются автоматически.
 - ✅ Сокращено время жизни сессии.
 - ✅ TOTP secret сохраняется только после успешной проверки.
 - ✅ Permissions-Policy разрешает camera/mic для WebRTC.
@@ -343,7 +343,7 @@ Vault содержит приватные ключи ECDSA и ECDH и шифру
 | **Push notifications** | `lib/push-subscription.ts`, `hooks/use-phantom-push.ts` | `routes/push.ts`, `lib/push.ts` | VAPID, Web Push API |
 | **2FA (TOTP)** | `components/settings-modal.tsx` | `routes/auth.ts` | TOTP RFC 6238 |
 | **Multi-device** | Панели и модальные окна устройств | `routes/auth.ts`, `lib/qr-link-store.ts`, `routes/devices.ts` | QR linking, vault sync |
-| **Vault encryption** | `lib/vault.ts`, `lib/vault-keyring.ts` | `routes/vault.ts` | PBKDF2 + AES-GCM-256 |
+| **Vault encryption** | `lib/vault.ts`, `lib/vault-keyring.ts` | `routes/vault.ts` | Argon2id + AES-GCM-256 |
 | **Passwordless auth** | `lib/auth/crypto-login.ts` | `routes/auth.ts` и crypto-helpers | ECDSA challenge-response |
 | **Read receipts** | `hooks/use-read-receipts.ts` | `routes/messages.ts` | WebSocket |
 | **Typing indicators** | `hooks/use-typing-indicator.ts` | `routes/ws.ts` | WebSocket |

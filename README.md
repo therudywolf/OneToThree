@@ -67,7 +67,7 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 | RAM | 4 GB |
 | Disk | 20 GB SSD |
 | Docker | Docker Engine 24+ with Compose v2 |
-| Domain | 1 domain with 4 DNS records (see below) |
+| Domain | 1 domain with 5 DNS records (see below) |
 | Ports | 80/tcp, 443/tcp, 3478/tcp+udp, 5349/tcp, 49152–65535/udp |
 
 ---

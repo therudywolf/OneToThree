@@ -1,6 +1,21 @@
-# OneToThree
+# 🐺 OneToThree
+
+> `D34D1N$1D3` :: dead inside wolf :: самохостируемый E2EE-мессенджер
+
+My resources:
+- [Gravatar](https://gravatar.com/therudywolf)
+- [OneToThree](https://onetothree.ru)
+- [Forest blog](https://t.me/theforestserver)
+- [X](https://x.com/therudywolf)
+- [GitHub](https://github.com/therudywolf)
+- [Twitch](https://twitch.tv/therudywolf)
+- [Reddit](https://reddit.com/user/Most-Watercress-6718)
+- [Telegram](https://t.me/rudy_wolf)
+- [YouTube](https://youtube.com/channel/UCXHkoSlaY5QaNmN_l4t0djQ)
 
 Самохостируемый мессенджер со сквозным шифрованием. Сервер хранит только зашифрованные данные — приватные ключи никогда не покидают браузер.
+
+AGPL v3 Copyleft applies to reuse, modification, and network deployment of derived versions.
 
 **[English documentation → README.md](./README.md)**
 

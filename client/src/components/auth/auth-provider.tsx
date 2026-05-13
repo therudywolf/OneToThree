@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // "click login, nothing happens" misconfig.
     if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
       try {
-        console.info('[p13:boot]', {
+        console.debug('[p13:boot]', {
           page: window.location.origin,
           api: process.env.NEXT_PUBLIC_API_URL?.trim() || '(same-origin /api proxy)',
           ws: process.env.NEXT_PUBLIC_WS_ORIGIN?.trim() || '(derived from API_URL)',

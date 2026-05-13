@@ -226,7 +226,7 @@ export async function joinLiveKitCall(
     store.setIsVideo(isVideo)
     store.setTransport('livekit')
     if (keyProvider) {
-      console.info('[livekit] E2EE active for room', roomId)
+      console.debug('[livekit] E2EE active for room', roomId)
     }
   } catch {
     await room.disconnect()

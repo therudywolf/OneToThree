@@ -963,11 +963,11 @@ export function ChatApp({
                 }`}
               >
                 {peerIdentity.verified ? (
-                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="Verified &amp; end-to-end encrypted" />
+                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-success" aria-label="Verified &amp; end-to-end encrypted" />
                 ) : (cryptoCtx?.mode === 'DIRECT' || cryptoCtx?.mode === 'SELF') ? (
-                  <Lock className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="End-to-end encrypted" />
+                  <Lock className="h-3.5 w-3.5 shrink-0 text-success" aria-label="End-to-end encrypted" />
                 ) : cryptoCtx?.mode === 'PUBLIC' ? (
-                  <ShieldOff className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Not end-to-end encrypted" />
+                  <ShieldOff className="h-3.5 w-3.5 shrink-0 text-danger" aria-label="Not end-to-end encrypted" />
                 ) : null}
                 {peerApproved ? (
                   <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" />
@@ -1249,11 +1249,11 @@ export function ChatApp({
                         isMd3 ? 'text-[var(--on-surface)]' : 'text-neon-cyan font-mono'
                       }`}>
                         {peerIdentity.verified ? (
-                          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="Verified &amp; end-to-end encrypted" />
+                          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-success" aria-label="Verified &amp; end-to-end encrypted" />
                         ) : (cryptoCtx?.mode === 'DIRECT' || cryptoCtx?.mode === 'SELF') ? (
-                          <Lock className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="End-to-end encrypted" />
+                          <Lock className="h-3.5 w-3.5 shrink-0 text-success" aria-label="End-to-end encrypted" />
                         ) : cryptoCtx?.mode === 'PUBLIC' ? (
-                          <ShieldOff className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Not end-to-end encrypted" />
+                          <ShieldOff className="h-3.5 w-3.5 shrink-0 text-danger" aria-label="Not end-to-end encrypted" />
                         ) : null}
                         {peerApproved ? <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" /> : null}
                         <span className="truncate">
@@ -1278,9 +1278,9 @@ export function ChatApp({
                         {isChannel ? (
                           <Megaphone className="h-3.5 w-3.5 shrink-0 text-neon-cyan/80" aria-label="Channel" />
                         ) : cryptoCtx?.mode === 'SECTOR' ? (
-                          <Lock className="h-3.5 w-3.5 shrink-0 text-green-500" aria-label="End-to-end encrypted group" />
+                          <Lock className="h-3.5 w-3.5 shrink-0 text-success" aria-label="End-to-end encrypted group" />
                         ) : cryptoCtx?.mode === 'PUBLIC' ? (
-                          <ShieldOff className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Not end-to-end encrypted" />
+                          <ShieldOff className="h-3.5 w-3.5 shrink-0 text-danger" aria-label="Not end-to-end encrypted" />
                         ) : null}
                         {activeRow.name ?? activeRow.id}
                       </span>

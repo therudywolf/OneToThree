@@ -1142,14 +1142,14 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           <div ref={burnMenuRef} className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
             <button
               type="button"
-              className={`p13-icon-btn ${burnTimerSecs ? 'text-orange-400' : ''}`}
+              className={`p13-icon-btn ${burnTimerSecs ? 'text-warning' : ''}`}
               disabled={disabled}
               onClick={() => setBurnMenuOpen((o) => !o)}
               title={t('chat.burnTimerLabel')}
             >
-              <Flame className={`h-4 w-4 ${burnTimerSecs ? 'fill-orange-400/30 text-orange-400' : ''}`} />
+              <Flame className={`h-4 w-4 ${burnTimerSecs ? 'fill-warning/30 text-warning' : ''}`} />
               {burnTimerSecs ? (
-                <span className="absolute -top-1 -right-1 rounded-full bg-orange-500 px-1 text-[9px] font-bold leading-tight text-white">
+                <span className="absolute -top-1 -right-1 rounded-full bg-warning px-1 text-[9px] font-bold leading-tight text-void">
                   {formatBurnTimerShort(burnTimerSecs)}
                 </span>
               ) : null}
@@ -1163,10 +1163,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                   <button
                     key={opt.labelKey}
                     type="button"
-                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:opacity-70 transition-opacity ${burnTimerSecs === opt.secs ? 'text-orange-400 font-semibold' : 'text-[color:var(--on-surface)]'}`}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:opacity-70 transition-opacity ${burnTimerSecs === opt.secs ? 'text-warning font-semibold' : 'text-[color:var(--on-surface)]'}`}
                     onClick={() => { setBurnTimerSecs(opt.secs); setBurnMenuOpen(false) }}
                   >
-                    {opt.secs ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" /> : <span className="h-3.5 w-3.5 shrink-0" />}
+                    {opt.secs ? <Flame className="h-3.5 w-3.5 shrink-0 text-warning" /> : <span className="h-3.5 w-3.5 shrink-0" />}
                     {t(opt.labelKey as Parameters<typeof t>[0])}
                   </button>
                 ))}

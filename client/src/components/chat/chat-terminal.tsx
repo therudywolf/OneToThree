@@ -1336,7 +1336,7 @@ export function ChatTerminal({
                     <div className="p13-label mb-1 flex items-center gap-1.5 text-[10px] opacity-70">
                       {formatMessageTimestamp(m.created_at, locale)}
                       {m.burn_at ? (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-orange-500/20 px-1.5 py-0.5 text-orange-400 font-semibold">
+                        <span className="inline-flex items-center gap-0.5 rounded-full bg-warning/20 px-1.5 py-0.5 text-warning font-semibold">
                           <Flame className="h-2.5 w-2.5" />
                           {formatBurnCountdown(m.burn_at)}
                         </span>
@@ -1546,7 +1546,7 @@ export function ChatTerminal({
         {cryptoCtx?.mode === 'PUBLIC' && (
           <div
             role="alert"
-            className="flex items-center gap-2 border-t border-red-500/30 bg-red-500/10 px-4 py-2 text-xs text-red-400"
+            className="flex items-center gap-2 border-t border-danger/30 bg-danger/10 px-4 py-2 text-xs text-danger"
           >
             <ShieldOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
             <span>This conversation is not end-to-end encrypted. Messages may be visible to the server.</span>

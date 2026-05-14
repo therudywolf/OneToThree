@@ -1,6 +1,6 @@
 # 🐺 OneToThree
 
-> Dead-inside wolf build of a self-hosted E2EE messenger.
+> Самохостируемый мессенджер со сквозным шифрованием для приватного общения.
 
 ![Version](https://img.shields.io/badge/version-0.5.0--alpha.1-4c8bf5)
 ![Status](https://img.shields.io/badge/status-alpha-ef4444)
@@ -8,7 +8,7 @@
 
 Самохостируемый мессенджер со сквозным шифрованием. Сервер хранит только зашифрованные данные, а приватные ключи никогда не покидают браузер.
 
-Лицензия: AGPL-3.0-only.
+AGPL-3.0-only applies to reuse, modification, and network deployment of derived versions.
 
 **[English documentation → README.md](./README.md)**
 

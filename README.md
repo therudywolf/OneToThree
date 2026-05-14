@@ -1,14 +1,14 @@
 # 🐺 OneToThree
 
-> Dead-inside wolf build of a self-hosted end-to-end encrypted messenger.
+> Self-hosted end-to-end encrypted messenger for private communication.
 
 ![Version](https://img.shields.io/badge/version-0.5.0--alpha.1-4c8bf5)
 ![Status](https://img.shields.io/badge/status-alpha-ef4444)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-22c55e)](LICENSE)
 
-Self-hosted end-to-end encrypted messenger. The server stores only ciphertext and private keys never leave the browser.
+Self-hosted end-to-end encrypted messenger. The server stores only ciphertext, and private keys never leave the browser.
 
-Licensed under AGPL-3.0-only.
+AGPL-3.0-only applies to reuse, modification, and network deployment of derived versions.
 
 **[Русская документация → README.ru.md](./README.ru.md)**
 

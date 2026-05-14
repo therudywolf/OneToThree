@@ -110,6 +110,10 @@ export async function buildApp() {
 
   registerGlobalErrorHandler(app)
 
+  app.setNotFoundHandler((_request, reply) => {
+    reply.status(404).send({ error: 'NOT_FOUND' })
+  })
+
   assertProdSecurityEnv()
 
   const corsOriginsRaw =

@@ -344,44 +344,8 @@ services:
     healthcheck:
       disable: true
 
-  caddy:
-    image: caddy:2-alpine
-    restart: always
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    environment:
-      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
-      DOMAIN: ${DOMAIN:-onetothree.ru}
-    cpu_shares: 256
-    cpus: '1.0'
-    mem_limit: 256m
-    mem_reservation: 64m
-    ports:
-      - '80:80'
-      - '443:443'
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      web:
-        condition: service_healthy
-      api:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    networks:
-      - app_network
-    extra_hosts:
-      - '${DOMAIN:-onetothree.ru}:host-gateway'
-      - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
-      - 's3.${DOMAIN:-onetothree.ru}:host-gateway'
-      - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
-      # lk.onetothree.ru is reverse-proxied to livekit (host network, :7880)
-      # through host.docker.internal — required on Linux VPS, no-op on Docker
-      # Desktop where it's auto-provided.
-      - 'host.docker.internal:host-gateway'
+  # caddy: REMOVED — reverse proxy переехал в ~/infra/caddy (infra-caddy контейнер).
+  # Не добавляй сюда caddy: — конфликт за порты 80/443.
 
 secrets:
   postgres_password:
@@ -411,10 +375,6 @@ volumes:
   redis_data:
     driver: local
   minio_data:
-    driver: local
-  caddy_data:
-    driver: local
-  caddy_config:
     driver: local
 
 networks:

@@ -1,21 +1,14 @@
 # 🐺 OneToThree
 
-> `D34D1N$1D3` :: dead inside wolf :: end-to-end encrypted messenger
+> Dead-inside wolf build of a self-hosted end-to-end encrypted messenger.
 
-My resources:
-- [Gravatar](https://gravatar.com/therudywolf)
-- [OneToThree](https://onetothree.ru)
-- [Forest blog](https://t.me/theforestserver)
-- [X](https://x.com/therudywolf)
-- [GitHub](https://github.com/therudywolf)
-- [Twitch](https://twitch.tv/therudywolf)
-- [Reddit](https://reddit.com/user/Most-Watercress-6718)
-- [Telegram](https://t.me/rudy_wolf)
-- [YouTube](https://youtube.com/channel/UCXHkoSlaY5QaNmN_l4t0djQ)
+![Version](https://img.shields.io/badge/version-0.5.0--alpha.1-4c8bf5)
+![Status](https://img.shields.io/badge/status-alpha-ef4444)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--only-22c55e)](LICENSE)
 
-Self-hosted end-to-end encrypted messenger. The server stores only ciphertext — private keys never leave the browser.
+Self-hosted end-to-end encrypted messenger. The server stores only ciphertext and private keys never leave the browser.
 
-AGPL v3 Copyleft applies to reuse, modification, and network deployment of derived versions.
+Licensed under AGPL-3.0-only.
 
 **[Русская документация → README.ru.md](./README.ru.md)**
 

@@ -1,3 +1,7 @@
+# ARCHIVED — этот файл больше не используется на продакшне.
+# Продакшн-конфиг Caddy теперь живёт на сервере в ~/infra/caddy/.
+# Правь ~/infra/caddy/sites/onetothree.ru.caddy напрямую.
+
 # Project 13 — Caddy automatic HTTPS (Let's Encrypt / ACME).
 # Certificates and account data persist in the Docker volume `caddy_data` → /data.
 # Prerequisites: public DNS A/AAAA for each host below → this machine; ports 80/443 reachable.

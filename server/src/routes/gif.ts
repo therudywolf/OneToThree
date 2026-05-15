@@ -100,10 +100,12 @@ const gifSearchSchema = z.object({
 })
 
 // Tenor v2 (tenor.googleapis.com) requires an API key, v1 (api.tenor.com)
-// is technically deprecated but the demo key still serves results today.
-// We try v2 first when TENOR_API_KEY is set, then fall back to v1 with the
-// public demo key so the picker still works in unconfigured deployments.
-const TENOR_DEMO_KEY = 'LIVDSRZULELA'
+// is technically deprecated but Google's published demo key still serves
+// results today. We try v2 first when TENOR_API_KEY is set, then fall
+// back to v1 with the demo key so the picker still works in
+// unconfigured deployments. The demo key is overridable via
+// TENOR_DEMO_API_KEY for operators that want to swap in their own.
+const TENOR_DEMO_KEY = (process.env.TENOR_DEMO_API_KEY ?? '').trim() || 'LIVDSRZULELA'
 
 type TenorV2Result = {
   id: string

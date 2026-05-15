@@ -70,7 +70,7 @@ export function MobileBottomNav({ activeTab, onTabChange, unreadCount = 0 }: Mob
                 className={`absolute top-1 right-3 flex min-w-[16px] h-4 items-center justify-center rounded-full px-1 text-[9px] font-bold leading-none ${
                   isMd3
                     ? 'bg-[var(--neon-red)] text-[var(--surface)]'
-                    : 'bg-neon-red text-white border border-neon-red/60'
+                    : 'bg-neon-red text-[var(--surface)] border border-neon-red/60'
                 }`}
               >
                 {badge > 99 ? '99+' : badge}

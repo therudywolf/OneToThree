@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OneToThree",
+  "version": "0.1.0",
+  "identifier": "ru.onetothree.app",
+  "build": {
+    "beforeDevCommand": "npm --prefix ../.. run build:client:export",
+    "beforeBuildCommand": "npm --prefix ../.. run build:client:export",
+    "frontendDist": "../../../client/out",
+    "devUrl": null
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "OneToThree",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 480,
+        "decorations": true,
+        "transparent": false,
+        "fullscreen": false,
+        "resizable": true,
+        "center": true,
+        "backgroundColor": "#0b0d11"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' tauri://localhost; script-src 'self' tauri://localhost 'unsafe-inline'; style-src 'self' tauri://localhost 'unsafe-inline'; img-src 'self' tauri://localhost blob: data: https://api.onetothree.ru https://s3.onetothree.ru https://*.giphy.com https://media.tenor.com https://*.tenor.com; media-src 'self' tauri://localhost blob: https://api.onetothree.ru https://s3.onetothree.ru https://*.giphy.com https://media.tenor.com https://*.tenor.com; connect-src 'self' tauri://localhost https://api.onetothree.ru wss://api.onetothree.ru https://s3.onetothree.ru https://cdn.jsdelivr.net wss://lk.onetothree.ru https://lk.onetothree.ru https://*.giphy.com https://api.giphy.com https://media.tenor.com https://*.tenor.com https://api.tenor.com https://tenor.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage", "msi", "nsis", "dmg"],
+    "category": "SocialNetworking",
+    "shortDescription": "Self-hosted E2EE messenger",
+    "longDescription": "OneToThree desktop client. Connects to your self-hosted OneToThree server with end-to-end encryption.",
+    "publisher": "therudywolf",
+    "homepage": "https://onetothree.ru",
+    "copyright": "Copyright (C) 2026 therudywolf",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "deb": {
+        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+      }
+    },
+    "windows": {
+      "wix": {
+        "language": ["en-US", "ru-RU"]
+      }
+    }
+  }
+}

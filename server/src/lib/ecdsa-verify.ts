@@ -95,14 +95,26 @@ function decodeSignatureBuffer(signatureInput: string): Buffer | null {
   const s = signatureInput.trim()
   if (s.length === 0) return null
 
-  const standard = Buffer.from(s, 'base64')
-  if (standard.length > 0) return standard
-
-  const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4))
-  const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + pad
-  try {
-    return Buffer.from(b64, 'base64')
-  } catch {
-    return null
+  if (/^[0-9a-fA-F]+$/.test(s) && s.length % 2 === 0) {
+    const hex = Buffer.from(s, 'hex')
+    if (hex.length > 0) return hex
   }
+
+  if (/^[A-Za-z0-9+/]+={0,2}$/.test(s)) {
+    const standard = Buffer.from(s, 'base64')
+    if (standard.length > 0) return standard
+  }
+
+  if (/^[A-Za-z0-9_-]+$/.test(s)) {
+    const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4))
+    const b64 = s.replace(/-/g, '+').replace(/_/g, '/') + pad
+    try {
+      const url = Buffer.from(b64, 'base64')
+      if (url.length > 0) return url
+    } catch {
+      return null
+    }
+  }
+
+  return null
 }

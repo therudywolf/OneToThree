@@ -41,6 +41,11 @@ import {
 import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
+import {
+  checkLockout,
+  recordFailure as recordAuthFailure,
+  resetLockout,
+} from '../lib/auth-lockout.js'
 import { generateTotpSecret, generateTotpUri, verifyTotp } from '../lib/totp.js'
 import { encryptTotpSecret, decryptTotpSecret } from '../lib/totp-crypto.js'
 import { generateRecoveryMaterial, verifyRecoveryKey } from '../lib/recovery-key.js'
@@ -504,11 +509,22 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         if (!nick.ok) return reply.status(400).send({ error: nick.error })
         const username = nick.value
 
+        const lockout = await checkLockout(username)
+        if (lockout.locked) {
+          await recordLoginEvent(request, { userId: null, username, outcome: 'fail_signature' })
+          reply.header('Retry-After', String(Math.max(1, lockout.retryAfterSeconds)))
+          return reply.status(429).send({
+            error: 'AUTH_LOCKED',
+            retry_after_seconds: lockout.retryAfterSeconds,
+          })
+        }
+
         const pending = await getPending(username)
         if (!pending) return reply.status(401).send({ error: 'NO_CHALLENGE' })
 
         if (!safeEqualNonce(pending.nonce, nonce)) {
           await deletePending(username)
+          await recordAuthFailure(username)
           return reply.status(401).send({ error: 'NONCE_MISMATCH' })
         }
 
@@ -531,6 +547,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
             if (deviceRow) {
               if (deviceRow.revokedAt) {
                 await deletePending(username)
+                await recordAuthFailure(username)
                 await recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_device_revoked' })
                 return reply.status(403).send({ error: 'DEVICE_REVOKED' })
               }
@@ -546,6 +563,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
               const incoming = public_key_jwk.trim()
               if (!safeEqualUtf8(incoming, existing.publicKeyJwk)) {
                 await deletePending(username)
+                await recordAuthFailure(username)
                 return reply.status(400).send({ error: 'PUBLIC_KEY_CONFLICT' })
               }
             }
@@ -561,11 +579,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         const ok = verifyNonceSignatureEcdsaP256(nonce, signature, publicKeyJwkStr)
         if (!ok) {
           await deletePending(username)
+          await recordAuthFailure(username)
           await recordLoginEvent(request, { userId: existing?.id ?? null, username, outcome: 'fail_signature' })
           return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
         }
 
         await deletePending(username)
+        await resetLockout(username)
 
         if (existing?.isBanned) {
           await recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_banned' })

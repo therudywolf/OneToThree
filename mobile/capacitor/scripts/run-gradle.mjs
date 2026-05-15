@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { platform } from 'node:os'
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 
 const task = process.argv[2]
 
@@ -14,10 +15,15 @@ if (!/^[A-Za-z0-9_:.-]+$/.test(task)) {
   process.exit(1)
 }
 
-const androidDir = resolve(process.cwd(), 'android')
+const here = dirname(fileURLToPath(import.meta.url))
+const androidDir = resolve(here, '..', 'android')
 const isWindows = platform() === 'win32'
-const command = isWindows ? process.env.ComSpec || 'cmd.exe' : './gradlew'
-const args = isWindows ? ['/d', '/s', '/c', 'gradlew.bat', task] : [task]
+const wrapper = isWindows
+  ? resolve(androidDir, 'gradlew.bat')
+  : resolve(androidDir, 'gradlew')
+
+const command = isWindows ? process.env.ComSpec || 'cmd.exe' : wrapper
+const args = isWindows ? ['/d', '/s', '/c', wrapper, task] : [task]
 
 const child = spawn(command, args, {
   cwd: androidDir,

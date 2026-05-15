@@ -485,20 +485,52 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   await app.register(
     async (scoped) => {
+      // Per-IP throttle covers both /challenge and /verify. The defaults
+      // are tight enough to make signature brute-force impractical
+      // (5 / 15 min per source IP), and `/verify` additionally enforces
+      // a per-username lockout (see auth-lockout.ts).
       await scoped.register(rateLimit, {
         max: Number(process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX ?? 5),
         timeWindow: process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW ?? '15 minutes',
       })
 
-      scoped.post('/challenge', async (request, reply) => {
-        const parsed = challengeBodySchema.safeParse(request.body)
-        if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
-        const nick = parseNickname(parsed.data.username)
-        if (!nick.ok) return reply.status(400).send({ error: nick.error })
-        const nonce = randomUUID()
-        await setChallenge(nick.value, nonce)
-        return reply.send({ nonce })
-      })
+      scoped.post(
+        '/challenge',
+        {
+          // Tighter per-IP throttle just on challenge issuance —
+          // prevents nonce flooding without sharing the budget with
+          // /verify. 20 requests / minute is enough for a noisy
+          // legitimate client, far below what's needed to enumerate.
+          config: {
+            rateLimit: {
+              max: Number(process.env.AUTH_CHALLENGE_PER_MINUTE ?? 20),
+              timeWindow: '1 minute',
+            },
+          },
+        },
+        async (request, reply) => {
+          const parsed = challengeBodySchema.safeParse(request.body)
+          if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+          const nick = parseNickname(parsed.data.username)
+          if (!nick.ok) return reply.status(400).send({ error: nick.error })
+
+          // Refuse to issue a new challenge when the username is in lockout —
+          // otherwise an attacker can keep racking up server work after we've
+          // already decided to stop accepting their /verify calls.
+          const lockout = await checkLockout(nick.value)
+          if (lockout.locked) {
+            reply.header('Retry-After', String(Math.max(1, lockout.retryAfterSeconds)))
+            return reply.status(429).send({
+              error: 'AUTH_LOCKED',
+              retry_after_seconds: lockout.retryAfterSeconds,
+            })
+          }
+
+          const nonce = randomUUID()
+          await setChallenge(nick.value, nonce)
+          return reply.send({ nonce })
+        }
+      )
 
       scoped.post('/verify', async (request, reply) => {
         const parsed = verifyBodySchema.safeParse(request.body)

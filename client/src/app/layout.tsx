@@ -138,8 +138,12 @@ export default async function RootLayout({
 }>) {
   // PWA-01: read the per-request nonce injected by middleware so we can stamp
   // it on the blocking theme-init <script> tag, satisfying the nonce-based CSP.
-  const headersList = await headers()
-  const nonce = headersList.get('x-nonce') ?? ''
+  // Static export (Capacitor APK) has no request context — skip the lookup.
+  let nonce = ''
+  if (process.env.NEXT_EXPORT !== '1') {
+    const headersList = await headers()
+    nonce = headersList.get('x-nonce') ?? ''
+  }
 
   return (
     <html lang="ru" data-theme="default" data-platform-profile="desktop-tg" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">

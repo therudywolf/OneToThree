@@ -19,6 +19,7 @@ import { resolveMediaOriginalBytes } from '../lib/message-send-helpers.js'
 import { isBlocked } from '../lib/block-check.js'
 import { markMessageReadByReader, markMessagesReadByReader } from '../lib/mark-message-read.js'
 import { broadcastToUsers } from '../ws/registry.js'
+import { scheduleMediaCleanupForMessage } from '../lib/media-cleanup.js'
 
 const deleteMessageSchema = z.object({
   for_everyone: z.boolean().default(false),
@@ -860,6 +861,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
 
     if (forEveryone) {
       if (msg.senderId !== user.id) return reply.status(403).send({ error: 'NOT_SENDER' })
+      await scheduleMediaCleanupForMessage(messageId)
       await db.delete(messages).where(eq(messages.id, messageId))
       const members = await db
         .select({ userId: chatMembers.userId })
@@ -881,6 +883,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       if (deleted.length === 0) {
         return reply.status(403).send({ error: 'NOT_SENDER' })
       }
+      await scheduleMediaCleanupForMessage(messageId)
     }
 
     return reply.send({ ok: true })

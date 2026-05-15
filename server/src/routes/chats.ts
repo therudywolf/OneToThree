@@ -13,6 +13,7 @@ import {
 import { isBlocked } from '../lib/block-check.js'
 import { broadcastToUsers } from '../ws/registry.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
+import { scheduleMediaCleanupForChat } from '../lib/media-cleanup.js'
 
 const patchRoleSchema = z.object({
   role: z.enum(['owner', 'admin', 'member']),
@@ -1351,6 +1352,11 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       .select({ userId: chatMembers.userId })
       .from(chatMembers)
       .where(eq(chatMembers.chatId, chatId))
+
+    // Gather attachment keys before the DB cascade so we can free the
+    // S3 objects (DB rows cascade, but blobs would otherwise linger
+    // until the next retention sweep).
+    await scheduleMediaCleanupForChat(chatId)
 
     await db.delete(messages).where(eq(messages.chatId, chatId))
     await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))

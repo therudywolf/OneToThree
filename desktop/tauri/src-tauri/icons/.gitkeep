@@ -1,0 +1,2 @@
+# Icons are generated locally with `npx @tauri-apps/cli icon` from
+# client/public/wolf-logo.png and are excluded from VCS.

@@ -19,9 +19,13 @@
  *   iv = base64url("dr:") — a sentinel that the wire carries the ratchet,
  *        since AES-GCM nonces live inside the DR derivation (deriveMessageAead).
  *
- * The session payload is currently stored as *plaintext* JSON in IndexedDB.
- * In phase 6 we will wrap it with a vault-derived AES-GCM key; the store
- * already expects an `ArrayBuffer`, so migration is additive.
+ * Session payload at rest: AES-GCM wrapped with the vault-derived
+ * `sessionWrapKey`. Layout: [0xF0 marker | 12B IV | ciphertext+tag].
+ * saveSession() refuses to persist when no wrap key is available, so
+ * chain keys cannot leak unencrypted via IndexedDB once the vault has
+ * been unlocked at least once. Legacy plaintext records (0x7B '{')
+ * are auto-rewrapped on first read; on logout clearOwnDrIdentity()
+ * zeroizes the wrap key so subsequent reads cannot decrypt.
  */
 import type { BundleResponse } from '@/lib/api/keys'
 import * as keysApi from '@/lib/api/keys'
@@ -352,7 +356,13 @@ export interface LocalIdentityBundle {
 export function generateLocalBundle(ownOneTimeCount = 20): LocalIdentityBundle {
   const identity = generateIdentity()
   const signed = generateX25519KeyPair()
-  const signedId = Math.floor(Math.random() * 0x7fffffff)
+  // CSPRNG: this id is published as part of the prekey bundle and indexes
+  // OTP slots; Math.random would still be safe for a label, but using
+  // crypto.getRandomValues removes one ambiguous "is this crypto?" lookup
+  // for future readers.
+  const signedIdBuf = new Uint32Array(1)
+  crypto.getRandomValues(signedIdBuf)
+  const signedId = signedIdBuf[0] & 0x7fffffff
   const signature = signWithIdentity(identity, signed.publicKey)
   const oneTimePreKeys = Array.from({ length: ownOneTimeCount }, (_, i) => ({
     id: i + 1,

@@ -37,16 +37,28 @@ export function assertTotpWrapKeySecurityEnv(): void {
   }
 }
 
+let _warnedNoTotpKeyOnce = false
+
 /**
  * Encrypt a TOTP plaintext secret for at-rest storage.
  * Returns `enc:v1:<base64url_iv>.<base64url_ciphertext+tag>`.
- * If TOTP_WRAP_KEY is not configured, returns the secret unchanged (plaintext).
+ * If TOTP_WRAP_KEY is not configured, returns the secret unchanged
+ * (acceptable in dev only — production startup asserts the key is set).
  */
 export function encryptTotpSecret(secret: string): string {
   const key = getWrapKey()
   if (!key) {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('TOTP_WRAP_KEY is required in production to encrypt TOTP secrets')
+    }
+    if (!_warnedNoTotpKeyOnce) {
+      _warnedNoTotpKeyOnce = true
+      process.stderr.write(
+        `${JSON.stringify({
+          level: 'warn',
+          msg: '[totp-crypto] TOTP_WRAP_KEY not set — TOTP secrets will be stored PLAINTEXT in the DB. Acceptable for dev fixtures only. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+        })}\n`
+      )
     }
     return secret
   }

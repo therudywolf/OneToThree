@@ -7,6 +7,74 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Release pipeline**: `.github/workflows/release.yml` builds a signed
+  Android APK + Tauri desktop bundles (Linux/Win/macOS) on any `v*` tag
+  and opens a draft GitHub Release. See `docs/RELEASE.md`.
+- **Desktop client scaffold**: Tauri 2.x shell at `desktop/tauri/` with
+  OS keychain bridge (`keychain_get`/`_set`/`_delete`). On the client
+  the new `lib/native-keychain.ts` no-ops on web and routes to
+  `invoke()` on Tauri; vault-modal silently unlocks via the stashed
+  PIN on next launch.
+- **Privacy + Terms pages** at `/legal/privacy` and `/legal/terms`,
+  reachable without auth. Linked from the login footer alongside the
+  source-code link.
+- **Per-username login lockout** (`server/src/lib/auth-lockout.ts`)
+  after 5 failed `/auth/verify` attempts in 15 min; backed by Redis
+  with in-memory fallback. `/auth/challenge` refuses to issue nonces
+  while locked.
+- **`/auth/challenge` per-IP throttle** (20/min) layered on top of
+  the existing 5/15min budget.
+- **S3 cleanup on chat/message delete** —
+  `server/src/lib/media-cleanup.ts` frees MinIO blobs immediately
+  rather than waiting for the 30-day retention sweep.
+- **Service worker cache wipe + keychain scrub on logout** —
+  `wipeAllClientLocalState()` now drops every Cache Storage entry and
+  removes Tauri keychain slots.
+- **Operations runbook** (`docs/OPS.md`) covering backups, restore
+  drill, uptime monitoring, incident response, rollback.
+- **Backup + uptime systemd units** (`infra/systemd/`) — user-level
+  timers (no sudo). Backup at 03:17 UTC with GFS retention (7d / 4w /
+  6m), optional off-site rsync, optional Healthchecks.io heartbeat.
+  Restore drill: `scripts/backup-restore.sh`.
+- **`/version` endpoint** + client banner that nudges users to reload
+  after a deploy (`client/src/components/version-update-banner.tsx`).
+- **`TENOR_DEMO_API_KEY` env override** for the GIF demo key.
+- **`TOTP_WRAP_KEY` startup warning** when missing in dev.
+
+### Changed
+- **Server layout migrated** to `~/sites/onetothree.ru/` matching the
+  rest of the host. `docker compose name: forestmessenger` keeps the
+  named volumes intact across the move.
+- **Ratchet state at rest**: clarified that AES-GCM wrapping under
+  `sessionWrapKey` is already enforced (stale doc fixed); signed
+  prekey id now uses `crypto.getRandomValues` instead of
+  `Math.random`.
+- **Tauri CI workflow** (`tauri-build.yml`) builds desktop bundles
+  on every push touching `desktop/tauri/**` or `client/**`.
+
+### Fixed
+- Static-export build of `/_not-found` failed because the root layout
+  awaited `headers()` even in `NEXT_EXPORT=1` mode; skipped now.
+- ECDSA verify accepts hex and base64url encodings, not just standard
+  base64.
+- Hardcoded `text-white` in mobile bottom nav replaced with a CSS token.
+- `gradlew.bat` wrapper now resolves with an absolute path so msys
+  invocations stop falling back to PATH lookup.
+
+### Security
+- Privacy policy now factually enumerates every server-side record and
+  third-party (Tenor / Cloudflare TURN / push providers).
+- Auth lockout closes a brute-force window in the original shared
+  5/15min rate limit.
+- Logout now reaches all four storage tiers (IndexedDB, localStorage,
+  Cache Storage, OS keychain).
+
+### Repo hygiene
+- History rewritten with `git filter-repo` to drop committed build
+  artifacts (`client/.next/**`, `artifacts/android/**`, etc). Repo
+  shrank from 56 MB → 24 MB. Force-pushed once.
+
 ---
 
 ## [0.8.0] — 2026-05-07 — Calls Sprint (C1–C3)

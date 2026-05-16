@@ -35,6 +35,11 @@ import {
   largeBlobLikelySupported,
   unlockVaultWithWebAuthn,
 } from '@/lib/webauthn-vault'
+import {
+  isKeychainAvailable,
+  keychainGet,
+  keychainSet,
+} from '@/lib/native-keychain'
 import { useSessionStore } from '@/store/sessionStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { vibrateShort } from '@/lib/vibrate'
@@ -192,6 +197,38 @@ export function VaultModal({ userId, displayHandle }: Props) {
     [setUnwrappedPrivateKey, setMyEcdhPublicKeyJwk, setPriorMyEcdhPublicKeysJwk, t, userId]
   )
 
+  // Tauri desktop path: if the OS keychain already holds the PIN for this
+  // user, transparently unlock without prompting. The PIN gets saved to
+  // the keychain after the first successful manual unlock below. On web
+  // and Capacitor this is a no-op.
+  useEffect(() => {
+    if (!isKeychainAvailable()) return
+    let cancelled = false
+    void (async () => {
+      const slot = `vault-pin:${userId}`
+      const stashed = await keychainGet(slot)
+      if (cancelled || !stashed) return
+      try {
+        const blob = readVaultBlob(userId)
+        if (!blob) return
+        if (blob.version > CURRENT_VAULT_VERSION) return
+        setBusy(true)
+        const plain = await unwrapPrivateJwkWithPin(blob, stashed)
+        if (cancelled) return
+        await applyPlaintext(plain)
+      } catch {
+        // PIN in keychain is stale (rotation / corruption) — fall back
+        // to the manual prompt and let the next successful unlock
+        // overwrite the slot.
+      } finally {
+        if (!cancelled) setBusy(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [userId, applyPlaintext])
+
   async function handleUnlock(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -215,6 +252,13 @@ export function VaultModal({ userId, displayHandle }: Props) {
             return runPostLoginVaultSync(userId)
           })
           .catch(() => { /* non-fatal — user stays on legacy vault */ })
+      }
+      // Tauri desktop: stash the PIN in the OS keychain so the next
+      // launch can unlock silently. No-op on web / Capacitor.
+      if (isKeychainAvailable()) {
+        void keychainSet(`vault-pin:${userId}`, pin).catch(() => {
+          /* best-effort */
+        })
       }
       await applyPlaintext(plain)
       vibrateShort(20)

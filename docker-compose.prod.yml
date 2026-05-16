@@ -136,6 +136,10 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
+        GIT_SHA: ${GIT_SHA:-}
+        BUILT_AT: ${BUILT_AT:-}
     restart: always
     dns:
       - 8.8.8.8

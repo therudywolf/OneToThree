@@ -19,6 +19,17 @@ RUN addgroup -g 1001 -S app && adduser -S app -u 1001 -G app
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+
+# Version stamp for GET /version. ARG wired by docker-compose from the
+# repo VERSION file; written to env so the running process can read
+# it without touching the filesystem.
+ARG APP_VERSION=dev
+ARG GIT_SHA=
+ARG BUILT_AT=
+ENV APP_VERSION=${APP_VERSION}
+ENV GIT_SHA=${GIT_SHA}
+ENV BUILT_AT=${BUILT_AT}
+
 RUN chown -R app:app /app
 USER app
 ENV NODE_ENV=production

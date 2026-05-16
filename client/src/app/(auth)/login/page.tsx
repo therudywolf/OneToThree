@@ -156,10 +156,28 @@ export default function LoginPage() {
       </section>
 
       {/* FOOTER_DECOR :: Системные метаданные */}
-      <footer className="absolute bottom-8 z-10 w-full text-center">
+      <footer className="absolute bottom-6 z-10 w-full text-center">
         <p className="text-[9px] uppercase tracking-[0.2em] text-text-muted/70 opacity-50">
           SECURE_CONTOUR // ACCESS_RESTRICTED_BY_PACK_POLICY
         </p>
+        <nav className="mt-3 flex items-center justify-center gap-4 text-[9px] uppercase tracking-[0.2em] text-text-muted/60">
+          <a href="/legal/privacy" className="hover:text-neon-cyan">
+            privacy
+          </a>
+          <span aria-hidden>·</span>
+          <a href="/legal/terms" className="hover:text-neon-cyan">
+            terms
+          </a>
+          <span aria-hidden>·</span>
+          <a
+            href="https://github.com/therudywolf/OneToThree"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-neon-cyan"
+          >
+            source
+          </a>
+        </nav>
       </footer>
     </main>
   )

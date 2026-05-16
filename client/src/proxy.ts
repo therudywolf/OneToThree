@@ -9,6 +9,7 @@ import { normalizeApiRoot } from '@/lib/api/url'
 
 const SESSION_COOKIE = 'fm_session'
 const PUBLIC_PATHS = new Set<string>(['/login'])
+const PUBLIC_PREFIXES = ['/legal/']
 const BYPASS_PREFIXES = ['/_next/', '/api/', '/workbox-']
 const STATIC_ASSETS_RE = /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml)$/i
 
@@ -62,8 +63,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const isAuthed = await verifySessionLock(request)
-  const isPublic = PUBLIC_PATHS.has(pathname)
+  const isPublic =
+    PUBLIC_PATHS.has(pathname) ||
+    PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+
+  // Skip the auth probe for public paths — saves a round-trip per
+  // request and keeps /legal/* reachable without DB / API access.
+  const isAuthed = isPublic ? false : await verifySessionLock(request)
 
   let response = NextResponse.next()
 

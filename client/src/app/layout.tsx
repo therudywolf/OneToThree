@@ -10,6 +10,7 @@ import { SilenceConsole as _SilenceConsole } from '@/components/silence-console'
 import { RecoveryHandler } from '@/components/recovery-handler'
 import { ThemeApplicator } from '@/components/theme-applicator'
 import { ToastHost } from '@/components/toast-host'
+import { VersionUpdateBanner } from '@/components/version-update-banner'
 import './globals.css'
 
 /**
@@ -177,6 +178,9 @@ export default async function RootLayout({
 
               {/* [5] NOTIFICATION_LAYER :: System-wide toast host */}
               <ToastHost />
+
+              {/* [6] VERSION_DRIFT_GUARD :: nudge user to reload after deploy */}
+              <VersionUpdateBanner />
             </Auth401Interceptor>
           </AuthProvider>
         </ErrorBoundary>

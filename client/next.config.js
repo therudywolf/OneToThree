@@ -1,4 +1,25 @@
+const fs = require('node:fs')
+const path = require('node:path')
+
 const isStaticExport = process.env.NEXT_EXPORT === '1'
+
+// Read the repo VERSION once at build time so the static export and the
+// standalone server both ship with a stable identifier. Workflow callers
+// may override via NEXT_PUBLIC_APP_VERSION env (e.g. release.yml).
+function readBuildVersion() {
+  if (process.env.NEXT_PUBLIC_APP_VERSION?.trim()) {
+    return process.env.NEXT_PUBLIC_APP_VERSION.trim()
+  }
+  try {
+    const p = path.join(__dirname, '..', 'VERSION')
+    const v = fs.readFileSync(p, 'utf8').trim()
+    if (v) return v
+  } catch {
+    /* fall through to dev */
+  }
+  return 'dev'
+}
+const BUILD_VERSION = readBuildVersion()
 
 function normalizeOrigin(value, fallback) {
   const raw = value?.trim() || fallback
@@ -52,6 +73,9 @@ const serverRoutesConfig = isStaticExport
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: {
+    NEXT_PUBLIC_APP_VERSION: BUILD_VERSION,
+  },
   poweredByHeader: false,
   reactStrictMode: true,
   typescript: {

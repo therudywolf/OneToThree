@@ -32,6 +32,38 @@ import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { requireSecret } from './lib/read-secret.js'
 import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
 import { db } from './db/index.js'
+import { readFileSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// Resolve the repo VERSION file relative to this module so the value
+// is stable regardless of the cwd at runtime. Falls back to "dev" when
+// the file isn't bundled (e.g. ts-node from a stripped image).
+function readServerVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url))
+    // built layout: dist/app.js → ../../VERSION (server/dist → server → repo)
+    for (const candidate of [
+      join(here, '..', '..', 'VERSION'),
+      join(here, '..', 'VERSION'),
+      join(process.cwd(), 'VERSION'),
+    ]) {
+      try {
+        const v = readFileSync(candidate, 'utf8').trim()
+        if (v) return v
+      } catch {
+        /* keep trying */
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  return 'dev'
+}
+
+const SERVER_VERSION = process.env.APP_VERSION?.trim() || readServerVersion()
+const SERVER_COMMIT_SHA = (process.env.GIT_SHA ?? process.env.COMMIT_SHA ?? '').trim() || null
+const SERVER_BUILT_AT = process.env.BUILT_AT?.trim() || null
 
 function normalizeHttpOrigin(raw: string | undefined): string | null {
   const value = raw?.trim()
@@ -305,6 +337,16 @@ export async function buildApp() {
   await app.register(pollsRoutes, { prefix: '/api/polls' })
 
   app.get('/health', async () => ({ ok: true }))
+
+  // Public version probe — clients poll this to detect a new release and
+  // prompt the user to refresh. Reads VERSION at module load (cached for
+  // process lifetime; a deploy rebuilds the container so the cache is
+  // implicitly invalidated).
+  app.get('/version', async () => ({
+    version: SERVER_VERSION,
+    commit: SERVER_COMMIT_SHA,
+    built_at: SERVER_BUILT_AT,
+  }))
 
   app.get('/health/ready', async (request, reply) => {
     try {

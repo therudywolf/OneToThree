@@ -9,4 +9,4 @@ AccuracySec=15s
 Unit=onetothree-uptime.service
 
 [Install]
-WantedBy=timers.target
+WantedBy=timers.target default.target

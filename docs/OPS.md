@@ -51,27 +51,28 @@ BACKUP_HEALTHCHECK_URL=https://hc-ping.com/<uuid>
 ### Install the systemd timer
 
 ```bash
-sudo bash infra/systemd/install.sh
+bash infra/systemd/install.sh   # NO sudo — user-level units
 ```
 
 Drops `onetothree-backup.{service,timer}` and
-`onetothree-uptime.{service,timer}` into `/etc/systemd/system`, reloads
-the daemon, enables both timers. Backup runs at 03:17 UTC daily with up
-to 15 minutes of randomized jitter to avoid colliding with the media
+`onetothree-uptime.{service,timer}` into `~/.config/systemd/user/`,
+reloads the daemon, enables both timers, and turns on linger so they
+keep firing after logout. Backup runs at 03:17 UTC daily with up to
+15 minutes of randomized jitter to avoid colliding with the media
 retention purge that runs in the same window.
 
 Manual ops:
 
 ```bash
 # Force a backup now
-sudo systemctl start onetothree-backup.service
-journalctl -u onetothree-backup.service -f
+systemctl --user start onetothree-backup.service
+journalctl --user -u onetothree-backup.service -f
 
 # When does the next one fire?
-systemctl list-timers onetothree-*
+systemctl --user list-timers onetothree-*
 
 # Disable temporarily
-sudo systemctl disable --now onetothree-backup.timer
+systemctl --user disable --now onetothree-backup.timer
 ```
 
 ### Restore drill — do this every quarter

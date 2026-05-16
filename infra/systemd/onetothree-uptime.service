@@ -6,11 +6,9 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-User=rudywolf
-Group=rudywolf
-WorkingDirectory=/home/rudywolf/sites/onetothree.ru
-EnvironmentFile=-/home/rudywolf/sites/onetothree.ru/.env.uptime
-ExecStart=/bin/bash /home/rudywolf/sites/onetothree.ru/scripts/uptime-check.sh
+WorkingDirectory=%h/sites/onetothree.ru
+EnvironmentFile=-%h/sites/onetothree.ru/.env.uptime
+ExecStart=/bin/bash %h/sites/onetothree.ru/scripts/uptime-check.sh
 StandardOutput=journal
 StandardError=journal
 TimeoutStartSec=2min

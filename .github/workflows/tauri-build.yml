@@ -1,0 +1,119 @@
+name: Desktop (Tauri) build
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Attach binaries to a draft GitHub release"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - "desktop/tauri/**"
+      - "client/**"
+      - ".github/workflows/tauri-build.yml"
+  pull_request:
+    paths:
+      - "desktop/tauri/**"
+      - ".github/workflows/tauri-build.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            bundles: deb,appimage
+          - platform: windows-2022
+            bundles: msi,nsis
+          # macOS is included so the workflow doubles as a sanity check;
+          # disable in `if:` below if you only want Win/Linux artifacts.
+          - platform: macos-14
+            bundles: dmg
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/tauri/src-tauri/target
+          key: ${{ matrix.platform }}-cargo-${{ hashFiles('desktop/tauri/src-tauri/Cargo.toml') }}
+          restore-keys: |
+            ${{ matrix.platform }}-cargo-
+
+      - name: Linux dependencies (webkit2gtk + bundler)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential
+
+      - name: Install root npm deps
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Tauri npm deps
+        working-directory: desktop/tauri
+        run: npm install --no-audit --no-fund
+
+      - name: Generate Tauri icons
+        working-directory: desktop/tauri
+        run: npx @tauri-apps/cli icon ../../client/public/wolf-logo.png
+
+      - name: Build static frontend
+        run: npm run build:client:export
+
+      - name: Build Tauri bundles
+        working-directory: desktop/tauri
+        run: npx @tauri-apps/cli build --bundles ${{ matrix.bundles }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: onetothree-${{ matrix.platform }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            desktop/tauri/src-tauri/target/release/bundle/**/*.deb
+            desktop/tauri/src-tauri/target/release/bundle/**/*.AppImage
+            desktop/tauri/src-tauri/target/release/bundle/**/*.msi
+            desktop/tauri/src-tauri/target/release/bundle/**/*.exe
+            desktop/tauri/src-tauri/target/release/bundle/**/*.dmg
+
+      - name: Attach to draft release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: OneToThree desktop ${{ github.sha }}
+          tag_name: desktop-${{ github.sha }}
+          files: |
+            desktop/tauri/src-tauri/target/release/bundle/**/*.deb
+            desktop/tauri/src-tauri/target/release/bundle/**/*.AppImage
+            desktop/tauri/src-tauri/target/release/bundle/**/*.msi
+            desktop/tauri/src-tauri/target/release/bundle/**/*.exe
+            desktop/tauri/src-tauri/target/release/bundle/**/*.dmg

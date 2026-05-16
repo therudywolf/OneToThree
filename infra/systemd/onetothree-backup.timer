@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily OneToThree backup
+Documentation=https://github.com/therudywolf/OneToThree/blob/main/docs/OPS.md
+
+[Timer]
+# 03:17 UTC every day — off-peak, slightly randomized to avoid herding
+# the next-pwa runtime cache evictions and the media retention purge
+# that already runs in the same window.
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=onetothree-backup.service
+
+[Install]
+WantedBy=timers.target

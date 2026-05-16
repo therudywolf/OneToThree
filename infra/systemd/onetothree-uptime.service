@@ -1,0 +1,16 @@
+[Unit]
+Description=OneToThree uptime probe
+Documentation=https://github.com/therudywolf/OneToThree/blob/main/docs/OPS.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=rudywolf
+Group=rudywolf
+WorkingDirectory=/home/rudywolf/sites/onetothree.ru
+EnvironmentFile=-/home/rudywolf/sites/onetothree.ru/.env.uptime
+ExecStart=/bin/bash /home/rudywolf/sites/onetothree.ru/scripts/uptime-check.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=2min

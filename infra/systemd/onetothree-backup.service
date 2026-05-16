@@ -1,0 +1,19 @@
+[Unit]
+Description=OneToThree backup (Postgres + MinIO)
+Documentation=https://github.com/therudywolf/OneToThree/blob/main/docs/OPS.md
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=rudywolf
+Group=rudywolf
+WorkingDirectory=/home/rudywolf/sites/onetothree.ru
+EnvironmentFile=-/home/rudywolf/sites/onetothree.ru/.env.backup
+ExecStart=/bin/bash /home/rudywolf/sites/onetothree.ru/scripts/backup-cron.sh
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

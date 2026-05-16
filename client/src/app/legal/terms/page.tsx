@@ -144,10 +144,8 @@ export default function TermsPage() {
 
       <h2>9. Contact</h2>
       <p>
-        Questions about these terms:{' '}
-        <a href="mailto:legal@onetothree.ru">legal@onetothree.ru</a>.
-        Privacy questions:{' '}
-        <a href="mailto:privacy@onetothree.ru">privacy@onetothree.ru</a>.
+        Questions about these terms or privacy:{' '}
+        <a href="mailto:dev@onetothree.ru">dev@onetothree.ru</a>.
         Security disclosures: see{' '}
         <a href="https://github.com/therudywolf/OneToThree/blob/main/SECURITY.md">
           SECURITY.md

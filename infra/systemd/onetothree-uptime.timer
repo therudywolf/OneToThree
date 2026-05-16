@@ -1,0 +1,12 @@
+[Unit]
+Description=OneToThree uptime probe (every minute)
+Documentation=https://github.com/therudywolf/OneToThree/blob/main/docs/OPS.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=15s
+Unit=onetothree-uptime.service
+
+[Install]
+WantedBy=timers.target

@@ -122,7 +122,7 @@ export default function PrivacyPage() {
       <ul>
         <li>
           <strong>Export</strong>: contact us at{' '}
-          <a href="mailto:privacy@onetothree.ru">privacy@onetothree.ru</a>{' '}
+          <a href="mailto:dev@onetothree.ru">dev@onetothree.ru</a>{' '}
           to request a machine-readable copy of every server-side record we
           have for your username.
         </li>

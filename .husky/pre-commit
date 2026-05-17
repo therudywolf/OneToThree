@@ -1,2 +1,6 @@
+# Block commits with secrets (gitleaks via pre-commit)
+python -m pre_commit run gitleaks --show-diff-on-failure || exit 1
+python -m pre_commit run detect-private-key --show-diff-on-failure || exit 1
+
 npm run check:locales
 npx lint-staged

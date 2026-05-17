@@ -1,0 +1,1 @@
+python -m pre_commit run gitleaks --hook-stage pre-push --show-diff-on-failure || exit 1

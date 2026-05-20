@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   isPrivateOrLoopbackAddress,
   normalizeToIpv4,
+  requestGetPinned,
+  requestGetPinnedBinary,
 } from './link-preview-ssrf.js'
 
 describe('link-preview SSRF helpers', () => {
@@ -20,5 +22,23 @@ describe('link-preview SSRF helpers', () => {
     expect(isPrivateOrLoopbackAddress('::1')).toBe(true)
     expect(isPrivateOrLoopbackAddress('fd12:3456::1')).toBe(true)
     expect(isPrivateOrLoopbackAddress('fe80::1')).toBe(true)
+  })
+
+  it('rejects non-web ports so internal services cannot be probed', async () => {
+    const pinned = { address: '8.8.8.8', family: 4 as const }
+    const signal = new AbortController().signal
+    for (const port of [6379, 5432, 9000, 22]) {
+      await expect(
+        requestGetPinned(new URL(`http://example.com:${port}/`), pinned, signal)
+      ).rejects.toThrow('SSRF_BLOCKED')
+    }
+    await expect(
+      requestGetPinnedBinary(
+        new URL('https://media.example.com:8443/x.gif'),
+        pinned,
+        signal,
+        1000
+      )
+    ).rejects.toThrow('SSRF_BLOCKED')
   })
 })

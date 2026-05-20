@@ -19,6 +19,15 @@ export function shouldHandleUnauthorized(
 }
 
 /**
+ * The pristine `window.fetch`, captured once at module load — before the
+ * interceptor below can wrap it. Capturing inside the hook with `useRef`
+ * was unsafe: on a remount it would capture the already-overridden fetch
+ * as the "original", nesting wrappers unboundedly.
+ */
+const pristineFetch =
+  typeof window !== 'undefined' ? window.fetch.bind(window) : null
+
+/**
  * Hook to intercept and handle 401 Unauthorized errors globally.
  *
  * Usage:
@@ -32,13 +41,19 @@ export function use401Handler() {
   const { logout } = useAuth()
   const hasRedirectedRef = useRef(false)
 
-  // Store the original fetch function
-  const originalFetch = useRef(typeof window !== 'undefined' ? window.fetch : null)
+  // The interceptor is installed once (empty deps); these refs feed it the
+  // current pathname/logout/router without reinstalling it on every
+  // navigation.
+  const pathnameRef = useRef(pathname)
+  const logoutRef = useRef(logout)
+  const routerRef = useRef(router)
+  pathnameRef.current = pathname
+  logoutRef.current = logout
+  routerRef.current = router
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !originalFetch.current) return
+    if (typeof window === 'undefined' || !pristineFetch) return
 
-    // Override the global fetch to intercept responses
     window.fetch = async (
       ...args: Parameters<typeof fetch>
     ): Promise<Response> => {
@@ -48,26 +63,29 @@ export function use401Handler() {
           : args[0] instanceof Request
             ? args[0].url
             : String(args[0])
-      const response = await originalFetch.current!.apply(window, args)
+      const response = await pristineFetch(...args)
 
-      // Handle 401 Unauthorized
-      if (shouldHandleUnauthorized(response.status, pathname, requestUrl, hasRedirectedRef.current)) {
+      if (
+        shouldHandleUnauthorized(
+          response.status,
+          pathnameRef.current,
+          requestUrl,
+          hasRedirectedRef.current
+        )
+      ) {
         hasRedirectedRef.current = true
         console.warn('[auth] 401 Unauthorized — clearing session and redirecting to login')
 
         try {
-          // Clear auth state
-          await logout()
+          await logoutRef.current()
         } catch (e) {
           console.error('[auth] Logout call failed', e)
         }
 
-        // Redirect to login with a small delay to ensure state is cleared
         setTimeout(() => {
-          router.push('/login')
+          routerRef.current.push('/login')
         }, 100)
 
-        // Return the response without consuming it further
         return response
       }
 
@@ -79,11 +97,8 @@ export function use401Handler() {
       return response
     }
 
-    // Restore original fetch on cleanup
     return () => {
-      if (originalFetch.current) {
-        window.fetch = originalFetch.current
-      }
+      window.fetch = pristineFetch
     }
-  }, [logout, pathname, router])
+  }, [])
 }

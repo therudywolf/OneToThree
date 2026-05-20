@@ -4131,6 +4131,22 @@ select {
   scroll-behavior: auto !important;
 }
 
+/*
+ * Respect the OS-level "reduce motion" accessibility preference, not only the
+ * in-app data-motion toggle — WCAG 2.1 AA (2.3.3 Animation from Interactions).
+ * Covers pseudo-elements too (e.g. the terminal scanline ::after animations).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── MD3 shell: NoirPlaintext code overrides (FIX UI-04) ──────────────────── */
 [data-shell="md3"] .p13-inline-code {
   border-color: color-mix(in srgb, var(--on-surface) 15%, transparent);

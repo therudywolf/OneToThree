@@ -161,6 +161,11 @@ $envBackup = @{
 try {
   Write-Info "Step 1/3: Next.js build..."
   Push-Location $ClientDir
+  # Wipe any prior export first so stale pages (e.g. a route removed in a later
+  # commit) can never be packaged into the APK.
+  Write-Info "Cleaning previous Next.js export (client/out, client/.next)..."
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $ClientDir "out")
+  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $ClientDir ".next")
   $env:NEXT_EXPORT = "1"
   $env:NEXT_PUBLIC_API_URL = $ApiUrl
   $env:NEXT_PUBLIC_APP_URL = $AppUrl

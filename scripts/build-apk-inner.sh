@@ -50,6 +50,10 @@ cd "$CLIENT_DIR"
 npm ci --no-audit --no-fund --prefer-offline 2>&1 | tail -3
 
 # ── 2. Next.js static export ───────────────────────────────────────────────
+# Wipe any prior export first so stale pages (e.g. a route removed in a later
+# commit) can never be packaged into the APK.
+log "Cleaning previous Next.js export (client/out, client/.next)…"
+rm -rf "$CLIENT_DIR/out" "$CLIENT_DIR/.next"
 log "Building Next.js static export (output: client/out)…"
 env \
   NEXT_EXPORT=1 \

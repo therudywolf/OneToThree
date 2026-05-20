@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../app.js'

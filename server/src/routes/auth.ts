@@ -33,11 +33,6 @@ import {
 } from '../lib/session-cookie.js'
 import { normalizeUuid } from '../lib/uuid.js'
 import { parseNickname } from '../lib/nickname.js'
-import {
-  consumeQrLinkToken,
-  saveQrLinkToken,
-  type QrLinkPayload,
-} from '../lib/qr-link-store.js'
 import { generateJti, denyJti } from '../lib/jwt-denylist.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { recordLoginEvent } from '../lib/login-event.js'
@@ -79,18 +74,6 @@ const disable2faBodySchema = z.object({
 const recoveryVerifyBodySchema = z.object({
   recovery_key: z.string().min(12).max(256),
 })
-const qrGenerateBodySchema = z.object({
-  nonce: z.string().min(1),
-  signature: z.string().min(1),
-  totp_code: totpCodeSchema.optional(),
-  vault_blob: z.string().min(1).max(65_536).optional(),
-})
-
-const qrLoginBodySchema = z.object({
-  link_token: z.string().uuid(),
-})
-
-const QR_LINK_TTL_S = 300
 type Pending2faResponse = {
   requires2FA: true
   userId: string
@@ -100,8 +83,7 @@ type Pending2faResponse = {
 async function buildPending2faResponse(
   reply: FastifyReply,
   userId: string,
-  username: string,
-  qrVaultBlob?: string
+  username: string
 ): Promise<Pending2faResponse> {
   const canonicalId = normalizeUuid(userId)
   const pendingToken = await reply.jwtSign(
@@ -109,7 +91,6 @@ async function buildPending2faResponse(
       sub: canonicalId,
       username,
       scope: '2fa_pending',
-      ...(qrVaultBlob ? { qr_vault_blob: qrVaultBlob } : {}),
     },
     { expiresIn: PENDING_2FA_MAX_AGE_S }
   )
@@ -125,120 +106,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     reply.header('Cache-Control', 'no-store, no-cache, must-revalidate')
     reply.header('Pragma', 'no-cache')
     return payload
-  })
-
-  app.post('/qr-generate', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
-
-    const parsed = qrGenerateBodySchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
-    const { nonce, signature, totp_code, vault_blob } = parsed.data
-
-    const [row] = await db
-      .select({
-        publicKeyJwk: users.publicKeyJwk,
-        isTotpEnabled: users.isTotpEnabled,
-        totpSecret: users.totpSecret,
-        allowDeviceLinking: users.allowDeviceLinking,
-      })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
-    if (!row) return reply.status(401).send({ error: 'USER_NOT_FOUND' })
-    if (!row.allowDeviceLinking) {
-      return reply.status(403).send({ error: 'DEVICE_LINKING_DISABLED' })
-    }
-
-    const sigOk = verifyNonceSignatureEcdsaP256(nonce, signature, row.publicKeyJwk)
-    if (!sigOk) {
-      return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
-    }
-
-    if (row.isTotpEnabled) {
-      if (!totp_code) return reply.status(400).send({ error: 'TOTP_REQUIRED' })
-      if (!row.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
-      const totpOk = await verifyTotp(totp_code, decryptTotpSecret(row.totpSecret))
-      if (!totpOk) return reply.status(401).send({ error: 'TOTP_INVALID' })
-      if (!await consumeTotpCode(user.id, totp_code)) {
-        return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
-      }
-    }
-
-    const token = randomUUID()
-    const payload: QrLinkPayload = {
-      sub: normalizeUuid(user.id),
-      username: user.username,
-      exp: Date.now() + QR_LINK_TTL_S * 1000,
-      ...(vault_blob ? { vault_blob } : {}),
-    }
-    await saveQrLinkToken(token, payload)
-
-    return reply.send({
-      link_token: token,
-      expires_in: QR_LINK_TTL_S,
-    })
-  })
-
-  app.post('/qr-login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const parsed = qrLoginBodySchema.safeParse(request.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
-    }
-
-    const entry = await consumeQrLinkToken(parsed.data.link_token)
-    if (!entry) {
-      return reply.status(401).send({ error: 'INVALID_OR_EXPIRED_TOKEN' })
-    }
-
-    const [row] = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        isTotpEnabled: users.isTotpEnabled,
-        totpSecret: users.totpSecret,
-        isBanned: users.isBanned,
-      })
-      .from(users)
-      .where(eq(users.id, entry.sub))
-      .limit(1)
-
-    if (!row) return reply.status(401).send({ error: 'USER_NOT_FOUND' })
-    if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
-    if (row.isTotpEnabled) {
-      if (!row.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
-      return reply.send(await buildPending2faResponse(reply, row.id, row.username, entry.vault_blob))
-    }
-
-    const canonicalId = normalizeUuid(row.id)
-    const dev = await upsertDeviceForSession(request, canonicalId)
-    if (!dev.ok) {
-      if (dev.error === 'DEVICE_REVOKED') return reply.status(403).send({ error: 'DEVICE_REVOKED' })
-      return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
-    }
-
-    // QR linking mints a full device session — record it in login history
-    // like the password and TOTP paths, so a user can spot an unexpected
-    // linked device.
-    await recordLoginEvent(request, {
-      userId: canonicalId,
-      username: row.username,
-      outcome: 'success',
-      deviceId: dev.deviceId,
-    })
-
-    const token = await reply.jwtSign(
-      { sub: canonicalId, username: row.username, device_id: dev.deviceId, jti: generateJti() },
-      { expiresIn: SESSION_MAX_AGE_S }
-    )
-    commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
-    return reply.send({
-      ok: true,
-      user: { id: canonicalId, username: row.username },
-      ...(entry.vault_blob ? { vault_blob: entry.vault_blob } : {}),
-    })
   })
 
   app.get('/ws-ticket', async (request, reply) => {
@@ -441,13 +308,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const parsed = login2faBodySchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
-    let payload: { sub: string; username: string; scope?: string; qr_vault_blob?: string }
+    let payload: { sub: string; username: string; scope?: string }
     try {
       payload = await request.server.jwt.verify<{
         sub: string
         username: string
         scope?: string
-        qr_vault_blob?: string
       }>(parsed.data.pending_token)
     } catch {
       return reply.status(401).send({ error: 'INVALID_PENDING_TOKEN' })
@@ -489,7 +355,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     await recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'success', deviceId: dev.deviceId })
     return reply.send({
       user: { id: canonicalId, username: row.username },
-      ...(payload.qr_vault_blob ? { vault_blob: payload.qr_vault_blob } : {}),
     })
   })
 

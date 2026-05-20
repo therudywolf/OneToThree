@@ -9,7 +9,7 @@ export function shouldHandleUnauthorized(
   hasRedirected: boolean
 ): boolean {
   if (status !== 401 || hasRedirected) return false
-  const isAuthRoute = pathname === '/login' || pathname === '/auth/qr'
+  const isAuthRoute = pathname === '/login'
   if (isAuthRoute) return false
   const normalizedUrl = requestUrl.toLowerCase()
   const isAuthBootstrapRequest =

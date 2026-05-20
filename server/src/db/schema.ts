@@ -17,7 +17,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core'
-import { sql } from 'drizzle-orm'
+import { desc, sql } from 'drizzle-orm'
 
 export const chatTypeEnum = pgEnum('chat_type', [
   'direct_e2e',
@@ -902,6 +902,31 @@ export const attachments = pgTable(
     lruIdx: index('attachments_lru_idx')
       .on(t.messageId, t.lastAccessedAt)
       .where(sql`${t.evictedAt} IS NULL`),
+  })
+)
+
+/**
+ * Track E — admin audit log. One row per mutating admin action (ban, purge,
+ * role change, report update, device revoke, storage-quota change, media
+ * evict, cleanup-orphans). `detail` carries action-specific JSON context.
+ */
+export const adminAuditLog = pgTable(
+  'admin_audit_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    adminUserId: uuid('admin_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    action: text('action').notNull(),
+    targetUserId: uuid('target_user_id'),
+    detail: jsonb('detail'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    createdAtIdx: index('admin_audit_log_created_at_idx').on(desc(t.createdAt)),
+    adminUserIdx: index('admin_audit_log_admin_user_id_idx').on(t.adminUserId),
   })
 )
 

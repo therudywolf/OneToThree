@@ -119,14 +119,16 @@ describe('messages flow routes', () => {
     expect(row?.sender_id).toBe(u1.id)
     expect(row?.sender_ecdh_public_key_jwk).toBeTruthy()
 
-    // Server-side search is disabled in protocol v4 (privacy). Hitting the
-    // legacy endpoint must return 410 Gone so older clients fail fast.
+    // Server-side search is disabled (privacy); search is client-side only.
+    // The legacy `/search` route was removed entirely in Track E cleanup, so
+    // `/api/messages/search` now falls through to the `GET /:chatId` handler,
+    // where 'search' fails uuid validation — a 400 INVALID_PARAMS.
     const search = await request(app!.server)
       .get('/api/messages/search')
       .set('Cookie', `fm_session=${u2Token}`)
       .query({ chatId: chat.id, q: 'stage-flow' })
-      .expect(410)
-    expect(search.body?.error).toBe('SEARCH_SERVER_SIDE_REMOVED')
+      .expect(400)
+    expect(search.body?.error).toBe('INVALID_PARAMS')
     void messageId
 
     await db.delete(messageDeliveries).where(eq(messageDeliveries.messageId, messageId))

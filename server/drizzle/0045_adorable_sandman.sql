@@ -31,7 +31,7 @@ CREATE TABLE "polls" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "messages" ADD COLUMN "burn_duration_secs" integer;--> statement-breakpoint
+ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "burn_duration_secs" integer;--> statement-breakpoint
 ALTER TABLE "messages" ADD COLUMN "edited_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "call_sessions" ADD CONSTRAINT "call_sessions_chat_id_chats_id_fk" FOREIGN KEY ("chat_id") REFERENCES "public"."chats"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "call_sessions" ADD CONSTRAINT "call_sessions_initiated_by_users_id_fk" FOREIGN KEY ("initiated_by") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

@@ -277,18 +277,29 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       .safeParse(request.body ?? {})
     if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
-    const [updated] = await db
-      .update(reports)
-      .set(body.data.status ? { status: body.data.status } : {})
-      .where(eq(reports.id, params.data.id))
-      .returning({
-        id: reports.id,
-        reporter_id: reports.reporterId,
-        reported_id: reports.reportedId,
-        reason: reports.reason,
-        status: reports.status,
-        created_at: reports.createdAt,
-      })
+    const reportShape = {
+      id: reports.id,
+      reporter_id: reports.reporterId,
+      reported_id: reports.reportedId,
+      reason: reports.reason,
+      status: reports.status,
+      created_at: reports.createdAt,
+    }
+
+    // Only issue an UPDATE when a new status was supplied — drizzle's
+    // `.set({})` emits invalid `UPDATE ... SET` SQL (Postgres 500). A
+    // ban-only call (no status) just reads the report.
+    const [updated] = body.data.status
+      ? await db
+          .update(reports)
+          .set({ status: body.data.status })
+          .where(eq(reports.id, params.data.id))
+          .returning(reportShape)
+      : await db
+          .select(reportShape)
+          .from(reports)
+          .where(eq(reports.id, params.data.id))
+          .limit(1)
     if (!updated) return reply.status(404).send({ error: 'REPORT_NOT_FOUND' })
 
     let banApplied = false

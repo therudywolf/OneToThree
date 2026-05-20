@@ -23,7 +23,9 @@ test.describe('auth / registration', () => {
     })
     expect(me.user?.username).toBe(handle)
 
-    await expect(page.getByRole('button', { name: /Lock vault/i })).toBeVisible({
+    await expect(
+      page.getByRole('button', { name: /Lock vault|Заблокировать хранилище/i })
+    ).toBeVisible({
       timeout: 30_000,
     })
     await expect(

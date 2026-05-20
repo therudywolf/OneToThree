@@ -8,6 +8,21 @@ import {
 
 const MAX_REDIRECTS = 8
 
+/**
+ * The og:image value is scraped from untrusted upstream HTML and is rendered
+ * by the client as an <img src>. Reject anything that is not an absolute
+ * http(s) URL so a `javascript:`/`data:` payload can never reach the client.
+ */
+function safeImageUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null
+  } catch {
+    return null
+  }
+}
+
 const querySchema = z.object({
   url: z
     .string()
@@ -118,9 +133,9 @@ export const linkPreviewRoutes: FastifyPluginAsync = async (app) => {
             /<meta[^>]+name="description"[^>]+content="([^"]*)"/
           )?.[1] ??
           null
-        const image =
-          html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]*)"/)?.[1] ??
-          null
+        const image = safeImageUrl(
+          html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]*)"/)?.[1]
+        )
         const siteName =
           html.match(/<meta[^>]+property="og:site_name"[^>]+content="([^"]*)"/)?.[1] ??
           null

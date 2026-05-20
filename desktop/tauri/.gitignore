@@ -1,7 +1,16 @@
 node_modules/
 src-tauri/target/
 src-tauri/gen/
+
+# Tauri icons: the committed set below is enough for a fresh checkout to
+# build on every platform. `npx @tauri-apps/cli icon` may regenerate extra
+# files (Windows Store logos etc.) — those stay ignored.
 src-tauri/icons/*.png
 src-tauri/icons/*.ico
 src-tauri/icons/*.icns
-!src-tauri/icons/.gitkeep
+!src-tauri/icons/icon.png
+!src-tauri/icons/icon.ico
+!src-tauri/icons/icon.icns
+!src-tauri/icons/32x32.png
+!src-tauri/icons/128x128.png
+!src-tauri/icons/128x128@2x.png

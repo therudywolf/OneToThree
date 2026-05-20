@@ -272,31 +272,40 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
         })
       }
 
-      if (mediaMode === 'cloudflare' && isCloudflareTurnConfigured()) {
+      // For cloudflare / self_hosted modes a working TURN relay is mandatory:
+      // a peer behind symmetric NAT cannot connect with STUN alone, so a
+      // silent STUN-only degrade would just make calls fail with no signal.
+      // Surface a 503 instead. (origin_safe is handled above and returns its
+      // own STUN list for the WebSocket-audio-relay design.)
+      if (mediaMode === 'cloudflare') {
+        if (!isCloudflareTurnConfigured()) {
+          request.log.error(
+            'ice-servers: CALL_MEDIA_MODE=cloudflare but CLOUDFLARE_TURN_KEY_ID / CLOUDFLARE_TURN_API_TOKEN are not set'
+          )
+          return reply.status(503).send({ error: 'TURN_NOT_CONFIGURED', mediaMode })
+        }
         try {
           const cf = await issueCloudflareTurnCredentials()
           iceServers.push(...cf.iceServers)
           source = 'cloudflare'
           expiresAt = cf.expiresAt
         } catch (err) {
-          request.log.warn({ err }, 'ice-servers cloudflare failed, checking coturn')
+          request.log.error({ err }, 'ice-servers: Cloudflare TURN credential issue failed')
+          return reply.status(503).send({ error: 'TURN_UNAVAILABLE', mediaMode })
         }
-      }
-      if (!source && mediaMode === 'self_hosted') {
+      } else if (mediaMode === 'self_hosted') {
         const coturn = collectCoturnIceServers(user.id)
-        if (coturn.length > 0) {
-          iceServers.push(...coturn)
-          source = 'coturn'
+        if (coturn.length === 0) {
+          request.log.error('ice-servers: CALL_MEDIA_MODE=self_hosted but no coturn credentials configured')
+          return reply.status(503).send({ error: 'TURN_NOT_CONFIGURED', mediaMode })
         }
+        iceServers.push(...coturn)
+        source = 'coturn'
       }
+
       if (!source || iceServers.length === 0) {
-        const stunFallback = collectStunIceServers()
-        if (stunFallback.length === 0) {
-          request.log.error('ice-servers failed: relay not configured and no stun fallback')
-          return reply.status(503).send({ error: 'ICE_SERVERS_UNAVAILABLE' })
-        }
-        iceServers.push(...stunFallback)
-        request.log.warn('ice-servers resolved in stun-only mode')
+        request.log.error('ice-servers: TURN relay could not be resolved')
+        return reply.status(503).send({ error: 'ICE_SERVERS_UNAVAILABLE', mediaMode })
       }
 
       reply.header('cache-control', 'private, max-age=0, must-revalidate')

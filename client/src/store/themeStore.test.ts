@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { resolveThemeAppearance } from './themeStore'
+import {
+  resolveThemeAppearance,
+  THEMES,
+  THEME_BY_ID,
+  type ThemeId,
+  type ThemeTokens,
+} from './themeStore'
 
 describe('theme appearance resolution', () => {
   it('resolves base theme tokens for custom themes', () => {
@@ -126,5 +132,66 @@ describe('theme appearance resolution', () => {
 
     expect(resolved.tokens.accent).toBe('#00e8ff')
     expect(resolved.tokens.accentSoft).toBe('#ffb347')
+  })
+})
+
+describe('theme catalogue integrity', () => {
+  // Every key the ThemeApplicator + FOUC baseline rely on. Keep in sync with
+  // the ThemeTokens type in themeStore.ts.
+  const REQUIRED_TOKEN_KEYS: Array<keyof ThemeTokens> = [
+    'background',
+    'surface',
+    'elevated',
+    'text',
+    'muted',
+    'primary',
+    'accent',
+    'accentSoft',
+    'border',
+    'success',
+    'danger',
+    'shadowRgb',
+    'crtOpacity',
+    'crtVignetteOpacity',
+    'fontFamily',
+    'panelRadius',
+    'controlRadius',
+    'pageGlow',
+    'pageGlowSecondary',
+  ]
+
+  const ALL_THEME_IDS: ThemeId[] = [
+    'default',
+    'cyberpunk2077',
+    'retro',
+    'matrix',
+    'dracula',
+    'midnight',
+    'synthwave',
+    'hacker',
+    'pixel',
+    'nord',
+    'md3dark',
+    'md3light',
+  ]
+
+  it('exposes one ThemeConfig per ThemeId with no duplicates', () => {
+    expect(THEMES).toHaveLength(ALL_THEME_IDS.length)
+    expect(new Set(THEMES.map((t) => t.id)).size).toBe(ALL_THEME_IDS.length)
+    for (const id of ALL_THEME_IDS) {
+      expect(THEME_BY_ID[id]?.id).toBe(id)
+    }
+  })
+
+  it('every theme provides the full ThemeTokens set with non-empty values', () => {
+    for (const theme of THEMES) {
+      for (const key of REQUIRED_TOKEN_KEYS) {
+        const value = theme.tokens[key]
+        expect(
+          typeof value === 'string' && value.trim().length > 0,
+          `${theme.id}.tokens.${key} must be a non-empty string`
+        ).toBe(true)
+      }
+    }
   })
 })

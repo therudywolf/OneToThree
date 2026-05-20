@@ -4,6 +4,56 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { createSafeJSONStorage } from '@/lib/safe-zustand-storage'
 
+/**
+ * ============================================================================
+ * THEME MODEL — read this before editing.
+ * ============================================================================
+ *
+ * Conceptually there are THREE visual identities, not twelve themes:
+ *
+ *   1. TERMINAL (Cyberpunk identity) — monospace type, CRT scanline overlay,
+ *      sharp/near-sharp corners. The original "FaceMash terminal" look.
+ *   2. RETRO — the Windows 98 / XP / ICQ classic look. Skinned almost entirely
+ *      by `[data-theme="retro"]` component rules in globals.css. It runs on the
+ *      'terminal' shell internally (it is terminal-only — see the retro coercion
+ *      in `setTheme` / `resolveThemeAppearance`), but visually it is its own
+ *      identity.
+ *   3. MD3 — Material Design 3: Google Sans / Roboto, rounded corners, flat
+ *      (no CRT), Material motion timings.
+ *
+ * Two orthogonal dimensions express that:
+ *
+ *   - `ShellModeId` ('terminal' | 'md3') = typography + shape + CRT chrome.
+ *   - the color PALETTE = the `tokens` of a `ThemeConfig` (`THEMES` below).
+ *
+ * `ThemeId` is a HALF-FINISHED migration artifact: today each `THEMES` entry is
+ * a flat (palette [+ baked-in shell hint]) combo rather than a pure palette.
+ * The 12 ids therefore group onto the 3 identities like this:
+ *
+ *   TERMINAL identity (terminal shell + a palette):
+ *     default · cyberpunk2077 · matrix · dracula · midnight ·
+ *     synthwave · hacker · pixel · nord
+ *     (cyberpunk2077 additionally keeps its own near-square panel/control
+ *      radii — see the override at the end of `resolveThemeAppearance`.)
+ *
+ *   RETRO identity:
+ *     retro   (terminal shell only; md3 shell is coerced away for it)
+ *
+ *   MD3 identity (md3 shell + a palette):
+ *     md3dark · md3light
+ *
+ * `ThemeApplicator` (components/theme-applicator.tsx) is the single source of
+ * truth at runtime: it calls `resolveThemeAppearance`, then stamps the result
+ * onto <html> as inline CSS variables (inline styles win the cascade). The
+ * `[data-theme="X"] { --var: ... }` blocks in globals.css only provide the
+ * pre-hydration FOUC baseline and MUST be kept in sync with the `makeTheme()`
+ * tokens below.
+ *
+ * DO NOT rename `ThemeId` values — they are persisted in localStorage under
+ * `fm_chromatic_config` and a rename would break the migration. A proper
+ * "3 palettes × 3 shells" restructure is deferred; keep ids stable.
+ * ============================================================================
+ */
 export type ThemeId =
   | 'default'
   | 'cyberpunk2077'

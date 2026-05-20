@@ -96,22 +96,41 @@ body {
   touch-action: manipulation;
 }
 
-/* ===== CHROMATIC PROTOCOLS ===== */
+/* ===== CHROMATIC PROTOCOLS — FOUC BASELINE =====
+   Each [data-theme="X"] { --var: ... } block is the pre-hydration color
+   baseline that paints before ThemeApplicator runs. It MUST mirror the
+   matching makeTheme() entry in src/store/themeStore.ts exactly.
+   Token → CSS variable mapping:
+     background → --void          surface     → --surface
+     elevated   → --surface-elevated           text → --on-surface / --text-primary
+     muted      → --text-muted    primary     → --neon-red
+     accent     → --neon-cyan     accentSoft  → --accent-2 / --neon-amber
+     border     → --border-strong shadowRgb   → --shadow-rgb
+     success    → --success       danger      → --danger
+     crtOpacity → --crt-opacity   crtVignetteOpacity → --crt-vignette-opacity
+     pageGlow   → --page-glow      pageGlowSecondary → --page-glow-secondary
+   Do NOT add component-styling rules here — those live in their own
+   [data-theme="X"] .component {...} blocks further down. */
 [data-theme="default"] {
-  --void: #000000;
-  --surface: #0a0a0a;
-  --surface-elevated: #111111;
-  --neon-red: #ff4d6d;
-  --neon-cyan: #33f0ff;
-  --neon-amber: #ffbf47;
-  --accent-2: var(--neon-amber);
-  --on-surface: #e8f6ff;
-  --text-primary: var(--on-surface);
-  --text-muted: color-mix(in srgb, var(--on-surface) 56%, transparent);
-  --border-strong: color-mix(in srgb, var(--neon-cyan) 36%, #111827);
-  --success: var(--neon-amber);
-  --warning: var(--neon-red);
-  --danger: var(--neon-red);
+  --void: #05070a;
+  --surface: #0d1218;
+  --surface-elevated: #111923;
+  --neon-red: #ff2a3d;
+  --neon-cyan: #00e8ff;
+  --neon-amber: #ffb347;
+  --accent-2: #ffb347;
+  --on-surface: #ebf4ff;
+  --text-primary: #ebf4ff;
+  --text-muted: #92a0b7;
+  --border-strong: #1e2b39;
+  --shadow-rgb: 77, 243, 255;
+  --page-glow: #0d2540;
+  --page-glow-secondary: #2d0f2f;
+  --crt-opacity: 0.16;
+  --crt-vignette-opacity: 0.4;
+  --success: #ffb347;
+  --warning: #ff2a3d;
+  --danger: #ff6262;
 }
 
 /* Night City: aligned with themeStore `cyberpunk2077` for first-paint / SSR */
@@ -119,20 +138,22 @@ body {
   --void: #12090c;
   --surface: #1b1014;
   --surface-elevated: #24151d;
-  --neon-red: #ff4d6d;
-  --neon-cyan: #33f0ff;
-  --neon-amber: #ffbf47;
-  --accent-2: var(--neon-amber);
+  --neon-red: #ff5f3d;
+  --neon-cyan: #2ff3ff;
+  --neon-amber: #ffc166;
+  --accent-2: #ffc166;
   --on-surface: #ffe7c2;
-  --text-primary: var(--on-surface);
-  --text-muted: color-mix(in srgb, var(--on-surface) 52%, #4a3320);
+  --text-primary: #ffe7c2;
+  --text-muted: #c3aa87;
   --border-strong: #4a3320;
   --shadow-rgb: 51, 240, 255;
   --page-glow: #452600;
   --page-glow-secondary: #4a0830;
-  --crt-opacity: 0.16;
-  --crt-vignette-opacity: 0.4;
+  --crt-opacity: 0.12;
+  --crt-vignette-opacity: 0.32;
   --text-shadow-intensity: 0.42;
+  --success: #ffb347;
+  --danger: #ff5d4a;
 }
 [data-theme="cyberpunk2077"] body {
   background:
@@ -189,25 +210,30 @@ body {
   transform: translateX(-120%);
   animation: p13-cyberpunk-bubble-sheen 5.8s ease-in-out infinite;
 }
+/* Retro: aligned with themeStore `retro` for first-paint / SSR.
+   Note: the [data-theme="retro"] component rules below override the body
+   chrome with a hardcoded Win98 desktop look — that is intentional and is
+   NOT part of this FOUC variable baseline. */
 [data-theme="retro"] {
-  /* Windows 98 / XP palette */
-  --void: #3a6ea5;
-  --surface: #d4d0c8;
-  --surface-elevated: #ece9e0;
-  --neon-red: #cc0000;
-  --neon-cyan: #000080;
-  --neon-amber: #808000;
-  --accent-2: #000080;
-  --on-surface: #000000;
-  --text-primary: #000000;
-  --text-muted: #444444;
-  --border-strong: #808080;
-  --shadow-rgb: 0, 0, 128;
-  --page-glow: #a6caf0;
-  --page-glow-secondary: #7ba7d6;
-  --crt-opacity: 0;
-  --crt-vignette-opacity: 0;
+  --void: #efe6c5;
+  --surface: #ddd3ae;
+  --surface-elevated: #ebe0ba;
+  --neon-red: #7f6630;
+  --neon-cyan: #2f7a6e;
+  --neon-amber: #f2c94c;
+  --accent-2: #f2c94c;
+  --on-surface: #111111;
+  --text-primary: #111111;
+  --text-muted: #3c4653;
+  --border-strong: #8a7f60;
+  --shadow-rgb: 127, 102, 48;
+  --page-glow: #103a8c;
+  --page-glow-secondary: #0a2a6b;
+  --crt-opacity: 0.05;
+  --crt-vignette-opacity: 0.14;
   --text-shadow-intensity: 0;
+  --success: #1b7c3c;
+  --danger: #b0383a;
 }
 /* ── Windows 98 / XP / ICQ classic retro theme ──────────────────────────── */
 [data-theme="retro"] body {
@@ -632,80 +658,173 @@ body {
   --motion-slow: 180ms;
 }
 [data-theme="matrix"] {
-  --void: #000000;
-  --neon-red: #00FF41;
-  --neon-cyan: #003B00;
-  --surface: #001200;
-  --on-surface: #00cc33;
-  --text-primary: var(--on-surface);
-  --shadow-rgb: 0, 255, 65;
-  --crt-opacity: 0.20;
+  --void: #020603;
+  --surface: #08110a;
+  --surface-elevated: #0b180d;
+  --neon-red: #6bff75;
+  --neon-cyan: #00d26a;
+  --neon-amber: #44ff9b;
+  --accent-2: #44ff9b;
+  --on-surface: #b8ffd1;
+  --text-primary: #b8ffd1;
+  --text-muted: #5f9670;
+  --border-strong: #17341f;
+  --shadow-rgb: 0, 210, 106;
+  --page-glow: #0b2c12;
+  --page-glow-secondary: #041a10;
+  --crt-opacity: 0.2;
+  --crt-vignette-opacity: 0.5;
+  --success: #7dff95;
+  --danger: #ff6464;
 }
 [data-theme="dracula"] {
-  --void: #282A36;
-  --neon-red: #FF79C6;
-  --neon-cyan: #8BE9FD;
-  --surface: #21222C;
+  --void: #242532;
+  --surface: #2d3041;
+  --surface-elevated: #383b52;
+  --neon-red: #ff79c6;
+  --neon-cyan: #8be9fd;
+  --neon-amber: #c6f7ff;
+  --accent-2: #c6f7ff;
   --on-surface: #f8f8f2;
-  --text-primary: var(--on-surface);
+  --text-primary: #f8f8f2;
+  --text-muted: #b8b6cc;
+  --border-strong: #4a4f6c;
   --shadow-rgb: 139, 233, 253;
-  --crt-opacity: 0.12;
+  --page-glow: #4a1e49;
+  --page-glow-secondary: #1f3650;
+  --crt-opacity: 0.08;
+  --crt-vignette-opacity: 0.2;
+  --success: #50fa7b;
+  --danger: #ff5555;
 }
 [data-theme="midnight"] {
-  --void: #0A0E1A;
-  --neon-red: #4FC3F7;
-  --neon-cyan: #E0F7FA;
-  --surface: #0d1221;
-  --on-surface: #b3e5fc;
-  --text-primary: var(--on-surface);
-  --shadow-rgb: 224, 247, 250;
-  --crt-opacity: 0.14;
+  --void: #09131f;
+  --surface: #101c2e;
+  --surface-elevated: #16253b;
+  --neon-red: #8dc5ff;
+  --neon-cyan: #59f0ff;
+  --neon-amber: #b4fbff;
+  --accent-2: #b4fbff;
+  --on-surface: #edf7ff;
+  --text-primary: #edf7ff;
+  --text-muted: #8da6c0;
+  --border-strong: #233750;
+  --shadow-rgb: 89, 240, 255;
+  --page-glow: #113c68;
+  --page-glow-secondary: #0f2959;
+  --crt-opacity: 0.1;
+  --crt-vignette-opacity: 0.28;
+  --success: #37d8a6;
+  --danger: #ff7c7c;
 }
 [data-theme="synthwave"] {
-  --void: #0D0221;
-  --neon-red: #F92AAD;
-  --neon-cyan: #A537FD;
-  --surface: #160335;
-  --on-surface: #ffd6f7;
-  --text-primary: var(--on-surface);
-  --shadow-rgb: 165, 55, 253;
-  --crt-opacity: 0.16;
+  --void: #12061f;
+  --surface: #1b0b2c;
+  --surface-elevated: #281144;
+  --neon-red: #ff4fb7;
+  --neon-cyan: #7b7dff;
+  --neon-amber: #c0bcff;
+  --accent-2: #c0bcff;
+  --on-surface: #ffe9ff;
+  --text-primary: #ffe9ff;
+  --text-muted: #d2a6dc;
+  --border-strong: #49256a;
+  --shadow-rgb: 123, 125, 255;
+  --page-glow: #4a0c4f;
+  --page-glow-secondary: #172978;
+  --crt-opacity: 0.14;
+  --crt-vignette-opacity: 0.28;
   --text-shadow-intensity: 0.50;
+  --success: #3de8b7;
+  --danger: #ff7b8c;
 }
 [data-theme="hacker"] {
-  --void: #0C0C00;
-  --neon-red: #FFB300;
-  --neon-cyan: #FF6D00;
-  --surface: #111100;
-  --on-surface: #ffe082;
-  --text-primary: var(--on-surface);
-  --shadow-rgb: 255, 179, 0;
-  --crt-opacity: 0.22;
+  --void: #0f0d06;
+  --surface: #17130a;
+  --surface-elevated: #231d10;
+  --neon-red: #ffbe3d;
+  --neon-cyan: #ff7a00;
+  --neon-amber: #ffc774;
+  --accent-2: #ffc774;
+  --on-surface: #fff0c7;
+  --text-primary: #fff0c7;
+  --text-muted: #d1b784;
+  --border-strong: #4a371a;
+  --shadow-rgb: 255, 190, 61;
+  --page-glow: #4a3000;
+  --page-glow-secondary: #3f1900;
+  --crt-opacity: 0.18;
+  --crt-vignette-opacity: 0.42;
+  --success: #7fe060;
+  --danger: #ff6b4a;
+}
+[data-theme="pixel"] {
+  --void: #101521;
+  --surface: #182033;
+  --surface-elevated: #232d45;
+  --neon-red: #7cc7ff;
+  --neon-cyan: #8df56b;
+  --neon-amber: #f9da69;
+  --accent-2: #f9da69;
+  --on-surface: #eff5ff;
+  --text-primary: #eff5ff;
+  --text-muted: #9da9bf;
+  --border-strong: #32415f;
+  --shadow-rgb: 141, 245, 107;
+  --page-glow: #143b63;
+  --page-glow-secondary: #32492a;
+  --crt-opacity: 0.06;
+  --crt-vignette-opacity: 0.18;
+  --success: #6cf7a0;
+  --danger: #ff7676;
+}
+[data-theme="nord"] {
+  --void: #111725;
+  --surface: #182131;
+  --surface-elevated: #202c40;
+  --neon-red: #88c0d0;
+  --neon-cyan: #81a1ff;
+  --neon-amber: #d2dfff;
+  --accent-2: #d2dfff;
+  --on-surface: #eaf2ff;
+  --text-primary: #eaf2ff;
+  --text-muted: #92a1bc;
+  --border-strong: #31415d;
+  --shadow-rgb: 129, 161, 255;
+  --page-glow: #203f63;
+  --page-glow-secondary: #283457;
+  --crt-opacity: 0.06;
+  --crt-vignette-opacity: 0.16;
+  --success: #98d8aa;
+  --danger: #ff7d7d;
 }
 
 /* ===== MD3 DARK ===== */
 [data-theme="md3dark"] {
-  --void: #0F0F11;
-  --neon-red: #A8C7FA;
-  --neon-cyan: #7BCEFF;
-  --neon-amber: #FFAB40;
-  --surface: #1A1C1E;
-  --surface-elevated: #24282b;
-  --on-surface: #E2E2E6;
-  --text-primary: #E2E2E6;
-  --text-muted: color-mix(in srgb, var(--on-surface) 62%, transparent);
-  --border-strong: color-mix(in srgb, var(--neon-cyan) 28%, transparent);
+  --void: #111318;
+  --surface: #1b1f27;
+  --surface-elevated: #252a34;
+  --neon-red: #a8c7fa;
+  --neon-cyan: #7ed0ff;
+  --neon-amber: #d8ecff;
+  --accent-2: #d8ecff;
+  --on-surface: #e4e8ef;
+  --text-primary: #e4e8ef;
+  --text-muted: #aab1bd;
+  --border-strong: #353c48;
   --shadow-rgb: 168, 199, 250;
+  --page-glow: #23334c;
+  --page-glow-secondary: #213746;
   --crt-opacity: 0;
   --crt-vignette-opacity: 0;
   --border-radius: 16px;
   --text-shadow-intensity: 0;
   --font-family: 'Google Sans', 'Roboto', system-ui, sans-serif;
-  --success: #30D158;
-  --warning: #FF9F0A;
-  --danger: #FF453A;
-  --primary: #A8C7FA;
-  --on-primary: #11131A;
+  --success: #84d59f;
+  --warning: #d8ecff;
+  --danger: #ff8f8f;
+  --primary: #a8c7fa;
+  --on-primary: #101216;
   --surface-variant: #3A3F4A;
   --on-surface-variant: #C1C7D3;
   --secondary-container: #25384B;
@@ -719,27 +838,30 @@ body {
 
 /* ===== MD3 LIGHT ===== */
 [data-theme="md3light"] {
-  --void: #FAFCFF;
-  --neon-red: #0062A1;
-  --neon-cyan: #00639B;
-  --neon-amber: #E65100;
-  --surface: #FFFFFF;
-  --surface-elevated: #f4f7fb;
-  --on-surface: #1A1C1E;
-  --text-primary: #1A1C1E;
-  --text-muted: color-mix(in srgb, var(--on-surface) 62%, transparent);
-  --border-strong: color-mix(in srgb, var(--neon-cyan) 30%, transparent);
-  --shadow-rgb: 0, 98, 161;
+  --void: #f5f7fb;
+  --surface: #ffffff;
+  --surface-elevated: #eef3fb;
+  --neon-red: #005ea8;
+  --neon-cyan: #00639b;
+  --neon-amber: #7bc7ff;
+  --accent-2: #7bc7ff;
+  --on-surface: #171c24;
+  --text-primary: #171c24;
+  --text-muted: #5d6777;
+  --border-strong: #d8e1ee;
+  --shadow-rgb: 0, 99, 155;
+  --page-glow: #cfe6ff;
+  --page-glow-secondary: #dbe7f4;
   --crt-opacity: 0;
   --crt-vignette-opacity: 0;
   --border-radius: 16px;
   --text-shadow-intensity: 0;
   --font-family: 'Google Sans', 'Roboto', system-ui, sans-serif;
-  --success: #1B8C3A;
-  --warning: #D14900;
-  --danger: #BA1A1A;
-  --primary: #0062A1;
-  --on-primary: #FFFFFF;
+  --success: #1f8f65;
+  --warning: #7bc7ff;
+  --danger: #c85656;
+  --primary: #005ea8;
+  --on-primary: #ffffff;
   --surface-variant: #DCE3F0;
   --on-surface-variant: #414956;
   --secondary-container: #D0E4FF;

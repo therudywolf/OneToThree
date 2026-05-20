@@ -7,7 +7,14 @@ import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { devices, loginEvents, pushSubscriptions, reports, users } from '../db/schema.js'
+import {
+  adminAuditLog,
+  devices,
+  loginEvents,
+  pushSubscriptions,
+  reports,
+  users,
+} from '../db/schema.js'
 import {
   assertAuthed,
   getAuthUser,
@@ -43,6 +50,40 @@ async function requireAdmin(
   return user
 }
 
+/**
+ * Track E — write one audit row per mutating admin action. Best-effort:
+ * a failed audit insert is logged but never blocks the underlying action.
+ */
+async function writeAudit(
+  log: { error: (...args: unknown[]) => void },
+  entry: {
+    adminUserId: string
+    action: string
+    targetUserId?: string | null
+    detail?: unknown
+  }
+): Promise<void> {
+  try {
+    await db.insert(adminAuditLog).values({
+      adminUserId: entry.adminUserId,
+      action: entry.action,
+      targetUserId: entry.targetUserId ?? null,
+      detail:
+        entry.detail === undefined
+          ? null
+          : (entry.detail as Record<string, unknown>),
+    })
+  } catch (e) {
+    log.error(e, 'admin audit log insert failed')
+  }
+}
+
+/** Shared limit/offset query parser — default 100, hard cap 500. */
+const pageQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+})
+
 const banBodySchema = z.object({
   banned: z.boolean(),
 })
@@ -53,7 +94,8 @@ const purgeBodySchema = z.object({
 
 export const adminRoutes: FastifyPluginAsync = async (app) => {
   await app.register(rateLimit, {
-    max: 20,
+    // The dashboard fires 5+ calls on load; 20/min throttled normal use.
+    max: 120,
     timeWindow: '1 minute',
   })
 
@@ -86,6 +128,16 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const admin = await requireAdmin(request, reply)
     if (!admin) return
 
+    const q = pageQuerySchema.safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ error: 'INVALID_QUERY' })
+    const limit = q.data.limit ?? 100
+    const offset = q.data.offset ?? 0
+
+    const [totalRow] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(users)
+    const total = Number(totalRow?.c ?? 0)
+
     const rows = await db
       .select({
         id: users.id,
@@ -95,8 +147,10 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       })
       .from(users)
       .orderBy(users.username)
+      .limit(limit)
+      .offset(offset)
 
-    return reply.send({ users: rows })
+    return reply.send({ users: rows, total, limit, offset })
   })
 
   app.patch('/users/:id/ban', async (request, reply) => {
@@ -130,6 +184,13 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ error: 'USER_NOT_FOUND' })
     }
 
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: parsed.data.banned ? 'user_ban' : 'user_unban',
+      targetUserId: after.id,
+      detail: { username: after.username, banned: parsed.data.banned },
+    })
+
     return reply.send({ user: after })
   })
 
@@ -162,6 +223,16 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: result.error })
     }
 
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'user_purge',
+      targetUserId: params.data.id,
+      detail: {
+        confirm_username: parsed.data.confirm_username.trim(),
+        purged_direct_chats: result.purged_direct_chats,
+      },
+    })
+
     return reply.send({
       ok: true,
       purged_direct_chats: result.purged_direct_chats,
@@ -172,6 +243,16 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
   app.get('/reports', async (request, reply) => {
     const admin = await requireAdmin(request, reply)
     if (!admin) return
+
+    const q = pageQuerySchema.safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ error: 'INVALID_QUERY' })
+    const limit = q.data.limit ?? 100
+    const offset = q.data.offset ?? 0
+
+    const [totalRow] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(reports)
+    const total = Number(totalRow?.c ?? 0)
 
     const rows = await db
       .select({
@@ -184,8 +265,10 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       })
       .from(reports)
       .orderBy(desc(reports.createdAt))
+      .limit(limit)
+      .offset(offset)
 
-    return reply.send({ reports: rows })
+    return reply.send({ reports: rows, total, limit, offset })
   })
 
   /**
@@ -310,6 +393,17 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       await db.update(users).set({ isBanned: true }).where(eq(users.id, updated.reported_id))
       banApplied = true
     }
+
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'report_update',
+      targetUserId: updated.reported_id,
+      detail: {
+        report_id: updated.id,
+        status: body.data.status ?? null,
+        ban_applied: banApplied,
+      },
+    })
 
     return reply.send({ report: updated, ban_applied: banApplied })
   })
@@ -480,6 +574,14 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       .returning({ id: users.id, username: users.username, role: users.role, is_banned: users.isBanned })
 
     if (!after) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'user_role_change',
+      targetUserId: after.id,
+      detail: { username: after.username, role: body.data.role },
+    })
+
     return reply.send({ user: after })
   })
 
@@ -498,6 +600,13 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       .returning({ id: devices.id })
 
     if (!updated) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
+
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'device_revoke',
+      detail: { device_id: updated.id },
+    })
+
     return reply.send({ ok: true, device_id: updated.id })
   })
 
@@ -527,6 +636,14 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         storage_quota_bytes: users.storageQuotaBytes,
       })
     if (!updated) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'storage_quota_change',
+      targetUserId: updated.id,
+      detail: { quota_bytes: body.data.quota_bytes },
+    })
+
     return reply.send(updated)
   })
 
@@ -574,6 +691,18 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       targetBytes: body.data.target_bytes,
       maxToEvict: body.data.max_to_evict,
     })
+
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'media_evict',
+      detail: {
+        target_bytes: body.data.target_bytes ?? null,
+        max_to_evict: body.data.max_to_evict ?? null,
+        evicted: result.evicted,
+        freed_bytes: result.freedBytes,
+      },
+    })
+
     return reply.send(result)
   })
 
@@ -596,6 +725,56 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       maxAgeHours: body.data.max_age_hours,
       maxToDelete: body.data.max_to_delete,
     })
+
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'media_cleanup_orphans',
+      detail: {
+        max_age_hours: body.data.max_age_hours ?? null,
+        max_to_delete: body.data.max_to_delete ?? null,
+        deleted: result.deleted,
+        freed_bytes: result.freedBytes,
+      },
+    })
+
     return reply.send(result)
+  })
+
+  /**
+   * GET /api/admin/audit-log — Track E. Paginated admin action audit trail,
+   * newest first. Joins the admin username for display.
+   * Query: limit=1..500 (default 100), offset>=0.
+   */
+  app.get('/audit-log', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+
+    const q = pageQuerySchema.safeParse(request.query)
+    if (!q.success) return reply.status(400).send({ error: 'INVALID_QUERY' })
+    const limit = q.data.limit ?? 100
+    const offset = q.data.offset ?? 0
+
+    const [totalRow] = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(adminAuditLog)
+    const total = Number(totalRow?.c ?? 0)
+
+    const rows = await db
+      .select({
+        id: adminAuditLog.id,
+        admin_user_id: adminAuditLog.adminUserId,
+        admin_username: users.username,
+        action: adminAuditLog.action,
+        target_user_id: adminAuditLog.targetUserId,
+        detail: adminAuditLog.detail,
+        created_at: adminAuditLog.createdAt,
+      })
+      .from(adminAuditLog)
+      .leftJoin(users, eq(users.id, adminAuditLog.adminUserId))
+      .orderBy(desc(adminAuditLog.createdAt))
+      .limit(limit)
+      .offset(offset)
+
+    return reply.send({ entries: rows, total, limit, offset })
   })
 }

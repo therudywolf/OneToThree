@@ -268,7 +268,7 @@ describe('webrtc turn route', () => {
     }
   })
 
-  it('GET /api/ice-servers returns stun-only fallback when relay is not configured', async () => {
+  it('GET /api/ice-servers returns 503 when a relay mode has no TURN configured', async () => {
     const { cookie, userId } = await createSessionCookie('stunonly')
     const prev = {
       TURN_URLS: process.env.TURN_URLS,
@@ -276,37 +276,28 @@ describe('webrtc turn route', () => {
       TURN_USERNAME: process.env.TURN_USERNAME,
       TURN_SECRET: process.env.TURN_SECRET,
       TURN_AUTH_SECRET: process.env.TURN_AUTH_SECRET,
-      STUN_URLS: process.env.STUN_URLS,
     }
     delete process.env.TURN_URLS
     delete process.env.TURN_URL
     delete process.env.TURN_USERNAME
     delete process.env.TURN_SECRET
     delete process.env.TURN_AUTH_SECRET
-    process.env.STUN_URLS = 'stun:stun.example.test:3478'
 
     try {
+      // self_hosted mode (set in beforeAll) with no coturn credentials: a
+      // silent STUN-only degrade would make calls fail behind symmetric NAT
+      // with no signal, so the route must surface a 503 instead.
       const res = await request(app!.server)
         .get('/api/ice-servers')
         .set('Cookie', cookie)
-        .expect(200)
-
-      expect(res.body.source).toBeNull()
-      expect(res.body.transportPolicy).toBe('all')
-      expect(Array.isArray(res.body.iceServers)).toBe(true)
-      const stun = (res.body.iceServers as Array<{ urls: string[] | string }>).find((s) =>
-        Array.isArray(s.urls)
-          ? s.urls.includes('stun:stun.example.test:3478')
-          : s.urls === 'stun:stun.example.test:3478'
-      )
-      expect(stun).toBeTruthy()
+        .expect(503)
+      expect(res.body.error).toBe('TURN_NOT_CONFIGURED')
     } finally {
       process.env.TURN_URLS = prev.TURN_URLS
       process.env.TURN_URL = prev.TURN_URL
       process.env.TURN_USERNAME = prev.TURN_USERNAME
       process.env.TURN_SECRET = prev.TURN_SECRET
       process.env.TURN_AUTH_SECRET = prev.TURN_AUTH_SECRET
-      process.env.STUN_URLS = prev.STUN_URLS
       await db.delete(users).where(eq(users.id, userId))
     }
   })

@@ -100,6 +100,28 @@ export async function getCurrentUsageBytes(): Promise<number> {
 }
 
 /**
+ * The watermark check runs on every upload — running the SUM aggregate each
+ * time is wasteful. A short TTL cache is fine: the high-watermark trigger
+ * tolerates a few seconds of staleness, and eviction recomputes fresh.
+ */
+let usageCache: { value: number; at: number } | null = null
+const USAGE_CACHE_TTL_MS = 30_000
+
+function setUsageCache(value: number): void {
+  usageCache = { value, at: Date.now() }
+}
+
+/** Cached variant of {@link getCurrentUsageBytes} for hot-path watermark checks. */
+export async function getCachedUsageBytes(): Promise<number> {
+  if (usageCache && Date.now() - usageCache.at < USAGE_CACHE_TTL_MS) {
+    return usageCache.value
+  }
+  const value = await getCurrentUsageBytes()
+  setUsageCache(value)
+  return value
+}
+
+/**
  * Evict least-recently-accessed live attachments until usage falls under
  * `targetBytes`. Orphan rows (no message_id) are picked first within each
  * batch as a soft preference — they have no UI consequence beyond the
@@ -168,6 +190,9 @@ export async function evictLruUntilUnderTarget(opts: {
     )
   }
 
+  // Eviction just changed the live total — refresh the cache so the next
+  // watermark check does not keep re-triggering against a stale high value.
+  setUsageCache(usage)
   return { evicted, freedBytes, finalUsage: usage }
 }
 
@@ -179,7 +204,7 @@ export async function evictLruUntilUnderTarget(opts: {
 export function maybeTriggerEviction(log: FastifyBaseLogger): void {
   void (async () => {
     try {
-      const usage = await getCurrentUsageBytes()
+      const usage = await getCachedUsageBytes()
       const quota = getQuotaBytes()
       const high = quota * getHighWatermark()
       if (usage < high) return

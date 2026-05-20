@@ -219,6 +219,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
     }
 
+    // QR linking mints a full device session — record it in login history
+    // like the password and TOTP paths, so a user can spot an unexpected
+    // linked device.
+    await recordLoginEvent(request, {
+      userId: canonicalId,
+      username: row.username,
+      outcome: 'success',
+      deviceId: dev.deviceId,
+    })
+
     const token = await reply.jwtSign(
       { sub: canonicalId, username: row.username, device_id: dev.deviceId, jti: generateJti() },
       { expiresIn: SESSION_MAX_AGE_S }

@@ -1549,8 +1549,11 @@ textarea {
   font-style: normal;
   line-height: 1;
   vertical-align: middle;
-  filter: grayscale(100%) sepia(100%) hue-rotate(130deg) saturate(280%)
-    brightness(0.85) drop-shadow(0 0 2px color-mix(in srgb, var(--neon-cyan) 45%, transparent));
+  /*
+   * Emoji render in their native full color. A previous filter chain
+   * (grayscale + sepia + hue-rotate) recolored every emoji into a single
+   * cyan tint, which destroyed their meaning and looked wrong.
+   */
 }
 
 @supports (height: 100dvh) {

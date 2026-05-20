@@ -19,6 +19,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 # keyring v3 ships no backend by default — enable one per platform:
 #   apple-native        -> macOS / iOS Keychain
 #   windows-native      -> Windows Credential Manager

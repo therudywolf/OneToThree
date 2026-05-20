@@ -55,5 +55,12 @@
         "language": ["en-US", "ru-RU"]
       }
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["onetothree"]
+      }
+    }
   }
 }

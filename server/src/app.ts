@@ -120,14 +120,27 @@ export function assertProdSecurityEnv(): void {
 }
 
 export async function buildApp() {
-  /** Behind Caddy/nginx: trust X-Forwarded-* for real client IPs (disable with TRUST_PROXY=0). */
+  /**
+   * Behind Caddy/nginx: trust X-Forwarded-* for real client IPs. Set as a
+   * *hop count* (number of reverse proxies in front of the API) rather than
+   * a boolean: a plain `true` trusts the whole X-Forwarded-For chain, so a
+   * client can inject `X-Forwarded-For: 127.0.0.1` and impersonate the
+   * loopback address — bypassing the rate-limit allowList below. With a hop
+   * count, only the addresses appended by our own proxies are trusted.
+   * Defaults to 1 in production (Caddy); set TRUST_PROXY=2 if also behind
+   * Cloudflare, or TRUST_PROXY=0 to disable.
+   */
   const tp = process.env.TRUST_PROXY?.trim().toLowerCase()
-  const trustProxy =
-    tp === '0' || tp === 'false'
-      ? false
-      : tp === '1' ||
-          tp === 'true' ||
-          process.env.NODE_ENV === 'production'
+  let trustProxy: boolean | number
+  if (tp === '0' || tp === 'false') {
+    trustProxy = false
+  } else if (tp && /^\d+$/.test(tp)) {
+    trustProxy = Number(tp)
+  } else if (tp === 'true') {
+    trustProxy = 1
+  } else {
+    trustProxy = process.env.NODE_ENV === 'production' ? 1 : false
+  }
 
   const app = Fastify({
     logger: true,

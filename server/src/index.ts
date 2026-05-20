@@ -16,7 +16,7 @@ async function main() {
   scheduleOrphanAttachmentCleanup(app.log)
 
   // Purge burn-at expired messages every 60 seconds.
-  setInterval(async () => {
+  const burnPurgeTimer = setInterval(async () => {
     try {
       await purgeExpiredBurnMessages()
     } catch (err) {
@@ -28,15 +28,40 @@ async function main() {
     `[Project 13] API ready — http://0.0.0.0:${port} (One to Three · zero-trust lane)`
   )
 
-  const signals = ['SIGINT', 'SIGTERM'] as const
-  for (const signal of signals) {
-    process.on(signal, async () => {
-      app.log.info(`Received ${signal}, shutting down gracefully…`)
+  let shuttingDown = false
+  async function shutdown(reason: string, code: number): Promise<void> {
+    if (shuttingDown) return
+    shuttingDown = true
+    app.log.info(`Shutting down (${reason})…`)
+    clearInterval(burnPurgeTimer)
+    // Force-exit if a graceful close hangs (e.g. a wedged connection).
+    const forceExit = setTimeout(() => process.exit(code), 10_000)
+    forceExit.unref()
+    try {
       await app.close()
       await closeRedis()
-      process.exit(0)
-    })
+    } catch (err) {
+      app.log.error({ err: String(err) }, 'error during shutdown')
+    }
+    clearTimeout(forceExit)
+    process.exit(code)
   }
+
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => void shutdown(signal, 0))
+  }
+
+  // A fire-and-forget rejection (push sends, fan-out, last-seen pings) would
+  // otherwise crash the process abruptly with no drain. Log and shut down
+  // gracefully instead.
+  process.on('unhandledRejection', (reason) => {
+    app.log.error({ err: String(reason) }, 'unhandledRejection — shutting down')
+    void shutdown('unhandledRejection', 1)
+  })
+  process.on('uncaughtException', (err) => {
+    app.log.error({ err: String(err) }, 'uncaughtException — shutting down')
+    void shutdown('uncaughtException', 1)
+  })
 }
 
 main().catch((err) => {

@@ -317,7 +317,7 @@ export function LoginForm() {
 
               {/* Никнейм */}
               <div className="space-y-2">
-                <label className="terminal-label">{t('login.handleLabel')}</label>
+                <label htmlFor="username" className="terminal-label">{t('login.handleLabel')}</label>
                 <input
                   id="username"
                   type="text" required autoFocus
@@ -343,7 +343,7 @@ export function LoginForm() {
                     </p>
                   </div>
                 )}
-                <label className="terminal-label">
+                <label htmlFor="password" className="terminal-label">
                   {mode === 'ACCESS' ? t('login.vaultPassphraseLabel') : 'VAULT-ПАРОЛЬ'}
                 </label>
                 <input
@@ -360,7 +360,7 @@ export function LoginForm() {
               {/* Повтор пароля при регистрации */}
               {mode === 'GENESIS' && (
                 <div className="space-y-2">
-                  <label className="terminal-label">{t('common.confirm')}</label>
+                  <label htmlFor="confirmPassword" className="terminal-label">{t('common.confirm')}</label>
                   <input
                     id="confirmPassword"
                     type="password" required

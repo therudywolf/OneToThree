@@ -75,8 +75,6 @@ export function JoinPackClient({ code }: { code: string }) {
             <p className="animate-pulse text-xs uppercase tracking-[0.3em] text-neon-cyan">
               {t('join.working')}...
             </p>
-            <div className="h-[1px] w-12 bg-elevated" />
-            <p className="text-[9px] text-text-muted/70">PREPARING_STUB_CHANNELS</p>
           </div>
         )}
 

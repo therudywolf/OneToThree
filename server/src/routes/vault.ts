@@ -1,22 +1,13 @@
 /**
- * Stage 6: Vault routes DEPRECATED.
- * GET /vault/fetch and POST /vault/sync are removed.
- * Server-side vault_blob storage is amputated.
+ * Stage 6: server-side vault sync is fully removed.
  *
- * This file is kept as a registered (empty) plugin so app.ts
- * compiles without changes. Routes return 410 GONE.
+ * The `/fetch` and `/sync` route shells (which only returned 410 Gone) were
+ * dead code — keys live exclusively in client IndexedDB. This plugin is kept
+ * registered but empty so `app.ts` needs no change; unknown /api/vault/* paths
+ * now fall through to the default 404 handler.
  */
 import type { FastifyPluginAsync } from 'fastify'
 
-export const vaultRoutes: FastifyPluginAsync = async (app) => {
-  const gone = {
-    error: 'VAULT_SERVER_SYNC_REMOVED',
-    message:
-      'Server-side vault sync was removed in Stage 6. ' +
-      'Keys are stored exclusively in local IndexedDB.',
-  }
-
-  // Return 410 Gone so old clients get a clear signal, not a silent 404
-  app.get('/fetch', async (_req, reply) => reply.status(410).send(gone))
-  app.post('/sync', async (_req, reply) => reply.status(410).send(gone))
+export const vaultRoutes: FastifyPluginAsync = async () => {
+  // No routes — server-side vault sync was amputated in Stage 6.
 }

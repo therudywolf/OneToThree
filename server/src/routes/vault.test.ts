@@ -15,14 +15,13 @@ describe('vault routes', () => {
     if (app) await app.close()
   })
 
-  it('returns explicit Gone for removed server-side vault sync endpoints', async () => {
-    const fetchRes = await request(app!.server).get('/api/vault/fetch').expect(410)
-    expect(fetchRes.body.error).toBe('VAULT_SERVER_SYNC_REMOVED')
-
-    const syncRes = await request(app!.server)
+  it('no longer exposes the removed server-side vault sync endpoints', async () => {
+    // The 410-Gone shells were dead code (Track E cleanup); the routes are
+    // gone entirely now, so they fall through to the default 404 handler.
+    await request(app!.server).get('/api/vault/fetch').expect(404)
+    await request(app!.server)
       .post('/api/vault/sync')
       .send({ vault_blob: 'x' })
-      .expect(410)
-    expect(syncRes.body.error).toBe('VAULT_SERVER_SYNC_REMOVED')
+      .expect(404)
   })
 })

@@ -50,19 +50,44 @@ export type AdminStorageUserRow = {
   storage_used: string
 }
 
-export async function fetchAdminUsers(): Promise<AdminUserRow[]> {
-  const res = await fetchWithTimeout(`${API_URL}/admin/users`, { credentials: 'include' })
+export type AdminPage = { limit?: number; offset?: number }
+
+export type AdminUsersResult = {
+  users: AdminUserRow[]
+  total: number
+  limit: number
+  offset: number
+}
+
+function pageQuery(p?: AdminPage): string {
+  if (!p) return ''
+  const q = new URLSearchParams()
+  if (p.limit != null) q.set('limit', String(p.limit))
+  if (p.offset != null) q.set('offset', String(p.offset))
+  const s = q.toString()
+  return s ? `?${s}` : ''
+}
+
+export async function fetchAdminUsers(page?: AdminPage): Promise<AdminUsersResult> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users${pageQuery(page)}`, {
+    credentials: 'include',
+  })
   const data = (await res.json().catch(() => ({}))) as {
     users?: AdminUserRow[]
+    total?: number
+    limit?: number
+    offset?: number
     error?: string
   }
   if (!res.ok) {
     throw new Error(data.error ?? 'ADMIN_USERS_FAILED')
   }
-  return (data.users ?? []).map((u) => ({
-    ...u,
-    id: canonicalUserId(u.id),
-  }))
+  return {
+    users: (data.users ?? []).map((u) => ({ ...u, id: canonicalUserId(u.id) })),
+    total: data.total ?? (data.users?.length ?? 0),
+    limit: data.limit ?? page?.limit ?? 100,
+    offset: data.offset ?? page?.offset ?? 0,
+  }
 }
 
 export async function patchUserBan(
@@ -143,16 +168,33 @@ export async function fetchAdminUserStorageUsage(): Promise<
   }))
 }
 
-export async function fetchAdminReports(): Promise<AdminReportRow[]> {
-  const res = await fetchWithTimeout(`${API_URL}/admin/reports`, { credentials: 'include' })
+export type AdminReportsResult = {
+  reports: AdminReportRow[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export async function fetchAdminReports(page?: AdminPage): Promise<AdminReportsResult> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/reports${pageQuery(page)}`, {
+    credentials: 'include',
+  })
   const data = (await res.json().catch(() => ({}))) as {
     reports?: AdminReportRow[]
+    total?: number
+    limit?: number
+    offset?: number
     error?: string
   }
   if (!res.ok) {
     throw new Error(data.error ?? 'ADMIN_REPORTS_FAILED')
   }
-  return data.reports ?? []
+  return {
+    reports: data.reports ?? [],
+    total: data.total ?? (data.reports?.length ?? 0),
+    limit: data.limit ?? page?.limit ?? 100,
+    offset: data.offset ?? page?.offset ?? 0,
+  }
 }
 
 export type AdminDeviceRow = {
@@ -385,4 +427,92 @@ export async function postAdminMediaEvict(opts?: {
     | { error?: string }
   if (!res.ok) throw new Error((data as { error?: string }).error ?? 'ADMIN_MEDIA_EVICT_FAILED')
   return data as AdminMediaEvictResponse
+}
+
+export type AdminMediaCleanupOrphansResponse = {
+  deleted: number
+  freedBytes: number
+}
+
+export async function postAdminMediaCleanupOrphans(opts?: {
+  maxAgeHours?: number
+  maxToDelete?: number
+}): Promise<AdminMediaCleanupOrphansResponse> {
+  const body: Record<string, number> = {}
+  if (opts?.maxAgeHours != null) body.max_age_hours = opts.maxAgeHours
+  if (opts?.maxToDelete != null) body.max_to_delete = opts.maxToDelete
+  const res = await fetchWithTimeout(`${API_URL}/admin/media/cleanup-orphans`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await res.json().catch(() => ({}))) as
+    | (AdminMediaCleanupOrphansResponse & { error?: string })
+    | { error?: string }
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error ?? 'ADMIN_CLEANUP_ORPHANS_FAILED')
+  }
+  return data as AdminMediaCleanupOrphansResponse
+}
+
+/* ────────────── Track E — push stats ────────────── */
+
+export type AdminPushStatRow = {
+  user_id: string
+  count: number
+}
+
+export async function fetchAdminPushStats(): Promise<AdminPushStatRow[]> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/push-stats`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    push_subscriptions?: AdminPushStatRow[]
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_PUSH_STATS_FAILED')
+  return (data.push_subscriptions ?? []).map((r) => ({
+    ...r,
+    user_id: canonicalUserId(r.user_id),
+  }))
+}
+
+/* ────────────── Track E — admin audit log ────────────── */
+
+export type AdminAuditLogRow = {
+  id: string
+  admin_user_id: string
+  admin_username: string | null
+  action: string
+  target_user_id: string | null
+  detail: Record<string, unknown> | null
+  created_at: string
+}
+
+export type AdminAuditLogResult = {
+  entries: AdminAuditLogRow[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export async function fetchAdminAuditLog(page?: AdminPage): Promise<AdminAuditLogResult> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/audit-log${pageQuery(page)}`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    entries?: AdminAuditLogRow[]
+    total?: number
+    limit?: number
+    offset?: number
+    error?: string
+  }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_AUDIT_LOG_FAILED')
+  return {
+    entries: data.entries ?? [],
+    total: data.total ?? (data.entries?.length ?? 0),
+    limit: data.limit ?? page?.limit ?? 100,
+    offset: data.offset ?? page?.offset ?? 0,
+  }
 }

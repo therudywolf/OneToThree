@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify'
 import { eq, sql } from 'drizzle-orm'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
-import { reports, users } from '../db/schema.js'
+import { adminAuditLog, reports, users } from '../db/schema.js'
 
 async function createUser(username: string, role: 'user' | 'admin' = 'user') {
   const [row] = await db
@@ -169,6 +169,63 @@ describe('admin routes — authorization & self-protection', () => {
         .expect(404)
       expect(res.body.error).toBe('DEVICE_NOT_FOUND')
     } finally {
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('writes an admin_audit_log row when a user is banned', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`adm-audit-a-${stamp}`, 'admin')
+    const victim = await createUser(`adm-audit-v-${stamp}`)
+    try {
+      await request(app!.server)
+        .patch(`/api/admin/users/${victim.id}/ban`)
+        .set('Cookie', await cookieFor(admin))
+        .send({ banned: true })
+        .expect(200)
+
+      const rows = await db
+        .select({
+          action: adminAuditLog.action,
+          adminUserId: adminAuditLog.adminUserId,
+          targetUserId: adminAuditLog.targetUserId,
+        })
+        .from(adminAuditLog)
+        .where(eq(adminAuditLog.targetUserId, victim.id))
+      expect(rows.length).toBe(1)
+      expect(rows[0]?.action).toBe('user_ban')
+      expect(rows[0]?.adminUserId).toBe(admin.id)
+    } finally {
+      await db.delete(adminAuditLog).where(eq(adminAuditLog.targetUserId, victim.id))
+      await db.delete(adminAuditLog).where(eq(adminAuditLog.adminUserId, admin.id))
+      await db.delete(users).where(eq(users.id, victim.id))
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('serves the audit-log endpoint to admins and 403s a non-admin', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`adm-auditlog-a-${stamp}`, 'admin')
+    const plain = await createUser(`adm-auditlog-p-${stamp}`)
+    try {
+      const res = await request(app!.server)
+        .get('/api/admin/audit-log')
+        .set('Cookie', await cookieFor(admin))
+        .expect(200)
+      expect(Array.isArray(res.body.entries)).toBe(true)
+      expect(typeof res.body.total).toBe('number')
+
+      const denied = await request(app!.server)
+        .get('/api/admin/audit-log')
+        .set('Cookie', await cookieFor(plain))
+        .expect(403)
+      expect(denied.body.error).toBe('FORBIDDEN')
+
+      await request(app!.server).get('/api/admin/audit-log').expect(401)
+    } finally {
+      await db.delete(users).where(eq(users.id, plain.id))
       await db.delete(users).where(eq(users.id, admin.id))
     }
   })

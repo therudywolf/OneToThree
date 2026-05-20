@@ -30,6 +30,19 @@
                 <data android:scheme="onetothree" android:host="chat" />
             </intent-filter>
 
+            <!-- https App Links for invite/join URLs (https://onetothree.ru/join/...).
+                 autoVerify lets Android open these directly in the app once the
+                 server publishes /.well-known/assetlinks.json for the package. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="onetothree.ru"
+                    android:pathPrefix="/join" />
+            </intent-filter>
+
         </activity>
 
         <provider

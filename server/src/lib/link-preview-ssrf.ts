@@ -6,6 +6,14 @@ import net from 'node:net'
 const MAX_BODY_BYTES = 2_000_000
 
 /**
+ * Only the standard web ports are reachable by server-side fetches. An
+ * authenticated user can otherwise point the preview/proxy at an arbitrary
+ * port (`http://host:6379`, `:5432`, `:9000`, …) and use timing/error
+ * differences to fingerprint or reach internal services.
+ */
+const ALLOWED_FETCH_PORTS = new Set([80, 443])
+
+/**
  * Normalize IPv4-mapped IPv6 (::ffff:x.x.x.x) to dotted IPv4 so private-range
  * checks cannot be bypassed.
  */
@@ -111,6 +119,11 @@ export function requestGetPinned(
       return
     }
 
+    if (!ALLOWED_FETCH_PORTS.has(port)) {
+      reject(new Error('SSRF_BLOCKED'))
+      return
+    }
+
     const baseOpts: http.RequestOptions = {
       agent: false,
       hostname: pinned.address,
@@ -186,6 +199,11 @@ export function requestGetPinnedBinary(
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
       reject(new Error('AbortError'))
+      return
+    }
+
+    if (!ALLOWED_FETCH_PORTS.has(port)) {
+      reject(new Error('SSRF_BLOCKED'))
       return
     }
 

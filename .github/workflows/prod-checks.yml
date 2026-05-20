@@ -109,9 +109,23 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       DATABASE_URL: postgres://forest:forest@127.0.0.1:5432/forest
       JWT_SECRET: your_ci_jwt_secret_at_least_32_characters_long
+      # Both are needed: REDIS_URL points the app at Redis; VITEST_REDIS_URL
+      # tells test-setup.ts to keep REDIS_URL instead of forcing the
+      # in-memory fallback, so the Redis-backed group-call tests run.
+      REDIS_URL: redis://127.0.0.1:6379
+      VITEST_REDIS_URL: redis://127.0.0.1:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

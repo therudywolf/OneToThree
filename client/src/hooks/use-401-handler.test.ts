@@ -13,7 +13,6 @@ describe('shouldHandleUnauthorized', () => {
 
   it('ignores auth routes and already redirected state', () => {
     expect(shouldHandleUnauthorized(401, '/login', '/api/x', false)).toBe(false)
-    expect(shouldHandleUnauthorized(401, '/auth/qr', '/api/x', false)).toBe(false)
     expect(shouldHandleUnauthorized(401, '/chats', '/api/x', true)).toBe(false)
   })
 })

@@ -82,8 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (
           e.status === 401 &&
           !redirectedRef.current &&
-          pathname !== '/login' &&
-          pathname !== '/auth/qr'
+          pathname !== '/login'
         ) {
           redirectedRef.current = true
           console.warn('[auth] Session expired (401) — redirecting to login')

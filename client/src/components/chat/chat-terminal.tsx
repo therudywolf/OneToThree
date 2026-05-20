@@ -769,6 +769,14 @@ export function ChatTerminal({
       .map((m) => m.id)
   }, [renderMessages])
 
+  // id -> position lookup so the message-row render does not call
+  // voiceMessageIds.indexOf() per row (that made rendering O(n^2)).
+  const voiceMessageIndex = useMemo(() => {
+    const m = new Map<string, number>()
+    voiceMessageIds.forEach((id, i) => m.set(id, i))
+    return m
+  }, [voiceMessageIds])
+
   const scrollToAndPlayVoice = useCallback((targetId: string) => {
     const el = ref.current?.querySelector(`[data-message-id="${targetId}"]`)
     if (el) {
@@ -1380,8 +1388,8 @@ export function ChatTerminal({
                         sharedKey={sharedKey}
                         onMediaClick={handleMediaClick}
                         onAudioEnd={() => navigateVoice(m.id, 'next')}
-                        onPrevVoice={voiceMessageIds.indexOf(m.id) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
-                        onNextVoice={voiceMessageIds.indexOf(m.id) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
+                        onPrevVoice={(voiceMessageIndex.get(m.id) ?? -1) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
+                        onNextVoice={(voiceMessageIndex.get(m.id) ?? -1) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
                       />
                     ) : null}
                     {m.reactions && Object.keys(m.reactions).length > 0 ? (
@@ -1511,8 +1519,8 @@ export function ChatTerminal({
                               sharedKey={sharedKey}
                               onMediaClick={handleMediaClick}
                               onAudioEnd={() => navigateVoice(m.id, 'next')}
-                              onPrevVoice={voiceMessageIds.indexOf(m.id) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
-                              onNextVoice={voiceMessageIds.indexOf(m.id) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
+                              onPrevVoice={(voiceMessageIndex.get(m.id) ?? -1) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
+                              onNextVoice={(voiceMessageIndex.get(m.id) ?? -1) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
                             />
                           ) : null}
                         </div>

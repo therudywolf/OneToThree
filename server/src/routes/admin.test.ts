@@ -1,0 +1,175 @@
+import { randomUUID } from 'node:crypto'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import request from 'supertest'
+import type { FastifyInstance } from 'fastify'
+import { eq, sql } from 'drizzle-orm'
+import { buildApp } from '../app.js'
+import { db } from '../db/index.js'
+import { reports, users } from '../db/schema.js'
+
+async function createUser(username: string, role: 'user' | 'admin' = 'user') {
+  const [row] = await db
+    .insert(users)
+    .values({
+      username,
+      publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+      role,
+    })
+    .returning({ id: users.id, username: users.username, role: users.role })
+  return row
+}
+
+describe('admin routes — authorization & self-protection', () => {
+  let app: FastifyInstance | undefined
+  let dbAvailable = true
+
+  beforeAll(async () => {
+    app = await buildApp()
+    await app.ready()
+    try {
+      await db.execute(sql`select 1`)
+    } catch {
+      dbAvailable = false
+    }
+  })
+
+  afterAll(async () => {
+    if (app) await app.close()
+  })
+
+  async function cookieFor(user: { id: string; username: string }): Promise<string> {
+    const token = await app!.jwt.sign({
+      sub: user.id,
+      username: user.username,
+      jti: randomUUID(),
+    })
+    return `fm_session=${token}`
+  }
+
+  it('rejects an unauthenticated request with 401', async () => {
+    if (!dbAvailable) return
+    await request(app!.server).get('/api/admin/users').expect(401)
+  })
+
+  it('rejects a non-admin user with 403 FORBIDDEN', async () => {
+    if (!dbAvailable) return
+    const plain = await createUser(`adm-plain-${Date.now().toString(36)}`)
+    try {
+      const res = await request(app!.server)
+        .get('/api/admin/users')
+        .set('Cookie', await cookieFor(plain))
+        .expect(403)
+      expect(res.body.error).toBe('FORBIDDEN')
+    } finally {
+      await db.delete(users).where(eq(users.id, plain.id))
+    }
+  })
+
+  it('allows an admin to list users', async () => {
+    if (!dbAvailable) return
+    const admin = await createUser(`adm-ok-${Date.now().toString(36)}`, 'admin')
+    try {
+      const res = await request(app!.server)
+        .get('/api/admin/users')
+        .set('Cookie', await cookieFor(admin))
+        .expect(200)
+      expect(Array.isArray(res.body.users)).toBe(true)
+      expect(res.body.users.some((u: { id: string }) => u.id === admin.id)).toBe(true)
+    } finally {
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('bans a user and reflects it in the database; 404 for an unknown id', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`adm-ban-a-${stamp}`, 'admin')
+    const victim = await createUser(`adm-ban-v-${stamp}`)
+    try {
+      const cookie = await cookieFor(admin)
+
+      await request(app!.server)
+        .patch(`/api/admin/users/${victim.id}/ban`)
+        .set('Cookie', cookie)
+        .send({ banned: true })
+        .expect(200)
+
+      const [row] = await db
+        .select({ isBanned: users.isBanned })
+        .from(users)
+        .where(eq(users.id, victim.id))
+      expect(row?.isBanned).toBe(true)
+
+      const missing = await request(app!.server)
+        .patch(`/api/admin/users/${randomUUID()}/ban`)
+        .set('Cookie', cookie)
+        .send({ banned: true })
+        .expect(404)
+      expect(missing.body.error).toBe('USER_NOT_FOUND')
+    } finally {
+      await db.delete(users).where(eq(users.id, victim.id))
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('refuses to let an admin change their own role', async () => {
+    if (!dbAvailable) return
+    const admin = await createUser(`adm-role-${Date.now().toString(36)}`, 'admin')
+    try {
+      const res = await request(app!.server)
+        .patch(`/api/admin/users/${admin.id}/role`)
+        .set('Cookie', await cookieFor(admin))
+        .send({ role: 'user' })
+        .expect(400)
+      expect(res.body.error).toBe('CANNOT_CHANGE_OWN_ROLE')
+    } finally {
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('refuses to let an admin ban themselves via a report action', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`adm-self-${stamp}`, 'admin')
+    const reporter = await createUser(`adm-rep-${stamp}`)
+    let reportId: string | null = null
+    try {
+      const [rep] = await db
+        .insert(reports)
+        .values({ reporterId: reporter.id, reportedId: admin.id, reason: 'self-ban guard test' })
+        .returning({ id: reports.id })
+      reportId = rep.id
+
+      const res = await request(app!.server)
+        .patch(`/api/admin/reports/${reportId}`)
+        .set('Cookie', await cookieFor(admin))
+        .send({ ban_reported: true })
+        .expect(400)
+      expect(res.body.error).toBe('CANNOT_BAN_SELF')
+
+      const [self] = await db
+        .select({ isBanned: users.isBanned })
+        .from(users)
+        .where(eq(users.id, admin.id))
+      expect(self?.isBanned).toBe(false)
+    } finally {
+      if (reportId) await db.delete(reports).where(eq(reports.id, reportId))
+      await db.delete(users).where(eq(users.id, reporter.id))
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('returns 404 when revoking an unknown device', async () => {
+    if (!dbAvailable) return
+    const admin = await createUser(`adm-dev-${Date.now().toString(36)}`, 'admin')
+    try {
+      const res = await request(app!.server)
+        .delete(`/api/admin/devices/${randomUUID()}`)
+        .set('Cookie', await cookieFor(admin))
+        .expect(404)
+      expect(res.body.error).toBe('DEVICE_NOT_FOUND')
+    } finally {
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+})

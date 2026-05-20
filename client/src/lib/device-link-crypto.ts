@@ -42,6 +42,35 @@ type LinkEnvelope = {
   ct: string
 }
 
+const QR_TAG = 'p13-link'
+
+export type LinkQrPayload = {
+  rendezvousId: string
+  /** The new device's ephemeral ECDH public JWK — safe to display in a QR. */
+  ephemeralPubkey: string
+}
+
+/** Encode the QR shown by the new device. Carries only public material. */
+export function buildLinkQrPayload(
+  rendezvousId: string,
+  ephemeralPubkey: string
+): string {
+  return JSON.stringify({ t: QR_TAG, r: rendezvousId, k: ephemeralPubkey })
+}
+
+/** Parse a scanned QR string; returns null if it is not a device-link QR. */
+export function parseLinkQrPayload(raw: string): LinkQrPayload | null {
+  try {
+    const o = JSON.parse(raw) as { t?: unknown; r?: unknown; k?: unknown }
+    if (o.t !== QR_TAG || typeof o.r !== 'string' || typeof o.k !== 'string') {
+      return null
+    }
+    return { rendezvousId: o.r, ephemeralPubkey: o.k }
+  } catch {
+    return null
+  }
+}
+
 /** Generate the new device's ephemeral keypair for a QR linking session. */
 export async function generateLinkEphemeralKeypair(): Promise<LinkEphemeralKeypair> {
   const pair = await generateKeyPair({ extractable: true })

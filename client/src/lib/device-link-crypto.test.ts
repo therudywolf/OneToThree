@@ -3,6 +3,8 @@ import {
   generateLinkEphemeralKeypair,
   encryptVaultToEphemeralKey,
   decryptVaultFromEphemeralKey,
+  buildLinkQrPayload,
+  parseLinkQrPayload,
 } from './device-link-crypto'
 
 const SAMPLE_VAULT = JSON.stringify({
@@ -60,5 +62,17 @@ describe('device-link ECIES', () => {
     await expect(
       decryptVaultFromEphemeralKey(JSON.stringify({ v: 1 }), newDevice.privateJwk)
     ).rejects.toThrow('INVALID_LINK_PAYLOAD')
+  })
+
+  it('round-trips the QR payload and rejects foreign QR strings', () => {
+    const encoded = buildLinkQrPayload('rdv-123', '{"kty":"EC","crv":"P-256","x":"a","y":"b"}')
+    const parsed = parseLinkQrPayload(encoded)
+    expect(parsed).toEqual({
+      rendezvousId: 'rdv-123',
+      ephemeralPubkey: '{"kty":"EC","crv":"P-256","x":"a","y":"b"}',
+    })
+    expect(parseLinkQrPayload('https://example.com')).toBeNull()
+    expect(parseLinkQrPayload('not-json')).toBeNull()
+    expect(parseLinkQrPayload(JSON.stringify({ t: 'other', r: 'x', k: 'y' }))).toBeNull()
   })
 })

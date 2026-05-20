@@ -350,6 +350,14 @@ export const messages = pgTable(
     senderIdx: index('messages_sender_id_idx').on(t.senderId),
     replyIdx: index('messages_reply_to_id_idx').on(t.replyToId),
     pinnedIdx: index('messages_chat_pinned_idx').on(t.chatId, t.isPinned),
+    // Unread-count queries: chat_id IN (...) AND read_at IS NULL AND sender_id != me.
+    unreadIdx: index('messages_chat_unread_idx')
+      .on(t.chatId, t.senderId)
+      .where(sql`${t.readAt} IS NULL`),
+    // Media-retention purge: media_path IS NOT NULL AND created_at < cutoff.
+    mediaPurgeIdx: index('messages_media_path_idx')
+      .on(t.createdAt)
+      .where(sql`${t.mediaPath} IS NOT NULL`),
   })
 )
 
@@ -886,6 +894,14 @@ export const attachments = pgTable(
     evictedIdx: index('attachments_evicted_idx').on(t.evictedAt),
     messageIdx: index('attachments_message_id_idx').on(t.messageId),
     chatIdx: index('attachments_chat_id_idx').on(t.chatId),
+    // Per-user quota math (getUserUsageBytes) — scoped to live attachments.
+    uploaderIdx: index('attachments_uploader_id_idx')
+      .on(t.uploaderId)
+      .where(sql`${t.evictedAt} IS NULL`),
+    // LRU eviction scan order: orphans first, then least-recently-accessed.
+    lruIdx: index('attachments_lru_idx')
+      .on(t.messageId, t.lastAccessedAt)
+      .where(sql`${t.evictedAt} IS NULL`),
   })
 )
 

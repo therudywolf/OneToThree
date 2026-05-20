@@ -56,7 +56,7 @@ export function encryptTotpSecret(secret: string): string {
       process.stderr.write(
         `${JSON.stringify({
           level: 'warn',
-          msg: '[totp-crypto] TOTP_WRAP_KEY not set — TOTP secrets will be stored PLAINTEXT in the DB. Acceptable for dev fixtures only. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+          msg: '[totp-crypto] TOTP_WRAP_KEY not set — TOTP secrets will be stored PLAINTEXT in the DB. Acceptable for dev fixtures only. Generate one with: openssl rand -hex 32',
         })}\n`
       )
     }

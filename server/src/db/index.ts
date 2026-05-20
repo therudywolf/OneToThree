@@ -30,7 +30,21 @@ function buildDatabaseUrl(): string {
   return url
 }
 
-const client = postgres(buildDatabaseUrl(), { max: 10 })
+/**
+ * Pool size. A fixed `max: 10` saturates under load — request traffic shares
+ * the pool with media-cleanup jobs, retention purge, presence writes and the
+ * 6+ sequential queries of a single message fan-out. Tunable via PG_POOL_MAX.
+ */
+function poolMax(): number {
+  const raw = Number.parseInt(process.env.PG_POOL_MAX ?? '', 10)
+  return Number.isFinite(raw) && raw > 0 && raw <= 200 ? raw : 20
+}
+
+const client = postgres(buildDatabaseUrl(), {
+  max: poolMax(),
+  idle_timeout: 30,
+  connect_timeout: 10,
+})
 
 export const db = drizzle(client, { schema })
 

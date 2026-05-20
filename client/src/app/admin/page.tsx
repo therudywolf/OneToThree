@@ -7,11 +7,13 @@ import { useAuth } from '@/components/auth/auth-provider'
 import {
   adminLoginEventsCsvUrl,
   deleteAdminDevice,
+  fetchAdminAuditLog,
   fetchAdminReportContext,
   patchAdminReport,
   fetchAdminKpi,
   fetchAdminLoginEvents,
   fetchAdminMediaQuota,
+  fetchAdminPushStats,
   fetchAdminReports,
   fetchAdminSystemStats,
   fetchAdminUserDevices,
@@ -21,13 +23,16 @@ import {
   patchAdminUserRole,
   patchAdminUserStorageQuota,
   patchUserBan,
+  postAdminMediaCleanupOrphans,
   postAdminMediaEvict,
   postAdminPurgeUser,
+  type AdminAuditLogRow,
   type AdminDeviceRow,
   type AdminKpiResponse,
   type AdminLoginEventFilters,
   type AdminLoginEventRow,
   type AdminMediaQuotaResponse,
+  type AdminPushStatRow,
   type AdminReportContext,
   type AdminReportRow,
   type AdminStorageUserRow,
@@ -36,7 +41,10 @@ import {
 } from '@/lib/api/admin'
 import { useThemeStore } from '@/store/themeStore'
 
-type Tab = 'nodes' | 'incidents' | 'login-events' | 'system' | 'storage'
+type Tab = 'nodes' | 'incidents' | 'login-events' | 'system' | 'storage' | 'audit'
+
+const NODES_PAGE_SIZE = 100
+const REPORTS_PAGE_SIZE = 100
 
 function fmtBytes(n: bigint | number): string {
   const v = typeof n === 'bigint' ? Number(n) : n
@@ -208,9 +216,13 @@ export default function AdminPage() {
 
   const [tab, setTab] = useState<Tab>('nodes')
   const [nodes, setNodes] = useState<AdminUserRow[]>([])
+  const [nodesTotal, setNodesTotal] = useState(0)
+  const [nodesOffset, setNodesOffset] = useState(0)
   const [storageData, setStorageData] = useState<AdminStorageUserRow[]>([])
   const [sysPulse, setSysPulse] = useState<AdminSystemStats | null>(null)
   const [incidents, setIncidents] = useState<AdminReportRow[]>([])
+  const [incidentsTotal, setIncidentsTotal] = useState(0)
+  const [incidentsOffset, setIncidentsOffset] = useState(0)
   const [loginEvents, setLoginEvents] = useState<AdminLoginEventRow[]>([])
   const [search, setSearch] = useState('')
 
@@ -238,21 +250,23 @@ export default function AdminPage() {
     setErrorLog(null)
     try {
       const [u, r, pulse, storage, events] = await Promise.all([
-        fetchAdminUsers(),
-        fetchAdminReports(),
+        fetchAdminUsers({ limit: NODES_PAGE_SIZE, offset: nodesOffset }),
+        fetchAdminReports({ limit: REPORTS_PAGE_SIZE, offset: incidentsOffset }),
         fetchAdminSystemStats(),
         fetchAdminUserStorageUsage(),
         fetchAdminLoginEvents(),
       ])
-      setNodes(u)
-      setIncidents(r)
+      setNodes(u.users)
+      setNodesTotal(u.total)
+      setIncidents(r.reports)
+      setIncidentsTotal(r.total)
       setSysPulse(pulse)
       setStorageData(storage)
       setLoginEvents(events)
     } catch (e) {
       setErrorLog(e instanceof Error ? e.message : 'SYNC_PROTOCOL_FAILURE')
     }
-  }, [])
+  }, [nodesOffset, incidentsOffset])
 
   useEffect(() => {
     if (loading) return
@@ -316,11 +330,12 @@ export default function AdminPage() {
   }
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'nodes', label: 'NODES', count: nodes.length },
+    { id: 'nodes', label: 'NODES', count: nodesTotal },
     { id: 'system', label: 'SYSTEM' },
     { id: 'storage', label: 'STORAGE' },
     { id: 'incidents', label: 'INCIDENTS', count: incidents.filter(r => r.status === 'open').length || undefined },
     { id: 'login-events', label: 'LOGIN_LOG', count: loginEvents.length || undefined },
+    { id: 'audit', label: 'AUDIT_LOG' },
   ]
 
   return (
@@ -490,6 +505,13 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            <PageControls
+              offset={nodesOffset}
+              limit={NODES_PAGE_SIZE}
+              total={nodesTotal}
+              count={nodes.length}
+              onOffset={setNodesOffset}
+            />
           </div>
         )}
 
@@ -539,13 +561,14 @@ export default function AdminPage() {
             ) : (
               <div className="h-32 animate-pulse border border-border-strong" />
             )}
+            <PushStatsPanel onError={(msg) => setErrorLog(msg)} />
           </div>
         )}
 
         {/* INCIDENTS TAB */}
         {tab === 'incidents' && (
           <div>
-            <h2 className="mb-4 text-[10px] uppercase tracking-[0.3em] text-text-muted/70">:: INCIDENT_QUEUE ({incidents.length})</h2>
+            <h2 className="mb-4 text-[10px] uppercase tracking-[0.3em] text-text-muted/70">:: INCIDENT_QUEUE ({incidentsTotal})</h2>
             <div className="overflow-x-auto border border-border-strong">
               <table className="min-w-[40rem] w-full text-left">
                 <thead>
@@ -582,11 +605,21 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+            <PageControls
+              offset={incidentsOffset}
+              limit={REPORTS_PAGE_SIZE}
+              total={incidentsTotal}
+              count={incidents.length}
+              onOffset={setIncidentsOffset}
+            />
           </div>
         )}
 
         {/* STORAGE TAB — Sprint A1-1 */}
         {tab === 'storage' && <StoragePanel onError={(msg) => setErrorLog(msg)} />}
+
+        {/* AUDIT_LOG TAB — Track E */}
+        {tab === 'audit' && <AuditLogPanel onError={(msg) => setErrorLog(msg)} />}
 
         {/* LOGIN EVENTS TAB */}
         {tab === 'login-events' && (
@@ -1118,6 +1151,8 @@ function StoragePanel({ onError }: { onError: (msg: string) => void }) {
   const [evicting, setEvicting] = useState(false)
   const [lastEvict, setLastEvict] = useState<{ evicted: number; freedBytes: number } | null>(null)
   const [overrideTarget, setOverrideTarget] = useState<string>('')
+  const [cleaning, setCleaning] = useState(false)
+  const [lastCleanup, setLastCleanup] = useState<{ deleted: number; freedBytes: number } | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -1152,6 +1187,19 @@ function StoragePanel({ onError }: { onError: (msg: string) => void }) {
       setEvicting(false)
     }
   }, [overrideTarget, refresh, onError])
+
+  const runCleanup = useCallback(async () => {
+    setCleaning(true)
+    try {
+      const result = await postAdminMediaCleanupOrphans()
+      setLastCleanup({ deleted: result.deleted, freedBytes: result.freedBytes })
+      await refresh()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'CLEANUP_ORPHANS_FAILED')
+    } finally {
+      setCleaning(false)
+    }
+  }, [refresh, onError])
 
   if (loading) {
     return (
@@ -1230,19 +1278,242 @@ function StoragePanel({ onError }: { onError: (msg: string) => void }) {
           </button>
           <button
             type="button"
+            onClick={() => void runCleanup()}
+            disabled={cleaning}
+            className="border border-neon-amber/60 px-3 py-1 text-[9px] uppercase tracking-widest text-neon-amber transition-colors hover:border-neon-amber hover:bg-neon-amber/10 disabled:opacity-50"
+          >
+            {cleaning ? '[ CLEANING... ]' : '[ CLEANUP ORPHANS ]'}
+          </button>
+          <button
+            type="button"
             onClick={() => void refresh()}
             className="border border-border-strong px-3 py-1 text-[9px] uppercase tracking-widest text-text-muted hover:border-neon-cyan hover:text-neon-cyan"
           >
             [ REFRESH ]
           </button>
         </div>
+        <p className="text-[10px] text-text-muted/60">
+          CLEANUP_ORPHANS drops upload-url objects that never became message
+          attachments (stale uploads).
+        </p>
         {lastEvict && (
           <div className="text-[10px] text-text-muted/70">
-            Last run: evicted <span className="text-neon-cyan">{lastEvict.evicted}</span> attachments,
+            Last evict: evicted <span className="text-neon-cyan">{lastEvict.evicted}</span> attachments,
             freed <span className="text-neon-cyan">{fmtBytes(lastEvict.freedBytes)}</span>.
           </div>
         )}
+        {lastCleanup && (
+          <div className="text-[10px] text-text-muted/70">
+            Last cleanup: deleted <span className="text-neon-cyan">{lastCleanup.deleted}</span> orphans,
+            freed <span className="text-neon-cyan">{fmtBytes(lastCleanup.freedBytes)}</span>.
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Track E — limit/offset paging toolbar for the NODES and INCIDENTS tables.
+ * Server caps the page at 500; the dashboard uses fixed 100-row pages.
+ */
+function PageControls({
+  offset,
+  limit,
+  total,
+  count,
+  onOffset,
+}: {
+  offset: number
+  limit: number
+  total: number
+  count: number
+  onOffset: (next: number) => void
+}) {
+  if (total <= limit && offset === 0) return null
+  const from = total === 0 ? 0 : offset + 1
+  const to = offset + count
+  const hasPrev = offset > 0
+  const hasNext = offset + limit < total
+  return (
+    <div className="mt-3 flex items-center justify-end gap-3 text-[9px] uppercase tracking-widest text-text-muted/70">
+      <span>
+        {from}–{to} / {total}
+      </span>
+      <button
+        type="button"
+        disabled={!hasPrev}
+        onClick={() => onOffset(Math.max(0, offset - limit))}
+        className="border border-border-strong px-2 py-1 hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-30"
+      >
+        [ PREV ]
+      </button>
+      <button
+        type="button"
+        disabled={!hasNext}
+        onClick={() => onOffset(offset + limit)}
+        className="border border-border-strong px-2 py-1 hover:border-neon-cyan hover:text-neon-cyan disabled:opacity-30"
+      >
+        [ NEXT ]
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Track E — surfaces the previously hidden GET /api/admin/push-stats endpoint.
+ * Shows web-push subscription counts per user inside the SYSTEM tab.
+ */
+function PushStatsPanel({ onError }: { onError: (msg: string) => void }) {
+  const [rows, setRows] = useState<AdminPushStatRow[] | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      setRows(await fetchAdminPushStats())
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'PUSH_STATS_FAILED')
+    }
+  }, [onError])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const totalSubs = (rows ?? []).reduce((sum, r) => sum + r.count, 0)
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 className="text-[10px] uppercase tracking-[0.3em] text-neon-cyan">
+          :: PUSH_SUBSCRIPTIONS
+        </h2>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          className="border border-border-strong px-2 py-1 text-[9px] uppercase tracking-widest text-text-muted hover:border-neon-cyan hover:text-neon-cyan"
+        >
+          [ REFRESH ]
+        </button>
+      </div>
+      {rows == null ? (
+        <div className="h-16 animate-pulse border border-border-strong" />
+      ) : rows.length === 0 ? (
+        <div className="border border-border-strong p-4 text-[10px] uppercase tracking-widest text-text-muted/40">
+          NO_PUSH_SUBSCRIPTIONS
+        </div>
+      ) : (
+        <div className="overflow-x-auto border border-border-strong">
+          <table className="min-w-[24rem] w-full text-left">
+            <thead>
+              <tr className="border-b border-border-strong text-[9px] uppercase tracking-[0.2em] text-text-muted/60">
+                <th className="px-4 py-2 font-normal">USER_ID</th>
+                <th className="px-4 py-2 font-normal">SUBSCRIPTIONS</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-strong">
+              {rows.map((r) => (
+                <tr key={r.user_id} className="text-[9px] hover:bg-surface/[0.03]">
+                  <td className="px-4 py-2 font-mono text-text-muted/70">{r.user_id}</td>
+                  <td className="px-4 py-2 text-text-secondary">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-border-strong text-[9px] uppercase">
+                <td className="px-4 py-2 text-text-muted/60">TOTAL</td>
+                <td className="px-4 py-2 text-neon-cyan">{totalSubs}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Track E — admin audit log viewer. Paginated trail of every mutating admin
+ * action (ban, purge, role change, report update, device revoke, quota change,
+ * media evict, cleanup-orphans) backed by GET /api/admin/audit-log.
+ */
+function AuditLogPanel({ onError }: { onError: (msg: string) => void }) {
+  const PAGE = 100
+  const [rows, setRows] = useState<AdminAuditLogRow[]>([])
+  const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetchAdminAuditLog({ limit: PAGE, offset })
+      setRows(res.entries)
+      setTotal(res.total)
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'AUDIT_LOG_FAILED')
+    } finally {
+      setLoading(false)
+    }
+  }, [offset, onError])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return (
+    <div>
+      <h2 className="mb-4 text-[10px] uppercase tracking-[0.3em] text-text-muted/70">
+        :: ADMIN_AUDIT_LOG ({total})
+      </h2>
+      {loading ? (
+        <div className="h-32 animate-pulse border border-border-strong" />
+      ) : (
+        <>
+          <div className="overflow-x-auto border border-border-strong">
+            <table className="min-w-[48rem] w-full text-left">
+              <thead>
+                <tr className="border-b border-border-strong text-[9px] uppercase tracking-[0.2em] text-text-muted/60">
+                  <th className="px-4 py-3 font-normal">TIMESTAMP</th>
+                  <th className="px-4 py-3 font-normal">ADMIN</th>
+                  <th className="px-4 py-3 font-normal">ACTION</th>
+                  <th className="px-4 py-3 font-normal">TARGET</th>
+                  <th className="px-4 py-3 font-normal">DETAIL</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-strong">
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-[10px] uppercase tracking-widest text-text-muted/40">
+                      NO_AUDIT_ENTRIES
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((r) => (
+                    <tr key={r.id} className="text-[9px] hover:bg-surface/[0.03]">
+                      <td className="px-4 py-3 whitespace-nowrap text-text-muted/50">{fmtDate(r.created_at)}</td>
+                      <td className="px-4 py-3 text-neon-cyan">{r.admin_username ?? r.admin_user_id.slice(0, 8)}</td>
+                      <td className="px-4 py-3 uppercase text-neon-amber">{r.action}</td>
+                      <td className="px-4 py-3 font-mono text-text-muted/70">
+                        {r.target_user_id ? `${r.target_user_id.slice(0, 8)}…` : '—'}
+                      </td>
+                      <td className="px-4 py-3 max-w-md truncate font-mono text-text-muted/60">
+                        {r.detail ? JSON.stringify(r.detail) : '—'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <PageControls
+            offset={offset}
+            limit={PAGE}
+            total={total}
+            count={rows.length}
+            onOffset={setOffset}
+          />
+        </>
+      )}
     </div>
   )
 }

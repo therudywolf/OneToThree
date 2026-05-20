@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 therudywolf
 
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
@@ -583,6 +583,19 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
     const { chatId } = params.data
 
+    // Optional keyset pagination: `before` (ISO timestamp) walks older pages,
+    // `limit` caps the page size. Absent `before` keeps the existing
+    // oldest-first load so current clients are unaffected.
+    const pageQuery = z
+      .object({
+        before: z.string().datetime().optional(),
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+      })
+      .safeParse(request.query)
+    if (!pageQuery.success) return reply.status(400).send({ error: 'INVALID_QUERY' })
+    const pageLimit = pageQuery.data.limit ?? 500
+    const beforeDate = pageQuery.data.before ? new Date(pageQuery.data.before) : null
+
     const memberOk = await db
       .select({ one: chatMembers.userId })
       .from(chatMembers)
@@ -627,9 +640,19 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
             )
           : sql`false`
       )
-      .where(and(eq(messages.chatId, chatId), cutoff ? gte(messages.createdAt, cutoff) : undefined))
-      .orderBy(asc(messages.createdAt))
-      .limit(500)
+      .where(
+        and(
+          eq(messages.chatId, chatId),
+          cutoff ? gte(messages.createdAt, cutoff) : undefined,
+          beforeDate ? lt(messages.createdAt, beforeDate) : undefined
+        )
+      )
+      .orderBy(beforeDate ? desc(messages.createdAt) : asc(messages.createdAt))
+      .limit(pageLimit)
+
+    // Paging older fetches newest-first; flip back so the response is always
+    // ordered oldest -> newest.
+    if (beforeDate) rows.reverse()
 
     return reply.send({
       messages: rows.map((m) => ({

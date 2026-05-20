@@ -13,9 +13,9 @@ type HeartbeatSocket = WebSocket & {
   __isAlive?: boolean
 }
 
-// FIX 2: Heartbeat — detect and terminate dead connections
+// Heartbeat — detect and terminate dead connections.
 const PING_INTERVAL = 30_000
-setInterval(() => {
+const heartbeatTimer = setInterval(() => {
   for (const [, sockets] of userSockets) {
     for (const ws of sockets) {
       const heartbeatWs = ws as HeartbeatSocket
@@ -29,6 +29,8 @@ setInterval(() => {
     }
   }
 }, PING_INTERVAL)
+// Don't let this maintenance timer keep the process alive during shutdown.
+heartbeatTimer.unref()
 
 export function registerUserSocket(
   userId: string,

@@ -6,6 +6,7 @@ import WebSocket from 'ws'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import { chatMembers, chats, users } from '../db/schema.js'
+import { closeRedis, getRedis } from '../lib/redis.js'
 
 async function createUser(username: string) {
   const [row] = await db
@@ -64,6 +65,7 @@ async function waitForMessage(
 describe('group call websocket signaling', () => {
   let app: FastifyInstance | undefined
   let dbAvailable = true
+  let redisAvailable = false
   let baseUrl = ''
 
   beforeAll(async () => {
@@ -75,15 +77,28 @@ describe('group call websocket signaling', () => {
       dbAvailable = false
       return
     }
+    // Group-call signaling is Redis-backed: without a reachable Redis the
+    // room registry no-ops, so skip rather than fail. test-setup.ts strips
+    // REDIS_URL unless VITEST_REDIS_URL is set.
+    const redis = getRedis()
+    if (redis) {
+      try {
+        await redis.ping()
+        redisAvailable = true
+      } catch {
+        redisAvailable = false
+      }
+    }
     baseUrl = await app.listen({ host: '127.0.0.1', port: 0 })
   })
 
   afterAll(async () => {
     if (app) await app.close()
+    await closeRedis()
   })
 
   it('rejects group call offers targeted at users outside the active room', async () => {
-    if (!dbAvailable) return
+    if (!dbAvailable || !redisAvailable) return
     const sender = await createUser(`gc-sender-${Date.now().toString(36)}`)
     const outsider = await createUser(`gc-outsider-${Date.now().toString(36)}`)
     const [chat] = await db
@@ -148,7 +163,7 @@ describe('group call websocket signaling', () => {
   })
 
   it('relays encrypted group audio frames only to active room targets', async () => {
-    if (!dbAvailable) return
+    if (!dbAvailable || !redisAvailable) return
     const sender = await createUser(`gc-relay-a-${Date.now().toString(36)}`)
     const target = await createUser(`gc-relay-b-${Date.now().toString(36)}`)
     const outsider = await createUser(`gc-relay-c-${Date.now().toString(36)}`)

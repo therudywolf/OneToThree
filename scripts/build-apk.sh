@@ -135,6 +135,10 @@ command -v npx  >/dev/null 2>&1 || die "npx not found."
 # 1. Next.js static export
 log "Step 1/3: Next.js static export…"
 cd "$CLIENT_DIR"
+# Wipe any prior export first so stale pages (e.g. a route removed in a later
+# commit) can never be packaged into the APK.
+log "Cleaning previous Next.js export (client/out, client/.next)…"
+rm -rf "$CLIENT_DIR/out" "$CLIENT_DIR/.next"
 env \
   NEXT_EXPORT=1 \
   NEXT_PUBLIC_API_URL="$API_URL" \

@@ -1,5 +1,32 @@
 apply plugin: 'com.android.application'
 
+// Repo-root VERSION is the single source of truth for the app version.
+// CI / release tooling may still override with -PVERSION_NAME / -PVERSION_CODE.
+def repoVersionName = '0.0.0'
+try {
+    def versionFile = new File(rootProject.projectDir, '../../../VERSION')
+    if (versionFile.exists()) {
+        def raw = versionFile.text.trim()
+        if (raw) { repoVersionName = raw }
+    }
+} catch (Exception e) {
+    logger.warn("Could not read repo VERSION file, falling back to ${repoVersionName}")
+}
+// Derive a monotonic integer versionCode from MAJOR.MINOR.PATCH of the semver
+// (pre-release suffix like "-alpha.1" is ignored for the code).
+def repoVersionCode = 1
+try {
+    def m = (repoVersionName =~ /^(\d+)\.(\d+)\.(\d+)/)
+    if (m.find()) {
+        repoVersionCode = m.group(1).toInteger() * 10000 +
+                          m.group(2).toInteger() * 100 +
+                          m.group(3).toInteger()
+        if (repoVersionCode < 1) { repoVersionCode = 1 }
+    }
+} catch (Exception e) {
+    logger.warn("Could not derive versionCode from '${repoVersionName}', using ${repoVersionCode}")
+}
+
 android {
     def versionCodeProp = project.findProperty('VERSION_CODE')?.toString()
     def versionNameProp = project.findProperty('VERSION_NAME')?.toString()
@@ -9,8 +36,8 @@ android {
         applicationId "ru.onetothree.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode versionCodeProp ? Integer.parseInt(versionCodeProp) : 1
-        versionName versionNameProp ?: "1.0.0"
+        versionCode versionCodeProp ? Integer.parseInt(versionCodeProp) : repoVersionCode
+        versionName versionNameProp ?: repoVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

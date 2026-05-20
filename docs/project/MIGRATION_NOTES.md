@@ -72,12 +72,13 @@
 
 ## Фаза 1.5 — сервер удаляет `GET /api/messages/search`
 
-- Обработчик в `server/src/routes/messages.ts` теперь возвращает **`410 Gone`**
-  с телом `{ error: 'SEARCH_SERVER_SIDE_REMOVED' }`.
+- Маршрут `GET /api/messages/search` полностью удалён из
+  `server/src/routes/messages.ts` (Track E cleanup) — раньше он отдавал
+  пустую `410 Gone`-заглушку, теперь путь падает в стандартный `404`.
 - Клиентский хелпер `searchChatMessages` удалён; использовать
   `@/hooks/use-local-search` (в памяти) и `searchLocalMessages`
   (IndexedDB-индекс в `@/lib/message-cache`).
-- Интеграционный тест `messages-flow.test.ts` переключён на ожидание `410`.
+- Интеграционный тест `messages-flow.test.ts` ожидает `404`.
 
 ## Фаза 2.1 — `themeStore` split: shellMode × palette
 

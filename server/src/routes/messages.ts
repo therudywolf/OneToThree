@@ -239,27 +239,6 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
   })
 
   /**
-   * Server-side message search is REMOVED in protocol v4.
-   *
-   * Rationale: with E2EE enabled the stored `messages.content` column is
-   * AES-GCM ciphertext (or a base64-wrapped plaintext for legacy `public_open`
-   * groups). Running ILIKE over that column is either useless (encrypted
-   * chats — zero signal) or a plaintext privacy leak (public groups — server
-   * sees and logs user queries in the clear).
-   *
-   * Search is now always client-side against decrypted messages
-   * (see `client/src/hooks/use-local-search.ts` and the IndexedDB token index
-   * in `client/src/lib/message-cache.ts`). The endpoint returns 410 Gone so
-   * older clients fail fast with a clear error instead of silent 404.
-   */
-  app.get('/search', async (_request, reply) => {
-    return reply.status(410).send({
-      error: 'SEARCH_SERVER_SIDE_REMOVED',
-      message: 'Server-side search has been disabled. Update the client; search is now performed locally against decrypted messages.',
-    })
-  })
-
-  /**
    * Stage 5: GET /sync/pending
    * Now also returns per-device ciphertext slot for the caller's current device.
    */

@@ -18,9 +18,13 @@ export function ToastHost() {
 
   if (toasts.length === 0) return null
 
+  // Error toasts should interrupt a screen reader (assertive); informational
+  // ones should wait their turn (polite).
+  const hasError = toasts.some((t) => t.level === 'error')
+
   return (
     <div
-      aria-live="polite"
+      aria-live={hasError ? 'assertive' : 'polite'}
       className="pointer-events-none fixed left-1/2 z-[120] flex w-[min(calc(100vw-1rem),420px)] -translate-x-1/2 flex-col gap-1.5"
       style={{ top: 'max(0.75rem, env(safe-area-inset-top, 0.75rem))' }}
     >

@@ -1045,15 +1045,13 @@ export function ChatTerminal({
 
   if (!activeChatId) {
     return (
-      <div className="crt-terminal-vignette flex flex-1 items-center justify-center bg-void font-mono text-xs text-danger">
-        <div className="max-w-xs space-y-3 border border-neon-cyan/20 px-6 py-4 text-center">
-          <p className="text-sm tracking-[0.2em] text-neon-cyan/50">
-            {t('chat.emptyTitle')}
-          </p>
-          <p className="text-[10px] uppercase tracking-widest text-danger">
-            {t('chat.emptySubtitle')}
-          </p>
-        </div>
+      <div className="crt-terminal-vignette flex flex-1 flex-col items-center justify-center gap-2 bg-void px-6 text-center">
+        <p className="text-sm font-medium text-[color:var(--on-surface)]">
+          {t('chat.emptyTitle')}
+        </p>
+        <p className="max-w-xs text-xs leading-relaxed text-[color:var(--text-muted)]">
+          {t('chat.emptySubtitle')}
+        </p>
       </div>
     )
   }

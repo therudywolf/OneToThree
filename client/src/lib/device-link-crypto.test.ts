@@ -5,6 +5,9 @@ import {
   decryptVaultFromEphemeralKey,
   buildLinkQrPayload,
   parseLinkQrPayload,
+  buildLinkModeBQrPayload,
+  parseLinkModeBQrPayload,
+  deriveLinkVerificationCode,
 } from './device-link-crypto'
 
 const SAMPLE_VAULT = JSON.stringify({
@@ -74,5 +77,59 @@ describe('device-link ECIES', () => {
     expect(parseLinkQrPayload('https://example.com')).toBeNull()
     expect(parseLinkQrPayload('not-json')).toBeNull()
     expect(parseLinkQrPayload(JSON.stringify({ t: 'other', r: 'x', k: 'y' }))).toBeNull()
+  })
+})
+
+describe('device-link Mode B QR', () => {
+  it('round-trips the Mode B QR payload', () => {
+    const encoded = buildLinkModeBQrPayload('rdv-abc', 'claim-secret-xyz')
+    const parsed = parseLinkModeBQrPayload(encoded)
+    expect(parsed).toEqual({ rendezvousId: 'rdv-abc', claimSecret: 'claim-secret-xyz' })
+  })
+
+  it('rejects foreign and Mode A QR strings as Mode B', () => {
+    expect(parseLinkModeBQrPayload('not-json')).toBeNull()
+    expect(parseLinkModeBQrPayload('https://example.com')).toBeNull()
+    // A Mode A QR must not parse as Mode B (distinct tags).
+    const modeA = buildLinkQrPayload('rdv-1', '{"kty":"EC"}')
+    expect(parseLinkModeBQrPayload(modeA)).toBeNull()
+  })
+
+  it('does not parse a Mode B QR as Mode A (tags are distinct)', () => {
+    const modeB = buildLinkModeBQrPayload('rdv-1', 'secret')
+    expect(parseLinkQrPayload(modeB)).toBeNull()
+  })
+})
+
+describe('device-link verification code', () => {
+  it('produces a deterministic 6-digit code', async () => {
+    const a = await deriveLinkVerificationCode('rdv-1', 'pubkey-jwk-string')
+    const b = await deriveLinkVerificationCode('rdv-1', 'pubkey-jwk-string')
+    expect(a).toBe(b)
+    expect(a).toMatch(/^\d{6}$/)
+  })
+
+  it('differs when the ephemeral pubkey differs (same rendezvous)', async () => {
+    // Models an attacker racing a different key into submit-pubkey: the two
+    // devices then derive different codes and the user aborts.
+    const genuine = await deriveLinkVerificationCode('rdv-1', 'genuine-key')
+    const attacker = await deriveLinkVerificationCode('rdv-1', 'attacker-key')
+    expect(genuine).not.toBe(attacker)
+  })
+
+  it('differs when the rendezvous id differs (same pubkey)', async () => {
+    const a = await deriveLinkVerificationCode('rdv-1', 'same-key')
+    const b = await deriveLinkVerificationCode('rdv-2', 'same-key')
+    expect(a).not.toBe(b)
+  })
+
+  it('matches between the two sides for a real ephemeral keypair', async () => {
+    // The existing device receives the exact JWK string the new device
+    // uploaded, so both derive the identical code.
+    const kp = await generateLinkEphemeralKeypair()
+    const newDeviceCode = await deriveLinkVerificationCode('rdv-real', kp.publicJwk)
+    const existingDeviceCode = await deriveLinkVerificationCode('rdv-real', kp.publicJwk)
+    expect(newDeviceCode).toBe(existingDeviceCode)
+    expect(newDeviceCode).toMatch(/^\d{6}$/)
   })
 })

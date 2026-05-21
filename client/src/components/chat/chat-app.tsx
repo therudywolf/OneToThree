@@ -40,6 +40,7 @@ import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
+import { resolveMobileNavAction, requestSidebarFolder } from '@/lib/mobile-nav'
 import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
 import { scrollToMessage } from '@/lib/chat-scroll'
 import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
@@ -317,12 +318,16 @@ export function ChatApp({
 
   const handleMobileNavTabChange = useCallback((tab: MobileNavTab) => {
     setMobileNavTab(tab)
-    if (tab === 'chats') {
-      openMobileSidebar()
-    } else if (tab === 'settings') {
+    const action = resolveMobileNavAction(tab)
+    if (action.kind === 'settings') {
       setSettingsOpen(true)
+      return
     }
-    // 'contacts' and 'calls' are future expansion points
+    // Sidebar tabs: open the chat-list overlay and focus the matching system
+    // folder. `requestSidebarFolder` both broadcasts the change and retains it
+    // so the lazily-mounted sidebar can reconcile if it isn't listening yet.
+    openMobileSidebar()
+    requestSidebarFolder(action.folderId)
   }, [openMobileSidebar])
   const closeMobileOverlays = useCallback(() => {
     setMobileSidebarOpen(false)

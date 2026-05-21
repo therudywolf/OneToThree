@@ -80,6 +80,7 @@ export function useSendMessage(
       let protocol_version: 1 | 2 = 1
       let dr_header: string | null = null
       let dr_init: string | null = null
+      let dr_slots: Array<{ device_id: string; ciphertext: string; iv: string }> | null = null
 
       try {
         if (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') {
@@ -92,6 +93,7 @@ export function useSendMessage(
           protocol_version = enc.protocol_version
           dr_header = enc.dr_header
           dr_init = enc.dr_init
+          dr_slots = enc.dr_slots ?? null
         } else {
           const enc = await encryptOutboundText(unwrappedPrivateKey, content, cryptoCtx)
           encrypted_content = enc.encrypted_content
@@ -122,6 +124,7 @@ export function useSendMessage(
           protocol_version,
           dr_header,
           dr_init,
+          dr_slots,
           reply_to_id: replyToId ?? null,
           ...(burnDurationSecs != null ? { burn_duration_secs: burnDurationSecs } : {}),
         })

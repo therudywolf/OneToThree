@@ -13,7 +13,7 @@
 import { API_URL } from '@/lib/api/auth'
 import { fetchWithTimeout } from '@/lib/api/fetch'
 import type { SendChatMessageBody } from '@/lib/api/messages'
-import { buildDrFanoutSlots, buildFanoutSlotsDetailed } from './fanout-crypto'
+import { buildFanoutSlotsDetailed } from './fanout-crypto'
 import { getClientDeviceId } from './client-device'
 import { enqueueOutbox, registerOutboxSync } from './outbox'
 import type { ApiMessageRow } from './decrypt-chat-api-message'
@@ -67,6 +67,12 @@ export type SendChatMessageTransportInput = {
   protocol_version?: 1 | 2
   dr_header?: string | null
   dr_init?: string | null
+  /**
+   * DR v2 per-device fan-out slots. Each slot's `ciphertext` is a
+   * self-describing `DrDeviceEnvelope` JSON addressed to one device. When
+   * present, the transport posts these directly as `ciphertexts[]`.
+   */
+  dr_slots?: Array<{ device_id: string; ciphertext: string; iv: string }> | null
   /** Sender's ECDH public JWK at send time. Stamped on the outbox entry so
    *  a queued send is dropped (instead of replayed) if the user re-imports
    *  their vault while the message was waiting for connectivity. */
@@ -190,18 +196,13 @@ export async function sendChatMessageOverTransport(
       throw new Error('DIRECT_FANOUT_KEYS_REQUIRED')
     }
 
-    // v2: replicate DR ciphertext to all device slots (same bytes per slot).
-    if (input.protocol_version === 2 && input.dr_header && input.content) {
-      const ciphertexts = await buildDrFanoutSlots(
-        input.my_user_id,
-        input.peer_user_id,
-        input.content
-      )
-      if (ciphertexts.length === 0) throw new Error('DIRECT_FANOUT_UNAVAILABLE')
-      body.ciphertexts = ciphertexts
+    // v2: per-device Double Ratchet (track A4). encryptOutboundTextV2 has
+    // already produced one self-describing envelope per device — post them
+    // straight as device-addressed delivery slots. Each slot's ciphertext is
+    // distinct (distinct ratchets), so there is no shared dr_header / content.
+    if (input.protocol_version === 2 && input.dr_slots && input.dr_slots.length > 0) {
+      body.ciphertexts = input.dr_slots
       body.protocol_version = 2
-      body.dr_header = input.dr_header
-      if (input.dr_init) body.dr_init = input.dr_init
       body.content = null
       body.iv = null
     } else {

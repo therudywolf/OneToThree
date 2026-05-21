@@ -231,24 +231,15 @@ export function useChatRealtime(
           return
         }
 
-        // Legacy/group path: message has content on the wire.
+        // Legacy/group path: message has shared content on the wire.
+        // Per-device DR v2 never travels here — its ciphertext lives only in
+        // device delivery slots (content is null), so it is handled by the
+        // pending-pull branch above.
         let plaintext = ''
         if (m.content != null && m.iv != null && m.content !== '') {
           try {
-            // v2 DR on non-fanout path (rare: WS broadcast of DR message)
-            if (m.protocol_version === 2 && m.iv === DR_SLOT_SENTINEL && m.dr_header && drCtx) {
-              const { decryptFromPeer } = await import('@/lib/ratchet/session-manager')
-              plaintext = await decryptFromPeer(drCtx.ownerUserId, drCtx.peerUserId, {
-                protocolVersion: 2,
-                drHeader: m.dr_header,
-                iv: DR_SLOT_SENTINEL,
-                encrypted_content: m.content,
-                drInit: m.dr_init ? JSON.parse(m.dr_init) : undefined,
-              })
-            } else {
-              const { decryptInboundText } = await import('@/lib/chat-crypto')
-              plaintext = await decryptInboundText(unwrappedPrivateKey, cryptoCtx, m.content, m.iv)
-            }
+            const { decryptInboundText } = await import('@/lib/chat-crypto')
+            plaintext = await decryptInboundText(unwrappedPrivateKey, cryptoCtx, m.content, m.iv)
           } catch {
             plaintext = '[DECRYPT_FAIL]'
           }

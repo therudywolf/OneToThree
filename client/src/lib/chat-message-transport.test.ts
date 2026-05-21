@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const buildFanoutSlotsDetailed = vi.fn()
-const buildDrFanoutSlots = vi.fn()
 const getClientDeviceId = vi.fn(() => 'device-self')
 const enqueueOutbox = vi.fn()
 const registerOutboxSync = vi.fn()
 
 vi.mock('./fanout-crypto', () => ({
   buildFanoutSlotsDetailed,
-  buildDrFanoutSlots,
 }))
 
 vi.mock('./client-device', () => ({
@@ -133,11 +131,7 @@ describe('sendChatMessageOverTransport', () => {
     })
   })
 
-  it('sends DR v2 through guarded DR fan-out slots', async () => {
-    buildDrFanoutSlots.mockResolvedValueOnce([
-      { device_id: 'peer-device', ciphertext: 'dr-ciphertext', iv: 'dr:v2' },
-    ])
-
+  it('posts per-device DR v2 slots straight as ciphertexts[]', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ message: { id: 'm-dr' } }),
@@ -146,6 +140,12 @@ describe('sendChatMessageOverTransport', () => {
 
     const { sendChatMessageOverTransport } = await import('./chat-message-transport')
 
+    // Track A4: encryptOutboundTextV2 already produced one self-describing
+    // envelope per device — the transport must forward them verbatim.
+    const drSlots = [
+      { device_id: 'peer-device-1', ciphertext: '{"v":2,"sd":"my-device","h":"H1","c":"C1"}', iv: 'dr:v2' },
+      { device_id: 'peer-device-2', ciphertext: '{"v":2,"sd":"my-device","h":"H2","c":"C2"}', iv: 'dr:v2' },
+    ]
     const result = await sendChatMessageOverTransport({
       chat_id: 'chat-1',
       transport_mode: 'DIRECT',
@@ -153,55 +153,57 @@ describe('sendChatMessageOverTransport', () => {
       sender_private_key: {} as CryptoKey,
       my_user_id: 'user-self',
       peer_user_id: 'user-peer',
-      content: 'dr-ciphertext',
+      content: '',
       iv: 'dr:v2',
       protocol_version: 2,
-      dr_header: 'DR_HEADER',
-      dr_init: '{"p13":"dr-init"}',
+      dr_slots: drSlots,
     })
 
     expect(result.via).toBe('REST')
-    expect(buildDrFanoutSlots).toHaveBeenCalledWith(
-      'user-self',
-      'user-peer',
-      'dr-ciphertext'
-    )
     expect(buildFanoutSlotsDetailed).not.toHaveBeenCalled()
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     const body = JSON.parse(String(init.body)) as Record<string, unknown>
-    expect(body.ciphertexts).toEqual([
-      { device_id: 'peer-device', ciphertext: 'dr-ciphertext', iv: 'dr:v2' },
-    ])
+    expect(body.ciphertexts).toEqual(drSlots)
     expect(body.protocol_version).toBe(2)
-    expect(body.dr_header).toBe('DR_HEADER')
-    expect(body.dr_init).toBe('{"p13":"dr-init"}')
     expect(body.content).toBeNull()
     expect(body.iv).toBeNull()
   })
 
-  it('does not silently downgrade after a DR ciphertext has already been produced', async () => {
-    buildDrFanoutSlots.mockRejectedValueOnce(new Error('DR_MULTI_DEVICE_UNSAFE'))
-    const fetchMock = vi.fn()
+  it('falls back to v1 ECDH fan-out when no DR v2 slots are present', async () => {
+    buildFanoutSlotsDetailed.mockResolvedValueOnce({
+      slots: [{ device_id: 'peer-device', ciphertext: 'slot-ct', iv: 'slot-iv' }],
+      failedDeviceIds: [],
+      attemptedDeviceIds: ['peer-device'],
+    })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ message: { id: 'm-v1' } }),
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     const { sendChatMessageOverTransport } = await import('./chat-message-transport')
 
-    await expect(
-      sendChatMessageOverTransport({
-        chat_id: 'chat-1',
-        transport_mode: 'DIRECT',
-        plaintext: 'hello direct plaintext',
-        sender_private_key: {} as CryptoKey,
-        my_user_id: 'user-self',
-        peer_user_id: 'user-peer',
-        content: 'dr-ciphertext',
-        iv: 'dr:v2',
-        protocol_version: 2,
-        dr_header: 'DR_HEADER',
-      })
-    ).rejects.toThrow('DR_MULTI_DEVICE_UNSAFE')
+    // protocol_version=2 but dr_slots absent → v1 path (DR could not establish).
+    const result = await sendChatMessageOverTransport({
+      chat_id: 'chat-1',
+      transport_mode: 'DIRECT',
+      plaintext: 'hello direct plaintext',
+      sender_private_key: {} as CryptoKey,
+      my_user_id: 'user-self',
+      peer_user_id: 'user-peer',
+      content: 'legacy-ct',
+      iv: 'legacy-iv',
+      protocol_version: 2,
+      dr_slots: null,
+    })
 
-    expect(buildFanoutSlotsDetailed).not.toHaveBeenCalled()
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.via).toBe('REST')
+    expect(buildFanoutSlotsDetailed).toHaveBeenCalledTimes(1)
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const body = JSON.parse(String(init.body)) as Record<string, unknown>
+    expect(body.ciphertexts).toEqual([
+      { device_id: 'peer-device', ciphertext: 'slot-ct', iv: 'slot-iv' },
+    ])
+    expect(body.protocol_version).toBeUndefined()
   })
 })

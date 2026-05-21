@@ -5,6 +5,7 @@ import {
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
 import { decryptFanoutSlot, DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
+import { parseDrDeviceEnvelope } from '@/lib/dr-envelope'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { sha256 } from '@noble/hashes/sha2'
 import {
@@ -12,32 +13,6 @@ import {
   decryptTextBatchInWorker,
 } from '@/lib/crypto-batch-worker'
 import type { DecryptedMessage } from '@/types/chat'
-import type { DrInitWirePayload } from '@/lib/ratchet/session-manager'
-
-/** Validate and parse a server-supplied dr_init JSON string. Returns undefined
- *  on any structural mismatch so the caller skips the DR path rather than
- *  passing unvalidated data into cryptographic operations. */
-function parseDrInitWirePayload(raw: string): DrInitWirePayload | undefined {
-  try {
-    const v = JSON.parse(raw)
-    if (
-      v === null ||
-      typeof v !== 'object' ||
-      v.p13 !== 'dr-init' ||
-      v.v !== 1 ||
-      typeof v.initiatorIdentityExchange !== 'string' || v.initiatorIdentityExchange.length === 0 ||
-      typeof v.initiatorIdentitySigning !== 'string' || v.initiatorIdentitySigning.length === 0 ||
-      typeof v.initiatorEphemeralPublic !== 'string' || v.initiatorEphemeralPublic.length === 0 ||
-      typeof v.signedPrekeyId !== 'number' ||
-      (v.oneTimePrekeyId !== null && typeof v.oneTimePrekeyId !== 'number')
-    ) {
-      return undefined
-    }
-    return v as DrInitWirePayload
-  } catch {
-    return undefined
-  }
-}
 
 export type ApiMessageRow = {
   id: string
@@ -160,21 +135,19 @@ async function decryptRowPlaintext(
   // System message sentinel: content is plain JSON (missed call, etc.).
   if (iv === 'system:v1') return c ?? ''
 
-  // v2 DR: device slot carries the DR ciphertext directly (sentinel IV).
+  // v2 DR: the device slot carries a self-describing per-device envelope
+  // (DrDeviceEnvelope JSON) in the slot ciphertext — the envelope holds the
+  // DR header, ciphertext, sender device id and (first message) the X3DH
+  // init. There is no shared `dr_header` on the message row for v2.
   if (
     row.protocol_version === 2 &&
     iv === DR_SLOT_SENTINEL &&
-    row.dr_header &&
     drCtx
   ) {
+    const drEnv = parseDrDeviceEnvelope(c)
+    if (!drEnv) throw new Error('ERR_DR_ENVELOPE_INVALID')
     const { decryptFromPeer } = await import('@/lib/ratchet/session-manager')
-    return decryptFromPeer(drCtx.ownerUserId, drCtx.peerUserId, {
-      protocolVersion: 2,
-      drHeader: row.dr_header,
-      iv: DR_SLOT_SENTINEL,
-      encrypted_content: c,
-      drInit: row.dr_init ? parseDrInitWirePayload(row.dr_init) : undefined,
-    })
+    return decryptFromPeer(drCtx.ownerUserId, drCtx.peerUserId, drEnv)
   }
 
   // v1 fan-out: per-device ECDH slot (DIRECT and SELF both use fan-out delivery).

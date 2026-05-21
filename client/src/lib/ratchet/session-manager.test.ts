@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('./session-store', () => ({
   putSessionRecord: vi.fn(async () => undefined),
   getSessionRecord: vi.fn(async () => null),
+  deleteSessionRecord: vi.fn(async () => undefined),
+  deleteSessionRecordsForPeer: vi.fn(async () => undefined),
 }))
 
 vi.mock('@/lib/api/keys', () => ({
@@ -43,12 +45,14 @@ describe('acceptIncomingInit identity verification', () => {
     setOwnDrIdentity(
       bob.identity,
       bob.signedPreKey.keypair,
-      bob.signedPreKey.id
+      bob.signedPreKey.id,
+      'bob-device'
     )
 
     // Server says "Alice's published identity is realAlice's keys".
     vi.mocked(keysApi.fetchIdentity).mockResolvedValue({
       user_id: 'alice-id',
+      device_id: 'alice-device',
       identity: {
         signing_public_key: b64url(realAlice.identity.signing.publicKey),
         exchange_public_key: b64url(realAlice.identity.exchange.publicKey),
@@ -68,10 +72,11 @@ describe('acceptIncomingInit identity verification', () => {
     }
 
     await expect(
-      acceptIncomingInit('bob-id', 'alice-id', init)
+      acceptIncomingInit('bob-id', 'bob-device', 'alice-id', 'alice-device', init)
     ).rejects.toThrowError('X3DH_IDENTITY_MISMATCH')
 
-    expect(keysApi.fetchIdentity).toHaveBeenCalledWith('alice-id')
+    // Identity verification is scoped to the SENDER's specific device.
+    expect(keysApi.fetchIdentity).toHaveBeenCalledWith('alice-id', 'alice-device')
   })
 
   it('rejects an unknown signed prekey id before fetching identity', async () => {
@@ -79,7 +84,8 @@ describe('acceptIncomingInit identity verification', () => {
     setOwnDrIdentity(
       bob.identity,
       bob.signedPreKey.keypair,
-      bob.signedPreKey.id
+      bob.signedPreKey.id,
+      'bob-device'
     )
 
     const init: DrInitWirePayload = {
@@ -93,7 +99,7 @@ describe('acceptIncomingInit identity verification', () => {
     }
 
     await expect(
-      acceptIncomingInit('bob-id', 'alice-id', init)
+      acceptIncomingInit('bob-id', 'bob-device', 'alice-id', 'alice-device', init)
     ).rejects.toThrowError('RATCHET_UNKNOWN_SPK')
     expect(keysApi.fetchIdentity).not.toHaveBeenCalled()
   })

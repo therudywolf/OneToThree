@@ -1,21 +1,23 @@
 'use client'
 
-import { Phone, Video } from 'lucide-react'
+import { Phone } from 'lucide-react'
 import { useThemeStore } from '@/store/themeStore'
+import { useTranslation } from '@/hooks/use-translation'
 
 type Props = {
   disabled: boolean
   peerReady: boolean
-  onVoiceCall: () => void
-  onVideoCall: () => void
+  /** Starts a call. The call begins audio-only; video/screen-share are opt-in
+   *  via the in-call controls. */
+  onCall: () => void
 }
 
-export function CallHeaderButtons({
-  disabled,
-  peerReady,
-  onVoiceCall,
-  onVideoCall,
-}: Props) {
+/**
+ * Single "Call" affordance for the chat header. The user no longer picks
+ * voice-vs-video up front — one button starts the call (audio-first).
+ */
+export function CallHeaderButtons({ disabled, peerReady, onCall }: Props) {
+  const { t } = useTranslation()
   const isOffline = disabled || !peerReady
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
@@ -48,18 +50,19 @@ export function CallHeaderButtons({
         </span>
       </div>
 
-      {/* Voice Call */}
+      {/* Single Call button — starts an audio-first call */}
       <button
         type="button"
         disabled={isOffline}
-        onClick={onVoiceCall}
-        title={isOffline ? 'No connection' : 'Voice call'}
+        onClick={onCall}
+        title={isOffline ? t('call.noConnection') : t('call.startCall')}
+        aria-label={isOffline ? t('call.noConnection') : t('call.startCall')}
         className={`touch-manipulation relative flex h-10 min-w-[2.75rem] items-center justify-center gap-2 px-3 max-[1180px]:min-w-[2.25rem] max-[1180px]:px-2 transition-all ${
           isOffline
-            ? `cursor-not-allowed ${isMd3 ? 'rounded-full text-text-muted/70' : 'border-r border-border-strong text-text-muted/70'}`
+            ? `cursor-not-allowed ${isMd3 ? 'rounded-full text-text-muted/70' : 'text-text-muted/70'}`
             : isMd3
               ? 'rounded-full text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] active:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
-              : 'border-r border-neon-cyan/50 text-neon-cyan hover:border-neon-cyan hover:bg-neon-cyan/10 hover:text-text-primary active:bg-neon-cyan/20'
+              : 'text-neon-cyan hover:bg-neon-cyan/10 hover:text-text-primary active:bg-neon-cyan/20'
         }`}
       >
         <Phone
@@ -68,31 +71,7 @@ export function CallHeaderButtons({
           aria-hidden
         />
         <span className={`hidden text-[10px] sm:inline ${isMd3 ? 'sr-only' : 'uppercase tracking-[0.25em]'}`}>
-          {isOffline ? 'NO_LINK' : 'AUDIO'}
-        </span>
-      </button>
-
-      {/* Video Call */}
-      <button
-        type="button"
-        disabled={isOffline}
-        onClick={onVideoCall}
-        title={isOffline ? 'No connection' : 'Video call'}
-        className={`touch-manipulation relative flex h-10 min-w-[2.75rem] items-center justify-center gap-2 px-3 max-[1180px]:min-w-[2.25rem] max-[1180px]:px-2 transition-all ${
-          isOffline
-            ? `cursor-not-allowed ${isMd3 ? 'rounded-full text-text-muted/70' : 'border border-border-strong text-text-muted/70'}`
-            : isMd3
-              ? 'rounded-full text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] active:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
-              : 'border border-neon-red/50 text-neon-red hover:border-neon-red hover:bg-neon-red/10 hover:text-text-primary active:bg-neon-red/20'
-        }`}
-      >
-        <Video
-          className={`h-4 w-4 shrink-0 ${isOffline ? 'opacity-30' : ''}`}
-          strokeWidth={isOffline ? 1 : 2}
-          aria-hidden
-        />
-        <span className={`hidden text-[10px] sm:inline ${isMd3 ? 'sr-only' : 'uppercase tracking-[0.25em]'}`}>
-          {isOffline ? 'NO_LINK' : 'VIDEO'}
+          {isOffline ? t('call.noLink') : t('call.callShort')}
         </span>
       </button>
     </div>

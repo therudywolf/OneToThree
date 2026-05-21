@@ -19,6 +19,8 @@ import {
   Radio,
   ChevronDown,
   MonitorOff,
+  Camera,
+  SwitchCamera,
 } from 'lucide-react'
 import { applyPreferredAudioOutput } from '@/lib/media-devices'
 import { isAndroidMobile } from '@/lib/android'
@@ -33,9 +35,16 @@ import { RelayToast } from '@/components/call/relay-toast'
 type Props = {
   onEndCall: () => void
   onToggleMute: () => void
+  /** Toggle the camera on/off (lazy getUserMedia on first opt-in). */
   onToggleCamera: () => void
-  onToggleVideo?: () => void
-  onSwitchCamera: () => void
+  /** Whether a camera track currently exists and is enabled. */
+  isCameraOn: boolean
+  /** Enumerate videoinput devices for the desktop camera selector. */
+  onListCameras: () => Promise<MediaDeviceInfo[]>
+  /** Desktop: switch to a specific camera device by id. */
+  onSelectCamera: (deviceId: string) => void
+  /** Mobile: flip between front/back camera (facingMode). */
+  onFlipCamera: () => void
   isScreenSharing: boolean
   onToggleScreenShare: () => void
   onSetQuality: (level: QualityLevel) => void
@@ -280,8 +289,10 @@ export function ActiveCallOverlay({
   onEndCall,
   onToggleMute,
   onToggleCamera,
-  onToggleVideo,
-  onSwitchCamera,
+  isCameraOn,
+  onListCameras,
+  onSelectCamera,
+  onFlipCamera,
   isScreenSharing,
   onToggleScreenShare,
   onSetQuality,
@@ -313,11 +324,26 @@ export function ActiveCallOverlay({
   const [focusedPeerId, setFocusedPeerId] = useState<string | null>(null)
   const [showControls, setShowControls] = useState(true)
   const [showQualityMenu, setShowQualityMenu] = useState(false)
+  const [showCameraMenu, setShowCameraMenu] = useState(false)
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
 
   useEffect(() => {
     setScreenShareAllowed(!isAndroidMobile())
     setIsMobileDevice(isAndroidMobile() || isIOSOrIPadOS())
   }, [])
+
+  // Refresh the desktop camera list whenever the selector is opened (labels are
+  // only populated once camera permission has been granted).
+  useEffect(() => {
+    if (!showCameraMenu) return
+    let cancelled = false
+    void onListCameras().then((list) => {
+      if (!cancelled) setCameras(list)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [showCameraMenu, onListCameras])
 
   // Cleanup: end call if the overlay unmounts while still calling (but not when minimized)
   useEffect(() => {
@@ -358,8 +384,6 @@ export function ActiveCallOverlay({
   }, [isCalling, localStream, callStartTime])
 
   const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
-  const hasCameraTrack = (localStream?.getVideoTracks().length ?? 0) > 0
-  const videoOff = localStream?.getVideoTracks().length === 0 || (localStream?.getVideoTracks().some((t) => !t.enabled) ?? false)
 
   function toggleLayout() {
     setLayout((prev) => {
@@ -548,56 +572,100 @@ export function ActiveCallOverlay({
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
 
-          {onToggleVideo && (
-            <button
-              onClick={() => { onToggleVideo(); setTick(t_ => t_ + 1); }}
-              className={`flex items-center justify-center transition-colors ${
-                isMd3
-                  ? `h-12 w-12 rounded-full ${!hasCameraTrack || videoOff ? 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)]/60' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
-                  : `h-12 w-14 border-r border-border-strong ${!hasCameraTrack || videoOff ? 'bg-void/50 text-text-muted/70' : 'text-text-primary hover:bg-surface/5'}`
-              }`}
-              title={videoOff ? t('call.videoOn') : t('call.videoOff')}
-            >
-              {!hasCameraTrack || videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
-            </button>
-          )}
-
+          {/* Camera on/off — single toggle. Reflects the *camera* track state
+              (isCameraOn), never the screen track. */}
           <button
-            onClick={() => { onToggleCamera(); setTick(t_ => t_ + 1); }}
+            onClick={() => { onToggleCamera(); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
             className={`flex items-center justify-center transition-colors ${
               isMd3
-                ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
-                : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-neon-cyan hover:bg-neon-cyan/5'
+                ? `h-12 w-12 rounded-full ${isCameraOn ? 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)]/60'}`
+                : `h-12 w-14 border-r border-border-strong ${isCameraOn ? 'text-text-primary hover:bg-surface/5' : 'bg-void/50 text-text-muted/70'}`
             }`}
-            title={t('call.toggleCamera')}
+            title={isCameraOn ? t('call.videoOff') : t('call.videoOn')}
+            aria-label={isCameraOn ? t('call.videoOff') : t('call.videoOn')}
+            aria-pressed={isCameraOn}
           >
-            {videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+            {isCameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
           </button>
 
-          {isMobileDevice && hasCameraTrack && !videoOff && (
-            <button
-              onClick={onSwitchCamera}
-              disabled={isScreenSharing}
-              className={`flex items-center justify-center transition-colors disabled:opacity-20 ${
-                isMd3
-                  ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
-                  : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5'
-              }`}
-              title={t('call.switchCamera')}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
+          {/* Camera control split by platform.
+              Mobile: front/back flip. Desktop: device selector. Both only make
+              sense when a camera is on and not while screen-sharing. */}
+          {isCameraOn && !isScreenSharing && (
+            isMobileDevice ? (
+              <button
+                onClick={() => { onFlipCamera(); setTick(t_ => t_ + 1); }}
+                className={`flex items-center justify-center transition-colors ${
+                  isMd3
+                    ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
+                    : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5'
+                }`}
+                title={t('call.flipCamera')}
+                aria-label={t('call.flipCamera')}
+              >
+                <SwitchCamera className="h-4 w-4" />
+              </button>
+            ) : (
+              <div className="relative">
+                <button
+                  onClick={() => setShowCameraMenu((prev) => !prev)}
+                  className={`flex items-center justify-center transition-colors ${
+                    isMd3
+                      ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
+                      : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5'
+                  }`}
+                  title={t('call.selectCamera')}
+                  aria-label={t('call.selectCamera')}
+                  aria-expanded={showCameraMenu}
+                >
+                  <Camera className="h-4 w-4" />
+                  <ChevronDown className="h-3 w-3 ml-0.5" />
+                </button>
+                {showCameraMenu && (
+                  <div className={`absolute bottom-14 left-1/2 -translate-x-1/2 z-50 min-w-[200px] max-w-[280px] shadow-2xl ${
+                    isMd3
+                      ? 'rounded-2xl bg-[var(--surface-container-high)] overflow-hidden'
+                      : 'border border-border-strong bg-void/95 backdrop-blur-xl'
+                  }`}>
+                    {cameras.length === 0 ? (
+                      <p className={`px-4 py-2.5 text-left ${
+                        isMd3 ? 'text-sm text-[var(--on-surface)]/60' : 'font-mono text-[11px] uppercase tracking-wider text-text-muted/70'
+                      }`}>
+                        {t('call.noCameras')}
+                      </p>
+                    ) : (
+                      cameras.map((cam, idx) => (
+                        <button
+                          key={cam.deviceId || idx}
+                          onClick={() => { onSelectCamera(cam.deviceId); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
+                          className={`w-full px-4 py-2.5 text-left truncate transition-colors ${
+                            isMd3
+                              ? 'text-sm text-[var(--on-surface)] hover:bg-[var(--surface-variant)]'
+                              : 'font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-text-primary hover:bg-surface/5'
+                          }`}
+                          title={cam.label || `${t('call.camera')} ${idx + 1}`}
+                        >
+                          {cam.label || `${t('call.camera')} ${idx + 1}`}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )
           )}
 
           {screenShareAllowed && (
             <button
-              onClick={() => { onToggleScreenShare(); setTick(t_ => t_ + 1); }}
+              onClick={() => { onToggleScreenShare(); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
               className={`hidden md:flex items-center justify-center transition-colors ${
                 isMd3
                   ? `h-12 w-12 rounded-full ${isScreenSharing ? 'bg-[var(--primary-container)] text-[var(--on-primary-container)]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
                   : `h-12 w-14 border-r border-border-strong ${isScreenSharing ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-surface/5'}`
               }`}
               title={isScreenSharing ? t('call.stopScreenShare') : t('call.startScreenShare')}
+              aria-label={isScreenSharing ? t('call.stopScreenShare') : t('call.startScreenShare')}
+              aria-pressed={isScreenSharing}
             >
               {isScreenSharing ? <MonitorOff className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
             </button>

@@ -7,15 +7,15 @@ import { useThemeStore } from '@/store/themeStore'
 
 type Props = {
   participantCount: number
-  onJoinVoice: () => void
-  onJoinVideo: () => void
+  /** Joins the active group call (audio-first; video is opt-in once joined). */
+  onJoin: () => void
 }
 
 /**
  * PROJECT 13 :: GROUP_CALL_ACTIVE_BANNER
  * Displayed in the group chat header area when a group call is active.
  */
-export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: Props) {
+export function GroupCallBanner({ participantCount, onJoin }: Props) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
@@ -48,7 +48,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={onJoinVoice}
+            onClick={onJoin}
             className={`flex items-center gap-1.5 border px-3 py-1 text-[10px] transition-colors ${
               isRetro
                 ? 'p13-classic-button'
@@ -57,18 +57,7 @@ export function GroupCallBanner({ participantCount, onJoinVoice, onJoinVideo }: 
             }`}
           >
             <Phone className="h-3 w-3" />
-            {t('groupCall.joinVoice')}
-          </button>
-          <button
-            onClick={onJoinVideo}
-            className={`flex items-center gap-1.5 border px-3 py-1 text-[10px] transition-colors ${
-              isRetro
-                ? 'p13-classic-button p13-classic-button--danger'
-                : isMd3 ? 'rounded-full border-[var(--error)]/50 bg-[var(--error-container)] text-[var(--on-error-container)] hover:opacity-90'
-                : 'border-neon-red/50 bg-neon-red/10 font-mono uppercase tracking-wider text-neon-red hover:bg-neon-red/20'
-            }`}
-          >
-            {t('groupCall.joinVideo')}
+            {t('groupCall.join')}
           </button>
         </div>
       </div>

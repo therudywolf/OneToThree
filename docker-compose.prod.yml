@@ -153,51 +153,23 @@ services:
     mem_reservation: 256m
     expose:
       - '8080'
-    # Mount each secret owned by the api process user (uid/gid 1001 = "app" in
-    # the server image) so it can actually read /run/secrets/* — without this
-    # the files are owned by another uid and the app silently falls back to the
-    # plaintext .env.prod env_file copy, making the secrets machinery a no-op.
+    # The api process runs as the non-root "app" user (uid 1001). Compose does
+    # NOT honour uid/gid/mode for file-based secrets, so the host-side secret
+    # files are chmod 0644 — the secrets/ directory itself stays 0700, so the
+    # files remain protected at the host level while the bind-mounted copies at
+    # /run/secrets/* stay readable by the non-root app user. Without that the
+    # app silently falls back to the plaintext .env.prod env_file copy.
     secrets:
-      - source: jwt_secret
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: webhook_secret
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: postgres_password
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: minio_root_password
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: turn_password
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: livekit_api_key
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: livekit_api_secret
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: cloudflare_turn_key_id
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: cloudflare_turn_api_token
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
-      - source: totp_wrap_key
-        uid: "1001"
-        gid: "1001"
-        mode: 0400
+      - jwt_secret
+      - webhook_secret
+      - postgres_password
+      - minio_root_password
+      - turn_password
+      - livekit_api_key
+      - livekit_api_secret
+      - cloudflare_turn_key_id
+      - cloudflare_turn_api_token
+      - totp_wrap_key
     env_file:
       - .env.prod
     environment:

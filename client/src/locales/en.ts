@@ -1059,6 +1059,18 @@ const en = {
   'explore.join': 'Join',
   'explore.typeGroup': 'Group',
   'explore.typeChannel': 'Channel',
+
+  // [POLL]
+  'poll.createTitle': 'Create Poll',
+  'poll.questionPlaceholder': 'Question...',
+  'poll.optionPlaceholder': 'Option {n}',
+  'poll.addOption': '+ Add option',
+  'poll.removeOption': 'Remove option',
+  'poll.multipleChoice': 'Multiple choice',
+  'poll.anonymousVotes': 'Anonymous votes',
+  'poll.create': 'Create poll',
+  'poll.send': 'Send Poll',
+  'poll.sending': 'Sending...',
 } as const;
 
 export default en;

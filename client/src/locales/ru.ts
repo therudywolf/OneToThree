@@ -1059,6 +1059,18 @@ const ru = {
   'explore.join': 'Вступить',
   'explore.typeGroup': 'Группа',
   'explore.typeChannel': 'Канал',
+
+  // [POLL]
+  'poll.createTitle': 'Создать опрос',
+  'poll.questionPlaceholder': 'Вопрос...',
+  'poll.optionPlaceholder': 'Вариант {n}',
+  'poll.addOption': '+ Добавить вариант',
+  'poll.removeOption': 'Удалить вариант',
+  'poll.multipleChoice': 'Несколько вариантов',
+  'poll.anonymousVotes': 'Анонимное голосование',
+  'poll.create': 'Создать опрос',
+  'poll.send': 'Отправить опрос',
+  'poll.sending': 'Отправка...',
 } as const;
 
 export default ru;

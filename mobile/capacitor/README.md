@@ -16,13 +16,40 @@ This command:
 2. syncs assets into `mobile/capacitor/android`
 3. builds `assembleDebug`
 
-## FCM setup
+## FCM setup (optional)
+
+FCM is **optional**. `google-services.json` is operator-supplied and is *not*
+committed to the repo. The APK builds and runs fine without it — the build
+applies the `com.google.gms.google-services` Gradle plugin only when the file
+is present (see `app/build.gradle`). Without FCM, the app falls back to the
+**Direct (foreground service)** notification mode, which needs no Google
+transport. Only the `Google FCM push` mode requires the steps below.
 
 1. Create Firebase Android app with package id `ru.onetothree.app`.
 2. Place `google-services.json` into `mobile/capacitor/android/app/google-services.json`.
 3. Configure backend secrets:
    - `FIREBASE_SERVICE_ACCOUNT_JSON` (or `*_FILE`)
    - or split fields: `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`
+
+## Deep links (App Links)
+
+The app registers an `https` intent-filter for `https://onetothree.ru/join/...`
+with `android:autoVerify="true"`, plus the legacy `onetothree://` custom scheme.
+Verified App Links open invite/join links directly in the app instead of a
+browser. For verification to succeed the server must publish
+`https://onetothree.ru/.well-known/assetlinks.json` containing the release
+keystore's SHA-256 certificate fingerprint. Until that file is live, Android
+treats the filter as a normal (unverified) link handler — the app still appears
+in the "open with" chooser. The JS side routes the incoming URL via the
+Capacitor `App` plugin's `appUrlOpen` event (see
+`client/src/components/native-deep-link.tsx`).
+
+## Screen security (FLAG_SECURE)
+
+`MainActivity` sets `WindowManager.LayoutParams.FLAG_SECURE` on the window so
+decrypted E2EE content cannot be screenshotted, screen-recorded, or shown in
+the recent-apps thumbnail. It is **on by default**; a `Privacy` Capacitor
+plugin could toggle it at runtime (`client/src/lib/native-flag-secure.ts`).
 
 ## Release signing
 

@@ -1139,7 +1139,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                         onChange={(e) => { const next = [...socialLinks]; next[idx] = { ...next[idx], url: e.target.value }; setSocialLinks(next) }}
                         placeholder={t('profile.url')} />
                       <button type="button" onClick={() => setSocialLinks(socialLinks.filter((_, i) => i !== idx))}
-                        className="shrink-0 border border-neon-red/50 px-2 py-1 font-mono text-[9px] text-neon-red hover:bg-neon-red/10">[X]</button>
+                        aria-label={t('common.close')} title={t('common.close')}
+                        className="flex shrink-0 items-center justify-center border border-neon-red/50 px-2 py-1 text-neon-red hover:bg-neon-red/10">
+                        <X className="h-3 w-3" />
+                      </button>
                     </div>
                   ))}
                   {socialLinks.length < 5 && (

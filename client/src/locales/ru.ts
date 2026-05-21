@@ -331,6 +331,8 @@ const ru = {
   'media.restoring': 'Восстановление...',
   'media.title': 'Медиа',
   'media.albumOverflowDropped': 'Максимум {max} файлов в альбоме. Пропущено: {count}.',
+  'media.play': 'Воспроизвести',
+  'media.pause': 'Пауза',
 
   'mobileNav.chats': 'Чаты',
   'mobileNav.contacts': 'Контакты',

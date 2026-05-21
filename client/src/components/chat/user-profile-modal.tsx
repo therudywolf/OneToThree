@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Github,
@@ -18,9 +18,9 @@ import {
 import { fetchUserProfile, type UserProfile } from '@/lib/api/users'
 import { fetchSharedMedia, type SharedMediaRow } from '@/lib/api/messages'
 import { useTranslation } from '@/hooks/use-translation'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { UserAvatar } from '@/components/user-avatar'
 import { sanitizeText, sanitizeUrl } from '@/lib/sanitize'
-import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 
 type Props = {
   userId: string
@@ -61,7 +61,17 @@ export function UserProfileModal({
   const [mediaLoaded, setMediaLoaded] = useState(false)
   const [filesLoaded, setFilesLoaded] = useState(false)
 
-  useEffect(() => acquireBodyScrollLock(), [])
+  // ESC-to-close + Tab focus trap + body scroll lock, matching every other dialog.
+  // When the fullscreen avatar overlay is open, Escape dismisses that layer
+  // first instead of tearing down the whole profile modal.
+  const handleEscape = useCallback(() => {
+    if (avatarFullscreen) {
+      setAvatarFullscreen(false)
+      return
+    }
+    onClose()
+  }, [avatarFullscreen, onClose])
+  const trapRef = useFocusTrap<HTMLDivElement>(true, handleEscape)
 
   useEffect(() => {
     let cancelled = false
@@ -137,6 +147,7 @@ export function UserProfileModal({
         onPointerDown={onClose}
       >
         <motion.div
+          ref={trapRef}
           initial={{ opacity: 0, y: 60 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 60 }}

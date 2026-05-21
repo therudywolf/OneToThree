@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Search, X, Users, Megaphone, Loader2 } from 'lucide-react'
 import { discoverChats, type DiscoverChatRow } from '@/lib/api/chats'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 
@@ -18,6 +19,8 @@ export function ExploreModal({ onJoin, onClose }: ExploreModalProps) {
   const [rows, setRows] = useState<DiscoverChatRow[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // ESC-to-close + Tab focus trap + body scroll lock, matching every other dialog.
+  const trapRef = useFocusTrap<HTMLDivElement>(true, onClose)
 
   const load = useCallback(async (query: string) => {
     setLoading(true)
@@ -44,17 +47,29 @@ export function ExploreModal({ onJoin, onClose }: ExploreModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-void/60 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative z-10 flex w-full max-w-md flex-col overflow-hidden ${
-        isMd3
-          ? 'rounded-3xl bg-[var(--surface-container-high)] shadow-[var(--md3-elevation-5)]'
-          : 'border border-neon-cyan/40 bg-void shadow-[0_0_40px_rgba(0,255,255,0.08)]'
-      }`}>
+      <div
+        ref={trapRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('explore.title')}
+        className={`relative z-10 flex w-full max-w-md flex-col overflow-hidden ${
+          isMd3
+            ? 'rounded-3xl bg-[var(--surface-container-high)] shadow-[var(--md3-elevation-5)]'
+            : 'border border-neon-cyan/40 bg-void shadow-[0_0_40px_rgba(0,255,255,0.08)]'
+        }`}
+      >
         {/* Header */}
         <div className={`flex items-center justify-between p-4 ${isMd3 ? 'border-b border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-b border-neon-cyan/20'}`}>
           <span className={`font-semibold ${isMd3 ? 'text-[var(--on-surface)]' : 'font-mono text-[11px] uppercase tracking-widest text-neon-cyan'}`}>
             {t('explore.title')}
           </span>
-          <button type="button" onClick={onClose} className={`p13-icon-btn h-8 w-8 ${isMd3 ? 'rounded-full' : ''}`}>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            className={`p13-icon-btn h-8 w-8 ${isMd3 ? 'rounded-full' : ''}`}
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -72,7 +87,6 @@ export function ExploreModal({ onJoin, onClose }: ExploreModalProps) {
               placeholder={t('explore.searchPlaceholder')}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              autoFocus
             />
           </div>
         </div>

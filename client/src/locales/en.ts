@@ -331,6 +331,8 @@ const en = {
   'media.restoring': 'Restoring...',
   'media.title': 'Media',
   'media.albumOverflowDropped': 'Max {max} files per album. {count} dropped.',
+  'media.play': 'Play',
+  'media.pause': 'Pause',
 
   'mobileNav.chats': 'Chats',
   'mobileNav.contacts': 'Contacts',

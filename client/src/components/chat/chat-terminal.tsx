@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { Crown, Star, ArrowDown, Reply, SmilePlus, MoreHorizontal, Lock, ShieldOff, Flame,
-  PhoneMissed,} from 'lucide-react'
+import { Crown, Star, ArrowDown, ShieldOff } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useUnreadStore } from '@/store/unreadStore'
@@ -10,8 +9,7 @@ import { getFmSocket } from '@/lib/api/socket'
 import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
 import { parseAttachmentEnvelope, parseStickerEnvelope } from '@/lib/attachment-envelope'
-import { StickerBubble } from '@/components/chat/sticker-bubble'
-import { PollBubble } from '@/components/chat/poll-bubble'
+import { MessageRow } from '@/components/chat/message-row'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { deleteMessage } from '@/lib/api/chats'
 import {
@@ -22,15 +20,9 @@ import { decryptBinary, base64ToArrayBuffer, importAesGcm256RawKey } from '@/lib
 import { getDownloadUrl } from '@/lib/api/storage'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { lookupUsers } from '@/lib/api/users'
-import { NoirPlaintext } from '@/components/chat/noir-plaintext'
-import { LinkPreviewCard } from '@/components/chat/link-preview-card'
-import { extractFirstUrl } from '@/lib/api/link-preview'
 import { getChatPrivacy } from '@/lib/chat-privacy'
 import { setNativeFlagSecure } from '@/lib/native-flag-secure'
-import { CollapsibleText } from '@/components/chat/collapsible-text'
-import { MessageStatus } from '@/components/chat/message-status'
-import { MessageReactions } from '@/components/chat/message-reactions'
-import { MessageActions, QuickReactBar } from '@/components/chat/message-actions'
+import { MessageActions } from '@/components/chat/message-actions'
 import { UserAvatar } from '@/components/user-avatar'
 import { createDirectE2EChat, fetchChatsList, type ApiChatRow, type ChatMemberRole } from '@/lib/api/chats'
 import { canonicalUserId } from '@/lib/user-id'
@@ -103,16 +95,6 @@ function mimeFromPathAndType(
   if (mediaType === 'video') return 'video/webm'
   if (mediaType === 'image') return 'image/jpeg'
   return 'application/octet-stream'
-}
-
-function formatBurnCountdown(burnAt: string): string {
-  const ms = new Date(burnAt).getTime() - Date.now()
-  if (ms <= 0) return '0s'
-  const s = Math.ceil(ms / 1000)
-  if (s < 60)    return `${s}s`
-  if (s < 3600)  return `${Math.ceil(s / 60)}m`
-  if (s < 86400) return `${Math.ceil(s / 3600)}h`
-  return `${Math.ceil(s / 86400)}d`
 }
 
 export function ChatTerminal({
@@ -241,6 +223,10 @@ export function ChatTerminal({
   const swipeRef = useRef<{ startX: number; startY: number; msgId: string } | null>(null)
   const [swipingMsgId, setSwipingMsgId] = useState<string | null>(null)
   const [swipeOffset, setSwipeOffset] = useState(0)
+  // Mirror of swipeOffset so the swipe-commit handler can stay referentially
+  // stable (no swipeOffset in its dep array) — keeps memoized rows from
+  // re-rendering on every swipe tick.
+  const swipeOffsetRef = useRef(0)
 
   // Forward modal
   const [forwardMsg, setForwardMsg] = useState<DecryptedMessage | null>(null)
@@ -368,6 +354,13 @@ export function ChatTerminal({
 
   const groupedMessages = useMemo(() => {
     return groupMessages(renderMessages)
+  }, [renderMessages])
+
+  // Live mirror of renderMessages for stable callbacks (swipe-commit) that
+  // must not list renderMessages in their dependency array.
+  const renderMessagesRef = useRef(renderMessages)
+  useEffect(() => {
+    renderMessagesRef.current = renderMessages
   }, [renderMessages])
 
   const senderIdsToResolve = useMemo(() => {
@@ -672,6 +665,36 @@ export function ChatTerminal({
     [activeChat?.id],
   )
 
+  // Open the message context menu at a viewport point, clamped so the menu
+  // stays on-screen. Stable identity — passed to every memoized MessageRow.
+  const handleOpenContextMenu = useCallback(
+    (msg: DecryptedMessage, clientX: number, clientY: number) => {
+      const pad = 8
+      const mw = 200
+      const mh = 320
+      const vw = typeof window !== 'undefined' ? window.innerWidth : clientX
+      const vh = typeof window !== 'undefined' ? window.innerHeight : clientY
+      const x = Math.min(clientX, vw - mw - pad)
+      const y = Math.min(clientY, vh - mh - pad)
+      setCtxMenu({
+        msg,
+        x: Math.max(pad, x),
+        y: Math.max(pad, y),
+        isMine: msg.sender_id === userId,
+      })
+    },
+    [userId],
+  )
+
+  // Open the quick-react bar for a message; pass a falsy id to close it.
+  const handleSetReacting = useCallback((msgId: string) => {
+    setReactingMsgId(msgId || null)
+  }, [])
+
+  const handleOpenThread = useCallback((msg: DecryptedMessage) => {
+    setThreadRoot(msg)
+  }, [])
+
   const handleTouchStart = useCallback(
     (msg: DecryptedMessage, e: React.TouchEvent) => {
       const touch = e.touches[0]
@@ -713,45 +736,66 @@ export function ChatTerminal({
     }
     if (dy > TELEGRAM_BEHAVIOR.gestures.swipeVerticalTolerancePx) {
       setSwipingMsgId(null)
+      swipeOffsetRef.current = 0
       setSwipeOffset(0)
       return
     }
     if (dx > TELEGRAM_BEHAVIOR.gestures.swipeReplyStartPx) {
+      const next = Math.min(dx, TELEGRAM_BEHAVIOR.gestures.swipeReplyMaxPx)
       setSwipingMsgId(swipeRef.current.msgId)
-      setSwipeOffset(Math.min(dx, TELEGRAM_BEHAVIOR.gestures.swipeReplyMaxPx))
+      swipeOffsetRef.current = next
+      setSwipeOffset(next)
     }
   }, [handleTouchEnd])
 
+  // Stable identity: reads the live offset / message list from refs so the
+  // memoized MessageRow does not re-render on every swipe-offset tick.
   const handleSwipeEnd = useCallback(() => {
-    if (swipeRef.current && swipeOffset > TELEGRAM_BEHAVIOR.gestures.swipeReplyCommitPx) {
-      const msg = renderMessages.find((m) => m.id === swipeRef.current!.msgId)
+    if (swipeRef.current && swipeOffsetRef.current > TELEGRAM_BEHAVIOR.gestures.swipeReplyCommitPx) {
+      const msg = renderMessagesRef.current.find((m) => m.id === swipeRef.current!.msgId)
       if (msg) setReplyTo(msg)
     }
     swipeRef.current = null
     setSwipingMsgId(null)
+    swipeOffsetRef.current = 0
     setSwipeOffset(0)
-  }, [swipeOffset, renderMessages, setReplyTo])
+  }, [setReplyTo])
+
+  // Combined touch-end / touch-cancel for a message row — stable identity.
+  const handleRowTouchEnd = useCallback(() => {
+    handleTouchEnd()
+    handleSwipeEnd()
+  }, [handleTouchEnd, handleSwipeEnd])
 
   const msgById = (id: string) => renderMessages.find((m) => m.id === id)
   const oldestLoaded = renderMessages[0] ?? null
 
-  function labelForSender(senderId: string): string {
-    if (senderId === userId) {
-      return currentUsername.trim() || 'YOU'
-    }
-    if (!isGroup) {
-      return directPeerUsername?.trim() || shortId(senderId)
-    }
-    return senderMeta[senderId]?.username?.trim() || shortId(senderId)
-  }
+  // useCallback so the memoized MessageRow's props stay referentially stable
+  // across unrelated ChatTerminal state changes.
+  const labelForSender = useCallback(
+    (senderId: string): string => {
+      if (senderId === userId) {
+        return currentUsername.trim() || 'YOU'
+      }
+      if (!isGroup) {
+        return directPeerUsername?.trim() || shortId(senderId)
+      }
+      return senderMeta[senderId]?.username?.trim() || shortId(senderId)
+    },
+    [userId, currentUsername, isGroup, directPeerUsername, senderMeta],
+  )
 
-  function avatarKeyForSender(senderId: string): string | null | undefined {
-    if (senderId === userId) return myAvatarKey ?? null
-    if (!isGroup) return peerAvatarKey ?? null
-    return senderMeta[senderId]?.avatar_key
-  }
+  const avatarKeyForSender = useCallback(
+    (senderId: string): string | null | undefined => {
+      if (senderId === userId) return myAvatarKey ?? null
+      if (!isGroup) return peerAvatarKey ?? null
+      return senderMeta[senderId]?.avatar_key
+    },
+    [userId, myAvatarKey, isGroup, peerAvatarKey, senderMeta],
+  )
 
-  function replySnippet(msg: DecryptedMessage): string {
+  // Pure — no closure deps; stable identity for the whole component lifetime.
+  const replySnippet = useCallback((msg: DecryptedMessage): string => {
     const env = parseAttachmentEnvelope(msg.plaintext)
     if (env) return env.fileName.length > 48 ? `${env.fileName.slice(0, 48)}…` : env.fileName
     const st = parseStickerEnvelope(msg.plaintext)
@@ -761,7 +805,7 @@ export function ChatTerminal({
     }
     if (msg.media_path) return '[MEDIA]'
     return '—'
-  }
+  }, [])
 
   const voiceMessageIds = useMemo(() => {
     return renderMessages
@@ -796,7 +840,7 @@ export function ChatTerminal({
     if (targetId) scrollToAndPlayVoice(targetId)
   }, [voiceMessageIds, scrollToAndPlayVoice])
 
-  const handleMediaClick = (media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
+  const handleMediaClick = useCallback((media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
     const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }> = []
     const metaMap = new Map<string, { mediaPath: string; mediaIv: string; plaintext?: string }>()
 
@@ -835,7 +879,7 @@ export function ChatTerminal({
       setLightboxIndex(currentIndex)
       setLightboxOpen(true)
     }
-  }
+  }, [groupedMessages])
 
   const handleLightboxLoadMedia = useCallback(async (index: number): Promise<string | null> => {
     const items = lightboxMedia
@@ -921,13 +965,13 @@ export function ChatTerminal({
     lightboxMetaRef.current.clear()
   }
 
-  function openProfile(senderId: string) {
+  const openProfile = useCallback((senderId: string) => {
     setProfileTarget({
       userId: senderId,
       username: labelForSender(senderId),
       avatarKey: avatarKeyForSender(senderId),
     })
-  }
+  }, [labelForSender, avatarKeyForSender])
 
   function roleGlyph(senderId: string) {
     if (!isGroup) return null
@@ -1157,269 +1201,11 @@ export function ChatTerminal({
 
           if (group.type === 'UNIT') {
             const m = group.message
-            const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) : null
-            const stickerEnv = m.plaintext ? parseStickerEnvelope(m.plaintext) : null
-            const pollEnv = (() => {
-              if (!m.plaintext) return null
-              try {
-                const parsed = JSON.parse(m.plaintext) as { type?: string; poll_id?: string }
-                return parsed?.type === 'poll' && parsed?.poll_id ? parsed.poll_id : null
-              } catch { return null }
-            })()
-            const missedCallMeta = m.kind === 'call_missed'
-              ? (m.kindMeta as { is_video?: boolean } | undefined)
-              : null
+            const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) ?? null : null
             const mine = m.sender_id === userId
-            const senderLabel = labelForSender(m.sender_id)
             const showUnreadDivider =
               !!firstUnreadAnchorId && m.id === firstUnreadAnchorId
-            const body = (
-              <div
-                key={m.id}
-                data-message-id={m.id}
-                data-sender-id={m.sender_id}
-                data-read-at={m.read_at ?? ''}
-                data-run-continuation={isRunContinuation ? 'true' : 'false'}
-                className={`p13-msg-group group/msg relative flex w-full ${
-                  mine ? 'justify-end' : 'justify-start'
-                } transition-transform duration-150`}
-                style={{
-                  transform: swipingMsgId === m.id ? `translateX(${swipeOffset}px)` : undefined,
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault()
-                  const pad = 8
-                  const mw = 200
-                  const mh = 320
-                  const x = Math.min(
-                    e.clientX,
-                    (typeof window !== 'undefined' ? window.innerWidth : e.clientX) - mw - pad
-                  )
-                  const y = Math.min(
-                    e.clientY,
-                    (typeof window !== 'undefined' ? window.innerHeight : e.clientY) - mh - pad
-                  )
-                  setCtxMenu({
-                    msg: m,
-                    x: Math.max(pad, x),
-                    y: Math.max(pad, y),
-                    isMine: mine,
-                  })
-                }}
-                onTouchStart={(e) => {
-                  handleTouchStart(m, e)
-                  handleSwipeStart(m.id, e)
-                }}
-                onTouchMove={handleSwipeMove}
-                onTouchEnd={() => {
-                  handleTouchEnd()
-                  handleSwipeEnd()
-                }}
-                onTouchCancel={() => {
-                  handleTouchEnd()
-                  handleSwipeEnd()
-                }}
-              >
-                {swipingMsgId === m.id && swipeOffset > 10 ? (
-                  <div
-                    className="absolute left-0 top-1/2 z-10 -translate-x-full -translate-y-1/2 flex items-center justify-center md:hidden"
-                    style={{ opacity: Math.min(1, swipeOffset / 50) }}
-                  >
-                    <Reply className="h-4 w-4 text-neon-cyan" />
-                  </div>
-                ) : null}
-                {/* Hover quick-action bar — desktop only, absolute above the bubble */}
-                <div className={`p13-hover-actions absolute -top-8 z-10 hidden md:flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150 ${
-                  mine ? 'right-0' : 'left-0'
-                }`}>
-                  {m.plaintext !== '[DECRYPT_FAIL]' ? (
-                    <>
-                      <button
-                        type="button"
-                        title={t('msgAction.reply')}
-                        aria-label={t('msgAction.reply')}
-                        onClick={(e) => { e.stopPropagation(); handleMessageAction('reply', m) }}
-                        className="p13-icon-btn h-7 w-7"
-                      >
-                        <Reply className="h-3.5 w-3.5" strokeWidth={1.5} />
-                      </button>
-                      <button
-                        type="button"
-                        title={t('msgAction.react')}
-                        aria-label={t('msgAction.react')}
-                        onClick={(e) => { e.stopPropagation(); setReactingMsgId(m.id) }}
-                        className="p13-icon-btn h-7 w-7"
-                      >
-                        <SmilePlus className="h-3.5 w-3.5" strokeWidth={1.5} />
-                      </button>
-                    </>
-                  ) : null}
-                  <button
-                    type="button"
-                    title="More actions"
-                    aria-label="More actions"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const pad = 8
-                      const mw = 200
-                      const mh = 320
-                      const x = Math.min(e.clientX, (typeof window !== 'undefined' ? window.innerWidth : e.clientX) - mw - pad)
-                      const y = Math.min(e.clientY, (typeof window !== 'undefined' ? window.innerHeight : e.clientY) - mh - pad)
-                      setCtxMenu({ msg: m, x: Math.max(pad, x), y: Math.max(pad, y), isMine: mine })
-                    }}
-                    className="p13-icon-btn h-7 w-7"
-                  >
-                    <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  </button>
-                </div>
-                <div
-                  className={`min-w-0 relative ${
-                    mine
-                      ? 'msg-bubble-width msg-bubble-mine items-end'
-                      : 'msg-bubble-peer-width msg-bubble-peer items-start'
-                  } p13-msg-stack flex flex-col`}
-                >
-                  {isRunContinuation ? null : (
-                  <div
-                    className={`p13-msg-meta p13-label flex items-center gap-2 px-1 text-[11px] ${
-                      mine
-                        ? 'p13-msg-meta--mine flex-row-reverse justify-end text-right'
-                        : 'p13-msg-meta--peer justify-start text-left'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      className="shrink-0 cursor-pointer"
-                      onClick={(e) => { e.stopPropagation(); openProfile(m.sender_id) }}
-                    >
-                      {!mine ? (
-                        <UserAvatar
-                          userId={m.sender_id}
-                          username={labelForSender(m.sender_id)}
-                          avatarKey={avatarKeyForSender(m.sender_id)}
-                          size={28}
-                        />
-                      ) : (
-                        <UserAvatar
-                          userId={userId}
-                          username={currentUsername || 'YOU'}
-                          avatarKey={myAvatarKey}
-                          size={28}
-                        />
-                      )}
-                    </button>
-                    {roleGlyph(m.sender_id)}
-                    <button
-                      type="button"
-                      className="cursor-pointer transition-colors hover:opacity-80"
-                      onClick={(e) => { e.stopPropagation(); openProfile(m.sender_id) }}
-                    >
-                      {senderLabel}
-                    </button>
-                  </div>
-                  )}
-                  <div
-                    className={`p13-msg-bubble p13-bubble w-full leading-relaxed ${
-                      mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
-                    }`}
-                  >
-                    {replyMsg ? (
-                      <div
-                        className="p13-reply-quote mb-1 cursor-pointer pl-2 text-[10px]"
-                        onClick={() => setThreadRoot(replyMsg)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => e.key === 'Enter' && setThreadRoot(replyMsg)}
-                      >
-                        <span className="p13-reply-quote-author">
-                          ↳ {labelForSender(replyMsg.sender_id)}:
-                        </span>{' '}
-                        {replySnippet(replyMsg)}
-                      </div>
-                    ) : m.reply_to_id ? (
-                      <div className="p13-reply-quote mb-1 pl-2 text-[10px] opacity-60">
-                        ↳ [{t('chat.originalDeleted')}]
-                      </div>
-                    ) : null}
-                    <div className="p13-label mb-1 flex items-center gap-1.5 text-[10px] opacity-70">
-                      {formatMessageTimestamp(m.created_at, locale)}
-                      {m.burn_at ? (
-                        <span className="inline-flex items-center gap-0.5 rounded-full bg-warning/20 px-1.5 py-0.5 text-warning font-semibold">
-                          <Flame className="h-2.5 w-2.5" />
-                          {formatBurnCountdown(m.burn_at)}
-                        </span>
-                      ) : null}
-                    </div>
-                    {missedCallMeta ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-neon-red/10 border border-neon-red/30 px-3 py-1.5 text-neon-red text-[11px] font-mono uppercase tracking-wider">
-                        <PhoneMissed className="h-3.5 w-3.5 shrink-0" />
-                        {missedCallMeta.is_video ? t('call.missedVideo') : t('call.missedAudio')}
-                      </span>
-                    ) : null}
-                    {stickerEnv ? <StickerBubble envelope={stickerEnv} /> : null}
-                    {pollEnv ? <PollBubble pollId={pollEnv} /> : null}
-                    {m.plaintext === '[DECRYPT_FAIL]' ? (
-                      <span
-                        className="inline-flex items-center gap-1.5 text-text-muted/60 text-[11px] italic"
-                        title={t('chat.decryptFailed')}
-                      >
-                        <Lock className="h-3 w-3 shrink-0 text-text-muted/50" aria-hidden />
-                        {t('chat.decryptFailed')}
-                      </span>
-                    ) : m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv && !pollEnv ? (
-                      <>
-                        <CollapsibleText text={m.plaintext}>
-                          {(visibleText) => (
-                            <NoirPlaintext
-                              text={visibleText}
-                              className="whitespace-pre-wrap break-words"
-                            />
-                          )}
-                        </CollapsibleText>
-                        {(() => {
-                          const url = extractFirstUrl(m.plaintext)
-                          return url ? <LinkPreviewCard url={url} /> : null
-                        })()}
-                      </>
-                    ) : null}
-                    {m.media_path && m.media_iv && m.media_type ? (
-                      <MediaMessage
-                        message={m}
-                        sharedKey={sharedKey}
-                        onMediaClick={handleMediaClick}
-                        onAudioEnd={() => navigateVoice(m.id, 'next')}
-                        onPrevVoice={(voiceMessageIndex.get(m.id) ?? -1) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
-                        onNextVoice={(voiceMessageIndex.get(m.id) ?? -1) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
-                      />
-                    ) : null}
-                    {m.reactions && Object.keys(m.reactions).length > 0 ? (
-                      <MessageReactions
-                        reactions={m.reactions}
-                        currentUserId={userId}
-                        onToggleReaction={(emoji) => handleToggleReaction(emoji, m.id)}
-                        onOpenPicker={() => {}}
-                      />
-                    ) : null}
-                    {reactingMsgId === m.id ? (
-                      <div className="mt-1">
-                        <QuickReactBar onReact={(emoji) => { handleToggleReaction(emoji, m.id); setReactingMsgId(null) }} />
-                      </div>
-                    ) : null}
-                    {mine ? (
-                      <div
-                        className="mt-1 flex items-center justify-end gap-0.5 text-[10px]"
-                        aria-hidden
-                      >
-                        <MessageStatus
-                          pending={m._pending}
-                          readAt={m.read_at}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )
+            const voiceIdx = voiceMessageIndex.get(m.id) ?? -1
             return (
               <div key={m.id} className="contents">
                 {dateDivider}
@@ -1428,7 +1214,39 @@ export function ChatTerminal({
                     {t('chat.unreadMessages') || 'UNREAD MESSAGES'}
                   </div>
                 ) : null}
-                {body}
+                <MessageRow
+                  message={m}
+                  mine={mine}
+                  isRunContinuation={isRunContinuation}
+                  replyMsg={replyMsg}
+                  sharedKey={sharedKey}
+                  userId={userId}
+                  currentUsername={currentUsername}
+                  myAvatarKey={myAvatarKey}
+                  locale={locale}
+                  t={t}
+                  senderLabel={labelForSender(m.sender_id)}
+                  senderAvatarKey={avatarKeyForSender(m.sender_id)}
+                  senderRole={isGroup ? senderRoles[m.sender_id] ?? null : null}
+                  swipeOffset={swipingMsgId === m.id ? swipeOffset : 0}
+                  isReacting={reactingMsgId === m.id}
+                  hasPrevVoice={voiceIdx > 0}
+                  hasNextVoice={voiceIdx >= 0 && voiceIdx < voiceMessageIds.length - 1}
+                  labelForSender={labelForSender}
+                  replySnippet={replySnippet}
+                  onContextMenu={handleOpenContextMenu}
+                  onTouchStart={handleTouchStart}
+                  onSwipeStart={handleSwipeStart}
+                  onSwipeMove={handleSwipeMove}
+                  onTouchEnd={handleRowTouchEnd}
+                  onMessageAction={handleMessageAction}
+                  onSetReacting={handleSetReacting}
+                  onToggleReaction={handleToggleReaction}
+                  onMediaClick={handleMediaClick}
+                  onOpenProfile={openProfile}
+                  onOpenThread={handleOpenThread}
+                  onNavigateVoice={navigateVoice}
+                />
               </div>
             )
           } else if (group.type === 'COLLECTION') {

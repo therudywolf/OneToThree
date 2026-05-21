@@ -2,32 +2,31 @@
 // Copyright (C) 2026 therudywolf
 
 /**
- * X3DH / Double Ratchet key directory.
+ * X3DH / Double Ratchet key directory — device-scoped (track A4).
  *
- *  POST /api/keys/identity             publish (or rotate) identity key pair
- *  POST /api/keys/signed-prekey        publish / rotate signed pre-key
- *  POST /api/keys/one-time             upload N one-time pre-keys in bulk
- *  GET  /api/keys/inventory            how many OPKs remain (auth, current user)
- *  GET  /api/keys/identity/:userId     identity-only fetch (no OPK consumption)
- *  GET  /api/keys/bundle/:userId       atomic bundle fetch (identity + SPK + popped OPK)
+ *  POST /api/keys/identity             publish (or rotate) this DEVICE's identity
+ *  POST /api/keys/signed-prekey        publish / rotate this device's signed pre-key
+ *  POST /api/keys/one-time             upload N one-time pre-keys for this device
+ *  GET  /api/keys/inventory            OPK count for the caller's own device
+ *  GET  /api/keys/devices/:userId      every device's identity (multi-device peer resolution)
+ *  GET  /api/keys/identity/:userId     identity-only fetch (?device_id= optional)
+ *  GET  /api/keys/bundle/:userId       atomic bundle fetch + popped OPK (?device_id= optional)
  *
- * All keys are transported as base64url strings (32 bytes each, 44 chars).
- * Signatures are base64url Ed25519 signatures (64 bytes, 86 chars).
+ * Keys are per (user, device): each linked device publishes and owns its own
+ * identity + prekeys, so a revoked device's keys can be dropped without
+ * touching the rest of the account. Bundle/identity GETs accept an optional
+ * `device_id` query param; without it they return the user's most recently
+ * published device (back-compat for single-device callers).
  *
- * Security properties:
- *   - `POST /keys/identity` is **one-shot per generation** — clients cannot
- *     overwrite an existing identity without bumping `generation`, which
- *     surfaces as a "new identity" warning to peers.
- *   - `POST /keys/one-time` has a per-user cap (200) to avoid a flood attack.
- *   - `GET /keys/bundle/:userId` pops an OPK atomically inside a tx and
- *     returns it in a single response. The response MUST NOT be cacheable.
+ * All keys are transported as base64url strings. The bundle response MUST NOT
+ * be cacheable.
  */
-import { desc, eq, sql } from 'drizzle-orm'
-import type { FastifyPluginAsync } from 'fastify'
+import { and, desc, eq, sql } from 'drizzle-orm'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { identityKeys, oneTimePrekeys, signedPrekeys } from '../db/schema.js'
-import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 
 /** Strict base64url matcher — 32 bytes = 43 chars (no padding), 64 bytes = 86. */
 const B64URL_32 = /^[A-Za-z0-9_-]{43}$/
@@ -58,21 +57,34 @@ const opkBodySchema = z.object({
     .max(100),
 })
 
-const MAX_OPKS_PER_USER = 200
+const deviceQuerySchema = z.object({
+  device_id: z.string().uuid().optional(),
+})
+
+/** Per-device cap on stored one-time pre-keys (flood protection). */
+const MAX_OPKS_PER_DEVICE = 200
+
+/** The device that owns the caller's session — required to publish keys. */
+async function callerDeviceId(req: FastifyRequest): Promise<string | null> {
+  const sess = await verifySessionJwt(req)
+  return sess?.device_id ?? null
+}
 
 export const keysRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /identity ──────────────────────────────────────────────────────
   app.post('/identity', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
+    const deviceId = await callerDeviceId(req)
+    if (!deviceId) return reply.status(409).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const body = identityBodySchema.safeParse(req.body)
     if (!body.success) return reply.status(400).send({ error: 'BAD_BODY' })
 
-    // Read existing row (if any) to enforce monotonic generation.
+    // Read this device's existing row (if any) to enforce monotonic generation.
     const [existing] = await db
       .select()
       .from(identityKeys)
-      .where(eq(identityKeys.userId, u.id))
+      .where(and(eq(identityKeys.userId, u.id), eq(identityKeys.deviceId, deviceId)))
       .limit(1)
 
     if (existing && body.data.generation < existing.generation) {
@@ -98,12 +110,13 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       .insert(identityKeys)
       .values({
         userId: u.id,
+        deviceId,
         signingPublicKey: body.data.signing_public_key,
         exchangePublicKey: body.data.exchange_public_key,
         generation: body.data.generation,
       })
       .onConflictDoUpdate({
-        target: identityKeys.userId,
+        target: [identityKeys.userId, identityKeys.deviceId],
         set: {
           signingPublicKey: body.data.signing_public_key,
           exchangePublicKey: body.data.exchange_public_key,
@@ -119,14 +132,16 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   app.post('/signed-prekey', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
+    const deviceId = await callerDeviceId(req)
+    if (!deviceId) return reply.status(409).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const body = spkBodySchema.safeParse(req.body)
     if (!body.success) return reply.status(400).send({ error: 'BAD_BODY' })
 
-    // User must have an identity first (bundle requires both).
+    // This device must have an identity first (bundle requires both).
     const [hasIdentity] = await db
       .select({ id: identityKeys.userId })
       .from(identityKeys)
-      .where(eq(identityKeys.userId, u.id))
+      .where(and(eq(identityKeys.userId, u.id), eq(identityKeys.deviceId, deviceId)))
       .limit(1)
     if (!hasIdentity) {
       return reply.status(409).send({ error: 'IDENTITY_NOT_PUBLISHED' })
@@ -136,12 +151,13 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       .insert(signedPrekeys)
       .values({
         userId: u.id,
+        deviceId,
         preKeyId: body.data.pre_key_id,
         publicKey: body.data.public_key,
         signature: body.data.signature,
       })
       .onConflictDoUpdate({
-        target: [signedPrekeys.userId, signedPrekeys.preKeyId],
+        target: [signedPrekeys.userId, signedPrekeys.deviceId, signedPrekeys.preKeyId],
         set: {
           publicKey: body.data.public_key,
           signature: body.data.signature,
@@ -159,19 +175,21 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
+    const deviceId = await callerDeviceId(req)
+    if (!deviceId) return reply.status(409).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const body = opkBodySchema.safeParse(req.body)
     if (!body.success) return reply.status(400).send({ error: 'BAD_BODY' })
 
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(oneTimePrekeys)
-      .where(eq(oneTimePrekeys.userId, u.id))
+      .where(and(eq(oneTimePrekeys.userId, u.id), eq(oneTimePrekeys.deviceId, deviceId)))
 
     const currentCount = Number(count ?? 0)
-    if (currentCount + body.data.keys.length > MAX_OPKS_PER_USER) {
+    if (currentCount + body.data.keys.length > MAX_OPKS_PER_DEVICE) {
       return reply.status(409).send({
         error: 'OPK_QUOTA_EXCEEDED',
-        max: MAX_OPKS_PER_USER,
+        max: MAX_OPKS_PER_DEVICE,
         current: currentCount,
       })
     }
@@ -181,6 +199,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       .values(
         body.data.keys.map((k) => ({
           userId: u.id,
+          deviceId,
           preKeyId: k.pre_key_id,
           publicKey: k.public_key,
         }))
@@ -193,19 +212,53 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   app.get('/inventory', async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
+    const deviceId = await callerDeviceId(req)
+    if (!deviceId) return reply.status(409).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(oneTimePrekeys)
-      .where(eq(oneTimePrekeys.userId, u.id))
+      .where(and(eq(oneTimePrekeys.userId, u.id), eq(oneTimePrekeys.deviceId, deviceId)))
     return reply.send({
       one_time_prekeys: Number(count ?? 0),
-      max: MAX_OPKS_PER_USER,
+      max: MAX_OPKS_PER_DEVICE,
     })
   })
 
+  // ── GET /devices/:userId ────────────────────────────────────────────────
+  // Lists every device of a user that has published an identity, so a sender
+  // can fetch a bundle per device (multi-device fan-out).
+  app.get<{ Params: { userId: string } }>(
+    '/devices/:userId',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const u = await getAuthUser(req, reply)
+      if (!u || !assertAuthed(reply, u)) return
+      if (!z.string().uuid().safeParse(req.params.userId).success) {
+        return reply.status(400).send({ error: 'BAD_USER_ID' })
+      }
+      const rows = await db
+        .select()
+        .from(identityKeys)
+        .where(eq(identityKeys.userId, req.params.userId))
+        .orderBy(desc(identityKeys.createdAt))
+      reply.header('Cache-Control', 'no-store')
+      return reply.send({
+        user_id: req.params.userId,
+        devices: rows.map((r) => ({
+          device_id: r.deviceId,
+          identity: {
+            signing_public_key: r.signingPublicKey,
+            exchange_public_key: r.exchangePublicKey,
+            generation: r.generation,
+          },
+        })),
+      })
+    }
+  )
+
   // ── GET /identity/:userId ───────────────────────────────────────────────
-  // Identity-only lookup used by responders to verify the identity claimed in
-  // an X3DH `dr_init` payload. Does NOT pop a one-time prekey.
+  // Identity-only lookup. With `?device_id=` returns that device; without it,
+  // the most recently published device. Does NOT pop a one-time prekey.
   app.get<{ Params: { userId: string } }>(
     '/identity/:userId',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
@@ -215,15 +268,26 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       if (!z.string().uuid().safeParse(req.params.userId).success) {
         return reply.status(400).send({ error: 'BAD_USER_ID' })
       }
+      const q = deviceQuerySchema.safeParse(req.query)
+      if (!q.success) return reply.status(400).send({ error: 'BAD_DEVICE_ID' })
+
+      const where = q.data.device_id
+        ? and(
+            eq(identityKeys.userId, req.params.userId),
+            eq(identityKeys.deviceId, q.data.device_id)
+          )
+        : eq(identityKeys.userId, req.params.userId)
       const [identity] = await db
         .select()
         .from(identityKeys)
-        .where(eq(identityKeys.userId, req.params.userId))
+        .where(where)
+        .orderBy(desc(identityKeys.createdAt))
         .limit(1)
       if (!identity) return reply.status(404).send({ error: 'NO_IDENTITY' })
       reply.header('Cache-Control', 'no-store')
       return reply.send({
         user_id: req.params.userId,
+        device_id: identity.deviceId,
         identity: {
           signing_public_key: identity.signingPublicKey,
           exchange_public_key: identity.exchangePublicKey,
@@ -243,34 +307,51 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       if (!z.string().uuid().safeParse(req.params.userId).success) {
         return reply.status(400).send({ error: 'BAD_USER_ID' })
       }
-      if (req.params.userId === u.id) {
+      const q = deviceQuerySchema.safeParse(req.query)
+      if (!q.success) return reply.status(400).send({ error: 'BAD_DEVICE_ID' })
+      // Self-fetch is allowed only for a *different* device of the same user.
+      if (req.params.userId === u.id && !q.data.device_id) {
         return reply.status(400).send({ error: 'BUNDLE_FOR_SELF_FORBIDDEN' })
       }
 
-      // Pull identity + latest signed pre-key (highest createdAt) + pop one OPK.
       const bundle = await db.transaction(async (tx) => {
+        const identityWhere = q.data.device_id
+          ? and(
+              eq(identityKeys.userId, req.params.userId),
+              eq(identityKeys.deviceId, q.data.device_id)
+            )
+          : eq(identityKeys.userId, req.params.userId)
         const [identity] = await tx
           .select()
           .from(identityKeys)
-          .where(eq(identityKeys.userId, req.params.userId))
+          .where(identityWhere)
+          .orderBy(desc(identityKeys.createdAt))
           .limit(1)
         if (!identity) return null
+
+        const targetDeviceId = identity.deviceId
 
         const [spk] = await tx
           .select()
           .from(signedPrekeys)
-          .where(eq(signedPrekeys.userId, req.params.userId))
+          .where(
+            and(
+              eq(signedPrekeys.userId, req.params.userId),
+              eq(signedPrekeys.deviceId, targetDeviceId)
+            )
+          )
           .orderBy(desc(signedPrekeys.createdAt))
           .limit(1)
         if (!spk) return { identity, spk: null, opk: null }
 
+        // Pop one OPK for this specific device, atomically.
         const popped = await tx.execute(
           sql<{ preKeyId: number; publicKey: string }>`
           DELETE FROM onetime_prekeys
-          WHERE (user_id, pre_key_id) IN (
-            SELECT user_id, pre_key_id
+          WHERE (user_id, device_id, pre_key_id) IN (
+            SELECT user_id, device_id, pre_key_id
             FROM onetime_prekeys
-            WHERE user_id = ${req.params.userId}
+            WHERE user_id = ${req.params.userId} AND device_id = ${targetDeviceId}
             ORDER BY pre_key_id ASC
             FOR UPDATE SKIP LOCKED
             LIMIT 1
@@ -285,10 +366,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
           identity,
           spk,
           opk: opkRow
-            ? {
-                preKeyId: opkRow.preKeyId,
-                publicKey: opkRow.publicKey,
-              }
+            ? { preKeyId: opkRow.preKeyId, publicKey: opkRow.publicKey }
             : null,
         }
       })
@@ -301,6 +379,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       reply.header('Cache-Control', 'no-store')
       return reply.send({
         user_id: req.params.userId,
+        device_id: bundle.identity.deviceId,
         identity: {
           signing_public_key: bundle.identity.signingPublicKey,
           exchange_public_key: bundle.identity.exchangePublicKey,

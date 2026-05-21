@@ -659,6 +659,10 @@ export const identityKeys = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** Per-device X3DH identity. Each linked device publishes its own key. */
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
     /** Base64url Ed25519 public signing key (32 bytes). */
     signingPublicKey: text('signing_public_key').notNull(),
     /** Base64url X25519 public exchange key (32 bytes). */
@@ -670,7 +674,7 @@ export const identityKeys = pgTable(
       .defaultNow(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.userId] }),
+    pk: primaryKey({ columns: [t.userId, t.deviceId] }),
   })
 )
 
@@ -685,6 +689,9 @@ export const signedPrekeys = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
     preKeyId: integer('pre_key_id').notNull(),
     publicKey: text('public_key').notNull(),
     signature: text('signature').notNull(),
@@ -693,9 +700,10 @@ export const signedPrekeys = pgTable(
       .defaultNow(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.userId, t.preKeyId] }),
+    pk: primaryKey({ columns: [t.userId, t.deviceId, t.preKeyId] }),
     userCreatedIdx: index('signed_prekeys_user_created_idx').on(
       t.userId,
+      t.deviceId,
       t.createdAt
     ),
   })
@@ -712,6 +720,9 @@ export const oneTimePrekeys = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    deviceId: uuid('device_id')
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
     preKeyId: integer('pre_key_id').notNull(),
     publicKey: text('public_key').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
@@ -719,8 +730,8 @@ export const oneTimePrekeys = pgTable(
       .defaultNow(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.userId, t.preKeyId] }),
-    userIdx: index('onetime_prekeys_user_idx').on(t.userId),
+    pk: primaryKey({ columns: [t.userId, t.deviceId, t.preKeyId] }),
+    userIdx: index('onetime_prekeys_user_idx').on(t.userId, t.deviceId),
   })
 )
 

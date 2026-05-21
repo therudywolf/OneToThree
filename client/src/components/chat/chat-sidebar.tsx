@@ -944,7 +944,17 @@ export function ChatSidebar({
             ))}
           </div>
         ) : chats.length === 0 ? (
-          <div className={`px-4 py-8 text-center space-y-3 ${isMd3 ? 'md3-empty-state' : ''}`}>
+          <div className={`flex flex-col items-center px-4 py-8 text-center space-y-3 ${isMd3 ? 'md3-empty-state' : ''}`}>
+            <div
+              className={`flex items-center justify-center ${
+                isMd3
+                  ? 'h-14 w-14 rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface-variant)]'
+                  : 'h-14 w-14 rounded-full border border-neon-cyan/25 bg-neon-cyan/5 text-neon-cyan/60'
+              }`}
+              aria-hidden
+            >
+              <Inbox className="h-6 w-6" strokeWidth={1.5} />
+            </div>
             <p className={`${isMd3 ? 'text-[15px] font-medium text-[var(--on-surface)]' : 'font-mono text-[10px] uppercase tracking-widest text-text-muted/70'}`}>
               {t('sidebar.noActiveRoutes')}
             </p>
@@ -973,6 +983,37 @@ export function ChatSidebar({
             <p className={`mx-1 mt-2 border px-4 py-6 text-center text-[10px] uppercase tracking-widest ${isMd3 ? 'rounded-2xl border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_5%,transparent)] text-[var(--on-surface-variant)]' : 'border-neon-red/30 bg-danger/30 font-mono text-neon-red'}`}>
               {t('sidebar.ghostNoHits')}
             </p>
+        ) : null}
+
+        {/* Folder/archive filter produced an empty list while the account
+            still has chats — explain it instead of showing a blank void. */}
+        {showExpandedSidebarChrome &&
+        !initialLoading &&
+        chats.length > 0 &&
+        ghostHitChatIds === null &&
+        sidebarChatsFiltered.length === 0 ? (
+          <div className="flex flex-col items-center px-4 py-8 text-center space-y-2">
+            <div
+              className={`flex h-12 w-12 items-center justify-center ${
+                isMd3
+                  ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface-variant)]'
+                  : 'rounded-full border border-neon-cyan/25 bg-neon-cyan/5 text-neon-cyan/55'
+              }`}
+              aria-hidden
+            >
+              {showArchive ? (
+                <Archive className="h-5 w-5" strokeWidth={1.5} />
+              ) : (
+                <Folder className="h-5 w-5" strokeWidth={1.5} />
+              )}
+            </div>
+            <p className={`${isMd3 ? 'text-[14px] font-medium text-[var(--on-surface)]' : 'font-mono text-[10px] uppercase tracking-widest text-text-muted/70'}`}>
+              {t('sidebar.folderEmpty')}
+            </p>
+            <p className={`${isMd3 ? 'text-[12px] text-text-muted' : 'text-[9px] text-text-muted/60'}`}>
+              {t('sidebar.folderEmptyHint')}
+            </p>
+          </div>
         ) : null}
 
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>

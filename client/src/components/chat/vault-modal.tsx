@@ -14,11 +14,12 @@ import { parseVaultPlaintext } from '@/lib/vault-keyring'
 import {
   deriveDrBundleFromEcdhJwk,
   deriveSessionWrapKey,
+  deriveDeviceDrRoot,
   deriveOtpBatch,
   deriveOtpPrivKey,
-  extractEcdhDBytes,
 } from '@/lib/ratchet/identity-from-vault'
 import { setOwnDrIdentity, setSessionWrapKey, encodeBase64Url } from '@/lib/ratchet/session-manager'
+import { getOrCreateClientDeviceId } from '@/lib/client-device'
 import { publishIdentity, publishSignedPrekey, publishOneTimePrekeys, fetchInventory } from '@/lib/api/keys'
 import {
   CURRENT_VAULT_VERSION,
@@ -48,35 +49,43 @@ import { isIOSOrIPadOS } from '@/lib/ios'
 import { useThemeStore } from '@/store/themeStore'
 import { LogoutButton } from '@/components/logout-button'
 
-const OTP_NEXT_ID_KEY = (userId: string) => `p13:dr-otp-next:${userId}`
+// OTP pool tracking is per (user, device) — each device owns its own OTP
+// space in the device-scoped server key directory (track A4).
+const OTP_NEXT_ID_KEY = (userId: string, deviceId: string) =>
+  `p13:dr-otp-next:${userId}:${deviceId}`
 const OTP_REPLENISH_THRESHOLD = 5
 const OTP_BATCH_SIZE = 20
 
 async function publishDrOtpBatch(
   userId: string,
-  dBytes: Uint8Array,
+  deviceId: string,
+  dRoot: Uint8Array,
   startId: number,
   count: number
 ): Promise<void> {
-  const batch = deriveOtpBatch(dBytes, startId, count)
+  const batch = deriveOtpBatch(dRoot, startId, count)
   await publishOneTimePrekeys({
     keys: batch.map((k) => ({
       pre_key_id: k.id,
       public_key: encodeBase64Url(k.keypair.publicKey),
     })),
   })
-  localStorage.setItem(OTP_NEXT_ID_KEY(userId), String(startId + count))
+  localStorage.setItem(OTP_NEXT_ID_KEY(userId, deviceId), String(startId + count))
 }
 
-async function replenishOtpsIfNeeded(userId: string, dBytes: Uint8Array): Promise<void> {
+async function replenishOtpsIfNeeded(
+  userId: string,
+  deviceId: string,
+  dRoot: Uint8Array
+): Promise<void> {
   try {
     const inventory = await fetchInventory()
     if (inventory.one_time_prekeys > OTP_REPLENISH_THRESHOLD) return
     // If pool is empty use id=1 (fresh start); otherwise continue from where we left off.
-    const nextIdRaw = localStorage.getItem(OTP_NEXT_ID_KEY(userId))
+    const nextIdRaw = localStorage.getItem(OTP_NEXT_ID_KEY(userId, deviceId))
     const nextId = nextIdRaw ? parseInt(nextIdRaw, 10) : 1
     if (!Number.isFinite(nextId) || nextId <= 0) return
-    await publishDrOtpBatch(userId, dBytes, nextId, OTP_BATCH_SIZE)
+    await publishDrOtpBatch(userId, deviceId, dRoot, nextId, OTP_BATCH_SIZE)
   } catch { /* non-fatal */ }
 }
 
@@ -162,22 +171,29 @@ export function VaultModal({ userId, displayHandle }: Props) {
         console.warn('[vault] ECDH key upload failed — this device may miss future messages')
       }
 
-      // Derive DR identity from vault ECDH key and activate it in-memory.
+      // Derive a PER-DEVICE DR identity from the vault ECDH key and activate
+      // it in-memory (track A4). The vault is per-user, so the stable
+      // per-browser device id is mixed into the derivation — every linked
+      // device thus owns a distinct identity / signed-prekey / OTP space and
+      // publishes its OWN bundle to the device-scoped /keys directory (the
+      // server resolves device_id from the session JWT).
       try {
-        const dBytes = extractEcdhDBytes(ecdhJwk)
-        const bundle = deriveDrBundleFromEcdhJwk(ecdhJwk)
+        const deviceId = getOrCreateClientDeviceId()
+        const dRoot = deriveDeviceDrRoot(ecdhJwk, deviceId)
+        const bundle = deriveDrBundleFromEcdhJwk(ecdhJwk, deviceId)
         const wrapKey = await deriveSessionWrapKey(bundle.identity)
         setSessionWrapKey(wrapKey)
         setOwnDrIdentity(
           bundle.identity,
           bundle.signedPreKey,
           bundle.signedPreKeyId,
-          (id: number) => deriveOtpPrivKey(dBytes, id)
+          deviceId,
+          (id: number) => deriveOtpPrivKey(dRoot, id)
         )
 
-        // Publish identity + SPK on every unlock — server deduplicates by
-        // (user_id, generation) so this is idempotent and self-healing if
-        // the server loses our keys (wipe, migration, new instance).
+        // Publish this device's identity + SPK on every unlock — the server
+        // deduplicates by (user_id, device_id, generation) so this is
+        // idempotent and self-healing if the server loses our keys.
         await publishIdentity({
           signing_public_key: encodeBase64Url(bundle.identity.signing.publicKey),
           exchange_public_key: encodeBase64Url(bundle.identity.exchange.publicKey),
@@ -188,8 +204,8 @@ export function VaultModal({ userId, displayHandle }: Props) {
           public_key: encodeBase64Url(bundle.signedPreKey.publicKey),
           signature: encodeBase64Url(bundle.signedPreKeySignature),
         })
-        // Ensure OTP pool is healthy; publish initial batch if pool is empty.
-        await replenishOtpsIfNeeded(userId, dBytes)
+        // Ensure this device's OTP pool is healthy; publish initial batch if empty.
+        await replenishOtpsIfNeeded(userId, deviceId, dRoot)
       } catch { /* DR setup is non-fatal; v1 fanout still works */ }
 
       setPin('')

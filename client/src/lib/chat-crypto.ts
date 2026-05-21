@@ -233,12 +233,22 @@ export async function decryptInboundText(
   return decryptMessage(sharedSecret, ciphertext, iv)
 }
 
+/** Per-device DR fan-out slot — see `session-manager.ts` → `DrDeviceSlot`. */
+export type DrFanoutSlotV2 = { device_id: string; ciphertext: string; iv: string }
+
 /**
- * [V2_SEAL] :: Encrypt a DIRECT message using the Double Ratchet if a session
- * already exists, otherwise transparently fall back to static ECDH (v1).
+ * [V2_SEAL] :: Encrypt a DIRECT message with the per-device Double Ratchet
+ * (track A4) if device bundles are available, otherwise transparently fall
+ * back to static ECDH (v1).
  *
- * Callers should persist the returned `protocol_version` and `dr_header`
- * alongside the ciphertext in `messages.protocol_version` / `messages.dr_header`.
+ * Unlike v1, a DR v2 message is NOT a single ciphertext: each linked device
+ * (peer's devices + the sender's other devices) gets its own ratchet and its
+ * own self-describing envelope. When DR is used, `dr_slots` carries one
+ * delivery slot per device; the caller posts those directly as
+ * `ciphertexts[]`. `encrypted_content` then holds the CURRENT device's own
+ * envelope copy purely so the optimistic local echo can be decrypted —
+ * actually the sender does not address itself, so for v2 it is left empty and
+ * the send hook keeps the original plaintext for the echo.
  */
 export async function encryptOutboundTextV2(
   privateKey: CryptoKey,
@@ -251,33 +261,34 @@ export async function encryptOutboundTextV2(
   iv: string
   dr_header: string | null
   dr_init: string | null
+  /** v2 only: one delivery slot per device. Empty/absent for v1. */
+  dr_slots?: DrFanoutSlotV2[]
 }> {
   // Double Ratchet does not apply to Saved Messages (single participant)
   // — fall straight through to the symmetric v1 path.
   if (frame.mode === 'DIRECT' && ctx.peerUserId) {
     try {
-      const { getDrFanoutSafety } = await import('@/lib/fanout-crypto')
+      const { getDrFanoutSafety, DR_SLOT_SENTINEL } = await import('@/lib/fanout-crypto')
       const safety = await getDrFanoutSafety(ctx.ownerUserId, ctx.peerUserId)
       if (!safety.safe) {
-        if (
-          typeof console !== 'undefined' &&
-          safety.reason === 'MULTI_DEVICE_UNSAFE'
-        ) {
-          console.warn('[ratchet] DR v2 disabled for multi-device direct chat', {
-            myDeviceCount: safety.myDeviceCount,
-            peerDeviceCount: safety.peerDeviceCount,
-          })
-        }
+        // The only remaining unsafe reason is an empty device registry.
         throw new Error('RATCHET_NO_SESSION')
       }
       const { encryptForPeer } = await import('@/lib/ratchet/session-manager')
-      const wire = await encryptForPeer(ctx.ownerUserId, ctx.peerUserId, plaintext)
+      const fanout = await encryptForPeer(ctx.ownerUserId, ctx.peerUserId, plaintext)
+      if (fanout.slots.length === 0) throw new Error('RATCHET_NO_SESSION')
       return {
         protocol_version: 2,
-        encrypted_content: wire.encrypted_content,
-        iv: wire.iv,
-        dr_header: wire.drHeader,
-        dr_init: wire.drInit ? JSON.stringify(wire.drInit) : null,
+        // v2 device fan-out: no shared ciphertext / header on the message row.
+        encrypted_content: '',
+        iv: DR_SLOT_SENTINEL,
+        dr_header: null,
+        dr_init: null,
+        dr_slots: fanout.slots.map((s) => ({
+          device_id: s.deviceId,
+          ciphertext: s.envelope,
+          iv: DR_SLOT_SENTINEL,
+        })),
       }
     } catch (err) {
       if (
@@ -293,7 +304,12 @@ export async function encryptOutboundTextV2(
   return { protocol_version: 1, ...legacy, dr_header: null, dr_init: null }
 }
 
-/** [V2_UNSEAL] :: Decrypt a message whose frame is tagged v1 or v2. */
+/** [V2_UNSEAL] :: Decrypt a message whose frame is tagged v1 or v2.
+ *
+ * For v2 (per-device DR), `encrypted_content` holds the device delivery
+ * slot's self-describing `DrDeviceEnvelope` JSON. The envelope itself carries
+ * the DR header, ciphertext, sender device id, and (first message only) the
+ * X3DH init — there is no longer a separate `dr_header` / `dr_init`. */
 export async function decryptInboundTextV2(
   privateKey: CryptoKey,
   frame: ChatCryptoContext,
@@ -307,38 +323,14 @@ export async function decryptInboundTextV2(
   ctx: { ownerUserId: string; peerUserId: string | null }
 ): Promise<string> {
   if (envelope.protocol_version === 2) {
-    if (!ctx.peerUserId || !envelope.dr_header) {
+    if (!ctx.peerUserId || !envelope.encrypted_content) {
       throw new Error('ERR_DR_METADATA_MISSING')
     }
     const sm = await import('@/lib/ratchet/session-manager')
-    let drInit: import('@/lib/ratchet/session-manager').DrInitWirePayload | undefined
-    if (envelope.dr_init) {
-      try {
-        const parsed = JSON.parse(envelope.dr_init)
-        if (
-          parsed &&
-          typeof parsed === 'object' &&
-          parsed.p13 === 'dr-init' &&
-          parsed.v === 1 &&
-          typeof parsed.initiatorIdentityExchange === 'string' &&
-          typeof parsed.initiatorIdentitySigning === 'string' &&
-          typeof parsed.initiatorEphemeralPublic === 'string' &&
-          typeof parsed.signedPrekeyId === 'number' &&
-          (parsed.oneTimePrekeyId === null || typeof parsed.oneTimePrekeyId === 'number')
-        ) {
-          drInit = parsed
-        }
-      } catch {
-        /* malformed dr_init — fall through; session manager will throw if needed */
-      }
-    }
-    return sm.decryptFromPeer(ctx.ownerUserId, ctx.peerUserId, {
-      protocolVersion: 2,
-      drHeader: envelope.dr_header,
-      iv: envelope.iv,
-      encrypted_content: envelope.encrypted_content,
-      drInit,
-    })
+    const { parseDrDeviceEnvelope } = await import('@/lib/dr-envelope')
+    const drEnv = parseDrDeviceEnvelope(envelope.encrypted_content)
+    if (!drEnv) throw new Error('ERR_DR_ENVELOPE_INVALID')
+    return sm.decryptFromPeer(ctx.ownerUserId, ctx.peerUserId, drEnv)
   }
   return decryptInboundText(privateKey, frame, envelope.encrypted_content, envelope.iv)
 }

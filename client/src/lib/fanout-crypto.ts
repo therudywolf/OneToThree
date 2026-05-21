@@ -76,6 +76,12 @@ export type DrFanoutSafety =
     }
   | {
       safe: false
+      /**
+       * `MULTI_DEVICE_UNSAFE` is retained in the union for backward
+       * compatibility but is NO LONGER produced — track A4 made the Double
+       * Ratchet per-device, so multi-device chats are safe. The only
+       * remaining unsafe reason is a totally empty device registry.
+       */
       reason: 'NO_DEVICE_SLOTS' | 'MULTI_DEVICE_UNSAFE'
       slots: DeviceSlot[]
       myDeviceCount: number
@@ -214,13 +220,20 @@ export async function buildFanoutSlots(
   ).slots
 }
 
-/** Sentinel IV that marks a device slot as carrying a DR v2 ciphertext. */
+/** Sentinel IV that marks a device slot as carrying a DR v2 envelope. */
 export const DR_SLOT_SENTINEL = 'dr:v2'
 
 /**
- * DR v2 sessions are local to one browser/device. Until ratchet state is
- * synchronized per device, it is only safe when both participants have a
- * single active ECDH device. Multi-device chats must use v1 per-device fanout.
+ * Track A4 — per-device Double Ratchet.
+ *
+ * The DR is now keyed per `(ownDevice ⇄ peerDevice)` pair, so a multi-device
+ * chat is no longer unsafe: `encryptForPeer` establishes one ratchet per
+ * device and emits one self-describing envelope per device slot. The only
+ * remaining "unsafe" condition is a completely empty device registry (no
+ * device to address at all), in which case the caller falls back to v1.
+ *
+ * `MULTI_DEVICE_UNSAFE` is no longer returned. The branch is kept out of the
+ * happy path; only `NO_DEVICE_SLOTS` can still surface.
  */
 export async function getDrFanoutSafety(
   myUserId: string,
@@ -244,47 +257,12 @@ export async function getDrFanoutSafety(
     }
   }
 
-  if (myDevices.length > 1 || peerDevices.length > 1) {
-    return {
-      safe: false,
-      reason: 'MULTI_DEVICE_UNSAFE',
-      slots,
-      myDeviceCount: myDevices.length,
-      peerDeviceCount: peerDevices.length,
-    }
-  }
-
   return {
     safe: true,
     slots,
     myDeviceCount: myDevices.length,
     peerDeviceCount: peerDevices.length,
   }
-}
-
-/**
- * Build fan-out delivery slots for a Double Ratchet v2 message.
- * Unlike v1, the DR ciphertext is the SAME for all devices — the slot only
- * identifies WHICH device the message is addressed to.  Decryption uses the
- * DR session key, not a per-device ECDH secret.
- */
-export async function buildDrFanoutSlots(
-  myUserId: string,
-  peerUserId: string,
-  drCiphertext: string
-): Promise<FanoutSlot[]> {
-  const safety = await getDrFanoutSafety(myUserId, peerUserId)
-  if (!safety.safe) {
-    if (safety.reason === 'MULTI_DEVICE_UNSAFE') {
-      throw new Error('DR_MULTI_DEVICE_UNSAFE')
-    }
-    return []
-  }
-  return safety.slots.map((dev) => ({
-    device_id: dev.device_id,
-    ciphertext: drCiphertext,
-    iv: DR_SLOT_SENTINEL,
-  }))
 }
 
 /**

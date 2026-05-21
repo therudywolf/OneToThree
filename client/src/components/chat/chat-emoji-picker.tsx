@@ -36,7 +36,7 @@ export function ChatEmojiPicker({ height, onPick }: ChatEmojiPickerProps) {
         onEmojiClick={(data: { emoji: string }) => onPick(data.emoji)}
         skinTonesDisabled
         lazyLoadEmojis
-        emojiStyle={EmojiStyle.NATIVE}
+        emojiStyle={EmojiStyle.GOOGLE}
         previewConfig={{ showPreview: false }}
         searchPlaceholder={locale === 'ru' ? 'Поиск эмодзи' : 'Search emoji'}
         width="100%"

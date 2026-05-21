@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send } from 'lucide-react'
+import { Send, X } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import { fetchChatsList, type ApiChatRow } from '@/lib/api/chats'
@@ -99,6 +99,8 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
             <button
               type="button"
               onClick={onClose}
+              aria-label={t('common.close')}
+              title={t('common.close')}
               className={`inline-flex h-8 w-8 items-center justify-center transition-colors ${
                 isMd3
                   ? 'rounded-full text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
@@ -107,7 +109,7 @@ export function ForwardModal({ message, onClose, onForward }: Props) {
                     : 'border border-neon-red/35 bg-void text-neon-red hover:border-neon-cyan hover:text-neon-cyan'
               }`}
             >
-              <span className={`${isMd3 ? 'font-sans' : isRetro ? '' : 'font-mono'} text-[10px] leading-none`}>✕</span>
+              <X className="h-4 w-4" />
             </button>
           </header>
           <div className={`min-h-0 ${isRetro ? 'p-4' : ''}`}>

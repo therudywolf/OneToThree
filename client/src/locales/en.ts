@@ -232,6 +232,8 @@ const en = {
   // [SIDEBAR]
   'sidebar.localGhostSearch': 'Search messages...',
   'sidebar.ghostNoHits': 'No results found.',
+  'sidebar.folderEmpty': 'No chats in this folder',
+  'sidebar.folderEmptyHint': 'Chats matching this folder will show up here.',
   'sidebar.channels': 'Chats',
   'sidebar.channelsSubtitle':
     'Favorites, direct messages, and encrypted groups — open a DM below.',

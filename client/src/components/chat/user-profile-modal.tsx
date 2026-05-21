@@ -13,6 +13,7 @@ import {
   Flag,
   ImageIcon,
   FileText,
+  X,
 } from 'lucide-react'
 import { fetchUserProfile, type UserProfile } from '@/lib/api/users'
 import { fetchSharedMedia, type SharedMediaRow } from '@/lib/api/messages'
@@ -152,9 +153,11 @@ export function UserProfileModal({
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 z-10 font-mono text-xs text-neon-red hover:text-neon-cyan transition-colors"
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            className="absolute right-4 top-4 z-10 grid h-7 w-7 place-items-center rounded-full text-neon-red transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan"
           >
-            [X]
+            <X className="h-4 w-4" />
           </button>
 
           {/* Scrollable content */}

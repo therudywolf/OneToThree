@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { X } from 'lucide-react'
 import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { searchUsers, type SearchUserRow } from '@/lib/api/users'
 import { normalizePeerInput } from '@/lib/peer-input'
@@ -193,9 +194,11 @@ export function CreateGroupModal({ userId, onClose, onCreated, initialMode = 'gr
           <button
             type="button"
             onClick={onClose}
-            className={`transition-colors ${isRetro ? 'p13-classic-copy-soft hover:text-[var(--danger)]' : 'text-text-muted/70 hover:text-neon-red'}`}
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${isRetro ? 'hover:text-[var(--danger)]' : 'text-text-muted/70 hover:bg-neon-cyan/10 hover:text-neon-red'}`}
           >
-            {isRetro ? '✕' : '[X]'}
+            <X className="h-4 w-4" />
           </button>
         </header>
 

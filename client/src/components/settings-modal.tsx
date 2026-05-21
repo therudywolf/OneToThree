@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { API_URL, fetchMe, setupRecoveryKey } from '@/lib/api/auth'
 import { useAuth } from '@/components/auth/auth-provider'
 import { nuclearWipeClient } from '@/lib/client-wipe'
@@ -609,8 +610,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
             {t('common.settings')} :: {username}
           </p>
           <button type="button" onClick={onClose}
-            className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'rounded-full px-2 py-1 text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'p13-classic-button px-2 py-0.5 shadow-none' : 'font-mono text-neon-red hover:text-neon-cyan'}`}>
-            {isMd3 || isRetro ? '✕' : '[X]'}
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            className={`grid h-7 w-7 shrink-0 place-items-center rounded-full transition-all duration-200 ease-in-out active:scale-95 ${isMd3 ? 'text-text-muted hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-[var(--on-surface)]' : isRetro ? 'p13-classic-button shadow-none' : 'text-neon-red hover:bg-neon-cyan/10 hover:text-neon-cyan'}`}>
+            <X className="h-4 w-4" />
           </button>
         </header>
 

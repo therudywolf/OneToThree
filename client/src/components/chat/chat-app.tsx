@@ -1287,7 +1287,7 @@ export function ChatApp({
                       {activeRow.is_group ? (
                         <span className={`truncate text-[12px] ${isMd3 ? 'text-text-muted' : 'font-mono text-[11px] text-text-muted/70'}`}>
                           {isChannel && isChannelSubscriber ? (
-                            <span className="mr-1 opacity-60">[read-only]</span>
+                            <span className="mr-1 opacity-60">[{t('profile.readOnly')}]</span>
                           ) : null}
                           {activeRow.member_ids.length} {t('sidebar.members')}
                         </span>

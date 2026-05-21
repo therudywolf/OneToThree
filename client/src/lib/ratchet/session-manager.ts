@@ -6,26 +6,45 @@
  * (`double-ratchet.ts`, `x3dh.ts`) with the server key directory (`/api/keys`)
  * and the client-side IndexedDB session store.
  *
- * Responsibilities
- *   - Boot per-peer sessions (X3DH → DR) on demand.
- *   - Serialize / deserialize session state for persistence.
- *   - Encrypt outbound messages into `{ protocolVersion: 2, drHeader, iv, ciphertext }`.
- *   - Decrypt inbound messages tagged with `protocolVersion: 2`.
- *   - Reuse and advance the session on every exchange.
+ * Track A4 — PER-DEVICE Double Ratchet
+ * ------------------------------------
+ * A user may have several linked devices. Each device owns a DISTINCT DR
+ * identity (see `identity-from-vault.ts` → `deriveDrBundleFromEcdhJwk`, which
+ * mixes the device id into the key derivation) and publishes its own X3DH
+ * bundle to the device-scoped server directory.
  *
- * The on-wire shape used by phase 3.3 messages:
- *   drHeader = base64url(JSON.stringify({ dhPub, prevN, n }))
- *   encrypted_content = base64url(ciphertext + 16-byte GCM tag)
- *   iv = base64url("dr:") — a sentinel that the wire carries the ratchet,
- *        since AES-GCM nonces live inside the DR derivation (deriveMessageAead).
+ * A conversation between user A and user B therefore holds one ratchet PER
+ * ORDERED PAIR of devices: `(A.dev_i ⇄ B.dev_j)`. Session records are keyed
+ * by the 4-tuple `(ownerId, ownDeviceId, peerId, peerDeviceId)`.
+ *
+ * Responsibilities
+ *   - Boot per-(device-pair) sessions (X3DH → DR) on demand.
+ *   - Serialize / deserialize session state for persistence.
+ *   - `encryptForPeer` → fan out: one wire envelope per peer device AND per
+ *     of the sender's OTHER devices (outbox sync), each carrying its own
+ *     ratchet header and the SENDER's device id.
+ *   - `decryptFromPeer` → route an inbound envelope to the ratchet matching
+ *     `(owner, ownDevice, peer, envelope.senderDeviceId)`.
+ *
+ * On-wire shape (one per device delivery slot)
+ *   The DR ciphertext for each device is NOT the same — distinct ratchets
+ *   produce distinct headers + ciphertexts. The server's `message_deliveries`
+ *   slot only has an opaque `ciphertext` text column, so each slot carries a
+ *   self-contained JSON envelope packed into that column:
+ *
+ *     DrDeviceEnvelope = {
+ *       v: 2,
+ *       sd: <senderDeviceId>,      // routes the receiver to the right ratchet
+ *       h:  <drHeader b64url>,     // { dhPub, prevN, n }
+ *       c:  <ciphertext||tag b64url>,
+ *       i?: <DrInitWirePayload>    // only on the first message of a session
+ *     }
+ *
+ *   The slot `iv` stays the `dr:v2` sentinel; the shared `messages.dr_header`
+ *   column is left null for device-fan-out v2 (every device self-describes).
  *
  * Session payload at rest: AES-GCM wrapped with the vault-derived
  * `sessionWrapKey`. Layout: [0xF0 marker | 12B IV | ciphertext+tag].
- * saveSession() refuses to persist when no wrap key is available, so
- * chain keys cannot leak unencrypted via IndexedDB once the vault has
- * been unlocked at least once. Legacy plaintext records (0x7B '{')
- * are auto-rewrapped on first read; on logout clearOwnDrIdentity()
- * zeroizes the wrap key so subsequent reads cannot decrypt.
  */
 import type { BundleResponse } from '@/lib/api/keys'
 import * as keysApi from '@/lib/api/keys'
@@ -47,7 +66,12 @@ import {
   type IdentityKeyPair,
   type KeyPair,
 } from './keys'
-import { putSessionRecord, getSessionRecord } from './session-store'
+import {
+  putSessionRecord,
+  getSessionRecord,
+  deleteSessionRecord,
+  deleteSessionRecordsForPeer,
+} from './session-store'
 import { x3dhInitiator, x3dhResponder, type PreKeyBundle } from './x3dh'
 import { DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
 
@@ -196,8 +220,7 @@ function deserializeRatchet(s: SerializedRatchetState): RatchetState {
 /**
  * Vault-derived AES-GCM key for wrapping session records at rest.  Set by the
  * host application on vault unlock (see `setSessionWrapKey`) and cleared on
- * logout.  When unset, session records are stored plaintext (v1 behaviour) —
- * callers should treat this as a "legacy" mode and upgrade when possible.
+ * logout.  When unset, `saveSession` refuses to persist.
  */
 let sessionWrapKey: CryptoKey | null = null
 
@@ -213,23 +236,29 @@ export function hasSessionWrapKey(): boolean {
 let _ownIdentity: IdentityKeyPair | null = null
 let _ownSignedPreKey: KeyPair | null = null
 let _ownSignedPreKeyId = 1
+/** This device's own id — the sender-side device dimension. */
+let _ownDeviceId: string | null = null
 /** Derives an OTP private key by id — set from vault unlock. */
 let _ownOtpDeriver: ((id: number) => Uint8Array) | null = null
 
 /**
  * Called by vault unlock to register the local DR identity.
- * The identity keys are derived deterministically from the vault ECDH key,
- * so this just stores the in-memory reference for session bootstrap.
+ *
+ * `ownDeviceId` is REQUIRED for per-device DR: it is both the routing key for
+ * session records and the value stamped onto every outbound envelope so the
+ * peer can pick the right ratchet.
  */
 export function setOwnDrIdentity(
   identity: IdentityKeyPair,
   signedPreKey: KeyPair,
   signedPreKeyId: number,
+  ownDeviceId: string,
   otpDeriver?: (id: number) => Uint8Array
 ): void {
   _ownIdentity = identity
   _ownSignedPreKey = signedPreKey
   _ownSignedPreKeyId = signedPreKeyId
+  _ownDeviceId = ownDeviceId
   _ownOtpDeriver = otpDeriver ?? null
 }
 
@@ -237,9 +266,15 @@ export function clearOwnDrIdentity(): void {
   _ownIdentity = null
   _ownSignedPreKey = null
   _ownOtpDeriver = null
+  _ownDeviceId = null
   // Also zeroize the session wrap key so chain keys cannot be decrypted after
   // logout even if IndexedDB remains accessible in the same process.
   sessionWrapKey = null
+}
+
+/** The device id this client publishes DR bundles under. */
+export function getOwnDrDeviceId(): string | null {
+  return _ownDeviceId
 }
 
 const WRAP_MAGIC = 0xF0 // leading byte marker "wrapped v1"
@@ -247,7 +282,9 @@ const PLAIN_MAGIC = 0x7B // '{' — JSON plaintext sentinel (legacy)
 
 async function saveSession(
   ownerId: string,
+  ownDeviceId: string,
   peerId: string,
+  peerDeviceId: string,
   session: SerializedSession
 ): Promise<void> {
   if (!sessionWrapKey) {
@@ -271,14 +308,16 @@ async function saveSession(
   wrapped.set(ct, 13)
   const copy = new ArrayBuffer(wrapped.byteLength)
   new Uint8Array(copy).set(wrapped)
-  await putSessionRecord(ownerId, peerId, copy, PROTOCOL_VERSION)
+  await putSessionRecord(ownerId, ownDeviceId, peerId, peerDeviceId, copy, PROTOCOL_VERSION)
 }
 
 async function loadSession(
   ownerId: string,
-  peerId: string
+  ownDeviceId: string,
+  peerId: string,
+  peerDeviceId: string
 ): Promise<SerializedSession | null> {
-  const record = await getSessionRecord(ownerId, peerId)
+  const record = await getSessionRecord(ownerId, ownDeviceId, peerId, peerDeviceId)
   if (!record) return null
   const view = new Uint8Array(record.payload)
   try {
@@ -297,13 +336,10 @@ async function loadSession(
     if (view.length > 0 && view[0] === PLAIN_MAGIC) {
       const session = JSON.parse(DECODER.decode(view)) as SerializedSession
       // Rewrap legacy plaintext records on first read so chain keys do not
-      // remain at rest unencrypted in IndexedDB. Only attempt the rewrap
-      // when the vault wrap key is available; otherwise the record stays
-      // as-is until the next read with a vault unlocked.
+      // remain at rest unencrypted in IndexedDB.
       if (sessionWrapKey) {
         try {
-          await saveSession(ownerId, peerId, session)
-          console.warn('[ratchet] rewrapped legacy plaintext session record')
+          await saveSession(ownerId, ownDeviceId, peerId, peerDeviceId, session)
         } catch {
           // Non-fatal: the in-memory session is still usable for this turn.
         }
@@ -349,17 +385,10 @@ export interface LocalIdentityBundle {
  * Generate a full local identity bundle. The caller is responsible for
  * persisting `identity` and `oneTimePreKeys` privately and publishing the
  * public halves to `/api/keys/*`.
- *
- * `ownOneTimeCount` controls how many one-time pre-keys are pre-allocated
- * (20 covers roughly a month of activity against the 200-key server cap).
  */
 export function generateLocalBundle(ownOneTimeCount = 20): LocalIdentityBundle {
   const identity = generateIdentity()
   const signed = generateX25519KeyPair()
-  // CSPRNG: this id is published as part of the prekey bundle and indexes
-  // OTP slots; Math.random would still be safe for a label, but using
-  // crypto.getRandomValues removes one ambiguous "is this crypto?" lookup
-  // for future readers.
   const signedIdBuf = new Uint32Array(1)
   crypto.getRandomValues(signedIdBuf)
   const signedId = signedIdBuf[0] & 0x7fffffff
@@ -376,9 +405,9 @@ export function generateLocalBundle(ownOneTimeCount = 20): LocalIdentityBundle {
 }
 
 /**
- * Publish a locally-generated bundle to the server. Intended to be called
- * once per device after vault unlock; subsequent calls are safe (the server
- * rejects stale generations and dedupes one-time keys).
+ * Publish a locally-generated bundle to the server. The server resolves the
+ * device id from the session JWT, so this always targets the caller's own
+ * device row in the device-scoped key directory.
  */
 export async function publishLocalBundle(
   bundle: LocalIdentityBundle,
@@ -405,21 +434,23 @@ export async function publishLocalBundle(
 }
 
 /**
- * Bootstrap (Alice side) — fetch the peer's bundle, run X3DH, init DR.
- * Call this when the user sends the first message to `peerId` and no session
- * record is present.
+ * Bootstrap (Alice side) — fetch ONE peer device's bundle, run X3DH, init DR.
+ * Establishes the ratchet for the `(ownerId, ownDeviceId) ⇄ (peerId,
+ * peerDeviceId)` device pair.
  */
 export async function bootstrapSession(
   ownerId: string,
+  ownDeviceId: string,
   ownIdentity: IdentityKeyPair,
-  peerId: string
+  peerId: string,
+  peerDeviceId: string
 ): Promise<SerializedSession> {
-  const response = await keysApi.fetchBundle(peerId)
+  const response = await keysApi.fetchBundle(peerId, peerDeviceId)
   const bundle = bundleFromResponse(response)
 
-  // TOFU check: if a prior session exists with a different peer identity, refuse
-  // to silently re-bootstrap — the caller must explicitly clear the old session first.
-  const existing = await loadSession(ownerId, peerId)
+  // TOFU check: if a prior session exists with a different peer identity for
+  // THIS device pair, refuse to silently re-bootstrap.
+  const existing = await loadSession(ownerId, ownDeviceId, peerId, peerDeviceId)
   if (existing && existing.peerIdentityExchange !== b64urlEncode(bundle.identityExchange)) {
     throw new Error('TOFU_IDENTITY_CHANGED')
   }
@@ -447,23 +478,19 @@ export async function bootstrapSession(
       oneTimePrekeyId: bundle.oneTimePreKey?.id ?? null,
     },
   }
-  await saveSession(ownerId, peerId, session)
+  await saveSession(ownerId, ownDeviceId, peerId, peerDeviceId, session)
   return session
 }
 
 /**
- * Accept an incoming X3DH handshake (Bob side). This branch fires when a
- * peer reaches us for the first time and we have no session record.
- *
- * `initial` carries the metadata we need to mirror Alice's derivation:
- *   - initiatorIdentityExchange (public)
- *   - initiatorEphemeralPublic
- *   - oneTimePreKey id (or null)
+ * Accept an incoming X3DH handshake (Bob side) for one device pair.
  */
 export async function acceptSession(
   ownerId: string,
+  ownDeviceId: string,
   ownIdentity: IdentityKeyPair,
   peerId: string,
+  peerDeviceId: string,
   signedPreKey: KeyPair,
   oneTimePreKey: KeyPair | null,
   initial: {
@@ -490,7 +517,7 @@ export async function acceptSession(
     ownIdentityExchange: b64urlEncode(ownIdentity.exchange.publicKey),
     ratchet: serializeRatchet(ratchet),
   }
-  await saveSession(ownerId, peerId, session)
+  await saveSession(ownerId, ownDeviceId, peerId, peerDeviceId, session)
   return session
 }
 
@@ -505,16 +532,33 @@ export interface DrInitWirePayload {
   oneTimePrekeyId: number | null
 }
 
-export interface DrWireMessage {
-  protocolVersion: 2
+/**
+ * Self-contained per-device DR envelope. One of these is packed into each
+ * `message_deliveries` slot's ciphertext column (see file header).
+ */
+export interface DrDeviceEnvelope {
+  /** Envelope format version. */
+  v: 2
+  /** Sender's device id — routes the receiver to the right ratchet. */
+  sd: string
   /** Base64url-encoded JSON `{ dhPub, prevN, n }`. */
-  drHeader: string
-  /** Sentinel; real AES nonce is derived inside the ratchet. */
-  iv: string
+  h: string
   /** Base64url-encoded AES-GCM ciphertext||tag. */
-  encrypted_content: string
-  /** Only present on the very first outbound message of a session. */
-  drInit?: DrInitWirePayload
+  c: string
+  /** Present only on the first outbound message of a session. */
+  i?: DrInitWirePayload
+}
+
+/** One fan-out target: a recipient device id and its packed envelope JSON. */
+export interface DrDeviceSlot {
+  /** Recipient device id (a peer device, or one of the sender's own). */
+  deviceId: string
+  /** JSON.stringify(DrDeviceEnvelope) — goes straight into the slot ciphertext. */
+  envelope: string
+}
+
+export interface DrFanoutResult {
+  slots: DrDeviceSlot[]
 }
 
 function encodeHeader(header: RatchetHeader): string {
@@ -542,75 +586,140 @@ function decodeHeader(encoded: string): RatchetHeader {
   }
 }
 
+/**
+ * Encrypt `plaintext` once per device of `peerId`, advancing (or
+ * bootstrapping) the dedicated ratchet for every `(ownDevice ⇄ peerDevice)`
+ * pair, and ALSO once per OTHER device of the sender so the message syncs to
+ * the sender's other devices (outbox sync, exactly as the v1 fan-out does).
+ *
+ * Returns one wire envelope per recipient device id. The caller maps each
+ * `DrDeviceSlot` onto a `message_deliveries` slot.
+ *
+ * Throws `RATCHET_NO_SESSION` only when the local DR identity is missing or
+ * no recipient device could be established at all — callers fall back to v1.
+ */
 export async function encryptForPeer(
   ownerId: string,
   peerId: string,
   plaintext: string
-): Promise<DrWireMessage> {
-  let session = await loadSession(ownerId, peerId)
-  if (!session) {
-    // Auto-bootstrap: fetch peer bundle and run X3DH on first message.
-    // Falls back to RATCHET_NO_SESSION if identity or peer bundle unavailable.
-    if (!_ownIdentity) throw new Error('RATCHET_NO_SESSION')
-    try {
-      session = await bootstrapSession(ownerId, _ownIdentity, peerId)
-    } catch (err) {
-      if (err instanceof Error && err.message === 'TOFU_IDENTITY_CHANGED') throw err
-      throw new Error('RATCHET_NO_SESSION')
-    }
-  }
-  const ratchet = deserializeRatchet(session.ratchet)
-  const msg: RatchetMessage = await encryptRatchet(ratchet, ENCODER.encode(plaintext))
-  session.ratchet = serializeRatchet(ratchet)
+): Promise<DrFanoutResult> {
+  if (!_ownIdentity || !_ownDeviceId) throw new Error('RATCHET_NO_SESSION')
+  const ownDeviceId = _ownDeviceId
 
-  const wire: DrWireMessage = {
-    protocolVersion: 2,
-    drHeader: encodeHeader(msg.header),
-    iv: DR_IV_SENTINEL,
-    encrypted_content: b64urlEncode(msg.ciphertext),
+  // Resolve every device that should receive a copy:
+  //   - all of the peer's devices,
+  //   - all of the sender's OTHER devices (skip this one).
+  const [peerDevices, ownDevices] = await Promise.all([
+    keysApi.fetchDeviceIdentities(peerId).then((r) => r.devices).catch(() => []),
+    keysApi.fetchDeviceIdentities(ownerId).then((r) => r.devices).catch(() => []),
+  ])
+
+  type Target = { userId: string; deviceId: string }
+  const targets: Target[] = []
+  for (const d of peerDevices) targets.push({ userId: peerId, deviceId: d.device_id })
+  for (const d of ownDevices) {
+    if (d.device_id === ownDeviceId) continue // never ratchet to ourselves
+    // Saved-Messages (peerId === ownerId): peer fetch already covered these.
+    if (peerId === ownerId) continue
+    targets.push({ userId: ownerId, deviceId: d.device_id })
   }
-  if (session.pendingInit && !session.pendingInitAcked) {
-    wire.drInit = {
-      p13: 'dr-init',
-      v: 1,
-      initiatorIdentityExchange: session.pendingInit.initiatorIdentityExchange,
-      initiatorIdentitySigning: session.pendingInit.initiatorIdentitySigning,
-      initiatorEphemeralPublic: session.pendingInit.initiatorEphemeralPublic,
-      signedPrekeyId: session.pendingInit.signedPrekeyId,
-      oneTimePrekeyId: session.pendingInit.oneTimePrekeyId,
-    }
-    // Track resend budget so an offline-queue scenario doesn't leak the
-    // ephemeral metadata indefinitely. The responder ACKs implicitly via
-    // the first inbound DR message (see decryptFromPeer).
-    const sends = (session.pendingInitSends ?? 0) + 1
-    session.pendingInitSends = sends
-    if (sends >= PENDING_INIT_MAX_RESENDS) {
-      delete session.pendingInit
-      delete session.pendingInitSends
+  // De-dup defensively (peerId === ownerId edge, or registry races).
+  const seen = new Set<string>()
+  const uniqueTargets = targets.filter((t) => {
+    const k = `${t.userId}::${t.deviceId}`
+    if (seen.has(k) || t.deviceId === ownDeviceId) return false
+    seen.add(k)
+    return true
+  })
+
+  if (uniqueTargets.length === 0) throw new Error('RATCHET_NO_SESSION')
+
+  const plainBytes = ENCODER.encode(plaintext)
+  const slots: DrDeviceSlot[] = []
+
+  for (const target of uniqueTargets) {
+    try {
+      let session = await loadSession(ownerId, ownDeviceId, target.userId, target.deviceId)
+      if (!session) {
+        session = await bootstrapSession(
+          ownerId,
+          ownDeviceId,
+          _ownIdentity,
+          target.userId,
+          target.deviceId
+        )
+      }
+      const ratchet = deserializeRatchet(session.ratchet)
+      const msg: RatchetMessage = await encryptRatchet(ratchet, plainBytes)
+      session.ratchet = serializeRatchet(ratchet)
+
+      const envelope: DrDeviceEnvelope = {
+        v: 2,
+        sd: ownDeviceId,
+        h: encodeHeader(msg.header),
+        c: b64urlEncode(msg.ciphertext),
+      }
+      if (session.pendingInit && !session.pendingInitAcked) {
+        envelope.i = {
+          p13: 'dr-init',
+          v: 1,
+          initiatorIdentityExchange: session.pendingInit.initiatorIdentityExchange,
+          initiatorIdentitySigning: session.pendingInit.initiatorIdentitySigning,
+          initiatorEphemeralPublic: session.pendingInit.initiatorEphemeralPublic,
+          signedPrekeyId: session.pendingInit.signedPrekeyId,
+          oneTimePrekeyId: session.pendingInit.oneTimePrekeyId,
+        }
+        const sends = (session.pendingInitSends ?? 0) + 1
+        session.pendingInitSends = sends
+        if (sends >= PENDING_INIT_MAX_RESENDS) {
+          delete session.pendingInit
+          delete session.pendingInitSends
+        }
+      }
+      await saveSession(ownerId, ownDeviceId, target.userId, target.deviceId, session)
+      slots.push({
+        deviceId: target.deviceId,
+        envelope: JSON.stringify(envelope),
+      })
+    } catch (err) {
+      // A single device failing (no bundle yet, stale OPK pool, …) must not
+      // sink the whole send — skip it and keep fanning out to the rest.
+      if (err instanceof Error && err.message === 'TOFU_IDENTITY_CHANGED') throw err
+      if (typeof console !== 'undefined') {
+        console.warn('[ratchet] per-device encrypt skipped a device', {
+          peerUserId: target.userId,
+          peerDeviceId: target.deviceId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
     }
   }
-  await saveSession(ownerId, peerId, session)
-  return wire
+
+  if (slots.length === 0) throw new Error('RATCHET_NO_SESSION')
+  return { slots }
 }
 
 /**
- * Accept an incoming X3DH init from the wire payload.
+ * Accept an incoming X3DH init from the wire payload, for the device pair
+ * `(ownerId, ownDeviceId) ⇄ (peerId, senderDeviceId)`.
  * Safe to call even if a session already exists (no-op in that case).
  */
 export async function acceptIncomingInit(
   ownerId: string,
+  ownDeviceId: string,
   peerId: string,
+  senderDeviceId: string,
   init: DrInitWirePayload
 ): Promise<void> {
-  const existing = await loadSession(ownerId, peerId)
+  const existing = await loadSession(ownerId, ownDeviceId, peerId, senderDeviceId)
   if (existing) return
   if (!_ownIdentity || !_ownSignedPreKey) throw new Error('RATCHET_NO_IDENTITY')
   if (init.signedPrekeyId !== _ownSignedPreKeyId) throw new Error('RATCHET_UNKNOWN_SPK')
   // Verify the wire-supplied initiator identity matches what the server has
-  // published for this peer. Without this, an authenticated attacker can post
-  // a forged `dr_init` and bootstrap a session under any identity they choose;
-  // Bob's TOFU pin would then lock in the attacker's keys.
-  const identity = await keysApi.fetchIdentity(peerId)
+  // published for that SPECIFIC sender device. Without this, an authenticated
+  // attacker can post a forged `dr_init` and bootstrap a session under any
+  // identity they choose; Bob's TOFU pin would then lock in the attacker's keys.
+  const identity = await keysApi.fetchIdentity(peerId, senderDeviceId)
   if (
     identity.identity.signing_public_key !== init.initiatorIdentitySigning ||
     identity.identity.exchange_public_key !== init.initiatorIdentityExchange
@@ -623,35 +732,54 @@ export async function acceptIncomingInit(
     const { x25519 } = await import('@noble/curves/ed25519')
     otpKeyPair = { privateKey: priv, publicKey: x25519.getPublicKey(priv) }
   }
-  await acceptSession(ownerId, _ownIdentity, peerId, _ownSignedPreKey, otpKeyPair, {
-    initiatorIdentityExchange: b64urlDecode(init.initiatorIdentityExchange),
-    initiatorIdentitySigning: b64urlDecode(init.initiatorIdentitySigning),
-    initiatorEphemeralPublic: b64urlDecode(init.initiatorEphemeralPublic),
-  })
+  await acceptSession(
+    ownerId,
+    ownDeviceId,
+    _ownIdentity,
+    peerId,
+    senderDeviceId,
+    _ownSignedPreKey,
+    otpKeyPair,
+    {
+      initiatorIdentityExchange: b64urlDecode(init.initiatorIdentityExchange),
+      initiatorIdentitySigning: b64urlDecode(init.initiatorIdentitySigning),
+      initiatorEphemeralPublic: b64urlDecode(init.initiatorEphemeralPublic),
+    }
+  )
 }
 
+/**
+ * Decrypt a per-device DR envelope. The envelope's `sd` field selects the
+ * sender device, which is the `peerDeviceId` half of the routing key — the
+ * receiver decrypts on the ratchet `(ownerId, ownDeviceId) ⇄ (peerId, sd)`.
+ */
 export async function decryptFromPeer(
   ownerId: string,
   peerId: string,
-  wire: DrWireMessage
+  envelope: DrDeviceEnvelope
 ): Promise<string> {
-  // If the wire carries a session init and we have no session yet, accept it.
-  if (wire.drInit) {
+  if (!_ownDeviceId) throw new Error('RATCHET_NO_SESSION')
+  const ownDeviceId = _ownDeviceId
+  const senderDeviceId = envelope.sd
+  if (!senderDeviceId) throw new Error('RATCHET_NO_SENDER_DEVICE')
+
+  // If the envelope carries a session init and we have no session yet for
+  // this device pair, accept it.
+  if (envelope.i) {
     try {
-      await acceptIncomingInit(ownerId, peerId, wire.drInit)
+      await acceptIncomingInit(ownerId, ownDeviceId, peerId, senderDeviceId, envelope.i)
     } catch (err) {
-      // Identity mismatch is fatal — never fall through to plaintext under
-      // a wire-claimed identity that doesn't match the published bundle.
+      // Identity mismatch is fatal — never fall through under a wire-claimed
+      // identity that doesn't match the device's published bundle.
       if (err instanceof Error && err.message === 'X3DH_IDENTITY_MISMATCH') throw err
-      // Other failures are non-fatal; fall through and see if a session exists
-      // anyway (e.g. race with another device).
+      // Other failures are non-fatal; fall through and see if a session exists.
     }
   }
-  const session = await loadSession(ownerId, peerId)
+  const session = await loadSession(ownerId, ownDeviceId, peerId, senderDeviceId)
   if (!session) throw new Error('RATCHET_NO_SESSION')
   const ratchet = deserializeRatchet(session.ratchet)
-  const header = decodeHeader(wire.drHeader)
-  const ciphertext = b64urlDecode(wire.encrypted_content)
+  const header = decodeHeader(envelope.h)
+  const ciphertext = b64urlDecode(envelope.c)
   const plaintext = await decryptRatchet(ratchet, { header, ciphertext })
   session.ratchet = serializeRatchet(ratchet)
   // First successful inbound DR message proves the responder has the X3DH
@@ -661,20 +789,31 @@ export async function decryptFromPeer(
     delete session.pendingInit
     delete session.pendingInitSends
   }
-  await saveSession(ownerId, peerId, session)
+  await saveSession(ownerId, ownDeviceId, peerId, senderDeviceId, session)
   return DECODER.decode(plaintext)
 }
 
 /**
- * Compute a session fingerprint that safety numbers / UI can display. We hash
- * the pair of identity-exchange keys so the output matches between Alice and
- * Bob regardless of who initiated the session.
+ * Compute a session fingerprint for safety-number UI. Hashes the pair of
+ * identity-exchange keys for ONE device pair so the output matches between
+ * the two devices regardless of who initiated.
+ *
+ * `peerDeviceId` defaults to the most-recent device when omitted.
  */
 export async function sessionFingerprint(
   ownerId: string,
-  peerId: string
+  peerId: string,
+  peerDeviceId?: string
 ): Promise<Uint8Array | null> {
-  const session = await loadSession(ownerId, peerId)
+  if (!_ownDeviceId) return null
+  const targetPeerDevice =
+    peerDeviceId ??
+    (await keysApi
+      .fetchIdentity(peerId)
+      .then((r) => r.device_id ?? null)
+      .catch(() => null))
+  if (!targetPeerDevice) return null
+  const session = await loadSession(ownerId, _ownDeviceId, peerId, targetPeerDevice)
   if (!session) return null
   return fingerprint(
     b64urlDecode(session.ownIdentityExchange),
@@ -683,24 +822,47 @@ export async function sessionFingerprint(
 }
 
 /**
- * Get the stored peer identity exchange public key for a session (base64url).
- * Used by TOFU UI to compare against a freshly-fetched bundle.
+ * Stored peer identity-exchange public key (base64url) for the TOFU UI.
+ *
+ * With per-device DR there is one session per peer device; this resolves the
+ * peer's most-recent device (the same one `fetchBundle(peerId)` returns with
+ * no `device_id`) and returns that session's pinned peer identity, so the UI
+ * can compare it against a freshly-fetched bundle.
  */
 export async function getSessionPeerIdentity(
   ownerId: string,
-  peerId: string
+  peerId: string,
+  peerDeviceId?: string
 ): Promise<string | null> {
-  const session = await loadSession(ownerId, peerId)
+  if (!_ownDeviceId) return null
+  const targetPeerDevice =
+    peerDeviceId ??
+    (await keysApi
+      .fetchIdentity(peerId)
+      .then((r) => r.device_id ?? null)
+      .catch(() => null))
+  if (!targetPeerDevice) return null
+  const session = await loadSession(ownerId, _ownDeviceId, peerId, targetPeerDevice)
   return session?.peerIdentityExchange ?? null
 }
 
 /**
- * Clear a DR session record so it can be re-bootstrapped with a new identity.
- * Call only after explicit user confirmation of a key change (TOFU reset).
+ * Clear every per-device DR session for a (owner, peer) conversation so it can
+ * be re-bootstrapped with a new identity. Call only after explicit user
+ * confirmation of a key change (TOFU reset).
  */
 export async function clearDrSession(ownerId: string, peerId: string): Promise<void> {
-  const { deleteSessionRecord } = await import('./session-store')
-  await deleteSessionRecord(ownerId, peerId)
+  await deleteSessionRecordsForPeer(ownerId, peerId)
+}
+
+/** Drop a single device-pair ratchet record (targeted recovery). */
+export async function clearDrSessionForDevice(
+  ownerId: string,
+  ownDeviceId: string,
+  peerId: string,
+  peerDeviceId: string
+): Promise<void> {
+  await deleteSessionRecord(ownerId, ownDeviceId, peerId, peerDeviceId)
 }
 
 /** Utility re-exports the callers typically need. */

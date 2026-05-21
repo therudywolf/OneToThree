@@ -34,16 +34,44 @@ export interface DerivedDrBundle {
 }
 
 /**
- * Derive one OTP private key by id (1-based). Deterministic: same vault → same key.
- * Alice consumes an OTP id from the server bundle; Bob re-derives the private key here.
+ * Per-device DR root secret.
  *
- * Compatibility path for deterministic vault-derived sessions.
+ * Track A4 makes the Double Ratchet per-device. The vault (and therefore
+ * `dBytes`) is per-USER, so deriving the DR identity straight from `dBytes`
+ * yields the SAME identity on every linked device — which is exactly what
+ * breaks multi-device DR. Mixing the stable per-browser device id into an
+ * HKDF expansion gives each device a DISTINCT 32-byte root secret while
+ * staying fully deterministic (a device that re-imports the same vault and
+ * keeps its device id reproduces the same DR identity, so no extra state has
+ * to be persisted).
+ *
+ * The device id is opaque (uuid / random string); it never needs to be
+ * secret — it is published as the X3DH bundle's `device_id` anyway. The
+ * secrecy of the derived material rests entirely on `dBytes`.
  */
-export function deriveOtpPrivKey(dBytes: Uint8Array, id: number): Uint8Array {
-  const idBuf = ENC.encode(String(id))
+function deviceScopedRoot(dBytes: Uint8Array, deviceId: string): Uint8Array {
   return hkdf(
     sha256,
     dBytes,
+    ENC.encode('p13:dr:device:v1:salt'),
+    ENC.encode(`p13:dr:device:${deviceId}`),
+    32
+  )
+}
+
+/**
+ * Derive one OTP private key by id (1-based). Deterministic: same vault +
+ * device → same key. Alice consumes an OTP id from the server bundle; Bob
+ * re-derives the private key here.
+ *
+ * `dRoot` is the per-device root secret (`deviceScopedRoot`) — NOT the raw
+ * vault `dBytes` — so each device owns an independent OTP space.
+ */
+export function deriveOtpPrivKey(dRoot: Uint8Array, id: number): Uint8Array {
+  const idBuf = ENC.encode(String(id))
+  return hkdf(
+    sha256,
+    dRoot,
     ENC.encode('p13:dr:otp:v1:salt'),
     new Uint8Array([...ENC.encode('p13:dr:otp:'), ...idBuf]),
     32
@@ -51,16 +79,17 @@ export function deriveOtpPrivKey(dBytes: Uint8Array, id: number): Uint8Array {
 }
 
 /**
- * Derive a batch of OTP key pairs [startId, startId+count).
+ * Derive a batch of OTP key pairs [startId, startId+count) from a per-device
+ * root secret.
  */
 export function deriveOtpBatch(
-  dBytes: Uint8Array,
+  dRoot: Uint8Array,
   startId: number,
   count: number
 ): Array<{ id: number; keypair: KeyPair }> {
   return Array.from({ length: count }, (_, i) => {
     const id = startId + i
-    const priv = deriveOtpPrivKey(dBytes, id)
+    const priv = deriveOtpPrivKey(dRoot, id)
     return { id, keypair: { privateKey: priv, publicKey: x25519.getPublicKey(priv) } }
   })
 }
@@ -73,18 +102,38 @@ export function extractEcdhDBytes(ecdhJwk: string): Uint8Array {
 }
 
 /**
- * Derive a full DR identity bundle from the vault ECDH JWK string.
- * The `d` field of the JWK (P-256 private scalar) is the HKDF input key.
+ * Compute the per-device DR root secret straight from the vault ECDH JWK.
+ * Callers feed this into `deriveOtpPrivKey` / `deriveOtpBatch`.
  */
-export function deriveDrBundleFromEcdhJwk(ecdhJwk: string): DerivedDrBundle {
+export function deriveDeviceDrRoot(ecdhJwk: string, deviceId: string): Uint8Array {
+  return deviceScopedRoot(extractEcdhDBytes(ecdhJwk), deviceId)
+}
+
+/**
+ * Derive a full DR identity bundle from the vault ECDH JWK string, scoped to
+ * a single device.
+ *
+ * `deviceId` is mixed in (via `deviceScopedRoot`) so every linked device of
+ * the same user produces a DISTINCT identity / signed-prekey / OTP space.
+ * This is the cornerstone of per-device Double Ratchet: each device publishes
+ * its own bundle to the device-scoped `/keys/*` directory.
+ *
+ * The `d` field of the JWK (P-256 private scalar) is the secret root; the
+ * device id only diversifies the expansion and need not be secret.
+ */
+export function deriveDrBundleFromEcdhJwk(
+  ecdhJwk: string,
+  deviceId: string
+): DerivedDrBundle {
   const jwk = JSON.parse(ecdhJwk) as { d?: string; crv?: string }
   if (!jwk.d) throw new Error('DR_DERIVE_MISSING_D')
+  if (!deviceId) throw new Error('DR_DERIVE_MISSING_DEVICE_ID')
 
-  const dBytes = b64urlDecode(jwk.d)
+  const dRoot = deviceScopedRoot(b64urlDecode(jwk.d), deviceId)
   // 96 bytes: 32 signing seed | 32 exchange seed | 32 spk seed
   const seed = hkdf(
     sha256,
-    dBytes,
+    dRoot,
     ENC.encode('p13:dr:v1:salt'),
     ENC.encode('p13:dr:identity:v1'),
     96

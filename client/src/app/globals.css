@@ -3084,6 +3084,14 @@ select {
 .p13-icon-btn:active:not(:disabled) {
   transform: var(--p13-btn-press-transform);
 }
+.p13-icon-btn:focus-visible {
+  outline: 2px solid var(--state-focus-ring, var(--neon-cyan));
+  outline-offset: 2px;
+}
+[data-shell="md3"] .p13-icon-btn:focus-visible {
+  outline: 2px solid var(--neon-cyan);
+  outline-offset: 2px;
+}
 .p13-icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -3510,32 +3518,41 @@ select {
 }
 .p13-banner-dismiss {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   font-family: var(--p13-font-body);
   font-size: 10px;
-  color: var(--danger);
+  color: color-mix(in srgb, var(--on-surface) 50%, transparent);
   background: none;
   border: none;
   cursor: pointer;
   padding: 0;
-  text-transform: var(--p13-label-transform);
-  letter-spacing: var(--p13-label-spacing);
-  line-height: 1;
+  border-radius: var(--p13-icon-btn-radius, 0px);
+  transition:
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
+}
+.p13-banner-dismiss:hover {
+  color: var(--danger);
+}
+.p13-banner-dismiss:focus-visible {
+  outline: 2px solid var(--state-focus-ring, var(--neon-cyan));
+  outline-offset: 1px;
 }
 [data-shell="md3"] .p13-banner-dismiss {
   font-size: 12px;
-  text-transform: none;
-  letter-spacing: 0;
-  color: color-mix(in srgb, var(--on-surface) 55%, transparent);
-  width: 24px;
-  height: 24px;
+  color: color-mix(in srgb, var(--on-surface) 50%, transparent);
   border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color var(--motion-fast) ease;
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease;
 }
 [data-shell="md3"] .p13-banner-dismiss:hover {
-  background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+  color: var(--on-surface);
+  background: color-mix(in srgb, var(--on-surface) 10%, transparent);
 }
 
 /* --- Edit banner (accent = primary/red) --------------------- */

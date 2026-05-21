@@ -8,6 +8,7 @@ import { Auth401Interceptor } from '@/components/auth/auth-401-interceptor'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { SilenceConsole as _SilenceConsole } from '@/components/silence-console'
 import { RecoveryHandler } from '@/components/recovery-handler'
+import { NativeDeepLink } from '@/components/native-deep-link'
 import { ThemeApplicator } from '@/components/theme-applicator'
 import { ToastHost } from '@/components/toast-host'
 import { VersionUpdateBanner } from '@/components/version-update-banner'
@@ -160,6 +161,9 @@ export default async function RootLayout({
         {/* [1] SYSTEM_DIAGNOSTICS_LAYER */}
         {/* <SilenceConsole /> // Disabled for active signal debugging */}
         <RecoveryHandler />
+
+        {/* [1b] DEEP_LINK_ROUTER :: native App Links / custom scheme → in-app routes */}
+        <NativeDeepLink />
 
         <ErrorBoundary>
           {/* [2] IDENTITY_VERIFICATION_LAYER */}

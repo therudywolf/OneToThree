@@ -70,6 +70,11 @@
     "glob": "^10.4.6",
     "esbuild": "^0.25.12",
     "postcss": "^8.5.10",
+    "protobufjs": "^7.5.8",
+    "ws": "^8.20.1",
+    "minimatch": {
+      "brace-expansion": "^5.0.6"
+    },
     "uuid": "^14.0.0",
     "@tootallnate/once": "^3.0.1"
   },

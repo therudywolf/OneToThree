@@ -302,31 +302,24 @@ function MessageRowImpl({
         >
           {replyMsg ? (
             <div
-              className="p13-reply-quote mb-1 cursor-pointer pl-2 text-[10px]"
+              className="p13-reply-quote mb-1 flex cursor-pointer flex-col gap-0.5 rounded-sm py-0.5 pl-2 text-[10px] leading-tight"
               onClick={() => onOpenThread(replyMsg)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => e.key === 'Enter' && onOpenThread(replyMsg)}
             >
-              <span className="p13-reply-quote-author">
-                ↳ {labelForSender(replyMsg.sender_id)}:
-              </span>{' '}
-              {replySnippet(replyMsg)}
+              <span className="p13-reply-quote-author truncate font-semibold">
+                {labelForSender(replyMsg.sender_id)}
+              </span>
+              <span className="truncate opacity-90">
+                {replySnippet(replyMsg)}
+              </span>
             </div>
           ) : m.reply_to_id ? (
-            <div className="p13-reply-quote mb-1 pl-2 text-[10px] opacity-60">
-              ↳ [{t('chat.originalDeleted')}]
+            <div className="p13-reply-quote mb-1 rounded-sm py-0.5 pl-2 text-[10px] italic leading-tight opacity-60">
+              {t('chat.originalDeleted')}
             </div>
           ) : null}
-          <div className="p13-label mb-1 flex items-center gap-1.5 text-[10px] opacity-70">
-            {formatMessageTimestamp(m.created_at, locale)}
-            {m.burn_at ? (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-warning/20 px-1.5 py-0.5 text-warning font-semibold">
-                <Flame className="h-2.5 w-2.5" />
-                {formatBurnCountdown(m.burn_at)}
-              </span>
-            ) : null}
-          </div>
           {missedCallMeta ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-neon-red/10 border border-neon-red/30 px-3 py-1.5 text-neon-red text-[11px] font-mono uppercase tracking-wider">
               <PhoneMissed className="h-3.5 w-3.5 shrink-0" />
@@ -382,17 +375,27 @@ function MessageRowImpl({
               <QuickReactBar onReact={(emoji) => { onToggleReaction(emoji, m.id); onSetReacting('') }} />
             </div>
           ) : null}
-          {mine ? (
-            <div
-              className="mt-1 flex items-center justify-end gap-0.5 text-[10px]"
-              aria-hidden
-            >
-              <MessageStatus
-                pending={m._pending}
-                readAt={m.read_at}
-              />
-            </div>
-          ) : null}
+          {/* TG-style footer: timestamp + delivery status tucked bottom-right
+              inside the bubble. Peer messages show only the timestamp. */}
+          <div className="p13-label mt-1 flex items-center justify-end gap-1.5 text-[10px] opacity-70">
+            {m.burn_at ? (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-warning/20 px-1.5 py-0.5 text-warning font-semibold">
+                <Flame className="h-2.5 w-2.5" />
+                {formatBurnCountdown(m.burn_at)}
+              </span>
+            ) : null}
+            <time dateTime={m.created_at}>
+              {formatMessageTimestamp(m.created_at, locale)}
+            </time>
+            {mine ? (
+              <span className="inline-flex items-center gap-0.5" aria-hidden>
+                <MessageStatus
+                  pending={m._pending}
+                  readAt={m.read_at}
+                />
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

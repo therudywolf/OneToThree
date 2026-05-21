@@ -56,7 +56,15 @@ const sendMessageBodySchema = z.object({
   dr_header: z.string().min(1).max(4096).nullable().optional(),
   dr_init: z.string().min(1).max(8192).nullable().optional(),
 }).refine(
-  (v) => v.protocol_version !== 2 || (typeof v.dr_header === 'string' && v.dr_header.length > 0),
+  // protocol_version=2 needs a Double Ratchet header — but it arrives two ways.
+  // Legacy single-session v2 carries one top-level `dr_header`; the track-A4
+  // per-device fan-out instead packs a self-describing header inside every
+  // `ciphertexts[]` slot (the DrDeviceEnvelope `h` field) and sends no
+  // top-level header. Accept either form.
+  (v) =>
+    v.protocol_version !== 2 ||
+    (Array.isArray(v.ciphertexts) && v.ciphertexts.length > 0) ||
+    (typeof v.dr_header === 'string' && v.dr_header.length > 0),
   { message: 'DR_HEADER_REQUIRED_FOR_V2', path: ['dr_header'] }
 )
 

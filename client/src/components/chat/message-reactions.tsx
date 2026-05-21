@@ -72,7 +72,7 @@ export function MessageReactions({
                 : 'border-border-strong bg-void/50 text-text-muted hover:border-neon-cyan/40'
             }`}
           >
-            <span className="text-sm leading-none">{emoji}</span>
+            <span className="text-sm leading-none noir-emoji-inline">{emoji}</span>
             <span className="tabular-nums">{userIds.length}</span>
           </motion.button>
         )
@@ -117,7 +117,7 @@ export function MessageReactions({
                   }}
                   className="flex h-7 w-7 items-center justify-center text-base transition-transform hover:scale-125 active:scale-95"
                 >
-                  {emoji}
+                  <span className="noir-emoji-inline">{emoji}</span>
                 </button>
               ))}
             </motion.div>

@@ -351,6 +351,13 @@
       "when": 1779897600000,
       "tag": "0049_admin_audit_log",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1779898000000,
+      "tag": "0050_device_scoped_keys",
+      "breakpoints": true
     }
   ]
 }

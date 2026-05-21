@@ -11,6 +11,13 @@
  *       SHA-256(new_device_client_key + "." + new_device_pubkey + "." + link_token)
  *   — Inserts or refreshes the new device row with e2ee_public_key.
  *   — Returns 200 with user_id.
+ *
+ * Bidirectional P2P QR vault handoff (see device-rendezvous-store.ts):
+ *   POST   /api/devices/link/rendezvous            — create (Mode A with key, Mode B empty)
+ *   POST   /api/devices/link/rendezvous/:id/submit-pubkey — Mode B: new device uploads its key (first write wins)
+ *   GET    /api/devices/link/rendezvous/:id/status — Mode B: existing device polls the submitted key
+ *   POST   /api/devices/link/rendezvous/:id/deposit — existing device uploads the encrypted vault
+ *   POST   /api/devices/link/rendezvous/:id/claim  — new device retrieves the encrypted vault (one-time)
  */
 
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
@@ -29,6 +36,7 @@ import {
   saveRendezvous,
   getRendezvous,
   consumeRendezvous,
+  attachEphemeralPubkey,
   RENDEZVOUS_TTL_S,
 } from '../lib/device-rendezvous-store.js'
 
@@ -53,8 +61,19 @@ const confirmBodySchema = z.object({
 })
 
 const rendezvousCreateSchema = z.object({
+  /**
+   * New device's ephemeral ECDH P-256 public key JWK (stringified).
+   * Present in Mode A (new device shows the QR); omitted in Mode B
+   * (existing device shows the QR — the new device submits the key later).
+   */
+  ephemeral_pubkey: z.string().min(1).max(2000).optional(),
+})
+
+const rendezvousSubmitPubkeySchema = z.object({
   /** New device's ephemeral ECDH P-256 public key JWK (stringified). */
   ephemeral_pubkey: z.string().min(1).max(2000),
+  /** Claim secret carried in the Mode B QR — authorizes the submission. */
+  claim_secret: z.string().min(1).max(256),
 })
 
 const rendezvousDepositSchema = z.object({
@@ -85,6 +104,25 @@ function isValidEphemeralEcdhJwk(raw: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Constant-time check that a presented claim secret matches the stored hash.
+ * Both sides are SHA-256 digests of fixed length, so timingSafeEqual is safe
+ * to call directly.
+ */
+function claimSecretMatches(presented: string, storedHashHex: string): boolean {
+  const providedHash = createHash('sha256').update(presented).digest()
+  let expectedHash: Buffer
+  try {
+    expectedHash = Buffer.from(storedHashHex, 'hex')
+  } catch {
+    return false
+  }
+  return (
+    providedHash.length === expectedHash.length &&
+    timingSafeEqual(providedHash, expectedHash)
+  )
 }
 
 /**
@@ -282,10 +320,17 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
   /**
    * POST /api/devices/link/rendezvous  (P2P QR linking — step 1)
    *
-   * Called by the NEW, not-yet-logged-in device. It registers its ephemeral
-   * ECDH public key and receives a rendezvous id + a claim secret. Only the
-   * rendezvous id and public key are encoded into the QR; the claim secret
-   * never leaves the new device.
+   * Creates a rendezvous and returns its id + a claim secret. Unauthenticated
+   * because in Mode A the caller is the not-yet-logged-in new device; in
+   * Mode B the authenticated existing device calls it but the endpoint reveals
+   * nothing sensitive, so no auth gate is required.
+   *
+   *  Mode A — `ephemeral_pubkey` present: the new device shows the QR. The key
+   *    is stored now; the QR will carry {rendezvous_id, ephemeral_pubkey} and
+   *    the claim secret stays on the new device.
+   *  Mode B — `ephemeral_pubkey` omitted: the existing device shows the QR.
+   *    An EMPTY rendezvous is created; the QR will carry {rendezvous_id,
+   *    claim_secret} and the new device submits its key via `submit-pubkey`.
    */
   app.post(
     '/link/rendezvous',
@@ -295,7 +340,8 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       if (!parsed.success) {
         return reply.status(400).send({ error: 'INVALID_BODY' })
       }
-      if (!isValidEphemeralEcdhJwk(parsed.data.ephemeral_pubkey)) {
+      const ephemeralPubkey = parsed.data.ephemeral_pubkey ?? null
+      if (ephemeralPubkey !== null && !isValidEphemeralEcdhJwk(ephemeralPubkey)) {
         return reply.status(400).send({ error: 'INVALID_EPHEMERAL_KEY' })
       }
 
@@ -304,7 +350,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       const claimSecretHash = createHash('sha256').update(claimSecret).digest('hex')
 
       await saveRendezvous(rendezvousId, {
-        ephemeralPubkey: parsed.data.ephemeral_pubkey,
+        ephemeralPubkey,
         claimSecretHash,
         encBlob: null,
         exp: Date.now() + RENDEZVOUS_TTL_S * 1000,
@@ -314,6 +360,95 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         rendezvous_id: rendezvousId,
         claim_secret: claimSecret,
         expires_in: RENDEZVOUS_TTL_S,
+      })
+    }
+  )
+
+  /**
+   * POST /api/devices/link/rendezvous/:id/submit-pubkey  (Mode B — step 2)
+   *
+   * Called by the NEW, not-yet-logged-in device after it scans the QR shown by
+   * the existing device. The QR carried {rendezvous_id, claim_secret}; the new
+   * device generates an ephemeral ECDH keypair and uploads its PUBLIC half.
+   *
+   * Security:
+   *  - The claim secret authorizes the submission (constant-time compare).
+   *  - FIRST WRITE WINS: only an empty rendezvous accepts a key; a second
+   *    submission (e.g. an attacker racing a photographed QR) is rejected with
+   *    409. The existing device then displays a verification code derived from
+   *    whichever key landed first, so a mismatch is visible to the user.
+   *  - This endpoint is rejected outright for a Mode A rendezvous (one created
+   *    with a key already attached).
+   */
+  app.post(
+    '/link/rendezvous/:id/submit-pubkey',
+    { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } },
+    async (request, reply) => {
+      const params = rendezvousIdSchema.safeParse(request.params)
+      if (!params.success) {
+        return reply.status(400).send({ error: 'INVALID_PARAMS' })
+      }
+      const body = rendezvousSubmitPubkeySchema.safeParse(request.body)
+      if (!body.success) {
+        return reply.status(400).send({ error: 'INVALID_BODY' })
+      }
+      if (!isValidEphemeralEcdhJwk(body.data.ephemeral_pubkey)) {
+        return reply.status(400).send({ error: 'INVALID_EPHEMERAL_KEY' })
+      }
+
+      const entry = await getRendezvous(params.data.id)
+      if (!entry) {
+        return reply.status(404).send({ error: 'RENDEZVOUS_NOT_FOUND' })
+      }
+      if (!claimSecretMatches(body.data.claim_secret, entry.claimSecretHash)) {
+        return reply.status(403).send({ error: 'CLAIM_SECRET_INVALID' })
+      }
+      // A non-null pubkey means either a Mode A rendezvous or a key already
+      // submitted in Mode B — first write wins, reject the rest.
+      if (entry.ephemeralPubkey !== null) {
+        return reply.status(409).send({ error: 'RENDEZVOUS_PUBKEY_ALREADY_SET' })
+      }
+
+      // Atomic first-write-wins attach — guards against two racing submitters.
+      const updated = await attachEphemeralPubkey(
+        params.data.id,
+        body.data.ephemeral_pubkey
+      )
+      if (!updated) {
+        return reply.status(409).send({ error: 'RENDEZVOUS_PUBKEY_ALREADY_SET' })
+      }
+      return reply.send({ ok: true })
+    }
+  )
+
+  /**
+   * GET /api/devices/link/rendezvous/:id/status  (Mode B — step 3)
+   *
+   * Called by the OLD, authenticated device that is showing the QR. It polls
+   * for the ephemeral public key the new device submitted. The key is public
+   * material; returning it lets the existing device derive and display the
+   * verification code so the user can compare both screens before confirming.
+   */
+  app.get(
+    '/link/rendezvous/:id/status',
+    { config: { rateLimit: { max: 240, timeWindow: '1 hour' } } },
+    async (request, reply) => {
+      const user = await getAuthUser(request, reply)
+      if (!assertAuthed(reply, user)) return
+
+      const params = rendezvousIdSchema.safeParse(request.params)
+      if (!params.success) {
+        return reply.status(400).send({ error: 'INVALID_PARAMS' })
+      }
+
+      const entry = await getRendezvous(params.data.id)
+      if (!entry) {
+        return reply.status(404).send({ error: 'RENDEZVOUS_NOT_FOUND' })
+      }
+      return reply.send({
+        // null until the new device has submitted its key.
+        ephemeral_pubkey: entry.ephemeralPubkey,
+        deposited: entry.encBlob !== null,
       })
     }
   )
@@ -344,6 +479,11 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       const entry = await getRendezvous(params.data.id)
       if (!entry) {
         return reply.status(404).send({ error: 'RENDEZVOUS_NOT_FOUND' })
+      }
+      // Mode B: the new device must have submitted its key first — there is no
+      // recipient key to encrypt to otherwise. (Mode A always has the key.)
+      if (entry.ephemeralPubkey === null) {
+        return reply.status(409).send({ error: 'RENDEZVOUS_PUBKEY_MISSING' })
       }
       if (entry.encBlob !== null) {
         return reply.status(409).send({ error: 'RENDEZVOUS_ALREADY_DEPOSITED' })
@@ -380,12 +520,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(404).send({ error: 'RENDEZVOUS_NOT_FOUND' })
       }
 
-      const providedHash = createHash('sha256').update(body.data.claim_secret).digest()
-      const expectedHash = Buffer.from(entry.claimSecretHash, 'hex')
-      if (
-        providedHash.length !== expectedHash.length ||
-        !timingSafeEqual(providedHash, expectedHash)
-      ) {
+      if (!claimSecretMatches(body.data.claim_secret, entry.claimSecretHash)) {
         return reply.status(403).send({ error: 'CLAIM_SECRET_INVALID' })
       }
 

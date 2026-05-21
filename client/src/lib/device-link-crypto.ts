@@ -2,12 +2,22 @@
 // Copyright (C) 2026 therudywolf
 //
 // ---------------------------------------------------------------------------
-// Device-linking ECIES — encrypts the vault for a P2P QR handoff.
+// Device-linking ECIES — encrypts the vault for a bidirectional P2P QR handoff.
 // ---------------------------------------------------------------------------
-// The new device generates a throwaway ECDH keypair and shows its PUBLIC half
-// in the QR. The old device encrypts the vault to that public key here, so the
-// server only ever relays ciphertext it cannot read. A bystander who
-// photographs the QR obtains only a public key — useless for decryption.
+// The vault always flows existing-device -> new-device, encrypted to a
+// throwaway ECDH public key the server never possesses. Two QR directions:
+//
+//  Mode A — new device SHOWS the QR. The QR carries the new device's ephemeral
+//    PUBLIC key. The existing device scans, encrypts the vault to that key and
+//    deposits. A bystander who photographs the QR obtains only a public key.
+//
+//  Mode B — existing device SHOWS the QR. The QR carries {rendezvous_id,
+//    claim_secret}. The new device scans, generates an ephemeral keypair and
+//    submits the PUBLIC half. Because the Mode B QR carries the claim secret,
+//    a photographed QR could let an attacker race the pubkey submission; the
+//    defence is first-write-wins on the server PLUS a short verification code
+//    that BOTH devices derive from the submitted key — the user compares the
+//    two screens and only then confirms the deposit on the trusted device.
 //
 // Distinct HKDF `info` label keeps these keys domain-separated from the
 // message-fanout derivation in crypto.ts.
@@ -42,7 +52,10 @@ type LinkEnvelope = {
   ct: string
 }
 
+/** QR tag for Mode A (new device shows the QR, carrying its public key). */
 const QR_TAG = 'p13-link'
+/** QR tag for Mode B (existing device shows the QR, carrying the claim secret). */
+const QR_TAG_MODE_B = 'p13-link-b'
 
 export type LinkQrPayload = {
   rendezvousId: string
@@ -50,7 +63,18 @@ export type LinkQrPayload = {
   ephemeralPubkey: string
 }
 
-/** Encode the QR shown by the new device. Carries only public material. */
+/**
+ * Mode B QR contents. Unlike Mode A, this QR carries the `claimSecret` so the
+ * scanning new device can submit its pubkey and later claim the vault. A
+ * photographed Mode B QR is mitigated by server first-write-wins + the
+ * verification code shown on both devices (see deriveLinkVerificationCode).
+ */
+export type LinkModeBQrPayload = {
+  rendezvousId: string
+  claimSecret: string
+}
+
+/** Encode the Mode A QR shown by the new device. Carries only public material. */
 export function buildLinkQrPayload(
   rendezvousId: string,
   ephemeralPubkey: string
@@ -58,7 +82,7 @@ export function buildLinkQrPayload(
   return JSON.stringify({ t: QR_TAG, r: rendezvousId, k: ephemeralPubkey })
 }
 
-/** Parse a scanned QR string; returns null if it is not a device-link QR. */
+/** Parse a scanned Mode A QR string; returns null if it is not one. */
 export function parseLinkQrPayload(raw: string): LinkQrPayload | null {
   try {
     const o = JSON.parse(raw) as { t?: unknown; r?: unknown; k?: unknown }
@@ -69,6 +93,55 @@ export function parseLinkQrPayload(raw: string): LinkQrPayload | null {
   } catch {
     return null
   }
+}
+
+/** Encode the Mode B QR shown by the existing device. */
+export function buildLinkModeBQrPayload(
+  rendezvousId: string,
+  claimSecret: string
+): string {
+  return JSON.stringify({ t: QR_TAG_MODE_B, r: rendezvousId, s: claimSecret })
+}
+
+/** Parse a scanned Mode B QR string; returns null if it is not one. */
+export function parseLinkModeBQrPayload(raw: string): LinkModeBQrPayload | null {
+  try {
+    const o = JSON.parse(raw) as { t?: unknown; r?: unknown; s?: unknown }
+    if (o.t !== QR_TAG_MODE_B || typeof o.r !== 'string' || typeof o.s !== 'string') {
+      return null
+    }
+    return { rendezvousId: o.r, claimSecret: o.s }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Derive the 6-digit Mode B verification code shown on BOTH devices.
+ *
+ * The code is a deterministic function of the rendezvous id and the submitted
+ * ephemeral public key, so the two devices produce the SAME code iff they
+ * agree on the exact same pubkey. If an attacker raced a different key into
+ * `submit-pubkey`, the existing device derives its code from the attacker key
+ * while the genuine new device derives from its own — the codes differ and the
+ * user aborts before any vault is deposited.
+ *
+ * Implementation note: the input is `rendezvousId + "." + ephemeralPubkey`.
+ * The pubkey JWK string is included verbatim; both sides pass the identical
+ * string (the existing device receives it from the status endpoint exactly as
+ * the new device uploaded it), so the SHA-256 digests match bit-for-bit.
+ */
+export async function deriveLinkVerificationCode(
+  rendezvousId: string,
+  ephemeralPubkey: string
+): Promise<string> {
+  const input = new TextEncoder().encode(`${rendezvousId}.${ephemeralPubkey}`)
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', input)
+  const bytes = new Uint8Array(digest)
+  // Take the first 4 bytes as a big-endian unsigned int, mod 1e6 -> 6 digits.
+  const n =
+    ((bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3]) >>> 0
+  return String(n % 1_000_000).padStart(6, '0')
 }
 
 /** Generate the new device's ephemeral keypair for a QR linking session. */

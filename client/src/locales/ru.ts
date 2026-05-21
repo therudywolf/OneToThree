@@ -232,6 +232,8 @@ const ru = {
   // [SIDEBAR]
   'sidebar.localGhostSearch': 'Поиск в сообщениях...',
   'sidebar.ghostNoHits': 'Ничего не найдено.',
+  'sidebar.folderEmpty': 'В этой папке нет чатов',
+  'sidebar.folderEmptyHint': 'Чаты, подходящие под эту папку, появятся здесь.',
   'sidebar.channels': 'Чаты',
   'sidebar.channelsSubtitle':
     'Избранное, личные чаты и зашифрованные группы — личный диалог открывается полем ниже.',

@@ -490,6 +490,17 @@ export function ChatApp({
     return installPushRecoveryListener()
   }, [])
 
+  // Mark <html> while the chat shell is mounted. The chat owns a fixed-height,
+  // internally-scrolling layout, so on mobile it needs `overflow: hidden` on
+  // html/body to suppress page bounce. That rule must NOT leak onto long-form
+  // routes (login, legal/privacy, legal/terms) which rely on normal page
+  // scroll — scoping it to `[data-chat-shell]` keeps those pages scrollable.
+  useEffect(() => {
+    const root = document.documentElement
+    root.setAttribute('data-chat-shell', 'true')
+    return () => root.removeAttribute('data-chat-shell')
+  }, [])
+
   useEffect(() => {
     void requestAndroidEssentialPermissionsOnce()
   }, [])
@@ -1143,7 +1154,7 @@ export function ChatApp({
           />
         ) : null}
         <div
-          className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex h-[var(--p13-app-height)] max-h-[var(--p13-app-height)] w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-[var(--p13-app-height)] md:max-h-[var(--p13-app-height)] md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[var(--p13-safe-top)] md:pt-0 pb-[var(--p13-safe-bottom)] md:pb-0 ${
+          className={`chat-layout-sidebar fixed inset-y-0 left-0 top-0 z-50 flex min-h-0 w-screen max-w-[100vw] flex-col border-r border-border-strong bg-surface shadow-[6px_0_28px_rgba(0,0,0,0.65)] transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] md:static md:z-0 md:h-full md:max-w-none md:shrink-0 md:translate-x-0 md:shadow-none pt-[var(--p13-safe-top)] md:pt-0 pb-[var(--p13-safe-bottom)] md:pb-0 ${
             mobileSidebarOpen ? 'translate-x-0 sidebar-open' : '-translate-x-full'
           } md:translate-x-0`}
           style={{ ['--p13-sb-w' as string]: `${sidebarCollapsed ? TELEGRAM_BEHAVIOR.sidebar.collapsedWidth : sidebarWidth}px` } as React.CSSProperties}

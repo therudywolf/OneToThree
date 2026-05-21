@@ -111,12 +111,16 @@ const themeInitScript = `
   } catch(e) {}
 })();
 
-/* iOS PWA viewport height fix — update --p13-vh on resize & orientation change */
+/* iOS PWA viewport height fix — update --p13-vh on resize & orientation change.
+   Prefer visualViewport.height (the actually-visible viewport, excludes the
+   collapsible browser chrome) over innerHeight (the layout viewport, which
+   includes that chrome and overshoots — causing mobile overflow). This is the
+   pre-hydration baseline; useMobileViewport refines it once React mounts. */
 (function() {
   var updateViewportHeight = function() {
     try {
-      var vhValue = window.innerHeight / 100;
-      document.documentElement.style.setProperty('--p13-vh', vhValue + 'px');
+      var vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      document.documentElement.style.setProperty('--p13-vh', (vh / 100) + 'px');
     } catch (e) {}
   };
   updateViewportHeight();

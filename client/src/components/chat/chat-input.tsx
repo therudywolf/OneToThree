@@ -311,6 +311,20 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     return () => document.removeEventListener('mousedown', close)
   }, [burnMenuOpen])
 
+  // ESC closes the poll composer modal (matches the shared modal convention —
+  // every dialog in the app is dismissible with Escape).
+  useEffect(() => {
+    if (!pollModalOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setPollModalOpen(false)
+      }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [pollModalOpen])
+
   /** Returns seconds for burn-after-READ (server sets burn_at at read time). */
   const makeBurnDuration = (secs: number | null): number | null => secs ?? null
 
@@ -1043,7 +1057,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 aria-label={t('common.close')}
                 title={t('common.close')}
               >
-                <X className="h-3 w-3" />
+                <X className="h-4 w-4" />
               </button>
               <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-neon-cyan/60">{t('poll.createTitle')}</p>
 
@@ -1377,13 +1391,16 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           )}
         </button>
 
-        {/* Send button — shown only when text is present (Telegram-style mic↔send morph) */}
+        {/* Send button — shown only when text is present (Telegram-style mic↔send morph).
+            Mirrors the record button: exactly one primary action is visible at a
+            time on every breakpoint (TG/Discord never show a dead, disabled send
+            button next to the mic). */}
         <button
           type="button"
           disabled={disabled || !messageText.trim() || isRecordingUI || sendingText}
           className={`p13-icon-btn p13-icon-btn--primary shrink-0 ${
             showSendOnMobile ? 'inline-flex' : 'hidden'
-          } md:inline-flex ${isMd3 ? 'order-5' : ''}`}
+          } ${isMd3 ? 'order-5' : ''}`}
           onClick={(e) => void onSubmit(e as unknown as React.FormEvent)}
           aria-label={t('common.send')}
           title={t('common.send')}

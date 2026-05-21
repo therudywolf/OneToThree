@@ -1018,8 +1018,8 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
               className="p13-icon-btn"
               disabled={disabled}
               onClick={() => { setPollQuestion(''); setPollOptions(['', '']); setPollMultiple(false); setPollAnon(false); setPollModalOpen(true) }}
-              title="Create poll"
-              aria-label="Create poll"
+              title={t('poll.create')}
+              aria-label={t('poll.create')}
             >
               <BarChart2 className="h-4 w-4" />
             </button>
@@ -1031,7 +1031,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Create poll"
+            aria-label={t('poll.createTitle')}
             className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 backdrop-blur-sm"
             onClick={(e) => { if (e.target === e.currentTarget) setPollModalOpen(false) }}
           >
@@ -1040,16 +1040,17 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 type="button"
                 className="absolute right-2 top-2 p13-icon-btn"
                 onClick={() => setPollModalOpen(false)}
-                aria-label="Close"
+                aria-label={t('common.close')}
+                title={t('common.close')}
               >
                 <X className="h-3 w-3" />
               </button>
-              <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-neon-cyan/60">CREATE POLL</p>
+              <p className="mb-3 font-mono text-[11px] uppercase tracking-widest text-neon-cyan/60">{t('poll.createTitle')}</p>
 
               {/* Question */}
               <input
                 className="mb-2 w-full rounded-[var(--p13-radius-msg)] border border-neon-cyan/20 bg-void/60 px-2 py-1.5 font-[family-name:var(--p13-font-body)] text-[12px] outline-none focus:border-neon-cyan/50"
-                placeholder="Question..."
+                placeholder={t('poll.questionPlaceholder')}
                 maxLength={300}
                 value={pollQuestion}
                 onChange={(e) => setPollQuestion(e.target.value)}
@@ -1061,7 +1062,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                   <div key={idx} className="flex gap-1">
                     <input
                       className="flex-1 rounded-[var(--p13-radius-msg)] border border-neon-cyan/15 bg-void/50 px-2 py-1 font-[family-name:var(--p13-font-body)] text-[11px] outline-none focus:border-neon-cyan/40"
-                      placeholder={`Option ${idx + 1}`}
+                      placeholder={t('poll.optionPlaceholder').replace('{n}', String(idx + 1))}
                       maxLength={200}
                       value={opt}
                       onChange={(e) => {
@@ -1075,7 +1076,8 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                         type="button"
                         className="shrink-0 text-text-muted hover:text-danger"
                         onClick={() => setPollOptions(pollOptions.filter((_, i) => i !== idx))}
-                        aria-label="Remove option"
+                        aria-label={t('poll.removeOption')}
+                        title={t('poll.removeOption')}
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -1088,7 +1090,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                     className="mt-0.5 text-left font-mono text-[9px] uppercase tracking-widest text-neon-cyan/50 hover:text-neon-cyan/80"
                     onClick={() => setPollOptions([...pollOptions, ''])}
                   >
-                    + Add option
+                    {t('poll.addOption')}
                   </button>
                 )}
               </div>
@@ -1102,7 +1104,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                     onChange={(e) => setPollMultiple(e.target.checked)}
                     className="accent-neon-cyan"
                   />
-                  Multiple choice
+                  {t('poll.multipleChoice')}
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 font-mono text-[10px] text-text-muted">
                   <input
@@ -1111,7 +1113,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                     onChange={(e) => setPollAnon(e.target.checked)}
                     className="accent-neon-cyan"
                   />
-                  Anonymous votes
+                  {t('poll.anonymousVotes')}
                 </label>
               </div>
 
@@ -1141,7 +1143,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                   }
                 }}
               >
-                {pollSending ? 'Sending...' : 'Send Poll'}
+                {pollSending ? t('poll.sending') : t('poll.send')}
               </button>
             </div>
           </div>

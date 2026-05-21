@@ -64,6 +64,11 @@ import {
   type ChatFolder,
 } from '@/lib/chat-folders'
 import type { ApiChatRow } from '@/lib/api/chats'
+import {
+  MOBILE_NAV_SELECT_FOLDER_EVENT,
+  consumePendingSidebarFolder,
+  type SelectFolderEventDetail,
+} from '@/lib/mobile-nav'
 import { searchLocalMessages, getLastCachedMessageForChat, MESSAGE_CACHED_EVENT } from '@/lib/message-cache'
 import type { DecryptedMessage } from '@/types/chat'
 import { parseStickerEnvelope } from '@/lib/attachment-envelope'
@@ -219,6 +224,28 @@ export function ChatSidebar({
     const onOpenSettings = () => setGroupSettingsOpen(true)
     window.addEventListener('p13_open_group_settings', onOpenSettings)
     return () => window.removeEventListener('p13_open_group_settings', onOpenSettings)
+  }, [])
+
+  // External callers (e.g. the compact-layout bottom nav) can focus a system
+  // folder by dispatching `p13_select_folder`. Only honor ids that resolve to
+  // an existing folder so a stale request can't blank the chat list. The
+  // sidebar is a lazy `dynamic()` import, so on mount we also reconcile any
+  // request that fired before the listener was attached.
+  useEffect(() => {
+    const applyFolder = (folderId: string) => {
+      setActiveFolderId((current) =>
+        loadChatFolders().some((f) => f.id === folderId) ? folderId : current
+      )
+    }
+    const pending = consumePendingSidebarFolder()
+    if (pending) applyFolder(pending)
+    const onSelectFolder = (ev: Event) => {
+      const detail = (ev as CustomEvent<SelectFolderEventDetail>).detail
+      if (detail?.folderId) applyFolder(detail.folderId)
+    }
+    window.addEventListener(MOBILE_NAV_SELECT_FOLDER_EVENT, onSelectFolder)
+    return () =>
+      window.removeEventListener(MOBILE_NAV_SELECT_FOLDER_EVENT, onSelectFolder)
   }, [])
 
   useEffect(() => {

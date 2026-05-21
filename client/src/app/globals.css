@@ -3236,6 +3236,15 @@ select {
 [data-shell="md3"] .p13-sidebar-row::after {
   background: color-mix(in srgb, var(--on-surface) 14%, transparent);
 }
+/* Keyboard focus ring for chat rows. The inner button carries Tailwind's
+   `outline-none`; this rule (higher specificity) restores a visible, inset
+   focus indicator so keyboard navigation of the chat list is discoverable
+   in every shell — terminal, retro and MD3. */
+.p13-sidebar-row > button:focus-visible {
+  outline: 2px solid var(--state-focus-ring, var(--neon-cyan));
+  outline-offset: -2px;
+  border-radius: var(--p13-row-radius);
+}
 
 /* --- Header ------------------------------------------------ */
 .p13-header {

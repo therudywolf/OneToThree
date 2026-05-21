@@ -1065,7 +1065,7 @@ export function ChatSidebar({
                       {isMuted ? (
                         <BellOff className="h-3 w-3 shrink-0 text-text-muted/60" />
                       ) : null}
-                      <span className={`p13-sidebar-timestamp ml-1 hidden shrink-0 text-[11px] tabular-nums sm:inline ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
+                      <span className={`p13-sidebar-timestamp ml-1 shrink-0 text-[11px] tabular-nums ${isMd3 ? 'text-text-muted' : 'text-text-muted/70'}`}>
                         {formatChatTs(lastMessages[c.id]?.created_at ?? c.last_message_at)}
                       </span>
                     </span>

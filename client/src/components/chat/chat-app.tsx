@@ -1491,10 +1491,11 @@ export function ChatApp({
               <button
                 type="button"
                 onClick={clearMediaAccessError}
-                className="shrink-0 font-mono text-[10px] text-text-muted/70 hover:text-text-muted"
-                aria-label="Dismiss"
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-text-muted/70 transition-colors hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] hover:text-text-muted"
+                aria-label={t('common.close')}
+                title={t('common.close')}
               >
-                [X]
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ) : null}

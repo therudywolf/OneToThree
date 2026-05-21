@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { CornerDownRight } from 'lucide-react'
+import { CornerDownRight, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
@@ -67,13 +67,15 @@ export function ThreadPanel({
           <button
             type="button"
             onClick={onClose}
-            className={`text-xs transition-colors ${
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
               isMd3
-                ? 'rounded-full p-1 text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
-                : 'font-mono text-neon-red hover:text-neon-cyan'
+                ? 'text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                : 'text-neon-red hover:bg-neon-cyan/10 hover:text-neon-cyan'
             }`}
           >
-            {isMd3 ? '✕' : '[X]'}
+            <X className="h-4 w-4" />
           </button>
         </header>
 

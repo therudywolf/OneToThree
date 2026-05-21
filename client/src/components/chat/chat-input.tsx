@@ -883,7 +883,15 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
             ↳ {t('chat.replyBanner')}:{' '}
             {replyTo.plaintext ? replyTo.plaintext.slice(0, 80) : '[MEDIA]'}
           </p>
-          <button type="button" onClick={() => setReplyTo(null)} className="p13-banner-dismiss">[X]</button>
+          <button
+            type="button"
+            onClick={() => setReplyTo(null)}
+            className="p13-banner-dismiss"
+            aria-label={t('common.cancel')}
+            title={t('common.cancel')}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       ) : null}
 
@@ -896,8 +904,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
             type="button"
             onClick={() => { setEditingMessage(null); setMessageText('') }}
             className="p13-banner-dismiss"
+            aria-label={t('common.cancel')}
+            title={t('common.cancel')}
           >
-            [X]
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       ) : null}

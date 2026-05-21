@@ -11,6 +11,7 @@ import { explainDeviceLinkError } from '@/lib/device-link-errors'
 import { PortalRoot } from '@/components/portal-root'
 import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 import { QrScanner } from '@/components/qr-scanner'
+import { X } from 'lucide-react'
 import {
   parseLinkQrPayload,
   encryptVaultToEphemeralKey,
@@ -112,13 +113,15 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className={`shrink-0 text-xs transition-all duration-200 ease-in-out active:scale-95 ${
+              aria-label={t('common.close')}
+              title={t('common.close')}
+              className={`grid h-7 w-7 shrink-0 place-items-center rounded-full transition-all duration-200 ease-in-out active:scale-95 ${
                 isRetro
-                  ? 'p13-classic-button px-2 py-0.5'
-                  : 'font-mono text-neon-red hover:text-neon-cyan'
+                  ? 'p13-classic-button'
+                  : 'text-neon-red hover:bg-neon-cyan/10 hover:text-neon-cyan'
               }`}
             >
-              [X]
+              <X className="h-4 w-4" />
             </button>
           </div>
 

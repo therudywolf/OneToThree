@@ -5,7 +5,6 @@ import { acknowledgeMessagesDelivered, fetchPendingDeliveries } from '@/lib/api/
 import { getFmSocket } from '@/lib/api/socket'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { decryptApiMessageRows, type DrContext } from '@/lib/decrypt-chat-api-message'
-import { DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
 import { cacheMessage, deleteCachedMessage } from '@/lib/message-cache'
 import { playNotificationSound } from '@/lib/call-ringtones'
 import { isChatIdMuted } from '@/lib/muted-chats'

@@ -17,11 +17,14 @@ function isTextEntryFocused(): boolean {
 function computeVisibleHeightPx(): number {
   if (typeof window === 'undefined') return 0
   const vv = window.visualViewport
+  // `visualViewport.height` is the height actually visible to the user — it
+  // excludes the browser URL bar / toolbar chrome (and the on-screen keyboard).
+  // `window.innerHeight` is the *layout* viewport: on mobile it INCLUDES the
+  // collapsible chrome, so using it (or Math.max with it) overshoots and the
+  // app shell overflows the screen — the root cause of the mobile scroll bug.
+  // Prefer the visual viewport; fall back to innerHeight only when unavailable.
   const height = vv?.height ?? window.innerHeight
-  const viewportHeight = Math.max(320, Math.round(height))
-  const layoutHeight = Math.max(320, window.innerHeight || viewportHeight)
-  if (isTextEntryFocused()) return viewportHeight
-  return Math.max(viewportHeight, layoutHeight)
+  return Math.max(320, Math.round(height))
 }
 
 function computeViewportTopPx(): number {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { X } from 'lucide-react'
 import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { useThemeStore } from '@/store/themeStore'
 import {
@@ -183,9 +184,10 @@ export function IdentityModal({
               type="button"
               onClick={onClose}
               className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--on-surface-variant)] transition-colors hover:bg-[var(--surface-variant)]"
-              aria-label="Close"
+              aria-label={t('common.close')}
+              title={t('common.close')}
             >
-              <span className="text-lg leading-none">×</span>
+              <X className="h-4 w-4" />
             </button>
           </header>
 
@@ -291,9 +293,11 @@ export function IdentityModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label={t('common.close')}
+            title={t('common.close')}
             className="inline-flex h-8 w-8 items-center justify-center border border-border-strong bg-void text-text-muted/70 transition-colors hover:border-neon-red hover:text-neon-red"
           >
-            <span className="font-mono text-[10px] leading-none">X</span>
+            <X className="h-4 w-4" />
           </button>
         </header>
 

@@ -84,12 +84,19 @@ export function fetchInventory() {
   return getJson<{ one_time_prekeys: number; max: number }>('/keys/inventory')
 }
 
-export function fetchBundle(userId: string) {
-  return getJson<BundleResponse>(`/keys/bundle/${userId}`)
+/**
+ * Fetch an X3DH pre-key bundle for one user. With `deviceId` the server
+ * returns that specific device's bundle (and pops one of ITS one-time
+ * prekeys); without it the server falls back to the most recently published
+ * device. Per-device Double Ratchet always passes an explicit `deviceId`.
+ */
+export function fetchBundle(userId: string, deviceId?: string) {
+  const qs = deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : ''
+  return getJson<BundleResponse>(`/keys/bundle/${userId}${qs}`)
 }
 
-export interface IdentityResponse {
-  user_id: string
+export interface DeviceIdentity {
+  device_id: string
   identity: {
     signing_public_key: string
     exchange_public_key: string
@@ -97,6 +104,30 @@ export interface IdentityResponse {
   }
 }
 
-export function fetchIdentity(userId: string) {
-  return getJson<IdentityResponse>(`/keys/identity/${userId}`)
+export interface DevicesResponse {
+  user_id: string
+  devices: DeviceIdentity[]
+}
+
+/**
+ * List every device of a user that has published a DR identity. Used by the
+ * per-device fan-out to address each linked device with its own ratchet.
+ */
+export function fetchDeviceIdentities(userId: string) {
+  return getJson<DevicesResponse>(`/keys/devices/${userId}`)
+}
+
+export interface IdentityResponse {
+  user_id: string
+  device_id?: string
+  identity: {
+    signing_public_key: string
+    exchange_public_key: string
+    generation: number
+  }
+}
+
+export function fetchIdentity(userId: string, deviceId?: string) {
+  const qs = deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : ''
+  return getJson<IdentityResponse>(`/keys/identity/${userId}${qs}`)
 }

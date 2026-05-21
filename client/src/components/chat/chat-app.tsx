@@ -374,7 +374,8 @@ export function ChatApp({
     endCall,
     toggleMuteMic,
     toggleCamera,
-    toggleVideo,
+    isCameraOn,
+    listCameras,
     switchCamera,
     isScreenSharing,
     toggleScreenShare,
@@ -777,28 +778,18 @@ export function ChatApp({
     setChatMenuOpen(false)
   }
 
-  async function handleVoiceCall() {
+  // Single call entry point. Calls always start audio-only; video and
+  // screen-share are opt-in from the in-call controls.
+  async function handleCall() {
     if (!activeChatId) return
     const peers = await fetchPeerIdsForChat(activeChatId, userId)
     if (peers.length === 0) return
     await initiateCall(peers, false, activeChatId)
   }
 
-  async function handleVideoCall() {
-    if (!activeChatId) return
-    const peers = await fetchPeerIdsForChat(activeChatId, userId)
-    if (peers.length === 0) return
-    await initiateCall(peers, true, activeChatId)
-  }
-
-  async function handleGroupVoiceCall() {
+  async function handleGroupCall() {
     if (!activeChatId) return
     await startGroupCall(activeChatId, false)
-  }
-
-  async function handleGroupVideoCall() {
-    if (!activeChatId) return
-    await startGroupCall(activeChatId, true)
   }
 
   if (vaultState === 'loading') {
@@ -828,11 +819,13 @@ export function ChatApp({
       <ActiveCallOverlay
         onEndCall={endCall}
         onToggleMute={toggleMuteMic}
-        onToggleCamera={toggleCamera}
-        onToggleVideo={toggleVideo}
-        onSwitchCamera={() => void switchCamera()}
+        onToggleCamera={() => void toggleCamera()}
+        isCameraOn={isCameraOn}
+        onListCameras={listCameras}
+        onSelectCamera={(deviceId) => void switchCamera(deviceId)}
+        onFlipCamera={() => void switchCamera()}
         isScreenSharing={isScreenSharing}
-        onToggleScreenShare={toggleScreenShare}
+        onToggleScreenShare={() => void toggleScreenShare()}
         onSetQuality={setQuality}
       />
       <CallMiniPlayer
@@ -1030,13 +1023,9 @@ export function ChatApp({
                 <CallHeaderButtons
                   disabled={!activeChatId || !!ctxError}
                   peerReady={peerReady}
-                  onVoiceCall={() => {
-                    if (activeRow?.is_group) void handleGroupVoiceCall()
-                    else void handleVoiceCall()
-                  }}
-                  onVideoCall={() => {
-                    if (activeRow?.is_group) void handleGroupVideoCall()
-                    else void handleVideoCall()
+                  onCall={() => {
+                    if (activeRow?.is_group) void handleGroupCall()
+                    else void handleCall()
                   }}
                 />
               </div>
@@ -1366,8 +1355,7 @@ export function ChatApp({
                   <CallHeaderButtons
                     disabled={!activeChatId || !!ctxError}
                     peerReady={peerReady}
-                    onVoiceCall={() => void (activeRow?.is_group ? handleGroupVoiceCall() : handleVoiceCall())}
-                    onVideoCall={() => void handleVideoCall()}
+                    onCall={() => void (activeRow?.is_group ? handleGroupCall() : handleCall())}
                   />
                 ) : null}
                 {/* Per-chat more options */}
@@ -1488,8 +1476,7 @@ export function ChatApp({
           {activeChatId && activeCallBanner[activeChatId] && !isInGroupCall ? (
             <GroupCallBanner
               participantCount={activeCallBanner[activeChatId]}
-              onJoinVoice={() => void handleGroupVoiceCall()}
-              onJoinVideo={() => void handleGroupVideoCall()}
+              onJoin={() => void handleGroupCall()}
             />
           ) : null}
           {mediaAccessError ? (

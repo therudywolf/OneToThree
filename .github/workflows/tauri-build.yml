@@ -80,9 +80,8 @@ jobs:
         working-directory: desktop/tauri
         run: npm install --no-audit --no-fund
 
-      - name: Generate Tauri icons
-        working-directory: desktop/tauri
-        run: npx @tauri-apps/cli icon ../../client/public/wolf-logo.png
+      # Icons (src-tauri/icons/) are committed, so no generation step is
+      # needed — CI builds the same icon set a fresh local checkout uses.
 
       - name: Build static frontend
         run: npm run build:client:export

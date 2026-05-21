@@ -9,9 +9,35 @@ mod keychain;
 
 use tauri::Manager;
 
+/// Bring the existing main window to the foreground.
+///
+/// Invoked when a second process is launched (e.g. the OS opening an
+/// `onetothree://` deep link). The single-instance plugin already aborted
+/// that second process; here we just surface the running window.
+#[cfg(desktop)]
+fn focus_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // The single-instance plugin MUST be the first one registered so a
+    // duplicate launch is detected before any other initialisation runs.
+    // It is desktop-only — on mobile a second launch can't happen.
+    // The `deep-link` feature forwards an `onetothree://` URL opened by a
+    // second process to the already-running instance's deep-link handler.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        focus_main_window(app);
+    }));
+
+    builder
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![

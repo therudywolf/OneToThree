@@ -21,6 +21,7 @@ import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import { toastWarn } from '@/store/toastStore'
 import { buildCallRejectMessage, upsertIncomingCall } from '@/lib/incoming-call'
+import { applyVideoTrack, planScreenShareStart, planScreenShareStop } from '@/lib/call-media-tracks'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
@@ -106,10 +107,17 @@ export function useWebRTC(userId: string | null) {
   const [peerReady, setPeerReady] = useState(false)
   const [mediaAccessError, setMediaAccessError] = useState<string | null>(null)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
-  
+  // Camera lifecycle is tracked independently from screen-share. A call starts
+  // audio-only; the camera track is created lazily the first time the user opts
+  // into video. `isCameraOn` reflects whether a *camera* track exists AND is
+  // enabled — screen-share must never flip this.
+  const [isCameraOn, setIsCameraOn] = useState(false)
+
   const pcsRef = useRef(new Map<string, RTCPeerConnection>())
   const pendingIceRef = useRef<Record<string, RTCIceCandidateInit[]>>({})
-  const originalOpticsRef = useRef<MediaStreamTrack | null>(null)
+  // The live camera track (getUserMedia). Distinct from the screen track so the
+  // two media sources are never conflated.
+  const cameraFeedRef = useRef<MediaStreamTrack | null>(null)
   const screenFeedRef = useRef<MediaStreamTrack | null>(null)
   const disconnectTimersRef = useRef(new Map<string, number>())
   const ringStopRef = useRef<(() => void) | null>(null)
@@ -238,29 +246,33 @@ export function useWebRTC(userId: string | null) {
     delete pendingIceRef.current[peerId]
   }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearPeerConnectionType, stopRelayPeer])
 
+  /**
+   * Stop screen-share and restore the pre-share video state. Restores the
+   * camera track ONLY if the camera was on before/while sharing; an audio-only
+   * call returns to audio-only. Never calls getUserMedia.
+   */
   const revertToOptics = useCallback(() => {
-    const orig = originalOpticsRef.current
     const screen = screenFeedRef.current
+    const camera = cameraFeedRef.current
     const local = useCallStore.getState().localStream
 
     if (screen) screen.onended = null
 
-    if (orig && local) {
-      pcsRef.current.forEach(pc => {
-        const sender = pc.getSenders().find(s => s.track?.kind === 'video')
-        if (sender) void sender.replaceTrack(orig)
-      })
-      const current = local.getVideoTracks()[0]
-      if (current && current !== orig) {
-        local.removeTrack(current)
-        current.stop()
+    if (local) {
+      const plan = planScreenShareStop(camera, screen)
+      // Drop the screen track from the local stream.
+      if (plan.detachFromLocal && local.getVideoTracks().includes(plan.detachFromLocal)) {
+        local.removeTrack(plan.detachFromLocal)
       }
-      if (!local.getVideoTracks().includes(orig)) local.addTrack(orig)
+      // Re-attach the camera track if it exists, otherwise leave video cleared.
+      if (plan.attachToLocal && !local.getVideoTracks().includes(plan.attachToLocal)) {
+        local.addTrack(plan.attachToLocal)
+      }
+      pcsRef.current.forEach(pc => applyVideoTrack(pc, plan.publish, local))
       setLocalStream(local)
     }
 
     screen?.stop()
-    originalOpticsRef.current = null
     screenFeedRef.current = null
     setIsScreenSharing(false)
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: false }))
@@ -279,7 +291,13 @@ export function useWebRTC(userId: string | null) {
     Array.from(pcsRef.current.keys()).forEach(purgePeer)
     Array.from(relayPeersRef.current).forEach(purgePeer)
     p2pFallbackStartedRef.current.clear()
-    
+
+    // Tear down the camera track and reset opt-in media state for the next call.
+    cameraFeedRef.current?.stop()
+    cameraFeedRef.current = null
+    facingModeRef.current = 'user'
+    setIsCameraOn(false)
+
     const state = useCallStore.getState()
     terminateFeed(state.localStream)
     resetCallStore()
@@ -1060,14 +1078,181 @@ export function useWebRTC(userId: string | null) {
     relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'media_state', media: 'audio', enabled }))
   }, [])
 
-  const toggleOptics = useCallback(() => {
-    const local = useCallStore.getState().localStream
-    if (!local) return
-    local.getVideoTracks().forEach(t => (t.enabled = !t.enabled))
-    const enabled = local.getVideoTracks()[0]?.enabled ?? false
+  const broadcastVideoState = useCallback((enabled: boolean) => {
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'video', enabled }))
     relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'media_state', media: 'video', enabled }))
   }, [])
+
+  /**
+   * Toggle the camera. The first time the user opts into video this lazily
+   * acquires the camera via getUserMedia (a call starts audio-only); afterwards
+   * it just flips the existing camera track's `enabled` flag. While screen-share
+   * is active the camera track is kept but NOT attached to peers — the screen
+   * owns the video sender, and the camera state is restored when sharing stops.
+   */
+  const toggleCamera = useCallback(async () => {
+    const local = useCallStore.getState().localStream
+    if (!local) return
+
+    let camera = cameraFeedRef.current
+
+    // Lazy acquisition: no camera track yet -> turn the camera ON.
+    if (!camera) {
+      try {
+        const prefs = loadMediaPrefs()
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: getUserMediaConstraints({ video: true, hd: !prefs.lowBandwidth }).video,
+          audio: false,
+        })
+        camera = camStream.getVideoTracks()[0] ?? null
+      } catch (err) {
+        setMediaAccessError(isMediaPermissionDenied(err) ? MEDIA_PERMISSION_DENIED_CODE : MEDIA_ACCESS_ERROR_MESSAGE)
+        return
+      }
+      if (!camera) return
+      cameraFeedRef.current = camera
+      camera.enabled = true
+      // While screen-sharing keep the camera detached; otherwise publish it.
+      if (!screenFeedRef.current) {
+        if (!local.getVideoTracks().includes(camera)) local.addTrack(camera)
+        pcsRef.current.forEach(pc => applyVideoTrack(pc, camera, local))
+      }
+      setLocalStream(local)
+      setIsCameraOn(true)
+      if (!screenFeedRef.current) broadcastVideoState(true)
+      return
+    }
+
+    // Existing camera track -> flip enabled state.
+    camera.enabled = !camera.enabled
+    setIsCameraOn(camera.enabled)
+    // Don't leak camera on/off signalling to peers while the screen is shared.
+    if (!screenFeedRef.current) broadcastVideoState(camera.enabled)
+  }, [broadcastVideoState, setLocalStream])
+
+  /**
+   * List available camera (videoinput) devices. Used by the desktop in-call
+   * camera selector. Labels are only populated once media permission is granted.
+   */
+  const listCameras = useCallback(async (): Promise<MediaDeviceInfo[]> => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      return devices.filter(d => d.kind === 'videoinput')
+    } catch {
+      return []
+    }
+  }, [])
+
+  /**
+   * Switch the active camera.
+   *  - Desktop: pass a concrete `deviceId` chosen from the camera selector.
+   *  - Mobile: pass nothing — flips facingMode between user/environment.
+   * No-op while screen-sharing or when the camera is off.
+   */
+  const switchCamera = useCallback(async (deviceId?: string) => {
+    const local = useCallStore.getState().localStream
+    if (!local || screenFeedRef.current) return
+    const oldTrack = cameraFeedRef.current
+    if (!oldTrack) return
+
+    const nextMode: 'user' | 'environment' =
+      facingModeRef.current === 'user' ? 'environment' : 'user'
+    const videoConstraint: MediaTrackConstraints = deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: 1280 } }
+      : { facingMode: { ideal: nextMode }, width: { ideal: 1280 } }
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraint,
+        audio: false,
+      })
+      const newTrack = newStream.getVideoTracks()[0]
+      if (!newTrack) return
+
+      // Preserve the prior on/off state on the replacement track.
+      newTrack.enabled = oldTrack.enabled
+
+      pcsRef.current.forEach(pc => applyVideoTrack(pc, newTrack, local))
+
+      if (local.getVideoTracks().includes(oldTrack)) local.removeTrack(oldTrack)
+      oldTrack.stop()
+      local.addTrack(newTrack)
+      cameraFeedRef.current = newTrack
+      if (!deviceId) facingModeRef.current = nextMode
+      setLocalStream(local)
+    } catch (err) {
+      console.error('[SYS.MEDIA] CAMERA_SWITCH_FAULT:', err)
+    }
+  }, [setLocalStream])
+
+  /**
+   * Toggle screen-share. Acquires the screen via getDisplayMedia ONLY — it never
+   * calls getUserMedia and never enables the camera track. The screen video
+   * track replaces the video sender; stopping it restores the prior camera
+   * state via revertToOptics().
+   */
+  const toggleScreenShare = useCallback(async () => {
+    if (isScreenSharing) {
+      revertToOptics()
+      return
+    }
+
+    const local = useCallStore.getState().localStream
+    if (!local) return
+
+    let screenStream: MediaStream
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: true,
+      })
+    } catch (err) {
+      if ((err as Error)?.name !== 'NotAllowedError') {
+        console.error('[SYS.MEDIA] SCREENSHARE_FAULT:', err)
+      }
+      return
+    }
+
+    const screenVideoTrack = screenStream.getVideoTracks()[0]
+    if (!screenVideoTrack) {
+      screenStream.getTracks().forEach(t => t.stop())
+      return
+    }
+
+    // Detach the camera track from the local stream without stopping it — the
+    // camera keeps its on/off state and is restored when sharing ends. The
+    // camera is never enabled or (re)acquired here.
+    const plan = planScreenShareStart(cameraFeedRef.current, screenVideoTrack)
+    if (plan.detachFromLocal && local.getVideoTracks().includes(plan.detachFromLocal)) {
+      local.removeTrack(plan.detachFromLocal)
+    }
+
+    // Publish the screen track in place of the camera.
+    pcsRef.current.forEach(pc => applyVideoTrack(pc, plan.publish, local))
+    local.addTrack(plan.attachToLocal)
+    screenFeedRef.current = screenVideoTrack
+    setLocalStream(local)
+    setIsScreenSharing(true)
+    pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: true }))
+    relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'screen_share', active: true }))
+
+    // "Stop sharing" from the browser-native control.
+    screenVideoTrack.onended = () => {
+      revertToOptics()
+    }
+
+    const screenAudioTrack = screenStream.getAudioTracks()[0]
+    if (screenAudioTrack) {
+      pcsRef.current.forEach(pc => {
+        pc.addTrack(screenAudioTrack, screenStream)
+      })
+      const origOnEnded = screenVideoTrack.onended
+      screenVideoTrack.onended = () => {
+        screenAudioTrack.stop()
+        if (typeof origOnEnded === 'function') origOnEnded.call(screenVideoTrack, new Event('ended'))
+      }
+    }
+  }, [isScreenSharing, revertToOptics, setLocalStream])
 
   return {
     peerReady,
@@ -1078,100 +1263,13 @@ export function useWebRTC(userId: string | null) {
     rejectIncomingCall: rejectLink,
     endCall: severAllLinks,
     toggleMuteMic: toggleMute,
-    toggleCamera: toggleOptics,
-    toggleVideo: toggleOptics,
-    switchCamera: async () => {
-      const local = useCallStore.getState().localStream
-      if (!local || isScreenSharing) return
-
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const videoInputs = devices.filter(d => d.kind === 'videoinput')
-        if (videoInputs.length < 2) return
-
-        const nextMode = facingModeRef.current === 'user' ? 'environment' : 'user'
-        const newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: nextMode }, width: { ideal: 1280 } },
-          audio: false,
-        })
-        const newTrack = newStream.getVideoTracks()[0]
-        if (!newTrack) return
-
-        const oldTrack = local.getVideoTracks()[0]
-
-        pcsRef.current.forEach(pc => {
-          const sender = pc.getSenders().find(s => s.track?.kind === 'video')
-          if (sender) void sender.replaceTrack(newTrack)
-        })
-
-        if (oldTrack) {
-          local.removeTrack(oldTrack)
-          oldTrack.stop()
-        }
-        local.addTrack(newTrack)
-        facingModeRef.current = nextMode
-        setLocalStream(local)
-      } catch (err) {
-        console.error('[SYS.MEDIA] CAMERA_SWITCH_FAULT:', err)
-      }
-    },
+    toggleCamera,
+    toggleVideo: toggleCamera,
+    isCameraOn,
+    listCameras,
+    switchCamera,
     isScreenSharing,
-    toggleScreenShare: async () => {
-      if (isScreenSharing) {
-        revertToOptics()
-        return
-      }
-
-      const local = useCallStore.getState().localStream
-      if (!local) return
-
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: true,
-        })
-
-        const screenVideoTrack = screenStream.getVideoTracks()[0]
-        if (!screenVideoTrack) {
-          screenStream.getTracks().forEach(t => t.stop())
-          return
-        }
-
-        const currentVideoTrack = local.getVideoTracks()[0] ?? null
-        originalOpticsRef.current = currentVideoTrack
-
-        pcsRef.current.forEach(pc => {
-          const sender = pc.getSenders().find(s => s.track?.kind === 'video')
-          if (sender) void sender.replaceTrack(screenVideoTrack)
-        })
-
-        if (currentVideoTrack) local.removeTrack(currentVideoTrack)
-        local.addTrack(screenVideoTrack)
-        screenFeedRef.current = screenVideoTrack
-        setLocalStream(local)
-        setIsScreenSharing(true)
-
-        screenVideoTrack.onended = () => {
-          revertToOptics()
-        }
-
-        const screenAudioTrack = screenStream.getAudioTracks()[0]
-        if (screenAudioTrack) {
-          pcsRef.current.forEach(pc => {
-            pc.addTrack(screenAudioTrack, screenStream)
-          })
-          const origOnEnded = screenVideoTrack.onended
-          screenVideoTrack.onended = () => {
-            screenAudioTrack.stop()
-            if (typeof origOnEnded === 'function') origOnEnded.call(screenVideoTrack, new Event('ended'))
-          }
-        }
-      } catch (err) {
-        if ((err as Error)?.name !== 'NotAllowedError') {
-          console.error('[SYS.MEDIA] SCREENSHARE_FAULT:', err)
-        }
-      }
-    },
+    toggleScreenShare,
     setQuality,
   }
 }

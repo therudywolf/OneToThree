@@ -513,6 +513,8 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                 if (playing) el.pause()
                 else void el.play()
               }}
+              aria-label={playing ? t('media.pause') : t('media.play')}
+              title={playing ? t('media.pause') : t('media.play')}
               className="p13-media-action-btn flex h-7 w-7 shrink-0 items-center justify-center rounded-none font-mono text-[10px] uppercase tracking-widest"
             >
               {playing ? '||' : '▶'}

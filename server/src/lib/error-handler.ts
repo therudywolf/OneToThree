@@ -2,6 +2,24 @@ import type { FastifyInstance } from 'fastify'
 
 type Err = Error & { statusCode?: number; validation?: unknown; code?: string }
 
+/** App-defined error codes are SCREAMING_SNAKE tokens and ARE the API contract. */
+const APP_ERROR_CODE = /^[A-Z][A-Z0-9_]{1,63}$/
+
+/** Generic, non-leaking fallbacks for framework 4xx errors (prose messages). */
+const STATUS_ERROR_CODE: Record<number, string> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  405: 'METHOD_NOT_ALLOWED',
+  406: 'NOT_ACCEPTABLE',
+  409: 'CONFLICT',
+  413: 'PAYLOAD_TOO_LARGE',
+  415: 'UNSUPPORTED_MEDIA_TYPE',
+  422: 'UNPROCESSABLE_ENTITY',
+  429: 'RATE_LIMITED',
+}
+
 function aggregateErrorText(error: unknown): string {
   const parts: string[] = []
   let e: Error | undefined = error instanceof Error ? error : undefined
@@ -53,11 +71,17 @@ export function registerGlobalErrorHandler(app: FastifyInstance): void {
       return
     }
 
-    const body: Record<string, unknown> = {
-      error: error.message || 'REQUEST_ERROR',
-    }
+    // 4xx: never echo a framework/internal prose message back to the client.
+    // App-defined errors throw a SCREAMING_SNAKE code that IS the API contract
+    // and is passed through; anything else collapses to a generic status code.
+    const body: Record<string, unknown> = {}
     if (error.validation) {
+      body.error = 'VALIDATION_ERROR'
       body.details = error.validation
+    } else if (typeof error.message === 'string' && APP_ERROR_CODE.test(error.message)) {
+      body.error = error.message
+    } else {
+      body.error = STATUS_ERROR_CODE[statusCode] ?? 'REQUEST_ERROR'
     }
     reply.status(statusCode).send(body)
   })

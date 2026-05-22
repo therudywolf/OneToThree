@@ -9,6 +9,8 @@ const shouldManageWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER !== '1'
  *
  * Session cookies: leave `NEXT_PUBLIC_API_URL` empty so the browser uses same-origin `/api` (rewritten to
  * Fastify via `API_INTERNAL_URL`). Pointing the client at `:8080` directly breaks `fm_session` + middleware.
+ * Run the API with `NODE_ENV=test` and `COOKIE_SECURE` unset so `fm_session` stays `SameSite=Lax` (not
+ * `Secure`/`None`): a `Secure` cookie is dropped over plain HTTP. `playwright.global-setup.ts` fails fast if not.
  *
  * Stability: E2E hits a live local API + DB (not mocked). Use `reuseExistingServer: !CI` to keep one
  * Next server warm while iterating. For UI-only mocks, prefer `page.route` in a dedicated project.

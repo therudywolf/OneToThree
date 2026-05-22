@@ -147,7 +147,13 @@ async function decryptRowPlaintext(
     const drEnv = parseDrDeviceEnvelope(c)
     if (!drEnv) throw new Error('ERR_DR_ENVELOPE_INVALID')
     const { decryptFromPeer } = await import('@/lib/ratchet/session-manager')
-    return decryptFromPeer(drCtx.ownerUserId, drCtx.peerUserId, drEnv)
+    // A row from one of the user's OWN devices is a self-sync copy: it rode
+    // the (ownDevice <-> ownOtherDevice) ratchet, so its DR peer is the user
+    // themselves. Routing it to the chat peer looks up a ratchet that does not
+    // exist, so the copy never decrypts on the user's other devices.
+    const drPeerUserId =
+      row.sender_id === drCtx.ownerUserId ? drCtx.ownerUserId : drCtx.peerUserId
+    return decryptFromPeer(drCtx.ownerUserId, drPeerUserId, drEnv)
   }
 
   // v1 fan-out: per-device ECDH slot (DIRECT and SELF both use fan-out delivery).

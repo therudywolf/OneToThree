@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Crown, Star, ArrowDown, ShieldOff } from 'lucide-react'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
@@ -32,7 +33,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
 import { MediaLightbox } from '@/components/chat/media-lightbox'
 import { UserProfileModal } from '@/components/chat/user-profile-modal'
-import { groupMessages } from '@/lib/message-grouping'
+import { groupMessages, type AggregatedNode } from '@/lib/message-grouping'
 import { mergeRenderMessages } from '@/lib/render-messages'
 import { MessageSkeleton } from '@/components/ui/skeleton'
 import { formatMessageTimestamp, formatDateDivider, calendarDayKey } from '@/lib/timestamp-format'
@@ -47,6 +48,13 @@ import { explainStickerError } from '@/lib/sticker-errors'
 
 const OLDER_PAGE_SIZE = 25
 const OLDER_RAM_CAP = 200
+
+/** Precomputed per-row layout flags for the virtualized message list. */
+type RowMeta = {
+  anchorIso: string
+  showDateDivider: boolean
+  isRunContinuation: boolean
+}
 
 function shortId(id: string) {
   return `${id.slice(0, 8)}…`
@@ -369,6 +377,81 @@ export function ChatTerminal({
     groupedMessagesRef.current = groupedMessages
   }, [groupedMessages])
 
+  // === Virtualized message list ===
+  //
+  // Up to ~250 message bubbles (avatars, reactions, link previews, media)
+  // can be loaded at once. Rendering them all keeps that many heavy React
+  // subtrees mounted; @tanstack/react-virtual windows the list down to the
+  // rows actually on screen plus overscan.
+  //
+  // useStickyScroll stays the scroll-position authority — the virtualizer
+  // only owns *which* rows are mounted. They co-operate: the virtualizer's
+  // dynamic measurement resizes the spacer, the hook's ResizeObserver sees
+  // that and re-pins (sticky) or re-anchors (paginating older history).
+
+  // Per-row metadata (date dividers + same-sender run grouping). Precomputed
+  // in one O(n) pass because the virtual renderer only visits the windowed
+  // rows and so cannot thread mutable state across the whole list.
+  const rowMeta = useMemo<RowMeta[]>(() => {
+    const RUN_WINDOW_MS = 5 * 60 * 1000
+    let lastDayKey: string | null = null
+    let prevSenderId: string | null = null
+    let prevTimestampMs = 0
+    return groupedMessages.map((group) => {
+      const anchorIso =
+        group.type === 'UNIT'
+          ? group.message.created_at
+          : group.timestamp.toISOString()
+      const senderId =
+        group.type === 'UNIT' ? group.message.sender_id : group.originId
+      const anchorMs = new Date(anchorIso).getTime()
+      const dayKey = calendarDayKey(anchorIso)
+      const showDateDivider = dayKey !== '' && dayKey !== lastDayKey
+      const isRunContinuation =
+        !showDateDivider &&
+        prevSenderId === senderId &&
+        anchorMs - prevTimestampMs <= RUN_WINDOW_MS
+      lastDayKey = dayKey
+      prevSenderId = senderId
+      prevTimestampMs = anchorMs
+      return { anchorIso, showDateDivider, isRunContinuation }
+    })
+  }, [groupedMessages])
+
+  // id -> group index, for scroll-to-message (voice nav, first-unread anchor)
+  // now that the target row may be outside the virtualized window.
+  const groupIndexById = useMemo(() => {
+    const m = new Map<string, number>()
+    groupedMessages.forEach((g, i) => {
+      if (g.type === 'UNIT') m.set(g.message.id, i)
+      else for (const msg of g.messages) m.set(msg.id, i)
+    })
+    return m
+  }, [groupedMessages])
+  const groupIndexByIdRef = useRef(groupIndexById)
+  useEffect(() => {
+    groupIndexByIdRef.current = groupIndexById
+  }, [groupIndexById])
+
+  const getScrollElement = useCallback(() => ref.current, [])
+  const getItemKey = useCallback(
+    (index: number): string | number => {
+      const g = groupedMessages[index]
+      if (!g) return index
+      return g.type === 'UNIT'
+        ? g.message.id
+        : `col-${g.messages[0]?.id ?? index}`
+    },
+    [groupedMessages],
+  )
+  const rowVirtualizer = useVirtualizer({
+    count: groupedMessages.length,
+    getScrollElement,
+    estimateSize: () => 96,
+    overscan: 10,
+    getItemKey,
+  })
+
   const senderIdsToResolve = useMemo(() => {
     if (!isGroup || !activeChatId) return []
     const ids = new Set<string>()
@@ -452,10 +535,13 @@ export function ChatTerminal({
   useEffect(() => {
     if (!firstUnreadAnchorId || didScrollToUnreadRef.current) return
     didScrollToUnreadRef.current = true
-    // Double-rAF to let pending hook restorations complete first, then place
-    // the unread divider 52px below the viewport top via the sticky API
-    // (which also captures it as the restoration anchor for any subsequent
-    // layout changes — late media decode, etc).
+    const idx = groupIndexById.get(firstUnreadAnchorId)
+    if (idx == null) return
+    // Bring the unread row into the virtualized window first, then double-rAF
+    // to let pending hook restorations settle and place the unread divider
+    // 52px below the viewport top via the sticky API (which also captures it
+    // as the restoration anchor for later layout changes — late media decode).
+    rowVirtualizer.scrollToIndex(idx, { align: 'start' })
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const scrollEl = ref.current
@@ -467,7 +553,7 @@ export function ChatTerminal({
         sticky.scrollToElement(target, 52)
       })
     })
-  }, [firstUnreadAnchorId, sticky])
+  }, [firstUnreadAnchorId, sticky, groupIndexById, rowVirtualizer])
 
   // Keep unread divider in sync: if the anchored unread message becomes read,
   // move anchor to next unread or hide the divider completely.
@@ -832,15 +918,21 @@ export function ChatTerminal({
   }, [voiceMessageIds])
 
   const scrollToAndPlayVoice = useCallback((targetId: string) => {
-    const el = ref.current?.querySelector(`[data-message-id="${targetId}"]`)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      setTimeout(() => {
+    // The target voice message may be outside the virtualized window — ask
+    // the virtualizer to mount it before reaching into the DOM to play it.
+    const idx = groupIndexByIdRef.current.get(targetId)
+    if (idx != null) rowVirtualizer.scrollToIndex(idx, { align: 'center' })
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = ref.current?.querySelector(
+          `[data-message-id="${CSS.escape(targetId)}"]`,
+        )
+        if (!el) return
         const audio = el.querySelector('audio') as HTMLAudioElement | null
         if (audio) void audio.play()
-      }, 400)
-    }
-  }, [])
+      })
+    })
+  }, [rowVirtualizer])
 
   const navigateVoice = useCallback((currentId: string, direction: 'prev' | 'next') => {
     const ids = voiceMessageIdsRef.current
@@ -1053,6 +1145,176 @@ export function ChatTerminal({
     captureAnchor,
   ])
 
+  // Renders one virtualized row (a grouping node). The date / unread dividers
+  // ride inside the same measured row so the virtualizer sizes them too.
+  const renderGroup = (group: AggregatedNode, meta: RowMeta) => {
+    const dateDivider = meta.showDateDivider ? (
+      <div className="p13-date-divider" aria-hidden>
+        <span>{formatDateDivider(meta.anchorIso, locale)}</span>
+      </div>
+    ) : null
+
+    if (group.type === 'UNIT') {
+      const m = group.message
+      const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) ?? null : null
+      const mine = m.sender_id === userId
+      const showUnreadDivider =
+        !!firstUnreadAnchorId && m.id === firstUnreadAnchorId
+      const voiceIdx = voiceMessageIndex.get(m.id) ?? -1
+      return (
+        <>
+          {dateDivider}
+          {showUnreadDivider ? (
+            <div className="chat-unread-divider">
+              {t('chat.unreadMessages') || 'UNREAD MESSAGES'}
+            </div>
+          ) : null}
+          <MessageRow
+            message={m}
+            mine={mine}
+            isRunContinuation={meta.isRunContinuation}
+            replyMsg={replyMsg}
+            sharedKey={sharedKey}
+            userId={userId}
+            currentUsername={currentUsername}
+            myAvatarKey={myAvatarKey}
+            locale={locale}
+            t={t}
+            senderLabel={labelForSender(m.sender_id)}
+            senderAvatarKey={avatarKeyForSender(m.sender_id)}
+            senderRole={isGroup ? senderRoles[m.sender_id] ?? null : null}
+            swipeOffset={swipingMsgId === m.id ? swipeOffset : 0}
+            isReacting={reactingMsgId === m.id}
+            hasPrevVoice={voiceIdx > 0}
+            hasNextVoice={voiceIdx >= 0 && voiceIdx < voiceMessageIds.length - 1}
+            labelForSender={labelForSender}
+            replySnippet={replySnippet}
+            onContextMenu={handleOpenContextMenu}
+            onTouchStart={handleTouchStart}
+            onSwipeStart={handleSwipeStart}
+            onSwipeMove={handleSwipeMove}
+            onTouchEnd={handleRowTouchEnd}
+            onMessageAction={handleMessageAction}
+            onSetReacting={handleSetReacting}
+            onToggleReaction={handleToggleReaction}
+            onMediaClick={handleMediaClick}
+            onOpenProfile={openProfile}
+            onOpenThread={handleOpenThread}
+            onNavigateVoice={navigateVoice}
+          />
+        </>
+      )
+    }
+
+    // COLLECTION — consecutive visual segments. The current grouping pass
+    // emits only UNIT nodes; this branch is kept for completeness.
+    const mine = group.originId === userId
+    const senderLabel = labelForSender(group.originId)
+    const gridCols =
+      group.messages.length === 1 ? 1 : group.messages.length === 2 ? 2 : 3
+    const gridRows = Math.ceil(group.messages.length / gridCols)
+    return (
+      <>
+        {dateDivider}
+        <div
+          data-run-continuation={meta.isRunContinuation ? 'true' : 'false'}
+          className={`p13-msg-group group flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+        >
+          <div
+            className={`min-w-0 ${
+              mine
+                ? 'msg-bubble-width msg-bubble-mine items-end'
+                : 'msg-bubble-peer-width msg-bubble-peer items-start'
+            } p13-msg-stack flex flex-col`}
+          >
+            {meta.isRunContinuation ? null : (
+              <div
+                className={`p13-msg-meta p13-label flex items-center gap-1.5 px-1 text-[10px] ${
+                  mine
+                    ? 'p13-msg-meta--mine flex-row-reverse justify-end text-right'
+                    : 'p13-msg-meta--peer justify-start text-left'
+                }`}
+              >
+                <button
+                  type="button"
+                  className="shrink-0 cursor-pointer"
+                  onClick={(e) => { e.stopPropagation(); openProfile(group.originId) }}
+                >
+                  {!mine ? (
+                    <UserAvatar
+                      userId={group.originId}
+                      username={labelForSender(group.originId)}
+                      avatarKey={avatarKeyForSender(group.originId)}
+                      size={22}
+                    />
+                  ) : (
+                    <UserAvatar
+                      userId={userId}
+                      username={currentUsername || 'YOU'}
+                      avatarKey={myAvatarKey}
+                      size={22}
+                    />
+                  )}
+                </button>
+                {roleGlyph(group.originId)}
+                <button
+                  type="button"
+                  className="cursor-pointer transition-colors hover:opacity-80"
+                  onClick={(e) => { e.stopPropagation(); openProfile(group.originId) }}
+                >
+                  {senderLabel}
+                </button>
+              </div>
+            )}
+            <div
+              className={`p13-msg-bubble p13-bubble w-full ${
+                mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
+              }`}
+            >
+              <div className="p13-label mb-1 text-[9px] opacity-70">
+                {formatMessageTimestamp(group.timestamp.toISOString(), locale)}
+              </div>
+              <div
+                className={`grid gap-1 ${
+                  gridCols === 1
+                    ? 'grid-cols-1'
+                    : gridCols === 2
+                      ? 'grid-cols-2'
+                      : 'grid-cols-3'
+                }`}
+                style={{
+                  aspectRatio:
+                    gridCols === 1
+                      ? '4/3'
+                      : gridCols === 2
+                        ? '2/1'
+                        : gridRows === 1
+                          ? '3/1'
+                          : '1/1',
+                }}
+              >
+                {group.messages.map((m) => (
+                  <div key={m.id} data-message-id={m.id} className="relative">
+                    {m.media_path && m.media_iv && m.media_type ? (
+                      <MediaMessage
+                        message={m}
+                        sharedKey={sharedKey}
+                        onMediaClick={handleMediaClick}
+                        onAudioEnd={() => navigateVoice(m.id, 'next')}
+                        onPrevVoice={(voiceMessageIndex.get(m.id) ?? -1) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
+                        onNextVoice={(voiceMessageIndex.get(m.id) ?? -1) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
+                      />
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
   if (!activeChatId) {
     return (
       <div className="crt-terminal-vignette flex flex-1 flex-col items-center justify-center gap-2 bg-void px-6 text-center">
@@ -1162,204 +1424,35 @@ export function ChatTerminal({
             </div>
           </div>
         ) : null}
-        {(() => {
-          // TG-macOS message grouping pass.
-          //
-          // Two layers happen here in a single O(n) walk:
-          //   1. Calendar day-dividers — injected above the first group
-          //      whenever `calendarDayKey(anchor)` changes.
-          //   2. Consecutive same-sender run grouping — a group is part of
-          //      the "same run" as the previous one iff:
-          //        * same sender id
-          //        * no date divider separates them
-          //        * <= 5min gap from previous group's anchor timestamp
-          //      For followups we tighten vertical margin and hide the
-          //      avatar+name row, matching TG-macOS / iOS Messages.
-          const RUN_WINDOW_MS = 5 * 60 * 1000
-          let lastDayKey: string | null = null
-          let prevSenderId: string | null = null
-          let prevTimestampMs = 0
-          return groupedMessages.map((group, groupIndex) => {
-          const anchorIso =
-            group.type === 'UNIT'
-              ? group.message.created_at
-              : group.timestamp.toISOString()
-          const senderId =
-            group.type === 'UNIT' ? group.message.sender_id : group.originId
-          const anchorMs = new Date(anchorIso).getTime()
-          const dayKey = calendarDayKey(anchorIso)
-          const showDateDivider = dayKey !== '' && dayKey !== lastDayKey
-          const isRunContinuation =
-            !showDateDivider &&
-            prevSenderId === senderId &&
-            anchorMs - prevTimestampMs <= RUN_WINDOW_MS
-          lastDayKey = dayKey
-          prevSenderId = senderId
-          prevTimestampMs = anchorMs
-
-          const dateDivider = showDateDivider ? (
-            <div
-              key={`date-${dayKey}`}
-              className="p13-date-divider"
-              aria-hidden
-            >
-              <span>{formatDateDivider(anchorIso, locale)}</span>
-            </div>
-          ) : null
-
-          if (group.type === 'UNIT') {
-            const m = group.message
-            const replyMsg = m.reply_to_id ? msgById(m.reply_to_id) ?? null : null
-            const mine = m.sender_id === userId
-            const showUnreadDivider =
-              !!firstUnreadAnchorId && m.id === firstUnreadAnchorId
-            const voiceIdx = voiceMessageIndex.get(m.id) ?? -1
+        <div
+          style={{
+            height: rowVirtualizer.getTotalSize(),
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+            const group = groupedMessages[virtualItem.index]
+            const meta = rowMeta[virtualItem.index]
+            if (!group || !meta) return null
             return (
-              <div key={m.id} className="contents">
-                {dateDivider}
-                {showUnreadDivider ? (
-                  <div className="chat-unread-divider">
-                    {t('chat.unreadMessages') || 'UNREAD MESSAGES'}
-                  </div>
-                ) : null}
-                <MessageRow
-                  message={m}
-                  mine={mine}
-                  isRunContinuation={isRunContinuation}
-                  replyMsg={replyMsg}
-                  sharedKey={sharedKey}
-                  userId={userId}
-                  currentUsername={currentUsername}
-                  myAvatarKey={myAvatarKey}
-                  locale={locale}
-                  t={t}
-                  senderLabel={labelForSender(m.sender_id)}
-                  senderAvatarKey={avatarKeyForSender(m.sender_id)}
-                  senderRole={isGroup ? senderRoles[m.sender_id] ?? null : null}
-                  swipeOffset={swipingMsgId === m.id ? swipeOffset : 0}
-                  isReacting={reactingMsgId === m.id}
-                  hasPrevVoice={voiceIdx > 0}
-                  hasNextVoice={voiceIdx >= 0 && voiceIdx < voiceMessageIds.length - 1}
-                  labelForSender={labelForSender}
-                  replySnippet={replySnippet}
-                  onContextMenu={handleOpenContextMenu}
-                  onTouchStart={handleTouchStart}
-                  onSwipeStart={handleSwipeStart}
-                  onSwipeMove={handleSwipeMove}
-                  onTouchEnd={handleRowTouchEnd}
-                  onMessageAction={handleMessageAction}
-                  onSetReacting={handleSetReacting}
-                  onToggleReaction={handleToggleReaction}
-                  onMediaClick={handleMediaClick}
-                  onOpenProfile={openProfile}
-                  onOpenThread={handleOpenThread}
-                  onNavigateVoice={navigateVoice}
-                />
-              </div>
-            )
-          } else if (group.type === 'COLLECTION') {
-            const mine = group.originId === userId
-            const senderLabel = labelForSender(group.originId)
-            const gridCols = group.messages.length === 1 ? 1 :
-                           group.messages.length === 2 ? 2 : 3
-            const gridRows = Math.ceil(group.messages.length / gridCols)
-
-            return (
-              <div key={`group-${groupIndex}`} className="contents">
-                {dateDivider}
               <div
-                data-run-continuation={isRunContinuation ? 'true' : 'false'}
-                className={`p13-msg-group group flex w-full ${mine ? 'justify-end' : 'justify-start'}`}
+                key={virtualItem.key}
+                data-index={virtualItem.index}
+                ref={(el) => { if (el) rowVirtualizer.measureElement(el) }}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
               >
-                <div
-                  className={`min-w-0 ${
-                    mine
-                      ? 'msg-bubble-width msg-bubble-mine items-end'
-                      : 'msg-bubble-peer-width msg-bubble-peer items-start'
-                  } p13-msg-stack flex flex-col`}
-                >
-                  {isRunContinuation ? null : (
-                  <div
-                    className={`p13-msg-meta p13-label flex items-center gap-1.5 px-1 text-[10px] ${
-                      mine
-                        ? 'p13-msg-meta--mine flex-row-reverse justify-end text-right'
-                        : 'p13-msg-meta--peer justify-start text-left'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      className="shrink-0 cursor-pointer"
-                      onClick={(e) => { e.stopPropagation(); openProfile(group.originId) }}
-                    >
-                      {!mine ? (
-                        <UserAvatar
-                          userId={group.originId}
-                          username={labelForSender(group.originId)}
-                          avatarKey={avatarKeyForSender(group.originId)}
-                          size={22}
-                        />
-                      ) : (
-                        <UserAvatar
-                          userId={userId}
-                          username={currentUsername || 'YOU'}
-                          avatarKey={myAvatarKey}
-                          size={22}
-                        />
-                      )}
-                    </button>
-                    {roleGlyph(group.originId)}
-                    <button
-                      type="button"
-                      className="cursor-pointer transition-colors hover:opacity-80"
-                      onClick={(e) => { e.stopPropagation(); openProfile(group.originId) }}
-                    >
-                      {senderLabel}
-                    </button>
-                  </div>
-                  )}
-                  <div
-                    className={`p13-msg-bubble p13-bubble w-full ${
-                      mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
-                    }`}
-                  >
-                    <div className="p13-label mb-1 text-[9px] opacity-70">
-                      {formatMessageTimestamp(group.timestamp.toISOString(), locale)}
-                    </div>
-                    <div
-                      className={`grid gap-1 ${
-                        gridCols === 1 ? 'grid-cols-1' :
-                        gridCols === 2 ? 'grid-cols-2' :
-                        'grid-cols-3'
-                      }`}
-                      style={{
-                        aspectRatio: gridCols === 1 ? '4/3' :
-                                   gridCols === 2 ? '2/1' :
-                                   gridRows === 1 ? '3/1' : '1/1'
-                      }}
-                    >
-                      {group.messages.map((m) => (
-                        <div key={m.id} data-message-id={m.id} className="relative">
-                          {m.media_path && m.media_iv && m.media_type ? (
-                            <MediaMessage
-                              message={m}
-                              sharedKey={sharedKey}
-                              onMediaClick={handleMediaClick}
-                              onAudioEnd={() => navigateVoice(m.id, 'next')}
-                              onPrevVoice={(voiceMessageIndex.get(m.id) ?? -1) > 0 ? () => navigateVoice(m.id, 'prev') : undefined}
-                              onNextVoice={(voiceMessageIndex.get(m.id) ?? -1) < voiceMessageIds.length - 1 ? () => navigateVoice(m.id, 'next') : undefined}
-                            />
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                {renderGroup(group, meta)}
               </div>
             )
-          }
-        })
-        })()}
+          })}
+        </div>
         <div ref={bottomRef} className="h-px w-full shrink-0" aria-hidden />
       </div>
 

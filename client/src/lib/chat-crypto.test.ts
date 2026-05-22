@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import type { DrDeviceEnvelope } from '@/lib/ratchet/session-manager'
 
 type DecryptFromPeerArgs = [
@@ -34,7 +34,7 @@ vi.mock('@/lib/fanout-crypto', () => ({
   DR_SLOT_SENTINEL: 'dr:v2',
 }))
 
-import { decryptInboundTextV2, encryptOutboundTextV2 } from '@/lib/chat-crypto'
+import { assertTrustOrThrow, decryptInboundTextV2, encryptOutboundTextV2 } from '@/lib/chat-crypto'
 import { generateKeyPairIsolated } from '@/lib/crypto'
 
 describe('decryptInboundTextV2', () => {
@@ -234,5 +234,57 @@ describe('encryptOutboundTextV2', () => {
 
     expect(encrypted.protocol_version).toBe(1)
     expect(encrypted.dr_slots).toBeUndefined()
+  })
+})
+
+describe('assertTrustOrThrow — trust registry must fail closed', () => {
+  const KEY = 'p13_trust_registry'
+
+  function setRegistry(raw: string | null): void {
+    const store = new Map<string, string>()
+    if (raw !== null) store.set(KEY, raw)
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+      clear: () => store.clear(),
+      key: () => null,
+      length: 0,
+    })
+  }
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  const jwkA = JSON.stringify({ kty: 'EC', crv: 'P-256', x: 'AAA', y: 'BBB' })
+  const jwkB = JSON.stringify({ kty: 'EC', crv: 'P-256', x: 'XXX', y: 'YYY' })
+
+  it('no registry — passes', () => {
+    setRegistry(null)
+    expect(() => assertTrustOrThrow('peer', jwkA)).not.toThrow()
+  })
+
+  it('peer not pinned — passes', () => {
+    setRegistry(JSON.stringify({ other: jwkB }))
+    expect(() => assertTrustOrThrow('peer', jwkA)).not.toThrow()
+  })
+
+  it('pinned key matches — passes', () => {
+    setRegistry(JSON.stringify({ peer: jwkA }))
+    expect(() => assertTrustOrThrow('peer', jwkA)).not.toThrow()
+  })
+
+  it('pinned key mismatch — throws', () => {
+    setRegistry(JSON.stringify({ peer: jwkA }))
+    expect(() => assertTrustOrThrow('peer', jwkB)).toThrow(/MISMATCH/)
+  })
+
+  it('corrupt registry JSON — fails closed, does NOT silently disable pinning', () => {
+    setRegistry('{not valid json')
+    expect(() => assertTrustOrThrow('peer', jwkA)).toThrow(/COMPROMISED_LINK/)
+  })
+
+  it('registry is valid JSON but not an object — fails closed', () => {
+    setRegistry('"just a string"')
+    expect(() => assertTrustOrThrow('peer', jwkA)).toThrow(/COMPROMISED_LINK/)
   })
 })

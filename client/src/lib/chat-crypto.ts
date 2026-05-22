@@ -44,34 +44,45 @@ type SectorDetailResponse = {
  * [TRUST_VERIFICATION] :: Проверка отпечатка в локальном реестре доверия.
  * Сравниваются только криптографически значимые поля JWK (kty/crv/x/y),
  * чтобы избежать ложных тревог при разных необязательных полях (key_ops, ext…).
- * Бросает исключение при несовпадении закреплённого и полученного ключа.
+ * Бросает исключение при несовпадении закреплённого и полученного ключа,
+ * а также если реестр доверия повреждён (fail-closed — повреждённый реестр
+ * никогда не должен молча «расцеплять» все pin'ы).
  *
  * Named `assertTrustOrThrow` to make the throwing contract explicit at call
  * sites. Both `buildChatCryptoContext` and `buildChatCryptoContextWithMeta`
  * must call this so that neither the primary path nor the meta/forward path
  * can bypass trust verification.
  */
-function assertTrustOrThrow(peerUserId: string, receivedJwk: string): void {
+export function assertTrustOrThrow(peerUserId: string, receivedJwk: string): void {
   const registryRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('p13_trust_registry') : null
   if (!registryRaw) return
+
+  let registry: Record<string, unknown>
   try {
-    const registry = JSON.parse(registryRaw)
-    const pinnedSignal = registry[peerUserId]
-    if (!pinnedSignal) return
-    const keyFields = ['crv', 'kty', 'x', 'y'] as const
-    const extractKey = (jwkStr: string) => {
-      try {
-        const parsed = JSON.parse(jwkStr) as Record<string, unknown>
-        return JSON.stringify(Object.fromEntries(keyFields.map((k) => [k, parsed[k] ?? null])))
-      } catch {
-        return jwkStr
-      }
+    const parsed: unknown = JSON.parse(registryRaw)
+    if (parsed === null || typeof parsed !== 'object') throw new Error('not-an-object')
+    registry = parsed as Record<string, unknown>
+  } catch {
+    // A corrupt trust registry must FAIL CLOSED: silently treating every
+    // pinned peer as unpinned would let a key substitution slip through
+    // unnoticed — the exact attack pinning exists to stop.
+    throw new Error('SECURITY_SIGNAL_REGISTRY_CORRUPT :: COMPROMISED_LINK')
+  }
+
+  const pinnedSignal = registry[peerUserId]
+  if (!pinnedSignal) return
+  const keyFields = ['crv', 'kty', 'x', 'y'] as const
+  const extractKey = (jwk: unknown) => {
+    if (typeof jwk !== 'string') return JSON.stringify(jwk)
+    try {
+      const parsed = JSON.parse(jwk) as Record<string, unknown>
+      return JSON.stringify(Object.fromEntries(keyFields.map((k) => [k, parsed[k] ?? null])))
+    } catch {
+      return jwk
     }
-    if (extractKey(pinnedSignal) !== extractKey(receivedJwk)) {
-      throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message.includes('MISMATCH')) throw err
+  }
+  if (extractKey(pinnedSignal) !== extractKey(receivedJwk)) {
+    throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
   }
 }
 

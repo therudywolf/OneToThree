@@ -175,6 +175,43 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       .limit(1)
     const senderEcdhKey = senderDevice?.ecdhPublicKey ?? senderUser?.ecdhPublicKeyJwk ?? null
 
+    // Resolve per-device delivery slots BEFORE persisting, so the message row
+    // and its ciphertext slots are written in one transaction. A recipient
+    // must never get the chat_message WS event / push (fired by
+    // persistChatMessageAndFanOut after commit) for a message whose slots
+    // failed to insert — that is a permanently undecryptable message.
+    let deliverySlots: Array<{
+      deviceId: string
+      userId: string
+      ciphertext: string
+      iv: string
+      deliveredAt: Date | null
+    }> = []
+    if (p.ciphertexts && p.ciphertexts.length > 0) {
+      // Resolve device_id → userId from DB (security: only devices that
+      // belong to a chat member may receive a slot).
+      const memberUserIds = allMembers.map((m) => m.userId)
+      const deviceRows = await db
+        .select({ id: devices.id, userId: devices.userId })
+        .from(devices)
+        .where(
+          and(
+            inArray(devices.userId, memberUserIds),
+            isNull(devices.revokedAt)
+          )
+        )
+      const deviceOwnerMap = new Map(deviceRows.map((d) => [d.id, d.userId]))
+      deliverySlots = p.ciphertexts
+        .filter((slot) => deviceOwnerMap.has(slot.device_id))
+        .map((slot) => ({
+          deviceId: slot.device_id,
+          userId: deviceOwnerMap.get(slot.device_id)!,
+          ciphertext: slot.ciphertext,
+          iv: slot.iv,
+          deliveredAt: callerDeviceId && slot.device_id === callerDeviceId ? new Date() : null,
+        }))
+    }
+
     const persisted = await persistChatMessageAndFanOut({
       chatId: p.chat_id,
       senderId: user.id,
@@ -192,43 +229,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       drHeader: p.dr_header ?? null,
       drInit: p.dr_init ?? null,
       senderEcdhPublicKeyJwk: senderEcdhKey,
+      deliverySlots,
     })
     if (!persisted.ok) return reply.status(500).send({ error: 'INSERT_FAILED' })
-
-    const messageId = persisted.row.id
-
-    // Stage 5 fan-out: write per-device delivery slots
-    if (p.ciphertexts && p.ciphertexts.length > 0) {
-      // Resolve device_id → userId from DB (security: verify devices belong to chat members)
-      const memberUserIds = allMembers.map((m) => m.userId)
-
-      const deviceRows = await db
-        .select({ id: devices.id, userId: devices.userId })
-        .from(devices)
-        .where(
-          and(
-            inArray(devices.userId, memberUserIds),
-            isNull(devices.revokedAt)
-          )
-        )
-
-      const deviceOwnerMap = new Map(deviceRows.map((d) => [d.id, d.userId]))
-
-      const deliveryInserts = p.ciphertexts
-        .filter((slot) => deviceOwnerMap.has(slot.device_id))
-        .map((slot) => ({
-          messageId,
-          deviceId: slot.device_id,
-          userId: deviceOwnerMap.get(slot.device_id)!,
-          ciphertext: slot.ciphertext,
-          iv: slot.iv,
-          deliveredAt: callerDeviceId && slot.device_id === callerDeviceId ? new Date() : null,
-        }))
-
-      if (deliveryInserts.length > 0) {
-        await db.insert(messageDeliveries).values(deliveryInserts).onConflictDoNothing()
-      }
-    }
 
     const callerSlot =
       callerDeviceId && p.ciphertexts?.length

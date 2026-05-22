@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { attachments, chatMembers, messages } from '../db/schema.js'
+import { attachments, chatMembers, messageDeliveries, messages } from '../db/schema.js'
 import { sendNativePushToUser, sendPushToUser } from './push.js'
 import {
   broadcastToUsers,
@@ -49,6 +49,18 @@ export type PersistChatMessageInput = {
   drInit?: string | null
   /** Sender's ECDH public key JWK at send time — persisted so decryption survives multi-device key rotation. */
   senderEcdhPublicKeyJwk?: string | null
+  /**
+   * Per-device E2EE ciphertext slots. When supplied they are inserted in the
+   * SAME transaction as the message row, so the message and its slots commit
+   * (or roll back) atomically.
+   */
+  deliverySlots?: Array<{
+    deviceId: string
+    userId: string
+    ciphertext: string
+    iv: string
+    deliveredAt: Date | null
+  }>
 }
 
 function rowToWireMessage(row: PersistedMessageRow) {
@@ -100,9 +112,11 @@ async function getChatMemberIds(chatId: string): Promise<string[]> {
  * Inserts ciphertext into `messages`, fan-outs over WebSocket, and notifies
  * offline members via Web Push.
  *
- * NOTE: `message_deliveries` rows (per-device E2EE slots) are NOT created here.
- * They are created by the dedicated E2EE fan-out route (POST /devices/:id/messages).
- * This keeps legacy/group_e2e shared-key chats working without a deviceId.
+ * Per-device `message_deliveries` slots, when passed via `deliverySlots`, are
+ * inserted INSIDE the message transaction: the message row and its ciphertext
+ * slots commit together, so a recipient is never notified (WS + push) about a
+ * message that has no slot it can decrypt. Legacy/group_e2e shared-key chats
+ * pass no slots and are unaffected.
  */
 export async function persistChatMessageAndFanOut(
   input: PersistChatMessageInput
@@ -161,6 +175,24 @@ export async function persistChatMessageAndFanOut(
         .update(attachments)
         .set({ messageId: inserted.id })
         .where(eq(attachments.objectKey, inserted.mediaPath))
+    }
+
+    // Per-device E2EE ciphertext slots — committed atomically with the
+    // message row so the message can never be visible without them.
+    if (input.deliverySlots && input.deliverySlots.length > 0) {
+      await tx
+        .insert(messageDeliveries)
+        .values(
+          input.deliverySlots.map((s) => ({
+            messageId: inserted.id,
+            deviceId: s.deviceId,
+            userId: s.userId,
+            ciphertext: s.ciphertext,
+            iv: s.iv,
+            deliveredAt: s.deliveredAt,
+          }))
+        )
+        .onConflictDoNothing()
     }
 
     return inserted as PersistedMessageRow

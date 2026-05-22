@@ -156,7 +156,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(401).send({ error: 'GHOST_SESSION_USER_NOT_FOUND' })
   })
 
-  app.post('/refresh', async (request, reply) => {
+  app.post('/refresh', { config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (request, reply) => {
     const sess = await verifySessionJwt(request)
     if (!sess?.sub || !sess.username) return reply.status(401).send({ error: 'UNAUTHORIZED' })
 

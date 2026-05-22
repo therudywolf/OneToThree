@@ -27,7 +27,9 @@ type Props = {
   username: string
   onEndCall: () => void
   onToggleMute: () => void
-  onToggleVideo: () => void
+  /** Toggle the camera; returns the resulting camera-on state. */
+  onToggleVideo: () => Promise<boolean>
+  /** Toggle screen-share; returns the resulting screen-sharing state. */
   onToggleScreenShare: () => Promise<boolean>
 }
 
@@ -265,13 +267,18 @@ export function GroupCallScreen({
   const participants = useGroupCallStore((s) => s.participants)
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
   const transport = useGroupCallStore((s) => s.transport)
-  const isScreenSharing = useGroupCallStore((s) => s.isScreenSharing)
+  const isVideo = useGroupCallStore((s) => s.isVideo)
   const showParticipantPanel = useGroupCallStore((s) => s.showParticipantPanel)
   const setShowParticipantPanel = useGroupCallStore((s) => s.setShowParticipantPanel)
 
   const [elapsed, setElapsed] = useState(0)
   const startRef = useRef(Date.now())
   const [showControls, setShowControls] = useState(true)
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  // Camera state is tracked independently from the screen track — flipping the
+  // camera never reflects, and is never reflected by, screen-share. Seeded from
+  // whether the call started as a video call.
+  const [isCameraOn, setIsCameraOn] = useState(isVideo)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
   const [spotlightId, setSpotlightId] = useState<string | null>(null)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
@@ -327,11 +334,25 @@ export function GroupCallScreen({
 
   const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
   const isAudioRelay = transport === 'audio_relay'
-  const videoOff =
-    localStream?.getVideoTracks().length === 0 ||
-    (localStream?.getVideoTracks().some((t) => !t.enabled) ?? true)
+  // "Video off" for the local tile/controls reflects the *camera* — never the
+  // screen track. While screen-sharing the local tile still shows live video
+  // (the shared screen), so the off-indicator is suppressed.
+  const videoOff = !isCameraOn && !isScreenSharing
 
   if (!isInGroupCall || !localStream) return null
+
+  // Camera toggle keeps local state in sync with the actual camera track —
+  // flipping a track's `enabled` flag does not re-render React on its own.
+  const handleVideoToggle = async () => {
+    setIsCameraOn(await onToggleVideo())
+  }
+
+  // Screen-share is a real toggle: onToggleScreenShare starts it when off and
+  // stops it when on, returning the resulting state. Mirrors the 1:1 control.
+  const handleScreenShareToggle = async () => {
+    const sharing = await onToggleScreenShare()
+    setIsScreenSharing(sharing)
+  }
 
   return (
     <PortalRoot>
@@ -498,25 +519,27 @@ export function GroupCallScreen({
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
 
-          {/* Camera */}
+          {/* Camera on/off — reflects the *camera* track state (isCameraOn),
+              never the screen track. */}
           <button
-            onClick={isAudioRelay ? undefined : onToggleVideo}
+            onClick={isAudioRelay ? undefined : handleVideoToggle}
             disabled={isAudioRelay}
             className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
-              isAudioRelay || videoOff
+              isAudioRelay || !isCameraOn
                 ? 'bg-void/50 text-text-muted/70 hover:bg-elevated'
                 : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
             } disabled:cursor-not-allowed disabled:opacity-50`}
-            title={videoOff ? t('call.videoOn') : t('call.videoOff')}
-            aria-label={videoOff ? t('call.videoOn') : t('call.videoOff')}
+            title={isCameraOn ? t('call.videoOff') : t('call.videoOn')}
+            aria-label={isCameraOn ? t('call.videoOff') : t('call.videoOn')}
+            aria-pressed={isCameraOn}
           >
-            {videoOff ? <VideoOff className="h-5 w-5" /> : <Video className="h-5 w-5" />}
+            {isCameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
           </button>
 
           {/* Screen Share (desktop only) */}
           {!isMobileDevice && !isAudioRelay && (
             <button
-              onClick={() => void onToggleScreenShare()}
+              onClick={handleScreenShareToggle}
               className={`hidden sm:flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
                 isScreenSharing
                   ? 'bg-neon-cyan/10 text-neon-cyan'

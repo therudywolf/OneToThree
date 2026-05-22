@@ -23,6 +23,7 @@ export type GroupCallState = {
   roomId: string | null
   isVideo: boolean
   transport: GroupCallTransport
+  isScreenSharing: boolean
 
   // [STREAMS]
   localStream: MediaStream | null
@@ -45,6 +46,7 @@ export type GroupCallState = {
   setRoomId: (roomId: string | null) => void
   setIsVideo: (isVideo: boolean) => void
   setTransport: (transport: GroupCallTransport) => void
+  setIsScreenSharing: (sharing: boolean) => void
   setLocalStream: (stream: MediaStream | null) => void
   setRemoteStream: (userId: string, stream: MediaStream) => void
   removeRemoteStream: (userId: string) => void
@@ -66,6 +68,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   roomId: null,
   isVideo: false,
   transport: 'mesh',
+  isScreenSharing: false,
   localStream: null,
   remoteStreams: {},
   participants: {},
@@ -79,6 +82,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   setRoomId: (roomId) => set({ roomId }),
   setIsVideo: (isVideo) => set({ isVideo }),
   setTransport: (transport) => set({ transport }),
+  setIsScreenSharing: (sharing) => set({ isScreenSharing: sharing }),
   setLocalStream: (stream) => set({ localStream: stream }),
   setRemoteStream: (userId, stream) =>
     set((s) => ({ remoteStreams: { ...s.remoteStreams, [userId]: stream } })),
@@ -138,6 +142,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
       roomId: null,
       isVideo: false,
       transport: 'mesh',
+      isScreenSharing: false,
       localStream: null,
       remoteStreams: {},
       participants: {},

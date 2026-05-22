@@ -18,7 +18,7 @@ import {
   handleGroupCallRelayFrame,
   toggleGroupCallMute,
   toggleGroupCallVideo,
-  startGroupCallScreenShare,
+  toggleGroupCallScreenShare,
 } from '@/lib/group-call-manager'
 
 /**
@@ -127,7 +127,7 @@ export function useGroupCall(userId: string | null) {
   }, [])
 
   const toggleScreenShare = useCallback(async () => {
-    return startGroupCallScreenShare()
+    return toggleGroupCallScreenShare()
   }, [])
 
   return {

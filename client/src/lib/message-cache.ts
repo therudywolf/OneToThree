@@ -13,6 +13,8 @@ import type { DecryptedMessage } from '@/types/chat'
 const CORE_NAME = 'p13-ghost-logs'
 const CORE_VERSION = 2
 const MAX_LEXICAL_TOKENS = 80
+/** Cap on cached rows per chat — older rows are evicted to bound IndexedDB growth. */
+const FEED_ROWS_PER_CHAT = 600
 
 type SearchTraceRow = {
   token: string
@@ -126,6 +128,33 @@ async function indexNodeContent(msg: DecryptedMessage): Promise<void> {
   await tx.done
 }
 
+/**
+ * [FEED_EVICTION] :: Evict the oldest cached rows of a chat once it exceeds
+ * FEED_ROWS_PER_CHAT, so `message_feed` (and its lexical trace) cannot grow
+ * without bound. Cheap no-op when the chat is under the cap.
+ */
+async function pruneChatFeed(chatId: string): Promise<void> {
+  if (typeof indexedDB === 'undefined') return
+  const conn = await initConnection()
+  const range = IDBKeyRange.bound([chatId, '', ''], [chatId, '￿', '￿'])
+  const countTx = conn.transaction('message_feed', 'readonly')
+  const total = await countTx.store.index('bySectorCreated').count(range)
+  await countTx.done
+  if (total <= FEED_ROWS_PER_CHAT) return
+
+  const dropCount = total - FEED_ROWS_PER_CHAT
+  const evicted: string[] = []
+  const delTx = conn.transaction('message_feed', 'readwrite')
+  let cursor = await delTx.store.index('bySectorCreated').openCursor(range)
+  while (cursor && evicted.length < dropCount) {
+    evicted.push(cursor.value.id)
+    await cursor.delete()
+    cursor = await cursor.continue()
+  }
+  await delTx.done
+  for (const id of evicted) await purgeTraceForNode(conn, id)
+}
+
 // --- PUBLIC_INTERFACE ---
 
 export async function cacheMessages(nodes: DecryptedMessage[]): Promise<void> {
@@ -137,8 +166,9 @@ export async function cacheMessages(nodes: DecryptedMessage[]): Promise<void> {
   for (const node of liveNodes) await tx.store.put(node)
   await tx.done
   for (const node of liveNodes) scheduleTrace(() => indexNodeContent(node))
+  const affectedChats = new Set(liveNodes.map((n) => n.chat_id))
+  for (const chatId of affectedChats) scheduleTrace(() => pruneChatFeed(chatId))
   if (typeof window !== 'undefined') {
-    const affectedChats = new Set(liveNodes.map((n) => n.chat_id))
     for (const chatId of affectedChats) {
       window.dispatchEvent(new CustomEvent(MESSAGE_CACHED_EVENT, { detail: { chatId } }))
     }
@@ -159,6 +189,7 @@ export async function cacheMessage(node: DecryptedMessage): Promise<void> {
   const conn = await initConnection()
   await conn.put('message_feed', node)
   scheduleTrace(() => indexNodeContent(node))
+  scheduleTrace(() => pruneChatFeed(node.chat_id))
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(MESSAGE_CACHED_EVENT, { detail: { chatId: node.chat_id } }))
   }

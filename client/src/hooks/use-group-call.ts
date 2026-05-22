@@ -19,6 +19,9 @@ import {
   toggleGroupCallMute,
   toggleGroupCallVideo,
   startGroupCallScreenShare,
+  stopGroupCallScreenShare,
+  isGroupCallScreenSharing,
+  isGroupCallCameraOn,
 } from '@/lib/group-call-manager'
 
 /**
@@ -122,11 +125,27 @@ export function useGroupCall(userId: string | null) {
     toggleGroupCallMute()
   }, [])
 
-  const toggleVideo = useCallback(() => {
-    toggleGroupCallVideo()
+  /**
+   * Toggle the local camera. Flips the dedicated camera track only — never the
+   * screen track; the first opt-in lazily acquires the camera. Returns the
+   * resulting camera state so the UI can stay in sync (flipping `enabled` does
+   * not re-render React on its own).
+   */
+  const toggleVideo = useCallback(async () => {
+    await toggleGroupCallVideo()
+    return isGroupCallCameraOn()
   }, [])
 
+  /**
+   * Toggle screen-share. Starting acquires the screen via getDisplayMedia only
+   * (never the camera); stopping restores the prior camera state. Returns the
+   * resulting screen-sharing state so the UI can sync its indicator.
+   */
   const toggleScreenShare = useCallback(async () => {
+    if (isGroupCallScreenSharing()) {
+      stopGroupCallScreenShare()
+      return false
+    }
     return startGroupCallScreenShare()
   }, [])
 

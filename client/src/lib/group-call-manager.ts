@@ -30,6 +30,8 @@ import {
   isLiveKitActive,
 } from '@/lib/livekit-call-manager'
 import { fetchCallConfig } from '@/lib/api/call'
+import { applyVideoTrack, planScreenShareStart, planScreenShareStop } from '@/lib/call-media-tracks'
+import { getUserMediaConstraints, loadMediaPrefs } from '@/lib/media-devices'
 
 
 
@@ -64,6 +66,31 @@ let groupRelayMode = false
 const relayPlayers = new Map<string, AudioRelayPlayer>()
 const relayCaptures = new Map<string, AudioRelayCaptureController>()
 const relayKeys = new Map<string, Promise<CryptoKey | null>>()
+
+/**
+ * Camera vs screen tracks are kept as distinct module refs so the two media
+ * sources are never conflated — the same invariant the 1:1 path enforces via
+ * `cameraFeedRef`/`screenFeedRef`. `groupCameraTrack` is the getUserMedia camera
+ * video track (null until the user opts into video — a group call starts
+ * audio-only); `groupScreenTrack` is the getDisplayMedia track while
+ * screen-sharing. Screen-share must never enable or (re)acquire the camera.
+ */
+let groupCameraTrack: MediaStreamTrack | null = null
+let groupScreenTrack: MediaStreamTrack | null = null
+
+/** Whether the local user is currently screen-sharing in the mesh call. */
+export function isGroupCallScreenSharing(): boolean {
+  return groupScreenTrack !== null
+}
+
+/**
+ * Whether a camera track currently exists AND is enabled. Tracks the *camera*
+ * specifically — independent of the screen track — so the in-call camera
+ * control never reads the screen track as "camera on".
+ */
+export function isGroupCallCameraOn(): boolean {
+  return groupCameraTrack !== null && groupCameraTrack.enabled
+}
 
 async function ensureIceServers(): Promise<RTCIceServer[]> {
   if (cachedIceServers) return cachedIceServers
@@ -351,8 +378,11 @@ function cleanupAll() {
     stopRelayPeer(peerId)
   }
 
-  // Stop local stream
+  // Stop the screen track (if sharing) and local stream.
+  groupScreenTrack?.stop()
   terminateFeed(store.localStream)
+  groupCameraTrack = null
+  groupScreenTrack = null
 
   // Clear cached ICE servers
   cachedIceServers = null
@@ -436,6 +466,9 @@ export async function joinGroupCall(
   store.setRoomId(roomId)
   store.setIsVideo(isVideo)
   store.setTransport('mesh')
+  // Remember the camera track so screen-share can detach (never stop) it and
+  // restore it afterwards — distinct from the screen track.
+  groupCameraTrack = stream.getVideoTracks()[0] ?? null
 
   sendGroupCallSignal({
     type: 'group_call:join',
@@ -656,27 +689,83 @@ export function toggleGroupCallMute() {
   })
 }
 
-/** Toggle local camera on/off. */
-export function toggleGroupCallVideo() {
+/**
+ * Toggle the local camera on/off. A group call starts audio-only, so the first
+ * opt-in lazily acquires the camera via getUserMedia (mirroring the 1:1
+ * `toggleCamera`); afterwards it just flips the existing camera track's
+ * `enabled` flag.
+ *
+ * The camera track is kept distinct from the screen track at all times. While
+ * screen-sharing the camera is detached: its state still flips so it is
+ * restored correctly when sharing stops, but it is neither published nor
+ * broadcast (the screen owns the video sender — remote peers keep seeing the
+ * screen, not "camera off").
+ */
+export async function toggleGroupCallVideo(): Promise<void> {
   if (isLiveKitActive()) {
-    void toggleLiveKitVideo()
+    await toggleLiveKitVideo()
     return
   }
+  if (groupRelayMode) return
   const store = useGroupCallStore.getState()
-  if (!store.localStream || !store.roomId) return
+  const local = store.localStream
+  if (!local || !store.roomId) return
 
-  const videoTracks = store.localStream.getVideoTracks()
-  videoTracks.forEach((t) => (t.enabled = !t.enabled))
-  const isVideoOff = !(videoTracks[0]?.enabled ?? false)
+  // Lazy acquisition: no camera track yet -> turn the camera ON.
+  if (!groupCameraTrack) {
+    let camStream: MediaStream
+    try {
+      const prefs = loadMediaPrefs()
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: getUserMediaConstraints({ video: true, hd: !prefs.lowBandwidth }).video,
+        audio: false,
+      })
+    } catch (err) {
+      console.error('[GC.MEDIA] Camera acquisition failed:', err)
+      return
+    }
+    const camera = camStream.getVideoTracks()[0] ?? null
+    if (!camera) return
+    groupCameraTrack = camera
+    camera.enabled = true
+    // While screen-sharing keep the camera detached; otherwise publish it.
+    if (!groupScreenTrack) {
+      if (!local.getVideoTracks().includes(camera)) local.addTrack(camera)
+      for (const pc of Object.values(store.peerConnections)) {
+        applyVideoTrack(pc, camera, local)
+      }
+    }
+    store.setLocalStream(local)
+    if (!groupScreenTrack) {
+      sendGroupCallSignal({
+        type: 'group_call:video_toggle',
+        room_id: store.roomId,
+        is_video_off: false,
+      })
+    }
+    return
+  }
+
+  // Existing camera track -> flip enabled state.
+  groupCameraTrack.enabled = !groupCameraTrack.enabled
+
+  // Don't leak camera on/off signalling to peers while the screen is shared.
+  if (groupScreenTrack) return
 
   sendGroupCallSignal({
     type: 'group_call:video_toggle',
     room_id: store.roomId,
-    is_video_off: isVideoOff,
+    is_video_off: !groupCameraTrack.enabled,
   })
 }
 
-/** Start screen sharing in the group call. */
+/**
+ * Start screen sharing in the group call. Acquires the screen via
+ * getDisplayMedia ONLY — it never calls getUserMedia and never enables the
+ * camera track. The screen video track replaces the video sender on every peer;
+ * the camera track (if any) is merely detached from the local stream, keeping
+ * its on/off state, and is restored when sharing stops.
+ */
 export async function startGroupCallScreenShare(): Promise<boolean> {
   if (isLiveKitActive()) {
     await startLiveKitScreenShare()
@@ -685,6 +774,8 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
   if (groupRelayMode) return false
   const store = useGroupCallStore.getState()
   if (!store.localStream || !store.roomId) return false
+  // Already sharing — ignore (toggle-off goes through stopGroupCallScreenShare).
+  if (groupScreenTrack) return true
 
   try {
     const screenStream = await navigator.mediaDevices.getDisplayMedia({
@@ -698,23 +789,49 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
       return false
     }
 
-    // Replace video track in all peer connections
+    const local = store.localStream
+    // Detach the camera track from the local stream WITHOUT stopping it — the
+    // camera keeps its enabled/disabled state and is restored when sharing
+    // ends. The camera is never enabled or (re)acquired here.
+    const plan = planScreenShareStart(groupCameraTrack, screenVideoTrack)
+    if (plan.detachFromLocal && local.getVideoTracks().includes(plan.detachFromLocal)) {
+      local.removeTrack(plan.detachFromLocal)
+    }
+
+    // Publish the screen track in place of the camera on every peer.
     for (const pc of Object.values(store.peerConnections)) {
-      const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
-      if (sender) void sender.replaceTrack(screenVideoTrack)
+      applyVideoTrack(pc, plan.publish, local)
     }
+    local.addTrack(plan.attachToLocal)
+    groupScreenTrack = screenVideoTrack
+    store.setLocalStream(local)
 
-    // Replace in local stream
-    const oldTrack = store.localStream.getVideoTracks()[0]
-    if (oldTrack) {
-      store.localStream.removeTrack(oldTrack)
-    }
-    store.localStream.addTrack(screenVideoTrack)
-    store.setLocalStream(store.localStream)
+    // Remote peers now receive video (the screen) — keep their video-off
+    // indicator accurate. Uses the existing video_toggle channel.
+    sendGroupCallSignal({
+      type: 'group_call:video_toggle',
+      room_id: store.roomId,
+      is_video_off: false,
+    })
 
-    // Handle screen share stop
+    // "Stop sharing" from the browser-native control.
     screenVideoTrack.onended = () => {
-      void stopGroupCallScreenShare(oldTrack ?? null)
+      void stopGroupCallScreenShare()
+    }
+
+    // Add screen audio (if the user shared a tab with audio) to every peer.
+    const screenAudioTrack = screenStream.getAudioTracks()[0]
+    if (screenAudioTrack) {
+      for (const pc of Object.values(store.peerConnections)) {
+        pc.addTrack(screenAudioTrack, screenStream)
+      }
+      const origOnEnded = screenVideoTrack.onended
+      screenVideoTrack.onended = () => {
+        screenAudioTrack.stop()
+        if (typeof origOnEnded === 'function') {
+          origOnEnded.call(screenVideoTrack, new Event('ended'))
+        }
+      }
     }
 
     return true
@@ -747,27 +864,49 @@ export async function handleGroupCallRelayFrame(
   }
 }
 
-/** Stop screen sharing and restore camera. */
-async function stopGroupCallScreenShare(originalTrack: MediaStreamTrack | null) {
+/**
+ * Stop screen sharing and restore the pre-share video state. Restores the
+ * camera track ONLY if a camera track existed before/while sharing — keeping
+ * its prior enabled/disabled state untouched; an audio-only call returns to
+ * audio-only. Never calls getUserMedia and never enables the camera.
+ */
+export function stopGroupCallScreenShare(): void {
+  if (groupRelayMode) return
+  const screen = groupScreenTrack
+  if (!screen) return
   const store = useGroupCallStore.getState()
-  if (!store.localStream) return
+  const local = store.localStream
 
-  const currentTrack = store.localStream.getVideoTracks()[0]
-  if (currentTrack) {
-    currentTrack.onended = null
-    currentTrack.stop()
-    store.localStream.removeTrack(currentTrack)
-  }
+  screen.onended = null
 
-  if (originalTrack) {
-    store.localStream.addTrack(originalTrack)
-    for (const pc of Object.values(store.peerConnections)) {
-      const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
-      if (sender) void sender.replaceTrack(originalTrack)
+  if (local) {
+    const plan = planScreenShareStop(groupCameraTrack, screen)
+    // Drop the screen track from the local stream.
+    if (plan.detachFromLocal && local.getVideoTracks().includes(plan.detachFromLocal)) {
+      local.removeTrack(plan.detachFromLocal)
     }
+    // Re-attach the camera track if it exists, otherwise leave video cleared.
+    if (plan.attachToLocal && !local.getVideoTracks().includes(plan.attachToLocal)) {
+      local.addTrack(plan.attachToLocal)
+    }
+    for (const pc of Object.values(store.peerConnections)) {
+      applyVideoTrack(pc, plan.publish, local)
+    }
+    store.setLocalStream(local)
   }
 
-  store.setLocalStream(store.localStream)
+  screen.stop()
+  groupScreenTrack = null
+
+  // Sync remote video-off indicators with the restored camera state: video is
+  // off unless a camera track exists and is enabled.
+  if (store.roomId) {
+    sendGroupCallSignal({
+      type: 'group_call:video_toggle',
+      room_id: store.roomId,
+      is_video_off: !(groupCameraTrack !== null && groupCameraTrack.enabled),
+    })
+  }
 }
 
 /** Get participant count for the current call. */

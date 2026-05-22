@@ -1,0 +1,7 @@
+# Release artifacts are large binaries — never commit them to the repo.
+# Distribute via GitHub Releases. Only the folder structure is tracked.
+*
+!*/
+!.gitignore
+!.gitkeep
+!README.md

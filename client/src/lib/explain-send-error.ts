@@ -21,6 +21,9 @@ export function explainSendError(err: unknown): string {
       case 'SELF_FANOUT_UNAVAILABLE':
       case 'SELF_FANOUT_KEYS_REQUIRED':
         return 'No E2E devices registered — refresh the page or sign in again.'
+      case 'ERR_NO_DR_KEYS':
+      case 'RATCHET_NO_SESSION':
+        return 'This contact has no encryption keys yet — they must sign in on a device first. Nothing was sent over a weaker channel.'
       case 'TOFU_IDENTITY_CHANGED':
         return "Peer's identity key changed. Open security settings to verify before sending."
       case 'DIRECT_PLAINTEXT_REQUIRED':

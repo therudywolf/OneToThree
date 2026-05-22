@@ -84,4 +84,25 @@ describe('decryptApiMessageRows — per-device DR inbound routing (A4)', () => {
     // copy's ratchet peer is the owner.
     expect(selfOut.plaintext).toBe('message from my other device')
   })
+
+  it('rejects a v1-protocol row in a DIRECT chat — no downgrade to static ECDH', async () => {
+    const out = await decryptApiMessageRow(
+      {} as CryptoKey,
+      { mode: 'DIRECT', peerPublicKeyJwk: 'unused' },
+      {
+        id: 'v1row',
+        chat_id: 'chat-1',
+        sender_id: 'bob',
+        content: null,
+        iv: null,
+        device_ciphertext: 'legacy-v1-ciphertext',
+        device_iv: 'cccc',
+        protocol_version: 1,
+        created_at: new Date().toISOString(),
+      },
+      { ownerUserId: 'alice', peerUserId: 'bob' }
+    )
+    // decryptRowPlaintext throws ERR_DIRECT_V1_REJECTED → row marked failed.
+    expect(out.plaintext).toBe('[DECRYPT_FAIL]')
+  })
 })

@@ -3,15 +3,14 @@ import { decryptApiMessageRow } from '@/lib/decrypt-chat-api-message'
 import { encryptFanout } from '@/lib/fanout-crypto'
 import { generateKeyPairIsolated } from '@/lib/crypto'
 
-describe('decryptApiMessageRow direct fanout rows', () => {
-  it('decrypts a recipient device slot using sender public key from the API row', async () => {
+describe('decryptApiMessageRow v1 fan-out rows', () => {
+  it('rejects a v1 fan-out slot in a DIRECT chat — no static-ECDH downgrade', async () => {
     const sender = await generateKeyPairIsolated()
     const receiver = await generateKeyPairIsolated()
-    const plaintext = 'direct device slot roundtrip'
     const [slot] = await encryptFanout(
       sender.privateKey,
       [{ device_id: 'receiver-device', ecdh_public_key: receiver.publicJwk }],
-      plaintext
+      'direct device slot'
     )
 
     const out = await decryptApiMessageRow(
@@ -30,22 +29,22 @@ describe('decryptApiMessageRow direct fanout rows', () => {
       }
     )
 
-    expect(out.plaintext).toBe(plaintext)
+    // DIRECT chats are Double Ratchet only — a v1 fan-out row must not decrypt.
+    expect(out.plaintext).toBe('[DECRYPT_FAIL]')
   })
 
-  it('decrypts a sender self-slot so own direct history survives reload', async () => {
-    const sender = await generateKeyPairIsolated()
-    const peer = await generateKeyPairIsolated()
+  it('decrypts a SELF device slot so Saved Messages history survives reload', async () => {
+    const me = await generateKeyPairIsolated()
     const plaintext = 'self history slot roundtrip'
     const [selfSlot] = await encryptFanout(
-      sender.privateKey,
-      [{ device_id: 'sender-device', ecdh_public_key: sender.publicJwk }],
+      me.privateKey,
+      [{ device_id: 'my-device', ecdh_public_key: me.publicJwk }],
       plaintext
     )
 
     const out = await decryptApiMessageRow(
-      sender.privateKey,
-      { mode: 'DIRECT', peerPublicKeyJwk: peer.publicJwk },
+      me.privateKey,
+      { mode: 'SELF', selfPublicKeyJwk: me.publicJwk },
       {
         id: 'm2',
         chat_id: 'c1',
@@ -54,7 +53,7 @@ describe('decryptApiMessageRow direct fanout rows', () => {
         iv: null,
         device_ciphertext: selfSlot!.ciphertext,
         device_iv: selfSlot!.iv,
-        sender_ecdh_public_key_jwk: sender.publicJwk,
+        sender_ecdh_public_key_jwk: me.publicJwk,
         created_at: new Date().toISOString(),
       }
     )

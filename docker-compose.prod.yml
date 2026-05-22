@@ -133,9 +133,11 @@ services:
       - 'turn.${DOMAIN:-onetothree.ru}:host-gateway'
 
   api:
+    # Built from the repo root so the server installs from the authoritative
+    # workspace lockfile (root package-lock.json) — see server/Dockerfile.
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-dev}
         GIT_SHA: ${GIT_SHA:-}

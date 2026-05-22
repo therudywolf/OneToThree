@@ -82,9 +82,11 @@ services:
   # Stable JWT across restarts: set JWT_SECRET in repo-root `.env` (Compose loads it for ${…} substitution).
   # If JWT_SECRET changes every deploy, existing `fm_session` cookies become invalid → "phantom" logouts.
   api:
+    # Built from the repo root so the server installs from the authoritative
+    # workspace lockfile (root package-lock.json) — see server/Dockerfile.
     build:
-      context: ./server
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: server/Dockerfile
     restart: unless-stopped
     read_only: true
     tmpfs:

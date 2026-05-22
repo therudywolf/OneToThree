@@ -91,33 +91,43 @@ export async function setCachedMedia(
   await purgeOldSegments()
 }
 
-/** [PURGE_PROTOCOL] :: Очистка старых данных (FIFO) при превышении квот */
+/**
+ * [PURGE_PROTOCOL] :: Очистка старых данных (FIFO) при превышении квот.
+ *
+ * Runs on every `setCachedMedia`, so it must stay cheap: the entry cap uses a
+ * key-only `count()` / `primaryKeys()` (no row deserialization), and the byte
+ * cap streams a `timestamp` cursor one row at a time instead of materialising
+ * the whole den into an array.
+ */
 export async function purgeOldSegments(
   maxSize: number = DEN_CAPACITY_LIMIT,
   maxCount: number = DEN_ENTRY_LIMIT
 ): Promise<void> {
   if (typeof indexedDB === 'undefined') return
-  
-  let rows = await den.segments.orderBy('timestamp').toArray()
 
-  // 1. Проверка лимита по количеству (Entries Cap)
-  if (rows.length > maxCount) {
-    const toDelete = rows.slice(0, rows.length - maxCount).map(r => r.id)
-    await den.segments.bulkDelete(toDelete)
-    rows = await den.segments.orderBy('timestamp').toArray()
+  // 1. Entries cap — count and evict by key, without reading any blob row.
+  const total = await den.segments.count()
+  if (total > maxCount) {
+    const ordered = await den.segments.orderBy('timestamp').primaryKeys()
+    await den.segments.bulkDelete(ordered.slice(0, total - maxCount))
   }
 
-  // 2. Проверка лимита по объему (Byte Cap)
-  let currentSize = rows.reduce((acc, r) => acc + (r.blob?.size ?? 0), 0)
+  // 2. Byte cap — stream oldest-first. `Blob.size` is metadata; the bytes
+  //    stay on disk (a Blob is a lazy reference), so this never holds the
+  //    cache contents in memory.
+  let currentSize = 0
+  await den.segments.orderBy('timestamp').each((row) => {
+    currentSize += row.blob?.size ?? 0
+  })
   if (currentSize <= maxSize) return
 
   const idsToPurge: string[] = []
-  for (const row of rows) {
-    if (currentSize <= maxSize) break
+  let running = currentSize
+  await den.segments.orderBy('timestamp').each((row) => {
+    if (running <= maxSize) return
     idsToPurge.push(row.id)
-    currentSize -= row.blob?.size ?? 0
-  }
-
+    running -= row.blob?.size ?? 0
+  })
   if (idsToPurge.length > 0) {
     await den.segments.bulkDelete(idsToPurge)
   }

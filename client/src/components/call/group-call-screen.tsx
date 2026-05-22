@@ -265,13 +265,13 @@ export function GroupCallScreen({
   const participants = useGroupCallStore((s) => s.participants)
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
   const transport = useGroupCallStore((s) => s.transport)
+  const isScreenSharing = useGroupCallStore((s) => s.isScreenSharing)
   const showParticipantPanel = useGroupCallStore((s) => s.showParticipantPanel)
   const setShowParticipantPanel = useGroupCallStore((s) => s.setShowParticipantPanel)
 
   const [elapsed, setElapsed] = useState(0)
   const startRef = useRef(Date.now())
   const [showControls, setShowControls] = useState(true)
-  const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
   const [spotlightId, setSpotlightId] = useState<string | null>(null)
   const [showMoreMenu, setShowMoreMenu] = useState(false)
@@ -332,16 +332,6 @@ export function GroupCallScreen({
     (localStream?.getVideoTracks().some((t) => !t.enabled) ?? true)
 
   if (!isInGroupCall || !localStream) return null
-
-  const handleScreenShareToggle = async () => {
-    if (isScreenSharing) {
-      // Can't easily revert from here — toggle will handle
-      setIsScreenSharing(false)
-    } else {
-      const ok = await onToggleScreenShare()
-      if (ok) setIsScreenSharing(true)
-    }
-  }
 
   return (
     <PortalRoot>
@@ -526,7 +516,7 @@ export function GroupCallScreen({
           {/* Screen Share (desktop only) */}
           {!isMobileDevice && !isAudioRelay && (
             <button
-              onClick={handleScreenShareToggle}
+              onClick={() => void onToggleScreenShare()}
               className={`hidden sm:flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
                 isScreenSharing
                   ? 'bg-neon-cyan/10 text-neon-cyan'

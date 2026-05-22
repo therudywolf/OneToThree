@@ -188,6 +188,11 @@ export async function joinLiveKitCall(
       )
       store.setLocalStream(new MediaStream([...filtered, track]))
     })
+    .on(RoomEvent.LocalTrackUnpublished, (pub: LocalTrackPublication) => {
+      if (pub.source === Track.Source.ScreenShare) {
+        store.setIsScreenSharing(false)
+      }
+    })
     .on(RoomEvent.Disconnected, () => {
       store.reset()
       activeRoom = null
@@ -263,9 +268,15 @@ export async function toggleLiveKitVideo(): Promise<void> {
     .updateParticipant(lp.identity, { isVideoOff: !lp.isCameraEnabled })
 }
 
-export async function startLiveKitScreenShare(): Promise<void> {
-  if (!activeRoom) return
-  await activeRoom.localParticipant.setScreenShareEnabled(true)
+export async function toggleLiveKitScreenShare(): Promise<boolean> {
+  if (!activeRoom) return false
+  const lp = activeRoom.localParticipant
+  try {
+    await lp.setScreenShareEnabled(!lp.isScreenShareEnabled)
+  } catch {
+    // Picker dismissed or the SFU rejected the track — report the real state.
+  }
+  return lp.isScreenShareEnabled
 }
 
 export function isLiveKitActive(): boolean {

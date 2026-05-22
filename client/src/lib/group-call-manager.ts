@@ -26,7 +26,7 @@ import {
   leaveLiveKitCall,
   toggleLiveKitMute,
   toggleLiveKitVideo,
-  startLiveKitScreenShare,
+  toggleLiveKitScreenShare,
   isLiveKitActive,
 } from '@/lib/livekit-call-manager'
 import { fetchCallConfig } from '@/lib/api/call'
@@ -61,6 +61,9 @@ const audioAnalysers = new Map<string, { analyser: AnalyserNode; context: AudioC
 /** Cached ICE servers for this session. */
 let cachedIceServers: RTCIceServer[] | null = null
 let groupRelayMode = false
+
+/** Camera track displaced by an active mesh screen share, kept so it can be restored on stop. */
+let savedCameraTrack: MediaStreamTrack | null = null
 const relayPlayers = new Map<string, AudioRelayPlayer>()
 const relayCaptures = new Map<string, AudioRelayCaptureController>()
 const relayKeys = new Map<string, Promise<CryptoKey | null>>()
@@ -353,6 +356,12 @@ function cleanupAll() {
 
   // Stop local stream
   terminateFeed(store.localStream)
+
+  // Stop the parked camera track if a screen share was active at leave time
+  if (savedCameraTrack) {
+    try { savedCameraTrack.stop() } catch { /* ignore */ }
+    savedCameraTrack = null
+  }
 
   // Clear cached ICE servers
   cachedIceServers = null
@@ -676,12 +685,8 @@ export function toggleGroupCallVideo() {
   })
 }
 
-/** Start screen sharing in the group call. */
-export async function startGroupCallScreenShare(): Promise<boolean> {
-  if (isLiveKitActive()) {
-    await startLiveKitScreenShare()
-    return true
-  }
+/** Start mesh screen sharing: swap the camera track for a display-capture track. */
+async function startGroupCallScreenShare(): Promise<boolean> {
   if (groupRelayMode) return false
   const store = useGroupCallStore.getState()
   if (!store.localStream || !store.roomId) return false
@@ -704,19 +709,21 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
       if (sender) void sender.replaceTrack(screenVideoTrack)
     }
 
-    // Replace in local stream
+    // Replace in local stream, keeping the camera track so it can be restored on stop
     const oldTrack = store.localStream.getVideoTracks()[0]
     if (oldTrack) {
       store.localStream.removeTrack(oldTrack)
     }
     store.localStream.addTrack(screenVideoTrack)
     store.setLocalStream(store.localStream)
+    savedCameraTrack = oldTrack ?? null
 
-    // Handle screen share stop
+    // Stop initiated from the browser's native screen-share UI
     screenVideoTrack.onended = () => {
-      void stopGroupCallScreenShare(oldTrack ?? null)
+      void stopGroupCallScreenShare()
     }
 
+    store.setIsScreenSharing(true)
     return true
   } catch (err) {
     if ((err as Error)?.name !== 'NotAllowedError') {
@@ -747,10 +754,16 @@ export async function handleGroupCallRelayFrame(
   }
 }
 
-/** Stop screen sharing and restore camera. */
-async function stopGroupCallScreenShare(originalTrack: MediaStreamTrack | null) {
+/** Stop mesh screen sharing and restore the camera track. */
+async function stopGroupCallScreenShare() {
   const store = useGroupCallStore.getState()
-  if (!store.localStream) return
+  const originalTrack = savedCameraTrack
+  savedCameraTrack = null
+
+  if (!store.localStream) {
+    store.setIsScreenSharing(false)
+    return
+  }
 
   const currentTrack = store.localStream.getVideoTracks()[0]
   if (currentTrack) {
@@ -768,6 +781,21 @@ async function stopGroupCallScreenShare(originalTrack: MediaStreamTrack | null) 
   }
 
   store.setLocalStream(store.localStream)
+  store.setIsScreenSharing(false)
+}
+
+/** Toggle screen sharing in the group call. Returns whether sharing is active afterward. */
+export async function toggleGroupCallScreenShare(): Promise<boolean> {
+  if (isLiveKitActive()) {
+    const sharing = await toggleLiveKitScreenShare()
+    useGroupCallStore.getState().setIsScreenSharing(sharing)
+    return sharing
+  }
+  if (useGroupCallStore.getState().isScreenSharing) {
+    await stopGroupCallScreenShare()
+    return false
+  }
+  return startGroupCallScreenShare()
 }
 
 /** Get participant count for the current call. */

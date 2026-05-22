@@ -166,6 +166,7 @@ vi.mock('@/lib/api/keys', () => {
 import {
   clearOwnDrIdentity,
   decryptFromPeer,
+  DR_IV_SENTINEL,
   encodeBase64Url,
   encryptForPeer,
   generateLocalBundle,
@@ -175,6 +176,10 @@ import {
   type DrFanoutResult,
   type LocalIdentityBundle,
 } from './session-manager'
+import {
+  decryptApiMessageRows,
+  type ApiMessageRow,
+} from '@/lib/decrypt-chat-api-message'
 
 interface Device {
   userId: string
@@ -243,6 +248,17 @@ function envelopeFor(result: DrFanoutResult, deviceId: string): DrDeviceEnvelope
   const slot = result.slots.find((s) => s.deviceId === deviceId)
   if (!slot) throw new Error(`test: fan-out produced no slot for ${deviceId}`)
   return JSON.parse(slot.envelope) as DrDeviceEnvelope
+}
+
+/**
+ * The raw envelope JSON for one recipient device — the exact string the server
+ * stores in a `message_deliveries` slot's ciphertext column, i.e. what the
+ * transport layer surfaces as `row.device_ciphertext`.
+ */
+function slotCiphertextFor(result: DrFanoutResult, deviceId: string): string {
+  const slot = result.slots.find((s) => s.deviceId === deviceId)
+  if (!slot) throw new Error(`test: fan-out produced no slot for ${deviceId}`)
+  return slot.envelope
 }
 
 /**
@@ -371,5 +387,67 @@ describe('per-device Double Ratchet round-trip (A4)', () => {
     const second = await sendFrom(alice1, 'bob', 'world')
     expect(await receiveOn(bob1, 'alice', envelopeFor(second, 'bob-1'))).toBe('world')
     expect(await receiveOn(alice2, 'alice', envelopeFor(second, 'alice-2'))).toBe('world')
+  })
+
+  it('SELF-SYNC TRANSPORT ROUTING: decryptApiMessageRows decrypts a self-sync slot on my other device', async () => {
+    const alice1 = registerDevice('alice', 'alice-1')
+    const alice2 = registerDevice('alice', 'alice-2')
+    const bob1 = registerDevice('bob', 'bob-1')
+
+    // Two rows land in the SAME A<->B chat backlog destined for device alice-2:
+    //   - a genuine peer message sent by bob-1,
+    //   - a self-sync copy of a message alice-1 (my OTHER device) sent.
+    const fromBob = await sendFrom(bob1, 'alice', 'hi-from-bob')
+    const fromMyOtherDevice = await sendFrom(alice1, 'bob', 'hi-from-my-laptop')
+
+    // alice-2 receives and decrypts the pending backlog through the transport.
+    actAs(alice2)
+    const transportKey = (await crypto.subtle.generateKey(
+      { name: 'AES-GCM', length: 256 },
+      true,
+      ['encrypt', 'decrypt']
+    )) as CryptoKey
+
+    const rows: ApiMessageRow[] = [
+      {
+        id: 'm-peer',
+        chat_id: 'chat-ab',
+        sender_id: 'bob', // a genuine peer message
+        content: null,
+        iv: null,
+        device_ciphertext: slotCiphertextFor(fromBob, 'alice-2'),
+        device_iv: DR_IV_SENTINEL,
+        protocol_version: 2,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: 'm-self',
+        chat_id: 'chat-ab',
+        sender_id: 'alice', // self-sync copy — the row's sender is MY account
+        content: null,
+        iv: null,
+        device_ciphertext: slotCiphertextFor(fromMyOtherDevice, 'alice-2'),
+        device_iv: DR_IV_SENTINEL,
+        protocol_version: 2,
+        created_at: new Date().toISOString(),
+      },
+    ]
+
+    // The transport builds ONE drCtx for the whole batch with peerUserId fixed
+    // to the chat peer — exactly how use-chat-realtime routes a backlog.
+    const decrypted = await decryptApiMessageRows(
+      transportKey,
+      { mode: 'DIRECT', peerPublicKeyJwk: 'unused-on-the-dr-v2-path' },
+      rows,
+      { ownerUserId: 'alice', peerUserId: 'bob' }
+    )
+
+    // Pre-fix the self-sync row is routed to the ratchet (alice, alice-2, bob,
+    // alice-1) — which never existed — and decrypts to [DECRYPT_FAIL]: the
+    // message simply never appears on the user's other device.
+    expect(decrypted.map((r) => r.plaintext)).toEqual([
+      'hi-from-bob',
+      'hi-from-my-laptop',
+    ])
   })
 })

@@ -72,6 +72,17 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
 
+  docker-build-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Builds the API image from the repo root so `npm ci` runs strictly
+      # against the committed workspace lockfile. Any drift between
+      # package-lock.json and server/package.json fails this job instead of
+      # being silently papered over at deploy time.
+      - name: Build API image
+        run: docker build -f server/Dockerfile -t onetothree-api:ci .
+
   android-debug-apk:
     runs-on: ubuntu-latest
     steps:

@@ -7,14 +7,14 @@ process.env.JWT_SECRET =
   process.env.JWT_SECRET?.trim() ||
   'vitest-jwt-secret-must-be-32-chars-min!!'
 {
-  // Local test Postgres. The canonical port is 5432, but on some Windows
-  // hosts the Hyper-V/winnat dynamic-port reservation makes 5432 unbindable
-  // (`docker run -p 5432` fails with "socket access forbidden"). The test
-  // container is therefore published on 5544 there. `DATABASE_URL` always
-  // wins, so CI / Linux dev can still point at 5432 explicitly.
+  // Local test Postgres on the canonical port 5432. If 5432 is unbindable
+  // on a given host (e.g. a Windows Hyper-V/winnat dynamic-port reservation
+  // makes `docker run -p 5432` fail with "socket access forbidden"), publish
+  // the test container on another port and point `DATABASE_URL` at it — that
+  // env var always overrides this fallback.
   const base =
     process.env.DATABASE_URL?.trim() ||
-    'postgres://forest:forest@127.0.0.1:5544/forest'
+    'postgres://forest:forest@127.0.0.1:5432/forest'
   const sep = base.includes('?') ? '&' : '?'
   // Fail fast when Postgres is down (e.g. Docker test without db service).
   process.env.DATABASE_URL = `${base}${sep}connect_timeout=2`

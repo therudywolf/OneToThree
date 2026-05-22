@@ -252,7 +252,7 @@ export async function buildApp() {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "https://cdn.jsdelivr.net/npm/", "blob:"],
+        scriptSrc: ["'self'", "https://cdn.jsdelivr.net/npm/"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: Array.from(imgSrc),
         fontSrc: ["'self'"],

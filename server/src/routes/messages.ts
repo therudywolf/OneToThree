@@ -801,30 +801,35 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
 
     const now = new Date()
 
-    // Update the message row (legacy / group content or just editedAt for fan-out)
-    await db
-      .update(messages)
-      .set({
-        content: body.content ?? undefined,
-        iv: body.iv ?? undefined,
-        editedAt: now,
-      })
-      .where(eq(messages.id, messageId))
+    // Update the message row and every per-device delivery slot atomically:
+    // a mid-loop failure must not leave some devices on new ciphertext and
+    // others on stale.
+    await db.transaction(async (tx) => {
+      // Legacy / group content, or just editedAt for fan-out.
+      await tx
+        .update(messages)
+        .set({
+          content: body.content ?? undefined,
+          iv: body.iv ?? undefined,
+          editedAt: now,
+        })
+        .where(eq(messages.id, messageId))
 
-    // Update per-device delivery rows for fan-out (DIRECT chats)
-    if (body.ciphertexts && body.ciphertexts.length > 0) {
-      for (const slot of body.ciphertexts) {
-        await db
-          .update(messageDeliveries)
-          .set({ ciphertext: slot.ciphertext, iv: slot.iv })
-          .where(
-            and(
-              eq(messageDeliveries.messageId, messageId),
-              eq(messageDeliveries.deviceId, slot.device_id)
+      // Per-device delivery rows for fan-out (DIRECT chats).
+      if (body.ciphertexts && body.ciphertexts.length > 0) {
+        for (const slot of body.ciphertexts) {
+          await tx
+            .update(messageDeliveries)
+            .set({ ciphertext: slot.ciphertext, iv: slot.iv })
+            .where(
+              and(
+                eq(messageDeliveries.messageId, messageId),
+                eq(messageDeliveries.deviceId, slot.device_id)
+              )
             )
-          )
+        }
       }
-    }
+    })
 
     // Broadcast to all chat members
     const members = await db

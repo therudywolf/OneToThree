@@ -156,45 +156,26 @@ async function decryptRowPlaintext(
     return decryptFromPeer(drCtx.ownerUserId, drPeerUserId, drEnv)
   }
 
-  // v1 fan-out: per-device ECDH slot (DIRECT and SELF both use fan-out delivery).
-  // For messages sent after migration 0043 the sender key is pinned in the DB row.
-  // For older messages (sender_ecdh_public_key_jwk = null) the correct fallback
-  // depends on who sent the message:
-  //   - sender is me  → use MY public key (self-fanout slot was encrypted with
-  //                     ECDH(myPriv, myPub); decrypt needs myPub on the public side)
-  //   - sender is peer → use peer public key
-  // Without sender-aware selection, every self-sent legacy slot decrypted with
-  // the peer key, producing [DECRYPT_FAIL] on every page reload.
-  if (
-    (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') &&
-    row.device_ciphertext &&
-    row.device_iv
-  ) {
-    let fallbackKey: string
-    if (cryptoCtx.mode === 'SELF') {
-      // Prefer the just-unlocked vault key over the server-cached value.
-      // After an ECDH key rotation, server may still return the old jwk in
-      // chat members; the hint always matches the private key in memory.
-      fallbackKey = hints?.myEcdhPublicKeyJwk ?? cryptoCtx.selfPublicKeyJwk
-    } else if (
-      hints?.myUserId &&
-      hints?.myEcdhPublicKeyJwk &&
-      row.sender_id === hints.myUserId
-    ) {
-      fallbackKey = hints.myEcdhPublicKeyJwk
-    } else {
-      fallbackKey = cryptoCtx.peerPublicKeyJwk
-    }
-    // Build the ordered candidate list of "sender public keys" to try. The
-    // first one is the best guess (pinned-or-fallback). Subsequent entries
-    // cover key-rotation edge cases on either side. Walking the list with a
-    // single try/catch keeps the rotation safety net uniform across SELF and
-    // DIRECT modes.
+  // DIRECT conversations are Double Ratchet (v2) ONLY. Reaching here for a
+  // DIRECT chat means the row is not a valid v2 envelope — a v1
+  // protocol-downgrade attempt or a malformed row. The v1 static-ECDH path
+  // derives its key from a server-supplied sender key and is not
+  // sender-authenticated; never fall through to it for a DIRECT chat.
+  if (cryptoCtx.mode === 'DIRECT') {
+    throw new Error('ERR_DIRECT_V1_REJECTED')
+  }
+
+  // v1 fan-out: per-device ECDH slot. DIRECT v1 is rejected above, so this
+  // path is SELF-only — Saved Messages self-fanout slots. The sender is always
+  // the user themselves; the candidate list covers ECDH key rotation (the
+  // server may still return an old pinned jwk after a vault key change).
+  if (cryptoCtx.mode === 'SELF' && row.device_ciphertext && row.device_iv) {
+    // Prefer the just-unlocked vault key over the server-cached value.
+    const fallbackKey = hints?.myEcdhPublicKeyJwk ?? cryptoCtx.selfPublicKeyJwk
     const senderKey = row.sender_ecdh_public_key_jwk ?? fallbackKey
 
-    // M-04: verify sender_ecdh_public_key_jwk against trust store before
-    // decryption. Only the pinned (server-supplied) key is checked — fallback
-    // keys from hints are pre-vetted by the local vault.
+    // M-04: verify a server-pinned sender key against the trust store before
+    // use. Fallback keys come from the local vault and are pre-vetted.
     if (row.sender_ecdh_public_key_jwk) {
       const keyBytes = new TextEncoder().encode(row.sender_ecdh_public_key_jwk)
       const digest = sha256(keyBytes)
@@ -204,24 +185,15 @@ async function decryptRowPlaintext(
         // Key has changed since last pin — abort decryption to prevent MitM.
         return '[KEY_CHANGE_DETECTED]'
       }
-      // TOFU: !trustStatus.is_verified is expected on first encounter;
-      // the trust-store write path pins on explicit user verification.
     }
 
     const candidates: string[] = [senderKey]
     const pushUnique = (k: string | null | undefined) => {
       if (k && !candidates.includes(k)) candidates.push(k)
     }
-    if (cryptoCtx.mode === 'DIRECT') {
-      pushUnique(cryptoCtx.peerPublicKeyJwk)
-      pushUnique(hints?.myEcdhPublicKeyJwk)
-      hints?.priorMyEcdhPublicKeysJwk?.forEach(pushUnique)
-      hints?.priorPeerEcdhPublicKeysJwk?.forEach(pushUnique)
-    } else if (cryptoCtx.mode === 'SELF') {
-      pushUnique(cryptoCtx.selfPublicKeyJwk)
-      pushUnique(hints?.myEcdhPublicKeyJwk)
-      hints?.priorMyEcdhPublicKeysJwk?.forEach(pushUnique)
-    }
+    pushUnique(cryptoCtx.selfPublicKeyJwk)
+    pushUnique(hints?.myEcdhPublicKeyJwk)
+    hints?.priorMyEcdhPublicKeysJwk?.forEach(pushUnique)
 
     let lastErr: unknown
     for (const key of candidates) {
@@ -236,21 +208,13 @@ async function decryptRowPlaintext(
         lastErr = err
       }
     }
-    // All candidate ECDH public keys failed. Emit a single diagnostic so a
-    // surge of [DECRYPT_FAIL] rows is visible in the console instead of being
-    // silently swallowed by the row-level try/catch in decryptApiMessageRows.
     if (typeof console !== 'undefined') {
-      console.warn(
-        '[fanout] decrypt failed across all candidate keys',
-        {
-          messageId: row.id,
-          chatId: row.chat_id,
-          senderId: row.sender_id,
-          candidateCount: candidates.length,
-          pinned: Boolean(row.sender_ecdh_public_key_jwk),
-          error: lastErr instanceof Error ? lastErr.message : String(lastErr),
-        }
-      )
+      console.warn('[fanout] SELF slot decrypt failed across all candidate keys', {
+        messageId: row.id,
+        chatId: row.chat_id,
+        candidateCount: candidates.length,
+        error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+      })
     }
     throw lastErr ?? new Error('FANOUT_DECRYPT_NO_CANDIDATE')
   }

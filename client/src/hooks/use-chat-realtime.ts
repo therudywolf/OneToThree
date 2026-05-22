@@ -236,11 +236,18 @@ export function useChatRealtime(
         // pending-pull branch above.
         let plaintext = ''
         if (m.content != null && m.iv != null && m.content !== '') {
-          try {
-            const { decryptInboundText } = await import('@/lib/chat-crypto')
-            plaintext = await decryptInboundText(unwrappedPrivateKey, cryptoCtx, m.content, m.iv)
-          } catch {
+          if (cryptoCtx.mode === 'DIRECT') {
+            // DIRECT chats are Double Ratchet (v2) only and never carry shared
+            // wire content — a DIRECT chat_message with `content` set is a v1
+            // protocol-downgrade attempt. Refuse to decrypt it.
             plaintext = '[DECRYPT_FAIL]'
+          } else {
+            try {
+              const { decryptInboundText } = await import('@/lib/chat-crypto')
+              plaintext = await decryptInboundText(unwrappedPrivateKey, cryptoCtx, m.content, m.iv)
+            } catch {
+              plaintext = '[DECRYPT_FAIL]'
+            }
           }
         }
 

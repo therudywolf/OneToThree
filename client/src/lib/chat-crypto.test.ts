@@ -198,7 +198,7 @@ describe('encryptOutboundTextV2', () => {
     expect(encrypted.encrypted_content).toBe('')
   })
 
-  it('falls back to v1 when the device registry is empty', async () => {
+  it('refuses to send a DIRECT message when the peer has no device keys (no v1 downgrade)', async () => {
     const me = await generateKeyPairIsolated()
     getDrFanoutSafetyMock.mockResolvedValueOnce({
       safe: false,
@@ -208,32 +208,29 @@ describe('encryptOutboundTextV2', () => {
       peerDeviceCount: 0,
     })
 
-    const encrypted = await encryptOutboundTextV2(
-      me.privateKey,
-      'hello',
-      { mode: 'DIRECT', peerPublicKeyJwk: me.publicJwk },
-      { ownerUserId: 'u-self', peerUserId: 'u-peer' }
-    )
-
+    await expect(
+      encryptOutboundTextV2(
+        me.privateKey,
+        'hello',
+        { mode: 'DIRECT', peerPublicKeyJwk: me.publicJwk },
+        { ownerUserId: 'u-self', peerUserId: 'u-peer' }
+      )
+    ).rejects.toThrow('ERR_NO_DR_KEYS')
     expect(encryptForPeerMock).not.toHaveBeenCalled()
-    expect(encrypted.protocol_version).toBe(1)
-    expect(encrypted.dr_header).toBeNull()
-    expect(encrypted.dr_slots).toBeUndefined()
   })
 
-  it('falls back to v1 when no ratchet could be established', async () => {
+  it('refuses to send a DIRECT message when no ratchet could be established (no v1 downgrade)', async () => {
     const me = await generateKeyPairIsolated()
     encryptForPeerMock.mockRejectedValueOnce(new Error('RATCHET_NO_SESSION'))
 
-    const encrypted = await encryptOutboundTextV2(
-      me.privateKey,
-      'hello',
-      { mode: 'DIRECT', peerPublicKeyJwk: me.publicJwk },
-      { ownerUserId: 'u-self', peerUserId: 'u-peer' }
-    )
-
-    expect(encrypted.protocol_version).toBe(1)
-    expect(encrypted.dr_slots).toBeUndefined()
+    await expect(
+      encryptOutboundTextV2(
+        me.privateKey,
+        'hello',
+        { mode: 'DIRECT', peerPublicKeyJwk: me.publicJwk },
+        { ownerUserId: 'u-self', peerUserId: 'u-peer' }
+      )
+    ).rejects.toThrow()
   })
 })
 

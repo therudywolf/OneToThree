@@ -248,18 +248,20 @@ export async function decryptInboundText(
 export type DrFanoutSlotV2 = { device_id: string; ciphertext: string; iv: string }
 
 /**
- * [V2_SEAL] :: Encrypt a DIRECT message with the per-device Double Ratchet
- * (track A4) if device bundles are available, otherwise transparently fall
- * back to static ECDH (v1).
+ * [V2_SEAL] :: Encrypt an outbound message.
  *
- * Unlike v1, a DR v2 message is NOT a single ciphertext: each linked device
- * (peer's devices + the sender's other devices) gets its own ratchet and its
- * own self-describing envelope. When DR is used, `dr_slots` carries one
- * delivery slot per device; the caller posts those directly as
- * `ciphertexts[]`. `encrypted_content` then holds the CURRENT device's own
- * envelope copy purely so the optimistic local echo can be decrypted —
- * actually the sender does not address itself, so for v2 it is left empty and
- * the send hook keeps the original plaintext for the echo.
+ * DIRECT chats are per-device Double Ratchet (track A4) ONLY — there is no
+ * fallback. A malicious server must never be able to force the weaker,
+ * non-sender-authenticated v1 static-ECDH path, so when no DR session can be
+ * established this THROWS instead of silently downgrading. SELF / SECTOR /
+ * PUBLIC use symmetric crypto with no peer ECDH, hence no downgrade vector.
+ *
+ * A DR v2 message is NOT a single ciphertext: each linked device (the peer's
+ * devices + the sender's other devices) gets its own ratchet and its own
+ * self-describing envelope. `dr_slots` carries one delivery slot per device;
+ * the caller posts those as `ciphertexts[]`. `encrypted_content` is empty for
+ * v2 — the sender does not address itself, and the send hook keeps the
+ * original plaintext for the optimistic local echo.
  */
 export async function encryptOutboundTextV2(
   privateKey: CryptoKey,
@@ -275,42 +277,32 @@ export async function encryptOutboundTextV2(
   /** v2 only: one delivery slot per device. Empty/absent for v1. */
   dr_slots?: DrFanoutSlotV2[]
 }> {
-  // Double Ratchet does not apply to Saved Messages (single participant)
-  // — fall straight through to the symmetric v1 path.
-  if (frame.mode === 'DIRECT' && ctx.peerUserId) {
-    try {
-      const { getDrFanoutSafety, DR_SLOT_SENTINEL } = await import('@/lib/fanout-crypto')
-      const safety = await getDrFanoutSafety(ctx.ownerUserId, ctx.peerUserId)
-      if (!safety.safe) {
-        // The only remaining unsafe reason is an empty device registry.
-        throw new Error('RATCHET_NO_SESSION')
-      }
-      const { encryptForPeer } = await import('@/lib/ratchet/session-manager')
-      const fanout = await encryptForPeer(ctx.ownerUserId, ctx.peerUserId, plaintext)
-      if (fanout.slots.length === 0) throw new Error('RATCHET_NO_SESSION')
-      return {
-        protocol_version: 2,
-        // v2 device fan-out: no shared ciphertext / header on the message row.
-        encrypted_content: '',
+  // DIRECT: Double Ratchet only. No fallback — the send path must never be
+  // downgraded to the unauthenticated v1 static-ECDH scheme.
+  if (frame.mode === 'DIRECT') {
+    if (!ctx.peerUserId) throw new Error('ERR_NO_DR_KEYS')
+    const { getDrFanoutSafety, DR_SLOT_SENTINEL } = await import('@/lib/fanout-crypto')
+    const safety = await getDrFanoutSafety(ctx.ownerUserId, ctx.peerUserId)
+    if (!safety.safe) throw new Error('ERR_NO_DR_KEYS')
+    const { encryptForPeer } = await import('@/lib/ratchet/session-manager')
+    const fanout = await encryptForPeer(ctx.ownerUserId, ctx.peerUserId, plaintext)
+    if (fanout.slots.length === 0) throw new Error('ERR_NO_DR_KEYS')
+    return {
+      protocol_version: 2,
+      // v2 device fan-out: no shared ciphertext / header on the message row.
+      encrypted_content: '',
+      iv: DR_SLOT_SENTINEL,
+      dr_header: null,
+      dr_init: null,
+      dr_slots: fanout.slots.map((s) => ({
+        device_id: s.deviceId,
+        ciphertext: s.envelope,
         iv: DR_SLOT_SENTINEL,
-        dr_header: null,
-        dr_init: null,
-        dr_slots: fanout.slots.map((s) => ({
-          device_id: s.deviceId,
-          ciphertext: s.envelope,
-          iv: DR_SLOT_SENTINEL,
-        })),
-      }
-    } catch (err) {
-      if (
-        err instanceof Error &&
-        err.message !== 'RATCHET_NO_SESSION'
-      ) {
-        throw err
-      }
-      // No DR session yet (peer has no bundle) — fall through to v1.
+      })),
     }
   }
+  // SELF / SECTOR / PUBLIC — symmetric crypto, single party or shared key,
+  // no peer ECDH and therefore no protocol-downgrade vector.
   const legacy = await encryptOutboundText(privateKey, plaintext, frame)
   return { protocol_version: 1, ...legacy, dr_header: null, dr_init: null }
 }

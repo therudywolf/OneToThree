@@ -26,7 +26,7 @@ import {
   leaveLiveKitCall,
   toggleLiveKitMute,
   toggleLiveKitVideo,
-  startLiveKitScreenShare,
+  toggleLiveKitScreenShare,
   isLiveKitActive,
 } from '@/lib/livekit-call-manager'
 import { fetchCallConfig } from '@/lib/api/call'
@@ -768,7 +768,7 @@ export async function toggleGroupCallVideo(): Promise<void> {
  */
 export async function startGroupCallScreenShare(): Promise<boolean> {
   if (isLiveKitActive()) {
-    await startLiveKitScreenShare()
+    await toggleLiveKitScreenShare()
     return true
   }
   if (groupRelayMode) return false

@@ -192,6 +192,16 @@ export async function joinLiveKitCall(
       if (pub.source === Track.Source.ScreenShare) {
         store.setIsScreenSharing(false)
       }
+      // Rebuild localStream so the camera is restored after a screen share ends.
+      const seen = new Set<string>()
+      const tracks: MediaStreamTrack[] = []
+      for (const lkPub of room.localParticipant.trackPublications.values()) {
+        const t = lkPub.track?.mediaStreamTrack
+        if (!t || t.readyState !== 'live' || seen.has(t.kind)) continue
+        seen.add(t.kind)
+        tracks.push(t)
+      }
+      store.setLocalStream(tracks.length > 0 ? new MediaStream(tracks) : null)
     })
     .on(RoomEvent.Disconnected, () => {
       store.reset()

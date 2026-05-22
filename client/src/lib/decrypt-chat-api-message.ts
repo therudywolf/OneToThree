@@ -223,6 +223,51 @@ async function decryptRowPlaintext(
 }
 
 /**
+ * 1:1 / Saved-Messages backlogs are decrypted on the main thread: the Double
+ * Ratchet KDF/DH steps are synchronous (@noble) and the ratchet session state
+ * lives in IndexedDB behind a main-thread keyed mutex (`runExclusive` in
+ * `ratchet/session-manager`), so this path cannot move to the batch worker
+ * without relocating the entire ratchet + vault stack — which would risk the
+ * per-device Double Ratchet. Instead a large backlog is decrypted in bounded
+ * chunks with an event-loop yield between each, so input handling and paint
+ * are not starved for the whole batch.
+ */
+const MAIN_THREAD_DECRYPT_CHUNK = 16
+
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+/**
+ * Decrypt `rows` in order, in bounded chunks, yielding to the event loop
+ * between chunks. The per-row logic is unchanged from a flat `Promise.all`
+ * (a failed row still yields `[DECRYPT_FAIL]`); only the scheduling differs,
+ * so per-session ratchet ordering is preserved by `runExclusive`.
+ */
+async function decryptRowsChunked(
+  rows: ApiMessageRow[],
+  decryptOne: (row: ApiMessageRow) => Promise<string>
+): Promise<DecryptedMessage[]> {
+  const out = new Array<DecryptedMessage>(rows.length)
+  for (let start = 0; start < rows.length; start += MAIN_THREAD_DECRYPT_CHUNK) {
+    const end = Math.min(start + MAIN_THREAD_DECRYPT_CHUNK, rows.length)
+    await Promise.all(
+      rows.slice(start, end).map(async (m, i) => {
+        try {
+          out[start + i] = apiRowToDecrypted(m, await decryptOne(m))
+        } catch {
+          out[start + i] = apiRowToDecrypted(m, '[DECRYPT_FAIL]')
+        }
+      })
+    )
+    // Hand the main thread back between chunks so the browser can paint and
+    // process input; no trailing yield once the final chunk is done.
+    if (end < rows.length) await yieldToEventLoop()
+  }
+  return out
+}
+
+/**
  * Decrypt many API rows with one ECDH derive + batched AES-GCM (worker for large backlogs).
  * Pass `drCtx` for chats that may carry DR v2 messages.
  */
@@ -234,17 +279,8 @@ export async function decryptApiMessageRows(
   hints?: DecryptHints
 ): Promise<DecryptedMessage[]> {
   if (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') {
-    return Promise.all(
-      rows.map(async (m) => {
-        try {
-          return apiRowToDecrypted(
-            m,
-            await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx, hints)
-          )
-        } catch {
-          return apiRowToDecrypted(m, '[DECRYPT_FAIL]')
-        }
-      })
+    return decryptRowsChunked(rows, (m) =>
+      decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx, hints)
     )
   }
 

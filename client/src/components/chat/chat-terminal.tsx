@@ -33,6 +33,7 @@ import type { DecryptedMessage } from '@/types/chat'
 import { MediaLightbox } from '@/components/chat/media-lightbox'
 import { UserProfileModal } from '@/components/chat/user-profile-modal'
 import { groupMessages } from '@/lib/message-grouping'
+import { mergeRenderMessages } from '@/lib/render-messages'
 import { MessageSkeleton } from '@/components/ui/skeleton'
 import { formatMessageTimestamp, formatDateDivider, calendarDayKey } from '@/lib/timestamp-format'
 import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
@@ -148,23 +149,31 @@ export function ChatTerminal({
   const { t, module: locale } = useTranslation()
   const messages = useChatStore((s) => s.messages)
   const removeMessage = useChatStore((s) => s.removeMessage)
+  // Subscribe to a stable boolean, NOT the messages array: the burn-timer
+  // interval below must survive unrelated store mutations (a reaction, a read
+  // receipt) instead of being torn down and recreated on every single one.
+  const hasBurningMessages = useChatStore((s) =>
+    s.messages.some((m) => m.burn_at != null),
+  )
 
   // Tick counter so burn-timer countdowns re-render every second.
   const [, setBurnTick] = useState(0)
   useEffect(() => {
-    const hasBurning = messages.some((m) => m.burn_at)
-    if (!hasBurning) return
+    if (!hasBurningMessages) return
     const id = setInterval(() => {
       const now = Date.now()
-      messages.forEach((m) => {
+      // Read the live list non-reactively so the effect's only dependency is
+      // the stable "has burning messages" flag.
+      const store = useChatStore.getState()
+      for (const m of store.messages) {
         if (m.burn_at && new Date(m.burn_at).getTime() <= now) {
-          removeMessage(m.id)
+          store.removeMessage(m.id)
         }
-      })
-      setBurnTick((t) => t + 1)
+      }
+      setBurnTick((tick) => tick + 1)
     }, 1000)
     return () => clearInterval(id)
-  }, [messages, removeMessage])
+  }, [hasBurningMessages])
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const historyDecryptBusy = useUnreadStore((s) => s.historyDecryptBusy)
@@ -336,32 +345,29 @@ export function ChatTerminal({
     setNewMsgCount(0)
   }, [smoothToBottom])
 
-  const renderMessages = useMemo(() => {
-    const map = new Map<string, DecryptedMessage>()
-    for (const m of [...olderMessages, ...messages]) {
-      map.set(m.id, m)
-    }
-    return [...map.values()]
-      .sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      )
-      .map((m) => ({
-        ...m,
-        read_at: m.read_at ?? readAtOverrides[m.id] ?? null,
-      }))
-  }, [olderMessages, messages, readAtOverrides])
+  // Reference-stable merge: unchanged messages keep their object identity so
+  // the memoised MessageRow skips them when an unrelated message mutates.
+  const renderMessages = useMemo(
+    () => mergeRenderMessages(olderMessages, messages, readAtOverrides),
+    [olderMessages, messages, readAtOverrides],
+  )
 
   const groupedMessages = useMemo(() => {
     return groupMessages(renderMessages)
   }, [renderMessages])
 
-  // Live mirror of renderMessages for stable callbacks (swipe-commit) that
-  // must not list renderMessages in their dependency array.
+  // Live mirrors for stable callbacks (swipe-commit, media lightbox, voice
+  // navigation) that must not list these arrays in their dependency array —
+  // a changing identity there would defeat the MessageRow memo on every
+  // store mutation.
   const renderMessagesRef = useRef(renderMessages)
   useEffect(() => {
     renderMessagesRef.current = renderMessages
   }, [renderMessages])
+  const groupedMessagesRef = useRef(groupedMessages)
+  useEffect(() => {
+    groupedMessagesRef.current = groupedMessages
+  }, [groupedMessages])
 
   const senderIdsToResolve = useMemo(() => {
     if (!isGroup || !activeChatId) return []
@@ -820,6 +826,10 @@ export function ChatTerminal({
     voiceMessageIds.forEach((id, i) => m.set(id, i))
     return m
   }, [voiceMessageIds])
+  const voiceMessageIdsRef = useRef(voiceMessageIds)
+  useEffect(() => {
+    voiceMessageIdsRef.current = voiceMessageIds
+  }, [voiceMessageIds])
 
   const scrollToAndPlayVoice = useCallback((targetId: string) => {
     const el = ref.current?.querySelector(`[data-message-id="${targetId}"]`)
@@ -833,12 +843,12 @@ export function ChatTerminal({
   }, [])
 
   const navigateVoice = useCallback((currentId: string, direction: 'prev' | 'next') => {
-    const idx = voiceMessageIds.indexOf(currentId)
+    const ids = voiceMessageIdsRef.current
+    const idx = ids.indexOf(currentId)
     if (idx === -1) return
-    const targetIdx = direction === 'prev' ? idx - 1 : idx + 1
-    const targetId = voiceMessageIds[targetIdx]
+    const targetId = ids[direction === 'prev' ? idx - 1 : idx + 1]
     if (targetId) scrollToAndPlayVoice(targetId)
-  }, [voiceMessageIds, scrollToAndPlayVoice])
+  }, [scrollToAndPlayVoice])
 
   const handleMediaClick = useCallback((media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
     const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }> = []
@@ -863,7 +873,7 @@ export function ChatTerminal({
       }
     }
 
-    for (const group of groupedMessages) {
+    for (const group of groupedMessagesRef.current) {
       if (group.type === 'UNIT') {
         collectMsg(group.message)
       } else {
@@ -879,7 +889,7 @@ export function ChatTerminal({
       setLightboxIndex(currentIndex)
       setLightboxOpen(true)
     }
-  }, [groupedMessages])
+  }, [])
 
   const handleLightboxLoadMedia = useCallback(async (index: number): Promise<string | null> => {
     const items = lightboxMedia

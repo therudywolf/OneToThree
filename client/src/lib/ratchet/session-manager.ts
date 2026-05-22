@@ -587,6 +587,49 @@ function decodeHeader(encoded: string): RatchetHeader {
 }
 
 /**
+ * Per-session async mutex.
+ *
+ * The A4 session layer performs a non-atomic load -> mutate -> save against
+ * the shared session store. Without serialization two concurrent sends to the
+ * same device pair both observe "no session" and double-bootstrap — producing
+ * messages under divergent ratchets the recipient cannot follow ("first
+ * message decrypts, the rest fail") — and a concurrent decrypt batch races
+ * session creation (`RATCHET_NO_SESSION`) or clobbers a chain-key advance.
+ *
+ * Every read-modify-write of one device-pair ratchet runs through
+ * `runExclusive` keyed by that pair's record id, so operations on the SAME
+ * ratchet are strictly serialized while distinct ratchets still run in
+ * parallel. The chain is a per-key promise queue; a failed task does not break
+ * the queue, and drained keys are dropped so the map cannot grow unbounded.
+ */
+const sessionChains = new Map<string, Promise<unknown>>()
+
+function sessionLockKey(
+  ownerId: string,
+  ownDeviceId: string,
+  peerId: string,
+  peerDeviceId: string
+): string {
+  return `${ownerId} ${ownDeviceId} ${peerId} ${peerDeviceId}`
+}
+
+function runExclusive<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const prev = sessionChains.get(key) ?? Promise.resolve()
+  const result = prev.then(() => task())
+  // A never-rejecting tail so the next caller can chain on regardless of how
+  // this task settled.
+  const tail = result.then(
+    () => undefined,
+    () => undefined
+  )
+  sessionChains.set(key, tail)
+  void tail.then(() => {
+    if (sessionChains.get(key) === tail) sessionChains.delete(key)
+  })
+  return result
+}
+
+/**
  * Encrypt `plaintext` once per device of `peerId`, advancing (or
  * bootstrapping) the dedicated ratchet for every `(ownDevice ⇄ peerDevice)`
  * pair, and ALSO once per OTHER device of the sender so the message syncs to
@@ -605,6 +648,7 @@ export async function encryptForPeer(
 ): Promise<DrFanoutResult> {
   if (!_ownIdentity || !_ownDeviceId) throw new Error('RATCHET_NO_SESSION')
   const ownDeviceId = _ownDeviceId
+  const ownIdentity = _ownIdentity
 
   // Resolve every device that should receive a copy:
   //   - all of the peer's devices,
@@ -639,48 +683,56 @@ export async function encryptForPeer(
 
   for (const target of uniqueTargets) {
     try {
-      let session = await loadSession(ownerId, ownDeviceId, target.userId, target.deviceId)
-      if (!session) {
-        session = await bootstrapSession(
-          ownerId,
-          ownDeviceId,
-          _ownIdentity,
-          target.userId,
-          target.deviceId
-        )
-      }
-      const ratchet = deserializeRatchet(session.ratchet)
-      const msg: RatchetMessage = await encryptRatchet(ratchet, plainBytes)
-      session.ratchet = serializeRatchet(ratchet)
+      // Serialize load -> bootstrap -> encrypt -> save per device pair so two
+      // concurrent sends cannot both bootstrap a fresh ratchet for it.
+      const slot = await runExclusive(
+        sessionLockKey(ownerId, ownDeviceId, target.userId, target.deviceId),
+        async (): Promise<DrDeviceSlot> => {
+          let session = await loadSession(ownerId, ownDeviceId, target.userId, target.deviceId)
+          if (!session) {
+            session = await bootstrapSession(
+              ownerId,
+              ownDeviceId,
+              ownIdentity,
+              target.userId,
+              target.deviceId
+            )
+          }
+          const ratchet = deserializeRatchet(session.ratchet)
+          const msg: RatchetMessage = await encryptRatchet(ratchet, plainBytes)
+          session.ratchet = serializeRatchet(ratchet)
 
-      const envelope: DrDeviceEnvelope = {
-        v: 2,
-        sd: ownDeviceId,
-        h: encodeHeader(msg.header),
-        c: b64urlEncode(msg.ciphertext),
-      }
-      if (session.pendingInit && !session.pendingInitAcked) {
-        envelope.i = {
-          p13: 'dr-init',
-          v: 1,
-          initiatorIdentityExchange: session.pendingInit.initiatorIdentityExchange,
-          initiatorIdentitySigning: session.pendingInit.initiatorIdentitySigning,
-          initiatorEphemeralPublic: session.pendingInit.initiatorEphemeralPublic,
-          signedPrekeyId: session.pendingInit.signedPrekeyId,
-          oneTimePrekeyId: session.pendingInit.oneTimePrekeyId,
+          const envelope: DrDeviceEnvelope = {
+            v: 2,
+            sd: ownDeviceId,
+            h: encodeHeader(msg.header),
+            c: b64urlEncode(msg.ciphertext),
+          }
+          if (session.pendingInit && !session.pendingInitAcked) {
+            envelope.i = {
+              p13: 'dr-init',
+              v: 1,
+              initiatorIdentityExchange: session.pendingInit.initiatorIdentityExchange,
+              initiatorIdentitySigning: session.pendingInit.initiatorIdentitySigning,
+              initiatorEphemeralPublic: session.pendingInit.initiatorEphemeralPublic,
+              signedPrekeyId: session.pendingInit.signedPrekeyId,
+              oneTimePrekeyId: session.pendingInit.oneTimePrekeyId,
+            }
+            const sends = (session.pendingInitSends ?? 0) + 1
+            session.pendingInitSends = sends
+            if (sends >= PENDING_INIT_MAX_RESENDS) {
+              delete session.pendingInit
+              delete session.pendingInitSends
+            }
+          }
+          await saveSession(ownerId, ownDeviceId, target.userId, target.deviceId, session)
+          return {
+            deviceId: target.deviceId,
+            envelope: JSON.stringify(envelope),
+          }
         }
-        const sends = (session.pendingInitSends ?? 0) + 1
-        session.pendingInitSends = sends
-        if (sends >= PENDING_INIT_MAX_RESENDS) {
-          delete session.pendingInit
-          delete session.pendingInitSends
-        }
-      }
-      await saveSession(ownerId, ownDeviceId, target.userId, target.deviceId, session)
-      slots.push({
-        deviceId: target.deviceId,
-        envelope: JSON.stringify(envelope),
-      })
+      )
+      slots.push(slot)
     } catch (err) {
       // A single device failing (no bundle yet, stale OPK pool, …) must not
       // sink the whole send — skip it and keep fanning out to the rest.
@@ -763,34 +815,43 @@ export async function decryptFromPeer(
   const senderDeviceId = envelope.sd
   if (!senderDeviceId) throw new Error('RATCHET_NO_SENDER_DEVICE')
 
-  // If the envelope carries a session init and we have no session yet for
-  // this device pair, accept it.
-  if (envelope.i) {
-    try {
-      await acceptIncomingInit(ownerId, ownDeviceId, peerId, senderDeviceId, envelope.i)
-    } catch (err) {
-      // Identity mismatch is fatal — never fall through under a wire-claimed
-      // identity that doesn't match the device's published bundle.
-      if (err instanceof Error && err.message === 'X3DH_IDENTITY_MISMATCH') throw err
-      // Other failures are non-fatal; fall through and see if a session exists.
+  // Serialize the whole accept -> load -> decrypt -> save critical section on
+  // this device-pair ratchet: a concurrent decrypt batch must not race session
+  // creation, and a decrypt must not interleave with a send on the same
+  // ratchet (a lost chain-key advance would reuse a message key).
+  return runExclusive(
+    sessionLockKey(ownerId, ownDeviceId, peerId, senderDeviceId),
+    async () => {
+      // If the envelope carries a session init and we have no session yet for
+      // this device pair, accept it.
+      if (envelope.i) {
+        try {
+          await acceptIncomingInit(ownerId, ownDeviceId, peerId, senderDeviceId, envelope.i)
+        } catch (err) {
+          // Identity mismatch is fatal — never fall through under a wire-claimed
+          // identity that doesn't match the device's published bundle.
+          if (err instanceof Error && err.message === 'X3DH_IDENTITY_MISMATCH') throw err
+          // Other failures are non-fatal; fall through and see if a session exists.
+        }
+      }
+      const session = await loadSession(ownerId, ownDeviceId, peerId, senderDeviceId)
+      if (!session) throw new Error('RATCHET_NO_SESSION')
+      const ratchet = deserializeRatchet(session.ratchet)
+      const header = decodeHeader(envelope.h)
+      const ciphertext = b64urlDecode(envelope.c)
+      const plaintext = await decryptRatchet(ratchet, { header, ciphertext })
+      session.ratchet = serializeRatchet(ratchet)
+      // First successful inbound DR message proves the responder has the X3DH
+      // session — we no longer need to resend pendingInit on subsequent sends.
+      if (session.pendingInit && !session.pendingInitAcked) {
+        session.pendingInitAcked = true
+        delete session.pendingInit
+        delete session.pendingInitSends
+      }
+      await saveSession(ownerId, ownDeviceId, peerId, senderDeviceId, session)
+      return DECODER.decode(plaintext)
     }
-  }
-  const session = await loadSession(ownerId, ownDeviceId, peerId, senderDeviceId)
-  if (!session) throw new Error('RATCHET_NO_SESSION')
-  const ratchet = deserializeRatchet(session.ratchet)
-  const header = decodeHeader(envelope.h)
-  const ciphertext = b64urlDecode(envelope.c)
-  const plaintext = await decryptRatchet(ratchet, { header, ciphertext })
-  session.ratchet = serializeRatchet(ratchet)
-  // First successful inbound DR message proves the responder has the X3DH
-  // session — we no longer need to resend pendingInit on subsequent sends.
-  if (session.pendingInit && !session.pendingInitAcked) {
-    session.pendingInitAcked = true
-    delete session.pendingInit
-    delete session.pendingInitSends
-  }
-  await saveSession(ownerId, ownDeviceId, peerId, senderDeviceId, session)
-  return DECODER.decode(plaintext)
+  )
 }
 
 /**

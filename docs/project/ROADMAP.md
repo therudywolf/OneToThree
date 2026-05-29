@@ -56,7 +56,7 @@ The user's six initiatives are interleaved by dependency into 7 phases (Phase 0 
   and the Android Keystore vault bridge (E2EE-critical → Phase 2).
 
 ```
-Phase 0  Guardrails:   c8 coverage + CI green/enforced + e2e harness fix          (#3 infra)
+Phase 0  Gate model:   local typecheck+lint+vitest + e2e/smoke vs PROD (CI is dead) (#3 infra)
 Phase 1  Safety-net:   critical crypto/delivery tests + characterization tests    (#3)
 Phase 2  Security:     remediate findings, harden, Android Keystore vault bridge  (#2 + critical #6)
 Phase 3  Refactor:     god-files → modules, shared types, dead-code purge         (#1 + per-surface #4)
@@ -66,31 +66,39 @@ Phase 6  Android:      FCM, App Links, signing, on-device matrix, store-ready   
 ```
 
 **Quick independent wins (do anytime, no dependencies):** retro-palette contrast (token edits in
-`themeStore.ts`), 3 hardcoded strings, e2e cookie-policy fix.
+`themeStore.ts`), 3 hardcoded strings, point e2e at prod (HTTPS).
 
 ---
 
-## Phase 0 — Guardrails (foundation; serves #3, #2)
+## Phase 0 — Quality gate WITHOUT CI (foundation; serves #3, #2)
 
-**Goal:** make `main` hard to break and give every later phase a measurable safety net.
+**Reality (set 2026-05-29 by the owner):** GitHub Actions billing will NOT be restored — CI is
+permanently dead (every job fails at startup with "recent account payments have failed"). Prod
+(`https://onetothree.ru` / `https://api.onetothree.ru`) is a published, **no-real-user** test
+environment and may be used freely as the live test target. The standing gate is **local + prod**, never CI.
 
-- [ ] **Coverage tooling.** Add `@vitest/coverage-v8` to both `client/vitest.config.ts` and
-  `server/vitest.config.ts`; produce a baseline report; wire coverage upload in CI. Set *initial* (low)
-  thresholds now, ratchet up in Phase 1.
-- [ ] **Fix the e2e harness ("me 401").** Root cause is understood: a `Secure` cookie is dropped over
-  plain HTTP. Ensure the e2e API runs `NODE_ENV=test` (so `fm_session` is `SameSite=Lax` without `Secure`);
-  the `playwright.global-setup.ts` probe already fails fast on a wrong policy. Get the multi-context
-  `client/tests/chat-core.spec.ts` green and document prerequisites (test DB on 5544, API on 8080).
-- [ ] **CI quality gate — make it actually green & enforced.** Workflows exist (`prod-checks.yml`, Trivy)
-  but were red due to GitHub Actions billing, and `NEXT_HANDOFF_PLAN.md` P0-1 still lists a `quality.yml`.
-  Reconcile to a single enforced workflow running on PR + push to `main`: `check:locales`, `check:drizzle`,
-  `typecheck`, `lint`, root/client/server `npm audit`, targeted server tests (add a Postgres service —
-  do **not** weaken tests), `build`, and the **ratchet round-trip test**. Then turn on branch protection
-  with named required checks + a written emergency-bypass procedure (`NEXT_HANDOFF_PLAN.md` P0-2).
-- [ ] **Lock the E2EE rule into CI:** no E2EE-critical change merges unless a real round-trip test is green.
+**The standing gate:**
+- **Pre-commit (local):** `npm run typecheck && npm run lint` + `vitest` for the touched workspace(s).
+  This is the ONLY pre-merge gate. The E2EE round-trip tests (ratchet, fanout, group-key, media) are part
+  of it — nothing E2EE-critical merges unless they pass locally.
+- **Integration / E2E:** Playwright **against prod** — HTTPS makes the `Secure` session cookie work, which
+  is exactly what the local plain-HTTP harness could not ("me 401" was a Secure-cookie drop over HTTP).
+- **Post-deploy:** live smoke on prod (`/version` matches the pushed SHA, `/health`, targeted curls / e2e).
 
-**Definition of Done:** coverage numbers exist for both workspaces; multi-context e2e green locally and in
-CI; `main` protected by named required checks; A4 round-trip runs in CI.
+- [ ] **Neuter the always-red CI workflows** (optional cleanup): switch `prod-checks.yml` et al. to
+  `workflow_dispatch`-only so they stop auto-failing on every push. Keep the files in case billing returns.
+- [ ] **Make the Playwright harness target-aware.** `playwright.global-setup.ts` asserts a
+  `SameSite=Lax`-without-`Secure` cookie (local-HTTP only) and would reject prod's `Secure; SameSite=None`.
+  Gate that probe on an `http://` base URL; when `PLAYWRIGHT_BASE_URL` is HTTPS, skip it and run the
+  multi-context suite against prod. This replaces the dead local-HTTP harness.
+- [ ] **Server vitest integration** runs against a **local disposable Postgres** (`o2t-testdb` on :5544),
+  not prod — destructive create/delete churn stays off the live DB.
+  (`DATABASE_URL=postgres://forest:forest@127.0.0.1:5544/forest`)
+- [ ] **Coverage visibility (local lens only):** `@vitest/coverage-v8` for ad-hoc `--coverage` runs.
+  No CI threshold to enforce, so low priority.
+
+**Definition of Done:** the local gate is documented and run per commit; the Playwright suite runs green
+against prod; every prod deploy is verified live.
 
 ---
 
@@ -127,7 +135,7 @@ for all Phase-3 refactor targets; coverage thresholds enforced.
 
 - [ ] `client/src/lib/{crypto,ratchet,*-crypto}`: **≥ 90%** lines/branches.
 - [ ] `server/src/routes` + `server/src/lib`: **≥ 80%**.
-- [ ] Overall: **≥ 80%**, thresholds enforced in CI (build fails below).
+- [ ] Overall: **≥ 80%**, checked locally via `vitest --coverage` (no CI to enforce thresholds).
 - [ ] **Cross-impl test vectors** for DR/HKDF (feeds the crypto-review checklist in Phase 4).
 
 **Definition of Done:** coverage thresholds enforced; all paths above have round-trip tests;
@@ -302,7 +310,9 @@ device; vault persists across restart/reinstall.
   Separate P2 epic; decide scope under the prod-grade target.
 - [?] **WS scaling** — prod runs a single API instance; the in-process WS registry (`server/src/ws/registry.ts`)
   has no Redis pub/sub fan-out, so >1 replica silently breaks delivery. Out of scope until horizontal scaling is needed.
-- [?] **CI billing** — historical red was GitHub Actions billing, not code. Phase 0 must confirm CI actually runs.
+- [x] **CI is permanently off** — billing will NOT be restored (owner decision 2026-05-29). Gate = local
+  verification + prod e2e/smoke; do not plan around CI. (Later-phase "in CI" steps — coverage, audits,
+  native signing — are local/manual now.)
 
 ## Verification command reference
 

@@ -6,7 +6,11 @@ import {
   wrapPrivateJwkWithPin,
 } from '@/lib/vault'
 
-const VAULT_KDF_TEST_TIMEOUT_MS = 15_000
+// Argon2id (t=3, m=64 MiB) is deliberately expensive. The upgrade-path test
+// runs ~4 derivations (wrap + upgrade's unwrap/rewrap + final unwrap), and the
+// deploy gate runs these on a CPU-contended VPS mid-Docker-build, where 15s was
+// not enough and aborted deploys. Generous ceiling (not a fixed wait).
+const VAULT_KDF_TEST_TIMEOUT_MS = 60_000
 
 describe('vault wrap/unwrap', () => {
   it('roundtrips payload with current vault version', async () => {

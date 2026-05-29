@@ -39,7 +39,12 @@ export async function registerNewUser(
     .then(() => true)
     .catch(() => false)
   if (hasBackupPrompt) {
-    const downloadPromise = page.waitForEvent('download').catch(() => null)
+    // Bound the wait: some builds save the backup without firing a browser
+    // download event (blob/clipboard), which would otherwise hang until the
+    // test timeout. We only need the modal dismissed, so 8s is plenty.
+    const downloadPromise = page
+      .waitForEvent('download', { timeout: 8_000 })
+      .catch(() => null)
     await page
       .getByRole('button', {
         name: /СКАЧАТЬ РЕЗЕРВНУЮ КОПИЮ|EXPORT BACKUP KEY|DOWNLOAD BACKUP/i,

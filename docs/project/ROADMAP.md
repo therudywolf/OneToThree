@@ -87,10 +87,15 @@ environment and may be used freely as the live test target. The standing gate is
 
 - [ ] **Neuter the always-red CI workflows** (optional cleanup): switch `prod-checks.yml` et al. to
   `workflow_dispatch`-only so they stop auto-failing on every push. Keep the files in case billing returns.
-- [ ] **Make the Playwright harness target-aware.** `playwright.global-setup.ts` asserts a
-  `SameSite=Lax`-without-`Secure` cookie (local-HTTP only) and would reject prod's `Secure; SameSite=None`.
-  Gate that probe on an `http://` base URL; when `PLAYWRIGHT_BASE_URL` is HTTPS, skip it and run the
-  multi-context suite against prod. This replaces the dead local-HTTP harness.
+- [x] **E2E runs against prod** (verified 2026-05-29). The global-setup is already target-aware (skips the
+  HTTP-only cookie probe for HTTPS bases). Run with:
+  `PLAYWRIGHT_BASE_URL=https://onetothree.ru PLAYWRIGHT_API_HEALTH=https://api.onetothree.ru/health PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test <spec> --project=chromium`
+  (one-time `npx playwright install chromium`). `auth.spec` and each `chat-core` flow (encrypted DM exchange,
+  delete-for-everyone, group create) pass **per-spec**.
+  **Caveat:** running the full suite rapidly from one IP trips prod's global ~100 req/min + auth rate limits,
+  so later specs fail at page load (not a product bug). Run specs individually, pace them, or allowlist the
+  runner IP. Two e2e helper fixes landed to enable this: bounded backup-download wait, and the prod
+  `API_INTERNAL_URL` proxy fix (`onetothree.ru/api/*` was 500-ing).
 - [ ] **Server vitest integration** runs against a **local disposable Postgres** (`o2t-testdb` on :5544),
   not prod — destructive create/delete churn stays off the live DB.
   (`DATABASE_URL=postgres://forest:forest@127.0.0.1:5544/forest`)

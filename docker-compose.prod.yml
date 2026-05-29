@@ -246,6 +246,12 @@ services:
         NEXT_PUBLIC_LIVEKIT_URL: ${NEXT_PUBLIC_LIVEKIT_URL:-}
         MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
         NEXT_PUBLIC_DR_ENABLED: ${NEXT_PUBLIC_DR_ENABLED:-1}
+        # Target for Next's same-origin /api/* rewrite (next.config.js). Baked at
+        # build (rewrites serialize into routes-manifest) AND kept as runtime ENV
+        # by the Dockerfile. Must be the internal api service — the web container's
+        # localhost has no API. Empty here => onetothree.ru/api/* 500s with
+        # ECONNREFUSED 127.0.0.1:8080 (the Next proxy can't reach the API).
+        API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080}
     restart: always
     dns:
       - 8.8.8.8

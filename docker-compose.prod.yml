@@ -24,7 +24,6 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     cpu_shares: 512
-    cpus: '1.0'
     mem_limit: 512m
     mem_reservation: 128m
     secrets:
@@ -36,7 +35,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
-      - app_network
+      - internal
     extra_hosts:
       - '${DOMAIN:-onetothree.ru}:host-gateway'
       - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
@@ -58,11 +57,10 @@ services:
     restart: always
     command: redis-server --save 60 1 --appendonly yes --loglevel warning
     cpu_shares: 256
-    cpus: '0.5'
     mem_limit: 128m
     mem_reservation: 32m
     networks:
-      - app_network
+      - internal
     volumes:
       - redis_data:/data
     healthcheck:
@@ -79,7 +77,6 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     cpu_shares: 384
-    cpus: '2.0'
     mem_limit: 512m
     mem_reservation: 128m
     command: server /data --console-address ':9001'
@@ -91,7 +88,8 @@ services:
     volumes:
       - minio_data:/data
     networks:
-      - app_network
+      - internal
+      - edge
     extra_hosts:
       - '${DOMAIN:-onetothree.ru}:host-gateway'
       - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
@@ -125,7 +123,7 @@ services:
       db:
         condition: service_healthy
     networks:
-      - app_network
+      - internal
     extra_hosts:
       - '${DOMAIN:-onetothree.ru}:host-gateway'
       - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
@@ -150,7 +148,6 @@ services:
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=128m
     cpu_shares: 512
-    cpus: '4.0'
     mem_limit: 1024m
     mem_reservation: 256m
     expose:
@@ -214,7 +211,8 @@ services:
       db-migrate:
         condition: service_completed_successfully
     networks:
-      - app_network
+      - internal
+      - edge
     extra_hosts:
       - '${DOMAIN:-onetothree.ru}:host-gateway'
       - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
@@ -257,7 +255,6 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     cpu_shares: 512
-    cpus: '4.0'
     mem_limit: 1536m
     mem_reservation: 512m
     expose:
@@ -268,7 +265,8 @@ services:
       api:
         condition: service_healthy
     networks:
-      - app_network
+      - internal
+      - edge
     extra_hosts:
       - '${DOMAIN:-onetothree.ru}:host-gateway'
       - 'api.${DOMAIN:-onetothree.ru}:host-gateway'
@@ -307,6 +305,8 @@ services:
     restart: always
     network_mode: host
     user: root
+    cpu_shares: 2048
+    mem_limit: 128m
     env_file:
       - .env.prod
     volumes:
@@ -346,6 +346,8 @@ services:
     image: livekit/livekit-server:v1.8
     restart: always
     network_mode: host
+    cpu_shares: 2048
+    mem_limit: 256m
     secrets:
       - livekit_api_key
       - livekit_api_secret
@@ -396,5 +398,8 @@ volumes:
     driver: local
 
 networks:
-  app_network:
+  internal:
     driver: bridge
+  edge:
+    external: true
+    name: edge

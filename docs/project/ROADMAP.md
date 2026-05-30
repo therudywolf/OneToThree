@@ -174,12 +174,23 @@ characterization tests exist for every Phase-3 target.
 
 **Hardening (prod-grade):**
 
-- [ ] **CSP:** drop `'unsafe-inline'`, move to nonce-based script/style; enumerate `connect-src` (no broad
-  `https:`). Both Helmet config (`server/src/app.ts`) and Caddyfile.
-- [ ] **Rate limit every mutator** in `chats.ts` (~17 endpoints lacking limits) — baseline `{30/min}`.
+- [~] **CSP:** mostly done (verified 2026-05-31, `server/src/app.ts`). `scriptSrc` is already
+  `['self', cdn.jsdelivr]` — **no `unsafe-inline` for scripts**; `frame-ancestors 'none'`, `object-src
+  'none'`, `base-uri`/`form-action 'self'`, `upgrade-insecure-requests` all set. Remaining: (a) `styleSrc`
+  still has `'unsafe-inline'` (hard to drop under Next.js styled-jsx/inline theme tokens — low risk since
+  script-src is locked); (b) **`connectSrc` includes broad `'https:'`/`'wss:'`**, making the per-origin
+  enumeration redundant. Narrowing it needs a browser pass to confirm calls/LiveKit/Cloudflare-TURN/WS/
+  Web-Push still connect — deferred to avoid a blind prod break.
+- [x] **Rate limit every mutator** — DONE (verified 2026-05-31). A **global** `@fastify/rate-limit` at
+  `100/min` (`app.ts`, loopback-only allowList) covers every route; `chats.ts` mutators carry tighter
+  per-route overrides (create 10/min, invite-slug 10/min, leave/role/kick/favorite/mute 30/min, wrapped-key
+  60/min, delete 10/min, `join/:code` 10/min). The audit's "~17 lacking limits" predated the global limit.
 - [ ] **Vault:** force v4 → v5 (Argon2id) rewrap on unlock; confirm `upgradeVaultBlob` on all paths.
-- [ ] **Infra hygiene:** dev `docker-compose.yml` DB-port binding + default MinIO creds — add operator
-  warnings; confirm prod compose binds nothing extra. Verify `TRUST_PROXY`/`X-Forwarded-For` spoof guard.
+- [~] **Infra hygiene:** **`TRUST_PROXY` verified safe** (2026-05-31) — `app.ts` sets `trustProxy` to a hop
+  *count* (`1` in prod, never `true`), so a client-supplied `X-Forwarded-For` can't spoof `request.ip` to the
+  loopback rate-limit allowList. Prod compose binds **nothing extra** (db/redis/minio have no host port maps;
+  recent commits added `no-new-privileges` + edge net). Remaining: dev `docker-compose.yml` operator warnings
+  (DB-port binding + default MinIO creds).
 - [ ] **Supply chain:** root/client/server lockfile audits in CI; confirm Trivy CRITICAL/HIGH gate; generate
   an SBOM; pin/verify base images.
 
@@ -334,12 +345,13 @@ device; vault persists across restart/reinstall.
   self-heals; (3) an owner with **no cached key** but an advanced epoch still rotates (forward-secrecy
   bypass closed); (4) rotation/delivery failures are logged (`>> [SYS.SECTOR]`) instead of silently
   swallowed. Added an end-to-end `rotateGroupKeyForChat` round-trip test in `group-key-rotation.test.ts`.
-- [ ] **Group-leave server hardening (follow-ups surfaced by the 2026-05-31 review, not regressions):**
-  (a) in the owner-leave branch of `chats.ts`, the next-owner is selected OUTSIDE the ownership-transfer
-  transaction — a simultaneous departure of the nominee can leave the chat ownerless (0-row UPDATE, no
-  error). Move the selection into the txn and verify the UPDATE rowcount. (b) the `key_epoch` bump is not
-  atomic with the membership delete in any path (kick / leave); a crash between them can leave the epoch
-  lagging. Functionally safe today (a re-added member gets a null key), but wrap delete+bump in one txn.
+- [x] **Group-leave server hardening** — DONE (2026-05-31, `chats.ts`). (a) The owner-leave branch now
+  selects + promotes the next owner INSIDE the transfer transaction and tries the next candidate on a 0-row
+  UPDATE, so a concurrent departure of the nominee can no longer leave the chat ownerless. (b) The
+  `key_epoch` bump is now atomic with the membership delete in all three paths (kick / non-owner leave /
+  owner-transfer leave) — bump runs inside the same `db.transaction`, broadcast happens only after commit
+  (`broadcastKeyEpoch`). Invariant test added: after the owner leaves a multi-member group, exactly one
+  owner remains and the epoch advances (`chats-ops.test.ts`).
 - [ ] **Chat message-list virtualization (PR #5, deferred 2026-05-31):** `@tanstack/react-virtual` rewrite
   of `chat-terminal.tsx` + chunked main-thread decrypt. Merges cleanly and the pure logic is sound, but the
   review found a **scroll-position-jump regression on back-pagination** (the sticky anchor row can unmount

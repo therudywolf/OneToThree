@@ -4,8 +4,9 @@
 > This file was written at commit `9b8a9be`. Its "🔴 CRITICAL BUG — A4 Double Ratchet decryption
 > fails" section is **OUT OF DATE**: A4 was fixed in commit `ae3eb2b` and the round-trip test
 > (`client/src/lib/ratchet/session-manager.roundtrip.test.ts`) now passes 6/6. DR v2 is on by default
-> in prod. Use `ROADMAP.md` for the current plan; the **Deploy mechanics** and **Operational notes**
-> below are still accurate and worth keeping.
+> in prod. Use `ROADMAP.md` for the current plan. **Deploy mechanics below were also rewritten
+> (2026-05-31):** the project was migrated into `~/stacks` and now runs ON this host — deploy is LOCAL,
+> not over SSH. The **Operational notes** further down are otherwise still worth keeping.
 
 Pick this up in a fresh session. Read it top to bottom before doing anything.
 
@@ -26,17 +27,19 @@ OneToThree — a self-hosted, end-to-end-encrypted messenger. Monorepo:
   deploy and iterate directly on it.
 - `main` == `origin/main`; the working tree should be clean.
 
-## Deploy mechanics
-- SSH: `ssh -i ~/.ssh/id_ed25519_win -o IdentitiesOnly=yes rudywolf@forestserver.ru`
-  — the SSH key has a non-standard name and is NOT in `~/.ssh/config`; you MUST
-  pass `-i ~/.ssh/id_ed25519_win`.
-- Server path: `~/sites/onetothree.ru`.
-- Deploy: `cd ~/sites/onetothree.ru && ./deploy.sh` — does
-  `git fetch && git reset --hard origin/main`, rebuilds api+web in Docker, runs
-  DB migrations.
-- Verify after deploy: `curl -sS https://api.onetothree.ru/version` and `/health`.
-- Workflow: one commit per fix, conventional commit messages, push to `main`,
-  then deploy.
+## Deploy mechanics (rewritten 2026-05-31 — project is now ON this host)
+- The repo lives at `~/stacks/onetothree.ru` **on the prod host itself** — deploy is LOCAL.
+  The old `ssh ... rudywolf@forestserver.ru` + `~/sites/onetothree.ru` flow is GONE.
+- **No Node on the host:** run all JS tooling inside `node:20-alpine` with the repo bind-mounted
+  (the committed `node_modules` are musl-native and reusable). `deploy.sh` does this for you.
+- Deploy: from the repo root, `./deploy.sh` — does `git reset --hard origin/main`, runs the full
+  test gate in Docker (npm ci + db:push + server + client vitest), tags the current api/web images
+  `forestmessenger-*:rollback` + `pg_dump`s the DB to `backups/`, then rebuilds api+web and runs
+  migrations. So: **push to `origin/main` FIRST, then `./deploy.sh`.**
+- Prod compose project is `forestmessenger` (legacy name), file `docker-compose.prod.yml`; containers
+  are `forestmessenger-{api,web,db,redis,minio,...}-1`.
+- Verify after deploy: `curl -sS https://api.onetothree.ru/version` (commit must match HEAD) and `/health`.
+- Workflow: one commit per fix, conventional commit messages, push to `main`, then deploy.
 
 ## 🔴 CRITICAL BUG — fix this first (Phase 1)
 **A4 per-device Double Ratchet decryption fails.** Messages SEND (HTTP 200) but

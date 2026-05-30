@@ -183,21 +183,18 @@ function canKick(actor: ChatMemberRole, target: ChatMemberRole): boolean {
   return false
 }
 
-// When a member departs a SECTOR (group_e2e) chat — whether kicked or leaving
-// voluntarily — the shared group key must be rotated so the departed member can
-// no longer read future traffic. Bump the chat key epoch and tell the remaining
-// members to re-wrap and upload a fresh key for the new epoch. Caller is
-// responsible for restricting this to group_e2e chats.
-async function rekeyGroupOnDeparture(
+// Tell the remaining members of a SECTOR (group_e2e) chat to re-key after a
+// member departs (kick or leave) so the departed member can no longer read
+// future traffic. The caller bumps `chats.key_epoch` INSIDE the same
+// transaction as the membership change — so the epoch can never lag the
+// membership state across a crash — and passes the resulting epoch here to
+// broadcast once that transaction has committed. A null epoch (no row updated)
+// is a no-op. Caller is responsible for restricting this to group_e2e chats.
+function broadcastKeyEpoch(
   chatId: string,
+  keyEpoch: number | null,
   notifyIds: string[]
-): Promise<void> {
-  const bumped = await db
-    .update(chats)
-    .set({ keyEpoch: sql`${chats.keyEpoch} + 1` })
-    .where(eq(chats.id, chatId))
-    .returning({ keyEpoch: chats.keyEpoch })
-  const keyEpoch = bumped[0]?.keyEpoch
+): void {
   if (keyEpoch == null) return
   broadcastToUsers(notifyIds, {
     type: 'group_key_epoch',
@@ -1023,18 +1020,30 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if ((chat.type === 'group_e2e' || chat.type === 'public_open') && myRow.role === 'owner') {
-      const others = await db
-        .select({
-          userId: chatMembers.userId,
-          role: chatMembers.role,
-          joinedAt: chatMembers.joinedAt,
-        })
-        .from(chatMembers)
-        .where(
-          and(eq(chatMembers.chatId, chatId), ne(chatMembers.userId, user.id))
-        )
+      // Owner leaving a chat that has other members: hand ownership to the next
+      // member, remove ourselves, and (for SECTOR chats) bump the key epoch —
+      // ALL in one transaction. Selecting + promoting the nominee inside the txn
+      // and verifying the promote affected a row closes a race where a
+      // simultaneous departure of the nominee would otherwise leave the chat
+      // ownerless (a 0-row UPDATE the old code never noticed). If every candidate
+      // vanishes we fall through to the plain-leave path below (which deletes the
+      // chat when we turn out to be the last member).
+      let transferred = false
+      let newKeyEpoch: number | null = null
+      let notifyIds: string[] = []
+      await db.transaction(async (tx) => {
+        const others = await tx
+          .select({
+            userId: chatMembers.userId,
+            role: chatMembers.role,
+            joinedAt: chatMembers.joinedAt,
+          })
+          .from(chatMembers)
+          .where(
+            and(eq(chatMembers.chatId, chatId), ne(chatMembers.userId, user.id))
+          )
+        if (others.length === 0) return
 
-      if (others.length > 0) {
         const sorted = [...others].sort((a, b) => {
           const rank = (r: string) => (r === 'admin' ? 0 : 1)
           const d = rank(a.role) - rank(b.role)
@@ -1049,70 +1058,102 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
               : new Date(b.joinedAt).getTime()
           return ta - tb
         })
-        const nextOwner = sorted[0]
-        if (!nextOwner) {
-          return reply.status(500).send({ error: 'LEAVE_FAILED' })
-        }
 
-        await db.transaction(async (tx) => {
-          await tx
+        // Promote the first candidate that still exists. A 0-row update means
+        // that member departed concurrently — try the next candidate.
+        let promotedId: string | null = null
+        for (const cand of sorted) {
+          const promoted = await tx
             .update(chatMembers)
             .set({ role: 'owner' })
             .where(
               and(
                 eq(chatMembers.chatId, chatId),
-                eq(chatMembers.userId, nextOwner.userId)
+                eq(chatMembers.userId, cand.userId)
               )
             )
-          await tx
-            .delete(chatMembers)
-            .where(
-              and(
-                eq(chatMembers.chatId, chatId),
-                eq(chatMembers.userId, user.id)
-              )
-            )
-        })
+            .returning({ userId: chatMembers.userId })
+          if (promoted.length) {
+            promotedId = cand.userId
+            break
+          }
+        }
+        if (!promotedId) return // every other member vanished too → fall through
 
-        const remaining = await db
+        await tx
+          .delete(chatMembers)
+          .where(
+            and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
+          )
+
+        const remaining = await tx
           .select({ userId: chatMembers.userId })
           .from(chatMembers)
           .where(eq(chatMembers.chatId, chatId))
+        notifyIds = [...remaining.map((r) => r.userId), user.id]
 
-        const notifyIds = [...remaining.map((r) => r.userId), user.id]
-        broadcastToUsers(notifyIds, { type: 'chats_updated' })
         if (chat.type === 'group_e2e') {
-          await rekeyGroupOnDeparture(chatId, notifyIds)
+          const bumped = await tx
+            .update(chats)
+            .set({ keyEpoch: sql`${chats.keyEpoch} + 1` })
+            .where(eq(chats.id, chatId))
+            .returning({ keyEpoch: chats.keyEpoch })
+          newKeyEpoch = bumped[0]?.keyEpoch ?? null
         }
+        transferred = true
+      })
+
+      if (transferred) {
+        broadcastToUsers(notifyIds, { type: 'chats_updated' })
+        broadcastKeyEpoch(chatId, newKeyEpoch, notifyIds)
         return reply.send({ ok: true })
       }
+      // else: no eligible next owner — fall through to the plain-leave path.
     }
 
-    const deleted = await db
-      .delete(chatMembers)
-      .where(
-        and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
-      )
-      .returning({ chatId: chatMembers.chatId })
+    // Non-owner leave (or owner who turned out to be the last member). Remove
+    // ourselves and, in the same transaction, either delete the now-empty chat
+    // or bump the SECTOR key epoch — so the epoch can never lag the membership.
+    let wasMember = false
+    let chatDeleted = false
+    let newKeyEpoch: number | null = null
+    let remaining: { userId: string }[] = []
+    await db.transaction(async (tx) => {
+      const deleted = await tx
+        .delete(chatMembers)
+        .where(
+          and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
+        )
+        .returning({ chatId: chatMembers.chatId })
+      if (!deleted.length) return
+      wasMember = true
 
-    if (!deleted.length) {
+      remaining = await tx
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+
+      if (remaining.length === 0) {
+        await tx.delete(messages).where(eq(messages.chatId, chatId))
+        await tx.delete(chats).where(eq(chats.id, chatId))
+        chatDeleted = true
+      } else if (chat.type === 'group_e2e') {
+        const bumped = await tx
+          .update(chats)
+          .set({ keyEpoch: sql`${chats.keyEpoch} + 1` })
+          .where(eq(chats.id, chatId))
+          .returning({ keyEpoch: chats.keyEpoch })
+        newKeyEpoch = bumped[0]?.keyEpoch ?? null
+      }
+    })
+
+    if (!wasMember) {
       return reply.status(404).send({ error: 'NOT_A_MEMBER' })
     }
-
-    const remaining = await db
-      .select({ userId: chatMembers.userId })
-      .from(chatMembers)
-      .where(eq(chatMembers.chatId, chatId))
-
-    if (remaining.length === 0) {
-      await db.delete(messages).where(eq(messages.chatId, chatId))
-      await db.delete(chats).where(eq(chats.id, chatId))
-    } else {
+    if (!chatDeleted) {
       const notifyIds = [...remaining.map((r) => r.userId), user.id]
       broadcastToUsers(notifyIds, { type: 'chats_updated' })
-      if (chat.type === 'group_e2e') {
-        await rekeyGroupOnDeparture(chatId, notifyIds)
-      }
+      broadcastKeyEpoch(chatId, newKeyEpoch, notifyIds)
     }
 
     return reply.send({ ok: true })
@@ -1260,14 +1301,27 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
 
-    await db
-      .delete(chatMembers)
-      .where(
-        and(
-          eq(chatMembers.chatId, chatId),
-          eq(chatMembers.userId, targetUserId)
+    // Remove the member and bump the SECTOR key epoch in one transaction so the
+    // epoch can never lag the membership state across a crash.
+    let newKeyEpoch: number | null = null
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(chatMembers)
+        .where(
+          and(
+            eq(chatMembers.chatId, chatId),
+            eq(chatMembers.userId, targetUserId)
+          )
         )
-      )
+      if (chat.type === 'group_e2e') {
+        const bumped = await tx
+          .update(chats)
+          .set({ keyEpoch: sql`${chats.keyEpoch} + 1` })
+          .where(eq(chats.id, chatId))
+          .returning({ keyEpoch: chats.keyEpoch })
+        newKeyEpoch = bumped[0]?.keyEpoch ?? null
+      }
+    })
 
     const memberIds = (
       await db
@@ -1278,9 +1332,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
     const notifyIds = [...memberIds, targetUserId]
     broadcastToUsers(notifyIds, { type: 'chats_updated' })
-    if (chat.type === 'group_e2e') {
-      await rekeyGroupOnDeparture(chatId, notifyIds)
-    }
+    broadcastKeyEpoch(chatId, newKeyEpoch, notifyIds)
     return reply.send({ ok: true })
   })
 

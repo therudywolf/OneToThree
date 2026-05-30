@@ -203,4 +203,41 @@ describe('chat create/update/member routes', () => {
       await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
     }
   })
+
+  // Guards the ownership-transfer invariant the leave handler must preserve even
+  // under concurrent departures: after the owner leaves a multi-member group,
+  // EXACTLY ONE owner remains (never zero — an ownerless chat is unmanageable)
+  // and the key epoch advances. The transfer + delete + epoch bump run in one txn.
+  it('leaves exactly one owner (never zero) when the owner leaves a multi-member group', async () => {
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`rk-multi-owner-${stamp}`)
+    const m1 = await createUser(`rk-multi-m1-${stamp}`)
+    const m2 = await createUser(`rk-multi-m2-${stamp}`)
+    const ownerCookie = `fm_session=${await app!.jwt.sign({ sub: owner.id, username: owner.username, jti: randomUUID() })}`
+
+    let chatId: string | null = null
+    try {
+      chatId = await createGroup(app!, ownerCookie, owner, [m1, m2])
+      const before = await readKeyEpoch(chatId)
+
+      await request(app!.server)
+        .post(`/api/chats/${chatId}/leave`)
+        .set('Cookie', ownerCookie)
+        .expect(200)
+
+      const survivors = await db
+        .select({ userId: chatMembers.userId, role: chatMembers.role })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+      expect(survivors).toHaveLength(2)
+      expect(survivors.filter((s) => s.role === 'owner')).toHaveLength(1)
+      expect(await readKeyEpoch(chatId)).toBe(before + 1)
+    } finally {
+      if (chatId) {
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+        await db.delete(chats).where(eq(chats.id, chatId))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, m1.id, m2.id]))
+    }
+  })
 })

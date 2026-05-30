@@ -16,6 +16,7 @@ import {
   dispatchSectorKeys,
   wrapGroupKeyForMemberWithCreatorEcdh,
   unwrapGroupKeyFromStoredPayload,
+  readStoredSectorKeyEpoch,
 } from './chat-logic'
 import {
   generateKeyPair,
@@ -133,5 +134,78 @@ describe('SECTOR group key distribution', () => {
     await expect(
       unwrapGroupKeyFromStoredPayload(member.priv, garbage),
     ).rejects.toThrow()
+  })
+})
+
+describe('SECTOR key rotation: epoch stamping', () => {
+  it('round-trips an epoch-stamped key: unwraps to the same key and reports its epoch', async () => {
+    const creator = await makeMember('creator')
+    const member = await makeMember('member')
+    const sectorKey = await generateAesGcm256Key()
+
+    const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
+      creator.priv,
+      member.pubJwk,
+      sectorKey,
+      creator.pubJwk,
+      3,
+    )
+
+    // The epoch is readable WITHOUT the private key (plaintext metadata)...
+    expect(readStoredSectorKeyEpoch(wrapped)).toBe(3)
+    // ...and the sealed key still recovers correctly.
+    const recovered = await unwrapGroupKeyFromStoredPayload(member.priv, wrapped)
+    expect(await sameKey(sectorKey, recovered)).toBe(true)
+  })
+
+  it('a creation-time (epoch-less) auth-wrap reads back as epoch 0', async () => {
+    const creator = await makeMember('creator')
+    const member = await makeMember('member')
+    const sectorKey = await generateAesGcm256Key()
+
+    const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
+      creator.priv,
+      member.pubJwk,
+      sectorKey,
+      creator.pubJwk,
+    )
+    expect(readStoredSectorKeyEpoch(wrapped)).toBe(0)
+  })
+
+  it('an ephemeral-dispatch row (legacy format) reads back as epoch 0', async () => {
+    const alice = await makeMember('alice')
+    const [row] = await dispatchSectorKeys([alice.pubJwk])
+    expect(readStoredSectorKeyEpoch(row.encryptedGroupKeyBase64)).toBe(0)
+  })
+
+  it('a removed member cannot unwrap a freshly rotated key', async () => {
+    // Models a departure: owner mints a NEW sector key at the next epoch and
+    // wraps it only for the REMAINING members. The departed member, holding
+    // only its old wrapped key, has no row for the new key — forward secrecy.
+    const owner = await makeMember('owner')
+    const staying = await makeMember('staying')
+    const departed = await makeMember('departed')
+
+    const oldKey = await generateAesGcm256Key()
+    // Departed member's key from before the rotation (epoch 0).
+    const departedOldRow = await wrapGroupKeyForMemberWithCreatorEcdh(
+      owner.priv, departed.pubJwk, oldKey, owner.pubJwk,
+    )
+
+    // Rotation: brand-new key at epoch 1, wrapped ONLY for owner + staying.
+    const newKey = await generateAesGcm256Key()
+    const stayingNewRow = await wrapGroupKeyForMemberWithCreatorEcdh(
+      owner.priv, staying.pubJwk, newKey, owner.pubJwk, 1,
+    )
+
+    // The staying member converges on the new key.
+    const stayingRecovered = await unwrapGroupKeyFromStoredPayload(staying.priv, stayingNewRow)
+    expect(await sameKey(newKey, stayingRecovered)).toBe(true)
+    // It is genuinely a different key from before the rotation.
+    expect(await sameKey(oldKey, stayingRecovered)).toBe(false)
+    // The departed member, with only its stale row, cannot reach the new key:
+    // its old row decrypts to the OLD key, never the new one.
+    const departedRecovered = await unwrapGroupKeyFromStoredPayload(departed.priv, departedOldRow)
+    expect(await sameKey(newKey, departedRecovered)).toBe(false)
   })
 })

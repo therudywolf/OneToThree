@@ -30,9 +30,16 @@
  *
  * - **Server holds no key material.** The owner generates AES-256-GCM locally,
  *   wraps it per remaining member under ECDH, and PUTs each wrapped blob. The
- *   wrapped-key PUT already broadcasts `chats_updated`, so non-owner members
- *   reload `/chats/:id` and rebuild their SECTOR context from the fresh blob
- *   (the context is never cached — see `useChatCryptoContext`).
+ *   wrapped-key PUT broadcasts `chats_updated` to the affected member, and
+ *   `useChatCryptoContext` rebuilds the active SECTOR context on that signal —
+ *   so a non-owner picks up the rotated key and decrypts post-rotation traffic
+ *   without having to switch chats.
+ *
+ * - **Partial rotation self-heals.** Delivery is best-effort per member; a PUT
+ *   that fails leaves that member on a stale-epoch key. The owner's key-
+ *   distribution scan (`useGroupKeyDistribution`) re-delivers the current key to
+ *   any member whose stored epoch is behind the owner's, so the group reconverges
+ *   on the next chat open or membership event.
  */
 
 import {
@@ -64,7 +71,17 @@ export function shouldRotateGroupKey(
   if (detail.chat.type !== 'group_e2e') return false
   if (detail.chat.my_role !== 'owner') return false
   const me = detail.members.find((m) => m.user_id === myUserId)
-  if (!me?.encrypted_group_key) return false
+  if (!me) return false
+  if (!me.encrypted_group_key) {
+    // No cached key. Rotation MINTS a fresh key (it never needs the old one), so
+    // a missing key is not a blocker — it is only a reason not to rotate at group
+    // creation. Rotate iff the chat has already advanced past creation, i.e. a
+    // departure bumped the epoch: an owner promoted mid-group without a key must
+    // still mint the post-departure key, or the departed member keeps reading
+    // traffic (forward-secrecy bypass). At epoch 0 there is nothing to rotate —
+    // creation-time key delivery / the distribution scan handles a missing key.
+    return currentEpoch > 0
+  }
   // Rotate when our stored key predates the current epoch. A null (unparseable)
   // epoch is treated as stale so a corrupt local blob still forces a refresh.
   const storedEpoch = readStoredSectorKeyEpoch(me.encrypted_group_key)
@@ -77,8 +94,9 @@ export function shouldRotateGroupKey(
  * server permits self-target specifically so the rotator can persist its own
  * key, which it must because the SECTOR context is rebuilt from the server, not
  * cached). Best-effort per member: a member whose ECDH key is missing or whose
- * upload fails is skipped and left to the existing "deliver to members without
- * keys" scan to repair, rather than aborting the whole rotation.
+ * upload fails is skipped and left to the key-distribution scan (which re-delivers
+ * to members missing OR behind the current epoch) to repair, rather than aborting
+ * the whole rotation.
  *
  * Caller must have already confirmed `shouldRotateGroupKey`. `myPrivateKey` is
  * the unwrapped vault private key.

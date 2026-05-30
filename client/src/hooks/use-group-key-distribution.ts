@@ -9,6 +9,7 @@ import {
 import {
   wrapGroupKeyForMemberWithCreatorEcdh,
   unwrapGroupKeyFromStoredPayload,
+  readStoredSectorKeyEpoch,
 } from '@/lib/chat-logic'
 import {
   shouldRotateGroupKey,
@@ -42,10 +43,17 @@ async function deliverGroupKeyToMember(
   if (target.encrypted_group_key) return // already delivered
 
   const groupKey = await unwrapGroupKeyFromStoredPayload(myPrivKey, me.encrypted_group_key)
+  // Stamp the delivered key with the epoch of the material we are actually
+  // handing over (our own stored key's epoch), so the recovery scan can later
+  // tell whether this member is on the current key. Truthful labelling matters:
+  // never stamp a key with an epoch newer than the bytes it carries.
+  const myEpoch = readStoredSectorKeyEpoch(me.encrypted_group_key) ?? 0
   const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
     myPrivKey,
     target.ecdh_public_key_jwk,
-    groupKey
+    groupKey,
+    undefined,
+    myEpoch
   )
   await uploadMemberWrappedGroupKey(chatId, targetUserId, wrapped)
 }
@@ -92,7 +100,9 @@ export function useGroupKeyDistribution(
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const busyRef = useRef(false)
 
-  // Part 1: scan active chat for members without keys.
+  // Part 1: on active-chat open — rotate the sector key if it is stale (a member
+  // departed while we were away), otherwise deliver our current key to members
+  // who are missing it or are behind the current epoch.
   useEffect(() => {
     if (
       !activeChatId ||
@@ -109,36 +119,59 @@ export function useGroupKeyDistribution(
       if (busyRef.current) return
       busyRef.current = true
       try {
-        // 1a. Rotate first if our key is stale (a member departed). If we did
-        // rotate, reload so the rest of the scan sees the fresh blobs.
+        // 1a. Rotate first if our key is stale (a member departed). A successful
+        // rotation already re-wrapped the FRESH key for every member, so skip the
+        // delivery scan below — it would otherwise hand out the pre-rotation key
+        // still held in `cryptoCtx.groupKey` (the in-memory context is rebuilt
+        // only after the rotation's `chats_updated` lands; see useChatCryptoContext).
         const rotated = await rotateGroupKeyIfStale(
           activeChatId,
           userId,
           unwrappedPrivateKey
         )
         if (cancelled) return
-        if (rotated) reloadChats()
+        if (rotated) {
+          reloadChats()
+          return
+        }
 
+        // 1b. Deliver our current key to members who are MISSING it, or whose key
+        // is BEHIND ours (a rotation whose PUT failed for them left them split off
+        // on a stale key — re-wrap the current key so the group reconverges). The
+        // delivered key is stamped with our own key's epoch, and we only upgrade
+        // members who are strictly behind it — never downgrade.
         const detail = await fetchChatDetail(activeChatId)
         if (cancelled) return
         const r = detail.chat.my_role
         if (r !== 'owner' && r !== 'admin') return
+        const myMember = detail.members.find((m) => m.user_id === userId)
+        const myEpoch = myMember?.encrypted_group_key
+          ? (readStoredSectorKeyEpoch(myMember.encrypted_group_key) ?? 0)
+          : 0
 
+        let delivered = false
         for (const m of detail.members) {
           if (cancelled) return
           if (m.user_id === userId) continue
-          if (m.encrypted_group_key) continue
           if (!m.ecdh_public_key_jwk) continue
+          const stored = m.encrypted_group_key
+            ? readStoredSectorKeyEpoch(m.encrypted_group_key)
+            : null
+          const needsKey = stored === null || stored < myEpoch
+          if (!needsKey) continue
           const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
             unwrappedPrivateKey,
             m.ecdh_public_key_jwk,
-            cryptoCtx.groupKey
+            cryptoCtx.groupKey,
+            undefined,
+            myEpoch
           )
           await uploadMemberWrappedGroupKey(activeChatId, m.user_id, wrapped)
+          delivered = true
         }
-        reloadChats()
-      } catch {
-        /* best-effort */
+        if (delivered) reloadChats()
+      } catch (e) {
+        console.warn('>> [SYS.SECTOR] group-key rotation/delivery scan failed', e)
       } finally {
         busyRef.current = false
       }
@@ -159,7 +192,9 @@ export function useGroupKeyDistribution(
         if (newUserId === userId) return // we are the one who joined
         void deliverGroupKeyToMember(chat_id, newUserId, unwrappedPrivateKey, userId)
           .then(() => reloadChats())
-          .catch(() => { /* best-effort */ })
+          .catch((e) => {
+            console.warn('>> [SYS.SECTOR] deliver-group-key-on-join failed', e)
+          })
         return
       }
       if (msg.type === 'group_key_epoch') {
@@ -169,7 +204,9 @@ export function useGroupKeyDistribution(
         const { chat_id } = msg
         void rotateGroupKeyIfStale(chat_id, userId, unwrappedPrivateKey)
           .then((rotated) => { if (rotated) reloadChats() })
-          .catch(() => { /* best-effort */ })
+          .catch((e) => {
+            console.warn('>> [SYS.SECTOR] group-key rotation on epoch event failed', e)
+          })
       }
     })
     return off

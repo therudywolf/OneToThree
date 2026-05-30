@@ -1,6 +1,32 @@
-# Group Key Rotation — Implementation Plan (client-side rekey on departure)
+# Group Key Rotation — client-side rekey on departure
 
-Status: **planned, not yet implemented** · Created: 2026-05-30 · Owner decision recorded below.
+Status: **IMPLEMENTED 2026-05-30** · Created: 2026-05-30 · Owner decision recorded below.
+
+## What shipped
+
+- **Epoch-stamped wrapped keys** (`client/src/lib/chat-logic.ts`): `wrapGroupKeyForMemberWithCreatorEcdh`
+  takes an optional `epoch` stamped into the `CREATOR_AUTH_WRAP` payload (plaintext metadata; key
+  stays sealed). `readStoredSectorKeyEpoch` reads it back without the private key — legacy /
+  creation-time keys read as 0. Round-trip tests in `chat-logic.test.ts` (10 tests).
+- **Rotation orchestrator** (`client/src/lib/group-key-rotation.ts`): `shouldRotateGroupKey` (pure,
+  unit-tested — 7 tests in `group-key-rotation.test.ts`) decides owner-only rotation when the stored
+  key's epoch is behind the chat's `key_epoch`; `rotateGroupKeyForChat` mints a fresh AES-256-GCM key,
+  wraps it per current member (including the owner itself), stamps the target epoch, and PUTs each.
+- **Wiring** (`client/src/hooks/use-group-key-distribution.ts`): rotation runs on active-chat open
+  (stale detection — covers the offline-owner case) AND on the live `group_key_epoch` WS event.
+  Non-owners pick up the new key via the `chats_updated` the wrapped-key PUT already broadcasts; the
+  SECTOR context is rebuilt from the server (`useChatCryptoContext`), never cached.
+- **Server** (`server/src/routes/chats.ts`): `GET /chats/:id` now returns `chat.key_epoch`; the
+  wrapped-key PUT permits self-target so the owner can persist its own rotated key (authz still
+  owner/admin-only).
+
+The accepted trade-off (history loss after rotation) and the original plan are preserved below.
+
+---
+
+Original plan (for reference):
+
+Status: ~~planned, not yet implemented~~ · Owner decision recorded below.
 
 ## Decision (owner, 2026-05-30)
 

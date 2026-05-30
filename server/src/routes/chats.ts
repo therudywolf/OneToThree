@@ -1301,14 +1301,15 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
     }
 
-    if (targetUserId === user.id) {
-      return reply.status(400).send({ error: 'FORBIDDEN' })
-    }
-
     const actorRole = await getMemberRole(chatId, user.id)
     if (actorRole !== 'owner' && actorRole !== 'admin') {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
+
+    // Self-target is permitted: on a key rotation the owner must persist its OWN
+    // freshly-minted wrapped key (the client rebuilds the SECTOR context from the
+    // server, so the owner would otherwise lose the new key on next chat open).
+    // Authz already restricts writes to owner/admin above.
 
     const targetOk = await getMemberRole(chatId, targetUserId)
     if (!targetOk) {
@@ -1439,6 +1440,10 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         invite_slug: showInvite ? chat.inviteSlug : null,
         invite_one_time: showInvite ? chat.inviteOneTime : null,
         my_role: memberOk[0].myRole,
+        // Current key-rotation generation. The client compares this against the
+        // epoch stamped in its stored wrapped key to detect a stale key after a
+        // membership change and (owner only) mint a fresh one.
+        key_epoch: chat.keyEpoch,
       },
       members: members.map((m) => ({
         user_id: m.userId,

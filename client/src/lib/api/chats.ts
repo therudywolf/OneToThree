@@ -69,6 +69,8 @@ export type ChatDetailPayload = {
     invite_one_time: boolean | null
     my_role: ChatMemberRole
     discussion_chat_id?: string | null
+    /** Current key-rotation generation; compared against the stored key's epoch. */
+    key_epoch?: number
   }
   members: ChatDetailMember[]
 }

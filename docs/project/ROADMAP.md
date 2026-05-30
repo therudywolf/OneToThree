@@ -316,13 +316,16 @@ device; vault persists across restart/reinstall.
 
 - [?] **`messages.seq` ordering** — column exists but unused end-to-end (client sorts by `created_at`).
   Decide in Phase 1: wire it through (feature) or formalize the `created_at` contract.
-- [~] **Group key rotation on member departure** — server-side epoch bump now fires on **both** kick AND
-  voluntary leave (`chats.ts` `rekeyGroupOnDeparture`; `group_key_epoch` WS event), covered by
-  `chats-ops.test.ts`. **Remaining gap (applies to kick too):** the client records the new `key_epoch`
-  (`use-chats.ts:52`) but does not yet regenerate + redistribute fresh group-key material on bump, so a
-  departed member's old key still decrypts traffic encrypted under the prior epoch. Closing the loop
-  (client generates a new AES group key and re-wraps per remaining member on epoch change) is the separate
-  P2 epic.
+- [x] **Group key rotation on member departure** — DONE (2026-05-30). Server bumps `chats.key_epoch` +
+  broadcasts `group_key_epoch` on **both** kick and voluntary leave (`chats.ts` `rekeyGroupOnDeparture`,
+  `chats-ops.test.ts`). Client now closes the loop: the owner mints a fresh AES-256-GCM key and re-wraps
+  it per remaining member on epoch change — driven both by the live `group_key_epoch` event and by stale
+  detection on chat open (epoch stamped into each wrapped key, so an offline owner still rotates next
+  open). See `client/src/lib/group-key-rotation.ts`, `chat-logic.ts` (epoch stamping),
+  `use-group-key-distribution.ts`, and `docs/project/GROUP_KEY_ROTATION_PLAN.md`. Round-trip tests:
+  `chat-logic.test.ts` (incl. "removed member cannot unwrap rotated key"), `group-key-rotation.test.ts`.
+  **Accepted trade-off:** group history sent under a prior key stops decrypting after rotation (no message
+  epoch-tagging) — an explicit owner decision; history-preserving rotation remains a larger future epic.
 - [?] **WS scaling** — prod runs a single API instance; the in-process WS registry (`server/src/ws/registry.ts`)
   has no Redis pub/sub fan-out, so >1 replica silently breaks delivery. Out of scope until horizontal scaling is needed.
 - [x] **CI is permanently off** — billing will NOT be restored (owner decision 2026-05-29). Gate = local

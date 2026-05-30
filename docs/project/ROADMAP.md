@@ -1,6 +1,6 @@
 # OneToThree — Production Roadmap (R2: Hardening & Platform Expansion)
 
-Updated: 2026-05-29
+Updated: 2026-05-31
 Owner: rudywolf
 Depth target: **PRODUCTION-GRADE** (chosen 2026-05-29 — maximal coverage, external-audit-ready, signed/notarized native, full a11y).
 
@@ -326,6 +326,25 @@ device; vault persists across restart/reinstall.
   `chat-logic.test.ts` (incl. "removed member cannot unwrap rotated key"), `group-key-rotation.test.ts`.
   **Accepted trade-off:** group history sent under a prior key stops decrypting after rotation (no message
   epoch-tagging) — an explicit owner decision; history-preserving rotation remains a larger future epic.
+  **Review hardening (2026-05-31, multi-agent review of the PR):** four confirmed defects fixed before
+  ship — (1) `useChatCryptoContext` now rebuilds the active SECTOR context on the `chats_updated` /
+  `group_key_epoch` WS signal, so a **non-owner actually picks up the rotated key** instead of being stuck
+  on the stale in-memory key until a chat switch; (2) the key-distribution scan re-delivers to members
+  whose stored epoch is **behind** the owner's (not only those with a null key), so a partial rotation
+  self-heals; (3) an owner with **no cached key** but an advanced epoch still rotates (forward-secrecy
+  bypass closed); (4) rotation/delivery failures are logged (`>> [SYS.SECTOR]`) instead of silently
+  swallowed. Added an end-to-end `rotateGroupKeyForChat` round-trip test in `group-key-rotation.test.ts`.
+- [ ] **Group-leave server hardening (follow-ups surfaced by the 2026-05-31 review, not regressions):**
+  (a) in the owner-leave branch of `chats.ts`, the next-owner is selected OUTSIDE the ownership-transfer
+  transaction — a simultaneous departure of the nominee can leave the chat ownerless (0-row UPDATE, no
+  error). Move the selection into the txn and verify the UPDATE rowcount. (b) the `key_epoch` bump is not
+  atomic with the membership delete in any path (kick / leave); a crash between them can leave the epoch
+  lagging. Functionally safe today (a re-added member gets a null key), but wrap delete+bump in one txn.
+- [ ] **Chat message-list virtualization (PR #5, deferred 2026-05-31):** `@tanstack/react-virtual` rewrite
+  of `chat-terminal.tsx` + chunked main-thread decrypt. Merges cleanly and the pure logic is sound, but the
+  review found a **scroll-position-jump regression on back-pagination** (the sticky anchor row can unmount
+  outside the overscan window before restore), which needs browser/e2e verification before it ships. Kept
+  as draft PR #5; fix anchor-by-id (not by element ref) or widen overscan, then verify in a real browser.
 - [?] **WS scaling** — prod runs a single API instance; the in-process WS registry (`server/src/ws/registry.ts`)
   has no Redis pub/sub fan-out, so >1 replica silently breaks delivery. Out of scope until horizontal scaling is needed.
 - [x] **CI is permanently off** — billing will NOT be restored (owner decision 2026-05-29). Gate = local

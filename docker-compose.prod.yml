@@ -11,7 +11,7 @@ name: forestmessenger
 services:
   db:
     image: postgres:16-alpine
-    restart: always
+    restart: unless-stopped
     command: >
       postgres
       -c shared_buffers=256MB
@@ -23,7 +23,7 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
-    cpu_shares: 512
+    cpu_shares: 2048
     mem_limit: 512m
     mem_reservation: 128m
     secrets:
@@ -54,9 +54,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    restart: always
+    restart: unless-stopped
     command: redis-server --save 60 1 --appendonly yes --loglevel warning
-    cpu_shares: 256
+    cpu_shares: 2048
     mem_limit: 128m
     mem_reservation: 32m
     networks:
@@ -72,11 +72,11 @@ services:
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    restart: always
+    restart: unless-stopped
     dns:
       - 8.8.8.8
       - 1.1.1.1
-    cpu_shares: 384
+    cpu_shares: 2048
     mem_limit: 512m
     mem_reservation: 128m
     command: server /data --console-address ':9001'
@@ -140,14 +140,16 @@ services:
         APP_VERSION: ${APP_VERSION:-dev}
         GIT_SHA: ${GIT_SHA:-}
         BUILT_AT: ${BUILT_AT:-}
-    restart: always
+    restart: unless-stopped
     dns:
       - 8.8.8.8
       - 1.1.1.1
     read_only: true
+    security_opt:
+      - no-new-privileges:true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=128m
-    cpu_shares: 512
+    cpu_shares: 1024
     mem_limit: 1024m
     mem_reservation: 256m
     expose:
@@ -250,11 +252,11 @@ services:
         # localhost has no API. Empty here => onetothree.ru/api/* 500s with
         # ECONNREFUSED 127.0.0.1:8080 (the Next proxy can't reach the API).
         API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080}
-    restart: always
+    restart: unless-stopped
     dns:
       - 8.8.8.8
       - 1.1.1.1
-    cpu_shares: 512
+    cpu_shares: 1024
     mem_limit: 1536m
     mem_reservation: 512m
     expose:
@@ -302,7 +304,7 @@ services:
   # ./startup.sh turn-sync. coturn starts without TLS until those files exist.
   coturn:
     image: coturn/coturn:4.6
-    restart: always
+    restart: unless-stopped
     network_mode: host
     user: root
     cpu_shares: 2048
@@ -344,7 +346,7 @@ services:
   # secret out of .env.prod entirely.
   livekit:
     image: livekit/livekit-server:v1.8
-    restart: always
+    restart: unless-stopped
     network_mode: host
     cpu_shares: 2048
     mem_limit: 256m

@@ -84,4 +84,123 @@ describe('chat create/update/member routes', () => {
       await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
     }
   })
+
+  async function readKeyEpoch(chatId: string): Promise<number> {
+    const [row] = await db
+      .select({ keyEpoch: chats.keyEpoch })
+      .from(chats)
+      .where(eq(chats.id, chatId))
+      .limit(1)
+    return row?.keyEpoch ?? -1
+  }
+
+  async function createGroup(
+    app: FastifyInstance,
+    ownerCookie: string,
+    owner: { id: string },
+    members: { id: string }[]
+  ): Promise<string> {
+    const created = await request(app.server)
+      .post('/api/chats')
+      .set('Cookie', ownerCookie)
+      .send({
+        type: 'group_e2e',
+        name: 'Rekey group',
+        members: [
+          { userId: owner.id, encryptedGroupKey: 'owner-key' },
+          ...members.map((m) => ({ userId: m.id, encryptedGroupKey: 'member-key' })),
+        ],
+      })
+      .expect(201)
+    return created.body.chat.id
+  }
+
+  // A departing member must trigger group-key rotation (epoch bump) so they can
+  // no longer decrypt future traffic — for both kick and voluntary leave.
+  it('bumps the key epoch when a member is kicked from a group_e2e chat', async () => {
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`rk-kick-owner-${stamp}`)
+    const member = await createUser(`rk-kick-member-${stamp}`)
+    const cookie = `fm_session=${await app!.jwt.sign({ sub: owner.id, username: owner.username, jti: randomUUID() })}`
+
+    let chatId: string | null = null
+    try {
+      chatId = await createGroup(app!, cookie, owner, [member])
+      const before = await readKeyEpoch(chatId)
+
+      await request(app!.server)
+        .delete(`/api/chats/${chatId}/members/${member.id}`)
+        .set('Cookie', cookie)
+        .expect(200)
+
+      expect(await readKeyEpoch(chatId)).toBe(before + 1)
+    } finally {
+      if (chatId) {
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+        await db.delete(chats).where(eq(chats.id, chatId))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
+    }
+  })
+
+  it('bumps the key epoch when a non-owner voluntarily leaves a group_e2e chat', async () => {
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`rk-leave-owner-${stamp}`)
+    const member = await createUser(`rk-leave-member-${stamp}`)
+    const memberCookie = `fm_session=${await app!.jwt.sign({ sub: member.id, username: member.username, jti: randomUUID() })}`
+    const ownerCookie = `fm_session=${await app!.jwt.sign({ sub: owner.id, username: owner.username, jti: randomUUID() })}`
+
+    let chatId: string | null = null
+    try {
+      chatId = await createGroup(app!, ownerCookie, owner, [member])
+      const before = await readKeyEpoch(chatId)
+
+      await request(app!.server)
+        .post(`/api/chats/${chatId}/leave`)
+        .set('Cookie', memberCookie)
+        .expect(200)
+
+      // The owner remains, so the chat survives and its key epoch advances.
+      expect(await readKeyEpoch(chatId)).toBe(before + 1)
+    } finally {
+      if (chatId) {
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+        await db.delete(chats).where(eq(chats.id, chatId))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
+    }
+  })
+
+  it('bumps the key epoch when the owner leaves and ownership transfers', async () => {
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`rk-xfer-owner-${stamp}`)
+    const member = await createUser(`rk-xfer-member-${stamp}`)
+    const ownerCookie = `fm_session=${await app!.jwt.sign({ sub: owner.id, username: owner.username, jti: randomUUID() })}`
+
+    let chatId: string | null = null
+    try {
+      chatId = await createGroup(app!, ownerCookie, owner, [member])
+      const before = await readKeyEpoch(chatId)
+
+      await request(app!.server)
+        .post(`/api/chats/${chatId}/leave`)
+        .set('Cookie', ownerCookie)
+        .expect(200)
+
+      // Ownership transfers to the remaining member; the key epoch still advances.
+      expect(await readKeyEpoch(chatId)).toBe(before + 1)
+      const [survivor] = await db
+        .select({ role: chatMembers.role })
+        .from(chatMembers)
+        .where(eq(chatMembers.userId, member.id))
+        .limit(1)
+      expect(survivor?.role).toBe('owner')
+    } finally {
+      if (chatId) {
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+        await db.delete(chats).where(eq(chats.id, chatId))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
+    }
+  })
 })

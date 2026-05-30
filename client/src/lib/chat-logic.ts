@@ -45,6 +45,15 @@ export type SectorKeyAuthWrap = {
   ciphertext: string
   iv: string
   creatorEcdhPublicKeyJwk: string
+  /**
+   * Key-rotation generation this wrapped key belongs to (mirrors
+   * `chats.key_epoch`). Present only on keys minted by a rotation; absent on
+   * keys from the original group creation (treated as epoch 0). Lets a member
+   * detect that its stored key is STALE versus the chat's current epoch — the
+   * trigger for the owner to mint a fresh key after a departure — without
+   * unwrapping. Plaintext metadata only; the key material stays sealed.
+   */
+  epoch?: number
 }
 
 export type PreparedSectorKeyRow = {
@@ -134,23 +143,50 @@ export async function wrapGroupKeyForMemberWithCreatorEcdh(
   creatorPrivateKey: CryptoKey,
   memberPublicKeyJwk: string,
   sectorKey: CryptoKey,
-  creatorPublicKeyJwk?: string
+  creatorPublicKeyJwk?: string,
+  epoch?: number
 ): Promise<string> {
   const creatorPubJwk =
     creatorPublicKeyJwk ?? (await exportEcdhPublicJwkFromPrivateKey(creatorPrivateKey))
   const memberPub = await importEcdhPublicKey(memberPublicKeyJwk)
   const wrapKey = await deriveSharedSecret(creatorPrivateKey, memberPub)
-  
+
   const rawKey = new Uint8Array(await getSubtle().exportKey('raw', sectorKey))
   const { ciphertext, iv } = await sealBytes(wrapKey, rawKey)
 
-  return packPayload({
+  const payload: SectorKeyAuthWrap = {
     kind: 'CREATOR_AUTH_WRAP',
     v: 1,
     ciphertext,
     iv,
     creatorEcdhPublicKeyJwk: creatorPubJwk,
-  })
+  }
+  // Only stamp an epoch when one is supplied (i.e. a rotation). Keys from the
+  // original group creation stay epoch-less and read back as 0.
+  if (epoch !== undefined) payload.epoch = epoch
+  return packPayload(payload)
+}
+
+/**
+ * [READ_SECTOR_KEY_EPOCH]
+ * Read the rotation epoch a stored wrapped key was minted for WITHOUT unwrapping
+ * it (no private key needed). Returns 0 for legacy / creation-time keys and for
+ * the ephemeral-dispatch format, which predate epoch stamping. Returns null only
+ * when the payload is unparseable. Used to detect a stale local key against the
+ * chat's current `key_epoch` after a membership change.
+ */
+export function readStoredSectorKeyEpoch(encryptedBase64: string): number | null {
+  try {
+    const data = JSON.parse(
+      new TextDecoder().decode(fromB64(encryptedBase64))
+    ) as Partial<SectorKeyAuthWrap>
+    if (typeof data.epoch === 'number' && Number.isFinite(data.epoch)) {
+      return data.epoch
+    }
+    return 0
+  } catch {
+    return null
+  }
 }
 
 /**

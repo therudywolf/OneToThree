@@ -155,17 +155,22 @@ characterization tests exist for every Phase-3 target.
 **Remediate `AUDIT_2026-05-03.md` findings** (re-confirm each against current code — much may be fixed in
 `7ccfbad`; close what remains):
 
-- [ ] **P0** WS `chat_message` handler bypasses DR/fanout/channel-auth validation — `server/src/routes/ws.ts`.
-  Decide: delete (REST-only sends) or mirror REST validation 1:1.
-- [ ] **P0** X3DH responder accepts initiator identity from the wire without verifying the published bundle —
-  `client/src/lib/ratchet/session-manager.ts`. Fetch bundle, assert identity match; add a `X3DH_IDENTITY_MISMATCH` test.
-- [ ] **P1** `GET /chats/join/:code` is mutating + CSRF-prone with `SameSite=None` — `server/src/routes/chats.ts`.
-  Move to POST + rate limit.
-- [ ] **P1** single device revoke lacks TOTP step-up — `server/src/routes/users.ts`.
-- [ ] **P1** `POST /messages/:id/pin` missing group/channel role check — `server/src/routes/messages.ts`.
+- [x] **P0** WS `chat_message` handler bypasses DR/fanout/channel-auth validation — `server/src/routes/ws.ts`.
+  **Done:** WS now rejects `chat_message` frames with `CHAT_MESSAGE_OVER_WS_FORBIDDEN` (`ws.ts:392`); REST
+  `POST /messages/send` is the sole send path. (re-confirmed in code 2026-05-30)
+- [x] **P0** X3DH responder accepts initiator identity from the wire without verifying the published bundle —
+  `client/src/lib/ratchet/session-manager.ts`. **Done:** `acceptIncomingInit` fetches the peer bundle via
+  `keysApi.fetchIdentity` and throws `X3DH_IDENTITY_MISMATCH` on mismatch (`session-manager.ts:774`).
+- [x] **P1** `GET /chats/join/:code` is mutating + CSRF-prone with `SameSite=None` — `server/src/routes/chats.ts`.
+  **Done:** now `POST /join/:code` + 10/min rate limit (`chats.ts:526`).
+- [x] **P1** single device revoke lacks TOTP step-up — `server/src/routes/users.ts`. **Done:**
+  `DELETE /me/devices/:deviceId` calls `requireTotpStepUp` (`users.ts:767`).
+- [x] **P1** `POST /messages/:id/pin` missing group/channel role check — `server/src/routes/messages.ts`.
+  **Done:** branches on `chat.type` (group → owner/admin, channel → owner/editor) + 30/min (`messages.ts:716`).
 - [ ] **P1** trust-registry parse error silently skips verification — `client/src/lib/chat-crypto.ts`
-  (throw + UX banner).
-- [ ] **P1** `link/confirm` derives audit metadata from body, not `request.ip`/UA — `server/src/routes/devices.ts`.
+  (throw + UX banner). (not re-confirmed — still verify)
+- [x] **P1** `link/confirm` derives audit metadata from body, not `request.ip`/UA — `server/src/routes/devices.ts`.
+  **Done:** UA/IP derived from `request.headers`/`request.ip` (`devices.ts:241`).
 
 **Hardening (prod-grade):**
 
@@ -311,8 +316,16 @@ device; vault persists across restart/reinstall.
 
 - [?] **`messages.seq` ordering** — column exists but unused end-to-end (client sorts by `created_at`).
   Decide in Phase 1: wire it through (feature) or formalize the `created_at` contract.
-- [?] **Group key rotation on member departure** — NOT implemented; a departing member retains the group key.
-  Separate P2 epic; decide scope under the prod-grade target.
+- [x] **Group key rotation on member departure** — DONE (2026-05-30). Server bumps `chats.key_epoch` +
+  broadcasts `group_key_epoch` on **both** kick and voluntary leave (`chats.ts` `rekeyGroupOnDeparture`,
+  `chats-ops.test.ts`). Client now closes the loop: the owner mints a fresh AES-256-GCM key and re-wraps
+  it per remaining member on epoch change — driven both by the live `group_key_epoch` event and by stale
+  detection on chat open (epoch stamped into each wrapped key, so an offline owner still rotates next
+  open). See `client/src/lib/group-key-rotation.ts`, `chat-logic.ts` (epoch stamping),
+  `use-group-key-distribution.ts`, and `docs/project/GROUP_KEY_ROTATION_PLAN.md`. Round-trip tests:
+  `chat-logic.test.ts` (incl. "removed member cannot unwrap rotated key"), `group-key-rotation.test.ts`.
+  **Accepted trade-off:** group history sent under a prior key stops decrypting after rotation (no message
+  epoch-tagging) — an explicit owner decision; history-preserving rotation remains a larger future epic.
 - [?] **WS scaling** — prod runs a single API instance; the in-process WS registry (`server/src/ws/registry.ts`)
   has no Redis pub/sub fan-out, so >1 replica silently breaks delivery. Out of scope until horizontal scaling is needed.
 - [x] **CI is permanently off** — billing will NOT be restored (owner decision 2026-05-29). Gate = local

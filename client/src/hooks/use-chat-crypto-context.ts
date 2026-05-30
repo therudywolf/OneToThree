@@ -6,6 +6,7 @@ import {
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
 import { useSessionStore } from '@/store/sessionStore'
+import { getFmSocket } from '@/lib/api/socket'
 
 export function useChatCryptoContext() {
   const activeChatId = useSessionStore((s) => s.activeChatId)
@@ -14,6 +15,40 @@ export function useChatCryptoContext() {
 
   const [cryptoCtx, setCryptoCtx] = useState<ChatCryptoContext | null>(null)
   const [ctxError, setCtxError] = useState<string | null>(null)
+  // Bumped whenever the active chat's wrapped key may have changed on the server,
+  // forcing buildChatCryptoContext to re-run and pick up the fresh blob. Without
+  // this, a non-owner who receives a freshly ROTATED SECTOR key (after a member
+  // departs) keeps the stale in-memory key and cannot decrypt post-rotation
+  // messages until they manually switch chats. See group-key-rotation.ts / PR #6.
+  const [keyRebuildNonce, setKeyRebuildNonce] = useState(0)
+
+  // Re-fetch + rebuild the context when a WS signal says the active chat's key
+  // material may have changed. `chats_updated` is the reliable post-upload signal
+  // (the wrapped-key PUT broadcasts it to the affected member); `group_key_epoch`
+  // is an early nudge on departure. Coalesced (debounced) so a burst of per-member
+  // uploads triggers a single rebuild after the writes have landed. `chats_updated`
+  // is broadcast only on membership / metadata / key writes — never per message —
+  // so rebuilding the active context on it is cheap and bounded.
+  useEffect(() => {
+    if (!activeChatId) return
+    const socket = getFmSocket()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const bumpSoon = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => setKeyRebuildNonce((n) => n + 1), 300)
+    }
+    const off = socket.subscribe((msg) => {
+      if (msg.type === 'chats_updated') {
+        bumpSoon()
+      } else if (msg.type === 'group_key_epoch' && msg.chat_id === activeChatId) {
+        bumpSoon()
+      }
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      off()
+    }
+  }, [activeChatId])
 
   useEffect(() => {
     if (!activeChatId || !userId || !unwrappedPrivateKey) {
@@ -47,7 +82,7 @@ export function useChatCryptoContext() {
     return () => {
       cancelled = true
     }
-  }, [activeChatId, userId, unwrappedPrivateKey])
+  }, [activeChatId, userId, unwrappedPrivateKey, keyRebuildNonce])
 
   return { cryptoCtx, ctxError }
 }

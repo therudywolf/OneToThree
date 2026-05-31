@@ -1,14 +1,13 @@
 name: Claude Code Review
 
+# CI is disabled: GitHub Actions billing is permanently off (owner decision
+# 2026-05-29) — every job fails at startup. Reduced to manual (workflow_dispatch)
+# to stop the always-red review run on every PR. Code review is done locally
+# (the /code-review skill). Restore the pull_request trigger below if billing returns.
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+  workflow_dispatch:
+  # pull_request:
+  #   types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
   claude-review:

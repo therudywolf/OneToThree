@@ -85,8 +85,10 @@ environment and may be used freely as the live test target. The standing gate is
   is exactly what the local plain-HTTP harness could not ("me 401" was a Secure-cookie drop over HTTP).
 - **Post-deploy:** live smoke on prod (`/version` matches the pushed SHA, `/health`, targeted curls / e2e).
 
-- [ ] **Neuter the always-red CI workflows** (optional cleanup): switch `prod-checks.yml` et al. to
-  `workflow_dispatch`-only so they stop auto-failing on every push. Keep the files in case billing returns.
+- [x] **Neuter the always-red CI workflows** — DONE (2026-05-31). `prod-checks.yml`, `gitleaks.yml`,
+  `claude-code-review.yml`, `tauri-build.yml` are now `workflow_dispatch`-only (push/PR triggers commented
+  out, jobs kept) so they no longer auto-fail on every push/PR. `claude.yml` (mention-driven) and
+  `release.yml` (tag/dispatch) were left as-is. Restore the triggers if Actions billing ever returns.
 - [x] **E2E runs against prod** (verified 2026-05-29). The global-setup is already target-aware (skips the
   HTTP-only cookie probe for HTTPS bases). Run with:
   `PLAYWRIGHT_BASE_URL=https://onetothree.ru PLAYWRIGHT_API_HEALTH=https://api.onetothree.ru/health PLAYWRIGHT_SKIP_WEBSERVER=1 npx playwright test <spec> --project=chromium`
@@ -167,8 +169,11 @@ characterization tests exist for every Phase-3 target.
   `DELETE /me/devices/:deviceId` calls `requireTotpStepUp` (`users.ts:767`).
 - [x] **P1** `POST /messages/:id/pin` missing group/channel role check — `server/src/routes/messages.ts`.
   **Done:** branches on `chat.type` (group → owner/admin, channel → owner/editor) + 30/min (`messages.ts:716`).
-- [ ] **P1** trust-registry parse error silently skips verification — `client/src/lib/chat-crypto.ts`
-  (throw + UX banner). (not re-confirmed — still verify)
+- [~] **P1** trust-registry parse error — **security FIXED** (verified 2026-05-31). `chat-crypto.ts`
+  `assertTrustOrThrow` fails CLOSED on a corrupt/unparseable registry (`throw
+  SECURITY_SIGNAL_REGISTRY_CORRUPT :: COMPROMISED_LINK`) instead of silently skipping verification; locked
+  by `trust-store.test.ts` (corruption-gate: parse error, checksum mismatch, refuses setVerifiedHash while
+  corrupt). Residual (UI only): a user-facing banner on the corrupt signal — needs a browser pass.
 - [x] **P1** `link/confirm` derives audit metadata from body, not `request.ip`/UA — `server/src/routes/devices.ts`.
   **Done:** UA/IP derived from `request.headers`/`request.ip` (`devices.ts:241`).
 

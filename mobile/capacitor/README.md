@@ -16,6 +16,19 @@ This command:
 2. syncs assets into `mobile/capacitor/android`
 3. builds `assembleDebug`
 
+## iOS
+
+The same Capacitor project also targets iOS (`@capacitor/ios` is wired in). iOS
+can only be built on a Mac and is **not scaffolded yet** — the first build runs
+`cap add ios`. Full instructions, signing, Universal Links, and the
+`scripts/build-ipa.sh` helper live in
+[`docs/BUILD_MACOS_IOS.md`](../../docs/BUILD_MACOS_IOS.md).
+
+```bash
+npm run ios:add     # one-time: scaffold mobile/capacitor/ios/ (Mac only)
+./scripts/build-ipa.sh simulator   # or: archive (signed .ipa)
+```
+
 ## FCM setup (optional)
 
 FCM is **optional**. `google-services.json` is operator-supplied and is *not*

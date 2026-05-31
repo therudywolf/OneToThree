@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "ru.onetothree.app",
+      "sha256_cert_fingerprints": [
+        "29:C9:A2:87:91:1E:9E:AA:D2:79:43:71:4B:64:60:02:07:0E:51:C3:26:F3:05:12:FD:D2:25:B2:0A:02:D5:A7"
+      ]
+    }
+  }
+]

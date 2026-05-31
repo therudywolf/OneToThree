@@ -47,15 +47,19 @@ android {
     }
     signingConfigs {
         release {
+            // NB: local var names must NOT match the signingConfig DSL setters
+            // (storePassword / keyAlias / keyPassword). A same-named `def` shadows
+            // the setter, so Groovy tries to *call* the String value and fails with
+            // "No signature of method: java.lang.String.call()". Use distinct names.
             def storeFilePath = project.findProperty('RELEASE_STORE_FILE')
-            def storePassword = project.findProperty('RELEASE_STORE_PASSWORD')
-            def keyAlias = project.findProperty('RELEASE_KEY_ALIAS')
-            def keyPassword = project.findProperty('RELEASE_KEY_PASSWORD')
-            if (storeFilePath && storePassword && keyAlias && keyPassword) {
+            def storePass = project.findProperty('RELEASE_STORE_PASSWORD')
+            def releaseKeyAlias = project.findProperty('RELEASE_KEY_ALIAS')
+            def keyPass = project.findProperty('RELEASE_KEY_PASSWORD')
+            if (storeFilePath && storePass && releaseKeyAlias && keyPass) {
                 storeFile file(storeFilePath)
-                storePassword storePassword
-                keyAlias keyAlias
-                keyPassword keyPassword
+                storePassword storePass
+                keyAlias releaseKeyAlias
+                keyPassword keyPass
             }
         }
     }

@@ -1,3 +1,11 @@
+# ⚠️  LOCAL DEVELOPMENT ONLY — do NOT use this file in production.
+#  - It binds Postgres (5432), MinIO (9000/9001), Redis and the API/web to the
+#    HOST, reachable from the local network. Production uses docker-compose.prod.yml,
+#    which keeps these on an internal Docker network with nothing extra published.
+#  - MinIO falls back to weak default credentials (minio / minio_secret_change_me)
+#    when MINIO_ROOT_USER / MINIO_ROOT_PASSWORD are unset. Set real values in .env
+#    for any shared/exposed host. Prod loads all secrets from Docker secrets.
+# Deploy to prod with ./deploy.sh (docker-compose.prod.yml), never this file.
 name: forestmessenger
 
 services:

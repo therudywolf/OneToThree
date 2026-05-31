@@ -1,10 +1,16 @@
 name: Production checks
 
+# CI is disabled: GitHub Actions billing is permanently off (owner decision
+# 2026-05-29), so every job fails at startup. Triggers reduced to manual
+# (workflow_dispatch) to stop always-red runs on every push/PR — the gate is
+# local + prod (see docs/project/ROADMAP.md Phase 0). Restore the push/PR
+# triggers below if billing ever returns.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # pull_request:
+  #   branches: [main]
 
 permissions:
   contents: read

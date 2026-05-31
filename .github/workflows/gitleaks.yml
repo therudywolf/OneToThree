@@ -1,9 +1,15 @@
 name: Secret scan
 
+# CI is disabled: GitHub Actions billing is permanently off (owner decision
+# 2026-05-29) — every job fails at startup. Reduced to manual (workflow_dispatch)
+# to stop always-red runs. Secret scanning still runs locally via the pre-commit
+# / pre-push gitleaks hooks (.pre-commit-config.yaml, .gitleaks.toml). Restore the
+# push/PR triggers below if billing returns.
 on:
-  push:
-    branches: [main, master]
-  pull_request:
+  workflow_dispatch:
+  # push:
+  #   branches: [main, master]
+  # pull_request:
 
 permissions:
   contents: read

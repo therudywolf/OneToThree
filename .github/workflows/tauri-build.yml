@@ -1,5 +1,9 @@
 name: Desktop (Tauri) build
 
+# CI is disabled: GitHub Actions billing is permanently off (owner decision
+# 2026-05-29) — every job fails at startup. Reduced to manual (workflow_dispatch)
+# to stop always-red runs on every client/desktop push. Restore the push/PR
+# triggers below if billing returns.
 on:
   workflow_dispatch:
     inputs:
@@ -7,16 +11,16 @@ on:
         description: "Attach binaries to a draft GitHub release"
         type: boolean
         default: false
-  push:
-    branches: [main]
-    paths:
-      - "desktop/tauri/**"
-      - "client/**"
-      - ".github/workflows/tauri-build.yml"
-  pull_request:
-    paths:
-      - "desktop/tauri/**"
-      - ".github/workflows/tauri-build.yml"
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "desktop/tauri/**"
+  #     - "client/**"
+  #     - ".github/workflows/tauri-build.yml"
+  # pull_request:
+  #   paths:
+  #     - "desktop/tauri/**"
+  #     - ".github/workflows/tauri-build.yml"
 
 permissions:
   contents: write

@@ -21,6 +21,9 @@
     "android:open": "npm run open:android --prefix mobile/capacitor",
     "android:build:debug": "npm run android:sync && npm run build:debug --prefix mobile/capacitor",
     "android:build:release": "npm run android:sync && npm run build:release --prefix mobile/capacitor",
+    "ios:add": "npm run add:ios --prefix mobile/capacitor",
+    "ios:sync": "npm run android:clean && npm run build:client:export && npm run sync:ios --prefix mobile/capacitor",
+    "ios:open": "npm run open:ios --prefix mobile/capacitor",
     "build:all": "npm run build --workspaces --if-present",
     "lint": "npm run lint -w project-13-client && npm run lint -w project-13-server",
     "prod:start": "npm run docker:up",
@@ -82,6 +85,7 @@
     "@capacitor/android": "^8.3.1",
     "@capacitor/cli": "^8.3.1",
     "@capacitor/core": "^8.3.1",
+    "@capacitor/ios": "^8.3.1",
     "@capacitor/push-notifications": "^8.0.3",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2"

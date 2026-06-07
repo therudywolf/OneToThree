@@ -1,7 +1,7 @@
 # Next.js — development image (bind-mount friendly).
 # Runs as root so `docker-compose` can `npm install` into named volumes / bind mounts.
 # Production: use ./Dockerfile (multi-stage, non-root `nextjs` user).
-FROM node:20-alpine
+FROM node:26-alpine
 
 RUN apk add --no-cache libc6-compat
 

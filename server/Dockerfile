@@ -13,7 +13,7 @@
 # =============================================================================
 
 # --- production dependencies -------------------------------------------------
-FROM node:20-alpine AS deps
+FROM node:26-alpine AS deps
 WORKDIR /app
 # Root manifest + authoritative lockfile, plus every workspace package.json:
 # npm needs all of them present to validate the lockfile, even though only
@@ -29,7 +29,7 @@ RUN npm pkg delete scripts.prepare \
  && mkdir -p /app/server/node_modules
 
 # --- build (devDependencies needed for tsc) ---------------------------------
-FROM node:20-alpine AS builder
+FROM node:26-alpine AS builder
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -42,7 +42,7 @@ COPY server/src ./server/src
 RUN npm run build --workspace project-13-server
 
 # --- runtime -----------------------------------------------------------------
-FROM node:20-alpine AS runner
+FROM node:26-alpine AS runner
 RUN addgroup -g 1001 -S app && adduser -S app -u 1001 -G app
 WORKDIR /app/server
 # Production dependency tree, exactly as resolved from the workspace lockfile.

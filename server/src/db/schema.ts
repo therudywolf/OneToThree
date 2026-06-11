@@ -71,6 +71,22 @@ export const users = pgTable('users', {
   vaultBlob: text('vault_blob'),
   vaultVersion: integer('vault_version').notNull().default(0),
   vaultUpdatedAt: timestamp('vault_updated_at', { withTimezone: true }),
+  /**
+   * Account recovery (Option A). A SECOND copy of the keyring sealed under the
+   * client-only 256-bit recovery phrase (a normal VaultBlob, but wrapped with
+   * the phrase instead of the login password). Opaque ciphertext — the server
+   * never decrypts it.
+   */
+  recoveryVaultBlob: text('recovery_vault_blob'),
+  /**
+   * ECDSA P-256 public JWK derived deterministically from the recovery phrase.
+   * Recovery proves phrase knowledge by signing a server nonce that this key
+   * verifies (same crypto as login) — the server authorizes the blob download
+   * without ever seeing the phrase. Public material only.
+   */
+  recoveryAuthPubJwk: text('recovery_auth_pub_jwk'),
+  /** When true, the recovery download additionally requires a TOTP step-up (opt-in). */
+  recoveryRequireTotp: boolean('recovery_require_totp').notNull().default(false),
   /** MinIO object key under avatar bucket (e.g. avatars/{userId}/file.jpg). */
   avatarKey: text('avatar_key'),
   /** Updated on WS connect, heartbeat, and disconnect (presence / last seen). */

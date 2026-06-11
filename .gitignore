@@ -75,7 +75,10 @@ yarn-error.log*
 # Vercel / misc
 .vercel
 .cursor/
-.claude/
+# Ignore local agent state (settings.local.json, worktrees/) but TRACK shared,
+# reusable agent workflows (e.g. the codebase bug-hunt).
+.claude/*
+!.claude/workflows/
 .idea/
 .vscode/
 *.pem

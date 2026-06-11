@@ -678,6 +678,17 @@ export async function encryptForPeer(
 
   if (uniqueTargets.length === 0) throw new Error('RATCHET_NO_SESSION')
 
+  // Fail CLOSED: for a real DIRECT chat (peerId !== ownerId) there MUST be at
+  // least one device belonging to the peer. If the peer published an ECDH key
+  // but no DR identity (peerDevices === []), uniqueTargets would otherwise hold
+  // only the sender's OTHER devices — the send would "succeed" while the
+  // recipient gets nothing (there is no v1 downgrade). Surface SEND FAILED
+  // instead of silently self-fanning-out.
+  const peerDeviceIds = new Set(peerDevices.map((d) => d.device_id))
+  if (peerId !== ownerId && !uniqueTargets.some((t) => t.userId === peerId)) {
+    throw new Error('RATCHET_NO_SESSION')
+  }
+
   const plainBytes = ENCODER.encode(plaintext)
   const slots: DrDeviceSlot[] = []
 
@@ -748,6 +759,12 @@ export async function encryptForPeer(
   }
 
   if (slots.length === 0) throw new Error('RATCHET_NO_SESSION')
+  // Even with a peer device listed, every per-device bootstrap for the peer can
+  // fail (missing/expired bundle) and be swallowed above, leaving only self
+  // slots. Still fail closed so the peer is never silently skipped.
+  if (peerId !== ownerId && !slots.some((s) => peerDeviceIds.has(s.deviceId))) {
+    throw new Error('RATCHET_NO_SESSION')
+  }
   return { slots }
 }
 

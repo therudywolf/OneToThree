@@ -399,6 +399,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       const mnemonic = generateRecoveryMnemonic()
       const { publicJwk } = deriveRecoveryAuthKeypair(mnemonic)
       const recoveryBlob = await wrapPrivateJwkWithPin(keyring, mnemonic)
+      // Self-check before we ever upload: the sealed blob MUST decrypt back to
+      // the same keyring with the phrase, or recovery would be silently bricked
+      // (RECOVERY_DECRYPT_FAILED) at the worst possible moment.
+      if ((await unwrapPrivateJwkWithPin(recoveryBlob, mnemonic)) !== keyring) {
+        throw new Error('RECOVERY_SELF_CHECK_FAILED')
+      }
       setRecoveryRequireTotp(false)
       setRecoveryTotpCode('')
       setRecoverySavedConfirmed(false)

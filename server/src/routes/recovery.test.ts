@@ -104,4 +104,69 @@ describe('account recovery (Option A) routes', () => {
       await db.delete(users).where(inArray(users.id, [u.id]))
     }
   })
+
+  it('does not leak ban state before the phrase is proven; reveals it only after', async () => {
+    const username = `recb${Date.now().toString(36)}`
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    const recoveryAuthPubJwk = JSON.stringify(publicKey.export({ format: 'jwk' }))
+    const [u] = await db
+      .insert(users)
+      .values({
+        username,
+        publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+        recoveryVaultBlob: JSON.stringify({ v: 2, opaque: 'x' }),
+        recoveryAuthPubJwk,
+        isBanned: true,
+      })
+      .returning({ id: users.id })
+    try {
+      // Wrong signature → generic SIGNATURE_INVALID; ban state must NOT leak.
+      const ch1 = await request(app!.server).post('/api/auth/recovery/challenge').send({ username }).expect(200)
+      const bad = await request(app!.server)
+        .post('/api/auth/recovery/complete')
+        .send({ username, nonce: ch1.body.nonce, signature: signNonceDerB64('not-the-nonce', privateKey) })
+        .expect(401)
+      expect(bad.body.error).toBe('SIGNATURE_INVALID')
+      // Correct signature → ban revealed only AFTER the phrase is proven.
+      const ch2 = await request(app!.server).post('/api/auth/recovery/challenge').send({ username }).expect(200)
+      const good = await request(app!.server)
+        .post('/api/auth/recovery/complete')
+        .send({ username, nonce: ch2.body.nonce, signature: signNonceDerB64(ch2.body.nonce, privateKey) })
+        .expect(401)
+      expect(good.body.error).toBe('BANNED_USER')
+    } finally {
+      await db.delete(users).where(inArray(users.id, [u.id]))
+    }
+  })
+
+  it('refuses require_totp when the account has no TOTP (prevents self-lock)', async () => {
+    const username = `rect${Date.now().toString(36)}`
+    const { publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    const recoveryAuthPubJwk = JSON.stringify(publicKey.export({ format: 'jwk' }))
+    const [u] = await db
+      .insert(users)
+      .values({
+        username,
+        publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+      })
+      .returning({ id: users.id, username: users.username })
+    const [dev] = await db
+      .insert(devices)
+      .values({ userId: u.id, clientDeviceKey: `d-${randomUUID()}`, deviceName: 'd', linkedAt: new Date() })
+      .returning({ id: devices.id })
+    const cookie = `fm_session=${await app!.jwt.sign({ sub: u.id, username: u.username, device_id: dev.id, jti: randomUUID() })}`
+    try {
+      const en = await request(app!.server)
+        .post('/api/users/me/recovery/enable')
+        .set('Cookie', cookie)
+        .send({ recovery_vault_blob: JSON.stringify({ v: 2, opaque: 'x' }), recovery_auth_pub_jwk: recoveryAuthPubJwk, require_totp: true })
+        .expect(200)
+      expect(en.body.require_totp).toBe(false)
+      const st = await request(app!.server).get('/api/users/me/recovery/status').set('Cookie', cookie).expect(200)
+      expect(st.body.require_totp).toBe(false)
+    } finally {
+      await db.delete(devices).where(eq(devices.userId, u.id))
+      await db.delete(users).where(inArray(users.id, [u.id]))
+    }
+  })
 })

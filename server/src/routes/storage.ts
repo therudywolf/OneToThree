@@ -272,7 +272,30 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       .where(eq(messages.mediaPath, filePath))
       .limit(1)
 
-    if (!claim) {
+    let authorized = Boolean(claim)
+    if (!authorized) {
+      // Album items 2..N (and any object referenced only inside an encrypted
+      // envelope) have no messages.media_path row — only an attachments row
+      // (messageId stays null). Authorize via that row, scoped to the chat the
+      // object was UPLOADED into and the caller's membership of THAT chat. This
+      // is the same membership gate upload-url uses, and is tighter than the
+      // message-path check (which keys on where the object was referenced).
+      const [attClaim] = await db
+        .select({ id: attachments.id })
+        .from(attachments)
+        .innerJoin(
+          chatMembers,
+          and(
+            eq(chatMembers.chatId, attachments.chatId),
+            eq(chatMembers.userId, user.id)
+          )
+        )
+        .where(eq(attachments.objectKey, filePath))
+        .limit(1)
+      authorized = Boolean(attClaim)
+    }
+
+    if (!authorized) {
       return reply.status(410).send({ error: 'FILE_EXPIRED' })
     }
 

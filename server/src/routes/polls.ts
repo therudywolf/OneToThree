@@ -104,39 +104,49 @@ export const pollsRoutes: FastifyPluginAsync = async (app) => {
       .limit(1)
     if (!member) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
 
-    // Insert poll + a placeholder message in a transaction
+    // Insert poll + its sentinel message atomically, so a crash between the
+    // writes can't leave a messageId=NULL orphan poll (invisible in the
+    // timeline, no cascade cleanup).
     const { messages } = await import('../db/schema.js')
 
-    const [poll] = await db
-      .insert(polls)
-      .values({
-        chatId: chat_id,
-        createdBy: user.id,
-        question,
-        options,
-        allowMultiple: allow_multiple,
-        isAnonymous: is_anonymous,
+    let poll: typeof polls.$inferSelect
+    let msg: typeof messages.$inferSelect | undefined
+    let pollPayload: string
+    try {
+      const tx = await db.transaction(async (trx) => {
+        const [p] = await trx
+          .insert(polls)
+          .values({
+            chatId: chat_id,
+            createdBy: user.id,
+            question,
+            options,
+            allowMultiple: allow_multiple,
+            isAnonymous: is_anonymous,
+          })
+          .returning()
+        if (!p) throw new Error('POLL_INSERT_FAILED')
+        // Sentinel message so the poll shows in the chat timeline.
+        const payload = JSON.stringify({ type: 'poll', poll_id: p.id })
+        const [m] = await trx
+          .insert(messages)
+          .values({ chatId: chat_id, senderId: user.id, content: payload, iv: 'poll:v1' })
+          .returning()
+        if (m) await trx.update(polls).set({ messageId: m.id }).where(eq(polls.id, p.id))
+        return { p, m, payload }
       })
-      .returning()
-    if (!poll) return reply.status(500).send({ error: 'POLL_INSERT_FAILED' })
-
-    // Insert a sentinel message so the poll shows in the chat timeline
-    const pollPayload = JSON.stringify({ type: 'poll', poll_id: poll.id })
-    const [msg] = await db
-      .insert(messages)
-      .values({
-        chatId: chat_id,
-        senderId: user.id,
-        content: pollPayload,
-        iv: 'poll:v1',
-      })
-      .returning()
+      poll = tx.p
+      msg = tx.m
+      pollPayload = tx.payload
+    } catch (e) {
+      if (e instanceof Error && e.message === 'POLL_INSERT_FAILED') {
+        return reply.status(500).send({ error: 'POLL_INSERT_FAILED' })
+      }
+      throw e
+    }
 
     if (msg) {
-      // Link the poll to its message
-      await db.update(polls).set({ messageId: msg.id }).where(eq(polls.id, poll.id))
-
-      // Broadcast new message event to chat members
+      // Broadcast new message event to chat members (after commit)
       const memberRows = await db
         .select({ userId: chatMembers.userId })
         .from(chatMembers)

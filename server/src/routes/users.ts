@@ -219,13 +219,16 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .select({
         recoveryAuthPubJwk: users.recoveryAuthPubJwk,
         recoveryRequireTotp: users.recoveryRequireTotp,
+        isTotpEnabled: users.isTotpEnabled,
       })
       .from(users)
       .where(eq(users.id, user.id))
       .limit(1)
     return reply.send({
       enabled: Boolean(row?.recoveryAuthPubJwk),
-      require_totp: row?.recoveryRequireTotp ?? false,
+      // Report the EFFECTIVE requirement: the gate only bites while TOTP is
+      // actually enabled, so a stale flag after disabling TOTP isn't advertised.
+      require_totp: Boolean(row?.recoveryRequireTotp && row?.isTotpEnabled),
     })
   })
 

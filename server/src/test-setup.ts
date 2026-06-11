@@ -23,6 +23,12 @@ process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX =
   process.env.AUTH_CHALLENGE_RATE_LIMIT_MAX?.trim() || '1000'
 process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW =
   process.env.AUTH_CHALLENGE_RATE_LIMIT_WINDOW?.trim() || '1 minute'
+// The recovery flow shares the same per-IP throttle; the whole suite hammers it
+// from 127.0.0.1, so relax it for tests (prod keeps the tight default of 5).
+process.env.RECOVERY_RATE_LIMIT_MAX =
+  process.env.RECOVERY_RATE_LIMIT_MAX?.trim() || '1000'
+process.env.RECOVERY_CHALLENGE_PER_MINUTE =
+  process.env.RECOVERY_CHALLENGE_PER_MINUTE?.trim() || '1000'
 
 process.env.MINIO_ENDPOINT =
   process.env.MINIO_ENDPOINT?.trim() || 'http://127.0.0.1:9000'

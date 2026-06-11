@@ -62,6 +62,18 @@ const recoveryCompleteBodySchema = z.object({
   signature: z.string().min(1),
 })
 
+// A fixed, valid P-256 public key used only to run a constant amount of ECDSA
+// verification work on the "no such user / recovery not configured" path, so
+// response latency can't distinguish recovery-configured accounts from others.
+// It is a throwaway public key with no corresponding private key anywhere; a
+// signature can never verify against it.
+const DUMMY_RECOVERY_PUB_JWK = JSON.stringify({
+  kty: 'EC',
+  crv: 'P-256',
+  x: '4-2FItoo0gsHe501TsoBRpZ5ghOdgtFezINRM4uwOI0',
+  y: 'k3m4t-mliK-4mo1AFX7Qqq6q2QW-1gek8yU8TYXAgS4',
+})
+
 const SESSION_MAX_AGE_S = 60 * 60 * 24
 const PENDING_2FA_MAX_AGE_S = 300
 
@@ -249,7 +261,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!await verifyTotp(parsed.data.code, decryptTotpSecret(row.totpSecret))) return reply.status(401).send({ error: 'TOTP_INVALID' })
     if (!await consumeTotpCode(user.id, parsed.data.code)) return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
 
-    await db.update(users).set({ totpSecret: null, isTotpEnabled: false }).where(eq(users.id, user.id))
+    // Also clear the recovery TOTP-gate: leaving it armed would (a) falsely keep
+    // advertising a TOTP-protected recovery and (b) silently re-arm the gate
+    // against a *different* authenticator if the user re-enrolls TOTP later.
+    await db
+      .update(users)
+      .set({ totpSecret: null, isTotpEnabled: false, recoveryRequireTotp: false })
+      .where(eq(users.id, user.id))
     return reply.send({ ok: true, totp_enabled: false })
   })
 
@@ -568,40 +586,48 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         .where(eq(users.username, username))
         .limit(1)
 
-      // No such user / recovery never configured: fail with the SAME shape as a
-      // bad signature so we don't leak whether recovery exists for the account.
-      if (!row?.recoveryAuthPubJwk || !row.recoveryVaultBlob) {
+      // Always run exactly ONE ECDSA verification — against the real recovery
+      // key if configured, else against a fixed dummy key — so neither the
+      // response shape NOR the latency leaks whether the account exists or has
+      // recovery configured to an unauthenticated caller. Both "not configured"
+      // and "bad signature" collapse into the identical SIGNATURE_INVALID reply.
+      const configured = Boolean(row?.recoveryAuthPubJwk && row?.recoveryVaultBlob)
+      const verifyPub = row?.recoveryAuthPubJwk ?? DUMMY_RECOVERY_PUB_JWK
+      const sigOk = verifyNonceSignatureEcdsaP256(nonce, signature, verifyPub)
+      if (!configured || !sigOk) {
         await deletePending(ns(username))
         await recordAuthFailure(ns(username))
         return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
       }
 
-      if (row.isBanned) {
+      // The caller has now PROVEN possession of the recovery phrase, so account
+      // state may be revealed to them. Checking ban only after the signature
+      // verifies keeps BANNED_USER from being an unauthenticated oracle.
+      if (row!.isBanned) {
         await deletePending(ns(username))
         return reply.status(401).send({ error: 'BANNED_USER' })
       }
 
-      const ok = verifyNonceSignatureEcdsaP256(nonce, signature, row.recoveryAuthPubJwk)
-      if (!ok) {
-        await deletePending(ns(username))
-        await recordAuthFailure(ns(username))
-        return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
-      }
-
       // Optional second factor: only enforced when the user opted in AND still
       // has TOTP enabled. Supplied via the X-TOTP-Code header (step-up path).
-      if (row.recoveryRequireTotp && row.isTotpEnabled) {
-        const stepUp = await requireTotpStepUp(request, row.id)
+      if (row!.recoveryRequireTotp && row!.isTotpEnabled) {
+        const stepUp = await requireTotpStepUp(request, row!.id)
         if (!stepUp.ok) {
           await deletePending(ns(username))
-          await recordAuthFailure(ns(username))
+          // A merely-missing step-up (no code entered yet) is NOT a failed
+          // attempt — the phrase was already proven correct. Only an actually
+          // wrong/replayed code counts toward lockout, so a legitimate recoverer
+          // isn't self-locked by the UI's first (code-less) submit.
+          if (stepUp.error !== 'TOTP_STEP_UP_REQUIRED') {
+            await recordAuthFailure(ns(username))
+          }
           return sendStepUpError(reply, stepUp)
         }
       }
 
       await deletePending(ns(username))
       await resetLockout(ns(username))
-      return reply.send({ recovery_vault_blob: row.recoveryVaultBlob })
+      return reply.send({ recovery_vault_blob: row!.recoveryVaultBlob })
     })
   })
 }

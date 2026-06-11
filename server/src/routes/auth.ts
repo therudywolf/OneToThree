@@ -57,6 +57,12 @@ const verifyBodySchema = z.object({
   public_key_jwk: z.string().min(1).optional(),
 })
 
+const recoveryCompleteBodySchema = z.object({
+  username: z.string(),
+  nonce: z.string().min(1),
+  signature: z.string().min(1),
+})
+
 const SESSION_MAX_AGE_S = 60 * 60 * 24
 const PENDING_2FA_MAX_AGE_S = 300
 
@@ -541,4 +547,118 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       })
     }
   )
+
+  // ─── Account recovery (Option A): challenge / complete ─────────────────────
+  // Mirrors the login challenge/verify, but proves knowledge of the recovery
+  // PHRASE (not the device key): the client signs a server nonce with the
+  // phrase-derived ECDSA key, and on success we release the opaque
+  // recovery_vault_blob. Zero escrow — the server never sees the phrase and
+  // cannot decrypt the blob. Lockout/rate-limit live in a `recovery:`
+  // namespace so abuse here can't lock the victim out of normal login.
+  await app.register(async (scoped) => {
+    await scoped.register(rateLimit, {
+      max: Number(process.env.RECOVERY_RATE_LIMIT_MAX ?? 5),
+      timeWindow: process.env.RECOVERY_RATE_LIMIT_WINDOW ?? '15 minutes',
+    })
+
+    const ns = (u: string) => `recovery:${u}`
+
+    scoped.post(
+      '/recovery/challenge',
+      {
+        config: {
+          rateLimit: {
+            max: Number(process.env.RECOVERY_CHALLENGE_PER_MINUTE ?? 20),
+            timeWindow: '1 minute',
+          },
+        },
+      },
+      async (request, reply) => {
+        const parsed = challengeBodySchema.safeParse(request.body)
+        if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+        const nick = parseNickname(parsed.data.username)
+        if (!nick.ok) return reply.status(400).send({ error: nick.error })
+        // Always issue a nonce — never leak whether the account exists or has
+        // recovery configured. /recovery/complete is the only gate.
+        const nonce = randomUUID()
+        await setChallenge(ns(nick.value), nonce)
+        return reply.send({ nonce })
+      }
+    )
+
+    scoped.post('/recovery/complete', async (request, reply) => {
+      const parsed = recoveryCompleteBodySchema.safeParse(request.body)
+      if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+      const nick = parseNickname(parsed.data.username)
+      if (!nick.ok) return reply.status(400).send({ error: nick.error })
+      const username = nick.value
+      const { nonce, signature } = parsed.data
+
+      const lockout = await checkLockout(ns(username))
+      if (lockout.locked) {
+        reply.header('Retry-After', String(Math.max(1, lockout.retryAfterSeconds)))
+        return reply.status(429).send({
+          error: 'AUTH_LOCKED',
+          retry_after_seconds: lockout.retryAfterSeconds,
+        })
+      }
+
+      const pending = await getPending(ns(username))
+      if (!pending) return reply.status(401).send({ error: 'NO_CHALLENGE' })
+
+      if (!safeEqualNonce(pending.nonce, nonce)) {
+        await deletePending(ns(username))
+        await recordAuthFailure(ns(username))
+        return reply.status(401).send({ error: 'NONCE_MISMATCH' })
+      }
+
+      const [row] = await db
+        .select({
+          id: users.id,
+          isBanned: users.isBanned,
+          isTotpEnabled: users.isTotpEnabled,
+          recoveryVaultBlob: users.recoveryVaultBlob,
+          recoveryAuthPubJwk: users.recoveryAuthPubJwk,
+          recoveryRequireTotp: users.recoveryRequireTotp,
+        })
+        .from(users)
+        .where(eq(users.username, username))
+        .limit(1)
+
+      // No such user / recovery never configured: fail with the SAME shape as a
+      // bad signature so we don't leak whether recovery exists for the account.
+      if (!row?.recoveryAuthPubJwk || !row.recoveryVaultBlob) {
+        await deletePending(ns(username))
+        await recordAuthFailure(ns(username))
+        return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
+      }
+
+      if (row.isBanned) {
+        await deletePending(ns(username))
+        return reply.status(401).send({ error: 'BANNED_USER' })
+      }
+
+      const ok = verifyNonceSignatureEcdsaP256(nonce, signature, row.recoveryAuthPubJwk)
+      if (!ok) {
+        await deletePending(ns(username))
+        await recordAuthFailure(ns(username))
+        return reply.status(401).send({ error: 'SIGNATURE_INVALID' })
+      }
+
+      // Optional second factor: only enforced when the user opted in AND still
+      // has TOTP enabled. Supplied via the X-TOTP-Code header (step-up path).
+      if (row.recoveryRequireTotp && row.isTotpEnabled) {
+        const stepUp = await requireTotpStepUp(request, row.id)
+        if (!stepUp.ok) {
+          await deletePending(ns(username))
+          await recordAuthFailure(ns(username))
+          return sendStepUpError(reply, stepUp)
+        }
+      }
+
+      await deletePending(ns(username))
+      await resetLockout(ns(username))
+      return reply.send({ recovery_vault_blob: row.recoveryVaultBlob })
+    })
+  })
 }

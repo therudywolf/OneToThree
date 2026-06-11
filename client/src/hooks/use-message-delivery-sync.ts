@@ -81,6 +81,15 @@ export function useMessageDeliverySync(
       const now = socket.connected
       if (now && !prevConnected.current) {
         const chatId = useSessionStore.getState().activeChatId
+        // `cryptoCtx`/`directPeerUserId` in this closure belong to the chat
+        // active when the effect last ran. If the user switched chats just
+        // before the reconnect fired, pulling the NEW chat's rows under the OLD
+        // DR context yields RATCHET_NO_SESSION -> [DECRYPT_FAIL]. Bail; the
+        // effect re-runs for the new chat (deps include activeChatId).
+        if (chatId !== activeChatId) {
+          prevConnected.current = now
+          return
+        }
         const pk = useSessionStore.getState().unwrappedPrivateKey
         const ownerUserId = useSessionStore.getState().userId
         const myPub = useSessionStore.getState().myEcdhPublicKeyJwk
@@ -110,7 +119,7 @@ export function useMessageDeliverySync(
       prevConnected.current = now
     })
     return offStatus
-  }, [cryptoCtx, appendMessage, setHistoryDecryptBusy])
+  }, [cryptoCtx, appendMessage, setHistoryDecryptBusy, activeChatId, directPeerUserId])
 
   useEffect(() => {
     if (!activeChatId || !cryptoCtx || !unwrappedPrivateKey) return

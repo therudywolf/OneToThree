@@ -35,6 +35,17 @@ import { hasActiveSocket, sendToUser } from '../ws/registry.js'
 import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
 import { verifyRecoveryKey } from '../lib/recovery-key.js'
 
+/**
+ * Shared "[deleted]" sentinel user. On account deletion a user's messages are
+ * re-pointed to this row and redacted, so peers see "[deleted]" tombstones
+ * instead of gaps (the sender_id FK would otherwise cascade-delete the rows).
+ * The username uses characters the nickname validator rejects, so no real user
+ * can ever register or collide with it; it has no public key so it can't log in
+ * and is_discoverable defaults to false so it never appears in search.
+ */
+export const DELETED_USER_ID = '00000000-0000-4000-8000-000000000000'
+export const DELETED_USER_USERNAME = '[deleted]'
+
 const searchQuerySchema = z.object({
   q: z.string().min(1).max(128),
 })
@@ -981,12 +992,11 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const stepUp = await requireTotpStepUp(request, user.id)
     if (!stepUp.ok) return sendStepUpError(reply, stepUp)
 
+    // Capture media keys for S3 cleanup before we null them out in the redaction.
     const mediaRows = await db
       .select({ mediaPath: messages.mediaPath })
       .from(messages)
       .where(and(eq(messages.senderId, user.id), isNotNull(messages.mediaPath)))
-
-    await db.update(messages).set({ content: '[deleted]', iv: null, mediaPath: null, mediaType: null, mediaIv: null }).where(eq(messages.senderId, user.id))
 
     const bucket = getBucketName()
     for (const row of mediaRows) {
@@ -1000,6 +1010,45 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
 
     await db.transaction(async (tx) => {
+      // Tombstone, don't gap: re-point this user's messages to the shared
+      // "[deleted]" sentinel and redact them to a system "[deleted]" row that
+      // SURVIVES the user delete (the sender_id FK would otherwise
+      // cascade-delete every message they ever sent — gapping peers' history).
+      await tx
+        .insert(users)
+        .values({ id: DELETED_USER_ID, username: DELETED_USER_USERNAME, publicKeyJwk: '' })
+        .onConflictDoNothing()
+
+      // Drop the DIRECT per-device ciphertext slots so a peer who still holds
+      // the ratchet can't decrypt the surviving rows back to the original text.
+      const ownMsgs = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(eq(messages.senderId, user.id))
+      if (ownMsgs.length > 0) {
+        await tx
+          .delete(messageDeliveries)
+          .where(inArray(messageDeliveries.messageId, ownMsgs.map((m) => m.id)))
+      }
+
+      // Redact to a self-describing system tombstone. iv='system:v1' makes the
+      // client decrypt path return the content verbatim ("[deleted]") instead
+      // of trying (and failing) to decrypt it.
+      await tx
+        .update(messages)
+        .set({
+          senderId: DELETED_USER_ID,
+          content: '[deleted]',
+          iv: 'system:v1',
+          mediaPath: null,
+          mediaType: null,
+          mediaIv: null,
+          protocolVersion: 1,
+          drHeader: null,
+          drInit: null,
+        })
+        .where(eq(messages.senderId, user.id))
+
       await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id))
       await tx.delete(devices).where(eq(devices.userId, user.id))
       await tx.delete(userBlocks).where(eq(userBlocks.blockerId, user.id))

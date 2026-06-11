@@ -59,6 +59,10 @@ export class VaultVersionMismatchError extends Error {
 /** [IDENT_RESOLVER] :: Пути к ячейкам памяти */
 const getSlot = (id: string) => `${VAULT_PREFIX}:stable:${id}`
 const getLoginSlot = (handle: string) => `${VAULT_PREFIX}:login:${handle.trim().toLowerCase()}`
+/** Biometric (WebAuthn largeBlob) slot — a SEPARATE copy wrapped under an
+ * ephemeral PIN, so binding biometrics never clobbers the canonical PIN-wrapped
+ * stable slot (which must stay the real-PIN fallback). */
+const getBioSlot = (id: string) => `${VAULT_PREFIX}:bio:${id}`
 
 // --- STORAGE_INTERFACE ---
 
@@ -119,6 +123,22 @@ export function wipeVault(userId: string): void {
 
 export function wipeVaultByLogin(username: string): void {
   localStorage.removeItem(getLoginSlot(username))
+}
+
+/** Biometric slot — kept separate from the canonical PIN-wrapped stable slot. */
+export function persistVaultBlobBioSlot(nodeId: string, blob: VaultBlob): void {
+  localStorage.setItem(getBioSlot(nodeId), JSON.stringify(blob))
+}
+
+export function readVaultBlobBioSlot(nodeId: string): VaultBlob | null {
+  if (typeof window === 'undefined') return null
+  const raw = localStorage.getItem(getBioSlot(nodeId))
+  if (!raw) return null
+  return parseVaultBlobJson(raw)
+}
+
+export function wipeVaultBioSlot(nodeId: string): void {
+  localStorage.removeItem(getBioSlot(nodeId))
 }
 
 /** [SYNC_LINK] :: Зеркалирование временного сейфа в стабильный узел после логина */

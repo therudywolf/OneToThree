@@ -8,10 +8,12 @@
 import { openDB, type IDBPDatabase } from 'idb'
 import {
   CURRENT_VAULT_VERSION,
-  persistVaultBlob,
+  persistVaultBlobBioSlot,
   readVaultBlob,
+  readVaultBlobBioSlot,
   unwrapPrivateJwkWithPin,
   upgradeVaultBlob,
+  wipeVaultBioSlot,
   wrapPrivateJwkWithPin,
 } from '@/lib/vault'
 import { emitHapticPulse } from '@/lib/vibrate'
@@ -156,8 +158,9 @@ export async function bindBiometricAuthority(
       throw new Error('LARGE_BLOB_INJECTION_FAILED')
     }
 
-    // [5] COMMIT_CHANGES :: Замена локального сейфа и фиксация метки
-    persistVaultBlob(nodeId, bioContainer)
+    // [5] COMMIT_CHANGES :: запись bio-копии в ОТДЕЛЬНЫЙ слот, не затирая
+    // канонический PIN-сейф (он остаётся валидным fallback'ом по настоящему PIN)
+    persistVaultBlobBioSlot(nodeId, bioContainer)
     const db = await openRegistry()
     await db.put('registry', {
       node_id: nodeId,
@@ -207,8 +210,8 @@ export async function interceptBiometricSignal(nodeId: string): Promise<string> 
   const ephemeralPinBytes = new Uint8Array(blobBuf)
   const ephemeralPin = new TextDecoder().decode(ephemeralPinBytes)
 
-  // [3] OPEN_VAULT :: Вскрытие контейнера
-  const container = readVaultBlob(nodeId)
+  // [3] OPEN_VAULT :: Вскрытие bio-контейнера (отдельный слот)
+  const container = readVaultBlobBioSlot(nodeId)
   if (!container) {
     ephemeralPinBytes.fill(0)
     throw new Error('VAULT_OFFLINE')
@@ -227,7 +230,7 @@ export async function interceptBiometricSignal(nodeId: string): Promise<string> 
   // rewrap, so biometric users stayed on the older format indefinitely.
   if (container.version < CURRENT_VAULT_VERSION) {
     upgradeVaultBlob(container, ephemeralPin)
-      .then((upgraded) => persistVaultBlob(nodeId, upgraded))
+      .then((upgraded) => persistVaultBlobBioSlot(nodeId, upgraded))
       .catch(() => { /* non-fatal — user stays on legacy vault */ })
   }
   emitHapticPulse(20) // Подтверждение линка
@@ -236,6 +239,10 @@ export async function interceptBiometricSignal(nodeId: string): Promise<string> 
 
 /** [PURGE_BIO_REGISTRY] :: Аннигиляция биометрических меток */
 export async function deleteWebAuthnMetaDb(nodeId?: string): Promise<void> {
+  // Drop the bio-slot copy too when unbinding a specific node. (A full
+  // wipeAllClientLocalState clears all localStorage, so the no-nodeId path is
+  // covered there.)
+  if (nodeId) wipeVaultBioSlot(nodeId)
   if (typeof indexedDB === 'undefined') return
   try {
     const db = await openRegistry()

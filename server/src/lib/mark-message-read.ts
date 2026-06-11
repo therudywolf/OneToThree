@@ -1,7 +1,15 @@
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { chatMembers, chats, messages, users } from '../db/schema.js'
 import { sendToUser } from '../ws/registry.js'
+
+/**
+ * Burn-after-read with a DURATION stores burn_duration_secs at send and leaves
+ * burn_at NULL ("started at read time"). Compute the absolute burn_at here, in
+ * the same UPDATE that sets read_at, so the countdown actually begins. Duration
+ * takes precedence; a legacy absolute burn_at (no duration) is preserved.
+ */
+const burnAtOnReadSql = sql`CASE WHEN ${messages.burnDurationSecs} IS NOT NULL THEN now() + (${messages.burnDurationSecs} * interval '1 second') ELSE ${messages.burnAt} END`
 
 export type MarkReadResult =
   | {
@@ -82,7 +90,7 @@ export async function markMessageReadByReader(
 
   const [updated] = await db
     .update(messages)
-    .set({ readAt: new Date() })
+    .set({ readAt: new Date(), burnAt: burnAtOnReadSql })
     .where(
       and(
         eq(messages.id, messageId),
@@ -194,11 +202,11 @@ export async function markMessagesReadByReader(
     .filter((r) => r.chatType === 'direct_e2e' && r.senderId !== readerId && r.readAt == null)
     .map((r) => r.id)
 
-  let updatedMap = new Map<string, { id: string; chatId: string; senderId: string; readAt: Date | string | null }>()
+  let updatedMap = new Map<string, { id: string; chatId: string; senderId: string; readAt: Date | string | null; burnAt: Date | string | null }>()
   if (updatableIds.length > 0) {
     const updated = await db
       .update(messages)
-      .set({ readAt: new Date() })
+      .set({ readAt: new Date(), burnAt: burnAtOnReadSql })
       .where(
         and(
           inArray(messages.id, updatableIds),
@@ -211,6 +219,7 @@ export async function markMessagesReadByReader(
         chatId: messages.chatId,
         senderId: messages.senderId,
         readAt: messages.readAt,
+        burnAt: messages.burnAt,
       })
     updatedMap = new Map(updated.map((r) => [r.id, r]))
   }
@@ -249,15 +258,21 @@ export async function markMessagesReadByReader(
       continue
     }
     const readAtIso = ts(finalRow.readAt)
-    const justUpdated = updatedMap.has(msgId)
-    if (justUpdated) {
-      sendToUser(finalRow.senderId, {
-        type: 'message_read_update',
+    const updatedRow = updatedMap.get(msgId)
+    const burnAtIso = updatedRow?.burnAt ? ts(updatedRow.burnAt) : null
+    if (updatedRow) {
+      // Notify the sender AND the reader's own sockets so the burn countdown
+      // starts on every device of the conversation.
+      const event = {
+        type: 'message_read_update' as const,
         chat_id: finalRow.chatId,
         message_id: finalRow.id,
         reader_id: readerId,
         read_at: readAtIso,
-      })
+        ...(burnAtIso ? { burn_at: burnAtIso } : {}),
+      }
+      sendToUser(finalRow.senderId, event)
+      sendToUser(readerId, event)
     }
     results.push({
       ok: true,
@@ -266,6 +281,7 @@ export async function markMessagesReadByReader(
       sender_id: finalRow.senderId,
       reader_id: readerId,
       read_at: readAtIso,
+      burn_at: burnAtIso,
     })
   }
   return results

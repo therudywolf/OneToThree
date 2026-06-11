@@ -145,6 +145,102 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
+  // ─── Account recovery (Option A) ──────────────────────────────────────────
+  // A SECOND copy of the keyring sealed under a client-only 256-bit recovery
+  // phrase. The server stores only ciphertext (recovery_vault_blob) + the
+  // phrase-derived ECDSA PUBLIC key (recovery_auth_pub_jwk) — never the phrase.
+  // Enabling plants a second root credential, so it requires a TOTP step-up.
+  function isValidEcdsaP256PublicJwk(raw: string): boolean {
+    try {
+      const jwk = JSON.parse(raw) as Record<string, unknown>
+      return (
+        jwk.kty === 'EC' &&
+        jwk.crv === 'P-256' &&
+        typeof jwk.x === 'string' &&
+        typeof jwk.y === 'string' &&
+        jwk.d === undefined
+      )
+    } catch {
+      return false
+    }
+  }
+
+  app.post('/me/recovery/enable', {
+    bodyLimit: 512 * 1024,
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+
+    const parsed = z
+      .object({
+        recovery_vault_blob: z.string().min(1),
+        recovery_auth_pub_jwk: z.string().min(1).max(2000),
+        require_totp: z.boolean().optional().default(false),
+      })
+      .safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+    if (!isValidEcdsaP256PublicJwk(parsed.data.recovery_auth_pub_jwk)) {
+      return reply.status(400).send({ error: 'INVALID_RECOVERY_KEY' })
+    }
+
+    // Never let a user require TOTP they don't have — it would permanently
+    // self-lock their own recovery.
+    let requireTotp = parsed.data.require_totp
+    if (requireTotp) {
+      const [row] = await db
+        .select({ isTotpEnabled: users.isTotpEnabled })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1)
+      if (!row?.isTotpEnabled) requireTotp = false
+    }
+
+    await db
+      .update(users)
+      .set({
+        recoveryVaultBlob: parsed.data.recovery_vault_blob,
+        recoveryAuthPubJwk: parsed.data.recovery_auth_pub_jwk,
+        recoveryRequireTotp: requireTotp,
+      })
+      .where(eq(users.id, user.id))
+
+    return reply.send({ ok: true, require_totp: requireTotp })
+  })
+
+  app.get('/me/recovery/status', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const [row] = await db
+      .select({
+        recoveryAuthPubJwk: users.recoveryAuthPubJwk,
+        recoveryRequireTotp: users.recoveryRequireTotp,
+      })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+    return reply.send({
+      enabled: Boolean(row?.recoveryAuthPubJwk),
+      require_totp: row?.recoveryRequireTotp ?? false,
+    })
+  })
+
+  app.post('/me/recovery/disable', {
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const stepUp = await requireTotpStepUp(request, user.id)
+    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+    await db
+      .update(users)
+      .set({ recoveryVaultBlob: null, recoveryAuthPubJwk: null, recoveryRequireTotp: false })
+      .where(eq(users.id, user.id))
+    return reply.send({ ok: true })
+  })
+
   app.get('/me/avatar-challenge', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

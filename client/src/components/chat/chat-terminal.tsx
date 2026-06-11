@@ -190,7 +190,7 @@ export function ChatTerminal({
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
-  const lightboxMetaRef = useRef<Map<string, { mediaPath: string; mediaIv: string; plaintext?: string }>>(new Map())
+  const lightboxMetaRef = useRef<Map<string, { mediaPath: string; mediaIv: string; plaintext?: string; wrapCt?: string; wrapIv?: string }>>(new Map())
   const lightboxMediaRef = useRef<typeof lightboxMedia>([])
   useEffect(() => {
     lightboxMediaRef.current = lightboxMedia

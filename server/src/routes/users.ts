@@ -392,7 +392,15 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
     }
-    if (parsed.data.allow_device_linking !== undefined || parsed.data.ecdh_public_key_jwk !== undefined) {
+    // Step-up TOTP guards the security-sensitive linking toggle only.
+    // Publishing this device's ECDH public key is a routine, non-sensitive
+    // operation that EVERY login/vault-unlock performs and that peers need in
+    // order to encrypt to this device. Gating it behind step-up made the
+    // blocking ecdh upload (crypto-login + vault-modal) 401 for any TOTP user,
+    // leaving their device with a null ecdh_public_key and unreachable by
+    // fan-out — i.e. "no E2E devices registered" / encryption errors. Keep the
+    // gate on allow_device_linking, never on the ecdh key publish.
+    if (parsed.data.allow_device_linking !== undefined) {
       const stepUp = await requireTotpStepUp(request, user.id)
       if (!stepUp.ok) return sendStepUpError(reply, stepUp)
     }

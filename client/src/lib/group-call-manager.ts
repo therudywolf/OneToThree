@@ -77,6 +77,9 @@ const relayKeys = new Map<string, Promise<CryptoKey | null>>()
  */
 let groupCameraTrack: MediaStreamTrack | null = null
 let groupScreenTrack: MediaStreamTrack | null = null
+/** Screen-share audio track, tracked so the in-app stop / call teardown stops
+ * and unpublishes it — not only the video track. */
+let groupScreenAudioTrack: MediaStreamTrack | null = null
 
 /** Whether the local user is currently screen-sharing in the mesh call. */
 export function isGroupCallScreenSharing(): boolean {
@@ -378,11 +381,13 @@ function cleanupAll() {
     stopRelayPeer(peerId)
   }
 
-  // Stop the screen track (if sharing) and local stream.
+  // Stop the screen track(s) (if sharing) and local stream.
   groupScreenTrack?.stop()
+  groupScreenAudioTrack?.stop()
   terminateFeed(store.localStream)
   groupCameraTrack = null
   groupScreenTrack = null
+  groupScreenAudioTrack = null
 
   // Clear cached ICE servers
   cachedIceServers = null
@@ -822,6 +827,7 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
     // Add screen audio (if the user shared a tab with audio) to every peer.
     const screenAudioTrack = screenStream.getAudioTracks()[0]
     if (screenAudioTrack) {
+      groupScreenAudioTrack = screenAudioTrack
       for (const pc of Object.values(store.peerConnections)) {
         pc.addTrack(screenAudioTrack, screenStream)
       }
@@ -896,6 +902,18 @@ export function stopGroupCallScreenShare(): void {
   }
 
   screen.stop()
+  // Stop and unpublish the screen AUDIO track too (only the native onended
+  // stopped it before; the in-app stop nulls onended). Match by track identity
+  // so the microphone sender survives.
+  const screenAudio = groupScreenAudioTrack
+  if (screenAudio) {
+    for (const pc of Object.values(store.peerConnections)) {
+      const sender = pc.getSenders().find((s) => s.track === screenAudio)
+      if (sender) pc.removeTrack(sender)
+    }
+    screenAudio.stop()
+    groupScreenAudioTrack = null
+  }
   groupScreenTrack = null
 
   // Sync remote video-off indicators with the restored camera state: video is

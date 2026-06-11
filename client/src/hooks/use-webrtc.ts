@@ -119,6 +119,9 @@ export function useWebRTC(userId: string | null) {
   // two media sources are never conflated.
   const cameraFeedRef = useRef<MediaStreamTrack | null>(null)
   const screenFeedRef = useRef<MediaStreamTrack | null>(null)
+  /** The screen-share AUDIO track (tab/system audio), tracked so the in-app
+   * stop can remove it from peers and stop it — not just the video track. */
+  const screenAudioFeedRef = useRef<MediaStreamTrack | null>(null)
   const disconnectTimersRef = useRef(new Map<string, number>())
   const ringStopRef = useRef<(() => void) | null>(null)
   const facingModeRef = useRef<'user' | 'environment'>('user')
@@ -273,6 +276,20 @@ export function useWebRTC(userId: string | null) {
     }
 
     screen?.stop()
+    // Stop and unpublish the screen AUDIO track too. It was only cleaned up in
+    // the video track's onended (browser-native "Stop sharing"); the in-app
+    // stop path nulls onended, so without this captured tab/system audio kept
+    // streaming to every peer after the user "stopped". Match the sender by
+    // track IDENTITY so the microphone sender is never removed.
+    const screenAudio = screenAudioFeedRef.current
+    if (screenAudio) {
+      pcsRef.current.forEach((pc) => {
+        const sender = pc.getSenders().find((s) => s.track === screenAudio)
+        if (sender) pc.removeTrack(sender)
+      })
+      screenAudio.stop()
+      screenAudioFeedRef.current = null
+    }
     screenFeedRef.current = null
     setIsScreenSharing(false)
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: false }))
@@ -1262,6 +1279,7 @@ export function useWebRTC(userId: string | null) {
 
     const screenAudioTrack = screenStream.getAudioTracks()[0]
     if (screenAudioTrack) {
+      screenAudioFeedRef.current = screenAudioTrack
       pcsRef.current.forEach(pc => {
         pc.addTrack(screenAudioTrack, screenStream)
       })

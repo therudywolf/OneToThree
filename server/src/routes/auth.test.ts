@@ -165,4 +165,37 @@ describe('auth routes', () => {
 
     await removeUser(username)
   })
+
+  it('rejects a 2fa_pending token presented as a full session cookie (no 2FA bypass)', async () => {
+    const username = uniqueUser('byp')
+    const [created] = await db
+      .insert(users)
+      .values({
+        username,
+        publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+        totpSecret: generateTotpSecret(),
+        isTotpEnabled: true,
+      })
+      .returning({ id: users.id, username: users.username })
+
+    // A 2fa_pending token proves only factor 1 (ECDSA); it must NOT authenticate
+    // a session-protected route, nor be laundered into a session via /refresh.
+    const pendingToken = await app!.jwt.sign(
+      { sub: created.id, username: created.username, scope: '2fa_pending' },
+      { expiresIn: 300 }
+    )
+    const cookie = `fm_session=${pendingToken}`
+
+    await request(app!.server).get('/api/auth/me').set('Cookie', cookie).expect(401)
+    await request(app!.server).post('/api/auth/refresh').set('Cookie', cookie).expect(401)
+
+    // A 'ws'-scoped token is likewise not a session.
+    const wsToken = await app!.jwt.sign(
+      { sub: created.id, username: created.username, scope: 'ws' },
+      { expiresIn: 120 }
+    )
+    await request(app!.server).get('/api/auth/me').set('Cookie', `fm_session=${wsToken}`).expect(401)
+
+    await removeUser(username)
+  })
 })

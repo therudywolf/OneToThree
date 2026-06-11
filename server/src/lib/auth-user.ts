@@ -23,6 +23,12 @@ export type SessionJwtPayload = {
   username: string
   device_id?: string
   jti?: string
+  /**
+   * Non-session token marker. `fm_session` (full session) tokens are minted
+   * WITHOUT a scope; `2fa_pending` and `ws` tokens carry one and must never be
+   * accepted as a session cookie (see verifySessionJwt).
+   */
+  scope?: string
 }
 
 /**
@@ -45,6 +51,13 @@ export async function verifySessionJwt(
   if (!t) return null
   try {
     const payload = await request.server.jwt.verify<SessionJwtPayload>(t)
+    // Scoped tokens (2fa_pending, ws) share the JWT secret but are NOT sessions.
+    // A `2fa_pending` token proves only factor 1 (ECDSA) — accepting it here
+    // (it has no device_id, so the device check is skipped too) would be a
+    // complete 2FA bypass, and /refresh would launder it into a 24h session.
+    if (payload.scope) {
+      return null
+    }
     // Stage 2: isJtiDenied is now async (Redis-backed)
     if (payload.jti && await isJtiDenied(payload.jti)) {
       return null

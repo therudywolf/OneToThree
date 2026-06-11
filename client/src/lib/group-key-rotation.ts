@@ -115,6 +115,13 @@ export async function rotateGroupKeyForChat(
     return { rotated: false, reason: 'NOT_OWNER' }
   }
 
+  // Stamp keys with the epoch from the SAME detail fetch we enumerate members
+  // from, not the (possibly stale) caller-passed targetEpoch. If a second
+  // departure bumped the epoch between the caller's read and this fetch, using
+  // targetEpoch would label keys N while wrapping them for the N+1 membership,
+  // forcing a redundant full redistribution next pass.
+  const epoch = detail.chat.key_epoch ?? targetEpoch
+
   const myPubJwk = await exportEcdhPublicJwkFromPrivateKey(myPrivateKey)
 
   const newKey = await crypto.subtle.generateKey(
@@ -132,7 +139,7 @@ export async function rotateGroupKeyForChat(
         m.ecdh_public_key_jwk,
         newKey,
         myPubJwk,
-        targetEpoch
+        epoch
       )
       await uploadMemberWrappedGroupKey(chatId, m.user_id, wrapped)
       delivered += 1
@@ -146,5 +153,5 @@ export async function rotateGroupKeyForChat(
   if (delivered === 0) {
     return { rotated: false, reason: 'NO_MEMBERS_DELIVERED' }
   }
-  return { rotated: true, epoch: targetEpoch, members: delivered }
+  return { rotated: true, epoch, members: delivered }
 }

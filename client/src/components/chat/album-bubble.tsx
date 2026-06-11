@@ -76,7 +76,10 @@ export function AlbumBubble({ messageId, envelope, sharedKey, onMediaClick }: Pr
 
   const decryptOne = useCallback(
     async (item: AlbumItemV1, idx: number) => {
-      if (!sharedKey) return
+      // PUBLIC-chat album items are plaintext on the wire (iv:'public', no
+      // wrapped key). Only encrypted items need the shared SECTOR key.
+      const isPublic = item.iv === 'public'
+      if (!isPublic && !sharedKey) return
       try {
         const cacheKey = `${messageId}#${idx}`
         const cached = await getCachedMedia(cacheKey)
@@ -103,18 +106,23 @@ export function AlbumBubble({ messageId, envelope, sharedKey, onMediaClick }: Pr
           return
         }
         const cipher = await res.arrayBuffer()
-        const wrapPlain = await decryptBinary(
-          sharedKey,
-          base64ToArrayBuffer(item.wrapCt),
-          item.wrapIv,
-        )
-        const fileKey = await importAesGcm256RawKey(wrapPlain, ['decrypt'])
-        const fileIv = new Uint8Array(base64ToArrayBuffer(item.iv))
-        const plain = await crypto.subtle.decrypt(
-          { name: 'AES-GCM', iv: fileIv as BufferSource },
-          fileKey,
-          cipher as BufferSource,
-        )
+        let plain: ArrayBuffer
+        if (isPublic) {
+          plain = cipher
+        } else {
+          const wrapPlain = await decryptBinary(
+            sharedKey!,
+            base64ToArrayBuffer(item.wrapCt),
+            item.wrapIv,
+          )
+          const fileKey = await importAesGcm256RawKey(wrapPlain, ['decrypt'])
+          const fileIv = new Uint8Array(base64ToArrayBuffer(item.iv))
+          plain = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: fileIv as BufferSource },
+            fileKey,
+            cipher as BufferSource,
+          )
+        }
         const mime = item.mimeType.split(';')[0]
         const blob = new Blob([plain], { type: mime })
         await setCachedMedia(cacheKey, blob, mime)
@@ -139,7 +147,7 @@ export function AlbumBubble({ messageId, envelope, sharedKey, onMediaClick }: Pr
   )
 
   useEffect(() => {
-    if (!visible || !sharedKey) return
+    if (!visible) return
     envelope.items.forEach((it, idx) => void decryptOne(it, idx))
     return () => {
       urlsRef.current.forEach((u) => URL.revokeObjectURL(u))
@@ -149,7 +157,13 @@ export function AlbumBubble({ messageId, envelope, sharedKey, onMediaClick }: Pr
 
   const gridClass = useMemo(() => chooseGridClass(envelope.items.length), [envelope.items.length])
 
-  if (!sharedKey) {
+  // Only bail when an ENCRYPTED item can't be opened. A PUBLIC-chat album
+  // (every item iv:'public') has no shared key and must still render.
+  const hasEncryptedItems = useMemo(
+    () => envelope.items.some((it) => it.iv !== 'public'),
+    [envelope.items],
+  )
+  if (!sharedKey && hasEncryptedItems) {
     return (
       <div ref={sentinelRef} className="mt-2 font-mono text-[10px] text-text-muted">
         {t('errors.signalLost')}

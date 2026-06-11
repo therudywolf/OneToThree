@@ -85,19 +85,36 @@ export function useChatRealtime(
       }
       if (msg.type === 'message_edited') {
         if (msg.chat_id !== activeChatId) return
-        // For non-fan-out chats the server sends new plaintext; for fan-out
-        // chats the client must re-fetch the updated delivery slot. For now,
-        // update if a plaintext is provided directly (PUBLIC/SECTOR chats).
-        if (msg.content !== undefined && msg.content !== null) {
-          // TODO: decrypt group-encrypted content before storing plaintext
-          updateMessagePlaintext(msg.message_id, msg.content, msg.edited_at)
-        } else {
-          // Fan-out (DIRECT): just stamp editedAt so the "edited" label shows
+        const editedId = msg.message_id
+        const editedAt = msg.edited_at
+        const keepExisting = () =>
           updateMessagePlaintext(
-            msg.message_id,
-            useChatStore.getState().messages.find((m) => m.id === msg.message_id)?.plaintext ?? '',
-            msg.edited_at
+            editedId,
+            useChatStore.getState().messages.find((m) => m.id === editedId)?.plaintext ?? '',
+            editedAt
           )
+        if (msg.content != null && msg.iv != null && unwrappedPrivateKey && cryptoCtx) {
+          // Group/public/sector edit: `content` is CIPHERTEXT, not plaintext.
+          // Decrypt it with the active chat's crypto context before storing —
+          // otherwise the bubble shows a raw base64 blob until reload. (DIRECT
+          // fan-out edits arrive with content=null and fall to keepExisting.)
+          void decryptApiMessageRows(
+            unwrappedPrivateKey,
+            cryptoCtx,
+            [{ id: editedId, chat_id: msg.chat_id, sender_id: userId ?? '', content: msg.content, iv: msg.iv, created_at: editedAt }],
+            undefined,
+            { myUserId: userId ?? undefined, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk }
+          )
+            .then((out) => {
+              const pt = out[0]?.plaintext
+              if (pt != null && pt !== '[DECRYPT_FAIL]') updateMessagePlaintext(editedId, pt, editedAt)
+              else keepExisting()
+            })
+            .catch(keepExisting)
+        } else {
+          // Fan-out (DIRECT) or no crypto context: keep the existing plaintext,
+          // just stamp editedAt so the "edited" label shows.
+          keepExisting()
         }
         return
       }

@@ -86,6 +86,8 @@ export type WsInboundMessage =
       chat_id: string
       message_id: string
       content: string | null
+      /** IV for group/public edits — content is ciphertext and must be decrypted. */
+      iv?: string | null
       edited_at: string
     }
   | {

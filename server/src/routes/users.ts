@@ -646,11 +646,16 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const deviceId = normalizeUuid(params.data.deviceId)
 
     const [existingDevice] = await db
-      .select({ id: devices.id })
+      .select({ id: devices.id, revokedAt: devices.revokedAt })
       .from(devices)
       .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
       .limit(1)
     if (!existingDevice) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
+    // A revoked device must not become master: master devices can't be
+    // revoked/reauthorized, so promoting a ghost would wedge it permanently.
+    if (existingDevice.revokedAt) {
+      return reply.status(409).send({ error: 'CANNOT_PROMOTE_REVOKED_DEVICE' })
+    }
 
     await db.transaction(async (tx) => {
       await tx.update(devices).set({ isMaster: false }).where(eq(devices.userId, user.id))

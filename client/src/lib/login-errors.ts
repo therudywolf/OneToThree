@@ -13,6 +13,10 @@ type LoginTranslationKey =
   | 'login.nonceMismatch'
   | 'login.passwordRequired'
   | 'login.pinMin8'
+  | 'login.recoverPhraseInvalid'
+  | 'login.recoverFailed'
+  | 'login.recoverTotpRequired'
+  | 'login.authLocked'
   | 'login.publicKeyConflict'
   | 'login.publicKeyRequired'
   | 'login.qrLinkFailedGeneric'
@@ -73,6 +77,14 @@ export function explainLoginError(code: string, t: Translator): string {
     CLIENT_DEVICE_ID_REQUIRED: 'login.clientDeviceRequired',
     DEVICE_REVOKED: 'login.deviceRevoked',
     QR_LOGIN_FAILED: 'login.qrLinkFailedGeneric',
+    RECOVERY_PHRASE_INVALID: 'login.recoverPhraseInvalid',
+    RECOVERY_COMPLETE_FAILED: 'login.recoverFailed',
+    RECOVERY_CHALLENGE_FAILED: 'login.recoverFailed',
+    RECOVERY_DECRYPT_FAILED: 'login.recoverFailed',
+    RECOVERY_FAILED: 'login.recoverFailed',
+    TOTP_STEP_UP_REQUIRED: 'login.recoverTotpRequired',
+    AUTH_LOCKED: 'login.authLocked',
+    BANNED_USER: 'login.unauthorized',
   }
 
   const key = registry[normalized]

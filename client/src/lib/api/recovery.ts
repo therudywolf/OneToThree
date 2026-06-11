@@ -55,3 +55,38 @@ export async function disableRecovery(totpCode?: string): Promise<void> {
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
   if (!res.ok || !data.ok) throw new Error(data.error ?? 'RECOVERY_DISABLE_FAILED')
 }
+
+// ── Login-side recovery (unauthenticated) ─────────────────────────────────
+// The client signs this nonce with the phrase-derived key to prove possession
+// of the recovery phrase without ever sending it.
+export async function fetchRecoveryChallenge(username: string): Promise<string> {
+  const res = await fetchWithTimeout(`${API_URL}/auth/recovery/challenge`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { nonce?: string; error?: string }
+  if (!res.ok || !data.nonce) throw new Error(data.error ?? 'RECOVERY_CHALLENGE_FAILED')
+  return data.nonce
+}
+
+export async function completeRecovery(params: {
+  username: string
+  nonce: string
+  signature: string
+  totpCode?: string
+}): Promise<{ recovery_vault_blob: string }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const code = params.totpCode?.trim()
+  if (code) headers['X-TOTP-Code'] = code
+  const res = await fetchWithTimeout(`${API_URL}/auth/recovery/complete`, {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({ username: params.username, nonce: params.nonce, signature: params.signature }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { recovery_vault_blob?: string; error?: string }
+  if (!res.ok || !data.recovery_vault_blob) throw new Error(data.error ?? 'RECOVERY_COMPLETE_FAILED')
+  return { recovery_vault_blob: data.recovery_vault_blob }
+}

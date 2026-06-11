@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '@/components/auth/auth-provider'
 import { cryptoLogin, finalizeLoginWithTotp } from '@/lib/auth/crypto-login'
+import { recoverWithPhrase } from '@/lib/auth/crypto-recover'
 import { ensureClientDeviceId, clearSessionApi } from '@/lib/api/auth'
 import { parseNickname } from '@/lib/nickname'
 import { persistVaultBlobByLoginUsername, type VaultBlob } from '@/lib/vault'
@@ -27,7 +28,7 @@ import { useThemeStore } from '@/store/themeStore'
  *   MFA_SYNC — TOTP если включён
  */
 
-type FormStage = 'IDENTITY' | 'MFA_SYNC'
+type FormStage = 'IDENTITY' | 'MFA_SYNC' | 'RECOVER'
 type FormMode  = 'ACCESS'   | 'GENESIS'
 
 export function LoginForm() {
@@ -44,6 +45,13 @@ export function LoginForm() {
 
   const [pendingToken, setPendingToken] = useState<string | null>(null)
   const [totpCode, setTotpCode]         = useState('')
+
+  // Recovery (Option A)
+  const [recoverPhrase, setRecoverPhrase]           = useState('')
+  const [recoverNewPassword, setRecoverNewPassword] = useState('')
+  const [recoverConfirm, setRecoverConfirm]         = useState('')
+  const [recoverTotpCode, setRecoverTotpCode]       = useState('')
+  const [recoverNeedsTotp, setRecoverNeedsTotp]     = useState(false)
   const [errorLog, setErrorLog]         = useState<string | null>(null)
   const [infoLog, setInfoLog]           = useState<string | null>(null)
   const [isBusy, setIsBusy]             = useState(false)
@@ -214,6 +222,60 @@ export function LoginForm() {
     }
   }
 
+  const openRecover = () => {
+    setStage('RECOVER')
+    setRecoverPhrase('')
+    setRecoverNewPassword('')
+    setRecoverConfirm('')
+    setRecoverTotpCode('')
+    setRecoverNeedsTotp(false)
+    setErrorLog(null)
+    setInfoLog(null)
+  }
+
+  const execRecover = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (lock.current || isBusy) return
+    lock.current = true
+    setErrorLog(null)
+    setInfoLog(null)
+    setIsBusy(true)
+    try {
+      if (recoverNewPassword !== recoverConfirm) {
+        setErrorLog(t('login.passwordMismatch'))
+        return
+      }
+      const res = await recoverWithPhrase({
+        username: handle,
+        phrase: recoverPhrase,
+        newPassword: recoverNewPassword,
+        totpCode: recoverNeedsTotp ? recoverTotpCode.replace(/\D/g, '').slice(0, 6) : undefined,
+      })
+      // The re-sealed vault still triggers login-level 2FA when the account
+      // has TOTP enabled — forward to the MFA stage exactly like a normal login.
+      if (res.ok === 'needs_2fa') {
+        setPendingToken(res.pendingToken)
+        setStage('MFA_SYNC')
+        return
+      }
+      if (!res.ok) {
+        // Recovery opted into a TOTP step-up: reveal the code field and retry.
+        if (res.error === 'TOTP_STEP_UP_REQUIRED' || res.error === 'TOTP_INVALID') {
+          setRecoverNeedsTotp(true)
+        }
+        setErrorLog(explainLoginError(res.error, t))
+        return
+      }
+      await refresh()
+      router.refresh()
+    } catch (err: unknown) {
+      setErrorLog(explainLoginError(err instanceof Error ? err.message : 'SYS_FAULT', t))
+    } finally {
+      setIsBusy(false)
+      lock.current = false
+    }
+  }
+
   if (authLoading) return (
     <div className="border border-border-strong bg-void p-6 font-mono text-[10px] uppercase tracking-[0.4em] text-text-muted/70 animate-pulse">
       {t('login.authLoading')}
@@ -276,6 +338,91 @@ export function LoginForm() {
                 className={`w-full text-[9px] ${isRetro ? 'p13-classic-copy-muted hover:text-[var(--neon-red)]' : 'uppercase tracking-widest text-text-muted/70 hover:text-neon-red'}`}>
                 {t('common.back')}
               </button>
+            </div>
+          </motion.form>
+        )}
+
+        {/* ── RECOVER (Option A) ── */}
+        {stage === 'RECOVER' && (
+          <motion.form
+            key="recover"
+            onSubmit={execRecover}
+            className={`relative w-full max-w-sm p-8 ${
+              isMd3
+                ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'
+                : isRetro
+                  ? 'p13-classic-window'
+                  : 'border border-border-strong bg-void shadow-2xl'
+            }`}
+            initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
+          >
+            <header className={`mb-6 border-b pb-4 ${isRetro ? 'p13-classic-titlebar px-2 pt-2' : 'border-border-strong'}`}>
+              <p className={`text-[10px] ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'p13-classic-title-copy' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>{t('login.recoverTitle')}</p>
+              <p className={`mt-1 text-[8px] ${isRetro ? 'p13-classic-title-copy-soft tracking-normal' : 'text-text-muted/70 tracking-widest'}`}>{t('login.recoverSubtitle')}</p>
+            </header>
+
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <label htmlFor="recover-username" className="terminal-label">{t('login.handleLabel')}</label>
+                <input id="recover-username" type="text" required autoFocus
+                  value={handle} onChange={(e) => setHandle(e.target.value)}
+                  className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
+                  placeholder={t('login.handlePlaceholder')} autoComplete="username" />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="recover-phrase" className="terminal-label">{t('login.recoverPhraseLabel')}</label>
+                <textarea id="recover-phrase" required rows={3}
+                  value={recoverPhrase} onChange={(e) => setRecoverPhrase(e.target.value)}
+                  className={`${isRetro ? 'p13-classic-input' : 'terminal-input'} w-full resize-none px-3 py-2 text-[11px] outline-none`}
+                  placeholder={t('login.recoverPhrasePlaceholder')} autoComplete="off" spellCheck={false} />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="recover-new-pass" className="terminal-label">{t('login.recoverNewPassword')}</label>
+                <input id="recover-new-pass" type="password" required
+                  value={recoverNewPassword} onChange={(e) => setRecoverNewPassword(e.target.value)}
+                  className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
+                  placeholder="••••••••" autoComplete="new-password" />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="recover-confirm" className="terminal-label">{t('common.confirm')}</label>
+                <input id="recover-confirm" type="password" required
+                  value={recoverConfirm} onChange={(e) => setRecoverConfirm(e.target.value)}
+                  className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
+                  placeholder="••••••••" autoComplete="new-password" />
+              </div>
+
+              {recoverNewPassword.length > 0 && recoverNewPassword.length < 8 && (
+                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] text-text-muted">
+                  <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
+                </p>
+              )}
+
+              {recoverNeedsTotp && (
+                <div className="space-y-2">
+                  <label htmlFor="recover-totp" className="terminal-label">{t('login.totpCodeLabel')}</label>
+                  <input id="recover-totp" type="text" inputMode="numeric" maxLength={6}
+                    value={recoverTotpCode} onChange={(e) => setRecoverTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
+                    placeholder="000000" autoComplete="one-time-code" />
+                </div>
+              )}
+
+              {errorLog && (
+                <div className="border border-neon-red/50 bg-neon-red/5 p-2 text-[9px] text-neon-red font-mono">{errorLog}</div>
+              )}
+
+              <div className="flex flex-col gap-3 pt-2">
+                <TerminalGlitchButton type="submit" disabled={isBusy} className="w-full">
+                  {isBusy ? '...' : t('login.recoverSubmit')}
+                </TerminalGlitchButton>
+                <button type="button" onClick={() => { setStage('IDENTITY'); setErrorLog(null) }}
+                  className={`w-full text-[9px] ${isRetro ? 'p13-classic-copy-muted hover:text-[var(--neon-red)]' : 'uppercase tracking-widest text-text-muted/70 hover:text-neon-red'}`}>
+                  {t('common.back')}
+                </button>
+              </div>
             </div>
           </motion.form>
         )}
@@ -427,6 +574,10 @@ export function LoginForm() {
                   {vaultLinkOk && (
                     <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">{t('login.vaultRecoveryOk')}</p>
                   )}
+                  <button type="button" onClick={openRecover}
+                    className="w-full border border-neon-cyan/40 bg-void py-2 text-[9px] uppercase tracking-widest text-neon-cyan/90 hover:bg-neon-cyan/10 transition-all">
+                    {t('login.recoverLink')}
+                  </button>
                   <button type="button"
                     onClick={async () => { await clearSessionApi().catch(() => {}); window.location.reload() }}
                     className="w-full text-[8px] uppercase tracking-widest text-text-muted/70 hover:text-text-muted transition-colors">

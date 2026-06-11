@@ -33,7 +33,8 @@ import { uuidSchema } from '../lib/zod-uuid.js'
 import { clearFmSessionCookie } from '../lib/session-cookie.js'
 import { hasActiveSocket, sendToUser } from '../ws/registry.js'
 import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
-import { verifyRecoveryKey } from '../lib/recovery-key.js'
+import { deletePending, getPending } from '../lib/challenge-store.js'
+import { safeEqualNonce } from '../lib/ecdsa-verify.js'
 
 /**
  * Shared "[deleted]" sentinel user. On account deletion a user's messages are
@@ -96,7 +97,8 @@ const avatarCommitBodySchema = z.object({
   avatar_key: z.string().min(1).max(512),
 })
 const historySyncBodySchema = z.object({
-  recovery_key: z.string().min(12).max(256),
+  recovery_nonce: z.string().min(1),
+  recovery_signature: z.string().min(1),
 })
 
 export const userRoutes: FastifyPluginAsync = async (app) => {
@@ -799,18 +801,28 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
     const [userRow] = await db
-      .select({ recoveryKeySalt: users.recoveryKeySalt, recoveryKeyHash: users.recoveryKeyHash })
+      .select({ username: users.username, recoveryAuthPubJwk: users.recoveryAuthPubJwk })
       .from(users)
       .where(eq(users.id, user.id))
       .limit(1)
-    if (!userRow?.recoveryKeySalt || !userRow.recoveryKeyHash) {
+    if (!userRow?.recoveryAuthPubJwk) {
       return reply.status(400).send({ error: 'RECOVERY_NOT_CONFIGURED' })
     }
-    const recOk = verifyRecoveryKey(
-      parsed.data.recovery_key,
-      userRow.recoveryKeyHash,
-      userRow.recoveryKeySalt
+    // Prove possession of the offline recovery phrase: the client fetched a
+    // nonce from /auth/recovery/challenge and signed it with the phrase-derived
+    // key. Same offline-secret bar as the old recovery key, now unified on the
+    // recovery phrase (the server still never sees the phrase).
+    const recoveryNs = `recovery:${userRow.username}`
+    const pending = await getPending(recoveryNs)
+    if (!pending || !safeEqualNonce(pending.nonce, parsed.data.recovery_nonce)) {
+      return reply.status(401).send({ error: 'RECOVERY_KEY_INVALID' })
+    }
+    const recOk = verifyNonceSignatureEcdsaP256(
+      parsed.data.recovery_nonce,
+      parsed.data.recovery_signature,
+      userRow.recoveryAuthPubJwk
     )
+    await deletePending(recoveryNs)
     if (!recOk) return reply.status(401).send({ error: 'RECOVERY_KEY_INVALID' })
 
     const targetDeviceId = normalizeUuid(params.data.deviceId)

@@ -558,12 +558,6 @@ const ru = {
   'settings.totpDisableWarn': 'Отключение двухфакторной аутентификации снизит безопасность.',
   'settings.totpDisableCode': 'Текущий код',
 
-  'settings.recoveryKeyTitle': 'Ключ восстановления',
-  'settings.recoveryKeyHint': 'Создайте одноразовый ключ восстановления для доступа к хранилищу при утере пароля.',
-  'settings.recoveryKeyGenerate': 'Создать ключ восстановления',
-  'settings.recoveryKeySaveWarning': 'Сохраните этот ключ — он показывается только один раз.',
-  'settings.recoveryKeyDownload': 'Скачать',
-
   'settings.changePinTitle': 'Сменить пароль хранилища',
   'settings.changePinHint': 'Перешифровать приватные ключи новым паролем.',
   'settings.changePinAction': 'Сменить пароль',

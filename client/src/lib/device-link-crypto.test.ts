@@ -7,8 +7,11 @@ import {
   parseLinkQrPayload,
   buildLinkModeBQrPayload,
   parseLinkModeBQrPayload,
+  buildVaultHandoffPayload,
+  parseVaultHandoffPayload,
   deriveLinkVerificationCode,
 } from './device-link-crypto'
+import type { VaultBlob } from './vault'
 
 const SAMPLE_VAULT = JSON.stringify({
   saltB64: 'c2FsdC1zYWx0LXNhbHQtc2FsdA',
@@ -98,6 +101,43 @@ describe('device-link Mode B QR', () => {
   it('does not parse a Mode B QR as Mode A (tags are distinct)', () => {
     const modeB = buildLinkModeBQrPayload('rdv-1', 'secret')
     expect(parseLinkQrPayload(modeB)).toBeNull()
+  })
+})
+
+describe('device-link vault handoff payload', () => {
+  const BLOB: VaultBlob = {
+    version: 5,
+    saltB64: 'c2FsdC1zYWx0LXNhbHQtc2FsdA',
+    ivB64: 'aXYtaXYtaXYtaXY',
+    ciphertextB64: 'Y2lwaGVydGV4dC1ibG9iLWdvZXMtaGVyZQ',
+    argon2: { t: 3, m: 65536, p: 1 },
+  }
+
+  it('round-trips username + vault through the full ECIES handoff', async () => {
+    const newDevice = await generateLinkEphemeralKeypair()
+    const packaged = await encryptVaultToEphemeralKey(
+      buildVaultHandoffPayload('Alice', BLOB),
+      newDevice.publicJwk
+    )
+    const decrypted = await decryptVaultFromEphemeralKey(packaged, newDevice.privateJwk)
+    const handoff = parseVaultHandoffPayload(decrypted)
+    expect(handoff.username).toBe('Alice')
+    expect(handoff.vault.saltB64).toBe(BLOB.saltB64)
+    expect(handoff.vault.ivB64).toBe(BLOB.ivB64)
+    expect(handoff.vault.ciphertextB64).toBe(BLOB.ciphertextB64)
+    expect(handoff.vault.argon2).toEqual(BLOB.argon2)
+  })
+
+  it('rejects a bare vault blob with no username wrapper (the BAD_HANDOFF bug)', () => {
+    // Regression guard: the old deposit side sent JSON.stringify(vaultBlob)
+    // directly, which has no `username`, making every successful link fail.
+    expect(() => parseVaultHandoffPayload(JSON.stringify(BLOB))).toThrow('BAD_HANDOFF')
+  })
+
+  it('rejects a wrapper whose vault blob is malformed', () => {
+    expect(() =>
+      parseVaultHandoffPayload(JSON.stringify({ username: 'Alice', vault: { nope: 1 } }))
+    ).toThrow('BAD_VAULT')
   })
 })
 

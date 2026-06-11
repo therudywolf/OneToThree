@@ -9,6 +9,7 @@ import {
   buildLinkQrPayload,
   decryptVaultFromEphemeralKey,
   parseLinkModeBQrPayload,
+  parseVaultHandoffPayload,
   deriveLinkVerificationCode,
 } from '@/lib/device-link-crypto'
 import {
@@ -17,7 +18,7 @@ import {
   submitRendezvousPubkey,
 } from '@/lib/api/device-rendezvous'
 import { QrScanner } from '@/components/qr-scanner'
-import { parseVaultBlobJson, persistVaultBlobByLoginUsername } from '@/lib/vault'
+import { persistVaultBlobByLoginUsername } from '@/lib/vault'
 
 /**
  * PROJECT 13 :: NODE_LINKING_INTERFACE (new-device side)
@@ -83,13 +84,8 @@ export function LoginQrDevicePanel() {
 
   /** Import a decrypted vault handoff blob; throws on a malformed payload. */
   const importHandoff = useCallback((decrypted: string) => {
-    const handoff = JSON.parse(decrypted) as { username?: unknown; vault?: unknown }
-    if (typeof handoff.username !== 'string' || handoff.vault == null) {
-      throw new Error('BAD_HANDOFF')
-    }
-    const parsedVault = parseVaultBlobJson(JSON.stringify(handoff.vault))
-    if (!parsedVault) throw new Error('BAD_VAULT')
-    persistVaultBlobByLoginUsername(handoff.username, parsedVault)
+    const { username, vault } = parseVaultHandoffPayload(decrypted)
+    persistVaultBlobByLoginUsername(username, vault)
   }, [])
 
   // -------- Mode A: show a QR carrying this device's ephemeral key --------

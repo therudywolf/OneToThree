@@ -17,6 +17,7 @@ import {
   parseLinkQrPayload,
   encryptVaultToEphemeralKey,
   buildLinkModeBQrPayload,
+  buildVaultHandoffPayload,
   deriveLinkVerificationCode,
 } from '@/lib/device-link-crypto'
 import {
@@ -98,8 +99,10 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     try {
       const vaultBlob = readVaultBlob(user.id)
       if (!vaultBlob) throw new Error('VAULT_NOT_FOUND')
+      // Send { username, vault } so the new device persists the vault under the
+      // login-handle slot it reads back at login. A bare blob -> BAD_HANDOFF.
       const encBlob = await encryptVaultToEphemeralKey(
-        JSON.stringify(vaultBlob),
+        buildVaultHandoffPayload(user.username, vaultBlob),
         payload.ephemeralPubkey
       )
       await depositToRendezvous(payload.rendezvousId, encBlob)
@@ -190,8 +193,9 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     try {
       const vaultBlob = readVaultBlob(user.id)
       if (!vaultBlob) throw new Error('VAULT_NOT_FOUND')
+      // See Mode A above: wrap as { username, vault } for the new device.
       const encBlob = await encryptVaultToEphemeralKey(
-        JSON.stringify(vaultBlob),
+        buildVaultHandoffPayload(user.username, vaultBlob),
         pubkey
       )
       await depositToRendezvous(rid, encBlob)

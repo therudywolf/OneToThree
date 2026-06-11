@@ -32,6 +32,7 @@ import {
   arrayBufferToBase64,
   base64ToArrayBuffer,
 } from './crypto'
+import { parseVaultBlobJson, type VaultBlob } from './vault'
 
 const HKDF_INFO = new TextEncoder().encode('OneToThree/device-link/v1')
 const AES_IV_BYTES = 12
@@ -232,4 +233,42 @@ export async function decryptVaultFromEphemeralKey(
     base64ToArrayBuffer(envelope.ct)
   )
   return new TextDecoder().decode(plain)
+}
+
+// ---------------------------------------------------------------------------
+// Vault handoff payload — the plaintext carried INSIDE the ECIES envelope.
+// ---------------------------------------------------------------------------
+// The existing device sends BOTH the login handle and the vault blob: the new
+// device persists the vault under the login-username slot it later reads back
+// at login (vault.ts getLoginSlot / readVaultBlobByLoginUsername). Depositing a
+// bare VaultBlob (no username wrapper) makes the new device's parse throw
+// BAD_HANDOFF on every otherwise-successful link, which is exactly the bug this
+// shared contract prevents — both sides MUST agree on this shape.
+// ---------------------------------------------------------------------------
+
+export type VaultHandoff = {
+  /** Login handle the vault is persisted under on the new device. */
+  username: string
+  /** The sealed vault blob (still encrypted with the user's vault password). */
+  vault: VaultBlob
+}
+
+/** Build the handoff plaintext the existing device encrypts to the new device. */
+export function buildVaultHandoffPayload(username: string, vault: VaultBlob): string {
+  return JSON.stringify({ username, vault })
+}
+
+/**
+ * Parse a decrypted handoff payload. Throws BAD_HANDOFF when the login username
+ * is missing (e.g. a legacy bare-blob deposit) and BAD_VAULT when the vault
+ * blob is malformed.
+ */
+export function parseVaultHandoffPayload(decrypted: string): VaultHandoff {
+  const handoff = JSON.parse(decrypted) as { username?: unknown; vault?: unknown }
+  if (typeof handoff.username !== 'string' || handoff.vault == null) {
+    throw new Error('BAD_HANDOFF')
+  }
+  const vault = parseVaultBlobJson(JSON.stringify(handoff.vault))
+  if (!vault) throw new Error('BAD_VAULT')
+  return { username: handoff.username, vault }
 }

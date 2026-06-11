@@ -654,12 +654,16 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
           beforeDate ? lt(messages.createdAt, beforeDate) : undefined
         )
       )
-      .orderBy(beforeDate ? desc(messages.createdAt) : asc(messages.createdAt))
+      // Always fetch the NEWEST pageLimit rows (desc + limit), for both the
+      // initial load and the `before` cursor. Ordering asc on the no-cursor
+      // path returned the OLDEST 500 — a chat with >500 messages opened to
+      // ancient history with the latest messages missing.
+      .orderBy(desc(messages.createdAt))
       .limit(pageLimit)
 
-    // Paging older fetches newest-first; flip back so the response is always
-    // ordered oldest -> newest.
-    if (beforeDate) rows.reverse()
+    // We fetched newest-first; flip back so the response is always ordered
+    // oldest -> newest.
+    rows.reverse()
 
     return reply.send({
       messages: rows.map((m) => ({

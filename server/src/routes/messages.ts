@@ -658,7 +658,11 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       // initial load and the `before` cursor. Ordering asc on the no-cursor
       // path returned the OLDEST 500 — a chat with >500 messages opened to
       // ancient history with the latest messages missing.
-      .orderBy(desc(messages.createdAt))
+      // seq (monotonic bigserial) is a deterministic tiebreaker so rows sharing
+      // a created_at timestamp keep a stable order. (Full composite-cursor
+      // pagination on (created_at, seq) is deferred until a paginating client
+      // exists — see BUG_BACKLOG L7.)
+      .orderBy(desc(messages.createdAt), desc(messages.seq))
       .limit(pageLimit)
 
     // We fetched newest-first; flip back so the response is always ordered

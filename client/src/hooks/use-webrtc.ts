@@ -672,20 +672,39 @@ export function useWebRTC(userId: string | null) {
         }
 
         const pc = pcsRef.current.get(fromUserId)
-        if (data.kind === 'ice' && pc) {
-          if (data.candidate) {
-            if (pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
-            else (pendingIceRef.current[fromUserId] ??= []).push(data.candidate)
-          }
+        if (data.kind === 'ice' && data.candidate) {
+          // Always buffer when there's no usable pc/remoteDescription yet. For
+          // the CALLEE no pc exists until acceptLink, so candidates trickled
+          // during the human-decision window must be queued (flushIceQueue
+          // replays them on accept) — dropping them can fail a relay-only call
+          // whose only path was an early TURN candidate.
+          if (pc?.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
+          else (pendingIceRef.current[fromUserId] ??= []).push(data.candidate)
         }
 
         if (data.kind === 'offer') {
           if (pc) {
-            await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp })
-            await flushIceQueue(fromUserId, pc)
-            const answer = await pc.createAnswer()
-            await pc.setLocalDescription(answer)
-            transmitSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
+            // Perfect negotiation for offer glare (both peers send an offer at
+            // once, e.g. both enable camera within ~1 RTT). The IMPOLITE peer
+            // ignores the colliding offer (its own wins); the POLITE peer rolls
+            // its local offer back, then accepts. Previously the bare
+            // setRemoteDescription threw on collision — an unhandled rejection,
+            // and the renegotiated track never appeared.
+            const polite = !!userId && userId < fromUserId
+            const offerCollision = pc.signalingState !== 'stable'
+            if (offerCollision && !polite) return
+            try {
+              if (offerCollision) await pc.setLocalDescription({ type: 'rollback' })
+              await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp })
+              await flushIceQueue(fromUserId, pc)
+              const answer = await pc.createAnswer()
+              await pc.setLocalDescription(answer)
+              transmitSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
+            } catch (err) {
+              if (typeof console !== 'undefined') {
+                console.warn('[webrtc] renegotiation offer handling failed', err)
+              }
+            }
           } else {
             const current = useCallStore.getState().incomingCall
             setIncomingCall(upsertIncomingCall(current, {

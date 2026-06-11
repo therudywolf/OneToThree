@@ -44,6 +44,9 @@ import {
   type PlatformProfileId,
 } from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
+import { QRCodeSVG } from 'qrcode.react'
+import { generateRecoveryMnemonic, deriveRecoveryAuthKeypair } from '@/lib/recovery/recovery-secret'
+import { getRecoveryStatus, enableRecovery, disableRecovery, type RecoveryStatus } from '@/lib/api/recovery'
 import { getTrustedPeerCount } from '@/lib/trust-store'
 import { PortalRoot } from '@/components/portal-root'
 import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
@@ -90,7 +93,7 @@ function readDiscoverableFromPayload(v: unknown): boolean {
   return false
 }
 
-type VaultGateTarget = 'export' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | null
+type VaultGateTarget = 'export' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | 'recovery_enable' | null
 type AppearanceStyleId = 'terminal' | 'md3' | 'retro'
 
 export function SettingsModal({ userId, username, onClose }: Props) {
@@ -135,6 +138,15 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   /** Pending vault-gate action — null = gate closed */
   const [vaultGate, setVaultGate] = useState<VaultGateTarget>(null)
+  const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus | null>(null)
+  const [recoveryEnable, setRecoveryEnable] = useState<{ mnemonic: string; recoveryBlob: string; publicJwk: string } | null>(null)
+  const [recoveryRequireTotp, setRecoveryRequireTotp] = useState(false)
+  const [recoveryTotpCode, setRecoveryTotpCode] = useState('')
+  const [recoverySavedConfirmed, setRecoverySavedConfirmed] = useState(false)
+  const [recoveryShowQr, setRecoveryShowQr] = useState(false)
+  const [recoveryBusy, setRecoveryBusy] = useState(false)
+  const [recoveryDisableOpen, setRecoveryDisableOpen] = useState(false)
+  const [recoverySuccess, setRecoverySuccess] = useState(false)
 
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
   const setChatSoundEnabled = useChatStore((s) => s.setChatSoundEnabled)
@@ -253,13 +265,14 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   }, [userId, updateUser])
 
   // ── Vault gate handler ──────────────────────────────────────────────────────
-  function handleVaultGateVerified(_pin: string) {
+  function handleVaultGateVerified(pin: string) {
     const target = vaultGate
     setVaultGate(null)
     if (target === 'export')           { execExportVault(); return }
     if (target === 'totp_setup')       { void startTotpSetup(); return }
     if (target === 'totp_disable')     { setTotpDisableOpen(true); return }
     if (target === 'device_linking_on') { void setDeviceLinking(true); return }
+    if (target === 'recovery_enable')   { void beginRecoveryEnable(pin); return }
   }
 
   function gateActionLabel(target: VaultGateTarget): string {
@@ -267,6 +280,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     if (target === 'totp_setup')        return t('settings.totpSetupGateLabel')
     if (target === 'totp_disable')      return t('settings.totpDisableGateLabel')
     if (target === 'device_linking_on') return t('settings.deviceLinkingGateLabel')
+    if (target === 'recovery_enable')   return t('settings.recoveryGateLabel')
     return ''
   }
 
@@ -359,6 +373,100 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     } catch (e) {
       setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally { setChangePinBusy(false) }
+  }
+
+  // ── Account recovery (Option A) ───────────────────────────────────────────────
+  // Load current status when the security tab is shown (best-effort).
+  useEffect(() => {
+    if (settingsTab !== 'security') return
+    let cancelled = false
+    getRecoveryStatus()
+      .then((s) => { if (!cancelled) setRecoveryStatus(s) })
+      .catch(() => { /* fall back to the disabled affordance */ })
+    return () => { cancelled = true }
+  }, [settingsTab])
+
+  // Vault password already verified by the gate — re-unwrap the keyring and seal
+  // a SECOND copy under a freshly generated recovery phrase. Everything here is
+  // client-only; only the ciphertext blob + the phrase-derived public key leave.
+  async function beginRecoveryEnable(pin: string) {
+    setError(null)
+    setRecoveryBusy(true)
+    try {
+      const blob = readVaultBlob(userId)
+      if (!blob) { setError(t('settings.noLocalVault')); return }
+      const keyring = await unwrapPrivateJwkWithPin(blob, pin)
+      const mnemonic = generateRecoveryMnemonic()
+      const { publicJwk } = deriveRecoveryAuthKeypair(mnemonic)
+      const recoveryBlob = await wrapPrivateJwkWithPin(keyring, mnemonic)
+      setRecoveryRequireTotp(false)
+      setRecoveryTotpCode('')
+      setRecoverySavedConfirmed(false)
+      setRecoveryShowQr(false)
+      setRecoveryEnable({ mnemonic, recoveryBlob: JSON.stringify(recoveryBlob), publicJwk })
+    } catch (e) {
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
+    } finally { setRecoveryBusy(false) }
+  }
+
+  async function confirmRecoveryEnable() {
+    if (!recoveryEnable) return
+    setError(null)
+    // Enabling plants a second root credential → the server requires a TOTP
+    // step-up when the account has 2FA. Send a current code in that case.
+    const code = recoveryTotpCode.replace(/\D/g, '').slice(0, 6)
+    if (user?.totp_enabled && code.length !== 6) { setError(t('login.totpSixDigits')); return }
+    setRecoveryBusy(true)
+    try {
+      await enableRecovery({
+        recovery_vault_blob: recoveryEnable.recoveryBlob,
+        recovery_auth_pub_jwk: recoveryEnable.publicJwk,
+        require_totp: recoveryRequireTotp,
+        totpCode: user?.totp_enabled ? code : undefined,
+      })
+      setRecoveryEnable(null)
+      setRecoveryTotpCode('')
+      setRecoverySavedConfirmed(false)
+      try { setRecoveryStatus(await getRecoveryStatus()) } catch { /* refreshed lazily */ }
+      setRecoverySuccess(true)
+      setTimeout(() => setRecoverySuccess(false), 2500)
+    } catch (e) {
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
+    } finally { setRecoveryBusy(false) }
+  }
+
+  function cancelRecoveryEnable() {
+    setRecoveryEnable(null)
+    setRecoveryTotpCode('')
+    setRecoveryRequireTotp(false)
+    setRecoverySavedConfirmed(false)
+    setRecoveryShowQr(false)
+    setError(null)
+  }
+
+  async function execDisableRecovery() {
+    setError(null)
+    const code = recoveryTotpCode.replace(/\D/g, '').slice(0, 6)
+    if (user?.totp_enabled && code.length !== 6) { setError(t('login.totpSixDigits')); return }
+    setRecoveryBusy(true)
+    try {
+      await disableRecovery(user?.totp_enabled ? code : undefined)
+      setRecoveryDisableOpen(false)
+      setRecoveryTotpCode('')
+      try { setRecoveryStatus(await getRecoveryStatus()) } catch { /* refreshed lazily */ }
+    } catch (e) {
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
+    } finally { setRecoveryBusy(false) }
+  }
+
+  function downloadRecoveryPhrase(mnemonic: string) {
+    const data = new Blob([mnemonic + '\n'], { type: 'text/plain' })
+    const url = URL.createObjectURL(data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'onetothree-recovery-phrase.txt'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   // ── Toggles ──────────────────────────────────────────────────────────────────
@@ -775,6 +883,115 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Account Recovery (Option A) */}
+              <div className="border border-neon-cyan/30 p-3">
+                <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">{t('settings.recoveryTitle')}</p>
+                <p className="mb-3 text-[9px] text-text-muted">{t('settings.recoveryHint')}</p>
+
+                {recoveryEnable ? (
+                  <div className="space-y-3">
+                    <p className="text-[9px] font-semibold text-neon-red">{t('settings.recoverySaveWarning')}</p>
+                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                      {recoveryEnable.mnemonic.split(' ').map((w, i) => (
+                        <div key={i} className="flex items-baseline gap-1 border border-neon-cyan/25 bg-void/60 px-2 py-1">
+                          <span className="text-[8px] text-text-muted">{i + 1}</span>
+                          <span className="select-all font-mono text-[11px] tracking-wide text-text-primary">{w}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {recoveryShowQr && (
+                      <div className="flex justify-center border border-neon-cyan/25 bg-void p-3">
+                        <QRCodeSVG value={recoveryEnable.mnemonic} size={180} bgColor="#000000" fgColor="#22d3ee" level="M" className="max-w-full" />
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => downloadRecoveryPhrase(recoveryEnable.mnemonic)}
+                        className="flex-1 border border-neon-cyan bg-void py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
+                        {chromeLabel(t('settings.recoveryDownload'))}
+                      </button>
+                      <button type="button" onClick={() => { void navigator.clipboard.writeText(recoveryEnable.mnemonic) }}
+                        className="border border-neon-cyan/50 bg-void px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
+                        COPY
+                      </button>
+                      <button type="button" onClick={() => setRecoveryShowQr((v) => !v)}
+                        className="border border-neon-cyan/50 bg-void px-3 py-1.5 font-mono text-[9px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10">
+                        {chromeLabel(t('settings.recoveryShowQr'))}
+                      </button>
+                    </div>
+                    {user?.totp_enabled === true && (
+                      <label className="flex items-center gap-2 text-[9px] text-text-muted">
+                        <input type="checkbox" checked={recoveryRequireTotp} onChange={(e) => setRecoveryRequireTotp(e.target.checked)} />
+                        {t('settings.recoveryRequireTotp')}
+                      </label>
+                    )}
+                    <label className="flex items-center gap-2 text-[9px] text-text-muted">
+                      <input type="checkbox" checked={recoverySavedConfirmed} onChange={(e) => setRecoverySavedConfirmed(e.target.checked)} />
+                      {t('settings.recoverySavedConfirm')}
+                    </label>
+                    {user?.totp_enabled === true && (
+                      <div className="space-y-1">
+                        <label className="terminal-label" htmlFor="recovery-stepup-code">{t('settings.recoveryTotpStepUp')}</label>
+                        <input id="recovery-stepup-code" className="terminal-input" inputMode="numeric" maxLength={6}
+                          value={recoveryTotpCode}
+                          onChange={(e) => setRecoveryTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="off" />
+                      </div>
+                    )}
+                    <div className="flex gap-2">
+                      <button type="button" disabled={!recoverySavedConfirmed || recoveryBusy} onClick={() => void confirmRecoveryEnable()}
+                        className="flex-1 border border-neon-cyan bg-void py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
+                        {recoveryBusy ? (isMd3 ? '…' : '[ ... ]') : chromeLabel(t('settings.recoveryEnableConfirm'))}
+                      </button>
+                      <button type="button" onClick={cancelRecoveryEnable}
+                        className="flex-1 border border-border-strong/60 py-1.5 font-mono text-[10px] text-text-muted">
+                        {chromeLabel(t('common.cancel'))}
+                      </button>
+                    </div>
+                  </div>
+                ) : recoveryStatus?.enabled ? (
+                  <div className="space-y-2">
+                    <p className="font-mono text-[10px] uppercase tracking-wider text-neon-cyan">
+                      :: {t('settings.recoveryEnabledState')}{recoveryStatus.require_totp ? ` · ${t('settings.recoveryTotpOn')}` : ''}
+                    </p>
+                    {!recoveryDisableOpen ? (
+                      <button type="button" disabled={recoveryBusy}
+                        onClick={() => { setError(null); setRecoveryTotpCode(''); setRecoveryDisableOpen(true) }}
+                        className="w-full border border-neon-red/70 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
+                        {chromeLabel(t('settings.recoveryDisable'))}
+                      </button>
+                    ) : (
+                      <div className="space-y-2 border border-neon-red/40 p-2">
+                        <p className="text-[9px] text-danger">{t('settings.recoveryDisableWarn')}</p>
+                        {user?.totp_enabled === true && (
+                          <div className="space-y-1">
+                            <label className="terminal-label" htmlFor="recovery-disable-code">{t('settings.totpDisableCode')}</label>
+                            <input id="recovery-disable-code" className="terminal-input" inputMode="numeric" maxLength={6}
+                              value={recoveryTotpCode}
+                              onChange={(e) => setRecoveryTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="off" />
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <button type="button" disabled={recoveryBusy} onClick={() => void execDisableRecovery()}
+                            className="flex-1 border border-neon-red/70 bg-void py-1 font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
+                            {recoveryBusy ? (isMd3 ? '…' : '[ ... ]') : chromeLabel(t('common.confirm'))}
+                          </button>
+                          <button type="button" onClick={() => { setRecoveryDisableOpen(false); setRecoveryTotpCode('') }}
+                            className="flex-1 border border-border-strong/60 py-1 font-mono text-[10px] text-text-muted">
+                            {chromeLabel(t('common.cancel'))}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button type="button" disabled={recoveryBusy}
+                    onClick={() => { setError(null); setVaultGate('recovery_enable') }}
+                    className="w-full border border-neon-cyan bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
+                    {chromeLabel(t('settings.recoveryEnable'))}
+                  </button>
+                )}
+                {recoverySuccess && <p className="mt-2 text-[10px] text-neon-cyan">:: {t('settings.recoverySuccess')}</p>}
               </div>
 
               {/* Change Vault PIN */}

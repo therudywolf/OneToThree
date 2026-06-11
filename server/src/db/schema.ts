@@ -97,7 +97,12 @@ export const users = pgTable('users', {
   disableReadReceipts: boolean('disable_read_receipts').notNull().default(false),
   /** Server-side gate for issuing new device-link tokens. Default true — vault PIN is the real guard. */
   allowDeviceLinking: boolean('allow_device_linking').notNull().default(true),
-  /** Recovery key material (server stores only KDF salt+hash, never plaintext key). */
+  /**
+   * @deprecated Legacy scrypt "recovery key" — superseded by the phrase-based
+   * recovery vault above ([[recoveryVaultBlob]] / [[recoveryAuthPubJwk]]). No
+   * code reads these anymore; kept only so prod rows aren't dropped destructively.
+   * Drop in a dedicated migration once we're sure no rollback needs them.
+   */
   recoveryKeySalt: text('recovery_key_salt'),
   recoveryKeyHash: text('recovery_key_hash'),
   recoveryKeySetAt: timestamp('recovery_key_set_at', { withTimezone: true }),

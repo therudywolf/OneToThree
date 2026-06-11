@@ -120,6 +120,16 @@ if (!process.env.VITEST_REDIS_URL) {
       await sql`ALTER TABLE users ADD COLUMN storage_quota_bytes bigint`
     }
 
+    if (!await hasColumn('users', 'recovery_vault_blob')) {
+      await sql`ALTER TABLE users ADD COLUMN recovery_vault_blob text`
+    }
+    if (!await hasColumn('users', 'recovery_auth_pub_jwk')) {
+      await sql`ALTER TABLE users ADD COLUMN recovery_auth_pub_jwk text`
+    }
+    if (!await hasColumn('users', 'recovery_require_totp')) {
+      await sql`ALTER TABLE users ADD COLUMN recovery_require_totp boolean NOT NULL DEFAULT false`
+    }
+
     if (!await hasTable('attachments')) {
       await sql`
         CREATE TABLE attachments (

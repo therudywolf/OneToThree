@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createSign, generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
@@ -6,7 +6,13 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import { chatMembers, chats, devices, messages, users } from '../db/schema.js'
-import { generateRecoveryMaterial } from '../lib/recovery-key.js'
+
+function signNonceDerB64(nonce: string, privateKey: KeyObject) {
+  const sign = createSign('SHA256')
+  sign.update(nonce, 'utf8')
+  sign.end()
+  return sign.sign(privateKey).toString('base64')
+}
 
 describe('messages history sync policy', () => {
   let app: FastifyInstance | undefined
@@ -31,15 +37,17 @@ describe('messages history sync policy', () => {
       })
       .returning({ id: users.id, username: users.username })
 
-    const recovery = generateRecoveryMaterial()
+    // u2 has recovery enabled: the server stores the phrase-derived public key
+    // and we keep the private key locally to prove possession (sign the nonce).
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    const recoveryAuthPubJwk = JSON.stringify(publicKey.export({ format: 'jwk' }))
     const [u2] = await db
       .insert(users)
       .values({
         username: u2Name,
         publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
-        recoveryKeySalt: recovery.salt,
-        recoveryKeyHash: recovery.hash,
-        recoveryKeySetAt: new Date(),
+        recoveryVaultBlob: JSON.stringify({ v: 2, opaque: true }),
+        recoveryAuthPubJwk,
       })
       .returning({ id: users.id, username: users.username })
 
@@ -103,10 +111,17 @@ describe('messages history sync policy', () => {
       expect(limitedIds).toContain(futureMsg.id)
       expect(limitedIds).not.toContain(oldMsg.id)
 
+      // Prove the recovery phrase: fetch a nonce, sign it with the phrase key.
+      const ch = await request(app!.server)
+        .post('/api/auth/recovery/challenge')
+        .send({ username: u2.username })
+        .expect(200)
+      const { nonce } = ch.body as { nonce: string }
+
       await request(app!.server)
         .post(`/api/users/me/devices/${newDevice.id}/history-sync`)
         .set('Cookie', cookie)
-        .send({ recovery_key: recovery.recoveryKey })
+        .send({ recovery_nonce: nonce, recovery_signature: signNonceDerB64(nonce, privateKey) })
         .expect(200)
 
       const full = await request(app!.server)

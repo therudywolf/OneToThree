@@ -43,7 +43,6 @@ import {
 } from '../lib/auth-lockout.js'
 import { generateTotpSecret, generateTotpUri, verifyTotp } from '../lib/totp.js'
 import { encryptTotpSecret, decryptTotpSecret } from '../lib/totp-crypto.js'
-import { generateRecoveryMaterial, verifyRecoveryKey } from '../lib/recovery-key.js'
 import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
 
 const challengeBodySchema = z.object({
@@ -76,9 +75,6 @@ const login2faBodySchema = z.object({
 })
 const disable2faBodySchema = z.object({
   code: totpCodeSchema,
-})
-const recoveryVerifyBodySchema = z.object({
-  recovery_key: z.string().min(12).max(256),
 })
 type Pending2faResponse = {
   requires2FA: true
@@ -255,59 +251,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     await db.update(users).set({ totpSecret: null, isTotpEnabled: false }).where(eq(users.id, user.id))
     return reply.send({ ok: true, totp_enabled: false })
-  })
-
-  app.post('/recovery/setup', { config: { rateLimit: { max: 3, timeWindow: '1 hour' } } }, async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
-
-    const stepUp = await requireTotpStepUp(request, user.id)
-    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
-
-    const material = generateRecoveryMaterial()
-    const now = new Date()
-    await db
-      .update(users)
-      .set({
-        recoveryKeySalt: material.salt,
-        recoveryKeyHash: material.hash,
-        recoveryKeySetAt: now,
-      })
-      .where(eq(users.id, user.id))
-
-    return reply.send({
-      ok: true,
-      recovery_key: material.recoveryKey,
-      recovery_key_set_at: now.toISOString(),
-    })
-  })
-
-  app.post('/recovery/verify', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
-    const parsed = recoveryVerifyBodySchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
-
-    const stepUp = await requireTotpStepUp(request, user.id)
-    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
-
-    const [row] = await db
-      .select({
-        recoveryKeySalt: users.recoveryKeySalt,
-        recoveryKeyHash: users.recoveryKeyHash,
-      })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
-
-    if (!row?.recoveryKeySalt || !row.recoveryKeyHash) {
-      return reply.status(400).send({ error: 'RECOVERY_NOT_CONFIGURED' })
-    }
-
-    const ok = verifyRecoveryKey(parsed.data.recovery_key, row.recoveryKeyHash, row.recoveryKeySalt)
-    if (!ok) return reply.status(401).send({ error: 'RECOVERY_KEY_INVALID' })
-
-    return reply.send({ ok: true })
   })
 
   app.post('/login/2fa', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {

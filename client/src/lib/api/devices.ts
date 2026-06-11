@@ -123,38 +123,6 @@ export async function reauthorizeDevice(deviceId: string): Promise<void> {
   }
 }
 
-export async function enableDeviceHistorySync(params: {
-  deviceId: string
-  recoveryKey: string
-  totpCode?: string
-}): Promise<{ device_id: string; history_sync_enabled_at: string }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const code = params.totpCode?.trim()
-  if (code) headers['X-TOTP-Code'] = code
-
-  const res = await fetchWithTimeout(
-    `${API_URL}/users/me/devices/${encodeURIComponent(params.deviceId)}/history-sync`,
-    {
-      method: 'POST',
-      credentials: 'include',
-      headers,
-      body: JSON.stringify({ recovery_key: params.recoveryKey }),
-    }
-  )
-  const data = (await res.json().catch(() => ({}))) as {
-    device_id?: string
-    history_sync_enabled_at?: string
-    error?: string
-  }
-  if (!res.ok || !data.device_id || !data.history_sync_enabled_at) {
-    throw new Error(data.error ?? 'HISTORY_SYNC_ENABLE_FAILED')
-  }
-  return {
-    device_id: canonicalUserId(data.device_id),
-    history_sync_enabled_at: data.history_sync_enabled_at,
-  }
-}
-
 // ─── Stage 4: Device Linking ─────────────────────────────────────────────────
 
 export type LinkInitParams = {

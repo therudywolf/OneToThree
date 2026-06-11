@@ -302,10 +302,15 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       )
     }
 
-    // Unread count per chat: messages not sent by user, not yet read,
-    // delivered to this device (or any device for group chats as fallback).
+    // Unread count per chat. This is derived from messages.read_at, which is
+    // ONLY ever set for direct_e2e chats (read receipts are direct-only). For
+    // group/channel/public chats read_at stays NULL forever, so counting them
+    // here yielded a monotonic lifetime-message count that never cleared.
+    // Restrict the query to direct chats; group-type unread defaults to 0 until
+    // a per-member read cursor lands (see BUG_BACKLOG H2 "proper").
     const unreadCountByChat = new Map<string, number>()
-    if (chatIds.length > 0) {
+    const directChatIds = rows.filter((c) => c.type === 'direct_e2e').map((c) => c.id)
+    if (directChatIds.length > 0) {
       try {
         const unreadRows = await db
           .select({
@@ -315,7 +320,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           .from(messages)
           .where(
             and(
-              inArray(messages.chatId, chatIds),
+              inArray(messages.chatId, directChatIds),
               isNull(messages.readAt),
               ne(messages.senderId, user.id)
             )

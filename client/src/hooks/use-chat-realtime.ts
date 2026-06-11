@@ -39,6 +39,10 @@ export function useChatRealtime(
   const trackInboundUnread = useUnreadStore((s) => s.trackInboundUnread)
   const usernameCacheRef = useRef<Record<string, string>>({})
   const pendingPullRef = useRef(false)
+  /** Set when a fan-out event arrives while a pending-pull is in flight, so the
+   * running pull repeats and a slot that committed after its snapshot isn't
+   * silently missed until the next event. */
+  const pendingPullAgainRef = useRef(false)
 
   useEffect(() => {
     if (!activeChatId) {
@@ -217,30 +221,39 @@ export function useChatRealtime(
           // Fall through into the pending-pull branch below.
         }
         if ((m.content == null || m.content === '')) {
-          if (pendingPullRef.current) return
+          if (pendingPullRef.current) {
+            // A pull is already running — request a re-run instead of dropping
+            // this event, so a slot committed after the in-flight snapshot is
+            // still fetched.
+            pendingPullAgainRef.current = true
+            return
+          }
           pendingPullRef.current = true
           try {
-            const pending = await fetchPendingDeliveries(activeChatId)
-            if (pending.length === 0) return
-            const rows = await decryptApiMessageRows(
-              unwrappedPrivateKey,
-              cryptoCtx,
-              pending,
-              drCtx,
-              { myUserId: userId ?? undefined, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk }
-            )
-            const ids: string[] = []
-            for (let i = 0; i < rows.length; i++) {
-              const row = rows[i]
-              if (!row) continue
-              await cacheMessage(row).catch(() => { /* best-effort */ })
-              appendMessage(row)
-              const id = pending[i]?.id
-              if (id) ids.push(id)
-            }
-            if (ids.length > 0) {
-              await acknowledgeMessagesDelivered(ids).catch(() => { /* best-effort */ })
-            }
+            do {
+              pendingPullAgainRef.current = false
+              const pending = await fetchPendingDeliveries(activeChatId)
+              if (pending.length === 0) continue
+              const rows = await decryptApiMessageRows(
+                unwrappedPrivateKey,
+                cryptoCtx,
+                pending,
+                drCtx,
+                { myUserId: userId ?? undefined, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk }
+              )
+              const ids: string[] = []
+              for (let i = 0; i < rows.length; i++) {
+                const row = rows[i]
+                if (!row) continue
+                await cacheMessage(row).catch(() => { /* best-effort */ })
+                appendMessage(row)
+                const id = pending[i]?.id
+                if (id) ids.push(id)
+              }
+              if (ids.length > 0) {
+                await acknowledgeMessagesDelivered(ids).catch(() => { /* best-effort */ })
+              }
+            } while (pendingPullAgainRef.current)
           } finally {
             pendingPullRef.current = false
           }

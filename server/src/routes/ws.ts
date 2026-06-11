@@ -567,6 +567,16 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             participantIds: [user.id],
             endReason: 'rejected',
           }).catch(() => { /* non-fatal */ })
+          // Clear the caller's active-call key (mirrors call_accept). Otherwise
+          // the caller's own client, on receiving call_reject, runs
+          // severAllLinks -> call_leave; the server still sees the live key and
+          // persists a spurious "missed call" message + a duplicate session row.
+          const redis = getRedis()
+          if (redis) {
+            await Promise.all(
+              otherIds.map((callerId) => redis.del(`call:active:${chat_id}:${callerId}`))
+            )
+          }
           return
         }
 

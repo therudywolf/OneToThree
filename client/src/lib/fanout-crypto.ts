@@ -247,7 +247,11 @@ export async function getDrFanoutSafety(
   const peerDevices = peerUserId === myUserId ? myDevices : dedupeDevicesById(peerDevicesRaw)
   const slots = dedupeDevicesById([...peerDevices, ...myDevices])
 
-  if (slots.length === 0) {
+  // For a real DIRECT chat the PEER must have at least one reachable device.
+  // Checking only the combined `slots` let the gate pass `safe:true` whenever
+  // the SENDER had a 2nd device even though the peer had none — encryptForPeer
+  // would then self-fan-out and the peer would silently receive nothing.
+  if (slots.length === 0 || (peerUserId !== myUserId && peerDevices.length === 0)) {
     return {
       safe: false,
       reason: 'NO_DEVICE_SLOTS',

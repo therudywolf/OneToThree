@@ -145,6 +145,7 @@ export function useWebRTC(userId: string | null) {
     setConnectionQuality,
     setPeerConnectionType, clearPeerConnectionType,
     setCallStartTime, setMiniPlayer: _setMiniPlayer,
+    setCallChatId,
   } = useCallStore()
 
   const resolveRelaySharedKey = useCallback(async (peerId: string): Promise<CryptoKey | null> => {
@@ -302,7 +303,9 @@ export function useWebRTC(userId: string | null) {
     setMediaAccessError(null)
     revertToOptics()
     
-    const chatId = useSessionStore.getState().activeChatId
+    // Leave the CALL's chat, not whatever chat happens to be open — the user
+    // may have navigated to a different chat mid-call. Fall back to activeChatId.
+    const chatId = useCallStore.getState().callChatId ?? useSessionStore.getState().activeChatId
     if (chatId) getFmSocket().send({ type: 'call_leave', chat_id: chatId })
 
     Array.from(pcsRef.current.keys()).forEach(purgePeer)
@@ -414,6 +417,7 @@ export function useWebRTC(userId: string | null) {
   }, [createAndSendOffer, setRemoteStream, purgePeer, setReconnecting, setConnectionLost, setIceRetryCount])
 
   const establishAudioRelay = useCallback(async (peerId: string, chatId: string, requestedVideo: boolean) => {
+    setCallChatId(chatId)
     let stream: MediaStream
     try {
       stream = await captureLocalFeed(getUserMediaConstraints({ video: false, hd: false }))
@@ -479,6 +483,8 @@ export function useWebRTC(userId: string | null) {
   }, [clearPeerConnectionType, clearRemotePeerMedia, establishAudioRelay, removePeerConnection, removeRemoteStream])
 
   const acceptAudioRelay = useCallback(async (peerId: string) => {
+    const incChatId = useCallStore.getState().incomingCall?.chatId
+    if (incChatId) setCallChatId(incChatId)
     let stream: MediaStream
     try {
       stream = await captureLocalFeed(getUserMediaConstraints({ video: false, hd: false }))
@@ -947,6 +953,7 @@ export function useWebRTC(userId: string | null) {
   }, [userId, severAllLinks])
 
   const establishLink = useCallback(async (recipients: string[], isVideo: boolean, chatId?: string) => {
+    if (chatId) setCallChatId(chatId)
     if (!navigator.onLine) {
       toastWarn(t('call.noNetwork'), { title: t('call.iceRelayTitle') })
       return
@@ -1050,6 +1057,7 @@ export function useWebRTC(userId: string | null) {
     const inc = useCallStore.getState().incomingCall
     if (!inc) return
 
+    if (inc.chatId) setCallChatId(inc.chatId)
     // C-4: notify server so other devices of this user dismiss the incoming-call modal
     if (inc.chatId) getFmSocket().send({ type: 'call_accept', chat_id: inc.chatId })
 

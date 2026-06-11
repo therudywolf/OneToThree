@@ -53,6 +53,9 @@ export type CallProtocolState = {
   incomingCall: InboundLinkRequest | null
   peerConnectionTypes: Record<string, PeerConnectionType>
   qualityLevel: QualityLevel
+  /** Chat id of the ACTIVE call — used to send call_leave to the right chat
+   * even if the user navigated to a different chat mid-call. */
+  callChatId: string | null
 
   // [MINI_PLAYER]
   isMiniPlayer: boolean
@@ -88,6 +91,7 @@ export type CallProtocolState = {
   setCallStartTime: (time: number | null) => void
   setShowRelayToast: (value: boolean) => void
   setDndEnabled: (v: boolean) => void
+  setCallChatId: (chatId: string | null) => void
 
   /** Полная деактивация протокола и очистка контура */
   reset: () => void
@@ -150,6 +154,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     try { window.localStorage.setItem('p13:dnd', v ? '1' : '0') } catch { /* storage unavailable */ }
     set({ dndEnabled: v })
   }
+  const setCallChatId = (chatId: string | null) => set({ callChatId: chatId })
   const reset = () => {
     // FIX 9: Close peer connections and stop media tracks before clearing state
     const state = get()
@@ -166,7 +171,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
         try { track.stop() } catch { /* ignore */ }
       }
     }
-    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false })
+    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false, callChatId: null })
   }
 
   return {
@@ -182,6 +187,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     incomingCall: null,
     peerConnectionTypes: {},
     qualityLevel: loadQualityLevel(),
+    callChatId: null,
     isMiniPlayer: false,
     callStartTime: null,
     showRelayToast: false,
@@ -207,6 +213,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     setCallStartTime,
     setShowRelayToast,
     setDndEnabled,
+    setCallChatId,
     reset,
   }
 })

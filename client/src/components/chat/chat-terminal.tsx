@@ -8,7 +8,7 @@ import { useUnreadStore } from '@/store/unreadStore'
 import { getFmSocket } from '@/lib/api/socket'
 import { MediaMessage } from '@/components/chat/media-message'
 import { ChatInput } from '@/components/chat/chat-input'
-import { parseAttachmentEnvelope, parseStickerEnvelope } from '@/lib/attachment-envelope'
+import { parseAlbumEnvelope, parseAttachmentEnvelope, parseStickerEnvelope } from '@/lib/attachment-envelope'
 import { MessageRow } from '@/components/chat/message-row'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import { deleteMessage } from '@/lib/api/chats'
@@ -842,7 +842,7 @@ export function ChatTerminal({
 
   const handleMediaClick = useCallback((media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
     const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }> = []
-    const metaMap = new Map<string, { mediaPath: string; mediaIv: string; plaintext?: string }>()
+    const metaMap = new Map<string, { mediaPath: string; mediaIv: string; plaintext?: string; wrapCt?: string; wrapIv?: string }>()
 
     const collectMsg = (msg: DecryptedMessage) => {
       if (msg.media_path && msg.media_iv && msg.media_type) {
@@ -860,6 +860,31 @@ export function ChatTerminal({
             plaintext: msg.plaintext ?? undefined,
           })
         }
+        return
+      }
+      // Album: media lives in the encrypted envelope (no media_path). Expand one
+      // lightbox entry per item, keyed ${msg.id}#${idx} to match the id
+      // AlbumBubble fires on click, with the item's own wrapped key in meta.
+      const album = msg.plaintext ? parseAlbumEnvelope(msg.plaintext) : null
+      if (album) {
+        album.items.forEach((it, idx) => {
+          const isVid = it.kind === 'video' || /^video\//i.test(it.mimeType)
+          const isImg = it.kind === 'image' || /^image\//i.test(it.mimeType)
+          if (!isVid && !isImg) return
+          const id = `${msg.id}#${idx}`
+          allMedia.push({
+            id,
+            url: '',
+            type: isVid ? 'video' : 'image',
+            mimeType: it.mimeType.split(';')[0],
+          })
+          metaMap.set(id, {
+            mediaPath: it.path,
+            mediaIv: it.iv,
+            wrapCt: it.wrapCt || undefined,
+            wrapIv: it.wrapIv || undefined,
+          })
+        })
       }
     }
 
@@ -914,11 +939,15 @@ export function ChatTerminal({
         return null
       } else {
         const cipher = await res.arrayBuffer()
-        if (envelope) {
+        // Album item: per-item wrapped AES key from the album envelope (carried
+        // on meta as wrapCt/wrapIv) rather than a single-media attachment env.
+        const wrapCt = meta.wrapCt ?? envelope?.wrapCt
+        const wrapIv = meta.wrapIv ?? envelope?.wrapIv
+        if (wrapCt && wrapIv) {
           const wrapPlain = await decryptBinary(
             sharedKey,
-            base64ToArrayBuffer(envelope.wrapCt),
-            envelope.wrapIv
+            base64ToArrayBuffer(wrapCt),
+            wrapIv
           )
           const fileKey = await importAesGcm256RawKey(wrapPlain, ['decrypt'])
           const fileIv = new Uint8Array(base64ToArrayBuffer(meta.mediaIv))

@@ -59,14 +59,16 @@ describe('GET /messages/:chatId — keyset pagination', () => {
     })}`
 
     try {
-      // limit only — oldest-first slice.
+      // limit only (no cursor) — the NEWEST `limit` messages, returned in
+      // oldest -> newest order. (Previously this wrongly returned the OLDEST
+      // slice, hiding recent conversation on chats with >limit messages.)
       const first = await request(app!.server)
         .get(`/api/messages/${chat.id}?limit=2`)
         .set('Cookie', cookie)
         .expect(200)
       expect(first.body.messages.map((m: { content: string }) => m.content)).toEqual([
-        'm0',
-        'm1',
+        'm3',
+        'm4',
       ])
 
       // before=times[3] -> messages strictly older, newest 2 of them, asc order.

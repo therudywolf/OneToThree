@@ -229,36 +229,25 @@ focused/refactor session.
 ## Status — 2026-06-11 (this session)
 
 **Fixed, tested, deployed to prod** (commit-per-fix): the QR vault-handoff and the
-TOTP-step-up ECDH-gate fixes, then the full bug-hunt backlog EXCEPT M7:
+TOTP-step-up ECDH-gate fixes, then the ENTIRE bug-hunt backlog —
 C1, C2, C3, H1, H2 (server interim), H3, H4, H5, L1, L2, L3, L4, L5, L6, L7,
-M1, M2, M3, M4, M5, M6, M9, M10.
+M1, M2, M3, M4, M5, M6, M9, M10, **and M7**. All 22 verified bugs resolved.
 
-**Deferred — needs a dedicated session (NOT a marathon tail):**
+### M7 — account-deletion tombstones — DONE (no migration needed)
+Solved without the feared schema migration / nullability ripple: `DELETE
+/me/account` now re-points the user's messages to a seeded `[deleted]` sentinel
+user before deleting the account (so the `sender_id` cascade no longer reaches
+them), redacts each to a `system:v1` `[deleted]` tombstone, and drops the DIRECT
+`message_deliveries` slots so a peer can't decrypt back to the original.
+`sender_id` stays NOT NULL — no client change — and the sentinel resolves to
+"[deleted]" via the existing `/users/lookup`. Regression test:
+`server/src/routes/users-account-deletion.test.ts`.
 
-### M7 — account-deletion tombstones (schema migration)
-`DELETE /me/account` (`users.ts:984-1007`) redacts the user's messages to
-`[deleted]` and then `tx.delete(users)` cascade-HARD-deletes those same rows
-(`messages.sender_id` / `group_messages.sender_id` FK `onDelete:'cascade'`), so
-peers get gaps, not tombstones. Proper fix is a real migration with a wide
-nullability ripple (≈53 server `senderId` sites + client decrypt-routing /
-message-row rendering), so it is intentionally left for a focused session:
-
-1. Migration: `messages.sender_id` + `group_messages.sender_id` → nullable,
-   FK `onDelete: 'set null'` (drizzle generate + schema.ts:283-285, 622-624).
-   Alternative without a nullable column: re-point rows to a seeded sentinel
-   "[deleted] user" id before `tx.delete(users)`.
-2. Keep the redaction UPDATE at `users.ts:989` (it now survives the delete).
-   Note it currently only redacts the `messages` row — for DIRECT chats the
-   per-device ciphertext in `message_deliveries` is NOT redacted; decide whether
-   to clear those slots too.
-3. Audit every `senderId`/`sender_id` reader to tolerate null: the GET
-   `/messages` response mapping, `ne(messages.senderId, …)` comparisons, the
-   client DR self-sync routing (`row.sender_id === drCtx.ownerUserId`), and
-   message-row rendering (show null sender as "[deleted]").
-4. Regression test: delete an account, assert the peer still sees `[deleted]`
-   tombstones (not a gap) in both a direct and a group chat.
+**Remaining — an ENHANCEMENT, not a bug (optional):**
 
 ### H2 — proper per-member read cursor (server schema + client read-floor)
-The server interim (group unread = 0) is shipped; the real feature (a
-`chat_members.last_read_at` cursor so group unread actually counts/clears) is a
-schema + client change for a focused session — see the H2 entry above.
+The server interim (group unread = 0, no more inflation) is shipped, and the
+client still tracks live group unread within a session. The *persistent* feature
+— a `chat_members.last_read_at` cursor so group unread counts and clears across
+reloads — is net-new feature work (a column migration + a mark-read endpoint +
+client wiring on chat open), not a bug fix. Left as an explicit opt-in.

@@ -256,6 +256,15 @@ export async function flushOutboxPending(): Promise<void> {
           await removeOutboxEntry(entry.id)
           retryState.delete(entry.id)
           sent++
+          // Tell the UI to drop the optimistic `pending-<outboxId>` placeholder;
+          // the real row arrives via its normal inbound path. Without this the
+          // placeholder lingers as a stuck spinner (DIRECT/SELF) or a permanent
+          // duplicate (SECTOR/PUBLIC) until a full reload.
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('p13:outbox_flushed', { detail: { outboxId: entry.id } })
+            )
+          }
         } else {
           state.retries++
           state.nextRetry = Date.now() + getBackoffMs(state.retries)

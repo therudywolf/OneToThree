@@ -192,3 +192,13 @@ export const useChatStore = create<ChatState>((set) => {
     reset,
   }
 })
+
+// Reconcile offline optimistic placeholders: when the outbox confirms a queued
+// message was sent (outbox.ts), drop its `pending-<outboxId>` row. The real
+// message arrives via its normal inbound path (WS / pending-pull).
+if (typeof window !== 'undefined') {
+  window.addEventListener('p13:outbox_flushed', (e) => {
+    const outboxId = (e as CustomEvent<{ outboxId?: string }>).detail?.outboxId
+    if (outboxId) useChatStore.getState().removeMessage(`pending-${outboxId}`)
+  })
+}

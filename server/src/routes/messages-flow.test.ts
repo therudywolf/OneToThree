@@ -138,4 +138,51 @@ describe('messages flow routes', () => {
     await db.delete(chats).where(eq(chats.id, chat.id))
     await db.delete(users).where(inArray(users.id, [u1.id, u2.id]))
   })
+
+  it('rejects a media_path that references another chat or uploader (cross-chat media access)', async () => {
+    const uName = `mp${Date.now().toString(36)}`
+    const [u] = await db
+      .insert(users)
+      .values({
+        username: uName,
+        publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+      })
+      .returning({ id: users.id, username: users.username })
+    const [chat] = await db.insert(chats).values({ type: 'direct_e2e', name: null }).returning({ id: chats.id })
+    await db.insert(chatMembers).values({ chatId: chat.id, userId: u.id, encryptedGroupKey: null, role: 'owner' })
+    const [dev] = await db
+      .insert(devices)
+      .values({ userId: u.id, clientDeviceKey: `mp-${randomUUID()}`, deviceName: 'MP' })
+      .returning({ id: devices.id })
+    const token = await app!.jwt.sign({ sub: u.id, username: u.username, device_id: dev.id, jti: randomUUID() })
+
+    const otherChat = randomUUID()
+    const otherUploader = randomUUID()
+    const send = (media_path: string) =>
+      request(app!.server)
+        .post('/api/messages/send')
+        .set('Cookie', `fm_session=${token}`)
+        .send({ chat_id: chat.id, ciphertexts: [{ device_id: dev.id, ciphertext: 'c', iv: 'i' }], media_path })
+
+    // Another chat's object key — must be refused even though sender is a member here.
+    let res = await send(`chats/${otherChat}/${u.id}/${randomUUID()}.jpg`).expect(400)
+    expect(res.body?.error).toBe('INVALID_MEDIA_PATH')
+    // Another uploader's key in this chat — also refused.
+    res = await send(`chats/${chat.id}/${otherUploader}/${randomUUID()}.jpg`).expect(400)
+    expect(res.body?.error).toBe('INVALID_MEDIA_PATH')
+    // Path traversal — refused.
+    res = await send(`chats/${chat.id}/${u.id}/../../x.jpg`).expect(400)
+    expect(res.body?.error).toBe('INVALID_MEDIA_PATH')
+    // The sender's own key in this chat passes the media check (200).
+    await send(`chats/${chat.id}/${u.id}/${randomUUID()}.jpg`).expect(200)
+
+    const rows = await db.select({ id: messages.id }).from(messages).where(eq(messages.chatId, chat.id))
+    const ids = rows.map((r) => r.id)
+    if (ids.length) await db.delete(messageDeliveries).where(inArray(messageDeliveries.messageId, ids))
+    await db.delete(messages).where(eq(messages.chatId, chat.id))
+    await db.delete(devices).where(eq(devices.id, dev.id))
+    await db.delete(chatMembers).where(eq(chatMembers.chatId, chat.id))
+    await db.delete(chats).where(eq(chats.id, chat.id))
+    await db.delete(users).where(eq(users.id, u.id))
+  })
 })

@@ -123,6 +123,23 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'NOT_A_MEMBER' })
     }
 
+    // Bind any referenced media object to THIS chat and THIS sender. Object keys
+    // are chats/{chatId}/{uploaderId}/{uuid}{ext}, and /storage/download-url
+    // authorizes purely on "some message in a chat I belong to references this
+    // key" — never on the chat the object was uploaded into. Without this check
+    // a member could plant another chat's object key onto a message here and
+    // expose that chat's bytes (and hijack its attachment bookkeeping). Require
+    // the embedded chatId and uploaderId to match the target chat and sender.
+    if (p.media_path != null && p.media_path.trim() !== '') {
+      if (
+        p.media_path.includes('..') ||
+        p.media_path.includes('\\') ||
+        !p.media_path.startsWith(`chats/${p.chat_id}/${user.id}/`)
+      ) {
+        return reply.status(400).send({ error: 'INVALID_MEDIA_PATH' })
+      }
+    }
+
     const allMembers = await db
       .select({ userId: chatMembers.userId })
       .from(chatMembers)

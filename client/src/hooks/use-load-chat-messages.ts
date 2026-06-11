@@ -122,8 +122,16 @@ export function useLoadChatMessages(
           }
           setMessages(out)
           if (userId) {
+            // Don't ack rows that failed to decrypt — leave them in
+            // /sync/pending so a later pull (DR session now ready) can retry,
+            // rather than marking them delivered while showing [DECRYPT_FAIL].
             const incomingIds = out
-              .filter((m) => m.sender_id !== userId)
+              .filter(
+                (m) =>
+                  m.sender_id !== userId &&
+                  m.plaintext !== '[DECRYPT_FAIL]' &&
+                  m.plaintext !== '[KEY_CHANGE_DETECTED]'
+              )
               .map((m) => m.id)
             if (incomingIds.length > 0) {
               void acknowledgeMessagesDelivered(incomingIds).catch(() => {

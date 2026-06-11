@@ -52,9 +52,14 @@ async function pullPendingForChat(
       /* best-effort */
     })
     appendMessage(row)
-    ids.push(rows[i]!.id)
+    // Don't ack a row we couldn't decrypt — leave it in /sync/pending so a
+    // transient failure (DR session not ready) is retried on the next pull
+    // instead of being dropped to [DECRYPT_FAIL] until the chat is reopened.
+    if (row.plaintext !== '[DECRYPT_FAIL]' && row.plaintext !== '[KEY_CHANGE_DETECTED]') {
+      ids.push(rows[i]!.id)
+    }
   }
-  await acknowledgeMessagesDelivered(ids)
+  if (ids.length > 0) await acknowledgeMessagesDelivered(ids)
 }
 
 export function useMessageDeliverySync(

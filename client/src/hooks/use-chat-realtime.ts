@@ -15,6 +15,9 @@ import { usePresenceStore } from '@/store/presenceStore'
 import { useUnreadStore } from '@/store/unreadStore'
 import type { DecryptedMessage } from '@/types/chat'
 
+/** Give up retrying a pending slot that won't decrypt after this many pulls. */
+const DECRYPT_RETRY_CAP = 5
+
 export function useChatRealtime(
   cryptoCtx: ChatCryptoContext | null,
   triggerBackgroundPush?: (title: string, body: string, targetUrl?: string) => void,
@@ -43,6 +46,10 @@ export function useChatRealtime(
    * running pull repeats and a slot that committed after its snapshot isn't
    * silently missed until the next event. */
   const pendingPullAgainRef = useRef(false)
+  /** Per-message count of consecutive decrypt failures during pending-pull, so a
+   * transiently-undecryptable slot is retried (left pending) but a genuinely
+   * corrupt one is given up on after a cap instead of pinning /sync/pending. */
+  const decryptFailCountRef = useRef<Map<string, number>>(new Map())
 
   useEffect(() => {
     if (!activeChatId) {
@@ -245,10 +252,23 @@ export function useChatRealtime(
               for (let i = 0; i < rows.length; i++) {
                 const row = rows[i]
                 if (!row) continue
+                const id = pending[i]?.id
+                if (row.plaintext === '[DECRYPT_FAIL]' && id) {
+                  // Transient failure (e.g. DR session not provisioned yet):
+                  // don't show or ack it yet — leave it pending so the next pull
+                  // retries and renders the real plaintext (appendMessage dedups
+                  // by id, so showing the placeholder first would stick). Give up
+                  // after the cap and surface the failure rather than loop.
+                  const n = (decryptFailCountRef.current.get(id) ?? 0) + 1
+                  decryptFailCountRef.current.set(id, n)
+                  if (n < DECRYPT_RETRY_CAP) continue
+                }
                 await cacheMessage(row).catch(() => { /* best-effort */ })
                 appendMessage(row)
-                const id = pending[i]?.id
-                if (id) ids.push(id)
+                if (id) {
+                  decryptFailCountRef.current.delete(id)
+                  ids.push(id)
+                }
               }
               if (ids.length > 0) {
                 await acknowledgeMessagesDelivered(ids).catch(() => { /* best-effort */ })

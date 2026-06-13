@@ -97,5 +97,9 @@ export function explainLoginError(code: string, t: Translator): string {
     return t('login.qrLinkFailedGeneric')
   }
 
-  return t('errors.boundaryGeneric')
+  // Surface the raw cause for UNMAPPED errors. Without this, native-app failures
+  // (network/CORS "Failed to fetch", a WebView crypto/OOM throw, an unexpected
+  // status) all collapse into one opaque "something went wrong" that's
+  // impossible to diagnose remotely. Known errors keep their friendly text.
+  return `${t('errors.boundaryGeneric')} [${normalized.slice(0, 120)}]`
 }

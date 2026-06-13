@@ -45,8 +45,10 @@ import {
 } from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { QRCodeSVG } from 'qrcode.react'
-import { generateRecoveryMnemonic, deriveRecoveryAuthKeypair } from '@/lib/recovery/recovery-secret'
-import { getRecoveryStatus, enableRecovery, disableRecovery, type RecoveryStatus } from '@/lib/api/recovery'
+import { generateRecoveryMnemonic, deriveRecoveryAuthKeypair, RECOVERY_ARGON2_PARAMS } from '@/lib/recovery/recovery-secret'
+import { getRecoveryStatus, getRecoverySetupChallenge, enableRecovery, disableRecovery, type RecoveryStatus } from '@/lib/api/recovery'
+import { importEcdsaPrivateKeyForSign, signUtf8WithEcdsaP256 } from '@/lib/crypto'
+import { parseVaultPlaintext } from '@/lib/vault-keyring'
 import { getTrustedPeerCount } from '@/lib/trust-store'
 import { PortalRoot } from '@/components/portal-root'
 import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
@@ -93,7 +95,7 @@ function readDiscoverableFromPayload(v: unknown): boolean {
   return false
 }
 
-type VaultGateTarget = 'export' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | 'recovery_enable' | null
+type VaultGateTarget = 'export' | 'totp_setup' | 'totp_disable' | 'device_linking_on' | 'recovery_enable' | 'recovery_disable' | null
 type AppearanceStyleId = 'terminal' | 'md3' | 'retro'
 
 export function SettingsModal({ userId, username, onClose }: Props) {
@@ -139,13 +141,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   /** Pending vault-gate action — null = gate closed */
   const [vaultGate, setVaultGate] = useState<VaultGateTarget>(null)
   const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus | null>(null)
-  const [recoveryEnable, setRecoveryEnable] = useState<{ mnemonic: string; recoveryBlob: string; publicJwk: string } | null>(null)
+  const [recoveryEnable, setRecoveryEnable] = useState<{ mnemonic: string; recoveryBlob: string; publicJwk: string; ecdsaPrivateJwk: string } | null>(null)
   const [recoveryRequireTotp, setRecoveryRequireTotp] = useState(false)
-  const [recoveryTotpCode, setRecoveryTotpCode] = useState('')
   const [recoverySavedConfirmed, setRecoverySavedConfirmed] = useState(false)
   const [recoveryShowQr, setRecoveryShowQr] = useState(false)
   const [recoveryBusy, setRecoveryBusy] = useState(false)
-  const [recoveryDisableOpen, setRecoveryDisableOpen] = useState(false)
   const [recoverySuccess, setRecoverySuccess] = useState(false)
 
   const chatSoundEnabled = useChatStore((s) => s.chatSoundEnabled)
@@ -273,6 +273,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     if (target === 'totp_disable')     { setTotpDisableOpen(true); return }
     if (target === 'device_linking_on') { void setDeviceLinking(true); return }
     if (target === 'recovery_enable')   { void beginRecoveryEnable(pin); return }
+    if (target === 'recovery_disable')  { void beginRecoveryDisable(pin); return }
   }
 
   function gateActionLabel(target: VaultGateTarget): string {
@@ -281,6 +282,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     if (target === 'totp_disable')      return t('settings.totpDisableGateLabel')
     if (target === 'device_linking_on') return t('settings.deviceLinkingGateLabel')
     if (target === 'recovery_enable')   return t('settings.recoveryGateLabel')
+    if (target === 'recovery_disable')  return t('settings.recoveryDisableGateLabel')
     return ''
   }
 
@@ -386,6 +388,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     return () => { cancelled = true }
   }, [settingsTab])
 
+  // Prove vault-unlock to the server: sign a fresh server nonce with the login
+  // device key (the keyring's ECDSA key, recovered from the just-unwrapped
+  // keyring). A bare stolen session can't do this, so it can't enable/disable.
+  async function signVaultProof(ecdsaPrivateJwk: string): Promise<{ proof_nonce: string; proof_signature: string }> {
+    const nonce = await getRecoverySetupChallenge()
+    const key = await importEcdsaPrivateKeyForSign(ecdsaPrivateJwk)
+    const signature = await signUtf8WithEcdsaP256(key, nonce)
+    return { proof_nonce: nonce, proof_signature: signature }
+  }
+
   // Vault password already verified by the gate — re-unwrap the keyring and seal
   // a SECOND copy under a freshly generated recovery phrase. Everything here is
   // client-only; only the ciphertext blob + the phrase-derived public key leave.
@@ -396,9 +408,13 @@ export function SettingsModal({ userId, username, onClose }: Props) {
       const blob = readVaultBlob(userId)
       if (!blob) { setError(t('settings.noLocalVault')); return }
       const keyring = await unwrapPrivateJwkWithPin(blob, pin)
+      const parsed = parseVaultPlaintext(keyring)
+      if (!parsed || parsed.kind !== 'V2') throw new Error('INVALID_VAULT_FORMAT')
       const mnemonic = generateRecoveryMnemonic()
       const { publicJwk } = deriveRecoveryAuthKeypair(mnemonic)
-      const recoveryBlob = await wrapPrivateJwkWithPin(keyring, mnemonic)
+      // Light Argon2 — a 256-bit phrase needs no heavy stretching, so this stays
+      // fast even in mobile WebViews. The login vault keeps the heavy default.
+      const recoveryBlob = await wrapPrivateJwkWithPin(keyring, mnemonic, RECOVERY_ARGON2_PARAMS)
       // Self-check before we ever upload: the sealed blob MUST decrypt back to
       // the same keyring with the phrase, or recovery would be silently bricked
       // (RECOVERY_DECRYPT_FAILED) at the worst possible moment.
@@ -406,10 +422,9 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         throw new Error('RECOVERY_SELF_CHECK_FAILED')
       }
       setRecoveryRequireTotp(false)
-      setRecoveryTotpCode('')
       setRecoverySavedConfirmed(false)
       setRecoveryShowQr(false)
-      setRecoveryEnable({ mnemonic, recoveryBlob: JSON.stringify(recoveryBlob), publicJwk })
+      setRecoveryEnable({ mnemonic, recoveryBlob: JSON.stringify(recoveryBlob), publicJwk, ecdsaPrivateJwk: parsed.ecdsaJwk })
     } catch (e) {
       setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
     } finally { setRecoveryBusy(false) }
@@ -418,20 +433,15 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   async function confirmRecoveryEnable() {
     if (!recoveryEnable) return
     setError(null)
-    // Enabling plants a second root credential → the server requires a TOTP
-    // step-up when the account has 2FA. Send a current code in that case.
-    const code = recoveryTotpCode.replace(/\D/g, '').slice(0, 6)
-    if (user?.totp_enabled && code.length !== 6) { setError(t('login.totpSixDigits')); return }
     setRecoveryBusy(true)
     try {
       await enableRecovery({
         recovery_vault_blob: recoveryEnable.recoveryBlob,
         recovery_auth_pub_jwk: recoveryEnable.publicJwk,
         require_totp: recoveryRequireTotp,
-        totpCode: user?.totp_enabled ? code : undefined,
+        ...(await signVaultProof(recoveryEnable.ecdsaPrivateJwk)),
       })
       setRecoveryEnable(null)
-      setRecoveryTotpCode('')
       setRecoverySavedConfirmed(false)
       try { setRecoveryStatus(await getRecoveryStatus()) } catch { /* refreshed lazily */ }
       setRecoverySuccess(true)
@@ -443,22 +453,22 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
   function cancelRecoveryEnable() {
     setRecoveryEnable(null)
-    setRecoveryTotpCode('')
     setRecoveryRequireTotp(false)
     setRecoverySavedConfirmed(false)
     setRecoveryShowQr(false)
     setError(null)
   }
 
-  async function execDisableRecovery() {
+  async function beginRecoveryDisable(pin: string) {
     setError(null)
-    const code = recoveryTotpCode.replace(/\D/g, '').slice(0, 6)
-    if (user?.totp_enabled && code.length !== 6) { setError(t('login.totpSixDigits')); return }
     setRecoveryBusy(true)
     try {
-      await disableRecovery(user?.totp_enabled ? code : undefined)
-      setRecoveryDisableOpen(false)
-      setRecoveryTotpCode('')
+      const blob = readVaultBlob(userId)
+      if (!blob) { setError(t('settings.noLocalVault')); return }
+      const keyring = await unwrapPrivateJwkWithPin(blob, pin)
+      const parsed = parseVaultPlaintext(keyring)
+      if (!parsed || parsed.kind !== 'V2') throw new Error('INVALID_VAULT_FORMAT')
+      await disableRecovery(await signVaultProof(parsed.ecdsaJwk))
       try { setRecoveryStatus(await getRecoveryStatus()) } catch { /* refreshed lazily */ }
     } catch (e) {
       setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
@@ -936,14 +946,6 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <input type="checkbox" checked={recoverySavedConfirmed} onChange={(e) => setRecoverySavedConfirmed(e.target.checked)} />
                       {t('settings.recoverySavedConfirm')}
                     </label>
-                    {user?.totp_enabled === true && (
-                      <div className="space-y-1">
-                        <label className="terminal-label" htmlFor="recovery-stepup-code">{t('settings.recoveryTotpStepUp')}</label>
-                        <input id="recovery-stepup-code" className="terminal-input" inputMode="numeric" maxLength={6}
-                          value={recoveryTotpCode}
-                          onChange={(e) => setRecoveryTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="off" />
-                      </div>
-                    )}
                     <div className="flex gap-2">
                       <button type="button" disabled={!recoverySavedConfirmed || recoveryBusy} onClick={() => void confirmRecoveryEnable()}
                         className="flex-1 border border-neon-cyan bg-void py-1.5 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
@@ -960,35 +962,19 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                     <p className="font-mono text-[10px] uppercase tracking-wider text-neon-cyan">
                       :: {t('settings.recoveryEnabledState')}{recoveryStatus.require_totp ? ` · ${t('settings.recoveryTotpOn')}` : ''}
                     </p>
-                    {!recoveryDisableOpen ? (
+                    <div className="flex gap-2">
                       <button type="button" disabled={recoveryBusy}
-                        onClick={() => { setError(null); setRecoveryTotpCode(''); setRecoveryDisableOpen(true) }}
-                        className="w-full border border-neon-red/70 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
+                        onClick={() => { setError(null); setVaultGate('recovery_enable') }}
+                        className="flex-1 border border-neon-cyan/60 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 disabled:opacity-40">
+                        {recoveryBusy ? (isMd3 ? '…' : '[ ... ]') : chromeLabel(t('settings.recoveryReissue'))}
+                      </button>
+                      <button type="button" disabled={recoveryBusy}
+                        onClick={() => { setError(null); setVaultGate('recovery_disable') }}
+                        className="flex-1 border border-neon-red/70 bg-void py-2 font-mono text-[10px] uppercase tracking-widest text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
                         {chromeLabel(t('settings.recoveryDisable'))}
                       </button>
-                    ) : (
-                      <div className="space-y-2 border border-neon-red/40 p-2">
-                        <p className="text-[9px] text-danger">{t('settings.recoveryDisableWarn')}</p>
-                        {user?.totp_enabled === true && (
-                          <div className="space-y-1">
-                            <label className="terminal-label" htmlFor="recovery-disable-code">{t('settings.totpDisableCode')}</label>
-                            <input id="recovery-disable-code" className="terminal-input" inputMode="numeric" maxLength={6}
-                              value={recoveryTotpCode}
-                              onChange={(e) => setRecoveryTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} autoComplete="off" />
-                          </div>
-                        )}
-                        <div className="flex gap-2">
-                          <button type="button" disabled={recoveryBusy} onClick={() => void execDisableRecovery()}
-                            className="flex-1 border border-neon-red/70 bg-void py-1 font-mono text-[10px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40">
-                            {recoveryBusy ? (isMd3 ? '…' : '[ ... ]') : chromeLabel(t('common.confirm'))}
-                          </button>
-                          <button type="button" onClick={() => { setRecoveryDisableOpen(false); setRecoveryTotpCode('') }}
-                            className="flex-1 border border-border-strong/60 py-1 font-mono text-[10px] text-text-muted">
-                            {chromeLabel(t('common.cancel'))}
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    </div>
+                    <p className="text-[8px] text-text-muted">{t('settings.recoveryReissueHint')}</p>
                   </div>
                 ) : (
                   <button type="button" disabled={recoveryBusy}

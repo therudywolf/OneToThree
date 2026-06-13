@@ -33,7 +33,7 @@ import { uuidSchema } from '../lib/zod-uuid.js'
 import { clearFmSessionCookie } from '../lib/session-cookie.js'
 import { hasActiveSocket, sendToUser } from '../ws/registry.js'
 import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
-import { deletePending, getPending } from '../lib/challenge-store.js'
+import { deletePending, getPending, setChallenge } from '../lib/challenge-store.js'
 import { safeEqualNonce } from '../lib/ecdsa-verify.js'
 
 /**
@@ -96,10 +96,6 @@ const avatarPresignBodySchema = z.object({
 const avatarCommitBodySchema = z.object({
   avatar_key: z.string().min(1).max(512),
 })
-const historySyncBodySchema = z.object({
-  recovery_nonce: z.string().min(1),
-  recovery_signature: z.string().min(1),
-})
 
 export const userRoutes: FastifyPluginAsync = async (app) => {
   const s3 = createS3Client()
@@ -151,7 +147,13 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   // A SECOND copy of the keyring sealed under a client-only 256-bit recovery
   // phrase. The server stores only ciphertext (recovery_vault_blob) + the
   // phrase-derived ECDSA PUBLIC key (recovery_auth_pub_jwk) — never the phrase.
-  // Enabling plants a second root credential, so it requires a TOTP step-up.
+  //
+  // Enabling/disabling plants or removes a root credential, so it is gated by a
+  // VAULT-UNLOCK PROOF: the client signs a server nonce with the login device
+  // key (the keyring's ECDSA key, available only after the vault password
+  // unlocks the keyring). A bare stolen session — which has the cookie but not
+  // the vault password — cannot produce that signature, so it can't overwrite or
+  // clear someone else's recovery configuration.
   function isValidEcdsaP256PublicJwk(raw: string): boolean {
     try {
       const jwk = JSON.parse(raw) as Record<string, unknown>
@@ -167,23 +169,49 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
   }
 
+  async function verifyVaultProof(userId: string, proofNonce: string, proofSignature: string): Promise<boolean> {
+    const pending = await getPending(`recovery-setup:${userId}`)
+    if (!pending) return false
+    await deletePending(`recovery-setup:${userId}`)
+    if (!safeEqualNonce(pending.nonce, proofNonce)) return false
+    const [idRow] = await db
+      .select({ publicKeyJwk: users.publicKeyJwk })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+    if (!idRow?.publicKeyJwk) return false
+    return verifyNonceSignatureEcdsaP256(proofNonce, proofSignature, idRow.publicKeyJwk)
+  }
+
+  // Authed: issue a single-use nonce for the vault-unlock proof above.
+  app.get('/me/recovery/setup-challenge', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const nonce = randomUUID()
+    await setChallenge(`recovery-setup:${user.id}`, nonce)
+    return reply.send({ nonce })
+  })
+
   app.post('/me/recovery/enable', {
     bodyLimit: 512 * 1024,
     config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
   }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const stepUp = await requireTotpStepUp(request, user.id)
-    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
 
     const parsed = z
       .object({
         recovery_vault_blob: z.string().min(1),
         recovery_auth_pub_jwk: z.string().min(1).max(2000),
         require_totp: z.boolean().optional().default(false),
+        proof_nonce: z.string().min(1),
+        proof_signature: z.string().min(1),
       })
       .safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+    if (!(await verifyVaultProof(user.id, parsed.data.proof_nonce, parsed.data.proof_signature))) {
+      return reply.status(401).send({ error: 'VAULT_PROOF_REQUIRED' })
+    }
     if (!isValidEcdsaP256PublicJwk(parsed.data.recovery_auth_pub_jwk)) {
       return reply.status(400).send({ error: 'INVALID_RECOVERY_KEY' })
     }
@@ -237,8 +265,13 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
   }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const stepUp = await requireTotpStepUp(request, user.id)
-    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
+    const parsed = z
+      .object({ proof_nonce: z.string().min(1), proof_signature: z.string().min(1) })
+      .safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+    if (!(await verifyVaultProof(user.id, parsed.data.proof_nonce, parsed.data.proof_signature))) {
+      return reply.status(401).send({ error: 'VAULT_PROOF_REQUIRED' })
+    }
     await db
       .update(users)
       .set({ recoveryVaultBlob: null, recoveryAuthPubJwk: null, recoveryRequireTotp: false })
@@ -789,63 +822,6 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         last_active: r.lastActive.toISOString(), user_agent: r.userAgent, ip_address: r.ipAddress,
         revoked: r.revokedAt != null, is_current: currentDeviceId !== null && normalizeUuid(r.id) === currentDeviceId,
       })),
-    })
-  })
-
-  app.post('/me/devices/:deviceId/history-sync', { config: { rateLimit: { max: 5, timeWindow: '1 hour' } } }, async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
-    const stepUp = await requireTotpStepUp(request, user.id)
-    if (!stepUp.ok) return sendStepUpError(reply, stepUp)
-
-    const params = z.object({ deviceId: uuidSchema }).safeParse(request.params)
-    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
-    const parsed = historySyncBodySchema.safeParse(request.body)
-    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
-
-    const [userRow] = await db
-      .select({ username: users.username, recoveryAuthPubJwk: users.recoveryAuthPubJwk })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
-    if (!userRow?.recoveryAuthPubJwk) {
-      return reply.status(400).send({ error: 'RECOVERY_NOT_CONFIGURED' })
-    }
-    // Prove possession of the offline recovery phrase: the client fetched a
-    // nonce from /auth/recovery/challenge and signed it with the phrase-derived
-    // key. Same offline-secret bar as the old recovery key, now unified on the
-    // recovery phrase (the server still never sees the phrase).
-    const recoveryNs = `recovery:${userRow.username}`
-    const pending = await getPending(recoveryNs)
-    if (!pending || !safeEqualNonce(pending.nonce, parsed.data.recovery_nonce)) {
-      return reply.status(401).send({ error: 'RECOVERY_KEY_INVALID' })
-    }
-    const recOk = verifyNonceSignatureEcdsaP256(
-      parsed.data.recovery_nonce,
-      parsed.data.recovery_signature,
-      userRow.recoveryAuthPubJwk
-    )
-    await deletePending(recoveryNs)
-    if (!recOk) return reply.status(401).send({ error: 'RECOVERY_KEY_INVALID' })
-
-    const targetDeviceId = normalizeUuid(params.data.deviceId)
-    const [existingDevice] = await db
-      .select({ id: devices.id })
-      .from(devices)
-      .where(and(eq(devices.id, targetDeviceId), eq(devices.userId, user.id)))
-      .limit(1)
-    if (!existingDevice) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
-
-    const now = new Date()
-    await db
-      .update(devices)
-      .set({ historySyncEnabledAt: now })
-      .where(and(eq(devices.id, targetDeviceId), eq(devices.userId, user.id)))
-
-    return reply.send({
-      ok: true,
-      device_id: targetDeviceId,
-      history_sync_enabled_at: now.toISOString(),
     })
   })
 

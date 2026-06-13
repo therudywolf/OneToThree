@@ -20,7 +20,7 @@ Legend:
 | Device management (list, revoke) | implemented | Revoked devices gate all API access |
 | QR device linking | implemented | `link/init` + `link/confirm`; unified `link_token` payload |
 | Account recovery (phrase, no-escrow) | implemented | 24-word phrase; `POST /api/auth/recovery/challenge` + `/complete` (sign nonce vs phrase-derived pubkey), `/api/users/me/recovery/{enable,status,disable}`; server holds only ciphertext + a public key |
-| History sync approval for linked devices | implemented | Explicit per-device approval, now gated by a recovery-phrase signature; future-only until approved |
+| Future-only history for new linked devices | implemented | A newly-linked device is served only post-link messages by the server (`messages.ts`); the chat backlog is never handed to it |
 | JWT denylist (logout/revocation) | implemented | Redis-backed |
 | TOTP replay guard | implemented | Single-use codes via Redis |
 | Rate limiting | implemented | Defined inline per route handler |

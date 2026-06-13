@@ -31,6 +31,18 @@ import { sha256 } from '@noble/hashes/sha2'
 /** 256-bit entropy → 24-word phrase (with the BIP39 checksum that catches typos). */
 const RECOVERY_ENTROPY_BITS = 256
 
+/**
+ * Argon2id parameters for the recovery vault blob (NOT the login vault).
+ *
+ * The recovery phrase carries a full 256 bits of entropy, so brute-forcing it is
+ * infeasible no matter how cheap the KDF is — the heavy 64 MiB Argon2 used for
+ * user-chosen vault passwords buys essentially nothing here while making the
+ * seal/unseal painfully slow in mobile WebViews (pure-JS Argon2). These lighter
+ * params keep enable/recover fast without weakening the 256-bit guarantee.
+ * (Unwrap auto-detects params from the blob, so existing blobs keep working.)
+ */
+export const RECOVERY_ARGON2_PARAMS = { t: 2, m: 8 * 1024, p: 1 } as const
+
 function bytesToB64url(b: Uint8Array): string {
   let s = ''
   for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i])

@@ -19,38 +19,44 @@ export async function getRecoveryStatus(): Promise<RecoveryStatus> {
   return { enabled: Boolean(data.enabled), require_totp: Boolean(data.require_totp) }
 }
 
+// Authed nonce for the vault-unlock proof. The client signs it with the login
+// device key (the keyring's ECDSA key, available only after the vault password
+// unlocks the keyring), proving this is the real owner and not a bare stolen
+// session before we accept a recovery enable/disable.
+export async function getRecoverySetupChallenge(): Promise<string> {
+  const res = await fetchWithTimeout(`${API_URL}/users/me/recovery/setup-challenge`, {
+    method: 'GET',
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as { nonce?: string; error?: string }
+  if (!res.ok || !data.nonce) throw new Error(data.error ?? 'RECOVERY_CHALLENGE_FAILED')
+  return data.nonce
+}
+
 export async function enableRecovery(params: {
   recovery_vault_blob: string
   recovery_auth_pub_jwk: string
   require_totp: boolean
-  totpCode?: string
+  proof_nonce: string
+  proof_signature: string
 }): Promise<{ require_totp: boolean }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const code = params.totpCode?.trim()
-  if (code) headers['X-TOTP-Code'] = code
   const res = await fetchWithTimeout(`${API_URL}/users/me/recovery/enable`, {
     method: 'POST',
     credentials: 'include',
-    headers,
-    body: JSON.stringify({
-      recovery_vault_blob: params.recovery_vault_blob,
-      recovery_auth_pub_jwk: params.recovery_auth_pub_jwk,
-      require_totp: params.require_totp,
-    }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
   })
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; require_totp?: boolean; error?: string }
   if (!res.ok || !data.ok) throw new Error(data.error ?? 'RECOVERY_ENABLE_FAILED')
   return { require_totp: Boolean(data.require_totp) }
 }
 
-export async function disableRecovery(totpCode?: string): Promise<void> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  const code = totpCode?.trim()
-  if (code) headers['X-TOTP-Code'] = code
+export async function disableRecovery(params: { proof_nonce: string; proof_signature: string }): Promise<void> {
   const res = await fetchWithTimeout(`${API_URL}/users/me/recovery/disable`, {
     method: 'POST',
     credentials: 'include',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
   })
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
   if (!res.ok || !data.ok) throw new Error(data.error ?? 'RECOVERY_DISABLE_FAILED')

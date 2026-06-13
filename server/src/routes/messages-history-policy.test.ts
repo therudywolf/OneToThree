@@ -1,4 +1,4 @@
-import { createSign, generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
@@ -7,13 +7,9 @@ import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import { chatMembers, chats, devices, messages, users } from '../db/schema.js'
 
-function signNonceDerB64(nonce: string, privateKey: KeyObject) {
-  const sign = createSign('SHA256')
-  sign.update(nonce, 'utf8')
-  sign.end()
-  return sign.sign(privateKey).toString('base64')
-}
-
+// A freshly-linked device must not be handed the chat's pre-link history by the
+// server. (The explicit per-device "unlock old history" route was removed; the
+// future-only policy itself — messages.ts — stays and is what we assert here.)
 describe('messages history sync policy', () => {
   let app: FastifyInstance | undefined
 
@@ -26,7 +22,7 @@ describe('messages history sync policy', () => {
     if (app) await app.close()
   })
 
-  it('new linked device sees only future history until explicit history-sync approval', async () => {
+  it('a new linked device sees only post-link history, never the chat backlog', async () => {
     const u1Name = `hp1${Date.now().toString(36)}`
     const u2Name = `hp2${Date.now().toString(36)}`
     const [u1] = await db
@@ -36,18 +32,11 @@ describe('messages history sync policy', () => {
         publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
       })
       .returning({ id: users.id, username: users.username })
-
-    // u2 has recovery enabled: the server stores the phrase-derived public key
-    // and we keep the private key locally to prove possession (sign the nonce).
-    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
-    const recoveryAuthPubJwk = JSON.stringify(publicKey.export({ format: 'jwk' }))
     const [u2] = await db
       .insert(users)
       .values({
         username: u2Name,
         publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
-        recoveryVaultBlob: JSON.stringify({ v: 2, opaque: true }),
-        recoveryAuthPubJwk,
       })
       .returning({ id: users.id, username: users.username })
 
@@ -75,23 +64,11 @@ describe('messages history sync policy', () => {
     const newDate = new Date(linkedAt.getTime() + 60_000)
     const [oldMsg] = await db
       .insert(messages)
-      .values({
-        chatId: chat.id,
-        senderId: u1.id,
-        content: 'old-message',
-        iv: 'iv-old',
-        createdAt: oldDate,
-      })
+      .values({ chatId: chat.id, senderId: u1.id, content: 'old-message', iv: 'iv-old', createdAt: oldDate })
       .returning({ id: messages.id })
     const [futureMsg] = await db
       .insert(messages)
-      .values({
-        chatId: chat.id,
-        senderId: u1.id,
-        content: 'future-message',
-        iv: 'iv-new',
-        createdAt: newDate,
-      })
+      .values({ chatId: chat.id, senderId: u1.id, content: 'future-message', iv: 'iv-new', createdAt: newDate })
       .returning({ id: messages.id })
 
     const token = await app!.jwt.sign({
@@ -110,27 +87,6 @@ describe('messages history sync policy', () => {
       const limitedIds = (limited.body.messages ?? []).map((m: { id: string }) => m.id)
       expect(limitedIds).toContain(futureMsg.id)
       expect(limitedIds).not.toContain(oldMsg.id)
-
-      // Prove the recovery phrase: fetch a nonce, sign it with the phrase key.
-      const ch = await request(app!.server)
-        .post('/api/auth/recovery/challenge')
-        .send({ username: u2.username })
-        .expect(200)
-      const { nonce } = ch.body as { nonce: string }
-
-      await request(app!.server)
-        .post(`/api/users/me/devices/${newDevice.id}/history-sync`)
-        .set('Cookie', cookie)
-        .send({ recovery_nonce: nonce, recovery_signature: signNonceDerB64(nonce, privateKey) })
-        .expect(200)
-
-      const full = await request(app!.server)
-        .get(`/api/messages/${chat.id}`)
-        .set('Cookie', cookie)
-        .expect(200)
-      const fullIds = (full.body.messages ?? []).map((m: { id: string }) => m.id)
-      expect(fullIds).toContain(futureMsg.id)
-      expect(fullIds).toContain(oldMsg.id)
     } finally {
       await db.delete(messages).where(and(eq(messages.chatId, chat.id), inArray(messages.id, [oldMsg.id, futureMsg.id])))
       await db.delete(devices).where(eq(devices.userId, u2.id))

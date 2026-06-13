@@ -110,7 +110,7 @@ describe('app security contracts', () => {
     await closeRedis()
   }, 10_000)
 
-  it('allows Capacitor mobile origins in CORS preflight', async () => {
+  it('allows Capacitor + Tauri app origins in CORS preflight', async () => {
     process.env.NODE_ENV = 'test'
     process.env.REDIS_URL = ''
     process.env.CORS_ORIGIN = 'https://app.example'
@@ -119,7 +119,12 @@ describe('app security contracts', () => {
     const app = await buildApp()
     await app.ready()
 
-    for (const origin of ['capacitor://localhost', 'https://localhost']) {
+    for (const origin of [
+      'capacitor://localhost',
+      'https://localhost',
+      'tauri://localhost',
+      'http://tauri.localhost',
+    ]) {
       const res = await app.inject({
         method: 'OPTIONS',
         url: '/api/auth/challenge',

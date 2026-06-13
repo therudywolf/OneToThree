@@ -85,11 +85,14 @@ function normalizeMobileOrigin(raw: string): string | null {
     if (
       u.protocol !== 'https:' &&
       u.protocol !== 'http:' &&
-      u.protocol !== 'capacitor:'
+      u.protocol !== 'capacitor:' &&
+      u.protocol !== 'tauri:'
     ) {
       return null
     }
-    if (u.protocol === 'capacitor:') return `${u.protocol}//${u.host}`
+    // Non-standard app schemes (Capacitor WebView, Tauri WebView) have no
+    // meaningful `origin` per the URL spec, so reconstruct it from protocol+host.
+    if (u.protocol === 'capacitor:' || u.protocol === 'tauri:') return `${u.protocol}//${u.host}`
     return u.origin
   } catch {
     return null
@@ -193,7 +196,18 @@ export async function buildApp() {
   const allowMobileCors =
     (process.env.CORS_ALLOW_MOBILE_APP ?? '1').trim() !== '0'
   const mobileCorsOrigins = allowMobileCors
-    ? ['http://localhost', 'https://localhost', 'capacitor://localhost']
+    ? [
+        // Capacitor (Android/iOS) WebView origins.
+        'http://localhost',
+        'https://localhost',
+        'capacitor://localhost',
+        // Tauri (desktop) WebView origins: macOS/Linux use tauri://localhost,
+        // Windows (WebView2) uses http://tauri.localhost. Without these the
+        // desktop app's API calls are CORS-blocked and login fails outright.
+        'tauri://localhost',
+        'http://tauri.localhost',
+        'https://tauri.localhost',
+      ]
     : []
   const corsOriginsList = Array.from(
     new Set(

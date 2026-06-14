@@ -140,3 +140,8 @@ credentials.json
 *credentials*.json
 !*credentials*.example.json
 
+
+# Native build-tooling lockfiles (Capacitor/Tauri CLIs) — pure dev tooling,
+# not shipped; tracking them only surfaced build-time Dependabot noise.
+mobile/capacitor/package-lock.json
+desktop/tauri/package-lock.json

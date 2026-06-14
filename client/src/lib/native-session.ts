@@ -34,6 +34,52 @@ export function isNativeCapacitorPlatform(): boolean {
   )
 }
 
+/** True inside ANY native WebView — Capacitor (mobile) or Tauri (desktop). */
+export function isNativeApp(): boolean {
+  if (typeof window === 'undefined') return false
+  if (isNativeCapacitorPlatform()) return true
+  const w = window as typeof window & {
+    __TAURI__?: unknown
+    __TAURI_INTERNALS__?: unknown
+    isTauri?: boolean
+  }
+  return Boolean(w.__TAURI__ || w.__TAURI_INTERNALS__ || w.isTauri)
+}
+
+// ── Bearer-token fallback ───────────────────────────────────────────────────
+// Native WebViews can't reliably persist the cross-site `fm_session` cookie, so
+// after login the server also returns the JWT in the body (gated by the
+// X-Native-Client header) and we keep it here, replaying it as a Bearer token
+// on every request. Web never stores it (keeps the httpOnly cookie).
+const NATIVE_TOKEN_KEY = 'fm_native_token'
+
+export function getNativeToken(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage.getItem(NATIVE_TOKEN_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setNativeToken(token: string | null | undefined): void {
+  if (typeof window === 'undefined' || !token) return
+  try {
+    window.localStorage.setItem(NATIVE_TOKEN_KEY, token)
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function clearNativeToken(): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(NATIVE_TOKEN_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
 function getNativeCookieBridge(): CapacitorCookieBridge | null {
   if (typeof window === 'undefined') return null
 

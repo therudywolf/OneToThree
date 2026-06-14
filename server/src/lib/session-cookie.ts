@@ -28,7 +28,28 @@ export function readFmSessionToken(request: FastifyRequest): string | undefined 
   const fromRaw = raw ? parseLastFmSessionValue(raw) : undefined
   if (fromRaw) return fromRaw
   const parsed = request.cookies[SESSION_COOKIE]
-  return typeof parsed === 'string' && parsed.length > 0 ? parsed : undefined
+  if (typeof parsed === 'string' && parsed.length > 0) return parsed
+  // Native apps (Capacitor/Tauri) can't reliably persist a cross-site cookie in
+  // their WebViews, so they send the session JWT as a Bearer token instead.
+  const auth = request.headers.authorization
+  const authStr = Array.isArray(auth) ? auth[0] : auth
+  if (typeof authStr === 'string' && authStr.startsWith('Bearer ')) {
+    const t = authStr.slice(7).trim()
+    if (t) return t
+  }
+  return undefined
+}
+
+/**
+ * Native clients opt into receiving the session JWT in the response BODY (to
+ * then send it back as a Bearer token) by setting this header. Web clients never
+ * set it, so they keep using the httpOnly cookie and the token is never exposed
+ * to web JS / localStorage.
+ */
+export function clientWantsBodyToken(request: FastifyRequest): boolean {
+  const h = request.headers['x-native-client']
+  const v = Array.isArray(h) ? h[0] : h
+  return String(v ?? '').trim() === '1'
 }
 
 function trimmedEnv(key: string): string | undefined {

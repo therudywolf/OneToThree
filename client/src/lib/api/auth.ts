@@ -5,7 +5,7 @@ import {
 } from '@/lib/client-device'
 import { sanitizeFetchHeaderRecord } from '@/lib/http-fetch-headers'
 import { canonicalUserId } from '@/lib/user-id'
-import { clearNativeSessionCookie, warmNativeSessionCookies } from '@/lib/native-session'
+import { clearNativeSessionCookie, clearNativeToken, setNativeToken, warmNativeSessionCookies } from '@/lib/native-session'
 import { normalizeApiRoot as normalizeConfiguredApiRoot } from '@/lib/api/url'
 
 /**
@@ -92,6 +92,7 @@ export async function verifyChallenge(
     requires2FA?: boolean
     pendingToken?: string
     userId?: string
+    token?: string
     error?: string
   }
   if (!res.ok) {
@@ -109,6 +110,7 @@ export async function verifyChallenge(
     }
   }
   if (data.user?.id && data.user.username) {
+    setNativeToken(data.token)
     await warmNativeSessionCookies()
     return {
       kind: 'session',
@@ -140,6 +142,7 @@ export async function complete2faLogin(
   const data = (await res.json().catch(() => ({}))) as {
     user?: { id: string; username: string }
     vault_blob?: string
+    token?: string
     error?: string
   }
   if (!res.ok) {
@@ -148,6 +151,7 @@ export async function complete2faLogin(
   if (!data.user?.id || !data.user.username) {
     throw new Error('INVALID_2FA_RESPONSE')
   }
+  setNativeToken(data.token)
   await warmNativeSessionCookies()
   const user = {
     id: canonicalUserId(data.user.id),
@@ -229,6 +233,7 @@ export async function logoutApi(): Promise<void> {
     method: 'POST',
     credentials: 'include',
   })
+  clearNativeToken()
   await clearNativeSessionCookie()
 }
 
@@ -238,6 +243,7 @@ export async function clearSessionApi(): Promise<void> {
     method: 'POST',
     credentials: 'include',
   })
+  clearNativeToken()
   await clearNativeSessionCookie()
 }
 

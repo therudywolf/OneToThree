@@ -27,6 +27,7 @@ import {
 } from '../lib/ecdsa-verify.js'
 import {
   clearFmSessionCookie,
+  clientWantsBodyToken,
   commitFmSessionCookie,
   readFmSessionToken,
   SESSION_COOKIE,
@@ -190,7 +191,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       { expiresIn: SESSION_MAX_AGE_S }
     )
     commitFmSessionCookie(reply, newToken, SESSION_MAX_AGE_S)
-    return reply.send({ ok: true })
+    return reply.send({ ok: true, ...(clientWantsBodyToken(request) ? { token: newToken } : {}) })
   })
 
   app.post('/clear-session', async (_request, reply) => {
@@ -322,6 +323,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     await recordLoginEvent(request, { userId: canonicalId, username: row.username, outcome: 'success', deviceId: dev.deviceId })
     return reply.send({
       user: { id: canonicalId, username: row.username },
+      ...(clientWantsBodyToken(request) ? { token } : {}),
     })
   })
 
@@ -504,7 +506,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         )
         commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
         await recordLoginEvent(request, { userId: canonicalId, username, outcome: 'success', deviceId: dev.deviceId })
-        return reply.send({ user: { id: canonicalId, username } })
+        return reply.send({ user: { id: canonicalId, username }, ...(clientWantsBodyToken(request) ? { token } : {}) })
       })
     }
   )

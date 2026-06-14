@@ -198,4 +198,40 @@ describe('auth routes', () => {
 
     await removeUser(username)
   })
+
+  it('native clients get the session token in the body and can auth via Bearer (no cookie)', async () => {
+    const username = uniqueUser('nat')
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    const publicKeyJwk = JSON.stringify(publicKey.export({ format: 'jwk' }))
+
+    const ch = await request(app!.server).post('/api/auth/challenge').send({ username }).expect(200)
+    const { nonce } = ch.body as { nonce: string }
+
+    // Web (no X-Native-Client): no token in the body — keeps the httpOnly cookie.
+    const web = await request(app!.server)
+      .post('/api/auth/verify')
+      .set('X-Client-Device-Id', 'vitest-web')
+      .send({ username, nonce, signature: signNonceDerB64(nonce, privateKey), public_key_jwk: publicKeyJwk })
+      .expect(200)
+    expect(web.body.token).toBeUndefined()
+
+    // Native: returns the token in the body.
+    const ch2 = await request(app!.server).post('/api/auth/challenge').send({ username }).expect(200)
+    const native = await request(app!.server)
+      .post('/api/auth/verify')
+      .set('X-Client-Device-Id', 'vitest-web')
+      .set('X-Native-Client', '1')
+      .send({ username, nonce: ch2.body.nonce, signature: signNonceDerB64(ch2.body.nonce, privateKey), public_key_jwk: publicKeyJwk })
+      .expect(200)
+    expect(typeof native.body.token).toBe('string')
+
+    // That token authenticates via Bearer with NO cookie at all.
+    const me = await request(app!.server)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${native.body.token}`)
+      .expect(200)
+    expect(me.body.user?.username).toBe(username)
+
+    await removeUser(username)
+  })
 })

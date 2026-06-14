@@ -1,3 +1,5 @@
+import { getNativeToken, isNativeApp } from '@/lib/native-session'
+
 const DEFAULT_TIMEOUT_MS = 15_000
 
 /**
@@ -18,12 +20,23 @@ export function fetchWithTimeout(
     callerSignal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
+  // Native WebViews (Capacitor/Tauri) can't reliably persist the cross-site
+  // session cookie, so flag every request as native (the server then returns the
+  // JWT in login response bodies) and replay the stored token as a Bearer header.
+  const headers = new Headers(rest.headers as HeadersInit | undefined)
+  if (isNativeApp()) {
+    headers.set('X-Native-Client', '1')
+    const tok = getNativeToken()
+    if (tok && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${tok}`)
+  }
+
   // Authenticated session traffic must NEVER be served from the HTTP or
   // Service-Worker cache — a stale `/auth/me` 401 would persist past a fresh
   // login. Callers can opt back in to caching by passing an explicit
   // `cache:` value (e.g. `'force-cache'` for static media manifests).
   return fetch(input, {
     ...rest,
+    headers,
     cache: cache ?? 'no-store',
     signal: controller.signal,
   }).finally(() => clearTimeout(timer))

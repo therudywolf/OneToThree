@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { attachments, chatMembers, messageDeliveries, messages } from '../db/schema.js'
 import { sendNativePushToUser, sendPushToUser } from './push.js'
@@ -50,6 +50,13 @@ export type PersistChatMessageInput = {
   /** Sender's ECDH public key JWK at send time — persisted so decryption survives multi-device key rotation. */
   senderEcdhPublicKeyJwk?: string | null
   /**
+   * Extra attachment object keys belonging to this message (album items 2..N).
+   * mediaPath is item 1; these are the rest. All are linked to the message so
+   * the orphan-cleanup sweep doesn't hard-delete album items after 24h. The
+   * caller MUST have validated each key the same way as mediaPath.
+   */
+  attachmentKeys?: string[]
+  /**
    * Per-device E2EE ciphertext slots. When supplied they are inserted in the
    * SAME transaction as the message row, so the message and its slots commit
    * (or roll back) atomically.
@@ -61,6 +68,19 @@ export type PersistChatMessageInput = {
     iv: string
     deliveredAt: Date | null
   }>
+}
+
+/**
+ * True iff `key` is a well-formed media object key owned by (chatId, uploaderId).
+ * Object keys are `chats/{chatId}/{uploaderId}/{uuid}{ext}`; /storage/download-url
+ * authorizes on "some message in a chat I belong to references this key", so a
+ * member must not be able to attach another chat's key. Shared by the REST and
+ * WS send paths so album items 2..N are validated identically to media_path.
+ */
+export function isOwnedMediaKey(key: string, chatId: string, uploaderId: string): boolean {
+  if (typeof key !== 'string' || key.trim() === '') return false
+  if (key.includes('..') || key.includes('\\')) return false
+  return key.startsWith(`chats/${chatId}/${uploaderId}/`)
 }
 
 function rowToWireMessage(row: PersistedMessageRow) {
@@ -168,13 +188,20 @@ export async function persistChatMessageAndFanOut(
 
     if (!inserted) return null
 
-    // Sprint M1 — link the lifecycle row to its message so eviction can
-    // distinguish orphan uploads (no message_id) from referenced media.
-    if (inserted.mediaPath) {
+    // Link the lifecycle rows to this message so eviction/orphan-cleanup can
+    // distinguish referenced media from orphan uploads. For albums, link ALL
+    // items (mediaPath is item 1; attachmentKeys are 2..N) — otherwise items
+    // 2..N keep message_id=NULL and get hard-deleted after 24h (data loss).
+    const linkKeys = inserted.mediaPath
+      ? Array.from(new Set([inserted.mediaPath, ...(input.attachmentKeys ?? [])]))
+      : input.attachmentKeys && input.attachmentKeys.length > 0
+        ? Array.from(new Set(input.attachmentKeys))
+        : []
+    if (linkKeys.length > 0) {
       await tx
         .update(attachments)
         .set({ messageId: inserted.id })
-        .where(eq(attachments.objectKey, inserted.mediaPath))
+        .where(inArray(attachments.objectKey, linkKeys))
     }
 
     // Per-device E2EE ciphertext slots — committed atomically with the

@@ -59,6 +59,8 @@ export type SendChatMessageTransportInput = {
   media_path?: string | null
   media_type?: string | null
   media_iv?: string | null
+  /** Album items 2..N object keys (item 1 is media_path) — linked so they survive cleanup. */
+  attachment_keys?: string[]
   reply_to_id?: string | null
   media_original_bytes?: number
   burn_at?: string | null
@@ -184,6 +186,9 @@ export async function sendChatMessageOverTransport(
     media_path: input.media_path ?? null,
     media_type: input.media_type ?? null,
     media_iv: input.media_iv ?? null,
+    ...(input.attachment_keys && input.attachment_keys.length > 0
+      ? { attachment_keys: input.attachment_keys }
+      : {}),
     reply_to_id: input.reply_to_id ?? null,
     media_original_bytes: input.media_original_bytes,
     burn_at: input.burn_at ?? null,

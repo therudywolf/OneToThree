@@ -11,6 +11,7 @@ import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js
 import { uuidSchema } from '../lib/zod-uuid.js'
 import { channelRoleAllowsPost } from '../lib/chat-permissions.js'
 import {
+  isOwnedMediaKey,
   persistChatMessageAndFanOut,
   persistedRowToClientJson,
 } from '../lib/chat-message-persist.js'
@@ -33,6 +34,9 @@ const sendMessageBodySchema = z.object({
   media_path: z.string().nullable().optional(),
   media_type: z.string().nullable().optional(),
   media_iv: z.string().nullable().optional(),
+  // Album items 2..N (item 1 is media_path) — linked to the message so they
+  // survive orphan cleanup. Validated identically to media_path below.
+  attachment_keys: z.array(z.string().min(1)).max(20).optional(),
   reply_to_id: z.string().uuid().nullable().optional(),
   media_original_bytes: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   burn_at: z.string().nullable().optional(),
@@ -131,12 +135,16 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     // expose that chat's bytes (and hijack its attachment bookkeeping). Require
     // the embedded chatId and uploaderId to match the target chat and sender.
     if (p.media_path != null && p.media_path.trim() !== '') {
-      if (
-        p.media_path.includes('..') ||
-        p.media_path.includes('\\') ||
-        !p.media_path.startsWith(`chats/${p.chat_id}/${user.id}/`)
-      ) {
+      if (!isOwnedMediaKey(p.media_path, p.chat_id, user.id)) {
         return reply.status(400).send({ error: 'INVALID_MEDIA_PATH' })
+      }
+    }
+    // Album items 2..N must be owned by this chat+sender too, exactly like media_path.
+    if (p.attachment_keys && p.attachment_keys.length > 0) {
+      for (const key of p.attachment_keys) {
+        if (!isOwnedMediaKey(key, p.chat_id, user.id)) {
+          return reply.status(400).send({ error: 'INVALID_MEDIA_PATH' })
+        }
       }
     }
 
@@ -239,6 +247,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       mediaPath: p.media_path ?? null,
       mediaType: p.media_type ?? null,
       mediaIv: p.media_iv ?? null,
+      attachmentKeys: p.attachment_keys,
       mediaOriginalBytes: resolveMediaOriginalBytes(p.media_path ?? null, p.media_original_bytes),
       burnAt: burn.date,
       burnDurationSecs,

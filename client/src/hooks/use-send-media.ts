@@ -571,6 +571,9 @@ export function useSendMedia(
           media_type: items[0].segmentClass,
           media_iv: first.mediaIvB64,
           media_original_bytes: first.workSize,
+          // Link EVERY album object to the message (not just item 1) so the
+          // orphan-cleanup sweep doesn't hard-delete items 2..N after 24h.
+          attachment_keys: uploaded.map((u) => u.filePath),
         })
         const { via, serverMessage, outboxId, partialDelivery } = result
         if (partialDelivery && partialDelivery.failedDeviceIds.length > 0) {

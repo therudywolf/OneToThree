@@ -570,6 +570,10 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
     }
 
+    // Did we match the (consumable) invite CODE or the permanent SLUG? One-time
+    // consumption only applies to a code join.
+    const viaCode = chat.inviteCode != null && chat.inviteCode === trimmed
+
     const alreadyMember = await db
       .select({ userId: chatMembers.userId })
       .from(chatMembers)
@@ -586,6 +590,21 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const outcome = await db.transaction(async (tx) => {
+      // Atomically consume a one-time CODE before admitting anyone: the guarded
+      // conditional UPDATE (WHERE invite_code = trimmed) lets exactly one
+      // concurrent joiner win — the rest see 0 rows cleared and are rejected,
+      // closing the race where two joiners both passed the stale pre-tx check.
+      if (chat.inviteOneTime && viaCode) {
+        const cleared = await tx
+          .update(chats)
+          .set({ inviteCode: null })
+          .where(and(eq(chats.id, chat.id), eq(chats.inviteCode, trimmed)))
+          .returning({ id: chats.id })
+        if (cleared.length === 0) {
+          return { kind: 'consumed' as const }
+        }
+      }
+
       const inserted = await tx
         .insert(chatMembers)
         .values({
@@ -616,15 +635,13 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         throw new Error('JOIN_RACE')
       }
 
-      if (chat.inviteOneTime) {
-        await tx
-          .update(chats)
-          .set({ inviteCode: null })
-          .where(eq(chats.id, chat.id))
-      }
-
       return { kind: 'joined' as const }
     })
+
+    if (outcome.kind === 'consumed') {
+      // Lost the one-time-code race to a concurrent joiner.
+      return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
+    }
 
     if (outcome.kind === 'already_member') {
       return reply.send({
@@ -990,8 +1007,13 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       await db.update(chats).set({ inviteSlug: nextSlug }).where(eq(chats.id, chatId))
-    } catch {
-      return reply.status(409).send({ error: 'INVITE_SLUG_TAKEN' })
+    } catch (e: unknown) {
+      // Only a unique-constraint violation means the slug is taken; surface other
+      // (transient/infra) errors instead of masking them as "slug taken".
+      if ((e as { code?: string }).code === '23505') {
+        return reply.status(409).send({ error: 'INVITE_SLUG_TAKEN' })
+      }
+      throw e
     }
 
     return reply.send({ invite_slug: nextSlug })
@@ -1427,9 +1449,14 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     // until the next retention sweep).
     await scheduleMediaCleanupForChat(chatId)
 
-    await db.delete(messages).where(eq(messages.chatId, chatId))
-    await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
-    await db.delete(chats).where(eq(chats.id, chatId))
+    // Atomic teardown: a crash between these statements used to leave a
+    // half-deleted chat (messages gone but chat/members orphaned, or vice
+    // versa). One transaction makes it all-or-nothing.
+    await db.transaction(async (tx) => {
+      await tx.delete(messages).where(eq(messages.chatId, chatId))
+      await tx.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+      await tx.delete(chats).where(eq(chats.id, chatId))
+    })
 
     broadcastToUsers(
       allMembers.map((m) => m.userId),

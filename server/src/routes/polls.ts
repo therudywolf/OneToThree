@@ -15,11 +15,6 @@ export type PollResults = {
 }
 
 async function getPollResults(pollId: string, viewerId: string, isAnonymous: boolean): Promise<PollResults> {
-  const voteRows = await db
-    .select({ optionIndex: pollVotes.optionIndex })
-    .from(pollVotes)
-    .where(eq(pollVotes.pollId, pollId))
-
   const countMap = new Map<number, number>()
   const myVotes: number[] = []
 
@@ -56,7 +51,12 @@ async function getPollResults(pollId: string, viewerId: string, isAnonymous: boo
     }
   }
 
-  // Non-anonymous: use raw rows
+  // Non-anonymous: use raw rows. Fetched only here — anonymous polls compute
+  // counts via GROUP BY above and never touch this set.
+  const voteRows = await db
+    .select({ optionIndex: pollVotes.optionIndex })
+    .from(pollVotes)
+    .where(eq(pollVotes.pollId, pollId))
   for (const row of voteRows) {
     countMap.set(row.optionIndex, (countMap.get(row.optionIndex) ?? 0) + 1)
   }

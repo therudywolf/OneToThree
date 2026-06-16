@@ -124,7 +124,16 @@ export async function getAuthUser(
     const { getRedis } = await import('./redis.js')
     const r = getRedis()
     if (r) {
-      const revokedAt = await r.get(`device:revoked:${p.device_id}`)
+      // getRedis() stays truthy while Redis is down, and the command rejects
+      // after its retries. Swallow that — the authoritative DB check below
+      // (assertDeviceActiveForUser) still enforces revocation, so a Redis blip
+      // must NOT turn every authenticated request into a 500.
+      let revokedAt: string | null = null
+      try {
+        revokedAt = await r.get(`device:revoked:${p.device_id}`)
+      } catch {
+        /* Redis unavailable — skip the fast path, fall through to the DB check */
+      }
       if (revokedAt) {
         if (reply) {
           clearFmSessionCookie(reply)

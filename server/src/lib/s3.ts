@@ -191,7 +191,13 @@ export function ensureBucketExists(client: S3Client, bucket: string): Promise<vo
       }))
     }
     await applyBucketCors(client, bucket)
-  })()
+  })().catch((err) => {
+    // Don't cache a rejected setup promise forever: if MinIO was briefly
+    // unreachable (e.g. at startup), evict so the next call retries instead of
+    // wedging ALL media I/O until a process restart.
+    bucketReadyMap.delete(bucket)
+    throw err
+  })
   bucketReadyMap.set(bucket, promise)
   return promise
 }

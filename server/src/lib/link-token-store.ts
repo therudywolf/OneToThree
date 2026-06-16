@@ -19,8 +19,12 @@ const mem = new Map<string, MemEntry>()
 export async function saveLinkToken(token: string, userId: string): Promise<void> {
   const r = getRedis()
   if (r) {
-    await r.set(`${KEY_PREFIX}${token}`, userId, 'EX', TTL_S)
-    return
+    try {
+      await r.set(`${KEY_PREFIX}${token}`, userId, 'EX', TTL_S)
+      return
+    } catch {
+      /* Redis down — fall through to the in-memory map */
+    }
   }
   pruneMem()
   mem.set(token, { userId, expiresAt: Date.now() + TTL_S * 1000 })
@@ -33,8 +37,12 @@ export async function saveLinkToken(token: string, userId: string): Promise<void
 export async function consumeLinkToken(token: string): Promise<string | null> {
   const r = getRedis()
   if (r) {
-    const userId = await r.getdel(`${KEY_PREFIX}${token}`)
-    return userId ?? null
+    try {
+      const userId = await r.getdel(`${KEY_PREFIX}${token}`)
+      return userId ?? null
+    } catch {
+      /* Redis down — fall through to the in-memory map */
+    }
   }
   // in-memory fallback
   const entry = mem.get(token)

@@ -50,13 +50,17 @@ export async function checkLockout(username: string): Promise<LockoutStatus> {
   const k = key(username)
 
   if (r) {
-    const [countStr, ttl] = await Promise.all([r.get(k), r.ttl(k)])
-    const count = countStr ? Number(countStr) : 0
-    const retryAfter = ttl > 0 ? ttl : 0
-    return {
-      locked: count >= max,
-      retryAfterSeconds: count >= max ? retryAfter : 0,
-      failuresSoFar: count,
+    try {
+      const [countStr, ttl] = await Promise.all([r.get(k), r.ttl(k)])
+      const count = countStr ? Number(countStr) : 0
+      const retryAfter = ttl > 0 ? ttl : 0
+      return {
+        locked: count >= max,
+        retryAfterSeconds: count >= max ? retryAfter : 0,
+        failuresSoFar: count,
+      }
+    } catch {
+      /* Redis down — degrade to the in-memory map instead of 500-ing auth */
     }
   }
 
@@ -83,13 +87,17 @@ export async function recordFailure(username: string): Promise<LockoutStatus> {
   const k = key(username)
 
   if (r) {
-    const count = await r.incr(k)
-    if (count === 1) await r.expire(k, window)
-    const ttl = count >= max ? await r.ttl(k) : 0
-    return {
-      locked: count >= max,
-      retryAfterSeconds: count >= max && ttl > 0 ? ttl : 0,
-      failuresSoFar: count,
+    try {
+      const count = await r.incr(k)
+      if (count === 1) await r.expire(k, window)
+      const ttl = count >= max ? await r.ttl(k) : 0
+      return {
+        locked: count >= max,
+        retryAfterSeconds: count >= max && ttl > 0 ? ttl : 0,
+        failuresSoFar: count,
+      }
+    } catch {
+      /* Redis down — degrade to the in-memory map instead of 500-ing auth */
     }
   }
 
@@ -114,8 +122,12 @@ export async function resetLockout(username: string): Promise<void> {
   const r = getRedis()
   const k = key(username)
   if (r) {
-    await r.del(k)
-    return
+    try {
+      await r.del(k)
+      return
+    } catch {
+      /* Redis down — clear the in-memory entry instead */
+    }
   }
   mem.delete(k)
 }

@@ -16,6 +16,10 @@ import {
   wipeVaultBioSlot,
   wrapPrivateJwkWithPin,
 } from '@/lib/vault'
+// Light Argon2 for the biometric slot: the ephemeral PIN is a full 256-bit
+// random value, so the heavy 64 MiB KDF buys nothing while making every
+// biometric unlock slow in mobile WebViews (same rationale as the recovery blob).
+import { RECOVERY_ARGON2_PARAMS } from '@/lib/recovery/recovery-secret'
 import { emitHapticPulse } from '@/lib/vibrate'
 
 const BIO_META_DB = 'p13-biometric-meta'
@@ -107,7 +111,7 @@ export async function bindBiometricAuthority(
   // H-03: zero PIN bytes from memory immediately after key derivation
   let bioContainer: Awaited<ReturnType<typeof wrapPrivateJwkWithPin>>
   try {
-    bioContainer = await wrapPrivateJwkWithPin(plainPayload, ephemeralPin)
+    bioContainer = await wrapPrivateJwkWithPin(plainPayload, ephemeralPin, RECOVERY_ARGON2_PARAMS)
   } finally {
     ephemeralPinSource.fill(0)
   }

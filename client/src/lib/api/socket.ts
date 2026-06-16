@@ -417,7 +417,12 @@ class FmSocketClient {
       this.ws = null
       this.emitStatus()
       if (!this.wantOpen) return
-      if (ev.code === 1008 && !this.ticket) {
+      if (ev.code === 1008) {
+        // Auth rejected — almost always an EXPIRED ws ticket (server TTL ~120s).
+        // The cached ticket is now stale, so invalidate and refetch instead of
+        // gating on `!this.ticket` (which looped forever reusing the dead ticket
+        // and stranded native/cookie-less clients offline until an app reload).
+        this.ticket = null
         void fetchWsTicket()
           .then((t) => {
             this.ticket = t

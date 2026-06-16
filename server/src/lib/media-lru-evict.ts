@@ -201,8 +201,14 @@ export async function evictLruUntilUnderTarget(opts: {
  * we kick eviction asynchronously. Caller does not await — the upload flow
  * stays fast and the next request will see a smaller pool.
  */
+let evictionInFlight: Promise<void> | null = null
+
 export function maybeTriggerEviction(log: FastifyBaseLogger): void {
-  void (async () => {
+  // Single-flight: without this, N concurrent uploads above the watermark each
+  // spawn a full eviction run, and since each run only decrements its OWN local
+  // usage counter they collectively over-evict ~Nx the intended amount.
+  if (evictionInFlight) return
+  evictionInFlight = (async () => {
     try {
       const usage = await getCachedUsageBytes()
       const quota = getQuotaBytes()
@@ -213,7 +219,9 @@ export function maybeTriggerEviction(log: FastifyBaseLogger): void {
     } catch (err) {
       log.warn({ err: String(err) }, 'media LRU evict trigger failed')
     }
-  })()
+  })().finally(() => {
+    evictionInFlight = null
+  })
 }
 
 /**

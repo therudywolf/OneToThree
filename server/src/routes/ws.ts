@@ -941,7 +941,6 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       sessionDeviceId = result.device_id
       const wasOnline = hasActiveSocket(user.id)
       const lastSeenIso = await touchLastSeen(user.id)
-      const related = await getRelatedUserIds(user.id)
       registerUserSocket(user.id, ws, (uid) => {
         clearPingWriteAt(uid)
         void (async () => {
@@ -973,6 +972,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         })()
       })
       if (!wasOnline) {
+        // Only resolve related users when we'll actually emit an online:true
+        // broadcast — extra tabs / reconnects-while-online skip these queries.
+        const related = await getRelatedUserIds(user.id)
         await broadcastOnlineStatusChange(related, {
           user_id: user.id,
           online: true,

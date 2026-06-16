@@ -168,20 +168,28 @@ export const devices = pgTable(
   })
 )
 
-export const reports = pgTable('reports', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  reporterId: uuid('reporter_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  reportedId: uuid('reported_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  reason: text('reason').notNull(),
-  status: reportStatusEnum('status').notNull().default('open'),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-})
+export const reports = pgTable(
+  'reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reporterId: uuid('reporter_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    reportedId: uuid('reported_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    reason: text('reason').notNull(),
+    status: reportStatusEnum('status').notNull().default('open'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    // Serves the open-count query (reported_id + status) and the created-at list order.
+    reportedStatusIdx: index('reports_reported_status_idx').on(t.reportedId, t.status),
+    createdAtIdx: index('reports_created_at_idx').on(t.createdAt),
+  })
+)
 
 export const chats = pgTable(
   'chats',

@@ -23,8 +23,12 @@ const mem = new Map<string, PendingChallenge>()
 export async function setChallenge(username: string, nonce: string): Promise<void> {
   const r = getRedis()
   if (r) {
-    await r.set(`${KEY_PREFIX}${username}`, nonce, 'EX', TTL_S)
-    return
+    try {
+      await r.set(`${KEY_PREFIX}${username}`, nonce, 'EX', TTL_S)
+      return
+    } catch {
+      /* Redis down — fall through to the in-memory map so login still works */
+    }
   }
   pruneMem()
   mem.set(username, { nonce, expiresAt: Date.now() + TTL_S * 1000 })
@@ -33,10 +37,14 @@ export async function setChallenge(username: string, nonce: string): Promise<voi
 export async function getPending(username: string): Promise<PendingChallenge | null> {
   const r = getRedis()
   if (r) {
-    const nonce = await r.get(`${KEY_PREFIX}${username}`)
-    if (!nonce) return null
-    // expiresAt not stored in Redis — TTL enforces it; we set a synthetic far-future value
-    return { nonce, expiresAt: Date.now() + TTL_S * 1000 }
+    try {
+      const nonce = await r.get(`${KEY_PREFIX}${username}`)
+      if (!nonce) return null
+      // expiresAt not stored in Redis — TTL enforces it; we set a synthetic far-future value
+      return { nonce, expiresAt: Date.now() + TTL_S * 1000 }
+    } catch {
+      /* Redis down — fall through to the in-memory map */
+    }
   }
   pruneMem()
   const row = mem.get(username)
@@ -50,8 +58,12 @@ export async function getPending(username: string): Promise<PendingChallenge | n
 export async function deletePending(username: string): Promise<void> {
   const r = getRedis()
   if (r) {
-    await r.del(`${KEY_PREFIX}${username}`)
-    return
+    try {
+      await r.del(`${KEY_PREFIX}${username}`)
+      return
+    } catch {
+      /* Redis down — clear the in-memory entry instead */
+    }
   }
   mem.delete(username)
 }

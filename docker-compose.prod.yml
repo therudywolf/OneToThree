@@ -10,6 +10,8 @@ name: forestmessenger
 
 services:
   db:
+    security_opt:
+      - no-new-privileges:true
     image: postgres:16-alpine
     restart: unless-stopped
     command: >
@@ -53,6 +55,8 @@ services:
       start_period: 20s
 
   redis:
+    security_opt:
+      - no-new-privileges:true
     image: redis:7-alpine
     restart: unless-stopped
     command: redis-server --save 60 1 --appendonly yes --loglevel warning
@@ -71,6 +75,8 @@ services:
       start_period: 10s
 
   minio:
+    security_opt:
+      - no-new-privileges:true
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     restart: unless-stopped
     dns:
@@ -303,7 +309,7 @@ services:
   # ACME volume into ./docker/coturn/tls by scripts/sync-turn-certs.sh or
   # ./startup.sh turn-sync. coturn starts without TLS until those files exist.
   coturn:
-    image: coturn/coturn:4.6
+    image: coturn/coturn:4.13.1
     restart: unless-stopped
     network_mode: host
     user: root
@@ -345,7 +351,7 @@ services:
   # secrets before exec'ing the server binary.  This keeps the api key /
   # secret out of .env.prod entirely.
   livekit:
-    image: livekit/livekit-server:v1.8
+    image: livekit/livekit-server:v1.13.1
     restart: unless-stopped
     network_mode: host
     cpu_shares: 2048

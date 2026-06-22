@@ -309,6 +309,8 @@ services:
   # ACME volume into ./docker/coturn/tls by scripts/sync-turn-certs.sh or
   # ./startup.sh turn-sync. coturn starts without TLS until those files exist.
   coturn:
+    security_opt:
+      - no-new-privileges:true
     image: coturn/coturn:4.13.1
     restart: unless-stopped
     network_mode: host
@@ -351,6 +353,8 @@ services:
   # secrets before exec'ing the server binary.  This keeps the api key /
   # secret out of .env.prod entirely.
   livekit:
+    security_opt:
+      - no-new-privileges:true
     image: livekit/livekit-server:v1.13.1
     restart: unless-stopped
     network_mode: host

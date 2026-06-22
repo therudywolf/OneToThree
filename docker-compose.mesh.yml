@@ -2,7 +2,7 @@ name: forestmessenger-mesh
 
 services:
   coturn-helper:
-    image: coturn/coturn:4.6
+    image: coturn/coturn:4.13.1
     restart: always
     network_mode: host
     env_file:

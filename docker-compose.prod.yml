@@ -10,6 +10,8 @@ name: forestmessenger
 
 services:
   db:
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     security_opt:
       - no-new-privileges:true
     image: postgres:16-alpine
@@ -55,6 +57,8 @@ services:
       start_period: 20s
 
   redis:
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     security_opt:
       - no-new-privileges:true
     image: redis:7-alpine
@@ -75,6 +79,8 @@ services:
       start_period: 10s
 
   minio:
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     security_opt:
       - no-new-privileges:true
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z

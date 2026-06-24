@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ALBUM_MAX,
   BURN_OPTIONS,
+  buildMentionReplacement,
   canAlbum,
   detectMediaType,
   formatBurnTimerShort,
@@ -74,5 +75,18 @@ describe('composer-format', () => {
     })
     // No selection (start === end) -> null (nothing to wrap).
     expect(wrapSelection('abc', 1, 1, '`')).toBeNull()
+  })
+
+  it('buildMentionReplacement swaps the @query fragment for @username and a space', () => {
+    // "hi @al" with the trigger at index 3, query "al" -> "hi @alice ".
+    expect(buildMentionReplacement('hi @al', 3, 'al', 'alice')).toEqual({
+      text: 'hi @alice ',
+      caret: 10,
+    })
+    // Mid-text replacement keeps the suffix.
+    expect(buildMentionReplacement('a @b c', 2, 'b', 'bob')).toEqual({
+      text: 'a @bob  c',
+      caret: 7,
+    })
   })
 })

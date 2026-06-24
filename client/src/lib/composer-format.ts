@@ -72,3 +72,22 @@ export function wrapSelection(
     selEnd: end + tag.length,
   }
 }
+
+/**
+ * Replace the in-progress `@query` fragment (starting at `triggerStart`) in
+ * `text` with `@username ` and return the new text + the caret position just
+ * after the inserted mention. Pure — the DOM caret application stays in caller.
+ */
+export function buildMentionReplacement(
+  text: string,
+  triggerStart: number,
+  query: string,
+  username: string
+): { text: string; caret: number } {
+  const before = text.slice(0, triggerStart)
+  const after = text.slice(triggerStart + 1 + query.length) // skip '@' + query
+  return {
+    text: `${before}@${username} ${after}`,
+    caret: before.length + username.length + 2, // '@' + name + trailing space
+  }
+}

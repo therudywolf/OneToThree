@@ -17,6 +17,7 @@ import type { AttachmentKind } from '@/lib/attachment-envelope'
 import { toastError } from '@/store/toastStore'
 import { useDraftManager } from '@/hooks/use-draft-manager'
 import { useFormatBar } from '@/hooks/use-format-bar'
+import { useMentions } from '@/hooks/use-mentions'
 import { createPoll } from '@/lib/api/polls'
 import {
   MEDIA_ACCESS_ERROR_MESSAGE,
@@ -33,11 +34,7 @@ import type { GifHit } from '@/lib/api/gif'
 import { buildGifProxyUrl } from '@/lib/api/gif'
 import { useThemeStore } from '@/store/themeStore'
 import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
-import {
-  MentionsPopover,
-  parseMentionTrigger,
-  type MentionMember,
-} from '@/components/chat/mentions-popover'
+import { MentionsPopover } from '@/components/chat/mentions-popover'
 import {
   ALBUM_HARD_CAP,
   BURN_OPTIONS,
@@ -126,14 +123,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const [sendingText, setSendingText] = useState(false)
   const sendingMediaRef = useRef(false)
 
-  // ── @mentions autocomplete state ──────────────────────────────────────────
-  const [mentionOpen, setMentionOpen] = useState(false)
-  const [mentionQuery, setMentionQuery] = useState('')
-  const [mentionTriggerStart, setMentionTriggerStart] = useState(0)
-  const [mentionActiveIdx, setMentionActiveIdx] = useState(0)
-  const [mentionMembers, setMentionMembers] = useState<MentionMember[]>([])
-  // Lazily loaded from the chat detail endpoint when first @ is typed
-  const mentionMembersLoadedRef = useRef(false)
 
   // ── Poll composer state ───────────────────────────────────────────────────
   const [pollModalOpen, setPollModalOpen] = useState(false)
@@ -153,6 +142,19 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const setEditingMessage = useChatStore((s) => s.setEditingMessage)
   const { onDraftChanged, onSubmitOrClear } = useTypingIndicator()
   const activeChatId = useSessionStore((s) => s.activeChatId)
+
+  // @mention autocomplete (popover state, lazy load, trigger detection, nav).
+  const {
+    mentionOpen,
+    mentionQuery,
+    mentionMembers,
+    mentionActiveIdx,
+    setMentionOpen,
+    onTextChange: handleMentionCheck,
+    selectMember: handleMentionSelect,
+    onKeyDown: onMentionKeyDown,
+    resetLoaded: resetMentionLoaded,
+  } = useMentions({ activeChatId, messageText, setMessageText, inputRef })
 
   // Best-effort: when sending a sticker JSON envelope, grant the recipient(s)
   // implicit access to the underlying pack so the asset doesn't 403 on their
@@ -177,9 +179,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     setReplyTo,
     setEditingMessage,
     setBurnTimerSecs,
-    onChatSwitch: () => {
-      mentionMembersLoadedRef.current = false // reset on chat switch
-    },
+    onChatSwitch: resetMentionLoaded,
   })
 
   // Markdown format toolbar + Ctrl/Cmd+B/I/` hotkeys.
@@ -187,61 +187,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     useFormatBar({ inputRef, containerRef, setMessageText, onDraftChanged })
 
   // Lazily fetch chat members for @mention autocomplete
-  const loadMentionMembers = useCallback(async () => {
-    if (!activeChatId || mentionMembersLoadedRef.current) return
-    mentionMembersLoadedRef.current = true
-    try {
-      const { fetchChatDetail } = await import('@/lib/api/chats')
-      const detail = await fetchChatDetail(activeChatId)
-      setMentionMembers(
-        (detail.members ?? []).map((m) => ({
-          userId: m.user_id,
-          username: m.username ?? m.user_id.slice(0, 8),
-          displayName: m.username,
-        }))
-      )
-    } catch {
-      // Non-fatal: autocomplete just won't show
-    }
-  }, [activeChatId])
-
-  // Handle @mention trigger detection when text changes
-  const handleMentionCheck = useCallback(
-    (text: string, cursorPos: number) => {
-      const parsed = parseMentionTrigger(text, cursorPos)
-      if (parsed.trigger) {
-        void loadMentionMembers()
-        setMentionOpen(true)
-        setMentionQuery(parsed.query)
-        setMentionTriggerStart(parsed.triggerStart)
-        setMentionActiveIdx(0)
-      } else {
-        setMentionOpen(false)
-      }
-    },
-    [loadMentionMembers]
-  )
-
-  const handleMentionSelect = useCallback(
-    (member: MentionMember) => {
-      setMentionOpen(false)
-      // Replace the @query fragment with @username
-      const before = messageText.slice(0, mentionTriggerStart)
-      const after = messageText.slice(
-        mentionTriggerStart + 1 + mentionQuery.length // skip '@' + query
-      )
-      const newText = `${before}@${member.username} ${after}`
-      setMessageText(newText)
-      requestAnimationFrame(() => {
-        const el = inputRef.current
-        if (!el) return
-        const pos = before.length + member.username.length + 2 // '@' + name + ' '
-        try { el.setSelectionRange(pos, pos) } catch { /* noop */ }
-        el.focus()
-      })
-    },
-    [messageText, mentionTriggerStart, mentionQuery]
-  )
 
   // When a message is staged for editing, load its plaintext into the
   // composer and switch submit into "save edit" mode.
@@ -1185,39 +1130,8 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 }, 300)
               }}
               onKeyDown={(e) => {
-                // @mention popover navigation
-                if (mentionOpen) {
-                  const filtered = mentionQuery
-                    ? mentionMembers.filter(
-                        (m) =>
-                          m.username.toLowerCase().startsWith(mentionQuery.toLowerCase()) ||
-                          (m.displayName?.toLowerCase().startsWith(mentionQuery.toLowerCase()) ?? false)
-                      )
-                    : mentionMembers.slice(0, 8)
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault()
-                    setMentionActiveIdx((i) => (i + 1) % Math.max(filtered.length, 1))
-                    return
-                  }
-                  if (e.key === 'ArrowUp') {
-                    e.preventDefault()
-                    setMentionActiveIdx((i) => (i - 1 + Math.max(filtered.length, 1)) % Math.max(filtered.length, 1))
-                    return
-                  }
-                  if (e.key === 'Enter' || e.key === 'Tab') {
-                    const chosen = filtered[mentionActiveIdx]
-                    if (chosen) {
-                      e.preventDefault()
-                      handleMentionSelect(chosen)
-                      return
-                    }
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    setMentionOpen(false)
-                    return
-                  }
-                }
+                // @mention popover navigation (Arrow/Enter-on-match/Escape).
+                if (onMentionKeyDown(e)) return
                 // Formatting hotkeys (Ctrl/Cmd+B/I/`)
                 if (onFormatKeyDown(e)) return
                 if (e.key === 'Enter' && !e.shiftKey) {

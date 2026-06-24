@@ -25,6 +25,7 @@ type LoginTranslationKey =
   | 'login.totpInvalid'
   | 'login.totpPendingInvalid'
   | 'login.totpVerifyFailed'
+  | 'login.tryAgainGeneric'
   | 'login.unauthorized'
   | 'login.usernameRequired'
   | 'login.usernameReserved'
@@ -101,5 +102,7 @@ export function explainLoginError(code: string, t: Translator): string {
   // (network/CORS "Failed to fetch", a WebView crypto/OOM throw, an unexpected
   // status) all collapse into one opaque "something went wrong" that's
   // impossible to diagnose remotely. Known errors keep their friendly text.
-  return `${t('errors.boundaryGeneric')} [${normalized.slice(0, 120)}]`
+  // The human sentence stays calm; the raw code rides along in parentheses so
+  // support can still pin down the cause from a screenshot.
+  return `${t('login.tryAgainGeneric')} (${normalized.slice(0, 120)})`
 }

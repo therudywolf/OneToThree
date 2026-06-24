@@ -89,6 +89,49 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * Server-eviction probe coalescing (D10).
+ *
+ * On a media-cache HIT we still want to know whether the *server* blob was
+ * LRU-evicted (so we can surface the "restore" affordance), but presigning a
+ * download URL for every cached bubble on every mount is wasteful — a chat full
+ * of cached images would fire one presign request per bubble. We coalesce
+ * probes per mediaPath: concurrent / rapidly-repeated probes for the same path
+ * share a single in-flight request, and a successful "not evicted" result is
+ * remembered for a short TTL so re-mounts (scroll in/out) don't re-probe.
+ */
+const EVICTION_PROBE_TTL_MS = 30_000
+const evictionProbeCache = new Map<string, { evicted: boolean; at: number }>()
+const evictionProbeInflight = new Map<string, Promise<boolean>>()
+
+/** Returns true if the server reports the blob evicted. Coalesced per mediaPath. */
+function probeServerEviction(mediaPath: string): Promise<boolean> {
+  const cached = evictionProbeCache.get(mediaPath)
+  if (cached && Date.now() - cached.at < EVICTION_PROBE_TTL_MS) {
+    return Promise.resolve(cached.evicted)
+  }
+  const inflight = evictionProbeInflight.get(mediaPath)
+  if (inflight) return inflight
+  const p = getDownloadUrl(mediaPath)
+    .then(() => {
+      evictionProbeCache.set(mediaPath, { evicted: false, at: Date.now() })
+      return false
+    })
+    .catch((err) => {
+      if (err instanceof MediaEvictedError) {
+        evictionProbeCache.set(mediaPath, { evicted: true, at: Date.now() })
+        return true
+      }
+      // Transient/network error: don't cache, let a later probe retry.
+      throw err
+    })
+    .finally(() => {
+      evictionProbeInflight.delete(mediaPath)
+    })
+  evictionProbeInflight.set(mediaPath, p)
+  return p
+}
+
 type Props = {
   message: Pick<
     DecryptedMessage,
@@ -200,14 +243,17 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
         const url = URL.createObjectURL(cached.blob)
         blobUrlRef.current = url
         setObjectUrl(url)
+        // We already have the bytes locally, so the bubble is fully usable. The
+        // server-eviction probe is only needed to decide whether to surface the
+        // "restore to server" affordance — coalesce it per mediaPath so a screen
+        // full of cached bubbles doesn't fire one presign per bubble (D10). A
+        // transient probe failure is swallowed: the local copy still renders.
         try {
-          await getDownloadUrl(mediaPath)
-        } catch (err) {
-          if (err instanceof MediaEvictedError) {
+          if (await probeServerEviction(mediaPath)) {
             setServerEvicted(true)
-            return
           }
-          throw err
+        } catch {
+          // ignore — cached bytes are shown regardless
         }
         return
       }
@@ -308,6 +354,9 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
         fileType: effectiveMime,
         fileSize: payload.byteLength,
       })
+      // The blob is back on the server — drop the stale "evicted" probe result
+      // so any sibling bubble for the same path re-probes fresh.
+      evictionProbeCache.delete(mediaPath)
       setServerEvicted(false)
       setEvicted(false)
     } catch {

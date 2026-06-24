@@ -137,3 +137,48 @@ an environment limit — not a product bug).
 **Quick-win commit-per-fix loop:** N5+N14 (composer state, one fix) → N8+N9 (realtime sentinels, one fix) → N1 (Bearer origin-gate) → N6 (admin-purge tombstone) → N2 (retention purge attachments) → N4 (group-call glare) → N13 (read-receipt flush) → N12 (livekit fail-closed) → N19 (group_call block-check) → N10 (channel owner transfer) → N17 (discover invite_code) → N20 (i18n strings) → N16 (FK drift schema) → N7 (audit-log FK migration) → N3 (account-delete orphan).
 
 **Sessions / careful:** N11 (LiveKit E2EE design — large), N15 (secret perms — operational), N18 (lookup relationship gate — don't break fan-out), N21 (call-key rotation), N22 (schema tidy-up).
+
+---
+
+## Status — 2026-06-24 session
+
+**Fixed, committed, pushed to main** (commit-per-fix; deployed at session boundary):
+- N1 Bearer-token origin scoping (+ regression test)
+- N5+N14 composer state reset on chat switch (reply/edit/burn)
+- N8+N9 realtime poll/system sentinel rendering
+- N4 group-call perfect-negotiation glare
+- N12 LiveKit fail-closed when E2EE setup fails
+- N13 read-receipt flush on chat switch
+- N20 i18n hardcoded RU strings
+- N6 admin-purge group-message tombstone
+- N2 retention-purge attachment reclaim
+- N17 discover one-time-invite leak (server + Explore client)
+- N10 channel owner-leave ownership transfer
+- N3 self-chat masquerade guard
+- N19 group_call block-check
+- N7 admin_audit_log FK → SET NULL (migration 0054)
+- N18 /lookup rate-limit + documented UUID-capability exemption (see note below)
+- N21 call_e2ee_key rotation on call end (room-empty)
+
+**N18 re-scoped during the fix:** the proposed is_discoverable/shared-chat gate would
+have BROKEN the invite flow — `invite-chat-link-effect.tsx:53` calls `lookupUsers([peer])`
+BEFORE the chat exists, and the default user is shadow (is_discoverable=false). `/lookup`
+is intentionally a by-exact-UUID capability resolver (the UUID, shared via an invite link,
+IS the grant), distinct from `/search`'s browse gate. Fixed instead by rate-limiting the
+endpoint (was unlimited) to bound bulk harvesting, and documenting the intentional exemption.
+
+**Deferred (flagged, with rationale) — dedicated sessions:**
+- **N11** (LiveKit group-call key derived from server secret) — large: needs an
+  ECDH-per-participant key exchange to be E2E vs the server. Confirmed there is no
+  user-facing claim of group-call E2EE, so this is a design upgrade, not a false promise.
+- **N15** (Docker secret 0600 vs 0644 → api reads plaintext `.env.prod`) — operational:
+  lives in host deploy scripts; the live api works via the `.env.prod` fallback. Needs a
+  pick-one-model deploy-infra session (chmod 0644 + stop env duplication, OR drop the
+  secret mounts). secrets/ dir is 0700 so not exposed to unprivileged principals.
+- **N16** (FK drift `groups.owner_id` / `message_threads.created_by`) — migration risk:
+  migration 0017 created these FKs INLINE (unnamed → Postgres auto-name `*_fkey`), so a
+  drizzle-generated `DROP CONSTRAINT "*_users_id_fk"` would target a non-existent name and
+  ABORT the prod db-migrate (which the predeploy `db:push` gate would NOT catch). The live
+  DB is already `SET NULL` (correct), so this is latent. Needs a hand-written idempotent
+  (`IF EXISTS`) migration + snapshot reconciliation in a focused DB session.
+- **N22** (dead `chats.discussion_chat_id` drift) — low/latent, no prod data path.

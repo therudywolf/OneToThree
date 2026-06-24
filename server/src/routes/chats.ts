@@ -272,16 +272,56 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     const rows = await loadUserChats(user.id)
 
     const chatIds = rows.map((r) => r.id)
-    const memberRows =
+    // Unread count per chat. This is derived from messages.read_at, which is
+    // ONLY ever set for direct_e2e chats (read receipts are direct-only). For
+    // group/channel/public chats read_at stays NULL forever, so counting them
+    // here yielded a monotonic lifetime-message count that never cleared.
+    // Restrict the query to direct chats; group-type unread defaults to 0 until
+    // a per-member read cursor lands (see BUG_BACKLOG H2 "proper").
+    const directChatIds = rows.filter((c) => c.type === 'direct_e2e').map((c) => c.id)
+
+    // D13: these three queries only depend on chatIds (already resolved) and
+    // are independent of each other — run them concurrently instead of three
+    // sequential DB round-trips.
+    const [memberRows, lastActivityRows, unreadRows] = await Promise.all([
       chatIds.length === 0
-        ? []
-        : await db
+        ? Promise.resolve([] as { chatId: string; userId: string }[])
+        : db
             .select({
               chatId: chatMembers.chatId,
               userId: chatMembers.userId,
             })
             .from(chatMembers)
-            .where(inArray(chatMembers.chatId, chatIds))
+            .where(inArray(chatMembers.chatId, chatIds)),
+      chatIds.length === 0
+        ? Promise.resolve([] as { chatId: string; lastAt: unknown }[])
+        : db
+            .select({
+              chatId: messages.chatId,
+              lastAt: max(messages.createdAt),
+            })
+            .from(messages)
+            .where(inArray(messages.chatId, chatIds))
+            .groupBy(messages.chatId),
+      directChatIds.length === 0
+        ? Promise.resolve([] as { chatId: string; cnt: number }[])
+        : db
+            .select({
+              chatId: messages.chatId,
+              cnt: count(),
+            })
+            .from(messages)
+            .where(
+              and(
+                inArray(messages.chatId, directChatIds),
+                isNull(messages.readAt),
+                ne(messages.senderId, user.id)
+              )
+            )
+            .groupBy(messages.chatId)
+            // non-fatal: unread counts fall back to 0
+            .catch(() => [] as { chatId: string; cnt: number }[]),
+    ])
 
     const memberMap = new Map<string, string[]>()
     for (const m of memberRows) {
@@ -289,18 +329,6 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       list.push(m.userId)
       memberMap.set(m.chatId, list)
     }
-
-    const lastActivityRows =
-      chatIds.length === 0
-        ? []
-        : await db
-            .select({
-              chatId: messages.chatId,
-              lastAt: max(messages.createdAt),
-            })
-            .from(messages)
-            .where(inArray(messages.chatId, chatIds))
-            .groupBy(messages.chatId)
 
     const lastMessageAtByChat = new Map<string, string | null>()
     for (const r of lastActivityRows) {
@@ -311,36 +339,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       )
     }
 
-    // Unread count per chat. This is derived from messages.read_at, which is
-    // ONLY ever set for direct_e2e chats (read receipts are direct-only). For
-    // group/channel/public chats read_at stays NULL forever, so counting them
-    // here yielded a monotonic lifetime-message count that never cleared.
-    // Restrict the query to direct chats; group-type unread defaults to 0 until
-    // a per-member read cursor lands (see BUG_BACKLOG H2 "proper").
     const unreadCountByChat = new Map<string, number>()
-    const directChatIds = rows.filter((c) => c.type === 'direct_e2e').map((c) => c.id)
-    if (directChatIds.length > 0) {
-      try {
-        const unreadRows = await db
-          .select({
-            chatId: messages.chatId,
-            cnt: count(),
-          })
-          .from(messages)
-          .where(
-            and(
-              inArray(messages.chatId, directChatIds),
-              isNull(messages.readAt),
-              ne(messages.senderId, user.id)
-            )
-          )
-          .groupBy(messages.chatId)
-        for (const r of unreadRows) {
-          unreadCountByChat.set(r.chatId, r.cnt)
-        }
-      } catch {
-        // non-fatal: unread counts fall back to 0
-      }
+    for (const r of unreadRows) {
+      unreadCountByChat.set(r.chatId, r.cnt)
     }
 
     return reply.send({

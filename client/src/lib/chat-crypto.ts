@@ -86,6 +86,23 @@ export function assertTrustOrThrow(peerUserId: string, receivedJwk: string): voi
   }
 }
 
+/**
+ * [RESOLVE_SECTOR_OWNER] :: Locate the chat OWNER's ECDH public key from the
+ * member roster, for binding the SECTOR group-key wrap (D2). The owner is the
+ * single party allowed to mint/distribute the group key, so a member must only
+ * ever adopt a wrapped key sealed under the OWNER's identity — never an admin's
+ * or a server-substituted key. Fails closed: a SECTOR chat with no resolvable
+ * owner key cannot be keyed (an attacker must not be able to suppress the owner
+ * row to bypass the binding).
+ */
+function resolveSectorOwnerEcdhJwk(members: SectorDetailResponse['members']): string {
+  const owner = members.find((m) => m.role === 'owner')
+  if (!owner?.ecdh_public_key_jwk) {
+    throw new Error('ERR_MISSING_SECTOR_OWNER_SIGNAL')
+  }
+  return owner.ecdh_public_key_jwk
+}
+
 /** [CALIBRATE_FRAME] :: Снятие показаний и построение крипто-контекста для сектора */
 export async function buildChatCryptoContext(
   chatId: string,
@@ -123,8 +140,15 @@ export async function buildChatCryptoContext(
     const me = members.find((m) => m.user_id === myUserId)
     if (!me?.encrypted_group_key) throw new Error('ERR_MISSING_SECTOR_KEY')
 
-    // Вскрытие ключа сектора (KEK-протокол)
-    const sectorKey = await unwrapGroupKeyFromStoredPayload(privateKey, me.encrypted_group_key)
+    // D2: bind the wrap to the OWNER's pinned ECDH key so a server- or
+    // admin-substituted key is rejected (fail-closed) rather than silently
+    // adopted, which would hand the attacker full group read/inject.
+    const ownerEcdhJwk = resolveSectorOwnerEcdhJwk(members)
+    const sectorKey = await unwrapGroupKeyFromStoredPayload(
+      privateKey,
+      me.encrypted_group_key,
+      ownerEcdhJwk
+    )
     return { mode: 'SECTOR', groupKey: sectorKey }
   }
 
@@ -180,7 +204,14 @@ export async function buildChatCryptoContextWithMeta(
   if (chat.type === 'group_e2e') {
     const me = members.find((m) => m.user_id === myUserId)
     if (!me?.encrypted_group_key) throw new Error('ERR_MISSING_SECTOR_KEY')
-    const sectorKey = await unwrapGroupKeyFromStoredPayload(privateKey, me.encrypted_group_key)
+    // D2: same owner-binding as the primary builder — the forward/media path
+    // must not be a weaker door into the SECTOR key.
+    const ownerEcdhJwk = resolveSectorOwnerEcdhJwk(members)
+    const sectorKey = await unwrapGroupKeyFromStoredPayload(
+      privateKey,
+      me.encrypted_group_key,
+      ownerEcdhJwk
+    )
     return {
       ctx: { mode: 'SECTOR', groupKey: sectorKey },
       peerUserId: null,

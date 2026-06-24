@@ -86,6 +86,32 @@ function packPayload(payload: SectorKeyUnit | SectorKeyAuthWrap): string {
   return toB64(signal)
 }
 
+/**
+ * [CANONICAL_KEY_ID] :: Reduce an ECDH public JWK to ONLY its cryptographically
+ * significant fields (kty/crv/x/y), order-independent. Two JWKs that name the
+ * same point compare equal even if they differ in field order or optional
+ * fields (`key_ops`, `ext`, `use`…). Mirrors the canonicalization in
+ * `chat-crypto.ts::assertTrustOrThrow` so the owner-binding check below never
+ * false-rejects on benign serialization differences while still failing closed
+ * on a genuinely different key.
+ */
+function canonicalEcdhKeyId(jwk: string): string {
+  const fields = ['crv', 'kty', 'x', 'y'] as const
+  try {
+    const parsed = JSON.parse(jwk) as Record<string, unknown>
+    return JSON.stringify(Object.fromEntries(fields.map((k) => [k, parsed[k] ?? null])))
+  } catch {
+    // Unparseable input cannot be proven equal to a valid key → unique sentinel
+    // so it can never accidentally match.
+    return `__INVALID_JWK__:${jwk}`
+  }
+}
+
+/** True iff both JWKs describe the same ECDH public point (kty/crv/x/y). */
+export function ecdhPublicKeysEqual(a: string, b: string): boolean {
+  return canonicalEcdhKeyId(a) === canonicalEcdhKeyId(b)
+}
+
 // --- PUBLIC_INTERFACE ---
 
 /**
@@ -193,10 +219,28 @@ export function readStoredSectorKeyEpoch(encryptedBase64: string): number | null
  * [EXTRACT_SECTOR_KEY]
  * Вскрытие контейнера и извлечение ключа сектора участником.
  * Поддерживает как эфемероидные, так и авторизованные упаковки.
+ *
+ * SECURITY (D2) — the group-key wrap is otherwise UNAUTHENTICATED: the embedded
+ * `creatorEcdhPublicKeyJwk` (or the legacy `ephemeralPublicKeyJwk`) is read
+ * verbatim from a server-stored blob, so an attacker who can write a victim's
+ * wrapped-key row can re-seal an ATTACKER AES key under
+ * `ECDH(attacker_ephemeral_priv, victim_pub)` and embed `attacker_ephemeral_pub`
+ * as the "creator" key. The ECDH then reproduces the attacker's wrap key and the
+ * unseal succeeds — full group MITM with no UI signal.
+ *
+ * `expectedCreatorEcdhPublicKeyJwk` closes this: when supplied (the SECTOR
+ * context build passes the chat OWNER's pinned `ecdh_public_key_jwk`), the
+ * unwrap FAILS CLOSED unless the wrap is a `CREATOR_AUTH_WRAP` whose embedded
+ * creator key is the owner's. The legacy unbound ephemeral format is rejected
+ * outright in that mode — it carries no owner binding and was never the live
+ * group-creation path, so accepting it would just reopen the downgrade hole.
+ * When the argument is omitted the historic behaviour is preserved (pure-unit
+ * round-trips; no owner context available).
  */
 export async function unwrapGroupKeyFromStoredPayload(
   memberPrivateKey: CryptoKey,
-  encryptedBase64: string
+  encryptedBase64: string,
+  expectedCreatorEcdhPublicKeyJwk?: string
 ): Promise<CryptoKey> {
   const signal = new TextDecoder().decode(fromB64(encryptedBase64))
   const data = JSON.parse(signal) as SectorKeyAuthWrap | SectorKeyUnit
@@ -204,14 +248,31 @@ export async function unwrapGroupKeyFromStoredPayload(
   let wrapKey: CryptoKey
 
   if ('kind' in data && data.kind === 'CREATOR_AUTH_WRAP') {
+    // Bind the wrap to the chat owner's identity BEFORE any DH: the creator key
+    // baked into the blob must be exactly the owner's pinned ECDH key. Without
+    // this, a substituted creator key still derives a valid wrap key (the
+    // attacker controls the matching private key) and the unseal would succeed.
+    if (
+      expectedCreatorEcdhPublicKeyJwk !== undefined &&
+      !ecdhPublicKeysEqual(data.creatorEcdhPublicKeyJwk, expectedCreatorEcdhPublicKeyJwk)
+    ) {
+      throw new Error('SECTOR_CREATOR_KEY_UNTRUSTED :: COMPROMISED_LINK')
+    }
     // Вскрытие через ключ создателя (Auth Wrap)
     const creatorPub = await importEcdhPublicKey(data.creatorEcdhPublicKeyJwk)
     wrapKey = await deriveSharedSecret(memberPrivateKey, creatorPub)
   } else {
+    // Legacy ephemeral wrap (`SectorKeyUnit`): unauthenticated by construction.
+    // When an owner binding is required, refuse it — the only legitimate SECTOR
+    // key is the owner-bound `CREATOR_AUTH_WRAP`; an ephemeral payload here can
+    // only be an attacker's downgrade or stale noise.
+    if (expectedCreatorEcdhPublicKeyJwk !== undefined) {
+      throw new Error('SECTOR_UNAUTHENTICATED_WRAP_REJECTED :: COMPROMISED_LINK')
+    }
     // Вскрытие через эфемероидный ключ (Standard Unit)
     const legacy = data as SectorKeyUnit
     if (!legacy.ephemeralPublicKeyJwk) throw new Error('ERR_UNKNOWN_SIGNAL_FORMAT')
-    
+
     const ephemeralPub = await importEcdhPublicKey(legacy.ephemeralPublicKeyJwk)
     wrapKey = await deriveSharedSecret(memberPrivateKey, ephemeralPub)
   }

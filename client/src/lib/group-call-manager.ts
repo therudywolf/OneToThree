@@ -232,6 +232,15 @@ function createPeerConnection(
         clearTimeout(timer)
         disconnectTimers.delete(peerId)
       }
+      // Also cancel a pending purge timer from a prior disconnect, so a peer that
+      // flaps disconnected->connected->disconnected isn't torn down by a stale
+      // purge timer mid-reconnect (mirrors the 1:1 hook). Without this only
+      // cleanupPeer clears the `_purge` key.
+      const purge = disconnectTimers.get(`${peerId}_purge`)
+      if (purge) {
+        clearTimeout(purge)
+        disconnectTimers.delete(`${peerId}_purge`)
+      }
     } else if (state === 'failed') {
       console.warn(`[GC.ICE] Connection failed to ${peerId.slice(0, 8)}, attempting restart`)
       try {

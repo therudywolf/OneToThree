@@ -10,7 +10,7 @@ import { readVaultBlob } from '@/lib/vault'
 import { useThemeStore } from '@/store/themeStore'
 import { explainDeviceLinkError } from '@/lib/device-link-errors'
 import { PortalRoot } from '@/components/portal-root'
-import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { QrScanner } from '@/components/qr-scanner'
 import { X } from 'lucide-react'
 import {
@@ -72,8 +72,6 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   const themeId = useThemeStore((s) => s.theme)
   const isMd3 = shellMode === 'md3'
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
-
-  useEffect(() => acquireBodyScrollLock(), [])
 
   const cleanupPolling = useCallback(() => {
     stopRef.current = true
@@ -214,6 +212,9 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     onClose()
   }, [cleanupPolling, onClose])
 
+  // D27 — ESC + focus trap + body-scroll-lock + focus restore.
+  const trapRef = useFocusTrap<HTMLDivElement>(true, handleClose)
+
   const tabButtonClass = (active: boolean) =>
     `flex-1 border py-2 text-[10px] uppercase tracking-widest transition-colors ${
       isRetro
@@ -234,6 +235,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   return (
     <PortalRoot>
       <div
+        ref={trapRef}
         className={`p13-settings-root custom-scrollbar fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto px-3 py-6 ${
           isMd3
             ? 'bg-[color-mix(in_srgb,var(--void)_64%,transparent)] backdrop-blur-sm'

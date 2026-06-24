@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 
 const SEQUENCES = [
   {
@@ -36,11 +37,19 @@ export function StartGuide({ onComplete }: Props) {
   const current = SEQUENCES[sequence]
 
   const isLast = sequence === SEQUENCES.length - 1
+  // D27 — ESC (→ skip) + focus trap + body-scroll-lock + focus restore.
+  const trapRef = useFocusTrap<HTMLDivElement>(true, onComplete)
 
   return (
-    <div className={`fixed inset-0 z-[300] flex items-center justify-center px-4 backdrop-blur-sm ${
+    <div
+      ref={trapRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('guide.onboardingTitle')}
+      className={`fixed inset-0 z-[300] flex items-center justify-center px-4 backdrop-blur-sm ${
       isMd3 ? 'bg-void/60 font-sans' : 'bg-void/95 font-mono'
-    }`}>
+    }`}
+    >
       <div className={`relative w-full max-w-lg p-6 ${
         isMd3
           ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-3)]'

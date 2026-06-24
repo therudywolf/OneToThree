@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useId, useRef, useEffect } from 'react'
-import { Check, ChevronRight, Globe, Moon, Sun, Zap } from 'lucide-react'
+import { Check, ChevronRight, EyeOff, Globe, Lock, type LucideIcon, Moon, ShieldCheck, Sun, Zap } from 'lucide-react'
 import { useTranslation, type TranslateFn } from '@/hooks/use-translation'
 import { useLocaleStore, type LocaleSegment } from '@/store/localeStore'
 import {
@@ -508,17 +508,17 @@ function ReadyStep({
 
       <div className="mb-8 space-y-3 text-left">
         <FeatureRow
-          icon="LOCK"
+          icon={Lock}
           text={t('welcome.featureE2e')}
           isTerminal={isTerminal}
         />
         <FeatureRow
-          icon="HOME"
+          icon={ShieldCheck}
           text={t('welcome.featureSelfHosted')}
           isTerminal={isTerminal}
         />
         <FeatureRow
-          icon="NOTRK"
+          icon={EyeOff}
           text={t('welcome.featureNoTracking')}
           isTerminal={isTerminal}
         />
@@ -540,7 +540,7 @@ function ReadyStep({
   )
 }
 
-function FeatureRow({ icon, text, isTerminal }: { icon: string; text: string; isTerminal: boolean }) {
+function FeatureRow({ icon: Icon, text, isTerminal }: { icon: LucideIcon; text: string; isTerminal: boolean }) {
   return (
     <div
       className={`flex items-center gap-3 p-3 ${
@@ -549,13 +549,7 @@ function FeatureRow({ icon, text, isTerminal }: { icon: string; text: string; is
           : 'rounded-[14px] bg-[color-mix(in_srgb,var(--on-surface)_5%,transparent)]'
       }`}
     >
-      <span
-        className={`shrink-0 font-mono text-[9px] tracking-[0.2em] ${
-          isTerminal ? 'text-[var(--neon-cyan)]' : 'text-[var(--neon-cyan)]'
-        }`}
-      >
-        [{icon}]
-      </span>
+      <Icon className="h-5 w-5 shrink-0 text-[var(--neon-cyan)]" aria-hidden="true" />
       <span
         className={
           isTerminal

@@ -65,6 +65,7 @@ type Props = {
       fileType?: string
       kind?: AttachmentKind
       sendOriginal?: boolean
+      burn_duration_secs?: number | null
     }
   ) => Promise<void>
   sendAlbum?: (
@@ -76,6 +77,7 @@ type Props = {
         mime?: string
         kind?: AttachmentKind
         sendOriginal?: boolean
+        burn_duration_secs?: number | null
       }
     }>,
     caption?: string
@@ -167,9 +169,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       if (env && activeChatId) {
         void grantStickerPackToChat(env.packId, activeChatId)
       }
-      await sendText(json)
+      await sendText(json, null, { burn_duration_secs: makeBurnDuration(burnTimerSecs) })
+      setBurnTimerSecs(null)
     },
-    [activeChatId, sendText]
+    [activeChatId, sendText, burnTimerSecs]
   )
 
   // Per-chat draft lifecycle + the on-switch reset of staged composer state
@@ -393,13 +396,21 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
         result.blob,
         isVoice ? 'audio' : 'video',
         undefined,
-        { fileType: result.mimeType, fileName: labelName, kind }
+        {
+          fileType: result.mimeType,
+          fileName: labelName,
+          kind,
+          burn_duration_secs: makeBurnDuration(burnTimerSecs),
+        }
       )
+      // D6 — consume the armed burn timer after a media send, mirroring the
+      // text path which clears it via clearActiveDraft().
+      setBurnTimerSecs(null)
     } catch (error) {
       // `sendMedia` already surfaces a toast; avoid double-notifying here.
       console.error('Failed to stop recording:', error)
     }
-  }, [stopCapture, sendMedia, cryptoCtx, mediaMode])
+  }, [stopCapture, sendMedia, cryptoCtx, mediaMode, burnTimerSecs])
 
   const cancelRecording = useCallback(async () => {
     vibrateShort(30)
@@ -444,9 +455,11 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       {
         fileName: `gif-${gif.id}.gif`,
         fileType: 'image/gif',
+        burn_duration_secs: makeBurnDuration(burnTimerSecs),
       },
     )
-  }, [sendMedia])
+    setBurnTimerSecs(null)
+  }, [sendMedia, burnTimerSecs])
 
   /**
    * Sprint M1-3 — validate every incoming file (size by category, image
@@ -516,6 +529,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     async (caption: string, opts: { sendOriginal: boolean }) => {
       if (sendingMediaRef.current || fileQueue.length === 0) return
       sendingMediaRef.current = true
+      const burnSecs = makeBurnDuration(burnTimerSecs)
       try {
         if (sendAlbum && canAlbum(fileQueue)) {
           await sendAlbum(
@@ -526,11 +540,15 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 label: it.file.name,
                 mime: it.file.type,
                 sendOriginal: opts.sendOriginal,
+                burn_duration_secs: burnSecs,
               },
             })),
             caption || undefined,
           )
           setFileQueue([])
+          // D6 — burn arms once and fires once; clear after the album sends so
+          // the next message isn't unexpectedly ephemeral.
+          setBurnTimerSecs(null)
           return
         }
         const item = fileQueue[0]
@@ -539,13 +557,20 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
           fileName: item.file.name,
           fileType: item.file.type,
           sendOriginal: opts.sendOriginal,
+          burn_duration_secs: burnSecs,
         })
-        setFileQueue((prev) => prev.slice(1))
+        setFileQueue((prev) => {
+          const next = prev.slice(1)
+          // Only consume the burn timer once the whole queue has drained, so a
+          // multi-file (non-album) queue keeps the same burn for each file.
+          if (next.length === 0) setBurnTimerSecs(null)
+          return next
+        })
       } finally {
         sendingMediaRef.current = false
       }
     },
-    [sendMedia, sendAlbum, fileQueue],
+    [sendMedia, sendAlbum, fileQueue, burnTimerSecs],
   )
 
   const handlePreviewCancel = useCallback(() => setFileQueue([]), [])

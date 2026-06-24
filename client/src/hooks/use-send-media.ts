@@ -91,6 +91,12 @@ export type TransmitOptions = {
   kind?: AttachmentKind
   /** Sprint M1-6 — when true, skip image compression and send the original bytes. */
   sendOriginal?: boolean
+  /**
+   * D6 — armed burn timer (seconds) for ephemeral media. Threaded through to
+   * `sendChatMessageOverTransport` so photos/voice/video/album/GIF/stickers
+   * honour the burn flame just like text messages do.
+   */
+  burn_duration_secs?: number | null
 }
 
 function ensureExtension(name: string, mime: string): string {
@@ -420,6 +426,9 @@ export function useSendMedia(
           media_type: segmentClass,
           media_iv: prepared.mediaIvB64,
           media_original_bytes: prepared.workSize,
+          ...(options?.burn_duration_secs != null
+            ? { burn_duration_secs: options.burn_duration_secs }
+            : {}),
         })
         const { via, serverMessage, outboxId, partialDelivery } = result
         if (partialDelivery && partialDelivery.failedDeviceIds.length > 0) {
@@ -453,6 +462,7 @@ export function useSendMedia(
             reply_to_id: null,
             read_at: null,
             burn_at: null,
+            burn_duration_secs: options?.burn_duration_secs ?? null,
             reactions: {},
             created_at: new Date().toISOString(),
             _pending: true,
@@ -491,6 +501,9 @@ export function useSendMedia(
         toastError(`Albums are limited to ${MAX_ALBUM_ITEMS} items.`, { title: 'ALBUM' })
         throw new Error('ALBUM_TOO_LARGE')
       }
+      // D6 — burn applies to the whole album message; take it from the first
+      // item's options (the composer arms it identically on every item).
+      const albumBurnDurationSecs = items[0]?.options?.burn_duration_secs ?? null
       if (items.length === 1) {
         await transmitBinary(items[0].blob, items[0].segmentClass, {
           ...(items[0].options ?? {}),
@@ -571,6 +584,9 @@ export function useSendMedia(
           media_type: items[0].segmentClass,
           media_iv: first.mediaIvB64,
           media_original_bytes: first.workSize,
+          ...(albumBurnDurationSecs != null
+            ? { burn_duration_secs: albumBurnDurationSecs }
+            : {}),
           // Link EVERY album object to the message (not just item 1) so the
           // orphan-cleanup sweep doesn't hard-delete items 2..N after 24h.
           attachment_keys: uploaded.map((u) => u.filePath),
@@ -607,6 +623,7 @@ export function useSendMedia(
             reply_to_id: null,
             read_at: null,
             burn_at: null,
+            burn_duration_secs: albumBurnDurationSecs ?? null,
             reactions: {},
             created_at: new Date().toISOString(),
             _pending: true,

@@ -139,6 +139,35 @@ describe('ChatInput — characterization net (pre-refactor)', () => {
     expect(sendText).toHaveBeenCalledWith('boom', null, { burn_duration_secs: 30 })
   })
 
+  it('#6b D6 — armed burn timer threads burn_duration_secs to a media send and is cleared after', async () => {
+    const { sendMedia } = renderInput({ cryptoCtx: DIRECT_CTX })
+
+    // Arm a 30s burn timer.
+    await userEvent.click(screen.getByTitle('chat.burnTimerLabel'))
+    await userEvent.click(screen.getByText('chat.burnTimer30s'))
+    expect(screen.getByText('30s')).toBeTruthy()
+
+    // Queue a single non-album file (category 'file' skips dimension/duration
+    // probing so it validates cleanly in jsdom) → MediaPreviewModal renders.
+    const file = new File(['hello'], 'doc.pdf', { type: 'application/pdf' })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, file)
+
+    const sendBtn = await screen.findByLabelText('Send attachment')
+    await userEvent.click(sendBtn)
+
+    expect(sendMedia).toHaveBeenCalledTimes(1)
+    expect(sendMedia).toHaveBeenCalledWith(
+      file,
+      'file',
+      undefined,
+      expect.objectContaining({ burn_duration_secs: 30 })
+    )
+
+    // Burn fires once: the flame badge is gone after the media send.
+    expect(screen.queryByText('30s')).toBeNull()
+  })
+
   it('#7a a disabled PUBLIC (channel) composer shows the read-only bar', () => {
     renderInput({ cryptoCtx: PUBLIC_CTX, disabled: true })
     expect(screen.getByText('[ CHANNEL — VIEW ONLY ]')).toBeTruthy()

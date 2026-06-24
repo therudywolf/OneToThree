@@ -433,6 +433,7 @@ const en = {
   'group.transferOwner': 'Transfer Ownership',
   'group.kick': 'Remove from Group',
   'group.kickConfirm': 'Remove this user from the group?',
+  'group.transferConfirm': 'Transfer ownership to this member? You will lose owner control and this cannot be undone.',
   'group.discussionTitle': 'Discussion chat',
   'group.discussionHint':
     'Link a group chat where comments for this channel are collected.',

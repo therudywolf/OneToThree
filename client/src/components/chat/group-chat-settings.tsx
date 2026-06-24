@@ -136,6 +136,10 @@ export function GroupChatSettings({
   }
 
   const reassignAuthority = async (targetId: string, role: ChatMemberRole) => {
+    // Transferring ownership is irreversible (the old owner loses owner control
+    // and can't self-reverse), so confirm it like kick does — the buttons sit in
+    // a dense per-member row right next to "Make admin".
+    if (role === 'owner' && !confirm(t('group.transferConfirm'))) return
     setIsBusy(true)
     setErrorLog(null)
     try {

@@ -16,6 +16,7 @@ import {
   uniqueIndex,
   uuid,
   varchar,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core'
 import { desc, sql } from 'drizzle-orm'
 
@@ -208,10 +209,22 @@ export const chats = pgTable(
     inviteSlug: text('invite_slug'),
     /** When true, first successful join by a new member clears `invite_code`. */
     inviteOneTime: boolean('invite_one_time').notNull().default(false),
+    /**
+     * Linked discussion group chat for Telegram-style channel comments (the DB
+     * half of the feature; migration 0033). The client already reads/writes it,
+     * but the server `/chats/:id/discussion` route is not yet implemented — so
+     * this is currently unpopulated. Declared here so the drizzle model matches
+     * the live DB (the column/FK/index already exist).
+     */
+    discussionChatId: uuid('discussion_chat_id').references(
+      (): AnyPgColumn => chats.id,
+      { onDelete: 'set null' }
+    ),
   },
   (t) => ({
     inviteCodeUnique: uniqueIndex('chats_invite_code_unique').on(t.inviteCode),
     inviteSlugUnique: uniqueIndex('chats_invite_slug_unique').on(t.inviteSlug),
+    discussionChatIdIdx: index('chats_discussion_chat_id_idx').on(t.discussionChatId),
   })
 )
 
@@ -566,7 +579,7 @@ export const groups = pgTable(
     type: groupTypeEnum('type').notNull().default('group'),
     isPublic: boolean('is_public').notNull().default(false),
     inviteCode: varchar('invite_code', { length: 64 }).unique(),
-    ownerId: uuid('owner_id').references(() => users.id),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -830,7 +843,7 @@ export const messageThreads = pgTable(
       onDelete: 'cascade',
     }),
     title: varchar('title', { length: 100 }),
-    createdBy: uuid('created_by').references(() => users.id),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

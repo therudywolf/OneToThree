@@ -146,6 +146,9 @@ interface SerializedSession {
   peerIdentityExchange: string
   peerIdentitySigning: string
   ownIdentityExchange: string
+  /** Ed25519 identity-signing key of THIS device — the trust root the safety
+   *  number certifies (D3). Optional for sessions persisted before D3. */
+  ownIdentitySigning?: string
   ratchet: SerializedRatchetState
   /**
    * Populated by the initiator after `bootstrapSession`. Attached to the
@@ -455,9 +458,15 @@ export async function bootstrapSession(
   const bundle = bundleFromResponse(response)
 
   // TOFU check: if a prior session exists with a different peer identity for
-  // THIS device pair, refuse to silently re-bootstrap.
+  // THIS device pair, refuse to silently re-bootstrap. We pin the Ed25519
+  // SIGNING key — the trust root the safety number certifies (D3) and the key
+  // that vouches for identityExchange (D4) — not just the exchange key.
   const existing = await loadSession(ownerId, ownDeviceId, peerId, peerDeviceId)
-  if (existing && existing.peerIdentityExchange !== b64urlEncode(bundle.identityExchange)) {
+  if (
+    existing &&
+    (existing.peerIdentitySigning !== b64urlEncode(bundle.identitySigning) ||
+      existing.peerIdentityExchange !== b64urlEncode(bundle.identityExchange))
+  ) {
     throw new Error('TOFU_IDENTITY_CHANGED')
   }
   const ephemeral = generateX25519KeyPair()
@@ -475,6 +484,7 @@ export async function bootstrapSession(
     peerIdentityExchange: b64urlEncode(bundle.identityExchange),
     peerIdentitySigning: b64urlEncode(bundle.identitySigning),
     ownIdentityExchange: b64urlEncode(ownIdentity.exchange.publicKey),
+    ownIdentitySigning: b64urlEncode(ownIdentity.signing.publicKey),
     ratchet: serializeRatchet(ratchet),
     pendingInit: {
       initiatorIdentityExchange: b64urlEncode(ownIdentity.exchange.publicKey),
@@ -521,6 +531,7 @@ export async function acceptSession(
     peerIdentityExchange: b64urlEncode(initial.initiatorIdentityExchange),
     peerIdentitySigning: b64urlEncode(initial.initiatorIdentitySigning),
     ownIdentityExchange: b64urlEncode(ownIdentity.exchange.publicKey),
+    ownIdentitySigning: b64urlEncode(ownIdentity.signing.publicKey),
     ratchet: serializeRatchet(ratchet),
   }
   await saveSession(ownerId, ownDeviceId, peerId, peerDeviceId, session)
@@ -879,8 +890,8 @@ export async function decryptFromPeer(
 
 /**
  * Compute a session fingerprint for safety-number UI. Hashes the pair of
- * identity-exchange keys for ONE device pair so the output matches between
- * the two devices regardless of who initiated.
+ * Ed25519 identity-SIGNING keys (the trust root — D3) for ONE device pair so
+ * the output matches between the two devices regardless of who initiated.
  *
  * `peerDeviceId` defaults to the most-recent device when omitted.
  */
@@ -899,9 +910,14 @@ export async function sessionFingerprint(
   if (!targetPeerDevice) return null
   const session = await loadSession(ownerId, _ownDeviceId, peerId, targetPeerDevice)
   if (!session) return null
+  // D3: the safety number certifies the Ed25519 SIGNING identities (the trust
+  // root that vouches for the DH keys), not the substitutable exchange keys.
+  // Sessions persisted before D3 lack ownIdentitySigning → no number until the
+  // ratchet re-bootstraps (the D4 key-directory reset forces that anyway).
+  if (!session.ownIdentitySigning) return null
   return fingerprint(
-    b64urlDecode(session.ownIdentityExchange),
-    b64urlDecode(session.peerIdentityExchange)
+    b64urlDecode(session.ownIdentitySigning),
+    b64urlDecode(session.peerIdentitySigning)
   )
 }
 

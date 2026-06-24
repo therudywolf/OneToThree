@@ -1,7 +1,13 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-const LOG_DIR = process.env.API_LOG_DIR?.trim() || path.join(process.cwd(), 'logs')
+// Default to the OS temp dir (the tmpfs /tmp in the read_only prod container) so
+// the access log actually writes when enabled — `process.cwd()/logs` is on the
+// read-only root FS in prod, where mkdir/createWriteStream throw EROFS and the
+// feature is silently dead. Operators wanting persistence set API_LOG_DIR to a
+// mounted volume.
+const LOG_DIR = process.env.API_LOG_DIR?.trim() || path.join(os.tmpdir(), 'o2t-api-logs')
 
 let hourKey = ''
 let stream: fs.WriteStream | null = null

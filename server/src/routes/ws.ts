@@ -776,6 +776,15 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           })
           // Notify chat members about updated call state
           if (remaining.length === 0) {
+            // The call ended (room empty) — drop the per-call E2EE session id so
+            // the NEXT call in this room derives a fresh LiveKit room key.
+            // Otherwise the key persists for its 8h Redis TTL and a former member
+            // who cached it could decrypt a later call in the same room (the
+            // forward-secrecy the call/token comment promises).
+            const redis = getRedis()
+            if (redis) {
+              try { await redis.del(`call:session:${room_id}`) } catch { /* best-effort */ }
+            }
             const chatMemberIds = await getChatMemberIds(room_id)
             broadcastToUsers(chatMemberIds, {
               type: 'group_call:ended',

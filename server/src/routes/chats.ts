@@ -1403,15 +1403,24 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
     }
 
+    // OWNER-ONLY (D2). The SECTOR group-key wrap a member adopts is bound
+    // client-side to the OWNER's ECDH identity (see chat-crypto.ts /
+    // unwrapGroupKeyFromStoredPayload). Only the owner can produce a wrap that
+    // ECDH-derives under their key, so admins can no longer write group-key
+    // rows: an admin write could only ever store a key the recipient would
+    // reject — and permitting it reopened the group-MITM hole (an admin or the
+    // server overwriting a victim's wrap with an attacker key). The owner is the
+    // single rotator by design (see group-key-rotation.ts), so this matches the
+    // only legitimate writer.
     const actorRole = await getMemberRole(chatId, user.id)
-    if (actorRole !== 'owner' && actorRole !== 'admin') {
+    if (actorRole !== 'owner') {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
 
     // Self-target is permitted: on a key rotation the owner must persist its OWN
     // freshly-minted wrapped key (the client rebuilds the SECTOR context from the
     // server, so the owner would otherwise lose the new key on next chat open).
-    // Authz already restricts writes to owner/admin above.
+    // Authz already restricts writes to the owner above.
 
     const targetOk = await getMemberRole(chatId, targetUserId)
     if (!targetOk) {

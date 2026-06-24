@@ -17,10 +17,12 @@ import {
   wrapGroupKeyForMemberWithCreatorEcdh,
   unwrapGroupKeyFromStoredPayload,
   readStoredSectorKeyEpoch,
+  ecdhPublicKeysEqual,
 } from './chat-logic'
 import {
   generateKeyPair,
   exportPublicKey,
+  exportEcdhPublicJwkFromPrivateKey,
   generateAesGcm256Key,
   encryptMessage,
   decryptMessage,
@@ -207,5 +209,133 @@ describe('SECTOR key rotation: epoch stamping', () => {
     // its old row decrypts to the OLD key, never the new one.
     const departedRecovered = await unwrapGroupKeyFromStoredPayload(departed.priv, departedOldRow)
     expect(await sameKey(newKey, departedRecovered)).toBe(false)
+  })
+})
+
+/**
+ * D2 — owner-binding of the SECTOR group-key wrap. When the SECTOR context
+ * build supplies the chat OWNER's pinned ECDH key as the expected creator key,
+ * `unwrapGroupKeyFromStoredPayload` MUST fail closed for any wrap not sealed
+ * under the owner's identity. The headline case is an active attacker who
+ * re-seals an attacker-chosen AES key under `ECDH(attacker_ephemeral, victim)`
+ * and substitutes `attacker_ephemeral_pub` for the creator key: the ECDH math
+ * alone reproduces the wrap key (the attacker owns the matching private key),
+ * so the unseal would SUCCEED — only the binding stops it.
+ */
+describe('SECTOR owner-binding (D2: authenticated group-key wrap)', () => {
+  it('FAILS CLOSED on the substitution attack: attacker AES key sealed under attacker_ephemeral×victim, creator key swapped', async () => {
+    const owner = await makeMember('owner')
+    const victim = await makeMember('victim')
+
+    // The owner's legitimate wrap of the real sector key for the victim.
+    const realKey = await generateAesGcm256Key()
+    const honestRow = await wrapGroupKeyForMemberWithCreatorEcdh(
+      owner.priv, victim.pubJwk, realKey, owner.pubJwk,
+    )
+    // Bound to the owner → unwraps to the real key.
+    const honest = await unwrapGroupKeyFromStoredPayload(victim.priv, honestRow, owner.pubJwk)
+    expect(await sameKey(realKey, honest)).toBe(true)
+
+    // ── The attack ──────────────────────────────────────────────────────────
+    // The attacker mints its OWN sector key and seals it under
+    // ECDH(attacker_ephemeral_priv, victim_pub), embedding attacker_ephemeral_pub
+    // as the "creator" key. This is exactly what `wrapGroupKeyForMemberWithCreatorEcdh`
+    // produces when handed the attacker's ephemeral keypair as the creator.
+    const attackerEph = await makeMember('attacker-ephemeral')
+    const attackerKey = await generateAesGcm256Key()
+    const forgedRow = await wrapGroupKeyForMemberWithCreatorEcdh(
+      attackerEph.priv, victim.pubJwk, attackerKey, attackerEph.pubJwk,
+    )
+
+    // WITHOUT the binding the forged row unseals cleanly to the attacker's key
+    // (proves the wrap is genuinely unauthenticated on its own — the whole point
+    // of D2). The victim would adopt the attacker's key → full group MITM.
+    const unbound = await unwrapGroupKeyFromStoredPayload(victim.priv, forgedRow)
+    expect(await sameKey(attackerKey, unbound)).toBe(true)
+
+    // WITH the owner binding the same forged row is rejected before any DH.
+    await expect(
+      unwrapGroupKeyFromStoredPayload(victim.priv, forgedRow, owner.pubJwk),
+    ).rejects.toThrow(/SECTOR_CREATOR_KEY_UNTRUSTED/)
+  })
+
+  it('rejects an ADMIN-sealed wrap: a key wrapped under a non-owner identity is not adopted', async () => {
+    // Mirrors the original D2 server hole: an admin (or the server impersonating
+    // one) writes a wrapped-key row sealed under the ADMIN's key. Even if that
+    // admin is a legitimate group admin, the victim must not adopt a key the
+    // OWNER did not mint.
+    const owner = await makeMember('owner')
+    const admin = await makeMember('admin')
+    const victim = await makeMember('victim')
+    const key = await generateAesGcm256Key()
+
+    const adminRow = await wrapGroupKeyForMemberWithCreatorEcdh(
+      admin.priv, victim.pubJwk, key, admin.pubJwk,
+    )
+    await expect(
+      unwrapGroupKeyFromStoredPayload(victim.priv, adminRow, owner.pubJwk),
+    ).rejects.toThrow(/SECTOR_CREATOR_KEY_UNTRUSTED/)
+  })
+
+  it('rejects the legacy ephemeral (unbound) format when an owner binding is required', async () => {
+    // No real group ever used the ephemeral dispatch format in production, so in
+    // owner-bound mode it can only be an attacker downgrade — refuse it outright
+    // rather than fall back to the unauthenticated path.
+    const owner = await makeMember('owner')
+    const victim = await makeMember('victim')
+    const [row] = await dispatchSectorKeys([victim.pubJwk])
+
+    // Unbound mode still accepts it (back-compat for the pure round-trip).
+    await expect(
+      unwrapGroupKeyFromStoredPayload(victim.priv, row.encryptedGroupKeyBase64),
+    ).resolves.toBeTruthy()
+    // Owner-bound mode rejects it.
+    await expect(
+      unwrapGroupKeyFromStoredPayload(victim.priv, row.encryptedGroupKeyBase64, owner.pubJwk),
+    ).rejects.toThrow(/SECTOR_UNAUTHENTICATED_WRAP_REJECTED/)
+  })
+
+  it('accepts the owner-bound wrap even when the owner key is serialized differently (rotation path)', async () => {
+    // At rotation the owner passes `exportEcdhPublicJwkFromPrivateKey(priv)` as
+    // the creator key, whose JWK field order / optional fields can differ from
+    // the owner row's stored `ecdh_public_key_jwk`. The binding compares only the
+    // cryptographically significant fields, so a benign re-serialization must NOT
+    // false-reject and lock the member out of the group.
+    const owner = await makeMember('owner')
+    const victim = await makeMember('victim')
+    const key = await generateAesGcm256Key()
+
+    // Wrap stamps `creatorEcdhPublicKeyJwk` from the owner's PRIVATE key export.
+    const row = await wrapGroupKeyForMemberWithCreatorEcdh(
+      owner.priv, victim.pubJwk, key, undefined /* derive from priv */, 2,
+    )
+    // The "expected owner key" the context passes is the member-roster JWK. Build
+    // a deliberately different-but-equivalent serialization to model JWK drift.
+    const ownerRosterJwk = await exportEcdhPublicJwkFromPrivateKey(owner.priv)
+    const reordered = JSON.stringify({
+      // shuffle key order + add a benign optional field
+      ext: true,
+      ...JSON.parse(ownerRosterJwk),
+    })
+    expect(ecdhPublicKeysEqual(reordered, ownerRosterJwk)).toBe(true)
+
+    const recovered = await unwrapGroupKeyFromStoredPayload(victim.priv, row, reordered)
+    expect(await sameKey(key, recovered)).toBe(true)
+  })
+})
+
+describe('ecdhPublicKeysEqual', () => {
+  it('treats field-order / optional-field differences as equal but a different point as not', async () => {
+    const a = await generateKeyPair({ extractable: true })
+    const b = await generateKeyPair({ extractable: true })
+    const aJwk = await exportPublicKey(a.publicKey)
+    const bJwk = await exportPublicKey(b.publicKey)
+
+    const aParsed = JSON.parse(aJwk)
+    const aReordered = JSON.stringify({ key_ops: [], y: aParsed.y, x: aParsed.x, crv: aParsed.crv, kty: aParsed.kty })
+    expect(ecdhPublicKeysEqual(aJwk, aReordered)).toBe(true)
+    expect(ecdhPublicKeysEqual(aJwk, bJwk)).toBe(false)
+    // Garbage never matches a real key.
+    expect(ecdhPublicKeysEqual(aJwk, 'not-json')).toBe(false)
   })
 })

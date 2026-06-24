@@ -2,7 +2,6 @@
 // Copyright (C) 2026 therudywolf
 
 import type { Metadata, Viewport } from 'next'
-import { headers } from 'next/headers'
 import { AuthProvider } from '@/components/auth/auth-provider'
 import { Auth401Interceptor } from '@/components/auth/auth-401-interceptor'
 import { ErrorBoundary } from '@/components/error-boundary'
@@ -137,25 +136,23 @@ const themeInitScript = `
 })();
 `.trim()
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  // PWA-01: read the per-request nonce injected by middleware so we can stamp
-  // it on the blocking theme-init <script> tag, satisfying the nonce-based CSP.
-  // Static export (Capacitor APK) has no request context — skip the lookup.
-  let nonce = ''
-  if (process.env.NEXT_EXPORT !== '1') {
-    const headersList = await headers()
-    nonce = headersList.get('x-nonce') ?? ''
-  }
+  // NOTE: the blocking theme-init <script> below previously carried a
+  // `nonce` read from an `x-nonce` request header. That header was meant to be
+  // injected by a `src/middleware.ts` that no longer exists, so the value was
+  // always '' (a no-op nonce). The plumbing was removed; there is currently no
+  // nonce-based CSP applied to the Next-served HTML. If one is reintroduced,
+  // stamp the nonce here again (see the note in next.config.js / src/proxy.ts).
 
   return (
     <html lang="ru" data-theme="default" data-platform-profile="desktop-tg" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
       <head>
         {/* CHROMATIC_INIT :: blocking theme bootstrap — must be first in <head> */}
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="relative min-h-dvh overflow-x-hidden bg-void font-mono antialiased supports-[height:100dvh]:min-h-[100dvh]">
         

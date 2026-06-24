@@ -47,10 +47,15 @@ const serverRoutesConfig = isStaticExport
         ]
       },
       async headers() {
-        // NOTE: Content-Security-Policy is now managed by src/middleware.ts
-        // using per-request nonces (PWA-01). Do NOT add a static CSP here —
-        // a static header would override the middleware nonce and break inline
-        // scripts that rely on the nonce attribute.
+        // NOTE: no Content-Security-Policy is emitted for the Next-served HTML
+        // here. An earlier design (PWA-01) planned a per-request nonce CSP in a
+        // `src/middleware.ts`, but that middleware was removed and the nonce
+        // plumbing was dead (the nonce always resolved to ''). The API responses
+        // carry their own helmet CSP (see server/src/app.ts); the only inline
+        // script in the HTML shell is the blocking theme bootstrap in
+        // app/layout.tsx. If a strict HTML CSP is reintroduced, do it via the
+        // `proxy` middleware (src/proxy.ts) with a real per-request nonce so the
+        // theme script and Next's hydration scripts both get stamped.
         return [
           {
             source: '/:path*',

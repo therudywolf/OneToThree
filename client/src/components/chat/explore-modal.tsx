@@ -113,8 +113,14 @@ export function ExploreModal({ onJoin, onClose }: ExploreModalProps) {
                     ? 'hover:bg-[var(--state-hover)]'
                     : 'border-b border-neon-cyan/10 hover:bg-neon-cyan/5'
                 }`}
-                onClick={() => row.invite_code && onJoin(row.invite_code)}
-                disabled={!row.invite_code}
+                onClick={() => {
+                  // Prefer the stable slug (POST /join/:code accepts either, and
+                  // joining by slug never consumes a one-time code). Discovery no
+                  // longer exposes consumable one-time invite codes.
+                  const handle = row.invite_slug ?? row.invite_code
+                  if (handle) onJoin(handle)
+                }}
+                disabled={!(row.invite_slug ?? row.invite_code)}
               >
                 <div className={`flex h-9 w-9 shrink-0 items-center justify-center ${
                   isMd3

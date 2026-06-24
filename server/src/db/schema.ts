@@ -945,9 +945,11 @@ export const adminAuditLog = pgTable(
   'admin_audit_log',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    // SET NULL (not CASCADE): an audit log must outlive its author. With CASCADE,
+    // deleting or purging an admin erased that admin's entire accountability
+    // trail. Nullable so the actor reference survives the admin's deletion.
     adminUserId: uuid('admin_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => users.id, { onDelete: 'set null' }),
     action: text('action').notNull(),
     targetUserId: uuid('target_user_id'),
     detail: jsonb('detail'),

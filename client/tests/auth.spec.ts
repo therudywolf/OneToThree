@@ -28,8 +28,11 @@ test.describe('auth / registration', () => {
     ).toBeVisible({
       timeout: 30_000,
     })
+    // Fresh account → empty chat list. Assert the sidebar's empty-state copy
+    // (sidebar.noActiveRoutes) rather than a specific "new chat" button label,
+    // which has drifted ("New" / "New conversation") and is brittle.
     await expect(
-      page.getByRole('button', { name: /Новый чат|New chat/i })
+      page.getByText(/No chats yet|Чатов пока нет/i).first()
     ).toBeVisible()
     await expect(
       page.getByText(/Выберите чат|Select chat/i).first()

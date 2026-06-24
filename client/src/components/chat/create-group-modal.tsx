@@ -218,7 +218,7 @@ export function CreateGroupModal({ userId, onClose, onCreated, initialMode = 'gr
                       : 'border border-border-strong text-text-muted'
                 }`}
               >
-                Группа (E2E)
+                {t('group.modeGroup')}
               </button>
               <button
                 type="button"
@@ -233,7 +233,7 @@ export function CreateGroupModal({ userId, onClose, onCreated, initialMode = 'gr
                       : 'border border-border-strong text-text-muted'
                 }`}
               >
-                Канал (Broadcast)
+                {t('group.modeChannel')}
               </button>
             </div>
             <p className="mt-2 text-[8px] leading-relaxed text-text-muted/70">

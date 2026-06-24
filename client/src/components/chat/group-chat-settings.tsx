@@ -377,7 +377,7 @@ export function GroupChatSettings({
                     onClick={() => void applyChannelPostingMode('all_members')}
                     className={`inline-flex h-9 items-center px-3 text-[9px] transition-colors disabled:opacity-30 ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_22%,transparent)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
                   >
-                    Все участники пишут
+                    {t('group.postingAll')}
                   </button>
                   <button
                     type="button"
@@ -385,7 +385,7 @@ export function GroupChatSettings({
                     onClick={() => void applyChannelPostingMode('admins_only')}
                     className={`inline-flex h-9 items-center px-3 text-[9px] transition-colors disabled:opacity-30 ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_22%,transparent)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
                   >
-                    Только админы пишут
+                    {t('group.postingAdmins')}
                   </button>
                   <button
                     type="button"

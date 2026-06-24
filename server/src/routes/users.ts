@@ -35,17 +35,12 @@ import { hasActiveSocket, sendToUser } from '../ws/registry.js'
 import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
 import { deletePending, getPending, setChallenge } from '../lib/challenge-store.js'
 import { safeEqualNonce } from '../lib/ecdsa-verify.js'
+import { DELETED_USER_ID, DELETED_USER_USERNAME } from '../lib/deleted-user.js'
 
-/**
- * Shared "[deleted]" sentinel user. On account deletion a user's messages are
- * re-pointed to this row and redacted, so peers see "[deleted]" tombstones
- * instead of gaps (the sender_id FK would otherwise cascade-delete the rows).
- * The username uses characters the nickname validator rejects, so no real user
- * can ever register or collide with it; it has no public key so it can't log in
- * and is_discoverable defaults to false so it never appears in search.
- */
-export const DELETED_USER_ID = '00000000-0000-4000-8000-000000000000'
-export const DELETED_USER_USERNAME = '[deleted]'
+// Re-exported for existing importers (account-deletion tests, etc.). The
+// canonical definition lives in ../lib/deleted-user.js so non-route modules
+// (e.g. admin-purge-user) can share it without importing a route.
+export { DELETED_USER_ID, DELETED_USER_USERNAME }
 
 const searchQuerySchema = z.object({
   q: z.string().min(1).max(128),

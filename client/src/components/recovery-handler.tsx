@@ -11,7 +11,39 @@ import { usePathname } from 'next/navigation'
  * FIX: watchdog is suppressed on /login and / (auth pages) to avoid
  * false-positive "App is not responding" when a new user gets 401 and
  * is redirected — the redirect itself takes >5s in some slow connections.
+ *
+ * D28: the watchdog previously relied on a window `'app-ready'` event to cancel
+ * itself, but nothing ever dispatched that event — so the clear path was dead
+ * code and a slow-but-healthy load would falsely surface "App is not
+ * responding". The watchdog now re-checks actual page readiness when the timer
+ * fires (and dispatches `'app-ready'` itself once the app has rendered) so the
+ * modal only appears when the page is genuinely blank/stuck.
  */
+
+/**
+ * Heuristic for "the app has actually rendered something interactive".
+ * A genuinely stuck/blank load shows neither real content nor controls; a
+ * slow-but-healthy load will, by the time the watchdog fires, have mounted
+ * real interactive elements into the document.
+ */
+function appLooksReady(): boolean {
+  if (typeof document === 'undefined') return true
+  if (document.readyState === 'loading') return false
+  const body = document.body
+  if (!body) return false
+  // Visible interactive controls anywhere in the document are a strong signal
+  // that the SPA has hydrated and rendered a real surface.
+  const interactive = body.querySelectorAll(
+    'button, a[href], input, textarea, select, [role="dialog"], main, [data-app-ready]'
+  )
+  for (const el of Array.from(interactive)) {
+    // Ignore the recovery handler's own subtree.
+    if (el.closest('[data-recovery-handler]')) continue
+    return true
+  }
+  // Fall back to "is there any meaningful rendered text?"
+  return (body.textContent ?? '').trim().length > 0
+}
 export function RecoveryHandler() {
   const [showForceReset, setShowForceReset] = useState(false)
   const chunkErrorHandledRef = useRef(false)
@@ -64,10 +96,28 @@ export function RecoveryHandler() {
     window.addEventListener('unhandledrejection', handleRejection)
     window.addEventListener('app-ready', handleAppReady)
 
+    // D28 — once the app has rendered a real surface, fire `'app-ready'` so the
+    // watchdog clear path (handleAppReady) is live rather than dead code.
+    let readyPollId: ReturnType<typeof setTimeout> | null = null
+    const signalReadyWhenRendered = () => {
+      if (appLooksReady()) {
+        window.dispatchEvent(new Event('app-ready'))
+        return
+      }
+      readyPollId = setTimeout(signalReadyWhenRendered, 300)
+    }
+    signalReadyWhenRendered()
+
     // Watchdog: only on app pages, not on auth/login routes
     // Also clear watchdog on any user interaction (redirect counts as navigation, not stuck)
     if (!isAuthPage) {
       hydrationTimeoutRef.current = setTimeout(() => {
+        // D28 — re-check readiness at fire time: a slow-but-healthy load has
+        // rendered real content by now, so suppress the false positive.
+        if (appLooksReady()) {
+          console.warn('[recovery] Watchdog fired but app has rendered; suppressing reset prompt')
+          return
+        }
         setShowForceReset(true)
         console.warn('[recovery] App appears to be stuck in loading state')
       }, 8000) // increased to 8s to tolerate slow initial loads
@@ -91,6 +141,7 @@ export function RecoveryHandler() {
       window.removeEventListener('app-ready', handleAppReady)
       window.removeEventListener('click', clearGuard)
       window.removeEventListener('touchstart', clearGuard)
+      if (readyPollId) clearTimeout(readyPollId)
       if (hydrationTimeoutRef.current) {
         clearTimeout(hydrationTimeoutRef.current)
         hydrationTimeoutRef.current = null
@@ -126,7 +177,7 @@ export function RecoveryHandler() {
   if (!showForceReset) return null
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-void/80 backdrop-blur-sm">
+    <div data-recovery-handler className="fixed inset-0 z-[999] flex items-center justify-center bg-void/80 backdrop-blur-sm">
       <div className="space-y-4 border border-neon-red bg-void/95 p-6 text-center shadow-[0_0_16px_rgba(255,0,0,0.4)]">
         <p className="font-mono text-sm text-neon-cyan">
           App is not responding

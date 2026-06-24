@@ -172,11 +172,18 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     [activeChatId, sendText]
   )
 
-  // Load saved draft when the active chat changes (don't overwrite an in-progress edit).
+  // On active-chat change, clear staged composer state that otherwise leaks
+  // across chats: a staged reply / in-progress edit (global chatStore) would be
+  // sent/applied to the WRONG chat, and an armed burn timer (composer-local)
+  // would silently self-destruct messages in a chat where it was never set.
+  // The composer is not keyed by chat, so it never remounts on switch — we must
+  // reset explicitly. Then load the new chat's draft.
   useEffect(() => {
-    if (!activeChatId || editingMessage) return
-    const draft = loadDraft(activeChatId)
-    setMessageText(draft)
+    if (!activeChatId) return
+    setReplyTo(null)
+    setEditingMessage(null)
+    setBurnTimerSecs(null)
+    setMessageText(loadDraft(activeChatId))
     mentionMembersLoadedRef.current = false // reset on chat switch
   }, [activeChatId])
 

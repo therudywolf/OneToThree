@@ -1,6 +1,6 @@
 # OneToThree — Production Roadmap (R2: Hardening & Platform Expansion)
 
-Updated: 2026-05-31
+Updated: 2026-06-24
 Owner: rudywolf
 Depth target: **PRODUCTION-GRADE** (chosen 2026-05-29 — maximal coverage, external-audit-ready, signed/notarized native, full a11y).
 
@@ -101,8 +101,9 @@ environment and may be used freely as the live test target. The standing gate is
 - [ ] **Server vitest integration** runs against a **local disposable Postgres** (`o2t-testdb` on :5544),
   not prod — destructive create/delete churn stays off the live DB.
   (`DATABASE_URL=postgres://forest:forest@127.0.0.1:5544/forest`)
-- [ ] **Coverage visibility (local lens only):** `@vitest/coverage-v8` for ad-hoc `--coverage` runs.
-  No CI threshold to enforce, so low priority.
+- [x] **Coverage visibility (local lens only):** DONE 2026-06-24 (commit `bf4a490`). `@vitest/coverage-v8`
+  wired + `npm run test:coverage -w client`. Baseline: lines ~11% (mega-components uncovered), branches ~76%,
+  functions ~62%. No CI threshold; it's a local lens for tracking the Phase-1 push.
 
 **Definition of Done:** the local gate is documented and run per commit; the Playwright suite runs green
 against prod; every prod deploy is verified live.
@@ -131,12 +132,15 @@ for all Phase-3 refactor targets; coverage thresholds enforced.
 - [ ] **Calls** — `group-call-manager.ts` multi-peer state, ICE fallback matrix, LiveKit E2EE key derivation.
 - [ ] **Offline outbox** — IndexedDB outbox + Background Sync replay.
 
-**Component-test foundation (0 today):**
+**Component-test foundation:**
 
-- [ ] Introduce React Testing Library + jsdom env in `client/vitest.config.ts`.
+- [x] Introduce React Testing Library + jsdom env in `client/vitest.config.ts`. DONE 2026-06-24 (commit
+  `bf4a490`). Default env stays `node`; component tests opt into jsdom per-file via `// @vitest-environment
+  jsdom`. `client/vitest.setup.ts` wires jest-dom matchers. **Template test:**
+  `client/src/components/chat/explore-modal.test.tsx`. Use it as the pattern for the characterization tests.
 - [ ] **Characterization tests BEFORE Phase 3** for each refactor target: `chat-app`, `chat-sidebar`,
   `settings-modal`, `chat-input`, `chat-terminal` — render + key interactions in **both shells**, as the
-  refactor net.
+  refactor net. (Harness now exists — this is the open work.)
 
 **Coverage targets (prod-grade):**
 

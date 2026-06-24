@@ -240,6 +240,52 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
+  // Bulk purge: select N users and delete them with ONE admin-level
+  // confirmation (the operator types their own handle) instead of typing each
+  // target's username. Per-target CANNOT_DELETE_SELF / LAST_ADMIN guards still
+  // apply; partial failures are reported per id rather than aborting the batch.
+  app.post('/users/bulk-purge', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+
+    const parsed = z
+      .object({
+        ids: z.array(uuidSchema).min(1).max(100),
+        confirm_username: z.string().trim().min(1).max(200),
+      })
+      .safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    if (parsed.data.confirm_username !== admin.username) {
+      return reply.status(400).send({ error: 'CONFIRM_MISMATCH' })
+    }
+
+    const ids = [...new Set(parsed.data.ids)]
+    const results: Array<{ id: string; ok: true } | { id: string; error: string }> = []
+    for (const id of ids) {
+      const result = await adminPurgeUser({
+        targetUserId: id,
+        adminUserId: admin.id,
+        skipConfirm: true,
+      })
+      if ('error' in result) {
+        results.push({ id, error: result.error })
+      } else {
+        results.push({ id, ok: true })
+        await writeAudit(request.log, {
+          adminUserId: admin.id,
+          action: 'user_purge',
+          targetUserId: id,
+          detail: { bulk: true, purged_direct_chats: result.purged_direct_chats },
+        })
+      }
+    }
+
+    const purged = results.filter((r) => 'ok' in r).length
+    return reply.send({ ok: true, purged, total: ids.length, results })
+  })
+
   app.get('/reports', async (request, reply) => {
     const admin = await requireAdmin(request, reply)
     if (!admin) return

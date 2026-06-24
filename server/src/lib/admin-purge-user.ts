@@ -31,7 +31,13 @@ export type AdminPurgeUserError =
 export async function adminPurgeUser(params: {
   targetUserId: string
   adminUserId: string
-  confirmUsername: string
+  confirmUsername?: string
+  /**
+   * Bulk path: the operator already gave one admin-level confirmation, so skip
+   * the per-target username match. The CANNOT_DELETE_SELF and LAST_ADMIN guards
+   * still apply to every target.
+   */
+  skipConfirm?: boolean
 }): Promise<
   | { ok: true; purged_direct_chats: number; notified_user_ids: string[] }
   | { error: AdminPurgeUserError }
@@ -52,7 +58,7 @@ export async function adminPurgeUser(params: {
     .limit(1)
 
   if (!row) return { error: 'USER_NOT_FOUND' }
-  if (row.username !== params.confirmUsername) {
+  if (!params.skipConfirm && row.username !== params.confirmUsername) {
     return { error: 'CONFIRM_MISMATCH' }
   }
 

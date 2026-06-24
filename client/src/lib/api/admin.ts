@@ -136,6 +136,40 @@ export async function postAdminPurgeUser(
   }
 }
 
+export type AdminBulkPurgeResult = {
+  ok: true
+  purged: number
+  total: number
+  results: Array<{ id: string; ok?: true; error?: string }>
+}
+
+/**
+ * Bulk-purge users. `confirmUsername` is the ACTING ADMIN's own handle (one
+ * acknowledgement for the whole batch). Per-target failures (LAST_ADMIN,
+ * CANNOT_DELETE_SELF, USER_NOT_FOUND) come back in `results`, not as a throw.
+ */
+export async function postAdminBulkPurge(
+  ids: string[],
+  confirmUsername: string
+): Promise<AdminBulkPurgeResult> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/bulk-purge`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, confirm_username: confirmUsername }),
+  })
+  const data = (await res.json().catch(() => ({}))) as Partial<AdminBulkPurgeResult> & { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'ADMIN_BULK_PURGE_FAILED')
+  }
+  return {
+    ok: true,
+    purged: data.purged ?? 0,
+    total: data.total ?? ids.length,
+    results: data.results ?? [],
+  }
+}
+
 export async function fetchAdminSystemStats(): Promise<AdminSystemStats> {
   const res = await fetchWithTimeout(`${API_URL}/admin/system-stats`, {
     credentials: 'include',
@@ -482,7 +516,7 @@ export async function fetchAdminPushStats(): Promise<AdminPushStatRow[]> {
 
 export type AdminAuditLogRow = {
   id: string
-  admin_user_id: string
+  admin_user_id: string | null
   admin_username: string | null
   action: string
   target_user_id: string | null

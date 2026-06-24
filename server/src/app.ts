@@ -296,6 +296,12 @@ export async function buildApp() {
       'X-Nonce',
       'X-Signature',
       'X-TOTP-Code',
+      // Native apps (Capacitor/Tauri) tag every request with this so the server
+      // returns the session JWT in the body. Tauri's WebView enforces CORS and
+      // preflights this custom header — omitting it here CORS-blocks every auth
+      // call and breaks desktop login entirely. (Capacitor escapes only because
+      // CapacitorHttp bypasses browser CORS.)
+      'X-Native-Client',
     ],
   })
 

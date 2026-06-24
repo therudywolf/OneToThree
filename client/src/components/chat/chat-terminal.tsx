@@ -377,31 +377,43 @@ export function ChatTerminal({
     renderMessagesRef.current = renderMessages
   }, [renderMessages])
 
-  const senderIdsToResolve = useMemo(() => {
-    if (!isGroup || !activeChatId) return []
+  // Stable sorted-id key for the set of peer senders. The key only changes when
+  // the *set* of senders changes — not on every read receipt / message append
+  // that leaves the membership untouched. This both stabilises the memo below
+  // and keys the resolve effect so it doesn't re-fire spuriously (D8).
+  const senderIdsKey = useMemo(() => {
+    if (!isGroup || !activeChatId) return ''
     const ids = new Set<string>()
     for (const m of renderMessages) {
       if (m.sender_id !== userId) ids.add(m.sender_id)
     }
-    return [...ids]
+    return [...ids].sort().join(',')
   }, [isGroup, activeChatId, renderMessages, userId])
 
+  const senderIdsToResolve = useMemo(
+    () => (senderIdsKey ? senderIdsKey.split(',') : []),
+    [senderIdsKey]
+  )
+
   useEffect(() => {
-    setSenderMeta({})
     if (!senderIdsToResolve.length) return
     let cancelled = false
     void lookupUsers(senderIdsToResolve)
       .then((rows) => {
         if (cancelled) return
-        const next: Record<string, { username: string; avatar_key?: string | null }> =
-          {}
-        for (const u of rows) {
-          next[u.id] = { username: u.username, avatar_key: u.avatar_key }
-        }
-        setSenderMeta(next)
+        // Merge — don't reset to {} — so previously-resolved senders keep their
+        // labels/avatars while new ones resolve (avoids a flash of fallback
+        // initials when the sender set grows).
+        setSenderMeta((prev) => {
+          const next = { ...prev }
+          for (const u of rows) {
+            next[u.id] = { username: u.username, avatar_key: u.avatar_key }
+          }
+          return next
+        })
       })
       .catch(() => {
-        if (!cancelled) setSenderMeta({})
+        // Keep whatever we already resolved on failure rather than wiping it.
       })
     return () => {
       cancelled = true

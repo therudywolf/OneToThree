@@ -588,7 +588,20 @@ export async function handleGroupCallOffer(
     pc = createPeerConnection(roomId, fromUserId, store.localStream, iceServers)
   }
 
+  // Perfect negotiation for offer glare: when two participants enable camera
+  // within ~1 RTT both renegotiate and send an offer at once, leaving both PCs
+  // in 'have-local-offer'. A bare setRemoteDescription(offer) in a non-stable
+  // state throws InvalidStateError and the catch below tears the peer down
+  // (cleanupPeer), dropping that participant. The IMPOLITE peer ignores the
+  // colliding offer (its own wins); the POLITE peer rolls its local offer back
+  // then accepts. Mirrors the 1:1 path in use-webrtc.ts.
+  const myUserId = useSessionStore.getState().userId
+  const polite = !!myUserId && myUserId < fromUserId
+  const offerCollision = pc.signalingState !== 'stable'
+  if (offerCollision && !polite) return
+
   try {
+    if (offerCollision) await pc.setLocalDescription({ type: 'rollback' })
     await pc.setRemoteDescription({ type: 'offer', sdp })
     await flushIceQueue(fromUserId, pc)
     const answer = await pc.createAnswer()

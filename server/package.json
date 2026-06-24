@@ -60,8 +60,8 @@
   "overrides": {
     "uuid": "^14.0.0",
     "@tootallnate/once": "^3.0.1",
-    "protobufjs": "^7.5.8",
-    "ws": "^8.20.1",
+    "protobufjs": "^7.6.3",
+    "ws": "^8.21.0",
     "minimatch@10": {
       "brace-expansion": "^5.0.6"
     }

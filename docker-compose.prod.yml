@@ -372,6 +372,11 @@ services:
     environment:
       LIVEKIT_API_KEY_FILE: /run/secrets/livekit_api_key
       LIVEKIT_API_SECRET_FILE: /run/secrets/livekit_api_secret
+      # Advertise ONLY the public IP as an ICE candidate — entrypoint.sh passes
+      # this as --node-ip. Interpolated from .env (the same public IP coturn
+      # uses via TURN_EXTERNAL_IP). Without it, host networking makes LiveKit
+      # advertise every docker bridge as a bogus candidate.
+      LIVEKIT_NODE_IP: ${TURN_EXTERNAL_IP:-}
     volumes:
       - ./docker/livekit/livekit.yaml:/etc/livekit.yaml:ro
       - ./docker/livekit/entrypoint.sh:/usr/local/bin/forest-entrypoint.sh:ro

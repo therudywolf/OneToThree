@@ -672,7 +672,16 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.post('/lookup', async (request, reply) => {
+  // Unlike GET /search (a browse surface that must respect is_discoverable),
+  // /lookup resolves users by EXACT UUID. Knowing a user's random 122-bit UUID
+  // is itself the capability: it's how invite links (?invite=UUID) start a chat
+  // with a non-discoverable (shadow-by-default) user, and how fan-out fetches a
+  // peer's ECDH key. So this path intentionally resolves any user by id and must
+  // NOT apply the is_discoverable gate (that would break invites for the default
+  // shadow user). It is rate-limited to bound bulk handle/key harvesting via
+  // repeated 64-id batches (the only residual exposure, since UUIDs are
+  // unguessable). See GET /search for the browse-side privacy gate.
+  app.post('/lookup', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     const auth = await getAuthUser(request, reply)
     if (!assertAuthed(reply, auth)) return
 

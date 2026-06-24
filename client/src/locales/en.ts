@@ -888,6 +888,8 @@ const en = {
   'msgAction.copy': 'Copy text',
   'msgAction.pin': 'Pin message',
   'msgAction.unpin': 'Unpin message',
+  'msgAction.pinned': 'Message pinned',
+  'msgAction.unpinned': 'Message unpinned',
   'msgAction.addStickerPack': 'Add pack to mine',
   'msgAction.addGifFavorite': 'Add GIF to favorites',
   'stickers.addToMine': 'Import pack',

@@ -888,6 +888,8 @@ const ru = {
   'msgAction.copy': 'Скопировать текст',
   'msgAction.pin': 'Закрепить сообщение',
   'msgAction.unpin': 'Открепить сообщение',
+  'msgAction.pinned': 'Сообщение закреплено',
+  'msgAction.unpinned': 'Сообщение откреплено',
   'msgAction.addStickerPack': 'Добавить пак себе',
   'msgAction.addGifFavorite': 'Добавить GIF в избранное',
   'stickers.addToMine': 'Импортировать пак',

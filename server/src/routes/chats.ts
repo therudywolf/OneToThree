@@ -135,7 +135,16 @@ async function getOrCreateSelfChat(userId: string) {
     })
     .from(chats)
     .innerJoin(chatMembers, eq(chats.id, chatMembers.chatId))
-    .where(and(eq(chatMembers.userId, userId), eq(chats.type, 'direct_e2e')))
+    // Require the canonical "Saved Messages" name so a direct chat orphaned by a
+    // peer's account deletion (which also collapses to a single member) is never
+    // returned as — or merged into — the viewer's real self-chat.
+    .where(
+      and(
+        eq(chatMembers.userId, userId),
+        eq(chats.type, 'direct_e2e'),
+        eq(chats.name, 'Saved Messages')
+      )
+    )
     .groupBy(chats.id, chats.name, chats.type, chats.inviteCode, chats.inviteOneTime)
     .having(sql`count(${chatMembers.userId}) = 1`)
     .limit(1)
@@ -338,11 +347,17 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       chats: rows.map((c) => {
         const isGroup = isGroupType(c.type)
         const memberIds = memberMap.get(c.id) ?? []
+        // A genuine self-chat ("Saved Messages") is created with exactly one
+        // member and that hardcoded name. A direct DM whose peer self-deleted
+        // also collapses to a single member (the cascade drops the peer's
+        // membership) — without the name guard that orphaned remnant would
+        // masquerade as the viewer's own Saved Messages and intermix with it.
         const isSelf =
           !isGroup &&
           c.type === 'direct_e2e' &&
           memberIds.length === 1 &&
-          memberIds[0] === user.id
+          memberIds[0] === user.id &&
+          c.name === 'Saved Messages'
         const showInvite =
           isGroup &&
           (c.myRole === 'owner' || c.myRole === 'admin') &&
@@ -1046,7 +1061,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ error: 'NOT_A_MEMBER' })
     }
 
-    if ((chat.type === 'group_e2e' || chat.type === 'public_open') && myRow.role === 'owner') {
+    if ((chat.type === 'group_e2e' || chat.type === 'public_open' || chat.type === 'channel') && myRow.role === 'owner') {
       // Owner leaving a chat that has other members: hand ownership to the next
       // member, remove ourselves, and (for SECTOR chats) bump the key epoch —
       // ALL in one transaction. Selecting + promoting the nominee inside the txn
@@ -1088,11 +1103,18 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
         // Promote the first candidate that still exists. A 0-row update means
         // that member departed concurrently — try the next candidate.
+        // Channels track a separate channelRole; the successor must also become
+        // channelRole 'owner' or they can't post to / manage the channel. (The
+        // race-safe nominee selection + transaction are unchanged.)
+        const promoteSet =
+          chat.type === 'channel'
+            ? ({ role: 'owner', channelRole: 'owner' } as const)
+            : ({ role: 'owner' } as const)
         let promotedId: string | null = null
         for (const cand of sorted) {
           const promoted = await tx
             .update(chatMembers)
-            .set({ role: 'owner' })
+            .set(promoteSet)
             .where(
               and(
                 eq(chatMembers.chatId, chatId),
@@ -1571,6 +1593,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         name: chats.name,
         type: chats.type,
         inviteCode: chats.inviteCode,
+        inviteOneTime: chats.inviteOneTime,
         inviteSlug: chats.inviteSlug,
         memberCount: memberCountSq.memberCount,
       })
@@ -1586,7 +1609,11 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         id: r.id,
         name: r.name,
         type: r.type,
-        invite_code: r.inviteCode,
+        // Never expose a CONSUMABLE one-time invite code to strangers browsing
+        // discovery — anyone could read and burn an owner's single-use invite,
+        // denying it to the intended recipient. The stable slug is a safe public
+        // join handle (joining by slug doesn't consume the one-time code).
+        invite_code: r.inviteOneTime ? null : r.inviteCode,
         invite_slug: r.inviteSlug,
         member_count: Number(r.memberCount ?? 0),
       }))

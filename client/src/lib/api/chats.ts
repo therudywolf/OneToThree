@@ -487,6 +487,7 @@ export type DiscoverChatRow = {
   name: string | null
   type: string
   invite_code: string | null
+  invite_slug?: string | null
   member_count: number
 }
 

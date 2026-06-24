@@ -28,8 +28,18 @@ export function useReadReceipts(
   
   const isEnabled = opts?.enabled ?? true
 
-  // [1] RESET_PHASE :: Зачистка кэша при смене сектора
+  // [1] RESET_PHASE :: flush the leaving chat's pending receipts, then clear.
+  // Refs still hold the previous chat's queued ids when this re-runs on a chat
+  // switch, so flush them first — FINAL_FLUSH only fires on unmount, so without
+  // this a message read within the 500ms debounce window right before switching
+  // chats loses its receipt and the sender's unread_count stays stale-high.
   useEffect(() => {
+    const pending = Array.from(syncQueueRef.current)
+    if (pending.length > 0) {
+      void markMessagesReadBatch(pending).catch(() => {
+        /* SILENCE_FAULT */
+      })
+    }
     processedRef.current.clear()
     syncQueueRef.current.clear()
     if (dispatchTimerRef.current) {

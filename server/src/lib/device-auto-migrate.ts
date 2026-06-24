@@ -16,6 +16,15 @@ import { devices } from '../db/schema.js'
 const MIGRATED_LABEL = 'Primary device (migrated)'
 
 /**
+ * Process-local cache of users already known to have >=1 device row. getAuthUser
+ * calls maybeAutoMigrateDevice on EVERY authenticated request, so without this
+ * cache it runs a COUNT(devices) on the hot auth path forever for already-
+ * migrated accounts (the highest-frequency useless query in the system). Once a
+ * user is confirmed migrated (or we just created their row) we never COUNT again.
+ */
+const knownMigrated = new Set<string>()
+
+/**
  * Returns a deterministic, user-scoped client device key for auto-migrated
  * devices, preventing collisions with attacker-supplied X-Client-Device-Id
  * headers that could contain the bare string 'migrated'.
@@ -32,6 +41,7 @@ export async function maybeAutoMigrateDevice(
   userId: string,
   publicKeyJwk: string
 ): Promise<void> {
+  if (knownMigrated.has(userId)) return
   try {
     const [row] = await db
       .select({ n: count() })
@@ -39,7 +49,10 @@ export async function maybeAutoMigrateDevice(
       .where(eq(devices.userId, userId))
       .limit(1)
 
-    if ((row?.n ?? 0) > 0) return  // already has device records
+    if ((row?.n ?? 0) > 0) {
+      knownMigrated.add(userId)
+      return // already has device records
+    }
 
     await db.insert(devices).values({
       userId,
@@ -51,6 +64,7 @@ export async function maybeAutoMigrateDevice(
       e2eePublicKey: publicKeyJwk,
       linkedAt: new Date(),
     }).onConflictDoNothing()
+    knownMigrated.add(userId)
   } catch (err) {
     // Never throw — auto-migration is best-effort
     process.stderr.write(

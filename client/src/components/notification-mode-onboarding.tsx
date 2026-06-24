@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTranslation } from '@/hooks/use-translation'
 import { setNotificationMode, type NotificationMode } from '@/lib/push-subscription'
 import { explainSettingsError } from '@/lib/settings-errors'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 
 type Props = {
   open: boolean
@@ -14,6 +15,9 @@ export function NotificationModeOnboarding({ open, onDone }: Props) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // D27 — focus trap + body-scroll-lock + focus restore. No ESC dismiss: the
+  // user must explicitly pick a notification mode (there is no cancel path).
+  const trapRef = useFocusTrap<HTMLDivElement>(open)
 
   if (!open) return null
 
@@ -31,9 +35,15 @@ export function NotificationModeOnboarding({ open, onDone }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[color-mix(in_srgb,var(--void)_65%,transparent)] p-4">
+    <div
+      ref={trapRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="notif-mode-onboarding-title"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-[color-mix(in_srgb,var(--void)_65%,transparent)] p-4"
+    >
       <div className="w-full max-w-xl border border-border-strong bg-surface p-5">
-        <h3 className="text-sm font-semibold text-text-primary">{t('settings.notificationModeTitle')}</h3>
+        <h3 id="notif-mode-onboarding-title" className="text-sm font-semibold text-text-primary">{t('settings.notificationModeTitle')}</h3>
         <p className="mt-2 text-xs text-text-muted">{t('settings.notificationModeFirstRunHint')}</p>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">

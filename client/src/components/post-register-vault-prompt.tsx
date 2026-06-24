@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useAuth } from '@/components/auth/auth-provider'
 import { readVaultBlob } from '@/lib/vault'
 import { useThemeStore } from '@/store/themeStore'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 
 /**
  * Модальник после регистрации — предлагает сохранить резервный ключ.
@@ -21,6 +22,8 @@ export function PostRegisterVaultPrompt({
   const isMd3 = shellMode === 'md3'
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
   const [exportState, setExportState] = useState<'idle' | 'done' | 'error'>('idle')
+  // D27 — ESC + focus trap + body-scroll-lock + focus restore.
+  const trapRef = useFocusTrap<HTMLDivElement>(true, onDismiss)
 
   function exportVault() {
     const userId = user?.id
@@ -55,7 +58,13 @@ export function PostRegisterVaultPrompt({
       : 'bg-[color-mix(in_srgb,var(--void)_85%,transparent)]'
 
   return (
-    <div className={`fixed inset-0 z-[120] flex items-center justify-center px-6 py-8 ${overlayClass}`}>
+    <div
+      ref={trapRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Backup your key"
+      className={`fixed inset-0 z-[120] flex items-center justify-center px-6 py-8 ${overlayClass}`}
+    >
       <div className={`w-full max-w-md space-y-4 p-8 ${
         isMd3
           ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[var(--surface)]'

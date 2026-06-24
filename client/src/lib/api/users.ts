@@ -143,3 +143,47 @@ export async function patchMyEcdhPublicKey(
     throw new Error(data.error ?? 'PATCH_ECDH_FAILED')
   }
 }
+
+/**
+ * D7 — outcome of a `DELETE /users/me/account` attempt. The server requires a
+ * username confirmation AND, when TOTP is enabled, a step-up code supplied via
+ * the `X-TOTP-Code` header. The caller surfaces `totp_required` by prompting
+ * for a 6-digit code and retrying.
+ */
+export type DeleteAccountResult =
+  | { ok: true }
+  | { ok: false; reason: 'totp_required' | 'totp_invalid'; error: string }
+  | { ok: false; reason: 'error'; error: string }
+
+/**
+ * Permanently delete the signed-in account (server-side: tombstones messages,
+ * drops devices/blocks/push subscriptions, scrubs media). Mirrors the recovery
+ * step-up convention — pass `totpCode` to retry once TOTP is challenged.
+ */
+export async function deleteMyAccount(params: {
+  confirm_username: string
+  totpCode?: string
+}): Promise<DeleteAccountResult> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const code = params.totpCode?.trim()
+  if (code) headers['X-TOTP-Code'] = code
+  let res: Response
+  try {
+    res = await fetchWithTimeout(`${API_URL}/users/me/account`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers,
+      body: JSON.stringify({ confirm_username: params.confirm_username }),
+    })
+  } catch (err) {
+    return { ok: false, reason: 'error', error: err instanceof Error ? err.message : 'NETWORK' }
+  }
+  if (res.ok) return { ok: true }
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  const error = data.error ?? `DELETE_ACCOUNT_${res.status}`
+  if (error === 'TOTP_STEP_UP_REQUIRED') return { ok: false, reason: 'totp_required', error }
+  if (error === 'TOTP_INVALID' || error === 'TOTP_ALREADY_USED') {
+    return { ok: false, reason: 'totp_invalid', error }
+  }
+  return { ok: false, reason: 'error', error }
+}

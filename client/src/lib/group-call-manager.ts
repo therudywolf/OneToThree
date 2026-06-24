@@ -21,14 +21,17 @@ import { lookupUsers } from '@/lib/api/users'
 import { deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
 import { useSessionStore } from '@/store/sessionStore'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
-import {
-  joinLiveKitCall,
-  leaveLiveKitCall,
-  toggleLiveKitMute,
-  toggleLiveKitVideo,
-  toggleLiveKitScreenShare,
-  isLiveKitActive,
-} from '@/lib/livekit-call-manager'
+// NOTE: `@/lib/livekit-call-manager` statically imports the heavy `livekit-client`
+// package. To keep that out of the main chat bundle for every user (D9), it is
+// imported dynamically only inside the LiveKit-gated paths below. The sync
+// "is LiveKit active?" check is tracked locally via `livekitActive` so the
+// teardown / toggle paths don't need to statically pull the module in.
+type LiveKitCallManager = typeof import('@/lib/livekit-call-manager')
+function loadLiveKitManager(): Promise<LiveKitCallManager> {
+  return import('@/lib/livekit-call-manager')
+}
+/** Local mirror of livekit-call-manager's active-room state (D9). */
+let livekitActive = false
 import { fetchCallConfig } from '@/lib/api/call'
 import { applyVideoTrack, planScreenShareStart, planScreenShareStop } from '@/lib/call-media-tracks'
 import { getUserMediaConstraints, loadMediaPrefs } from '@/lib/media-devices'
@@ -453,8 +456,12 @@ export async function joinGroupCall(
       return joinGroupAudioRelayCall(roomId)
     }
     if (cfg.livekit_enabled && cfg.livekit_url) {
-      const ok = await joinLiveKitCall(roomId, isVideo)
-      if (ok) return true
+      const lk = await loadLiveKitManager()
+      const ok = await lk.joinLiveKitCall(roomId, isVideo)
+      if (ok) {
+        livekitActive = true
+        return true
+      }
     }
     if (cfg.mesh_fallback_enabled === false) return false
   } catch {
@@ -495,8 +502,9 @@ export async function joinGroupCall(
 
 /** Leave the current group call. */
 export function leaveGroupCall() {
-  if (isLiveKitActive()) {
-    leaveLiveKitCall()
+  if (livekitActive) {
+    livekitActive = false
+    void loadLiveKitManager().then((lk) => lk.leaveLiveKitCall())
   } else {
     cleanupAll()
   }
@@ -698,8 +706,8 @@ export function handleSpeakingChange(roomId: string, userId: string, isSpeaking:
 
 /** Toggle local microphone mute. */
 export function toggleGroupCallMute() {
-  if (isLiveKitActive()) {
-    void toggleLiveKitMute()
+  if (livekitActive) {
+    void loadLiveKitManager().then((lk) => lk.toggleLiveKitMute())
     return
   }
   const store = useGroupCallStore.getState()
@@ -729,8 +737,9 @@ export function toggleGroupCallMute() {
  * screen, not "camera off").
  */
 export async function toggleGroupCallVideo(): Promise<void> {
-  if (isLiveKitActive()) {
-    await toggleLiveKitVideo()
+  if (livekitActive) {
+    const lk = await loadLiveKitManager()
+    await lk.toggleLiveKitVideo()
     return
   }
   if (groupRelayMode) return
@@ -794,8 +803,9 @@ export async function toggleGroupCallVideo(): Promise<void> {
  * its on/off state, and is restored when sharing stops.
  */
 export async function startGroupCallScreenShare(): Promise<boolean> {
-  if (isLiveKitActive()) {
-    await toggleLiveKitScreenShare()
+  if (livekitActive) {
+    const lk = await loadLiveKitManager()
+    await lk.toggleLiveKitScreenShare()
     return true
   }
   if (groupRelayMode) return false

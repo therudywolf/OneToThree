@@ -298,18 +298,19 @@ function ShellStep({
   subClass: string
   isTerminal: boolean
 }) {
+  // MD3 first — the friendly, modern default we recommend for newcomers.
   const styleOptions: Array<{ id: WelcomeStyleId; label: string; hint: string; previewKind: 'terminal' | 'md3' | 'retro' }> = [
-    {
-      id: 'terminal',
-      label: t('settings.appearanceShellTerminal'),
-      hint: t('settings.appearanceShellTerminalHint'),
-      previewKind: 'terminal',
-    },
     {
       id: 'md3',
       label: t('settings.appearanceShellMd3'),
       hint: t('settings.appearanceShellMd3Hint'),
       previewKind: 'md3',
+    },
+    {
+      id: 'terminal',
+      label: t('settings.appearanceShellTerminal'),
+      hint: t('settings.appearanceShellTerminalHint'),
+      previewKind: 'terminal',
     },
     {
       id: 'retro',

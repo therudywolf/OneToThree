@@ -697,8 +697,12 @@ export function resolveThemeAppearance(input: Pick<
 export const useThemeStore = create<ChromaticState>()(
   persist(
     (set) => ({
-      theme: 'default',
-      shellMode: 'terminal',
+      // New users default to the friendly Material 3 identity (rounded, no CRT,
+      // sans-serif) rather than the terminal "hacker" look — it reads as a normal
+      // modern messenger to a non-technical newcomer. Returning users keep their
+      // persisted choice (this initial state only applies with no stored config).
+      theme: 'md3dark',
+      shellMode: 'md3',
       platformProfile: inferDefaultPlatformProfile(),
       accentPreset: 'theme',
       primaryColorOverride: null,

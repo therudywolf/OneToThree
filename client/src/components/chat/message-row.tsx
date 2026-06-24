@@ -34,6 +34,13 @@ type LightboxMedia = { id: string; url: string; type: 'image' | 'video'; mimeTyp
 export type MessageRowProps = {
   /** The message this row renders. */
   message: DecryptedMessage
+  /**
+   * Effective read-at override for this row from the unread store, if any.
+   * Threaded as a narrow per-row prop (instead of being merged into `message`)
+   * so the message object identity stays stable and this memoized row only
+   * re-renders when *its own* read state changes — not on every receipt.
+   */
+  readAtOverride?: string
   /** True if the current user is the sender. */
   mine: boolean
   /** True when this row is a same-sender run continuation (avatar/name hidden). */
@@ -134,6 +141,7 @@ function roleGlyph(role: ChatMemberRole | null) {
  */
 function MessageRowImpl({
   message: m,
+  readAtOverride,
   mine,
   isRunContinuation,
   replyMsg,
@@ -177,12 +185,15 @@ function MessageRowImpl({
     ? (m.kindMeta as { is_video?: boolean } | undefined)
     : null
   const isSwiping = swipeOffset > 0
+  // Effective read state = server-confirmed read_at, else the optimistic store
+  // override threaded in as a narrow per-row prop (see chat-terminal D5 fix).
+  const effectiveReadAt = m.read_at ?? readAtOverride ?? null
 
   return (
     <div
       data-message-id={m.id}
       data-sender-id={m.sender_id}
-      data-read-at={m.read_at ?? ''}
+      data-read-at={effectiveReadAt ?? ''}
       data-run-continuation={isRunContinuation ? 'true' : 'false'}
       className={`p13-msg-group group/msg relative flex w-full ${
         mine ? 'justify-end' : 'justify-start'
@@ -391,7 +402,7 @@ function MessageRowImpl({
               <span className="inline-flex items-center gap-0.5" aria-hidden>
                 <MessageStatus
                   pending={m._pending}
-                  readAt={m.read_at}
+                  readAt={effectiveReadAt}
                 />
               </span>
             ) : null}

@@ -1028,19 +1028,19 @@ const ru = {
 
   // [ONBOARDING WELCOME]
   'welcome.title': 'OneToThree',
-  'welcome.subtitle': 'Самоуправляемый E2EE мессенджер. Все сообщения шифруются на вашем устройстве. Сервер никогда не видит содержимое ваших переписок.',
-  'welcome.featureE2e': 'Сквозное шифрование',
-  'welcome.featureSelfHosted': 'Self-hosted',
-  'welcome.featureNoTracking': 'Без отслеживания',
+  'welcome.subtitle': 'Личный мессенджер. Никто не может прочитать ваши сообщения — ни мы, ни кто-либо ещё.',
+  'welcome.featureE2e': 'Ваши сообщения можете прочитать только вы и ваши собеседники',
+  'welcome.featureSelfHosted': 'Вы управляете своими данными',
+  'welcome.featureNoTracking': 'Мы никогда не отслеживаем, с кем вы общаетесь',
   'welcome.licenseLink': 'Лицензия (MIT)',
   'welcome.continue': 'Продолжить',
   'welcome.back': 'Назад',
   'welcome.shellTitle': 'Оболочка',
-  'welcome.shellSubtitle': 'Два независимых визуальных языка — Cyberpunk-терминал и Material 3.',
+  'welcome.shellSubtitle': 'Выберите вид — его всегда можно поменять в настройках.',
   'welcome.paletteTitle': 'Палитра',
   'welcome.paletteSubtitle': 'Цвет — это вы. Палитру всегда можно поменять в настройках.',
-  'welcome.readyTitle': 'Готово к использованию',
-  'welcome.readySubtitle': 'Ваш мессенджер настроен. Все изменения можно поменять позже в настройках.',
+  'welcome.readyTitle': 'Всё готово',
+  'welcome.readySubtitle': 'Нажмите «Продолжить», чтобы начать общение. Всё можно изменить позже в настройках.',
 
   // [ACCOUNT PASSWORD EXPLANATIONS]
   'login.accountPasswordExplain': 'Проверяется сервером. Используется для подтверждения вашей личности.',

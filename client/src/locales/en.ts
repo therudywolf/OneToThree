@@ -1026,19 +1026,19 @@ const en = {
 
   // [ONBOARDING WELCOME]
   'welcome.title': 'OneToThree',
-  'welcome.subtitle': 'Self-hosted E2EE messenger. All messages are encrypted on your device. The server never sees the content of your conversations.',
-  'welcome.featureE2e': 'End-to-end encryption',
-  'welcome.featureSelfHosted': 'Self-hosted',
-  'welcome.featureNoTracking': 'No tracking',
+  'welcome.subtitle': 'A private messenger. Nobody can read your messages — not us, not anyone.',
+  'welcome.featureE2e': 'Only you and your contacts can read your messages',
+  'welcome.featureSelfHosted': 'You control your data',
+  'welcome.featureNoTracking': 'We never track who you talk to',
   'welcome.licenseLink': 'License (MIT)',
   'welcome.continue': 'Continue',
   'welcome.back': 'Back',
   'welcome.shellTitle': 'Shell',
-  'welcome.shellSubtitle': 'Two independent visual languages — Cyberpunk terminal and Material 3.',
+  'welcome.shellSubtitle': 'Pick a look — you can change it anytime in Settings.',
   'welcome.paletteTitle': 'Palette',
   'welcome.paletteSubtitle': 'Color is you. Palette can be changed in settings later.',
-  'welcome.readyTitle': 'Ready to launch',
-  'welcome.readySubtitle': 'Your messenger is configured. Everything can be changed later in settings.',
+  'welcome.readyTitle': "You're all set",
+  'welcome.readySubtitle': 'Continue to start messaging. You can change anything later in Settings.',
 
   // [ACCOUNT PASSWORD EXPLANATIONS]
   'login.accountPasswordExplain': 'Checked by the server. Used to authenticate your identity.',

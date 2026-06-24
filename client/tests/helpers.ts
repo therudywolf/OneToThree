@@ -25,15 +25,28 @@ export async function registerNewUser(
   /** Fresh Playwright context has no session; same-origin `/api/auth/me` → real 401 → login form. */
   await page.goto('/login')
   await page.locator('#username').waitFor({ state: 'visible', timeout: 60_000 })
+  // Switch to the register flow. The 2026-06-24 onboarding pass replaced the
+  // tiny "New device" toggle with a "Sign in | Create account" control (the
+  // label also appears as a secondary link), so match the new copy first and
+  // keep the old labels as a fallback. .first() avoids a strict-mode multi-match.
   await page
-    .getByRole('button', { name: /New device|Новое устройство/i })
+    .getByRole('button', {
+      name: /Create account|Создать аккаунт|New device|Новое устройство/i,
+    })
+    .first()
     .click()
   await page.locator('#username').fill(handle)
   await page.locator('#password').fill(passphrase)
   await page.locator('#confirmPassword').fill(passphrase)
-  await page.getByRole('button', { name: /REGISTER/i }).click()
+  await page
+    .getByRole('button', { name: /Register|Зарегистрироваться|REGISTER/i })
+    .first()
+    .click()
 
-  const backupDialog = page.getByText(/РЕЗЕРВНАЯ КОПИЯ КЛЮЧА|Backup Key/i)
+  // Post-register backup prompt (humanized + localized 2026-06-24).
+  const backupDialog = page.getByText(
+    /Save your account backup|Сохраните резервную копию аккаунта|РЕЗЕРВНАЯ КОПИЯ КЛЮЧА|Backup Key/i
+  )
   const hasBackupPrompt = await backupDialog
     .waitFor({ state: 'visible', timeout: 10_000 })
     .then(() => true)
@@ -47,14 +60,21 @@ export async function registerNewUser(
       .catch(() => null)
     await page
       .getByRole('button', {
-        name: /СКАЧАТЬ РЕЗЕРВНУЮ КОПИЮ|EXPORT BACKUP KEY|DOWNLOAD BACKUP/i,
+        name: /Download backup|Скачать резервную копию|СКАЧАТЬ РЕЗЕРВНУЮ КОПИЮ|DOWNLOAD BACKUP/i,
       })
       .click()
     await downloadPromise
+    // "Continue" is gated by a "I've saved my backup" checkbox; downloading
+    // auto-ticks it, but tick it explicitly too for resilience.
+    const savedCheckbox = page.getByRole('checkbox').first()
+    if (await savedCheckbox.isVisible().catch(() => false)) {
+      await savedCheckbox.check().catch(() => {})
+    }
     await page
       .getByRole('button', {
-        name: /Я СОХРАНИЛ КОПИЮ, ПРОДОЛЖИТЬ|I SAVED A COPY|CONTINUE/i,
+        name: /saved my backup|сохранил резервную копию|Я СОХРАНИЛ КОПИЮ, ПРОДОЛЖИТЬ|I SAVED A COPY|CONTINUE/i,
       })
+      .first()
       .click()
   }
 

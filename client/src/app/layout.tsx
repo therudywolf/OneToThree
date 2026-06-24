@@ -149,7 +149,7 @@ export default function RootLayout({
   // stamp the nonce here again (see the note in next.config.js / src/proxy.ts).
 
   return (
-    <html lang="ru" data-theme="default" data-platform-profile="desktop-tg" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
+    <html lang="ru" data-theme="md3dark" data-shell="md3" data-platform-profile="desktop-tg" suppressHydrationWarning className="bg-void selection:bg-neon-red selection:text-text-primary">
       <head>
         {/* CHROMATIC_INIT :: blocking theme bootstrap — must be first in <head> */}
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />

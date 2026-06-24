@@ -26,14 +26,14 @@ export function PushOnboardingBanner() {
 
     async function sync() {
       if (typeof window === 'undefined') { setVisible(false); return }
-      // Браузер не поддерживает Web Push — прячем баннер
+      // Browser does not support Web Push — hide the banner
       if (!supportsWebPush() && !supportsNativePush()) { setVisible(false); return }
       if (supportsWebPush() && !supportsNativePush() && !getVapidPublicKey()) { setVisible(false); return }
 
       const permission = await getNotificationPermission()
-      // Уже blocked — баннер бесполезен
+      // Already blocked — the banner is useless
       if (permission === 'denied') { setVisible(false); return }
-      // Уже есть реальная SW-подписка — баннер не нужен
+      // Already have a real push subscription — no banner needed
       if (permission === 'granted') {
         if (supportsNativePush()) {
           const token = localStorage.getItem('p13:native_push_token')
@@ -59,7 +59,7 @@ export function PushOnboardingBanner() {
   async function onEnable() {
     setBusy(true)
     try {
-      // Полный цикл: permission → SW register → pushManager.subscribe → POST /push/subscribe
+      // Full flow: permission -> register -> subscribe -> send subscription to server
       await subscribeUserPush()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'PUSH_ENABLE_FAILED'
@@ -78,13 +78,12 @@ export function PushOnboardingBanner() {
 
   return (
     <div
-      className="flex shrink-0 items-center justify-between gap-3 border-b border-neon-cyan/35 bg-void/90 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-neon-cyan/90 shadow-[inset_0_1px_0_rgba(34,211,238,0.15)]"
+      className="flex shrink-0 items-center justify-between gap-3 border-b border-neon-cyan/35 bg-void/90 px-3 py-2 font-mono text-[11px] tracking-wide text-neon-cyan/90 shadow-[inset_0_1px_0_rgba(34,211,238,0.15)]"
       role="status"
     >
       <div className="flex min-w-0 items-center gap-2">
         <Bell className="h-4 w-4 shrink-0 text-neon-cyan" strokeWidth={1.5} />
         <span className="min-w-0 leading-snug">
-          <span className="text-neon-red">{t('common.systemTag')}</span>{' '}
           {t('pushOnboarding.banner')}
         </span>
       </div>

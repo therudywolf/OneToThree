@@ -120,6 +120,7 @@ const en = {
   'login.vaultExists': 'Account found. Sign in with your password.',
   'login.switchAccountHint': 'Forgot your password on this device? Sign out and use another account or re-link.',
   'login.unwrapFailed': 'Wrong password or corrupted data.',
+  'login.unwrapFailedPassword': 'Wrong password. Please try again.',
   'login.invalidVaultFormat': 'Invalid vault format.',
   'login.legacyVault': 'Outdated format. Reset and re-register required.',
   'login.vaultVersionMismatch': 'Vault format is outdated. Please sign in again.',

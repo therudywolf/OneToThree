@@ -282,7 +282,10 @@ export function VaultModal({ userId, displayHandle }: Props) {
       if (err instanceof VaultVersionMismatchError) {
         setError(t('login.vaultVersionMismatch'))
       } else {
-        setError(t('login.unwrapFailed'))
+        // The vault format itself is validated downstream (parseVaultPlaintext →
+        // invalidVaultFormat); a failure here is almost always a mistyped
+        // password, so use the friendlier wording.
+        setError(t('login.unwrapFailedPassword'))
       }
     } finally {
       setBusy(false)
@@ -362,8 +365,8 @@ export function VaultModal({ userId, displayHandle }: Props) {
           <p className={`mt-2 text-[10px] ${isMd3 ? 'tracking-wide text-text-muted' : 'font-mono uppercase tracking-widest text-neon-cyan/60'}`}>
             {displayHandle}
           </p>
-          <p className={`mt-1 text-[9px] ${isMd3 ? 'text-text-muted' : 'font-mono uppercase tracking-widest text-danger'}`}>
-            E2E // {t('login.pinMin8')}
+          <p className={`mt-1 text-[9px] ${isMd3 ? 'text-text-muted' : 'font-mono uppercase tracking-widest text-text-muted/70'}`}>
+            {t('login.pinMin8')}
           </p>
         </header>
 
@@ -399,11 +402,11 @@ export function VaultModal({ userId, displayHandle }: Props) {
               aria-label="UNLOCK"
               className="h-10 w-full rounded-full bg-[var(--neon-red)] px-4 text-[var(--surface)] shadow-[var(--md3-elevation-2)] transition-colors hover:brightness-110 disabled:opacity-50"
             >
-              {busy ? t('login.generatingKeys') : t('login.signIn')}
+              {busy ? t('vault.unlocking') : t('login.signIn')}
             </button>
           ) : (
             <TerminalGlitchButton type="submit" disabled={busy} aria-label="UNLOCK" className="w-full">
-              {busy ? `[ ${t('login.generatingKeys')} ]` : t('login.signIn')}
+              {busy ? `[ ${t('vault.unlocking')} ]` : t('login.signIn')}
             </TerminalGlitchButton>
           )}
           <div className={`space-y-2 border-t pt-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-neon-cyan/25'}`}>

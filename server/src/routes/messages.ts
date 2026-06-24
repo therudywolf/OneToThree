@@ -82,7 +82,8 @@ const batchReadSchema = z.object({
 
 export const messagesRoutes: FastifyPluginAsync = async (app) => {
   async function getHistoryCutoff(userId: string, request: Parameters<typeof verifySessionJwt>[0]): Promise<Date | null> {
-    const sess = await verifySessionJwt(request)
+    // D12: reuse the per-request cached session payload instead of re-verifying.
+    const sess = await request.sessionJwt()
     const deviceId = sess?.device_id ?? null
     if (!deviceId) return null
     const [deviceRow] = await db
@@ -109,7 +110,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
   }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
-    const sess = await verifySessionJwt(request)
+    const sess = await request.sessionJwt()
     const callerDeviceId = sess?.device_id ?? null
 
     const parsed = sendMessageBodySchema.safeParse(request.body ?? {})
@@ -285,7 +286,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    const sess = await verifySessionJwt(request)
+    const sess = await request.sessionJwt()
     const callerDeviceId = sess?.device_id ?? null
     if (!callerDeviceId) {
       return reply.status(400).send({ error: 'DEVICE_SESSION_REQUIRED' })
@@ -378,7 +379,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const parsed = deliveredAckSchema.safeParse(request.body ?? {})
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
     const ids = parsed.data.message_ids
-    const sess = await verifySessionJwt(request)
+    const sess = await request.sessionJwt()
     const callerDeviceId = sess?.device_id ?? null
     if (!callerDeviceId) return reply.status(400).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const whereClause = and(
@@ -620,7 +621,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     if (!memberOk.length) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
 
     const cutoff = await getHistoryCutoff(user.id, request)
-    const sess = await verifySessionJwt(request)
+    const sess = await request.sessionJwt()
     const callerDeviceId = sess?.device_id ?? null
     const rows = await db
       .select({

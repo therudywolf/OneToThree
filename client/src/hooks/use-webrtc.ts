@@ -533,7 +533,13 @@ export function useWebRTC(userId: string | null) {
     return socket.subscribe(async (msg) => {
       if (msg.type === 'call_invite') {
         const state = useCallStore.getState()
-        if (state.isCalling || state.incomingCall) return
+        if (state.isCalling || state.incomingCall) {
+          // Busy, or already showing another incoming invite: send call_reject
+          // so the caller gets an immediate decline instead of ringing out for
+          // 30s with no busy signal. Mirrors the DND auto-reject below.
+          getFmSocket().send({ type: 'call_reject', chat_id: msg.chat_id })
+          return
+        }
         // C-9: DND — auto-reject without showing the modal
         if (state.dndEnabled) {
           getFmSocket().send({ type: 'call_reject', chat_id: msg.chat_id })

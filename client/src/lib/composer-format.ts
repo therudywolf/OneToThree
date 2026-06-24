@@ -50,3 +50,25 @@ export function canAlbum(items: ReadonlyArray<{ mediaType: string }>): boolean {
     items.every((it) => it.mediaType === 'image' || it.mediaType === 'video')
   )
 }
+
+/**
+ * Wrap the selection [start,end) in `value` with `tag` on both sides (markdown
+ * bold/italic/code). Returns the new text and where the selection should land
+ * (shifted by the leading tag), or null when nothing is selected. Pure — the
+ * DOM caret application stays in the caller.
+ */
+export function wrapSelection(
+  value: string,
+  start: number,
+  end: number,
+  tag: string
+): { text: string; selStart: number; selEnd: number } | null {
+  const selected = value.slice(start, end)
+  if (!selected) return null
+  const wrapped = `${tag}${selected}${tag}`
+  return {
+    text: value.slice(0, start) + wrapped + value.slice(end),
+    selStart: start + tag.length,
+    selEnd: end + tag.length,
+  }
+}

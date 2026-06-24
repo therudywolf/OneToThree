@@ -16,6 +16,7 @@ import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import type { AttachmentKind } from '@/lib/attachment-envelope'
 import { toastError } from '@/store/toastStore'
 import { useDraftManager } from '@/hooks/use-draft-manager'
+import { useFormatBar } from '@/hooks/use-format-bar'
 import { createPoll } from '@/lib/api/polls'
 import {
   MEDIA_ACCESS_ERROR_MESSAGE,
@@ -125,12 +126,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const [sendingText, setSendingText] = useState(false)
   const sendingMediaRef = useRef(false)
 
-  const [formatToolbar, setFormatToolbar] = useState<{ visible: boolean; top: number; left: number }>({
-    visible: false,
-    top: 0,
-    left: 0,
-  })
-
   // ── @mentions autocomplete state ──────────────────────────────────────────
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
@@ -186,6 +181,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       mentionMembersLoadedRef.current = false // reset on chat switch
     },
   })
+
+  // Markdown format toolbar + Ctrl/Cmd+B/I/` hotkeys.
+  const { formatToolbar, applyFormat, handleTextareaSelect, hideToolbarSoon, onFormatKeyDown } =
+    useFormatBar({ inputRef, containerRef, setMessageText, onDraftChanged })
 
   // Lazily fetch chat members for @mention autocomplete
   const loadMentionMembers = useCallback(async () => {
@@ -475,42 +474,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   }, [stopRecording])
 
 
-  const applyFormat = useCallback((tag: string) => {
-    const ta = inputRef.current
-    if (!ta) return
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
-    const selected = ta.value.slice(start, end)
-    if (!selected) return
-    const wrapped = `${tag}${selected}${tag}`
-    const newValue = ta.value.slice(0, start) + wrapped + ta.value.slice(end)
-    setMessageText(newValue)
-    onDraftChanged(newValue)
-    requestAnimationFrame(() => {
-      ta.focus()
-      ta.selectionStart = start + tag.length
-      ta.selectionEnd = end + tag.length
-    })
-    setFormatToolbar((prev) => ({ ...prev, visible: false }))
-  }, [onDraftChanged])
-
-  const handleTextareaSelect = useCallback(() => {
-    const ta = inputRef.current
-    if (!ta) return
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
-    if (start === end) {
-      setFormatToolbar((prev) => ({ ...prev, visible: false }))
-      return
-    }
-    // Position toolbar above the textarea
-    const rect = ta.getBoundingClientRect()
-    const formRect = containerRef.current?.getBoundingClientRect()
-    if (!formRect) return
-    const relTop = rect.top - formRect.top - 44 // 44px toolbar height + gap
-    const relLeft = Math.max(0, rect.left - formRect.left)
-    setFormatToolbar({ visible: true, top: relTop, left: relLeft })
-  }, [])
 
   const insertEmoji = (emoji: string) => {
     setMessageText((prev) => {
@@ -1214,12 +1177,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`
               }}
               onSelect={handleTextareaSelect}
-              onBlur={() => {
-                // Delay hide so toolbar click can fire first
-                setTimeout(() => {
-                  setFormatToolbar((prev) => ({ ...prev, visible: false }))
-                }, 150)
-              }}
+              onBlur={hideToolbarSoon}
               onFocus={() => {
                 // Scroll composer into view when keyboard opens on mobile
                 setTimeout(() => {
@@ -1260,22 +1218,8 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                     return
                   }
                 }
-                // Formatting hotkeys
-                if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-                  e.preventDefault()
-                  applyFormat('**')
-                  return
-                }
-                if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
-                  e.preventDefault()
-                  applyFormat('_')
-                  return
-                }
-                if ((e.ctrlKey || e.metaKey) && e.key === '`') {
-                  e.preventDefault()
-                  applyFormat('`')
-                  return
-                }
+                // Formatting hotkeys (Ctrl/Cmd+B/I/`)
+                if (onFormatKeyDown(e)) return
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
                   if (messageText.trim() && !disabled && !sendingTextRef.current) void onSubmit(e as unknown as React.FormEvent)

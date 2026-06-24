@@ -61,4 +61,16 @@ export LIVEKIT_KEYS="${LIVEKIT_API_KEY_VAL}: ${LIVEKIT_API_SECRET_VAL}"
 
 unset LIVEKIT_API_KEY LIVEKIT_API_SECRET LIVEKIT_API_KEY_VAL LIVEKIT_API_SECRET_VAL
 
+# Pin the advertised ICE IP to the public address. Under host networking LiveKit
+# otherwise enumerates every interface (all docker bridges) and advertises bogus
+# 172.x/192.168.x candidates that slow or break ICE. Reuse TURN_EXTERNAL_IP (the
+# same public IP coturn uses); LIVEKIT_NODE_IP overrides if ever needed. Keeping
+# the IP out of the YAML keeps the config portable across deployments.
+NODE_IP_VAL="${LIVEKIT_NODE_IP:-${TURN_EXTERNAL_IP:-}}"
+if [ -n "${NODE_IP_VAL}" ]; then
+  echo "[livekit-entrypoint] advertising node-ip ${NODE_IP_VAL}" >&2
+  exec /livekit-server "$@" --node-ip "${NODE_IP_VAL}"
+fi
+
+echo "[livekit-entrypoint] WARN: no TURN_EXTERNAL_IP/LIVEKIT_NODE_IP set — LiveKit will auto-detect (may advertise docker bridge IPs)." >&2
 exec /livekit-server "$@"

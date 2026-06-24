@@ -15,13 +15,19 @@ bind_addresses:
   - ''
 
 rtc:
+  # Single-port UDP mux: only UDP 50000 must be open in the firewall (plus the
+  # TCP 7881 fallback). Simpler than a port range and enough for the SFU mux.
+  # NB: do NOT also set port_range_start/end — combining them with udp_port made
+  # LiveKit log `rtc.portUDP {Start:50000,End:0}` and skip binding the UDP mux.
   udp_port: 50000
-  port_range_start: 50001
-  port_range_end: 50100
   tcp_port: 7881
-  use_external_ip: true
-  # ICE over TCP helps when only :443 outbound works on strict corporate
-  # firewalls. LiveKit multiplexes the TCP port with its signaling.
+  # Advertise ONLY the public IP as an ICE candidate. entrypoint.sh injects it
+  # as `--node-ip` from TURN_EXTERNAL_IP. With host networking, auto-detect
+  # (use_external_ip: true) enumerates every docker bridge (172.x/192.168.x) as a
+  # bogus candidate, slowing ICE and spamming "could not validate external IP".
+  use_external_ip: false
+  # ICE over TCP (7881) helps when only :443-style outbound works; LiveKit
+  # multiplexes the TCP port with signaling.
   #
   # NB: `ice_lite` was removed from `config.RTCConfig` in LiveKit v1.8 —
   # including it causes `could not parse config: yaml: unmarshal errors:

@@ -111,6 +111,7 @@ describe('keys routes', () => {
       deviceId: device.id,
       signingPublicKey: 'A'.repeat(43),
       exchangePublicKey: 'B'.repeat(43),
+      exchangePublicKeySignature: 'F'.repeat(86),
       generation: 1,
     })
     await db.insert(signedPrekeys).values({
@@ -163,6 +164,7 @@ describe('keys routes', () => {
         deviceId: deviceA.id,
         signingPublicKey: 'A'.repeat(43),
         exchangePublicKey: 'B'.repeat(43),
+        exchangePublicKeySignature: 'F'.repeat(86),
         generation: 1,
       },
       {
@@ -170,6 +172,7 @@ describe('keys routes', () => {
         deviceId: deviceB.id,
         signingPublicKey: 'C'.repeat(43),
         exchangePublicKey: 'D'.repeat(43),
+        exchangePublicKeySignature: 'G'.repeat(86),
         generation: 1,
       },
     ])
@@ -203,6 +206,7 @@ describe('keys routes', () => {
     const body = {
       signing_public_key: 'A'.repeat(43),
       exchange_public_key: 'B'.repeat(43),
+      exchange_public_key_signature: 'C'.repeat(86),
       generation: 1,
     }
 

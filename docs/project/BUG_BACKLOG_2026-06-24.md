@@ -167,18 +167,24 @@ is intentionally a by-exact-UUID capability resolver (the UUID, shared via an in
 IS the grant), distinct from `/search`'s browse gate. Fixed instead by rate-limiting the
 endpoint (was unlimited) to bound bulk harvesting, and documenting the intentional exemption.
 
-**Deferred (flagged, with rationale) — dedicated sessions:**
-- **N11** (LiveKit group-call key derived from server secret) — large: needs an
-  ECDH-per-participant key exchange to be E2E vs the server. Confirmed there is no
-  user-facing claim of group-call E2EE, so this is a design upgrade, not a false promise.
+## Wave A follow-up — 2026-06-24 (later same day)
+
+- **N16 + N22 — DONE** (migration 0055, commit `30016dd`). Reconciled the drizzle
+  model/snapshot with the live DB: `groups.owner_id` + `message_threads.created_by` now
+  declared `onDelete:'set null'`; `chats.discussion_chat_id` (unfinished discussion-link
+  feature — client uses it, server route not yet built) now declared. The migration is
+  hand-written idempotent (the 0017 inline FKs are auto-named `*_fkey`, so a generated
+  `DROP CONSTRAINT "*_users_id_fk"` would have aborted prod) and was validated by a
+  transactional `BEGIN/ROLLBACK` dry-run against the real prod schema — clean, all
+  statements no-op where the object already exists.
+- **N11 — comments corrected** (commit `8949d75`); the cryptographic redesign stays
+  deferred. The "E2EE / forward secrecy" comments in `call.ts` + `livekit-call-manager.ts`
+  now honestly state the trust boundary (server can reconstruct the key). The full
+  ECDH-per-participant key exchange (true E2E vs the server) remains a dedicated session.
+
+**Still deferred (dedicated sessions, chips spawned):**
+- **N11** (LiveKit group-call key — ECDH redesign) — large; comments now honest.
 - **N15** (Docker secret 0600 vs 0644 → api reads plaintext `.env.prod`) — operational:
-  lives in host deploy scripts; the live api works via the `.env.prod` fallback. Needs a
-  pick-one-model deploy-infra session (chmod 0644 + stop env duplication, OR drop the
-  secret mounts). secrets/ dir is 0700 so not exposed to unprivileged principals.
-- **N16** (FK drift `groups.owner_id` / `message_threads.created_by`) — migration risk:
-  migration 0017 created these FKs INLINE (unnamed → Postgres auto-name `*_fkey`), so a
-  drizzle-generated `DROP CONSTRAINT "*_users_id_fk"` would target a non-existent name and
-  ABORT the prod db-migrate (which the predeploy `db:push` gate would NOT catch). The live
-  DB is already `SET NULL` (correct), so this is latent. Needs a hand-written idempotent
-  (`IF EXISTS`) migration + snapshot reconciliation in a focused DB session.
-- **N22** (dead `chats.discussion_chat_id` drift) — low/latent, no prod data path.
+  needs live host verification that the api boots from `/run/secrets` after `chmod 0644` +
+  removing the `.env.prod` duplication. The live api works today via the fallback; secrets/
+  dir is 0700 so not exposed to unprivileged principals.

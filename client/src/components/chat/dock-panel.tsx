@@ -164,11 +164,10 @@ export function DockPanel() {
           />
         ) : null}
 
-        {slot === 'pinned' ? (
-          <div className="p-3 font-mono text-[10px] uppercase tracking-widest text-neon-cyan/60">
-            {t('dock.pinnedComingSoon')}
-          </div>
-        ) : null}
+        {/* D17 — the "pinned messages" dock slot was a dead "coming soon"
+            placeholder with no way to open it (dockStore.openPinned is never
+            called). Pin/unpin now confirms via a toast (see message-actions),
+            so the placeholder is removed rather than shipping a stub panel. */}
       </div>
     </ShellSurface>
   )

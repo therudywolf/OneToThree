@@ -17,6 +17,7 @@ import type { DecryptedMessage } from '@/types/chat'
 import { useThemeStore } from '@/store/themeStore'
 import { parseStickerEnvelope } from '@/lib/attachment-envelope'
 import { QUICK_REACTIONS, addRecentlyUsed } from '@/lib/quick-reactions'
+import { toastInfo } from '@/store/toastStore'
 
 type Action =
   | 'reply'
@@ -203,6 +204,11 @@ export function MessageActions({
                   if (action.danger && dangerConfirmKey !== action.key) {
                     setDangerConfirmKey(action.key)
                     return
+                  }
+                  // D17 — pin/unpin has no visible surface, so confirm the
+                  // action with a toast (the pinned list itself has no UI yet).
+                  if (action.key === 'pin') {
+                    toastInfo(isPinned ? t('msgAction.unpinned') : t('msgAction.pinned'))
                   }
                   onAction(action.key)
                   onClose()

@@ -8,6 +8,7 @@ import jwt from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
 import Fastify, { type FastifyRequest } from 'fastify'
 import websocket from '@fastify/websocket'
+import { verifySessionJwt, type SessionJwtPayload } from './lib/auth-user.js'
 import { authRoutes } from './routes/auth.js'
 import { chatsRoutes } from './routes/chats.js'
 import { messagesRoutes } from './routes/messages.js'
@@ -59,6 +60,23 @@ function readServerVersion(): string {
     /* fall through */
   }
   return 'dev'
+}
+
+/**
+ * D12: cache the verified session JWT for the lifetime of a single request.
+ * `verifySessionJwt` reads the cookie, verifies the signature, and round-trips
+ * Redis for the jti denylist. Several routes (and getAuthUser) call it 2-3×
+ * per request — each repeat is a redundant Redis hit. The cookie cannot change
+ * mid-request, so we memoize the *cookie-derived* payload on the request object.
+ *
+ * Only the no-explicit-token (cookie) path is memoized; callers that pass an
+ * explicit token (ws tickets, refresh) keep calling verifySessionJwt directly.
+ */
+declare module 'fastify' {
+  interface FastifyRequest {
+    /** Verified `fm_session` payload (or null), cached per request. */
+    sessionJwt(): Promise<SessionJwtPayload | null>
+  }
 }
 
 const SERVER_VERSION = process.env.APP_VERSION?.trim() || readServerVersion()
@@ -345,6 +363,23 @@ export async function buildApp() {
   })
 
   await app.register(websocket)
+
+  // D12: per-request memoization of the cookie-derived session JWT. A WeakMap
+  // keyed by the request keeps the cache off the public request shape and avoids
+  // leaking between requests. `decorateRequest` with a function lets every route
+  // (and getAuthUser) share a single verify + Redis denylist round-trip.
+  const sessionJwtCache = new WeakMap<
+    FastifyRequest,
+    Promise<SessionJwtPayload | null>
+  >()
+  app.decorateRequest('sessionJwt', function (this: FastifyRequest) {
+    let cached = sessionJwtCache.get(this)
+    if (!cached) {
+      cached = verifySessionJwt(this)
+      sessionJwtCache.set(this, cached)
+    }
+    return cached
+  })
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('X-Request-Id', request.id)

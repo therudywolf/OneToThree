@@ -895,6 +895,8 @@ const en = {
   'stickers.alreadyMine': 'Already in your collection',
   'stickers.addedMine': 'Added to your collection',
   'stickers.favorites': 'Favorite stickers',
+  'stickers.favorite': 'Add to favorites',
+  'stickers.unfavorite': 'Remove from favorites',
   'gif.favorites': 'Favorites',
   'gif.addedToFavorites': 'GIF added to favorites',
   'gif.favoriteAddFailed': 'Unable to save GIF to favorites.',

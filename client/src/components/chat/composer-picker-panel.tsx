@@ -550,9 +550,13 @@ export function ComposerPickerPanel({
                     const stickerSrc = stickerSrcById[s.id] ?? s.url
                     const packMeta = packs.find((p) => p.id === selectedPackId)
                     const stickerFormat: StickerPack['format'] = packMeta?.format ?? 'static'
+                    const isFavorite = favoriteStickers.some((f) => f.sticker.id === s.id)
                     return (
+                    // D24 — the favorite toggle is an overlaid sibling <button>, not a
+                    // <span onClick> nested inside the send <button> (invalid nesting +
+                    // keyboard-unreachable). Both controls live in a relative wrapper.
+                    <div key={s.id} className="relative">
                     <button
-                      key={s.id}
                       type="button"
                       title={s.emoji || 'sticker'}
                       onClick={() => {
@@ -574,29 +578,8 @@ export function ComposerPickerPanel({
                           }
                         })()
                       }}
-                      className="p13-sticker-tile relative flex aspect-square items-center justify-center rounded"
+                      className="p13-sticker-tile relative flex aspect-square w-full items-center justify-center rounded"
                     >
-                      <span
-                        className="absolute right-1 top-1 rounded border border-[color-mix(in_srgb,var(--void)_45%,transparent)] bg-[color-mix(in_srgb,var(--void)_70%,transparent)] px-1 text-[9px] text-[var(--on-surface)] backdrop-blur-sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const packMeta = packs.find((p) => p.id === selectedPackId)
-                          if (!packMeta) return
-                          const exists = favoriteStickers.some((f) => f.sticker.id === s.id)
-                          if (exists) {
-                            persistFavoriteStickers(
-                              favoriteStickers.filter((f) => f.sticker.id !== s.id)
-                            )
-                          } else {
-                            persistFavoriteStickers([
-                              { sticker: s, packId: selectedPackId, format: packMeta.format, src: stickerSrc },
-                              ...favoriteStickers,
-                            ])
-                          }
-                        }}
-                      >
-                        {favoriteStickers.some((f) => f.sticker.id === s.id) ? '★' : '☆'}
-                      </span>
                       <StickerPreview
                         url={stickerSrc}
                         format={stickerFormat}
@@ -616,6 +599,30 @@ export function ComposerPickerPanel({
                         }}
                       />
                     </button>
+                    <button
+                      type="button"
+                      aria-pressed={isFavorite}
+                      aria-label={isFavorite ? t('stickers.unfavorite') : t('stickers.favorite')}
+                      title={isFavorite ? t('stickers.unfavorite') : t('stickers.favorite')}
+                      className="absolute right-1 top-1 rounded border border-[color-mix(in_srgb,var(--void)_45%,transparent)] bg-[color-mix(in_srgb,var(--void)_70%,transparent)] px-1 text-[9px] text-[var(--on-surface)] backdrop-blur-sm"
+                      onClick={() => {
+                        const packMeta = packs.find((p) => p.id === selectedPackId)
+                        if (!packMeta) return
+                        if (isFavorite) {
+                          persistFavoriteStickers(
+                            favoriteStickers.filter((f) => f.sticker.id !== s.id)
+                          )
+                        } else {
+                          persistFavoriteStickers([
+                            { sticker: s, packId: selectedPackId, format: packMeta.format, src: stickerSrc },
+                            ...favoriteStickers,
+                          ])
+                        }
+                      }}
+                    >
+                      {isFavorite ? '★' : '☆'}
+                    </button>
+                    </div>
                     )
                   })}
                 </div>

@@ -102,6 +102,12 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const modalRef = useRef<HTMLDivElement | null>(null)
   const openerRef = useRef<HTMLElement | null>(null)
   const { module: locale, setModule: setLocale, t } = useTranslation()
+  // D18 — keep a ref to the latest translator so loadSettingsFromApi can read
+  // current copy WITHOUT taking `t` as a dep. With `t` in its deps, switching
+  // the UI language re-minted loadSettingsFromApi → re-fired the load effect →
+  // clobbered unsaved profile edits (display name / bio / status).
+  const tRef = useRef(t)
+  tRef.current = t
   const { user, updateUser, refresh } = useAuth()
   const [discoverable, setDiscoverable] = useState<boolean | null>(null)
   const [hidePresence, setHidePresence] = useState<boolean | null>(null)
@@ -232,7 +238,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         last_seen_privacy?: string | null
         social_links?: Array<{ platform: string; url: string }>; error?: string
       }
-      if (!r.ok) { setError(explainSettingsError(d.error ?? '', t, 'settings.loadFailed')); return }
+      if (!r.ok) { setError(explainSettingsError(d.error ?? '', tRef.current, 'settings.loadFailed')); return }
       const value = readDiscoverableFromPayload(d.is_discoverable)
       setDiscoverable(value)
       updateUser({ is_discoverable: value })
@@ -248,8 +254,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           : 'everyone'
       )
       setSocialLinks(Array.isArray(d.social_links) ? d.social_links : [])
-    } catch { setError(t('settings.loadFailed')) }
-  }, [t, updateUser])
+    } catch { setError(tRef.current('settings.loadFailed')) }
+  }, [updateUser])
 
   useEffect(() => { void loadSettingsFromApi() }, [userId, loadSettingsFromApi])
 

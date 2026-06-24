@@ -315,6 +315,12 @@ services:
   # ACME volume into ./docker/coturn/tls by scripts/sync-turn-certs.sh or
   # ./startup.sh turn-sync. coturn starts without TLS until those files exist.
   coturn:
+    # Drop all Linux capabilities: coturn binds only high ports (3478/5349 and
+    # the 49152-65535 relay range — all >1024, so NET_BIND_SERVICE is not
+    # needed) and runs as root without dropping to another OS user, so it needs
+    # no capabilities. Mirrors db/redis/minio hardening. A live relay call MUST
+    # be re-verified after deploy.
+    cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
     image: coturn/coturn:4.13.1
@@ -359,6 +365,12 @@ services:
   # secrets before exec'ing the server binary.  This keeps the api key /
   # secret out of .env.prod entirely.
   livekit:
+    # Drop all Linux capabilities: the SFU binds only high ports (7880 signaling,
+    # 7881 ICE/TCP, and the UDP media range — all >1024) and the distroless image
+    # already runs as a non-root user, so it needs no capabilities. Mirrors
+    # db/redis/minio hardening. A live SFU group call MUST be re-verified after
+    # deploy.
+    cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
     image: livekit/livekit-server:v1.13.1

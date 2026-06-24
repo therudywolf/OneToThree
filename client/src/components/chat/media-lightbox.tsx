@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
+import { useFocusTrap } from '@/hooks/use-focus-trap'
 
 type MediaItem = {
   id: string
@@ -29,6 +30,9 @@ export function MediaLightbox({
   onLoadMedia,
 }: MediaLightboxProps) {
   const { t: _t } = useTranslation()
+  // D23 — focus-trap + body-scroll-lock + focus restore while the lightbox is open.
+  // The hook also wires ESC → onClose and locks body scroll.
+  const trapRef = useFocusTrap<HTMLDivElement>(isOpen, onClose)
   const [zoom, setZoom] = useState(1)
   const [isZoomed, setIsZoomed] = useState(false)
   const [panX, setPanX] = useState(0)
@@ -107,9 +111,7 @@ export function MediaLightbox({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
-        case 'Escape':
-          onClose()
-          break
+        // Escape is handled by useFocusTrap (capture-phase) → onClose.
         case 'ArrowLeft':
           e.preventDefault()
           navigatePrev()
@@ -132,7 +134,7 @@ export function MediaLightbox({
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, navigateNext, navigatePrev, onClose])
+  }, [isOpen, navigateNext, navigatePrev])
 
   const handleZoomIn = () => {
     setZoom((prev) => Math.min(prev * 1.5, 3))
@@ -256,7 +258,13 @@ export function MediaLightbox({
   const hasMultiple = hasPrev || hasNext
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-void/95 backdrop-blur-md">
+    <div
+      ref={trapRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Media viewer"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-void/95 backdrop-blur-md"
+    >
       {/* Close button */}
       <button
         onClick={onClose}

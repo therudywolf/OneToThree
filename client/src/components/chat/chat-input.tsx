@@ -15,7 +15,7 @@ import { vibrateShort } from '@/lib/vibrate'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
 import type { AttachmentKind } from '@/lib/attachment-envelope'
 import { toastError } from '@/store/toastStore'
-import { loadDraft, saveDraftDebounced, clearDraft } from '@/lib/chat-drafts'
+import { useDraftManager } from '@/hooks/use-draft-manager'
 import { createPoll } from '@/lib/api/polls'
 import {
   MEDIA_ACCESS_ERROR_MESSAGE,
@@ -174,20 +174,18 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     [activeChatId, sendText]
   )
 
-  // On active-chat change, clear staged composer state that otherwise leaks
-  // across chats: a staged reply / in-progress edit (global chatStore) would be
-  // sent/applied to the WRONG chat, and an armed burn timer (composer-local)
-  // would silently self-destruct messages in a chat where it was never set.
-  // The composer is not keyed by chat, so it never remounts on switch — we must
-  // reset explicitly. Then load the new chat's draft.
-  useEffect(() => {
-    if (!activeChatId) return
-    setReplyTo(null)
-    setEditingMessage(null)
-    setBurnTimerSecs(null)
-    setMessageText(loadDraft(activeChatId))
-    mentionMembersLoadedRef.current = false // reset on chat switch
-  }, [activeChatId])
+  // Per-chat draft lifecycle + the on-switch reset of staged composer state
+  // (reply/edit/burn) lives in useDraftManager (see the hook for the rationale).
+  const { persistDraft, clearActiveDraft } = useDraftManager({
+    activeChatId,
+    setMessageText,
+    setReplyTo,
+    setEditingMessage,
+    setBurnTimerSecs,
+    onChatSwitch: () => {
+      mentionMembersLoadedRef.current = false // reset on chat switch
+    },
+  })
 
   // Lazily fetch chat members for @mention autocomplete
   const loadMentionMembers = useCallback(async () => {
@@ -700,7 +698,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
       setMessageText('')
       setReplyTo(null)
       setEditingMessage(null)
-      if (activeChatId) clearDraft(activeChatId)
+      clearActiveDraft()
       if (inputRef.current) {
         inputRef.current.style.height = 'auto'
         inputRef.current.focus()
@@ -1208,10 +1206,8 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
                 const next = e.target.value
                 setMessageText(next)
                 onDraftChanged(next)
-                // Persist draft (debounced) — cleared on send
-                if (activeChatId && !editingMessage) {
-                  saveDraftDebounced(activeChatId, next)
-                }
+                // Persist draft (debounced) — cleared on send; not while editing
+                if (!editingMessage) persistDraft(next)
                 // @mention trigger detection
                 handleMentionCheck(next, e.target.selectionStart ?? next.length)
                 e.target.style.height = 'auto'

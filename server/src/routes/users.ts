@@ -36,6 +36,7 @@ import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
 import { deletePending, getPending, setChallenge } from '../lib/challenge-store.js'
 import { safeEqualNonce } from '../lib/ecdsa-verify.js'
 import { DELETED_USER_ID, DELETED_USER_USERNAME } from '../lib/deleted-user.js'
+import { invalidateCallAuth } from '../lib/call-auth-cache.js'
 
 // Re-exported for existing importers (account-deletion tests, etc.). The
 // canonical definition lives in ../lib/deleted-user.js so non-route modules
@@ -1039,6 +1040,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (!target) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
 
     await db.insert(userBlocks).values({ blockerId: user.id, blockedId: targetId }).onConflictDoNothing()
+    // D14: drop the cached call-relay authorization so a freshly applied block
+    // stops relaying media immediately, not after the 30s cache TTL.
+    invalidateCallAuth(user.id, targetId)
     return reply.send({ ok: true })
   })
 
@@ -1050,6 +1054,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
 
     await db.delete(userBlocks).where(and(eq(userBlocks.blockerId, user.id), eq(userBlocks.blockedId, params.data.targetId)))
+    // D14: re-authorize the pair on unblock so a call can relay again at once.
+    invalidateCallAuth(user.id, params.data.targetId)
     return reply.send({ ok: true })
   })
 

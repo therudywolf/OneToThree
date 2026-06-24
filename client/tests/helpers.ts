@@ -72,10 +72,19 @@ export async function registerNewUser(
     }
     await page
       .getByRole('button', {
-        name: /saved my backup|сохранил резервную копию|Я СОХРАНИЛ КОПИЮ, ПРОДОЛЖИТЬ|I SAVED A COPY|CONTINUE/i,
+        // "...— continue" (recovery off) or "Saved — set up recovery next" (on).
+        name: /saved my backup|сохранил резервную копию|set up recovery|настроить восстановление|Я СОХРАНИЛ КОПИЮ, ПРОДОЛЖИТЬ|I SAVED A COPY|CONTINUE/i,
       })
       .first()
       .click()
+    // A second step (recovery-phrase setup) may follow when the vault password
+    // is available. The e2e doesn't enroll recovery — skip it to finish signup.
+    const recoverySkip = page.getByRole('button', {
+      name: /set this up later|настрою позже/i,
+    })
+    if (await recoverySkip.isVisible({ timeout: 6_000 }).catch(() => false)) {
+      await recoverySkip.click()
+    }
   }
 
   await unlockVaultModal(page, passphrase)

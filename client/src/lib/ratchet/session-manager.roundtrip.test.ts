@@ -34,6 +34,7 @@ interface StoredRecord {
 interface DirEntry {
   identitySigning: string
   identityExchange: string
+  identityExchangeSignature: string
   generation: number
   spk: { id: number; publicKey: string; signature: string }
   /** One-time prekeys — `fetchBundle` pops one per call, like the real server. */
@@ -111,6 +112,7 @@ vi.mock('@/lib/api/keys', () => {
   const identityOf = (d: DirEntry) => ({
     signing_public_key: d.identitySigning,
     exchange_public_key: d.identityExchange,
+    exchange_public_key_signature: d.identityExchangeSignature,
     generation: d.generation,
   })
   return {
@@ -194,6 +196,7 @@ function registerDevice(userId: string, deviceId: string, otpCount = 50): Device
   userMap.set(deviceId, {
     identitySigning: encodeBase64Url(bundle.identity.signing.publicKey),
     identityExchange: encodeBase64Url(bundle.identity.exchange.publicKey),
+    identityExchangeSignature: encodeBase64Url(bundle.identityExchangeSignature),
     generation: 1,
     spk: {
       id: bundle.signedPreKey.id,

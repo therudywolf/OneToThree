@@ -700,6 +700,10 @@ export const identityKeys = pgTable(
     signingPublicKey: text('signing_public_key').notNull(),
     /** Base64url X25519 public exchange key (32 bytes). */
     exchangePublicKey: text('exchange_public_key').notNull(),
+    /** Base64url Ed25519 signature (64 bytes) over exchangePublicKey by the
+     *  signing key — D4. Without it the key server could substitute the exchange
+     *  key and MITM X3DH; clients reject a bundle whose signature doesn't verify. */
+    exchangePublicKeySignature: text('exchange_public_key_signature').notNull(),
     /** Monotonic — `curl POST /keys/identity` bumps this and invalidates prekeys. */
     generation: integer('generation').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true })

@@ -12,7 +12,7 @@
 import { hkdf } from '@noble/hashes/hkdf'
 import { sha256 } from '@noble/hashes/sha2'
 import { ed25519, x25519 } from '@noble/curves/ed25519'
-import { signWithIdentity, type IdentityKeyPair, type KeyPair } from './keys'
+import { signWithIdentity, signIdentityExchange, type IdentityKeyPair, type KeyPair } from './keys'
 
 const ENC = new TextEncoder()
 
@@ -31,6 +31,8 @@ export interface DerivedDrBundle {
   signedPreKey: KeyPair
   signedPreKeyId: number
   signedPreKeySignature: Uint8Array
+  /** Ed25519 signature over identityExchange by identitySigning (D4). */
+  identityExchangeSignature: Uint8Array
 }
 
 /**
@@ -154,8 +156,9 @@ export function deriveDrBundleFromEcdhJwk(
   }
 
   const signedPreKeySignature = signWithIdentity(identity, signedPreKey.publicKey)
+  const identityExchangeSignature = signIdentityExchange(identity)
 
-  return { identity, signedPreKey, signedPreKeyId: 1, signedPreKeySignature }
+  return { identity, signedPreKey, signedPreKeyId: 1, signedPreKeySignature, identityExchangeSignature }
 }
 
 /**

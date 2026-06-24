@@ -8,6 +8,7 @@ import {
   initRatchetAsAlice,
   initRatchetAsBob,
   signWithIdentity,
+  signIdentityExchange,
   x3dhInitiator,
   x3dhResponder,
   verifyBundleSignature,
@@ -32,6 +33,7 @@ describe('X3DH handshake', () => {
       userId: 'bob',
       identitySigning: bob.signing.publicKey,
       identityExchange: bob.exchange.publicKey,
+      identityExchangeSignature: signIdentityExchange(bob),
       signedPreKey: { id: 1, publicKey: bobSpk.publicKey, signature },
       oneTimePreKey: { id: 2, publicKey: bobOpk.publicKey },
     }
@@ -67,6 +69,7 @@ describe('X3DH handshake', () => {
       userId: 'bob',
       identitySigning: bob.signing.publicKey,
       identityExchange: bob.exchange.publicKey,
+      identityExchangeSignature: signIdentityExchange(bob),
       signedPreKey: { id: 1, publicKey: spk.publicKey, signature: badSig },
       oneTimePreKey: null,
     }
@@ -78,6 +81,30 @@ describe('X3DH handshake', () => {
         ephemeral: aliceEphemeral,
         bundle,
       })
+    ).toThrowError('X3DH_BAD_SPK_SIGNATURE')
+  })
+
+  it('detects a substituted identityExchange key (D4 — key-server MITM)', () => {
+    const alice = generateIdentity()
+    const bob = generateIdentity()
+    const attacker = generateIdentity()
+    const bobSpk = generateX25519KeyPair()
+    // A malicious key server keeps bob's REAL signing key + a VALID signed
+    // pre-key, but swaps identityExchange for the attacker's (so DH2/DH4 route
+    // through a key the attacker controls). The exchange signature still covers
+    // bob's real key, so it can't vouch for the substituted one.
+    const bundle: PreKeyBundle = {
+      userId: 'bob',
+      identitySigning: bob.signing.publicKey,
+      identityExchange: attacker.exchange.publicKey,
+      identityExchangeSignature: signIdentityExchange(bob),
+      signedPreKey: { id: 1, publicKey: bobSpk.publicKey, signature: signWithIdentity(bob, bobSpk.publicKey) },
+      oneTimePreKey: null,
+    }
+    expect(verifyBundleSignature(bundle)).toBe(false)
+    const aliceEphemeral = generateX25519KeyPair()
+    expect(() =>
+      x3dhInitiator({ initiatorIdentity: alice, ephemeral: aliceEphemeral, bundle })
     ).toThrowError('X3DH_BAD_SPK_SIGNATURE')
   })
 })

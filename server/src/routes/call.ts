@@ -116,10 +116,17 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       },
     })
 
-    // Derive E2EE room key from the API secret + room ID + per-session UUID.
-    // The session UUID is stored in Redis with a TTL so each call activation
-    // gets a fresh key (forward secrecy: former participants cannot decrypt
-    // future calls in the same room).
+    // Derive the LiveKit Insertable-Streams room key from the API secret + room
+    // ID + a per-session UUID (cached in Redis, deleted when the room empties —
+    // see ws.ts group_call:leave — so the next call in a room gets a fresh key).
+    //
+    // TRUST BOUNDARY (do not overstate this as E2EE): the key is an HMAC of the
+    // server-held LIVEKIT_API_SECRET, so the application server CAN reconstruct
+    // it and decrypt group-call media. This protects media against a passive
+    // SFU/network observer that lacks the secret — it is NOT end-to-end against
+    // the server (unlike the 1:1 path, whose keys are ECDH-derived per peer and
+    // never seen by the server). True E2E-vs-server group calls require deriving
+    // the room key from participant ECDH material — tracked as backlog N11.
     const redisKey = `call:session:${roomId}`
     const redis = getRedis()
     const CALL_SESSION_TTL = 60 * 60 * 8 // 8 hours

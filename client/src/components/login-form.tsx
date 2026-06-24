@@ -31,6 +31,40 @@ import { useThemeStore } from '@/store/themeStore'
 type FormStage = 'IDENTITY' | 'MFA_SYNC' | 'RECOVER'
 type FormMode  = 'ACCESS'   | 'GENESIS'
 
+const iconProps = {
+  width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none',
+  stroke: 'currentColor', strokeWidth: 2,
+  strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+}
+
+function EyeIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function EyeOffIcon() {
+  return (
+    <svg {...iconProps}>
+      <path d="M10.7 5.1A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-3.2 4.1M6.6 6.6A18 18 0 0 0 2 12s3.5 7 10 7a10.9 10.9 0 0 0 5.4-1.4" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+      <path d="m2 2 20 20" />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg {...iconProps} width={11} height={11}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  )
+}
+
 export function LoginForm() {
   const { t } = useTranslation()
   const router = useRouter()
@@ -58,6 +92,7 @@ export function LoginForm() {
   const [vaultLinkOk, setVaultLinkOk]   = useState(false)
   const [staleSession, setStaleSession] = useState(false)
   const [showVaultPrompt, setShowVaultPrompt] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
   const isMd3 = shellMode === 'md3'
@@ -121,19 +156,19 @@ export function LoginForm() {
           : null
 
         if (!blob?.ciphertextB64) {
-          setErrorLog(t('settings.importFailed') + ': неверный формат файла')
+          setErrorLog(t('login.importFailedFormat'))
           return
         }
 
         // Prefer explicit username → fall back to handle field
         const nameCandidate = raw.username?.trim() || handle.trim()
         if (!nameCandidate) {
-          setErrorLog(t('login.usernameRequired') + ' — введите ник перед импортом ключа')
+          setErrorLog(t('login.importNeedUsername'))
           return
         }
         const nick = parseNickname(nameCandidate)
         if (!nick.ok) {
-          setErrorLog(t('settings.importFailed') + ': ' + nick.error)
+          setErrorLog(t('login.importFailedFormat'))
           return
         }
         persistVaultBlobByLoginUsername(nick.value, blob)
@@ -395,8 +430,8 @@ export function LoginForm() {
               </div>
 
               {recoverNewPassword.length > 0 && recoverNewPassword.length < 8 && (
-                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] text-text-muted">
-                  <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
+                <p className="border-l-2 border-neon-cyan/40 bg-neon-cyan/5 p-3 text-[9px] text-text-muted">
+                  <span className="font-bold text-neon-cyan">{t('login.pinMinTip')}</span> {t('login.pinMin8')}
                 </p>
               )}
 
@@ -445,20 +480,58 @@ export function LoginForm() {
 
             <header className={`mb-8 border-b pb-4 ${isRetro ? 'p13-classic-titlebar px-2 pt-2' : 'border-border-strong'}`}>
               <p className={`text-[10px] ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'p13-classic-title-copy' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>
-                {mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
+                {mode === 'ACCESS' ? t('login.entryHeadingSignIn') : t('login.entryHeadingCreate')}
               </p>
-              <p className={`mt-1 text-[8px] ${isRetro ? 'p13-classic-title-copy-soft tracking-normal' : 'text-text-muted/70 tracking-widest'}`}>E2E // ECDSA P-256 // ZERO-TRUST</p>
+              <p className={`mt-1 text-[8px] ${isRetro ? 'p13-classic-title-copy-soft tracking-normal' : 'text-text-muted/70 tracking-wide'}`}>{t('login.authReassure')}</p>
             </header>
+
+            {/* Sign in / Create account — clear two-option control */}
+            <div className={`mb-6 grid grid-cols-2 gap-1 p-1 ${
+              isMd3
+                ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]'
+                : isRetro
+                  ? 'p13-classic-input'
+                  : 'border border-border-strong bg-void'
+            }`}>
+              {([
+                ['ACCESS', t('login.tabSignIn')] as const,
+                ['GENESIS', t('login.tabCreate')] as const,
+              ]).map(([m, label]) => {
+                const active = mode === m
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => { if (mode !== m) { setMode(m); resetForm() } }}
+                    aria-pressed={active}
+                    className={`py-2 text-[10px] tracking-wide transition-all ${
+                      isMd3
+                        ? `rounded-full ${active ? 'bg-[var(--surface)] font-medium text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'text-text-muted'}`
+                        : isRetro
+                          ? (active ? 'p13-classic-accent-fill text-text-primary' : 'p13-classic-copy-muted')
+                          : `uppercase tracking-widest ${active ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted/70 hover:text-neon-cyan'}`
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
 
             <div className="space-y-6">
 
-              {/* TOS при регистрации */}
+              {/* TOS при регистрации — короткая строка + раскрываемые детали */}
               {mode === 'GENESIS' && (
-                <div className="border border-border-strong bg-void/50 p-4">
-                  <p className="text-[8px] uppercase tracking-widest text-neon-red mb-2">{t('login.tosRegisterTitle')}</p>
-                  <div className="max-h-32 overflow-y-auto text-[9px] leading-relaxed text-text-muted pr-2 custom-scrollbar">
-                    {t('login.tosRegisterBody')}
-                  </div>
+                <div className={`p-3 text-[9px] leading-relaxed ${isRetro ? 'p13-classic-input' : 'border border-border-strong bg-void/50 text-text-muted'}`}>
+                  <p>{t('login.tosShort')}</p>
+                  <details className="mt-1">
+                    <summary className={`cursor-pointer text-[9px] ${isRetro ? 'p13-classic-copy-muted' : 'text-neon-cyan/80 hover:text-neon-cyan'}`}>
+                      {t('login.tosReadMore')}
+                    </summary>
+                    <div className="mt-2 max-h-32 overflow-y-auto whitespace-pre-line pr-2 text-[9px] leading-relaxed text-text-muted custom-scrollbar">
+                      {t('login.tosRegisterBody')}
+                    </div>
+                  </details>
                 </div>
               )}
 
@@ -474,34 +547,46 @@ export function LoginForm() {
                   placeholder={t('login.handlePlaceholder')}
                   autoComplete="username"
                 />
+                {mode === 'GENESIS' && (
+                  <p className={`text-[8px] ${isRetro ? 'p13-classic-copy-muted' : 'text-text-muted/70'}`}>{t('login.usernameHint')}</p>
+                )}
               </div>
 
-              {/* Vault-password */}
+              {/* Account password */}
               <div className="space-y-2">
                 {mode === 'GENESIS' && (
                   <div className="border-l-2 border-neon-cyan/40 pl-3 space-y-1 mb-3">
                     <p className="text-[8px] text-text-muted leading-relaxed">
-                      Пароль шифрует твой приватный ключ локально.
-                      Сервер его не знает и восстановить не может.
+                      {t('login.vaultPasswordExplain1')}
                     </p>
-                    <p className="text-[8px] text-text-muted/70">
-                      Если экспортируешь vault-файл на другое устройство — тот же пароль разблокирует его.
-                      Запомни или сохрани — без него нет доступа к аккаунту.
+                    <p className="text-[8px] text-text-muted/70 leading-relaxed">
+                      {t('login.vaultPasswordExplain2')}
                     </p>
                   </div>
                 )}
                 <label htmlFor="password" className="terminal-label">
-                  {mode === 'ACCESS' ? t('login.vaultPassphraseLabel') : 'VAULT-ПАРОЛЬ'}
+                  {t('login.passwordLabel')}
                 </label>
-                <input
-                  id="password"
-                  type="password" required
-                  value={vaultPassword}
-                  onChange={(e) => setVaultPassword(e.target.value)}
-                  className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
-                  placeholder="••••••••"
-                  autoComplete={mode === 'ACCESS' ? 'current-password' : 'new-password'}
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'} required
+                    value={vaultPassword}
+                    onChange={(e) => setVaultPassword(e.target.value)}
+                    className={`${isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'} pr-10`}
+                    placeholder="••••••••"
+                    autoComplete={mode === 'ACCESS' ? 'current-password' : 'new-password'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? t('login.passwordHide') : t('login.passwordShow')}
+                    aria-pressed={showPassword}
+                    className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-text-muted/70 hover:text-neon-cyan transition-colors"
+                  >
+                    {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+                  </button>
+                </div>
               </div>
 
               {/* Повтор пароля при регистрации */}
@@ -510,20 +595,29 @@ export function LoginForm() {
                   <label htmlFor="confirmPassword" className="terminal-label">{t('common.confirm')}</label>
                   <input
                     id="confirmPassword"
-                    type="password" required
+                    type={showPassword ? 'text' : 'password'} required
                     value={confirmVaultPassword}
                     onChange={(e) => setConfirmVaultPassword(e.target.value)}
                     className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
                     placeholder="••••••••"
                     autoComplete="new-password"
                   />
+                  {confirmVaultPassword.length > 0 && (
+                    vaultPassword === confirmVaultPassword ? (
+                      <p className="flex items-center gap-1 text-[8px] text-neon-cyan">
+                        <CheckIcon /> {t('login.passwordsMatch')}
+                      </p>
+                    ) : (
+                      <p className="text-[8px] text-neon-red/80">{t('login.passwordsDiffer')}</p>
+                    )
+                  )}
                 </div>
               )}
 
-              {/* Предупреждение о длине */}
+              {/* Подсказка о длине пароля */}
               {mode === 'GENESIS' && vaultPassword.length > 0 && vaultPassword.length < 8 && (
-                <p className="border-l-2 border-neon-red bg-neon-red/5 p-3 text-[9px] text-text-muted">
-                  <span className="text-neon-red font-bold">WARNING:</span> {t('login.pinMin8')}
+                <p className="border-l-2 border-neon-cyan/40 bg-neon-cyan/5 p-3 text-[9px] text-text-muted">
+                  <span className="font-bold text-neon-cyan">{t('login.pinMinTip')}</span> {t('login.pinMin8')}
                 </p>
               )}
 
@@ -552,16 +646,16 @@ export function LoginForm() {
                 <TerminalGlitchButton
                   type="submit"
                   disabled={isBusy}
-                  aria-label={mode === 'ACCESS' ? t('login.signIn') : 'REGISTER'}
+                  aria-label={mode === 'ACCESS' ? t('login.signIn') : t('login.register')}
                   className="w-full"
                 >
                   {mode === 'ACCESS' ? t('login.signIn') : (isBusy ? '...' : t('login.register'))}
                 </TerminalGlitchButton>
                 <button type="button"
                   onClick={() => { setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS'); resetForm() }}
-                  aria-label={mode === 'ACCESS' ? 'New device' : t('login.existingVault')}
-                  className="text-[9px] uppercase tracking-widest text-text-muted/70 hover:text-neon-cyan transition-colors">
-                  {mode === 'ACCESS' ? t('login.newDevice') : t('login.existingVault')}
+                  aria-label={mode === 'ACCESS' ? t('login.tabCreate') : t('login.tabSignIn')}
+                  className="text-[9px] tracking-wide text-text-muted/70 hover:text-neon-cyan transition-colors">
+                  {mode === 'ACCESS' ? t('login.tabCreate') : t('login.tabSignIn')}
                 </button>
               </div>
 

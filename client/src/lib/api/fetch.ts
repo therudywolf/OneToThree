@@ -1,6 +1,41 @@
 import { getNativeToken, isNativeApp } from '@/lib/native-session'
+import { normalizeApiRoot } from '@/lib/api/url'
 
 const DEFAULT_TIMEOUT_MS = 15_000
+
+/** Configured API root: an absolute origin for native apps, '/api' (same-origin) for web. */
+const API_ROOT = normalizeApiRoot(
+  typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_API_URL?.trim() : undefined
+)
+
+/**
+ * True only when `input` targets the API origin. The native Bearer token (a full
+ * session JWT) must NEVER be attached to a non-API origin — e.g. presigned
+ * MinIO/S3 URLs (s3.onetothree.ru) for avatars, or giphy/tenor — or it leaks the
+ * session credential to that host's access logs, a fronting proxy, or a
+ * compromised endpoint. The httpOnly cookie path is host-scoped and never had
+ * this exposure; the Bearer fallback must replicate that origin scoping.
+ */
+export function targetsApiOrigin(input: RequestInfo | URL): boolean {
+  try {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : (input as Request).url
+    const pageOrigin = typeof location !== 'undefined' ? location.origin : undefined
+    if (API_ROOT.startsWith('/')) {
+      // Same-origin API (web): the API lives on the page origin.
+      if (!pageOrigin) return false
+      return new URL(url, pageOrigin).origin === pageOrigin
+    }
+    const apiOrigin = new URL(API_ROOT).origin
+    return new URL(url, apiOrigin).origin === apiOrigin
+  } catch {
+    return false
+  }
+}
 
 /**
  * fetch() with an AbortSignal timeout so requests don't hang indefinitely.
@@ -24,7 +59,7 @@ export function fetchWithTimeout(
   // session cookie, so flag every request as native (the server then returns the
   // JWT in login response bodies) and replay the stored token as a Bearer header.
   const headers = new Headers(rest.headers as HeadersInit | undefined)
-  if (isNativeApp()) {
+  if (isNativeApp() && targetsApiOrigin(input)) {
     headers.set('X-Native-Client', '1')
     const tok = getNativeToken()
     if (tok && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${tok}`)

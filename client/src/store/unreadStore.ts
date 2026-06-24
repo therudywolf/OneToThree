@@ -151,7 +151,13 @@ export const useUnreadStore = create<UnreadState>()(
         }),
 
       updateReadAtOverride: (nodeId, timestamp) =>
-        set((s) => ({ readAtOverrides: { ...s.readAtOverrides, [nodeId]: timestamp } })),
+        set((s) => {
+          // Equality short-circuit: writing an unchanged value must be a no-op so
+          // we don't mint a new `readAtOverrides` identity (which would otherwise
+          // re-run every consumer effect / re-render the whole message list).
+          if (s.readAtOverrides[nodeId] === timestamp) return s
+          return { readAtOverrides: { ...s.readAtOverrides, [nodeId]: timestamp } }
+        }),
 
       clearReadAtOverrides: () => set({ readAtOverrides: {} }),
 

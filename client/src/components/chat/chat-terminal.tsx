@@ -341,16 +341,16 @@ export function ChatTerminal({
     for (const m of [...olderMessages, ...messages]) {
       map.set(m.id, m)
     }
-    return [...map.values()]
-      .sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      )
-      .map((m) => ({
-        ...m,
-        read_at: m.read_at ?? readAtOverrides[m.id] ?? null,
-      }))
-  }, [olderMessages, messages, readAtOverrides])
+    // IMPORTANT: keep each message's object identity stable. We deliberately do
+    // NOT spread `{...m, read_at}` here — minting a new identity for every row on
+    // each read-receipt would break `MessageRow`'s memo and re-render the whole
+    // list. The read-at override is threaded into each row as a narrow per-row
+    // prop instead (see `readAtOverrides[m.id]` at the render site).
+    return [...map.values()].sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+  }, [olderMessages, messages])
 
   const groupedMessages = useMemo(() => {
     return groupMessages(renderMessages)
@@ -1243,6 +1243,7 @@ export function ChatTerminal({
                 ) : null}
                 <MessageRow
                   message={m}
+                  readAtOverride={readAtOverrides[m.id]}
                   mine={mine}
                   isRunContinuation={isRunContinuation}
                   replyMsg={replyMsg}

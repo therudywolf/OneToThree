@@ -321,6 +321,7 @@ export function LoginForm() {
     <>
       {showVaultPrompt && (
         <PostRegisterVaultPrompt
+          vaultPassword={vaultPassword}
           onDismiss={() => { setShowVaultPrompt(false); router.refresh() }}
         />
       )}

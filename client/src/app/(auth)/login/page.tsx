@@ -112,8 +112,8 @@ export default function LoginPage() {
         
         <div className="mt-4 flex items-center gap-3">
           <span className="h-[1px] w-8 bg-elevated" />
-          <p className={`text-[10px] ${isMd3 ? 'tracking-wide text-text-muted' : 'uppercase tracking-[0.4em] text-neon-cyan/70'}`}>
-            :: NODE_ENTRY_PROTOCOL ::
+          <p className={`text-[10px] ${isMd3 ? 'tracking-wide text-text-muted' : 'uppercase tracking-[0.3em] text-neon-cyan/70'}`}>
+            {t('login.entryFooter')}
           </p>
           <span className="h-[1px] w-8 bg-elevated" />
         </div>
@@ -157,8 +157,8 @@ export default function LoginPage() {
 
       {/* FOOTER_DECOR :: Системные метаданные */}
       <footer className="absolute bottom-6 z-10 w-full text-center">
-        <p className="text-[9px] uppercase tracking-[0.2em] text-text-muted/70 opacity-50">
-          SECURE_CONTOUR // ACCESS_RESTRICTED_BY_PACK_POLICY
+        <p className="text-[9px] tracking-[0.1em] text-text-muted/70 opacity-60">
+          {t('login.authReassure')}
         </p>
         <nav className="mt-3 flex items-center justify-center gap-4 text-[9px] uppercase tracking-[0.2em] text-text-muted/60">
           <a href="/legal/privacy" className="hover:text-neon-cyan">

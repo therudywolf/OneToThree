@@ -285,8 +285,26 @@ export function useChatRealtime(
         // device delivery slots (content is null), so it is handled by the
         // pending-pull branch above.
         let plaintext = ''
+        let kind: string | undefined
+        let kindMeta: Record<string, unknown> | undefined
         if (m.content != null && m.iv != null && m.content !== '') {
-          if (cryptoCtx.mode === 'DIRECT') {
+          if (m.iv === 'poll:v1' || m.iv === 'system:v1') {
+            // Server-originated sentinel rows carry plain JSON, not ciphertext
+            // (poll envelopes, missed-call/system notices). The history-load
+            // path special-cases these (decrypt-chat-api-message.ts:133-136);
+            // the realtime branch must mirror it or polls and missed-call rows
+            // render as [DECRYPT_FAIL] live until the user reloads. This runs
+            // before the DIRECT downgrade-refusal because these sentinels are
+            // legitimately delivered into DIRECT chats too.
+            plaintext = m.content
+            if (m.iv === 'system:v1') {
+              try {
+                const parsed = JSON.parse(plaintext) as Record<string, unknown>
+                kind = typeof parsed.kind === 'string' ? parsed.kind : undefined
+                kindMeta = parsed
+              } catch { /* not JSON — ignore */ }
+            }
+          } else if (cryptoCtx.mode === 'DIRECT') {
             // DIRECT chats are Double Ratchet (v2) only and never carry shared
             // wire content — a DIRECT chat_message with `content` set is a v1
             // protocol-downgrade attempt. Refuse to decrypt it.
@@ -322,6 +340,7 @@ export function useChatRealtime(
           burn_at: m.burn_at ?? null,
           is_pinned: (m as { is_pinned?: boolean }).is_pinned ?? false,
           reactions: (m as { reactions?: Record<string, string[]> }).reactions ?? {},
+          ...(kind !== undefined ? { kind, kindMeta } : {}),
         }
         await cacheMessage(row).catch(() => { /* best-effort */ })
         appendMessage(row)

@@ -234,12 +234,15 @@ zones. Every extraction lands behind its characterization tests, verified in **b
   Fold in a11y here: focus trap on mobile search overlay, **fix the "⋮ menu does nothing in terminal shell"**
   bug (verify CSS z-index/pointer-events at runtime — code renders unconditionally), i18n the 3 hardcoded
   strings (`"E2E messenger"`, `"Security info"`, `"Chat options"`).
-- [~] **`chat-input.tsx` (1420→1384)** → `MessageEditor`, `DraftManager`, `MentionHelper`, `FormatBar`.
-  **In progress (2026-06-24):** characterization net landed first (`chat-input.test.tsx`, 9 jsdom
-  tests locking send/reply/edit/burn + the chat-switch reset), then two extractions behind it —
-  `lib/composer-format.ts` (pure utils, commit `91771c3`) and `hooks/use-draft-manager.ts`
-  (DraftManager, commit `4b3a364`). **Remaining:** `FormatBar`, `MentionHelper`, then `MessageEditor`
-  (riskiest — the E2EE re-encrypt path; extract its pure `buildEditBody` first). Each behind the net.
+- [x] **`chat-input.tsx` (1420→1192)** → `MessageEditor`, `DraftManager`, `MentionHelper`, `FormatBar`.
+  **DONE 2026-06-24.** Characterization net first (`chat-input.test.tsx`, 9 jsdom tests), then five
+  extractions behind it, each a green commit: `lib/composer-format.ts` (pure utils + node tests,
+  `91771c3`), `hooks/use-draft-manager.ts` (`4b3a364`), `hooks/use-format-bar.ts` (+ pure
+  `wrapSelection`, `b2da826`), `hooks/use-mentions.ts` (+ pure `buildMentionReplacement`, `803a11b`),
+  `hooks/use-message-editor.ts` (+ pure node-tested `lib/edit-message.ts` `buildEditBody` covering all
+  four crypto modes, `78cfd90`). Pattern for the remaining god-files: char net → pure-logic extraction
+  (node-tested) → hook, one commit each. `onSubmit` (send/edit dispatcher) intentionally kept in the
+  component; the voice-recorder subsystem deferred (out of the 4 ROADMAP targets, highest jsdom risk).
 - [ ] **`chat-terminal.tsx` (1423)** → `MessageScroller`, `DeliveryStatus`, timestamp utils.
 - [ ] **`use-webrtc.ts` (1275)** → `RTCPeerManager` class + thin media/ICE hooks.
 - [ ] **Server fat routes → service layer:** `chats.ts` (1495) → `ChatService`/`MemberService`/`InviteService`;

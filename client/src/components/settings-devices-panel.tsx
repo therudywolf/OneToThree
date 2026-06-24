@@ -214,9 +214,9 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
 
   const pendingLabel = (() => {
     if (!pendingAction) return ''
-    if (pendingAction.type === 'export-vault') return 'Для экспорта резервного ключа введи vault-пароль.'
-    if (pendingAction.type === 'revoke-all') return 'Для завершения всех других сессий введи vault-пароль.'
-    if (pendingAction.type === 'revoke') return `Для отзыва устройства «${pendingAction.device.device_name}» введи vault-пароль.`
+    if (pendingAction.type === 'export-vault') return t('settings.pendingExportPrompt')
+    if (pendingAction.type === 'revoke-all') return t('settings.pendingRevokeAllPrompt')
+    if (pendingAction.type === 'revoke') return `${t('settings.pendingRevokePrompt')} ${pendingAction.device.device_name}`
     return ''
   })()
 
@@ -250,9 +250,10 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
           [ {t('settings.linkDeviceQrTitle')} ]
         </p>
         <p className="text-[9px] text-text-muted leading-relaxed">
-          {t('settings.linkDeviceQrBody')}{' '}
-          <span className="text-text-primary">{t('settings.linkDeviceQrTtl')}</span>
-          {t('settings.linkDeviceQrBodySuffix')}
+          {t('settings.linkDeviceQrBody')}
+        </p>
+        <p className="text-[9px] text-text-muted/70 leading-relaxed">
+          {t('settings.linkDeviceQrTtl')}
         </p>
       </div>
 

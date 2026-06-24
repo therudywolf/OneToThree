@@ -350,13 +350,29 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
               </div>
 
               {phase === 'mode' && (
-                <p
-                  className={`mt-4 break-words text-[9px] leading-relaxed ${
-                    isRetro ? 'p13-classic-copy' : 'text-neon-cyan/70'
-                  }`}
-                >
-                  {t('settings.linkScanHint')}
-                </p>
+                <div className="mt-4 space-y-2">
+                  <p
+                    className={`break-words text-[9px] leading-relaxed ${
+                      isRetro ? 'p13-classic-copy' : 'text-neon-cyan/70'
+                    }`}
+                  >
+                    {t('settings.linkDeviceContext')}
+                  </p>
+                  <p
+                    className={`break-words text-[9px] leading-relaxed ${
+                      isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
+                    }`}
+                  >
+                    {t('settings.linkModeScan')}: {t('settings.linkScanHint')}
+                  </p>
+                  <p
+                    className={`break-words text-[9px] leading-relaxed ${
+                      isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
+                    }`}
+                  >
+                    {t('settings.linkModeShow')}: {t('settings.linkShowHint')}
+                  </p>
+                </div>
               )}
 
               {/* Mode A — scan */}
@@ -405,6 +421,13 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                       [ ... ]
                     </p>
                   )}
+                  <p
+                    className={`text-center text-[9px] leading-relaxed ${
+                      isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
+                    }`}
+                  >
+                    {t('settings.linkShowExpiryNote')}
+                  </p>
                   <p className="text-center text-[9px] uppercase tracking-widest text-neon-cyan/80">
                     {t('settings.linkShowWaiting')}
                   </p>
@@ -439,7 +462,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                     {t('settings.linkVerifyInstruction')}
                   </p>
                   <p className="break-words border border-neon-red/30 bg-neon-red/5 p-2 text-[9px] leading-relaxed text-neon-red">
-                    [!] {t('settings.linkVerifyWarning')}
+                    {t('settings.linkVerifyWarning')}
                   </p>
                   <button
                     type="button"

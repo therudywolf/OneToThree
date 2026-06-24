@@ -56,6 +56,7 @@ describe('acceptIncomingInit identity verification', () => {
       identity: {
         signing_public_key: b64url(realAlice.identity.signing.publicKey),
         exchange_public_key: b64url(realAlice.identity.exchange.publicKey),
+        exchange_public_key_signature: b64url(realAlice.identityExchangeSignature),
         generation: 1,
       },
     })

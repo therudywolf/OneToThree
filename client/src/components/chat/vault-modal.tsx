@@ -197,6 +197,7 @@ export function VaultModal({ userId, displayHandle }: Props) {
         await publishIdentity({
           signing_public_key: encodeBase64Url(bundle.identity.signing.publicKey),
           exchange_public_key: encodeBase64Url(bundle.identity.exchange.publicKey),
+          exchange_public_key_signature: encodeBase64Url(bundle.identityExchangeSignature),
           generation: 1,
         })
         await publishSignedPrekey({

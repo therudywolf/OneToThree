@@ -87,6 +87,26 @@ export function dh(
   return x25519.getSharedSecret(ourPrivate, theirPublic)
 }
 
+const IDENTITY_EXCHANGE_SIG_DOMAIN = new TextEncoder().encode('ForestMsg/x3dh/idex/1:')
+
+/**
+ * Bytes the Ed25519 identity key signs to bind the X25519 `identityExchange`
+ * key (used in X3DH DH2/DH4) to that identity. Without this binding a malicious
+ * key server could substitute `identityExchange` and silently MITM the
+ * handshake — the signed pre-key signature alone never covers it (D4).
+ */
+export function identityExchangeSigningMessage(exchangePublicKey: RawKey): Uint8Array {
+  const out = new Uint8Array(IDENTITY_EXCHANGE_SIG_DOMAIN.length + exchangePublicKey.length)
+  out.set(IDENTITY_EXCHANGE_SIG_DOMAIN)
+  out.set(exchangePublicKey, IDENTITY_EXCHANGE_SIG_DOMAIN.length)
+  return out
+}
+
+/** Sign one's own `identityExchange` public key with the Ed25519 identity key. */
+export function signIdentityExchange(identity: IdentityKeyPair): Uint8Array {
+  return signWithIdentity(identity, identityExchangeSigningMessage(identity.exchange.publicKey))
+}
+
 /** Check that two keys match in constant time. */
 export function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false

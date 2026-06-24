@@ -13,6 +13,7 @@ export interface BundleResponse {
   identity: {
     signing_public_key: string
     exchange_public_key: string
+    exchange_public_key_signature: string
     generation: number
   }
   signed_prekey: {
@@ -29,6 +30,7 @@ export interface BundleResponse {
 export interface PublishIdentityInput {
   signing_public_key: string
   exchange_public_key: string
+  exchange_public_key_signature: string
   generation: number
 }
 
@@ -100,6 +102,7 @@ export interface DeviceIdentity {
   identity: {
     signing_public_key: string
     exchange_public_key: string
+    exchange_public_key_signature: string
     generation: number
   }
 }
@@ -123,6 +126,7 @@ export interface IdentityResponse {
   identity: {
     signing_public_key: string
     exchange_public_key: string
+    exchange_public_key_signature: string
     generation: number
   }
 }

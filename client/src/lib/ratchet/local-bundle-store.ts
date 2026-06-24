@@ -10,6 +10,7 @@
  */
 import { encodeBase64Url, decodeBase64Url } from './session-manager'
 import type { LocalIdentityBundle } from './session-manager'
+import { signIdentityExchange } from './keys'
 
 const b = encodeBase64Url
 const u = decodeBase64Url
@@ -100,17 +101,21 @@ function deserializeBundle(json: string): LocalIdentityBundle {
     signedPreKey: { id: number; privateKey: string; publicKey: string; signature: string }
     oneTimePreKeys: Array<{ id: number; privateKey: string; publicKey: string }>
   }
-  return {
-    identity: {
-      signing: {
-        privateKey: u(o.identity.signing.privateKey),
-        publicKey: u(o.identity.signing.publicKey),
-      },
-      exchange: {
-        privateKey: u(o.identity.exchange.privateKey),
-        publicKey: u(o.identity.exchange.publicKey),
-      },
+  const identity = {
+    signing: {
+      privateKey: u(o.identity.signing.privateKey),
+      publicKey: u(o.identity.signing.publicKey),
     },
+    exchange: {
+      privateKey: u(o.identity.exchange.privateKey),
+      publicKey: u(o.identity.exchange.publicKey),
+    },
+  }
+  return {
+    identity,
+    // D4: re-derive the (deterministic) exchange-key signature on restore — the
+    // serialized format predates it and storing it would be redundant.
+    identityExchangeSignature: signIdentityExchange(identity),
     signedPreKey: {
       id: o.signedPreKey.id,
       keypair: {

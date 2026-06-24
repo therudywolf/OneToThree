@@ -23,6 +23,7 @@ import {
   type KeyPair,
   type RawKey,
   verifyIdentitySignature,
+  identityExchangeSigningMessage,
 } from './keys'
 
 const ENC = new TextEncoder()
@@ -61,6 +62,9 @@ export interface PreKeyBundle {
   identitySigning: RawKey
   /** X25519 public key (derived identity, used for X3DH DH2). */
   identityExchange: RawKey
+  /** Ed25519 signature over identityExchange by identitySigning (D4 — binds the
+   *  DH key to the trusted identity so the key server can't substitute it). */
+  identityExchangeSignature: Uint8Array
   /** Signed pre-key — rotates every ~7 days. */
   signedPreKey: {
     id: number
@@ -75,10 +79,20 @@ export interface PreKeyBundle {
 }
 
 export function verifyBundleSignature(bundle: PreKeyBundle): boolean {
-  return verifyIdentitySignature(
-    bundle.identitySigning,
-    bundle.signedPreKey.publicKey,
-    bundle.signedPreKey.signature
+  // The signed pre-key AND the identity-exchange key must BOTH chain to the
+  // identity signing key. Verifying only the SPK (the old behaviour) left
+  // identityExchange — used directly in DH2/DH4 — substitutable by the server.
+  return (
+    verifyIdentitySignature(
+      bundle.identitySigning,
+      bundle.signedPreKey.publicKey,
+      bundle.signedPreKey.signature
+    ) &&
+    verifyIdentitySignature(
+      bundle.identitySigning,
+      identityExchangeSigningMessage(bundle.identityExchange),
+      bundle.identityExchangeSignature
+    )
   )
 }
 

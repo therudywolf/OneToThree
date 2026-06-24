@@ -36,6 +36,10 @@ const B64URL_ANY = /^[A-Za-z0-9_-]+$/
 const identityBodySchema = z.object({
   signing_public_key: z.string().regex(B64URL_32),
   exchange_public_key: z.string().regex(B64URL_32),
+  // D4: Ed25519 signature over the exchange key by the signing key. Required —
+  // the client cannot establish X3DH without it, so we never store an unsigned
+  // identity (prod has no legacy unsigned rows to grandfather in).
+  exchange_public_key_signature: z.string().regex(B64URL_64),
   generation: z.number().int().min(1).max(1_000_000),
 })
 
@@ -96,7 +100,8 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
     if (existing && body.data.generation === existing.generation) {
       const unchanged =
         existing.signingPublicKey === body.data.signing_public_key &&
-        existing.exchangePublicKey === body.data.exchange_public_key
+        existing.exchangePublicKey === body.data.exchange_public_key &&
+        existing.exchangePublicKeySignature === body.data.exchange_public_key_signature
       if (!unchanged) {
         return reply.status(409).send({
           error: 'IDENTITY_STALE_GENERATION',
@@ -113,6 +118,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
         deviceId,
         signingPublicKey: body.data.signing_public_key,
         exchangePublicKey: body.data.exchange_public_key,
+        exchangePublicKeySignature: body.data.exchange_public_key_signature,
         generation: body.data.generation,
       })
       .onConflictDoUpdate({
@@ -120,6 +126,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
         set: {
           signingPublicKey: body.data.signing_public_key,
           exchangePublicKey: body.data.exchange_public_key,
+          exchangePublicKeySignature: body.data.exchange_public_key_signature,
           generation: body.data.generation,
           createdAt: new Date(),
         },
@@ -249,6 +256,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
           identity: {
             signing_public_key: r.signingPublicKey,
             exchange_public_key: r.exchangePublicKey,
+            exchange_public_key_signature: r.exchangePublicKeySignature,
             generation: r.generation,
           },
         })),
@@ -291,6 +299,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
         identity: {
           signing_public_key: identity.signingPublicKey,
           exchange_public_key: identity.exchangePublicKey,
+          exchange_public_key_signature: identity.exchangePublicKeySignature,
           generation: identity.generation,
         },
       })
@@ -383,6 +392,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
         identity: {
           signing_public_key: bundle.identity.signingPublicKey,
           exchange_public_key: bundle.identity.exchangePublicKey,
+          exchange_public_key_signature: bundle.identity.exchangePublicKeySignature,
           generation: bundle.identity.generation,
         },
         signed_prekey: {

@@ -63,6 +63,7 @@ import {
   generateIdentity,
   generateX25519KeyPair,
   signWithIdentity,
+  signIdentityExchange,
   type IdentityKeyPair,
   type KeyPair,
 } from './keys'
@@ -361,6 +362,7 @@ export function bundleFromResponse(resp: BundleResponse): PreKeyBundle {
     userId: resp.user_id,
     identitySigning: b64urlDecode(resp.identity.signing_public_key),
     identityExchange: b64urlDecode(resp.identity.exchange_public_key),
+    identityExchangeSignature: b64urlDecode(resp.identity.exchange_public_key_signature),
     signedPreKey: {
       id: resp.signed_prekey.pre_key_id,
       publicKey: b64urlDecode(resp.signed_prekey.public_key),
@@ -379,6 +381,8 @@ export interface LocalIdentityBundle {
   identity: IdentityKeyPair
   signedPreKey: { id: number; keypair: KeyPair; signature: Uint8Array }
   oneTimePreKeys: Array<{ id: number; keypair: KeyPair }>
+  /** Ed25519 signature over identityExchange by identitySigning (D4). */
+  identityExchangeSignature: Uint8Array
 }
 
 /**
@@ -401,6 +405,7 @@ export function generateLocalBundle(ownOneTimeCount = 20): LocalIdentityBundle {
     identity,
     signedPreKey: { id: signedId, keypair: signed, signature },
     oneTimePreKeys,
+    identityExchangeSignature: signIdentityExchange(identity),
   }
 }
 
@@ -416,6 +421,7 @@ export async function publishLocalBundle(
   await keysApi.publishIdentity({
     signing_public_key: b64urlEncode(bundle.identity.signing.publicKey),
     exchange_public_key: b64urlEncode(bundle.identity.exchange.publicKey),
+    exchange_public_key_signature: b64urlEncode(bundle.identityExchangeSignature),
     generation,
   })
   await keysApi.publishSignedPrekey({

@@ -18,6 +18,7 @@ import { toastError } from '@/store/toastStore'
 import { useDraftManager } from '@/hooks/use-draft-manager'
 import { useFormatBar } from '@/hooks/use-format-bar'
 import { useMentions } from '@/hooks/use-mentions'
+import { useMessageEditor } from '@/hooks/use-message-editor'
 import { createPoll } from '@/lib/api/polls'
 import {
   MEDIA_ACCESS_ERROR_MESSAGE,
@@ -186,24 +187,11 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
   const { formatToolbar, applyFormat, handleTextareaSelect, hideToolbarSoon, onFormatKeyDown } =
     useFormatBar({ inputRef, containerRef, setMessageText, onDraftChanged })
 
+  // Message-edit: prefill on edit + the re-encrypting PATCH (onSubmit dispatches).
+  const { submitEdit } = useMessageEditor({ cryptoCtx, editingMessage, inputRef, setMessageText })
+
   // Lazily fetch chat members for @mention autocomplete
 
-  // When a message is staged for editing, load its plaintext into the
-  // composer and switch submit into "save edit" mode.
-  useEffect(() => {
-    if (editingMessage?.plaintext) {
-      setMessageText(editingMessage.plaintext)
-      requestAnimationFrame(() => {
-        const el = inputRef.current
-        if (!el) return
-        el.focus()
-        el.style.height = 'auto'
-        el.style.height = `${Math.min(el.scrollHeight, 120)}px`
-        const pos = editingMessage.plaintext!.length
-        try { el.setSelectionRange(pos, pos) } catch { /* noop */ }
-      })
-    }
-  }, [editingMessage])
 
   const {
     startVoiceCapture,
@@ -614,44 +602,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     } finally {
       sendingTextRef.current = false
       setSendingText(false)
-    }
-  }
-
-  // Edit existing message. Re-encrypts the new plaintext with the same
-  // crypto context as the original send (fan-out for DIRECT, group key for
-  // SECTOR, plaintext for PUBLIC) and PATCHes the server.
-  async function submitEdit(messageId: string, newText: string) {
-    if (!cryptoCtx) return
-    try {
-      const { patchMessage } = await import('@/lib/api/messages')
-
-      let editBody: Parameters<typeof patchMessage>[1]
-
-      if (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') {
-        // DIRECT/SELF edits require vault key access to re-encrypt fan-out slots.
-        // This is handled server-side — send null content so the server knows it
-        // is a fan-out message; the client re-fetches the decrypted plaintext.
-        editBody = { content: null, iv: null }
-      } else if (cryptoCtx.mode === 'SECTOR') {
-        // Group: re-encrypt with the current group key
-        const { encryptMessage } = await import('@/lib/crypto')
-        const { ciphertext, iv } = await encryptMessage(cryptoCtx.groupKey, newText)
-        editBody = { content: ciphertext, iv }
-      } else {
-        // PUBLIC: base64-encode plaintext
-        editBody = {
-          content: btoa(unescape(encodeURIComponent(newText))),
-          iv: 'public',
-        }
-      }
-
-      await patchMessage(messageId, editBody)
-
-      // Optimistic update: update plaintext in store
-      useChatStore.getState().updateMessagePlaintext(messageId, newText)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'EDIT_FAILED'
-      toastError(msg, { title: 'EDIT' })
     }
   }
 

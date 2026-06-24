@@ -37,13 +37,15 @@ import {
   parseMentionTrigger,
   type MentionMember,
 } from '@/components/chat/mentions-popover'
-
-function detectMediaType(file: File): 'image' | 'video' | 'audio' | 'file' {
-  if (file.type.startsWith('image/')) return 'image'
-  if (file.type.startsWith('video/')) return 'video'
-  if (file.type.startsWith('audio/')) return 'audio'
-  return 'file'
-}
+import {
+  ALBUM_HARD_CAP,
+  BURN_OPTIONS,
+  canAlbum,
+  detectMediaType,
+  formatBurnTimerShort,
+  formatRecordTime,
+  makeBurnDuration,
+} from '@/lib/composer-format'
 
 const LOCK_THRESHOLD_Y = TELEGRAM_BEHAVIOR.gestures.recordLockYpx
 const CANCEL_THRESHOLD_X = TELEGRAM_BEHAVIOR.gestures.recordCancelXpx
@@ -332,26 +334,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     return () => document.removeEventListener('keydown', onKey, true)
   }, [pollModalOpen])
 
-  /** Returns seconds for burn-after-READ (server sets burn_at at read time). */
-  const makeBurnDuration = (secs: number | null): number | null => secs ?? null
-
-  const BURN_OPTIONS: Array<{ secs: number | null; labelKey: string }> = [
-    { secs: null,    labelKey: 'chat.burnTimerOff' },
-    { secs: 5,       labelKey: 'chat.burnTimer5s'  },
-    { secs: 30,      labelKey: 'chat.burnTimer30s' },
-    { secs: 60,      labelKey: 'chat.burnTimer1m'  },
-    { secs: 3600,    labelKey: 'chat.burnTimer1h'  },
-    { secs: 86400,   labelKey: 'chat.burnTimer1d'  },
-    { secs: 604800,  labelKey: 'chat.burnTimer1w'  },
-  ]
-
-  function formatBurnTimerShort(secs: number | null): string {
-    if (!secs) return ''
-    if (secs < 60)   return `${secs}s`
-    if (secs < 3600) return `${secs / 60}m`
-    if (secs < 86400) return `${secs / 3600}h`
-    return `${secs / 86400}d`
-  }
 
   useEffect(() => {
     if (!composerPickerOpen) return
@@ -494,11 +476,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     await stopRecording(false)
   }, [stopRecording])
 
-  const formatRecordTime = (sec: number) => {
-    const m = Math.floor(sec / 60)
-    const s = sec % 60
-    return `${m}:${s.toString().padStart(2, '0')}`
-  }
 
   const applyFormat = useCallback((tag: string) => {
     const ta = inputRef.current
@@ -640,15 +617,6 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  // TG-Desktop caps albums at 10; we use 9 because it's the visual sweet spot
-  // for the 3x3 grid layout used by AlbumBubble. Larger picks fall back to
-  // sequential single sends (no grouping).
-  const ALBUM_MAX = 9
-  const ALBUM_HARD_CAP = ALBUM_MAX
-  const canAlbum = (items: QueuedFile[]) =>
-    items.length >= 2 &&
-    items.length <= ALBUM_MAX &&
-    items.every((it) => it.mediaType === 'image' || it.mediaType === 'video')
 
   const handlePreviewSend = useCallback(
     async (caption: string, opts: { sendOriginal: boolean }) => {

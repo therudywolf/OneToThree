@@ -31,7 +31,7 @@ import { SettingsChatFoldersPanel } from '@/components/settings-chat-folders-pan
 import { SettingsStickersPanel } from '@/components/settings-stickers-panel'
 import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
-import { patchMyProfile } from '@/lib/api/users'
+import { patchMyProfile, deleteMyAccount } from '@/lib/api/users'
 import { useChatStore } from '@/store/chatStore'
 import { CHAT_SOUND_SCHEMES, type ChatSoundSchemeId } from '@/store/chatStore'
 import {
@@ -130,6 +130,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [killOpen, setKillOpen] = useState(false)
   const [killPhrase, setKillPhrase] = useState('')
   const [killPin, setKillPin] = useState('')
+  // D7 — TOTP step-up for the real account-delete call. When the server
+  // challenges (TOTP enabled), reveal a 6-digit code field and retry.
+  const [killTotpRequired, setKillTotpRequired] = useState(false)
+  const [killTotpCode, setKillTotpCode] = useState('')
   const [allowNewDeviceLinking, setAllowNewDeviceLinking] = useState(false)
   const [autoLockTimeout, setAutoLockTimeoutState] = useState<AutoLockTimeout>(() => loadAutoLockTimeout())
   const [bio, setBio] = useState('')
@@ -614,8 +618,49 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     if (!blob) { setError(t('settings.noLocalVault')); return }
     try { await unwrapPrivateJwkWithPin(blob, killPin) }
     catch { setError(t('settings.killPinBad')); return }
+
+    // If the server already asked for a TOTP step-up on a prior attempt, demand
+    // a well-formed 6-digit code before re-issuing the delete.
+    let totpCode: string | undefined
+    if (killTotpRequired) {
+      totpCode = killTotpCode.replace(/\D/g, '').slice(0, 6)
+      if (totpCode.length !== 6) { setError(t('login.totpSixDigits')); return }
+    }
+
     setBusy(true)
-    void nuclearWipeClient({ revokeServerSessions: true })
+    // D7 — actually delete the account server-side (tombstone messages, drop
+    // devices/blocks/push, scrub media) BEFORE the local nuclear wipe. Without
+    // this the account, public key and discoverability survived a "delete".
+    let result
+    try {
+      result = await deleteMyAccount({ confirm_username: username, totpCode })
+    } catch {
+      setBusy(false)
+      setError(t('settings.killFailed'))
+      return
+    }
+
+    if (result.ok) {
+      // Session cookie is already cleared server-side; sweep all local state.
+      void nuclearWipeClient({ revokeServerSessions: true })
+      return
+    }
+
+    setBusy(false)
+    if (result.reason === 'totp_required') {
+      setKillTotpRequired(true)
+      setError(t('settings.killTotpRequired'))
+      return
+    }
+    if (result.reason === 'totp_invalid') {
+      setKillTotpRequired(true)
+      setKillTotpCode('')
+      setError(t('login.totpInvalid'))
+      return
+    }
+    setError(result.error === 'USERNAME_MISMATCH'
+      ? t('settings.killPhraseMismatch')
+      : t('settings.killFailed'))
   }
 
   // ── Export (runs AFTER gate) ───────────────────────────────────────────────
@@ -1210,6 +1255,14 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                       <label className="terminal-label" htmlFor="kill-pin">{t('settings.killPinLabel')}</label>
                       <input id="kill-pin" type="password" className="terminal-input mb-2 text-[10px]" value={killPin}
                         onChange={(e) => setKillPin(e.target.value)} autoComplete="off" />
+                      {killTotpRequired ? (
+                        <>
+                          <label className="terminal-label" htmlFor="kill-totp">{t('settings.killTotpLabel')}</label>
+                          <input id="kill-totp" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+                            className="terminal-input mb-2 text-[10px]" value={killTotpCode}
+                            onChange={(e) => setKillTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                        </>
+                      ) : null}
                       <TerminalGlitchButton type="button" disabled={busy} onClick={() => void runGlobalKillSwitch()}
                         className="w-full !border-danger/40 !py-2 !text-[10px] !text-danger/80 hover:!bg-danger/30">
                         {chromeLabel(t('settings.killExecute'))}

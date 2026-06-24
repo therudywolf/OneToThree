@@ -713,8 +713,11 @@ export const identityKeys = pgTable(
 
 /**
  * Signed pre-keys rotate every N days. Only one record is "current" —
- * clients overwrite the previous row on rotation. The `signature` field
- * is Ed25519(signingPrivateKey, exchangePublicKey).
+ * clients overwrite the previous row on rotation. The `signature` field is
+ * Ed25519(signingPrivateKey, THIS ROW's `publicKey`) — i.e. the identity
+ * signing key vouches for the signed pre-key's own X25519 public key, NOT the
+ * identity exchange key. (`identityKeys.exchangePublicKey` is currently
+ * unsigned — see backlog D4.)
  */
 export const signedPrekeys = pgTable(
   'signed_prekeys',

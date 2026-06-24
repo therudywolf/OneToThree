@@ -6,9 +6,12 @@
  * Replaces the P2P mesh for group calls when LiveKit is configured.
  * All media flows through the SFU server — no direct IP between participants.
  *
- * Uses LiveKit's built-in E2EE (Insertable Streams / AES-GCM) when the server
- * returns a call_e2ee_key. The key is a 32-byte HMAC-SHA256 per-session
- * secret shared among all participants in the room.
+ * Uses LiveKit Insertable-Streams frame encryption (AES-GCM) when the server
+ * returns a call_e2ee_key — a per-session key shared among all participants in
+ * the room. NOTE: this encrypts media against a passive SFU/network observer,
+ * but it is NOT end-to-end against the application server: the server derives
+ * the key from its own LIVEKIT_API_SECRET and can reconstruct it (see call.ts
+ * trust-boundary note + backlog N11). Do not market group calls as E2EE.
  */
 
 import {

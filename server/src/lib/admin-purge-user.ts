@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { chatMembers, chats, messages, users } from '../db/schema.js'
+import { chatMembers, chats, messageDeliveries, messages, users } from '../db/schema.js'
+import { DELETED_USER_ID, DELETED_USER_USERNAME } from './deleted-user.js'
 import {
   createS3Client,
   deleteObjectIfExists,
@@ -134,6 +135,44 @@ export async function adminPurgeUser(params: {
     if (directIds.length > 0) {
       await tx.delete(chats).where(inArray(chats.id, directIds))
     }
+
+    // Tombstone the target's remaining (group/sector) messages before deleting
+    // the user row. `messages.sender_id` is ON DELETE CASCADE, so without this
+    // the delete would hard-delete every message the target ever sent in
+    // surviving group chats — gapping every OTHER member's history with no
+    // "[deleted]" marker. Direct-chat messages are already gone (their chats
+    // were deleted above), so only non-direct messages survive to be redacted.
+    // Mirrors the self-delete path in routes/users.ts.
+    const remaining = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(eq(messages.senderId, params.targetUserId))
+    if (remaining.length > 0) {
+      await tx
+        .insert(users)
+        .values({ id: DELETED_USER_ID, username: DELETED_USER_USERNAME, publicKeyJwk: '' })
+        .onConflictDoNothing()
+      // Drop per-device ciphertext slots so a peer holding the ratchet can't
+      // decrypt the surviving rows back to the original text.
+      await tx
+        .delete(messageDeliveries)
+        .where(inArray(messageDeliveries.messageId, remaining.map((m) => m.id)))
+      await tx
+        .update(messages)
+        .set({
+          senderId: DELETED_USER_ID,
+          content: '[deleted]',
+          iv: 'system:v1',
+          mediaPath: null,
+          mediaType: null,
+          mediaIv: null,
+          protocolVersion: 1,
+          drHeader: null,
+          drInit: null,
+        })
+        .where(eq(messages.senderId, params.targetUserId))
+    }
+
     await tx.delete(users).where(eq(users.id, params.targetUserId))
   })
 

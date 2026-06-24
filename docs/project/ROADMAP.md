@@ -138,9 +138,10 @@ for all Phase-3 refactor targets; coverage thresholds enforced.
   `bf4a490`). Default env stays `node`; component tests opt into jsdom per-file via `// @vitest-environment
   jsdom`. `client/vitest.setup.ts` wires jest-dom matchers. **Template test:**
   `client/src/components/chat/explore-modal.test.tsx`. Use it as the pattern for the characterization tests.
-- [ ] **Characterization tests BEFORE Phase 3** for each refactor target: `chat-app`, `chat-sidebar`,
+- [~] **Characterization tests BEFORE Phase 3** for each refactor target: `chat-app`, `chat-sidebar`,
   `settings-modal`, `chat-input`, `chat-terminal` — render + key interactions in **both shells**, as the
-  refactor net. (Harness now exists — this is the open work.)
+  refactor net. **`chat-input` DONE** (`chat-input.test.tsx`, 2026-06-24) and being used to drive its split;
+  the other four targets still need their nets before they are split.
 
 **Coverage targets (prod-grade):**
 
@@ -233,7 +234,12 @@ zones. Every extraction lands behind its characterization tests, verified in **b
   Fold in a11y here: focus trap on mobile search overlay, **fix the "⋮ menu does nothing in terminal shell"**
   bug (verify CSS z-index/pointer-events at runtime — code renders unconditionally), i18n the 3 hardcoded
   strings (`"E2E messenger"`, `"Security info"`, `"Chat options"`).
-- [ ] **`chat-input.tsx` (1413)** → `MessageEditor`, `DraftManager`, `MentionHelper`, `FormatBar`.
+- [~] **`chat-input.tsx` (1420→1384)** → `MessageEditor`, `DraftManager`, `MentionHelper`, `FormatBar`.
+  **In progress (2026-06-24):** characterization net landed first (`chat-input.test.tsx`, 9 jsdom
+  tests locking send/reply/edit/burn + the chat-switch reset), then two extractions behind it —
+  `lib/composer-format.ts` (pure utils, commit `91771c3`) and `hooks/use-draft-manager.ts`
+  (DraftManager, commit `4b3a364`). **Remaining:** `FormatBar`, `MentionHelper`, then `MessageEditor`
+  (riskiest — the E2EE re-encrypt path; extract its pure `buildEditBody` first). Each behind the net.
 - [ ] **`chat-terminal.tsx` (1423)** → `MessageScroller`, `DeliveryStatus`, timestamp utils.
 - [ ] **`use-webrtc.ts` (1275)** → `RTCPeerManager` class + thin media/ICE hooks.
 - [ ] **Server fat routes → service layer:** `chats.ts` (1495) → `ChatService`/`MemberService`/`InviteService`;

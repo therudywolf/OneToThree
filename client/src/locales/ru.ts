@@ -759,6 +759,17 @@ const ru = {
   'vault.unlockBiometric': 'Разблокировать биометрией',
   'vault.usePinInstead': 'Ввести пароль вручную',
   'vault.enableBiometric': 'Включить биометрию',
+  'vault.unlockRequired': 'Введите пароль, чтобы продолжить',
+  'vault.unlocking': 'Разблокируем…',
+
+  // [NO LOCAL VAULT - это устройство ещё не настроено]
+  'noLocalVault.title': 'Это устройство ещё не настроено',
+  'noLocalVault.body': 'Ваши сообщения приватны и защищены. У этого устройства пока нет вашего ключа — это нормально.',
+  'noLocalVault.reassure': 'Ваш аккаунт и сообщения в безопасности.',
+  'noLocalVault.optionLinkTitle': 'Добавить это устройство',
+  'noLocalVault.optionLink': 'На другом устройстве, где вы уже вошли, добавьте это устройство (понадобится ваш пароль).',
+  'noLocalVault.optionRecoveryTitle': 'Или войдите с фразой восстановления',
+  'noLocalVault.optionRecovery': 'Используйте фразу восстановления, которую вы сохранили при создании аккаунта.',
 
   // [SETTINGS - AUTO-LOCK]
   'settings.autoLockTitle': 'Автоблокировка',

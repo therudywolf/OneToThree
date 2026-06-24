@@ -45,8 +45,8 @@ import {
 } from '@/store/themeStore'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { QRCodeSVG } from 'qrcode.react'
-import { generateRecoveryMnemonic, deriveRecoveryAuthKeypair, RECOVERY_ARGON2_PARAMS } from '@/lib/recovery/recovery-secret'
-import { getRecoveryStatus, getRecoverySetupChallenge, enableRecovery, disableRecovery, type RecoveryStatus } from '@/lib/api/recovery'
+import { prepareRecoveryEnrollment, commitRecoveryEnrollment } from '@/lib/recovery/enroll-recovery'
+import { getRecoveryStatus, getRecoverySetupChallenge, disableRecovery, type RecoveryStatus } from '@/lib/api/recovery'
 import { importEcdsaPrivateKeyForSign, signUtf8WithEcdsaP256 } from '@/lib/crypto'
 import { parseVaultPlaintext } from '@/lib/vault-keyring'
 import { getTrustedPeerCount } from '@/lib/trust-store'
@@ -415,28 +415,16 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     setError(null)
     setRecoveryBusy(true)
     try {
-      const blob = readVaultBlob(userId)
-      if (!blob) { setError(t('settings.noLocalVault')); return }
-      const keyring = await unwrapPrivateJwkWithPin(blob, pin)
-      const parsed = parseVaultPlaintext(keyring)
-      if (!parsed || parsed.kind !== 'V2') throw new Error('INVALID_VAULT_FORMAT')
-      const mnemonic = generateRecoveryMnemonic()
-      const { publicJwk } = deriveRecoveryAuthKeypair(mnemonic)
-      // Light Argon2 — a 256-bit phrase needs no heavy stretching, so this stays
-      // fast even in mobile WebViews. The login vault keeps the heavy default.
-      const recoveryBlob = await wrapPrivateJwkWithPin(keyring, mnemonic, RECOVERY_ARGON2_PARAMS)
-      // Self-check before we ever upload: the sealed blob MUST decrypt back to
-      // the same keyring with the phrase, or recovery would be silently bricked
-      // (RECOVERY_DECRYPT_FAILED) at the worst possible moment.
-      if ((await unwrapPrivateJwkWithPin(recoveryBlob, mnemonic)) !== keyring) {
-        throw new Error('RECOVERY_SELF_CHECK_FAILED')
-      }
+      // Shared with the post-register onboarding step — see lib/recovery/enroll-recovery.
+      const enrollment = await prepareRecoveryEnrollment(userId, pin)
       setRecoveryRequireTotp(false)
       setRecoverySavedConfirmed(false)
       setRecoveryShowQr(false)
-      setRecoveryEnable({ mnemonic, recoveryBlob: JSON.stringify(recoveryBlob), publicJwk, ecdsaPrivateJwk: parsed.ecdsaJwk })
+      setRecoveryEnable(enrollment)
     } catch (e) {
-      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'settings.toggleFailed'))
+      const msg = e instanceof Error ? e.message : ''
+      if (msg === 'NO_LOCAL_VAULT') { setError(t('settings.noLocalVault')); return }
+      setError(explainSettingsError(msg, t, 'settings.toggleFailed'))
     } finally { setRecoveryBusy(false) }
   }
 
@@ -445,12 +433,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     setError(null)
     setRecoveryBusy(true)
     try {
-      await enableRecovery({
-        recovery_vault_blob: recoveryEnable.recoveryBlob,
-        recovery_auth_pub_jwk: recoveryEnable.publicJwk,
-        require_totp: recoveryRequireTotp,
-        ...(await signVaultProof(recoveryEnable.ecdsaPrivateJwk)),
-      })
+      await commitRecoveryEnrollment(recoveryEnable, recoveryRequireTotp)
       setRecoveryEnable(null)
       setRecoverySavedConfirmed(false)
       try { setRecoveryStatus(await getRecoveryStatus()) } catch { /* refreshed lazily */ }

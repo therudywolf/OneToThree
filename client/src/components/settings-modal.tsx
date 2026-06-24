@@ -1307,7 +1307,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
               <button type="button" disabled={profileBusy}
                 onClick={() => {
                   setProfileBusy(true); setError(null)
-                  void patchMyProfile({ bio, status_text: statusText, display_name: displayName || undefined, last_seen_privacy: lastSeenPrivacy, social_links: socialLinks.filter((l) => l.url.trim()) })
+                  void patchMyProfile({ bio, status_text: statusText, display_name: displayName.trim(), last_seen_privacy: lastSeenPrivacy, social_links: socialLinks.filter((l) => l.url.trim()) })
                     .then(() => { setSaved(true); setTimeout(() => setSaved(false), 1500) })
                     .catch((e) => { setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'profile.saveFailed')) })
                     .finally(() => setProfileBusy(false))

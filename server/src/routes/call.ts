@@ -26,6 +26,7 @@ import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { readSecret } from '../lib/read-secret.js'
 import { getRedis } from '../lib/redis.js'
 import { getCallMediaMode } from '../lib/call-media-mode.js'
+import { verifyLivekitWebhook } from '../lib/livekit-webhook.js'
 
 const tokenBodySchema = z.object({
   room: z
@@ -60,12 +61,41 @@ function signLivekitToken(
 
 const callSessionFallback = new Map<string, string>()
 
+/** Default LiveKit token / E2EE-session lifetime: 2h, ample for a long call. */
+const DEFAULT_CALL_TOKEN_TTL_SECONDS = 60 * 60 * 2
+/** Hard ceiling so an operator override cannot recreate the 6h+ stale-key window. */
+const MAX_CALL_TOKEN_TTL_SECONDS = 60 * 60 * 4
+
+/**
+ * Resolve the LiveKit token TTL (seconds), bounded to the expected call
+ * duration. Operators may tune `LIVEKIT_TOKEN_TTL_SECONDS` but the value is
+ * clamped to [5min, {@link MAX_CALL_TOKEN_TTL_SECONDS}] so the E2EE room key
+ * cannot outlive a real call by hours (D20).
+ */
+export function resolveCallTokenTtlSeconds(): number {
+  const raw = Number.parseInt(process.env.LIVEKIT_TOKEN_TTL_SECONDS ?? '', 10)
+  if (!Number.isFinite(raw)) return DEFAULT_CALL_TOKEN_TTL_SECONDS
+  return Math.max(60 * 5, Math.min(raw, MAX_CALL_TOKEN_TTL_SECONDS))
+}
+
 function resolveAuthorizedRoomId(room: string): string | null {
   const candidate = room.includes(':') ? room.slice(room.lastIndexOf(':') + 1) : room
   return z.string().uuid().safeParse(candidate).success ? candidate : null
 }
 
 export const callRoutes: FastifyPluginAsync = async (app) => {
+  // LiveKit posts webhooks with Content-Type: application/webhook+json. The body
+  // hash inside the signing JWT is computed over the *raw* bytes, so we must
+  // preserve them verbatim rather than re-serialize a parsed object. This parser
+  // is encapsulated to this plugin and stores the raw string on req.body.
+  app.addContentTypeParser(
+    'application/webhook+json',
+    { parseAs: 'string' },
+    (_req, body, done) => {
+      done(null, body)
+    }
+  )
+
   app.post('/call/token', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
     if (!u || !assertAuthed(reply, u)) return
@@ -99,7 +129,11 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const now = Math.floor(Date.now() / 1000)
-    const ttlSeconds = 60 * 60 * 6 // 6 hours — ample for a long call.
+    // D20: bound the token TTL to the expected call duration. A 6h token meant a
+    // former member's E2EE key (derived below, same Redis session) stayed valid
+    // far past any real call. 2h is ample for a long call; the client re-fetches
+    // a fresh token (and re-derives the room key) if a call somehow runs longer.
+    const ttlSeconds = resolveCallTokenTtlSeconds()
 
     const token = signLivekitToken(apiKey, apiSecret, {
       iss: apiKey,
@@ -129,7 +163,13 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
     // the room key from participant ECDH material — tracked as backlog N11.
     const redisKey = `call:session:${roomId}`
     const redis = getRedis()
-    const CALL_SESSION_TTL = 60 * 60 * 8 // 8 hours
+    // D16/D20: bound the session key to the token window (+ a short grace) rather
+    // than a fixed 8h. The authoritative teardown is the LiveKit `room_finished`
+    // webhook (below) which deletes this key the moment the room empties, giving
+    // the next call a fresh room key. The TTL is only the safety net for a missed
+    // webhook — keeping it near the token lifetime avoids a stale key lingering
+    // for hours and being decryptable by a former member who cached it.
+    const CALL_SESSION_TTL = ttlSeconds + 60 * 5
     let callSessionId: string
     if (redis) {
       const existing = await redis.get(redisKey)
@@ -176,4 +216,68 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       group_relay_enabled: mediaMode === 'origin_safe',
     })
   })
+
+  /**
+   * POST /call/livekit/webhook — LiveKit server webhook sink.
+   *
+   * D16/D20: In LiveKit mode the mesh `group_call:leave` (which tore down the
+   * `call:session:${roomId}` Redis key) is never sent, so the per-call E2EE room
+   * key persisted for its full TTL and never rotated — a former member who
+   * cached the key could decrypt a *later* call in the same room. LiveKit fires
+   * `room_finished` the moment a room empties; we delete the session key here so
+   * the next call in that room derives a fresh key.
+   *
+   * Auth is the LiveKit webhook signature (HS256 JWT over the raw body, signed
+   * with the API secret) — there is no user session. We always return 200 for
+   * authenticated-but-uninteresting events so LiveKit does not retry.
+   */
+  app.post(
+    '/call/livekit/webhook',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const apiKey = readSecret('LIVEKIT_API_KEY')
+      const apiSecret = readSecret('LIVEKIT_API_SECRET')
+      if (!apiKey || !apiSecret) {
+        return reply.status(503).send({ error: 'LIVEKIT_NOT_CONFIGURED' })
+      }
+
+      const rawBody = typeof req.body === 'string' ? req.body : ''
+      const result = verifyLivekitWebhook(
+        req.headers.authorization,
+        rawBody,
+        apiKey,
+        apiSecret
+      )
+      if (!result.ok) {
+        req.log.warn({ reason: result.reason }, 'livekit webhook rejected')
+        return reply.status(401).send({ error: 'INVALID_WEBHOOK_SIGNATURE' })
+      }
+
+      const event = result.event
+      const eventType = typeof event.event === 'string' ? event.event : null
+      if (eventType === 'room_finished') {
+        const room = event.room
+        const roomName =
+          room && typeof room === 'object' && typeof (room as { name?: unknown }).name === 'string'
+            ? (room as { name: string }).name
+            : null
+        const roomId = roomName ? resolveAuthorizedRoomId(roomName) : null
+        if (roomId) {
+          const redis = getRedis()
+          if (redis) {
+            try {
+              await redis.del(`call:session:${roomId}`)
+            } catch (err) {
+              req.log.warn({ err, roomId }, 'livekit webhook: failed to drop call session key')
+            }
+          } else {
+            callSessionFallback.delete(roomId)
+          }
+          req.log.info({ roomId }, 'livekit room_finished: rotated call E2EE session')
+        }
+      }
+
+      return reply.status(200).send({ ok: true })
+    }
+  )
 }

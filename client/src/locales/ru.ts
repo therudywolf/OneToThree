@@ -895,6 +895,8 @@ const ru = {
   'stickers.alreadyMine': 'Уже есть в вашей коллекции',
   'stickers.addedMine': 'Добавлено в вашу коллекцию',
   'stickers.favorites': 'Избранные стикеры',
+  'stickers.favorite': 'Добавить в избранное',
+  'stickers.unfavorite': 'Убрать из избранного',
   'gif.favorites': 'Избранные',
   'gif.addedToFavorites': 'GIF добавлен в избранное',
   'gif.favoriteAddFailed': 'Не удалось сохранить GIF в избранное.',

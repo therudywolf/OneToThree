@@ -16,6 +16,7 @@ import { useTranslation } from '@/hooks/use-translation'
 import type { DecryptedMessage } from '@/types/chat'
 import { useThemeStore } from '@/store/themeStore'
 import { parseStickerEnvelope } from '@/lib/attachment-envelope'
+import { QUICK_REACTIONS, addRecentlyUsed } from '@/lib/quick-reactions'
 
 type Action =
   | 'reply'
@@ -221,9 +222,9 @@ export function MessageActions({
 
 /**
  * Quick-reaction bar: shown on hover (desktop) or alongside action menu.
- * Shows 5 most-used emoji for quick tap reaction.
+ * Shows the first 5 of the shared QUICK_REACTIONS set for quick tap reaction.
  */
-const QUICK_REACTIONS = ['\u{1F44D}', '\u{2764}\u{FE0F}', '\u{1F602}', '\u{1F62E}', '\u{1F44E}']
+const HOVER_BAR_EMOJIS = QUICK_REACTIONS.slice(0, 5)
 
 type QuickReactProps = {
   onReact: (emoji: string) => void
@@ -245,12 +246,13 @@ export function QuickReactBar({ onReact }: QuickReactProps) {
             : 'border border-neon-cyan/40 bg-void shadow-[0_0_12px_rgba(0,255,255,0.08)]'
       }`}
     >
-      {QUICK_REACTIONS.map((emoji) => (
+      {HOVER_BAR_EMOJIS.map((emoji) => (
         <button
           key={emoji}
           type="button"
           onClick={(e) => {
             e.stopPropagation()
+            addRecentlyUsed(emoji)
             onReact(emoji)
           }}
           className={`flex h-7 w-7 items-center justify-center text-base transition-transform active:scale-95 ${

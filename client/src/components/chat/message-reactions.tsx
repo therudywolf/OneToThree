@@ -4,27 +4,11 @@ import { useState } from 'react'
 import { SmilePlus } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTranslation } from '@/hooks/use-translation'
-
-const RECENTLY_USED_KEY = 'p13_recent_reactions'
-const QUICK_EMOJIS = ['\u{1F44D}', '\u{2764}\u{FE0F}', '\u{1F602}', '\u{1F62E}', '\u{1F44E}', '\u{1F525}', '\u{1F64F}', '\u{1F60D}']
-
-function getRecentlyUsed(): string[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = localStorage.getItem(RECENTLY_USED_KEY)
-    return raw ? (JSON.parse(raw) as string[]).slice(0, 8) : []
-  } catch {
-    return []
-  }
-}
-
-function addRecentlyUsed(emoji: string) {
-  try {
-    const current = getRecentlyUsed()
-    const next = [emoji, ...current.filter((e) => e !== emoji)].slice(0, 8)
-    localStorage.setItem(RECENTLY_USED_KEY, JSON.stringify(next))
-  } catch { /* ignore */ }
-}
+import {
+  QUICK_REACTIONS,
+  getRecentlyUsed,
+  addRecentlyUsed,
+} from '@/lib/quick-reactions'
 
 type Props = {
   reactions: Record<string, string[]>
@@ -47,8 +31,8 @@ export function MessageReactions({
 
   const recentEmojis = getRecentlyUsed()
   const pickerEmojis = recentEmojis.length > 0
-    ? [...new Set([...recentEmojis, ...QUICK_EMOJIS])].slice(0, 12)
-    : QUICK_EMOJIS
+    ? [...new Set([...recentEmojis, ...QUICK_REACTIONS])].slice(0, 12)
+    : [...QUICK_REACTIONS]
 
   return (
     <div className="mt-1 flex flex-wrap items-center gap-1">

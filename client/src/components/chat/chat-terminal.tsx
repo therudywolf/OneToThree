@@ -151,20 +151,34 @@ export function ChatTerminal({
 
   // Tick counter so burn-timer countdowns re-render every second.
   const [, setBurnTick] = useState(0)
+  // Stable signature of the *armed* burn timers (id+deadline). Only changes when
+  // a burn timer is added/removed/retimed — NOT on every unrelated message
+  // append or read receipt. Keying the interval off this string means we don't
+  // tear down and recreate the per-second timer on every store update (D22).
+  const burnSignature = useMemo(
+    () =>
+      messages
+        .filter((m) => m.burn_at)
+        .map((m) => `${m.id}:${m.burn_at}`)
+        .sort()
+        .join('|'),
+    [messages]
+  )
   useEffect(() => {
-    const hasBurning = messages.some((m) => m.burn_at)
-    if (!hasBurning) return
+    if (!burnSignature) return
     const id = setInterval(() => {
       const now = Date.now()
-      messages.forEach((m) => {
+      // Read the latest messages from the store inside the tick so we always act
+      // on current state without listing `messages` as an effect dependency.
+      for (const m of useChatStore.getState().messages) {
         if (m.burn_at && new Date(m.burn_at).getTime() <= now) {
           removeMessage(m.id)
         }
-      })
+      }
       setBurnTick((t) => t + 1)
     }, 1000)
     return () => clearInterval(id)
-  }, [messages, removeMessage])
+  }, [burnSignature, removeMessage])
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const historyDecryptBusy = useUnreadStore((s) => s.historyDecryptBusy)

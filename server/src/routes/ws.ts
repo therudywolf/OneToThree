@@ -24,6 +24,7 @@ import {
   touchLastSeenPing,
 } from '../lib/presence.js'
 import { isBlocked } from '../lib/block-check.js'
+import { getCachedCallAuth, setCachedCallAuth } from '../lib/call-auth-cache.js'
 import {
   broadcastToUsers,
   hasActiveSocket,
@@ -404,6 +405,41 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const rtcParsed = webrtcSignalSchema.safeParse(json)
         if (rtcParsed.success) {
           const { targetUserId, signalData } = rtcParsed.data
+          const signalKind =
+            signalData && typeof signalData === 'object'
+              ? (signalData as { kind?: unknown }).kind
+              : undefined
+
+          // D14: Relay audio frames flow at ~20-30 fps/peer. Re-running the
+          // (sender,target) shared-chat + block authorization on every frame
+          // costs ~3 DB queries/frame and is trivially amplifiable. Resolve the
+          // decision ONCE on the relay handshake (relay_offer/relay_answer) and
+          // cache it for a short TTL; relay_frame frames consult the cache and
+          // skip the DB entirely once authorized.
+          const isRelayFrame = signalKind === 'relay_frame'
+          const isRelayHandshake =
+            signalKind === 'relay_offer' || signalKind === 'relay_answer'
+
+          if (isRelayFrame) {
+            const cached = getCachedCallAuth(user.id, targetUserId)
+            if (cached === true) {
+              // Authorized within TTL — skip per-frame DB work entirely.
+              sendToUser(targetUserId, {
+                type: 'webrtc_signal',
+                fromUserId: user.id,
+                signalData,
+              })
+              return
+            }
+            if (cached === false) {
+              // A prior handshake within TTL was explicitly denied — drop.
+              safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+              return
+            }
+            // No fresh cache entry (TTL lapsed or no handshake seen): fall
+            // through to a full DB authorization, which also refreshes the
+            // cache below.
+          }
 
           // FIX 3: Verify sender and target share at least one chat
           const senderChats = await db
@@ -412,6 +448,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             .where(eq(chatMembers.userId, user.id))
           const senderChatIds = senderChats.map((r) => r.chatId)
           if (senderChatIds.length === 0) {
+            if (isRelayFrame || isRelayHandshake) {
+              setCachedCallAuth(user.id, targetUserId, false)
+            }
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NO_SHARED_CHAT' }))
             return
           }
@@ -426,13 +465,25 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             )
             .limit(1)
           if (!targetInShared) {
+            if (isRelayFrame || isRelayHandshake) {
+              setCachedCallAuth(user.id, targetUserId, false)
+            }
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NO_SHARED_CHAT' }))
             return
           }
 
           if (await isBlocked(user.id, targetUserId)) {
+            if (isRelayFrame || isRelayHandshake) {
+              setCachedCallAuth(user.id, targetUserId, false)
+            }
             safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
             return
+          }
+
+          // Authorized. Cache the decision so the relay_frame fast-path above can
+          // skip the DB for the rest of this signaling session.
+          if (isRelayFrame || isRelayHandshake) {
+            setCachedCallAuth(user.id, targetUserId, true)
           }
 
           // WARNING: This relay must stay opaque. Never introspect or mutate SDP/ICE fields,

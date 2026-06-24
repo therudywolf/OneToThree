@@ -243,8 +243,22 @@ const en = {
   'guide.zeroKnowledge.body': 'The server sees only encrypted data and public labels. It knows nothing about your messages.',
   'guide.discoverability.title': 'Profile Visibility',
   'guide.discoverability.body': 'Control your visibility in Settings. Invite links work regardless of visibility settings.',
-  'guide.backup.title': 'Backup Key',
-  'guide.backup.body': 'Export your key to a file. This is the only way to recover access on a new device.',
+  'guide.backup.title': 'Save your account backup',
+  'guide.backup.body': 'Download a small backup file that lets you sign in on a new device. You will also need your password to open it. If you ever forget that password, a recovery phrase you can set up in Settings is your fallback way back in.',
+
+  // [POST-REGISTER BACKUP PROMPT]
+  'postRegister.title': 'Save your account backup (takes a minute)',
+  'postRegister.body': 'Your account key is stored only on this device. Download a backup now so you can always get back in — even if you lose this browser.',
+  'postRegister.encryptedNote': 'This backup file is locked with your password — only you can open it.',
+  'postRegister.saveHint': 'Keep it somewhere safe — a USB stick, your cloud storage, or printed on paper. Don’t email it or put it in a shared folder.',
+  'postRegister.download': 'Download backup',
+  'postRegister.downloadAgain': 'Download backup again',
+  'postRegister.downloaded': 'Backup downloaded. Check your downloads folder before you continue.',
+  'postRegister.error': 'We couldn’t create the backup. Please try downloading it again before continuing.',
+  'postRegister.savedConfirm': 'I’ve saved my backup in a safe place',
+  'postRegister.continue': 'I’ve saved my backup — continue',
+  'postRegister.skip': 'Skip for now',
+  'postRegister.skipConsequence': 'If you skip and later lose this browser, your account can’t be recovered.',
 
   // [SIDEBAR]
   'sidebar.localGhostSearch': 'Search messages...',

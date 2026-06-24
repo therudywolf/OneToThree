@@ -805,6 +805,10 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
           }
+          if (await isBlocked(user.id, target_user_id)) {
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+            return
+          }
           sendToUser(target_user_id, {
             type: 'group_call:offer',
             room_id,
@@ -826,6 +830,10 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
           }
+          if (await isBlocked(user.id, target_user_id)) {
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+            return
+          }
           sendToUser(target_user_id, {
             type: 'group_call:answer',
             room_id,
@@ -843,6 +851,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
           }
+          if (await isBlocked(user.id, target_user_id)) return
           sendToUser(target_user_id, {
             type: 'group_call:ice',
             room_id,
@@ -904,6 +913,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
           }
+          // High-frequency audio frames: drop silently when blocked (no error
+          // flood). Mirrors the block boundary the 1:1 webrtc_signal enforces.
+          if (await isBlocked(user.id, target_user_id)) return
           sendToUser(target_user_id, {
             type: 'group_call:relay_frame',
             room_id,

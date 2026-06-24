@@ -28,7 +28,7 @@
     "@tanstack/react-virtual": "^3.13.23",
     "browser-image-compression": "^2.0.2",
     "dexie": "^4.4.2",
-    "dompurify": "^3.4.1",
+    "dompurify": "^3.4.11",
     "emoji-picker-react": "^4.18.0",
     "emoji-regex": "^9.2.2",
     "framer-motion": "^11.18.2",

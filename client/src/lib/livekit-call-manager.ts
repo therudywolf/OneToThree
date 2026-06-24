@@ -119,6 +119,15 @@ export async function joinLiveKitCall(
   // Wire E2EE if the server supplied a room key.
   const keyProvider = await makeE2eeKeyProvider(tokenResp.call_e2ee_key)
 
+  // Fail closed: when the server issued a room key, E2EE is expected. If the key
+  // provider could not be built (SubtleCrypto unavailable, bad key bytes), do
+  // NOT silently connect plaintext-to-SFU — abort the join so the caller falls
+  // back to the mesh path. Only proceed without e2ee when no key was issued.
+  if (tokenResp.call_e2ee_key && !keyProvider) {
+    console.warn('[livekit] E2EE key issued but provider setup failed — aborting join (mesh fallback)')
+    return false
+  }
+
   const roomOptions: ConstructorParameters<typeof Room>[0] = {
     adaptiveStream: true,
     dynacast: true,
@@ -126,10 +135,17 @@ export async function joinLiveKitCall(
 
   if (keyProvider) {
     // The E2EE worker was copied to /public by the postinstall script.
-    roomOptions.e2ee = {
-      keyProvider,
-      worker: new Worker('/livekit-e2ee-worker.js'),
+    // Worker construction can also throw (asset missing/blocked) — that leaves
+    // E2EE non-functional, so treat it the same as a provider failure: abort
+    // rather than connect to the SFU without working frame encryption.
+    let worker: Worker
+    try {
+      worker = new Worker('/livekit-e2ee-worker.js')
+    } catch (err) {
+      console.warn('[livekit] E2EE worker failed to start — aborting join (mesh fallback)', err)
+      return false
     }
+    roomOptions.e2ee = { keyProvider, worker }
   }
 
   const room = new Room(roomOptions)

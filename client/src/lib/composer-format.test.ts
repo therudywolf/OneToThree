@@ -7,6 +7,7 @@ import {
   formatBurnTimerShort,
   formatRecordTime,
   makeBurnDuration,
+  wrapSelection,
 } from './composer-format'
 
 const file = (type: string) => ({ type } as unknown as File)
@@ -57,5 +58,21 @@ describe('composer-format', () => {
   it('BURN_OPTIONS lead with "off" and include the 30s preset', () => {
     expect(BURN_OPTIONS[0]).toEqual({ secs: null, labelKey: 'chat.burnTimerOff' })
     expect(BURN_OPTIONS.find((o) => o.secs === 30)?.labelKey).toBe('chat.burnTimer30s')
+  })
+
+  it('wrapSelection wraps the selection and shifts the caret; null when empty', () => {
+    // "ab[cd]ef" wrapped with ** -> "ab**cd**ef", selection over "cd".
+    expect(wrapSelection('abcdef', 2, 4, '**')).toEqual({
+      text: 'ab**cd**ef',
+      selStart: 4,
+      selEnd: 6,
+    })
+    expect(wrapSelection('hello', 0, 5, '_')).toEqual({
+      text: '_hello_',
+      selStart: 1,
+      selEnd: 6,
+    })
+    // No selection (start === end) -> null (nothing to wrap).
+    expect(wrapSelection('abc', 1, 1, '`')).toBeNull()
   })
 })

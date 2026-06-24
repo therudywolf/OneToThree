@@ -74,7 +74,7 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
     }`}>
       <div>
         <p className={`text-[9px] ${isRetro ? 'p13-classic-copy' : 'uppercase tracking-widest text-neon-cyan/80'}`}>
-          [ ПОДТВЕРЖДЕНИЕ ЛИЧНОСТИ ]
+          {t('vault.unlockRequired')}
         </p>
         <p className="mt-1 text-[9px] text-text-muted">{actionLabel}</p>
       </div>

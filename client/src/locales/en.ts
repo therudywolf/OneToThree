@@ -757,6 +757,17 @@ const en = {
   'vault.unlockBiometric': 'Unlock with biometrics',
   'vault.usePinInstead': 'Use password instead',
   'vault.enableBiometric': 'Enable biometric unlock',
+  'vault.unlockRequired': 'Enter your password to continue',
+  'vault.unlocking': 'Unlocking…',
+
+  // [NO LOCAL VAULT - this device not set up yet]
+  'noLocalVault.title': "This device isn't set up yet",
+  'noLocalVault.body': "Your messages are private and locked. This device doesn't have your key yet — that's normal.",
+  'noLocalVault.reassure': 'Your account and messages are safe.',
+  'noLocalVault.optionLinkTitle': 'Add this device',
+  'noLocalVault.optionLink': "From another device you're already signed in on, add this device (you'll need your password).",
+  'noLocalVault.optionRecoveryTitle': 'Or sign in with your recovery phrase',
+  'noLocalVault.optionRecovery': 'Use the recovery phrase you saved when you created your account.',
 
   // [SETTINGS - AUTO-LOCK]
   'settings.autoLockTitle': 'Auto-Lock',

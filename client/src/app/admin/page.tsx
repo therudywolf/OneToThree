@@ -26,6 +26,7 @@ import {
   postAdminMediaCleanupOrphans,
   postAdminMediaEvict,
   postAdminPurgeUser,
+  postAdminBulkPurge,
   type AdminAuditLogRow,
   type AdminDeviceRow,
   type AdminKpiResponse,
@@ -228,6 +229,8 @@ export default function AdminPage() {
 
   const [errorLog, setErrorLog] = useState<string | null>(null)
   const [lockId, setLockId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [detailNode, setDetailNode] = useState<AdminUserRow | null>(null)
   const [activeReportId, setActiveReportId] = useState<string | null>(null)
   const shellMode = useThemeStore((s) => s.shellMode)
@@ -248,24 +251,23 @@ export default function AdminPage() {
 
   const syncState = useCallback(async () => {
     setErrorLog(null)
-    try {
-      const [u, r, pulse, storage, events] = await Promise.all([
-        fetchAdminUsers({ limit: NODES_PAGE_SIZE, offset: nodesOffset }),
-        fetchAdminReports({ limit: REPORTS_PAGE_SIZE, offset: incidentsOffset }),
-        fetchAdminSystemStats(),
-        fetchAdminUserStorageUsage(),
-        fetchAdminLoginEvents(),
-      ])
-      setNodes(u.users)
-      setNodesTotal(u.total)
-      setIncidents(r.reports)
-      setIncidentsTotal(r.total)
-      setSysPulse(pulse)
-      setStorageData(storage)
-      setLoginEvents(events)
-    } catch (e) {
-      setErrorLog(e instanceof Error ? e.message : 'SYNC_PROTOCOL_FAILURE')
-    }
+    // Resilient load: one failing panel endpoint must NOT blank the whole admin
+    // dashboard. Render every panel whose data resolved and flag only the ones
+    // that failed, so the operator can still use the working tabs.
+    const [u, r, pulse, storage, events] = await Promise.allSettled([
+      fetchAdminUsers({ limit: NODES_PAGE_SIZE, offset: nodesOffset }),
+      fetchAdminReports({ limit: REPORTS_PAGE_SIZE, offset: incidentsOffset }),
+      fetchAdminSystemStats(),
+      fetchAdminUserStorageUsage(),
+      fetchAdminLoginEvents(),
+    ])
+    const failed: string[] = []
+    if (u.status === 'fulfilled') { setNodes(u.value.users); setNodesTotal(u.value.total) } else failed.push('users')
+    if (r.status === 'fulfilled') { setIncidents(r.value.reports); setIncidentsTotal(r.value.total) } else failed.push('reports')
+    if (pulse.status === 'fulfilled') setSysPulse(pulse.value); else failed.push('system')
+    if (storage.status === 'fulfilled') setStorageData(storage.value); else failed.push('storage')
+    if (events.status === 'fulfilled') setLoginEvents(events.value); else failed.push('login-events')
+    setErrorLog(failed.length ? `PARTIAL_SYNC :: unavailable → ${failed.join(', ')}` : null)
   }, [nodesOffset, incidentsOffset])
 
   useEffect(() => {
@@ -290,6 +292,44 @@ export default function AdminPage() {
       setErrorLog(e instanceof Error ? e.message : 'NODE_ANNIHILATION_FAILED')
     } finally {
       setLockId(null)
+    }
+  }
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Mass-purge the selected users with ONE admin acknowledgement (type your own
+  // handle once) instead of per-target confirmation. Self / last-admin are
+  // rejected per id by the server and reported back.
+  const bulkPurge = async () => {
+    if (!user) return
+    const ids = [...selectedIds].filter(id => id !== user.id)
+    if (ids.length === 0) return
+    const confirm = window.prompt(
+      `[CRITICAL] MASS EXPUNGE ${ids.length} node(s): annihilates accounts, sessions, assets, logs. Type YOUR admin handle to confirm:\n\n${user.username}`
+    )
+    if (confirm == null) return
+    setBulkBusy(true)
+    setErrorLog(null)
+    try {
+      const res = await postAdminBulkPurge(ids, confirm.trim())
+      setSelectedIds(new Set())
+      setDetailNode(null)
+      const failed = res.results.filter(r => r.error)
+      if (failed.length > 0) {
+        setErrorLog(`PURGED ${res.purged}/${res.total} — FAILED: ${failed.map(f => `${f.id.slice(0, 8)}:${f.error}`).join(', ')}`)
+      }
+      await syncState()
+    } catch (e) {
+      setErrorLog(e instanceof Error ? e.message : 'BULK_EXPUNGE_FAILED')
+    } finally {
+      setBulkBusy(false)
     }
   }
 
@@ -432,10 +472,41 @@ export default function AdminPage() {
                 className="w-full border border-border-strong bg-void px-3 py-1.5 text-[10px] text-text-primary placeholder:text-text-muted/40 focus:border-neon-cyan focus:outline-none sm:ml-auto sm:w-auto sm:min-w-[16rem]"
               />
             </div>
+            {selectedIds.size > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-3 border border-neon-red/50 bg-neon-red/5 px-3 py-2">
+                <span className="text-[9px] uppercase tracking-widest text-neon-red">{selectedIds.size} SELECTED</span>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void bulkPurge()}
+                  className="border border-neon-red px-2 py-0.5 text-[8px] uppercase text-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                >
+                  {bulkBusy ? 'PURGING…' : 'PURGE_SELECTED'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="border border-border-strong px-2 py-0.5 text-[8px] uppercase hover:border-text-muted"
+                >
+                  CLEAR
+                </button>
+              </div>
+            )}
             <div className="overflow-x-auto border border-border-strong bg-void">
               <table className="min-w-[44rem] w-full text-left">
                 <thead>
                   <tr className="border-b border-border-strong text-[9px] uppercase tracking-[0.2em] text-text-muted/70">
+                    <th className="px-3 py-3 font-normal">
+                      <input
+                        type="checkbox"
+                        aria-label="select all"
+                        checked={filteredNodes.length > 0 && filteredNodes.every(n => n.id === user.id || selectedIds.has(n.id))}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedIds(new Set(filteredNodes.filter(n => n.id !== user.id).map(n => n.id)))
+                          else setSelectedIds(new Set())
+                        }}
+                      />
+                    </th>
                     <th className="px-4 py-3 font-normal">HANDLE</th>
                     <th className="px-4 py-3 font-normal">RANK</th>
                     <th className="px-4 py-3 font-normal">STATUS</th>
@@ -450,6 +521,16 @@ export default function AdminPage() {
                     const isSelf = node.id === user.id
                     return (
                       <tr key={node.id} className="group hover:bg-surface/[0.03] transition-colors">
+                        <td className="px-3 py-3">
+                          {!isSelf && (
+                            <input
+                              type="checkbox"
+                              aria-label={`select ${node.username}`}
+                              checked={selectedIds.has(node.id)}
+                              onChange={() => toggleSelected(node.id)}
+                            />
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <button
                             onClick={() => setDetailNode(node)}
@@ -497,7 +578,7 @@ export default function AdminPage() {
                   })}
                   {filteredNodes.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-[10px] uppercase tracking-widest text-text-muted/40">
+                      <td colSpan={7} className="p-8 text-center text-[10px] uppercase tracking-widest text-text-muted/40">
                         {search ? 'NO_MATCH' : 'REGISTRY_EMPTY'}
                       </td>
                     </tr>
@@ -1491,7 +1572,7 @@ function AuditLogPanel({ onError }: { onError: (msg: string) => void }) {
                   rows.map((r) => (
                     <tr key={r.id} className="text-[9px] hover:bg-surface/[0.03]">
                       <td className="px-4 py-3 whitespace-nowrap text-text-muted/50">{fmtDate(r.created_at)}</td>
-                      <td className="px-4 py-3 text-neon-cyan">{r.admin_username ?? r.admin_user_id.slice(0, 8)}</td>
+                      <td className="px-4 py-3 text-neon-cyan">{r.admin_username ?? (r.admin_user_id ? `${r.admin_user_id.slice(0, 8)}…` : '[deleted]')}</td>
                       <td className="px-4 py-3 uppercase text-neon-amber">{r.action}</td>
                       <td className="px-4 py-3 font-mono text-text-muted/70">
                         {r.target_user_id ? `${r.target_user_id.slice(0, 8)}…` : '—'}

@@ -33,7 +33,10 @@ async function deliverGroupKeyToMember(
 ): Promise<void> {
   const detail = await fetchChatDetail(chatId)
   const { my_role } = detail.chat
-  if (my_role !== 'owner' && my_role !== 'admin') return
+  // Owner-only: since D2, the wrapped-key PUT is owner-only and clients reject
+  // any group-key wrap not bound to the owner's ECDH key. An admin's delivery
+  // would 403 and produce wraps every client rejects, so don't attempt it.
+  if (my_role !== 'owner') return
 
   const me = detail.members.find((m) => m.user_id === myUserId)
   if (!me?.encrypted_group_key) return
@@ -143,7 +146,8 @@ export function useGroupKeyDistribution(
         const detail = await fetchChatDetail(activeChatId)
         if (cancelled) return
         const r = detail.chat.my_role
-        if (r !== 'owner' && r !== 'admin') return
+        // Owner-only (D2): only the owner's wraps are accepted by members now.
+        if (r !== 'owner') return
         const myMember = detail.members.find((m) => m.user_id === userId)
         const myEpoch = myMember?.encrypted_group_key
           ? (readStoredSectorKeyEpoch(myMember.encrypted_group_key) ?? 0)

@@ -1,7 +1,7 @@
-import { and, eq, isNotNull, lt } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import type { FastifyBaseLogger } from 'fastify'
 import { db } from '../db/index.js'
-import { messages } from '../db/schema.js'
+import { attachments, messages } from '../db/schema.js'
 import {
   createS3Client,
   deleteObjectIfExists,
@@ -91,6 +91,32 @@ export async function runMediaRetentionPurge(log: FastifyBaseLogger): Promise<{
       if (key) {
         await deleteObjectIfExists({ client, bucket, key })
       }
+
+      // Reclaim this message's attachment rows too (album items 0..N live in
+      // `attachments`, linked by messageId). Previously the purge deleted only
+      // the messages.media_path object and left these rows with evictedAt=NULL
+      // and sizeBytes set, so quota math kept counting deleted bytes forever
+      // (false USER_QUOTA_EXCEEDED / over-eviction), orphan cleanup skipped them
+      // (messageId set), and album items 2..N leaked in S3. Delete their objects
+      // and stamp evictedAt so usage accounting and orphan cleanup stay correct.
+      const atts = await db
+        .select({
+          id: attachments.id,
+          bucket: attachments.bucket,
+          objectKey: attachments.objectKey,
+        })
+        .from(attachments)
+        .where(and(eq(attachments.messageId, row.id), isNull(attachments.evictedAt)))
+      for (const a of atts) {
+        if (a.objectKey && a.objectKey !== key) {
+          await deleteObjectIfExists({ client, bucket: a.bucket || bucket, key: a.objectKey })
+        }
+        await db
+          .update(attachments)
+          .set({ evictedAt: sql`now()` })
+          .where(eq(attachments.id, a.id))
+      }
+
       await db
         .update(messages)
         .set({

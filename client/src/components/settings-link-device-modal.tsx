@@ -63,10 +63,18 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   // Mode B state.
   const [qrValue, setQrValue] = useState<string | null>(null)
   const [verificationCode, setVerificationCode] = useState<string | null>(null)
+  const [codeCopied, setCodeCopied] = useState(false)
+  // Live expiry countdown: the absolute deadline and the seconds remaining.
+  const [deadlineTs, setDeadlineTs] = useState<number | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const pendingPubkeyRef = useRef<string | null>(null)
   const rendezvousIdRef = useRef<string | null>(null)
   const stopRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Separate interval for the 1-second countdown tick — never reuses timerRef
+  // (which drives polling) so the two clocks can't clobber each other.
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
@@ -81,7 +89,41 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     }
   }, [])
 
-  useEffect(() => () => cleanupPolling(), [cleanupPolling])
+  // Drive the live "Expires in M:SS" countdown. A single interval ticks each
+  // second while a deadline is set and we are in a Mode-B waiting/verify phase;
+  // it is cleared on unmount, on phase change, and when the deadline clears.
+  useEffect(() => {
+    if (deadlineTs === null || (phase !== 'showqr' && phase !== 'verify')) {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
+        countdownRef.current = null
+      }
+      setSecondsLeft(null)
+      return
+    }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((deadlineTs - Date.now()) / 1000))
+      setSecondsLeft(remaining)
+    }
+    tick()
+    countdownRef.current = setInterval(tick, 1000)
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
+        countdownRef.current = null
+      }
+    }
+  }, [deadlineTs, phase])
+
+  // Belt-and-suspenders teardown for every timer this modal owns.
+  useEffect(
+    () => () => {
+      cleanupPolling()
+      if (countdownRef.current) clearInterval(countdownRef.current)
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    },
+    [cleanupPolling]
+  )
 
   // -------- Mode A: scan the QR shown by the new device --------
   async function handleScan(raw: string): Promise<boolean> {
@@ -121,6 +163,8 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     setErr(null)
     setQrValue(null)
     setVerificationCode(null)
+    setCodeCopied(false)
+    setDeadlineTs(null)
     pendingPubkeyRef.current = null
     rendezvousIdRef.current = null
     setPhase('showqr')
@@ -133,6 +177,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
       setQrValue(buildLinkModeBQrPayload(rdv.rendezvous_id, rdv.claim_secret))
 
       const deadline = Date.now() + rdv.expires_in * 1000
+      setDeadlineTs(deadline)
 
       const poll = async (): Promise<void> => {
         if (stopRef.current) return
@@ -211,6 +256,46 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     cleanupPolling()
     onClose()
   }, [cleanupPolling, onClose])
+
+  // Manual-code fallback (show side): copy the exact string the QR encodes so
+  // the user can type/paste it into the new device's "enter code" field.
+  const copyCode = useCallback(async () => {
+    if (!qrValue) return
+    try {
+      await navigator.clipboard.writeText(qrValue)
+      setCodeCopied(true)
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = setTimeout(() => setCodeCopied(false), 2000)
+    } catch {
+      // Clipboard blocked (insecure context / denied) — the code stays
+      // selectable as text, so the user can still copy it by hand.
+    }
+  }, [qrValue])
+
+  const countdownExpired = secondsLeft !== null && secondsLeft <= 0
+  const formattedCountdown =
+    secondsLeft === null
+      ? null
+      : `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`
+
+  // Step indicator. 1 Choose · 2 Show/Scan · 3 Verify · 4 Done — derived purely
+  // from the existing phase machine.
+  const stepLabels = [
+    t('settings.linkStepChoose'),
+    t('settings.linkStepShowScan'),
+    t('settings.linkStepVerify'),
+    t('settings.linkStepDone'),
+  ]
+  const activeStep =
+    phase === 'mode'
+      ? 0
+      : phase === 'scan' || phase === 'showqr'
+        ? 1
+        : phase === 'verify'
+          ? 2
+          : phase === 'done'
+            ? 3
+            : -1 // gate — indicator hidden
 
   // D27 — ESC + focus trap + body-scroll-lock + focus restore.
   const trapRef = useFocusTrap<HTMLDivElement>(true, handleClose)
@@ -299,7 +384,23 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
               />
             </div>
           ) : phase === 'done' ? (
-            <div className="mt-4 flex flex-col items-center gap-4 py-6">
+            <div className="mt-4 flex flex-col gap-4 py-6">
+              <ol className="flex items-center gap-1" aria-label={stepLabels.join(' · ')}>
+                {stepLabels.map((label, i) => (
+                  <li
+                    key={label}
+                    aria-current={i === activeStep ? 'step' : undefined}
+                    className={`flex-1 truncate border px-1.5 py-1 text-center text-[8px] uppercase tracking-wider ${
+                      isRetro
+                        ? 'p13-classic-button'
+                        : 'border-neon-cyan bg-neon-cyan/10 font-mono text-neon-cyan'
+                    }`}
+                  >
+                    <span className="mr-1 opacity-70">{i + 1}</span>
+                    {label}
+                  </li>
+                ))}
+              </ol>
               <p className="text-center text-[10px] leading-relaxed text-neon-cyan">
                 {t('settings.linkDone')}
               </p>
@@ -348,6 +449,33 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                   {t('settings.linkModeShow')}
                 </button>
               </div>
+
+              {/* Step indicator — derived from the phase machine. */}
+              {activeStep >= 0 && (
+                <ol className="mt-4 flex items-center gap-1" aria-label={stepLabels.join(' · ')}>
+                  {stepLabels.map((label, i) => {
+                    const reached = i <= activeStep
+                    return (
+                      <li
+                        key={label}
+                        aria-current={i === activeStep ? 'step' : undefined}
+                        className={`flex-1 truncate border px-1.5 py-1 text-center text-[8px] uppercase tracking-wider transition-colors ${
+                          isRetro
+                            ? reached
+                              ? 'p13-classic-button'
+                              : 'p13-classic-button opacity-50'
+                            : reached
+                              ? 'border-neon-cyan bg-neon-cyan/10 font-mono text-neon-cyan'
+                              : 'border-neon-cyan/20 bg-void font-mono text-neon-cyan/40'
+                        }`}
+                      >
+                        <span className="mr-1 opacity-70">{i + 1}</span>
+                        {label}
+                      </li>
+                    )
+                  })}
+                </ol>
+              )}
 
               {phase === 'mode' && (
                 <div className="mt-4 space-y-2">
@@ -421,16 +549,60 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                       [ ... ]
                     </p>
                   )}
-                  <p
-                    className={`text-center text-[9px] leading-relaxed ${
-                      isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
-                    }`}
-                  >
-                    {t('settings.linkShowExpiryNote')}
-                  </p>
-                  <p className="text-center text-[9px] uppercase tracking-widest text-neon-cyan/80">
-                    {t('settings.linkShowWaiting')}
-                  </p>
+                  {/* Manual-code fallback: the exact string the QR encodes,
+                      selectable + copyable, for devices that can't scan. */}
+                  {qrValue && (
+                    <div className="space-y-1.5">
+                      <p
+                        className={`text-[9px] leading-relaxed ${
+                          isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
+                        }`}
+                      >
+                        {t('settings.linkManualCodeLabel')}
+                      </p>
+                      <p
+                        data-testid="link-manual-code"
+                        className={`max-h-20 select-all overflow-y-auto break-all p-2 font-mono text-[9px] leading-relaxed ${
+                          isRetro
+                            ? 'p13-classic-inset'
+                            : 'border border-neon-cyan/25 bg-void text-neon-cyan/80'
+                        }`}
+                      >
+                        {qrValue}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void copyCode()}
+                        className={`w-full border py-1.5 text-[9px] uppercase tracking-widest transition-colors ${
+                          isRetro
+                            ? 'p13-classic-button'
+                            : 'border-neon-cyan/40 bg-void font-mono text-neon-cyan hover:bg-neon-cyan/10'
+                        }`}
+                      >
+                        {codeCopied ? `[ ${t('settings.linkCodeCopied')} ]` : t('settings.linkCopyCode')}
+                      </button>
+                    </div>
+                  )}
+                  {countdownExpired ? (
+                    <p className="text-center text-[9px] leading-relaxed text-neon-red">
+                      {t('settings.linkExpired')}
+                    </p>
+                  ) : (
+                    <>
+                      <p
+                        className={`text-center text-[9px] leading-relaxed ${
+                          isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
+                        }`}
+                      >
+                        {formattedCountdown
+                          ? `${t('settings.linkExpiresIn')} ${formattedCountdown}`
+                          : t('settings.linkShowExpiryNote')}
+                      </p>
+                      <p className="text-center text-[9px] uppercase tracking-widest text-neon-cyan/80">
+                        {t('settings.linkShowWaiting')}
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -454,6 +626,20 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                   >
                     {verificationCode}
                   </div>
+                  {formattedCountdown && !countdownExpired && (
+                    <p
+                      className={`text-center text-[9px] leading-relaxed ${
+                        isRetro ? 'p13-classic-copy-soft' : 'text-text-muted/80'
+                      }`}
+                    >
+                      {`${t('settings.linkExpiresIn')} ${formattedCountdown}`}
+                    </p>
+                  )}
+                  {countdownExpired && (
+                    <p className="text-center text-[9px] leading-relaxed text-neon-red">
+                      {t('settings.linkExpired')}
+                    </p>
+                  )}
                   <p
                     className={`break-words text-[9px] leading-relaxed ${
                       isRetro ? 'p13-classic-copy' : 'text-text-muted/80'

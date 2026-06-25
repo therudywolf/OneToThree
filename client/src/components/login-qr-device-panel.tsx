@@ -64,6 +64,13 @@ export function LoginQrDevicePanel() {
   const [qrValue, setQrValue] = useState<string | null>(null)
   const [verificationCode, setVerificationCode] = useState<string | null>(null)
   const [errorText, setErrorText] = useState<string | null>(null)
+  // Live expiry countdown for the waiting (Mode A) / verifying (Mode B) phases.
+  const [deadlineTs, setDeadlineTs] = useState<number | null>(null)
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
+  // Manual-code fallback (scan side).
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualCode, setManualCode] = useState('')
+  const [manualError, setManualError] = useState(false)
 
   const shellMode = useThemeStore((s) => s.shellMode)
   const themeId = useThemeStore((s) => s.theme)
@@ -71,6 +78,8 @@ export function LoginQrDevicePanel() {
 
   const stopRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Separate interval for the countdown — distinct from timerRef (polling).
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const cleanup = useCallback(() => {
     stopRef.current = true
@@ -80,7 +89,37 @@ export function LoginQrDevicePanel() {
     }
   }, [])
 
-  useEffect(() => () => cleanup(), [cleanup])
+  // Drive the 1-second "Expires in M:SS" countdown while a deadline is set and
+  // we are waiting/verifying. Cleared on unmount, status change, deadline clear.
+  useEffect(() => {
+    if (deadlineTs === null || (status !== 'waiting' && status !== 'verifying')) {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
+        countdownRef.current = null
+      }
+      setSecondsLeft(null)
+      return
+    }
+    const tick = () => {
+      setSecondsLeft(Math.max(0, Math.ceil((deadlineTs - Date.now()) / 1000)))
+    }
+    tick()
+    countdownRef.current = setInterval(tick, 1000)
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
+        countdownRef.current = null
+      }
+    }
+  }, [deadlineTs, status])
+
+  useEffect(
+    () => () => {
+      cleanup()
+      if (countdownRef.current) clearInterval(countdownRef.current)
+    },
+    [cleanup]
+  )
 
   /** Import a decrypted vault handoff blob; throws on a malformed payload. */
   const importHandoff = useCallback((decrypted: string) => {
@@ -97,6 +136,7 @@ export function LoginQrDevicePanel() {
     setErrorText(null)
     setQrValue(null)
     setVerificationCode(null)
+    setDeadlineTs(null)
 
     try {
       const kp = await generateLinkEphemeralKeypair()
@@ -106,6 +146,7 @@ export function LoginQrDevicePanel() {
       setStatus('waiting')
 
       const deadline = Date.now() + rdv.expires_in * 1000
+      setDeadlineTs(deadline)
 
       const poll = async (): Promise<void> => {
         if (stopRef.current) return
@@ -154,6 +195,8 @@ export function LoginQrDevicePanel() {
     setErrorText(null)
     setQrValue(null)
     setVerificationCode(null)
+    setDeadlineTs(null)
+    setManualError(false)
   }, [cleanup])
 
   /** Called by the QR scanner with each decoded payload. */
@@ -183,6 +226,7 @@ export function LoginQrDevicePanel() {
         setStatus('verifying')
 
         const deadline = Date.now() + 300 * 1000
+        setDeadlineTs(deadline)
 
         const poll = async (): Promise<void> => {
           if (stopRef.current) return
@@ -226,6 +270,42 @@ export function LoginQrDevicePanel() {
     },
     [importHandoff, t]
   )
+
+  // Manual-code fallback: feed the pasted code to the SAME handler the QR
+  // scanner uses. handleScan returns false when the string isn't a Mode B
+  // payload, so we surface a gentle "that code doesn't look right" hint.
+  const submitManualCode = useCallback(async () => {
+    const raw = manualCode.trim()
+    if (!raw) return
+    setManualError(false)
+    const accepted = await handleScan(raw)
+    if (!accepted) {
+      setManualError(true)
+    }
+  }, [manualCode, handleScan])
+
+  const formattedCountdown =
+    secondsLeft === null
+      ? null
+      : `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`
+
+  // New-device step indicator: 1 Show/Scan · 2 Compare codes · 3 Receiving.
+  const stepLabels = [
+    t('login.qrStepShowScan'),
+    t('login.qrStepCompare'),
+    t('login.qrStepReceiving'),
+  ]
+  const activeStep =
+    status === 'received'
+      ? 2
+      : status === 'verifying'
+        ? 1
+        : status === 'idle' ||
+            status === 'preparing' ||
+            status === 'waiting' ||
+            status === 'scanning'
+          ? 0
+          : -1 // error — indicator hidden
 
   const tabButtonClass = (active: boolean) =>
     `flex-1 border py-2 text-[10px] uppercase tracking-widest transition-colors ${
@@ -301,6 +381,33 @@ export function LoginQrDevicePanel() {
               </button>
             </div>
 
+            {/* Step indicator — derived from status. */}
+            {activeStep >= 0 && (
+              <ol className="flex items-center gap-1" aria-label={stepLabels.join(' · ')}>
+                {stepLabels.map((label, i) => {
+                  const reached = i <= activeStep
+                  return (
+                    <li
+                      key={label}
+                      aria-current={i === activeStep ? 'step' : undefined}
+                      className={`flex-1 truncate border px-1.5 py-1 text-center text-[8px] uppercase tracking-wider transition-colors ${
+                        isRetro
+                          ? reached
+                            ? 'p13-classic-button'
+                            : 'p13-classic-button opacity-50'
+                          : reached
+                            ? 'border-neon-cyan bg-neon-cyan/10 font-mono text-neon-cyan'
+                            : 'border-neon-cyan/20 bg-void font-mono text-neon-cyan/40'
+                      }`}
+                    >
+                      <span className="mr-1 opacity-70">{i + 1}</span>
+                      {label}
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+
             {errorText && (
               <div className="border border-neon-red/30 bg-neon-red/5 p-2 font-mono text-[9px] uppercase tracking-widest text-neon-red">
                 [!] {errorText}
@@ -349,6 +456,11 @@ export function LoginQrDevicePanel() {
                     <p className="text-center text-[9px] uppercase tracking-widest text-neon-cyan/80">
                       {t('login.qrShowWaiting')}
                     </p>
+                    {formattedCountdown && (
+                      <p className="text-center text-[9px] leading-relaxed text-text-muted/70">
+                        {`${t('login.qrExpiresIn')} ${formattedCountdown}`}
+                      </p>
+                    )}
                   </div>
                 ) : null}
               </>
@@ -380,6 +492,11 @@ export function LoginQrDevicePanel() {
                     <p className="text-center text-[9px] uppercase tracking-widest text-neon-cyan/80">
                       {t('login.qrVerifyWaiting')}
                     </p>
+                    {formattedCountdown && (
+                      <p className="text-center text-[9px] leading-relaxed text-text-muted/70">
+                        {`${t('login.qrExpiresIn')} ${formattedCountdown}`}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -391,6 +508,64 @@ export function LoginQrDevicePanel() {
                       processing={status === 'verifying'}
                       isRetro={isRetro}
                     />
+
+                    {/* Manual-code fallback: paste the code shown under the QR
+                        on the other device — feeds the same handler. */}
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setManualOpen((prev) => !prev)}
+                        aria-expanded={manualOpen}
+                        data-testid="qr-manual-toggle"
+                        className={`flex w-full items-center justify-between text-[9px] transition-colors ${
+                          isRetro
+                            ? 'p13-classic-copy-strong hover:text-[var(--danger)]'
+                            : 'font-mono uppercase tracking-widest text-neon-cyan/80 hover:text-neon-cyan'
+                        }`}
+                      >
+                        <span>{t('login.qrManualScanLabel')}</span>
+                        <span className="opacity-70">{manualOpen ? '[ − ]' : '[ + ]'}</span>
+                      </button>
+                      {manualOpen && (
+                        <div className="mt-2 space-y-2">
+                          <p className="text-[9px] leading-relaxed text-text-muted/70">
+                            {t('login.qrManualScanHint')}
+                          </p>
+                          <textarea
+                            value={manualCode}
+                            onChange={(e) => {
+                              setManualCode(e.target.value)
+                              if (manualError) setManualError(false)
+                            }}
+                            rows={3}
+                            spellCheck={false}
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            data-testid="qr-manual-input"
+                            placeholder={t('login.qrManualScanPlaceholder')}
+                            className={`w-full resize-none break-all p-2 font-mono text-[9px] leading-relaxed ${
+                              isRetro
+                                ? 'p13-classic-inset'
+                                : 'border border-neon-cyan/25 bg-void text-neon-cyan/90 placeholder:text-text-muted/50'
+                            }`}
+                          />
+                          {manualError && (
+                            <p className="text-[9px] leading-relaxed text-neon-red">
+                              {t('login.qrManualScanInvalid')}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void submitManualCode()}
+                            disabled={!manualCode.trim()}
+                            data-testid="qr-manual-submit"
+                            className={`${actionButtonClass} disabled:opacity-50`}
+                          >
+                            {`>> ${t('login.qrManualScanSubmit')}`}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </>

@@ -69,3 +69,39 @@ These need real markup/logic (not just copy) and are the remaining majors:
 8. **Larger QR on mobile** + "hold camera 10–20cm away" hint.
 
 The full per-finding audit (with exact suggested copy, en+ru) was generated this session.
+
+## Status update — 2026-06-25 (next-wave closed)
+
+All of the above are now **done and on prod** unless noted:
+- #1 **Device-link progress + live countdown** — ✅ live `M:SS` countdown + step
+  indicator on both sides (`af721e5`, `30bc178`).
+- #2 **Manual code entry + copy-code** — ✅ show side renders the code as
+  select-all text + "Copy code"; scan side has a "Can't scan? Enter code
+  manually" input that feeds the *same* `handleScan` as the QR scanner.
+- #3 **Recovery phrase at signup** — ✅ shipped earlier (`f97d5207`): a second
+  post-register step generates + saves + enrolls the 24-word phrase (shared
+  `lib/recovery/enroll-recovery.ts`).
+- #4/#5 **backup-vs-phrase clarity / confirm step** — partly covered by the
+  recovery step's copy; a re-enter-N-words confirmation is the one residual.
+- #6 **Empty-state first step** — the always-visible "New conversation"
+  DM-by-name input already serves this (notifications-empty audit).
+- #7 **MD3 default** — ✅ new users default to MD3 + the welcome picker leads
+  with it (`f97d5207`).
+- #8 Larger mobile QR + hold-distance hint — residual (minor).
+
+**Genuinely deferred (with reason):**
+- **Recovery-phrase re-enter-N-words confirm step** — nice-to-have, not started.
+- **Legacy static-ECDH "verify" pin** (identity-modal/trust-store) — a fail-closed
+  *extra* check on a key the DR path doesn't use; harmless, not a hole. Realigning
+  it to the per-device DR identity needs multi-device visual testing — deferred.
+- **Native client rebuild** — the server now requires the X3DH exchange signature
+  (D4), so Android/Tauri must be rebuilt before distribution. Code is done +
+  build-verified via the web deploys; the signed-APK / NSIS packaging is a
+  release step (`scripts/build-apk.ps1 release` + `desktop/tauri` build).
+- **4 moderate dependabot CVEs** — all in `@google-cloud/firestore`/uuid, which
+  firebase-admin pulls transitively but the app NEVER imports (only FCM
+  messaging). Unreachable; the only fix is a breaking `firebase-admin@14` bump
+  that risks push for no real gain. All HIGH-severity CVEs are fixed.
+- **Live 2-user DIRECT e2e** — blocked by a known multi-context cookie-domain
+  limitation against prod (`me 401`); crypto is verified by the unit multi-device
+  DR roundtrip + the server `keys.test.ts` + live single-user registration.

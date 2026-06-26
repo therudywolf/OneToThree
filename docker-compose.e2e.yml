@@ -7,6 +7,12 @@
 #   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build \
 #       db redis minio db-migrate api web-e2e caddy
 services:
+  # Allow the browser (localhost:8090) to PUT/GET presigned attachment URLs
+  # directly against MinIO (localhost:9000) — prod's S3 has CORS configured.
+  minio:
+    environment:
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+
   # Override the base API into test mode (cookie stays Lax; prod asserts relax).
   api:
     environment:
@@ -17,6 +23,15 @@ services:
       # load only — never set in prod.
       RATE_LIMIT_DISABLED: "1"
       CALL_MEDIA_MODE: ${CALL_MEDIA_MODE:-self_hosted}
+      # Browser-reachable MinIO so presigned attachment PUT/GET work from the host
+      # (base compose publishes minio on :9000). Prod uses s3.onetothree.ru.
+      MINIO_PUBLIC_URL: http://localhost:9000
+      # Dummy TURN so GET /api/ice-servers returns a (coturn) relay — the call
+      # config path is "relay-mandatory", so without this it returns []. The suite
+      # only asserts the response shape; it never dials the relay. Prod runs coturn.
+      TURN_URL: turn:turn.example.com:3478
+      TURN_USERNAME: e2e
+      TURN_SECRET: e2e-turn-static-credential
 
   # Production Next build, served by `next start`. The browser, the REST API and
   # the WebSocket all resolve to the SAME Caddy origin (http://localhost:8090):

@@ -79,7 +79,9 @@ test.describe('D1: group E2E runtime — member receives group key', () => {
     await setDiscoverable(pageB, true)
 
     const groupName = `D1TestGroup-${Date.now()}`
-    await pageA.getByRole('button', { name: /Новый чат|New Chat/i }).click()
+    // Open the "+" FAB menu (sidebar.newChat), then pick New Group.
+    await pageA.getByRole('button', { name: /^Создать$|^New$/i }).first().click()
+    await pageA.getByRole('button', { name: /Новая группа|New Group/i }).click()
     await expect(
       pageA.getByRole('heading', { name: /Создать группу|Create Group/i })
     ).toBeVisible()

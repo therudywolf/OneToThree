@@ -1,0 +1,24 @@
+# Local E2E reverse proxy — makes the web app, the REST API and the WebSocket
+# all share ONE origin (http://localhost:8090), exactly like prod's Caddy in
+# front of onetothree.ru. Same-origin is what lets the SameSite=Lax fm_session
+# cookie ride the /api/ws upgrade, so real-time delivery (chats / groups /
+# calls) works under `next start` (which itself cannot proxy WS upgrades).
+{
+	admin off
+	auto_https off
+}
+
+:8090 {
+	# Root-level health passthrough for playwright global-setup.
+	handle /health {
+		reverse_proxy api:8080
+	}
+	# REST + WebSocket (/api/ws) → the API. reverse_proxy upgrades WS natively.
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+	# Everything else → the Next server.
+	handle {
+		reverse_proxy web-e2e:3000
+	}
+}

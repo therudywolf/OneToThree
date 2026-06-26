@@ -275,6 +275,10 @@ export async function buildApp() {
     max: 100,
     timeWindow: '1 minute',
     allowList: (request: FastifyRequest) => {
+      // Escape hatch for load / end-to-end harnesses ONLY (e.g. the multi-account
+      // e2e suite behind a reverse proxy, where requests don't arrive from
+      // loopback). NEVER set this in production — it disables all rate limiting.
+      if (process.env.RATE_LIMIT_DISABLED === '1') return true
       const ip = request.ip?.trim()
       return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
     },

@@ -1,0 +1,66 @@
+# Local end-to-end harness — overlay on docker-compose.yml. Brings the API up in
+# NODE_ENV=test (so fm_session is SameSite=Lax over http), builds a PRODUCTION
+# web image (`next start`), and fronts both behind a single-origin Caddy on
+# :8090 so the WebSocket (and therefore real-time message/group/call delivery)
+# works just like prod. Drive it with scripts/e2e-local.sh.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build \
+#       db redis minio db-migrate api web-e2e caddy
+services:
+  # Override the base API into test mode (cookie stays Lax; prod asserts relax).
+  api:
+    environment:
+      NODE_ENV: test
+      TOTP_WRAP_KEY: ${TOTP_WRAP_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      # Disable rate limiting for the full multi-account suite (requests arrive via
+      # Caddy, not loopback, so the default allowList wouldn't exempt them). Test/
+      # load only — never set in prod.
+      RATE_LIMIT_DISABLED: "1"
+      CALL_MEDIA_MODE: ${CALL_MEDIA_MODE:-self_hosted}
+
+  # Production Next build, served by `next start`. The browser, the REST API and
+  # the WebSocket all resolve to the SAME Caddy origin (http://localhost:8090):
+  # the client derives API_URL = http://localhost:8090/api and the socket =
+  # ws://localhost:8090/api/ws, both fronted by Caddy → api, so the SameSite=Lax
+  # cookie is sent on the WS upgrade and real-time delivery works. Tests MUST
+  # also use localhost:8090 (not 127.0.0.1 — a different origin for cookies).
+  web-e2e:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8090
+        NEXT_PUBLIC_WS_ORIGIN: ""
+        NEXT_PUBLIC_APP_URL: http://localhost:8090
+        NEXT_PUBLIC_DR_ENABLED: "1"
+        API_INTERNAL_URL: http://api:8080
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:8080
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - app
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./infra/e2e/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - web-e2e
+      - api
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s

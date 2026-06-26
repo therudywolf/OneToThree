@@ -10,7 +10,11 @@ import { normalizeApiRoot } from '@/lib/api/url'
 const SESSION_COOKIE = 'fm_session'
 const PUBLIC_PATHS = new Set<string>(['/login'])
 const PUBLIC_PREFIXES = ['/legal/']
-const BYPASS_PREFIXES = ['/_next/', '/api/', '/workbox-']
+// `/.well-known/` MUST bypass the auth gate: Android App Links + Apple
+// universal-links verifiers fetch `/.well-known/assetlinks.json` (et al.)
+// unauthenticated, and a redirect to /login fails verification (the file is
+// `.json`, which the static-asset regex below deliberately does not match).
+const BYPASS_PREFIXES = ['/_next/', '/api/', '/workbox-', '/.well-known/']
 const STATIC_ASSETS_RE = /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml)$/i
 
 /** [PROBE_BYPASS] :: Фильтрация системного шума */

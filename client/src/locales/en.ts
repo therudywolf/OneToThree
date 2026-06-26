@@ -303,6 +303,9 @@ const en = {
   'postRegister.recoveryError': 'We couldn’t set up recovery. You can try again now, or set it up later in Settings.',
   'postRegister.recoverySkip': 'Skip — I’ll set this up later',
   'postRegister.recoverySkipNote': 'Without a recovery phrase, forgetting your password means losing your account. You can set it up anytime in Settings → Account recovery.',
+  'postRegister.recoveryConfirmPrompt': 'To be sure you saved it, type these words from your phrase:',
+  'postRegister.recoveryWordLabel': 'Word',
+  'postRegister.recoveryConfirmMismatch': 'Those don’t match your phrase yet — check the spelling and order.',
 
   // [SIDEBAR]
   'sidebar.localGhostSearch': 'Search messages...',
@@ -589,6 +592,7 @@ const en = {
   'settings.linkShowExpiryNote': 'This code works for 5 minutes.',
   'settings.linkShowWaiting': 'Waiting for the new device to scan this code...',
   'settings.linkVerifyTitle': "Make sure it's really you",
+  'settings.linkQrAimHint': 'Point the other device’s camera at this code, about 15 cm away.',
   'settings.linkVerifyInstruction': "Both devices should now show the same 6-digit number. Check your other device — if they match, you're linking your own devices.",
   'settings.linkVerifyWarning': 'If the numbers are different, stop — someone else may be trying to connect. Tap Cancel.',
   'settings.linkConfirmCta': 'The numbers match — continue',

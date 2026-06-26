@@ -524,8 +524,11 @@ export function ChatApp({
       return
     }
     const onScrollCapture = (ev: Event) => {
-      const target = ev.target as HTMLElement | null
-      if (!target) return
+      // A document-level scroll event's target is the Document, which has no
+      // `.closest` — guard on Element or this throws "closest is not a function"
+      // on every non-chat scroll (it fired constantly in the production build).
+      const target = ev.target
+      if (!(target instanceof Element)) return
       const scroller = target.closest('.chat-scroll, .custom-scrollbar') as HTMLElement | null
       if (!scroller) return
       setMd3HeaderCondensed(scroller.scrollTop > 20)

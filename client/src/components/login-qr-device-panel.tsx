@@ -446,13 +446,16 @@ export function LoginQrDevicePanel() {
                     >
                       <QRCodeSVG
                         value={qrValue}
-                        size={200}
+                        size={224}
                         bgColor="#000000"
                         fgColor="#22d3ee"
                         level="M"
-                        className="max-w-full"
+                        className="h-auto w-full max-w-[280px]"
                       />
                     </div>
+                    <p className={`text-center text-[11px] leading-relaxed ${isRetro ? 'p13-classic-copy' : 'text-text-muted/70'}`}>
+                      {t('settings.linkQrAimHint')}
+                    </p>
                     <p className="text-center text-[9px] uppercase tracking-widest text-neon-cyan/80">
                       {t('login.qrShowWaiting')}
                     </p>

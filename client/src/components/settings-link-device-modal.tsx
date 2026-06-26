@@ -537,11 +537,11 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                     >
                       <QRCodeSVG
                         value={qrValue}
-                        size={200}
+                        size={224}
                         bgColor="#000000"
                         fgColor="#22d3ee"
                         level="M"
-                        className="max-w-full"
+                        className="h-auto w-full max-w-[280px]"
                       />
                     </div>
                   ) : (
@@ -549,6 +549,11 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
                       [ ... ]
                     </p>
                   )}
+                  {qrValue ? (
+                    <p className={`mt-1 text-center text-[11px] leading-relaxed ${isRetro ? 'p13-classic-copy' : 'text-text-muted/70'}`}>
+                      {t('settings.linkQrAimHint')}
+                    </p>
+                  ) : null}
                   {/* Manual-code fallback: the exact string the QR encodes,
                       selectable + copyable, for devices that can't scan. */}
                   {qrValue && (

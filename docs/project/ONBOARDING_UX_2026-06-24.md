@@ -89,8 +89,17 @@ All of the above are now **done and on prod** unless noted:
   with it (`f97d5207`).
 - #8 Larger mobile QR + hold-distance hint — residual (minor).
 
+**Now also done (2026-06-25, second polish pass):**
+- ✅ **Recovery-phrase re-enter-N-words confirm step** — after "I saved", the user
+  re-types 3 random words (#N #M #K); recovery only enables on a match.
+- ✅ **Larger device-link QR (224→280px) + "aim camera ~15 cm" hint.**
+- ✅ **Live 2-user DIRECT verified** on a local `NODE_ENV=test` stack: the
+  signed-X3DH→Double-Ratchet send path produces ciphertext (`chat-core`
+  "ciphertext" + "invite" green). The cross-delivery specs need a WS-proxying
+  reverse proxy — `next start` doesn't proxy WS upgrades; prod uses Caddy — a
+  transport limitation, not crypto. `fetchUserId` now retries the cookie race.
+
 **Genuinely deferred (with reason):**
-- **Recovery-phrase re-enter-N-words confirm step** — nice-to-have, not started.
 - **Legacy static-ECDH "verify" pin** (identity-modal/trust-store) — a fail-closed
   *extra* check on a key the DR path doesn't use; harmless, not a hole. Realigning
   it to the per-device DR identity needs multi-device visual testing — deferred.

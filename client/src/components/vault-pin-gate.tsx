@@ -87,7 +87,7 @@ export function VaultPinGate({ actionLabel, onVerified, onCancel }: Props) {
         value={pin}
         onChange={(e) => setPin(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') void verify() }}
-        placeholder="vault-пароль"
+        placeholder={t('vaultGate.passwordLabel')}
         className={`w-full px-3 py-2 text-[10px] placeholder-text-muted focus:outline-none ${
           isMd3
             ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]'

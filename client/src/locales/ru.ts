@@ -305,6 +305,9 @@ const ru = {
   'postRegister.recoveryError': 'Не удалось настроить восстановление. Можно повторить сейчас или настроить позже в Настройках.',
   'postRegister.recoverySkip': 'Пропустить — настрою позже',
   'postRegister.recoverySkipNote': 'Без фразы восстановления забытый пароль означает потерю аккаунта. Настроить можно в любой момент: Настройки → Восстановление аккаунта.',
+  'postRegister.recoveryConfirmPrompt': 'Чтобы убедиться, что вы сохранили фразу, введите эти слова из неё:',
+  'postRegister.recoveryWordLabel': 'Слово',
+  'postRegister.recoveryConfirmMismatch': 'Пока не совпадает — проверьте написание и порядок.',
 
   // [SIDEBAR]
   'sidebar.localGhostSearch': 'Поиск в сообщениях...',
@@ -591,6 +594,7 @@ const ru = {
   'settings.linkShowExpiryNote': 'Код действует 5 минут.',
   'settings.linkShowWaiting': 'Ожидание сканирования кода новым устройством...',
   'settings.linkVerifyTitle': 'Убедитесь, что это вы',
+  'settings.linkQrAimHint': 'Наведите камеру другого устройства на этот код примерно с 15 см.',
   'settings.linkVerifyInstruction': 'Оба устройства сейчас должны показывать одинаковое 6-значное число. Проверьте второе устройство — если числа совпадают, вы связываете свои собственные устройства.',
   'settings.linkVerifyWarning': 'Если числа разные — остановитесь, возможно, подключиться пытается кто-то другой. Нажмите «Отмена».',
   'settings.linkConfirmCta': 'Числа совпадают — продолжить',

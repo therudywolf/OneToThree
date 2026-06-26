@@ -21,11 +21,11 @@
  * All keys are transported as base64url strings. The bundle response MUST NOT
  * be cacheable.
  */
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, or, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { identityKeys, oneTimePrekeys, signedPrekeys } from '../db/schema.js'
+import { devices, identityKeys, oneTimePrekeys, signedPrekeys } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 
 /** Strict base64url matcher — 32 bytes = 43 chars (no padding), 64 bytes = 86. */
@@ -72,6 +72,32 @@ const MAX_OPKS_PER_DEVICE = 200
 async function callerDeviceId(req: FastifyRequest): Promise<string | null> {
   const sess = await verifySessionJwt(req)
   return sess?.device_id ?? null
+}
+
+/**
+ * Resolve a wire-supplied `device_id` to the canonical `devices.id` under which
+ * identities/prekeys are stored.
+ *
+ * Identities are keyed by `devices.id` (the server's device row), but a DR
+ * envelope stamps the SENDER's `client_device_key` as its device id — the value
+ * the local client persists and knows synchronously. A responder therefore
+ * fetches the initiator's identity by that client key, which would never match
+ * `identity_keys.device_id` and bootstrap would fail with NO_IDENTITY. Accept
+ * either identifier here (both name the same device). Returns the canonical id,
+ * or the input unchanged when no device matches (so the caller still 404s).
+ */
+async function resolveCanonicalDeviceId(userId: string, provided: string): Promise<string> {
+  const [row] = await db
+    .select({ id: devices.id })
+    .from(devices)
+    .where(
+      and(
+        eq(devices.userId, userId),
+        or(eq(devices.id, provided), eq(devices.clientDeviceKey, provided))
+      )
+    )
+    .limit(1)
+  return row?.id ?? provided
 }
 
 export const keysRoutes: FastifyPluginAsync = async (app) => {
@@ -279,10 +305,13 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       const q = deviceQuerySchema.safeParse(req.query)
       if (!q.success) return reply.status(400).send({ error: 'BAD_DEVICE_ID' })
 
-      const where = q.data.device_id
+      const canonicalDeviceId = q.data.device_id
+        ? await resolveCanonicalDeviceId(req.params.userId, q.data.device_id)
+        : null
+      const where = canonicalDeviceId
         ? and(
             eq(identityKeys.userId, req.params.userId),
-            eq(identityKeys.deviceId, q.data.device_id)
+            eq(identityKeys.deviceId, canonicalDeviceId)
           )
         : eq(identityKeys.userId, req.params.userId)
       const [identity] = await db
@@ -323,11 +352,15 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(400).send({ error: 'BUNDLE_FOR_SELF_FORBIDDEN' })
       }
 
+      const canonicalDeviceId = q.data.device_id
+        ? await resolveCanonicalDeviceId(req.params.userId, q.data.device_id)
+        : null
+
       const bundle = await db.transaction(async (tx) => {
-        const identityWhere = q.data.device_id
+        const identityWhere = canonicalDeviceId
           ? and(
               eq(identityKeys.userId, req.params.userId),
-              eq(identityKeys.deviceId, q.data.device_id)
+              eq(identityKeys.deviceId, canonicalDeviceId)
             )
           : eq(identityKeys.userId, req.params.userId)
         const [identity] = await tx

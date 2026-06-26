@@ -148,6 +148,68 @@ describe('keys routes', () => {
     }
   })
 
+  it('resolves a client_device_key to the canonical device (DR sd routing)', async () => {
+    // Regression for a month-old cross-delivery break: a DR envelope stamps the
+    // SENDER's client_device_key as its `sd`, and the responder fetches the
+    // initiator's identity by that key. Identities are stored under the canonical
+    // devices.id, so the lookup MUST resolve client_device_key → devices.id —
+    // otherwise the responder gets NO_IDENTITY, never bootstraps the session, and
+    // every first DIRECT message silently fails to decrypt.
+    if (!dbAvailable) return
+    const requester = await createUser(`keys-cdk-r-${Date.now().toString(36)}`)
+    const target = await createUser(`keys-cdk-t-${Date.now().toString(36)}`)
+    const clientKey = randomUUID()
+    const [device] = await db
+      .insert(devices)
+      .values({ userId: target.id, clientDeviceKey: clientKey, deviceName: 'cdk-dev' })
+      .returning({ id: devices.id })
+    const token = await app!.jwt.sign({ sub: requester.id, username: requester.username, jti: randomUUID() })
+    const cookie = `fm_session=${token}`
+
+    await db.insert(identityKeys).values({
+      userId: target.id,
+      deviceId: device!.id,
+      signingPublicKey: 'A'.repeat(43),
+      exchangePublicKey: 'B'.repeat(43),
+      exchangePublicKeySignature: 'F'.repeat(86),
+      generation: 1,
+    })
+    await db.insert(signedPrekeys).values({
+      userId: target.id,
+      deviceId: device!.id,
+      preKeyId: 1,
+      publicKey: 'C'.repeat(43),
+      signature: 'D'.repeat(86),
+    })
+
+    try {
+      // Fetch identity by the client_device_key (what a DR `sd` carries).
+      const byClientKey = await request(app!.server)
+        .get(`/api/keys/identity/${target.id}?device_id=${clientKey}`)
+        .set('Cookie', cookie)
+        .expect(200)
+      expect(byClientKey.body.device_id).toBe(device!.id)
+      expect(byClientKey.body.identity.signing_public_key).toBe('A'.repeat(43))
+
+      // The canonical devices.id keeps working unchanged.
+      const byCanonical = await request(app!.server)
+        .get(`/api/keys/identity/${target.id}?device_id=${device!.id}`)
+        .set('Cookie', cookie)
+        .expect(200)
+      expect(byCanonical.body.device_id).toBe(device!.id)
+
+      // Bundle fetch resolves the client key the same way.
+      const bundle = await request(app!.server)
+        .get(`/api/keys/bundle/${target.id}?device_id=${clientKey}`)
+        .set('Cookie', cookie)
+        .expect(200)
+      expect(bundle.body.device_id).toBe(device!.id)
+    } finally {
+      await db.delete(users).where(eq(users.id, requester.id))
+      await db.delete(users).where(eq(users.id, target.id))
+    }
+  })
+
   it('lists every published device identity via GET /devices/:userId', async () => {
     if (!dbAvailable) return
     const requester = await createUser(`keys-dl-r-${Date.now().toString(36)}`)

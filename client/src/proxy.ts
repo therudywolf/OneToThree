@@ -25,7 +25,13 @@ function isBypassPath(pathname: string): boolean {
 }
 
 function resolveApiBase(request: NextRequest): string {
-  const fromEnv = process.env.NEXT_PUBLIC_API_URL?.trim()
+  // This runs SERVER-SIDE (Next middleware), so reach the API over the INTERNAL
+  // URL when set (e.g. http://api:8080 inside Docker) — the public
+  // NEXT_PUBLIC_API_URL may not be routable from inside the web container, which
+  // would make every session probe fail and bounce authed users back to /login.
+  // Fall back to the public URL, then same-origin.
+  const internal = process.env.API_INTERNAL_URL?.trim()
+  const fromEnv = internal || process.env.NEXT_PUBLIC_API_URL?.trim()
   return normalizeApiRoot(fromEnv, { sameOriginFallback: `${request.nextUrl.origin}/api` })
 }
 

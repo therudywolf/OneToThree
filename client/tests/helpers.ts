@@ -100,16 +100,26 @@ export async function registerNewUser(
   await dismissStartGuideIfPresent(page)
 }
 
-/** Same-origin `/api` so `fm_session` from the page origin (e.g. :3000) is sent. */
+/**
+ * Same-origin `/api` so `fm_session` from the page origin (e.g. :3000) is sent.
+ * Retries: right after registration the session cookie can take a beat to be
+ * visible to a same-origin `fetch` in a fresh multi-context page (a transient
+ * `me 401` race), so poll briefly instead of throwing on the first miss.
+ */
 export async function fetchUserId(page: Page): Promise<string> {
-  const data = await page.evaluate(async () => {
-    const r = await fetch('/api/auth/me', { credentials: 'include' })
-    if (!r.ok) throw new Error(`me ${r.status}`)
-    const j = (await r.json()) as { user?: { id: string } }
-    return j.user?.id
-  })
-  if (!data) throw new Error('no user id from /api/auth/me')
-  return data
+  let last = 0
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const data = await page.evaluate(async () => {
+      const r = await fetch('/api/auth/me', { credentials: 'include' })
+      if (!r.ok) return { status: r.status, id: null as string | null }
+      const j = (await r.json()) as { user?: { id: string } }
+      return { status: 200, id: j.user?.id ?? null }
+    })
+    if (data.status === 200 && data.id) return data.id
+    last = data.status
+    await page.waitForTimeout(500)
+  }
+  throw new Error(`no user id from /api/auth/me (last status ${last})`)
 }
 
 async function dismissStartGuideIfPresent(page: Page): Promise<void> {

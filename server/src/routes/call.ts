@@ -98,7 +98,7 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
 
   app.post('/call/token', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
-    if (!u || !assertAuthed(reply, u)) return
+    if (!assertAuthed(reply, u)) return
 
     const parsed = tokenBodySchema.safeParse(req.body)
     if (!parsed.success) {
@@ -203,7 +203,7 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
 
   app.get('/call/config', async (req, reply) => {
     const u = await getAuthUser(req, reply)
-    if (!u || !assertAuthed(reply, u)) return
+    if (!assertAuthed(reply, u)) return
     const cfgKey = readSecret('LIVEKIT_API_KEY')
     const cfgSecret = readSecret('LIVEKIT_API_SECRET')
     const mediaMode = getCallMediaMode()

@@ -78,7 +78,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /identity ──────────────────────────────────────────────────────
   app.post('/identity', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
-    if (!u || !assertAuthed(reply, u)) return
+    if (!assertAuthed(reply, u)) return
     const deviceId = await callerDeviceId(req)
     if (!deviceId) return reply.status(409).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const body = identityBodySchema.safeParse(req.body)
@@ -138,7 +138,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   // ── POST /signed-prekey ─────────────────────────────────────────────────
   app.post('/signed-prekey', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
-    if (!u || !assertAuthed(reply, u)) return
+    if (!assertAuthed(reply, u)) return
     const deviceId = await callerDeviceId(req)
     if (!deviceId) return reply.status(409).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const body = spkBodySchema.safeParse(req.body)
@@ -181,7 +181,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
     config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
   }, async (req, reply) => {
     const u = await getAuthUser(req, reply)
-    if (!u || !assertAuthed(reply, u)) return
+    if (!assertAuthed(reply, u)) return
     const deviceId = await callerDeviceId(req)
     if (!deviceId) return reply.status(409).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const body = opkBodySchema.safeParse(req.body)
@@ -218,7 +218,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /inventory ──────────────────────────────────────────────────────
   app.get('/inventory', async (req, reply) => {
     const u = await getAuthUser(req, reply)
-    if (!u || !assertAuthed(reply, u)) return
+    if (!assertAuthed(reply, u)) return
     const deviceId = await callerDeviceId(req)
     if (!deviceId) return reply.status(409).send({ error: 'DEVICE_SESSION_REQUIRED' })
     const [{ count }] = await db
@@ -239,7 +239,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const u = await getAuthUser(req, reply)
-      if (!u || !assertAuthed(reply, u)) return
+      if (!assertAuthed(reply, u)) return
       if (!z.string().uuid().safeParse(req.params.userId).success) {
         return reply.status(400).send({ error: 'BAD_USER_ID' })
       }
@@ -272,7 +272,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const u = await getAuthUser(req, reply)
-      if (!u || !assertAuthed(reply, u)) return
+      if (!assertAuthed(reply, u)) return
       if (!z.string().uuid().safeParse(req.params.userId).success) {
         return reply.status(400).send({ error: 'BAD_USER_ID' })
       }
@@ -312,7 +312,7 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const u = await getAuthUser(req, reply)
-      if (!u || !assertAuthed(reply, u)) return
+      if (!assertAuthed(reply, u)) return
       if (!z.string().uuid().safeParse(req.params.userId).success) {
         return reply.status(400).send({ error: 'BAD_USER_ID' })
       }

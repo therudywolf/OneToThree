@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, type RefObject } from 'react'
 import type { ChatCryptoContext } from '@/lib/chat-crypto'
-import { buildEditBody } from '@/lib/edit-message'
+import { buildEditBody, type EditDrContext } from '@/lib/edit-message'
 import { useChatStore } from '@/store/chatStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { toastError } from '@/store/toastStore'
 
 type EditingMessage = { id: string; plaintext?: string | null }
@@ -21,8 +22,10 @@ export function useMessageEditor(opts: {
   editingMessage: EditingMessage | null
   inputRef: RefObject<HTMLTextAreaElement | null>
   setMessageText: (value: string) => void
+  /** Peer user id for DIRECT chats — required to re-encrypt an edit per device. */
+  directPeerUserId?: string | null
 }): { submitEdit: (messageId: string, newText: string) => Promise<void> } {
-  const { cryptoCtx, editingMessage, inputRef, setMessageText } = opts
+  const { cryptoCtx, editingMessage, inputRef, setMessageText, directPeerUserId } = opts
 
   // Entering edit mode prefills the composer with the original plaintext and
   // switches submit into "save edit" mode.
@@ -51,7 +54,14 @@ export function useMessageEditor(opts: {
       if (!cryptoCtx) return
       try {
         const { patchMessage } = await import('@/lib/api/messages')
-        const editBody = await buildEditBody(cryptoCtx, newText)
+        // DIRECT edits must be re-encrypted per device (the server can't) — pull
+        // the same crypto inputs the send path uses from the session store.
+        const { unwrappedPrivateKey, userId } = useSessionStore.getState()
+        const drCtx: EditDrContext | undefined =
+          unwrappedPrivateKey && userId
+            ? { privateKey: unwrappedPrivateKey, ownerUserId: userId, peerUserId: directPeerUserId ?? null }
+            : undefined
+        const editBody = await buildEditBody(cryptoCtx, newText, drCtx)
         await patchMessage(messageId, editBody)
         // Optimistic update: update plaintext in store.
         useChatStore.getState().updateMessagePlaintext(messageId, newText)
@@ -60,7 +70,7 @@ export function useMessageEditor(opts: {
         toastError(msg, { title: 'EDIT' })
       }
     },
-    [cryptoCtx]
+    [cryptoCtx, directPeerUserId]
   )
 
   return { submitEdit }

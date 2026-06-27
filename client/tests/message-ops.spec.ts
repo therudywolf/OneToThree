@@ -37,15 +37,11 @@ async function composeSubmit(chat: ChatPage, text: string) {
 }
 
 test.describe('chat / message operations cross-delivery', () => {
-  // KNOWN GAP (documented, not yet fixed): editing a DIRECT message does NOT
-  // propagate the new text to the peer. `buildEditBody` (client/src/lib/edit-message.ts)
-  // sends `{content:null, iv:null}` for DIRECT on the false premise that slots are
-  // "re-encrypted server-side" — but the server can't re-encrypt E2EE content, and
-  // the message_edited handler (use-chat-realtime.ts:125) deliberately keepExisting()
-  // for DIRECT, only stamping an "edited" label. The peer keeps the ORIGINAL text.
-  // Proper fix = DR fan-out re-encryption on edit (encryptForPeer → ciphertexts[]),
-  // reset the delivery slots, re-pull + re-decrypt on the peer. Tracked separately.
-  test.fixme('edit propagates to the peer (DIRECT edit fan-out not implemented)', async ({ browser }) => {
+  // DIRECT edit fan-out: the client re-encrypts the new text per recipient device
+  // (buildEditBody → encryptOutboundTextV2 → ciphertexts[]), the server replaces the
+  // delivery slots and resets deliveredAt, and the peer's message_edited handler
+  // re-pulls + re-decrypts the slot so the NEW text replaces the old one.
+  test('edit propagates to the peer', async ({ browser }) => {
     const { ctxA, ctxB, pageA, pageB, chatA } = await twoUserDirect(browser)
     const orig = `orig-${Date.now()}`
     const edited = `edited-${Date.now()}`

@@ -1518,6 +1518,7 @@ export function ChatApp({
             sendText={sendText}
             sendMedia={sendMedia}
             sendAlbum={sendAlbum}
+            directPeerUserId={directPeerUserId}
             composeDisabled={!activeChatId || !!ctxError || isChannelSubscriber}
             typingLabel={
               scratchers.length === 0

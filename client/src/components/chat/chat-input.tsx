@@ -83,12 +83,13 @@ type Props = {
     caption?: string
   ) => Promise<void>
   cryptoCtx: ChatCryptoContext | null
+  directPeerUserId?: string | null
   disabled?: boolean
 }
 
 type QueuedFile = { file: File; mediaType: 'image' | 'video' | 'audio' | 'file' }
 
-export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled }: Props) {
+export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPeerUserId, disabled }: Props) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
@@ -191,7 +192,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, disabled 
     useFormatBar({ inputRef, containerRef, setMessageText, onDraftChanged })
 
   // Message-edit: prefill on edit + the re-encrypting PATCH (onSubmit dispatches).
-  const { submitEdit } = useMessageEditor({ cryptoCtx, editingMessage, inputRef, setMessageText })
+  const { submitEdit } = useMessageEditor({ cryptoCtx, editingMessage, inputRef, setMessageText, directPeerUserId })
 
   // Lazily fetch chat members for @mention autocomplete
 

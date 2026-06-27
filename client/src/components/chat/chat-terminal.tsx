@@ -110,6 +110,7 @@ export function ChatTerminal({
   sendText,
   sendMedia,
   sendAlbum,
+  directPeerUserId = null,
   composeDisabled = false,
   typingLabel = null,
 }: {
@@ -122,6 +123,7 @@ export function ChatTerminal({
   myAvatarKey?: string | null
   peerAvatarKey?: string | null
   cryptoCtx: ChatCryptoContext | null
+  directPeerUserId?: string | null
   sendText: (
     t: string,
     replyToId?: string | null,
@@ -1437,6 +1439,7 @@ export function ChatTerminal({
           sendMedia={sendMedia}
           sendAlbum={sendAlbum}
           cryptoCtx={cryptoCtx}
+          directPeerUserId={directPeerUserId}
           disabled={composeDisabled}
         />
       </div>

@@ -221,7 +221,7 @@ const ru = {
   'login.vaultImportHandleMissing': 'В файле нет никнейма. Введите вручную перед импортом.',
   'login.recoverLink': 'Забыли пароль / потеряли устройство?',
   'login.recoverTitle': 'Восстановление аккаунта',
-  'login.recoverSubtitle': 'ФРАЗА ВОССТАНОВЛЕНИЯ // ZERO-KNOWLEDGE',
+  'login.recoverSubtitle': 'Войдите по фразе восстановления из 24 слов',
   'login.recoverPhraseLabel': 'Фраза восстановления (24 слова)',
   'login.recoverPhrasePlaceholder': 'слово1 слово2 слово3 …',
   'login.recoverNewPassword': 'Новый пароль хранилища',

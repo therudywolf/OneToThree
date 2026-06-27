@@ -221,7 +221,7 @@ const en = {
   'login.vaultImportHandleMissing': 'No username in backup file. Enter manually before importing.',
   'login.recoverLink': 'Forgot password / lost device?',
   'login.recoverTitle': 'Recover account',
-  'login.recoverSubtitle': 'RECOVERY PHRASE // ZERO-KNOWLEDGE',
+  'login.recoverSubtitle': 'Sign in with your 24-word recovery phrase',
   'login.recoverPhraseLabel': 'Recovery phrase (24 words)',
   'login.recoverPhrasePlaceholder': 'word1 word2 word3 …',
   'login.recoverNewPassword': 'New vault password',

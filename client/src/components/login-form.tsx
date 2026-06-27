@@ -556,7 +556,7 @@ export function LoginForm() {
               {/* Account password */}
               <div className="space-y-2">
                 {mode === 'GENESIS' && (
-                  <div className="border-l-2 border-neon-cyan/40 pl-3 space-y-1 mb-3">
+                  <div id="password-explain" className="border-l-2 border-neon-cyan/40 pl-3 space-y-1 mb-3">
                     <p className="text-[8px] text-text-muted leading-relaxed">
                       {t('login.vaultPasswordExplain1')}
                     </p>
@@ -577,11 +577,13 @@ export function LoginForm() {
                     className={`${isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'} pr-10`}
                     placeholder="••••••••"
                     autoComplete={mode === 'ACCESS' ? 'current-password' : 'new-password'}
+                    aria-describedby={mode === 'GENESIS' ? 'password-explain' : undefined}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? t('login.passwordHide') : t('login.passwordShow')}
+                    title={showPassword ? t('login.passwordHide') : t('login.passwordShow')}
                     aria-pressed={showPassword}
                     className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-text-muted/70 hover:text-neon-cyan transition-colors"
                   >

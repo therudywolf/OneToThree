@@ -853,12 +853,14 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         })
         .where(eq(messages.id, messageId))
 
-      // Per-device delivery rows for fan-out (DIRECT chats).
+      // Per-device delivery rows for fan-out (DIRECT chats). Reset deliveredAt so
+      // the recipient re-pulls the re-encrypted slot — an edit produces a fresh DR
+      // ciphertext the peer must decrypt, else it keeps the old plaintext.
       if (body.ciphertexts && body.ciphertexts.length > 0) {
         for (const slot of body.ciphertexts) {
           await tx
             .update(messageDeliveries)
-            .set({ ciphertext: slot.ciphertext, iv: slot.iv })
+            .set({ ciphertext: slot.ciphertext, iv: slot.iv, deliveredAt: null })
             .where(
               and(
                 eq(messageDeliveries.messageId, messageId),

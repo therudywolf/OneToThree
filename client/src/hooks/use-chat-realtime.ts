@@ -122,9 +122,44 @@ export function useChatRealtime(
               else keepExisting()
             })
             .catch(keepExisting)
+        } else if (unwrappedPrivateKey && cryptoCtx && cryptoCtx.mode === 'DIRECT') {
+          // DIRECT fan-out edit: the peer's delivery slot was re-encrypted with a
+          // fresh DR ciphertext (deliveredAt reset server-side), so re-pull and
+          // re-decrypt it — the new text REPLACES the old one, not just a label.
+          const drCtx: DrContext | undefined =
+            userId && directPeerUserId
+              ? { ownerUserId: userId, peerUserId: directPeerUserId }
+              : undefined
+          void (async () => {
+            try {
+              const pending = await fetchPendingDeliveries(activeChatId)
+              const target = pending.filter((p) => p.id === editedId)
+              if (target.length === 0) {
+                keepExisting()
+                return
+              }
+              const rows = await decryptApiMessageRows(
+                unwrappedPrivateKey,
+                cryptoCtx,
+                target,
+                drCtx,
+                { myUserId: userId ?? undefined, myEcdhPublicKeyJwk, priorMyEcdhPublicKeysJwk }
+              )
+              const pt = rows[0]?.plaintext
+              if (pt != null && pt !== '[DECRYPT_FAIL]') {
+                if (rows[0]) await cacheMessage(rows[0]).catch(() => { /* best-effort */ })
+                updateMessagePlaintext(editedId, pt, editedAt)
+                await acknowledgeMessagesDelivered([editedId]).catch(() => { /* best-effort */ })
+              } else {
+                keepExisting()
+              }
+            } catch {
+              keepExisting()
+            }
+          })()
         } else {
-          // Fan-out (DIRECT) or no crypto context: keep the existing plaintext,
-          // just stamp editedAt so the "edited" label shows.
+          // No crypto context: keep the existing plaintext, just stamp editedAt
+          // so the "edited" label shows.
           keepExisting()
         }
         return

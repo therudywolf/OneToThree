@@ -385,6 +385,42 @@ export default function AdminPage() {
     }
   }
 
+  // Assign a group to every eligible selected user in one click — skips self, the
+  // creator, and (for admin grants) anyone when the operator isn't the creator.
+  const bulkSetGroup = async (group: AssignableGroup) => {
+    if (!user || bulkBusy) return
+    const targets = nodes.filter(n =>
+      selectedIds.has(n.id) &&
+      n.id !== user.id &&
+      n.group !== 'creator' &&
+      !((group === 'admin' || n.group === 'admin') && (user.group ?? 'regular') !== 'creator')
+    )
+    if (targets.length === 0) { setErrorLog('NO_ELIGIBLE_TARGETS'); return }
+    setBulkBusy(true)
+    setErrorLog(null)
+    let ok = 0
+    const failed: string[] = []
+    for (const t of targets) {
+      try {
+        const next = await patchAdminUserGroup(t.id, group)
+        setNodes(prev => prev.map(x => x.id === next.id ? next : x))
+        setGroupCounts(c => ({
+          ...c,
+          [t.group]: Math.max(0, (c[t.group] ?? 1) - 1),
+          [next.group]: (c[next.group] ?? 0) + 1,
+        }))
+        ok++
+      } catch (e) {
+        failed.push(`${t.username}:${e instanceof Error ? e.message : 'ERR'}`)
+      }
+    }
+    setBulkBusy(false)
+    setSelectedIds(new Set())
+    if (failed.length) {
+      setErrorLog(`GROUP_SET ${ok}/${targets.length} — FAILED: ${failed.slice(0, 5).join(', ')}`)
+    }
+  }
+
   const toggleIsolation = async (row: AdminUserRow) => {
     if (lockId || row.id === user?.id) return
     setLockId(row.id)
@@ -562,6 +598,24 @@ export default function AdminPage() {
                 >
                   {bulkBusy ? 'PURGING…' : 'PURGE_SELECTED'}
                 </button>
+                <span className="mx-1 h-3 w-px bg-border-strong" aria-hidden />
+                <span className="text-[8px] uppercase tracking-widest text-text-muted/50">→ В ГРУППУ:</span>
+                {ASSIGNABLE_GROUPS.map((g) => {
+                  const gated = g === 'admin' && (user.group ?? 'regular') !== 'creator'
+                  return (
+                    <button
+                      key={g}
+                      type="button"
+                      disabled={bulkBusy || gated}
+                      onClick={() => void bulkSetGroup(g)}
+                      title={gated ? 'Только создатель может назначать админов' : `Назначить «${GROUP_META[g].label}» выбранным`}
+                      className={`border px-2 py-0.5 text-[8px] uppercase tracking-widest hover:bg-white/5 disabled:opacity-30 ${GROUP_META[g].cls}`}
+                    >
+                      {GROUP_META[g].label}
+                    </button>
+                  )
+                })}
+                <span className="mx-1 h-3 w-px bg-border-strong" aria-hidden />
                 <button
                   type="button"
                   onClick={() => setSelectedIds(new Set())}

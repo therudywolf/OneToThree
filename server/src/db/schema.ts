@@ -53,6 +53,20 @@ export const stickerFormatEnum = pgEnum('sticker_format', [
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
 
+/**
+ * Account group / tier — a single classification surfaced in the admin panel.
+ * `creator` is the immutable founder super-admin; `admin` grants the admin panel
+ * (role is kept in sync: creator/admin → role 'admin', else 'user'). `premium`/
+ * `regular`/`test` are non-privileged tiers. Order = privilege, high → low.
+ */
+export const userGroupEnum = pgEnum('user_group', [
+  'creator',
+  'admin',
+  'premium',
+  'regular',
+  'test',
+])
+
 export const reportStatusEnum = pgEnum('report_status', ['open', 'closed'])
 export const nativePushPlatformEnum = pgEnum('native_push_platform', ['android'])
 
@@ -64,6 +78,8 @@ export const users = pgTable('users', {
   ecdhPublicKeyJwk: text('ecdh_public_key_jwk'),
   isDiscoverable: boolean('is_discoverable').notNull().default(false),
   role: userRoleEnum('role').notNull().default('user'),
+  /** Account group/tier (admin-managed). Source of truth; `role` is derived. */
+  userGroup: userGroupEnum('user_group').notNull().default('regular'),
   isBanned: boolean('is_banned').notNull().default(false),
   /** Base32 TOTP secret; set during setup, cleared on disable. */
   totpSecret: text('totp_secret'),

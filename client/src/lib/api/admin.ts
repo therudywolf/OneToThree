@@ -2,10 +2,17 @@ import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from '@/lib/api/auth'
 import { canonicalUserId } from '@/lib/user-id'
 
+/** Account group/tier — high → low privilege. `creator` is set once + immutable. */
+export type UserGroup = 'creator' | 'admin' | 'premium' | 'regular' | 'test'
+
+/** Groups an admin can assign via the API (`creator` is never assignable). */
+export type AssignableGroup = Exclude<UserGroup, 'creator'>
+
 export type AdminUserRow = {
   id: string
   username: string
   role: 'user' | 'admin'
+  group: UserGroup
   is_banned: boolean
 }
 
@@ -57,6 +64,7 @@ export type AdminUsersResult = {
   total: number
   limit: number
   offset: number
+  group_counts?: Partial<Record<UserGroup, number>>
 }
 
 function pageQuery(p?: AdminPage): string {
@@ -77,6 +85,7 @@ export async function fetchAdminUsers(page?: AdminPage): Promise<AdminUsersResul
     total?: number
     limit?: number
     offset?: number
+    group_counts?: Partial<Record<UserGroup, number>>
     error?: string
   }
   if (!res.ok) {
@@ -87,6 +96,7 @@ export async function fetchAdminUsers(page?: AdminPage): Promise<AdminUsersResul
     total: data.total ?? (data.users?.length ?? 0),
     limit: data.limit ?? page?.limit ?? 100,
     offset: data.offset ?? page?.offset ?? 0,
+    group_counts: data.group_counts,
   }
 }
 
@@ -314,6 +324,23 @@ export async function patchAdminUserRole(userId: string, role: 'user' | 'admin')
   })
   const data = (await res.json().catch(() => ({}))) as { user?: AdminUserRow; error?: string }
   if (!res.ok) throw new Error(data.error ?? 'ADMIN_ROLE_FAILED')
+  if (!data.user) throw new Error('INVALID_ADMIN_RESPONSE')
+  return data.user
+}
+
+/** Change a user's account group/tier (creator is never assignable). */
+export async function patchAdminUserGroup(
+  userId: string,
+  group: AssignableGroup
+): Promise<AdminUserRow> {
+  const res = await fetchWithTimeout(`${API_URL}/admin/users/${userId}/group`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ group }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { user?: AdminUserRow; error?: string }
+  if (!res.ok) throw new Error(data.error ?? 'ADMIN_GROUP_FAILED')
   if (!data.user) throw new Error('INVALID_ADMIN_RESPONSE')
   return data.user
 }

@@ -20,7 +20,7 @@ import {
   fetchAdminUserLoginHistory,
   fetchAdminUserStorageUsage,
   fetchAdminUsers,
-  patchAdminUserRole,
+  patchAdminUserGroup,
   patchAdminUserStorageQuota,
   patchUserBan,
   postAdminMediaCleanupOrphans,
@@ -39,6 +39,8 @@ import {
   type AdminStorageUserRow,
   type AdminSystemStats,
   type AdminUserRow,
+  type UserGroup,
+  type AssignableGroup,
 } from '@/lib/api/admin'
 import { useThemeStore } from '@/store/themeStore'
 
@@ -46,6 +48,28 @@ type Tab = 'nodes' | 'incidents' | 'login-events' | 'system' | 'storage' | 'audi
 
 const NODES_PAGE_SIZE = 100
 const REPORTS_PAGE_SIZE = 100
+
+/** Account-group presentation — label (RU) + Tailwind classes, high → low. */
+const GROUP_META: Record<UserGroup, { label: string; cls: string }> = {
+  creator: { label: 'Создатель', cls: 'text-fuchsia-400 border-fuchsia-400/50' },
+  admin: { label: 'Администратор', cls: 'text-neon-amber border-neon-amber/50' },
+  premium: { label: 'Премиум', cls: 'text-yellow-300 border-yellow-300/50' },
+  regular: { label: 'Обычный', cls: 'text-text-muted border-text-muted/40' },
+  test: { label: 'Тестовый', cls: 'text-sky-400 border-sky-400/50' },
+}
+/** Display order high → low privilege. */
+const GROUP_ORDER: UserGroup[] = ['creator', 'admin', 'premium', 'regular', 'test']
+/** Groups an admin can assign (creator is set once + immutable). */
+const ASSIGNABLE_GROUPS: AssignableGroup[] = ['test', 'regular', 'premium', 'admin']
+
+function GroupBadge({ group }: { group: UserGroup }) {
+  const m = GROUP_META[group]
+  return (
+    <span className={`inline-block border px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-widest ${m.cls}`}>
+      {m.label}
+    </span>
+  )
+}
 
 function fmtBytes(n: bigint | number): string {
   const v = typeof n === 'bigint' ? Number(n) : n
@@ -69,13 +93,15 @@ type UserDetailModalProps = {
   node: AdminUserRow
   onClose: () => void
   onBanToggle: (node: AdminUserRow) => Promise<void>
-  onRoleChange: (node: AdminUserRow, role: 'user' | 'admin') => Promise<void>
+  onGroupChange: (node: AdminUserRow, group: AssignableGroup) => Promise<void>
   onExpunge: (node: AdminUserRow) => Promise<void>
   isSelf: boolean
+  /** The signed-in admin's own group — gates admin grants to the creator. */
+  viewerGroup: UserGroup
   lockId: string | null
 }
 
-function UserDetailModal({ node, onClose, onBanToggle, onRoleChange, onExpunge, isSelf, lockId }: UserDetailModalProps) {
+function UserDetailModal({ node, onClose, onBanToggle, onGroupChange, onExpunge, isSelf, viewerGroup, lockId }: UserDetailModalProps) {
   const [devices, setDevices] = useState<AdminDeviceRow[]>([])
   const [history, setHistory] = useState<AdminLoginEventRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -118,7 +144,10 @@ function UserDetailModal({ node, onClose, onBanToggle, onRoleChange, onExpunge, 
         <header className="mb-4 flex items-center justify-between border-b border-border-strong pb-4">
           <div>
             <p className="text-[9px] uppercase tracking-[0.3em] text-text-muted/70">NODE_DETAIL</p>
-            <h2 className="font-bold text-neon-cyan">{node.username}</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-bold text-neon-cyan">{node.username}</h2>
+              <GroupBadge group={node.group} />
+            </div>
             <p className="text-[9px] text-text-muted">{node.id}</p>
           </div>
           <button onClick={onClose} className="border border-border-strong px-3 py-1 text-[9px] uppercase tracking-widest hover:border-neon-red hover:text-neon-red">
@@ -136,13 +165,30 @@ function UserDetailModal({ node, onClose, onBanToggle, onRoleChange, onExpunge, 
               >
                 {node.is_banned ? '[ REINTEGRATE ]' : '[ ISOLATE ]'}
               </button>
-              <button
-                disabled={!!lockId}
-                onClick={() => onRoleChange(node, node.role === 'admin' ? 'user' : 'admin')}
-                className="border border-border-strong px-3 py-1 text-[9px] uppercase tracking-widest hover:border-neon-amber hover:text-neon-amber disabled:opacity-40"
-              >
-                {node.role === 'admin' ? '[ DEMOTE_TO_USER ]' : '[ PROMOTE_TO_ADMIN ]'}
-              </button>
+              {node.group === 'creator' ? (
+                <span className="flex items-center border border-fuchsia-400/40 px-3 py-1 text-[9px] uppercase tracking-widest text-fuchsia-400">
+                  [ СОЗДАТЕЛЬ · НЕИЗМЕНЯЕМО ]
+                </span>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1 border border-border-strong px-2 py-1">
+                  <span className="mr-1 text-[8px] uppercase tracking-widest text-text-muted/60">ГРУППА</span>
+                  {ASSIGNABLE_GROUPS.map((g) => {
+                    const isCurrent = node.group === g
+                    const adminGated = (g === 'admin' || node.group === 'admin') && viewerGroup !== 'creator'
+                    return (
+                      <button
+                        key={g}
+                        disabled={!!lockId || isCurrent || adminGated}
+                        onClick={() => onGroupChange(node, g)}
+                        title={adminGated ? 'Только создатель может назначать/снимать администраторов' : undefined}
+                        className={`border px-2 py-0.5 text-[8px] uppercase tracking-widest disabled:opacity-30 ${isCurrent ? `${GROUP_META[g].cls} bg-white/5` : 'border-border-strong text-text-muted hover:border-neon-cyan hover:text-neon-cyan'}`}
+                      >
+                        {GROUP_META[g].label}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
               <button
                 disabled={!!lockId}
                 onClick={() => onExpunge(node)}
@@ -219,6 +265,8 @@ export default function AdminPage() {
   const [nodes, setNodes] = useState<AdminUserRow[]>([])
   const [nodesTotal, setNodesTotal] = useState(0)
   const [nodesOffset, setNodesOffset] = useState(0)
+  const [groupFilter, setGroupFilter] = useState<UserGroup | 'all'>('all')
+  const [groupCounts, setGroupCounts] = useState<Partial<Record<UserGroup, number>>>({})
   const [storageData, setStorageData] = useState<AdminStorageUserRow[]>([])
   const [sysPulse, setSysPulse] = useState<AdminSystemStats | null>(null)
   const [incidents, setIncidents] = useState<AdminReportRow[]>([])
@@ -244,10 +292,14 @@ export default function AdminPage() {
   }, [storageData])
 
   const filteredNodes = useMemo(() => {
-    if (!search.trim()) return nodes
-    const q = search.toLowerCase()
-    return nodes.filter(n => n.username.toLowerCase().includes(q) || n.id.includes(q))
-  }, [nodes, search])
+    let list = nodes
+    if (groupFilter !== 'all') list = list.filter(n => n.group === groupFilter)
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(n => n.username.toLowerCase().includes(q) || n.id.includes(q))
+    }
+    return list
+  }, [nodes, search, groupFilter])
 
   const syncState = useCallback(async () => {
     setErrorLog(null)
@@ -262,7 +314,7 @@ export default function AdminPage() {
       fetchAdminLoginEvents(),
     ])
     const failed: string[] = []
-    if (u.status === 'fulfilled') { setNodes(u.value.users); setNodesTotal(u.value.total) } else failed.push('users')
+    if (u.status === 'fulfilled') { setNodes(u.value.users); setNodesTotal(u.value.total); setGroupCounts(u.value.group_counts ?? {}) } else failed.push('users')
     if (r.status === 'fulfilled') { setIncidents(r.value.reports); setIncidentsTotal(r.value.total) } else failed.push('reports')
     if (pulse.status === 'fulfilled') setSysPulse(pulse.value); else failed.push('system')
     if (storage.status === 'fulfilled') setStorageData(storage.value); else failed.push('storage')
@@ -347,15 +399,22 @@ export default function AdminPage() {
     }
   }
 
-  const changeRole = async (row: AdminUserRow, role: 'user' | 'admin') => {
+  const changeGroup = async (row: AdminUserRow, group: AssignableGroup) => {
     if (lockId || row.id === user?.id) return
+    const prevGroup = row.group
     setLockId(row.id)
     try {
-      const next = await patchAdminUserRole(row.id, role)
+      const next = await patchAdminUserGroup(row.id, group)
       setNodes(prev => prev.map(x => x.id === next.id ? next : x))
       if (detailNode?.id === row.id) setDetailNode(next)
+      // Keep the per-group counters in step without a full re-sync.
+      setGroupCounts(c => ({
+        ...c,
+        [prevGroup]: Math.max(0, (c[prevGroup] ?? 1) - 1),
+        [next.group]: (c[next.group] ?? 0) + 1,
+      }))
     } catch (e) {
-      setErrorLog(e instanceof Error ? e.message : 'ROLE_CHANGE_FAILED')
+      setErrorLog(e instanceof Error ? e.message : 'GROUP_CHANGE_FAILED')
     } finally {
       setLockId(null)
     }
@@ -385,9 +444,10 @@ export default function AdminPage() {
           node={detailNode}
           onClose={() => setDetailNode(null)}
           onBanToggle={toggleIsolation}
-          onRoleChange={changeRole}
+          onGroupChange={changeGroup}
           onExpunge={expungeNode}
           isSelf={detailNode.id === user.id}
+          viewerGroup={user.group ?? 'regular'}
           lockId={lockId}
         />
       )}
@@ -472,6 +532,25 @@ export default function AdminPage() {
                 className="w-full border border-border-strong bg-void px-3 py-1.5 text-[10px] text-text-primary placeholder:text-text-muted/40 focus:border-neon-cyan focus:outline-none sm:ml-auto sm:w-auto sm:min-w-[16rem]"
               />
             </div>
+            {/* Group filter — click a tier to scope the registry; counts are global. */}
+            <div className="mb-4 flex flex-wrap items-center gap-1.5">
+              {(['all', ...GROUP_ORDER] as const).map((g) => {
+                const active = groupFilter === g
+                const count = g === 'all' ? nodesTotal : (groupCounts[g] ?? 0)
+                const label = g === 'all' ? 'ВСЕ' : GROUP_META[g].label
+                const cls = g === 'all' ? 'text-text-primary border-border-strong' : GROUP_META[g].cls
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGroupFilter(g)}
+                    className={`border px-2 py-1 text-[8px] font-semibold uppercase tracking-widest transition-colors ${active ? `${cls} bg-white/5` : 'border-border-strong text-text-muted/70 hover:border-neon-cyan hover:text-neon-cyan'}`}
+                  >
+                    {label} <span className="opacity-60">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
             {selectedIds.size > 0 && (
               <div className="mb-3 flex flex-wrap items-center gap-3 border border-neon-red/50 bg-neon-red/5 px-3 py-2">
                 <span className="text-[9px] uppercase tracking-widest text-neon-red">{selectedIds.size} SELECTED</span>
@@ -508,7 +587,7 @@ export default function AdminPage() {
                       />
                     </th>
                     <th className="px-4 py-3 font-normal">HANDLE</th>
-                    <th className="px-4 py-3 font-normal">RANK</th>
+                    <th className="px-4 py-3 font-normal">ГРУППА</th>
                     <th className="px-4 py-3 font-normal">STATUS</th>
                     <th className="px-4 py-3 font-normal">MSGS</th>
                     <th className="px-4 py-3 font-normal">STORAGE</th>
@@ -541,9 +620,7 @@ export default function AdminPage() {
                           {isSelf && <span className="ml-2 text-[8px] text-neon-amber">[YOU]</span>}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`text-[9px] uppercase ${node.role === 'admin' ? 'text-neon-amber' : 'text-text-muted/60'}`}>
-                            {node.role}
-                          </span>
+                          <GroupBadge group={node.group} />
                         </td>
                         <td className="px-4 py-3">
                           <span className={`text-[9px] uppercase ${node.is_banned ? 'text-neon-red' : 'text-success/80'}`}>

@@ -7,13 +7,15 @@ import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import { adminAuditLog, reports, users } from '../db/schema.js'
 
-async function createUser(username: string, role: 'user' | 'admin' = 'user') {
+type Grp = 'creator' | 'admin' | 'premium' | 'regular' | 'test'
+async function createUser(username: string, role: 'user' | 'admin' = 'user', group?: Grp) {
   const [row] = await db
     .insert(users)
     .values({
       username,
       publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
       role,
+      ...(group ? { userGroup: group } : {}),
     })
     .returning({ id: users.id, username: users.username, role: users.role })
   return row
@@ -227,6 +229,98 @@ describe('admin routes — authorization & self-protection', () => {
     } finally {
       await db.delete(users).where(eq(users.id, plain.id))
       await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('creator can grant the admin group, and role syncs to admin', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const creator = await createUser(`grp-creator-${stamp}`, 'admin', 'creator')
+    const target = await createUser(`grp-target-${stamp}`, 'user', 'regular')
+    try {
+      const res = await request(app!.server)
+        .patch(`/api/admin/users/${target.id}/group`)
+        .set('Cookie', await cookieFor(creator))
+        .send({ group: 'admin' })
+        .expect(200)
+      expect(res.body.user.group).toBe('admin')
+      expect(res.body.user.role).toBe('admin')
+    } finally {
+      await db.delete(users).where(eq(users.id, target.id))
+      await db.delete(users).where(eq(users.id, creator.id))
+    }
+  })
+
+  it('a non-creator admin cannot grant the admin group (CREATOR_ONLY)', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`grp-adm-${stamp}`, 'admin', 'admin')
+    const target = await createUser(`grp-tgt2-${stamp}`, 'user', 'regular')
+    try {
+      const res = await request(app!.server)
+        .patch(`/api/admin/users/${target.id}/group`)
+        .set('Cookie', await cookieFor(admin))
+        .send({ group: 'admin' })
+        .expect(403)
+      expect(res.body.error).toBe('CREATOR_ONLY')
+    } finally {
+      await db.delete(users).where(eq(users.id, target.id))
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('a plain admin can set a non-privileged tier (premium), role stays user', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`grp-adm2-${stamp}`, 'admin', 'admin')
+    const target = await createUser(`grp-tgt3-${stamp}`, 'user', 'regular')
+    try {
+      const res = await request(app!.server)
+        .patch(`/api/admin/users/${target.id}/group`)
+        .set('Cookie', await cookieFor(admin))
+        .send({ group: 'premium' })
+        .expect(200)
+      expect(res.body.user.group).toBe('premium')
+      expect(res.body.user.role).toBe('user')
+    } finally {
+      await db.delete(users).where(eq(users.id, target.id))
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('the creator group is immutable (CREATOR_IMMUTABLE)', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const creator = await createUser(`grp-cre-${stamp}`, 'admin', 'creator')
+    const other = await createUser(`grp-cre2-${stamp}`, 'admin', 'creator')
+    try {
+      const res = await request(app!.server)
+        .patch(`/api/admin/users/${other.id}/group`)
+        .set('Cookie', await cookieFor(creator))
+        .send({ group: 'regular' })
+        .expect(403)
+      expect(res.body.error).toBe('CREATOR_IMMUTABLE')
+    } finally {
+      await db.delete(users).where(eq(users.id, other.id))
+      await db.delete(users).where(eq(users.id, creator.id))
+    }
+  })
+
+  it('the creator group cannot be assigned via the API (rejected by schema)', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const creator = await createUser(`grp-cre3-${stamp}`, 'admin', 'creator')
+    const target = await createUser(`grp-tgt4-${stamp}`, 'user', 'regular')
+    try {
+      const res = await request(app!.server)
+        .patch(`/api/admin/users/${target.id}/group`)
+        .set('Cookie', await cookieFor(creator))
+        .send({ group: 'creator' })
+        .expect(400)
+      expect(res.body.error).toBe('INVALID_BODY')
+    } finally {
+      await db.delete(users).where(eq(users.id, target.id))
+      await db.delete(users).where(eq(users.id, creator.id))
     }
   })
 })

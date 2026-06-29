@@ -155,6 +155,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           username: user.username,
           is_discoverable: user.is_discoverable,
           role: user.role,
+          group: user.group,
           totp_enabled: totpRow?.isTotpEnabled ?? false,
           device_id: sess?.device_id ?? null,
           avatar_key: totpRow?.avatarKey ?? null,

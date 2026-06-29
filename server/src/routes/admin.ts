@@ -143,6 +143,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         id: users.id,
         username: users.username,
         role: users.role,
+        group: users.userGroup,
         is_banned: users.isBanned,
       })
       .from(users)
@@ -150,7 +151,14 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       .limit(limit)
       .offset(offset)
 
-    return reply.send({ users: rows, total, limit, offset })
+    // Per-group totals so the panel can show counts without a second round-trip.
+    const groupRows = await db
+      .select({ group: users.userGroup, c: sql<number>`count(*)::int` })
+      .from(users)
+      .groupBy(users.userGroup)
+    const groupCounts = Object.fromEntries(groupRows.map((r) => [r.group, Number(r.c)]))
+
+    return reply.send({ users: rows, total, limit, offset, group_counts: groupCounts })
   })
 
   app.patch('/users/:id/ban', async (request, reply) => {
@@ -177,6 +185,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         id: users.id,
         username: users.username,
         role: users.role,
+        group: users.userGroup,
         is_banned: users.isBanned,
       })
 
@@ -613,11 +622,16 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
     if (params.data.id === admin.id) return reply.status(400).send({ error: 'CANNOT_CHANGE_OWN_ROLE' })
 
+    // Legacy endpoint — keep the group in sync with the role it sets so the two
+    // never drift (the panel now drives changes through /group). Admin grants are
+    // creator-only there; mirror that guard here.
+    if (admin.group !== 'creator') return reply.status(403).send({ error: 'CREATOR_ONLY' })
+    const nextGroup = body.data.role === 'admin' ? 'admin' : 'regular'
     const [after] = await db
       .update(users)
-      .set({ role: body.data.role })
+      .set({ role: body.data.role, userGroup: nextGroup })
       .where(eq(users.id, params.data.id))
-      .returning({ id: users.id, username: users.username, role: users.role, is_banned: users.isBanned })
+      .returning({ id: users.id, username: users.username, role: users.role, group: users.userGroup, is_banned: users.isBanned })
 
     if (!after) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
 
@@ -626,6 +640,68 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       action: 'user_role_change',
       targetUserId: after.id,
       detail: { username: after.username, role: body.data.role },
+    })
+
+    return reply.send({ user: after })
+  })
+
+  /**
+   * PATCH /api/admin/users/:id/group — set a user's account group/tier.
+   * Rules: the `creator` group is immutable + unassignable; granting OR revoking
+   * `admin` is creator-only (no admin can escalate self/peers); `role` is kept in
+   * sync (admin -> 'admin', otherwise 'user').
+   */
+  app.patch('/users/:id/group', async (request, reply) => {
+    const admin = await requireAdmin(request, reply)
+    if (!admin) return
+
+    const params = z.object({ id: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const body = z
+      .object({ group: z.enum(['admin', 'premium', 'regular', 'test']) })
+      .safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    if (params.data.id === admin.id) {
+      return reply.status(400).send({ error: 'CANNOT_CHANGE_OWN_GROUP' })
+    }
+
+    const [target] = await db
+      .select({ id: users.id, username: users.username, group: users.userGroup })
+      .from(users)
+      .where(eq(users.id, params.data.id))
+      .limit(1)
+    if (!target) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+
+    const newGroup = body.data.group
+    if (target.group === 'creator') {
+      return reply.status(403).send({ error: 'CREATOR_IMMUTABLE' })
+    }
+    const touchesAdmin = newGroup === 'admin' || target.group === 'admin'
+    if (touchesAdmin && admin.group !== 'creator') {
+      return reply.status(403).send({ error: 'CREATOR_ONLY' })
+    }
+
+    const role = newGroup === 'admin' ? 'admin' : 'user'
+    const [after] = await db
+      .update(users)
+      .set({ userGroup: newGroup, role })
+      .where(eq(users.id, params.data.id))
+      .returning({
+        id: users.id,
+        username: users.username,
+        role: users.role,
+        group: users.userGroup,
+        is_banned: users.isBanned,
+      })
+    if (!after) return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+
+    await writeAudit(request.log, {
+      adminUserId: admin.id,
+      action: 'user_group_change',
+      targetUserId: after.id,
+      detail: { username: after.username, from: target.group, to: newGroup },
     })
 
     return reply.send({ user: after })

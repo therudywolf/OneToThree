@@ -99,6 +99,7 @@ async function resolveWsUser(request: FastifyRequest): Promise<WsAuthResult | nu
         isDiscoverable: users.isDiscoverable,
         isBanned: users.isBanned,
         role: users.role,
+        userGroup: users.userGroup,
       })
       .from(users)
       .where(eq(users.id, id))
@@ -110,6 +111,7 @@ async function resolveWsUser(request: FastifyRequest): Promise<WsAuthResult | nu
         username: row.username,
         is_discoverable: row.isDiscoverable,
         role: row.role === 'admin' ? 'admin' : 'user',
+        group: row.userGroup ?? 'regular',
       },
       jti: p.jti,
       device_id: p.device_id,

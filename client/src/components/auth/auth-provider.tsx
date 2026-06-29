@@ -25,6 +25,8 @@ export type AuthUser = {
   username: string
   is_discoverable?: boolean
   role?: 'user' | 'admin'
+  /** Account group/tier — gates admin-panel group management UI. */
+  group?: 'creator' | 'admin' | 'premium' | 'regular' | 'test'
   totp_enabled?: boolean
   has_passkeys?: boolean // <-- Флаг для Windows Hello / Face ID
   /** Session-bound device row id (JWT), when present. */

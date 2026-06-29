@@ -10,12 +10,16 @@ import { normalizeUuid } from './uuid.js'
 import { isJtiDenied } from './jwt-denylist.js'
 import { maybeAutoMigrateDevice } from './device-auto-migrate.js'
 
+export type UserGroup = 'creator' | 'admin' | 'premium' | 'regular' | 'test'
+
 export type AuthUser = {
   id: string
   username: string
   /** Shadow by default — only explicit opt-in lists in username search. */
   is_discoverable: boolean
   role: 'user' | 'admin'
+  /** Account group/tier (admin-managed). `role` is derived from this. */
+  group: UserGroup
 }
 
 export type SessionJwtPayload = {
@@ -160,6 +164,7 @@ export async function getAuthUser(
       isDiscoverable: users.isDiscoverable,
       isBanned: users.isBanned,
       role: users.role,
+      userGroup: users.userGroup,
       publicKeyJwk: users.publicKeyJwk,  // Stage 3: needed for auto-migrate
     })
     .from(users)
@@ -192,6 +197,7 @@ export async function getAuthUser(
     username: row.username,
     is_discoverable: row.isDiscoverable,
     role: row.role === 'admin' ? 'admin' : 'user',
+    group: (row.userGroup ?? 'regular') as UserGroup,
   }
 }
 

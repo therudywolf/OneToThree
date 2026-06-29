@@ -171,6 +171,7 @@ export async function fetchMe(): Promise<{
     username: string
     is_discoverable?: boolean
     role?: 'user' | 'admin'
+    group?: 'creator' | 'admin' | 'premium' | 'regular' | 'test'
     totp_enabled?: boolean
     device_id?: string | null
     avatar_key?: string | null
@@ -187,6 +188,7 @@ export async function fetchMe(): Promise<{
       username: string
       is_discoverable?: boolean
       role?: 'user' | 'admin'
+      group?: 'creator' | 'admin' | 'premium' | 'regular' | 'test'
       totp_enabled?: boolean
       device_id?: string | null
       avatar_key?: string | null
@@ -211,6 +213,7 @@ export async function fetchMe(): Promise<{
           ? data.user.is_discoverable
           : false,
       role: data.user.role === 'admin' ? 'admin' : 'user',
+      group: data.user.group ?? 'regular',
       totp_enabled:
         typeof data.user.totp_enabled === 'boolean'
           ? data.user.totp_enabled

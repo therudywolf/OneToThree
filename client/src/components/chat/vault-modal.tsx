@@ -37,9 +37,9 @@ import {
   unlockVaultWithWebAuthn,
 } from '@/lib/webauthn-vault'
 import {
-  isKeychainAvailable,
-  keychainGet,
-  keychainSet,
+  isNativeSecureStorageAvailable,
+  secureStoreGet,
+  secureStoreSet,
 } from '@/lib/native-keychain'
 import { useSessionStore } from '@/store/sessionStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
@@ -214,16 +214,16 @@ export function VaultModal({ userId, displayHandle }: Props) {
     [setUnwrappedPrivateKey, setMyEcdhPublicKeyJwk, setPriorMyEcdhPublicKeysJwk, t, userId]
   )
 
-  // Tauri desktop path: if the OS keychain already holds the PIN for this
-  // user, transparently unlock without prompting. The PIN gets saved to
-  // the keychain after the first successful manual unlock below. On web
-  // and Capacitor this is a no-op.
+  // Native path (Tauri desktop OS keychain OR Capacitor Android Keystore): if
+  // secure storage already holds the PIN for this user, transparently unlock
+  // without prompting. The PIN gets saved after the first successful manual
+  // unlock below. On the web this is a no-op.
   useEffect(() => {
-    if (!isKeychainAvailable()) return
+    if (!isNativeSecureStorageAvailable()) return
     let cancelled = false
     void (async () => {
       const slot = `vault-pin:${userId}`
-      const stashed = await keychainGet(slot)
+      const stashed = await secureStoreGet(slot)
       if (cancelled || !stashed) return
       try {
         const blob = readVaultBlob(userId)
@@ -270,10 +270,10 @@ export function VaultModal({ userId, displayHandle }: Props) {
           })
           .catch(() => { /* non-fatal — user stays on legacy vault */ })
       }
-      // Tauri desktop: stash the PIN in the OS keychain so the next
-      // launch can unlock silently. No-op on web / Capacitor.
-      if (isKeychainAvailable()) {
-        void keychainSet(`vault-pin:${userId}`, pin).catch(() => {
+      // Native (Tauri OS keychain / Capacitor Android Keystore): stash the PIN
+      // so the next launch can unlock silently. No-op on web.
+      if (isNativeSecureStorageAvailable()) {
+        void secureStoreSet(`vault-pin:${userId}`, pin).catch(() => {
           /* best-effort */
         })
       }

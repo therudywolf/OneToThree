@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
   public void onCreate(android.os.Bundle savedInstanceState) {
     registerPlugin(NotificationModePlugin.class);
     registerPlugin(DevicePermissionsPlugin.class);
+    registerPlugin(KeystorePlugin.class);
     super.onCreate(savedInstanceState);
 
     // FLAG_SECURE: block screenshots, screen-recording, and the recent-apps

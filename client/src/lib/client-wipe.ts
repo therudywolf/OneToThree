@@ -3,7 +3,7 @@ import { fetchWithTimeout } from '@/lib/api/fetch'
 import { clearAllMediaCache } from '@/lib/media-cache'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { deleteWebAuthnMetaDb } from '@/lib/webauthn-vault'
-import { isKeychainAvailable, keychainDelete } from '@/lib/native-keychain'
+import { isNativeSecureStorageAvailable, secureStoreDelete } from '@/lib/native-keychain'
 
 /**
  * Aggressive local wipe (vault, caches, storage). Used when the server rejects the session as banned.
@@ -70,13 +70,13 @@ function collectVaultUserIds(): string[] {
 }
 
 /**
- * Drop the keychain-stashed vault PINs for the given user ids. Slot key is
- * namespaced by user id so other profiles on the same desktop are not
- * affected. No-op on web / Capacitor.
+ * Drop the native-secure-storage-stashed vault PINs for the given user ids
+ * (Tauri OS keychain OR Capacitor Android Keystore). Slot key is namespaced by
+ * user id so other profiles on the same device are not affected. No-op on web.
  */
 async function wipeKeychainSlots(userIds: readonly string[]): Promise<void> {
-  if (!isKeychainAvailable() || userIds.length === 0) return
-  await Promise.all(userIds.map((id) => keychainDelete(`vault-pin:${id}`)))
+  if (!isNativeSecureStorageAvailable() || userIds.length === 0) return
+  await Promise.all(userIds.map((id) => secureStoreDelete(`vault-pin:${id}`)))
 }
 
 /**

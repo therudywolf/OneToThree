@@ -75,6 +75,21 @@ android {
     }
 }
 
+// Instrumented-test classpath only: Espresso pulls the legacy split
+// kotlin-stdlib-jdk7/jdk8 1.6.21, which duplicate classes now merged into
+// kotlin-stdlib 1.8.22 (dexing fails with "Duplicate class kotlin.*"). Align
+// them to 1.8.22 (the jdk7/jdk8 artifacts are empty stubs since Kotlin 1.8).
+// Scoped to androidTest* configurations so debug/release builds are untouched.
+configurations.configureEach { config ->
+    if (config.name.toLowerCase().contains('androidtest')) {
+        config.resolutionStrategy {
+            force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+            force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+        }
+    }
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'

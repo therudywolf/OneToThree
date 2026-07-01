@@ -2,6 +2,7 @@
  * D1 — Group E2E invite flow: new member receives group key and can send/receive messages.
  * D2 — Direct fanout: two accounts exchange messages, no DECRYPT_FAIL.
  * D3 — Saved Messages: self-chat message survives a page reload.
+ * D3b — Saved Messages: an EDITED self-message survives reload with the new text.
  * D4 — DR runtime: direct message carries protocol_version:2 after DR bootstrap.
  * D5 — TURN/ICE: /api/ice-servers returns a valid iceServers array.
  */
@@ -159,6 +160,57 @@ test.describe('D3: Saved Messages — self-chat persistence across reload', () =
 
     // Message must still be visible after reload
     await expect(page.getByText(msg).first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+  })
+
+  // D3b — SELF edit propagation: Saved Messages read from a per-device
+  // self-fanout slot (not row content), so an edit must re-encrypt those slots
+  // (buildEditBody SELF → buildFanoutSlotsDetailed → ciphertexts[]). The server
+  // rewrites each slot; on reload the NEW text must REPLACE the old one. Without
+  // the re-encryption the edit only relabeled and the slot kept the old text.
+  test('edited self-message survives reload with the new text', async ({ page }) => {
+    const handle = uniqueHandle('d3bedit')
+    await registerNewUser(page, handle, PASS)
+
+    const selfChatId = await page.evaluate(async () => {
+      const res = await fetch('/api/chats/self', { credentials: 'include' })
+      if (!res.ok) throw new Error(`self ${res.status}`)
+      const data = (await res.json()) as { chat?: { id?: string }; id?: string }
+      const chatId = data.chat?.id ?? data.id
+      if (!chatId) throw new Error('self chat id missing')
+      return chatId
+    })
+
+    await page.goto(`/?chat=${selfChatId}`)
+    const chatSelf = new ChatPage(page)
+    await chatSelf.waitForChatReady(PASS)
+
+    const orig = `d3b-orig-${Date.now()}`
+    const edited = `d3b-edited-${Date.now()}`
+    await chatSelf.sendChatMessage(orig)
+    await expect(page.getByText(orig).first()).toBeVisible({ timeout: 15_000 })
+
+    // Reload so we edit a message loaded from server history (a real bubble with
+    // its context menu wired) rather than the just-sent optimistic node — and a
+    // realistic scenario. The post-edit reload below is the decisive check.
+    await page.reload()
+    await chatSelf.waitForChatReady(PASS)
+    await expect(page.getByText(orig).first()).toBeVisible({ timeout: 30_000 })
+
+    // Edit via the message context menu.
+    await page.getByText(orig).last().click({ button: 'right' })
+    await page.getByRole('menuitem', { name: /Edit|Изменить/i }).click()
+    await expect(page.locator('.p13-edit-banner')).toBeVisible({ timeout: 5_000 })
+    const ta = chatSelf.txForm().locator('textarea')
+    await ta.fill(edited)
+    await ta.press('Enter')
+    await expect(page.getByText(edited).first()).toBeVisible({ timeout: 15_000 })
+
+    // The decisive check: reload re-pulls + re-decrypts the slot from scratch.
+    await page.reload()
+    await chatSelf.waitForChatReady(PASS)
+    await expect(page.getByText(edited).first()).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText(orig)).toHaveCount(0, { timeout: 10_000 })
     await expect(page.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
   })
 })

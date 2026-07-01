@@ -2,6 +2,8 @@
   "appId": "ru.onetothree.app",
   "appName": "OneToThree",
   "webDir": "../../client/out",
+  "_loggingBehavior_note": "none: the Capacitor bridge logs every plugin call's args (call.getData()) at verbose level in debuggable builds. This E2EE messenger routes secrets through plugins (vault PIN via Keystore, session cookie via CapacitorCookies), so no build should ever emit them to logcat. Release builds are non-debuggable and already silent; this aligns debug to the same. Use Chrome DevTools (WebView) for JS console output.",
+  "loggingBehavior": "none",
   "server": {
     "androidScheme": "https",
     "cleartext": false

@@ -122,10 +122,16 @@ export function useChatRealtime(
               else keepExisting()
             })
             .catch(keepExisting)
-        } else if (unwrappedPrivateKey && cryptoCtx && cryptoCtx.mode === 'DIRECT') {
-          // DIRECT fan-out edit: the peer's delivery slot was re-encrypted with a
-          // fresh DR ciphertext (deliveredAt reset server-side), so re-pull and
-          // re-decrypt it — the new text REPLACES the old one, not just a label.
+        } else if (
+          unwrappedPrivateKey &&
+          cryptoCtx &&
+          (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF')
+        ) {
+          // Fan-out edit (DIRECT peer devices, or SELF own devices): every
+          // delivery slot was re-encrypted with a fresh ciphertext and its
+          // deliveredAt reset server-side, so re-pull and re-decrypt — the new
+          // text REPLACES the old one on the other device, not just a label.
+          // SELF decrypt uses the self-fanout slot path (no drCtx needed).
           const drCtx: DrContext | undefined =
             userId && directPeerUserId
               ? { ownerUserId: userId, peerUserId: directPeerUserId }

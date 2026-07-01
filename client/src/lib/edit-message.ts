@@ -15,8 +15,9 @@ export interface EditDrContext {
  *  - DIRECT: re-encrypt the new text per recipient device (Double Ratchet
  *    fan-out) — the server CANNOT re-encrypt E2EE content, so without fresh
  *    `ciphertexts[]` the peer would keep the old plaintext. Needs `drCtx`.
- *  - SELF: legacy multi-device self-fanout is a separate path; left label-only
- *    here (its own gap, tracked separately).
+ *  - SELF: Saved Messages read from a per-device self-fanout slot (not row
+ *    content), so re-encrypt those slots exactly like the SELF send (peer ===
+ *    self) — otherwise every own device keeps the old plaintext. Needs `drCtx`.
  *  - SECTOR: re-encrypt with the current group key.
  *  - PUBLIC: base64-encode the plaintext.
  */
@@ -42,6 +43,20 @@ export async function buildEditBody(
     return { content: null, iv: null }
   }
   if (cryptoCtx.mode === 'SELF') {
+    if (drCtx) {
+      // SELF reads from a per-device self-fanout slot (NOT row content), so
+      // rebuild those slots like the SELF send (peer === self).
+      const { buildFanoutSlotsDetailed } = await import('@/lib/fanout-crypto')
+      const fanout = await buildFanoutSlotsDetailed(
+        drCtx.privateKey,
+        drCtx.ownerUserId,
+        drCtx.ownerUserId,
+        newText
+      )
+      if (fanout.slots.length > 0) {
+        return { content: null, iv: null, ciphertexts: fanout.slots }
+      }
+    }
     return { content: null, iv: null }
   }
   if (cryptoCtx.mode === 'SECTOR') {

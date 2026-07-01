@@ -18,6 +18,15 @@ vi.mock('@/lib/chat-crypto', () => ({
   })),
 }))
 
+// SELF edits re-encrypt the self-fanout slots via buildFanoutSlotsDetailed.
+vi.mock('@/lib/fanout-crypto', () => ({
+  buildFanoutSlotsDetailed: vi.fn(async () => ({
+    slots: [{ device_id: 'dev-self', ciphertext: 'SELFCT', iv: 'v2:SLOT' }],
+    failedDeviceIds: [],
+    attemptedDeviceIds: ['dev-self'],
+  })),
+}))
+
 import { buildEditBody, type EditDrContext } from './edit-message'
 
 const ctx = (mode: string, extra: Record<string, unknown> = {}) =>
@@ -42,8 +51,16 @@ describe('buildEditBody', () => {
     })
   })
 
-  it('SELF stays label-only (legacy self-fanout edit is a separate path)', async () => {
-    expect(await buildEditBody(ctx('SELF'), 'x', drCtx())).toEqual({ content: null, iv: null })
+  it('SELF re-encrypts the self-fanout slots into ciphertexts[] (peer === self)', async () => {
+    expect(await buildEditBody(ctx('SELF'), 'newtext', drCtx())).toEqual({
+      content: null,
+      iv: null,
+      ciphertexts: [{ device_id: 'dev-self', ciphertext: 'SELFCT', iv: 'v2:SLOT' }],
+    })
+  })
+
+  it('SELF without DR context falls back to label-only (no propagation)', async () => {
+    expect(await buildEditBody(ctx('SELF'), 'x')).toEqual({ content: null, iv: null })
   })
 
   it('PUBLIC base64-encodes the plaintext with iv "public"', async () => {

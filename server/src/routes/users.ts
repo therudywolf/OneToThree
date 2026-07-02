@@ -4,7 +4,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { devices, loginEvents, messageDeliveries, messages, pushSubscriptions, userBlocks, users } from '../db/schema.js'
+import { chatMembers, devices, loginEvents, messageDeliveries, messages, pushSubscriptions, userBlocks, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { setPendingAvatarKey, takePendingAvatarKey } from '../lib/avatar-pending.js'
 import {
@@ -711,6 +711,30 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const params = z.object({ userId: uuidSchema }).safeParse(request.params)
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
     const { userId } = params.data
+
+    // Device keys are addressed for E2E fan-out to people you can already
+    // message. Restrict cross-user access to a shared chat (or self): otherwise
+    // any authenticated user could enumerate an arbitrary user's device set
+    // (count + ids + ecdh keys) across the whole userbase.
+    if (userId !== auth.id) {
+      const shared = await db
+        .select({ chatId: chatMembers.chatId })
+        .from(chatMembers)
+        .where(
+          and(
+            eq(chatMembers.userId, userId),
+            inArray(
+              chatMembers.chatId,
+              db
+                .select({ chatId: chatMembers.chatId })
+                .from(chatMembers)
+                .where(eq(chatMembers.userId, auth.id))
+            )
+          )
+        )
+        .limit(1)
+      if (shared.length === 0) return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
 
     const rows = await db
       .select({ device_id: devices.id, public_key_jwk: devices.ecdhPublicKey })

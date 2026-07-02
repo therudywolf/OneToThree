@@ -7,6 +7,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.1] — 2026-07-03 — Media delivery fix (DIRECT chats)
+
+### Fixed
+- **Media in DIRECT chats was undecryptable for recipients.** Attachments
+  (image/voice/video/file + albums) were encrypted with the legacy v1
+  `encryptOutboundText` path, so they went out as `protocol_version=1`
+  per-device fan-out. DIRECT is strictly Double-Ratchet v2 on receive, which
+  rejects v1 (`ERR_DIRECT_V1_REJECTED`) — every media message in a direct chat
+  showed as "message could not be decrypted" on the other side. Media now uses
+  the same DR-v2 path as text (`encryptOutboundTextV2` → `dr_slots`).
+  SECTOR/PUBLIC keep the legacy single-key path; SELF is unchanged.
+- **Second attachment dropped mid-upload.** Attaching a file while a previous
+  one was still uploading dropped the new file: the post-upload queue drain used
+  a positional `slice(1)` that removed whichever file was now at index 0 (the
+  freshly attached one). Removal is now by identity.
+- **Decrypt result could regress to a failure placeholder.** On a cold chat
+  open, concurrent receiver paths (history load, realtime backlog, delivery
+  sync) each ratchet-decrypt the same rows; the loser re-derives a consumed
+  one-time key and yields `[DECRYPT_FAIL]`, which a blind `setMessages` replace
+  could write over an already-good plaintext. Plaintext is now monotonic in the
+  chat store (a decrypted message never regresses; failed placeholders upgrade
+  to a clean decrypt). `[KEY_CHANGE_DETECTED]` still surfaces.
+
+### Tests
+- Repaired the media e2e specs (they never reached the receiver assertions, so
+  they masked the bug above): decodable 16×16 PNG fixture, locale-independent
+  `data-testid="media-preview-caption"`, race-safe send click, and a
+  toast-based oversized-rejection assertion.
+
 ## [0.9.0] — 2026-07-02 — Hardening, device-link, media lifecycle & bug hunt
 
 ### Security & bug-hunt fixes (2026-06/07)

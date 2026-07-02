@@ -1,6 +1,6 @@
 [package]
 name = "onetothree-tauri"
-version = "0.9.0"
+version = "0.9.1"
 description = "OneToThree desktop shell"
 authors = ["therudywolf"]
 license = "AGPL-3.0-only"

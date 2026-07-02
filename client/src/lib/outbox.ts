@@ -193,6 +193,14 @@ let flushingOutbox = false
 
 const MAX_RETRIES = 10
 const MAX_BACKOFF_MS = 60_000
+/**
+ * Absolute age cap on a queued send. The per-entry retry counter lives in memory
+ * and resets on reload, so a permanently-failing ("poison") entry could otherwise
+ * re-attempt in bursts across reloads and never be dropped. This TTL guarantees
+ * it is eventually removed regardless of the counter (24h is well past any
+ * realistic offline window).
+ */
+const MAX_OUTBOX_AGE_MS = 24 * 60 * 60 * 1000
 /** In-memory retry state; resets on page reload (Background Sync handles persistence). */
 const retryState = new Map<string, { retries: number; nextRetry: number }>()
 
@@ -237,6 +245,14 @@ export async function flushOutboxPending(): Promise<void> {
     let failed = 0
     const now = Date.now()
     for (const entry of entries) {
+      // Absolute-age drop: bounds poison entries even though the retry counter
+      // resets on reload (see MAX_OUTBOX_AGE_MS).
+      const createdMs = Date.parse(entry.created_at)
+      if (Number.isFinite(createdMs) && now - createdMs > MAX_OUTBOX_AGE_MS) {
+        await removeOutboxEntry(entry.id)
+        retryState.delete(entry.id)
+        continue
+      }
       const state = retryState.get(entry.id) ?? { retries: 0, nextRetry: 0 }
       if (state.retries >= MAX_RETRIES) {
         await removeOutboxEntry(entry.id)

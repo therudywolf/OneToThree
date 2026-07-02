@@ -29,7 +29,7 @@ OneToThree — a self-hosted, end-to-end-encrypted messenger. Monorepo:
 
 ## Deploy mechanics (rewritten 2026-05-31 — project is now ON this host)
 - The repo lives at `~/stacks/onetothree.ru` **on the prod host itself** — deploy is LOCAL.
-  The old `ssh ... rudywolf@forestserver.ru` + `~/sites/onetothree.ru` flow is GONE.
+  The old `ssh ... <deploy-host>` + `~/sites/onetothree.ru` flow is GONE.
 - **No Node on the host:** run all JS tooling inside `node:20-alpine` with the repo bind-mounted
   (the committed `node_modules` are musl-native and reusable). `deploy.sh` does this for you.
 - Deploy: from the repo root, `./deploy.sh` — does `git reset --hard origin/main`, runs the full

@@ -62,9 +62,9 @@ Paste the `synthesis` output into a dated backlog file under `docs/project/`
 Prod tracks `main` directly, so **every commit must be self-contained and
 green**. For each backlog item:
 
-1. **Reproduce / confirm** against the code (and prod where safe — `forestserver.ru`,
+1. **Reproduce / confirm** against the code (and prod where safe — `<deploy-host>`,
    `onetothree.ru` is a no-real-user test environment; the DB is reachable via
-   `ssh forestserver.ru "docker exec -i forestmessenger-db-1 psql -U forest -d forest"`).
+   `ssh <deploy-host> "docker exec -i forestmessenger-db-1 psql -U forest -d forest"`).
 2. **Fix** the root cause. Prefer a shared contract/helper over patching two
    call sites that can drift (that class of bug — two sides silently disagreeing —
    is the most common one here).
@@ -78,7 +78,7 @@ green**. For each backlog item:
 5. **Commit one fix per commit**, descriptive message, then `git push origin main`.
 6. **Deploy at a group boundary** (don't rebuild after every single commit):
    ```
-   ssh forestserver.ru '~/stacks/onetothree.ru/deploy.sh'
+   ssh <deploy-host> '~/stacks/onetothree.ru/deploy.sh'
    ```
    `deploy.sh` runs the full test suite against an ephemeral DB/Redis and aborts
    if anything fails, snapshots the api/web images + `pg_dump`s the database
@@ -120,6 +120,6 @@ npm run typecheck -w server && npm run lint -w server
 
 # ship
 git push origin main
-ssh forestserver.ru '~/stacks/onetothree.ru/deploy.sh'
+ssh <deploy-host> '~/stacks/onetothree.ru/deploy.sh'
 curl -s https://api.onetothree.ru/version && curl -s https://api.onetothree.ru/health
 ```

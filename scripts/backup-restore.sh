@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-ROOT="${PROJECT_ROOT:-/home/rudywolf/sites/onetothree.ru}"
+ROOT="${PROJECT_ROOT:-$HOME/sites/onetothree.ru}"
 ARCHIVE="${1:-}"
 BACKUP_PASSPHRASE_FILE="${BACKUP_PASSPHRASE_FILE:-$ROOT/secrets/backup_encryption_key}"
 

@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-ROOT="${PROJECT_ROOT:-/home/rudywolf/sites/onetothree.ru}"
+ROOT="${PROJECT_ROOT:-$HOME/sites/onetothree.ru}"
 cd "$ROOT"
 
 BACKUP_DIR="${BACKUP_DIR:-$ROOT/backups}"

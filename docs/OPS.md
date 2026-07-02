@@ -34,7 +34,7 @@ Configure via `~/sites/onetothree.ru/.env.backup`:
 
 ```ini
 # Required for encryption (already populated by ./startup.sh)
-BACKUP_PASSPHRASE_FILE=/home/rudywolf/sites/onetothree.ru/secrets/backup_encryption_key
+BACKUP_PASSPHRASE_FILE=$HOME/sites/onetothree.ru/secrets/backup_encryption_key
 
 # Optional — comment out if you don't want off-site copies
 BACKUP_REMOTE=backup@your-storage.example:/srv/onetothree

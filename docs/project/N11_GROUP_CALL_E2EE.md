@@ -2,6 +2,20 @@
 
 _Status: investigated 2026-07-01, NOT implemented. This is the plan of record._
 
+## Recommendation (2026-07-02): defer / likely won't-do for the self-hosted model
+OneToThree is **self-hosted** — the operator IS the server owner, so "E2EE vs the
+server" (the whole point of N11) mostly protects against a *compromise of your own
+box*, not an untrusted host. Chats are already E2EE (a server breach can't read
+them); 1:1 calls are already E2EE (per-peer ECDH). Group-call media on the LiveKit
+SFU is SFrame-encrypted vs a passive SFU/network observer, honestly labeled as
+NOT-E2EE-vs-server, and calls are ephemeral (not stored). Against that, N11 is
+~2 weeks of high-risk crypto that can't be verified without a real LiveKit +
+multi-browser matrix, has Firefox/WebView insertable-streams gaps, and depends on
+verified participant keys (D2). Net: the marginal security gain (group-call media
+surviving a full server compromise) does not justify the cost/risk right now.
+**Revisit only if the threat model explicitly requires it.** Keep the honest
+labeling + fail-closed already in place.
+
 ## Current state (verified against code)
 
 Group-call media encryption depends on the transport mode:

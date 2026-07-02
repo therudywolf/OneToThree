@@ -37,19 +37,31 @@ are noted so they aren't re-reported.
    upload API validates `fileSize` with `z.number().int().positive()`, so the
    write path can't store `<= 0` (a DB CHECK would be pure defense-in-depth).
 
-## Deferred — media/attachments quota (only active when MEDIA_QUOTA_PER_USER_BYTES set)
-- **Client-declared fileSize quota bypass** (HIGH-when-enabled) — `storage.ts`
-  `/upload-url` trusts the client `fileSize` for the quota check; the promised
-  background reconciler does not exist, so a client can under-declare and exceed
-  quota. Fix: on upload completion do a `HeadObjectCommand` to record the real S3
-  size (and correct quota), or enforce Content-Length in the presigned PUT, or run
-  a reconciliation job. Also a per-user quota check race (concurrent uploads read
-  stale usage) — needs `SELECT ... FOR UPDATE` / txn. Quota is off by default, so
-  lower urgency; do the HEAD-on-complete fix when quotas are turned on.
+## Media/attachments — investigated 2026-07-02; system is ~85% "WhatsApp-style"
+The media rotation + local-storage design is already IMPLEMENTED: server LRU
+eviction (`media-lru-evict.ts`) + orphan cleanup (6h cron) + 30-day retention
+purge (`media-retention-purge.ts`, off-peak) + per-user/global quota + admin
+evict/quota endpoints; client IndexedDB "Digital Den" cache (`media-cache.ts`),
+evicted placeholder, and a restore flow that re-encrypts from the local cache.
+The three media BUGS the audit flagged are ALREADY FIXED in current code:
+- album download authz → `storage.ts` authorizes items 2..N via the `attachments`
+  table (membership-scoped), not just `messages.media_path`.
+- cross-chat media_path hijack → send path enforces `isOwnedMediaKey`
+  (`chats/{chatId}/{uploaderId}/…`, + path-traversal guard).
+- album eviction leak → retention purge reclaims all `attachments` linked by
+  messageId, deletes their objects and stamps `evictedAt` (usage stays correct).
 
-## Deferred — msg-transport (minor)
-- **Socket send queue race** (`socket.ts`) — bounded at 200 on shift; add a
-  pre-push bound + TTL for network-flap resilience.
-- **Outbox retry count not persisted across reloads** (`outbox.ts`) — a reload
-  resets the in-memory retry counter, so a permanently-failing entry can retry
-  more than MAX_RETRIES total. Persist the count or set an absolute TTL.
+Remaining (deferred, low urgency):
+- **Client-declared fileSize** trusted for quota + no size reconciler
+  (`storage.ts:216` TODO). Dormant: MEDIA_QUOTA is OFF on prod, and global LRU
+  eviction bounds disk regardless. Fix when quotas are enabled: HEAD-on-complete
+  to record real S3 size, or Content-Length in the presigned PUT (verify against
+  encrypted-blob sizes — breakage risk). 
+- **No media evict→restore lifecycle test** (ROADMAP Phase-1 gap) — the critical
+  path has no automated coverage. Highest-value remaining media work.
+
+## msg-transport — resolved / non-issue
+- **Outbox poison entry** — FIXED (`4e8296a`): 24h absolute-age drop in the flush
+  loop (the in-memory retry counter resets on reload, so an age cap is needed).
+- **Socket send-queue race** — NON-ISSUE: the OPEN-check and `ws.send()` are
+  synchronous (no await between them) and the queue is already bounded to 200.

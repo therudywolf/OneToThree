@@ -1,13 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { ChatPage } from './pom/chat-page'
 import { fetchUserId, registerNewUser, uniqueHandle } from './helpers'
-import { MAX_FILE_SIZE_BYTES, MEDIA_TOO_LARGE_CODE } from '../src/lib/media-limits'
-import { explainSendError } from '../src/lib/explain-send-error'
-
-const EXPECTED = explainSendError(new Error(MEDIA_TOO_LARGE_CODE))
+import { MAX_FILE_SIZE_BYTES } from '../src/lib/media-limits'
 
 test.describe('media / upload size guillotine', () => {
-  test('rejects oversized attachment before upload with Noir error', async ({
+  test('rejects oversized attachment before upload with a toast (no preview modal)', async ({
     browser,
   }) => {
     test.setTimeout(180_000)
@@ -28,15 +25,18 @@ test.describe('media / upload size guillotine', () => {
       const chat = new ChatPage(pageA)
       await chat.openDirectChatByPeerId(peerId, passphrase)
 
+      // The client-side size guillotine short-circuits oversized files in
+      // acceptIncomingFiles(): it fires an error toast ("<filename>: …") and
+      // never queues the file, so the preview modal is never mounted. (The check
+      // used to surface inside the modal; it moved earlier for instant feedback.)
       const size = MAX_FILE_SIZE_BYTES + 1
       await chat.pickOversizedAttachment(size)
-      await chat.sendPreview()
 
-      await expect(
-        pageA.getByTestId('media-preview-modal').getByText(EXPECTED, {
-          exact: true,
-        })
-      ).toBeVisible({ timeout: 15_000 })
+      // Rejection toast carries the filename; language-agnostic assertion.
+      await expect(pageA.getByText(/oversized\.bin/)).toBeVisible({
+        timeout: 15_000,
+      })
+      await expect(pageA.getByTestId('media-preview-modal')).toHaveCount(0)
     } finally {
       await ctxA.close()
       await ctxB.close()

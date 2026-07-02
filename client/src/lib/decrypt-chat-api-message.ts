@@ -268,7 +268,9 @@ export async function decryptApiMessageRows(
         try {
           return [j.index, decodeURIComponent(escape(atob(j.content)))]
         } catch {
-          return [j.index, j.content]
+          // Malformed base64 (server bug) — surface a decode marker instead of
+          // rendering the raw base64 blob, matching the single-row path.
+          return [j.index, '[DECRYPT_FAIL]']
         }
       })
     )

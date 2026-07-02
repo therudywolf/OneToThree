@@ -12,8 +12,10 @@
  * v2 : same as v1, just reclaimed the version slot
  * v3 : PBKDF2-SHA256 × 600 000, explicit `pbkdf2Iterations`
  * v4 : Argon2id (RFC 9106), explicit `argon2` parameter block
+ * v5 : Argon2id with AES-GCM AAD binding (version + argon2 params authenticated)
  *
- * All writes are made in the newest version. Reads accept every previous
+ * All writes are made in the newest version (see CURRENT_VAULT_VERSION). Reads
+ * accept every previous
  * version so users do not have to re-seal their vault.
  */
 

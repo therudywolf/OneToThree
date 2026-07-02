@@ -208,8 +208,15 @@ export const pollsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_OPTION_INDEX' })
     }
 
-    // Replace votes atomically
+    // Replace votes atomically. Serialize concurrent votes by the SAME user for
+    // this poll with a txn-scoped advisory lock: without it two racing requests
+    // (rapid re-tap) each DELETE-then-INSERT under READ COMMITTED and can both
+    // land, leaving 2 rows for a single-choice poll (the PK only blocks the same
+    // option twice, not two different options).
     await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`poll_vote:${pollId}:${user.id}`}))`
+      )
       await tx.delete(pollVotes).where(
         and(eq(pollVotes.pollId, pollId), eq(pollVotes.userId, user.id))
       )

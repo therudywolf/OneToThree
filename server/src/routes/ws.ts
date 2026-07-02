@@ -1043,7 +1043,12 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             online: false,
             last_seen_at: iso,
           })
-        })()
+        })().catch((err) => {
+          // A transient DB/Redis error in last-socket-close cleanup must not
+          // become an unhandledRejection — index.ts treats those as fatal and
+          // shuts the whole server down, dropping every other user's socket.
+          request.log.error({ err: String(err) }, 'ws: last-socket-close cleanup failed')
+        })
       })
       if (!wasOnline) {
         // Only resolve related users when we'll actually emit an online:true
@@ -1060,6 +1065,17 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         handleMessage(raw, user)
       }
       pending.length = 0
+    }).catch((err) => {
+      // The connect chain awaits DB/Redis (touchLastSeen, related-users,
+      // online-status broadcast); a transient failure here must not bubble to
+      // the process-level unhandledRejection handler, which shuts the whole
+      // server down. Log and close just this socket instead.
+      request.log.error({ correlationId, err: String(err) }, 'ws: connect failed')
+      try {
+        ws.close(1011, 'server error')
+      } catch {
+        /* socket already closed */
+      }
     })
   })
 }

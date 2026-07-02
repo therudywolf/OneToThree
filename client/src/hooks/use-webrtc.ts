@@ -416,7 +416,7 @@ export function useWebRTC(userId: string | null) {
     }
   }, [createAndSendOffer, setRemoteStream, purgePeer, setReconnecting, setConnectionLost, setIceRetryCount])
 
-  const establishAudioRelay = useCallback(async (peerId: string, chatId: string, requestedVideo: boolean) => {
+  const establishAudioRelay = useCallback(async (peerId: string, chatId: string, requestedVideo: boolean, sendInvite = true) => {
     setCallChatId(chatId)
     let stream: MediaStream
     try {
@@ -441,11 +441,17 @@ export function useWebRTC(userId: string | null) {
     setIsCalling(true)
     setCallStartTime(Date.now())
     setPeerConnectionType(peerId, 'relay')
-    getFmSocket().send({
-      type: 'call_invite',
-      chat_id: chatId,
-      is_video: false,
-    })
+    // Only send call_invite when this IS the initial invite. When called from
+    // fallbackToAudioRelay (P2P/ICE failed), the invite was already sent on the
+    // P2P attempt; a second one makes the already-ringing/connected callee
+    // auto-reject as busy (see call_invite handler), which kills the whole call.
+    if (sendInvite) {
+      getFmSocket().send({
+        type: 'call_invite',
+        chat_id: chatId,
+        is_video: false,
+      })
+    }
     transmitSignal(peerId, { kind: 'relay_offer' })
     ringStopRef.current = startOutgoingRingtone()
     if (requestedVideo) {
@@ -479,7 +485,9 @@ export function useWebRTC(userId: string | null) {
 
     const local = useCallStore.getState().localStream
     terminateFeed(local)
-    await establishAudioRelay(peerId, chatId, requestedVideo)
+    // Fallback path: the call_invite was already sent on the P2P attempt — do
+    // NOT re-send it (would trigger the callee's busy auto-reject).
+    await establishAudioRelay(peerId, chatId, requestedVideo, false)
   }, [clearPeerConnectionType, clearRemotePeerMedia, establishAudioRelay, removePeerConnection, removeRemoteStream])
 
   const acceptAudioRelay = useCallback(async (peerId: string) => {

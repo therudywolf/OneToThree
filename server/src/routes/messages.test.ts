@@ -22,6 +22,7 @@ import {
   chats,
   devices,
   messageDeliveries,
+  messageReactions,
   messages,
   users,
 } from '../db/schema.js'
@@ -303,6 +304,47 @@ describe('message routes', () => {
     await db.delete(messageDeliveries).where(eq(messageDeliveries.messageId, messageId))
     await db.delete(messages).where(eq(messages.id, messageId))
     await db.delete(devices).where(inArray(devices.id, [senderDevice, peerDevice]))
+    await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+    await db.delete(chats).where(eq(chats.id, chatId))
+    await db.delete(users).where(inArray(users.id, [sender.id, peer.id]))
+  })
+
+  it('GET /messages/:chatId returns per-message reactions (survive reload)', async () => {
+    const sender = await createUser('rxs')
+    const peer = await createUser('rxp')
+    const chatId = await createDirectChat(sender.id, peer.id)
+    const senderToken = await app!.jwt.sign({
+      sub: sender.id,
+      username: sender.username,
+      jti: randomUUID(),
+    })
+
+    const [msg] = await db
+      .insert(messages)
+      .values({ chatId, senderId: sender.id, content: 'x', iv: 'y' })
+      .returning({ id: messages.id })
+
+    // Two users react with 👍, peer also with 🔥.
+    await db.insert(messageReactions).values([
+      { messageId: msg.id, userId: sender.id, emoji: '👍' },
+      { messageId: msg.id, userId: peer.id, emoji: '👍' },
+      { messageId: msg.id, userId: peer.id, emoji: '🔥' },
+    ])
+
+    const res = await request(app!.server)
+      .get(`/api/messages/${chatId}`)
+      .set('Cookie', `fm_session=${senderToken}`)
+      .expect(200)
+
+    const row = (res.body?.messages ?? []).find((m: { id: string }) => m.id === msg.id)
+    expect(row).toBeDefined()
+    expect(row.reactions).toBeDefined()
+    expect(new Set(row.reactions['👍'])).toEqual(new Set([sender.id, peer.id]))
+    expect(row.reactions['🔥']).toEqual([peer.id])
+
+    // cleanup
+    await db.delete(messageReactions).where(eq(messageReactions.messageId, msg.id))
+    await db.delete(messages).where(eq(messages.id, msg.id))
     await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
     await db.delete(chats).where(eq(chats.id, chatId))
     await db.delete(users).where(inArray(users.id, [sender.id, peer.id]))

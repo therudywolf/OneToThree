@@ -18,7 +18,7 @@ import { webrtcRoutes } from './routes/webrtc.js'
 import { storageRoutes } from './routes/storage.js'
 import { adminRoutes } from './routes/admin.js'
 import { vaultRoutes } from './routes/vault.js'
-import { wsRoutes } from './routes/ws.js'
+import { wsRoutes, MAX_WS_MESSAGE_BYTES } from './routes/ws.js'
 import { devicesRoutes } from './routes/devices.js'
 import { keysRoutes } from './routes/keys.js'
 import { callRoutes } from './routes/call.js'
@@ -366,7 +366,15 @@ export async function buildApp() {
     verify: { allowedIss: 'onetothree', algorithms: ['HS256'] },
   })
 
-  await app.register(websocket)
+  // Transport-level memory backstop. Without it @fastify/websocket uses ws's
+  // 100 MiB default, so a hostile client could make the server fully buffer a
+  // ~100 MiB frame before the app-level 64 KiB check (ws.ts) even runs —
+  // amplifiable. Cap a few multiples above the app limit: legit frames are
+  // <=64 KiB and frames up to this cap still get the graceful app-level close
+  // (1009 + MESSAGE_TOO_LARGE); anything larger ws drops at the protocol level.
+  await app.register(websocket, {
+    options: { maxPayload: MAX_WS_MESSAGE_BYTES * 4 },
+  })
 
   // D12: per-request memoization of the cookie-derived session JWT. A WeakMap
   // keyed by the request keeps the cache off the public request shape and avoids

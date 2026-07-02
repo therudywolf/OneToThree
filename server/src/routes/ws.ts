@@ -250,7 +250,7 @@ function safeSend(ws: WebSocket, data: string) {
 }
 
 /** Maximum allowed WebSocket message size (64 KB — sufficient for E2E ciphertext). */
-const MAX_WS_MESSAGE_BYTES = 64 * 1024
+export const MAX_WS_MESSAGE_BYTES = 64 * 1024
 
 /** Per-connection rate limit: max messages per window. */
 const WS_RATE_LIMIT_MAX = 60

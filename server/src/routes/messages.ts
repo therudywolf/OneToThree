@@ -6,7 +6,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, chats, devices, messageDeliveries, messages, users } from '../db/schema.js'
+import { chatMembers, chats, devices, messageDeliveries, messageReactions, messages, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import { channelRoleAllowsPost } from '../lib/chat-permissions.js'
@@ -679,6 +679,31 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     // oldest -> newest.
     rows.reverse()
 
+    // Reactions live in a separate table and were previously omitted here, so
+    // every reaction vanished on reload/chat-reopen (the client defaults the
+    // field to {} and only repopulates from live reaction_update WS events).
+    // Aggregate them per message into the same emoji -> userIds shape the WS
+    // path emits, in one query for the whole page.
+    const reactionsByMsg = new Map<string, Record<string, string[]>>()
+    if (rows.length > 0) {
+      const reactionRows = await db
+        .select({
+          messageId: messageReactions.messageId,
+          userId: messageReactions.userId,
+          emoji: messageReactions.emoji,
+        })
+        .from(messageReactions)
+        .where(inArray(messageReactions.messageId, rows.map((m) => m.id)))
+      for (const r of reactionRows) {
+        let byEmoji = reactionsByMsg.get(r.messageId)
+        if (!byEmoji) {
+          byEmoji = {}
+          reactionsByMsg.set(r.messageId, byEmoji)
+        }
+        ;(byEmoji[r.emoji] ??= []).push(r.userId)
+      }
+    }
+
     return reply.send({
       messages: rows.map((m) => ({
         id: m.id,
@@ -702,6 +727,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         protocol_version: m.protocolVersion,
         dr_header: m.drHeader,
         dr_init: m.drInit,
+        reactions: reactionsByMsg.get(m.id) ?? {},
       })),
     })
   })

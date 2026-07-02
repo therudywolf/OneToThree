@@ -108,8 +108,13 @@ export function ComposerPickerPanel({
   const [gifBusy, setGifBusy] = useState(false)
   const [gifErr, setGifErr] = useState<string | null>(null)
   const [gifs, setGifs] = useState<GifHit[]>([])
+  // Provider-degraded (fallback GIFs shown) — surfaced as a small banner so the
+  // grid isn't silently misleading when Tenor/Giphy is unreachable.
+  const [gifDegraded, setGifDegraded] = useState(false)
   const [gifFavorites, setGifFavorites] = useState<GifHit[]>([])
   const [gifFavBusyId, setGifFavBusyId] = useState<string | null>(null)
+  // Per-pack sticker filter (matches on the sticker's emoji tag).
+  const [stickerFilter, setStickerFilter] = useState('')
   const [recentStickers, setRecentStickers] = useState<RecentSticker[]>([])
   const [recentGifs, setRecentGifs] = useState<GifHit[]>([])
 
@@ -219,6 +224,7 @@ export function ComposerPickerPanel({
     }
     let cancelled = false
     setStickersLoading(true)
+    setStickerFilter('')
     void fetchPackStickers(selectedPackId)
       .then(async (rows) => {
         if (cancelled) return
@@ -252,18 +258,24 @@ export function ComposerPickerPanel({
     const q = gifQuery.trim()
     const isTrendingMode = q.length < 2
     let cancelled = false
-    setGifBusy(true)
     setGifErr(null)
+    // Only flip to the busy spinner right before the request actually fires
+    // (after the debounce), so typing doesn't strobe the grid to a spinner on
+    // every keystroke; prior results stay visible until fresh ones arrive.
     const timer = setTimeout(() => {
+      if (cancelled) return
+      setGifBusy(true)
       const run = isTrendingMode ? fetchTrendingGifs(48) : searchGifs(q, 48)
       void run
         .then((result) => {
           if (cancelled) return
           setGifs(result.items)
+          setGifDegraded(result.degraded)
         })
         .catch((e) => {
           if (!cancelled) {
             setGifs([])
+            setGifDegraded(false)
             setGifErr(
               e instanceof Error && e.message.startsWith('GIF_FETCH_')
                 ? t('gif.fetchFailed')
@@ -475,9 +487,13 @@ export function ComposerPickerPanel({
                             onClick={() => {
                               const json = buildStickerPlaintext(rec.sticker, rec.packId, rec.format)
                               void (async () => {
-                                await onStickerSend(json)
-                                pushRecentSticker(rec)
-                                onAfterStickerSend?.()
+                                try {
+                                  await onStickerSend(json)
+                                  pushRecentSticker(rec)
+                                  onAfterStickerSend?.()
+                                } catch (e) {
+                                  toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'Stickers' })
+                                }
                               })()
                             }}
                             className="p13-sticker-tile flex aspect-square items-center justify-center rounded"
@@ -488,6 +504,14 @@ export function ComposerPickerPanel({
                               mediaKey={rec.sticker.mediaKey}
                               fallbackEmoji={rec.sticker.emoji}
                               className="max-h-full max-w-full object-contain"
+                              onLoadError={() => {
+                                // Persisted blob: URLs die across reloads — re-resolve on first failure.
+                                if (stickerRetryById[rec.sticker.id]) return
+                                setStickerRetryById((prev) => ({ ...prev, [rec.sticker.id]: true }))
+                                void reloadStickerDisplayUrl(rec.sticker.mediaKey)
+                                  .then((u) => setRecentStickers((prev) => prev.map((r) => r.sticker.id === rec.sticker.id ? { ...r, src: u } : r)))
+                                  .catch(() => {})
+                              }}
                             />
                           </button>
                         ))}
@@ -508,8 +532,13 @@ export function ComposerPickerPanel({
                             onClick={() => {
                               const json = buildStickerPlaintext(fav.sticker, fav.packId, fav.format)
                               void (async () => {
-                                await onStickerSend(json)
-                                pushRecentSticker(fav)
+                                try {
+                                  await onStickerSend(json)
+                                  pushRecentSticker(fav)
+                                  onAfterStickerSend?.()
+                                } catch (e) {
+                                  toastError(e instanceof Error ? e.message : 'SEND_FAILED', { title: 'Stickers' })
+                                }
                               })()
                             }}
                             className="p13-sticker-tile flex aspect-square items-center justify-center rounded"
@@ -520,6 +549,13 @@ export function ComposerPickerPanel({
                               mediaKey={fav.sticker.mediaKey}
                               fallbackEmoji={fav.sticker.emoji}
                               className="max-h-full max-w-full object-contain"
+                              onLoadError={() => {
+                                if (stickerRetryById[fav.sticker.id]) return
+                                setStickerRetryById((prev) => ({ ...prev, [fav.sticker.id]: true }))
+                                void reloadStickerDisplayUrl(fav.sticker.mediaKey)
+                                  .then((u) => persistFavoriteStickers(favoriteStickers.map((f) => f.sticker.id === fav.sticker.id ? { ...f, src: u } : f)))
+                                  .catch(() => {})
+                              }}
                             />
                           </button>
                         ))}
@@ -545,8 +581,31 @@ export function ComposerPickerPanel({
                       </div>
                     )
                   })()}
+                  {stickers.length > 8 ? (
+                    <input
+                      type="text"
+                      value={stickerFilter}
+                      onChange={(e) => setStickerFilter(e.target.value)}
+                      placeholder={t('composer.stickerFilterPlaceholder')}
+                      className="p13-picker-input mb-2 w-full rounded"
+                      aria-label={t('composer.stickerFilterPlaceholder')}
+                    />
+                  ) : null}
+                  {(() => {
+                    const fq = stickerFilter.trim()
+                    const visible = fq
+                      ? stickers.filter((s) => (s.emoji || '').includes(fq))
+                      : stickers
+                    if (fq && visible.length === 0) {
+                      return (
+                        <p className="py-3 text-center font-mono text-[10px] text-text-muted">
+                          {t('composer.stickerFilterNoResults')}
+                        </p>
+                      )
+                    }
+                    return (
                   <div className="grid grid-cols-5 gap-1 sm:grid-cols-6">
-                  {stickers.map((s) => {
+                  {visible.map((s) => {
                     const stickerSrc = stickerSrcById[s.id] ?? s.url
                     const packMeta = packs.find((p) => p.id === selectedPackId)
                     const stickerFormat: StickerPack['format'] = packMeta?.format ?? 'static'
@@ -626,6 +685,8 @@ export function ComposerPickerPanel({
                     )
                   })}
                 </div>
+                    )
+                  })()}
                 </div>
               )
             ) : null}
@@ -659,6 +720,13 @@ export function ComposerPickerPanel({
                     >
                       <img
                         src={buildGifProxyUrl(g.previewUrl)}
+                        onError={(e) => {
+                          const img = e.currentTarget
+                          if (!img.dataset.directFallback) {
+                            img.dataset.directFallback = '1'
+                            img.src = g.previewUrl
+                          }
+                        }}
                         alt={g.title}
                         loading="lazy"
                         className="aspect-video w-full rounded object-cover"
@@ -739,7 +807,12 @@ export function ComposerPickerPanel({
               placeholder={t('composer.gifSearchPlaceholder')}
               className="p13-picker-input rounded"
             />
-            {gifBusy ? (
+            {gifDegraded && !gifBusy ? (
+              <div className="rounded border border-[var(--warning,theme(colors.amber.500))]/40 px-2 py-1 font-mono text-[9px] text-[var(--warning,theme(colors.amber.300))]">
+                {t('composer.gifFallbackMode')}
+              </div>
+            ) : null}
+            {gifBusy && gifs.length === 0 ? (
               <div className="py-4 text-center font-mono text-[10px] text-text-muted">…</div>
             ) : gifErr ? (
               <div className="py-2 font-mono text-[10px] text-danger/90">{gifErr}</div>

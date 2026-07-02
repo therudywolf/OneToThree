@@ -52,7 +52,9 @@ export async function searchGifs(query: string, limit = 24): Promise<GifSearchRe
     const items = data.items ?? []
     return { items: items.length > 0 ? items : fallbackSearch(q, limit), degraded: false }
   } catch {
-    return { items: fallbackSearch(q, limit), degraded: false, reason: 'GIF_PROVIDER_UNAVAILABLE' }
+    // Network error reaching our own /gif/search — we ARE serving fallback
+    // suggestions, so this is a degraded state (was mislabeled degraded:false).
+    return { items: fallbackSearch(q, limit), degraded: true, reason: 'GIF_PROVIDER_UNAVAILABLE' }
   }
 }
 

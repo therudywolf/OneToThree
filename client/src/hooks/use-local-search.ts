@@ -3,7 +3,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import type { DecryptedMessage } from '@/types/chat'
-import { sanitizeTextInput } from '@/lib/input-sanitize'
 
 /**
  * Client-side search over decrypted messages in the chatStore.
@@ -22,7 +21,11 @@ export function useLocalSearch() {
     )
   }, [messages, query])
 
-  const search = useCallback((q: string) => setQuery(sanitizeTextInput(q)), [])
+  // Free-text search must NOT go through sanitizeTextInput: that helper blanks
+  // the literal words "undefined"/"null" (an ID/capability-input guard), which
+  // silently breaks a legitimate message search for those words. `q` is always
+  // a string here and the q.length<2 check already handles empties.
+  const search = useCallback((q: string) => setQuery(q), [])
   const clear = useCallback(() => setQuery(''), [])
 
   return { query, results, search, clear }

@@ -280,6 +280,14 @@ export function useChatRealtime(
           try {
             do {
               pendingPullAgainRef.current = false
+              // This loop is bound to the chat + crypto context it started for
+              // (activeChatId / cryptoCtx / drCtx closures). If the user switched
+              // chats while a pass was in flight, STOP: the freshly-mounted effect
+              // handles the new chat with its own keys. Continuing would fetch the
+              // old chat's slots, decrypt them with the wrong (or right) keys, and
+              // appendMessage() them into the now-open chat — injecting another
+              // chat's messages and starving the new chat's own delivery.
+              if (useSessionStore.getState().activeChatId !== activeChatId) break
               const pending = await fetchPendingDeliveries(activeChatId)
               if (pending.length === 0) continue
               const rows = await decryptApiMessageRows(
@@ -293,6 +301,8 @@ export function useChatRealtime(
               for (let i = 0; i < rows.length; i++) {
                 const row = rows[i]
                 if (!row) continue
+                // Guard again in case the chat switched during the decrypt await.
+                if (useSessionStore.getState().activeChatId !== activeChatId) break
                 const id = pending[i]?.id
                 if (row.plaintext === '[DECRYPT_FAIL]' && id) {
                   // Transient failure (e.g. DR session not provisioned yet):

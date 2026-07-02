@@ -462,6 +462,18 @@ export async function bootstrapSession(
   // SIGNING key — the trust root the safety number certifies (D3) and the key
   // that vouches for identityExchange (D4) — not just the exchange key.
   const existing = await loadSession(ownerId, ownDeviceId, peerId, peerDeviceId)
+  if (!existing) {
+    // loadSession returns null both when NO record exists and when a record
+    // exists but could not be loaded (decrypt/parse failure, or a wrapped
+    // record with a missing/rotated wrap key). Treating the latter as "no
+    // session" would skip the TOFU check below and let this re-bootstrap
+    // silently adopt whatever peer identity the server returns — a MitM /
+    // identity-change bypass. If a raw record IS present, fail closed.
+    const raw = await getSessionRecord(ownerId, ownDeviceId, peerId, peerDeviceId)
+    if (raw) {
+      throw new Error('TOFU_SESSION_UNREADABLE')
+    }
+  }
   if (
     existing &&
     (existing.peerIdentitySigning !== b64urlEncode(bundle.identitySigning) ||

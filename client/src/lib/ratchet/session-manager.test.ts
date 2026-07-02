@@ -17,8 +17,10 @@ vi.mock('@/lib/api/keys', () => ({
 }))
 
 import * as keysApi from '@/lib/api/keys'
+import * as sessionStore from './session-store'
 import {
   acceptIncomingInit,
+  bootstrapSession,
   clearOwnDrIdentity,
   generateLocalBundle,
   setOwnDrIdentity,
@@ -103,5 +105,52 @@ describe('acceptIncomingInit identity verification', () => {
       acceptIncomingInit('bob-id', 'bob-device', 'alice-id', 'alice-device', init)
     ).rejects.toThrowError('RATCHET_UNKNOWN_SPK')
     expect(keysApi.fetchIdentity).not.toHaveBeenCalled()
+  })
+})
+
+describe('bootstrapSession TOFU fail-closed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    clearOwnDrIdentity()
+  })
+
+  it('refuses to re-bootstrap when an existing session record is present but unreadable', async () => {
+    const bob = generateLocalBundle(0)
+    const alice = generateLocalBundle(0)
+    setOwnDrIdentity(bob.identity, bob.signedPreKey.keypair, bob.signedPreKey.id, 'bob-device')
+
+    // Server returns a (well-formed) peer bundle.
+    vi.mocked(keysApi.fetchBundle).mockResolvedValue({
+      user_id: 'alice-id',
+      identity: {
+        signing_public_key: b64url(alice.identity.signing.publicKey),
+        exchange_public_key: b64url(alice.identity.exchange.publicKey),
+        exchange_public_key_signature: b64url(alice.identityExchangeSignature),
+        generation: 1,
+      },
+      signed_prekey: {
+        pre_key_id: alice.signedPreKey.id,
+        public_key: b64url(alice.signedPreKey.keypair.publicKey),
+        signature: b64url(alice.signedPreKey.signature),
+      },
+      one_time_prekey: null,
+    })
+
+    // A raw record EXISTS but is unreadable (unknown magic byte, or a wrapped
+    // record with no wrap key) — loadSession returns null. This must NOT be
+    // treated as "no session" and silently re-bootstrap (that would skip the
+    // TOFU identity check and adopt the server-supplied peer identity).
+    // Only `payload` is read by loadSession; cast via unknown so the test does
+    // not have to enumerate the full StoredSessionRecord shape.
+    vi.mocked(sessionStore.getSessionRecord).mockResolvedValue({
+      payload: new Uint8Array([0x01, 0x02, 0x03]).buffer,
+    } as unknown as Awaited<ReturnType<typeof sessionStore.getSessionRecord>>)
+
+    await expect(
+      bootstrapSession('bob-id', 'bob-device', bob.identity, 'alice-id', 'alice-device')
+    ).rejects.toThrowError('TOFU_SESSION_UNREADABLE')
+
+    // Must not have persisted a new session.
+    expect(sessionStore.putSessionRecord).not.toHaveBeenCalled()
   })
 })

@@ -31,10 +31,15 @@ export function useChats(userId: string | null) {
       setMutedChatsSnapshot(rows)
       // Seed unread counts from server-reported delivery counts so badges are
       // accurate on startup even when messages arrived while the app was closed.
-      seedUnreadFromApi(rows, activeChatId)
+      // Read the LIVE active chat (not the closure) so a reload that started
+      // before a chat switch — resolving after — doesn't re-badge the chat the
+      // user just opened with stale unread.
+      seedUnreadFromApi(rows, useSessionStore.getState().activeChatId)
     } catch {
-      setChats([])
-      setMutedChatsSnapshot([])
+      // Transient failure (network blip / brief 5xx): keep the existing sidebar
+      // and muted snapshot. Blanking them would drop every chat and un-mute
+      // muted chats until the next successful load. A real logout clears state
+      // via the !userId branch above.
     } finally {
       setInitialLoading(false)
     }

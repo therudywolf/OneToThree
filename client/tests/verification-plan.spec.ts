@@ -11,10 +11,12 @@ test.describe('verification plan (UI contracts)', () => {
     await expect(page.getByTestId('qr-link-toggle')).toBeVisible()
   })
 
-  test('login QR panel expands and accepts token input', async ({ page }) => {
+  test('login QR panel expands to the device-link (show/scan) flow', async ({ page }) => {
     await page.goto('/login')
     await page.getByTestId('qr-link-toggle').click()
-    await expect(page.getByTestId('qr-token-input')).toBeVisible()
+    // The panel was refactored from a manual token field to a QR show/scan
+    // device-link flow; assert the expanded panel appears.
+    await expect(page.getByTestId('qr-link-panel')).toBeVisible()
   })
 
   test('settings modal shell scrolls on narrow viewport', async ({ page }) => {
@@ -34,6 +36,8 @@ test.describe('verification plan (UI contracts)', () => {
       .locator('.terminal-panel')
       .first()
       .evaluate((el) => (el as HTMLElement).className)
-    expect(panelCls).toMatch(/h-\[min\(100dvh,100vh\)\]/)
+    // The panel is viewport-height-capped (restyled to responsive heights) so
+    // its content scrolls on a narrow viewport rather than overflowing.
+    expect(panelCls).toMatch(/max-h-\[calc\(100dvh/)
   })
 })

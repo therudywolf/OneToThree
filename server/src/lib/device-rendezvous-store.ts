@@ -10,9 +10,10 @@
 //
 //  Mode A — new device SHOWS the QR:
 //    The new device creates the rendezvous WITH its ephemeral public key. The
-//    QR carries {rendezvous_id, ephemeral_pubkey}; the claim secret stays on
-//    the new device. The existing device scans, encrypts the vault to that
-//    key and deposits.
+//    QR carries {rendezvous_id, ephemeral_pubkey, deposit_secret}; the claim
+//    secret stays on the new device. The existing device scans, encrypts the
+//    vault to that key and deposits it — presenting the deposit_secret so a
+//    bearer of the (path-leakable) rendezvous id alone cannot inject a blob.
 //
 //  Mode B — existing device SHOWS the QR:
 //    The existing device creates an EMPTY rendezvous (no pubkey yet). The QR
@@ -37,6 +38,14 @@ export type DeviceRendezvous = {
   ephemeralPubkey: string | null
   /** SHA-256 hex of the claim secret held only by the new device (Mode A) or carried in the QR (Mode B). */
   claimSecretHash: string
+  /**
+   * SHA-256 hex of the deposit secret. The depositor (existing device) must
+   * present the matching secret to write the vault blob, so knowing only the
+   * (URL-path-leakable) rendezvous id is not enough to inject a blob. Mode A
+   * carries it in the QR (new -> old); Mode B keeps it on the old device from
+   * the create response.
+   */
+  depositSecretHash: string
   /** Vault ciphertext encrypted to `ephemeralPubkey`. Null until the old device deposits it. */
   encBlob: string | null
   /** Absolute expiry (ms epoch). */

@@ -19,6 +19,14 @@ export type RendezvousSession = {
    * new device can submit its pubkey and claim the vault.
    */
   claim_secret: string
+  /**
+   * Secret that authorizes the DEPOSIT (vault write), distinct from claim_secret.
+   * Mode A: encoded into the QR so the scanning existing device can deposit.
+   * Mode B: kept on the existing device (it created the rendezvous) and sent on
+   * deposit. Prevents a bearer of the path-leakable rendezvous id from injecting
+   * a blob.
+   */
+  deposit_secret: string
   expires_in: number
 }
 
@@ -48,12 +56,13 @@ export async function createRendezvous(
   const data = (await res.json().catch(() => ({}))) as Partial<RendezvousSession> & {
     error?: string
   }
-  if (!res.ok || !data.rendezvous_id || !data.claim_secret) {
+  if (!res.ok || !data.rendezvous_id || !data.claim_secret || !data.deposit_secret) {
     throw new Error(data.error ?? 'RENDEZVOUS_CREATE_FAILED')
   }
   return {
     rendezvous_id: data.rendezvous_id,
     claim_secret: data.claim_secret,
+    deposit_secret: data.deposit_secret,
     expires_in: data.expires_in ?? 300,
   }
 }
@@ -131,7 +140,8 @@ export async function getRendezvousStatus(id: string): Promise<RendezvousStatus>
  */
 export async function depositToRendezvous(
   id: string,
-  encBlob: string
+  encBlob: string,
+  depositSecret: string
 ): Promise<void> {
   const res = await fetchWithTimeout(
     `${BASE}/${encodeURIComponent(id)}/deposit`,
@@ -142,7 +152,7 @@ export async function depositToRendezvous(
         'Content-Type': 'application/json',
         ...authDeviceHeaders(),
       }),
-      body: JSON.stringify({ enc_blob: encBlob }),
+      body: JSON.stringify({ enc_blob: encBlob, deposit_secret: depositSecret }),
     }
   )
   if (!res.ok) {

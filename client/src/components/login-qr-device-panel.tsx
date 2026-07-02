@@ -142,7 +142,7 @@ export function LoginQrDevicePanel() {
       const kp = await generateLinkEphemeralKeypair()
       const rdv = await createRendezvous(kp.publicJwk)
       if (stopRef.current) return
-      setQrValue(buildLinkQrPayload(rdv.rendezvous_id, kp.publicJwk))
+      setQrValue(buildLinkQrPayload(rdv.rendezvous_id, kp.publicJwk, rdv.deposit_secret))
       setStatus('waiting')
 
       const deadline = Date.now() + rdv.expires_in * 1000

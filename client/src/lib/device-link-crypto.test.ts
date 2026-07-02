@@ -71,15 +71,18 @@ describe('device-link ECIES', () => {
   })
 
   it('round-trips the QR payload and rejects foreign QR strings', () => {
-    const encoded = buildLinkQrPayload('rdv-123', '{"kty":"EC","crv":"P-256","x":"a","y":"b"}')
+    const encoded = buildLinkQrPayload('rdv-123', '{"kty":"EC","crv":"P-256","x":"a","y":"b"}', 'dep-secret-1')
     const parsed = parseLinkQrPayload(encoded)
     expect(parsed).toEqual({
       rendezvousId: 'rdv-123',
       ephemeralPubkey: '{"kty":"EC","crv":"P-256","x":"a","y":"b"}',
+      depositSecret: 'dep-secret-1',
     })
     expect(parseLinkQrPayload('https://example.com')).toBeNull()
     expect(parseLinkQrPayload('not-json')).toBeNull()
     expect(parseLinkQrPayload(JSON.stringify({ t: 'other', r: 'x', k: 'y' }))).toBeNull()
+    // A Mode A QR without the deposit secret must be rejected.
+    expect(parseLinkQrPayload(JSON.stringify({ t: 'p13-link', r: 'x', k: 'y' }))).toBeNull()
   })
 })
 
@@ -94,7 +97,7 @@ describe('device-link Mode B QR', () => {
     expect(parseLinkModeBQrPayload('not-json')).toBeNull()
     expect(parseLinkModeBQrPayload('https://example.com')).toBeNull()
     // A Mode A QR must not parse as Mode B (distinct tags).
-    const modeA = buildLinkQrPayload('rdv-1', '{"kty":"EC"}')
+    const modeA = buildLinkQrPayload('rdv-1', '{"kty":"EC"}', 'dep-secret')
     expect(parseLinkModeBQrPayload(modeA)).toBeNull()
   })
 

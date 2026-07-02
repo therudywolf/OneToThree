@@ -44,16 +44,16 @@ afterEach(() => {
 
 describe('createRendezvous', () => {
   it('Mode A: sends the ephemeral pubkey in the body', async () => {
-    stubFetch({ json: { rendezvous_id: 'r1', claim_secret: 's1', expires_in: 300 } })
+    stubFetch({ json: { rendezvous_id: 'r1', claim_secret: 's1', deposit_secret: 'd1', expires_in: 300 } })
     const out = await createRendezvous('the-pubkey-jwk')
-    expect(out).toEqual({ rendezvous_id: 'r1', claim_secret: 's1', expires_in: 300 })
+    expect(out).toEqual({ rendezvous_id: 'r1', claim_secret: 's1', deposit_secret: 'd1', expires_in: 300 })
     expect(JSON.parse(lastCall!.init.body as string)).toEqual({
       ephemeral_pubkey: 'the-pubkey-jwk',
     })
   })
 
   it('Mode B: sends an empty body when no pubkey is supplied', async () => {
-    stubFetch({ json: { rendezvous_id: 'r2', claim_secret: 's2', expires_in: 300 } })
+    stubFetch({ json: { rendezvous_id: 'r2', claim_secret: 's2', deposit_secret: 'd2', expires_in: 300 } })
     const out = await createRendezvous()
     expect(out.rendezvous_id).toBe('r2')
     expect(JSON.parse(lastCall!.init.body as string)).toEqual({})
@@ -124,9 +124,12 @@ describe('getRendezvousStatus', () => {
 describe('depositToRendezvous + claimRendezvous (still work for both modes)', () => {
   it('deposit posts the encrypted blob', async () => {
     stubFetch({ json: { ok: true } })
-    await depositToRendezvous('rid', 'enc-blob')
+    await depositToRendezvous('rid', 'enc-blob', 'dep-secret')
     expect(lastCall!.url).toContain('/rid/deposit')
-    expect(JSON.parse(lastCall!.init.body as string)).toEqual({ enc_blob: 'enc-blob' })
+    expect(JSON.parse(lastCall!.init.body as string)).toEqual({
+      enc_blob: 'enc-blob',
+      deposit_secret: 'dep-secret',
+    })
   })
 
   it('claim returns pending on 425 and ready on 200', async () => {

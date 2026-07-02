@@ -54,6 +54,45 @@ describe('device-linking P2P rendezvous', () => {
     expect(typeof res.body.rendezvous_id).toBe('string')
     expect(typeof res.body.claim_secret).toBe('string')
     expect(res.body.claim_secret.length).toBeGreaterThan(20)
+    // A distinct deposit secret authorizes the vault write (Mode A: via QR).
+    expect(typeof res.body.deposit_secret).toBe('string')
+    expect(res.body.deposit_secret.length).toBeGreaterThan(20)
+    expect(res.body.deposit_secret).not.toBe(res.body.claim_secret)
+  })
+
+  it('rejects a deposit with the wrong (or missing) deposit secret', async () => {
+    const { cookie, userId } = await authCookie()
+    try {
+      const created = await request(app!.server)
+        .post('/api/devices/link/rendezvous')
+        .send({ ephemeral_pubkey: EPHEMERAL_PUBKEY })
+        .expect(200)
+      const id = created.body.rendezvous_id as string
+
+      // Missing deposit_secret -> schema rejects (400).
+      await request(app!.server)
+        .post(`/api/devices/link/rendezvous/${id}/deposit`)
+        .set('Cookie', cookie)
+        .send({ enc_blob: 'x' })
+        .expect(400)
+
+      // Wrong deposit_secret -> 403, and nothing is stored.
+      const wrong = await request(app!.server)
+        .post(`/api/devices/link/rendezvous/${id}/deposit`)
+        .set('Cookie', cookie)
+        .send({ enc_blob: 'x', deposit_secret: 'not-the-secret' })
+        .expect(403)
+      expect(wrong.body.error).toBe('DEPOSIT_SECRET_INVALID')
+
+      // The real deposit secret still works afterward (blob wasn't consumed).
+      await request(app!.server)
+        .post(`/api/devices/link/rendezvous/${id}/deposit`)
+        .set('Cookie', cookie)
+        .send({ enc_blob: 'real', deposit_secret: created.body.deposit_secret })
+        .expect(200)
+    } finally {
+      await db.delete(users).where(eq(users.id, userId))
+    }
   })
 
   it('rejects a private or malformed ephemeral key', async () => {
@@ -83,10 +122,13 @@ describe('device-linking P2P rendezvous', () => {
         .post('/api/devices/link/rendezvous')
         .send({ ephemeral_pubkey: EPHEMERAL_PUBKEY })
         .expect(200)
-      const { rendezvous_id, claim_secret } = created.body as {
+      const { rendezvous_id, claim_secret, deposit_secret } = created.body as {
         rendezvous_id: string
         claim_secret: string
+        deposit_secret: string
       }
+      expect(typeof deposit_secret).toBe('string')
+      expect(deposit_secret.length).toBeGreaterThan(20)
 
       // Claim before deposit -> 425 NOT_READY, entry not consumed.
       const early = await request(app!.server)
@@ -98,7 +140,7 @@ describe('device-linking P2P rendezvous', () => {
       await request(app!.server)
         .post(`/api/devices/link/rendezvous/${rendezvous_id}/deposit`)
         .set('Cookie', cookie)
-        .send({ enc_blob: 'ciphertext-encrypted-to-ephemeral-key' })
+        .send({ enc_blob: 'ciphertext-encrypted-to-ephemeral-key', deposit_secret })
         .expect(200)
 
       const claimed = await request(app!.server)
@@ -134,7 +176,7 @@ describe('device-linking P2P rendezvous', () => {
       const missing = await request(app!.server)
         .post(`/api/devices/link/rendezvous/${randomUUID()}/deposit`)
         .set('Cookie', cookie)
-        .send({ enc_blob: 'x' })
+        .send({ enc_blob: 'x', deposit_secret: 'anything' })
         .expect(404)
       expect(missing.body.error).toBe('RENDEZVOUS_NOT_FOUND')
 
@@ -143,16 +185,17 @@ describe('device-linking P2P rendezvous', () => {
         .send({ ephemeral_pubkey: EPHEMERAL_PUBKEY })
         .expect(200)
       const id = created.body.rendezvous_id as string
+      const depositSecret = created.body.deposit_secret as string
 
       await request(app!.server)
         .post(`/api/devices/link/rendezvous/${id}/deposit`)
         .set('Cookie', cookie)
-        .send({ enc_blob: 'first' })
+        .send({ enc_blob: 'first', deposit_secret: depositSecret })
         .expect(200)
       const dup = await request(app!.server)
         .post(`/api/devices/link/rendezvous/${id}/deposit`)
         .set('Cookie', cookie)
-        .send({ enc_blob: 'second' })
+        .send({ enc_blob: 'second', deposit_secret: depositSecret })
         .expect(409)
       expect(dup.body.error).toBe('RENDEZVOUS_ALREADY_DEPOSITED')
     } finally {
@@ -205,16 +248,18 @@ describe('device-linking P2P rendezvous', () => {
         .post('/api/devices/link/rendezvous')
         .send({})
         .expect(200)
-      const { rendezvous_id, claim_secret } = created.body as {
+      const { rendezvous_id, claim_secret, deposit_secret } = created.body as {
         rendezvous_id: string
         claim_secret: string
+        deposit_secret: string
       }
 
-      // Deposit before a pubkey is submitted -> 409 (no recipient key).
+      // Deposit before a pubkey is submitted -> 409 (no recipient key). The
+      // deposit secret is valid (Mode B: old device has it from create).
       const early = await request(app!.server)
         .post(`/api/devices/link/rendezvous/${rendezvous_id}/deposit`)
         .set('Cookie', cookie)
-        .send({ enc_blob: 'x' })
+        .send({ enc_blob: 'x', deposit_secret })
         .expect(409)
       expect(early.body.error).toBe('RENDEZVOUS_PUBKEY_MISSING')
 
@@ -236,7 +281,7 @@ describe('device-linking P2P rendezvous', () => {
       await request(app!.server)
         .post(`/api/devices/link/rendezvous/${rendezvous_id}/deposit`)
         .set('Cookie', cookie)
-        .send({ enc_blob: 'mode-b-ciphertext' })
+        .send({ enc_blob: 'mode-b-ciphertext', deposit_secret })
         .expect(200)
 
       const claimed = await request(app!.server)

@@ -62,6 +62,12 @@ export type LinkQrPayload = {
   rendezvousId: string
   /** The new device's ephemeral ECDH public JWK — safe to display in a QR. */
   ephemeralPubkey: string
+  /**
+   * Deposit secret that authorizes the existing device's vault deposit. Safe in
+   * this QR: it only permits DEPOSIT (bound by server first-write-wins + the
+   * verification code), not CLAIM — the claim secret stays on the new device.
+   */
+  depositSecret: string
 }
 
 /**
@@ -75,22 +81,31 @@ export type LinkModeBQrPayload = {
   claimSecret: string
 }
 
-/** Encode the Mode A QR shown by the new device. Carries only public material. */
+/**
+ * Encode the Mode A QR shown by the new device. Carries public material plus the
+ * deposit secret (deposit-only authorization; the claim secret is NOT included).
+ */
 export function buildLinkQrPayload(
   rendezvousId: string,
-  ephemeralPubkey: string
+  ephemeralPubkey: string,
+  depositSecret: string
 ): string {
-  return JSON.stringify({ t: QR_TAG, r: rendezvousId, k: ephemeralPubkey })
+  return JSON.stringify({ t: QR_TAG, r: rendezvousId, k: ephemeralPubkey, d: depositSecret })
 }
 
 /** Parse a scanned Mode A QR string; returns null if it is not one. */
 export function parseLinkQrPayload(raw: string): LinkQrPayload | null {
   try {
-    const o = JSON.parse(raw) as { t?: unknown; r?: unknown; k?: unknown }
-    if (o.t !== QR_TAG || typeof o.r !== 'string' || typeof o.k !== 'string') {
+    const o = JSON.parse(raw) as { t?: unknown; r?: unknown; k?: unknown; d?: unknown }
+    if (
+      o.t !== QR_TAG ||
+      typeof o.r !== 'string' ||
+      typeof o.k !== 'string' ||
+      typeof o.d !== 'string'
+    ) {
       return null
     }
-    return { rendezvousId: o.r, ephemeralPubkey: o.k }
+    return { rendezvousId: o.r, ephemeralPubkey: o.k, depositSecret: o.d }
   } catch {
     return null
   }

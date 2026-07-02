@@ -430,6 +430,8 @@ const en = {
   'composer.tabGif': 'GIF',
   'composer.gifSoon': 'GIF search — coming soon',
   'composer.gifSearchPlaceholder': 'Search GIFs',
+  'composer.stickerFilterPlaceholder': 'Filter by emoji',
+  'composer.stickerFilterNoResults': 'No stickers match',
   'composer.gifPopular': 'Popular GIFs',
   'composer.gifFallbackMode': 'GIF provider unavailable, showing fallback GIFs.',
   'composer.gifHint': 'Type at least 2 characters',

@@ -432,6 +432,8 @@ const ru = {
   'composer.tabGif': 'GIF',
   'composer.gifSoon': 'Поиск GIF — скоро',
   'composer.gifSearchPlaceholder': 'Поиск GIF',
+  'composer.stickerFilterPlaceholder': 'Фильтр по эмодзи',
+  'composer.stickerFilterNoResults': 'Ничего не найдено',
   'composer.gifPopular': 'Популярные GIF',
   'composer.gifFallbackMode': 'Провайдер GIF недоступен, показаны резервные GIF.',
   'composer.gifHint': 'Введите минимум 2 символа',

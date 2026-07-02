@@ -8,12 +8,43 @@ import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import {
   createS3Client,
   createS3ClientForPresigning,
+  deleteObjectIfExists,
   ensureBucketExists,
   presignGetObject,
 } from '../lib/s3.js'
 import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 
 const MINIO_BUCKET = process.env.MINIO_BUCKET ?? 'project13-media'
+
+/**
+ * Delete sticker MinIO objects that no `stickers` row references any more.
+ *
+ * Clones REUSE the source pack's mediaKey (see the clone handler), and a
+ * refresh replaces a pack's rows with brand-new keys — so a naive
+ * delete-by-pack would either nuke a clone's shared object or leak the old
+ * ones. The clone-safe predicate is simply "no remaining stickers row points
+ * at this key". Call AFTER the DB delete/insert has settled. Best-effort:
+ * every failure is swallowed so it can never block the user-facing operation.
+ */
+async function cleanupOrphanStickerObjects(mediaKeys: Array<string | null | undefined>): Promise<void> {
+  const unique = [...new Set(mediaKeys.filter((k): k is string => !!k))]
+  if (unique.length === 0) return
+  const client = createS3Client()
+  for (const key of unique) {
+    try {
+      const [ref] = await db
+        .select({ id: stickers.id })
+        .from(stickers)
+        .where(eq(stickers.mediaKey, key))
+        .limit(1)
+      if (!ref) {
+        await deleteObjectIfExists({ client, bucket: MINIO_BUCKET, key })
+      }
+    } catch {
+      // best-effort orphan GC; never surface to the caller
+    }
+  }
+}
 const TG_API = 'https://api.telegram.org'
 
 type TgFile = { file_id: string; file_path?: string }
@@ -638,7 +669,13 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
     if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
 
+    // Capture object keys before the cascade drops the rows, then GC the MinIO
+    // blobs no other pack (clone/source) still references.
+    const keys = (
+      await db.select({ mediaKey: stickers.mediaKey }).from(stickers).where(eq(stickers.packId, params.data.packId))
+    ).map((r) => r.mediaKey)
     await db.delete(stickerPacks).where(eq(stickerPacks.id, params.data.packId))
+    void cleanupOrphanStickerObjects(keys)
     return reply.status(204).send()
   })
 
@@ -826,6 +863,11 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(422).send({ error: `FETCH_STICKER_SET_FAILED: ${msg}` })
     }
 
+    // Old object keys — GC'd (clone-safe) after the new set is inserted, since
+    // refresh replaces every row with a fresh randomUUID key.
+    const oldKeys = (
+      await db.select({ mediaKey: stickers.mediaKey }).from(stickers).where(eq(stickers.packId, pack.id))
+    ).map((r) => r.mediaKey)
     await db.delete(stickers).where(eq(stickers.packId, pack.id))
 
     const s3 = createS3Client()
@@ -858,6 +900,7 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       await db.insert(stickers).values(stickerRows)
     }
 
+    void cleanupOrphanStickerObjects(oldKeys)
     return reply.send({ count: stickerRows.length })
   })
 

@@ -98,12 +98,43 @@ export type ChatState = {
 }
 
 export const useChatStore = create<ChatState>((set) => {
+  // A DR message key is one-time: concurrent receiver paths (history load,
+  // realtime backlog, delivery sync) each ratchet-decrypt the same rows, and
+  // whichever loses the race re-derives a consumed key and yields
+  // '[DECRYPT_FAIL]' (or ''). Plaintext must therefore be MONOTONIC in the
+  // store — a message that once decrypted cleanly must never regress to a
+  // failure placeholder just because a slower path wrote last.
+  // '[KEY_CHANGE_DETECTED]' is intentionally NOT treated as "bad": it is a real
+  // security signal that must surface even over a previously-good plaintext.
+  const isBadPlaintext = (p: string | null | undefined): boolean =>
+    !p || p === '[DECRYPT_FAIL]'
+
   const setMessages = (nodes: DecryptedMessage[]) =>
-    set({ messages: enforceMemoryLimit(sortNodes(nodes)) })
+    set((s) => {
+      const prevById = new Map(s.messages.map((m) => [m.id, m]))
+      const merged = nodes.map((n) => {
+        const prev = prevById.get(n.id)
+        if (prev && isBadPlaintext(n.plaintext) && !isBadPlaintext(prev.plaintext)) {
+          return { ...n, plaintext: prev.plaintext }
+        }
+        return n
+      })
+      return { messages: enforceMemoryLimit(sortNodes(merged)) }
+    })
 
   const appendMessage = (node: DecryptedMessage) =>
     set((s) => {
-      if (s.messages.some((x) => x.id === node.id)) return s
+      const idx = s.messages.findIndex((x) => x.id === node.id)
+      if (idx >= 0) {
+        // Upgrade a failed/empty placeholder to a clean decrypt; never downgrade.
+        const existing = s.messages[idx]
+        if (isBadPlaintext(existing.plaintext) && !isBadPlaintext(node.plaintext)) {
+          const next = s.messages.slice()
+          next[idx] = { ...existing, plaintext: node.plaintext }
+          return { messages: enforceMemoryLimit(sortNodes(next)) }
+        }
+        return s
+      }
       return { messages: enforceMemoryLimit(sortNodes([...s.messages, node])) }
     })
 

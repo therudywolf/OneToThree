@@ -22,24 +22,20 @@ are noted so they aren't re-reported.
   intentional resilience for transient DR desync; the cached plaintext is the
   real previously-decrypted message (content is key-independent), not stale/wrong.
 
-## Deferred — DB schema (need a migration; prod DB is resettable in this env)
-1. **Missing FK `messages.reply_to_id` + `group_messages.reply_to_id`** (HIGH) —
-   orphan reply references when the parent is deleted. Add
-   `REFERENCES messages(id) ON DELETE SET NULL` via migration (null out orphans
-   first, or ADD CONSTRAINT NOT VALID + VALIDATE). Client already tolerates a
-   dangling reply (renders "unknown"), so this is integrity hygiene, not a crash.
-2. **Missing FK `login_events.device_id` → devices(id) ON DELETE SET NULL** (MED) —
-   audit-trail rows dangle when a device is revoked/purged.
-3. **`groups.invite_code` uses `.unique()` while `chats.invite_code` uses
-   `.uniqueIndex()`** (MED) — standardize on `.uniqueIndex()` to match the SQL and
-   avoid a push-time drop/recreate divergence.
-4. **`call_sessions.participant_ids` unbounded uuid[]** (MED) — validate
-   `length <= 100` (or similar) in the call-session write path.
-5. **Poll double-vote race** (MED) — PK `(poll_id,user_id,option_index)` allows a
-   concurrent double vote across options when `allow_multiple=false`; add a partial
-   unique index `(poll_id,user_id) WHERE NOT allow_multiple` or a txn guard.
-6. **Negative `size_bytes` / `media_original_bytes`** (LOW) — add a `CHECK (>= 0)`
-   and/or reject `<= 0` at the write path.
+## DB schema — RESOLVED / verified
+1. **FK `messages.reply_to_id` + `group_messages.reply_to_id` + `login_events.device_id`**
+   — FIXED (`bd2825c`, migration 0058, ON DELETE SET NULL, orphan-nulling +
+   idempotent; verified via db:push + a clean 0000..0058 replay on a fresh DB).
+2. **Poll double-vote race** — FIXED (`f63afb7`): per-(poll,user) txn advisory
+   lock serializes concurrent votes; added the first polls test.
+3. **`groups.invite_code` `.unique()` vs `.uniqueIndex()`** — NON-ISSUE: the
+   `groups` table is legacy/unused (no inserts/reads in any route); the live path
+   is `chats.invite_code`, which already uses `.uniqueIndex()`.
+4. **`call_sessions.participant_ids` unbounded uuid[]** — NON-ISSUE: the write
+   path (ws.ts) always inserts `[user.id]`, not client input.
+5. **Negative `size_bytes` / `media_original_bytes`** — already guarded: the
+   upload API validates `fileSize` with `z.number().int().positive()`, so the
+   write path can't store `<= 0` (a DB CHECK would be pure defense-in-depth).
 
 ## Deferred — media/attachments quota (only active when MEDIA_QUOTA_PER_USER_BYTES set)
 - **Client-declared fileSize quota bypass** (HIGH-when-enabled) — `storage.ts`

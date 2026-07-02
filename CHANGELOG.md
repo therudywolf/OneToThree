@@ -7,6 +7,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-07-02 — Hardening, device-link, media lifecycle & bug hunt
+
+### Security & bug-hunt fixes (2026-06/07)
+- **WS resilience**: connect/disconnect chains no longer turn a transient
+  DB/Redis error into an unhandledRejection that shut the whole server down;
+  `maxPayload` capped so oversized frames can't buffer ~100 MiB; the block check
+  on high-frequency group-call relay frames is cached (per-connection TTL).
+- **Double Ratchet**: `loadSession` fails closed on an unreadable-but-present
+  session record, so a re-bootstrap can't silently adopt a server-supplied peer
+  identity (TOFU / identity-change bypass).
+- **Device linking**: rendezvous `/deposit` now requires a dedicated
+  `deposit_secret` — a leaked (path-visible) rendezvous id can no longer inject a
+  vault-handoff blob. Android gains a **Keystore vault-PIN bridge** (silent
+  unlock, no PIN re-entry).
+- **Authz/privacy**: `GET /users/:id/devices` is gated to self or a shared chat
+  (no cross-user device enumeration); device-list queries are bounded.
+- **Chat**: SELF (Saved Messages) edits propagate across your own devices; a
+  stale fan-out pending-pull no longer injects another chat's messages on
+  chat-switch; reactions survive reload (history now returns them); channel
+  ownership transfer moves `channel_role`.
+- **Calls**: audio-relay fallback no longer re-sends `call_invite` (which made
+  the callee busy-auto-reject and kill the call).
+- **Data integrity**: `ON DELETE SET NULL` FKs for `reply_to_id` +
+  `login_events.device_id`; single-choice poll double-vote race serialized.
+- **TOTP/2FA**: verification accepts ±1 step (RFC 6238) — tolerant of client
+  clock drift.
+- **Outbox**: queued sends past a 24h absolute age are dropped (poison-entry bound).
+- **Admin**: account groups/tiers (creator/admin/premium/regular/test) + bulk
+  assignment; prod `/admin` 429 fixed (edge rate-limit zone).
+
+### Added (media + release hygiene)
+- **Media lifecycle** (WhatsApp-style): server LRU eviction + 30-day retention
+  purge + orphan cleanup + per-user quota, with a client IndexedDB cache and
+  eviction→restore (re-encrypt from local cache). Now covered by an
+  evict→restore integration test.
+- **Repo privacy pass**: personal paths/host scrubbed from tracked files.
+
 ### Added
 - **Release pipeline**: `.github/workflows/release.yml` builds a signed
   Android APK + Tauri desktop bundles (Linux/Win/macOS) on any `v*` tag
@@ -239,5 +276,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-[Unreleased]: https://github.com/therudywolf/OneToThree/compare/HEAD...HEAD
+[Unreleased]: https://github.com/therudywolf/OneToThree/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/therudywolf/OneToThree/compare/v0.5.0-alpha.1...v0.9.0
 [0.8.0]: https://github.com/therudywolf/OneToThree/commits/main

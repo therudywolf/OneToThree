@@ -2,8 +2,12 @@ import { expect, test } from '@playwright/test'
 import { ChatPage } from './pom/chat-page'
 import { fetchUserId, registerNewUser, uniqueHandle } from './helpers'
 
+// 16×16 RGBA PNG. Must be a real, multi-pixel image: the client validates
+// images via createImageBitmap() (dimension guard in media-limits.ts), and
+// headless Chromium throws InvalidStateError decoding a 1×1 PNG — which the app
+// then correctly rejects, so a 1×1 fixture never reaches the preview modal.
 const TINY_PNG = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnR6i8AAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAGUlEQVR4nGO4o6HxnxLMMGrAqAGjBgwXAwBpmSsfoVs4IAAAAABJRU5ErkJggg==',
   'base64'
 )
 
@@ -73,9 +77,10 @@ test.describe('media / smoke', () => {
         buffer: TINY_PNG,
       })
       await chatA.sendPreview(imageCaption)
-
       await expect(pageA.getByText(imageCaption)).toBeVisible({ timeout: 30_000 })
 
+      // Attach audio right after the image sends — this exercises the queue
+      // drain race (a stale slice() used to drop this second attachment).
       await chatA.attachFile({
         name: 'voice.wav',
         mimeType: 'audio/wav',

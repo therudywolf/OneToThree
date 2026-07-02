@@ -16,7 +16,11 @@ export type SendChatMessageBody = {
   media_type?: string | null
   media_iv?: string | null
   media_original_bytes?: number | null
+  /** Album/multi-attachment object keys sent alongside the message. */
+  attachment_keys?: string[]
   burn_at?: string | null
+  /** Burn-after-read countdown (seconds); paired with burn_at. */
+  burn_duration_secs?: number | null
   /**
    * Phase 6 — Double Ratchet transport.
    * Omit or set to 1 for legacy static-ECDH; set to 2 for DR.

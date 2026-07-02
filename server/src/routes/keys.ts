@@ -274,6 +274,9 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
         .from(identityKeys)
         .where(eq(identityKeys.userId, req.params.userId))
         .orderBy(desc(identityKeys.createdAt))
+        // Bound the response: a real account has a handful of devices; a cap
+        // stops a pathological/hostile row count from amplifying every fetch.
+        .limit(100)
       reply.header('Cache-Control', 'no-store')
       return reply.send({
         user_id: req.params.userId,

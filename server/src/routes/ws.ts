@@ -346,6 +346,21 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
     let sessionDeviceId: string | undefined
     const rateLimiter = new WsRateLimiter()
 
+    // Short-TTL block-status cache for high-frequency relay-audio frames.
+    // isBlocked() is a DB query and relay frames arrive ~tens/sec per peer, so
+    // an uncached check per frame is amplifiable DB load. The TTL keeps a
+    // mid-call block near-real-time (takes effect within RELAY_BLOCK_TTL_MS).
+    const RELAY_BLOCK_TTL_MS = 5_000
+    const relayBlockCache = new Map<string, { blocked: boolean; at: number }>()
+    const isRelayBlockedCached = async (senderId: string, targetId: string): Promise<boolean> => {
+      const now = Date.now()
+      const hit = relayBlockCache.get(targetId)
+      if (hit && now - hit.at < RELAY_BLOCK_TTL_MS) return hit.blocked
+      const blocked = await isBlocked(senderId, targetId)
+      relayBlockCache.set(targetId, { blocked, at: now })
+      return blocked
+    }
+
     // FIX 1: Handle websocket errors to prevent ECONNRESET crashes
     ws.on('error', (err) => {
       request.log.error({ err, userId: authed?.id }, 'websocket error')
@@ -977,7 +992,8 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           }
           // High-frequency audio frames: drop silently when blocked (no error
           // flood). Mirrors the block boundary the 1:1 webrtc_signal enforces.
-          if (await isBlocked(user.id, target_user_id)) return
+          // Cached (short TTL) so it isn't a DB query on every relay frame.
+          if (await isRelayBlockedCached(user.id, target_user_id)) return
           sendToUser(target_user_id, {
             type: 'group_call:relay_frame',
             room_id,

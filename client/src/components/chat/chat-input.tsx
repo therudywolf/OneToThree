@@ -561,7 +561,12 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
           burn_duration_secs: burnSecs,
         })
         setFileQueue((prev) => {
-          const next = prev.slice(1)
+          // Remove the item we actually sent BY IDENTITY, not by position. The
+          // send is async; if the user attaches a new file while this upload is
+          // in flight, the queue may have been replaced (acceptIncomingFiles
+          // resets it), so slice(0,1) would drop the freshly-attached file
+          // instead of the sent one. Filtering by reference is race-safe.
+          const next = prev.filter((q) => q !== item)
           // Only consume the burn timer once the whole queue has drained, so a
           // multi-file (non-album) queue keeps the same burn for each file.
           if (next.length === 0) setBurnTimerSecs(null)

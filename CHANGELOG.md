@@ -7,6 +7,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.2] — 2026-07-03 — Stickers, GIFs & search polish
+
+Audit + fixes across the sticker-pack, GIF, and search subsystems (web, Android, desktop).
+
+### Fixed
+- **Desktop emoji picker was blank.** The picker rendered Google-style emoji as
+  PNGs from `cdn.jsdelivr.net`, which the Tauri desktop CSP (`img-src`) blocks →
+  a grid of broken tiles. Switched to native system-font emoji (`EmojiStyle.NATIVE`):
+  works on web/Android/desktop, no CDN, offline-friendly, no third-party requests.
+- **GIF search flashed a spinner on every keystroke.** The busy state now flips
+  only when a request actually fires (after the debounce); prior results stay
+  visible while typing/re-searching.
+- **GIF provider-down was invisible.** When Tenor/Giphy is unreachable the picker
+  now shows a small "provider unavailable — showing suggestions" banner instead
+  of silently presenting fallback GIFs as if they were real results (the client
+  `degraded` flag was also mislabeled on the network-error path).
+- **Recent-GIF tiles** now fall back to the direct provider URL if the server
+  proxy 404s/rate-limits, matching the search/favorites grids.
+- **Recent/favorite sticker tiles** now (a) surface a toast if a send fails
+  (previously swallowed — looked like success) and (b) re-resolve their image
+  after a reload (persisted `blob:` URLs die across sessions and showed broken).
+- **Message search** no longer silently blanks a query for the literal words
+  "undefined"/"null" (an ID-input guard was wrongly applied to free-text search).
+
+### Added
+- **Per-pack sticker filter** — large packs get a filter box (matches the
+  sticker's emoji tag) instead of only a flat scroll grid.
+
+### Backend / hygiene
+- **Sticker MinIO objects are now garbage-collected** on pack delete and on
+  Telegram refresh (previously every delete/refresh orphaned blobs forever).
+  Clone-safe: an object is removed only when no `stickers` row (in any pack,
+  including clones that reuse the key) still references it.
+- **GIF favorites are capped per user** (evict-oldest beyond 200) so a client
+  can't grow the table unbounded.
+
 ## [0.9.1] — 2026-07-03 — Media delivery fix (DIRECT chats)
 
 ### Fixed

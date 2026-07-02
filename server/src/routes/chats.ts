@@ -1245,16 +1245,23 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       if (actorRole !== 'owner') {
         return reply.status(403).send({ error: 'FORBIDDEN' })
       }
+      // Channels gate posting/pinning by the SEPARATE channel_role column, so an
+      // ownership transfer that only moves `role` would leave the new owner as a
+      // channel 'subscriber' (CHANNEL_SUBSCRIBERS_CANNOT_POST) and the old owner
+      // still channel 'owner'. Move channel_role too: new owner -> 'owner',
+      // demoted owner -> 'editor' (retains post rights, matching their new admin
+      // role) — mirroring the owner-leaves successor path above.
+      const isChannel = chat.type === 'channel'
       await db.transaction(async (tx) => {
         await tx
           .update(chatMembers)
-          .set({ role: 'admin' })
+          .set(isChannel ? { role: 'admin', channelRole: 'editor' } : { role: 'admin' })
           .where(
             and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id))
           )
         await tx
           .update(chatMembers)
-          .set({ role: 'owner' })
+          .set(isChannel ? { role: 'owner', channelRole: 'owner' } : { role: 'owner' })
           .where(
             and(
               eq(chatMembers.chatId, chatId),

@@ -240,4 +240,56 @@ describe('chat create/update/member routes', () => {
       await db.delete(users).where(inArray(users.id, [owner.id, m1.id, m2.id]))
     }
   })
+
+  // Channels authorize posting by the SEPARATE channel_role column, so an
+  // ownership transfer that only moved `role` left the new owner a 'subscriber'
+  // (CHANNEL_SUBSCRIBERS_CANNOT_POST) while the demoted owner kept channel
+  // 'owner'. The PATCH role=owner path must move channel_role too.
+  it('channel ownership transfer moves channel_role with it', async () => {
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`ch-xfer-owner-${stamp}`)
+    const member = await createUser(`ch-xfer-member-${stamp}`)
+    const ownerCookie = `fm_session=${await app!.jwt.sign({ sub: owner.id, username: owner.username, jti: randomUUID() })}`
+
+    let chatId: string | null = null
+    try {
+      const created = await request(app!.server)
+        .post('/api/chats')
+        .set('Cookie', ownerCookie)
+        .send({
+          type: 'channel',
+          name: 'Xfer channel',
+          member_ids: [owner.id, member.id],
+        })
+        .expect(201)
+      chatId = created.body.chat.id as string
+
+      await request(app!.server)
+        .patch(`/api/chats/${chatId}/members/${member.id}/role`)
+        .set('Cookie', ownerCookie)
+        .send({ role: 'owner' })
+        .expect(200)
+
+      const rows = await db
+        .select({
+          userId: chatMembers.userId,
+          role: chatMembers.role,
+          channelRole: chatMembers.channelRole,
+        })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+      const newOwner = rows.find((r) => r.userId === member.id)
+      const demoted = rows.find((r) => r.userId === owner.id)
+      expect(newOwner?.role).toBe('owner')
+      expect(newOwner?.channelRole).toBe('owner')
+      expect(demoted?.role).toBe('admin')
+      expect(demoted?.channelRole).toBe('editor')
+    } finally {
+      if (chatId) {
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+        await db.delete(chats).where(eq(chats.id, chatId))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
+    }
+  })
 })

@@ -30,7 +30,9 @@ export const meta = {
   ],
 }
 
-const ROOT = 'C:/Users/user/Workspace/OneToThree'
+// Repo root is the current working directory the workflow runs in (agents
+// operate there). Kept portable — no absolute/local paths committed.
+const ROOT = '.'
 
 const BUG_SCHEMA = {
   type: 'object',

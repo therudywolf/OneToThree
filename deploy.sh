@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Production deploy wrapper for ~/sites/onetothree.ru on forestserver.
+# Production deploy wrapper for ~/sites/onetothree.ru on the deploy host.
 #
 # Usage:
 #   ./deploy.sh                 # test + snapshot + git pull + rebuild api+web

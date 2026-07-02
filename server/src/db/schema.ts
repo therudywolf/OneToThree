@@ -332,7 +332,9 @@ export const messages = pgTable(
     senderId: uuid('sender_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    replyToId: uuid('reply_to_id'),
+    replyToId: uuid('reply_to_id').references((): AnyPgColumn => messages.id, {
+      onDelete: 'set null',
+    }),
     /**
      * Legacy / group_e2e shared-key ciphertext (single blob).
      * For direct_e2e fan-out (Stage 5) the ciphertext lives in
@@ -539,7 +541,7 @@ export const loginEvents = pgTable(
     outcome: loginEventOutcomeEnum('outcome').notNull(),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
-    deviceId: uuid('device_id'),
+    deviceId: uuid('device_id').references(() => devices.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -671,7 +673,9 @@ export const groupMessages = pgTable(
     senderId: uuid('sender_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    replyToId: uuid('reply_to_id'),
+    replyToId: uuid('reply_to_id').references((): AnyPgColumn => groupMessages.id, {
+      onDelete: 'set null',
+    }),
     content: text('content'),
     isPinned: boolean('is_pinned').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })

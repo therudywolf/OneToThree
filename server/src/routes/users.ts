@@ -740,6 +740,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .select({ device_id: devices.id, public_key_jwk: devices.ecdhPublicKey })
       .from(devices)
       .where(and(eq(devices.userId, userId), isNull(devices.revokedAt), isNotNull(devices.ecdhPublicKey)))
+      .limit(100)
 
     return reply.send({ devices: rows })
   })

@@ -69,6 +69,8 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
   const pendingPubkeyRef = useRef<string | null>(null)
   const rendezvousIdRef = useRef<string | null>(null)
+  // Mode B: the deposit secret from create() must authorize the later deposit.
+  const depositSecretRef = useRef<string | null>(null)
   const stopRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Separate interval for the 1-second countdown tick — never reuses timerRef
@@ -145,7 +147,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         buildVaultHandoffPayload(user.username, vaultBlob),
         payload.ephemeralPubkey
       )
-      await depositToRendezvous(payload.rendezvousId, encBlob)
+      await depositToRendezvous(payload.rendezvousId, encBlob, payload.depositSecret)
       setPhase('done')
     } catch (e) {
       const message = e instanceof Error ? e.message : 'DEVICE_LINK_FAILED'
@@ -167,6 +169,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
     setDeadlineTs(null)
     pendingPubkeyRef.current = null
     rendezvousIdRef.current = null
+    depositSecretRef.current = null
     setPhase('showqr')
 
     try {
@@ -174,6 +177,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
       const rdv = await createRendezvous()
       if (stopRef.current) return
       rendezvousIdRef.current = rdv.rendezvous_id
+      depositSecretRef.current = rdv.deposit_secret
       setQrValue(buildLinkModeBQrPayload(rdv.rendezvous_id, rdv.claim_secret))
 
       const deadline = Date.now() + rdv.expires_in * 1000
@@ -227,7 +231,8 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
   const confirmAndDeposit = useCallback(async () => {
     const pubkey = pendingPubkeyRef.current
     const rid = rendezvousIdRef.current
-    if (!pubkey || !rid || !user?.id) {
+    const depositSecret = depositSecretRef.current
+    if (!pubkey || !rid || !depositSecret || !user?.id) {
       setErr(explainDeviceLinkError('DEVICE_LINK_FAILED', t))
       return
     }
@@ -241,7 +246,7 @@ export function SettingsLinkDeviceModal({ onClose }: Props) {
         buildVaultHandoffPayload(user.username, vaultBlob),
         pubkey
       )
-      await depositToRendezvous(rid, encBlob)
+      await depositToRendezvous(rid, encBlob, depositSecret)
       cleanupPolling()
       setPhase('done')
     } catch (e) {

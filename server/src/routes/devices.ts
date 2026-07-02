@@ -79,6 +79,12 @@ const rendezvousSubmitPubkeySchema = z.object({
 const rendezvousDepositSchema = z.object({
   /** Vault ciphertext already encrypted to the new device's ephemeral key. */
   enc_blob: z.string().min(1).max(65536),
+  /**
+   * Deposit secret proving the caller is the intended depositor (Mode A: from
+   * the QR; Mode B: from the create response). Required so a bearer of the
+   * path-leakable rendezvous id alone cannot inject a vault blob.
+   */
+  deposit_secret: z.string().min(1).max(200),
 })
 
 const rendezvousClaimSchema = z.object({
@@ -348,10 +354,16 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       const rendezvousId = randomUUID()
       const claimSecret = randomBytes(32).toString('base64url')
       const claimSecretHash = createHash('sha256').update(claimSecret).digest('hex')
+      // Separate secret gating the DEPOSIT (vault write), distinct from the
+      // claim secret that gates the READ. Mode A carries it in the QR to the
+      // depositing device; Mode B keeps it on the old device from this response.
+      const depositSecret = randomBytes(32).toString('base64url')
+      const depositSecretHash = createHash('sha256').update(depositSecret).digest('hex')
 
       await saveRendezvous(rendezvousId, {
         ephemeralPubkey,
         claimSecretHash,
+        depositSecretHash,
         encBlob: null,
         exp: Date.now() + RENDEZVOUS_TTL_S * 1000,
       })
@@ -359,6 +371,7 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({
         rendezvous_id: rendezvousId,
         claim_secret: claimSecret,
+        deposit_secret: depositSecret,
         expires_in: RENDEZVOUS_TTL_S,
       })
     }
@@ -479,6 +492,12 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       const entry = await getRendezvous(params.data.id)
       if (!entry) {
         return reply.status(404).send({ error: 'RENDEZVOUS_NOT_FOUND' })
+      }
+      // Authorize the deposit by the deposit secret (constant-time). Knowing the
+      // rendezvous id alone (it travels in the URL path -> logs/history) must not
+      // let anyone inject a vault blob.
+      if (!claimSecretMatches(body.data.deposit_secret, entry.depositSecretHash)) {
+        return reply.status(403).send({ error: 'DEPOSIT_SECRET_INVALID' })
       }
       // Mode B: the new device must have submitted its key first — there is no
       // recipient key to encrypt to otherwise. (Mode A always has the key.)

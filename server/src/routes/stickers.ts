@@ -16,6 +16,17 @@ import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/
 
 const MINIO_BUCKET = process.env.MINIO_BUCKET ?? 'project13-media'
 
+// Native "create your own pack" limits.
+const NATIVE_PACKS_PER_USER_MAX = 50
+const STICKER_UPLOAD_MAX_PER_PACK = 120
+const STICKER_UPLOAD_MAX_BYTES = 512 * 1024
+const STICKER_UPLOAD_MIME_EXT: Record<string, string> = {
+  'image/webp': 'webp',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+}
+
 /**
  * Delete sticker MinIO objects that no `stickers` row references any more.
  *
@@ -96,6 +107,8 @@ function mimeForExt(ext: string): string {
   if (ext === 'webm') return 'video/webm'
   if (ext === 'webp') return 'image/webp'
   if (ext === 'png') return 'image/png'
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+  if (ext === 'gif') return 'image/gif'
   return 'application/octet-stream'
 }
 
@@ -941,6 +954,148 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
 
     void cleanupOrphanStickerObjects(oldKeys)
     return reply.send({ count: stickerRows.length })
+  })
+
+  /**
+   * POST /api/stickers/packs — create an empty native pack owned by the caller.
+   * Body: { title }. No Telegram token needed — this is the "make your own pack"
+   * path. Format is 'static' (image stickers uploaded via /packs/:id/stickers).
+   */
+  app.post('/packs', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const body = z.object({ title: z.string().trim().min(1).max(128) }).safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    // Cap packs per user so the create path can't be abused to fill the table.
+    const owned = await db
+      .select({ id: stickerPacks.id })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.ownerId, user.id))
+      .limit(NATIVE_PACKS_PER_USER_MAX + 1)
+    if (owned.length >= NATIVE_PACKS_PER_USER_MAX) {
+      return reply.status(409).send({ error: 'PACK_LIMIT_REACHED' })
+    }
+
+    const id = randomUUID()
+    const shortName = `own_${id.slice(0, 12)}`
+    await db.insert(stickerPacks).values({
+      id,
+      ownerId: user.id,
+      title: body.data.title,
+      shortName,
+      format: 'static',
+      isPublic: false,
+    })
+    return reply.status(201).send({ id, title: body.data.title, format: 'static' })
+  })
+
+  /**
+   * POST /api/stickers/packs/:packId/stickers — upload one image sticker.
+   * Owner only. Body: { image_base64, mime, emoji?, width?, height? }.
+   */
+  app.post('/packs/:packId/stickers', { bodyLimit: 2 * 1024 * 1024 }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z.object({ packId: z.string().uuid() }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const body = z
+      .object({
+        image_base64: z.string().min(1).max(1_500_000),
+        mime: z.string().min(1).max(64),
+        emoji: z.string().max(32).optional(),
+        width: z.number().int().positive().max(4096).optional(),
+        height: z.number().int().positive().max(4096).optional(),
+      })
+      .safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+
+    const [pack] = await db
+      .select({ ownerId: stickerPacks.ownerId })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.id, params.data.packId))
+      .limit(1)
+    if (!pack) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
+    if (pack.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    const ext = STICKER_UPLOAD_MIME_EXT[body.data.mime.toLowerCase().split(';')[0].trim()]
+    if (!ext) return reply.status(415).send({ error: 'UNSUPPORTED_STICKER_TYPE' })
+
+    let bytes: Buffer
+    try {
+      bytes = Buffer.from(body.data.image_base64, 'base64')
+    } catch {
+      return reply.status(400).send({ error: 'INVALID_IMAGE' })
+    }
+    if (bytes.length === 0 || bytes.length > STICKER_UPLOAD_MAX_BYTES) {
+      return reply.status(413).send({ error: 'STICKER_TOO_LARGE' })
+    }
+
+    const existing = await db
+      .select({ position: stickers.position })
+      .from(stickers)
+      .where(eq(stickers.packId, params.data.packId))
+    if (existing.length >= STICKER_UPLOAD_MAX_PER_PACK) {
+      return reply.status(409).send({ error: 'PACK_FULL' })
+    }
+    const nextPos = existing.reduce((m, r) => Math.max(m, r.position), -1) + 1
+
+    const mediaKey = `stickers/${params.data.packId}/${randomUUID()}.${ext}`
+    try {
+      const s3 = createS3Client()
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: MINIO_BUCKET,
+          Key: mediaKey,
+          Body: bytes,
+          ContentType: mimeForExt(ext),
+        })
+      )
+    } catch (err) {
+      request.log.error({ err }, 'sticker upload to storage failed')
+      return reply.status(502).send({ error: 'STICKER_UPLOAD_FAILED' })
+    }
+
+    const id = randomUUID()
+    await db.insert(stickers).values({
+      id,
+      packId: params.data.packId,
+      position: nextPos,
+      emoji: body.data.emoji?.slice(0, 32) ?? '',
+      mediaKey,
+      width: body.data.width ?? null,
+      height: body.data.height ?? null,
+    })
+    return reply.status(201).send({ id, media_key: mediaKey, position: nextPos })
+  })
+
+  /**
+   * DELETE /api/stickers/packs/:packId/stickers/:stickerId — remove one sticker.
+   * Owner only. GC's the MinIO object (clone-safe) after the row is gone.
+   */
+  app.delete('/packs/:packId/stickers/:stickerId', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const params = z
+      .object({ packId: z.string().uuid(), stickerId: z.string().uuid() })
+      .safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+
+    const [row] = await db
+      .select({ mediaKey: stickers.mediaKey, ownerId: stickerPacks.ownerId })
+      .from(stickers)
+      .innerJoin(stickerPacks, eq(stickers.packId, stickerPacks.id))
+      .where(and(eq(stickers.id, params.data.stickerId), eq(stickers.packId, params.data.packId)))
+      .limit(1)
+    if (!row) return reply.status(404).send({ error: 'STICKER_NOT_FOUND' })
+    if (row.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
+
+    await db.delete(stickers).where(eq(stickers.id, params.data.stickerId))
+    void cleanupOrphanStickerObjects([row.mediaKey])
+    return reply.status(204).send()
   })
 
   /**

@@ -432,7 +432,12 @@ export async function buildApp() {
   // Public capability probe (Lite self-host). The client reads this once at
   // startup to hide UI for features this instance doesn't run. All flags default
   // ON, so the full build reports everything enabled. See feature-flags.ts.
-  app.get('/capabilities', async () => ({ features: featureFlags }))
+  // Exposed at root (infra/healthcheck convention, next to /version) AND under
+  // /api so the same-origin web client — whose base is `<origin>/api` — can reach
+  // it without a dedicated host.
+  const capabilitiesHandler = async () => ({ features: featureFlags })
+  app.get('/capabilities', capabilitiesHandler)
+  app.get('/api/capabilities', capabilitiesHandler)
 
   app.get('/health/ready', async (request, reply) => {
     try {

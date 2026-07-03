@@ -212,7 +212,7 @@ The credentials are shown **only once** during the first run. Copy them to a sec
 
 ```bash
 docker exec -it forestmessenger-db-1 psql -U forest -d forest \
-  -c "UPDATE users SET role = 'admin' WHERE username = 'yourusername';"
+  -c "UPDATE users SET user_group = 'creator', role = 'admin' WHERE username = 'yourusername';"
 ```
 
 4. Open `/admin` while logged in

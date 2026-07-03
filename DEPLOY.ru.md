@@ -265,7 +265,7 @@ APK сохраняется в `releases/android/`: `onetothree-debug.apk` / `one
 
 ---
 
-### Установка через ADB
+### Установка через ADB (Windows)
 
 Используйте Android platform-tools на любой ОС:
 

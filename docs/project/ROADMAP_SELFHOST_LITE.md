@@ -1,7 +1,6 @@
 # 🗺 Roadmap — OneToThree **Lite** (one-click self-host)
 
 > _English first, [Русская версия ниже](#-дорожная-карта--onetothree-lite)._
-> General production roadmap: [ROADMAP.md](./ROADMAP.md).
 
 **Goal:** a **Lite** edition anyone can stand up in one click on Linux / macOS /
 Windows, with a simplified feature set chosen via **checkboxes** (calls on/off,

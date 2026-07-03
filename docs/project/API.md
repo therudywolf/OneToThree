@@ -1,4 +1,4 @@
-# Forest Messenger — API Reference
+# OneToThree — API Reference
 
 All endpoints are prefixed with `/api`. Authentication is via `fm_session` cookie (JWT).
 

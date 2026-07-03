@@ -1,6 +1,6 @@
 # First Start Guide
 
-A step-by-step guide for deploying Forest Messenger on a fresh VPS. This guide assumes Ubuntu 22.04 and a brand new server.
+A step-by-step guide for deploying OneToThree on a fresh VPS. This guide assumes Ubuntu 22.04 and a brand new server.
 
 **[Русская версия → FIRST_START.ru.md](./FIRST_START.ru.md)**
 
@@ -208,7 +208,7 @@ You'll see output like this:
   API            ✓ healthy
   Next.js        ✓ healthy
 
-  ✓ Forest Messenger launched
+  ✓ OneToThree launched
 
   Site:    https://messenger.example.com
   API:     https://api.messenger.example.com
@@ -257,7 +257,7 @@ Run through this checklist:
 - [ ] Check `https://api.your-domain.com/health` — returns a response
 - [ ] Test a voice call between two devices (requires two accounts)
 
-If anything fails, check the [Troubleshooting](./README.md#troubleshooting) section in the README.
+If anything fails, check the [Troubleshooting](../../README.md#troubleshooting) section in the README.
 
 ---
 
@@ -280,7 +280,7 @@ Then open `https://your-domain.com/admin` while logged in. You should see the ad
 
 ## 11. Install PWA on Your Phone
 
-Forest Messenger is a Progressive Web App (PWA) — you can install it on your phone like a native app:
+OneToThree is a Progressive Web App (PWA) — you can install it on your phone like a native app:
 
 ### Android (Chrome)
 1. Open `https://your-domain.com` in Chrome
@@ -296,7 +296,7 @@ Forest Messenger is a Progressive Web App (PWA) — you can install it on your p
 
 ### Desktop (Chrome/Edge)
 1. Open `https://your-domain.com`
-2. Click the install icon in the address bar (or the three-dot menu → "Install Forest Messenger")
+2. Click the install icon in the address bar (or the three-dot menu → "Install OneToThree")
 
 After installation, the app:
 - Opens in its own window (no browser UI)
@@ -310,4 +310,4 @@ After installation, the app:
 - **Invite users** — share the registration link or have them search for your username
 - **Set up backups** — run `./startup.sh backup` regularly or set up a cron job
 - **Keep updated** — run `./startup.sh update` periodically to get new features and security fixes
-- **Read the security model** — see [SECURITY.md](./SECURITY.md) for full details on the encryption architecture
+- **Read the security model** — see [SECURITY.md](../../SECURITY.md) for full details on the encryption architecture

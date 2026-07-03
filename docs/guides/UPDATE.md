@@ -1,6 +1,6 @@
 # Update Guide
 
-How to safely update Forest Messenger to the latest version without losing data.
+How to safely update OneToThree to the latest version without losing data.
 
 **[Русская версия → UPDATE.ru.md](./UPDATE.ru.md)**
 
@@ -23,7 +23,7 @@ How to safely update Forest Messenger to the latest version without losing data.
 Check for new releases and changes:
 
 - **GitHub releases:** https://github.com/therudywolf/OneToThree/releases
-- **Commit history:** `git log --oneline origin/master..HEAD` (shows what's new upstream)
+- **Commit history:** `git log --oneline origin/main..HEAD` (shows what's new upstream)
 
 Update whenever there are security patches, bug fixes, or new features you want.
 
@@ -66,11 +66,15 @@ That's it. One command.
 
 The `./startup.sh update` command runs the following steps:
 
-1. **`git pull origin master`** — downloads the latest source code
-2. **`docker compose up -d --build --remove-orphans`** — rebuilds Docker images from the updated code and restarts containers; removes any orphaned containers from removed services
-3. **Database migrations** — the `db-migrate` container runs automatically on every startup, applying any new Drizzle ORM migrations to the database schema
+1. **`doctor` preflight** — checks git, Docker, `.env`, compose config, and disk space
+2. **`git fetch --all --prune`** + a **fast-forward-only** pull of the current branch
+3. **Re-syncs `DOMAIN`** and all derived vars in `.env.prod`
+4. **Builds and runs `db-migrate`** idempotently (applies any new Drizzle migrations)
+5. **Rebuilds/restarts only the affected services** — or all core services with `--full`
+6. **Health checks** — service health, API `/health`, CSP, and optional TURN TLS
 
-The entire process typically takes 3–5 minutes, depending on how much has changed and your server's build speed.
+Useful modes: `--full`, `--no-pull`, `--no-cache`, `--skip-smoke`. The whole process
+typically takes 3–5 minutes, depending on how much changed and your build speed.
 
 ---
 
@@ -129,13 +133,13 @@ gunzip -c backups/db_YYYYMMDD_HHMMSS.sql.gz | \
   exec -T db psql -U forest -d forest
 ```
 
-### 5. Return to tracking master
+### 5. Return to tracking main
 
 Once the issue is resolved upstream:
 
 ```bash
-git checkout master
-git pull origin master
+git checkout main
+git pull origin main
 ./startup.sh update
 ```
 
@@ -149,8 +153,9 @@ All persistent data lives in Docker named volumes:
 |--------|----------|
 | `forestmessenger_pgdata` | PostgreSQL database (users, messages, chat metadata) |
 | `forestmessenger_minio_data` | Encrypted media files |
-| `forestmessenger_caddy_data` | TLS certificates (Let's Encrypt) |
-| `forestmessenger_caddy_config` | Caddy configuration state |
+
+> TLS certificates are managed by the separate edge Caddy stack (outside this
+> compose project), not by a volume here.
 
 These volumes are **never touched** by `docker compose up --build`. Image rebuilds only replace the container code, not the volumes.
 

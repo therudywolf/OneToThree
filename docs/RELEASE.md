@@ -142,7 +142,7 @@ GitHub Releases are immutable once published, but you can:
 
 * unpublish a release (it goes back to draft) and re-tag,
 * roll the server back with `git revert <bad commit>` + redeploy via
-  `~/sites/onetothree.ru` `docker compose up -d --build`.
+  `~/stacks/onetothree.ru` `docker compose up -d --build`.
 
 The Android APK has no auto-update mechanism yet — users on the broken
 build stay broken until they reinstall. The desktop client also has no

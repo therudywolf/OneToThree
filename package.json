@@ -16,6 +16,7 @@
     "dev:server": "npm run dev -w server",
     "build": "npm run build -w client && npm run build -w server",
     "build:client:export": "npm run build:export -w project-13-client",
+    "build:client:export:env": "npm run build:export:env -w project-13-client",
     "android:clean": "node -e \"const{rmSync}=require('node:fs');for(const p of ['client/out','client/.next'])rmSync(p,{recursive:true,force:true})\"",
     "android:sync": "npm run android:clean && npm run build:client:export && npm run sync --prefix mobile/capacitor",
     "android:open": "npm run open:android --prefix mobile/capacitor",

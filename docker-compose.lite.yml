@@ -171,11 +171,15 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    # infra/lite/Caddyfile is written by the installer for your mode (local http
-    # on OT_HTTP_PORT, or your domain with automatic HTTPS on 80/443).
+    # infra/lite/Caddyfile is written by the installer for your mode:
+    #   local  → Caddy listens :80 (http, localhost)         → OT_HTTP_PORT:80
+    #   lan    → Caddy listens :OT_HTTPS_PORT (self-signed)   → OT_HTTPS_PORT:OT_HTTPS_PORT
+    #   domain → Caddy listens :80 + :443 (Let's Encrypt)     → 80:80 + 443:443
+    # OT_HTTPS_CONTAINER_PORT lets `lan` map the host HTTPS port 1:1 to the port
+    # Caddy actually listens on (so the site address host:port matches exactly).
     ports:
       - "${OT_HTTP_PORT:-80}:80"
-      - "${OT_HTTPS_PORT:-443}:443"
+      - "${OT_HTTPS_PORT:-443}:${OT_HTTPS_CONTAINER_PORT:-443}"
     volumes:
       - ./infra/lite/Caddyfile:/etc/caddy/Caddyfile:ro
       - lite_caddy_data:/data

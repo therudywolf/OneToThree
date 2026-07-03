@@ -21,6 +21,27 @@
 # 	}
 # }
 
+# ── LAN mode (no domain, other devices — self-signed HTTPS via Caddy's CA) ──
+# Needed because E2EE (Web Crypto) only runs in a secure context, so plain HTTP
+# over a LAN IP won't work. Caddy listens on OT_HTTPS_PORT (mapped 1:1) and mints
+# an internal cert for the host — browsers warn once; trust Caddy's CA to silence
+# it (and to enable media). Host is the machine's LAN IP or hostname.
+# {
+# 	auto_https disable_redirects
+# }
+# https://192.168.1.50:8443 {
+# 	tls internal
+# 	handle /health {
+# 		reverse_proxy api:8080
+# 	}
+# 	handle /api/* {
+# 		reverse_proxy api:8080
+# 	}
+# 	handle {
+# 		reverse_proxy web:3000
+# 	}
+# }
+
 # ── Domain mode (automatic HTTPS via Let's Encrypt) ─────────────────────────
 # {
 # 	email you@example.com

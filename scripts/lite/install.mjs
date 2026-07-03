@@ -37,21 +37,42 @@ async function main() {
   line('\n=== OneToThree Lite — installer ===\n')
 
   // ── Mode ──────────────────────────────────────────────────────────────────
+  // The app is E2EE and uses Web Crypto (crypto.subtle), which the browser only
+  // exposes in a SECURE CONTEXT: HTTPS, or plain HTTP on `localhost`. So plain
+  // HTTP works on this machine but NOT over a LAN IP — the three modes below make
+  // that explicit instead of silently producing a broken (crypto-less) instance.
   line('Deployment mode:')
-  line('  1) Local   — this machine / LAN, plain HTTP, no domain (great to try it)')
-  line('  2) Domain  — a public server with automatic HTTPS (Let\'s Encrypt)')
-  const mode = (await q('Choose', '1')) === '2' ? 'domain' : 'local'
+  line('  1) No domain — this machine only  (http://localhost — everything works, zero setup)')
+  line('  2) No domain — LAN / other devices (self-signed HTTPS — needed so E2EE works off-box)')
+  line('  3) Domain — public server         (automatic HTTPS via Let\'s Encrypt)')
+  const modeChoice = await q('Choose', '1')
+  const mode = modeChoice === '3' ? 'domain' : modeChoice === '2' ? 'lan' : 'local'
   line('')
 
-  let origin, httpPort, httpsPort, nodeEnv, cookieSecure, domain = '', acmeEmail = '', s3PublicDefault
+  let origin, httpPort, httpsPort, nodeEnv, cookieSecure, domain = '', acmeEmail = '', s3PublicDefault, host = 'localhost'
   if (mode === 'local') {
-    const host = await q('Host to open in your browser', 'localhost')
-    httpPort = await q('HTTP port', '8443')
-    httpsPort = String(Number(httpPort) + 1) // unused in local, kept distinct
-    origin = `http://${host}:${httpPort}`
+    // localhost is a secure context, so crypto.subtle works over plain HTTP — but
+    // only here. Intentionally localhost-only; pick mode 2 for other devices.
+    httpPort = await q('Port', '8443')
+    httpsPort = String(Number(httpPort) + 1) // idle in local mode
+    origin = `http://localhost:${httpPort}`
     nodeEnv = 'development'
     cookieSecure = '0'
-    s3PublicDefault = `http://${host}:9000`
+    // localhost:9000 is same-scheme + secure-context → media works with no extra setup.
+    s3PublicDefault = 'http://localhost:9000'
+  } else if (mode === 'lan') {
+    line('Reachable from phones / other PCs on your network — WITHOUT a domain.')
+    line('HTTPS is mandatory (E2EE crypto needs a secure context); Caddy serves a')
+    line('self-signed cert. Browsers show a one-time warning — accept it (or install')
+    line('Caddy\'s local CA to silence it and enable media). See docs/guides/LITE.md.')
+    host = await q('This machine\'s LAN address (IP like 192.168.1.50, or a hostname)', '192.168.1.50')
+    httpsPort = await q('HTTPS port', '8443')
+    httpPort = String(Number(httpsPort) + 1) // idle; HTTPS is the one you use
+    origin = `https://${host}:${httpsPort}`
+    nodeEnv = 'production'
+    cookieSecure = '1'
+    // Media over self-signed HTTPS needs the CA trusted / MinIO fronted — no safe default.
+    s3PublicDefault = ''
   } else {
     domain = await q('Your domain (A record → this server)', 'chat.example.com')
     acmeEmail = await q('Email for Let\'s Encrypt (renewal notices)', `admin@${domain.replace(/^[^.]+\./, '')}`)
@@ -60,9 +81,9 @@ async function main() {
     origin = `https://${domain}`
     nodeEnv = 'production'
     cookieSecure = '1'
-    // No default in domain mode: the bundled MinIO is only published on :9000 and
-    // is NOT fronted by Caddy/TLS, so `https://s3.<domain>` would look plausible
-    // but not resolve → media silently fails. Force a conscious choice (see below).
+    // No default in domain mode: bundled MinIO is only on :9000 (no TLS, not behind
+    // Caddy), so `https://s3.<domain>` would look plausible but not resolve → media
+    // silently fails. Force a conscious choice (see below).
     s3PublicDefault = ''
   }
   line('')
@@ -98,6 +119,11 @@ async function main() {
       line('  Lite publishes MinIO on :9000 only (no TLS, not behind Caddy). Front it with your')
       line('  own s3.<domain> and enter that URL, or leave blank to fill in later / turn media')
       line('  off — otherwise uploads/downloads will fail. See docs/guides/LITE.md.')
+    } else if (mode === 'lan') {
+      line('⚠ On self-signed HTTPS, the browser blocks media fetches to MinIO unless that')
+      line('  endpoint is also trusted-HTTPS. Text/chat works after accepting the cert; for')
+      line('  media, install Caddy\'s local CA (or front MinIO with a trusted cert) and enter')
+      line('  its https URL — or leave blank / turn media off. See docs/guides/LITE.md.')
     }
     s3PublicUrl = await q('Public URL of the object store (MinIO) the browser will reach', s3PublicDefault)
     line('')
@@ -123,6 +149,9 @@ async function main() {
     OT_ORIGIN: origin,
     OT_HTTP_PORT: httpPort,
     OT_HTTPS_PORT: httpsPort,
+    // In `lan` mode Caddy listens on the HTTPS port itself (so the self-signed
+    // site address host:port matches 1:1); local/domain keep the standard 443.
+    OT_HTTPS_CONTAINER_PORT: mode === 'lan' ? httpsPort : '443',
     OT_NODE_ENV: nodeEnv,
     OT_COOKIE_SECURE: cookieSecure,
     OT_DB_PASSWORD: hex(16),
@@ -169,7 +198,14 @@ async function main() {
   const caddyfile =
     mode === 'local'
       ? `{\n\tauto_https off\n}\n\n:80 {\n${routes}\n}\n`
-      : `{\n\temail ${acmeEmail}\n}\n\n${domain} {\n${routes}\n}\n`
+      : mode === 'lan'
+        // Self-signed HTTPS via Caddy's internal CA. The site address needs the
+        // host (so Caddy can mint an internal cert for it) AND the exact port
+        // Caddy listens on / is published 1:1 (OT_HTTPS_CONTAINER_PORT), so the
+        // browser's host:port matches the site. Makes the LAN origin a secure
+        // context → E2EE works off the local machine.
+        ? `{\n\tauto_https disable_redirects\n}\n\nhttps://${host}:${httpsPort} {\n\ttls internal\n${routes}\n}\n`
+        : `{\n\temail ${acmeEmail}\n}\n\n${domain} {\n${routes}\n}\n`
   mkdirSync(join(REPO, 'infra', 'lite'), { recursive: true })
   writeFileSync(join(REPO, 'infra', 'lite', 'Caddyfile'), caddyfile)
 
@@ -203,6 +239,10 @@ async function main() {
   if (r.status !== 0) {
     line('\n[!] docker compose failed. Fix the issue and re-run:\n  docker ' + composeArgs.join(' '))
     process.exit(r.status ?? 1)
+  }
+  if (mode === 'lan') {
+    line('\n(Self-signed HTTPS: your browser will warn once — accept it to proceed. To')
+    line(' silence it + enable media, install Caddy\'s local CA on each device.)')
   }
   line(`\n✓ Up. Open ${origin} , register the first account, then make yourself owner:`)
   line(`  docker compose --env-file .env.lite -f docker-compose.lite.yml exec db \\`)

@@ -113,8 +113,13 @@ git-run.ps1
 check-prod.ps1
 deploy-prod.ps1
 
-# Internal planning docs (session artifacts — not for public repo)
+# Internal planning / agent-session docs (not for the public repo)
 IMPLEMENTATION_PLAN.md
+HANDOFF.md
+CLAUDE.md
+CLAUDE_HANDOFF.md
+NEXT_HANDOFF_PLAN.md
+AGENTS.md
 
 # --- secrets (security baseline; do not commit real credentials) ---
 .env

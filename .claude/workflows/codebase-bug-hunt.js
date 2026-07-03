@@ -12,9 +12,8 @@
 //      that re-reads the code and tries to REFUTE it; false positives are dropped.
 //   3. Synthesize — surviving findings are deduped and ranked into a backlog.
 //
-// The return value is { confirmedCount, confirmed[], synthesis }. Paste the
-// synthesis into docs/project/ as the living backlog, then fix top items in a
-// commit-per-fix loop (see docs/project/BUG_HUNT_PROCESS.md).
+// The return value is { confirmedCount, confirmed[], synthesis }. Review the
+// synthesis, then fix top items in a commit-per-fix loop.
 //
 // To narrow a run to one area, pass args = ["crypto-core","msg-transport"] (the
 // `label`s below); omit args to sweep everything.

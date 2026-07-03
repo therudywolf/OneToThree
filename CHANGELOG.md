@@ -7,6 +7,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-07-03 — Stickers: create-your-own packs + audit backlog
+
+Second pass on the sticker/GIF/search audit — the create-your-own-pack feature
+plus the remaining verified backlog.
+
+### Added
+- **Create your own sticker packs — no Telegram needed.** Settings → Stickers has
+  a "Create your own pack" box (name → Create) and a ＋ button on each of your
+  packs to upload image stickers (WEBP/PNG/JPG/GIF, ≤512 KB, ≤120/pack). New
+  server routes: `POST /packs`, `POST /packs/:id/stickers`, `DELETE
+  /packs/:id/stickers/:sid` (all owner-only). Your packs show up in the composer
+  picker like any imported pack.
+
+### Fixed
+- **Animated (tgs/lottie) stickers now render on desktop & Android.** They were
+  `fetch()`-ing a `blob:` URL, which the Tauri/Capacitor CSP `connect-src`
+  doesn't allow; they now read the cached Blob directly. StickerBubble also
+  passes the media key so a mislabeled pack-level format is corrected per-sticker.
+- **Sticker access is now consistent.** `/asset-url` and `/media` honor the same
+  implicit shared-chat access that pack detail/clone already granted, so a
+  legitimate recipient no longer gets a 403 fetching the image.
+- **Clones are self-owning.** Cloning copies each object to the clone's own key
+  (server-side S3 copy) instead of reusing the source key — so per-pack object GC
+  is correct and a clone survives the source owner deleting their pack.
+- **Grant consent.** Only a pack owner can mint durable shares of a *private*
+  pack; a non-owner with mere shared-chat read access can no longer spread it.
+- Sticker blob: object-URL cache is now LRU-bounded (was leaking one per sticker
+  for the whole session); pack thumbnails resolve concurrently (no serial N+1);
+  chat-search debounce actually debounces the message scan (and collapses IME
+  keystrokes); the sticker-add page validates a real UUID.
+
+### Backend / hygiene
+- `mimeForExt` covers jpg/gif; native pack + sticker upload caps
+  (50 packs/user, 120 stickers/pack, 512 KB/image).
+
 ## [0.9.2] — 2026-07-03 — Stickers, GIFs & search polish
 
 Audit + fixes across the sticker-pack, GIF, and search subsystems (web, Android, desktop).

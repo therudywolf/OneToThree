@@ -44,20 +44,21 @@ the infra it needs.
 - [x] Desktop build reads host + CSP from env (`build:selfhost`, shipped in 0.9.3) — extend the same env-driven flags to the Android (Capacitor) build.
 - **Exit:** full build unchanged with all flags on; turning a flag off cleanly removes the surface end-to-end.
 
-### Sprint 1 — Lite compose profiles
-- [ ] `docker-compose.lite.yml`: minimal services (db + api + web + caddy); MinIO/coturn/LiveKit pulled in only by a compose **profile** when their flag is on.
-- [ ] Single-origin mode (one domain, `/api` + `/api/ws` behind one Caddy — the e2e harness already proves the WS-cookie path works) so Lite needs **one** DNS record, not five.
-- [ ] Embedded/simplified Postgres (or evaluate a SQLite adapter).
-- **Exit:** `docker compose -f docker-compose.lite.yml up` → working encrypted-text server on one domain.
+### Sprint 1 — Lite compose profiles ✅ (2026-07-03)
+- [x] `docker-compose.lite.yml`: db + redis + api + web + caddy; MinIO pulled in by the `media` profile, LiveKit by `calls` — only when the flag is on.
+- [x] Single-origin (web + `/api` + `/api/ws` behind one Caddy, the e2e WS-cookie pattern) → **one** hostname, not five. `local` (HTTP, `COOKIE_SECURE=0`) and `domain` (auto-HTTPS, production) modes.
+- [ ] Embedded/simplified Postgres (or evaluate a SQLite adapter). _(deferred — uses a small Postgres container for now.)_
+- **Exit:** `docker compose --env-file .env.lite -f docker-compose.lite.yml up` → working server on one origin. ✅
 
-### Sprint 2 — One-click installer (checkboxes)
-- [ ] Cross-platform interactive installer (Node CLI first — runs on Win/Mac/Linux): prompts domain + **checkbox toggles**, generates `.env` + secrets, picks the compose profile, launches.
-- [ ] `install.sh` / `install.ps1` one-liners that fetch + run it.
-- **Exit:** a newcomer runs one command, ticks "calls: off, media: on", and has a server.
+### Sprint 2 — One-click installer (checkboxes) ✅ (2026-07-03)
+- [x] Cross-platform interactive installer `scripts/lite/install.mjs` (Node, no deps): mode + host/domain, **checkbox feature toggles**, generates secrets + `.env.lite` + `infra/lite/Caddyfile`, selects the compose profiles, launches.
+- [x] `scripts/lite/install.sh` / `install.ps1` wrappers; root `npm run lite`. Guide: [docs/guides/LITE.md](../guides/LITE.md).
+- **Exit:** a newcomer runs `npm run lite`, ticks "calls: off, media: on", and has a server. ✅
 
-### Sprint 3 — Lite media without MinIO (optional infra)
+### Sprint 3 — Optional infra without external deps
 - [ ] Local-filesystem media driver behind the same storage interface, so `FEATURE_MEDIA` can be on **without** running MinIO on tiny servers.
-- **Exit:** media works on a 1-container Lite install.
+- [ ] **Bundled LiveKit + coturn `calls` profile** so `FEATURE_CALLS` works one-click. Today Lite calls point the API at an **external** LiveKit you run (`OT_LIVEKIT_*`); this brings a self-contained SFU (with UDP port publishing + generated keys) into the compose behind a `calls` profile.
+- **Exit:** media works on a 1-container Lite install; calls work without hand-rolling a LiveKit.
 
 ### Sprint 4 — Native apps for Lite + packaging
 - [ ] Extend `build:selfhost` to Android (Capacitor): same `OT_*` env → APK pointed at the user's Lite server, features trimmed to their flags.

@@ -1,0 +1,192 @@
+# OneToThree **Lite** — one-domain (or localhost) self-host stack.
+#
+# Generated/driven by `.env.lite` (run `node scripts/lite/install.mjs`). Everything
+# is served from ONE origin behind Caddy (web + /api + /api/ws), so Lite needs a
+# single hostname — or just localhost. The one bundled optional service is pulled
+# in only when its feature is enabled, via a compose profile:
+#   media  → minio   (photos / voice / files / stickers)
+#
+#   docker compose -f docker-compose.lite.yml --profile media up -d --build
+#
+# Calls are NOT bundled: a LiveKit SFU needs coturn + open UDP ports, so Lite
+# points the API at a LiveKit you run (OT_LIVEKIT_* in .env.lite) rather than
+# shipping one. Enabling calls only sets those env vars — no extra container.
+#
+# See docs/guides/LITE.md.
+name: onetothree-lite
+
+services:
+  db:
+    image: postgres:16.6-alpine
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: forest
+      POSTGRES_PASSWORD: ${OT_DB_PASSWORD:?set in .env.lite}
+      POSTGRES_DB: forest
+    volumes:
+      - lite_pgdata:/var/lib/postgresql/data
+    networks: [lite]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forest -d forest"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    command: redis-server --save "" --appendonly no --maxmemory 96mb --maxmemory-policy allkeys-lru
+    networks: [lite]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles: [media]
+    restart: unless-stopped
+    mem_limit: 512m
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${OT_MINIO_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${OT_MINIO_PASSWORD:?set in .env.lite}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${OT_ORIGIN}
+    volumes:
+      - lite_minio:/data
+    # Published so the browser can reach presigned object URLs. Local mode uses
+    # http://localhost:9000 (OT_S3_PUBLIC_URL); a public domain should front this
+    # with its own s3.<domain> — see docs/guides/LITE.md.
+    ports:
+      - "${OT_MINIO_PORT:-9000}:9000"
+    networks: [lite]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+
+  db-migrate:
+    build:
+      context: .
+      dockerfile: docker/db-migrate/Dockerfile
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://forest:${OT_DB_PASSWORD}@db:5432/forest
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [lite]
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      NODE_ENV: ${OT_NODE_ENV:-production}
+      HOME: /tmp
+      PORT: "8080"
+      COOKIE_SECURE: ${OT_COOKIE_SECURE:-1}
+      CORS_ORIGIN: ${OT_ORIGIN}
+      DATABASE_URL: postgres://forest:${OT_DB_PASSWORD}@db:5432/forest
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${OT_JWT_SECRET:?set in .env.lite}
+      TOTP_WRAP_KEY: ${OT_TOTP_WRAP_KEY:?set in .env.lite}
+      # Feature flags — a disabled feature drops its infra + its UI.
+      FEATURE_MEDIA: ${OT_ENABLE_MEDIA:-1}
+      FEATURE_CALLS: ${OT_ENABLE_CALLS:-0}
+      FEATURE_STICKERS: ${OT_ENABLE_STICKERS:-1}
+      FEATURE_GIF: ${OT_ENABLE_GIF:-1}
+      FEATURE_PUSH: ${OT_ENABLE_PUSH:-0}
+      FEATURE_2FA: ${OT_ENABLE_2FA:-1}
+      # Media (only used when media is on).
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_URL: ${OT_S3_PUBLIC_URL:-http://localhost:9000}
+      MINIO_ROOT_USER: ${OT_MINIO_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${OT_MINIO_PASSWORD:-}
+      MINIO_BUCKET: onetothree-media
+      MINIO_ACCESS_KEY: ${OT_MINIO_USER:-minio}
+      MINIO_SECRET_KEY: ${OT_MINIO_PASSWORD:-}
+      # Push (only used when push is on).
+      VAPID_PUBLIC_KEY: ${OT_VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${OT_VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${OT_VAPID_SUBJECT:-mailto:admin@localhost}
+      # Calls (only used when calls is on).
+      LIVEKIT_URL: ${OT_LIVEKIT_URL:-}
+      LIVEKIT_API_KEY: ${OT_LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${OT_LIVEKIT_API_SECRET:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    networks: [lite]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 40s
+
+  web:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        # Same-origin: the client derives API_URL = <origin>/api and the socket
+        # = <origin>/api/ws, both fronted by Caddy → api.
+        NEXT_PUBLIC_API_URL: ${OT_ORIGIN}
+        NEXT_PUBLIC_APP_URL: ${OT_ORIGIN}
+        NEXT_PUBLIC_WS_ORIGIN: ""
+        NEXT_PUBLIC_DR_ENABLED: "1"
+        API_INTERNAL_URL: http://api:8080
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:8080
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [lite]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # infra/lite/Caddyfile is written by the installer for your mode (local http
+    # on OT_HTTP_PORT, or your domain with automatic HTTPS on 80/443).
+    ports:
+      - "${OT_HTTP_PORT:-80}:80"
+      - "${OT_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./infra/lite/Caddyfile:/etc/caddy/Caddyfile:ro
+      - lite_caddy_data:/data
+      - lite_caddy_config:/config
+    depends_on:
+      - web
+      - api
+    networks: [lite]
+
+volumes:
+  lite_pgdata:
+  lite_minio:
+  lite_caddy_data:
+  lite_caddy_config:
+
+networks:
+  lite:
+    driver: bridge

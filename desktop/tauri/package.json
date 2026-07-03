@@ -1,6 +1,6 @@
 {
   "name": "onetothree-tauri",
-  "version": "0.5.0-alpha.1",
+  "version": "0.9.3",
   "private": true,
   "license": "AGPL-3.0-only",
   "description": "OneToThree desktop shell (Windows / Linux / macOS) — wraps the same Next.js static export that powers the Android Capacitor APK.",
@@ -9,6 +9,7 @@
     "dev": "npm run frontend:build && tauri dev",
     "build": "npm run frontend:build && tauri build",
     "build:bundles": "npm run frontend:build && tauri build --bundles deb,appimage,msi,nsis",
+    "build:selfhost": "node scripts/build-selfhost.mjs",
     "tauri": "tauri"
   },
   "devDependencies": {

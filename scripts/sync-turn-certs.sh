@@ -3,7 +3,7 @@
 # location coturn reads on container startup.
 #
 # Run once after the first successful ACME issuance, and then from cron
-# (`0 4 * * * /opt/forest/scripts/sync-turn-certs.sh --quiet`).
+# (`0 4 * * * ~/stacks/onetothree.ru/scripts/sync-turn-certs.sh --quiet`).
 #
 # Exit 0 on success, non-zero otherwise.
 set -euo pipefail

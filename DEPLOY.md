@@ -265,7 +265,7 @@ The APK lands in `releases/android/` as `onetothree-debug.apk` / `onetothree-rel
 
 ---
 
-### ADB install
+### ADB install (Windows)
 
 Use Android platform-tools from any OS:
 

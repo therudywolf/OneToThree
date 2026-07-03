@@ -429,4 +429,3 @@ Audit + fixes across the sticker-pack, GIF, and search subsystems (web, Android,
 [0.9.2]: https://github.com/therudywolf/OneToThree/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/therudywolf/OneToThree/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/therudywolf/OneToThree/compare/v0.5.0-alpha.1...v0.9.0
-[0.8.0]: https://github.com/therudywolf/OneToThree/commits/main

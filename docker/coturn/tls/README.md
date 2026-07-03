@@ -20,6 +20,6 @@ At container start coturn expects:
 3. `./startup.sh update` also retries this sync after Caddy starts. Keep a daily
    cron for renewals, for example:
 
-   `0 4 * * * cd /opt/forest && ./startup.sh turn-sync >/dev/null 2>&1`
+   `0 4 * * * cd ~/stacks/onetothree.ru && ./startup.sh turn-sync >/dev/null 2>&1`
 
 Never commit real certificate material to the repository.

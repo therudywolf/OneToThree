@@ -1,4 +1,19 @@
-# Forest Messenger — Security Model
+# OneToThree — Security Model
+
+## Reporting a vulnerability
+
+**Please do not open a public GitHub issue for security problems.** Report them
+privately so they can be fixed before disclosure:
+
+- **Email:** **dev@onetothree.ru** (PGP available on request), or
+- **GitHub private advisory:** [Report a vulnerability](https://github.com/therudywolf/OneToThree/security/advisories/new).
+
+Include a description, reproduction steps or a proof of concept, affected
+version/commit, and impact. We aim to acknowledge within **72 hours** and to keep
+you updated through the fix. Coordinated disclosure is appreciated — we'll credit
+you (if you wish) once a fix ships.
+
+---
 
 ## Cryptographic primitives
 

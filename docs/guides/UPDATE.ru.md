@@ -1,6 +1,6 @@
 # Руководство по обновлению
 
-Как безопасно обновить Forest Messenger до последней версии без потери данных.
+Как безопасно обновить OneToThree до последней версии без потери данных.
 
 **[English version → UPDATE.md](./UPDATE.md)**
 
@@ -23,7 +23,7 @@
 Следите за новыми релизами и изменениями:
 
 - **Релизы на GitHub:** https://github.com/therudywolf/OneToThree/releases
-- **История коммитов:** `git log --oneline origin/master..HEAD` (показывает, что нового в upstream)
+- **История коммитов:** `git log --oneline origin/main..HEAD` (показывает, что нового в upstream)
 
 Обновляйтесь при выходе исправлений безопасности, багфиксов или новых функций, которые вам нужны.
 
@@ -66,11 +66,15 @@ docker run --rm -v forestmessenger_minio_data:/data -v $(pwd)/backups:/backup \
 
 Команда `./startup.sh update` выполняет следующие шаги:
 
-1. **`git pull origin master`** — загружает последний исходный код
-2. **`docker compose up -d --build --remove-orphans`** — пересобирает Docker-образы из обновлённого кода и перезапускает контейнеры; удаляет контейнеры от удалённых сервисов
-3. **Миграции базы данных** — контейнер `db-migrate` запускается автоматически при каждом старте, применяя новые миграции Drizzle ORM к схеме базы данных
+1. **Проверка `doctor`** — git, Docker, `.env`, конфиг compose и место на диске
+2. **`git fetch --all --prune`** + **fast-forward-only** pull текущей ветки
+3. **Пересинхронизация `DOMAIN`** и всех производных переменных в `.env.prod`
+4. **Сборка и запуск `db-migrate`** идемпотентно (применяет новые миграции Drizzle)
+5. **Пересборка/перезапуск только затронутых сервисов** — или всех основных с `--full`
+6. **Health-проверки** — здоровье сервисов, API `/health`, CSP и опционально TURN TLS
 
-Весь процесс обычно занимает 3–5 минут, в зависимости от объёма изменений и скорости сборки на сервере.
+Полезные режимы: `--full`, `--no-pull`, `--no-cache`, `--skip-smoke`. Весь процесс
+обычно занимает 3–5 минут, в зависимости от объёма изменений и скорости сборки.
 
 ---
 
@@ -129,13 +133,13 @@ gunzip -c backups/db_YYYYMMDD_HHMMSS.sql.gz | \
   exec -T db psql -U forest -d forest
 ```
 
-### 5. Вернитесь к отслеживанию master
+### 5. Вернитесь к отслеживанию main
 
 Когда проблема решена в upstream:
 
 ```bash
-git checkout master
-git pull origin master
+git checkout main
+git pull origin main
 ./startup.sh update
 ```
 
@@ -149,8 +153,9 @@ git pull origin master
 |-----|-----------|
 | `forestmessenger_pgdata` | База данных PostgreSQL (пользователи, сообщения, метаданные чатов) |
 | `forestmessenger_minio_data` | Зашифрованные медиафайлы |
-| `forestmessenger_caddy_data` | TLS-сертификаты (Let's Encrypt) |
-| `forestmessenger_caddy_config` | Состояние конфигурации Caddy |
+
+> TLS-сертификаты обслуживаются отдельным edge-стеком Caddy (вне этого
+> compose-проекта), а не томом здесь.
 
 Эти тома **никогда не затрагиваются** командой `docker compose up --build`. Пересборка образов заменяет только код контейнеров, но не тома.
 

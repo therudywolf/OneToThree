@@ -4,7 +4,7 @@ Use after `./startup.sh update` or an equivalent `docker compose` stack with `ap
 
 ## Build verification
 
-- **Web (TypeScript + Next):** `docker build -f client/Dockerfile client` with build args from [`docker-compose.prod.yml`](../docker-compose.prod.yml) (or minimal `NEXT_PUBLIC_*` placeholders). Expect `Finished TypeScript` and exit code 0.
+- **Web (TypeScript + Next):** `docker build -f client/Dockerfile client` with build args from [`docker-compose.prod.yml`](../../docker-compose.prod.yml) (or minimal `NEXT_PUBLIC_*` placeholders). Expect `Finished TypeScript` and exit code 0.
 - **Favorites API:** With Postgres available and `DATABASE_URL` set, from `server/`: `npm ci && npm test -- src/routes/chats-favorites.test.ts` (integration test creates user + chat, POST/DELETE favorite, GET list).
 
 ## Manual UI (logged-in)

@@ -156,7 +156,9 @@ cd OneToThree
 | `turn.example.com` | A | `IP_СЕРВЕРА` | **Серое облако (только DNS) — ОБЯЗАТЕЛЬНО** |
 | `lk.example.com` | A | `IP_СЕРВЕРА` | **Серое облако (только DNS) — ОБЯЗАТЕЛЬНО** |
 
-> **Важно:** Записи `turn.*` и `lk.*` **не должны** быть проксированы. Cloudflare блокирует UDP — TURN-релей и медиапоток LiveKit не работают через прокси. Остальные записи можно проксировать.
+> **Режим звонков по умолчанию:** в проде используется `CALL_MEDIA_MODE=origin_safe`. В этом режиме `turn.*` и `lk.*` не анонсируются браузеру: 1:1-звонки сначала пробуют зашифрованный прямой P2P, затем откатываются на зашифрованный аудио-релей по WebSocket; групповые звонки идут через зашифрованный аудио-релей по WebSocket. IP origin остаётся за оранжевым облаком.
+>
+> **Легаси self-hosted медиа:** если вы явно задали `CALL_MEDIA_MODE=self_hosted`, то записи `turn.*` и `lk.*` **не должны** быть проксированы. Cloudflare блокирует UDP — TURN-релей и медиа LiveKit через прокси не работают, а IP медиа-хоста станет виден.
 
 ### 3. Открытие портов в файрволе
 
@@ -175,6 +177,8 @@ sudo ufw allow 49152:65535/udp
 sudo ufw allow 7881/tcp
 sudo ufw allow 50000:50100/udp
 ```
+
+> **Запись `lk.*`** тоже должна быть **«Только DNS» (серое облако)** в Cloudflare — по той же причине, что и `turn.*`. UDP-порты медиа не проходят через прокси Cloudflare.
 
 ### 4. Запуск
 
@@ -206,7 +210,7 @@ TLS-сертификаты получаются автоматически от 
 
 ```bash
 docker exec -it forestmessenger-db-1 psql -U forest -d forest \
-  -c "UPDATE users SET role = 'admin' WHERE username = 'ваш_никнейм';"
+  -c "UPDATE users SET user_group = 'creator', role = 'admin' WHERE username = 'ваш_никнейм';"
 ```
 
 4. Откройте `/admin` в браузере (нужно быть авторизованным)
@@ -290,6 +294,23 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 ```
 
 Создаёт сжатый дамп PostgreSQL в файле `backups/db_YYYYMMDD_HHMMSS.sql.gz`.
+
+#### Зашифрованные бэкапы
+
+Задайте переменную окружения `BACKUP_PASSPHRASE`, чтобы включить AES-256-CBC-шифрование архивов бэкапа:
+
+```bash
+export BACKUP_PASSPHRASE="ваша-надёжная-фраза"
+./startup.sh backup
+```
+
+Когда она задана, скрипт прогоняет архив через `openssl enc -aes-256-cbc -pbkdf2`, создавая файл `.tar.gz.enc`. Расшифровать:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -in backups/backup-*.tar.gz.enc -out backup.tar.gz -pass pass:"ваша-надёжная-фраза"
+```
+
+Если `BACKUP_PASSPHRASE` не задана, выводится предупреждение и бэкап создаётся незашифрованным.
 
 ### Восстановление из резервной копии
 
@@ -386,7 +407,7 @@ cd desktop/tauri && npm install && npm run build          # или build:bundles
 | Симптом | Решение |
 |---------|---------|
 | Caddy не получает TLS-сертификат | Убедитесь, что DNS A-записи указывают на этот сервер. Проверьте, что порты 80 и 443 открыты. Смотрите логи: `./startup.sh logs`, ищите ошибки Caddy. |
-| WebRTC-звонки не подключаются | Убедитесь, что DNS `turn.*` установлен в **«Только DNS»** (серое облако) в Cloudflare. Проверьте, что `TURN_EXTERNAL_IP` совпадает с публичным IP сервера (`curl -s ifconfig.me`). Убедитесь, что порты 3478 и 49152–65535/udp открыты. |
+| WebRTC-звонки не подключаются | В режиме по умолчанию `CALL_MEDIA_MODE=origin_safe` 1:1-звонки могут откатываться с P2P/видео на зашифрованный аудио-релей по WebSocket, когда NAT блокирует прямое медиа. В режиме `CALL_MEDIA_MODE=self_hosted` убедитесь, что DNS `turn.*` — **«Только DNS»**, а порты 3478 и диапазон relay UDP (49152–65535) открыты. |
 | Цикл редиректа на `/login` | Проверьте, что `COOKIE_DOMAIN` установлен как `.ваш-домен.ru` (с точкой в начале) в `.env.prod`. Пересоберите контейнер API после изменений. |
 | `relation "users" does not exist` | Ошибка миграции БД. Проверьте: `docker compose -f docker-compose.prod.yml logs db-migrate` |
 | Медиа показывает «Файл истёк» | Объект был удалён политикой хранения, либо отправителю нужно переотправить файл. |

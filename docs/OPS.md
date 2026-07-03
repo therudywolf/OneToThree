@@ -160,7 +160,7 @@ Or use the GitHub Releases page to grab the previous tag and
 Out of scope for v0.5; the planned path is:
 
 1. Stand up `prometheus` + `grafana` on the same VPS as a separate
-   docker-compose stack under `~/sites/grafana.onetothree.ru/`.
+   docker-compose stack under `~/stacks/grafana.onetothree.ru/`.
 2. Wire the `infra/caddy/sites/grafana.onetothree.ru.caddy` proxy via
    `infra/add-site.sh`.
 3. Add a `/metrics` endpoint to the Fastify api (already importable as

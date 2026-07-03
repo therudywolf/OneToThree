@@ -728,6 +728,8 @@ OneToThree — свободное программное обеспечение:
 
 <div align="center">
 
-**One To Three** — *Ваши сообщения. Ваш сервер. Ваши ключи.*
+**OneToThree** — *Ваши сообщения. Ваш сервер. Ваши ключи.*
+
+Собрано [therudywolf](https://github.com/therudywolf)
 
 </div>

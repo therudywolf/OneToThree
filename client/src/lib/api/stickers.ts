@@ -197,13 +197,34 @@ export async function fetchStickerAssetUrl(mediaKey: string): Promise<string> {
   return data.url
 }
 
+// Insertion-order LRU of live blob: object URLs. Without a bound, browsing many
+// packs leaks one createObjectURL per sticker for the whole session.
 const stickerBlobUrlByMediaKey = new Map<string, string>()
+const STICKER_BLOB_URL_MAX = 400
+
+function touchStickerObjectUrl(mediaKey: string): void {
+  const url = stickerBlobUrlByMediaKey.get(mediaKey)
+  if (url !== undefined) {
+    stickerBlobUrlByMediaKey.delete(mediaKey)
+    stickerBlobUrlByMediaKey.set(mediaKey, url)
+  }
+}
 
 function rememberStickerObjectUrl(mediaKey: string, blob: Blob): string {
   const existing = stickerBlobUrlByMediaKey.get(mediaKey)
-  if (existing) return existing
+  if (existing) {
+    touchStickerObjectUrl(mediaKey)
+    return existing
+  }
   const objectUrl = URL.createObjectURL(blob)
   stickerBlobUrlByMediaKey.set(mediaKey, objectUrl)
+  while (stickerBlobUrlByMediaKey.size > STICKER_BLOB_URL_MAX) {
+    const oldestKey = stickerBlobUrlByMediaKey.keys().next().value
+    if (oldestKey === undefined) break
+    const oldUrl = stickerBlobUrlByMediaKey.get(oldestKey)
+    if (oldUrl) URL.revokeObjectURL(oldUrl)
+    stickerBlobUrlByMediaKey.delete(oldestKey)
+  }
   return objectUrl
 }
 
@@ -221,7 +242,10 @@ export function stickerMediaFetchUrl(mediaKey: string): string {
  */
 export async function loadStickerDisplayUrl(mediaKey: string): Promise<string> {
   const cached = stickerBlobUrlByMediaKey.get(mediaKey)
-  if (cached) return cached
+  if (cached) {
+    touchStickerObjectUrl(mediaKey)
+    return cached
+  }
 
   const cachedBlob = await getCachedStickerBlob(mediaKey)
   if (cachedBlob?.blob) {
@@ -238,6 +262,27 @@ export async function loadStickerDisplayUrl(mediaKey: string): Promise<string> {
   const blob = await res.blob()
   await setCachedStickerBlob(mediaKey, blob, blob.type || 'application/octet-stream')
   return rememberStickerObjectUrl(mediaKey, blob)
+}
+
+/**
+ * Return a sticker's raw Blob (cache-first). Used by animated (tgs/lottie)
+ * rendering so it reads bytes directly instead of `fetch()`-ing a blob: URL —
+ * fetching blob: needs `connect-src blob:` in CSP, which the Tauri/Capacitor
+ * builds don't grant, so animated stickers never rendered there.
+ */
+export async function loadStickerBlob(mediaKey: string): Promise<Blob> {
+  const cachedBlob = await getCachedStickerBlob(mediaKey)
+  if (cachedBlob?.blob) return cachedBlob.blob
+  const res = await fetchWithTimeout(stickerMediaFetchUrl(mediaKey), {
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `MEDIA_${res.status}`)
+  }
+  const blob = await res.blob()
+  await setCachedStickerBlob(mediaKey, blob, blob.type || 'application/octet-stream')
+  return blob
 }
 
 /** Drop cached `blob:` URL (if any) and fetch sticker media again. */

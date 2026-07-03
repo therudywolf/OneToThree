@@ -87,6 +87,9 @@ export function StickerBubble({ envelope }: Props) {
       <StickerPreview
         url={url}
         format={envelope.format === 'webp' ? 'static' : (envelope.format as StickerFormat)}
+        mediaKey={
+          envelope.path && !/^https?:/i.test(envelope.path) ? envelope.path : undefined
+        }
         fallbackEmoji={emoji}
         className="max-h-full max-w-full object-contain"
         onLoadError={() => setErr(true)}

@@ -7,6 +7,143 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.3] — 2026-07-03 — Stickers: create-your-own packs + audit backlog
+
+Second pass on the sticker/GIF/search audit — the create-your-own-pack feature
+plus the remaining verified backlog.
+
+### Added
+- **Create your own sticker packs — no Telegram needed.** Settings → Stickers has
+  a "Create your own pack" box (name → Create) and a ＋ button on each of your
+  packs to upload image stickers (WEBP/PNG/JPG/GIF, ≤512 KB, ≤120/pack). New
+  server routes: `POST /packs`, `POST /packs/:id/stickers`, `DELETE
+  /packs/:id/stickers/:sid` (all owner-only). Your packs show up in the composer
+  picker like any imported pack.
+
+### Fixed
+- **Animated (tgs/lottie) stickers now render on desktop & Android.** They were
+  `fetch()`-ing a `blob:` URL, which the Tauri/Capacitor CSP `connect-src`
+  doesn't allow; they now read the cached Blob directly. StickerBubble also
+  passes the media key so a mislabeled pack-level format is corrected per-sticker.
+- **Sticker access is now consistent.** `/asset-url` and `/media` honor the same
+  implicit shared-chat access that pack detail/clone already granted, so a
+  legitimate recipient no longer gets a 403 fetching the image.
+- **Clones are self-owning.** Cloning copies each object to the clone's own key
+  (server-side S3 copy) instead of reusing the source key — so per-pack object GC
+  is correct and a clone survives the source owner deleting their pack.
+- **Grant consent.** Only a pack owner can mint durable shares of a *private*
+  pack; a non-owner with mere shared-chat read access can no longer spread it.
+- Sticker blob: object-URL cache is now LRU-bounded (was leaking one per sticker
+  for the whole session); pack thumbnails resolve concurrently (no serial N+1);
+  chat-search debounce actually debounces the message scan (and collapses IME
+  keystrokes); the sticker-add page validates a real UUID.
+
+### Backend / hygiene
+- `mimeForExt` covers jpg/gif; native pack + sticker upload caps
+  (50 packs/user, 120 stickers/pack, 512 KB/image).
+
+## [0.9.2] — 2026-07-03 — Stickers, GIFs & search polish
+
+Audit + fixes across the sticker-pack, GIF, and search subsystems (web, Android, desktop).
+
+### Fixed
+- **Desktop emoji picker was blank.** The picker rendered Google-style emoji as
+  PNGs from `cdn.jsdelivr.net`, which the Tauri desktop CSP (`img-src`) blocks →
+  a grid of broken tiles. Switched to native system-font emoji (`EmojiStyle.NATIVE`):
+  works on web/Android/desktop, no CDN, offline-friendly, no third-party requests.
+- **GIF search flashed a spinner on every keystroke.** The busy state now flips
+  only when a request actually fires (after the debounce); prior results stay
+  visible while typing/re-searching.
+- **GIF provider-down was invisible.** When Tenor/Giphy is unreachable the picker
+  now shows a small "provider unavailable — showing suggestions" banner instead
+  of silently presenting fallback GIFs as if they were real results (the client
+  `degraded` flag was also mislabeled on the network-error path).
+- **Recent-GIF tiles** now fall back to the direct provider URL if the server
+  proxy 404s/rate-limits, matching the search/favorites grids.
+- **Recent/favorite sticker tiles** now (a) surface a toast if a send fails
+  (previously swallowed — looked like success) and (b) re-resolve their image
+  after a reload (persisted `blob:` URLs die across sessions and showed broken).
+- **Message search** no longer silently blanks a query for the literal words
+  "undefined"/"null" (an ID-input guard was wrongly applied to free-text search).
+
+### Added
+- **Per-pack sticker filter** — large packs get a filter box (matches the
+  sticker's emoji tag) instead of only a flat scroll grid.
+
+### Backend / hygiene
+- **Sticker MinIO objects are now garbage-collected** on pack delete and on
+  Telegram refresh (previously every delete/refresh orphaned blobs forever).
+  Clone-safe: an object is removed only when no `stickers` row (in any pack,
+  including clones that reuse the key) still references it.
+- **GIF favorites are capped per user** (evict-oldest beyond 200) so a client
+  can't grow the table unbounded.
+
+## [0.9.1] — 2026-07-03 — Media delivery fix (DIRECT chats)
+
+### Fixed
+- **Media in DIRECT chats was undecryptable for recipients.** Attachments
+  (image/voice/video/file + albums) were encrypted with the legacy v1
+  `encryptOutboundText` path, so they went out as `protocol_version=1`
+  per-device fan-out. DIRECT is strictly Double-Ratchet v2 on receive, which
+  rejects v1 (`ERR_DIRECT_V1_REJECTED`) — every media message in a direct chat
+  showed as "message could not be decrypted" on the other side. Media now uses
+  the same DR-v2 path as text (`encryptOutboundTextV2` → `dr_slots`).
+  SECTOR/PUBLIC keep the legacy single-key path; SELF is unchanged.
+- **Second attachment dropped mid-upload.** Attaching a file while a previous
+  one was still uploading dropped the new file: the post-upload queue drain used
+  a positional `slice(1)` that removed whichever file was now at index 0 (the
+  freshly attached one). Removal is now by identity.
+- **Decrypt result could regress to a failure placeholder.** On a cold chat
+  open, concurrent receiver paths (history load, realtime backlog, delivery
+  sync) each ratchet-decrypt the same rows; the loser re-derives a consumed
+  one-time key and yields `[DECRYPT_FAIL]`, which a blind `setMessages` replace
+  could write over an already-good plaintext. Plaintext is now monotonic in the
+  chat store (a decrypted message never regresses; failed placeholders upgrade
+  to a clean decrypt). `[KEY_CHANGE_DETECTED]` still surfaces.
+
+### Tests
+- Repaired the media e2e specs (they never reached the receiver assertions, so
+  they masked the bug above): decodable 16×16 PNG fixture, locale-independent
+  `data-testid="media-preview-caption"`, race-safe send click, and a
+  toast-based oversized-rejection assertion.
+
+## [0.9.0] — 2026-07-02 — Hardening, device-link, media lifecycle & bug hunt
+
+### Security & bug-hunt fixes (2026-06/07)
+- **WS resilience**: connect/disconnect chains no longer turn a transient
+  DB/Redis error into an unhandledRejection that shut the whole server down;
+  `maxPayload` capped so oversized frames can't buffer ~100 MiB; the block check
+  on high-frequency group-call relay frames is cached (per-connection TTL).
+- **Double Ratchet**: `loadSession` fails closed on an unreadable-but-present
+  session record, so a re-bootstrap can't silently adopt a server-supplied peer
+  identity (TOFU / identity-change bypass).
+- **Device linking**: rendezvous `/deposit` now requires a dedicated
+  `deposit_secret` — a leaked (path-visible) rendezvous id can no longer inject a
+  vault-handoff blob. Android gains a **Keystore vault-PIN bridge** (silent
+  unlock, no PIN re-entry).
+- **Authz/privacy**: `GET /users/:id/devices` is gated to self or a shared chat
+  (no cross-user device enumeration); device-list queries are bounded.
+- **Chat**: SELF (Saved Messages) edits propagate across your own devices; a
+  stale fan-out pending-pull no longer injects another chat's messages on
+  chat-switch; reactions survive reload (history now returns them); channel
+  ownership transfer moves `channel_role`.
+- **Calls**: audio-relay fallback no longer re-sends `call_invite` (which made
+  the callee busy-auto-reject and kill the call).
+- **Data integrity**: `ON DELETE SET NULL` FKs for `reply_to_id` +
+  `login_events.device_id`; single-choice poll double-vote race serialized.
+- **TOTP/2FA**: verification accepts ±1 step (RFC 6238) — tolerant of client
+  clock drift.
+- **Outbox**: queued sends past a 24h absolute age are dropped (poison-entry bound).
+- **Admin**: account groups/tiers (creator/admin/premium/regular/test) + bulk
+  assignment; prod `/admin` 429 fixed (edge rate-limit zone).
+
+### Added (media + release hygiene)
+- **Media lifecycle** (WhatsApp-style): server LRU eviction + 30-day retention
+  purge + orphan cleanup + per-user quota, with a client IndexedDB cache and
+  eviction→restore (re-encrypt from local cache). Now covered by an
+  evict→restore integration test.
+- **Repo privacy pass**: personal paths/host scrubbed from tracked files.
+
 ### Added
 - **Release pipeline**: `.github/workflows/release.yml` builds a signed
   Android APK + Tauri desktop bundles (Linux/Win/macOS) on any `v*` tag
@@ -239,5 +376,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-[Unreleased]: https://github.com/therudywolf/OneToThree/compare/HEAD...HEAD
+[Unreleased]: https://github.com/therudywolf/OneToThree/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/therudywolf/OneToThree/compare/v0.5.0-alpha.1...v0.9.0
 [0.8.0]: https://github.com/therudywolf/OneToThree/commits/main

@@ -18,7 +18,10 @@ export function StickerAddClient({ packId }: { packId: string }) {
   const [errMsg, setErrMsg] = useState('')
 
   useEffect(() => {
-    if (!/^[0-9a-f-]{36}$/.test(packId)) {
+    // 8-4-4-4-12 UUID shape (case-insensitive) — the loose /^[0-9a-f-]{36}$/
+    // accepted junk like "------…" and the '_' placeholder param.
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!UUID_RE.test(packId)) {
       setErrMsg(t('stickers.addNotFound'))
       setPhase('error')
       return

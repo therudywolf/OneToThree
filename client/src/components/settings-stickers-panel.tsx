@@ -6,15 +6,21 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import {
   cloneStickerPack,
+  createStickerPack,
   fetchStickerPacks,
   deleteStickerPack,
   refreshStickerPack,
   setPackVisibility,
   importTelegramStickerPack,
+  uploadStickerImage,
   type StickerPack,
 } from '@/lib/api/stickers'
+import { arrayBufferToBase64 } from '@/lib/crypto'
 import { explainStickerError, formatStickerAccessScope } from '@/lib/sticker-errors'
 import { toastError, toastSuccess } from '@/store/toastStore'
+
+const STICKER_UPLOAD_MIMES = ['image/webp', 'image/png', 'image/jpeg', 'image/gif']
+const STICKER_UPLOAD_MAX_BYTES = 512 * 1024
 
 function buildShareLink(packId: string): string {
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
@@ -35,6 +41,10 @@ export function SettingsStickersPanel() {
 
   const [importInput, setImportInput] = useState('')
   const [importing, setImporting] = useState(false)
+
+  const [createTitle, setCreateTitle] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [uploadingPackId, setUploadingPackId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -158,6 +168,58 @@ export function SettingsStickersPanel() {
     }
   }
 
+  const handleCreatePack = async () => {
+    const title = createTitle.trim()
+    if (!title || creating) return
+    setCreating(true)
+    try {
+      await createStickerPack(title)
+      toastSuccess(t('settings.stickersCreateDone'), { title: t('settings.stickersCreateTitle') })
+      setCreateTitle('')
+      await load()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'CREATE_FAILED'
+      toastError(explainStickerError(msg, t), { title: t('settings.stickersCreateTitle') })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleAddSticker = async (pack: StickerPack, file: File | undefined) => {
+    if (!file || uploadingPackId) return
+    if (!STICKER_UPLOAD_MIMES.includes(file.type)) {
+      toastError(t('settings.stickersUploadBadType'), { title: t('settings.stickersCreateTitle') })
+      return
+    }
+    if (file.size > STICKER_UPLOAD_MAX_BYTES) {
+      toastError(t('settings.stickersUploadTooLarge'), { title: t('settings.stickersCreateTitle') })
+      return
+    }
+    setUploadingPackId(pack.id)
+    try {
+      const buf = await file.arrayBuffer()
+      const imageBase64 = arrayBufferToBase64(buf)
+      let width: number | undefined
+      let height: number | undefined
+      try {
+        const bmp = await createImageBitmap(file)
+        width = bmp.width
+        height = bmp.height
+        bmp.close?.()
+      } catch {
+        /* dimensions are best-effort */
+      }
+      await uploadStickerImage(pack.id, { imageBase64, mime: file.type, width, height })
+      toastSuccess(t('settings.stickersUploadDone'), { title: pack.title })
+      await load()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'UPLOAD_FAILED'
+      toastError(explainStickerError(msg, t), { title: pack.title })
+    } finally {
+      setUploadingPackId(null)
+    }
+  }
+
   const border = isMd3
     ? 'border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
     : 'border-neon-cyan/20'
@@ -203,6 +265,39 @@ export function SettingsStickersPanel() {
             {importing ? t('settings.stickersImporting') : t('settings.stickersImportBtn')}
           </button>
         </div>
+      </div>
+
+      {/* Create your own pack */}
+      <div className={`border p-3 ${border} ${isMd3 ? 'rounded-2xl' : ''}`}>
+        <p className={`mb-2 ${labelCls}`}>{t('settings.stickersCreateTitle')}</p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={createTitle}
+            maxLength={128}
+            onChange={(e) => setCreateTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleCreatePack() }}
+            placeholder={t('settings.stickersCreatePlaceholder')}
+            className={`min-w-0 flex-1 px-3 py-1.5 text-[11px] focus:outline-none ${
+              isMd3
+                ? 'rounded-full border border-[color-mix(in_srgb,var(--on-surface)_20%,transparent)] bg-[var(--surface-variant)] text-[var(--on-surface)]'
+                : 'border border-neon-cyan/25 bg-void font-mono text-neon-cyan placeholder:text-text-muted/60'
+            }`}
+          />
+          <button
+            type="button"
+            disabled={!createTitle.trim() || creating}
+            onClick={() => void handleCreatePack()}
+            className={`shrink-0 ${btnBase} ${
+              isMd3
+                ? 'bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)] disabled:opacity-40'
+                : 'border-neon-cyan/30 text-neon-cyan/70 hover:border-neon-cyan/60 hover:text-neon-cyan disabled:opacity-40'
+            }`}
+          >
+            {creating ? t('settings.stickersCreating') : t('settings.stickersCreateBtn')}
+          </button>
+        </div>
+        <p className={`mt-1.5 ${mutedCls}`}>{t('settings.stickersCreateHint')}</p>
       </div>
 
       {/* Pack list */}
@@ -299,6 +394,31 @@ export function SettingsStickersPanel() {
                         >
                           <RefreshCw className={`h-3 w-3 ${refreshingId === pack.id ? 'animate-spin' : ''}`} />
                         </button>
+                      )}
+
+                      {/* Add sticker (native "own" packs only — not Telegram imports) */}
+                      {!pack.tgSource && (
+                        <label
+                          title={t('settings.stickersUploadBtn')}
+                          className={`${btnBase} cursor-pointer ${
+                            isMd3
+                              ? 'bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)] hover:bg-[color-mix(in_srgb,var(--primary)_20%,transparent)]'
+                              : 'border-neon-cyan/30 text-neon-cyan/70 hover:border-neon-cyan/60 hover:text-neon-cyan'
+                          } ${uploadingPackId === pack.id ? 'pointer-events-none opacity-40' : ''}`}
+                        >
+                          {uploadingPackId === pack.id ? '…' : '＋'}
+                          <input
+                            type="file"
+                            accept="image/webp,image/png,image/jpeg,image/gif"
+                            className="hidden"
+                            disabled={!!uploadingPackId}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0]
+                              e.target.value = ''
+                              void handleAddSticker(pack, f)
+                            }}
+                          />
+                        </label>
                       )}
 
                       {/* Delete */}

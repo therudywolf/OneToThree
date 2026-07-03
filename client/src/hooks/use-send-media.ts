@@ -4,6 +4,7 @@ import imageCompression from 'browser-image-compression'
 import { useCallback } from 'react'
 import {
   encryptOutboundText,
+  encryptOutboundTextV2,
   getAesKeyForChat,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
@@ -342,6 +343,56 @@ async function prepareEncryptedBlob(
   }
 }
 
+type TransportCryptoFields = {
+  encrypted_content: string
+  iv: string
+  protocol_version: 1 | 2
+  dr_header: string | null
+  dr_init: string | null
+  dr_slots: Array<{ device_id: string; ciphertext: string; iv: string }> | null
+}
+
+/**
+ * Encrypt a media/album transport envelope for the chat mode.
+ *
+ * DIRECT and SELF are Double-Ratchet v2 (mirrors the text send path in
+ * useSendMessage). Previously the media path used the v1 `encryptOutboundText`
+ * for every mode, so DIRECT attachments went out as protocol_version=1 fan-out
+ * slots — which v2-only receivers reject (`ERR_DIRECT_V1_REJECTED`), leaving
+ * every image/voice/file/album undecryptable for the recipient. SECTOR/PUBLIC
+ * stay on the single-key legacy path.
+ */
+async function encryptEnvelopeForMode(
+  privateKey: CryptoKey,
+  plaintext: string,
+  cryptoCtx: ChatCryptoContext,
+  ids: { userId: string; peerUserId: string | null }
+): Promise<TransportCryptoFields> {
+  if (cryptoCtx.mode === 'DIRECT' || cryptoCtx.mode === 'SELF') {
+    const enc = await encryptOutboundTextV2(privateKey, plaintext, cryptoCtx, {
+      ownerUserId: ids.userId,
+      peerUserId: ids.peerUserId,
+    })
+    return {
+      encrypted_content: enc.encrypted_content,
+      iv: enc.iv,
+      protocol_version: enc.protocol_version,
+      dr_header: enc.dr_header,
+      dr_init: enc.dr_init,
+      dr_slots: enc.dr_slots ?? null,
+    }
+  }
+  const enc = await encryptOutboundText(privateKey, plaintext, cryptoCtx)
+  return {
+    encrypted_content: enc.encrypted_content,
+    iv: enc.iv,
+    protocol_version: 1,
+    dr_header: null,
+    dr_init: null,
+    dr_slots: null,
+  }
+}
+
 export function useSendMedia(
   cryptoCtx: ChatCryptoContext | null,
   directPeerUserId: string | null
@@ -392,10 +443,11 @@ export function useSendMedia(
           ...(prepared.tinyPreview ? { thumbhash: prepared.tinyPreview } : {}),
         }
         const transportPlaintext = JSON.stringify(envelope)
-        const { encrypted_content, iv: envelopeIv } = await encryptOutboundText(
+        const enc = await encryptEnvelopeForMode(
           ctx.unwrappedPrivateKey,
           transportPlaintext,
-          ctx.cryptoCtx
+          ctx.cryptoCtx,
+          { userId: ctx.userId, peerUserId: directPeerUserId ?? null }
         )
 
         const { uploadUrl, filePath } = await postUploadUrl({
@@ -420,8 +472,12 @@ export function useSendMedia(
           my_user_id: ctx.userId,
           peer_user_id: directPeerUserId ?? undefined,
           my_ecdh_public_key_jwk: myEcdhPublicKeyJwk,
-          content: encrypted_content,
-          iv: envelopeIv,
+          content: enc.encrypted_content,
+          iv: enc.iv,
+          protocol_version: enc.protocol_version,
+          dr_header: enc.dr_header,
+          dr_init: enc.dr_init,
+          dr_slots: enc.dr_slots,
           media_path: filePath,
           media_type: segmentClass,
           media_iv: prepared.mediaIvB64,
@@ -561,10 +617,11 @@ export function useSendMedia(
           ...(caption?.trim() ? { caption: caption.trim() } : {}),
         }
         const transportPlaintext = JSON.stringify(envelope)
-        const { encrypted_content, iv: envelopeIv } = await encryptOutboundText(
+        const enc = await encryptEnvelopeForMode(
           ctx.unwrappedPrivateKey,
           transportPlaintext,
-          ctx.cryptoCtx
+          ctx.cryptoCtx,
+          { userId: ctx.userId, peerUserId: directPeerUserId ?? null }
         )
 
         // Album uses the first item's path/iv as primary media_* fields so the
@@ -578,8 +635,12 @@ export function useSendMedia(
           my_user_id: ctx.userId,
           peer_user_id: directPeerUserId ?? undefined,
           my_ecdh_public_key_jwk: myEcdhPublicKeyJwk,
-          content: encrypted_content,
-          iv: envelopeIv,
+          content: enc.encrypted_content,
+          iv: enc.iv,
+          protocol_version: enc.protocol_version,
+          dr_header: enc.dr_header,
+          dr_init: enc.dr_init,
+          dr_slots: enc.dr_slots,
           media_path: first.filePath,
           media_type: items[0].segmentClass,
           media_iv: first.mediaIvB64,

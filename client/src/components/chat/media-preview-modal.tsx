@@ -274,6 +274,7 @@ export function MediaPreviewModal({
         <div className="flex flex-col gap-1.5 border-t border-border-strong p-2">
           <textarea
             ref={captionRef}
+            data-testid="media-preview-caption"
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -372,6 +373,7 @@ export function MediaPreviewModal({
           ) : null}
           <textarea
             ref={captionRef}
+            data-testid="media-preview-caption"
             value={caption}
             onChange={(e) => setCaption(e.target.value)}
             onKeyDown={handleKeyDown}

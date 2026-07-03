@@ -12,7 +12,7 @@ import {
   ensureBucketExists,
   presignGetObject,
 } from '../lib/s3.js'
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
+import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3'
 
 const MINIO_BUCKET = process.env.MINIO_BUCKET ?? 'project13-media'
 
@@ -144,6 +144,20 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     return e.code === '42P01' || e.code === '42703'
   }
 
+  // Implicit access: two users who share ANY chat can read each other's sticker
+  // packs — so a sticker recipient can render/clone the sender's pack without a
+  // prior /grant-chat (works retroactively). Used by pack access AND the
+  // per-object /asset-url + /media gates so they can't 403 a legitimate recipient.
+  async function sharesAChatWith(userId: string, ownerId: string | null): Promise<boolean> {
+    if (!ownerId || ownerId === userId) return false
+    const [mineChats, theirChats] = await Promise.all([
+      db.select({ chatId: chatMembers.chatId }).from(chatMembers).where(eq(chatMembers.userId, userId)),
+      db.select({ chatId: chatMembers.chatId }).from(chatMembers).where(eq(chatMembers.userId, ownerId)),
+    ])
+    const theirSet = new Set(theirChats.map((c) => c.chatId))
+    return mineChats.some((c) => theirSet.has(c.chatId))
+  }
+
   async function getAccessiblePack(packId: string, userId: string) {
     let row:
       | {
@@ -190,24 +204,7 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       row.sharedUserId === userId ||
       row.isPublic
 
-    // Implicit access: if I'm in any chat with the pack owner I can read.
-    // Lets a sticker recipient clone the sender's pack without a prior
-    // /grant-chat call (works retroactively for stickers sent before
-    // grant-chat shipped).
-    if (!canRead && row.ownerId && row.ownerId !== userId) {
-      const [mineChats, theirChats] = await Promise.all([
-        db
-          .select({ chatId: chatMembers.chatId })
-          .from(chatMembers)
-          .where(eq(chatMembers.userId, userId)),
-        db
-          .select({ chatId: chatMembers.chatId })
-          .from(chatMembers)
-          .where(eq(chatMembers.userId, row.ownerId)),
-      ])
-      const theirSet = new Set(theirChats.map((c) => c.chatId))
-      if (mineChats.some((c) => theirSet.has(c.chatId))) canRead = true
-    }
+    if (!canRead && (await sharesAChatWith(userId, row.ownerId))) canRead = true
 
     return { ...row, canRead }
   }
@@ -266,7 +263,9 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if (!row) return reply.status(404).send({ error: 'STICKER_NOT_FOUND' })
-    if (row.ownerId !== user.id && row.sharedUserId !== user.id && !row.isPublic) {
+    const directAccess =
+      row.ownerId === user.id || row.sharedUserId === user.id || row.isPublic
+    if (!directAccess && !(await sharesAChatWith(user.id, row.ownerId))) {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
 
@@ -330,7 +329,9 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if (!row) return reply.status(404).send({ error: 'STICKER_NOT_FOUND' })
-    if (row.ownerId !== user.id && row.sharedUserId !== user.id && !row.isPublic) {
+    const directAccess =
+      row.ownerId === user.id || row.sharedUserId === user.id || row.isPublic
+    if (!directAccess && !(await sharesAChatWith(user.id, row.ownerId))) {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
 
@@ -565,23 +566,53 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       tgSource: sourcePack.tgSource,
     })
 
+    // Copy each object to a key under the CLONE's own prefix instead of reusing
+    // the source key. This makes every pack own its bytes, so (a) per-pack object
+    // GC on delete/refresh is correct and (b) a clone survives the source owner
+    // deleting their pack. Server-side S3 copy — no download/upload round-trip.
+    let clonedRows: Array<{
+      id: string
+      packId: string
+      position: number
+      emoji: string
+      mediaKey: string
+      thumbhash: string | null
+      width: number | null
+      height: number | null
+      durationMs: number | null
+    }> = []
     if (sourceStickers.length > 0) {
-      await db.insert(stickers).values(
-        sourceStickers.map((s) => ({
-          id: randomUUID(),
-          packId: clonedPackId,
-          position: s.position,
-          emoji: s.emoji,
-          mediaKey: s.mediaKey,
-          thumbhash: s.thumbhash,
-          width: s.width,
-          height: s.height,
-          durationMs: s.durationMs,
-        }))
-      )
+      const s3 = createS3Client()
+      for (const s of sourceStickers) {
+        const ext = s.mediaKey.split('.').pop() || 'bin'
+        const newKey = `stickers/${clonedPackId}/${randomUUID()}.${ext}`
+        try {
+          await s3.send(
+            new CopyObjectCommand({
+              Bucket: MINIO_BUCKET,
+              CopySource: `${MINIO_BUCKET}/${s.mediaKey}`,
+              Key: newKey,
+            })
+          )
+          clonedRows.push({
+            id: randomUUID(),
+            packId: clonedPackId,
+            position: s.position,
+            emoji: s.emoji,
+            mediaKey: newKey,
+            thumbhash: s.thumbhash,
+            width: s.width,
+            height: s.height,
+            durationMs: s.durationMs,
+          })
+        } catch (err) {
+          app.log.warn({ err, key: s.mediaKey }, 'clone: object copy failed, skipping sticker')
+        }
+      }
+      if (clonedRows.length > 0) await db.insert(stickers).values(clonedRows)
     }
 
-    return reply.status(201).send({ pack_id: clonedPackId, cloned: true, count: sourceStickers.length })
+    return reply.status(201).send({ pack_id: clonedPackId, cloned: true, count: clonedRows.length })
   })
 
   /**
@@ -792,6 +823,14 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     const source = await getAccessiblePack(params.data.packId, user.id)
     if (!source) return reply.status(404).send({ error: 'PACK_NOT_FOUND' })
     if (!source.canRead) return reply.status(403).send({ error: 'FORBIDDEN' })
+    // Consent guard: only the OWNER may mint durable shares of a PRIVATE pack.
+    // A non-owner who merely has implicit (shared-chat) read access must not be
+    // able to spread someone else's private pack to other chats. Public packs
+    // are freely grantable (that's what public means). Recipients of a sticker
+    // still get read access implicitly via getAccessiblePack — no grant needed.
+    if (source.ownerId !== user.id && !source.isPublic) {
+      return reply.status(403).send({ error: 'FORBIDDEN_PRIVATE_PACK' })
+    }
 
     const callerMembership = await db
       .select({ userId: chatMembers.userId })

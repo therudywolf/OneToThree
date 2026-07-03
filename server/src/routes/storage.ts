@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
@@ -120,6 +120,16 @@ const restoreCompleteBodySchema = z.object({
 })
 
 export const storageRoutes: FastifyPluginAsync = async (app) => {
+  // Media disabled for this instance (Lite self-host): the chat-media upload/
+  // download/restore endpoints 403. Avatars (/avatar-url below) stay open — they
+  // are a profile feature, not gated by FEATURE_MEDIA. `featureFlags` is decorated
+  // on the root app in buildApp and inherited here.
+  const requireMedia = async (_req: FastifyRequest, reply: FastifyReply) => {
+    if (!app.featureFlags.media) {
+      return reply.code(403).send({ error: 'FEATURE_DISABLED', feature: 'media' })
+    }
+  }
+
   /** Server-side S3 ops (bucket, head) — internal `MINIO_ENDPOINT`. */
   const client = createS3Client()
   /** Presigned URLs returned to browsers — `MINIO_PUBLIC_URL` when set (see `createS3ClientForPresigning`). */
@@ -131,7 +141,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     await bucketInit
   }
 
-  app.post('/upload-url', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/upload-url', { preHandler: requireMedia, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     await ensureBucketOnce()
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -238,7 +248,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     })
   })
 
-  app.get('/download-url', async (request, reply) => {
+  app.get('/download-url', { preHandler: requireMedia }, async (request, reply) => {
     await ensureBucketOnce()
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -352,7 +362,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ downloadUrl })
   })
 
-  app.post('/restore-url', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/restore-url', { preHandler: requireMedia, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     await ensureBucketOnce()
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -412,7 +422,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ uploadUrl, filePath, bucket: att.bucket || bucket })
   })
 
-  app.post('/restore-complete', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
+  app.post('/restore-complete', { preHandler: requireMedia, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
     await ensureBucketOnce()
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

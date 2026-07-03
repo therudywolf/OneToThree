@@ -7,6 +7,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-07-03 — OneToThree **Lite**: one-click self-host + feature flags
+
+Stand up your **own** end-to-end-encrypted instance anywhere, with only the
+features you want. The full edition (default `main`) is unchanged — every feature
+flag defaults ON — so this release adds a configuration + packaging layer plus
+capability gating, without altering existing behaviour.
+
+### Added
+- **Guided one-command installer** (`npm run lite` → `scripts/lite/install.mjs`,
+  plus `install.sh` / `install.ps1`). Asks for **local** (plain HTTP on
+  localhost/LAN) or **domain** (automatic HTTPS via Let's Encrypt) mode, the
+  host/port or domain + ACME email, and a **checkbox** feature set; then generates
+  secrets, writes `.env.lite` + a valid `infra/lite/Caddyfile`, selects the compose
+  profiles and launches. Guide: `docs/guides/LITE.md` (EN + RU).
+- **Single-origin stack** `docker-compose.lite.yml` — web + `/api` + `/api/ws` all
+  behind one Caddy, so Lite needs **one** hostname (or just `localhost`), not five.
+  MinIO is pulled in only by the `media` profile; a small Postgres + Redis complete
+  the core. `db → migrate → api → web → caddy` health-gated startup.
+- **Feature flags** (`FEATURE_MEDIA/CALLS/STICKERS/GIF/PUSH/2FA/ADMIN/GROUPS`, all
+  default ON) exposed via `GET /capabilities` (root **and** `/api/capabilities`).
+- **Capability-aware UI** — a `CapabilitiesProvider` fetches `/api/capabilities`
+  once (fail-open to all-on) and hides surfaces a disabled instance doesn't run:
+  call button + incoming/active/group call UI, media attach/record (and drag/paste),
+  GIF & sticker tabs, sticker/push/2FA settings, admin link. No dead buttons.
+- **Server-side enforcement** — disabled features are removed from the API too, not
+  just the UI: their route groups aren't registered (→ 404), the shared storage
+  module 403s chat-media endpoints while `/avatar-url` stays open, and the WS layer
+  rejects call/WebRTC signaling on a calls-off instance.
+
+### Notes
+- **Calls** aren't bundled (a LiveKit SFU needs coturn + open UDP): the installer
+  asks for an **external** LiveKit URL/key/secret and wires them to the API
+  (`OT_LIVEKIT_*`) — no web rebuild. A bundled LiveKit is on the roadmap.
+- Roadmap for later sprints (local-FS media without MinIO, bundled LiveKit+coturn,
+  Android `build:selfhost`, GUI installer): `docs/project/ROADMAP_SELFHOST_LITE.md`.
+
 ## [0.9.3] — 2026-07-03 — Stickers: create-your-own packs + audit backlog
 
 Second pass on the sticker/GIF/search audit — the create-your-own-pack feature

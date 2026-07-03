@@ -42,6 +42,8 @@ vi.mock('@/components/chat/composer-picker-panel', () => ({ ComposerPickerPanel:
 vi.mock('@/lib/api/messages', () => ({ patchMessage: h.patchMessage }))
 
 import { ChatInput } from './chat-input'
+import { CapabilitiesContext } from '@/components/capabilities-provider'
+import { ALL_ON } from '@/lib/api/capabilities'
 
 const PUBLIC_CTX = { mode: 'PUBLIC' } as unknown as ChatCryptoContext
 const DIRECT_CTX = { mode: 'DIRECT' } as unknown as ChatCryptoContext
@@ -200,5 +202,47 @@ describe('ChatInput — characterization net (pre-refactor)', () => {
     expect(screen.queryByText(/chat\.replyBanner/)).toBeNull()
     expect(screen.queryByText('30s')).toBeNull()
     expect(useChatStore.getState().replyTo).toBeNull()
+  })
+
+  // ── Lite self-host: capability gating (no dead buttons) ────────────────────
+  it('#9 media OFF hides the attach button but text send still works', async () => {
+    const sendText = vi.fn(async () => {})
+    render(
+      <CapabilitiesContext.Provider value={{ ...ALL_ON, media: false }}>
+        <ChatInput
+          sendText={sendText}
+          sendMedia={vi.fn(async () => {})}
+          sendAlbum={vi.fn(async () => {})}
+          cryptoCtx={DIRECT_CTX}
+        />
+      </CapabilitiesContext.Provider>
+    )
+    // The paperclip attach affordance is gone…
+    expect(screen.queryByTitle('chat.attachFile')).toBeNull()
+    // …but the core text path is untouched.
+    await userEvent.type(screen.getByRole('textbox'), 'hi{Enter}')
+    expect(sendText).toHaveBeenCalledWith('hi', null, { burn_duration_secs: null })
+  })
+
+  it('#9b media ON (default / full build) shows the attach button', () => {
+    renderInput({ cryptoCtx: DIRECT_CTX }) // no provider → context default ALL_ON
+    expect(screen.getByTitle('chat.attachFile')).toBeTruthy()
+  })
+
+  it('#9c media OFF removes the hidden file input (drag/paste/select entry points gated)', () => {
+    render(
+      <CapabilitiesContext.Provider value={{ ...ALL_ON, media: false }}>
+        <ChatInput
+          sendText={vi.fn(async () => {})}
+          sendMedia={vi.fn(async () => {})}
+          sendAlbum={vi.fn(async () => {})}
+          cryptoCtx={DIRECT_CTX}
+        />
+      </CapabilitiesContext.Provider>
+    )
+    // With media off the hidden <input type=file> is not rendered — so the file
+    // picker, and (via the acceptIncomingFiles guard) drag-drop / paste, cannot
+    // attach anything. Contrast test #6b, which finds this input with media on.
+    expect(document.querySelector('input[type="file"]')).toBeNull()
   })
 })

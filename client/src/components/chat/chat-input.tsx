@@ -28,6 +28,7 @@ import {
   validateFileForUpload,
 } from '@/lib/media-limits'
 import { MediaPreviewModal } from '@/components/chat/media-preview-modal'
+import { useCapabilities } from '@/components/capabilities-provider'
 import { UploadProgressList } from '@/components/chat/upload-progress-list'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 import { useDockStore, matchesDockViewport } from '@/store/dockStore'
@@ -91,6 +92,7 @@ type QueuedFile = { file: File; mediaType: 'image' | 'video' | 'audio' | 'file' 
 
 export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPeerUserId, disabled }: Props) {
   const { t } = useTranslation()
+  const capabilities = useCapabilities()
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
   const [messageText, setMessageText] = useState('')
@@ -469,6 +471,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
    */
   const acceptIncomingFiles = useCallback(
     async (raw: File[]) => {
+      // Media disabled for this instance (Lite self-host): the paperclip/record
+      // buttons are hidden, but drag-drop, paste-image and the file input all
+      // funnel here — gate the single choke point so none of them can attach.
+      if (!capabilities.media) return
       const overflowDropped = Math.max(0, raw.length - ALBUM_HARD_CAP)
       if (overflowDropped > 0) {
         toastError(
@@ -489,7 +495,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
       }
       if (accepted.length > 0) setFileQueue(accepted)
     },
-    [setFileQueue]
+    [setFileQueue, capabilities.media]
   )
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -743,15 +749,17 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
         />
       )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
-        onChange={handleFileSelect}
-        className="hidden"
-        aria-label={t('chat.attachFile')}
-      />
+      {capabilities.media ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
+          onChange={handleFileSelect}
+          className="hidden"
+          aria-label={t('chat.attachFile')}
+        />
+      ) : null}
 
       {replyTo && !editingMessage ? (
         <div className="p13-reply-banner">
@@ -873,18 +881,20 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
           </div>
         ) : null}
 
-        {/* Attach — always opens file picker directly */}
-        <div className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
-          <button
-            type="button"
-            className="p13-icon-btn"
-            disabled={disabled || isRecordingUI}
-            onClick={handleAttachClick}
-            title={t('chat.attachFile')}
-          >
-            <Paperclip className="h-4 w-4" />
-          </button>
-        </div>
+        {/* Attach — always opens file picker directly (hidden if media disabled) */}
+        {capabilities.media ? (
+          <div className={`relative shrink-0 ${isMd3 ? 'order-1' : ''}`}>
+            <button
+              type="button"
+              className="p13-icon-btn"
+              disabled={disabled || isRecordingUI}
+              onClick={handleAttachClick}
+              title={t('chat.attachFile')}
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+          </div>
+        ) : null}
 
         {/* Poll composer button */}
         {!isRecordingUI ? (
@@ -1169,7 +1179,9 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
           ) : null}
         </div>
 
-        {/* Record button — hidden when text is present (Telegram-style mic↔send morph) */}
+        {/* Record button — hidden when text is present (Telegram-style mic↔send
+            morph), or entirely when media is disabled for this instance. */}
+        {capabilities.media ? (
         <button
           type="button"
           className={`p13-icon-btn shrink-0 select-none ${
@@ -1200,6 +1212,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
             <Video className="h-4 w-4" />
           )}
         </button>
+        ) : null}
 
         {/* Send button — shown only when text is present (Telegram-style mic↔send morph).
             Mirrors the record button: exactly one primary action is visible at a

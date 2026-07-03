@@ -46,6 +46,7 @@ import { scrollToMessage } from '@/lib/chat-scroll'
 import { acquireBodyScrollLock } from '@/lib/body-scroll-lock'
 import { OfflineBanner } from '@/components/offline-banner'
 import { CallHeaderButtons } from '@/components/call/call-header-buttons'
+import { useCapabilities } from '@/components/capabilities-provider'
 import { IdentityModal } from '@/components/chat/identity-modal'
 import { UserProfileModal } from '@/components/chat/user-profile-modal'
 import { PwaInstallBanner } from '@/components/pwa-install-banner'
@@ -716,7 +717,11 @@ export function ChatApp({
   const peerPresenceRow = directPeerIdForPresence
     ? peerPresence[directPeerIdForPresence]
     : undefined
+  // Feature capabilities of this instance (Lite self-host) — hide surfaces the
+  // server disabled so there are no dead buttons. Defaults ON (full build).
+  const capabilities = useCapabilities()
   const canShowCallControls =
+    capabilities.calls &&
     !!activeChatId && !!activeRow && !activeRow.is_group && !isSelfChat
   const mentionTotal = Object.values(unreadByChat).reduce(
     (acc, row) => acc + (row.mentions ?? 0),
@@ -863,10 +868,12 @@ export function ChatApp({
           }}
         />
       ) : null}
-      <NotificationModeOnboarding
-        open={showNotificationModeOnboarding}
-        onDone={() => setShowNotificationModeOnboarding(false)}
-      />
+      {capabilities.push ? (
+        <NotificationModeOnboarding
+          open={showNotificationModeOnboarding}
+          onDone={() => setShowNotificationModeOnboarding(false)}
+        />
+      ) : null}
       <OfflineBanner />
       <PwaInstallBanner />
       {settingsOpen ? (
@@ -1475,7 +1482,7 @@ export function ChatApp({
               Decrypting backlog…
             </div>
           ) : null}
-          <PushOnboardingBanner />
+          {capabilities.push ? <PushOnboardingBanner /> : null}
           {activeChatId && activeCallBanner[activeChatId] && !isInGroupCall ? (
             <GroupCallBanner
               participantCount={activeCallBanner[activeChatId]}

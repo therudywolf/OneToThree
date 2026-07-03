@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from '@/hooks/use-translation'
 import { useShell } from '@/components/ui/shell'
+import { useCapabilities } from '@/components/capabilities-provider'
 import { useThemeStore } from '@/store/themeStore'
 import { ChatEmojiPicker } from '@/components/chat/chat-emoji-picker'
 import { StickerPreview } from '@/components/chat/sticker-preview'
@@ -82,6 +83,7 @@ export function ComposerPickerPanel({
 }: ComposerPickerPanelProps) {
   const { t } = useTranslation()
   const { isTerminal } = useShell()
+  const capabilities = useCapabilities()
   const themeId = useThemeStore((s) => s.theme)
   const shellMode = useThemeStore((s) => s.shellMode)
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
@@ -371,8 +373,8 @@ export function ComposerPickerPanel({
     <div className="flex h-full min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 flex-wrap gap-1 border-b border-neon-cyan/15 px-2 py-1.5">
         {tabBtn('emoji', t('composer.tabEmoji'))}
-        {tabBtn('sticker', t('composer.tabSticker'))}
-        {tabBtn('gif', t('composer.tabGif'))}
+        {capabilities.stickers ? tabBtn('sticker', t('composer.tabSticker')) : null}
+        {capabilities.gif ? tabBtn('gif', t('composer.tabGif')) : null}
       </div>
 
       <div className="p13-picker-scroll min-h-0 flex-1 overflow-y-auto">

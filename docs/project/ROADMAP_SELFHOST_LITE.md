@@ -39,10 +39,11 @@ the infra it needs.
 ## Sprints
 
 ### Sprint 0 — Feature-flag foundation
-- [ ] Server: `FEATURE_*` env flags gate the route groups (media/calls/stickers/gif/push); add `GET /capabilities` returning the enabled set.
-- [ ] Client: fetch `/capabilities` once, hide disabled UI (call button, attach, sticker/GIF tabs) — no dead buttons.
+- [x] Server: `FEATURE_*` flags + `GET /capabilities` (root **and** `/api/capabilities`) reporting the enabled set (`feature-flags.ts`; all default ON).
+- [x] Client: `CapabilitiesProvider` fetches `/api/capabilities` once (fail-open to all-ON) and hides disabled surfaces — call button, media attach + record, GIF/sticker tabs, sticker/push/2FA settings, admin link. No dead buttons. Covered by unit + DOM tests.
 - [x] Desktop build reads host + CSP from env (`build:selfhost`, shipped in 0.9.3) — extend the same env-driven flags to the Android (Capacitor) build.
-- **Exit:** full build unchanged with all flags on; turning a flag off cleanly removes the surface end-to-end.
+- [ ] Server: `FEATURE_*` flags also **gate the route groups** (reject calls/media/etc. server-side when off, not just hide the UI) — hardening beyond the current UI gating.
+- **Exit:** full build unchanged with all flags on; turning a flag off removes the UI surface (done) and, once route-gating lands, the API surface too.
 
 ### Sprint 1 — Lite compose profiles ✅ (2026-07-03)
 - [x] `docker-compose.lite.yml`: db + redis + api + web + caddy; MinIO pulled in by the `media` profile, LiveKit by `calls` — only when the flag is on.

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Search, X } from 'lucide-react'
 import { useLocalSearch } from '@/hooks/use-local-search'
 import { useTranslation } from '@/hooks/use-translation'
@@ -29,17 +29,11 @@ export function ChatSearchPanel({ onJumpToMessage, onClose, locale }: Props) {
   const effectiveLocale: 'en' | 'ru' =
     (locale ?? localeFromStore) === 'ru' ? 'ru' : 'en'
   const inputRef = useRef<HTMLInputElement>(null)
-  const [debouncedQuery, setDebouncedQuery] = useState('')
-  const { query, results, search, clear } = useLocalSearch()
+  const { query, debouncedQuery, results, search, clear } = useLocalSearch()
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
-
-  useEffect(() => {
-    const h = setTimeout(() => setDebouncedQuery(query), 120)
-    return () => clearTimeout(h)
-  }, [query])
 
   const handleJump = useCallback(
     (messageId: string) => {
@@ -47,12 +41,6 @@ export function ChatSearchPanel({ onJumpToMessage, onClose, locale }: Props) {
     },
     [onJumpToMessage]
   )
-
-  const highlighted = useMemo(() => {
-    const q = debouncedQuery.trim().toLowerCase()
-    if (!q) return results
-    return results
-  }, [debouncedQuery, results])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -109,7 +97,7 @@ export function ChatSearchPanel({ onJumpToMessage, onClose, locale }: Props) {
           >
             {t('chatSearch.hint')}
           </p>
-        ) : highlighted.length === 0 ? (
+        ) : results.length === 0 ? (
           <p
             className={`p-3 text-[11px] opacity-60 ${
               isTerminal ? 'font-mono uppercase tracking-widest text-neon-cyan/60' : ''
@@ -119,7 +107,7 @@ export function ChatSearchPanel({ onJumpToMessage, onClose, locale }: Props) {
           </p>
         ) : (
           <ul className="space-y-1 p-2">
-            {highlighted.map((m) => (
+            {results.map((m) => (
               <li key={m.id}>
                 <button
                   type="button"

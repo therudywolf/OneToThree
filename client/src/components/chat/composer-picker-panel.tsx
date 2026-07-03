@@ -198,20 +198,22 @@ export function ComposerPickerPanel({
   useEffect(() => {
     if (tab !== 'sticker' || packs.length === 0) return
     let cancelled = false
-    void (async () => {
-      const next: Record<string, string> = {}
-      for (const p of packs) {
+    // Resolve pack thumbnails CONCURRENTLY and stream each in as it lands, so a
+    // single slow pack (up to the 15s fetch ceiling) no longer blocks the rest
+    // (was a serial 2N-round-trip loop that only rendered after ALL packs).
+    void Promise.allSettled(
+      packs.map(async (p) => {
         try {
           const rows = await fetchPackStickers(p.id)
           const first = rows[0]
-          if (!first) continue
-          next[p.id] = await loadStickerDisplayUrl(first.mediaKey)
+          if (!first) return
+          const url = await loadStickerDisplayUrl(first.mediaKey)
+          if (!cancelled) setPackPreviewById((prev) => ({ ...prev, [p.id]: url }))
         } catch {
           // non-fatal preview miss
         }
-      }
-      if (!cancelled) setPackPreviewById(next)
-    })()
+      })
+    )
     return () => {
       cancelled = true
     }

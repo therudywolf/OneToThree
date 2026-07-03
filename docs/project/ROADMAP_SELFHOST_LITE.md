@@ -47,8 +47,8 @@ included); calls/push are off. Each checkbox adds the infra it needs.
 - [x] Server: `FEATURE_*` flags + `GET /capabilities` (root **and** `/api/capabilities`) reporting the enabled set (`feature-flags.ts`; all default ON).
 - [x] Client: `CapabilitiesProvider` fetches `/api/capabilities` once (fail-open to all-ON) and hides disabled surfaces — call button, media attach + record, GIF/sticker tabs, sticker/push/2FA settings, admin link. No dead buttons. Covered by unit + DOM tests.
 - [x] Desktop build reads host + CSP from env (`build:selfhost`, shipped in 0.9.3) — extend the same env-driven flags to the Android (Capacitor) build.
-- [ ] Server: `FEATURE_*` flags also **gate the route groups** (reject calls/media/etc. server-side when off, not just hide the UI) — hardening beyond the current UI gating.
-- **Exit:** full build unchanged with all flags on; turning a flag off removes the UI surface (done) and, once route-gating lands, the API surface too.
+- [x] Server: `FEATURE_*` flags also **gate the route groups** — a disabled feature's route group isn't registered (→ 404 for calls/gif/push/stickers/admin), the shared storage module 403s its chat-media endpoints (avatars stay open), and the WS layer rejects call/WebRTC signaling. Covered by `feature-gating.test.ts`; full suite green.
+- **Exit:** ✅ full build unchanged with all flags on; turning a flag off removes both the UI surface **and** the API surface end-to-end.
 
 ### Sprint 1 — Lite compose profiles ✅ (2026-07-03)
 - [x] `docker-compose.lite.yml`: db + redis + api + web + caddy; MinIO pulled in by the `media` profile. Calls are **not** bundled — the API points at an external LiveKit via `OT_LIVEKIT_*` (a bundled `calls` profile is Sprint 3).

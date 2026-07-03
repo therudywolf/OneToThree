@@ -30,7 +30,7 @@ import { linkPreviewRoutes } from './routes/link-preview.js'
 import { pollsRoutes } from './routes/polls.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
-import { featureFlags } from './lib/feature-flags.js'
+import { getFeatureFlags, type FeatureFlags } from './lib/feature-flags.js'
 import { requireSecret } from './lib/read-secret.js'
 import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
 import { db } from './db/index.js'
@@ -77,6 +77,10 @@ declare module 'fastify' {
   interface FastifyRequest {
     /** Verified `fm_session` payload (or null), cached per request. */
     sessionJwt(): Promise<SessionJwtPayload | null>
+  }
+  interface FastifyInstance {
+    /** Feature flags (Lite self-host), resolved once at build from FEATURE_* env. */
+    featureFlags: FeatureFlags
   }
 }
 
@@ -174,6 +178,14 @@ export async function buildApp() {
     // bounded while letting individual routes opt into more.
     bodyLimit: 1 * 1024 * 1024,
   })
+
+  // Feature flags (Lite self-host) resolved once at build from FEATURE_* env (all
+  // default ON, so the full build is unchanged). Decorated so route plugins (the
+  // storage media gate, the ws call gate) can read them, and used below to SKIP
+  // registering whole route groups a disabled instance must not expose — server
+  // enforcement behind the client UI gating, not just cosmetic hiding.
+  const flags = getFeatureFlags()
+  app.decorate('featureFlags', flags)
 
   registerGlobalErrorHandler(app)
 
@@ -398,24 +410,41 @@ export async function buildApp() {
     reply.header('X-Request-Id', request.id)
   })
 
+  // Always-on core (text messaging, auth, devices, keys, chats, polls, vault).
   await app.register(authRoutes, { prefix: '/api/auth' })
   await app.register(userRoutes, { prefix: '/api/users' })
-  await app.register(webrtcRoutes, { prefix: '/api' })
   await app.register(chatsRoutes, { prefix: '/api/chats' })
   await app.register(messagesRoutes, { prefix: '/api/messages' })
+  // storageRoutes is SHARED (chat media + always-on avatars); the media-only
+  // endpoints self-gate on flags.media via a preHandler, /avatar-url stays open.
   await app.register(storageRoutes, { prefix: '/api/storage' })
-  await app.register(pushRoutes, { prefix: '/api/push' })
-  await app.register(adminRoutes, { prefix: '/api/admin' })
   await app.register(vaultRoutes, { prefix: '/api/vault' })
   await app.register(linkPreviewRoutes, { prefix: '/api' })
   await app.register(wsRoutes, { prefix: '/api' })
   await app.register(devicesRoutes, { prefix: '/api/devices' })
   await app.register(keysRoutes, { prefix: '/api/keys' })
-  await app.register(callRoutes, { prefix: '/api' })
-  await app.register(stickersRoutes, { prefix: '/api/stickers' })
-  await app.register(gifFavoritesRoutes, { prefix: '/api/gif-favorites' })
-  await app.register(gifRoutes, { prefix: '/api/gif' })
   await app.register(pollsRoutes, { prefix: '/api/polls' })
+
+  // Optional feature route groups — skipped entirely (→ 404) when the instance
+  // disables the feature, so a Lite server can't be poked to start a call, fetch
+  // a GIF, register push, or reach the admin panel it turned off.
+  if (flags.calls) {
+    await app.register(webrtcRoutes, { prefix: '/api' })
+    await app.register(callRoutes, { prefix: '/api' })
+  }
+  if (flags.stickers) {
+    await app.register(stickersRoutes, { prefix: '/api/stickers' })
+  }
+  if (flags.gif) {
+    await app.register(gifFavoritesRoutes, { prefix: '/api/gif-favorites' })
+    await app.register(gifRoutes, { prefix: '/api/gif' })
+  }
+  if (flags.push) {
+    await app.register(pushRoutes, { prefix: '/api/push' })
+  }
+  if (flags.admin) {
+    await app.register(adminRoutes, { prefix: '/api/admin' })
+  }
 
   app.get('/health', async () => ({ ok: true }))
 
@@ -435,7 +464,7 @@ export async function buildApp() {
   // Exposed at root (infra/healthcheck convention, next to /version) AND under
   // /api so the same-origin web client — whose base is `<origin>/api` — can reach
   // it without a dedicated host.
-  const capabilitiesHandler = async () => ({ features: featureFlags })
+  const capabilitiesHandler = async () => ({ features: flags })
   app.get('/capabilities', capabilitiesHandler)
   app.get('/api/capabilities', capabilitiesHandler)
 

@@ -419,6 +419,22 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           return
         }
 
+        // Calls disabled for this instance (Lite self-host): reject call + WebRTC
+        // signaling at the WS boundary so a calls-off server can't relay a ring or
+        // a group-call join. featureFlags is decorated on the app in buildApp; the
+        // REST /call and /turn route groups are also skipped, so no token/ICE
+        // exists either. Full build defaults calls ON → this is a no-op there.
+        if (!app.featureFlags.calls) {
+          const mt = (json as { type?: unknown } | null)?.type
+          if (
+            typeof mt === 'string' &&
+            (mt === 'webrtc_signal' || mt.startsWith('call_') || mt.startsWith('group_call'))
+          ) {
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'FEATURE_DISABLED', feature: 'calls' }))
+            return
+          }
+        }
+
         const rtcParsed = webrtcSignalSchema.safeParse(json)
         if (rtcParsed.success) {
           const { targetUserId, signalData } = rtcParsed.data

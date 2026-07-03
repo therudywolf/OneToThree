@@ -29,6 +29,7 @@ import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { SettingsAvatarSection } from '@/components/settings-avatar-section'
 import { SettingsChatFoldersPanel } from '@/components/settings-chat-folders-panel'
 import { SettingsStickersPanel } from '@/components/settings-stickers-panel'
+import { useCapabilities } from '@/components/capabilities-provider'
 import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { patchMyProfile, deleteMyAccount } from '@/lib/api/users'
@@ -109,6 +110,11 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const tRef = useRef(t)
   tRef.current = t
   const { user, updateUser, refresh } = useAuth()
+  const capabilities = useCapabilities()
+  // Hide tabs for features this instance disabled (Lite self-host).
+  const visibleTabs = SETTINGS_TABS.filter((tab) =>
+    tab.id === 'stickers' ? capabilities.stickers : true
+  )
   const [discoverable, setDiscoverable] = useState<boolean | null>(null)
   const [hidePresence, setHidePresence] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
@@ -776,7 +782,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         <div className="p13-settings-layout flex min-h-0 flex-1 flex-col overflow-hidden xl:grid xl:grid-cols-[16rem_minmax(0,1fr)]">
           <aside className={`hidden min-h-0 border-r p-2 xl:flex xl:flex-col ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : isRetro ? 'border-border-strong' : 'border-neon-cyan/20'}`}>
             <div className="custom-scrollbar flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pr-1">
-              {SETTINGS_TABS.map((tab) => (
+              {visibleTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
@@ -816,7 +822,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
 
             {mobileSettingsView === 'list' ? (
               <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto p-2 xl:hidden">
-                {SETTINGS_TABS.map((tab) => (
+                {visibleTabs.map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
@@ -852,7 +858,8 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           {settingsTab === 'security' && !vaultGate ? (
             <div className={`space-y-3 ${isMd3 ? 'md3-pane-enter' : ''}`}>
 
-              {/* TOTP */}
+              {/* TOTP — hidden if 2FA is disabled for this instance (Lite self-host) */}
+              {capabilities.twofa ? (
               <div className="border border-neon-cyan/30 p-3">
                 <p className="mb-1 text-xs uppercase tracking-widest text-neon-cyan">{t('settings.totpSection')}</p>
                 <p className="mb-3 text-[9px] text-danger">{t('settings.totpHint')}</p>
@@ -934,6 +941,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   </div>
                 )}
               </div>
+              ) : null}
 
               {/* Account Recovery (Option A) */}
               <div className="border border-neon-cyan/30 p-3">
@@ -1262,7 +1270,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           {settingsTab === 'media' ? <SettingsMediaPanel active /> : null}
           {settingsTab === 'devices' ? <SettingsDevicesPanel userId={userId} active /> : null}
           {settingsTab === 'folders' ? <SettingsChatFoldersPanel userId={userId} /> : null}
-          {settingsTab === 'stickers' ? <SettingsStickersPanel /> : null}
+          {settingsTab === 'stickers' && capabilities.stickers ? <SettingsStickersPanel /> : null}
 
           {/* ════════════ PROFILE TAB ════════════ */}
           {settingsTab === 'profile' ? (
@@ -1375,7 +1383,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           <div className={`space-y-3 ${(settingsTab !== 'main' && settingsTab !== 'chat') ? 'hidden' : ''} ${isMd3 ? 'md3-pane-enter' : ''}`}>
             {settingsTab === 'chat' ? (
               <>
-                <SettingsPushNotifications userId={userId} />
+                {capabilities.push ? <SettingsPushNotifications userId={userId} /> : null}
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="text-xs uppercase tracking-widest text-neon-cyan">{t('settings.chatSoundTitle')}</p>

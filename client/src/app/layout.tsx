@@ -4,6 +4,7 @@
 import type { Metadata, Viewport } from 'next'
 import { AuthProvider } from '@/components/auth/auth-provider'
 import { Auth401Interceptor } from '@/components/auth/auth-401-interceptor'
+import { CapabilitiesProvider } from '@/components/capabilities-provider'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { SilenceConsole as _SilenceConsole } from '@/components/silence-console'
 import { RecoveryHandler } from '@/components/recovery-handler'
@@ -167,7 +168,9 @@ export default function RootLayout({
         <NativeDeepLink />
 
         <ErrorBoundary>
-          {/* [2] IDENTITY_VERIFICATION_LAYER */}
+          {/* [2] CAPABILITY_LAYER :: which features this instance runs (Lite self-host) */}
+          <CapabilitiesProvider>
+          {/* [2b] IDENTITY_VERIFICATION_LAYER */}
           <AuthProvider>
             <Auth401Interceptor>
               
@@ -188,6 +191,7 @@ export default function RootLayout({
               <VersionUpdateBanner />
             </Auth401Interceptor>
           </AuthProvider>
+          </CapabilitiesProvider>
         </ErrorBoundary>
 
       </body>

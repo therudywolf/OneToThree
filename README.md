@@ -2,8 +2,9 @@
 
 > Self-hosted end-to-end encrypted messenger for private communication.
 
-![Version](https://img.shields.io/badge/version-0.5.0--alpha.1-4c8bf5)
-![Status](https://img.shields.io/badge/status-alpha-ef4444)
+![Version](https://img.shields.io/badge/version-0.9.3-4c8bf5)
+![Status](https://img.shields.io/badge/status-beta-f59e0b)
+![Platforms](https://img.shields.io/badge/platforms-web%20·%20Android%20·%20desktop-8b5cf6)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-22c55e)](LICENSE)
 
 Self-hosted end-to-end encrypted messenger. The server stores only ciphertext, and private keys never leave the browser.
@@ -29,6 +30,8 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 - [Updating](#updating)
 - [Backup & Restore](#backup--restore)
 - [Android App](#android-app)
+- [Desktop App](#desktop-app)
+- [Roadmap](#roadmap)
 - [Troubleshooting](#troubleshooting)
 - [Architecture](#architecture)
 - [Security](#security)
@@ -38,14 +41,27 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 
 ## Features
 
-- **E2EE messaging** — AES-GCM-256 per message, ECDH key exchange, keys stored in browser vault
-- **Voice & video calls** — WebRTC with TURN relay, DTLS-SRTP, connection quality monitoring
-- **File sharing** — encrypted media upload to MinIO/S3, client-side decryption
-- **Groups** — encrypted group key distribution per member
-- **Multi-device** — QR-based device linking, device revocation
-- **2FA** — optional TOTP (RFC 6238)
-- **PWA** — installable on mobile, push notifications via Web Push (VAPID)
-- **Self-hosted** — single `./startup.sh` command, automatic TLS via Let's Encrypt
+- **E2EE messaging** — 1:1 chats use the **Double Ratchet (v2) + X3DH** (forward
+  secrecy, per-device sessions); groups use a shared sector key. The server only
+  ever sees ciphertext.
+- **Voice & video calls** — WebRTC with TURN relay + optional LiveKit SFU,
+  DTLS-SRTP, connection-quality monitoring, origin-safe call mode.
+- **Media** — encrypted image/voice/video/file + album upload to MinIO/S3,
+  client-side decryption, WhatsApp-style local cache with LRU eviction.
+- **Stickers & GIFs** — import Telegram packs, **create your own packs** (upload
+  your own images), animated (tgs/lottie) stickers, GIF search (Tenor/Giphy) +
+  favorites, native-emoji picker.
+- **Groups & channels** — encrypted group key distribution per member; polls,
+  reactions, replies, in-chat message search (runs locally over decrypted text).
+- **Multi-device** — QR-based device linking, phrase-based recovery, device
+  revocation.
+- **2FA** — optional TOTP (RFC 6238).
+- **Clients** — installable PWA (web) with Web Push (VAPID), native **Android**
+  app (Capacitor), and **desktop** app (Tauri — Windows/macOS/Linux), all from
+  one Next.js bundle.
+- **Self-hosted** — single `./startup.sh` command, automatic TLS via Let's
+  Encrypt. Build your own desktop/Android app pointed at your server
+  ([Desktop app](#desktop-app)).
 
 ---
 
@@ -302,6 +318,45 @@ On Windows, use the quick wrapper:
 ```
 
 The APK is placed in `releases/android/` as a stable filename plus a timestamped GitHub release artifact, each with a `.sha256` file.
+
+---
+
+## Desktop App
+
+A native desktop app (Windows / macOS / Linux) built with **Tauri** wraps the
+same Next.js bundle as the web/Android clients.
+
+### Install a pre-built build
+
+Signed/packaged installers are attached to each [GitHub Release](https://github.com/therudywolf/OneToThree/releases) (e.g. `OneToThree_x.y.z_x64-setup.exe` for Windows), each with a `.sha256`.
+
+### Build for your own server (self-host)
+
+The desktop build defaults to the public instance. To point it at **your** server with a correct Content-Security-Policy, no code edits needed:
+
+```bash
+cd desktop/tauri
+cp .env.example .env          # set OT_API_URL / OT_APP_URL / OT_S3_URL / OT_LIVEKIT_URL
+npm install
+npm run build:selfhost -- --bundles nsis    # or deb / appimage / dmg for your OS
+```
+
+`build:selfhost` reads your hosts + feature toggles (`OT_ENABLE_CALLS`, `OT_ENABLE_GIF`) from `.env`, regenerates the CSP allow-list from them, and produces an installer under `desktop/tauri/src-tauri/target/release/bundle/`.
+
+### Build for the public instance
+
+```bash
+cd desktop/tauri && npm install && npm run build          # or build:bundles
+```
+
+---
+
+## Roadmap
+
+Planned work — including the **Lite** one-click self-host edition (a simplified
+server with feature toggles: calls on/off, media on/off, stickers/GIFs on/off,
+and a cross-platform installer) — is tracked in
+[docs/project/ROADMAP_SELFHOST_LITE.md](./docs/project/ROADMAP_SELFHOST_LITE.md), broken into sprints.
 
 ---
 

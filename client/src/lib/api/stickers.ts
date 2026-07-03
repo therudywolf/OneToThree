@@ -197,13 +197,34 @@ export async function fetchStickerAssetUrl(mediaKey: string): Promise<string> {
   return data.url
 }
 
+// Insertion-order LRU of live blob: object URLs. Without a bound, browsing many
+// packs leaks one createObjectURL per sticker for the whole session.
 const stickerBlobUrlByMediaKey = new Map<string, string>()
+const STICKER_BLOB_URL_MAX = 400
+
+function touchStickerObjectUrl(mediaKey: string): void {
+  const url = stickerBlobUrlByMediaKey.get(mediaKey)
+  if (url !== undefined) {
+    stickerBlobUrlByMediaKey.delete(mediaKey)
+    stickerBlobUrlByMediaKey.set(mediaKey, url)
+  }
+}
 
 function rememberStickerObjectUrl(mediaKey: string, blob: Blob): string {
   const existing = stickerBlobUrlByMediaKey.get(mediaKey)
-  if (existing) return existing
+  if (existing) {
+    touchStickerObjectUrl(mediaKey)
+    return existing
+  }
   const objectUrl = URL.createObjectURL(blob)
   stickerBlobUrlByMediaKey.set(mediaKey, objectUrl)
+  while (stickerBlobUrlByMediaKey.size > STICKER_BLOB_URL_MAX) {
+    const oldestKey = stickerBlobUrlByMediaKey.keys().next().value
+    if (oldestKey === undefined) break
+    const oldUrl = stickerBlobUrlByMediaKey.get(oldestKey)
+    if (oldUrl) URL.revokeObjectURL(oldUrl)
+    stickerBlobUrlByMediaKey.delete(oldestKey)
+  }
   return objectUrl
 }
 
@@ -221,7 +242,10 @@ export function stickerMediaFetchUrl(mediaKey: string): string {
  */
 export async function loadStickerDisplayUrl(mediaKey: string): Promise<string> {
   const cached = stickerBlobUrlByMediaKey.get(mediaKey)
-  if (cached) return cached
+  if (cached) {
+    touchStickerObjectUrl(mediaKey)
+    return cached
+  }
 
   const cachedBlob = await getCachedStickerBlob(mediaKey)
   if (cachedBlob?.blob) {
@@ -238,6 +262,27 @@ export async function loadStickerDisplayUrl(mediaKey: string): Promise<string> {
   const blob = await res.blob()
   await setCachedStickerBlob(mediaKey, blob, blob.type || 'application/octet-stream')
   return rememberStickerObjectUrl(mediaKey, blob)
+}
+
+/**
+ * Return a sticker's raw Blob (cache-first). Used by animated (tgs/lottie)
+ * rendering so it reads bytes directly instead of `fetch()`-ing a blob: URL —
+ * fetching blob: needs `connect-src blob:` in CSP, which the Tauri/Capacitor
+ * builds don't grant, so animated stickers never rendered there.
+ */
+export async function loadStickerBlob(mediaKey: string): Promise<Blob> {
+  const cachedBlob = await getCachedStickerBlob(mediaKey)
+  if (cachedBlob?.blob) return cachedBlob.blob
+  const res = await fetchWithTimeout(stickerMediaFetchUrl(mediaKey), {
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `MEDIA_${res.status}`)
+  }
+  const blob = await res.blob()
+  await setCachedStickerBlob(mediaKey, blob, blob.type || 'application/octet-stream')
+  return blob
 }
 
 /** Drop cached `blob:` URL (if any) and fetch sticker media again. */
@@ -265,6 +310,62 @@ export async function deleteStickerPack(packId: string): Promise<void> {
       localStorage.removeItem(PACKS_CACHE_KEY)
       localStorage.removeItem(stickersCacheKey(packId))
     } catch { /* non-fatal */ }
+  }
+}
+
+/** Create an empty native pack owned by the caller (no Telegram needed). */
+export async function createStickerPack(title: string): Promise<{ id: string; title: string }> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { id?: string; title?: string; error?: string }
+  if (!res.ok || !data.id) throw new Error(data.error ?? `CREATE_PACK_${res.status}`)
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(PACKS_CACHE_KEY) } catch { /* non-fatal */ }
+  }
+  return { id: data.id, title: data.title ?? title }
+}
+
+/** Upload one image sticker (base64) into an owned native pack. */
+export async function uploadStickerImage(
+  packId: string,
+  input: { imageBase64: string; mime: string; emoji?: string; width?: number; height?: number }
+): Promise<{ id: string; media_key: string }> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/stickers`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      image_base64: input.imageBase64,
+      mime: input.mime,
+      ...(input.emoji ? { emoji: input.emoji } : {}),
+      ...(input.width ? { width: input.width } : {}),
+      ...(input.height ? { height: input.height } : {}),
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { id?: string; media_key?: string; error?: string }
+  if (!res.ok || !data.id) throw new Error(data.error ?? `UPLOAD_STICKER_${res.status}`)
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(stickersCacheKey(packId)) } catch { /* non-fatal */ }
+  }
+  return { id: data.id, media_key: data.media_key ?? '' }
+}
+
+/** Delete a single sticker from an owned pack. */
+export async function deleteSticker(packId: string, stickerId: string): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/stickers/${stickerId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `DELETE_STICKER_${res.status}`)
+  }
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(stickersCacheKey(packId)) } catch { /* non-fatal */ }
   }
 }
 

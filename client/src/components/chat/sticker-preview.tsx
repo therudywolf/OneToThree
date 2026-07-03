@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { StickerFormat } from '@/lib/api/stickers'
+import { loadStickerBlob, type StickerFormat } from '@/lib/api/stickers'
 
 type Props = {
   url: string | null
@@ -53,11 +53,21 @@ export function StickerPreview({
         const host = hostRef.current
         if (!host || cancelled) return
 
+        // Read the animation bytes from the cached Blob (via mediaKey) rather
+        // than fetch()-ing the blob: URL — fetching blob: needs `connect-src
+        // blob:` which the Tauri/Capacitor CSP doesn't grant, so animated
+        // stickers never rendered on desktop/Android. Fall back to fetch(url)
+        // only when no mediaKey is available (still works on web).
         let animationData: unknown
         if (resolvedFormat === 'lottie') {
-          animationData = await fetch(url).then((r) => r.json())
+          const text = mediaKey
+            ? await (await loadStickerBlob(mediaKey)).text()
+            : await fetch(url).then((r) => r.text())
+          animationData = JSON.parse(text)
         } else {
-          const ab = await fetch(url).then((r) => r.arrayBuffer())
+          const ab = mediaKey
+            ? await (await loadStickerBlob(mediaKey)).arrayBuffer()
+            : await fetch(url).then((r) => r.arrayBuffer())
           const jsonText = pako.ungzip(new Uint8Array(ab), { to: 'string' }) as string
           animationData = JSON.parse(jsonText)
         }
@@ -83,7 +93,7 @@ export function StickerPreview({
         // ignore
       }
     }
-  }, [url, isLottie, resolvedFormat, onLoadError])
+  }, [url, mediaKey, isLottie, resolvedFormat, onLoadError])
 
   if (!url) {
     return (

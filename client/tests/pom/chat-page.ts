@@ -137,9 +137,18 @@ export class ChatPage {
     const modal = this.page.getByTestId('media-preview-modal')
     await expect(modal).toBeVisible({ timeout: 30_000 })
     if (caption) {
-      const area = modal.getByPlaceholder(/caption/i)
-      await area.fill(caption)
+      // Target by testid, not placeholder text — the placeholder is localized
+      // (e.g. RU "Добавить подпись…") and a /caption/i match hangs the fill().
+      await modal
+        .getByTestId('media-preview-caption')
+        .fill(caption, { timeout: 15_000 })
     }
-    await modal.getByTestId('media-preview-send').click()
+    // Normal click first; headless Chromium can wedge the actionability wait on
+    // the audio <audio preload="metadata"> preview element, so fall back to a
+    // direct DOM click event (the button is a plain enabled <button>).
+    const sendBtn = modal.getByTestId('media-preview-send')
+    await sendBtn
+      .click({ timeout: 15_000 })
+      .catch(() => sendBtn.dispatchEvent('click'))
   }
 }

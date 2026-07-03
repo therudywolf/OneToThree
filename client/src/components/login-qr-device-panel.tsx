@@ -352,7 +352,7 @@ export function LoginQrDevicePanel() {
         </button>
 
         {isExpanded && (
-          <div className="mt-6 space-y-4">
+          <div className="mt-6 space-y-4" data-testid="qr-link-panel">
             {/* Mode toggle. */}
             <div className="flex gap-2">
               <button

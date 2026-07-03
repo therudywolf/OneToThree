@@ -36,7 +36,12 @@ export function ChatEmojiPicker({ height, onPick }: ChatEmojiPickerProps) {
         onEmojiClick={(data: { emoji: string }) => onPick(data.emoji)}
         skinTonesDisabled
         lazyLoadEmojis
-        emojiStyle={EmojiStyle.GOOGLE}
+        // NATIVE = render emoji as system-font glyphs, no external image CDN.
+        // GOOGLE loads PNGs from cdn.jsdelivr.net, which the Tauri desktop CSP
+        // (img-src) blocks → blank emoji grid on desktop; it also breaks offline
+        // and leaks requests to a third party. NATIVE works on web/Android/desktop
+        // with no CSP change — the right fit for a self-hosted, private messenger.
+        emojiStyle={EmojiStyle.NATIVE}
         previewConfig={{ showPreview: false }}
         searchPlaceholder={locale === 'ru' ? 'Поиск эмодзи' : 'Search emoji'}
         width="100%"

@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, notInArray } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -65,6 +65,27 @@ export const gifFavoritesRoutes: FastifyPluginAsync = async (app) => {
           originalUrl: parsed.data.originalUrl,
         },
       })
+
+    // Cap favorites per user (evict oldest beyond CAP) so a client can't grow
+    // the table unbounded. CAP matches the GET display limit. Eviction (not
+    // rejection) keeps "add a favorite" from ever hard-failing.
+    const FAV_CAP = 200
+    const newest = await db
+      .select({ gifId: gifFavorites.gifId })
+      .from(gifFavorites)
+      .where(eq(gifFavorites.userId, user.id))
+      .orderBy(desc(gifFavorites.createdAt))
+      .limit(FAV_CAP)
+    if (newest.length >= FAV_CAP) {
+      await db
+        .delete(gifFavorites)
+        .where(
+          and(
+            eq(gifFavorites.userId, user.id),
+            notInArray(gifFavorites.gifId, newest.map((r) => r.gifId))
+          )
+        )
+    }
 
     return reply.status(201).send({ ok: true })
   })

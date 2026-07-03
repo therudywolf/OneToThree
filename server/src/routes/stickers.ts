@@ -1045,6 +1045,7 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     const mediaKey = `stickers/${params.data.packId}/${randomUUID()}.${ext}`
     try {
       const s3 = createS3Client()
+      await ensureBucketExists(s3, MINIO_BUCKET)
       await s3.send(
         new PutObjectCommand({
           Bucket: MINIO_BUCKET,

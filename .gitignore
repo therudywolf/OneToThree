@@ -10,13 +10,9 @@ build/
 coverage/
 .nyc_output/
 
-# Environment — never commit secrets (templates only)
-.env
-.env.*
-!.env.local.example
-!.env.example
-!server/.env.example
-!client/.env.local.example
+# Environment & secrets are consolidated in the "secrets (security baseline)"
+# section near the end of this file — one place, one set of template exceptions.
+
 # Generated self-host desktop CSP override (from `npm run build:selfhost`)
 desktop/tauri/tauri.selfhost.gen.json
 
@@ -130,6 +126,10 @@ IMPLEMENTATION_PLAN.md
 !.env.local.example
 !.env.mesh.example
 !.env.prod.example
+!server/.env.example
+!client/.env.local.example
+!config/env/.env.prod.example
+!config/env/.env.mesh.example
 *.pem
 *.key
 !**/*public*.pem

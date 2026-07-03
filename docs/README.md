@@ -8,22 +8,34 @@ Project documentation is grouped by purpose so the repository root stays focused
 - `project/API.md` — API reference.
 - `project/FEATURE_MATRIX.md` — implementation status by feature.
 - `project/MIGRATION_NOTES.md` — migration and protocol invariants.
-- `project/ROADMAP.md` — project roadmap.
-- `project/CLAUDE_HANDOFF.md` — current sprint state and open blockers.
+- `project/ROADMAP.md` — general project roadmap.
+- `project/ROADMAP_SELFHOST_LITE.md` — the Lite one-click self-host roadmap (Sprints 0–2 shipped in v0.10.0; 3–5 remaining).
+- `project/SELFHOST_LITE_PLAN.md` — Lite design/architecture notes.
+- `project/CLAUDE_HANDOFF.md`, `project/NEXT_HANDOFF_PLAN.md` — sprint state and open blockers.
 
 ## Guides
 
-- `guides/FIRST_START.md`, `guides/FIRST_START.ru.md` — first-run setup.
+- `guides/LITE.md` — **one-command Lite self-host** (EN + RU): `npm run lite`.
+- `guides/FIRST_START.md`, `guides/FIRST_START.ru.md` — first-run setup (full edition).
 - `guides/UPDATE.md`, `guides/UPDATE.ru.md` — update and rollback procedures.
 - `guides/SMOKE_DOCKER.md` — Docker smoke test checklist.
 - `guides/android-release-runbook.md` — Android APK build and release guide.
 
-## Audits & Security
+## Operations & Release
 
-- `audits/AUDIT.md` — security backlog (open issues tracked here).
-- `audits/SECURITY_AUDIT.md` — rolling security notes per component.
-- `security-review/` — threat model, crypto traceability, CI quality gates.
+- `OPS.md` — production operations (backup, restore, monitoring).
+- `RELEASE.md` — release checklist and versioning.
+- `BUILD_MACOS_IOS.md` — macOS/iOS build notes.
+
+## Audits & backlogs
+
+- `project/AUDIT_2026-05-03.md`, `project/AUDIT_BACKLOG_2026-07-02.md` — security/quality audits.
+- `project/BUG_BACKLOG_2026-06-11.md`, `project/BUG_BACKLOG_2026-06-24.md`, `project/BUG_BACKLOG_2026-06-24_deep.md` — bug-hunt backlogs.
+- `project/BUG_HUNT_PROCESS.md` — the multi-agent bug-hunt process.
+- `project/SEC_DEVICE_LINK_DEPOSIT.md`, `project/N11_GROUP_CALL_E2EE.md`, `project/GROUP_KEY_ROTATION_PLAN.md` — focused security notes.
 
 ## Releases
 
-Pre-built Android APKs are in `releases/android/`.
+Prebuilt clients for each release are on [GitHub Releases](https://github.com/therudywolf/OneToThree/releases):
+Android APK, Windows installer (`.exe`), and Linux `.deb` + `.AppImage`, each with a `.sha256`.
+Locally built Android APKs are also kept in `releases/android/` (gitignored).

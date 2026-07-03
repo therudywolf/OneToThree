@@ -23,6 +23,8 @@ AGPL-3.0-only applies to reuse, modification, and network deployment of derived 
 
 - [Возможности](#возможности)
 - [Стек](#стек)
+- [Самохостинг одной командой (Lite)](#самохостинг-одной-командой-lite)
+- [Загрузки](#загрузки)
 - [Требования](#требования)
 - [Быстрый запуск (5 минут)](#быстрый-запуск-5-минут)
 - [Команды startup.sh](#команды-startupsh)
@@ -77,6 +79,45 @@ AGPL-3.0-only applies to reuse, modification, and network deployment of derived 
 | Оркестрация | Docker Compose |
 | Криптография | Web Crypto API — AES-GCM-256, ECDH P-256, ECDSA, Argon2id |
 | Мобильное приложение | Capacitor (Android APK) |
+
+---
+
+## Самохостинг одной командой (Lite)
+
+Нужен самый простой путь — свой сервер на ноутбуке, в локальной сети или на одном
+VPS, только с нужными функциями? **OneToThree Lite** (вышел в v0.10.0) — это мастер
+установки в одну команду:
+
+```bash
+git clone https://github.com/therudywolf/OneToThree.git
+cd OneToThree
+npm run lite     # выбрать local/domain, отметить функции (звонки/медиа/стикеры/…), готово
+```
+
+Он спросит режим **local** (обычный HTTP) или **domain** (автоматический HTTPS),
+сгенерит секреты и отдаёт веб + API + realtime с **одного origin** за Caddy — один
+хост, а не пять. Выключенная функция исчезает и из интерфейса, и из API. Полный
+гайд: **[docs/guides/LITE.md](./docs/guides/LITE.md)** · оставшийся роадмап:
+[ROADMAP_SELFHOST_LITE.md](./docs/project/ROADMAP_SELFHOST_LITE.md).
+
+Для полной многоподдоменной production-редакции — см. ниже.
+
+---
+
+## Загрузки
+
+Готовые клиенты для каждого релиза — на **[GitHub Releases](https://github.com/therudywolf/OneToThree/releases/latest)**:
+
+| Платформа | Файл |
+| --- | --- |
+| Android | `OneToThree-<ver>-android.apk` |
+| Windows | `OneToThree_<ver>_x64-setup.exe` |
+| Linux (Debian/Ubuntu) | `OneToThree_<ver>_amd64.deb` |
+| Linux (портативный) | `OneToThree_<ver>_amd64.AppImage` |
+
+К каждому — `.sha256`. Либо просто открой веб-приложение (устанавливаемая PWA). Все
+готовые клиенты смотрят на хостинг **onetothree.ru**; собрать под свой Lite-сервер —
+через `build:selfhost` (см. [десктоп](#десктоп-приложение) / заметки роадмапа).
 
 ---
 
@@ -331,10 +372,12 @@ cd desktop/tauri && npm install && npm run build          # или build:bundles
 
 ## Дорожная карта
 
-Планы — в том числе **Lite**-редакция для самохостинга в один клик (упрощённый
-сервер с флагами: звонки вкл/выкл, медиа вкл/выкл, стикеры/GIF вкл/выкл, и
-кросс-платформенный установщик) — описаны в
-[docs/project/ROADMAP_SELFHOST_LITE.md](./docs/project/ROADMAP_SELFHOST_LITE.md), разбиты по спринтам.
+**Lite**-редакция для самохостинга в один клик (флаги звонки/медиа/стикеры/GIF
+вкл/выкл, single-origin, кросс-платформенный установщик) **вышла в v0.10.0** — см.
+[Самохостинг одной командой (Lite)](#самохостинг-одной-командой-lite). Оставшееся
+(медиа на локальной ФС без MinIO, встроенный LiveKit+coturn в профиле `calls`,
+`build:selfhost` под Android, GUI-установщик) — в
+[docs/project/ROADMAP_SELFHOST_LITE.md](./docs/project/ROADMAP_SELFHOST_LITE.md), разбито по спринтам.
 
 ---
 

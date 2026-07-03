@@ -1,13 +1,15 @@
 /**
- * Feature flags for the "Lite" self-host edition (branch plan/selfhost-lite).
+ * Feature flags for the "Lite" self-host edition (shipped in v0.10.0).
  *
  * Every flag DEFAULTS TO ON, so the full build's behaviour is unchanged — a Lite
  * install turns things OFF via env to shed the infra they need (MinIO for media/
- * stickers, coturn+LiveKit for calls, third-party GIF, VAPID for push).
+ * stickers, external LiveKit for calls, third-party GIF, VAPID for push).
  *
- * Sprint 0: expose the flags + `GET /capabilities`. Later sprints gate the
- * matching route groups on the server and hide the matching UI on the client
- * (which reads /capabilities once at startup).
+ * These flags are enforced end-to-end: the server skips whole route groups for a
+ * disabled feature (a disabled group 404s, media endpoints 403; see app.ts,
+ * storage.ts) and rejects call signaling over WS (ws.ts); the flags are published
+ * at `GET /capabilities` (root and /api); and the client hides the matching UI
+ * (capabilities-provider.tsx reads /api/capabilities once at startup).
  *
  * See docs/project/ROADMAP_SELFHOST_LITE.md.
  */

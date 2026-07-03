@@ -99,13 +99,17 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${OT_JWT_SECRET:?set in .env.lite}
       TOTP_WRAP_KEY: ${OT_TOTP_WRAP_KEY:?set in .env.lite}
-      # Feature flags — a disabled feature drops its infra + its UI.
+      # Feature flags — a disabled feature drops its infra, its UI, and its API
+      # routes (all default ON). The installer surfaces MEDIA/CALLS/STICKERS/GIF/
+      # PUSH/2FA as checkboxes; ADMIN/GROUPS are env-only (rarely disabled).
       FEATURE_MEDIA: ${OT_ENABLE_MEDIA:-1}
       FEATURE_CALLS: ${OT_ENABLE_CALLS:-0}
       FEATURE_STICKERS: ${OT_ENABLE_STICKERS:-1}
       FEATURE_GIF: ${OT_ENABLE_GIF:-1}
       FEATURE_PUSH: ${OT_ENABLE_PUSH:-0}
       FEATURE_2FA: ${OT_ENABLE_2FA:-1}
+      FEATURE_ADMIN: ${OT_ENABLE_ADMIN:-1}
+      FEATURE_GROUPS: ${OT_ENABLE_GROUPS:-1}
       # Media (only used when media is on).
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_URL: ${OT_S3_PUBLIC_URL:-http://localhost:9000}

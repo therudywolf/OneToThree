@@ -2,7 +2,7 @@
 
 This document covers backups, monitoring, and incident response for a
 self-hosted OneToThree deployment. The reference deployment lives at
-`~/sites/onetothree.ru/` (see [`infra/README.md`](../infra/README.md))
+`~/stacks/onetothree.ru/` (see [`infra/README.md`](../infra/README.md))
 but the scripts work for any path — set `PROJECT_ROOT` to override.
 
 ## Backups
@@ -30,11 +30,11 @@ wrapper used by the systemd timer. On top of the raw backup it adds:
 * Off-site sync via `rsync` when `BACKUP_REMOTE=user@host:/path` is set.
 * Healthchecks.io style heartbeat to `BACKUP_HEALTHCHECK_URL`.
 
-Configure via `~/sites/onetothree.ru/.env.backup`:
+Configure via `~/stacks/onetothree.ru/.env.backup`:
 
 ```ini
 # Required for encryption (already populated by ./startup.sh)
-BACKUP_PASSPHRASE_FILE=$HOME/sites/onetothree.ru/secrets/backup_encryption_key
+BACKUP_PASSPHRASE_FILE=$HOME/stacks/onetothree.ru/secrets/backup_encryption_key
 
 # Optional — comment out if you don't want off-site copies
 BACKUP_REMOTE=backup@your-storage.example:/srv/onetothree
@@ -78,9 +78,9 @@ systemctl --user disable --now onetothree-backup.timer
 ### Restore drill — do this every quarter
 
 ```bash
-# pick any archive from ~/sites/onetothree.ru/backups/
+# pick any archive from ~/stacks/onetothree.ru/backups/
 RESTORE_CONFIRM=YES bash scripts/backup-restore.sh \
-  ~/sites/onetothree.ru/backups/p13-stash-2026-05-15T03-17-00.tar.gz.enc
+  ~/stacks/onetothree.ru/backups/p13-stash-2026-05-15T03-17-00.tar.gz.enc
 ```
 
 The script:
@@ -103,7 +103,7 @@ success. If two consecutive runs fail the heartbeat misses its deadline
 and Healthchecks emails / Telegrams / Slacks you (configure on their
 side).
 
-Configure via `~/sites/onetothree.ru/.env.uptime`:
+Configure via `~/stacks/onetothree.ru/.env.uptime`:
 
 ```ini
 UPTIME_HEALTHCHECK_URL=https://hc-ping.com/<uuid>
@@ -146,7 +146,7 @@ new value.
 ## Rolling back a bad deploy
 
 ```bash
-cd ~/sites/onetothree.ru
+cd ~/stacks/onetothree.ru
 git log --oneline -5                    # find the last good SHA
 git reset --hard <good-sha>
 docker compose -f docker-compose.prod.yml up -d --build api web

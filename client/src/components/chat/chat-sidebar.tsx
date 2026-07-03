@@ -39,6 +39,7 @@ import { useUnreadStore } from '@/store/unreadStore'
 import { createDirectE2EChat, leaveChat, deleteChat, fetchOrCreateSelfChat, setChatFavorite, setChatMute, isChatMuted, joinChatByInviteCode } from '@/lib/api/chats'
 import { useChats } from '@/hooks/use-chats'
 import { CreateGroupModal } from '@/components/chat/create-group-modal'
+import { useCapabilities } from '@/components/capabilities-provider'
 import { ExploreModal } from '@/components/chat/explore-modal'
 import { GroupChatSettings } from '@/components/chat/group-chat-settings'
 import { UserAvatar } from '@/components/user-avatar'
@@ -153,6 +154,7 @@ export function ChatSidebar({
   const setActiveChatId = useSessionStore((s) => s.setActiveChatId)
   const peerPresence = usePresenceStore((s) => s.peerPresence)
   const unreadByChat = useUnreadStore((s) => s.unreadByChat)
+  const capabilities = useCapabilities()
   const { chats, reload, initialLoading, patchChat } = useChats(userId)
   const [peerInput, setPeerInput] = useState('')
   const [creating, setCreating] = useState(false)
@@ -1273,7 +1275,7 @@ export function ChatSidebar({
       <div className={`p13-sidebar-bottom-actions p13-sidebar-global-actions border-t p-3 space-y-3 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] bg-[var(--surface)]' : 'border-neon-cyan/20 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--surface-elevated)_55%,transparent),color-mix(in_srgb,var(--void)_94%,transparent))]'}`}>
 
         {/* Admin link — only for admins, mobile-first placement */}
-        {isAdmin ? (
+        {isAdmin && capabilities.admin ? (
           <Link
             href="/admin"
             className={`flex h-10 w-full items-center gap-2 px-3 transition-colors ${
@@ -1413,7 +1415,7 @@ export function ChatSidebar({
             : 'border-neon-cyan/20 bg-void/40'
         }`}
       >
-        {isAdmin ? (
+        {isAdmin && capabilities.admin ? (
           <Link
             href="/admin"
             title={isMd3 ? 'Warden' : '[ WARDEN ]'}

@@ -85,22 +85,27 @@ have the certificates.
 ## Cutting a release
 
 ```bash
-# 1. Update the version in:
+# 1. Update the version. VERSION (root) is the SINGLE SOURCE OF TRUTH — the client
+#    bakes it via next.config.js, the server reads it, and the Android build derives
+#    versionName/versionCode from it. Bump:
 #    - VERSION (root)
-#    - client/package.json
-#    - server/package.json
-#    - mobile/capacitor/package.json
+#    - README.md + README.ru.md version badges, and add a CHANGELOG.md entry
 #    - desktop/tauri/package.json
 #    - desktop/tauri/src-tauri/Cargo.toml
 #    - desktop/tauri/src-tauri/tauri.conf.json
+#    (Cargo.lock's onetothree-tauri version regenerates on the next cargo/tauri build.)
+#
+#    DO NOT bump client/package.json, server/package.json, mobile/capacitor/package.json
+#    — they are intentionally decoupled (stay 0.1.0) and are never read for the
+#    user-facing version.
 #
 # 2. Commit and push the bumps.
-git commit -am "chore(release): v0.5.0"
+git commit -am "chore(release): v0.10.0"
 git push origin main
 
 # 3. Tag and push.
-git tag v0.5.0
-git push origin v0.5.0
+git tag v0.10.0
+git push origin v0.10.0
 ```
 
 Within ~15 minutes the workflow will:

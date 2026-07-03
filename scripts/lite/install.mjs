@@ -69,8 +69,8 @@ async function main() {
 
   // ── Features (checkbox-style toggle) ────────────────────────────────────────
   const features = [
-    { key: 'MEDIA', label: 'Media — photos / voice / video / files', on: true, profile: 'media' },
-    { key: 'CALLS', label: 'Calls — voice / video (needs LiveKit)', on: false, profile: 'calls' },
+    { key: 'MEDIA', label: 'Media — photos / voice / video / files', on: true },
+    { key: 'CALLS', label: 'Calls — voice / video (external LiveKit)', on: false },
     { key: 'STICKERS', label: 'Stickers (import + create your own)', on: true },
     { key: 'GIF', label: 'GIF search (Tenor / Giphy)', on: true },
     { key: 'PUSH', label: 'Push notifications (Web Push)', on: false },

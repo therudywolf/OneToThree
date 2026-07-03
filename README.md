@@ -23,6 +23,8 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 
 - [Features](#features)
 - [Stack](#stack)
+- [Self-host in one command (Lite)](#self-host-in-one-command-lite)
+- [Downloads](#downloads)
 - [Requirements](#requirements)
 - [Quick Deploy (5 minutes)](#quick-deploy-5-minutes)
 - [startup.sh Commands](#startupsh-commands)
@@ -79,6 +81,45 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 | Orchestration | Docker Compose |
 | Cryptography | Web Crypto API — AES-GCM-256, ECDH P-256, ECDSA, Argon2id |
 | Mobile | Capacitor (Android APK) |
+
+---
+
+## Self-host in one command (Lite)
+
+Want the simplest path — your own instance on a laptop, a LAN box, or a single
+VPS, with just the features you want? **OneToThree Lite** (shipped in v0.10.0) is a
+guided one-command installer:
+
+```bash
+git clone https://github.com/therudywolf/OneToThree.git
+cd OneToThree
+npm run lite     # pick local/domain, tick features (calls/media/stickers/…), done
+```
+
+It asks for **local** (plain HTTP) or **domain** (automatic HTTPS) mode, generates
+secrets, and serves web + API + realtime from **one origin** behind Caddy — one
+hostname, not five. A disabled feature disappears from both the UI and the API.
+Full guide: **[docs/guides/LITE.md](./docs/guides/LITE.md)** · remaining roadmap:
+[ROADMAP_SELFHOST_LITE.md](./docs/project/ROADMAP_SELFHOST_LITE.md).
+
+For the full multi-subdomain production edition, continue below.
+
+---
+
+## Downloads
+
+Prebuilt clients for each release are on **[GitHub Releases](https://github.com/therudywolf/OneToThree/releases/latest)**:
+
+| Platform | Asset |
+| --- | --- |
+| Android | `OneToThree-<ver>-android.apk` |
+| Windows | `OneToThree_<ver>_x64-setup.exe` |
+| Linux (Debian/Ubuntu) | `OneToThree_<ver>_amd64.deb` |
+| Linux (portable) | `OneToThree_<ver>_amd64.AppImage` |
+
+Each ships a `.sha256` sidecar. Or just open the web app (installable PWA). All
+prebuilt clients target the hosted **onetothree.ru**; point a build at your own
+Lite server with `build:selfhost` (see the [desktop](#desktop-app) / roadmap notes).
 
 ---
 
@@ -353,9 +394,11 @@ cd desktop/tauri && npm install && npm run build          # or build:bundles
 
 ## Roadmap
 
-Planned work — including the **Lite** one-click self-host edition (a simplified
-server with feature toggles: calls on/off, media on/off, stickers/GIFs on/off,
-and a cross-platform installer) — is tracked in
+The **Lite** one-click self-host edition (feature toggles: calls/media/stickers/GIF
+on/off, single-origin stack, cross-platform installer) **shipped in v0.10.0** — see
+[Self-host in one command (Lite)](#self-host-in-one-command-lite). Remaining work
+(local-filesystem media without MinIO, a bundled LiveKit+coturn `calls` profile,
+Android `build:selfhost`, and a GUI installer) is tracked in
 [docs/project/ROADMAP_SELFHOST_LITE.md](./docs/project/ROADMAP_SELFHOST_LITE.md), broken into sprints.
 
 ---

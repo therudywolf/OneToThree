@@ -263,14 +263,16 @@ If anything fails, check the [Troubleshooting](./README.md#troubleshooting) sect
 
 ## 10. Make Yourself Admin
 
-After registering your account, promote it to admin:
+After registering your account, promote it to the owner (top `creator` tier).
+`user_group` is the source of truth and `role` is derived from it, so set both:
 
 ```bash
 docker exec -it forestmessenger-db-1 psql -U forest -d forest \
-  -c "UPDATE users SET role = 'admin' WHERE username = 'yourusername';"
+  -c "UPDATE users SET user_group = 'creator', role = 'admin' WHERE username = 'yourusername';"
 ```
 
-Replace `yourusername` with the exact username you registered with.
+Replace `yourusername` with the exact username you registered with. (`creator` is
+the immutable owner tier — it can grant/revoke admins; a plain `admin` cannot.)
 
 Then open `https://your-domain.com/admin` while logged in. You should see the admin panel.
 

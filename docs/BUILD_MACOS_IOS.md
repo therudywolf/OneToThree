@@ -61,7 +61,7 @@ as a bundle target and ships an `.icns` icon. Building is the same flow CI uses
 npm run build:client:export                 # builds client/out
 cd desktop/tauri
 npx @tauri-apps/cli build --bundles dmg
-# → src-tauri/target/release/bundle/dmg/OneToThree_0.5.0-alpha.1_aarch64.dmg
+# → src-tauri/target/release/bundle/dmg/OneToThree_0.10.0_aarch64.dmg
 #   (x86_64 on Intel Macs; aarch64 on Apple Silicon)
 ```
 
@@ -224,13 +224,20 @@ in with the release keystore's SHA-256).
   (the apps fall back to in-app/native notification paths) and calls can't use a
   TURN relay (direct/STUN still works). Copy the real values into your local
   `.env.prod` for a production-parity build.
-- **Version bumping** before a release — keep these in sync (see `RELEASE.md`):
-  `VERSION`, `client/package.json`, `server/package.json`,
-  `mobile/capacitor/package.json`, `desktop/tauri/package.json`,
-  `desktop/tauri/src-tauri/Cargo.toml`, `desktop/tauri/src-tauri/tauri.conf.json`.
-  Note: the MSI bundler rejects non-numeric pre-release tags (`0.5.0-alpha.1`),
-  so MSI is built with a numeric `--config '{"version":"0.5.0"}'` override; the
-  `.dmg`/NSIS/APK keep the full semver.
+- **Version bumping** before a release (see `RELEASE.md`): `VERSION` is the single
+  source of truth. Bump `VERSION` + the desktop mirror files
+  (`desktop/tauri/package.json`, `desktop/tauri/src-tauri/Cargo.toml`,
+  `desktop/tauri/src-tauri/tauri.conf.json`) + the README badges + CHANGELOG.
+  `client/package.json`, `server/package.json` and `mobile/capacitor/package.json`
+  are **intentionally decoupled** (stay `0.1.0`, never read for a user-facing
+  version — the client bakes `VERSION` via `next.config.js`, the server reads
+  `VERSION`, and the Android build derives versionName/Code from `VERSION`).
+  `Cargo.lock`'s `onetothree-tauri` version regenerates from `Cargo.toml` on the
+  next `cargo`/`tauri build`.
+  Note: the MSI bundler rejects non-numeric pre-release tags; releases now use clean
+  numeric semver (e.g. `0.10.0`), so no override is needed. If a pre-release tag is
+  ever used again, build MSI with a numeric `--config '{"version":"X.Y.Z"}'`
+  override while `.dmg`/NSIS/APK keep the full semver.
 - **CI** (`.github/workflows/release.yml`) already has a `macos-14` leg that
   builds the `.dmg` on tag push, but **GitHub Actions billing is disabled**
   (owner decision), so all releases are currently built locally. There is **no

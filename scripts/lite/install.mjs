@@ -60,7 +60,10 @@ async function main() {
     origin = `https://${domain}`
     nodeEnv = 'production'
     cookieSecure = '1'
-    s3PublicDefault = `https://s3.${domain.replace(/^[^.]+\./, '')}`
+    // No default in domain mode: the bundled MinIO is only published on :9000 and
+    // is NOT fronted by Caddy/TLS, so `https://s3.<domain>` would look plausible
+    // but not resolve → media silently fails. Force a conscious choice (see below).
+    s3PublicDefault = ''
   }
   line('')
 
@@ -90,6 +93,12 @@ async function main() {
   // Media needs a browser-reachable object store.
   let s3PublicUrl = ''
   if (isOn('MEDIA') === '1') {
+    if (mode === 'domain') {
+      line('⚠ Media on a public domain needs an object store the BROWSER can reach over HTTPS.')
+      line('  Lite publishes MinIO on :9000 only (no TLS, not behind Caddy). Front it with your')
+      line('  own s3.<domain> and enter that URL, or leave blank to fill in later / turn media')
+      line('  off — otherwise uploads/downloads will fail. See docs/guides/LITE.md.')
+    }
     s3PublicUrl = await q('Public URL of the object store (MinIO) the browser will reach', s3PublicDefault)
     line('')
   }

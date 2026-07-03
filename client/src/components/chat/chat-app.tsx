@@ -820,6 +820,12 @@ export function ChatApp({
   return (
     <div className="chat-safe-shell p13-app-shell flex min-h-0 flex-col overflow-hidden bg-void">
       <InviteChatLinkEffect userId={userId} />
+      {/* Call surfaces — rendered only when this instance runs calls (Lite
+          self-host). Gating the render (not just the outbound buttons) also stops
+          a peer's call_invite / group_call:active from popping a live incoming
+          ring, active overlay, or JOIN banner on a calls-disabled instance. */}
+      {capabilities.calls ? (
+      <>
       <IncomingCallModal
         onAccept={() => void acceptIncomingCall()}
         onReject={rejectIncomingCall}
@@ -859,6 +865,8 @@ export function ChatApp({
           onToggleMute={toggleGroupMute}
         />
       )}
+      </>
+      ) : null}
 
       {showGuide ? (
         <StartGuide
@@ -1483,7 +1491,7 @@ export function ChatApp({
             </div>
           ) : null}
           {capabilities.push ? <PushOnboardingBanner /> : null}
-          {activeChatId && activeCallBanner[activeChatId] && !isInGroupCall ? (
+          {capabilities.calls && activeChatId && activeCallBanner[activeChatId] && !isInGroupCall ? (
             <GroupCallBanner
               participantCount={activeCallBanner[activeChatId]}
               onJoin={() => void handleGroupCall()}

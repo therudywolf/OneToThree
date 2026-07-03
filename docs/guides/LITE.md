@@ -21,12 +21,19 @@ npm run lite          # or: node scripts/lite/install.mjs  (Windows: scripts\lit
 
 The installer asks:
 
-1. **Deployment mode**
-   - **Local** — plain HTTP on `localhost` / your LAN. No domain, no TLS. Perfect
-     to try it or run on a home box.
+1. **Deployment mode** — OneToThree is E2EE and uses Web Crypto, which browsers
+   only expose in a **secure context** (HTTPS, or plain HTTP on `localhost`). The
+   three modes make that explicit:
+   - **No domain — this machine** — plain HTTP on `http://localhost:<port>`.
+     Everything works (incl. media) with zero setup, but only on this machine
+     (a LAN IP over plain HTTP has no crypto). Great to try it.
+   - **No domain — LAN / other devices** — **self-signed HTTPS** on
+     `https://<LAN-IP>:<port>` (Caddy's internal CA), so phones/other PCs get a
+     secure context and E2EE works. Browsers show a one-time cert warning — accept
+     it; to silence it **and enable media**, install Caddy's local CA on each device.
    - **Domain** — a public server with **automatic HTTPS** (Let's Encrypt). Point
      an A record at the server and open ports 80/443.
-2. **Host / port** (local) or **domain + email** (domain).
+2. **Host / port** (per mode; domain also asks for an ACME email).
 3. **Features** — a checklist you toggle by number:
 
    | Feature | Default | Adds |
@@ -109,12 +116,20 @@ npm run lite          # или: node scripts/lite/install.mjs  (Windows: scripts
 
 Мастер спросит:
 
-1. **Режим**
-   - **Local** — обычный HTTP на `localhost` / в локальной сети. Без домена и TLS.
-     Идеально попробовать или крутить на домашней машине.
+1. **Режим** — приложение E2EE и использует Web Crypto, который браузер даёт
+   только в **защищённом контексте** (HTTPS, либо HTTP на `localhost`). Отсюда три
+   режима:
+   - **Без домена — эта машина** — обычный HTTP на `http://localhost:<порт>`.
+     Всё работает (включая медиа) без настройки, но только на этой машине (по LAN-IP
+     через голый HTTP крипто недоступно). Идеально попробовать.
+   - **Без домена — LAN / другие устройства** — **самоподписанный HTTPS** на
+     `https://<LAN-IP>:<порт>` (внутренний CA Caddy), чтобы у телефонов/других ПК
+     был защищённый контекст и работало E2EE. Браузер один раз предупредит о
+     сертификате — прими его; чтобы убрать предупреждение **и включить медиа**,
+     установи локальный CA Caddy на каждом устройстве.
    - **Domain** — публичный сервер с **автоматическим HTTPS** (Let's Encrypt).
      Наведи A-запись на сервер и открой порты 80/443.
-2. **Хост / порт** (local) или **домен + email** (domain).
+2. **Хост / порт** (по режиму; domain ещё спросит email для ACME).
 3. **Функции** — список с галочками, переключаешь по номеру:
 
    | Функция | По умолчанию | Тянет |

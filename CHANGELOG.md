@@ -7,6 +7,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Lite installer — three explicit deployment modes** (`scripts/lite/install.mjs`):
+  *no-domain / this machine* (HTTP on `localhost`, everything works incl. media),
+  *no-domain / LAN* (self-signed HTTPS via Caddy's internal CA so E2EE works off the
+  local machine — Web Crypto needs a secure context, which plain HTTP over a LAN IP
+  can't provide), and *domain* (Let's Encrypt). Fixes the prior footgun where a LAN
+  IP over plain HTTP produced a crypto-less, broken instance. `docker-compose.lite.yml`
+  gains `OT_HTTPS_CONTAINER_PORT` so LAN mode publishes its HTTPS port 1:1.
+- **Release notes** now clearly separate **client apps** (download & connect to the
+  hosted service) from **self-hosting** (`npm run lite`, not a download).
+
 ## [0.10.0] — 2026-07-03 — OneToThree **Lite**: one-click self-host + feature flags
 
 Stand up your **own** end-to-end-encrypted instance anywhere, with only the

@@ -30,6 +30,7 @@ import { linkPreviewRoutes } from './routes/link-preview.js'
 import { pollsRoutes } from './routes/polls.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
+import { featureFlags } from './lib/feature-flags.js'
 import { requireSecret } from './lib/read-secret.js'
 import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
 import { db } from './db/index.js'
@@ -427,6 +428,11 @@ export async function buildApp() {
     commit: SERVER_COMMIT_SHA,
     built_at: SERVER_BUILT_AT,
   }))
+
+  // Public capability probe (Lite self-host). The client reads this once at
+  // startup to hide UI for features this instance doesn't run. All flags default
+  // ON, so the full build reports everything enabled. See feature-flags.ts.
+  app.get('/capabilities', async () => ({ features: featureFlags }))
 
   app.get('/health/ready', async (request, reply) => {
     try {

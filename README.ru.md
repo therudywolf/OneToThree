@@ -2,7 +2,7 @@
 
 > Самохостируемый мессенджер со сквозным шифрованием для приватного общения.
 
-![Version](https://img.shields.io/badge/version-0.9.3-4c8bf5)
+![Version](https://img.shields.io/badge/version-0.10.0-4c8bf5)
 ![Status](https://img.shields.io/badge/status-beta-f59e0b)
 ![Platforms](https://img.shields.io/badge/platforms-web%20·%20Android%20·%20desktop-8b5cf6)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--only-22c55e)](LICENSE)

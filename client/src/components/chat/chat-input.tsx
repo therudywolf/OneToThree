@@ -471,6 +471,10 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
    */
   const acceptIncomingFiles = useCallback(
     async (raw: File[]) => {
+      // Media disabled for this instance (Lite self-host): the paperclip/record
+      // buttons are hidden, but drag-drop, paste-image and the file input all
+      // funnel here — gate the single choke point so none of them can attach.
+      if (!capabilities.media) return
       const overflowDropped = Math.max(0, raw.length - ALBUM_HARD_CAP)
       if (overflowDropped > 0) {
         toastError(
@@ -491,7 +495,7 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
       }
       if (accepted.length > 0) setFileQueue(accepted)
     },
-    [setFileQueue]
+    [setFileQueue, capabilities.media]
   )
 
   const handlePaste = (e: React.ClipboardEvent) => {
@@ -745,15 +749,17 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
         />
       )}
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
-        onChange={handleFileSelect}
-        className="hidden"
-        aria-label={t('chat.attachFile')}
-      />
+      {capabilities.media ? (
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt"
+          onChange={handleFileSelect}
+          className="hidden"
+          aria-label={t('chat.attachFile')}
+        />
+      ) : null}
 
       {replyTo && !editingMessage ? (
         <div className="p13-reply-banner">

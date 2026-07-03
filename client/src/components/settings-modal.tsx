@@ -111,10 +111,14 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   tRef.current = t
   const { user, updateUser, refresh } = useAuth()
   const capabilities = useCapabilities()
-  // Hide tabs for features this instance disabled (Lite self-host).
-  const visibleTabs = SETTINGS_TABS.filter((tab) =>
-    tab.id === 'stickers' ? capabilities.stickers : true
-  )
+  // Hide tabs for features this instance disabled (Lite self-host). The Media
+  // tab (camera/mic device pickers + attachment cache) is relevant if EITHER
+  // media or calls is on; hide it only when both are off.
+  const visibleTabs = SETTINGS_TABS.filter((tab) => {
+    if (tab.id === 'stickers') return capabilities.stickers
+    if (tab.id === 'media') return capabilities.media || capabilities.calls
+    return true
+  })
   const [discoverable, setDiscoverable] = useState<boolean | null>(null)
   const [hidePresence, setHidePresence] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)

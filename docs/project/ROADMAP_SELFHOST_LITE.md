@@ -16,23 +16,28 @@ behind feature flags so nothing breaks the full build.
 
 ## What Lite includes vs. makes optional
 
-| Capability | Lite default | Toggle | Why optional |
+Defaults below are what the **installer** ships (`scripts/lite/install.mjs`);
+every one is a checkbox except where noted. Env flag = `FEATURE_*`.
+
+| Capability | Installer default | Toggle | Why optional |
 | --- | --- | --- | --- |
 | E2EE 1:1 + group **text** (DR-v2/X3DH) | ✅ always | — | the core product |
 | Auth, device-link, phrase recovery | ✅ always | — | core |
-| **Media** (photo/voice/video/file) | ⬜ off | `FEATURE_MEDIA` | needs object storage (MinIO) + disk |
-| **Calls** (voice/video) | ⬜ off | `FEATURE_CALLS` | needs coturn + LiveKit + open UDP ports (heaviest infra) |
-| **Stickers** (import/create) | ⬜ off | `FEATURE_STICKERS` | needs object storage; Telegram import needs a bot token |
-| **GIF** (Tenor/Giphy) | ⬜ off | `FEATURE_GIF` | third-party requests / API keys |
-| **Push** (Web Push/VAPID) | ⬜ off | `FEATURE_PUSH` | VAPID keys; not needed for a personal server |
-| **2FA** (TOTP) | ✅ on | `FEATURE_2FA` | cheap, keep on |
-| **Admin panel** | ✅ on | `FEATURE_ADMIN` | single-user servers may hide it |
-| Object storage (MinIO) | only if media/stickers on | derived | — |
-| coturn + LiveKit | only if calls on | derived | — |
+| **Media** (photo/voice/video/file) | ✅ on | `FEATURE_MEDIA` (checkbox) | needs object storage (MinIO) + disk |
+| **Calls** (voice/video) | ⬜ off | `FEATURE_CALLS` (checkbox) | needs coturn + an external LiveKit + open UDP ports (heaviest infra) |
+| **Stickers** (import/create) | ✅ on | `FEATURE_STICKERS` (checkbox) | needs object storage; Telegram import needs a bot token |
+| **GIF** (Tenor/Giphy) | ✅ on | `FEATURE_GIF` (checkbox) | third-party requests / API keys |
+| **Push** (Web Push/VAPID) | ⬜ off | `FEATURE_PUSH` (checkbox) | VAPID keys; not needed for a personal server |
+| **2FA** (TOTP) | ✅ on | `FEATURE_2FA` (checkbox) | cheap, keep on |
+| **Admin panel** | ✅ on | `FEATURE_ADMIN` (env only) | single-user servers may hide it |
+| **Groups/channels** | ✅ on | `FEATURE_GROUPS` (env only) | core-ish; not a wizard checkbox |
+| Object storage (MinIO) | on with media/stickers | derived (`media` compose profile) | — |
+| coturn + LiveKit | external, only if calls on | not bundled (you provide `OT_LIVEKIT_*`) | — |
 
-**Lite baseline = encrypted text messaging, near-single-container stack, one
-domain, embedded/simple Postgres, no MinIO/coturn/LiveKit.** Each checkbox adds
-the infra it needs.
+**Minimum baseline** (uncheck everything optional) = encrypted text messaging,
+one Postgres + Redis + api + web + caddy, one domain, no MinIO/coturn/LiveKit.
+The installer's *default* preset turns media/stickers/GIF on (so MinIO is
+included); calls/push are off. Each checkbox adds the infra it needs.
 
 ---
 
@@ -46,7 +51,7 @@ the infra it needs.
 - **Exit:** full build unchanged with all flags on; turning a flag off removes the UI surface (done) and, once route-gating lands, the API surface too.
 
 ### Sprint 1 — Lite compose profiles ✅ (2026-07-03)
-- [x] `docker-compose.lite.yml`: db + redis + api + web + caddy; MinIO pulled in by the `media` profile, LiveKit by `calls` — only when the flag is on.
+- [x] `docker-compose.lite.yml`: db + redis + api + web + caddy; MinIO pulled in by the `media` profile. Calls are **not** bundled — the API points at an external LiveKit via `OT_LIVEKIT_*` (a bundled `calls` profile is Sprint 3).
 - [x] Single-origin (web + `/api` + `/api/ws` behind one Caddy, the e2e WS-cookie pattern) → **one** hostname, not five. `local` (HTTP, `COOKIE_SECURE=0`) and `domain` (auto-HTTPS, production) modes.
 - [ ] Embedded/simplified Postgres (or evaluate a SQLite adapter). _(deferred — uses a small Postgres container for now.)_
 - **Exit:** `docker compose --env-file .env.lite -f docker-compose.lite.yml up` → working server on one origin. ✅

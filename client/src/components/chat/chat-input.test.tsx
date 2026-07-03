@@ -228,4 +228,21 @@ describe('ChatInput — characterization net (pre-refactor)', () => {
     renderInput({ cryptoCtx: DIRECT_CTX }) // no provider → context default ALL_ON
     expect(screen.getByTitle('chat.attachFile')).toBeTruthy()
   })
+
+  it('#9c media OFF removes the hidden file input (drag/paste/select entry points gated)', () => {
+    render(
+      <CapabilitiesContext.Provider value={{ ...ALL_ON, media: false }}>
+        <ChatInput
+          sendText={vi.fn(async () => {})}
+          sendMedia={vi.fn(async () => {})}
+          sendAlbum={vi.fn(async () => {})}
+          cryptoCtx={DIRECT_CTX}
+        />
+      </CapabilitiesContext.Provider>
+    )
+    // With media off the hidden <input type=file> is not rendered — so the file
+    // picker, and (via the acceptIncomingFiles guard) drag-drop / paste, cannot
+    // attach anything. Contrast test #6b, which finds this input with media on.
+    expect(document.querySelector('input[type="file"]')).toBeNull()
+  })
 })

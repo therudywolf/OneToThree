@@ -313,6 +313,62 @@ export async function deleteStickerPack(packId: string): Promise<void> {
   }
 }
 
+/** Create an empty native pack owned by the caller (no Telegram needed). */
+export async function createStickerPack(title: string): Promise<{ id: string; title: string }> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { id?: string; title?: string; error?: string }
+  if (!res.ok || !data.id) throw new Error(data.error ?? `CREATE_PACK_${res.status}`)
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(PACKS_CACHE_KEY) } catch { /* non-fatal */ }
+  }
+  return { id: data.id, title: data.title ?? title }
+}
+
+/** Upload one image sticker (base64) into an owned native pack. */
+export async function uploadStickerImage(
+  packId: string,
+  input: { imageBase64: string; mime: string; emoji?: string; width?: number; height?: number }
+): Promise<{ id: string; media_key: string }> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/stickers`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      image_base64: input.imageBase64,
+      mime: input.mime,
+      ...(input.emoji ? { emoji: input.emoji } : {}),
+      ...(input.width ? { width: input.width } : {}),
+      ...(input.height ? { height: input.height } : {}),
+    }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { id?: string; media_key?: string; error?: string }
+  if (!res.ok || !data.id) throw new Error(data.error ?? `UPLOAD_STICKER_${res.status}`)
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(stickersCacheKey(packId)) } catch { /* non-fatal */ }
+  }
+  return { id: data.id, media_key: data.media_key ?? '' }
+}
+
+/** Delete a single sticker from an owned pack. */
+export async function deleteSticker(packId: string, stickerId: string): Promise<void> {
+  const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/stickers/${stickerId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(err.error ?? `DELETE_STICKER_${res.status}`)
+  }
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(stickersCacheKey(packId)) } catch { /* non-fatal */ }
+  }
+}
+
 export async function refreshStickerPack(packId: string): Promise<{ count: number }> {
   const res = await fetchWithTimeout(`${API_URL}/stickers/packs/${packId}/refresh`, {
     method: 'POST',

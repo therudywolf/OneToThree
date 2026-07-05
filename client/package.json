@@ -23,7 +23,7 @@
     "postinstall": "node -e \"const {cpSync,existsSync}=require('fs'),p=require('path'),s=p.join(__dirname,'node_modules','livekit-client','dist','livekit-client.e2ee.worker.js');if(existsSync(s))cpSync(s,p.join(__dirname,'public','livekit-e2ee-worker.js'));\""
   },
   "dependencies": {
-    "@noble/curves": "^1.9.0",
+    "@noble/curves": "^2.2.0",
     "@noble/hashes": "^1.8.0",
     "@scure/bip39": "^1.6.0",
     "@tanstack/react-virtual": "^3.13.23",

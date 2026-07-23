@@ -108,6 +108,8 @@ const ru = {
   'call.minimize': 'Свернуть',
   'call.deafen': 'Заглушить звук',
   'call.undeafen': 'Включить звук',
+  'call.addParticipant': 'Добавить в звонок',
+  'call.addParticipantNone': 'Некого добавить',
   'call.dndOn': 'Включить режим «Не беспокоить» (автоотклонение звонков)',
   'call.dndOff': 'Выключить режим «Не беспокоить»',
   'call.missedAudio': 'Пропущенный звонок',

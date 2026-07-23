@@ -255,6 +255,12 @@ export const MAX_WS_MESSAGE_BYTES = 64 * 1024
 
 /** Per-connection rate limit: max messages per window. */
 const WS_RATE_LIMIT_MAX = 60
+/** Call SIGNALING (webrtc_signal offer/answer/ice, group_call:* control) needs a
+ *  higher budget than chat control traffic: a single mesh join emits an offer +
+ *  10-20 ICE candidates per peer pair, and a 1:1 call promoted into a 3-person
+ *  group can exceed 60 msgs/min from one honest client — the limiter then
+ *  silently dropped signaling and calls half-connected (issue #1/#4). */
+const WS_RATE_LIMIT_SIGNALING_MAX = 600
 const WS_RATE_LIMIT_RELAY_MAX = 2400
 const WS_RATE_LIMIT_WINDOW_MS = 60_000
 
@@ -283,6 +289,16 @@ function resolveWsRateLimit(json: unknown): number {
   }
   if (entry.type === 'group_call:relay_frame') {
     return WS_RATE_LIMIT_RELAY_MAX
+  }
+  if (
+    entry.type === 'webrtc_signal' ||
+    (typeof entry.type === 'string' && entry.type.startsWith('group_call:')) ||
+    entry.type === 'call_invite' ||
+    entry.type === 'call_accept' ||
+    entry.type === 'call_reject' ||
+    entry.type === 'call_leave'
+  ) {
+    return WS_RATE_LIMIT_SIGNALING_MAX
   }
   return WS_RATE_LIMIT_MAX
 }

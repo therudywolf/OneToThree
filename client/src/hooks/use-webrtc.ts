@@ -22,6 +22,8 @@ import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureControl
 import { toastWarn } from '@/store/toastStore'
 import { buildCallRejectMessage, upsertIncomingCall } from '@/lib/incoming-call'
 import { applyVideoTrack, planScreenShareStart, planScreenShareStop } from '@/lib/call-media-tracks'
+import { createKeyedGroupChat } from '@/lib/create-group-chat'
+import { joinGroupCall } from '@/lib/group-call-manager'
 
 /**
  * PROJECT 13 :: WEBRTC_SIGNAL_PROTOCOL
@@ -96,6 +98,9 @@ type SignalPayload =
   | { kind: 'relay_offer' }
   | { kind: 'relay_answer' }
   | { kind: 'relay_frame'; ciphertext: string; iv: string; sampleRate: number }
+  /** 1:1 → group promotion (#4): the initiator created a keyed group chat and
+   *  is moving the call there; the peer tears down the 1:1 and joins the room. */
+  | { kind: 'promote_to_group'; chatId: string }
 
 function transmitSignal(targetUserId: string, signalData: SignalPayload) {
   getFmSocket().send({ type: 'webrtc_signal', targetUserId, signalData })
@@ -148,6 +153,9 @@ export function useWebRTC(userId: string | null) {
   const relayCapturesRef = useRef(new Map<string, AudioRelayCaptureController>())
   const relayKeysRef = useRef(new Map<string, Promise<CryptoKey | null>>())
   const relayPeersRef = useRef(new Set<string>())
+  /** Last 1:1 call peer + grace deadline — lets a `promote_to_group` that lost
+   *  the race against the peer's call_leave still be honored (#4). */
+  const recentCallPeerRef = useRef<{ peerId: string; until: number } | null>(null)
   const relayAwaitingAnswerRef = useRef(new Set<string>())
   const p2pFallbackStartedRef = useRef(new Set<string>())
   const {
@@ -242,6 +250,11 @@ export function useWebRTC(userId: string | null) {
   }, [])
 
   const purgePeer = useCallback((peerId: string) => {
+    // Remember who we were just in a call with: the peer's `promote_to_group`
+    // signal can arrive AFTER their call_leave already tore this link down
+    // (broadcast vs targeted relay have no ordering), and the promote guard
+    // must still recognize them for a short grace window (#4).
+    recentCallPeerRef.current = { peerId, until: Date.now() + 30_000 }
     const timer = disconnectTimersRef.current.get(peerId)
     if (timer) clearTimeout(timer)
     
@@ -546,6 +559,40 @@ export function useWebRTC(userId: string | null) {
     setIncomingCall(null)
   }, [setIncomingCall])
 
+  /**
+   * 1:1 → group promotion (#4): create a keyed group chat with the current call
+   * peer + the invitee, tell the peer to migrate (opaque `promote_to_group`
+   * signal over the existing WS relay — no server changes), tear down the 1:1
+   * and join the group room. The invitee is notified via the standard
+   * group-call machinery: `chats_updated` (new chat), `group_call:active`
+   * banner, and the offline push on first join.
+   */
+  const promoteToGroup = useCallback(async (inviteeUserId: string) => {
+    const privKey = useSessionStore.getState().unwrappedPrivateKey
+    if (!userId || !privKey) throw new Error('NO_VAULT')
+    const peers = new Set<string>([
+      ...pcsRef.current.keys(),
+      ...relayPeersRef.current,
+    ])
+    peers.delete(userId)
+    const peerId = Array.from(peers)[0]
+    if (!peerId) throw new Error('NO_ACTIVE_PEER')
+    if (inviteeUserId === peerId || inviteeUserId === userId) {
+      throw new Error('ALREADY_IN_CALL')
+    }
+
+    // 1. Group chat with all three, fully keyed (server broadcasts chats_updated).
+    const chat = await createKeyedGroupChat(userId, privKey, null, [peerId, inviteeUserId])
+    // 2. Tell the peer BEFORE tearing down, so the signal wins any teardown race.
+    transmitSignal(peerId, { kind: 'promote_to_group', chatId: chat.id })
+    // 3. End our side of the 1:1 (sends call_leave; harmless in either order).
+    severAllLinks()
+    // 4. Join the group room — our join broadcasts group_call:active to the
+    //    invitee (banner) and fires the offline push if they're disconnected.
+    const ok = await joinGroupCall(chat.id, false)
+    if (ok) useSessionStore.getState().setActiveChatId(chat.id)
+  }, [userId, severAllLinks])
+
   // Socket Subscription Layer
   useEffect(() => {
     if (!userId) return
@@ -633,8 +680,29 @@ export function useWebRTC(userId: string | null) {
           ciphertext?: string
           iv?: string
           sampleRate?: number
+          chatId?: string
         }
         if (fromUserId === userId) return
+
+        if (data.kind === 'promote_to_group') {
+          // 1:1 → group promotion (#4). Only honor it when it comes from the peer
+          // we are ACTUALLY in a call with (mesh, relay, or ringing) — the server
+          // relay already authorizes shared-chat + non-blocked, but a random
+          // contact must not be able to yank us into a room.
+          const recent = recentCallPeerRef.current
+          const inCallWith =
+            pcsRef.current.has(fromUserId) ||
+            relayPeersRef.current.has(fromUserId) ||
+            useCallStore.getState().incomingCall?.peerId === fromUserId ||
+            (recent?.peerId === fromUserId && Date.now() < recent.until)
+          if (!inCallWith || typeof data.chatId !== 'string' || !data.chatId) return
+          const targetRoomId = data.chatId
+          severAllLinks()
+          void joinGroupCall(targetRoomId, false).then((ok) => {
+            if (ok) useSessionStore.getState().setActiveChatId(targetRoomId)
+          })
+          return
+        }
 
         if (data.kind === 'media_state') {
           const update = data.media === 'audio' ? { micMuted: !data.enabled } : { cameraOff: !data.enabled }
@@ -1351,5 +1419,6 @@ export function useWebRTC(userId: string | null) {
     isScreenSharing,
     toggleScreenShare,
     setQuality,
+    promoteToGroup,
   }
 }

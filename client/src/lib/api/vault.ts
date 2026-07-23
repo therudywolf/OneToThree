@@ -11,17 +11,10 @@ export async function fetchVaultFromServer(): Promise<
   | { ok: true; data: VaultFetchResponse }
   | { ok: false; status: number; error?: string }
 > {
-  const res = await fetchWithTimeout(`${API_URL}/vault/fetch`, {
-    method: 'GET',
-    credentials: 'include',
-  })
-  const data = (await res.json().catch(() => ({}))) as VaultFetchResponse & {
-    error?: string
-  }
-  if (!res.ok) {
-    return { ok: false, status: res.status, error: data.error }
-  }
-  return { ok: true, data }
+  // Server-side vault sync was removed (Stage 6) — /api/vault/fetch no longer
+  // exists. Short-circuit instead of firing a guaranteed 404 on every app boot:
+  // the noise polluted logs and fed edge anti-bot heuristics (404-scan bans).
+  return { ok: false, status: 410, error: 'VAULT_SYNC_REMOVED' }
 }
 
 export async function changeVaultPinOnServer(body: {
@@ -52,39 +45,13 @@ export async function changeVaultPinOnServer(body: {
   }
 }
 
-export async function syncVaultToServer(body: {
+export async function syncVaultToServer(_body: {
   encrypted_blob: string
   expected_version?: number
 }): Promise<
   | { ok: true; vault_version: number; updated_at: string }
   | { ok: false; status: number; error?: string; vault_version?: number }
 > {
-  const res = await fetchWithTimeout(`${API_URL}/vault/sync`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  const data = (await res.json().catch(() => ({}))) as {
-    ok?: boolean
-    vault_version?: number
-    updated_at?: string
-    error?: string
-  }
-  if (!res.ok) {
-    return {
-      ok: false,
-      status: res.status,
-      error: data.error,
-      vault_version: data.vault_version,
-    }
-  }
-  if (data.vault_version === undefined || !data.updated_at) {
-    return { ok: false, status: 500, error: 'INVALID_SYNC_RESPONSE' }
-  }
-  return {
-    ok: true,
-    vault_version: data.vault_version,
-    updated_at: data.updated_at,
-  }
+  // See fetchVaultFromServer — server-side vault sync no longer exists.
+  return { ok: false, status: 410, error: 'VAULT_SYNC_REMOVED' }
 }

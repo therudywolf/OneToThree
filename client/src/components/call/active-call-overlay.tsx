@@ -23,7 +23,9 @@ import {
   SwitchCamera,
   Headphones,
   HeadphoneOff,
+  UserPlus,
 } from 'lucide-react'
+import { lookupUsers } from '@/lib/api/users'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { useCallStore } from '@/store/callStore'
@@ -50,6 +52,10 @@ type Props = {
   onToggleScreenShare: () => void
   /** Peer's display name — shown as the remote tile label instead of a hex id (#12). */
   peerName?: string
+  /** Direct-chat contact ids that can be pulled into this call (1:1→group, #4). */
+  promoteCandidateIds?: string[]
+  /** Promote this 1:1 call to a group call with the given invitee (#4). */
+  onPromote?: (inviteeUserId: string) => Promise<void>
   onSetQuality: (level: QualityLevel) => void
 }
 
@@ -305,6 +311,8 @@ export function ActiveCallOverlay({
   onToggleScreenShare,
   onSetQuality,
   peerName,
+  promoteCandidateIds,
+  onPromote,
 }: Props) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
@@ -336,6 +344,22 @@ export function ActiveCallOverlay({
   const [showControls, setShowControls] = useState(true)
   const [showQualityMenu, setShowQualityMenu] = useState(false)
   const [showCameraMenu, setShowCameraMenu] = useState(false)
+  // 1:1 → group promotion picker (#4)
+  const [showAddMenu, setShowAddMenu] = useState(false)
+  const [addCandidates, setAddCandidates] = useState<Array<{ id: string; username: string }>>([])
+  const [promoteBusy, setPromoteBusy] = useState(false)
+
+  useEffect(() => {
+    if (!showAddMenu || !promoteCandidateIds?.length) return
+    let cancelled = false
+    void lookupUsers(promoteCandidateIds)
+      .then((rows) => {
+        if (cancelled) return
+        setAddCandidates(rows.map((r) => ({ id: r.id, username: r.username })))
+      })
+      .catch(() => { if (!cancelled) setAddCandidates([]) })
+    return () => { cancelled = true }
+  }, [showAddMenu, promoteCandidateIds])
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
 
   useEffect(() => {
@@ -744,6 +768,52 @@ export function ActiveCallOverlay({
           >
             {layout === 'grid' ? <Focus className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
           </button>
+
+          {/* Add participant — promote this 1:1 call to a group call (#4). */}
+          {onPromote && (promoteCandidateIds?.length ?? 0) > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowAddMenu((v) => !v)}
+                disabled={promoteBusy}
+                className={`flex items-center justify-center transition-colors disabled:opacity-50 ${
+                  isMd3
+                    ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
+                    : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-neon-cyan hover:bg-neon-cyan/5'
+                }`}
+                title={t('call.addParticipant')}
+                aria-label={t('call.addParticipant')}
+                aria-expanded={showAddMenu}
+              >
+                <UserPlus className="h-4 w-4" />
+              </button>
+              {showAddMenu && (
+                <div className="absolute bottom-14 left-1/2 z-50 max-h-64 w-52 -translate-x-1/2 overflow-y-auto border border-border-strong bg-void/95 shadow-2xl backdrop-blur-xl">
+                  {addCandidates.length === 0 ? (
+                    <p className="px-3 py-2.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                      {t('call.addParticipantNone')}
+                    </p>
+                  ) : (
+                    addCandidates.map((c) => (
+                      <button
+                        key={c.id}
+                        disabled={promoteBusy}
+                        onClick={() => {
+                          setPromoteBusy(true)
+                          setShowAddMenu(false)
+                          void onPromote(c.id)
+                            .catch((err) => console.warn('[call] promote failed', err))
+                            .finally(() => setPromoteBusy(false))
+                        }}
+                        className="block w-full truncate px-3 py-2.5 text-left font-mono text-[11px] tracking-wider text-text-primary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+                      >
+                        {c.username}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             onClick={() => setMiniPlayer(true)}

@@ -73,6 +73,17 @@ const wrapper = isWindows
   ? resolve(androidDir, 'gradlew.bat')
   : resolve(androidDir, 'gradlew')
 
+// Git may check out `gradlew` without its executable bit (e.g. cloned/zipped
+// from a Windows-authored tree), which makes the direct `spawn(wrapper)` below
+// fail with EACCES on Linux/macOS/CI. Restore it before running.
+if (!isWindows) {
+  try {
+    chmodSync(wrapper, 0o755)
+  } catch {
+    /* best-effort — falls through to the spawn, which will surface any error */
+  }
+}
+
 const command = isWindows ? process.env.ComSpec || 'cmd.exe' : wrapper
 const args = isWindows ? ['/d', '/s', '/c', wrapper, task] : [task]
 

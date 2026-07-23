@@ -1,10 +1,14 @@
-FROM eclipse-temurin:17-jdk-jammy
+# JDK 21: Capacitor 8's :capacitor-android module compiles with sourceCompatibility
+# 21, so JDK 17 fails with "invalid source release: 21". AGP 8.13 supports JDK 21.
+FROM eclipse-temurin:21-jdk-jammy
 
-# ── System deps + Node 20 ────────────────────────────────────────────────────
+# ── System deps + Node 22 ────────────────────────────────────────────────────
+# Node 22 LTS: the Capacitor 8 CLI hard-requires Node >= 22 (`npx cap sync`
+# aborts on Node 20 with "requires NodeJS >=22.0.0"), so Node 20 never built.
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl unzip git ca-certificates gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 

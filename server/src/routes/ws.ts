@@ -20,6 +20,7 @@ import {
   broadcastOnlineStatusChange,
   clearPingWriteAt,
   getRelatedUserIds,
+  getUserChatIds,
   touchLastSeen,
   touchLastSeenPing,
 } from '../lib/presence.js'
@@ -1112,6 +1113,28 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         })
       }
       request.log.info({ correlationId, userId: user.id }, 'ws: connected')
+
+      // On connect, surface any group call already active in one of the user's
+      // chats so they get the JOIN banner immediately — e.g. after tapping the
+      // offline push for a call that started while they were away (issue #4).
+      void (async () => {
+        try {
+          const myChatIds = await getUserChatIds(user.id)
+          for (const chatId of myChatIds) {
+            const ids = await getRoomParticipantIds(chatId)
+            if (ids.length > 0 && !ids.includes(user.id)) {
+              sendToUser(user.id, {
+                type: 'group_call:active',
+                room_id: chatId,
+                participant_count: ids.length,
+              })
+            }
+          }
+        } catch (err) {
+          request.log.warn({ err: String(err), userId: user.id }, 'ws: active-call-on-connect scan failed')
+        }
+      })()
+
       for (const raw of pending) {
         handleMessage(raw, user)
       }

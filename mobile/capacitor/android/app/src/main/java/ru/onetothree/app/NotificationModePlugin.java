@@ -17,10 +17,20 @@ public class NotificationModePlugin extends Plugin {
     final Context context = getContext();
     final Intent intent = new Intent(context, DirectNotificationService.class);
     intent.setAction(DirectNotificationService.ACTION_START);
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      ContextCompat.startForegroundService(context, intent);
-    } else {
-      context.startService(intent);
+    // Starting a FGS from the background (Android 12+) throws
+    // ForegroundServiceStartNotAllowedException — never crash the process.
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        ContextCompat.startForegroundService(context, intent);
+      } else {
+        context.startService(intent);
+      }
+    } catch (Exception e) {
+      final JSObject out = new JSObject();
+      out.put("ok", false);
+      out.put("error", e.getClass().getSimpleName());
+      call.resolve(out);
+      return;
     }
     final JSObject out = new JSObject();
     out.put("ok", true);
@@ -32,8 +42,16 @@ public class NotificationModePlugin extends Plugin {
     final Context context = getContext();
     final Intent intent = new Intent(context, DirectNotificationService.class);
     intent.setAction(DirectNotificationService.ACTION_STOP);
-    context.startService(intent);
-    context.stopService(new Intent(context, DirectNotificationService.class));
+    try {
+      context.startService(intent);
+    } catch (Exception ignored) {
+      /* stopService below still tears the service down */
+    }
+    try {
+      context.stopService(new Intent(context, DirectNotificationService.class));
+    } catch (Exception ignored) {
+      /* best-effort */
+    }
     final JSObject out = new JSObject();
     out.put("ok", true);
     call.resolve(out);

@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
+    <!-- Never let the encrypted vault-PIN blob (SecureStore's private
+         SharedPreferences) leave the device via cloud backup or phone-to-phone
+         transfer. The wrapping key is Keystore-bound and never transfers, so the
+         ciphertext is useless off-device anyway — but a security-first app should
+         not emit secret-bearing blobs into transfer bundles at all (#16). -->
     <cloud-backup>
         <exclude domain="root" path="." />
         <exclude domain="external" path="." />
+        <exclude domain="sharedpref" path="onetothree_secure_store.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="root" path="." />
         <exclude domain="external" path="." />
+        <exclude domain="sharedpref" path="onetothree_secure_store.xml" />
     </device-transfer>
 </data-extraction-rules>

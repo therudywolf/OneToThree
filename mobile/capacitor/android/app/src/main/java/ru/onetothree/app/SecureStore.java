@@ -2,6 +2,7 @@ package ru.onetothree.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
@@ -89,16 +90,21 @@ final class SecureStore {
     }
     final KeyGenerator kg =
         KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE);
-    final KeyGenParameterSpec spec =
+    final KeyGenParameterSpec.Builder builder =
         new KeyGenParameterSpec.Builder(
                 KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            // No setUserAuthenticationRequired: silent unlock must not need a
-            // per-use biometric/lock prompt (matches the Tauri keychain UX).
-            .build();
-    kg.init(spec);
+            .setKeySize(256);
+    // No setUserAuthenticationRequired: silent unlock must not need a per-use
+    // biometric/lock prompt (matches the Tauri keychain UX). BUT require the
+    // device to be unlocked to DECRYPT (API 28+), so the vault-PIN secret cannot
+    // be recovered while the screen is locked — closing the locked-device /
+    // forensic decryption path without hurting normal foreground unlock (#14).
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      builder.setUnlockedDeviceRequired(true);
+    }
+    kg.init(builder.build());
     return kg.generateKey();
   }
 

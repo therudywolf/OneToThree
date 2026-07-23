@@ -40,7 +40,12 @@ public class CallForegroundService extends Service {
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
     final String action = intent == null ? null : intent.getAction();
-    if (ACTION_STOP.equals(action)) {
+    // A sticky/system restart re-invokes onStartCommand with a null intent (no
+    // ACTION_START) after the process was reclaimed. Re-promoting a
+    // microphone-typed FGS then would show a bogus "mic in use" indicator with
+    // no call running (and on Android 14+ can throw). Only start on an explicit
+    // ACTION_START; anything else (null restart or ACTION_STOP) tears down.
+    if (!ACTION_START.equals(action)) {
       running = false;
       stopForeground(STOP_FOREGROUND_REMOVE);
       stopSelf();
@@ -49,16 +54,27 @@ public class CallForegroundService extends Service {
 
     running = true;
     // Android 10+ requires the foregroundServiceType at start; 14+ additionally
-    // requires the FOREGROUND_SERVICE_MICROPHONE permission (declared in the manifest).
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      startForeground(
-        NOTIFICATION_ID,
-        buildNotification(),
-        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
-    } else {
-      startForeground(NOTIFICATION_ID, buildNotification());
+    // requires the FOREGROUND_SERVICE_MICROPHONE permission (declared in the
+    // manifest) AND that the start is currently permitted — startForeground can
+    // throw ForegroundServiceStartNotAllowedException / SecurityException, so
+    // fail closed (stop) rather than crashing the process.
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(
+          NOTIFICATION_ID,
+          buildNotification(),
+          ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+      } else {
+        startForeground(NOTIFICATION_ID, buildNotification());
+      }
+    } catch (Exception e) {
+      running = false;
+      stopSelf();
+      return START_NOT_STICKY;
     }
-    return START_STICKY;
+    // NOT_STICKY: a call is a live session driven by the web layer; if the
+    // process dies the call is already gone, so do not resurrect the service.
+    return START_NOT_STICKY;
   }
 
   @Override

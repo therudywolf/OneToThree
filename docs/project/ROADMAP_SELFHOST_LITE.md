@@ -71,8 +71,9 @@ included); calls/push are off. Each checkbox adds the infra it needs.
 - **Exit:** "here's your server + your app," end to end.
 
 ### Sprint 5 — GUI installer & polish
-- [ ] Graphical installer with real checkboxes (small Tauri app or a first-run web wizard) wrapping the Sprint-2 CLI.
-- [ ] Post-install health dashboard; upgrade path from Lite → full.
+- [x] Graphical installer with real checkboxes — a **first-run web wizard** (`npm run lite:gui`, zero-dep Node HTTP server bound to `127.0.0.1`, launchers `scripts/lite/lite-gui.{sh,ps1}` for macOS/Windows). Shares `scripts/lite/lite-core.mjs` with the Sprint-2 CLI, so both emit identical `.env.lite` + Caddyfile. Also fills the old VAPID gap: enabling Push now generates a real keypair (`generateVapidKeys`, Node crypto only).
+- [x] Post-install health dashboard — the wizard streams `docker compose up` build logs (SSE) and then polls `/api/status` (container states + `/health`), showing the "promote yourself to owner" step.
+- [ ] Upgrade path from Lite → full.
 
 ---
 ---

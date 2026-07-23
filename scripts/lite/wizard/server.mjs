@@ -1,0 +1,208 @@
+#!/usr/bin/env node
+/**
+ * OneToThree Lite — graphical first-run wizard (Sprint 5).
+ *
+ * A tiny zero-dependency HTTP server (Node built-ins only) that serves a
+ * checkbox UI, then generates `.env.lite` + `infra/lite/Caddyfile` and runs
+ * `docker compose` — all on this machine. Cross-platform (Windows / macOS /
+ * Linux); nothing but Node + Docker required. Binds to 127.0.0.1 only, so the
+ * control surface is never exposed to the network.
+ *
+ *   npm run lite:gui            # opens http://127.0.0.1:4173
+ *   node scripts/lite/wizard/server.mjs [--port 4173] [--no-open]
+ *
+ * Shares scripts/lite/lite-core.mjs with the text CLI, so both produce
+ * identical artifacts. See docs/guides/LITE.md.
+ */
+import { createServer } from 'node:http'
+import { readFile } from 'node:fs/promises'
+import { spawn, spawnSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  FEATURES,
+  computeModeConfig,
+  buildEnv,
+  renderCaddyfile,
+  writeArtifacts,
+  composeArgs,
+  generateVapidKeys,
+  suggestLanIp,
+  preflight,
+} from '../lite-core.mjs'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+const REPO = join(HERE, '..', '..', '..')
+const argv = process.argv.slice(2)
+const portArg = argv.indexOf('--port')
+const PORT = portArg >= 0 ? Number(argv[portArg + 1]) : 4173
+const NO_OPEN = argv.includes('--no-open')
+
+/** State from the last successful /api/generate, consumed by /api/launch + /api/status. */
+let lastRun = null // { flags, origin, mode }
+
+const json = (res, code, body) => {
+  const s = JSON.stringify(body)
+  res.writeHead(code, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(s) })
+  res.end(s)
+}
+const readBody = (req) =>
+  new Promise((resolve) => {
+    let d = ''
+    req.on('data', (c) => (d += c))
+    req.on('end', () => {
+      try {
+        resolve(d ? JSON.parse(d) : {})
+      } catch {
+        resolve({})
+      }
+    })
+  })
+
+/** Normalize a subject into a valid VAPID `mailto:`/`https:` contact. */
+const normSubject = (s) => {
+  const t = (s || '').trim() || 'mailto:admin@localhost'
+  return t.startsWith('mailto:') || t.startsWith('https:') ? t : `mailto:${t}`
+}
+
+const server = createServer(async (req, res) => {
+  const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
+  try {
+    // ── UI ────────────────────────────────────────────────────────────────
+    if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
+      const html = await readFile(join(HERE, 'index.html'))
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+      return res.end(html)
+    }
+
+    // ── Preflight (Docker / Compose / Node) ─────────────────────────────────
+    if (req.method === 'GET' && url.pathname === '/api/preflight') {
+      return json(res, 200, preflight())
+    }
+
+    // ── Defaults for the form ───────────────────────────────────────────────
+    if (req.method === 'GET' && url.pathname === '/api/defaults') {
+      return json(res, 200, {
+        features: FEATURES,
+        suggestedIp: suggestLanIp(),
+        defaults: { localPort: '8443', lanPort: '8443' },
+      })
+    }
+
+    // ── Generate config (writes .env.lite + Caddyfile; does NOT run docker) ──
+    if (req.method === 'POST' && url.pathname === '/api/generate') {
+      const b = await readBody(req)
+      const mode = ['local', 'lan', 'domain'].includes(b.mode) ? b.mode : 'local'
+      const cfg = computeModeConfig(mode, b.opts || {})
+      const flags = Object.fromEntries(
+        FEATURES.map((f) => [f.key, b.flags && b.flags[f.key] ? '1' : '0'])
+      )
+      const vapid = flags.PUSH === '1' ? generateVapidKeys(normSubject(b.vapidSubject)) : null
+      const env = buildEnv({
+        cfg,
+        flags,
+        s3PublicUrl: (b.s3PublicUrl || '').trim(),
+        livekit: b.livekit || {},
+        vapid,
+      })
+      writeArtifacts(REPO, env, renderCaddyfile(cfg))
+      const upArgs = composeArgs(flags, ['up', '-d', '--build'])
+      lastRun = { flags, origin: cfg.origin, mode }
+      return json(res, 200, {
+        ok: true,
+        mode,
+        origin: cfg.origin,
+        enabled: FEATURES.filter((f) => flags[f.key] === '1').map((f) => f.key),
+        composeCmd: 'docker ' + upArgs.join(' '),
+        envPath: '.env.lite',
+        caddyPath: 'infra/lite/Caddyfile',
+        vapidGenerated: Boolean(vapid),
+      })
+    }
+
+    // ── Launch: docker compose up -d --build, streamed as SSE ───────────────
+    if (req.method === 'GET' && url.pathname === '/api/launch') {
+      if (!lastRun) return json(res, 409, { error: 'generate config first' })
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      })
+      const send = (event, data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      const args = composeArgs(lastRun.flags, ['up', '-d', '--build'])
+      send('log', `$ docker ${args.join(' ')}`)
+      const child = spawn('docker', args, { cwd: REPO, shell: process.platform === 'win32' })
+      const pump = (buf) =>
+        String(buf)
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .forEach((l) => send('log', l))
+      child.stdout.on('data', pump)
+      child.stderr.on('data', pump) // compose writes build/progress to stderr
+      child.on('error', (e) => {
+        send('done', { code: 1, error: e.message })
+        res.end()
+      })
+      child.on('close', (code) => {
+        send('done', { code, origin: lastRun.origin, mode: lastRun.mode })
+        res.end()
+      })
+      req.on('close', () => { try { child.kill() } catch { /* ignore */ } })
+      return
+    }
+
+    // ── Post-install status (containers + health) ───────────────────────────
+    if (req.method === 'GET' && url.pathname === '/api/status') {
+      if (!lastRun) return json(res, 409, { error: 'nothing launched yet' })
+      const ps = spawnSync(
+        'docker',
+        composeArgs(lastRun.flags, ['ps', '--format', '{{.Service}}\t{{.State}}\t{{.Status}}']),
+        { cwd: REPO, encoding: 'utf8', shell: process.platform === 'win32' }
+      )
+      const containers = (ps.stdout || '')
+        .trim()
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((l) => {
+          const [service, state, status] = l.split('\t')
+          return { service, state, status }
+        })
+      let health = 'unknown'
+      try {
+        const r = await fetch(`${lastRun.origin}/health`, { signal: AbortSignal.timeout(3000) })
+        health = r.ok ? 'healthy' : `http ${r.status}`
+      } catch {
+        health = 'unreachable'
+      }
+      return json(res, 200, {
+        origin: lastRun.origin,
+        health,
+        containers,
+        ownerCmd:
+          'docker compose --env-file .env.lite -f docker-compose.lite.yml exec db \\\n' +
+          '  psql -U forest -d forest -c "UPDATE users SET user_group=\'creator\', role=\'admin\' WHERE username=\'YOURNAME\';"',
+      })
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain' })
+    res.end('not found')
+  } catch (e) {
+    json(res, 500, { error: e?.message || 'internal error' })
+  }
+})
+
+server.listen(PORT, '127.0.0.1', () => {
+  const link = `http://127.0.0.1:${PORT}`
+  process.stdout.write(`\n  OneToThree Lite — setup wizard running at ${link}\n  (Ctrl-C to stop)\n\n`)
+  if (!NO_OPEN) {
+    const opener =
+      process.platform === 'win32' ? ['cmd', ['/c', 'start', '', link]]
+      : process.platform === 'darwin' ? ['open', [link]]
+      : ['xdg-open', [link]]
+    try {
+      spawn(opener[0], opener[1], { stdio: 'ignore', detached: true }).unref()
+    } catch {
+      /* user can open the link manually */
+    }
+  }
+})

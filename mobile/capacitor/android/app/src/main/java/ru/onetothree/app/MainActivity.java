@@ -16,6 +16,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(NotificationModePlugin.class);
     registerPlugin(DevicePermissionsPlugin.class);
     registerPlugin(KeystorePlugin.class);
+    registerPlugin(CallServicePlugin.class);
     super.onCreate(savedInstanceState);
 
     createFcmChannels();

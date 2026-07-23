@@ -22,6 +22,15 @@ export async function getRelatedUserIds(userId: string): Promise<string[]> {
   return peers.map((p) => p.uid)
 }
 
+/** All chat ids the user is a member of. */
+export async function getUserChatIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ chatId: chatMembers.chatId })
+    .from(chatMembers)
+    .where(eq(chatMembers.userId, userId))
+  return rows.map((r) => r.chatId)
+}
+
 export async function touchLastSeen(userId: string): Promise<string> {
   const now = new Date()
   await db.update(users).set({ lastSeenAt: now }).where(eq(users.id, userId))

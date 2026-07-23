@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useCallStore } from '@/store/callStore'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { applyPreferredAudioOutput } from '@/lib/media-devices'
+import { startCallForegroundService, stopCallForegroundService } from '@/lib/native-call-service'
 
 /**
  * Always-mounted remote-audio sink.
@@ -48,6 +49,17 @@ export function CallAudioSink() {
   const p2pStreams = useCallStore((s) => s.remoteStreams)
   const groupStreams = useGroupCallStore((s) => s.remoteStreams)
   const deafened = useCallStore((s) => s.deafened)
+  const isCalling = useCallStore((s) => s.isCalling)
+  const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
+
+  // Android: hold a microphone foreground service for the lifetime of a call so
+  // backgrounding the app doesn't drop the mic / peer audio (issue #3/#13).
+  // No-op on web and iOS.
+  useEffect(() => {
+    if (isCalling || isInGroupCall) startCallForegroundService()
+    else stopCallForegroundService()
+  }, [isCalling, isInGroupCall])
+
   return (
     <div aria-hidden className="hidden">
       {Object.entries(p2pStreams).map(([id, stream]) => (

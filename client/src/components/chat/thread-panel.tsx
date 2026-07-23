@@ -7,6 +7,8 @@ import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
 import type { DecryptedMessage } from '@/types/chat'
 import { NoirPlaintext } from '@/components/chat/noir-plaintext'
+import { LinkPreviewCard } from '@/components/chat/link-preview-card'
+import { extractFirstUrl } from '@/lib/api/link-preview'
 import { formatMessageTimestamp } from '@/lib/timestamp-format'
 
 type Props = {
@@ -110,6 +112,10 @@ export function ThreadPanel({
                     {m.plaintext && (
                       <NoirPlaintext text={m.plaintext} className="break-words whitespace-pre-wrap" />
                     )}
+                    {m.plaintext && (() => {
+                      const url = extractFirstUrl(m.plaintext)
+                      return url ? <LinkPreviewCard url={url} /> : null
+                    })()}
                     {!m.plaintext && m.media_path && (
                       <span className="text-text-muted">[MEDIA]</span>
                     )}

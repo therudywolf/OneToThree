@@ -98,6 +98,10 @@ export type TransmitOptions = {
    * honour the burn flame just like text messages do.
    */
   burn_duration_secs?: number | null
+  /** Voice/video-circle length in ms, captured at record time (issue #11). */
+  durationMs?: number
+  /** Voice-note amplitude peaks (0–100 ints), captured at record time. */
+  waveform?: number[]
 }
 
 function ensureExtension(name: string, mime: string): string {
@@ -441,6 +445,12 @@ export function useSendMedia(
           kind,
           ...(caption ? { caption } : {}),
           ...(prepared.tinyPreview ? { thumbhash: prepared.tinyPreview } : {}),
+          ...(typeof options?.durationMs === 'number' && options.durationMs > 0
+            ? { durationMs: options.durationMs }
+            : {}),
+          ...(Array.isArray(options?.waveform) && options.waveform.length > 0
+            ? { waveform: options.waveform }
+            : {}),
         }
         const transportPlaintext = JSON.stringify(envelope)
         const enc = await encryptEnvelopeForMode(

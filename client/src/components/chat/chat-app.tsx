@@ -36,6 +36,7 @@ import { resolveTrustStatus } from '@/lib/trust-store'
 import { useChats } from '@/hooks/use-chats'
 import { usePresenceSync } from '@/hooks/use-presence-sync'
 import { useGroupKeyDistribution } from '@/hooks/use-group-key-distribution'
+import { CallAudioSink } from '@/components/call/call-audio-sink'
 import { useWebRTC } from '@/hooks/use-webrtc'
 import { NoLocalVault } from '@/components/chat/no-local-vault'
 import { ChatTerminal } from '@/components/chat/chat-terminal'
@@ -644,6 +645,9 @@ export function ChatApp({
         fileType?: string
         kind?: import('@/lib/attachment-envelope').AttachmentKind
         sendOriginal?: boolean
+        burn_duration_secs?: number | null
+        durationMs?: number
+        waveform?: number[]
       },
     ) => {
       await rawSendMedia(blob, mediaType, {
@@ -652,6 +656,17 @@ export function ChatApp({
         caption: caption?.trim() || undefined,
         ...(options?.kind ? { kind: options.kind } : {}),
         ...(options?.sendOriginal ? { sendOriginal: true } : {}),
+        // Forward the burn timer (was previously dropped here) and the
+        // record-time duration/waveform metadata (issue #11).
+        ...(options?.burn_duration_secs != null
+          ? { burn_duration_secs: options.burn_duration_secs }
+          : {}),
+        ...(typeof options?.durationMs === 'number'
+          ? { durationMs: options.durationMs }
+          : {}),
+        ...(options?.waveform && options.waveform.length
+          ? { waveform: options.waveform }
+          : {}),
       })
     },
     [rawSendMedia],
@@ -723,6 +738,14 @@ export function ChatApp({
   const canShowCallControls =
     capabilities.calls &&
     !!activeChatId && !!activeRow && !activeRow.is_group && !isSelfChat
+  // Group voice room: the Call button must ALSO render in group chats — it is the
+  // only entry point to start a room. Without it the group_call:active JOIN banner
+  // can never appear (nobody can be first to join). onCall already routes is_group
+  // → handleGroupCall. Broadcast channels are excluded.
+  const canStartGroupCall =
+    capabilities.calls &&
+    !!activeChatId && !!activeRow && activeRow.is_group && !isChannel && !isSelfChat
+  const canUseCallButton = canShowCallControls || canStartGroupCall
   const mentionTotal = Object.values(unreadByChat).reduce(
     (acc, row) => acc + (row.mentions ?? 0),
     0
@@ -830,6 +853,10 @@ export function ChatApp({
         onAccept={() => void acceptIncomingCall()}
         onReject={rejectIncomingCall}
       />
+      {/* Always-mounted remote-audio sink — plays peer audio independent of the
+          overlay/mini-player, so minimizing a call no longer drops the peer's
+          voice (issue #3). Tiles below render video only. */}
+      <CallAudioSink />
       <ActiveCallOverlay
         onEndCall={endCall}
         onToggleMute={toggleMuteMic}
@@ -1034,7 +1061,7 @@ export function ChatApp({
         {/* RIGHT: calls block + separator + settings icon */}
         <div className="flex shrink-0 items-center gap-1.5">
 
-          {canShowCallControls ? (
+          {canUseCallButton ? (
             <>
               {/* Calls block — visually grouped */}
               <div className={`flex items-center gap-1 p-0.5 ${isMd3 ? 'rounded-full bg-transparent' : 'border border-neon-cyan/20 bg-void'}`}>
@@ -1369,7 +1396,7 @@ export function ChatApp({
                     <Settings className="h-4 w-4" strokeWidth={1.5} />
                   </button>
                 ) : null}
-                {canShowCallControls ? (
+                {canUseCallButton ? (
                   <CallHeaderButtons
                     disabled={!activeChatId || !!ctxError}
                     peerReady={peerReady}

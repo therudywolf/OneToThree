@@ -13,14 +13,74 @@ const MAX_REDIRECTS = 8
  * by the client as an <img src>. Reject anything that is not an absolute
  * http(s) URL so a `javascript:`/`data:` payload can never reach the client.
  */
-function safeImageUrl(raw: string | null | undefined): string | null {
+function safeImageUrl(raw: string | null | undefined, base?: string): string | null {
   if (!raw) return null
   try {
-    const u = new URL(raw)
+    // Resolve protocol-relative (//cdn/x.jpg) and root-relative (/x.jpg) images
+    // against the final page URL so real og:image values are not dropped (#14).
+    const u = base ? new URL(raw, base) : new URL(raw)
     return u.protocol === 'https:' || u.protocol === 'http:' ? u.href : null
   } catch {
     return null
   }
+}
+
+/** Decode the handful of HTML entities that show up in OG title/description. */
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (whole, h: string) => {
+      try { return String.fromCodePoint(parseInt(h, 16)) } catch { return whole }
+    })
+    .replace(/&#(\d+);/g, (whole, d: string) => {
+      try { return String.fromCodePoint(parseInt(d, 10)) } catch { return whole }
+    })
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+}
+
+/**
+ * Parse <meta> tags into (property|name|itemprop) → content, independent of
+ * attribute order and quote style. The old order-sensitive, double-quote-only
+ * regexes dropped a large fraction of real pages (content-first tags, single
+ * quotes, Twitter `name=` cards), so previews silently rendered nothing (#14).
+ */
+function parseMetaTags(html: string): Map<string, string> {
+  const map = new Map<string, string>()
+  const metaRe = /<meta\b[^>]*>/gi
+  const attrRe = /([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g
+  let m: RegExpExecArray | null
+  while ((m = metaRe.exec(html)) !== null) {
+    const tag = m[0]
+    let key: string | null = null
+    let content: string | null = null
+    let a: RegExpExecArray | null
+    attrRe.lastIndex = 0
+    while ((a = attrRe.exec(tag)) !== null) {
+      const name = a[1].toLowerCase()
+      const val = a[2] ?? a[3] ?? a[4] ?? ''
+      if (name === 'property' || name === 'name' || name === 'itemprop') {
+        key = val.toLowerCase()
+      } else if (name === 'content') {
+        content = val
+      }
+    }
+    if (key && content != null && !map.has(key)) {
+      map.set(key, decodeHtmlEntities(content))
+    }
+  }
+  return map
+}
+
+function firstMeta(meta: Map<string, string>, keys: string[]): string | null {
+  for (const k of keys) {
+    const v = meta.get(k)
+    if (v && v.trim()) return v.trim()
+  }
+  return null
 }
 
 const querySchema = z.object({
@@ -44,7 +104,7 @@ const querySchema = z.object({
 async function fetchWithSafeRedirects(
   startUrl: string,
   signal: AbortSignal
-): Promise<{ ok: boolean; contentType: string; text: () => Promise<string> }> {
+): Promise<{ ok: boolean; contentType: string; text: () => Promise<string>; finalUrl: string }> {
   let current = startUrl
   for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
     let u: URL
@@ -77,6 +137,7 @@ async function fetchWithSafeRedirects(
       ok,
       contentType,
       text: res.bodyText,
+      finalUrl: u.href,
     }
   }
   throw new Error('TOO_MANY_REDIRECTS')
@@ -121,24 +182,28 @@ export const linkPreviewRoutes: FastifyPluginAsync = async (app) => {
         }
 
         const html = await res.text()
+        const meta = parseMetaTags(html)
+        const titleTag = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
         const title =
-          html.match(/<meta[^>]+property="og:title"[^>]+content="([^"]*)"/)?.[1] ??
-          html.match(/<title[^>]*>([^<]*)<\/title>/)?.[1] ??
+          (firstMeta(meta, ['og:title', 'twitter:title']) ??
+            (titleTag ? decodeHtmlEntities(titleTag.trim()) : null))?.slice(0, 300) ??
           null
         const description =
-          html.match(
-            /<meta[^>]+property="og:description"[^>]+content="([^"]*)"/
-          )?.[1] ??
-          html.match(
-            /<meta[^>]+name="description"[^>]+content="([^"]*)"/
-          )?.[1] ??
-          null
+          firstMeta(meta, ['og:description', 'twitter:description', 'description'])?.slice(
+            0,
+            500
+          ) ?? null
         const image = safeImageUrl(
-          html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]*)"/)?.[1]
+          firstMeta(meta, [
+            'og:image:secure_url',
+            'og:image',
+            'twitter:image',
+            'twitter:image:src',
+          ]),
+          res.finalUrl
         )
         const siteName =
-          html.match(/<meta[^>]+property="og:site_name"[^>]+content="([^"]*)"/)?.[1] ??
-          null
+          firstMeta(meta, ['og:site_name', 'application-name'])?.slice(0, 120) ?? null
 
         // 5-minute cache so multiple recipients viewing the same chat
         // don't all stampede the upstream and don't all leak their

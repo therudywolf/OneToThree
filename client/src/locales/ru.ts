@@ -59,6 +59,7 @@ const ru = {
   // [MEDIA]
   'media.loading': 'Загрузка...',
   'media.download': 'Скачать',
+  'media.fullscreen': 'На весь экран',
   'media.permissionDenied': 'Камера и микрофон заблокированы. Проверьте настройки доступа (нужен HTTPS).',
 
   'call.openChannels': 'Звонки',
@@ -104,6 +105,9 @@ const ru = {
   'call.audioRelayFallback': 'Прямой медиаканал недоступен. Переключаю на зашифрованное аудио-реле.',
   'call.activePeer': 'Активный звонок',
   'call.returnToCall': 'Вернуться к звонку',
+  'call.minimize': 'Свернуть',
+  'call.deafen': 'Заглушить звук',
+  'call.undeafen': 'Включить звук',
   'call.dndOn': 'Включить режим «Не беспокоить» (автоотклонение звонков)',
   'call.dndOff': 'Выключить режим «Не беспокоить»',
   'call.missedAudio': 'Пропущенный звонок',

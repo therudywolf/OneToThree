@@ -41,6 +41,13 @@ export type AttachmentEnvelopeV1 = {
    * and decoded. ~700 bytes typical; capped at 4 KiB by the producer.
    */
   thumbhash?: string
+  /** Voice/video-circle length in ms, measured at record time (issue #11) so the
+   *  duration renders correctly on first paint without waiting for the media
+   *  element (WebM recordings often report Infinity until a seek-to-end hack). */
+  durationMs?: number
+  /** Voice-note amplitude peaks (0–100 ints) captured at record time so the
+   *  waveform is real and identical on every client. Absent for non-voice. */
+  waveform?: number[]
 }
 
 export type AlbumItemV1 = {
@@ -121,6 +128,22 @@ export function parseAttachmentEnvelope(
       ...(kind ? { kind } : {}),
       ...(typeof o.thumbhash === 'string' && o.thumbhash.startsWith('data:')
         ? { thumbhash: o.thumbhash.slice(0, 4096) }
+        : {}),
+      ...(typeof o.durationMs === 'number' &&
+      Number.isFinite(o.durationMs) &&
+      o.durationMs > 0
+        ? { durationMs: Math.min(o.durationMs, 24 * 60 * 60 * 1000) }
+        : {}),
+      ...(Array.isArray(o.waveform) && o.waveform.length > 0
+        ? {
+            waveform: o.waveform
+              .slice(0, 128)
+              .map((n) =>
+                typeof n === 'number' && Number.isFinite(n)
+                  ? Math.max(0, Math.min(100, Math.round(n)))
+                  : 0
+              ),
+          }
         : {}),
     }
   } catch {

@@ -21,8 +21,9 @@ import {
   MonitorOff,
   Camera,
   SwitchCamera,
+  Headphones,
+  HeadphoneOff,
 } from 'lucide-react'
-import { applyPreferredAudioOutput } from '@/lib/media-devices'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { useCallStore } from '@/store/callStore'
@@ -65,9 +66,13 @@ function getQualityDotColor(quality: { rtt: number | null; outgoingBitrate: numb
   return 'green'
 }
 
+// Solid, legible, semantically-correct status colors. The design token --success
+// is actually amber (#ffbf47), so a "good" connection used to render as a faint
+// amber dot (read as a warning) and "medium" as faint cyan — inverted and nearly
+// invisible. Use explicit values at full opacity instead (issue #12).
 const DOT_COLORS = {
-  green: 'bg-success/20',
-  yellow: 'bg-accent-2/15',
+  green: 'bg-[#22c55e]',
+  yellow: 'bg-[#f59e0b]',
   red: 'bg-neon-red',
 } as const
 
@@ -124,19 +129,18 @@ function PeerTile({
   useEffect(() => {
     const v = videoRef.current
     const a = audioRef.current
+    // Remote audio is played by the always-mounted CallAudioSink (which survives
+    // minimize — see components/call/call-audio-sink.tsx). Tiles render VIDEO only
+    // and stay muted to avoid double audio.
     if (hasVideo && v) {
       v.srcObject = stream
       void v.play().catch(() => {})
-      if (!muted) void applyPreferredAudioOutput(v)
-      if (a) {
-        a.srcObject = null
-        a.pause()
-      }
-    } else if (!hasVideo && a) {
-      a.srcObject = stream
-      void a.play().catch(() => {})
-      if (!muted) void applyPreferredAudioOutput(a)
-      if (v) v.srcObject = null
+    } else if (v) {
+      v.srcObject = null
+    }
+    if (a) {
+      a.srcObject = null
+      a.pause()
     }
     return () => {
       if (v) v.srcObject = null
@@ -145,7 +149,7 @@ function PeerTile({
         a.pause()
       }
     }
-  }, [stream, hasVideo, muted])
+  }, [stream, hasVideo])
 
   const handleInteraction = () => {
     if (layout === 'focus' && onFocusToggle) {
@@ -170,9 +174,9 @@ function PeerTile({
     ? 'relative w-full h-full bg-void border border-border-strong group'
     : 'relative w-full h-full bg-void group'
 
-  const videoClass = layout === 'grid'
-    ? 'w-full h-full object-cover filter contrast-125 grayscale-[20%]'
-    : 'w-full h-full object-cover filter contrast-125 grayscale-[20%]'
+  // No decorative grayscale/contrast on live video — it desaturates real faces
+  // and shared screens. Discord/Telegram never post-process the feed (issue #12).
+  const videoClass = 'w-full h-full object-cover'
 
   const isLocalPIP = layout === 'focus' && !isRemote
   const localPIPClass = 'absolute bottom-24 right-6 w-32 h-48 md:w-48 md:h-72 object-cover border border-neon-cyan/50 shadow-[0_0_15px_rgba(0,255,255,0.15)] z-10'
@@ -217,9 +221,9 @@ function PeerTile({
             ref={videoRef}
             autoPlay
             playsInline
-            muted={muted}
+            muted
             controls={false}
-            className={isLocalPIP ? 'w-full h-full object-cover transform scale-x-[-1]' : `${videoClass} transform scale-x-[-1]`}
+            className={isLocalPIP ? 'w-full h-full object-cover transform scale-x-[-1]' : `${videoClass}${isRemote ? '' : ' transform scale-x-[-1]'}`}
           />
         </div>
       ) : (
@@ -315,6 +319,8 @@ export function ActiveCallOverlay({
 
   const isMiniPlayer = useCallStore((s) => s.isMiniPlayer)
   const setMiniPlayer = useCallStore((s) => s.setMiniPlayer)
+  const deafened = useCallStore((s) => s.deafened)
+  const setDeafened = useCallStore((s) => s.setDeafened)
 
   const [tick, setTick] = useState(0)
   const [elapsed, setElapsed] = useState(0)
@@ -552,7 +558,7 @@ export function ActiveCallOverlay({
         </div>
 
         {/* CONTROLS */}
-        <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'} ${
+        <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'} ${
           isMd3
             ? 'gap-2 rounded-[28px] bg-[var(--surface-container-high)]/95 px-3 py-2'
             : isRetro
@@ -570,6 +576,21 @@ export function ActiveCallOverlay({
             title={audioMuted ? t('call.unmute') : t('call.mute')}
           >
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          </button>
+
+          {/* Deafen — output mute: silences all remote call audio (issue #5/#7). */}
+          <button
+            onClick={() => setDeafened(!deafened)}
+            className={`flex items-center justify-center transition-colors ${
+              isMd3
+                ? `h-12 w-12 rounded-full ${deafened ? 'bg-[var(--error-container)] text-[var(--on-error-container)]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
+                : `h-12 w-14 border-r border-border-strong ${deafened ? 'bg-danger/30 text-neon-red' : 'text-text-primary hover:bg-surface/5'}`
+            }`}
+            title={deafened ? t('call.undeafen') : t('call.deafen')}
+            aria-label={deafened ? t('call.undeafen') : t('call.deafen')}
+            aria-pressed={deafened}
+          >
+            {deafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
           </button>
 
           {/* Camera on/off — single toggle. Reflects the *camera* track state
@@ -726,7 +747,8 @@ export function ActiveCallOverlay({
                 ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
                 : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-neon-cyan hover:bg-neon-cyan/5'
             }`}
-            title={t('call.returnToCall')}
+            title={t('call.minimize')}
+            aria-label={t('call.minimize')}
           >
             <Minimize2 className="h-4 w-4" />
           </button>

@@ -572,7 +572,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
                 title: is_video ? `📹 ${callerName}` : `📞 ${callerName}`,
                 body: is_video ? 'Входящий видеозвонок' : 'Входящий голосовой звонок',
                 url: `/?chat=${chat_id}`,
-                icon: '/icons/icon-192x192.png',
+                icon: '/icon-192.png',
                 chat_id,
                 caller_name: callerName,
               }).catch((err) => request.log.warn({ err, targetUserId: id }, 'ws: call_invite push failed'))

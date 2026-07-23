@@ -65,6 +65,10 @@ export type CallProtocolState = {
   // [DND]
   dndEnabled: boolean
 
+  // [DEAFEN] — output mute: silence ALL remote call audio without leaving the
+  // call. Shared flag for 1:1 and group (a user is only ever in one at a time).
+  deafened: boolean
+
   // [ACTIONS]
   setLocalStream: (feed: MediaStream | null) => void
   setRemoteStream: (peerId: string, feed: MediaStream) => void
@@ -91,6 +95,7 @@ export type CallProtocolState = {
   setCallStartTime: (time: number | null) => void
   setShowRelayToast: (value: boolean) => void
   setDndEnabled: (v: boolean) => void
+  setDeafened: (v: boolean) => void
   setCallChatId: (chatId: string | null) => void
 
   /** Полная деактивация протокола и очистка контура */
@@ -155,6 +160,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     set({ dndEnabled: v })
   }
   const setCallChatId = (chatId: string | null) => set({ callChatId: chatId })
+  const setDeafened = (v: boolean) => set({ deafened: v })
   const reset = () => {
     // FIX 9: Close peer connections and stop media tracks before clearing state
     const state = get()
@@ -171,7 +177,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
         try { track.stop() } catch { /* ignore */ }
       }
     }
-    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false, callChatId: null })
+    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false, deafened: false, callChatId: null })
   }
 
   return {
@@ -192,6 +198,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     callStartTime: null,
     showRelayToast: false,
     dndEnabled: loadDndEnabled(),
+    deafened: false,
 
     setLocalStream,
     setRemoteStream,
@@ -213,6 +220,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     setCallStartTime,
     setShowRelayToast,
     setDndEnabled,
+    setDeafened,
     setCallChatId,
     reset,
   }

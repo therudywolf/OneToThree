@@ -77,7 +77,7 @@ export function WelcomeScreen({ onContinue }: Props) {
   const stepNum = step === 'language' ? 1 : step === 'shell' ? 2 : step === 'palette' ? 3 : 4
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[color-mix(in_srgb,var(--void)_94%,transparent)] px-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto bg-[color-mix(in_srgb,var(--void)_94%,transparent)] px-4 py-8 backdrop-blur-md">
       <div
         ref={panelRef}
         role="dialog"

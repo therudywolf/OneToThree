@@ -64,10 +64,23 @@ async function captureLocalFeed(constraints: MediaStreamConstraints): Promise<Me
   try {
     return await navigator.mediaDevices.getUserMedia(constraints)
   } catch (err) {
+    // OverconstrainedError is almost always a stale `deviceId: { exact }` from a
+    // previously-selected mic/camera that is no longer present. Retry with the
+    // exact deviceId dropped (→ default device) while PRESERVING the original
+    // audio/video flags — never coerce video ON for an audio-only call, and never
+    // reuse the failing deviceId (which would just throw again). (issue #1)
     if ((err as Error)?.name === 'OverconstrainedError') {
+      const relax = (
+        c: boolean | MediaTrackConstraints | undefined
+      ): boolean | MediaTrackConstraints | undefined => {
+        if (!c || c === true) return c
+        const rest: MediaTrackConstraints = { ...c }
+        delete rest.deviceId
+        return Object.keys(rest).length ? rest : true
+      }
       return await navigator.mediaDevices.getUserMedia({
-        audio: constraints.audio ?? true,
-        video: true,
+        audio: relax(constraints.audio),
+        video: relax(constraints.video),
       })
     }
     throw err
@@ -541,33 +554,41 @@ export function useWebRTC(userId: string | null) {
     return socket.subscribe(async (msg) => {
       if (msg.type === 'call_invite') {
         const state = useCallStore.getState()
-        if (state.isCalling || state.incomingCall) {
-          // Busy, or already showing another incoming invite: send call_reject
-          // so the caller gets an immediate decline instead of ringing out for
-          // 30s with no busy signal. Mirrors the DND auto-reject below.
-          getFmSocket().send({ type: 'call_reject', chat_id: msg.chat_id })
-          return
-        }
-        // C-9: DND — auto-reject without showing the modal
+        const fromId = msg.from_user_id
+        // DND — auto-reject without showing the modal.
         if (state.dndEnabled) {
           getFmSocket().send({ type: 'call_reject', chat_id: msg.chat_id })
           return
         }
-        const peerId = msg.from_user_id
-        setIncomingCall({
+        // The caller sends `call_invite` and the SDP `offer` as two independent WS
+        // messages relayed on separate paths, so the offer can arrive FIRST and
+        // pre-create an incomingCall for THIS peer (with no chatId yet — see the
+        // `offer` handler below). Do NOT treat that as "busy" and reject our own
+        // call; only reject when actually in a call or ringing for a DIFFERENT
+        // peer. Otherwise MERGE the invite (chatId/isVideo) into the existing
+        // record so accept can send call_accept (issue #1: first-call failures).
+        const ringingForSamePeer =
+          !!state.incomingCall && state.incomingCall.peerId === fromId
+        if (state.isCalling || (state.incomingCall && !ringingForSamePeer)) {
+          // Busy, or already showing another incoming invite: send call_reject
+          // so the caller gets an immediate decline instead of ringing out for
+          // 30s with no busy signal. Mirrors the DND auto-reject above.
+          getFmSocket().send({ type: 'call_reject', chat_id: msg.chat_id })
+          return
+        }
+        const peerId = fromId
+        // upsert (not overwrite): preserves any offer/transport already stamped by
+        // an early offer that won the race.
+        setIncomingCall(upsertIncomingCall(state.incomingCall, {
           peerId,
           chatId: msg.chat_id,
           isVideo: msg.is_video,
-          offer: null,
-        })
+        }))
         void lookupUsers([peerId]).then(([u]) => {
           const current = useCallStore.getState().incomingCall
           if (u && current?.peerId === peerId) {
             setIncomingCall(upsertIncomingCall(current, {
               peerId,
-              chatId: msg.chat_id,
-              isVideo: msg.is_video,
-              offer: null,
               peerUsername: u.username,
             }))
           }

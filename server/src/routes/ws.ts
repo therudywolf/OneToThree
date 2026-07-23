@@ -845,6 +845,25 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             room_id,
             participant_count: participants.length,
           })
+          // When the call has JUST started (this is the first participant), also
+          // push the OFFLINE chat members so people can be pulled into a group call
+          // even when they aren't currently connected (issue #4). Mirrors the 1:1
+          // call_invite offline push above.
+          if (participants.length === 1) {
+            const groupPush = nonCallMembers
+              .filter((id) => !hasActiveSocket(id))
+              .map((id) =>
+                sendPushToUser(id, {
+                  type: 'message',
+                  title: `📞 ${user.username}`,
+                  body: 'Звонок в группе — откройте, чтобы присоединиться',
+                  url: `/?chat=${room_id}`,
+                  icon: '/icon-192.png',
+                  chat_id: room_id,
+                }).catch((err) => request.log.warn({ err, targetUserId: id }, 'ws: group_call push failed'))
+              )
+            void Promise.allSettled(groupPush)
+          }
           return
         }
 

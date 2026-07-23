@@ -60,6 +60,13 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Fallback channel for FCM notifications that arrive without a channelId.
+             The 'messages'/'calls' channels are created at startup in MainActivity
+             (issue #13). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="messages" />
     </application>
 
     <!-- Permissions -->

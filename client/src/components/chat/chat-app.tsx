@@ -868,6 +868,7 @@ export function ChatApp({
         isScreenSharing={isScreenSharing}
         onToggleScreenShare={() => void toggleScreenShare()}
         onSetQuality={setQuality}
+        peerName={peerIdentity?.username ?? undefined}
       />
       <CallMiniPlayer
         onExpand={() => useCallStore.getState().setMiniPlayer(false)}

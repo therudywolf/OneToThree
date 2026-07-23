@@ -48,6 +48,8 @@ type Props = {
   onFlipCamera: () => void
   isScreenSharing: boolean
   onToggleScreenShare: () => void
+  /** Peer's display name — shown as the remote tile label instead of a hex id (#12). */
+  peerName?: string
   onSetQuality: (level: QualityLevel) => void
 }
 
@@ -91,6 +93,7 @@ function PeerTile({
   stream,
   label,
   muted = false,
+  isLocal = false,
   remoteMicMuted = false,
   remoteCamOff = false,
   remoteScreenSharing = false,
@@ -107,6 +110,7 @@ function PeerTile({
   stream: MediaStream
   label: string
   muted?: boolean
+  isLocal?: boolean
   remoteMicMuted?: boolean
   remoteCamOff?: boolean
   remoteScreenSharing?: boolean
@@ -167,7 +171,7 @@ function PeerTile({
     }
   }
 
-  const isRemote = !label.includes('LOCAL')
+  const isRemote = !isLocal
   const _showWarnings = isRemote && (remoteMicMuted || remoteCamOff)
 
   const containerClass = layout === 'grid'
@@ -300,6 +304,7 @@ export function ActiveCallOverlay({
   isScreenSharing,
   onToggleScreenShare,
   onSetQuality,
+  peerName,
 }: Props) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
@@ -502,11 +507,11 @@ export function ActiveCallOverlay({
             <div className="relative flex-1 h-full flex flex-col">
               <div className="relative flex-1 w-full min-h-[50vh]">
                 {focusedPeerId === 'LOCAL_UNIT' ? (
-                  <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted layout={layout} />
+                  <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted isLocal layout={layout} />
                 ) : (
                   remoteEntries.filter(([id]) => id === focusedPeerId).map(([id, stream]) => (
                     <PeerTile
-                      key={id} peerId={id} stream={stream} label="REMOTE_LINK"
+                      key={id} peerId={id} stream={stream} label={peerName || 'REMOTE_LINK'}
                       remoteMicMuted={remotePeerMedia[id]?.micMuted}
                       remoteCamOff={remotePeerMedia[id]?.cameraOff}
                       remoteScreenSharing={remotePeerMedia[id]?.screenSharing}
@@ -519,7 +524,7 @@ export function ActiveCallOverlay({
 
               {/* LOCAL PIP IN FOCUS MODE */}
               {focusedPeerId !== 'LOCAL_UNIT' && (
-                 <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted onFocusToggle={() => setFocusedPeerId('LOCAL_UNIT')} layout={layout} />
+                 <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted isLocal onFocusToggle={() => setFocusedPeerId('LOCAL_UNIT')} layout={layout} />
               )}
 
               {/* FOCUS THUMBNAILS */}
@@ -528,7 +533,7 @@ export function ActiveCallOverlay({
                   {remoteEntries.map(([id, stream]) => (
                     <div key={id} className="flex-shrink-0 w-40 h-28 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
                       <PeerTile
-                        peerId={id} stream={stream} label="REMOTE_LINK"
+                        peerId={id} stream={stream} label={peerName || 'REMOTE_LINK'}
                         remoteMicMuted={remotePeerMedia[id]?.micMuted}
                         remoteCamOff={remotePeerMedia[id]?.cameraOff}
                         remoteScreenSharing={remotePeerMedia[id]?.screenSharing}
@@ -542,10 +547,10 @@ export function ActiveCallOverlay({
             </div>
           ) : (
             <div className={`grid gap-2 h-full ${getGridClass(tileCount, layout)}`}>
-              <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted onFocusToggle={() => setFocusedPeerId('LOCAL_UNIT')} layout={layout} />
+              <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted isLocal onFocusToggle={() => setFocusedPeerId('LOCAL_UNIT')} layout={layout} />
               {remoteEntries.map(([id, stream]) => (
                 <PeerTile
-                  key={id} peerId={id} stream={stream} label="REMOTE_LINK"
+                  key={id} peerId={id} stream={stream} label={peerName || 'REMOTE_LINK'}
                   remoteMicMuted={remotePeerMedia[id]?.micMuted}
                   remoteCamOff={remotePeerMedia[id]?.cameraOff}
                   remoteScreenSharing={remotePeerMedia[id]?.screenSharing}

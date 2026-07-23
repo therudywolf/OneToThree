@@ -72,13 +72,24 @@ export function useMobileViewport() {
         applyViewportVars()
       })
     }
+    // Track delayed viewport re-applies so they can be cancelled on unmount —
+    // otherwise a queued timeout can fire after unmount and write root CSS vars,
+    // briefly fighting a freshly-mounted layout (#9).
+    const timers = new Set<number>()
+    const later = (ms: number) => {
+      const id = window.setTimeout(() => {
+        timers.delete(id)
+        applyViewportVars()
+      }, ms)
+      timers.add(id)
+    }
     const onOrientation = () => {
-      window.setTimeout(applyViewportVars, 60)
-      window.setTimeout(applyViewportVars, 200)
+      later(60)
+      later(200)
     }
     const onFocus = () => applyViewportVars()
-    const onBlur = () => window.setTimeout(applyViewportVars, 80)
-    const onPageShow = () => window.setTimeout(applyViewportVars, 0)
+    const onBlur = () => later(80)
+    const onPageShow = () => later(0)
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
         applyViewportVars()
@@ -99,6 +110,8 @@ export function useMobileViewport() {
 
     return () => {
       if (raf) cancelAnimationFrame(raf)
+      for (const id of timers) window.clearTimeout(id)
+      timers.clear()
       window.removeEventListener('resize', onResize)
       window.removeEventListener('orientationchange', onOrientation)
       window.removeEventListener('focus', onFocus)

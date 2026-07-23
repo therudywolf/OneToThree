@@ -51,7 +51,13 @@ async function pullPendingForChat(
     await cacheMessage(row).catch(() => {
       /* best-effort */
     })
-    appendMessage(row)
+    // Only inject into the visible list if the user is STILL on this chat. The
+    // fetch+decrypt above can span 100ms–1s; if they switched chats meanwhile,
+    // appending here would splice THIS chat's rows into the now-open
+    // conversation (the message store is a single, chat-agnostic array) — the
+    // realtime path guards this the same way (#2). Caching/ack below are keyed
+    // by the row's own chat_id, so they proceed regardless.
+    if (useSessionStore.getState().activeChatId === chatId) appendMessage(row)
     // Don't ack a row we couldn't decrypt — leave it in /sync/pending so a
     // transient failure (DR session not ready) is retried on the next pull
     // instead of being dropped to [DECRYPT_FAIL] until the chat is reopened.

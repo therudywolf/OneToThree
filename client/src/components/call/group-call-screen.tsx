@@ -19,6 +19,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
+import { isGroupCallCameraOn, isGroupCallScreenSharing } from '@/lib/group-call-manager'
 import { useGroupCallStore, type GroupCallParticipant } from '@/store/groupCallStore'
 import { useCallStore } from '@/store/callStore'
 import { PortalRoot } from '@/components/portal-root'
@@ -270,7 +271,6 @@ export function GroupCallScreen({
   const participants = useGroupCallStore((s) => s.participants)
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
   const transport = useGroupCallStore((s) => s.transport)
-  const isVideo = useGroupCallStore((s) => s.isVideo)
   const showParticipantPanel = useGroupCallStore((s) => s.showParticipantPanel)
   const setShowParticipantPanel = useGroupCallStore((s) => s.setShowParticipantPanel)
   const deafened = useCallStore((s) => s.deafened)
@@ -278,11 +278,14 @@ export function GroupCallScreen({
 
   const [elapsed, setElapsed] = useState(0)
   const [showControls, setShowControls] = useState(true)
-  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  // Seed from the manager's LIVE media state, not from props/false — minimizing
+  // fully unmounts this screen, so on expand these must re-read the actual track
+  // state or the camera/screen-share buttons show (and toggle) the wrong/inverted
+  // state after a minimize→expand cycle (#4).
+  const [isScreenSharing, setIsScreenSharing] = useState(() => isGroupCallScreenSharing())
   // Camera state is tracked independently from the screen track — flipping the
-  // camera never reflects, and is never reflected by, screen-share. Seeded from
-  // whether the call started as a video call.
-  const [isCameraOn, setIsCameraOn] = useState(isVideo)
+  // camera never reflects, and is never reflected by, screen-share.
+  const [isCameraOn, setIsCameraOn] = useState(() => isGroupCallCameraOn())
   const [isMobileDevice, setIsMobileDevice] = useState(false)
   const [spotlightId, setSpotlightId] = useState<string | null>(null)
   // Manual pin (user clicked a tile) — the auto-spotlight effect must NOT clobber
@@ -351,6 +354,17 @@ export function GroupCallScreen({
       setSpotlightId(speaking.userId)
     }
   }, [participants, useDominantSpeaker, spotlightId])
+
+  // Release a manual pin (or any spotlight) when the pinned participant leaves,
+  // so the spotlight doesn't stay stuck on a blank "UNKNOWN" tile (#7). Never
+  // clears a self-pin (spotlightId === userId, the local user, always present).
+  useEffect(() => {
+    if (!spotlightId || spotlightId === userId) return
+    if (!participants[spotlightId] && !remoteStreams[spotlightId]) {
+      pinnedRef.current = false
+      setSpotlightId(null)
+    }
+  }, [spotlightId, participants, remoteStreams, userId])
 
   const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
   const isAudioRelay = transport === 'audio_relay'

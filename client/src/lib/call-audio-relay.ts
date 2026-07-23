@@ -156,10 +156,21 @@ export class AudioRelayPlayer {
 
   async pushFrame(pcm: Uint8Array, sampleRate: number): Promise<void> {
     if (pcm.byteLength === 0 || sampleRate <= 0) return
-    await this.context.resume().catch(() => {})
 
     const floatSamples = int16ToFloat(pcm)
     if (floatSamples.length === 0) return
+    const duration = floatSamples.length / sampleRate
+
+    // Reserve the playback slot SYNCHRONOUSLY — before the `await` below — so two
+    // frames delivered back-to-back by the async WS listener can't both read the
+    // same `nextPlayAt` and schedule overlapping/garbled buffers (#47).
+    const startAt = Math.max(
+      this.context.currentTime + PLAYBACK_JITTER_BUFFER_SEC,
+      this.nextPlayAt
+    )
+    this.nextPlayAt = startAt + duration
+
+    await this.context.resume().catch(() => {})
 
     const buffer = this.context.createBuffer(1, floatSamples.length, sampleRate)
     const channel = new Float32Array(floatSamples.length)
@@ -170,12 +181,7 @@ export class AudioRelayPlayer {
     source.buffer = buffer
     source.connect(this.bus)
 
-    const startAt = Math.max(
-      this.context.currentTime + PLAYBACK_JITTER_BUFFER_SEC,
-      this.nextPlayAt
-    )
     source.start(startAt)
-    this.nextPlayAt = startAt + buffer.duration
   }
 
   stop(): void {

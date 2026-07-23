@@ -119,9 +119,23 @@ export function useReadReceipts(
 
     scanNodes()
 
-    // [MUTATION_INTERCEPT] :: Слежка за новыми узлами в DOM
-    const monitor = new MutationObserver(() => scanNodes())
-    monitor.observe(root, { childList: true, subtree: true })
+    // [MUTATION_INTERCEPT] :: watch for newly-added message rows only.
+    // subtree:true fired scanNodes (a full O(n) querySelectorAll + observe loop)
+    // on ANY descendant change — late media decode, framer-motion attribute
+    // churn, per-second burn countdowns — pure overhead in a busy chat. Message
+    // rows are DIRECT children, so childList without subtree suffices; coalesce
+    // bursts into one rAF-batched scan (#8).
+    let scheduled = false
+    const scheduleScan = () => {
+      if (scheduled) return
+      scheduled = true
+      requestAnimationFrame(() => {
+        scheduled = false
+        scanNodes()
+      })
+    }
+    const monitor = new MutationObserver(scheduleScan)
+    monitor.observe(root, { childList: true, subtree: false })
 
     return () => {
       monitor.disconnect()

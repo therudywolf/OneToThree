@@ -204,6 +204,24 @@ const MAX_OUTBOX_AGE_MS = 24 * 60 * 60 * 1000
 /** In-memory retry state; resets on page reload (Background Sync handles persistence). */
 const retryState = new Map<string, { retries: number; nextRetry: number }>()
 
+// Single coalesced timer that re-flushes the outbox when the soonest backoff
+// elapses, so a transiently-failed send retries on schedule instead of sitting
+// idle until the next reconnect/online event despite live connectivity (#49).
+let outboxRetryTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleOutboxRetry(): void {
+  if (typeof window === 'undefined') return
+  let soonest = Infinity
+  for (const s of retryState.values()) {
+    if (s.retries < MAX_RETRIES && s.nextRetry > 0) soonest = Math.min(soonest, s.nextRetry)
+  }
+  if (!Number.isFinite(soonest)) return
+  if (outboxRetryTimer) clearTimeout(outboxRetryTimer)
+  outboxRetryTimer = setTimeout(() => {
+    outboxRetryTimer = null
+    void flushOutboxPending()
+  }, Math.max(0, soonest - Date.now()) + 50)
+}
+
 function emitOutboxTelemetry(payload: { attempted: number; sent: number; failed: number }) {
   if (typeof window === 'undefined') return
   const failRatio = payload.attempted > 0 ? payload.failed / payload.attempted : 0
@@ -298,4 +316,7 @@ export async function flushOutboxPending(): Promise<void> {
   } finally {
     flushingOutbox = false
   }
+  // Re-arm a self-paced retry so pending entries flush on their backoff schedule
+  // even if no reconnect/online event happens to fire (#49).
+  scheduleOutboxRetry()
 }

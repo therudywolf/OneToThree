@@ -242,6 +242,7 @@ class FmSocketClient {
   private refCount = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private attempt = 0
+  private consecutive1008 = 0
   private ticket: string | null = null
   private wantOpen = false
   private outboundQueue: string[] = []
@@ -320,8 +321,17 @@ class FmSocketClient {
       this.emitStatus()
       return
     }
-    // Queue outbound messages while offline; bounded to prevent unbounded memory growth.
-    if (this.outboundQueue.length >= 200) this.outboundQueue.shift()
+    // Queue outbound messages while offline; bounded to prevent unbounded memory
+    // growth. On overflow, evict the oldest NON-session-description frame so a
+    // WebRTC offer/answer (sent first, in a burst with many trickled ICE
+    // candidates) is never dropped ahead of the ICE that follows it (#6) —
+    // which would leave the reconnected peer with candidates but no offer.
+    if (this.outboundQueue.length >= 200) {
+      const evictable = this.outboundQueue.findIndex(
+        (r) => !r.includes('"kind":"offer"') && !r.includes('"kind":"answer"')
+      )
+      this.outboundQueue.splice(evictable >= 0 ? evictable : 0, 1)
+    }
     this.outboundQueue.push(raw)
     this.emitStatus()
   }
@@ -394,6 +404,7 @@ class FmSocketClient {
     ws.onopen = () => {
       if (this.ws !== ws) return
       this.attempt = 0
+      this.consecutive1008 = 0
       // Flush queued outbound payloads in FIFO order once the socket is up.
       while (this.outboundQueue.length > 0 && this.ws?.readyState === WebSocket.OPEN) {
         const raw = this.outboundQueue.shift()
@@ -433,7 +444,18 @@ class FmSocketClient {
       const m = parsed as WsInboundMessage
       this.listeners.forEach((fn) => {
         try {
-          fn(m)
+          // Listeners are async (use-webrtc / use-group-call): fn(m) returns a
+          // promise whose rejection escapes the sync try/catch as an
+          // unhandledrejection (a late answer SDP, stale ICE candidate, or a
+          // relay frame that fails to decrypt). Contain it here (#42).
+          const ret = fn(m) as unknown
+          if (ret && typeof (ret as Promise<unknown>).then === 'function') {
+            void (ret as Promise<unknown>).catch((err) => {
+              if (process.env.NODE_ENV !== 'production') {
+                console.error('[fm-socket] async listener rejected on frame', (m as { type: string }).type, err)
+              }
+            })
+          }
         } catch (err) {
           if (process.env.NODE_ENV !== 'production') {
             console.error('[fm-socket] listener threw on frame', (m as { type: string }).type, err)
@@ -450,14 +472,24 @@ class FmSocketClient {
       if (!this.wantOpen) return
       if (ev.code === 1008) {
         // Auth rejected — almost always an EXPIRED ws ticket (server TTL ~120s).
-        // The cached ticket is now stale, so invalidate and refetch instead of
-        // gating on `!this.ticket` (which looped forever reusing the dead ticket
-        // and stranded native/cookie-less clients offline until an app reload).
+        // The cached ticket is now stale, so invalidate and refetch. But do NOT
+        // reconnect with zero delay: if the ticket keeps issuing while the WS
+        // keeps rejecting (e.g. a revoked device whose cookie still fetches a
+        // ticket), scheduleConnect(0) busy-loops fetch→connect→1008 bounded only
+        // by RTT. Back off, and after a cap stop and surface re-auth (#44).
         this.ticket = null
+        this.consecutive1008 += 1
+        if (this.consecutive1008 > 8) {
+          this.wantOpen = false
+          this.emitStatus()
+          return
+        }
+        this.attempt += 1
+        const delayMs = Math.min(30_000, Math.round(1000 * 2 ** (this.attempt - 1) * (0.8 + Math.random() * 0.4)))
         void fetchWsTicket()
           .then((t) => {
             this.ticket = t
-            this.scheduleConnect(0)
+            this.scheduleConnect(delayMs)
           })
           .catch(() => {
             this.scheduleReconnect()

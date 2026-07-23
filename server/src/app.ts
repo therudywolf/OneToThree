@@ -228,8 +228,11 @@ export async function buildApp() {
     (process.env.CORS_ALLOW_MOBILE_APP ?? '1').trim() !== '0'
   const mobileCorsOrigins = allowMobileCors
     ? [
-        // Capacitor (Android/iOS) WebView origins.
-        'http://localhost',
+        // Capacitor WebView origins: Android uses https://localhost
+        // (androidScheme=https), iOS uses capacitor://localhost. Plain
+        // http://localhost is NEITHER app's origin — including it in the
+        // credentialed allowlist would let any local HTTP server on port 80
+        // make authenticated cross-origin calls, so it is intentionally omitted (#36).
         'https://localhost',
         'capacitor://localhost',
         // Tauri (desktop) WebView origins: macOS/Linux use tauri://localhost,

@@ -835,7 +835,15 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           .status(400)
           .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
       }
+    } else if (type === 'public_open' || type === 'channel') {
+      // Never force-add requester-supplied members to a public/channel chat:
+      // that injects unwanted chats into arbitrary users' chat lists without any
+      // invite/accept step (harassment/spam vector, #28). Only the creator is a
+      // member on creation; everyone else joins via the invite code / slug.
+      uniqueIds = [authId]
     } else {
+      // group_e2e: members are added by the creator with per-member wrapped keys
+      // (the E2E group flow) — consensual by construction.
       const memberSet = new Set(member_ids)
       memberSet.add(authId)
       uniqueIds = [...memberSet]

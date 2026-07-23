@@ -395,6 +395,12 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       heartbeatWs.__isAlive = true
     })
 
+    // Throttle for the per-frame session-revocation recheck below (#19): the
+    // connect path already validated the session, so start the clock now and
+    // recheck at most once per interval.
+    let lastRevalidateAt = Date.now()
+    const REVALIDATE_INTERVAL_MS = 15_000
+
     /** Handles a single parsed raw websocket frame for an authenticated user. */
     const handleMessage = (raw: unknown, user: AuthUser) => {
       void (async () => {
@@ -418,6 +424,27 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           request.log.warn({ correlationId, userId: user.id }, 'ws: rate limit exceeded')
           safeSend(ws, JSON.stringify({ type: 'error', error: 'RATE_LIMIT_EXCEEDED' }))
           return
+        }
+
+        // Session/device revocation must take effect on the realtime channel for
+        // ANY frame, not only presence_ping — a client fully controls which frames
+        // it sends and could simply never ping to dodge revocation (#19). Recheck
+        // (throttled) before dispatching any frame; close 1008 on failure.
+        {
+          const now = Date.now()
+          if (now - lastRevalidateAt >= REVALIDATE_INTERVAL_MS) {
+            lastRevalidateAt = now
+            if (sessionJti && (await isJtiDenied(sessionJti))) {
+              safeSend(ws, JSON.stringify({ type: 'error', error: 'SESSION_REVOKED' }))
+              ws.close(1008, 'session revoked')
+              return
+            }
+            if (sessionDeviceId && !(await assertDeviceActiveForUser(user.id, sessionDeviceId))) {
+              safeSend(ws, JSON.stringify({ type: 'error', error: 'DEVICE_REVOKED' }))
+              ws.close(1008, 'device revoked')
+              return
+            }
+          }
         }
 
         // chat_message frames are intentionally not accepted over WS — the
@@ -561,18 +588,20 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }
-          // FIX 10: Block check — blocked users cannot call
+          // FIX 10 + #29: Block check applies to EVERY recipient, groups too —
+          // a blocked member must not be rung (or pushed), not just in 2-member
+          // chats. Filter the fan-out/push target list by the block relationship.
           const memberIds = await getChatMemberIds(chat_id)
-          if (memberIds.length === 2) {
-            const peerId = memberIds.find((id) => id !== user.id)
-            if (peerId && await isBlocked(user.id, peerId)) {
-              safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
-              return
-            }
-          }
-          const otherIds = memberIds.filter(
-            (id) => id !== user.id
+          const candidateIds = memberIds.filter((id) => id !== user.id)
+          const blockChecked = await Promise.all(
+            candidateIds.map(async (id) => ({ id, blocked: await isBlocked(user.id, id) }))
           )
+          const otherIds = blockChecked.filter((b) => !b.blocked).map((b) => b.id)
+          if (otherIds.length === 0) {
+            // Everyone reachable is blocked (e.g. the only peer in a 1:1).
+            safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
+            return
+          }
           broadcastToUsers(otherIds, {
             type: 'call_invite',
             chat_id,
@@ -1136,8 +1165,13 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       void (async () => {
         try {
           const myChatIds = await getUserChatIds(user.id)
-          for (const chatId of myChatIds) {
-            const ids = await getRoomParticipantIds(chatId)
+          // Fan the per-chat room lookups out concurrently instead of awaiting
+          // one Redis round-trip per chat serially (#46) — a user in many chats
+          // otherwise pays N sequential round-trips on every (re)connect.
+          const rooms = await Promise.all(
+            myChatIds.map(async (chatId) => ({ chatId, ids: await getRoomParticipantIds(chatId) }))
+          )
+          for (const { chatId, ids } of rooms) {
             if (ids.length > 0 && !ids.includes(user.id)) {
               sendToUser(user.id, {
                 type: 'group_call:active',

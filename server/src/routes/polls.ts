@@ -2,8 +2,9 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { chatMembers, polls, pollVotes } from '../db/schema.js'
+import { chatMembers, chats, polls, pollVotes } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import { channelRoleAllowsPost } from '../lib/chat-permissions.js'
 import { broadcastToUsers } from '../ws/registry.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
@@ -96,13 +97,30 @@ export const pollsRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_POLL_BODY' })
     const { chat_id, question, options, allow_multiple, is_anonymous } = parsed.data
 
-    // Verify membership
+    // Verify membership + enforce chat-type rules.
     const [member] = await db
-      .select({ userId: chatMembers.userId })
+      .select({
+        userId: chatMembers.userId,
+        channelRole: chatMembers.channelRole,
+        chatType: chats.type,
+      })
       .from(chatMembers)
+      .innerJoin(chats, eq(chats.id, chatMembers.chatId))
       .where(and(eq(chatMembers.chatId, chat_id), eq(chatMembers.userId, user.id)))
       .limit(1)
     if (!member) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+
+    // Polls store question/options as PLAINTEXT (no ciphertext/iv fields), so the
+    // server must never accept them in an end-to-end-encrypted chat — that would
+    // silently escrow content the E2EE promise says the server can't read (#18).
+    if (member.chatType === 'direct_e2e' || member.chatType === 'group_e2e') {
+      return reply.status(400).send({ error: 'POLLS_NOT_SUPPORTED_IN_E2E_CHAT' })
+    }
+    // Channels are broadcast surfaces: only editors/owners may post — mirror the
+    // gate in POST /messages/send so poll creation can't bypass it (#20).
+    if (member.chatType === 'channel' && !channelRoleAllowsPost(member.channelRole ?? null)) {
+      return reply.status(403).send({ error: 'CHANNEL_SUBSCRIBERS_CANNOT_POST' })
+    }
 
     // Insert poll + its sentinel message atomically, so a crash between the
     // writes can't leave a messageId=NULL orphan poll (invisible in the
@@ -177,7 +195,9 @@ export const pollsRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    const { pollId } = request.params as { pollId: string }
+    const paramsParsed = z.object({ pollId: uuidSchema }).safeParse(request.params)
+    if (!paramsParsed.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { pollId } = paramsParsed.data
     const bodySchema = z.object({
       option_indices: z.array(z.number().int().min(0)).max(10),
     })
@@ -253,7 +273,9 @@ export const pollsRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
-    const { pollId } = request.params as { pollId: string }
+    const paramsParsed = z.object({ pollId: uuidSchema }).safeParse(request.params)
+    if (!paramsParsed.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { pollId } = paramsParsed.data
     const [poll] = await db.select().from(polls).where(eq(polls.id, pollId)).limit(1)
     if (!poll) return reply.status(404).send({ error: 'POLL_NOT_FOUND' })
 

@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
@@ -56,6 +56,13 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
 
     const { endpoint, keys } = parsed.data
 
+    // A push endpoint is device-global — it must map to exactly ONE account, or
+    // a shared/handed-over device keeps delivering a prior user's notifications
+    // (leaking chat_id + deep link). Reassign it to this user by removing any
+    // other account's row for the same endpoint before upserting ours (#21).
+    await db
+      .delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.endpoint, endpoint), ne(pushSubscriptions.userId, user.id)))
     await db
       .insert(pushSubscriptions)
       .values({
@@ -86,6 +93,9 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
     const { endpoint, keys } = parsed.data.subscription
+    await db
+      .delete(pushSubscriptions)
+      .where(and(eq(pushSubscriptions.endpoint, endpoint), ne(pushSubscriptions.userId, user.id)))
     await db
       .insert(pushSubscriptions)
       .values({ userId: user.id, endpoint, p256dh: keys.p256dh, auth: keys.auth })
@@ -125,6 +135,19 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
     const parsed = nativeRegisterBodySchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
+    // FCM/APNs registration tokens are device-global, not per-user. Reassign the
+    // token to the current account by removing any other user's row for the same
+    // (platform, token) before inserting ours, so a device signed into a new
+    // account stops receiving the previous account's push (#25).
+    await db
+      .delete(nativePushTokens)
+      .where(
+        and(
+          eq(nativePushTokens.platform, parsed.data.platform),
+          eq(nativePushTokens.token, parsed.data.token),
+          ne(nativePushTokens.userId, user.id)
+        )
+      )
     await db
       .insert(nativePushTokens)
       .values({

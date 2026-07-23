@@ -1,6 +1,10 @@
 package ru.onetothree.app;
 
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.Context;
 import android.graphics.Color;
+import android.os.Build;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
 import com.getcapacitor.BridgeActivity;
@@ -13,6 +17,8 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(DevicePermissionsPlugin.class);
     registerPlugin(KeystorePlugin.class);
     super.onCreate(savedInstanceState);
+
+    createFcmChannels();
 
     // FLAG_SECURE: block screenshots, screen-recording, and the recent-apps
     // thumbnail from capturing decrypted E2EE content. On by default — this is
@@ -32,5 +38,29 @@ public class MainActivity extends BridgeActivity {
       cookieManager.setAcceptThirdPartyCookies(getBridge().getWebView(), true);
     }
     cookieManager.flush();
+  }
+
+  /**
+   * FCM notifications from the server carry channelId "messages" / "calls"
+   * (see server/src/lib/push.ts). On Android 8+ a notification posted to a
+   * channel that was never created is silently dropped — so create them at
+   * startup (issue #13).
+   */
+  private void createFcmChannels() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+    final NotificationManager manager =
+      (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+    if (manager == null) return;
+
+    final NotificationChannel messages = new NotificationChannel(
+      "messages", "Messages", NotificationManager.IMPORTANCE_HIGH);
+    messages.setDescription("New encrypted messages");
+    manager.createNotificationChannel(messages);
+
+    final NotificationChannel calls = new NotificationChannel(
+      "calls", "Calls", NotificationManager.IMPORTANCE_HIGH);
+    calls.setDescription("Incoming calls");
+    calls.enableVibration(true);
+    manager.createNotificationChannel(calls);
   }
 }

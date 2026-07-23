@@ -407,10 +407,22 @@ export function MediaLightbox({
             src={currentMedia.url}
             controls
             className="max-h-full max-w-full object-contain border border-neon-cyan/30"
-            style={{ transform: `scale(${zoom})` }}
+            style={{
+              transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`,
+              transition: dragRef.current ? 'none' : 'transform 0.2s ease',
+              // Pan/drag only when zoomed in — at 1× the native controls (scrub,
+              // fullscreen) must work untouched (issue #14).
+              ...(zoom > 1
+                ? { touchAction: 'none' as const, cursor: dragRef.current ? 'grabbing' : 'grab' }
+                : {}),
+            }}
             autoPlay={false}
             playsInline
             onClick={(e) => e.stopPropagation()}
+            onPointerDown={zoom > 1 ? handlePointerDown : undefined}
+            onPointerMove={zoom > 1 ? handlePointerMove : undefined}
+            onPointerUp={zoom > 1 ? handlePointerUp : undefined}
+            onPointerCancel={zoom > 1 ? handlePointerUp : undefined}
           />
         )}
       </div>

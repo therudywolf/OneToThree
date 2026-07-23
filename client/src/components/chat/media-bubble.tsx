@@ -431,6 +431,34 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   }
 
   if (!objectUrl) {
+    // Files: show the card (name/size/type) IMMEDIATELY from envelope metadata
+    // while the bytes decrypt in the background, instead of a blank spinner — the
+    // download activates once ready (issue #14).
+    if (attachmentKind === 'file') {
+      const fileName = envelope?.fileName ?? mediaPath.split('/').pop() ?? 'FILE'
+      const fileExt = fileName.split('.').pop()?.toLowerCase() ?? ''
+      return (
+        <div ref={sentinelRef}>
+          <div className="p13-file-card mt-2 max-w-sm font-mono">
+            <div className="flex items-center gap-3 p-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center border border-neon-cyan/30 bg-void">
+                <FileText className="h-5 w-5 text-neon-cyan/60" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs text-text-primary">{fileName}</p>
+                <div className="flex items-center gap-2 text-[10px] text-text-muted/70">
+                  {fileExt ? <span className="uppercase">{fileExt}</span> : null}
+                  {envelope?.fileSize != null ? <span>{formatFileSize(envelope.fileSize)}</span> : null}
+                </div>
+              </div>
+              <span className="flex h-8 w-8 shrink-0 animate-pulse items-center justify-center text-neon-cyan/40" title={t('media.restoring')} aria-label={t('media.restoring')}>
+                <Download className="h-4 w-4" />
+              </span>
+            </div>
+          </div>
+        </div>
+      )
+    }
     // Sprint M1-8 — render the tiny base64 JPEG preview blurred while we
     // decrypt + decode the real image. Falls back to the text shimmer when
     // the sender's client predates the placeholder field.

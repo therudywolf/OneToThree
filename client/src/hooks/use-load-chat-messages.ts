@@ -55,7 +55,11 @@ export function useLoadChatMessages(
       }
 
       try {
-        const res = await fetch(`${API_URL}/messages/${activeChatId}`, {
+        // Ask for an initial page matching the cache seed / viewport instead of
+        // letting the server default to its 500-row max — every chat open would
+        // otherwise transfer + decrypt up to 500 ciphertext rows (ECDH/DR/IndexedDB
+        // work) for a UI that shows far fewer; scroll-back paginates older ones (#48).
+        const res = await fetch(`${API_URL}/messages/${activeChatId}?limit=75`, {
           credentials: 'include',
         })
         if (!res.ok) {

@@ -158,6 +158,11 @@ export function useWebRTC(userId: string | null) {
   const recentCallPeerRef = useRef<{ peerId: string; until: number } | null>(null)
   const relayAwaitingAnswerRef = useRef(new Set<string>())
   const p2pFallbackStartedRef = useRef(new Set<string>())
+  // Grab the (stable) store actions via getState() — NOT a selectorless
+  // `useCallStore()`, which subscribes this hook (mounted in the ~1600-line
+  // ChatApp root) to the ENTIRE call store and re-renders the whole chat tree on
+  // every call-store mutation, e.g. the 5s connection-quality poll during a call
+  // (#1/#3). Zustand actions never change identity, so this needs no subscription.
   const {
     setIncomingCall, reset: resetCallStore, addPeerConnection,
     removePeerConnection, setRemoteStream, removeRemoteStream,
@@ -167,7 +172,7 @@ export function useWebRTC(userId: string | null) {
     setPeerConnectionType, clearPeerConnectionType,
     setCallStartTime, setMiniPlayer: _setMiniPlayer,
     setCallChatId,
-  } = useCallStore()
+  } = useCallStore.getState()
 
   const resolveRelaySharedKey = useCallback(async (peerId: string): Promise<CryptoKey | null> => {
     const cached = relayKeysRef.current.get(peerId)

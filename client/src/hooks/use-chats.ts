@@ -15,7 +15,6 @@ const CHATS_RELOAD_DEBOUNCE_MS = 350
 export function useChats(userId: string | null) {
   const [chats, setChats] = useState<ApiChatRow[]>([])
   const [initialLoading, setInitialLoading] = useState(true)
-  const activeChatId = useSessionStore((s) => s.activeChatId)
   const seedUnreadFromApi = useUnreadStore((s) => s.seedUnreadFromApi)
 
   const reload = useCallback(async () => {
@@ -43,7 +42,12 @@ export function useChats(userId: string | null) {
     } finally {
       setInitialLoading(false)
     }
-  }, [userId, activeChatId, seedUnreadFromApi])
+    // NOTE: activeChatId is intentionally NOT a dependency — it's read live via
+    // useSessionStore.getState() above, so including it would rebuild `reload`
+    // (and refire the mount + socket effects) on every chat switch, causing a
+    // full chat-list refetch + re-decrypt and a WS listener churn per navigation
+    // (#43). Only userId / a chats_updated event should trigger a reload.
+  }, [userId, seedUnreadFromApi])
 
   useEffect(() => {
     void reload()

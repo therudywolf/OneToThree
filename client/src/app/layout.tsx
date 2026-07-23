@@ -8,6 +8,7 @@ import { CapabilitiesProvider } from '@/components/capabilities-provider'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { SilenceConsole as _SilenceConsole } from '@/components/silence-console'
 import { RecoveryHandler } from '@/components/recovery-handler'
+import { ServiceWorkerRegistrar } from '@/components/service-worker-registrar'
 import { NativeDeepLink } from '@/components/native-deep-link'
 import { ThemeApplicator } from '@/components/theme-applicator'
 import { ToastHost } from '@/components/toast-host'
@@ -164,6 +165,10 @@ export default function RootLayout({
         {/* <SilenceConsole /> // Disabled for active signal debugging */}
         <RecoveryHandler />
 
+        {/* [1a] PWA_SERVICE_WORKER :: eager registration (App Router — next-pwa's
+            auto-register never runs here). Enables install / offline / push. */}
+        <ServiceWorkerRegistrar />
+
         {/* [1b] DEEP_LINK_ROUTER :: native App Links / custom scheme → in-app routes */}
         <NativeDeepLink />
 
@@ -175,14 +180,14 @@ export default function RootLayout({
             <Auth401Interceptor>
               
               {/* [3] VISUAL_INTERFACE_LAYER (CRT_AESTHETIC) */}
-              <div className="crt-overlay pointer-events-none fixed inset-0 z-[100]" aria-hidden />
+              <div className="crt-overlay motion-reduce:hidden pointer-events-none fixed inset-0 z-[100]" aria-hidden />
               
               <div className="crt-vignette relative z-10 flex min-h-dvh flex-col supports-[height:100dvh]:min-h-[100dvh]">
                 {children}
               </div>
 
               {/* [4] NOISE_TEXTURE :: Стерильный визуальный шум */}
-              <div className="pointer-events-none fixed inset-0 z-0 opacity-[0.02] bg-[url('/noise.svg')]" />
+              <div className="motion-reduce:hidden pointer-events-none fixed inset-0 z-0 opacity-[0.02] bg-[url('/noise.svg')]" />
 
               {/* [5] NOTIFICATION_LAYER :: System-wide toast host */}
               <ToastHost />

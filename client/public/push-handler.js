@@ -2,7 +2,11 @@
 const SHELL_CACHE = 'p13-shell-v2'
 const RUNTIME_CACHE = 'p13-runtime-v2'
 const OFFLINE_FALLBACK_URL = '/offline.html'
-const SHELL_ASSETS = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/wolf-logo.png', OFFLINE_FALLBACK_URL]
+// NOTE: '/' is deliberately NOT precached — at install time it can be an
+// auth 307 to /login, and cache.addAll follows redirects, which would pin the
+// LOGIN page as the cached app shell. Offline navigations fall back to
+// /offline.html instead (issue #10).
+const SHELL_ASSETS = ['/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/wolf-logo.png', OFFLINE_FALLBACK_URL]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -31,9 +35,21 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
   if (
     event.request.method !== 'GET' ||
-    event.request.method === 'PUT' ||
     url.searchParams.has('X-Amz-Signature') ||
     url.searchParams.has('X-Amz-Algorithm')
+  ) {
+    return
+  }
+
+  // Never intercept API or RSC requests: they MUST hit the network so auth state
+  // (/api/auth/me), chat lists and RSC payloads are never served stale. Caching
+  // them here re-created the "stuck not-logged-in" bug that /reset-pwa exists to
+  // rescue. Fall through to the Workbox NetworkOnly rules (issue #10).
+  if (
+    url.origin === self.location.origin &&
+    (url.pathname.startsWith('/api/') ||
+      url.searchParams.has('_rsc') ||
+      url.searchParams.has('__rsc'))
   ) {
     return
   }
@@ -45,8 +61,12 @@ self.addEventListener('fetch', (event) => {
       if (isDocument) {
         try {
           const fresh = await fetch(event.request)
-          const runtime = await caches.open(RUNTIME_CACHE)
-          runtime.put(event.request, fresh.clone())
+          // Don't cache auth-redirected / error documents (e.g. / → /login): a
+          // cached login redirect pins the offline shell on the login screen.
+          if (fresh.ok && !fresh.redirected) {
+            const runtime = await caches.open(RUNTIME_CACHE)
+            runtime.put(event.request, fresh.clone())
+          }
           return fresh
         } catch {
           const cachedDoc = await caches.match(event.request)

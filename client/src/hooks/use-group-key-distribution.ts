@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { useSessionStore } from '@/store/sessionStore'
 import {
   fetchChatDetail,
+  fetchChatsList,
   uploadMemberWrappedGroupKey,
 } from '@/lib/api/chats'
 import {
@@ -81,7 +82,53 @@ async function rotateGroupKeyIfStale(
 }
 
 /**
- * Three-part hook:
+ * Owner-only: deliver our CURRENT sector key to any member of `chatId` who is
+ * missing it or is behind our key's epoch. Unlike the active-chat scan this takes
+ * an explicit chatId and unwraps our own stored key (it does not depend on the
+ * active chat's in-memory cryptoCtx), so it can reconcile ANY group we own.
+ * Returns true if at least one member was (re)keyed. Idempotent — members already
+ * on our epoch are skipped, so repeat calls don't churn.
+ */
+async function reconcileGroupKeysForChat(
+  chatId: string,
+  myUserId: string,
+  myPrivKey: CryptoKey
+): Promise<boolean> {
+  const detail = await fetchChatDetail(chatId)
+  if (detail.chat.my_role !== 'owner') return false
+  const me = detail.members.find((m) => m.user_id === myUserId)
+  if (!me?.encrypted_group_key) return false
+  const myEpoch = readStoredSectorKeyEpoch(me.encrypted_group_key) ?? 0
+
+  let groupKey: CryptoKey | null = null
+  let delivered = false
+  for (const m of detail.members) {
+    if (m.user_id === myUserId) continue
+    if (!m.ecdh_public_key_jwk) continue
+    const stored = m.encrypted_group_key
+      ? readStoredSectorKeyEpoch(m.encrypted_group_key)
+      : null
+    const needsKey = stored === null || stored < myEpoch
+    if (!needsKey) continue
+    // Unwrap our own key lazily — only once, and only when someone needs it.
+    if (!groupKey) {
+      groupKey = await unwrapGroupKeyFromStoredPayload(myPrivKey, me.encrypted_group_key)
+    }
+    const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
+      myPrivKey,
+      m.ecdh_public_key_jwk,
+      groupKey,
+      undefined,
+      myEpoch
+    )
+    await uploadMemberWrappedGroupKey(chatId, m.user_id, wrapped)
+    delivered = true
+  }
+  return delivered
+}
+
+/**
+ * Four-part hook:
  *
  * 1. On active-chat open: (a) rotate the sector key if a member departed while
  *    we were away (owner only, epoch-driven), then (b) scan for members without
@@ -93,6 +140,11 @@ async function rotateGroupKeyIfStale(
  * 3. On `group_key_epoch` WS event (a member was kicked/left): the owner mints a
  *    fresh sector key and redistributes it, so the departed member can no longer
  *    read traffic sent after their departure.
+ *
+ * 4. On mount and every socket (re)connect: reconcile keys for ALL owned groups,
+ *    so a member added while the owner was offline (the live `member_joined` has
+ *    no offline queue) is keyed as soon as the owner comes back online — without
+ *    needing to open that specific chat.
  */
 export function useGroupKeyDistribution(
   cryptoCtx: ChatCryptoContext | null,
@@ -102,6 +154,13 @@ export function useGroupKeyDistribution(
   const userId = useSessionStore((s) => s.userId)
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const busyRef = useRef(false)
+  // Part-4 refs — kept render-stable so the owned-group reconnect scan fires ONLY
+  // on mount and a true offline→online edge, never on every chat switch (reloadChats
+  // gets a fresh identity per activeChatId change and must not re-arm the effect).
+  const reloadChatsRef = useRef(reloadChats)
+  reloadChatsRef.current = reloadChats
+  const reconcileRunningRef = useRef(false)
+  const wasConnectedRef = useRef(false)
 
   // Part 1: on active-chat open — rotate the sector key if it is stale (a member
   // departed while we were away), otherwise deliver our current key to members
@@ -215,4 +274,56 @@ export function useGroupKeyDistribution(
     })
     return off
   }, [userId, unwrappedPrivateKey, reloadChats])
+
+  // Part 4: on mount and on every socket (re)connect, reconcile group keys for ALL
+  // groups we own. A member added while the owner was OFFLINE never received the
+  // live `member_joined` event (it has no offline queue), so their key stays null
+  // and they see an empty chat forever. Delivering on reconnect makes the owner
+  // catch up regardless of which chat is open. Owner-only and idempotent.
+  useEffect(() => {
+    if (!userId || !unwrappedPrivateKey) return
+    const priv = unwrappedPrivateKey
+    let cancelled = false
+    // Reset the edge-detector for THIS (userId/key) subscription so a fresh login
+    // reconciles once; the refs keep it stable across unrelated re-renders — a chat
+    // switch no longer re-runs this effect (deps are now stable).
+    wasConnectedRef.current = false
+
+    const reconcileAll = async () => {
+      if (reconcileRunningRef.current || cancelled) return
+      reconcileRunningRef.current = true
+      try {
+        const chats = await fetchChatsList()
+        if (cancelled) return
+        let any = false
+        for (const c of chats) {
+          if (cancelled) return
+          if (!c.is_group || c.type === 'channel' || c.my_role !== 'owner') continue
+          try {
+            if (await reconcileGroupKeysForChat(c.id, userId, priv)) any = true
+          } catch (e) {
+            console.warn('>> [SYS.SECTOR] key reconcile failed for chat', c.id, e)
+          }
+        }
+        if (any && !cancelled) reloadChatsRef.current()
+      } catch (e) {
+        console.warn('>> [SYS.SECTOR] owned-group key reconcile scan failed', e)
+      } finally {
+        reconcileRunningRef.current = false
+      }
+    }
+
+    const socket = getFmSocket()
+    // subscribeStatus fires immediately with the current state and again on every
+    // connect/disconnect; run the scan only on a false→true (offline→online) edge.
+    const off = socket.subscribeStatus(() => {
+      const nowConnected = socket.connected
+      if (nowConnected && !wasConnectedRef.current) void reconcileAll()
+      wasConnectedRef.current = nowConnected
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [userId, unwrappedPrivateKey])
 }

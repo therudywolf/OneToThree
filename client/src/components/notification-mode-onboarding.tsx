@@ -40,7 +40,7 @@ export function NotificationModeOnboarding({ open, onDone }: Props) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="notif-mode-onboarding-title"
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-[color-mix(in_srgb,var(--void)_65%,transparent)] p-4"
+      className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-[color-mix(in_srgb,var(--void)_65%,transparent)] p-4"
     >
       <div className="w-full max-w-xl border border-border-strong bg-surface p-5">
         <h3 id="notif-mode-onboarding-title" className="text-sm font-semibold text-text-primary">{t('settings.notificationModeTitle')}</h3>

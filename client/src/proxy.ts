@@ -19,7 +19,10 @@ const STATIC_ASSETS_RE = /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml)
 
 /** [PROBE_BYPASS] :: Фильтрация системного шума */
 function isBypassPath(pathname: string): boolean {
-  if (pathname === '/favicon.ico' || pathname === '/icon.png' || pathname === '/manifest.webmanifest' || pathname === '/sw.js') return true
+  // /offline.html must bypass the auth gate: the service worker precaches it at
+  // install time, and a 307→/login would cache the LOGIN page under the offline
+  // fallback key (issue #10).
+  if (pathname === '/favicon.ico' || pathname === '/icon.png' || pathname === '/manifest.webmanifest' || pathname === '/sw.js' || pathname === '/offline.html') return true
   if (BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return true
   return STATIC_ASSETS_RE.test(pathname)
 }
@@ -36,12 +39,14 @@ function resolveApiBase(request: NextRequest): string {
 }
 
 /** [AUTH_SCAN] :: Верификация сессии через API шлюз */
-async function verifySessionLock(request: NextRequest): Promise<boolean> {
+type SessionLock = 'authed' | 'unauthed' | 'unknown'
+
+async function verifySessionLock(request: NextRequest): Promise<SessionLock> {
   const token = request.cookies.get(SESSION_COOKIE)?.value
-  if (!token) return false
+  if (!token) return 'unauthed'
 
   const cookieHeader = request.headers.get('cookie')
-  if (!cookieHeader) return false
+  if (!cookieHeader) return 'unauthed'
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), 800)
@@ -54,11 +59,15 @@ async function verifySessionLock(request: NextRequest): Promise<boolean> {
       signal: controller.signal,
     })
     clearTimeout(timeoutId)
-    return res.ok
+    if (res.ok) return 'authed'
+    // Only an explicit auth rejection means logged-out; a 5xx is inconclusive.
+    if (res.status === 401 || res.status === 403) return 'unauthed'
+    return 'unknown'
   } catch (error) {
     clearTimeout(timeoutId)
-    console.warn(`>> [SYS.GATEWAY] AUTH_SCAN_ABORTED: ${error instanceof Error ? error.message : 'TIMEOUT'}`)
-    return false
+    // Network error / 800ms timeout: INCONCLUSIVE — do NOT log the user out.
+    console.warn(`>> [SYS.GATEWAY] AUTH_SCAN_INCONCLUSIVE: ${error instanceof Error ? error.message : 'TIMEOUT'}`)
+    return 'unknown'
   }
 }
 
@@ -73,18 +82,33 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // RSC soft-navigations / prefetches: skip the blocking auth probe (it added up
+  // to 800ms per in-app navigation) and never redirect them — the client owns
+  // auth for these, and bouncing an RSC request to /login corrupts the router
+  // cache. Let them through untouched (issue #10).
+  const isRsc =
+    request.headers.get('rsc') === '1' ||
+    request.headers.has('next-router-prefetch') ||
+    request.nextUrl.searchParams.has('_rsc')
+  if (isRsc) {
+    return NextResponse.next()
+  }
+
   const isPublic =
     PUBLIC_PATHS.has(pathname) ||
     PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))
 
   // Skip the auth probe for public paths — saves a round-trip per
   // request and keeps /legal/* reachable without DB / API access.
-  const isAuthed = isPublic ? false : await verifySessionLock(request)
+  const lock: SessionLock = isPublic ? 'unauthed' : await verifySessionLock(request)
+  const isAuthed = lock === 'authed'
 
   let response = NextResponse.next()
 
-  // Маршрутизация по состоянию доступа
-  if (!isAuthed && !isPublic) {
+  // Redirect to /login ONLY when the session is DEFINITIVELY invalid. On an
+  // inconclusive probe (API slow/unreachable) fail open so a valid session is
+  // never bounced to /login by a transient timeout (issue #10).
+  if (!isPublic && lock === 'unauthed') {
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
     loginUrl.search = pathname === '/' ? '' : `?next=${encodeURIComponent(`${pathname}${search}`)}`

@@ -73,6 +73,29 @@ function toUint8(b64: string): Uint8Array {
 
 export const getVapidPublicKey = () => process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
+/**
+ * Build-time key with a runtime fallback: builds shipped without
+ * NEXT_PUBLIC_VAPID_PUBLIC_KEY (e.g. a self-host rebuild that skipped the env)
+ * ask the server, which already exposes the key at /push/vapid-public-key —
+ * the SW's pushsubscriptionchange handler uses the same endpoint (issue #10).
+ */
+async function resolveVapidPublicKey(): Promise<string | null> {
+  const fromBuild = getVapidPublicKey()
+  if (fromBuild) return fromBuild
+  try {
+    const res = await fetchWithTimeout(`${API_URL}/push/vapid-public-key`, {
+      credentials: 'include',
+    })
+    if (!res.ok) return null
+    const d = (await res.json().catch(() => null)) as
+      | { vapid_public_key?: string; key?: string }
+      | null
+    return d?.vapid_public_key || d?.key || null
+  } catch {
+    return null
+  }
+}
+
 /** [WARN_LOG] :: Проверка наличия ключа в сборке */
 export function warnIfVapidPublicKeyMissing(): void {
   if (typeof window !== 'undefined' && !getVapidPublicKey()) {
@@ -287,9 +310,9 @@ export async function subscribeUserPush(): Promise<void> {
     await subscribeNativePush()
     return
   }
-  const vapid = getVapidPublicKey()
-  if (!vapid) throw new Error('WEB_PUSH_UNSUPPORTED')
   if (!supportsWebPush()) throw new Error('WEB_PUSH_UNSUPPORTED')
+  const vapid = await resolveVapidPublicKey()
+  if (!vapid) throw new Error('WEB_PUSH_UNSUPPORTED')
 
   const authority = await requestInterceptAuthority()
   if (authority !== 'granted') throw new Error('NOTIFICATION_DENIED')

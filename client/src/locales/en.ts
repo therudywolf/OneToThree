@@ -59,6 +59,7 @@ const en = {
   // [MEDIA]
   'media.loading': 'Loading...',
   'media.download': 'Download',
+  'media.fullscreen': 'Fullscreen',
   'media.permissionDenied': 'Camera and microphone blocked. Check device permissions (HTTPS required).',
 
   'call.openChannels': 'Calls',
@@ -104,6 +105,9 @@ const en = {
   'call.audioRelayFallback': 'Direct media path unavailable. Switching to encrypted audio relay.',
   'call.activePeer': 'Active call',
   'call.returnToCall': 'Return to call',
+  'call.minimize': 'Minimize',
+  'call.deafen': 'Deafen',
+  'call.undeafen': 'Undeafen',
   'call.dndOn': 'Enable Do Not Disturb (auto-decline calls)',
   'call.dndOff': 'Disable Do Not Disturb',
   'call.missedAudio': 'Missed call',

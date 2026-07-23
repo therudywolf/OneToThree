@@ -12,6 +12,7 @@
 
 import { getFmSocket } from '@/lib/api/socket'
 import { useGroupCallStore } from '@/store/groupCallStore'
+import { useCallStore } from '@/store/callStore'
 import type { GroupCallParticipant as _GroupCallParticipant } from '@/store/groupCallStore'
 import { getIceServers,
   normalizeIceServers,
@@ -407,6 +408,9 @@ function cleanupAll() {
 
   // Reset store
   store.reset()
+  // Deafen is a shared call flag (callStore) — clear it so the next call isn't
+  // silently started deafened.
+  useCallStore.getState().setDeafened(false)
 }
 
 async function joinGroupAudioRelayCall(roomId: string): Promise<boolean> {

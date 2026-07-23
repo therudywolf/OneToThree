@@ -13,7 +13,7 @@ import { MediaEvictedPlaceholder } from '@/components/chat/media-evicted-placeho
 import { useTranslation } from '@/hooks/use-translation'
 import { classifyAttachment, parseAlbumEnvelope, parseAttachmentEnvelope } from '@/lib/attachment-envelope'
 import type { DecryptedMessage } from '@/types/chat'
-import { SkipBack, SkipForward, FileText, Download } from 'lucide-react'
+import { SkipBack, SkipForward, FileText, Download, Maximize2 } from 'lucide-react'
 import { AlbumBubble } from '@/components/chat/album-bubble'
 
 async function encryptWithExistingIv(
@@ -209,7 +209,21 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
   const [serverEvicted, setServerEvicted] = useState(false)
   const [restoring, setRestoring] = useState(false)
 
-  const barHeights = useMemo(() => barHeightsFromId(message.id, 28), [message.id])
+  // Prefer the real record-time waveform (envelope.waveform, 0–100 ints) when
+  // present; fall back to the id-seeded pseudo-bars for legacy messages (#11).
+  const barHeights = useMemo(() => {
+    const wf = envelope?.waveform
+    if (wf && wf.length > 0) {
+      return wf.map((v) => Math.max(0.12, Math.min(1, v / 100)))
+    }
+    return barHeightsFromId(message.id, 28)
+  }, [envelope?.waveform, message.id])
+  // Duration captured at record time — authoritative for display/progress so the
+  // length shows correctly on first paint (WebM `el.duration` is Infinity until a
+  // seek-to-end hack). el.duration only refines it once known (#11).
+  const envDurationSec =
+    envelope?.durationMs && envelope.durationMs > 0 ? envelope.durationMs / 1000 : 0
+  const shownDuration = duration > 0 ? duration : envDurationSec
 
   useEffect(() => {
     const el = sentinelRef.current
@@ -483,6 +497,13 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               type: 'image',
               mimeType: effectiveMime,
             })}
+            onError={(e) => {
+              // A failed decrypt/decode used to leave a phantom invisible tile
+              // (opacity 0.01; onLoad never fires). Make it visible + dimmed so
+              // the failure is obvious rather than a blank clickable tile (#14).
+              e.currentTarget.style.opacity = '1'
+              e.currentTarget.style.filter = 'grayscale(0.6) brightness(0.7)'
+            }}
             onLoad={(e) => {
               const img = e.currentTarget
               img.style.opacity = '1'
@@ -548,9 +569,11 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             }}
             onTimeUpdate={() => {
               const el = audioRef.current
-              if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return
+              if (!el) return
               setCurrentSec(el.currentTime)
-              setProgress((el.currentTime / el.duration) * 100)
+              const total =
+                Number.isFinite(el.duration) && el.duration > 0 ? el.duration : envDurationSec
+              if (total > 0) setProgress((el.currentTime / total) * 100)
             }}
           />
           <div className="flex items-center gap-2">
@@ -628,7 +651,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
               })}
             </div>
             <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/70">
-              {formatTime(currentSec)} / {formatTime(duration)}
+              {formatTime(currentSec)} / {formatTime(shownDuration)}
             </span>
             <a
               href={objectUrl}
@@ -719,7 +742,11 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                   if (!el) return
                   if (Number.isFinite(el.duration) && el.duration > 0) {
                     setDuration(el.duration)
-                  } else {
+                  } else if (envDurationSec <= 0) {
+                    // Legacy circle (no record-time metadata): force the browser to
+                    // compute the real duration once (WebM reports Infinity). New
+                    // circles skip this — envDurationSec drives display/progress and
+                    // the seek would fight the autoPlay+loop and reset the ring (#11).
                     el.currentTime = 1e10
                   }
                 }}
@@ -728,14 +755,15 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                   if (!el) return
                   if (Number.isFinite(el.duration) && el.duration > 0) {
                     setDuration(el.duration)
-                    if (el.currentTime > el.duration) el.currentTime = 0
                   }
                 }}
                 onTimeUpdate={() => {
                   const el = videoRef.current
-                  if (!el || !Number.isFinite(el.duration) || el.duration <= 0) return
+                  if (!el) return
                   setCurrentSec(el.currentTime)
-                  setProgress((el.currentTime / el.duration) * 100)
+                  const total =
+                    Number.isFinite(el.duration) && el.duration > 0 ? el.duration : envDurationSec
+                  if (total > 0) setProgress((el.currentTime / total) * 100)
                 }}
               />
             </motion.div>
@@ -757,11 +785,11 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
                 </button>
                 {videoNoteExpanded ? (
                   <span className="shrink-0 font-mono text-[9px] tabular-nums text-neon-cyan/70">
-                    {formatTime(currentSec)} / {formatTime(duration)}
+                    {formatTime(currentSec)} / {formatTime(shownDuration)}
                   </span>
                 ) : (
-                  <span className="font-mono text-[9px] text-neon-cyan/50 tracking-widest">
-                    CIRCLE_VID
+                  <span className="font-mono text-[9px] text-neon-cyan/50 tracking-widest tabular-nums">
+                    {shownDuration > 0 ? formatTime(shownDuration) : 'CIRCLE'}
                   </span>
                 )}
               </div>
@@ -784,27 +812,37 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
     return (
       <div>
         <div className="p13-video-card mt-2 max-w-md p-1" style={{ aspectRatio: '16/9' }}>
+          {/* Real inline player: native controls (usable — no click-to-lightbox
+              fighting them) and unmuted so it has sound. Fullscreen is a separate
+              explicit button below (issue #14). */}
           <video
             ref={videoRef}
             src={objectUrl}
-            className="aspect-video w-full cursor-pointer bg-void object-contain"
+            className="aspect-video w-full bg-void object-contain"
             playsInline
-            muted
             autoPlay={false}
             controls
             preload="metadata"
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          {restoreControl}
+          <button
+            type="button"
             onClick={() => onMediaClick?.({
               id: message.id,
               url: objectUrl,
               type: 'video',
               mimeType: effectiveMime,
             })}
-          />
-        </div>
-        <div className="mt-2 flex flex-wrap justify-end gap-2">
-          {restoreControl}
+            className="p13-media-action-btn flex h-8 items-center gap-1 px-2 font-mono text-[9px] uppercase tracking-widest"
+            title={t('media.fullscreen')}
+          >
+            <Maximize2 className="h-3 w-3" />
+            {t('media.fullscreen')}
+          </button>
           <a
             href={objectUrl}
             download={displayName}

@@ -67,6 +67,8 @@ type Props = {
       kind?: AttachmentKind
       sendOriginal?: boolean
       burn_duration_secs?: number | null
+      durationMs?: number
+      waveform?: number[]
     }
   ) => Promise<void>
   sendAlbum?: (
@@ -404,6 +406,8 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
           fileName: labelName,
           kind,
           burn_duration_secs: makeBurnDuration(burnTimerSecs),
+          durationMs: result.durationMs,
+          waveform: result.waveform,
         }
       )
       // D6 — consume the armed burn timer after a media send, mirroring the

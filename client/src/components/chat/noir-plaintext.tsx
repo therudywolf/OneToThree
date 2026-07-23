@@ -5,7 +5,6 @@ import emojiRegex from 'emoji-regex'
 import { Copy, Check } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
 import { sanitizeText } from '@/lib/sanitize'
-import { API_URL } from '@/lib/api/auth'
 
 type Props = {
   text: string
@@ -74,52 +73,10 @@ function InlineCode({ code }: { code: string }) {
   )
 }
 
-function LinkPreviewCard({ url }: { url: string }) {
-  const [meta, setMeta] = useState<{ title?: string; description?: string; image?: string } | null>(null)
-  const [loaded, setLoaded] = useState(false)
-
-  React.useEffect(() => {
-    if (loaded) return
-    setLoaded(true)
-    // Attempt to fetch OG meta via a lightweight proxy/api — gracefully degrade
-    const controller = new AbortController()
-    void fetch(`${API_URL}/link-preview?url=${encodeURIComponent(url)}`, {
-      signal: controller.signal,
-      credentials: 'include',
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (d && (d.title || d.description || d.image)) {
-          setMeta(d as { title?: string; description?: string; image?: string })
-        }
-      })
-      .catch(() => { /* graceful degrade — no preview */ })
-    return () => controller.abort()
-  }, [url, loaded])
-
-  if (!meta) return null
-
-  return (
-    <div className="mt-1 flex gap-2 border border-neon-cyan/20 bg-void/80 p-2 max-w-xs">
-      {meta.image ? (
-        <img
-          src={meta.image}
-          alt=""
-          className="h-12 w-12 shrink-0 object-cover border border-neon-cyan/10"
-          loading="lazy"
-        />
-      ) : null}
-      <div className="min-w-0 flex-1">
-        {meta.title ? (
-          <p className="truncate font-mono text-[10px] text-neon-cyan/80">{meta.title}</p>
-        ) : null}
-        {meta.description ? (
-          <p className="line-clamp-2 font-mono text-[8px] text-text-muted leading-relaxed">{meta.description}</p>
-        ) : null}
-      </div>
-    </div>
-  )
-}
+// The inline per-URL preview card was removed here: message-row.tsx already
+// renders exactly ONE canonical <LinkPreviewCard> per message (with video-embed
+// detection + a shared fetch cache), so this duplicate second card — which
+// re-fetched on every mount and had no embed support — is gone (issue #14).
 
 function SpoilerSpan({ text: spoilerText }: { text: string }) {
   const [revealed, setRevealed] = useState(false)
@@ -169,7 +126,6 @@ function LinkSpan({ url }: { url: string }) {
       >
         {cleanUrl}
       </a>
-      <LinkPreviewCard url={cleanUrl} />
     </span>
   )
 }

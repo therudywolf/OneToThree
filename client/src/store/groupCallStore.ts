@@ -39,6 +39,9 @@ export type GroupCallState = {
   showParticipantPanel: boolean
   showChatPanel: boolean
   isMiniPlayer: boolean
+  /** Epoch ms when the group call started — held in the store so the in-call
+   *  timer survives minimize→expand remounts instead of resetting to 00:00 (#12). */
+  callStartTime: number | null
   activeCallBanner: Record<string, number> // roomId -> participant count for rooms with active calls
 
   // [ACTIONS]
@@ -58,6 +61,7 @@ export type GroupCallState = {
   setShowParticipantPanel: (show: boolean) => void
   setShowChatPanel: (show: boolean) => void
   setIsMiniPlayer: (mini: boolean) => void
+  setCallStartTime: (t: number | null) => void
   setActiveCallBanner: (roomId: string, count: number) => void
   clearActiveCallBanner: (roomId: string) => void
   reset: () => void
@@ -76,6 +80,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   showParticipantPanel: false,
   showChatPanel: false,
   isMiniPlayer: false,
+  callStartTime: null,
   activeCallBanner: {},
 
   setIsInGroupCall: (active) => set({ isInGroupCall: active }),
@@ -114,6 +119,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   setShowParticipantPanel: (show) => set({ showParticipantPanel: show }),
   setShowChatPanel: (show) => set({ showChatPanel: show }),
   setIsMiniPlayer: (mini) => set({ isMiniPlayer: mini }),
+  setCallStartTime: (t) => set({ callStartTime: t }),
   setActiveCallBanner: (roomId, count) =>
     set((s) => ({ activeCallBanner: { ...s.activeCallBanner, [roomId]: count } })),
   clearActiveCallBanner: (roomId) =>
@@ -150,6 +156,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
       showParticipantPanel: false,
       showChatPanel: false,
       isMiniPlayer: false,
+      callStartTime: null,
     })
   },
 }))

@@ -10,15 +10,17 @@ import {
   Video,
   VideoOff,
   Users,
-  MoreVertical,
-  Hand,
   Radio,
   X,
+  Minimize2,
+  Headphones,
+  HeadphoneOff,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { useGroupCallStore, type GroupCallParticipant } from '@/store/groupCallStore'
+import { useCallStore } from '@/store/callStore'
 import { PortalRoot } from '@/components/portal-root'
 import { useTranslation } from '@/hooks/use-translation'
 
@@ -82,17 +84,18 @@ function ParticipantTile({
     const a = audioRef.current
     if (!stream) return
 
+    // Remote audio is played by the always-mounted CallAudioSink (survives
+    // minimize — see components/call/call-audio-sink.tsx). Tiles render VIDEO
+    // only and stay muted to avoid double audio.
     if (hasVideo && v) {
       v.srcObject = stream
       void v.play().catch(() => {})
-      if (a) {
-        a.srcObject = null
-        a.pause()
-      }
-    } else if (!hasVideo && a && !isLocal) {
-      a.srcObject = stream
-      void a.play().catch(() => {})
-      if (v) v.srcObject = null
+    } else if (v) {
+      v.srcObject = null
+    }
+    if (a) {
+      a.srcObject = null
+      a.pause()
     }
 
     return () => {
@@ -102,7 +105,7 @@ function ParticipantTile({
         a.pause()
       }
     }
-  }, [stream, hasVideo, isLocal])
+  }, [stream, hasVideo])
 
   const speakingBorder = isSpeaking
     ? 'border-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.3)]'
@@ -122,9 +125,9 @@ function ParticipantTile({
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isLocal}
+          muted
           controls={false}
-          className={`w-full h-full object-cover filter contrast-110 ${
+          className={`w-full h-full object-cover ${
             isLocal ? 'transform scale-x-[-1]' : ''
           }`}
         />
@@ -270,9 +273,10 @@ export function GroupCallScreen({
   const isVideo = useGroupCallStore((s) => s.isVideo)
   const showParticipantPanel = useGroupCallStore((s) => s.showParticipantPanel)
   const setShowParticipantPanel = useGroupCallStore((s) => s.setShowParticipantPanel)
+  const deafened = useCallStore((s) => s.deafened)
+  const setDeafened = useCallStore((s) => s.setDeafened)
 
   const [elapsed, setElapsed] = useState(0)
-  const startRef = useRef(Date.now())
   const [showControls, setShowControls] = useState(true)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   // Camera state is tracked independently from the screen track — flipping the
@@ -281,17 +285,30 @@ export function GroupCallScreen({
   const [isCameraOn, setIsCameraOn] = useState(isVideo)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
   const [spotlightId, setSpotlightId] = useState<string | null>(null)
-  const [showMoreMenu, setShowMoreMenu] = useState(false)
+  // Manual pin (user clicked a tile) — the auto-spotlight effect must NOT clobber
+  // it, otherwise the pin was reverted on the next effect flush (dead feature).
+  const pinnedRef = useRef(false)
+  const pinTile = (id: string | null) => {
+    pinnedRef.current = id !== null
+    setSpotlightId(id)
+  }
 
   useEffect(() => {
     setIsMobileDevice(isAndroidMobile() || isIOSOrIPadOS())
   }, [])
 
-  // Timer
+  // Timer — seed the start time in the store once so it survives minimize→expand
+  // remounts instead of resetting to 00:00 (#12).
   useEffect(() => {
-    startRef.current = Date.now()
+    let start = useGroupCallStore.getState().callStartTime
+    if (!start) {
+      start = Date.now()
+      useGroupCallStore.getState().setCallStartTime(start)
+    }
+    const startAt = start
+    setElapsed(Date.now() - startAt)
     const id = window.setInterval(() => {
-      setElapsed(Date.now() - startRef.current)
+      setElapsed(Date.now() - startAt)
     }, 500)
     return () => window.clearInterval(id)
   }, [])
@@ -321,6 +338,9 @@ export function GroupCallScreen({
   const useDominantSpeaker = totalCount >= 7
 
   useEffect(() => {
+    // Never override a user's manual pin (the auto-spotlight used to instantly
+    // revert it below 7 participants and re-pin the speaker above 7).
+    if (pinnedRef.current) return
     if (!useDominantSpeaker) {
       setSpotlightId(null)
       return
@@ -388,16 +408,26 @@ export function GroupCallScreen({
             <p className="text-xs text-neon-cyan/70 tracking-wider">
               [{formatDuration(elapsed)}]
             </p>
+            <button
+              type="button"
+              onClick={() => useGroupCallStore.getState().setIsMiniPlayer(true)}
+              className="flex h-8 w-8 items-center justify-center border border-border-strong text-text-muted transition-colors hover:border-neon-cyan/60 hover:text-neon-cyan"
+              title={t('call.minimize')}
+              aria-label={t('call.minimize')}
+            >
+              <Minimize2 className="h-4 w-4" strokeWidth={1.5} />
+            </button>
           </div>
         </div>
 
         {/* STREAMS GRID */}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void">
-          {useDominantSpeaker && spotlightId ? (
-            // DOMINANT SPEAKER LAYOUT
+          {spotlightId ? (
+            // SPOTLIGHT LAYOUT — a pinned tile (click any tile to pin at any
+            // size; auto-pins the dominant speaker at 7+). Click the big tile to unpin.
             <div className="flex flex-col h-full gap-2">
               {/* Spotlight */}
-              <div className="flex-1 min-h-[50vh]">
+              <div className="flex-1 min-h-[50vh] cursor-pointer" onClick={() => pinTile(null)}>
                 {spotlightId === userId ? (
                   <ParticipantTile
                     stream={localStream}
@@ -426,7 +456,7 @@ export function GroupCallScreen({
                 {spotlightId !== userId && (
                   <div
                     className="flex-shrink-0 w-32 h-24 cursor-pointer"
-                    onClick={() => setSpotlightId(userId)}
+                    onClick={() => pinTile(userId)}
                   >
                     <ParticipantTile
                       stream={localStream}
@@ -444,7 +474,7 @@ export function GroupCallScreen({
                     <div
                       key={id}
                       className="flex-shrink-0 w-32 h-24 cursor-pointer"
-                      onClick={() => setSpotlightId(id)}
+                      onClick={() => pinTile(id)}
                     >
                       <ParticipantTile
                         stream={stream}
@@ -480,7 +510,7 @@ export function GroupCallScreen({
                   isSpeaking={participants[id]?.isSpeaking ?? false}
                   isLocal={false}
                   connectionState={participants[id]?.connectionState}
-                  onClick={() => useDominantSpeaker && setSpotlightId(id)}
+                  onClick={() => pinTile(spotlightId === id ? null : id)}
                 />
               ))}
             </div>
@@ -517,6 +547,21 @@ export function GroupCallScreen({
             aria-label={audioMuted ? t('call.unmute') : t('call.mute')}
           >
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          </button>
+
+          {/* Deafen — output mute: silences all remote audio (issue #5/#7). */}
+          <button
+            onClick={() => setDeafened(!deafened)}
+            className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
+              deafened
+                ? 'bg-danger/30 text-neon-red hover:bg-danger/30'
+                : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
+            }`}
+            title={deafened ? t('call.undeafen') : t('call.deafen')}
+            aria-label={deafened ? t('call.undeafen') : t('call.deafen')}
+            aria-pressed={deafened}
+          >
+            {deafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
           </button>
 
           {/* Camera on/off — reflects the *camera* track state (isCameraOn),
@@ -577,36 +622,6 @@ export function GroupCallScreen({
               </span>
             </div>
           </button>
-
-          {/* More menu */}
-          <div className="relative">
-            <button
-              onClick={() => setShowMoreMenu(!showMoreMenu)}
-              className="flex h-12 w-12 items-center justify-center border-r border-border-strong text-text-muted transition-colors hover:text-text-primary hover:bg-surface/5 md:w-14"
-              title={t('groupCall.more')}
-              aria-label={t('groupCall.more')}
-            >
-              <MoreVertical className="h-4 w-4" />
-            </button>
-            <AnimatePresence>
-              {showMoreMenu && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="absolute bottom-14 right-0 border border-border-strong bg-void/95 backdrop-blur-xl shadow-2xl z-50 min-w-[160px]"
-                >
-                  <button
-                    onClick={() => setShowMoreMenu(false)}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-text-primary hover:bg-surface/5 transition-colors"
-                  >
-                    <Hand className="h-3.5 w-3.5" />
-                    {t('groupCall.raiseHand')}
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
 
           {/* End Call */}
           <button

@@ -46,7 +46,7 @@ export function StartGuide({ onComplete }: Props) {
       role="dialog"
       aria-modal="true"
       aria-label={t('guide.onboardingTitle')}
-      className={`fixed inset-0 z-[300] flex items-center justify-center px-4 backdrop-blur-sm ${
+      className={`fixed inset-0 z-[300] flex items-start justify-center overflow-y-auto px-4 py-8 backdrop-blur-sm ${
       isMd3 ? 'bg-void/60 font-sans' : 'bg-void/95 font-mono'
     }`}
     >

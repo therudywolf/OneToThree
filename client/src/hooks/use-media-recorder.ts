@@ -14,6 +14,65 @@ import {
 export type CaptureResult = {
   blob: Blob
   mimeType: string
+  /** Total media length in ms, measured at record time so the UI can show the
+   *  correct duration immediately instead of waiting for the (often header-less
+   *  WebM) media element to compute it lazily. (issue #11) */
+  durationMs?: number
+  /** Normalized amplitude peaks (0–100 ints, ~48 bars) for audio voice notes,
+   *  computed once at record time so every client renders the same real waveform
+   *  instantly. Absent for video circles. */
+  waveform?: number[]
+}
+
+/** Decode a recorded audio blob to extract exact duration + amplitude peaks.
+ *  Best-effort: returns {} if decoding is unsupported (e.g. Safari + opus). */
+async function extractAudioMeta(
+  blob: Blob
+): Promise<{ durationMs?: number; waveform?: number[] }> {
+  try {
+    const Ctx =
+      typeof window !== 'undefined'
+        ? window.AudioContext ||
+          (window as unknown as { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext
+        : undefined
+    if (!Ctx) return {}
+    const ctx = new Ctx()
+    try {
+      const buf = await blob.arrayBuffer()
+      const audio = await ctx.decodeAudioData(buf.slice(0))
+      const durationMs = Math.round(audio.duration * 1000)
+      return {
+        durationMs: durationMs > 0 ? durationMs : undefined,
+        waveform: computeWaveformPeaks(audio, 48),
+      }
+    } finally {
+      void ctx.close()
+    }
+  } catch {
+    return {}
+  }
+}
+
+/** Downsample an AudioBuffer to `bars` peak values normalized to 0–100 ints. */
+function computeWaveformPeaks(audio: AudioBuffer, bars: number): number[] {
+  const data = audio.getChannelData(0)
+  const block = Math.max(1, Math.floor(data.length / bars))
+  const peaks: number[] = []
+  let max = 0
+  for (let i = 0; i < bars; i++) {
+    const start = i * block
+    const end = Math.min(data.length, start + block)
+    let peak = 0
+    for (let j = start; j < end; j++) {
+      const v = Math.abs(data[j])
+      if (v > peak) peak = v
+    }
+    peaks.push(peak)
+    if (peak > max) max = peak
+  }
+  const norm = max > 0 ? 100 / max : 0
+  return peaks.map((p) => Math.round(p * norm))
 }
 
 /** Preferred first on Android Chrome; then Safari-friendly; then generic; last = browser default. */
@@ -317,7 +376,7 @@ export function useMediaRecorder() {
         resolve(value)
       }
 
-      rec.onstop = () => {
+      rec.onstop = async () => {
         const rawMime =
           rec.mimeType ||
           (kind === 'audio' ? pickAudioMime() : pickVideoMime())
@@ -347,7 +406,16 @@ export function useMediaRecorder() {
           return
         }
 
-        finish({ blob, mimeType: mime })
+        // Capture duration (+ real waveform peaks for audio) at record time so
+        // the receiver renders the correct length/waveform immediately (issue
+        // #11). Decoding is best-effort; fall back to the wall-clock duration.
+        const meta = kind === 'audio' ? await extractAudioMeta(blob) : {}
+        finish({
+          blob,
+          mimeType: mime,
+          durationMs: meta.durationMs ?? durMs,
+          waveform: meta.waveform,
+        })
       }
 
       // Failsafe: if onstop never fires (some Safari builds, backgrounded
@@ -370,7 +438,7 @@ export function useMediaRecorder() {
         if (!blob.size) {
           finish(null)
         } else {
-          finish({ blob, mimeType: cleanMime })
+          finish({ blob, mimeType: cleanMime, durationMs: durMs })
         }
       }, 3000)
 

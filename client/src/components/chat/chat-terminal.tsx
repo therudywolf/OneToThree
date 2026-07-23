@@ -204,7 +204,7 @@ export function ChatTerminal({
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [newMsgCount, setNewMsgCount] = useState(0)
   const [lightboxOpen, setLightboxOpen] = useState(false)
-  const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }>>([])
+  const [lightboxMedia, setLightboxMedia] = useState<Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string; owned?: boolean }>>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
   const lightboxMetaRef = useRef<Map<string, { mediaPath: string; mediaIv: string; plaintext?: string; wrapCt?: string; wrapIv?: string }>>(new Map())
   const lightboxMediaRef = useRef<typeof lightboxMedia>([])
@@ -214,7 +214,10 @@ export function ChatTerminal({
   useEffect(() => {
     return () => {
       for (const item of lightboxMediaRef.current) {
-        if (item.url && item.url.startsWith('blob:')) {
+        // Only revoke blob URLs the lightbox itself created — never the clicked
+        // item's URL, which is owned by (and still in use by) its MediaBubble
+        // (issue #14: reopening the same image showed a blank).
+        if (item.owned && item.url && item.url.startsWith('blob:')) {
           try { URL.revokeObjectURL(item.url) } catch { /* noop */ }
         }
       }
@@ -869,7 +872,7 @@ export function ChatTerminal({
   }, [voiceMessageIds, scrollToAndPlayVoice])
 
   const handleMediaClick = useCallback((media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
-    const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string }> = []
+    const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string; owned?: boolean }> = []
     const metaMap = new Map<string, { mediaPath: string; mediaIv: string; plaintext?: string; wrapCt?: string; wrapIv?: string }>()
 
     const collectMsg = (msg: DecryptedMessage) => {
@@ -926,7 +929,8 @@ export function ChatTerminal({
 
     const currentIndex = allMedia.findIndex(m => m.id === media.id)
     if (currentIndex !== -1) {
-      allMedia[currentIndex] = media
+      // Borrowed from the bubble — the lightbox must NOT revoke it on close.
+      allMedia[currentIndex] = { ...media, owned: false }
       lightboxMetaRef.current = metaMap
       setLightboxMedia(allMedia)
       setLightboxIndex(currentIndex)
@@ -947,7 +951,7 @@ export function ChatTerminal({
         const url = URL.createObjectURL(cached.blob)
         setLightboxMedia(prev => {
           const next = [...prev]
-          next[index] = { ...next[index], url }
+          next[index] = { ...next[index], url, owned: true }
           return next
         })
         return url
@@ -995,7 +999,7 @@ export function ChatTerminal({
       const url = URL.createObjectURL(blob)
       setLightboxMedia(prev => {
         const next = [...prev]
-        next[index] = { ...next[index], url }
+        next[index] = { ...next[index], url, owned: true }
         return next
       })
       return url
@@ -1012,7 +1016,7 @@ export function ChatTerminal({
     setLightboxOpen(false)
     setLightboxMedia((prev) => {
       for (const item of prev) {
-        if (item.url && item.url.startsWith('blob:')) {
+        if (item.owned && item.url && item.url.startsWith('blob:')) {
           try { URL.revokeObjectURL(item.url) } catch { /* noop */ }
         }
       }

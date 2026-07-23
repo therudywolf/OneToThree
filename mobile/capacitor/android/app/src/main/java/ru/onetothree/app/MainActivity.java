@@ -17,6 +17,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(DevicePermissionsPlugin.class);
     registerPlugin(KeystorePlugin.class);
     registerPlugin(CallServicePlugin.class);
+    registerPlugin(PrivacyPlugin.class);
     super.onCreate(savedInstanceState);
 
     createFcmChannels();
@@ -33,10 +34,15 @@ public class MainActivity extends BridgeActivity {
     getWindow().setStatusBarColor(Color.TRANSPARENT);
     getWindow().setNavigationBarColor(Color.TRANSPARENT);
 
+    // First-party cookies only. Native auth rides a Bearer token
+    // (fm_native_token, see client/src/lib/native-session.ts) precisely because
+    // the cross-site fm_session cookie is unreliable in a WebView — so accepting
+    // THIRD-party cookies buys nothing and only widens the cookie attack surface
+    // (tracking / cookie-CSRF from any cross-origin content the WebView loads).
     CookieManager cookieManager = CookieManager.getInstance();
     cookieManager.setAcceptCookie(true);
     if (getBridge() != null && getBridge().getWebView() != null) {
-      cookieManager.setAcceptThirdPartyCookies(getBridge().getWebView(), true);
+      cookieManager.setAcceptThirdPartyCookies(getBridge().getWebView(), false);
     }
     cookieManager.flush();
   }

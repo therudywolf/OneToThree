@@ -16,8 +16,28 @@ installer asks a few questions and does the rest.
 ```bash
 git clone https://github.com/therudywolf/OneToThree.git
 cd OneToThree
+npm run lite:gui      # graphical wizard with real checkboxes (opens in your browser)
+```
+
+Prefer a terminal? The text installer asks the same questions:
+
+```bash
 npm run lite          # or: node scripts/lite/install.mjs  (Windows: scripts\lite\install.ps1)
 ```
+
+### Graphical wizard (`npm run lite:gui`)
+
+A tiny local web app (zero dependencies, bound to `127.0.0.1` only — never exposed
+to the network) that walks you through setup with real checkboxes:
+
+- **macOS / Linux:** `./scripts/lite/lite-gui.sh`
+- **Windows:** `powershell -ExecutionPolicy Bypass -File scripts\lite\lite-gui.ps1`
+- **Any OS:** `npm run lite:gui`
+
+It checks Docker is present, lets you pick a mode and tick features, writes the
+same `.env.lite` + `infra/lite/Caddyfile`, then (one click) runs `docker compose`
+while streaming the build log live, and finishes with a health dashboard. Enabling
+**Push** generates a VAPID keypair for you automatically.
 
 The installer asks:
 

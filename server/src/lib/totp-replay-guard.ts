@@ -13,8 +13,11 @@
 import { getRedis } from './redis.js'
 
 const KEY_PREFIX = 'totp:used:'
-/** TOTP window is 30s; keep entries for 60s to cover clock skew. */
-const TTL_S = 60
+// verifyTotp accepts codes across a ±30s epoch tolerance, so a code is valid for
+// roughly 90s. Keep the replay-guard entry for at least that full span (+skew)
+// or a consumed code could be replayed in the gap after the guard entry expired
+// but before the code itself stops verifying (#41).
+const TTL_S = 120
 
 interface UsedEntry { expiresAt: number }
 const mem = new Map<string, UsedEntry>()

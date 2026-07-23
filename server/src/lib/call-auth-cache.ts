@@ -35,6 +35,25 @@ type Entry = {
 
 const cache = new Map<string, Entry>()
 
+// Periodic sweep of expired entries (#45). Entries were only ever removed
+// lazily on a matching read past TTL, so directed pairs that call once and never
+// read again stayed resident forever — a slow leak proportional to call-graph
+// activity. Mirrors the presence.ts sweeper. Unref'd so it never keeps the
+// process alive; guarded so tests / repeated imports don't stack intervals.
+const SWEEP_INTERVAL_MS = 60_000
+let sweepTimer: ReturnType<typeof setInterval> | null = null
+function ensureSweeper(): void {
+  if (sweepTimer || typeof setInterval !== 'function') return
+  sweepTimer = setInterval(() => {
+    const now = Date.now()
+    for (const [k, entry] of cache) {
+      if (entry.expiresAt <= now) cache.delete(k)
+    }
+  }, SWEEP_INTERVAL_MS)
+  if (typeof sweepTimer.unref === 'function') sweepTimer.unref()
+}
+ensureSweeper()
+
 function key(senderId: string, targetUserId: string): string {
   return `${senderId}:${targetUserId}`
 }

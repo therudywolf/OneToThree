@@ -298,11 +298,23 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     if (!row?.totpSecret || !row.isTotpEnabled) return reply.status(400).send({ error: 'TOTP_NOT_CONFIGURED' })
     if (row.isBanned) return reply.status(401).send({ error: 'BANNED_USER' })
 
+    // Per-account lockout for TOTP guessing (#40): the per-IP limit alone lets an
+    // attacker holding a valid 2fa_pending token spread 6-digit guesses across
+    // many IPs against one account. Share the same lockout namespace as /verify.
+    const lockout = await checkLockout(row.username)
+    if (lockout.locked) {
+      await recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
+      reply.header('Retry-After', String(Math.max(1, lockout.retryAfterSeconds)))
+      return reply.status(429).send({ error: 'AUTH_LOCKED', retry_after_seconds: lockout.retryAfterSeconds })
+    }
+
     if (!await verifyTotp(parsed.data.code, decryptTotpSecret(row.totpSecret))) {
+      await recordAuthFailure(row.username)
       await recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_INVALID' })
     }
     if (!await consumeTotpCode(id, parsed.data.code)) {
+      await recordAuthFailure(row.username)
       await recordLoginEvent(request, { userId: id, username: row.username, outcome: 'fail_totp' })
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }

@@ -135,12 +135,22 @@ function publishFanout(userId: string, raw: string): void {
   })
 }
 
+// Per-socket outbound buffer ceiling (#23). Above this, a recipient's TCP is
+// backed up (slow/backgrounded client); dropping a fan-out/relay frame is fine
+// for real-time traffic and prevents unbounded ws heap buffering → OOM that
+// would take down every other socket on the instance.
+const MAX_BUFFERED_BYTES = 4 * 1024 * 1024
+// Max concurrent sockets per user (#30): one account must not exhaust fds/heap
+// or bloat every broadcast/heartbeat sweep by opening unlimited connections.
+const MAX_SOCKETS_PER_USER = 12
+
 /** Deliver a pre-serialized payload to this instance's local sockets only. */
 function deliverLocal(userId: string, raw: string): void {
   const set = userSockets.get(userId)
   if (!set?.size) return
   for (const socket of set) {
     if (socket.readyState === socket.OPEN) {
+      if (socket.bufferedAmount > MAX_BUFFERED_BYTES) continue // backpressure: drop
       socket.send(raw)
     }
   }
@@ -170,6 +180,15 @@ export function registerUserSocket(
     userSockets.set(userId, set)
   }
   set.add(ws)
+
+  // Evict the oldest socket(s) when a user exceeds the per-user ceiling (#30).
+  // Sets preserve insertion order, so values().next() is the oldest.
+  while (set.size > MAX_SOCKETS_PER_USER) {
+    const oldest = set.values().next().value as WebSocket | undefined
+    if (!oldest || oldest === ws) break
+    set.delete(oldest)
+    try { oldest.close(1008, 'too many connections') } catch { /* already closing */ }
+  }
 
   const cleanup = () => {
     set!.delete(ws)

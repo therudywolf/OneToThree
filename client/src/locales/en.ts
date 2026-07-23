@@ -108,6 +108,8 @@ const en = {
   'call.minimize': 'Minimize',
   'call.deafen': 'Deafen',
   'call.undeafen': 'Undeafen',
+  'call.addParticipant': 'Add to call',
+  'call.addParticipantNone': 'No contacts to add',
   'call.dndOn': 'Enable Do Not Disturb (auto-decline calls)',
   'call.dndOff': 'Disable Do Not Disturb',
   'call.missedAudio': 'Missed call',

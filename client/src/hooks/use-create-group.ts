@@ -1,9 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import { createGroupE2EChat } from '@/lib/api/chats'
-import { lookupUsers } from '@/lib/api/users'
-import { wrapGroupKeyForMemberWithCreatorEcdh } from '@/lib/chat-logic'
+import { createKeyedGroupChat } from '@/lib/create-group-chat'
 import { useSessionStore } from '@/store/sessionStore'
 
 const CREATE_TIMEOUT_MS = 90_000
@@ -51,53 +49,15 @@ export function useCreateGroup(currentUserId: string) {
           throw new Error('NO_VAULT')
         }
 
-        const others = Array.from(
-          new Set(otherMemberUserIds.filter((id) => id !== currentUserId))
-        )
-        const allIds = Array.from(new Set([currentUserId, ...others]))
-        if (allIds.length < 2) {
-          throw new Error('NEED_AT_LEAST_ONE_OTHER_MEMBER')
-        }
-
-        const rows = await withTimeout(
-          lookupUsers(allIds),
-          CREATE_TIMEOUT_MS,
-          'REQUEST_TIMEOUT'
-        )
-
-        for (const r of rows) {
-          if (!r.ecdh_public_key_jwk) {
-            throw new Error(`MISSING_ECDH:${r.username}`)
-          }
-        }
-        const creator = rows.find((r) => r.id === currentUserId)
-        if (!creator?.ecdh_public_key_jwk) {
-          throw new Error('MISSING_CREATOR_ECDH')
-        }
-
-        const groupKey = await crypto.subtle.generateKey(
-          { name: 'AES-GCM', length: 256 },
-          true,
-          ['encrypt', 'decrypt']
-        )
-
-        const members = await Promise.all(
-          rows.map(async (r) => ({
-            userId: r.id,
-            encryptedGroupKey: await wrapGroupKeyForMemberWithCreatorEcdh(
-              unwrappedPrivateKey,
-              r.ecdh_public_key_jwk!,
-              groupKey,
-              creator.ecdh_public_key_jwk ?? undefined
-            ),
-          }))
-        )
-
+        // Core keygen + wrap + POST lives in createKeyedGroupChat (shared with
+        // the 1:1→group call promotion, issue #4).
         const chat = await withTimeout(
-          createGroupE2EChat({
-            name: name?.trim() || null,
-            members,
-          }),
+          createKeyedGroupChat(
+            currentUserId,
+            unwrappedPrivateKey,
+            name,
+            otherMemberUserIds
+          ),
           CREATE_TIMEOUT_MS,
           'REQUEST_TIMEOUT'
         )

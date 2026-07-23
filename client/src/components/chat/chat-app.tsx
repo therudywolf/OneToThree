@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
 import { Menu, ShieldCheck, ShieldOff, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft, MoreVertical, BellOff, Bell, Trash2, Megaphone } from 'lucide-react'
@@ -382,6 +382,7 @@ export function ChatApp({
     isScreenSharing,
     toggleScreenShare,
     setQuality,
+    promoteToGroup,
   } = useWebRTC(userId)
 
   useNotificationOpen(acceptIncomingCall)
@@ -400,6 +401,26 @@ export function ChatApp({
 
   const callLocalStream = useCallStore((s) => s.localStream)
   const callIsVideo = (callLocalStream?.getVideoTracks().length ?? 0) > 0
+  const callRemoteStreams = useCallStore((s) => s.remoteStreams)
+
+  // Direct-chat contacts that can be pulled into the current 1:1 call (#4):
+  // everyone we have a direct chat with, minus ourselves and whoever is already
+  // in the call. Usernames are resolved by the overlay's picker on open.
+  const promoteCandidateIds = useMemo(() => {
+    const inCall = new Set(Object.keys(callRemoteStreams).map(canonicalUserId))
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const c of chats) {
+      if (c.is_group || c.is_self || c.type !== 'direct_e2e') continue
+      const peer = c.member_ids.find((id) => canonicalUserId(id) !== canonicalUserId(userId))
+      if (!peer) continue
+      const cid = canonicalUserId(peer)
+      if (inCall.has(cid) || seen.has(cid)) continue
+      seen.add(cid)
+      out.push(peer)
+    }
+    return out
+  }, [chats, callRemoteStreams, userId])
   useCallPwa({
     peerUsername: peerIdentity?.username ?? null,
     onEndCall: endCall,
@@ -869,6 +890,8 @@ export function ChatApp({
         onToggleScreenShare={() => void toggleScreenShare()}
         onSetQuality={setQuality}
         peerName={peerIdentity?.username ?? undefined}
+        promoteCandidateIds={promoteCandidateIds}
+        onPromote={promoteToGroup}
       />
       <CallMiniPlayer
         onExpand={() => useCallStore.getState().setMiniPlayer(false)}

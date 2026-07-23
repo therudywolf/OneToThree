@@ -267,8 +267,14 @@ class FmSocketClient {
     this.onlineOutboxListenerAttached = false
   }
 
+  private idleShutdownTimer: ReturnType<typeof setTimeout> | null = null
+
   subscribe(fn: (m: WsInboundMessage) => void): () => void {
     this.ensureOnlineOutboxFlush()
+    if (this.idleShutdownTimer) {
+      clearTimeout(this.idleShutdownTimer)
+      this.idleShutdownTimer = null
+    }
     this.listeners.add(fn)
     this.refCount++
     this.wantOpen = true
@@ -277,9 +283,20 @@ class FmSocketClient {
       this.listeners.delete(fn)
       this.refCount--
       if (this.refCount <= 0) {
-        this.wantOpen = false
-        this.detachOnlineOutboxFlush()
-        this.shutdownSocket()
+        // GRACE PERIOD instead of immediate teardown: subscriber count transiently
+        // hits zero on every heavy remount/navigation, and closing the socket then
+        // is not just wasteful churn — the SERVER treats last-socket-close as the
+        // user going offline and drops them from active group-call rooms
+        // (leaveAllRooms), silently kicking them out of a call mid-navigation.
+        if (this.idleShutdownTimer) clearTimeout(this.idleShutdownTimer)
+        this.idleShutdownTimer = setTimeout(() => {
+          this.idleShutdownTimer = null
+          if (this.refCount <= 0) {
+            this.wantOpen = false
+            this.detachOnlineOutboxFlush()
+            this.shutdownSocket()
+          }
+        }, 5000)
       }
     }
   }
@@ -342,7 +359,21 @@ class FmSocketClient {
     this.reconnectTimer = null
     if (!this.wantOpen || typeof window === 'undefined') return
 
-    // Teardown stale socket before creating a new one
+    // A HEALTHY socket must never be torn down by a new subscriber: subscribe()
+    // schedules a connect on every mount, and this used to close the LIVE socket
+    // and redial — the server treats that close as the user going offline and
+    // drops them from active group-call rooms (leaveAllRooms), so a mere
+    // navigation/remount kicked users out of calls mid-call.
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      this.emitStatus()
+      return
+    }
+
+    // Teardown stale (closing/closed) socket before creating a new one
     if (this.ws) {
       const stale = this.ws
       stale.onclose = null

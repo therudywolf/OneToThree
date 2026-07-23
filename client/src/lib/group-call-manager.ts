@@ -671,7 +671,17 @@ export async function handleGroupCallIce(
   if (groupRelayMode) return
 
   const pc = store.peerConnections[fromUserId]
-  const iceCandidate = candidate as RTCIceCandidateInit
+  const iceCandidate = candidate as RTCIceCandidateInit | null
+
+  // End-of-candidates marker: peers relay `candidate: null` when gathering
+  // finishes. Constructing RTCIceCandidate from it throws (sdpMid and
+  // sdpMLineIndex both null) — signal end-of-candidates instead.
+  if (!iceCandidate || !iceCandidate.candidate) {
+    if (pc?.remoteDescription) {
+      try { await pc.addIceCandidate() } catch { /* older impls may not support */ }
+    }
+    return
+  }
 
   if (pc?.remoteDescription) {
     try {

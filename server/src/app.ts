@@ -468,6 +468,29 @@ export async function buildApp() {
   app.get('/capabilities', capabilitiesHandler)
   app.get('/api/capabilities', capabilitiesHandler)
 
+  // Deploy-version probe for the client's update banner (version-check.ts polls
+  // this every 15 min). It 404'd since forever — the banner never fired and the
+  // recurring 404s fed edge anti-bot heuristics. Reads /app/VERSION (copied in
+  // the api image) with an APP_VERSION env override; null = "unknown", which the
+  // client treats as no-change.
+  let cachedVersion: string | null | undefined
+  app.get('/api/version', async () => {
+    if (cachedVersion === undefined) {
+      const fromEnv = process.env.APP_VERSION?.trim()
+      if (fromEnv) {
+        cachedVersion = fromEnv
+      } else {
+        try {
+          const { readFile } = await import('node:fs/promises')
+          cachedVersion = (await readFile('/app/VERSION', 'utf8')).trim() || null
+        } catch {
+          cachedVersion = null
+        }
+      }
+    }
+    return { version: cachedVersion }
+  })
+
   app.get('/health/ready', async (request, reply) => {
     try {
       await db.execute(sql`SELECT 1`)

@@ -105,6 +105,29 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
   const isMd3 = shellMode === 'md3'
   const isRetro = themeId === 'retro' && shellMode === 'terminal'
 
+  /**
+   * TYPE SCALE.
+   *
+   * The whole card used to be set between 8px and 11px — the HEADING was 10px
+   * and the single most important sentence in the product ("this is your only
+   * password, we cannot restore it") was 8px, i.e. below the legible minimum.
+   * That is a terminal-shell idiom (tiny mono caps read as a system readout)
+   * applied to a Material surface, where it just reads as broken.
+   *
+   * So Material gets a real scale — heading, body, label, hint — while the
+   * terminal and retro shells keep the deliberately tiny look that is part of
+   * their identity.
+   */
+  const type = {
+    heading: isMd3 ? 'text-[22px] font-semibold leading-tight' : 'text-[10px]',
+    subtitle: isMd3 ? 'text-[13px] leading-relaxed' : 'text-[8px]',
+    label: isMd3 ? 'text-[12px] font-medium' : '',
+    hint: isMd3 ? 'text-[12px] leading-relaxed' : 'text-[8px]',
+    body: isMd3 ? 'text-[13px] leading-relaxed' : 'text-[9px]',
+    action: isMd3 ? 'text-[14px] font-medium' : 'text-[10px]',
+    tab: isMd3 ? 'text-[13px]' : 'text-[10px]',
+  }
+
   const lock = useRef(false)
 
   useEffect(() => { ensureClientDeviceId() }, [])
@@ -409,12 +432,12 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
           >
             <header className={`mb-6 border-b pb-4 ${isRetro ? 'p13-classic-titlebar px-2 pt-2' : 'border-border-strong'}`}>
               <p className={`text-[10px] ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'p13-classic-title-copy' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>{t('login.recoverTitle')}</p>
-              <p className={`mt-1 text-[8px] ${isRetro ? 'p13-classic-title-copy-soft tracking-normal' : 'text-text-muted/70 tracking-widest'}`}>{t('login.recoverSubtitle')}</p>
+              <p className={`mt-2 ${type.subtitle} ${isRetro ? 'p13-classic-title-copy-soft tracking-normal' : 'text-text-muted tracking-wide'}`}>{t('login.recoverSubtitle')}</p>
             </header>
 
             <div className="space-y-5">
               <div className="space-y-2">
-                <label htmlFor="recover-username" className="terminal-label">{t('login.handleLabel')}</label>
+                <label htmlFor="recover-username" className={`terminal-label ${type.label}`}>{t('login.handleLabel')}</label>
                 <input id="recover-username" type="text" required autoFocus
                   value={handle} onChange={(e) => setHandle(e.target.value)}
                   className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
@@ -422,7 +445,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="recover-phrase" className="terminal-label">{t('login.recoverPhraseLabel')}</label>
+                <label htmlFor="recover-phrase" className={`terminal-label ${type.label}`}>{t('login.recoverPhraseLabel')}</label>
                 <textarea id="recover-phrase" required rows={3}
                   value={recoverPhrase} onChange={(e) => setRecoverPhrase(e.target.value)}
                   className={`${isRetro ? 'p13-classic-input' : 'terminal-input'} w-full resize-none px-3 py-2 text-[11px] outline-none`}
@@ -430,7 +453,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="recover-new-pass" className="terminal-label">{t('login.recoverNewPassword')}</label>
+                <label htmlFor="recover-new-pass" className={`terminal-label ${type.label}`}>{t('login.recoverNewPassword')}</label>
                 <input id="recover-new-pass" type="password" required
                   value={recoverNewPassword} onChange={(e) => setRecoverNewPassword(e.target.value)}
                   className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
@@ -438,7 +461,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="recover-confirm" className="terminal-label">{t('common.confirm')}</label>
+                <label htmlFor="recover-confirm" className={`terminal-label ${type.label}`}>{t('common.confirm')}</label>
                 <input id="recover-confirm" type="password" required
                   value={recoverConfirm} onChange={(e) => setRecoverConfirm(e.target.value)}
                   className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
@@ -453,7 +476,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
 
               {recoverNeedsTotp && (
                 <div className="space-y-2">
-                  <label htmlFor="recover-totp" className="terminal-label">{t('login.totpCodeLabel')}</label>
+                  <label htmlFor="recover-totp" className={`terminal-label ${type.label}`}>{t('login.totpCodeLabel')}</label>
                   <input id="recover-totp" type="text" inputMode="numeric" maxLength={6}
                     value={recoverTotpCode} onChange={(e) => setRecoverTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     className={isRetro ? 'p13-classic-input w-full px-3 py-2 text-[11px] outline-none' : 'terminal-input'}
@@ -494,11 +517,11 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
           >
             <div className={`absolute top-0 left-0 h-[1px] w-full ${isRetro ? 'p13-classic-accent-fill opacity-100' : 'bg-gradient-to-r from-transparent via-neon-red to-transparent opacity-50'}`} />
 
-            <header className={`mb-8 border-b pb-4 ${isRetro ? 'p13-classic-titlebar px-2 pt-2' : 'border-border-strong'}`}>
-              <p className={`text-[10px] ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'p13-classic-title-copy' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>
+            <header className={`${isMd3 ? 'mb-7' : 'mb-8 border-b pb-4'} ${isRetro ? 'p13-classic-titlebar px-2 pt-2' : isMd3 ? '' : 'border-border-strong'}`}>
+              <p className={`${type.heading} ${isMd3 ? 'tracking-normal text-[var(--on-surface)]' : isRetro ? 'p13-classic-title-copy' : 'uppercase tracking-[0.4em] text-neon-cyan'}`}>
                 {mode === 'ACCESS' ? t('login.entryHeadingSignIn') : t('login.entryHeadingCreate')}
               </p>
-              <p className={`mt-1 text-[8px] ${isRetro ? 'p13-classic-title-copy-soft tracking-normal' : 'text-text-muted/70 tracking-wide'}`}>{t('login.authReassure')}</p>
+              <p className={`mt-2 ${type.subtitle} ${isRetro ? 'p13-classic-title-copy-soft tracking-normal' : 'text-text-muted tracking-wide'}`}>{t('login.authReassure')}</p>
             </header>
 
             {/* Sign in / Create account — clear two-option control */}
@@ -528,7 +551,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                       router.replace(m === 'GENESIS' ? '/register' : '/login')
                     }}
                     aria-pressed={active}
-                    className={`py-2 text-[10px] tracking-wide transition-all ${
+                    className={`py-2 ${type.tab} tracking-wide transition-all ${
                       isMd3
                         ? `rounded-full ${active ? 'bg-[var(--surface)] font-medium text-[var(--on-surface)] shadow-[var(--md3-elevation-1)]' : 'text-text-muted'}`
                         : isRetro
@@ -561,7 +584,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
 
               {/* Никнейм */}
               <div className="space-y-2">
-                <label htmlFor="username" className="terminal-label">{t('login.handleLabel')}</label>
+                <label htmlFor="username" className={`terminal-label ${type.label}`}>{t('login.handleLabel')}</label>
                 <input
                   id="username"
                   type="text" required autoFocus
@@ -572,23 +595,38 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                   autoComplete="username"
                 />
                 {mode === 'GENESIS' && (
-                  <p className={`text-[8px] ${isRetro ? 'p13-classic-copy-muted' : 'text-text-muted/70'}`}>{t('login.usernameHint')}</p>
+                  <p className={`${type.hint} ${isRetro ? 'p13-classic-copy-muted' : 'text-text-muted'}`}>{t('login.usernameHint')}</p>
                 )}
               </div>
 
               {/* Account password */}
               <div className="space-y-2">
                 {mode === 'GENESIS' && (
-                  <div id="password-explain" className="border-l-2 border-neon-cyan/40 pl-3 space-y-1 mb-3">
-                    <p className="text-[8px] text-text-muted leading-relaxed">
-                      {t('login.vaultPasswordExplain1')}
-                    </p>
-                    <p className="text-[8px] text-text-muted/70 leading-relaxed">
-                      {t('login.vaultPasswordExplain2')}
-                    </p>
+                  // The one fact that makes this product different — and the one
+                  // people misunderstand — gets to be the loudest thing in the
+                  // card instead of 8px grey filler under the field.
+                  <div
+                    id="password-explain"
+                    className={
+                      isMd3
+                        ? 'mb-4 flex gap-3 rounded-2xl border border-[color-mix(in_srgb,var(--neon-red)_30%,transparent)] bg-[color-mix(in_srgb,var(--neon-red)_8%,transparent)] p-4'
+                        : 'mb-3 space-y-1 border-l-2 border-neon-cyan/40 pl-3'
+                    }
+                  >
+                    {isMd3 && (
+                      <span aria-hidden className="mt-[2px] text-[16px] leading-none">🔑</span>
+                    )}
+                    <div className={isMd3 ? 'flex-1 space-y-1.5' : 'space-y-1'}>
+                      <p className={`${type.body} ${isMd3 ? 'font-medium text-[var(--on-surface)]' : 'text-[8px] text-text-muted'}`}>
+                        {t('login.vaultPasswordExplain1')}
+                      </p>
+                      <p className={`${type.hint} ${isMd3 ? 'text-text-muted' : 'text-[8px] text-text-muted/70'}`}>
+                        {t('login.vaultPasswordExplain2')}
+                      </p>
+                    </div>
                   </div>
                 )}
-                <label htmlFor="password" className="terminal-label">
+                <label htmlFor="password" className={`terminal-label ${type.label}`}>
                   {t('login.passwordLabel')}
                 </label>
                 <div className="relative">
@@ -618,7 +656,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
               {/* Повтор пароля при регистрации */}
               {mode === 'GENESIS' && (
                 <div className="space-y-2">
-                  <label htmlFor="confirmPassword" className="terminal-label">{t('common.confirm')}</label>
+                  <label htmlFor="confirmPassword" className={`terminal-label ${type.label}`}>{t('common.confirm')}</label>
                   <input
                     id="confirmPassword"
                     type={showPassword ? 'text' : 'password'} required
@@ -630,11 +668,11 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                   />
                   {confirmVaultPassword.length > 0 && (
                     vaultPassword === confirmVaultPassword ? (
-                      <p className="flex items-center gap-1 text-[8px] text-neon-cyan">
+                      <p className={`flex items-center gap-1 ${type.hint} text-neon-cyan`}>
                         <CheckIcon /> {t('login.passwordsMatch')}
                       </p>
                     ) : (
-                      <p className="text-[8px] text-neon-red/80">{t('login.passwordsDiffer')}</p>
+                      <p className={`${type.hint} text-neon-red/80`}>{t('login.passwordsDiffer')}</p>
                     )
                   )}
                 </div>
@@ -658,7 +696,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                   <span>{infoLog}</span>
                   <button type="button"
                     onClick={() => { setMode('ACCESS'); setInfoLog(null) }}
-                    className="shrink-0 border border-neon-cyan/50 px-2 py-0.5 text-[8px] uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 transition-colors">
+                    className={`shrink-0 border border-neon-cyan/50 px-2 py-0.5 ${type.hint} uppercase tracking-widest text-neon-cyan hover:bg-neon-cyan/10 transition-colors`}>
                     {t('login.accountExistsAction')}
                   </button>
                 </div>
@@ -686,7 +724,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                     {t('login.vaultRecoveryImport')}
                   </button>
                   {vaultLinkOk && (
-                    <p className="mt-2 text-[8px] text-neon-cyan animate-pulse">{t('login.vaultRecoveryOk')}</p>
+                    <p className={`mt-2 ${type.hint} text-neon-cyan animate-pulse`}>{t('login.vaultRecoveryOk')}</p>
                   )}
                   <button type="button" onClick={openRecover}
                     className="w-full border border-neon-cyan/40 bg-void py-2 text-[9px] uppercase tracking-widest text-neon-cyan/90 hover:bg-neon-cyan/10 transition-all">
@@ -694,7 +732,7 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                   </button>
                   <button type="button"
                     onClick={async () => { await clearSessionApi().catch(() => {}); window.location.reload() }}
-                    className="w-full text-[8px] uppercase tracking-widest text-text-muted/70 hover:text-text-muted transition-colors">
+                    className={`w-full ${type.hint} uppercase tracking-widest text-text-muted/70 hover:text-text-muted transition-colors`}>
                     {t('login.clearSession')}
                   </button>
                 </div>

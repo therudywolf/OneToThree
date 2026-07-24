@@ -27,8 +27,9 @@ import {
 import { isBlocked } from '../lib/block-check.js'
 import { getCachedCallAuth, setCachedCallAuth } from '../lib/call-auth-cache.js'
 import {
+  areOnline,
   broadcastToUsers,
-  hasActiveSocket,
+  isOnline,
   registerUserSocket,
   sendToUser,
 } from '../ws/registry.js'
@@ -264,43 +265,89 @@ const WS_RATE_LIMIT_SIGNALING_MAX = 600
 const WS_RATE_LIMIT_RELAY_MAX = 2400
 const WS_RATE_LIMIT_WINDOW_MS = 60_000
 
-/** Simple sliding-window rate limiter per WebSocket connection. */
-class WsRateLimiter {
-  private timestamps: number[] = []
+/** How long a server-CONFIRMED call keeps a connection in the elevated tier.
+ *  Renewed by frames the server itself authorizes, so a real call never decays
+ *  mid-session while an idle claimant does. */
+const IN_CALL_TTL_MS = 120_000
+/** An unanswered `call_invite` buys the caller only enough time to finish its
+ *  ICE burst; if nobody answers it must decay back to the control tier. */
+const IN_CALL_BOOTSTRAP_MS = 30_000
 
-  check(limit = WS_RATE_LIMIT_MAX): boolean {
+type WsRateBucket = 'control' | 'call'
+export type WsRateTier = { bucket: WsRateBucket; limit: number }
+
+/** Sliding-window rate limiter with INDEPENDENT buckets per connection.
+ *
+ *  Control and call traffic must not share one window: a 600-frame signaling
+ *  burst previously consumed the whole 60/min budget, starving presence_ping,
+ *  read receipts and typing for the rest of the minute for an HONEST in-call
+ *  client. */
+class WsRateLimiter {
+  private windows = new Map<WsRateBucket, number[]>()
+
+  check(tier: WsRateTier): boolean {
     const now = Date.now()
     const cutoff = now - WS_RATE_LIMIT_WINDOW_MS
-    this.timestamps = this.timestamps.filter((t) => t > cutoff)
-    if (this.timestamps.length >= limit) return false
-    this.timestamps.push(now)
+    const kept = (this.windows.get(tier.bucket) ?? []).filter((t) => t > cutoff)
+    if (kept.length >= tier.limit) {
+      this.windows.set(tier.bucket, kept)
+      return false
+    }
+    kept.push(now)
+    this.windows.set(tier.bucket, kept)
     return true
   }
 }
 
-function resolveWsRateLimit(json: unknown): number {
-  if (!json || typeof json !== 'object') return WS_RATE_LIMIT_MAX
+/**
+ * Pick the rate tier for a frame.
+ *
+ * SECURITY (#24): the elevated budgets are CONJUNCTIVE — they require that the
+ * SERVER has already placed this connection in a call (`inCall`), not merely
+ * that the frame claims a call-ish `type`. This runs before any zod parse and
+ * before isMemberOfChat / isUserInRoom, so keying off the client-supplied type
+ * alone let ANY authenticated connection claim 2400 msg/min just by sending
+ * `{"type":"group_call:relay_frame"}` — with no call, no membership and no
+ * authorization of any kind (and 12 sockets are allowed per user).
+ *
+ * The four call-CONTROL frames stay on the control bucket: they are what create
+ * the in-call state, so they cannot require it, and one per call attempt fits
+ * the 60/min budget comfortably.
+ */
+export function resolveWsRateLimit(json: unknown, inCall: boolean): WsRateTier {
+  const control: WsRateTier = { bucket: 'control', limit: WS_RATE_LIMIT_MAX }
+  if (!json || typeof json !== 'object') return control
   const entry = json as {
     type?: unknown
     signalData?: { kind?: unknown } | null
   }
-  if (entry.type === 'webrtc_signal' && entry.signalData?.kind === 'relay_frame') {
-    return WS_RATE_LIMIT_RELAY_MAX
+  const type = entry.type
+
+  if (
+    type === 'call_invite' ||
+    type === 'call_accept' ||
+    type === 'call_reject' ||
+    type === 'call_leave'
+  ) {
+    return control
   }
-  if (entry.type === 'group_call:relay_frame') {
-    return WS_RATE_LIMIT_RELAY_MAX
+
+  // Not in a server-confirmed call → no elevated budget, whatever it claims.
+  if (!inCall) return control
+
+  if (
+    (type === 'webrtc_signal' && entry.signalData?.kind === 'relay_frame') ||
+    type === 'group_call:relay_frame'
+  ) {
+    return { bucket: 'call', limit: WS_RATE_LIMIT_RELAY_MAX }
   }
   if (
-    entry.type === 'webrtc_signal' ||
-    (typeof entry.type === 'string' && entry.type.startsWith('group_call:')) ||
-    entry.type === 'call_invite' ||
-    entry.type === 'call_accept' ||
-    entry.type === 'call_reject' ||
-    entry.type === 'call_leave'
+    type === 'webrtc_signal' ||
+    (typeof type === 'string' && type.startsWith('group_call:'))
   ) {
-    return WS_RATE_LIMIT_SIGNALING_MAX
+    return { bucket: 'call', limit: WS_RATE_LIMIT_SIGNALING_MAX }
   }
-  return WS_RATE_LIMIT_MAX
+  return control
 }
 
 /** Returns the byte length of a raw websocket payload for size validation. */
@@ -363,6 +410,37 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
     let sessionDeviceId: string | undefined
     const rateLimiter = new WsRateLimiter()
 
+    // #24: server-owned "this connection is in a call" deadline. The limiter runs
+    // on EVERY frame (up to 2400/min), so this must stay synchronous local memory
+    // — never a Redis read. It is a monotonic deadline rather than a boolean, so a
+    // connection decays back to the control tier unless the server keeps
+    // confirming the call is real. Closure-scoped: it dies with the socket.
+    let inCallUntil = 0
+    /** GRANT (or extend) the elevated tier. Only ever called from a
+     *  server-verified event: an accepted ring, or a completed room join. */
+    const markInCall = (ttlMs: number): void => {
+      const until = Date.now() + ttlMs
+      if (until > inCallUntil) inCallUntil = until
+    }
+    /** RENEW an already-active grant. Never creates one — so a client cannot
+     *  bootstrap itself into the elevated tier by replaying sender-driven frames
+     *  (the 1:1 call-auth cache is written by the SENDER, so it is not proof). */
+    const refreshInCall = (): void => {
+      if (inCallUntil > Date.now()) inCallUntil = Date.now() + IN_CALL_TTL_MS
+    }
+    const clearInCall = (): void => {
+      inCallUntil = 0
+    }
+    /** In-room check that also renews the grant (#24). Authoritative server-side
+     *  room state is the only thing allowed to keep the elevated tier alive, so a
+     *  user who left (or never joined) decays within one TTL and cannot pin. */
+    const isUserInRoomTracked = async (roomId: string, userId: string): Promise<boolean> => {
+      const ok = await isUserInRoom(roomId, userId)
+      if (ok) markInCall(IN_CALL_TTL_MS)
+      else clearInCall()
+      return ok
+    }
+
     // Short-TTL block-status cache for high-frequency relay-audio frames.
     // isBlocked() is a DB query and relay frames arrive ~tens/sec per peer, so
     // an uncached check per frame is amplifiable DB load. The TTL keeps a
@@ -420,7 +498,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           return
         }
 
-        if (!rateLimiter.check(resolveWsRateLimit(json))) {
+        if (!rateLimiter.check(resolveWsRateLimit(json, Date.now() < inCallUntil))) {
           request.log.warn({ correlationId, userId: user.id }, 'ws: rate limit exceeded')
           safeSend(ws, JSON.stringify({ type: 'error', error: 'RATE_LIMIT_EXCEEDED' }))
           return
@@ -561,6 +639,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           // skip the DB for the rest of this signaling session.
           if (isRelayFrame || isRelayHandshake) {
             setCachedCallAuth(user.id, targetUserId, true)
+            // #24: keep a LONG 1:1 call in the elevated tier. RENEW only — this
+            // authorization is sender-driven (any member can emit a relay_offer
+            // to a contact), so it must never be able to CREATE a grant, or a
+            // client could pin itself into 2400/min without a call existing.
+            refreshInCall()
           }
 
           // WARNING: This relay must stay opaque. Never introspect or mutate SDP/ICE fields,
@@ -602,6 +685,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'BLOCKED' }))
             return
           }
+          // #24: the caller emits its relay_offer + ICE burst immediately after
+          // this invite, so grant the elevated tier now — but only a SHORT
+          // bootstrap. An invite nobody answers decays back to 60/min; the full
+          // TTL is granted on an actual answer (call_accept below).
+          markInCall(IN_CALL_BOOTSTRAP_MS)
           broadcastToUsers(otherIds, {
             type: 'call_invite',
             chat_id,
@@ -610,8 +698,11 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           })
           // Push notification for offline members
           const callerName = user.username
+          // #26: cross-instance presence — a peer connected to ANOTHER api
+          // instance must not be rung by push as if they were offline.
+          const inviteOnline = await areOnline(otherIds)
           const pushPromises = otherIds
-            .filter((id) => !hasActiveSocket(id))
+            .filter((id) => !inviteOnline.get(id))
             .map((id) =>
               sendPushToUser(id, {
                 type: 'incoming_call',
@@ -643,6 +734,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (leaveParsed.success) {
           const { chat_id } = leaveParsed.data
           if (!(await isMemberOfChat(chat_id, user.id))) return
+          // #24: hang-up ends the grant. Cleared unconditionally, BEFORE the
+          // missed-call branch below which returns early on a short ring.
+          clearInCall()
           const otherIds = (await getChatMemberIds(chat_id)).filter(
             (id) => id !== user.id
           )
@@ -693,6 +787,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         if (rejectParsed.success) {
           const { chat_id } = rejectParsed.data
           if (!(await isMemberOfChat(chat_id, user.id))) return
+          clearInCall() // #24: rejecting ends any elevated-tier grant.
           const otherIds = (await getChatMemberIds(chat_id)).filter(
             (id) => id !== user.id
           )
@@ -733,13 +828,20 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           })
           // Also delete any pending missed-call Redis key (call was answered)
           const redis = getRedis()
+          let hadRingingCall = false
           if (redis) {
             const members = await getChatMemberIds(chat_id)
             const callerIds = members.filter((id) => id !== user.id)
-            await Promise.all(
+            const cleared = await Promise.all(
               callerIds.map((callerId) => redis.del(`call:active:${chat_id}:${callerId}`))
             )
+            hadRingingCall = cleared.some((n) => n > 0)
           }
+          // #24: only answering a call that was REALLY ringing grants the full
+          // elevated tier — otherwise any chat member could self-elevate by
+          // sending call_accept into a silent chat. With no Redis we cannot
+          // verify, so grant rather than break calls on such a deployment.
+          if (!redis || hadRingingCall) markInCall(IN_CALL_TTL_MS)
           return
         }
 
@@ -880,6 +982,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             return
           }
           const participants = await joinRoom(room_id, user.id, user.username)
+          // #24: the server itself just put this user in the room — authoritative
+          // proof of an in-call connection, so grant the full elevated tier.
+          markInCall(IN_CALL_TTL_MS)
           // Send current participant list to the joiner
           sendToUser(user.id, {
             type: 'group_call:participant_list',
@@ -908,8 +1013,9 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           // even when they aren't currently connected (issue #4). Mirrors the 1:1
           // call_invite offline push above.
           if (participants.length === 1) {
+            const groupOnline = await areOnline(nonCallMembers)
             const groupPush = nonCallMembers
-              .filter((id) => !hasActiveSocket(id))
+              .filter((id) => !groupOnline.get(id))
               .map((id) =>
                 sendPushToUser(id, {
                   type: 'message',
@@ -928,6 +1034,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcLeave = groupCallLeaveSchema.safeParse(json)
         if (gcLeave.success) {
           const { room_id } = gcLeave.data
+          clearInCall() // #24: left the room — drop back to the control tier.
           const remaining = await leaveRoom(room_id, user.id)
           const otherIds = remaining.map(p => p.userId)
           broadcastToUsers(otherIds, {
@@ -967,7 +1074,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcOffer = groupCallOfferSchema.safeParse(json)
         if (gcOffer.success) {
           const { room_id, target_user_id, sdp, is_video } = gcOffer.data
-          if (!(await isUserInRoom(room_id, user.id))) {
+          if (!(await isUserInRoomTracked(room_id, user.id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
             return
           }
@@ -992,7 +1099,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcAnswer = groupCallAnswerSchema.safeParse(json)
         if (gcAnswer.success) {
           const { room_id, target_user_id, sdp } = gcAnswer.data
-          if (!(await isUserInRoom(room_id, user.id))) {
+          if (!(await isUserInRoomTracked(room_id, user.id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_IN_CALL' }))
             return
           }
@@ -1016,7 +1123,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcIce = groupCallIceSchema.safeParse(json)
         if (gcIce.success) {
           const { room_id, target_user_id, candidate } = gcIce.data
-          if (!(await isUserInRoom(room_id, user.id))) return
+          if (!(await isUserInRoomTracked(room_id, user.id))) return
           if (!(await ensureGroupCallTargetInRoom(room_id, target_user_id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
@@ -1034,7 +1141,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcMute = groupCallMuteSchema.safeParse(json)
         if (gcMute.success) {
           const { room_id, is_muted } = gcMute.data
-          if (!(await isUserInRoom(room_id, user.id))) return
+          if (!(await isUserInRoomTracked(room_id, user.id))) return
           await updateParticipantState(room_id, user.id, { isMuted: is_muted })
           const otherIds = (await getRoomParticipantIds(room_id)).filter(id => id !== user.id)
           broadcastToUsers(otherIds, {
@@ -1049,7 +1156,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcVideo = groupCallVideoToggleSchema.safeParse(json)
         if (gcVideo.success) {
           const { room_id, is_video_off } = gcVideo.data
-          if (!(await isUserInRoom(room_id, user.id))) return
+          if (!(await isUserInRoomTracked(room_id, user.id))) return
           await updateParticipantState(room_id, user.id, { isVideoOff: is_video_off })
           const otherIds = (await getRoomParticipantIds(room_id)).filter(id => id !== user.id)
           broadcastToUsers(otherIds, {
@@ -1064,7 +1171,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcSpeaking = groupCallSpeakingSchema.safeParse(json)
         if (gcSpeaking.success) {
           const { room_id, is_speaking } = gcSpeaking.data
-          if (!(await isUserInRoom(room_id, user.id))) return
+          if (!(await isUserInRoomTracked(room_id, user.id))) return
           const otherIds = (await getRoomParticipantIds(room_id)).filter(id => id !== user.id)
           broadcastToUsers(otherIds, {
             type: 'group_call:speaking',
@@ -1078,7 +1185,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcRelayFrame = groupCallRelayFrameSchema.safeParse(json)
         if (gcRelayFrame.success) {
           const { room_id, target_user_id, ciphertext, iv, sample_rate } = gcRelayFrame.data
-          if (!(await isUserInRoom(room_id, user.id))) return
+          if (!(await isUserInRoomTracked(room_id, user.id))) return
           if (!(await ensureGroupCallTargetInRoom(room_id, target_user_id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
             return
@@ -1122,7 +1229,10 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
       authed = user
       sessionJti = result.jti
       sessionDeviceId = result.device_id
-      const wasOnline = hasActiveSocket(user.id)
+      // #26: evaluated BEFORE registerUserSocket claims presence below. Asking
+      // across instances also stops a 2nd tab landing on another instance from
+      // re-broadcasting a redundant online:true to every peer.
+      const wasOnline = await isOnline(user.id)
       const lastSeenIso = await touchLastSeen(user.id)
       registerUserSocket(user.id, ws, (uid) => {
         clearPingWriteAt(uid)
@@ -1145,6 +1255,13 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             }
           }
 
+          // #26: this fires when THIS instance's last socket for the user
+          // closes — but another instance may still hold live sockets, in which
+          // case announcing "offline" is simply false (and it would also mark
+          // them push-eligible while they are actively connected). The registry
+          // already released this instance's presence claim before invoking us,
+          // so a true answer here means someone else genuinely still has them.
+          if (await isOnline(uid)) return
           const iso = await touchLastSeen(uid)
           const peers = await getRelatedUserIds(uid)
           await broadcastOnlineStatusChange(peers, {

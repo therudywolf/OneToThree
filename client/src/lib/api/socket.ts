@@ -62,6 +62,8 @@ export type WsInboundMessage =
         chat_id: string
         sender_id: string
         reply_to_id?: string | null
+        /** Sender of the replied-to message (#5). Optional — an older server omits it. */
+        reply_to_sender_id?: string | null
         content: string | null
         iv: string | null
         media_path?: string | null

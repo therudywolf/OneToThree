@@ -33,7 +33,6 @@ describe('chatStore unread model', () => {
       isForegroundVisible: false,
       isActiveChat: false,
       userId: useSessionStore.getState().userId,
-      messages: useChatStore.getState().messages,
     })
 
     const next = useUnreadStore.getState()
@@ -49,7 +48,6 @@ describe('chatStore unread model', () => {
       isForegroundVisible: false,
       isActiveChat: false,
       userId: useSessionStore.getState().userId,
-      messages: useChatStore.getState().messages,
     })
     expect(useUnreadStore.getState().unreadTotal).toBe(0)
 
@@ -59,7 +57,6 @@ describe('chatStore unread model', () => {
       isForegroundVisible: true,
       isActiveChat: true,
       userId: useSessionStore.getState().userId,
-      messages: useChatStore.getState().messages,
     })
     expect(useUnreadStore.getState().unreadTotal).toBe(0)
   })
@@ -72,16 +69,54 @@ describe('chatStore unread model', () => {
       chatId: 'chat-a',
       senderId: 'u-peer',
       replyToId: 'm-own',
+      replyToSenderId: 'u-self',
       isForegroundVisible: false,
       isActiveChat: false,
       userId: useSessionStore.getState().userId,
-      messages: useChatStore.getState().messages,
     })
 
     const state = useUnreadStore.getState()
     expect(state.unreadByChat['chat-a']?.total).toBe(1)
     expect(state.unreadByChat['chat-a']?.mentions).toBe(1)
     expect(state.unreadByChat['chat-a']?.threads['m-own']).toBe(1)
+  })
+
+  // #5 — the regression the wire field exists to fix. Previously the mention was
+  // inferred by scanning the LOADED messages for the parent, so a reply to a
+  // message outside the open chat's ~75-row window (or while another chat was
+  // open, or in the background) counted as zero mentions. With
+  // reply_to_sender_id off the wire, nothing needs to be loaded.
+  it('counts a mention even when the replied-to message is NOT loaded', () => {
+    useChatStore.getState().setMessages([]) // nothing in the window
+    useUnreadStore.getState().trackInboundUnread({
+      chatId: 'chat-far',
+      senderId: 'u-peer',
+      replyToId: 'm-ancient',
+      replyToSenderId: 'u-self',
+      isForegroundVisible: false,
+      isActiveChat: false,
+      userId: useSessionStore.getState().userId,
+    })
+
+    const state = useUnreadStore.getState()
+    expect(state.unreadByChat['chat-far']?.mentions).toBe(1)
+    expect(state.unreadByChat['chat-far']?.total).toBe(1)
+  })
+
+  it('does NOT count a mention when the reply targets someone else', () => {
+    useUnreadStore.getState().trackInboundUnread({
+      chatId: 'chat-a',
+      senderId: 'u-peer',
+      replyToId: 'm-other',
+      replyToSenderId: 'u-peer2',
+      isForegroundVisible: false,
+      isActiveChat: false,
+      userId: useSessionStore.getState().userId,
+    })
+
+    const state = useUnreadStore.getState()
+    expect(state.unreadByChat['chat-a']?.mentions).toBe(0)
+    expect(state.unreadByChat['chat-a']?.total).toBe(1)
   })
 
   it('clears unread for chat when opening chat', () => {
@@ -91,7 +126,6 @@ describe('chatStore unread model', () => {
       isForegroundVisible: false,
       isActiveChat: false,
       userId: useSessionStore.getState().userId,
-      messages: useChatStore.getState().messages,
     })
     useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-b',
@@ -99,7 +133,6 @@ describe('chatStore unread model', () => {
       isForegroundVisible: false,
       isActiveChat: false,
       userId: useSessionStore.getState().userId,
-      messages: useChatStore.getState().messages,
     })
     expect(useUnreadStore.getState().unreadTotal).toBe(2)
 
@@ -112,7 +145,6 @@ describe('chatStore unread model', () => {
 
   it('marks a thread as read and decreases aggregate unread', () => {
     const userId = useSessionStore.getState().userId
-    const messages = useChatStore.getState().messages
     useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
       senderId: 'u-peer',
@@ -120,7 +152,6 @@ describe('chatStore unread model', () => {
       isForegroundVisible: false,
       isActiveChat: false,
       userId,
-      messages,
     })
     useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
@@ -129,7 +160,6 @@ describe('chatStore unread model', () => {
       isForegroundVisible: false,
       isActiveChat: false,
       userId,
-      messages,
     })
     useUnreadStore.getState().trackInboundUnread({
       chatId: 'chat-a',
@@ -138,7 +168,6 @@ describe('chatStore unread model', () => {
       isForegroundVisible: false,
       isActiveChat: false,
       userId,
-      messages,
     })
 
     expect(useUnreadStore.getState().unreadByChat['chat-a']?.total).toBe(3)

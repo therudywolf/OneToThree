@@ -12,6 +12,9 @@ export type SendChatMessageBody = {
     iv: string
   }>
   reply_to_id?: string | null
+  /** Sender of the replied-to message (#5) — lets mentions be recomputed after a
+   *  cold start without the parent row being loaded. */
+  reply_to_sender_id?: string | null
   media_path?: string | null
   media_type?: string | null
   media_iv?: string | null

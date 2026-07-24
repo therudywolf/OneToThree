@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DecryptedMessage } from '@/types/chat'
 import type { ApiChatRow } from '@/lib/api/chats'
 import { createSafeJSONStorage } from '@/lib/safe-zustand-storage'
 
@@ -25,14 +24,21 @@ function countUnreadTotal(unreadByChat: UnreadByChat): number {
   return Object.values(unreadByChat).reduce((acc, x) => acc + (x.total || 0), 0)
 }
 
-function hasMentionByReplyToOwnMessage(params: {
-  replyToId: string | null
-  messages: DecryptedMessage[]
+/**
+ * A reply to one of MY messages counts as a mention (#5).
+ *
+ * This used to scan the loaded `messages` array for the parent — which only ever
+ * held the OPEN chat's ~75-row window, so a reply to anything older (or in any
+ * other chat, or while the app was backgrounded) silently counted as zero. The
+ * server now stamps the parent's sender on the wire as `reply_to_sender_id`, so
+ * the check is a direct comparison that works for every chat regardless of what
+ * happens to be loaded.
+ */
+function isReplyToOwnMessage(
+  replyToSenderId: string | null | undefined,
   userId: string | null
-}): boolean {
-  if (!params.replyToId || !params.userId) return false
-  const replied = params.messages.find((m) => m.id === params.replyToId)
-  return Boolean(replied && replied.sender_id === params.userId)
+): boolean {
+  return Boolean(replyToSenderId && userId && replyToSenderId === userId)
 }
 
 export type UnreadState = {
@@ -48,10 +54,11 @@ export type UnreadState = {
     chatId: string
     senderId: string
     replyToId?: string | null
+    /** Sender of the replied-to message, straight off the wire (#5). */
+    replyToSenderId?: string | null
     isForegroundVisible: boolean
     isActiveChat: boolean
     userId: string | null
-    messages: DecryptedMessage[]
   }) => void
   setHistoryDecryptBusy: (busy: boolean) => void
   updateReadAtOverride: (nodeId: string, timestamp: string) => void
@@ -109,11 +116,7 @@ export const useUnreadStore = create<UnreadState>()(
             nextThreads[params.replyToId] = (nextThreads[params.replyToId] ?? 0) + 1
           }
 
-          const mentionByReply = hasMentionByReplyToOwnMessage({
-            replyToId: params.replyToId ?? null,
-            messages: params.messages,
-            userId: params.userId,
-          })
+          const mentionByReply = isReplyToOwnMessage(params.replyToSenderId, params.userId)
           const nextChat: ChatUnreadState = {
             total: chatUnread.total + 1,
             mentions: chatUnread.mentions + (mentionByReply ? 1 : 0),

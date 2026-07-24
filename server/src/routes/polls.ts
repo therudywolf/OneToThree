@@ -181,6 +181,9 @@ export const pollsRoutes: FastifyPluginAsync = async (app) => {
           created_at: msg.createdAt instanceof Date ? msg.createdAt.toISOString() : msg.createdAt,
           read_at: null,
           reply_to_id: null,
+          // Keep the union shape identical to rowToWireMessage (#5) — this path
+          // inserts into `messages` directly, bypassing persistChatMessageAndFanOut.
+          reply_to_sender_id: null,
         },
       })
     }

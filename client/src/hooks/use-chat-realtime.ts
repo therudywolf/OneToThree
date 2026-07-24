@@ -216,17 +216,9 @@ export function useChatRealtime(
       }
       if (msg.type !== 'chat_message') return
       const m = msg.message
-      if (userId && m.sender_id !== userId) {
-        trackInboundUnread({
-          chatId: m.chat_id,
-          senderId: m.sender_id,
-          replyToId: m.reply_to_id ?? null,
-          isForegroundVisible: document.visibilityState === 'visible',
-          isActiveChat: m.chat_id === useSessionStore.getState().activeChatId,
-          userId,
-          messages: useChatStore.getState().messages,
-        })
-      }
+      // NOTE: unread/mention tracking deliberately does NOT live here — this
+      // effect is gated on `activeChatId`, so it would stop counting the moment
+      // no chat is open. It runs in its own ungated effect below (#5).
       if (userId && m.sender_id !== userId) {
         // Per-chat mute: suppress both the local chime and the background
         // push trigger entirely. Unread tracking above still runs so counters
@@ -423,6 +415,38 @@ export function useChatRealtime(
     updateMessageReactions,
     userId,
   ])
+
+  /**
+   * Unread + mention tracking, deliberately NOT gated on `activeChatId` (#5).
+   *
+   * The main realtime effect above returns early when no chat is open, so while
+   * the user sits on the chat list — or has the app backgrounded with no chat
+   * selected — it never subscribes and NOTHING was counted: unread badges and
+   * mention counts both stayed at zero, which is exactly the scenario the
+   * "background mention counting" fix is about. This effect owns that counting
+   * on its own, for every chat, and depends only on the user id.
+   */
+  useEffect(() => {
+    if (!userId) return
+    const socket = getFmSocket()
+    const off = socket.subscribe((msg) => {
+      if (msg.type !== 'chat_message') return
+      const m = msg.message
+      if (m.sender_id === userId) return
+      trackInboundUnread({
+        chatId: m.chat_id,
+        senderId: m.sender_id,
+        replyToId: m.reply_to_id ?? null,
+        // Straight off the wire — no longer inferred from the loaded message
+        // window, which only ever covered the currently open chat.
+        replyToSenderId: m.reply_to_sender_id ?? null,
+        isForegroundVisible: document.visibilityState === 'visible',
+        isActiveChat: m.chat_id === useSessionStore.getState().activeChatId,
+        userId,
+      })
+    })
+    return () => off()
+  }, [userId, trackInboundUnread])
 
   useEffect(() => {
     const id = window.setInterval(() => pruneTypingUsers(Date.now()), 1000)

@@ -31,7 +31,7 @@ import {
 import { normalizeUuid } from '../lib/uuid.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import { clearFmSessionCookie } from '../lib/session-cookie.js'
-import { hasActiveSocket, sendToUser } from '../ws/registry.js'
+import { areOnline, isOnline, sendToUser } from '../ws/registry.js'
 import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
 import { deletePending, getPending, setChallenge } from '../lib/challenge-store.js'
 import { safeEqualNonce } from '../lib/ecdsa-verify.js'
@@ -441,7 +441,9 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       bio: row.bio ?? null,
       status_text: row.statusText ?? null,
       social_links: socialLinks,
-      online: mask ? false : hasActiveSocket(row.id),
+      // #26: cross-instance. Short-circuited when masked so a hidden profile
+      // costs no Redis call at all.
+      online: mask ? false : await isOnline(row.id),
       last_seen_at: mask ? null : row.lastSeenAt instanceof Date ? row.lastSeenAt.toISOString() : row.lastSeenAt ? String(row.lastSeenAt) : null,
     })
   })
@@ -655,6 +657,12 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .from(users)
       .where(inArray(users.id, requested))
 
+    // #26: ONE pipelined presence read for the whole batch. This is the hottest
+    // presence consumer (clients poll it for entire contact lists), so a
+    // per-user round trip inside the map would be the difference between viable
+    // and not — and .map's callback is sync and cannot await anyway.
+    const presence = await areOnline(rows.map((u) => u.id))
+
     return reply.send({
       users: rows.map((u) => {
         const mask = shouldMaskPresenceForViewer({
@@ -667,7 +675,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         return {
           id: u.id,
           last_seen_at: mask ? null : u.lastSeenAt == null ? null : u.lastSeenAt instanceof Date ? u.lastSeenAt.toISOString() : String(u.lastSeenAt),
-          online: mask ? false : hasActiveSocket(u.id),
+          online: mask ? false : presence.get(u.id) === true,
         }
       }),
     })

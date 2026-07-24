@@ -201,6 +201,29 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       .limit(1)
     const senderEcdhKey = senderDevice?.ecdhPublicKey ?? senderUser?.ecdhPublicKeyJwk ?? null
 
+    // #5 — resolve the reply parent ONCE, and AUTHORIZE it. `reply_to_id` was
+    // previously accepted as a bare uuid whose only constraint was the global FK
+    // to messages.id: nothing checked the parent lives in THIS chat. Now that the
+    // parent's sender is echoed back as `reply_to_sender_id`, an unvalidated
+    // parent would turn this endpoint into a cross-chat "who wrote message
+    // <uuid>" oracle. Coerce a foreign/stale parent to null rather than 400, so
+    // an in-flight client with a stale id keeps working instead of breaking on
+    // deploy.
+    let replyToId = p.reply_to_id ?? null
+    let replyToSenderId: string | null = null
+    if (replyToId) {
+      const [parent] = await db
+        .select({ id: messages.id, chatId: messages.chatId, senderId: messages.senderId })
+        .from(messages)
+        .where(eq(messages.id, replyToId))
+        .limit(1)
+      if (!parent || parent.chatId !== p.chat_id) {
+        replyToId = null
+      } else {
+        replyToSenderId = parent.senderId
+      }
+    }
+
     // Resolve per-device delivery slots BEFORE persisting, so the message row
     // and its ciphertext slots are written in one transaction. A recipient
     // must never get the chat_message WS event / push (fired by
@@ -241,7 +264,8 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const persisted = await persistChatMessageAndFanOut({
       chatId: p.chat_id,
       senderId: user.id,
-      replyToId: p.reply_to_id ?? null,
+      replyToId,
+      replyToSenderId,
       // Direct chats are device-slot only: do not persist legacy shared ciphertext.
       content: isDirectChat ? null : p.content ?? null,
       iv: isDirectChat ? null : p.iv ?? null,
@@ -311,6 +335,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
           isNull(messageDeliveries.deliveredAt)
         )
 
+    // Self-join to the reply parent (PK lookup, and messages_reply_to_id_idx
+    // already exists) so each row can carry its parent's sender (#5).
+    const syncReplyParent = alias(messages, 'sync_reply_parent')
     const rows = await db
       .select({
         id: messages.id,
@@ -335,6 +362,9 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         deliveryIv: messageDeliveries.iv,
         // Use key pinned at send time — survives multi-device key rotation
         senderEcdhPublicKeyJwk: messages.senderEcdhPublicKeyJwk,
+        // #5: the replied-to message's sender, so a client resuming from the
+        // background can recompute mention counts without the parent row.
+        replyToSenderId: syncReplyParent.senderId,
       })
       .from(messages)
       .innerJoin(messageDeliveries, eq(messages.id, messageDeliveries.messageId))
@@ -342,6 +372,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         chatMembers,
         and(eq(chatMembers.chatId, messages.chatId), eq(chatMembers.userId, user.id))
       )
+      .leftJoin(syncReplyParent, eq(syncReplyParent.id, messages.replyToId))
       .where(memberFilter)
       .orderBy(asc(messages.createdAt))
       .limit(200)
@@ -352,6 +383,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         chat_id: m.chatId,
         sender_id: m.senderId,
         reply_to_id: m.replyToId,
+        reply_to_sender_id: m.replyToSenderId ?? null,
         // Legacy shared-key fields (may be null in fan-out mode)
         content: m.content,
         iv: m.iv,
@@ -623,12 +655,16 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const cutoff = await getHistoryCutoff(user.id, request)
     const sess = await request.sessionJwt()
     const callerDeviceId = sess?.device_id ?? null
+    // Self-join to the reply parent so scroll-back history carries the parent's
+    // sender and mentions can be recomputed after a cold start (#5).
+    const histReplyParent = alias(messages, 'hist_reply_parent')
     const rows = await db
       .select({
         id: messages.id,
         chatId: messages.chatId,
         senderId: messages.senderId,
         replyToId: messages.replyToId,
+        replyToSenderId: histReplyParent.senderId,
         content: messages.content,
         iv: messages.iv,
         mediaPath: messages.mediaPath,
@@ -648,6 +684,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         senderEcdhPublicKeyJwk: messages.senderEcdhPublicKeyJwk,
       })
       .from(messages)
+      .leftJoin(histReplyParent, eq(histReplyParent.id, messages.replyToId))
       .leftJoin(
         messageDeliveries,
         callerDeviceId
@@ -710,6 +747,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         chat_id: m.chatId,
         sender_id: m.senderId,
         reply_to_id: m.replyToId,
+        reply_to_sender_id: m.replyToSenderId ?? null,
         content: m.content,
         iv: m.iv,
         media_path: m.mediaPath,

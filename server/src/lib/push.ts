@@ -32,6 +32,13 @@ export type PushPayload = {
   type?: 'message' | 'incoming_call'
   /** Only for incoming_call notifications */
   caller_name?: string
+  /**
+   * True iff this message replies to a message the RECIPIENT sent (#5) —
+   * computed per recipient by the caller. Deliberately a boolean: the raw
+   * reply_to_sender_id must never reach Web Push / FCM, which otherwise see no
+   * user identifiers at all.
+   */
+  reply_to_me?: boolean
 }
 
 function parseFirebaseServiceAccountJson(): Record<string, unknown> | null {
@@ -113,6 +120,7 @@ export async function sendPushToUser(
       chat_id: payload.chat_id,
       type: payload.type || 'message',
       caller_name: payload.caller_name,
+      reply_to_me: payload.reply_to_me === true,
     },
   })
 
@@ -156,6 +164,8 @@ export async function sendNativePushToUser(
     url: payload.url,
     chat_id: payload.chat_id || '',
     caller_name: payload.caller_name || '',
+    // FCM data values must be strings (#5).
+    reply_to_me: payload.reply_to_me === true ? '1' : '0',
   }
 
   await Promise.allSettled(

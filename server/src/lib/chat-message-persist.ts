@@ -279,8 +279,24 @@ async function notifyOfflineMembers(
   // lookup would add O(members) sequential Redis round trips to the awaited
   // send path — the exact regression a naive port of hasActiveSocket causes.
   const online = await areOnline(recipients)
-  for (const memberId of recipients) {
-    if (online.get(memberId)) continue
+  const offline = recipients.filter((id) => !online.get(id))
+  if (offline.length === 0) return
+
+  // Bounded fan-out. The old loop launched two detached DB-backed sends per
+  // offline member simultaneously — 10k in-flight queries for a 5k-member group
+  // against a pool of 20 — which is how a routine group send turned into a
+  // connect_timeout storm in the first place. Run it detached from the caller
+  // (nobody awaits a push) but internally serialized into small chunks so the
+  // pool is never swamped.
+  const PUSH_CHUNK = 10
+  void (async () => {
+    for (let i = 0; i < offline.length; i += PUSH_CHUNK) {
+      const chunk = offline.slice(i, i + PUSH_CHUNK)
+      await Promise.allSettled(chunk.flatMap((memberId) => sendBoth(memberId)))
+    }
+  })()
+
+  function sendBoth(memberId: string): Array<Promise<void>> {
     const payload = {
       title: 'Новое сообщение',
       body: 'Вам пришло зашифрованное сообщение',
@@ -290,8 +306,18 @@ async function notifyOfflineMembers(
       type: 'message' as const,
       reply_to_me: row.replyToSenderId != null && row.replyToSenderId === memberId,
     }
-    void sendPushToUser(memberId, payload)
-    void sendNativePushToUser(memberId, payload)
+    // Terminal handlers are mandatory here, not defensive style: index.ts
+    // escalates ANY unhandledRejection to a full process shutdown, and both of
+    // these open their own un-guarded `db.select()`. Previously the first push
+    // query to exceed connect_timeout rejected with nothing to catch it, and
+    // that single rejection killed the whole API — every other user's socket,
+    // call and upload with it. The WS call-invite fan-out already gets this
+    // right (routes/ws.ts wraps each push in .catch() + Promise.allSettled);
+    // this path did not.
+    return [
+      sendPushToUser(memberId, payload).catch(() => { /* best-effort */ }),
+      sendNativePushToUser(memberId, payload).catch(() => { /* best-effort */ }),
+    ]
   }
 }
 

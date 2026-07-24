@@ -48,13 +48,44 @@ function decodeHtmlEntities(s: string): string {
  * regexes dropped a large fraction of real pages (content-first tags, single
  * quotes, Twitter `name=` cards), so previews silently rendered nothing (#14).
  */
-function parseMetaTags(html: string): Map<string, string> {
+/**
+ * Everything below is a ReDoS bound, not tidiness.
+ *
+ * `attrRe` used to be `/([a-zA-Z:_-]+)\s*=\s*.../g`. Against a tag body with no
+ * `=` in it, the engine tries every start offset, consumes the whole run of
+ * name characters, fails, and backtracks — O(N²). Measured on Node 24: 5 KB =
+ * 18 ms, 10 KB = 69 ms, 20 KB = 281 ms, 40 KB = 1.13 s, i.e. exactly
+ * quadratic; extrapolated to the 2 MB body cap that is ~47 MINUTES. Regex
+ * execution is synchronous and cannot be pre-empted, so one authenticated
+ * `GET /api/link-preview?url=…` pointing at an attacker's page returning
+ * `<meta ` + 'a'×2MB + `>` freezes the entire Fastify process — every other
+ * user's request, WebSocket heartbeat and health check — for that whole window.
+ *
+ * Three independent bounds, so no single one has to be perfect:
+ *   1. only the head region, and at most HEAD_SCAN_BYTES of it, is scanned;
+ *   2. any single tag longer than MAX_TAG_BYTES is skipped outright (a real
+ *      meta tag is a few hundred bytes);
+ *   3. the attribute name must start at a boundary, which removes the
+ *      quadratic backtracking itself rather than just capping its input.
+ */
+const HEAD_SCAN_BYTES = 256 * 1024
+const MAX_TAG_BYTES = 8 * 1024
+
+export function parseMetaTags(rawHtml: string): Map<string, string> {
   const map = new Map<string, string>()
+  // Metadata lives in <head>; stop there when we can find it.
+  const headEnd = rawHtml.search(/<\/head\s*>/i)
+  const html = rawHtml.slice(0, Math.min(headEnd === -1 ? rawHtml.length : headEnd, HEAD_SCAN_BYTES))
+
   const metaRe = /<meta\b[^>]*>/gi
-  const attrRe = /([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g
+  // The leading `(?:^|[\s/])` is load-bearing: it pins each attempt to a real
+  // attribute boundary, so a long run of name characters is no longer retried
+  // at every offset inside itself.
+  const attrRe = /(?:^|[\s/])([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g
   let m: RegExpExecArray | null
   while ((m = metaRe.exec(html)) !== null) {
     const tag = m[0]
+    if (tag.length > MAX_TAG_BYTES) continue
     let key: string | null = null
     let content: string | null = null
     let a: RegExpExecArray | null

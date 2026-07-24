@@ -53,8 +53,10 @@ export function RecoveryHandler() {
   // Auth-related paths where watchdog must NOT fire
   const isAuthPage =
     pathname === '/login' ||
+    pathname === '/register' ||
     pathname === '/' ||
     pathname?.startsWith('/login') ||
+    pathname?.startsWith('/register') ||
     pathname?.startsWith('/join')
 
   useEffect(() => {

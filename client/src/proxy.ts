@@ -6,13 +6,11 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { normalizeApiRoot } from '@/lib/api/url'
+// Single source of truth, shared with auth-provider.tsx and use-401-handler.ts —
+// those two gates each used to keep their own shorter copy of this list.
+import { isAuthScreen, isPublicRoute } from '@/lib/public-routes'
 
 const SESSION_COOKIE = 'fm_session'
-// Both public auth screens. Registration lives at its own route, and a visitor
-// opening it has no session by definition — leaving it out of this set made the
-// edge redirect every sign-up attempt straight back to /login.
-const PUBLIC_PATHS = new Set<string>(['/login', '/register'])
-const PUBLIC_PREFIXES = ['/legal/']
 // `/.well-known/` MUST bypass the auth gate: Android App Links + Apple
 // universal-links verifiers fetch `/.well-known/assetlinks.json` (et al.)
 // unauthenticated, and a redirect to /login fails verification (the file is
@@ -97,9 +95,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  const isPublic =
-    PUBLIC_PATHS.has(pathname) ||
-    PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  const isPublic = isPublicRoute(pathname)
 
   // Skip the auth probe for public paths — saves a round-trip per
   // request and keeps /legal/* reachable without DB / API access.
@@ -116,9 +112,11 @@ export async function proxy(request: NextRequest) {
     loginUrl.pathname = '/login'
     loginUrl.search = pathname === '/' ? '' : `?next=${encodeURIComponent(`${pathname}${search}`)}`
     response = NextResponse.redirect(loginUrl)
-  } else if (isAuthed && PUBLIC_PATHS.has(pathname)) {
+  } else if (isAuthed && isAuthScreen(pathname)) {
     // Symmetric: someone already signed in has no business on either auth
-    // screen, so /register sends them home too.
+    // screen, so /register sends them home too. Deliberately narrower than
+    // `isPublicRoute` — a signed-in user may legitimately read /legal/* or run
+    // /reset-pwa, and must not be bounced home from them.
     const homeUrl = request.nextUrl.clone()
     homeUrl.pathname = '/'
     homeUrl.search = ''

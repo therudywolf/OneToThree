@@ -17,6 +17,7 @@ import { invalidateAvatarCache, clearAllAvatarCache } from '@/lib/avatar-cache'
 import { clearNativeSessionCookie, warmNativeSessionCookies } from '@/lib/native-session'
 import { clearOwnDrIdentity } from '@/lib/ratchet/session-manager'
 import { useSessionStore } from '@/store/sessionStore'
+import { isPublicRoute } from '@/lib/public-routes'
 
 /** * `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional).
  * `has_passkeys` indicates if the user has enrolled WebAuthn devices.
@@ -82,10 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[auth] refresh failed', e.status)
         }
         // Handle 401: redirect to login
-        // Every PUBLIC auth screen must be excluded, not just /login: a visitor
-        // on /register is unauthenticated by definition, so a bare `!== '/login'`
-        // check bounced them straight off the sign-up page they had just opened.
-        const onPublicAuthRoute = pathname === '/login' || pathname === '/register'
+        // Every PUBLIC route must be excluded, not just /login: a visitor on
+        // /register is unauthenticated by definition, so a bare `!== '/login'`
+        // check bounced them straight off the sign-up page they had just opened
+        // — and the same applied to /legal/* and /reset-pwa, which the edge gate
+        // lets through but this one used to redirect away the moment they
+        // mounted. Shared list, so the gates cannot drift apart again.
+        const onPublicAuthRoute = isPublicRoute(pathname)
         if (
           e.status === 401 &&
           !redirectedRef.current &&

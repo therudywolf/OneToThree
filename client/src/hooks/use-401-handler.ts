@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/components/auth/auth-provider'
+import { isPublicRoute } from '@/lib/public-routes'
 
 export function shouldHandleUnauthorized(
   status: number,
@@ -9,10 +10,10 @@ export function shouldHandleUnauthorized(
   hasRedirected: boolean
 ): boolean {
   if (status !== 401 || hasRedirected) return false
-  // Both public auth screens: a visitor on /register has no session yet, so a
-  // 401 there is expected, not a reason to bounce them to /login.
-  const isAuthRoute = pathname === '/login' || pathname === '/register'
-  if (isAuthRoute) return false
+  // Any PUBLIC route: a visitor on /register (or /legal/*, or /reset-pwa) has
+  // no session yet, so a 401 there is expected, not a reason to bounce them to
+  // /login. Shared list — this gate used to know only the two auth screens.
+  if (isPublicRoute(pathname)) return false
   const normalizedUrl = requestUrl.toLowerCase()
   const isAuthBootstrapRequest =
     normalizedUrl.includes('/api/auth/me') ||

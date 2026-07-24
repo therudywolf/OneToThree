@@ -126,9 +126,20 @@ try {
         },
       },
       {
+        // ONLY the GIF proxy. Cache Storage is keyed by URL and shared by every
+        // account that uses this browser, so caching a per-user authenticated
+        // response leaks it across an account switch: `/api/users/me/devices` is
+        // literally the same URL for everyone, so after A signed out and B
+        // signed in, StaleWhileRevalidate handed B user A's device list —
+        // names, ids, last-seen — for the whole 5-minute TTL. The same applied
+        // to `/api/users/:id/profile`, `/api/storage/avatar-url` (a presigned
+        // URL scoped to the CALLER) and `/api/stickers` (the caller's packs).
+        // `/api/gif` is an upstream GIPHY/Tenor proxy — identical for everyone,
+        // and the only one of the set that was ever safe to cache. The `(\/|\?|$)`
+        // tail keeps `/api/gif-favorites`, which IS per-user, out.
         urlPattern: ({ url, request }) =>
           request.method === 'GET' &&
-          /^\/api\/(users\/[^/]+\/devices|users\/[^/]+\/profile|users\/me\/devices|storage\/avatar-url|stickers|gif)(\/|\?|$)/.test(url.pathname + url.search),
+          /^\/api\/gif(\/|\?|$)/.test(url.pathname + url.search),
         handler: 'StaleWhileRevalidate',
         options: {
           cacheName: 'p13-readonly-api',

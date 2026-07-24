@@ -31,7 +31,10 @@ describe('poll voting', () => {
   it('single-choice re-vote replaces the prior vote (exactly one row per user)', async () => {
     const user = await createUser('poll')
     const cookie = `fm_session=${await app!.jwt.sign({ sub: user.id, username: user.username, jti: randomUUID() })}`
-    const [chat] = await db.insert(chats).values({ type: 'group_e2e', name: 'poll chat' }).returning({ id: chats.id })
+    // public_open, not group_e2e: polls store plaintext question/options, so the
+    // server now forbids them in E2E chats to avoid an E2EE bypass (#18). Polls
+    // are a public-chat feature; the voting logic under test is chat-type-agnostic.
+    const [chat] = await db.insert(chats).values({ type: 'public_open', name: 'poll chat' }).returning({ id: chats.id })
     await db.insert(chatMembers).values({ chatId: chat.id, userId: user.id, encryptedGroupKey: null, role: 'owner' })
 
     let pollId: string | null = null

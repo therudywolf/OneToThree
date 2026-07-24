@@ -345,6 +345,26 @@ export async function buildApp() {
 
   await app.register(cookie)
 
+  // CSRF defense (#39): body-less "simple request" mutations (POST /auth/logout,
+  // /auth/refresh, /auth/clear-session, /auth/2fa/setup) don't trigger a CORS
+  // preflight, so a cross-site page could fire them with the SameSite=None
+  // session cookie. Reject any state-changing request whose Origin header is
+  // present but not in the CORS allowlist (same set CORS itself enforces). A
+  // missing Origin (curl / server-to-server / some native clients) is allowed —
+  // browsers always set Origin on cross-origin POSTs, so its absence can't be a
+  // cross-site browser attack. Only enforced when an allowlist is configured
+  // (prod requires one via assertProdSecurityEnv).
+  if (corsOriginsValid.length > 0) {
+    const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+    app.addHook('onRequest', async (request, reply) => {
+      if (!MUTATING_METHODS.has(request.method)) return
+      const origin = request.headers.origin
+      if (origin && !corsOriginSet.has(origin)) {
+        return reply.status(403).send({ error: 'CROSS_ORIGIN_FORBIDDEN' })
+      }
+    })
+  }
+
   // One-shot startup diagnostics for the most-misconfigured knobs. Helps
   // operators spot the "logs in but client says still anonymous" class of
   // bugs: CORS origin missing, COOKIE_DOMAIN unset across sibling subdomains,

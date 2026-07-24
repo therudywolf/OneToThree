@@ -11,7 +11,8 @@ import {
   encryptMessage,
   importEcdhPublicKey,
 } from './crypto'
-import { unwrapGroupKeyFromStoredPayload } from './chat-logic'
+import { readStoredSectorKeyEpoch, unwrapGroupKeyFromStoredPayload } from './chat-logic'
+import { addRingEntry, getRingEntries } from './sector-keyring'
 
 /**
  * PROJECT 13 :: ENCRYPTION_FRAME_PROTOCOL
@@ -27,7 +28,16 @@ export type ChatCryptoContext =
    * only we can reproduce but is fully self-contained (no peer required).
    */
   | { mode: 'SELF'; selfPublicKeyJwk: string }
-  | { mode: 'SECTOR'; groupKey: CryptoKey }
+  | {
+      mode: 'SECTOR'
+      /** Current (highest-epoch) key — used to ENCRYPT and tried FIRST on
+       *  decrypt, so current traffic is byte-identical to the pre-#32 path. */
+      groupKey: CryptoKey
+      /** #32/#33 per-epoch key ring, newest epoch first, `groupKey` at [0].
+       *  Decrypt tries these in order so messages sealed under prior epochs
+       *  still open after a rotation. Absent → treat as `[groupKey]`. */
+      groupKeyRing?: CryptoKey[]
+    }
   | { mode: 'PUBLIC' }
 
 type SectorDetailResponse = {
@@ -103,6 +113,59 @@ function resolveSectorOwnerEcdhJwk(members: SectorDetailResponse['members']): st
   return owner.ecdh_public_key_jwk
 }
 
+/**
+ * [BUILD_SECTOR_FRAME] :: Assemble the SECTOR crypto frame with its per-epoch
+ * key ring (#32/#33). Shared by both context builders so the primary and the
+ * forward/media path key groups identically.
+ *
+ * `groupKey` is the CURRENT (highest-epoch) key — used to encrypt and tried
+ * first on decrypt. `groupKeyRing` prepends it, then appends every retained
+ * older-epoch key so post-rotation history still decrypts for existing members.
+ * A newly added member has only the current epoch in its ring (older blobs were
+ * sealed to the OTHER members and were never delivered to it), so it cannot read
+ * pre-join history — backward secrecy (#32). Ring assembly is best-effort: an
+ * old blob that fails to unwrap (e.g. sealed by a since-replaced owner) is
+ * skipped, never fatal; the current key always leads the ring.
+ */
+async function buildSectorFrame(
+  chatId: string,
+  myUserId: string,
+  privateKey: CryptoKey,
+  members: SectorDetailResponse['members']
+): Promise<Extract<ChatCryptoContext, { mode: 'SECTOR' }>> {
+  const me = members.find((m) => m.user_id === myUserId)
+  if (!me?.encrypted_group_key) throw new Error('ERR_MISSING_SECTOR_KEY')
+
+  // D2: bind the wrap to the OWNER's pinned ECDH key so a server- or
+  // admin-substituted key is rejected (fail-closed) rather than silently
+  // adopted, which would hand the attacker full group read/inject.
+  const ownerEcdhJwk = resolveSectorOwnerEcdhJwk(members)
+  const currentKey = await unwrapGroupKeyFromStoredPayload(
+    privateKey,
+    me.encrypted_group_key,
+    ownerEcdhJwk
+  )
+
+  // Retain THIS epoch's blob locally, then build the ring newest-first with the
+  // current key guaranteed at index 0 (the safety invariant: current messages
+  // must decrypt on the first attempt, exactly as before #32).
+  const currentEpoch = readStoredSectorKeyEpoch(me.encrypted_group_key) ?? 0
+  await addRingEntry(myUserId, chatId, currentEpoch, me.encrypted_group_key)
+
+  const ring: CryptoKey[] = [currentKey]
+  for (const entry of await getRingEntries(myUserId, chatId)) {
+    if (entry.epoch >= currentEpoch) continue // current already at [0]
+    try {
+      ring.push(await unwrapGroupKeyFromStoredPayload(privateKey, entry.wrapped, ownerEcdhJwk))
+    } catch {
+      // Older blob no longer unwraps (owner changed / corrupt). Skip it — that
+      // one epoch's history is unreadable, but the rest of the ring is intact.
+    }
+  }
+
+  return { mode: 'SECTOR', groupKey: currentKey, groupKeyRing: ring }
+}
+
 /** [CALIBRATE_FRAME] :: Снятие показаний и построение крипто-контекста для сектора */
 export async function buildChatCryptoContext(
   chatId: string,
@@ -137,19 +200,7 @@ export async function buildChatCryptoContext(
 
   // [2] SECTOR_E2E_LINK :: Групповой зашифрованный канал стаи
   if (chat.type === 'group_e2e') {
-    const me = members.find((m) => m.user_id === myUserId)
-    if (!me?.encrypted_group_key) throw new Error('ERR_MISSING_SECTOR_KEY')
-
-    // D2: bind the wrap to the OWNER's pinned ECDH key so a server- or
-    // admin-substituted key is rejected (fail-closed) rather than silently
-    // adopted, which would hand the attacker full group read/inject.
-    const ownerEcdhJwk = resolveSectorOwnerEcdhJwk(members)
-    const sectorKey = await unwrapGroupKeyFromStoredPayload(
-      privateKey,
-      me.encrypted_group_key,
-      ownerEcdhJwk
-    )
-    return { mode: 'SECTOR', groupKey: sectorKey }
+    return await buildSectorFrame(chatId, myUserId, privateKey, members)
   }
 
   return null
@@ -202,18 +253,10 @@ export async function buildChatCryptoContextWithMeta(
   }
 
   if (chat.type === 'group_e2e') {
-    const me = members.find((m) => m.user_id === myUserId)
-    if (!me?.encrypted_group_key) throw new Error('ERR_MISSING_SECTOR_KEY')
-    // D2: same owner-binding as the primary builder — the forward/media path
-    // must not be a weaker door into the SECTOR key.
-    const ownerEcdhJwk = resolveSectorOwnerEcdhJwk(members)
-    const sectorKey = await unwrapGroupKeyFromStoredPayload(
-      privateKey,
-      me.encrypted_group_key,
-      ownerEcdhJwk
-    )
+    // Same owner-binding + per-epoch ring as the primary builder — the
+    // forward/media path must not be a weaker door into the SECTOR key.
     return {
-      ctx: { mode: 'SECTOR', groupKey: sectorKey },
+      ctx: await buildSectorFrame(chatId, myUserId, privateKey, members),
       peerUserId: null,
       chatType: chat.type,
     }
@@ -249,6 +292,29 @@ export async function encryptOutboundText(
   return { encrypted_content: result.ciphertext, iv: result.iv }
 }
 
+/**
+ * [RING_UNSEAL] :: Decrypt AES-GCM ciphertext against an ordered list of keys,
+ * returning the first that authenticates. Keys are tried in order (current
+ * epoch first), so the common case (current key) costs exactly one attempt.
+ * Throws the last error if NONE succeed — a genuinely undecryptable row, same
+ * failure surface as the single-key path.
+ */
+export async function decryptMessageWithKeys(
+  keys: CryptoKey[],
+  ciphertext: string,
+  iv: string
+): Promise<string> {
+  let lastErr: unknown = new Error('ERR_NO_SECTOR_KEYS')
+  for (const key of keys) {
+    try {
+      return await decryptMessage(key, ciphertext, iv)
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr
+}
+
 /** [UNSEAL_SIGNAL] :: Вскрытие входящего пакета данных */
 export async function decryptInboundText(
   privateKey: CryptoKey,
@@ -261,7 +327,9 @@ export async function decryptInboundText(
   }
 
   if (frame.mode === 'SECTOR') {
-    return decryptMessage(frame.groupKey, ciphertext, iv)
+    // #32 ring: try the current key first (index 0), fall back to retained
+    // older-epoch keys so post-rotation history still opens.
+    return decryptMessageWithKeys(frame.groupKeyRing ?? [frame.groupKey], ciphertext, iv)
   }
 
   if (frame.mode === 'SELF') {
@@ -384,4 +452,20 @@ export async function getAesKeyForChat(
 
   const peerPub = await importEcdhPublicKey(frame.peerPublicKeyJwk)
   return deriveSharedSecret(privateKey, peerPub)
+}
+
+/**
+ * [EXTRACT_SECTOR_KEY_RING] :: Like {@link getAesKeyForChat} but returns the
+ * ORDERED key list for DECRYPT paths (current epoch first, then retained older
+ * epochs). SECTOR yields its ring; SELF/DIRECT a single-element list; PUBLIC
+ * null. Encrypt/send callers keep using `getAesKeyForChat` (the current key).
+ */
+export async function getAesKeyRingForChat(
+  privateKey: CryptoKey,
+  frame: ChatCryptoContext
+): Promise<CryptoKey[] | null> {
+  if (frame.mode === 'PUBLIC') return null
+  if (frame.mode === 'SECTOR') return frame.groupKeyRing ?? [frame.groupKey]
+  const single = await getAesKeyForChat(privateKey, frame)
+  return single ? [single] : null
 }

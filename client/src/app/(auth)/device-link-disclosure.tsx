@@ -56,7 +56,7 @@ export function DeviceLinkDisclosure() {
               {t('common.close')}
             </button>
           </div>
-          <LoginQrDevicePanel />
+          <LoginQrDevicePanel embedded />
         </div>
       )}
     </div>

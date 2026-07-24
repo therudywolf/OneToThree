@@ -245,6 +245,9 @@ export function LoginForm() {
         pendingToken,
         code: totpCode.replace(/\D/g, '').slice(0, 6),
         canonicalHandle: handle.trim(),
+        // Still in state from the first step — hand it over so 2FA users also
+        // skip the redundant second password prompt.
+        vaultPassword,
       })
       if (!r.ok) { setErrorLog(explainLoginError(r.error, t)); return }
       await refresh()

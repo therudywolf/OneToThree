@@ -8,7 +8,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { normalizeApiRoot } from '@/lib/api/url'
 
 const SESSION_COOKIE = 'fm_session'
-const PUBLIC_PATHS = new Set<string>(['/login'])
+// Both public auth screens. Registration lives at its own route, and a visitor
+// opening it has no session by definition — leaving it out of this set made the
+// edge redirect every sign-up attempt straight back to /login.
+const PUBLIC_PATHS = new Set<string>(['/login', '/register'])
 const PUBLIC_PREFIXES = ['/legal/']
 // `/.well-known/` MUST bypass the auth gate: Android App Links + Apple
 // universal-links verifiers fetch `/.well-known/assetlinks.json` (et al.)
@@ -113,7 +116,9 @@ export async function proxy(request: NextRequest) {
     loginUrl.pathname = '/login'
     loginUrl.search = pathname === '/' ? '' : `?next=${encodeURIComponent(`${pathname}${search}`)}`
     response = NextResponse.redirect(loginUrl)
-  } else if (isAuthed && pathname === '/login') {
+  } else if (isAuthed && PUBLIC_PATHS.has(pathname)) {
+    // Symmetric: someone already signed in has no business on either auth
+    // screen, so /register sends them home too.
     const homeUrl = request.nextUrl.clone()
     homeUrl.pathname = '/'
     homeUrl.search = ''

@@ -81,10 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.warn('[auth] refresh failed', e.status)
         }
         // Handle 401: redirect to login
+        // Every PUBLIC auth screen must be excluded, not just /login: a visitor
+        // on /register is unauthenticated by definition, so a bare `!== '/login'`
+        // check bounced them straight off the sign-up page they had just opened.
+        const onPublicAuthRoute = pathname === '/login' || pathname === '/register'
         if (
           e.status === 401 &&
           !redirectedRef.current &&
-          pathname !== '/login'
+          !onPublicAuthRoute
         ) {
           redirectedRef.current = true
           console.warn('[auth] Session expired (401) — redirecting to login')

@@ -277,9 +277,37 @@ export const importEcdhPrivateKeyNonExtractable = importEcdhPrivateKey
  *
  * [Stage 1] extractable: false – the derived key is ephemeral.
  */
+/**
+ * HKDF context labels for ECDH-derived AES keys (#34 — KDF domain separation).
+ *
+ * v1 derived EVERY context (direct fan-out, group-key wrap, 1:1 + group call
+ * relay) from the SAME `ForestMsg/fanout/1` label, so the identity ECDH pair
+ * `ECDH(myIdentity, peerIdentity)` produced ONE AES key reused across all of
+ * them — a nonce collision between, say, a call relay frame and a group-key
+ * wrap becomes a cross-context two-time pad. Each context now derives a
+ * distinct key from the same pair.
+ *
+ * Backward compat: `LEGACY` is the exact v1 label. Stored v1 ciphertext (old
+ * direct fan-out slots, `v:1`/ephemeral group-key wraps, self-notes) is still
+ * read with `LEGACY`; call relay is ephemeral so it simply moves to `CALL`.
+ * Group-key wraps self-describe their label via the payload `v:` field, so the
+ * unwrap side picks LEGACY vs GROUP_WRAP deterministically — no trial decrypt.
+ */
+export const KDF_CTX = {
+  /** v1 label. Kept for reading pre-#34 stored ciphertext. */
+  LEGACY: 'ForestMsg/fanout/1',
+  /** 1:1 + group call server-relayed audio frames. */
+  CALL: 'ForestMsg/call/1',
+  /** SECTOR group-key wrap (CREATOR_AUTH_WRAP v2). */
+  GROUP_WRAP: 'ForestMsg/group-wrap/1',
+} as const
+
 export async function deriveSharedSecretHkdf(
   privateKey: CryptoKey,
-  publicKey: CryptoKey
+  publicKey: CryptoKey,
+  /** HKDF info label — see {@link KDF_CTX}. Defaults to the v1 label so every
+   *  un-migrated caller keeps its exact pre-#34 key derivation. */
+  context: string = KDF_CTX.LEGACY
 ): Promise<CryptoKey> {
   const subtle = getSubtle()
 
@@ -299,13 +327,13 @@ export async function deriveSharedSecretHkdf(
     ['deriveBits']
   )
 
-  // Step 3: HKDF-SHA-256 with a fixed salt and application-specific info label
+  // Step 3: HKDF-SHA-256 with a fixed salt and a per-context info label
   const okm = await subtle.deriveBits(
     {
       name: 'HKDF',
       hash: 'SHA-256',
       salt: new Uint8Array(32),
-      info: new TextEncoder().encode('ForestMsg/fanout/1'),
+      info: new TextEncoder().encode(context),
     },
     hkdfKey,
     256

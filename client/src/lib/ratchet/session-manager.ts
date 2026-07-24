@@ -73,6 +73,7 @@ import {
   deleteSessionRecord,
   deleteSessionRecordsForPeer,
 } from './session-store'
+import { isOtpConsumed, markOtpConsumed } from './otp-ledger'
 import { x3dhInitiator, x3dhResponder, type PreKeyBundle } from './x3dh'
 import { DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
 
@@ -826,6 +827,16 @@ export async function acceptIncomingInit(
   }
   let otpKeyPair: KeyPair | null = null
   if (init.oneTimePrekeyId != null && _ownOtpDeriver) {
+    // #35 — enforce the one-time property ourselves. OTP ids are allocated
+    // monotonically and never recycled, so a second appearance of the same id
+    // is always a replay (a captured `dr_init` re-posted, or a server re-serving
+    // an OTP it should have deleted) — never a legitimately fresh prekey. Reject
+    // rather than silently re-consuming and forfeiting first-message forward
+    // secrecy. A legit retry for THIS exact session already returned at the
+    // `if (existing)` guard above, so this can only fire on reuse.
+    if (isOtpConsumed(ownerId, ownDeviceId, init.oneTimePrekeyId)) {
+      throw new Error('X3DH_OTP_REPLAY')
+    }
     const priv = _ownOtpDeriver(init.oneTimePrekeyId)
     const { x25519 } = await import('@noble/curves/ed25519')
     otpKeyPair = { privateKey: priv, publicKey: x25519.getPublicKey(priv) }
@@ -844,6 +855,11 @@ export async function acceptIncomingInit(
       initiatorEphemeralPublic: b64urlDecode(init.initiatorEphemeralPublic),
     }
   )
+  // Burn the OTP id only AFTER the session is durably accepted, so a failed
+  // accept doesn't waste a prekey the initiator will legitimately retry.
+  if (init.oneTimePrekeyId != null && _ownOtpDeriver) {
+    markOtpConsumed(ownerId, ownDeviceId, init.oneTimePrekeyId)
+  }
 }
 
 /**

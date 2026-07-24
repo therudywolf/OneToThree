@@ -24,6 +24,9 @@ import {
   exportPublicKey,
   exportEcdhPublicJwkFromPrivateKey,
   generateAesGcm256Key,
+  importEcdhPublicKey,
+  deriveSharedSecret,
+  KDF_CTX,
   encryptMessage,
   decryptMessage,
 } from './crypto'
@@ -79,6 +82,71 @@ describe('SECTOR group key distribution', () => {
     const recovered = await unwrapGroupKeyFromStoredPayload(member.priv, wrapped)
 
     expect(await sameKey(sectorKey, recovered)).toBe(true)
+  })
+
+  // #34 — group-key wraps self-describe their KDF label via the payload `v:`
+  // field. New wraps are v:2 (GROUP_WRAP domain); pre-#34 stored wraps are v:1
+  // (legacy shared `fanout/1` label) and must still unwrap, or every member is
+  // locked out of their existing groups after the upgrade.
+  it('v1 (pre-#34) creator wrap still unwraps under the legacy KDF label', async () => {
+    const creator = await makeMember('creator')
+    const member = await makeMember('member')
+
+    // Raw 32-byte sector key, sealed exactly the way the pre-#34 client did:
+    // wrap key under the LEGACY label, payload stamped v:1.
+    const rawSector = crypto.getRandomValues(new Uint8Array(32))
+    const sectorKey = await crypto.subtle.importKey(
+      'raw', rawSector, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt'],
+    )
+    const memberPub = await importEcdhPublicKey(member.pubJwk)
+    const wrapKey = await deriveSharedSecret(creator.priv, memberPub, KDF_CTX.LEGACY)
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const sealed = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, rawSector),
+    )
+    const b64 = (b: Uint8Array) => btoa(String.fromCharCode(...b))
+    const legacyPayload = {
+      kind: 'CREATOR_AUTH_WRAP',
+      v: 1,
+      ciphertext: b64(sealed),
+      iv: b64(iv),
+      creatorEcdhPublicKeyJwk: creator.pubJwk,
+    }
+    const packed = btoa(
+      String.fromCharCode(...new TextEncoder().encode(JSON.stringify(legacyPayload))),
+    )
+
+    const recovered = await unwrapGroupKeyFromStoredPayload(member.priv, packed)
+    expect(await sameKey(sectorKey, recovered)).toBe(true)
+  })
+
+  it('the payload version selects the wrap-KDF label: a downgraded v cannot unwrap', async () => {
+    const creator = await makeMember('creator')
+    const member = await makeMember('member')
+    const sectorKey = await generateAesGcm256Key()
+
+    const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
+      creator.priv, member.pubJwk, sectorKey, creator.pubJwk,
+    )
+    // Newly minted wraps are v:2 and round-trip cleanly.
+    const payload = JSON.parse(
+      new TextDecoder().decode(Uint8Array.from(atob(wrapped), (c) => c.charCodeAt(0))),
+    )
+    expect(payload.v).toBe(2)
+    expect(
+      await sameKey(sectorKey, await unwrapGroupKeyFromStoredPayload(member.priv, wrapped)),
+    ).toBe(true)
+
+    // Flip v:2 → v:1: the ciphertext is sealed under GROUP_WRAP, but a v:1 tag
+    // routes the unwrap to the LEGACY label → wrong key → fails closed rather
+    // than silently producing a bad key.
+    payload.v = 1
+    const downgraded = btoa(
+      String.fromCharCode(...new TextEncoder().encode(JSON.stringify(payload))),
+    )
+    await expect(
+      unwrapGroupKeyFromStoredPayload(member.priv, downgraded),
+    ).rejects.toThrow()
   })
 
   it('per-recipient isolation: neither another member nor a stranger can unwrap a row', async () => {

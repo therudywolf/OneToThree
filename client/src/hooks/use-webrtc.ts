@@ -15,7 +15,7 @@ import {
 import { useCallStore } from '@/store/callStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { lookupUsers } from '@/lib/api/users'
-import { deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
+import { KDF_CTX, deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
 import { getIceConfig, normalizeIceServers, type IceTransportPolicy } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
@@ -183,7 +183,9 @@ export function useWebRTC(userId: string | null) {
       const [peer] = await lookupUsers([peerId])
       if (!peer?.ecdh_public_key_jwk) return null
       const peerPublicKey = await importEcdhPublicKey(peer.ecdh_public_key_jwk)
-      return deriveSharedSecret(ownPrivateKey, peerPublicKey)
+      // #34: call relay derives under its own domain, separate from the message
+      // fan-out / group-wrap key of the same identity ECDH pair.
+      return deriveSharedSecret(ownPrivateKey, peerPublicKey, KDF_CTX.CALL)
     })().catch(() => null)
     relayKeysRef.current.set(peerId, task)
     return task

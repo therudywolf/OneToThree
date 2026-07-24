@@ -19,7 +19,7 @@ import { getIceServers,
 } from '@/lib/ice-servers'
 import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { lookupUsers } from '@/lib/api/users'
-import { deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
+import { KDF_CTX, deriveSharedSecret, decryptBytes, encryptBytes, importEcdhPublicKey } from '@/lib/crypto'
 import { useSessionStore } from '@/store/sessionStore'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 // NOTE: `@/lib/livekit-call-manager` statically imports the heavy `livekit-client`
@@ -118,7 +118,8 @@ async function resolveRelaySharedKey(peerId: string): Promise<CryptoKey | null> 
     const [peer] = await lookupUsers([peerId])
     if (!peer?.ecdh_public_key_jwk) return null
     const peerPublicKey = await importEcdhPublicKey(peer.ecdh_public_key_jwk)
-    return deriveSharedSecret(ownPrivateKey, peerPublicKey)
+    // #34: group-call relay derives under the call domain (see use-webrtc).
+    return deriveSharedSecret(ownPrivateKey, peerPublicKey, KDF_CTX.CALL)
   })().catch(() => null)
   relayKeys.set(peerId, task)
   return task

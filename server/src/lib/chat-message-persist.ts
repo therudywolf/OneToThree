@@ -3,8 +3,8 @@ import { db } from '../db/index.js'
 import { attachments, chatMembers, messageDeliveries, messages } from '../db/schema.js'
 import { sendNativePushToUser, sendPushToUser } from './push.js'
 import {
+  areOnline,
   broadcastToUsers,
-  hasActiveSocket,
 } from '../ws/registry.js'
 
 export type PersistedMessageRow = {
@@ -12,6 +12,10 @@ export type PersistedMessageRow = {
   chatId: string
   senderId: string
   replyToId: string | null
+  /** Sender of the message this one REPLIES to (#5). Resolved and authorized by
+   *  the caller (the parent must live in the same chat), never inferred here —
+   *  the insert's RETURNING cannot see the parent row. */
+  replyToSenderId: string | null
   content: string | null
   iv: string | null
   mediaPath: string | null
@@ -32,6 +36,11 @@ export type PersistChatMessageInput = {
   chatId: string
   senderId: string
   replyToId?: string | null
+  /** Sender of the replied-to message (#5). The caller MUST have verified the
+   *  parent belongs to `chatId` before passing it — echoing an unvalidated
+   *  parent's sender would turn the send endpoint into a cross-chat
+   *  "who wrote message <uuid>" oracle. */
+  replyToSenderId?: string | null
   content: string | null
   iv: string | null
   mediaPath?: string | null
@@ -105,6 +114,7 @@ function rowToWireMessage(row: PersistedMessageRow) {
     chat_id: row.chatId,
     sender_id: row.senderId,
     reply_to_id: row.replyToId,
+    reply_to_sender_id: row.replyToSenderId ?? null,
     content: row.content,
     iv: row.iv,
     media_path: row.mediaPath,
@@ -222,7 +232,12 @@ export async function persistChatMessageAndFanOut(
         .onConflictDoNothing()
     }
 
-    return inserted as PersistedMessageRow
+    // The parent's sender cannot come from RETURNING (it is a different row), so
+    // it rides in on the already-authorized input (#5).
+    return {
+      ...inserted,
+      replyToSenderId: input.replyToSenderId ?? null,
+    } as PersistedMessageRow
   })
 
   if (!row) {
@@ -235,23 +250,49 @@ export async function persistChatMessageAndFanOut(
     message: rowToWireMessage(row),
   })
 
-  for (const memberId of new Set(ids)) {
-    if (memberId === input.senderId) continue
-    if (!hasActiveSocket(memberId)) {
-      const payload = {
-        title: 'Новое сообщение',
-        body: 'Вам пришло зашифрованное сообщение',
-        url: `/?chat=${input.chatId}`,
-        icon: '/wolf-logo.png',
-        chat_id: input.chatId,
-        type: 'message' as const,
-      }
-      void sendPushToUser(memberId, payload)
-      void sendNativePushToUser(memberId, payload)
-    }
-  }
+  await notifyOfflineMembers(input.chatId, ids, input.senderId, row)
 
   return { ok: true, row }
+}
+
+/**
+ * Push to every chat member who is not currently connected.
+ *
+ * Extracted from the send path so the presence lookup and the payload shape can
+ * evolve independently.
+ *
+ * `reply_to_me` is computed PER RECIPIENT and is deliberately a BOOLEAN: the raw
+ * `reply_to_sender_id` must never reach Web Push / FCM, which today see only a
+ * chat_id — shipping it would hand a stable user uuid to Google/Apple/Mozilla
+ * infrastructure. The boolean is all the service worker needs to distinguish a
+ * reply-to-you from an ordinary message (#5).
+ */
+async function notifyOfflineMembers(
+  chatId: string,
+  memberIds: string[],
+  senderId: string,
+  row: PersistedMessageRow
+): Promise<void> {
+  const recipients = [...new Set(memberIds)].filter((id) => id !== senderId)
+  if (recipients.length === 0) return
+  // ONE batched presence read for the whole member list (#26). A per-member
+  // lookup would add O(members) sequential Redis round trips to the awaited
+  // send path — the exact regression a naive port of hasActiveSocket causes.
+  const online = await areOnline(recipients)
+  for (const memberId of recipients) {
+    if (online.get(memberId)) continue
+    const payload = {
+      title: 'Новое сообщение',
+      body: 'Вам пришло зашифрованное сообщение',
+      url: `/?chat=${chatId}`,
+      icon: '/wolf-logo.png',
+      chat_id: chatId,
+      type: 'message' as const,
+      reply_to_me: row.replyToSenderId != null && row.replyToSenderId === memberId,
+    }
+    void sendPushToUser(memberId, payload)
+    void sendNativePushToUser(memberId, payload)
+  }
 }
 
 export function persistedRowToClientJson(row: PersistedMessageRow) {

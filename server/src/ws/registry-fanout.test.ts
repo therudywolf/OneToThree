@@ -28,6 +28,70 @@ class FakeRedis {
     for (const h of this.handlers) h(channel, raw)
   }
   async quit(): Promise<void> {}
+
+  // --- cross-instance presence (#26) -------------------------------------
+  // registerUserSocket now claims presence in Redis, so the fake must speak
+  // enough of the hash API for that path to behave realistically here rather
+  // than being silently swallowed by the best-effort try/catch.
+  hashes = new Map<string, Map<string, string>>()
+  private hashFor(key: string): Map<string, string> {
+    let h = this.hashes.get(key)
+    if (!h) {
+      h = new Map()
+      this.hashes.set(key, h)
+    }
+    return h
+  }
+  hset = vi.fn(async (key: string, field: string, value: string) => {
+    this.hashFor(key).set(field, value)
+    return 1
+  })
+  hdel = vi.fn(async (key: string, field: string) => {
+    const h = this.hashes.get(key)
+    if (!h) return 0
+    const had = h.delete(field)
+    if (h.size === 0) this.hashes.delete(key)
+    return had ? 1 : 0
+  })
+  hgetall = vi.fn(async (key: string) =>
+    Object.fromEntries(this.hashes.get(key) ?? new Map())
+  )
+  expire = vi.fn(async (_key: string, _seconds: number) => 1)
+
+  /** Minimal chainable MULTI/PIPELINE that applies on exec(). */
+  private chain() {
+    const ops: Array<() => Promise<unknown>> = []
+    const api = {
+      hset: (k: string, f: string, v: string) => {
+        ops.push(() => this.hset(k, f, v))
+        return api
+      },
+      hdel: (k: string, f: string) => {
+        ops.push(() => this.hdel(k, f))
+        return api
+      },
+      hgetall: (k: string) => {
+        ops.push(() => this.hgetall(k))
+        return api
+      },
+      expire: (k: string, s: number) => {
+        ops.push(() => this.expire(k, s))
+        return api
+      },
+      exec: async () => {
+        const out: Array<[Error | null, unknown]> = []
+        for (const op of ops) out.push([null, await op()])
+        return out
+      },
+    }
+    return api
+  }
+  multi() {
+    return this.chain()
+  }
+  pipeline() {
+    return this.chain()
+  }
 }
 
 let fakeRedis: FakeRedis
@@ -117,5 +181,108 @@ describe('ws registry Redis pub/sub fan-out (D19)', () => {
 
     expect(sock.sent).toEqual([JSON.stringify({ type: 'local-only' })])
     expect(fakeRedis.publish).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * #26 — cross-instance presence.
+ *
+ * The whole point is that "is this user online?" must be answerable for sockets
+ * held by ANOTHER api instance, so instance A stops pushing a user who is
+ * connected to instance B. The delicate part is the failure direction: a stale
+ * record must read as OFFLINE (worst case: one duplicate push), never as online
+ * (worst case: the user silently receives no notifications at all).
+ */
+describe('cross-instance presence (#26)', () => {
+  const KEY = (uid: string) => `presence:user:${uid}`
+
+  beforeEach(() => {
+    fakeRedis = new FakeRedis()
+    vi.resetModules()
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('claims presence in Redis on the first local socket and releases it on the last close', async () => {
+    const reg = await import('./registry.js')
+    let onClose: (() => void) | undefined
+    const sock = { ...makeSocket(), on: (_e: string, cb: () => void) => { onClose = cb } }
+    reg.registerUserSocket('user-p', sock as unknown as never)
+
+    // Claimed: exactly one field (this instance) with a fresh timestamp.
+    const claimed = fakeRedis.hashes.get(KEY('user-p'))
+    expect(claimed?.size).toBe(1)
+    expect(Number([...claimed!.values()][0])).toBeGreaterThan(Date.now() - 5_000)
+
+    // Last socket closes → the claim is released, so the key disappears.
+    onClose?.()
+    expect(fakeRedis.hashes.get(KEY('user-p'))).toBeUndefined()
+  })
+
+  it('reports a user online when ANOTHER instance holds a fresh claim', async () => {
+    const reg = await import('./registry.js')
+    // No local socket at all — only a foreign instance's fresh field.
+    fakeRedis.hashes.set(KEY('user-far'), new Map([['other-instance', String(Date.now())]]))
+
+    expect(await reg.isOnline('user-far')).toBe(true)
+  })
+
+  it('reports OFFLINE when the only claim is STALE (crashed instance)', async () => {
+    const reg = await import('./registry.js')
+    // A process that died 10 minutes ago and never removed its field.
+    fakeRedis.hashes.set(
+      KEY('user-ghost'),
+      new Map([['dead-instance', String(Date.now() - 600_000)]])
+    )
+
+    // MUST be false: believing a ghost would suppress this user's pushes forever.
+    expect(await reg.isOnline('user-ghost')).toBe(false)
+  })
+
+  it('a local socket short-circuits without consulting Redis', async () => {
+    const reg = await import('./registry.js')
+    reg.registerUserSocket('user-local', makeSocket() as unknown as never)
+    fakeRedis.hgetall.mockClear()
+
+    expect(await reg.isOnline('user-local')).toBe(true)
+    expect(fakeRedis.hgetall).not.toHaveBeenCalled()
+  })
+
+  it('areOnline resolves a mixed batch in one pipeline', async () => {
+    const reg = await import('./registry.js')
+    reg.registerUserSocket('u-local', makeSocket() as unknown as never)
+    fakeRedis.hashes.set(KEY('u-remote'), new Map([['other', String(Date.now())]]))
+    fakeRedis.hashes.set(KEY('u-stale'), new Map([['dead', String(Date.now() - 600_000)]]))
+
+    const res = await reg.areOnline(['u-local', 'u-remote', 'u-stale', 'u-none'])
+    expect(res.get('u-local')).toBe(true)
+    expect(res.get('u-remote')).toBe(true)
+    expect(res.get('u-stale')).toBe(false)
+    expect(res.get('u-none')).toBe(false)
+  })
+
+  it('clearInstancePresence drops this instance fields on shutdown', async () => {
+    const reg = await import('./registry.js')
+    reg.registerUserSocket('u-shut', makeSocket() as unknown as never)
+    expect(fakeRedis.hashes.get(KEY('u-shut'))?.size).toBe(1)
+
+    await reg.clearInstancePresence()
+    expect(fakeRedis.hashes.get(KEY('u-shut'))).toBeUndefined()
+  })
+
+  it('never throws when the Redis client cannot serve presence commands', async () => {
+    const reg = await import('./registry.js')
+    // A client mid-reconnect: methods exist on the type but blow up when called.
+    fakeRedis.multi = (() => {
+      throw new Error('connection is closed')
+    }) as unknown as typeof fakeRedis.multi
+
+    // Socket registration must still succeed — presence is best-effort and must
+    // never be able to break the WS upgrade path.
+    expect(() =>
+      reg.registerUserSocket('u-safe', makeSocket() as unknown as never)
+    ).not.toThrow()
   })
 })

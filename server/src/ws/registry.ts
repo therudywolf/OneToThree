@@ -30,7 +30,11 @@ type HeartbeatSocket = WebSocket & {
 // Heartbeat — detect and terminate dead connections.
 const PING_INTERVAL = 30_000
 const heartbeatTimer = setInterval(() => {
-  for (const [, sockets] of userSockets) {
+  // Doubles as the cross-instance presence refresh (#26): this tick already
+  // walks every entry, and refreshing here is what makes presence crash-safe —
+  // a dead process simply stops re-stamping and its fields go stale.
+  const stillLive: string[] = []
+  for (const [userId, sockets] of userSockets) {
     for (const ws of sockets) {
       const heartbeatWs = ws as HeartbeatSocket
       if (heartbeatWs.__isAlive === false) {
@@ -41,7 +45,9 @@ const heartbeatTimer = setInterval(() => {
       heartbeatWs.__isAlive = false
       ws.ping()
     }
+    if (sockets.size > 0) stillLive.push(userId)
   }
+  refreshPresence(stillLive)
 }, PING_INTERVAL)
 // Don't let this maintenance timer keep the process alive during shutdown.
 heartbeatTimer.unref()
@@ -178,6 +184,10 @@ export function registerUserSocket(
   if (!set) {
     set = new Set()
     userSockets.set(userId, set)
+    // First local socket for this user → claim presence for this instance (#26).
+    // Fire-and-forget: this runs on the WS upgrade path, which must not wait on
+    // (or be able to throw from) Redis.
+    markPresenceLocal(userId)
   }
   set.add(ws)
 
@@ -194,6 +204,9 @@ export function registerUserSocket(
     set!.delete(ws)
     if (set!.size === 0) {
       userSockets.delete(userId)
+      // Release this instance's claim BEFORE notifying, so the callback's own
+      // isOnline() check sees the post-release truth (#26).
+      clearPresenceLocal(userId)
       onLastSocketClosed?.(userId)
     }
     ws.off('close', cleanup)
@@ -218,7 +231,14 @@ export function broadcastToUsers(userIds: string[], payload: unknown): void {
   }
 }
 
-/** True if the user has at least one open WebSocket connection. */
+/**
+ * True if the user has at least one open WebSocket connection ON THIS INSTANCE.
+ *
+ * CONTRACT (#24/#26): this stays SYNCHRONOUS, LOCAL and cheap. `deliverLocal`,
+ * the heartbeat and the WS rate limiter all call it on hot paths — the limiter
+ * runs on up to 2400 frames/min/socket, so it must never become a Redis round
+ * trip. Cross-instance answers come from {@link isOnline} / {@link areOnline}.
+ */
 export function hasActiveSocket(userId: string): boolean {
   const set = userSockets.get(userId)
   if (!set?.size) return false
@@ -226,4 +246,169 @@ export function hasActiveSocket(userId: string): boolean {
     if (socket.readyState === socket.OPEN) return true
   }
   return false
+}
+
+// ---------------------------------------------------------------------------
+// Cross-instance presence (#26)
+// ---------------------------------------------------------------------------
+//
+// "Is this user online?" decides whether to send a push. With more than one api
+// instance the per-process socket Map answers only for ITS OWN connections, so
+// instance A pushes a user who is happily connected to instance B.
+//
+// Shape: one HASH per user, `presence:user:{uid}`, with ONE FIELD PER INSTANCE
+// (`INSTANCE_ID` -> last-refresh ms). A field per instance is required — a plain
+// boolean/counter cannot survive one instance dying while another still holds
+// sockets for the same user.
+//
+// CRASH SAFETY IS THE HEADLINE CONCERN, because this change INVERTS the failure
+// mode. Today a stale registry can only cause a SPURIOUS push (mildly annoying).
+// A shared presence record that fails to expire causes SUPPRESSED pushes — the
+// user silently stops being notified, which is far worse. Hence: the key carries
+// a TTL, every field is re-stamped by the existing 30s heartbeat, and a field is
+// only believed while its timestamp is fresh. If a process dies, its refreshes
+// stop and its field goes stale within PRESENCE_TTL_MS; if EVERY instance dies,
+// the whole key expires on its own.
+const PRESENCE_KEY = (userId: string): string => `presence:user:${userId}`
+/** Believed-fresh window. 3x the 30s heartbeat gives two missed ticks of slack. */
+const PRESENCE_TTL_MS = 90_000
+const PRESENCE_TTL_SECONDS = Math.ceil(PRESENCE_TTL_MS / 1000)
+
+/** Fire-and-forget: never let a presence write reject into a caller. Rejections
+ *  matter here because index.ts escalates unhandledRejection to a full shutdown. */
+function voidRedis(p: Promise<unknown> | undefined): void {
+  void p?.catch(() => { /* presence is best-effort */ })
+}
+
+/** Record that this instance holds a live socket for `userId`.
+ *
+ *  Runs on the WS upgrade path, so it must NEVER throw: `voidRedis` only
+ *  swallows promise rejections, whereas building the command can throw
+ *  synchronously (a client mid-reconnect, or a partial/mocked client). Presence
+ *  is best-effort — losing it costs a spurious push, never a dropped socket. */
+function markPresenceLocal(userId: string): void {
+  const redis = getRedis()
+  if (!redis) return
+  try {
+    voidRedis(
+      redis
+        .multi()
+        .hset(PRESENCE_KEY(userId), INSTANCE_ID, String(Date.now()))
+        .expire(PRESENCE_KEY(userId), PRESENCE_TTL_SECONDS)
+        .exec()
+    )
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Re-stamp every user this instance still holds sockets for, in ONE pipeline. */
+function refreshPresence(userIds: string[]): void {
+  const redis = getRedis()
+  if (!redis || userIds.length === 0) return
+  const now = String(Date.now())
+  try {
+    const pipeline = redis.pipeline()
+    for (const id of userIds) {
+      pipeline.hset(PRESENCE_KEY(id), INSTANCE_ID, now)
+      pipeline.expire(PRESENCE_KEY(id), PRESENCE_TTL_SECONDS)
+    }
+    voidRedis(pipeline.exec())
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Drop this instance's claim on `userId`. Redis deletes a hash whose last field
+ *  is removed, so no separate DEL is needed. */
+function clearPresenceLocal(userId: string): void {
+  const redis = getRedis()
+  if (!redis) return
+  try {
+    voidRedis(redis.hdel(PRESENCE_KEY(userId), INSTANCE_ID))
+  } catch {
+    /* best-effort — the TTL is the backstop */
+  }
+}
+
+function anyFieldFresh(hash: Record<string, string> | null | undefined): boolean {
+  if (!hash) return false
+  const cutoff = Date.now() - PRESENCE_TTL_MS
+  for (const value of Object.values(hash)) {
+    const at = Number(value)
+    if (Number.isFinite(at) && at > cutoff) return true
+  }
+  return false
+}
+
+/**
+ * Cross-instance online check.
+ *
+ * Answers from local memory first (free, and authoritative when true), then asks
+ * Redis. FAILS TO "OFFLINE" when Redis is unavailable: for the push callers a
+ * duplicate notification is far cheaper than a silently lost message.
+ */
+export async function isOnline(userId: string): Promise<boolean> {
+  if (hasActiveSocket(userId)) return true
+  const redis = getRedis()
+  if (!redis) return false
+  try {
+    return anyFieldFresh(await redis.hgetall(PRESENCE_KEY(userId)))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Batched {@link isOnline}. Mandatory for the message fan-out: a per-member
+ * round trip would add O(members) sequential Redis RTTs to every group message,
+ * on the awaited send path.
+ */
+export async function areOnline(userIds: string[]): Promise<Map<string, boolean>> {
+  const out = new Map<string, boolean>()
+  const unique = [...new Set(userIds)]
+  const remote: string[] = []
+  for (const id of unique) {
+    if (hasActiveSocket(id)) out.set(id, true)
+    else remote.push(id)
+  }
+  if (remote.length === 0) return out
+  const redis = getRedis()
+  if (!redis) {
+    for (const id of remote) out.set(id, false)
+    return out
+  }
+  try {
+    const pipeline = redis.pipeline()
+    for (const id of remote) pipeline.hgetall(PRESENCE_KEY(id))
+    const results = await pipeline.exec()
+    remote.forEach((id, i) => {
+      const entry = results?.[i]
+      const err = entry?.[0]
+      const hash = entry?.[1] as Record<string, string> | undefined
+      out.set(id, !err && anyFieldFresh(hash))
+    })
+  } catch {
+    for (const id of remote) out.set(id, false)
+  }
+  return out
+}
+
+/**
+ * Drop every presence claim this instance holds. Called on graceful shutdown so
+ * a rolling deploy does not leave up to PRESENCE_TTL_MS of "online" ghosts
+ * suppressing pushes for every connected user.
+ */
+export async function clearInstancePresence(): Promise<void> {
+  const redis = getRedis()
+  if (!redis) return
+  const ids = [...userSockets.keys()]
+  if (ids.length === 0) return
+  try {
+    const pipeline = redis.pipeline()
+    for (const id of ids) pipeline.hdel(PRESENCE_KEY(id), INSTANCE_ID)
+    await pipeline.exec()
+  } catch {
+    /* best-effort — the TTL is the backstop */
+  }
 }

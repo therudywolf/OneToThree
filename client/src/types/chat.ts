@@ -47,6 +47,9 @@ export type DecryptedMessage = {
   plaintext: string
   created_at: string
   reply_to_id?: string | null
+  /** Sender of the replied-to message (#5) — survives into the IndexedDB feed
+   *  cache so mentions can be recomputed offline. */
+  reply_to_sender_id?: string | null
   media_path?: string | null
   media_type?: 'audio' | 'video' | 'image' | 'file' | null
   media_iv?: string | null

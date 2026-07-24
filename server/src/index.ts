@@ -7,6 +7,7 @@ import { scheduleMediaRetentionPurge } from './lib/media-retention-purge.js'
 import { scheduleOrphanAttachmentCleanup } from './lib/media-lru-evict.js'
 import { purgeExpiredBurnMessages } from './lib/burn-at.js'
 import { closeRedis } from './lib/redis.js'
+import { clearInstancePresence, closeWsFanout } from './ws/registry.js'
 
 async function main() {
   const app = await buildApp()
@@ -39,6 +40,12 @@ async function main() {
     forceExit.unref()
     try {
       await app.close()
+      // #26: release this instance's presence claims BEFORE dropping Redis.
+      // Without it a rolling deploy leaves up to the presence TTL of "online"
+      // ghosts, and every one of those users silently gets NO push during that
+      // window. Also quit the fan-out subscriber (its own duplicate connection).
+      await clearInstancePresence()
+      await closeWsFanout()
       await closeRedis()
     } catch (err) {
       app.log.error({ err: String(err) }, 'error during shutdown')

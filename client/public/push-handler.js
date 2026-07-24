@@ -133,6 +133,9 @@ self.addEventListener('push', (event) => {
               url: notifUrl,
               chat_id: chatId,
               type: parsed.type || parsed.data?.type || 'message',
+              // #5: server-computed per recipient. A boolean, never a user id —
+              // push infrastructure must not learn who is talking to whom.
+              reply_to_me: parsed.data?.reply_to_me === true || parsed.reply_to_me === true,
             },
           }
         } catch {
@@ -167,15 +170,22 @@ self.addEventListener('push', (event) => {
         })
       } else {
         const chatId = payload.data?.chat_id || 'general'
-        await self.registration.showNotification(payload.title, {
-          body: payload.body,
-          icon: payload.icon || '/wolf-logo.png',
-          badge: '/wolf-logo.png',
-          tag: `chat-${chatId}`,
-          renotify: true,  // Sound/vibration on each new message in the same chat
-          data: { ...payload.data, url: notifUrl },
-          requireInteraction: false,
-        })
+        // #5: a reply to one of YOUR messages gets its own title and tag, so it
+        // is visibly distinct and does not collapse into the chat's generic
+        // "new message" notification. Still no plaintext — the body stays generic.
+        const isReplyToMe = payload.data?.reply_to_me === true
+        await self.registration.showNotification(
+          isReplyToMe ? '↩ Ответ вам' : payload.title,
+          {
+            body: payload.body,
+            icon: payload.icon || '/wolf-logo.png',
+            badge: '/wolf-logo.png',
+            tag: isReplyToMe ? `chat-${chatId}-reply` : `chat-${chatId}`,
+            renotify: true,  // Sound/vibration on each new message in the same chat
+            data: { ...payload.data, url: notifUrl },
+            requireInteraction: false,
+          }
+        )
       }
     })()
   )

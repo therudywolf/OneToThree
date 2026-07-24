@@ -19,6 +19,7 @@ export type ApiMessageRow = {
   chat_id: string
   sender_id: string
   reply_to_id?: string | null
+  reply_to_sender_id?: string | null
   content: string | null
   iv: string | null
   media_path?: string | null
@@ -59,6 +60,7 @@ function apiRowToDecrypted(
     chat_id: m.chat_id,
     sender_id: m.sender_id,
     reply_to_id: m.reply_to_id ?? null,
+    reply_to_sender_id: m.reply_to_sender_id ?? null,
     plaintext,
     created_at: m.created_at,
     read_at: m.read_at ?? null,

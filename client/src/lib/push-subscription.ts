@@ -395,10 +395,34 @@ export async function setNotificationMode(mode: NotificationMode): Promise<void>
   }
 }
 
+/**
+ * Start the direct-mode foreground service and CONFIRM it is actually running.
+ *
+ * Two failure modes are silent unless checked (#13):
+ *  - the plugin resolves `{ok:false}` when startForegroundService() itself threw
+ *    (Android 12+ forbids starting a FGS from the background);
+ *  - `{ok:true}` only means the start REQUEST was dispatched — the service's own
+ *    startForeground() can still throw a moment later (missing permission, or
+ *    Android 15's dataSync quota), which the plugin call cannot observe.
+ *
+ * Either way the old code resolved successfully, so setNotificationMode('direct')
+ * persisted "direct" and the user was told private mode was on while receiving
+ * NOTHING. Poll the service's real state and throw if it never comes up, so the
+ * caller falls back / surfaces the error instead of lying.
+ */
 export async function ensureDirectForegroundMode(): Promise<void> {
   const plugin = getCapacitorNotificationModePlugin()
   if (!plugin) throw new Error('DIRECT_MODE_UNSUPPORTED')
-  await plugin.startDirectForegroundService()
+  const res = await plugin.startDirectForegroundService()
+  if (res?.ok === false) throw new Error('DIRECT_MODE_START_REJECTED')
+
+  // onStartCommand runs asynchronously after the start request — give it a
+  // moment, but never hang the settings UI.
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    if (await getDirectForegroundModeState()) return
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  throw new Error('DIRECT_MODE_NOT_RUNNING')
 }
 
 export async function disableDirectForegroundMode(): Promise<void> {

@@ -5,6 +5,7 @@
  */
 
 import {
+  KDF_CTX,
   deriveSharedSecret,
   exportEcdhPublicJwkFromPrivateKey,
   exportPublicKey,
@@ -41,7 +42,11 @@ export type SectorKeyUnit = {
 /** [AUTH_WRAP_PAYLOAD] :: Пакет ключа, обернутый ключом создателя сектора */
 export type SectorKeyAuthWrap = {
   kind: 'CREATOR_AUTH_WRAP'
-  v: 1
+  /** Wrap-KDF version. v1 derived the wrap key with the shared `fanout/1`
+   *  label; v2 uses the domain-separated `KDF_CTX.GROUP_WRAP` label (#34). The
+   *  unwrap side selects the label from this field — see
+   *  {@link unwrapGroupKeyFromStoredPayload}. */
+  v: 1 | 2
   ciphertext: string
   iv: string
   creatorEcdhPublicKeyJwk: string
@@ -175,14 +180,16 @@ export async function wrapGroupKeyForMemberWithCreatorEcdh(
   const creatorPubJwk =
     creatorPublicKeyJwk ?? (await exportEcdhPublicJwkFromPrivateKey(creatorPrivateKey))
   const memberPub = await importEcdhPublicKey(memberPublicKeyJwk)
-  const wrapKey = await deriveSharedSecret(creatorPrivateKey, memberPub)
+  // #34: derive the wrap key under the group-wrap domain, NOT the shared
+  // `fanout/1` label. Stamped as v:2 so the unwrap side knows to match it.
+  const wrapKey = await deriveSharedSecret(creatorPrivateKey, memberPub, KDF_CTX.GROUP_WRAP)
 
   const rawKey = new Uint8Array(await getSubtle().exportKey('raw', sectorKey))
   const { ciphertext, iv } = await sealBytes(wrapKey, rawKey)
 
   const payload: SectorKeyAuthWrap = {
     kind: 'CREATOR_AUTH_WRAP',
-    v: 1,
+    v: 2,
     ciphertext,
     iv,
     creatorEcdhPublicKeyJwk: creatorPubJwk,
@@ -258,9 +265,12 @@ export async function unwrapGroupKeyFromStoredPayload(
     ) {
       throw new Error('SECTOR_CREATOR_KEY_UNTRUSTED :: COMPROMISED_LINK')
     }
-    // Вскрытие через ключ создателя (Auth Wrap)
+    // Вскрытие через ключ создателя (Auth Wrap). #34: v2 wraps derive the wrap
+    // key under the group-wrap domain; v1 (and unstamped) stay on the legacy
+    // `fanout/1` label so pre-#34 stored group keys still unwrap.
     const creatorPub = await importEcdhPublicKey(data.creatorEcdhPublicKeyJwk)
-    wrapKey = await deriveSharedSecret(memberPrivateKey, creatorPub)
+    const wrapCtx = (data.v ?? 1) >= 2 ? KDF_CTX.GROUP_WRAP : KDF_CTX.LEGACY
+    wrapKey = await deriveSharedSecret(memberPrivateKey, creatorPub, wrapCtx)
   } else {
     // Legacy ephemeral wrap (`SectorKeyUnit`): unauthenticated by construction.
     // When an owner binding is required, refuse it — the only legitimate SECTOR

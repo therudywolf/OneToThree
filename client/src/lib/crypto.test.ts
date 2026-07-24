@@ -6,6 +6,7 @@ import {
   importEcdhPublicKey,
   importEcdhPrivateKey,
   deriveSharedSecret,
+  KDF_CTX,
   encryptMessage,
   decryptMessage,
   hashPublicKeyJwk,
@@ -190,6 +191,33 @@ describe('deriveSharedSecret – Stage 1', () => {
     const { ciphertext, iv } = await encryptMessage(aliceShared, plaintext)
     const decrypted = await decryptMessage(bobShared, ciphertext, iv)
     expect(decrypted).toBe(plaintext)
+  })
+
+  // #34 — KDF domain separation. The SAME ECDH pair must derive a DISTINCT AES
+  // key per context, so a key minted for a call relay can never coincide with
+  // one minted for a group-key wrap (which would make a nonce collision across
+  // the two contexts a cross-context two-time pad).
+  it('the same ECDH pair derives distinct keys per KDF context', async () => {
+    const alice = await generateKeyPair()
+    const bob = await generateKeyPair()
+    const bobPub = await importEcdhPublicKey(await exportPublicKey(bob.publicKey))
+
+    const kLegacy = await deriveSharedSecret(alice.privateKey, bobPub, KDF_CTX.LEGACY)
+    const kCall = await deriveSharedSecret(alice.privateKey, bobPub, KDF_CTX.CALL)
+    const kWrap = await deriveSharedSecret(alice.privateKey, bobPub, KDF_CTX.GROUP_WRAP)
+
+    // A ciphertext sealed under one context must NOT open under another.
+    const { ciphertext, iv } = await encryptMessage(kCall, 'call-frame')
+    await expect(decryptMessage(kLegacy, ciphertext, iv)).rejects.toThrow()
+    await expect(decryptMessage(kWrap, ciphertext, iv)).rejects.toThrow()
+    // …but opens under its own context (same pair, same label → same key).
+    expect(await decryptMessage(kCall, ciphertext, iv)).toBe('call-frame')
+
+    // Default (no context arg) is byte-identical to the explicit v1 label, so
+    // pre-#34 callers keep their exact derivation.
+    const kDefault = await deriveSharedSecret(alice.privateKey, bobPub)
+    const probe = await encryptMessage(kDefault, 'legacy')
+    expect(await decryptMessage(kLegacy, probe.ciphertext, probe.iv)).toBe('legacy')
   })
 })
 

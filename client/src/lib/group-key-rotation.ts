@@ -51,7 +51,6 @@ import {
   wrapGroupKeyForMemberWithCreatorEcdh,
   readStoredSectorKeyEpoch,
 } from '@/lib/chat-logic'
-import { exportEcdhPublicJwkFromPrivateKey } from '@/lib/crypto'
 
 export type RotationResult =
   | { rotated: true; epoch: number; members: number }
@@ -122,7 +121,18 @@ export async function rotateGroupKeyForChat(
   // forcing a redundant full redistribution next pass.
   const epoch = detail.chat.key_epoch ?? targetEpoch
 
-  const myPubJwk = await exportEcdhPublicJwkFromPrivateKey(myPrivateKey)
+  // The owner's ECDH PUBLIC key must come from the roster, never from the
+  // private key: the vault private key is imported NON-EXTRACTABLE (Stage-1 key
+  // isolation), so exportKey('jwk', priv) throws InvalidAccessError and the
+  // whole rotation aborted — silently, in a catch. That is why rotation and
+  // owner-side re-delivery never actually worked: a departing member kept
+  // reading new traffic, and a newly added member never received a key at all.
+  // The roster value is also exactly what the D2 owner-binding check compares
+  // against, so it is the correct source by construction.
+  const myPubJwk = detail.members.find((m) => m.user_id === myUserId)?.ecdh_public_key_jwk
+  if (!myPubJwk) {
+    return { rotated: false, reason: 'NO_OWNER_ECDH_IN_ROSTER' }
+  }
 
   const newKey = await crypto.subtle.generateKey(
     { name: 'AES-GCM', length: 256 },

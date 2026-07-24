@@ -65,11 +65,17 @@ async function deliverGroupKeyToMember(
   // handing over (our own stored key's epoch), so the recovery scan can later
   // tell whether this member is on the current key. Truthful labelling matters:
   // never stamp a key with an epoch newer than the bytes it carries.
+  //
+  // Pass our own PUBLIC key from the roster. Leaving it undefined makes the wrap
+  // derive it from the private key, which is imported NON-EXTRACTABLE — that
+  // throws InvalidAccessError and the delivery silently failed, so a newly added
+  // member never got a key at all.
+  if (!me.ecdh_public_key_jwk) return
   const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
     myPrivKey,
     target.ecdh_public_key_jwk,
     groupKey,
-    undefined,
+    me.ecdh_public_key_jwk,
     myEpoch
   )
   await uploadMemberWrappedGroupKey(chatId, targetUserId, wrapped)
@@ -150,11 +156,14 @@ async function reconcileGroupKeysForChat(
     if (!groupKey) {
       groupKey = await unwrapGroupKeyFromStoredPayload(myPrivKey, me.encrypted_group_key)
     }
+    // Own PUBLIC key from the roster — see deliverGroupKeyToMember: deriving it
+    // from the non-extractable private key throws and kills the reconcile.
+    if (!me.ecdh_public_key_jwk) break
     const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
       myPrivKey,
       m.ecdh_public_key_jwk,
       groupKey,
-      undefined,
+      me.ecdh_public_key_jwk,
       myEpoch
     )
     await uploadMemberWrappedGroupKey(chatId, m.user_id, wrapped)
@@ -258,11 +267,14 @@ export function useGroupKeyDistribution(
             : null
           const needsKey = stored === null || stored < myEpoch
           if (!needsKey) continue
+          // Own PUBLIC key from the roster — deriving it from the
+          // non-extractable vault private key throws (see deliverGroupKeyToMember).
+          if (!myMember?.ecdh_public_key_jwk) break
           const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
             unwrappedPrivateKey,
             m.ecdh_public_key_jwk,
             cryptoCtx.groupKey,
-            undefined,
+            myMember.ecdh_public_key_jwk,
             myEpoch
           )
           await uploadMemberWrappedGroupKey(activeChatId, m.user_id, wrapped)

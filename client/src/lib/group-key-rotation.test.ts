@@ -22,6 +22,7 @@ import {
 } from './chat-logic'
 import {
   generateKeyPair,
+  generateKeyPairIsolated,
   exportPublicKey,
   generateAesGcm256Key,
   encryptMessage,
@@ -219,15 +220,72 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
     expect(await sameKey(carolRecovered, ownerKey)).toBe(false)
   })
 
-  it('skips members without an ECDH key and reports NO_MEMBERS_DELIVERED when none can receive', async () => {
+  it('bails when the OWNER itself has no ECDH key in the roster (cannot bind the wrap)', async () => {
     const owner = await ecdhMember('owner', 'owner')
     vi.mocked(fetchChatDetail).mockResolvedValue(
       mockDetail('owner', 1, [{ id: 'owner', role: 'owner', ecdh: null }])
     )
     vi.mocked(uploadMemberWrappedGroupKey).mockResolvedValue(undefined as unknown as void)
     const res = await rotateGroupKeyForChat('g1', owner.id, owner.priv, 1)
-    expect(res).toEqual({ rotated: false, reason: 'NO_MEMBERS_DELIVERED' })
+    // The owner's own public key is what every wrap is bound to (D2), so without
+    // it nothing can be minted at all — a more precise answer than the old
+    // "nobody could receive".
+    expect(res).toEqual({ rotated: false, reason: 'NO_OWNER_ECDH_IN_ROSTER' })
     expect(uploadMemberWrappedGroupKey).not.toHaveBeenCalled()
+  })
+
+  it('skips members without an ECDH key and reports NO_MEMBERS_DELIVERED when none can receive', async () => {
+    const owner = await ecdhMember('owner', 'owner')
+    vi.mocked(fetchChatDetail).mockResolvedValue(
+      mockDetail('owner', 1, [
+        { id: 'owner', role: 'owner', ecdh: owner.pubJwk },
+        { id: 'keyless', role: 'member', ecdh: null },
+      ])
+    )
+    vi.mocked(uploadMemberWrappedGroupKey).mockResolvedValue(undefined as unknown as void)
+    const res = await rotateGroupKeyForChat('g1', 'nobody-in-roster', owner.priv, 1)
+    expect(res).toEqual({ rotated: false, reason: 'NO_OWNER_ECDH_IN_ROSTER' })
+    expect(uploadMemberWrappedGroupKey).not.toHaveBeenCalled()
+  })
+
+  /**
+   * REGRESSION: the vault private key is imported NON-EXTRACTABLE (Stage-1 key
+   * isolation), which is the ONLY state it ever has in production. Rotation used
+   * to derive the owner's public key via exportKey('jwk', priv) — that throws
+   * InvalidAccessError on such a key, and the error was swallowed by a catch, so
+   * rotation and owner-side key delivery never worked at all: a departing member
+   * kept reading new traffic and a newly added member never received any key.
+   * Every previous test passed only because its fixtures used extractable keys.
+   */
+  it('rotates with a NON-EXTRACTABLE owner private key (the production case)', async () => {
+    // Exactly how the vault holds it: a non-extractable private CryptoKey.
+    const iso = await generateKeyPairIsolated()
+    const ownerPubJwk = iso.publicJwk
+    const nonExtractablePriv = iso.privateKey
+    expect(nonExtractablePriv.extractable).toBe(false)
+
+    const bob = await ecdhMember('bob', 'member')
+    vi.mocked(fetchChatDetail).mockResolvedValue(
+      mockDetail('owner', 3, [
+        { id: 'owner', role: 'owner', ecdh: ownerPubJwk },
+        { id: 'bob', role: 'member', ecdh: bob.pubJwk },
+      ])
+    )
+    const uploaded = new Map<string, string>()
+    vi.mocked(uploadMemberWrappedGroupKey).mockImplementation(async (_c, uid, blob) => {
+      uploaded.set(uid, blob)
+    })
+
+    const res = await rotateGroupKeyForChat('g1', 'owner', nonExtractablePriv, 3)
+    expect(res).toEqual({ rotated: true, epoch: 3, members: 2 })
+
+    // Bob really can open the rotated key, and it is bound to the owner.
+    const bobKey = await unwrapGroupKeyFromStoredPayload(bob.priv, uploaded.get('bob')!, ownerPubJwk)
+    const ownerKey = await unwrapGroupKeyFromStoredPayload(
+      nonExtractablePriv, uploaded.get('owner')!, ownerPubJwk
+    )
+    expect(await sameKey(bobKey, ownerKey)).toBe(true)
+    expect(readStoredSectorKeyEpoch(uploaded.get('bob')!)).toBe(3)
   })
 
   it('refuses to rotate when we are not the owner', async () => {

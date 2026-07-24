@@ -65,7 +65,13 @@ function CheckIcon() {
   )
 }
 
-export function LoginForm() {
+/**
+ * `initialMode` comes from the ROUTE (/login vs /register) so the two are real,
+ * bookmarkable, back-button-able screens rather than one page with hidden state.
+ * The in-card toggle still switches instantly (no reload) and keeps the URL
+ * honest via router.replace.
+ */
+export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode } = {}) {
   const { t } = useTranslation()
   const router = useRouter()
   const { user, loading: authLoading, refresh } = useAuth()
@@ -74,7 +80,7 @@ export function LoginForm() {
   const [vaultPassword, setVaultPassword] = useState('')
   const [confirmVaultPassword, setConfirmVaultPassword] = useState('')
 
-  const [mode, setMode]   = useState<FormMode>('ACCESS')
+  const [mode, setMode]   = useState<FormMode>(initialMode)
   const [stage, setStage] = useState<FormStage>('IDENTITY')
 
   const [pendingToken, setPendingToken] = useState<string | null>(null)
@@ -506,7 +512,15 @@ export function LoginForm() {
                   <button
                     key={m}
                     type="button"
-                    onClick={() => { if (mode !== m) { setMode(m); resetForm() } }}
+                    onClick={() => {
+                      if (mode === m) return
+                      setMode(m)
+                      resetForm()
+                      // Keep the address bar truthful so /login and /register are
+                      // real screens (shareable, back-button-able) even though
+                      // the switch itself is instant.
+                      router.replace(m === 'GENESIS' ? '/register' : '/login')
+                    }}
                     aria-pressed={active}
                     className={`py-2 text-[10px] tracking-wide transition-all ${
                       isMd3
@@ -657,12 +671,6 @@ export function LoginForm() {
                 >
                   {mode === 'ACCESS' ? t('login.signIn') : (isBusy ? '...' : t('login.register'))}
                 </TerminalGlitchButton>
-                <button type="button"
-                  onClick={() => { setMode(mode === 'ACCESS' ? 'GENESIS' : 'ACCESS'); resetForm() }}
-                  aria-label={mode === 'ACCESS' ? t('login.tabCreate') : t('login.tabSignIn')}
-                  className="text-[9px] tracking-wide text-text-muted/70 hover:text-neon-cyan transition-colors">
-                  {mode === 'ACCESS' ? t('login.tabCreate') : t('login.tabSignIn')}
-                </button>
               </div>
 
               {mode === 'ACCESS' && (

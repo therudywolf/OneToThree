@@ -146,8 +146,11 @@ const en = {
   'login.invalidBody': 'Invalid request format.',
   'login.handleLabel': 'Username',
   'login.vaultPassphraseLabel': 'Password',
-  'login.accountPasswordLabel': 'Account Password',
-  'login.accountPasswordHint': 'Used to log in to your account.',
+  // Replaced the dead "Account Password" keys: there is only ONE password in
+  // this product. It never reaches the server (sign-in is a signature) and it is
+  // the same one that opens your key vault.
+  'login.deviceLinkOpen': 'Sign in using another device',
+  'login.deviceLinkTitle': 'Sign in with a QR code',
   'login.vaultPasswordLabel': 'Vault Password',
   'login.vaultPasswordHint': 'Used to encrypt your private keys locally. This password NEVER leaves your device.',
   'login.vaultPasswordMismatch': 'Vault passwords do not match.',
@@ -253,8 +256,8 @@ const en = {
   'login.tabSignIn': 'Sign in',
   'login.tabCreate': 'Create account',
   'login.passwordLabel': 'Password',
-  'login.vaultPasswordExplain1': 'This password protects your account on this device.',
-  'login.vaultPasswordExplain2': "We never see it and can't reset it — so save it somewhere safe.",
+  'login.vaultPasswordExplain1': 'This is your only password: it signs you in and it unlocks your messages.',
+  'login.vaultPasswordExplain2': "We never store it and cannot restore it. Forget it and your messages are gone for good — write it down.",
   'login.usernameHint': '3–20 characters: letters, numbers, _ or -',
   'login.pinMinTip': 'Tip:',
   'login.passwordShow': 'Show password',
@@ -1097,8 +1100,9 @@ const en = {
   'welcome.readyTitle': "You're all set",
   'welcome.readySubtitle': 'Continue to start messaging. You can change anything later in Settings.',
 
-  // [ACCOUNT PASSWORD EXPLANATIONS]
-  'login.accountPasswordExplain': 'Checked by the server. Used to authenticate your identity.',
+  // [PASSWORD EXPLANATIONS] — this used to hold a key claiming the password was
+  // "checked by the server". That was simply untrue: the server has no password
+  // field at all, sign-in is a challenge signature. The key was dead; removed.
   'login.vaultPasswordExplain': 'Protects your private encryption keys locally. Never sent to the server. If forgotten \u2014 keys will be inaccessible.',
 
   // [SETTINGS - CHANGE ACCOUNT PASSWORD]

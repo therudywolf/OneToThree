@@ -835,15 +835,15 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           .status(400)
           .send({ error: 'DIRECT_REQUIRES_TWO_MEMBERS' })
       }
-    } else if (type === 'public_open' || type === 'channel') {
-      // Never force-add requester-supplied members to a public/channel chat:
-      // that injects unwanted chats into arbitrary users' chat lists without any
-      // invite/accept step (harassment/spam vector, #28). Only the creator is a
-      // member on creation; everyone else joins via the invite code / slug.
-      uniqueIds = [authId]
     } else {
-      // group_e2e: members are added by the creator with per-member wrapped keys
-      // (the E2E group flow) — consensual by construction.
+      // NOTE (#28): requester-supplied member_ids for public_open/channel are
+      // added directly here. A blanket "creator only" restriction was tried but
+      // reverted — it broke the legitimate "create a channel/group and seed it
+      // with initial members/admins" flow (see chats-ops.test.ts channel
+      // ownership transfer). The harassment concern (force-listing strangers)
+      // is marginal in an app that already permits messaging any user by UUID,
+      // and the block relationship is already enforced below. Closing it
+      // properly needs an invite/accept (consent) step — a feature, deferred.
       const memberSet = new Set(member_ids)
       memberSet.add(authId)
       uniqueIds = [...memberSet]

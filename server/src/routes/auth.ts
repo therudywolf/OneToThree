@@ -459,10 +459,20 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           }
         } else {
           if (!public_key_jwk?.trim()) {
-            await deletePending(username)
-            return reply.status(400).send({ error: 'PUBLIC_KEY_REQUIRED' })
+            // Enumeration guard (#37): do NOT return a distinct PUBLIC_KEY_REQUIRED
+            // here — an existing account with no client key falls through to the
+            // ECDSA check and returns SIGNATURE_INVALID, so a free username must
+            // too, or the pair (PUBLIC_KEY_REQUIRED vs SIGNATURE_INVALID) is a
+            // "does this account exist?" oracle. A real new-device registration
+            // ALWAYS sends public_key_jwk, so this only affects probing requests:
+            // verify against a dummy key so both cases return an identical 401.
+            // (PUBLIC_KEY_CONFLICT for a supplied-but-mismatched key is kept — it
+            // is the registration "username taken" signal, an accepted disclosure
+            // every signup makes, and is per-account+per-IP rate limited.)
+            publicKeyJwkStr = DUMMY_RECOVERY_PUB_JWK
+          } else {
+            publicKeyJwkStr = public_key_jwk.trim()
           }
-          publicKeyJwkStr = public_key_jwk.trim()
         }
 
         const ok = verifyNonceSignatureEcdsaP256(nonce, signature, publicKeyJwkStr)

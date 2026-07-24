@@ -624,12 +624,14 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               }).catch((err) => request.log.warn({ err, targetUserId: id }, 'ws: call_invite push failed'))
             )
           void Promise.allSettled(pushPromises)
-          // C-2: track active call in Redis for missed-call detection (90s TTL)
+          // C-2: track active call in Redis for missed-call detection (90s TTL).
+          // Encode the invite timestamp alongside the video flag so call_leave can
+          // require a real ring duration before logging a missed call (#31).
           const redis = getRedis()
           if (redis) {
             await redis.set(
               `call:active:${chat_id}:${user.id}`,
-              is_video ? '1' : '0',
+              `${is_video ? '1' : '0'}:${Date.now()}`,
               'EX',
               90
             )
@@ -653,11 +655,21 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           const redis = getRedis()
           if (redis) {
             const redisKey = `call:active:${chat_id}:${user.id}`
-            const isVideoStr = await redis.get(redisKey)
-            if (isVideoStr !== null) {
+            const activeVal = await redis.get(redisKey)
+            if (activeVal !== null) {
               // key still exists → nobody answered
               await redis.del(redisKey)
-              const isVideo = isVideoStr === '1'
+              const [videoFlag, tsStr] = activeVal.split(':')
+              const isVideo = videoFlag === '1'
+              // Anti-spoof (#31): only log a missed call if the call actually rang
+              // for a moment. A scripted call_invite→call_leave (well under a
+              // second) must NOT inject a fake "missed call" into the timeline.
+              // Legacy keys (no timestamp) default to "rang enough" so in-flight
+              // calls across a deploy still log correctly.
+              const rangMs = tsStr ? Date.now() - Number(tsStr) : 3000
+              if (!(rangMs >= 3000)) {
+                return
+              }
               await persistChatMessageAndFanOut({
                 chatId: chat_id,
                 senderId: user.id,

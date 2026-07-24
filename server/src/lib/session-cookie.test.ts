@@ -1,6 +1,10 @@
-import { serialize } from 'cookie'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseLastFmSessionValue } from './session-cookie.js'
+// Assert on the returned CookieSerializeOptions object directly rather than
+// serializing with the `cookie` package: @fastify/cookie 11 pulls cookie 2.x,
+// which renamed `serialize` → `stringifyCookie` with a different signature, so
+// the old `serialize(name, value, opts)` no longer exists. The options object is
+// the actual contract this function owns; serialization is fastify's job.
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -22,11 +26,10 @@ describe('sessionCookieSetOptions', () => {
     vi.stubEnv('COOKIE_DOMAIN', '.onetothree.ru')
     const { sessionCookieSetOptions } = await import('./session-cookie.js')
     const opts = sessionCookieSetOptions(60 * 60 * 24 * 7)
-    const line = serialize('fm_session', 'x'.repeat(40), opts)
-    expect(line).toMatch(/Max-Age=604800/)
-    expect(line).not.toMatch(/Max-Age=0/)
-    expect(line).not.toMatch(/Thu, 01 Jan 1970/)
-    expect(line).toMatch(/Domain=\.onetothree\.ru/)
+    expect(opts.maxAge).toBe(604800)
+    expect(opts.expires).toBeInstanceOf(Date)
+    expect((opts.expires as Date).getTime()).toBeGreaterThan(Date.now())
+    expect(opts.domain).toBe('.onetothree.ru')
   })
 
   it('uses SameSite=Lax for insecure local HTTP so browsers keep the cookie', async () => {
@@ -35,9 +38,8 @@ describe('sessionCookieSetOptions', () => {
     vi.stubEnv('COOKIE_SECURE', '0')
     const { sessionCookieSetOptions } = await import('./session-cookie.js')
     const opts = sessionCookieSetOptions(60)
-    const line = serialize('fm_session', 'x'.repeat(40), opts)
-    expect(line).toMatch(/SameSite=Lax/i)
-    expect(line).not.toMatch(/;\s*Secure/i)
+    expect(String(opts.sameSite).toLowerCase()).toBe('lax')
+    expect(opts.secure).toBeFalsy()
   })
 
   it('uses SameSite=None only when the cookie is Secure', async () => {
@@ -45,9 +47,8 @@ describe('sessionCookieSetOptions', () => {
     vi.stubEnv('CORS_ALLOW_MOBILE_APP', '1')
     const { sessionCookieSetOptions } = await import('./session-cookie.js')
     const opts = sessionCookieSetOptions(60)
-    const line = serialize('fm_session', 'x'.repeat(40), opts)
-    expect(line).toMatch(/SameSite=None/i)
-    expect(line).toMatch(/;\s*Secure/i)
+    expect(String(opts.sameSite).toLowerCase()).toBe('none')
+    expect(opts.secure).toBe(true)
   })
 
   it('rejects non-positive maxAge', async () => {

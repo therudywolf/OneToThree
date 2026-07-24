@@ -19,7 +19,9 @@ describe('consumeTotpCode fallback behavior', () => {
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
     const { consumeTotpCode } = await import('./totp-replay-guard.js')
     await expect(consumeTotpCode('u-2', '654321')).resolves.toBe(true)
-    vi.advanceTimersByTime(61_000)
+    // Guard TTL is 120s (covers the ±30s code-acceptance span, #41); a code is
+    // only reusable AFTER the entry expires, so advance past 120s not 60s.
+    vi.advanceTimersByTime(121_000)
     await expect(consumeTotpCode('u-2', '654321')).resolves.toBe(true)
     vi.useRealTimers()
   })

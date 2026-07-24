@@ -1,7 +1,7 @@
 import { decryptMessage } from '@/lib/crypto'
 import {
   decryptInboundText,
-  getAesKeyForChat,
+  getAesKeyRingForChat,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
 import { decryptFanoutSlot, DR_SLOT_SENTINEL } from '@/lib/fanout-crypto'
@@ -275,10 +275,14 @@ export async function decryptApiMessageRows(
       })
     )
   } else {
-    const aesKey = await getAesKeyForChat(unwrappedPrivateKey, cryptoCtx)
-    if (!aesKey) {
+    // #32 per-epoch ring: [0] is the current key (the fast path — worker/main,
+    // byte-identical to before); [1..] are retained older-epoch keys used only
+    // to re-open rows the current key couldn't (post-rotation history).
+    const ring = await getAesKeyRingForChat(unwrappedPrivateKey, cryptoCtx)
+    if (!ring || ring.length === 0) {
       return rows.map((m) => apiRowToDecrypted(m, ''))
     }
+    const aesKey = ring[0]
 
     const useWorker =
       jobs.length >= BATCH_WORKER_MIN &&
@@ -302,6 +306,21 @@ export async function decryptApiMessageRows(
       }
     } else {
       plaintextByIndex = await decryptJobsOnMain(aesKey, jobs)
+    }
+
+    // Ring fallback: any row the current key failed on may be an older epoch.
+    // Retry just those against each retained key, newest→oldest, on the main
+    // thread (the failed set is normally empty, so this costs nothing).
+    if (ring.length > 1) {
+      let pending = jobs.filter((j) => plaintextByIndex.get(j.index) === '[DECRYPT_FAIL]')
+      for (let k = 1; k < ring.length && pending.length > 0; k += 1) {
+        const retried = await decryptJobsOnMain(ring[k], pending)
+        for (const j of pending) {
+          const v = retried.get(j.index)
+          if (v !== undefined && v !== '[DECRYPT_FAIL]') plaintextByIndex.set(j.index, v)
+        }
+        pending = pending.filter((j) => plaintextByIndex.get(j.index) === '[DECRYPT_FAIL]')
+      }
     }
   }
 

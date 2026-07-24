@@ -34,8 +34,15 @@ vi.mock('@/lib/fanout-crypto', () => ({
   DR_SLOT_SENTINEL: 'dr:v2',
 }))
 
-import { assertTrustOrThrow, decryptInboundTextV2, encryptOutboundTextV2 } from '@/lib/chat-crypto'
-import { generateKeyPairIsolated } from '@/lib/crypto'
+import {
+  assertTrustOrThrow,
+  decryptInboundText,
+  decryptInboundTextV2,
+  decryptMessageWithKeys,
+  encryptOutboundTextV2,
+  getAesKeyRingForChat,
+} from '@/lib/chat-crypto'
+import { generateAesGcm256Key, generateKeyPairIsolated, encryptMessage } from '@/lib/crypto'
 
 describe('decryptInboundTextV2', () => {
   beforeEach(() => {
@@ -283,5 +290,67 @@ describe('assertTrustOrThrow — trust registry must fail closed', () => {
   it('registry is valid JSON but not an object — fails closed', () => {
     setRegistry('"just a string"')
     expect(() => assertTrustOrThrow('peer', jwkA)).toThrow(/COMPROMISED_LINK/)
+  })
+})
+
+describe('SECTOR per-epoch key ring (#32/#33)', () => {
+  // SECTOR decrypt never touches the private key (the group key is symmetric),
+  // so any CryptoKey serves as the ignored `privateKey` arg.
+  let EMPTY_PRIV: CryptoKey
+  beforeEach(async () => {
+    EMPTY_PRIV = (await generateKeyPairIsolated()).privateKey
+  })
+
+  it('decryptMessageWithKeys tries keys in order and returns the first that opens', async () => {
+    const kOld = await generateAesGcm256Key()
+    const kNew = await generateAesGcm256Key()
+    const sealedOld = await encryptMessage(kOld, 'from-old-epoch')
+
+    // Current-first ring [kNew, kOld]: kNew fails, falls back to kOld.
+    expect(await decryptMessageWithKeys([kNew, kOld], sealedOld.ciphertext, sealedOld.iv))
+      .toBe('from-old-epoch')
+    // Single current key cannot open it.
+    await expect(
+      decryptMessageWithKeys([kNew], sealedOld.ciphertext, sealedOld.iv),
+    ).rejects.toThrow()
+    // Empty ring throws rather than returning garbage.
+    await expect(
+      decryptMessageWithKeys([], sealedOld.ciphertext, sealedOld.iv),
+    ).rejects.toThrow()
+  })
+
+  it('existing member (full ring) reads BOTH epochs; new member (current only) cannot read pre-join', async () => {
+    // kOld = pre-rotation epoch, kNew = current epoch after a member-add rekey.
+    const kOld = await generateAesGcm256Key()
+    const kNew = await generateAesGcm256Key()
+    const preJoin = await encryptMessage(kOld, 'history-before-join')
+    const postJoin = await encryptMessage(kNew, 'message-after-join')
+
+    // Existing member keeps kOld in its ring → reads the whole backlog (UX win).
+    const existing = { mode: 'SECTOR', groupKey: kNew, groupKeyRing: [kNew, kOld] } as const
+    expect(await decryptInboundText(EMPTY_PRIV, existing, preJoin.ciphertext, preJoin.iv))
+      .toBe('history-before-join')
+    expect(await decryptInboundText(EMPTY_PRIV, existing, postJoin.ciphertext, postJoin.iv))
+      .toBe('message-after-join')
+
+    // Newly added member never held kOld → ring is current-only → pre-join
+    // history stays sealed (backward secrecy, #32), but post-join opens.
+    const newcomer = { mode: 'SECTOR', groupKey: kNew, groupKeyRing: [kNew] } as const
+    await expect(
+      decryptInboundText(EMPTY_PRIV, newcomer, preJoin.ciphertext, preJoin.iv),
+    ).rejects.toThrow()
+    expect(await decryptInboundText(EMPTY_PRIV, newcomer, postJoin.ciphertext, postJoin.iv))
+      .toBe('message-after-join')
+  })
+
+  it('getAesKeyRingForChat falls back to [groupKey] when no ring is attached', async () => {
+    const k = await generateAesGcm256Key()
+    const withRing = await getAesKeyRingForChat(EMPTY_PRIV, {
+      mode: 'SECTOR', groupKey: k, groupKeyRing: [k, k],
+    })
+    expect(withRing).toHaveLength(2)
+    const noRing = await getAesKeyRingForChat(EMPTY_PRIV, { mode: 'SECTOR', groupKey: k })
+    expect(noRing).toEqual([k])
+    expect(await getAesKeyRingForChat(EMPTY_PRIV, { mode: 'PUBLIC' })).toBeNull()
   })
 })

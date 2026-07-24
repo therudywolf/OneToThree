@@ -55,11 +55,21 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 
+        <!-- Direct (no-Google) notification mode: holds the process at foreground
+             importance so the WebView's WebSocket stays connected. Type is
+             specialUse — the service transfers no data, so dataSync would be both
+             semantically wrong and subject to Android 15's 6h/24h quota, which
+             would silently kill direct mode after ~6h. dataSync stays declared
+             only for pre-34 devices, where specialUse does not exist (#13). -->
         <service
             android:name=".DirectNotificationService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse|dataSync">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Maintains the end-to-end encrypted notification socket for users who opted out of Google Play push" />
+        </service>
 
         <!-- Fallback channel for FCM notifications that arrive without a channelId.
              The 'messages'/'calls' channels are created at startup in MainActivity
@@ -83,6 +93,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Required from Android 14 for the specialUse-typed DirectNotificationService (#13). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />

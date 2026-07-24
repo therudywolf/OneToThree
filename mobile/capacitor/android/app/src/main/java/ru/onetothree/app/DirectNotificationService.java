@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import androidx.annotation.Nullable;
@@ -31,7 +32,12 @@ public class DirectNotificationService extends Service {
   @Override
   public int onStartCommand(Intent intent, int flags, int startId) {
     final String action = intent == null ? null : intent.getAction();
-    if (ACTION_STOP.equals(action)) {
+    // Only ever promote on an EXPLICIT ACTION_START. A null intent is what the
+    // system delivers when it restarts a sticky service after reclaiming the
+    // process — that restart happens in the background, and a background FGS
+    // start is forbidden from Android 12+ (ForegroundServiceStartNotAllowedException).
+    // Anything that is not ACTION_START (null restart or ACTION_STOP) tears down.
+    if (!ACTION_START.equals(action)) {
       running = false;
       stopForeground(STOP_FOREGROUND_REMOVE);
       stopSelf();
@@ -39,8 +45,42 @@ public class DirectNotificationService extends Service {
     }
 
     running = true;
-    startForeground(NOTIFICATION_ID, buildNotification());
-    return START_STICKY;
+    // API 29+ requires the type at start; 34+ additionally enforces the matching
+    // FOREGROUND_SERVICE_* permission. `specialUse` is the correct type here:
+    // this service transfers NOTHING — it only holds the process at foreground
+    // importance so the WebView's WebSocket (the no-Google notification
+    // transport) stays connected. `dataSync` would be semantically wrong AND
+    // subject to Android 15's 6h/24h quota, after which the system calls
+    // onTimeout and then refuses further starts — silently killing direct mode.
+    // Pre-34 releases have no specialUse constant and no quota, so dataSync is
+    // used there; both types are declared in the manifest so neither start
+    // mismatches the declaration.
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        startForeground(
+          NOTIFICATION_ID,
+          buildNotification(),
+          ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+      } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        startForeground(
+          NOTIFICATION_ID,
+          buildNotification(),
+          ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+      } else {
+        startForeground(NOTIFICATION_ID, buildNotification());
+      }
+    } catch (Exception e) {
+      // Fail closed instead of taking the process down. isRunning() then reports
+      // false, and the web layer refuses to persist "direct" mode (so the user
+      // is never told private mode is on while receiving nothing).
+      running = false;
+      stopSelf();
+      return START_NOT_STICKY;
+    }
+    // NOT_STICKY: a sticky restart would be exactly the forbidden background
+    // start above. Direct mode is re-armed by the web layer on next app open
+    // (push-subscription.ts :: ensureDirectForegroundMode).
+    return START_NOT_STICKY;
   }
 
   @Override

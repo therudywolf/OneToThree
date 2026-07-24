@@ -1,4 +1,5 @@
 'use client'
+import { markBackupPending } from '@/lib/backup-reminder'
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -219,6 +220,11 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
         return
       }
       if (mode === 'GENESIS') {
+        // Nothing is backed up yet, by definition. The prompt below is skippable
+        // on purpose, so record that fact — otherwise one Esc silently discards
+        // the only warning the product ever gives, and server-side vault restore
+        // no longer exists (the endpoints return 410).
+        if (res.user?.id) markBackupPending(res.user.id)
         // Keep the post-register backup prompt mounted before auth refresh,
         // otherwise the auto-redirect effect can win the race and hide it.
         setShowVaultPrompt(true)

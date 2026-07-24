@@ -52,6 +52,7 @@ import { IdentityModal } from '@/components/chat/identity-modal'
 import { UserProfileModal } from '@/components/chat/user-profile-modal'
 import { PwaInstallBanner } from '@/components/pwa-install-banner'
 import { PushOnboardingBanner } from '@/components/push-onboarding-banner'
+import { BackupReminderBanner } from '@/components/chat/backup-reminder-banner'
 import { InviteChatLinkEffect } from '@/components/chat/invite-chat-link-effect'
 import { useTranslation } from '@/hooks/use-translation'
 import { usePhantomPush } from '@/hooks/use-phantom-push'
@@ -1541,6 +1542,7 @@ export function ChatApp({
               Decrypting backlog…
             </div>
           ) : null}
+          <BackupReminderBanner onOpenSettings={() => setSettingsOpen(true)} />
           {capabilities.push ? <PushOnboardingBanner /> : null}
           {capabilities.calls && activeChatId && activeCallBanner[activeChatId] && !isInGroupCall ? (
             <GroupCallBanner

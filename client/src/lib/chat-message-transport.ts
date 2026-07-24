@@ -211,27 +211,18 @@ export async function sendChatMessageOverTransport(
       body.content = null
       body.iv = null
     } else {
-      // v1: per-device ECDH fan-out.
-      if (!input.plaintext?.length) throw new Error('DIRECT_PLAINTEXT_REQUIRED')
-      if (!input.sender_private_key) throw new Error('DIRECT_FANOUT_KEYS_REQUIRED')
-      const excludeDeviceId = getClientDeviceId() ?? undefined
-      const fanout = await buildFanoutSlotsDetailed(
-        input.sender_private_key,
-        input.my_user_id,
-        input.peer_user_id,
-        input.plaintext,
-        excludeDeviceId
-      )
-      if (fanout.slots.length === 0) throw new Error('DIRECT_FANOUT_UNAVAILABLE')
-      if (fanout.failedDeviceIds.length > 0) {
-        partialDelivery = {
-          failedDeviceIds: fanout.failedDeviceIds,
-          attemptedDeviceIds: fanout.attemptedDeviceIds,
-        }
-      }
-      body.ciphertexts = fanout.slots
-      body.content = null
-      body.iv = null
+      // v1: per-device ECDH fan-out — NOT reachable for DIRECT any more.
+      //
+      // This branch is long-term static ECDH: no forward secrecy and no sender
+      // authentication. The recipient already refuses such a row outright
+      // (ERR_DIRECT_V1_REJECTED in decrypt-chat-api-message), so anything that
+      // lands here produces ciphertext nobody can read while the sender is told
+      // the send succeeded. Forward did exactly that for every 1:1 forward,
+      // simply by omitting protocol_version/dr_slots. Fail loudly instead of
+      // silently downgrading, so a caller that forgets the v2 fields is a
+      // crash in review rather than an unreadable message and a weaker cipher
+      // in production.
+      throw new Error('DIRECT_V2_REQUIRED')
     }
   } else if (input.transport_mode === 'SELF') {
     // Saved Messages: same contract as DIRECT — server requires per-device slots.

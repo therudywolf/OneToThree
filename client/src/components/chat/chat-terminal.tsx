@@ -642,20 +642,49 @@ export function ChatTerminal({
       if (!privateKeyForForward) throw new Error('FORWARD_VAULT_LOCKED')
       if (!text.trim()) throw new Error('FORWARD_EMPTY')
 
-      const [{ buildChatCryptoContextWithMeta, encryptOutboundText }, { sendChatMessageOverTransport }] =
-        await Promise.all([
-          import('@/lib/chat-crypto'),
-          import('@/lib/chat-message-transport'),
-        ])
+      const [
+        { buildChatCryptoContextWithMeta, encryptOutboundText, encryptOutboundTextV2 },
+        { sendChatMessageOverTransport },
+      ] = await Promise.all([
+        import('@/lib/chat-crypto'),
+        import('@/lib/chat-message-transport'),
+      ])
 
       const meta = await buildChatCryptoContextWithMeta(chatId, userId, privateKeyForForward)
       if (!meta) throw new Error('FORWARD_CTX_FAIL')
 
-      const { encrypted_content, iv } = await encryptOutboundText(
-        privateKeyForForward,
-        text,
-        meta.ctx
-      )
+      // Forward was the last caller still using the v1 encryptOutboundText for
+      // DIRECT/SELF. Because it never set protocol_version/dr_slots, the
+      // transport's v2 guard failed and it silently took the v1 static-ECDH
+      // fan-out branch: no forward secrecy, no sender authentication — the exact
+      // downgrade chat-crypto declares must be unreachable for DIRECT. Worse, the
+      // recipient hard-rejects a protocol_version=1 DIRECT row
+      // (ERR_DIRECT_V1_REJECTED), so every forwarded message rendered
+      // [DECRYPT_FAIL] for them — and for the sender's own other devices —
+      // while the forward modal reported success. Mirror useSendMessage exactly.
+      let encrypted_content: string
+      let iv: string
+      let protocol_version: 1 | 2 = 1
+      let dr_header: string | null = null
+      let dr_init: string | null = null
+      let dr_slots: Array<{ device_id: string; ciphertext: string; iv: string }> | null = null
+
+      if (meta.ctx.mode === 'DIRECT' || meta.ctx.mode === 'SELF') {
+        const enc = await encryptOutboundTextV2(privateKeyForForward, text, meta.ctx, {
+          ownerUserId: userId,
+          peerUserId: meta.peerUserId ?? null,
+        })
+        encrypted_content = enc.encrypted_content
+        iv = enc.iv
+        protocol_version = enc.protocol_version
+        dr_header = enc.dr_header
+        dr_init = enc.dr_init
+        dr_slots = enc.dr_slots ?? null
+      } else {
+        const enc = await encryptOutboundText(privateKeyForForward, text, meta.ctx)
+        encrypted_content = enc.encrypted_content
+        iv = enc.iv
+      }
 
       const result = await sendChatMessageOverTransport({
         chat_id: chatId,
@@ -667,6 +696,10 @@ export function ChatTerminal({
         my_ecdh_public_key_jwk: useSessionStore.getState().myEcdhPublicKeyJwk,
         content: encrypted_content,
         iv,
+        protocol_version,
+        dr_header,
+        dr_init,
+        dr_slots,
         reply_to_id: null,
       })
       if (result.partialDelivery && result.partialDelivery.failedDeviceIds.length > 0) {

@@ -306,6 +306,59 @@ describe('admin routes — authorization & self-protection', () => {
     }
   })
 
+  // The `group` endpoint treated `creator` as immutable, but ban and purge did
+  // not — so any admin could lock the instance owner out, or delete them
+  // outright. LAST_ADMIN does not cover it: with two admins the count passes.
+  it('the creator cannot be banned by another admin (CREATOR_IMMUTABLE)', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`ban-adm-${stamp}`, 'admin', 'admin')
+    const creator = await createUser(`ban-cre-${stamp}`, 'admin', 'creator')
+    try {
+      const res = await request(app!.server)
+        .patch(`/api/admin/users/${creator.id}/ban`)
+        .set('Cookie', await cookieFor(admin))
+        .send({ banned: true })
+        .expect(403)
+      expect(res.body.error).toBe('CREATOR_IMMUTABLE')
+
+      const [row] = await db
+        .select({ isBanned: users.isBanned })
+        .from(users)
+        .where(eq(users.id, creator.id))
+        .limit(1)
+      expect(row?.isBanned).toBe(false)
+    } finally {
+      await db.delete(users).where(eq(users.id, creator.id))
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
+  it('the creator cannot be purged by another admin (CREATOR_IMMUTABLE)', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`prg-adm-${stamp}`, 'admin', 'admin')
+    const creator = await createUser(`prg-cre-${stamp}`, 'admin', 'creator')
+    try {
+      const res = await request(app!.server)
+        .post(`/api/admin/users/${creator.id}/purge`)
+        .set('Cookie', await cookieFor(admin))
+        .send({ confirm_username: creator.username })
+        .expect(400)
+      expect(res.body.error).toBe('CREATOR_IMMUTABLE')
+
+      const [row] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, creator.id))
+        .limit(1)
+      expect(row?.id).toBe(creator.id)
+    } finally {
+      await db.delete(users).where(eq(users.id, creator.id))
+      await db.delete(users).where(eq(users.id, admin.id))
+    }
+  })
+
   it('the creator group cannot be assigned via the API (rejected by schema)', async () => {
     if (!dbAvailable) return
     const stamp = Date.now().toString(36)

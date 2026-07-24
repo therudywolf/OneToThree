@@ -357,7 +357,22 @@ export async function buildApp() {
   if (corsOriginsValid.length > 0) {
     const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
     app.addHook('onRequest', async (request, reply) => {
-      if (!MUTATING_METHODS.has(request.method)) return
+      // A WebSocket handshake is a GET, so the mutating-method filter below
+      // never saw it — yet it is the single most dangerous cross-site request
+      // in the app. CORS does not apply to WebSockets, and in production the
+      // session cookie is deliberately SameSite=None (the web origin and the
+      // api origin are siblings), so ANY page on the internet could open
+      // `wss://api.<domain>/api/ws`, have the browser attach the victim's
+      // cookie, and get a fully authenticated socket in their name — reading
+      // realtime traffic and sending frames as them (Cross-Site WebSocket
+      // Hijacking). Browsers always set Origin on a WS handshake, so checking
+      // it here is a complete browser-side defense; a MISSING Origin is still
+      // allowed for the same reason as below (native clients, server-to-server).
+      const isWsUpgrade =
+        request.method === 'GET' &&
+        typeof request.headers.upgrade === 'string' &&
+        request.headers.upgrade.toLowerCase() === 'websocket'
+      if (!isWsUpgrade && !MUTATING_METHODS.has(request.method)) return
       const origin = request.headers.origin
       if (origin && !corsOriginSet.has(origin)) {
         return reply.status(403).send({ error: 'CROSS_ORIGIN_FORBIDDEN' })

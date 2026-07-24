@@ -3,7 +3,65 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { nativePushTokens, pushSubscriptions } from '../db/schema.js'
+import net from 'node:net'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
+import {
+  assertHostnameSafeForFetch,
+  isPrivateOrLoopbackAddress,
+  normalizeToIpv4,
+} from '../lib/link-preview-ssrf.js'
+
+/**
+ * A push endpoint is a URL the SERVER later makes outbound requests to
+ * (webpush.sendNotification), so an unvalidated one turns POST /subscribe into
+ * an authenticated SSRF primitive: store `http://169.254.169.254/...` or an
+ * internal host and every push aimed at that account becomes a request into
+ * the private network. It is not even fully blind — push.ts deletes the
+ * subscription on a 410, so the attacker can read a response-status oracle
+ * back out by checking whether the subscription survived.
+ *
+ * Validate once at write time (rate-limited, cheap) rather than on the send
+ * hot path: require https (every real Web-Push service is https) and refuse
+ * hostnames that resolve to loopback/private space, reusing the same guard the
+ * link-preview fetcher uses. Residual risk is DNS rebinding between subscribe
+ * and send, which still has to defeat TLS for the attacker-named host.
+ */
+async function assertPushEndpointSafe(raw: string): Promise<boolean> {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+  // Every real Web-Push service is https. This alone kills the plain-http
+  // metadata endpoints (169.254.169.254) and non-http schemes.
+  if (url.protocol !== 'https:') return false
+
+  // IPv6 literals arrive bracketed from URL.hostname.
+  const host = url.hostname.replace(/^\[|\]$/g, '')
+
+  // Literal address (v4, v6, or a v4-mapped v6) — decide without touching DNS,
+  // so the common `https://127.0.0.1/…` case is blocked even offline. Numeric
+  // spellings like `https://2130706433/` are not literals per net.isIP and fall
+  // through to the resolver below, which getaddrinfo folds back to 127.0.0.1.
+  const asIpv4 = normalizeToIpv4(host)
+  if (asIpv4 || net.isIP(host)) {
+    return !isPrivateOrLoopbackAddress(asIpv4 ?? host)
+  }
+
+  try {
+    await assertHostnameSafeForFetch(host)
+    return true
+  } catch (err) {
+    // Block ONLY on a positive "this resolves into private space" verdict.
+    // Every other outcome — NXDOMAIN, timeout, no resolver in the container —
+    // means we could not prove anything, and a name that does not resolve
+    // cannot reach an internal service at send time either. Failing closed on
+    // resolver trouble would instead make push registration depend on the API
+    // container's DNS health.
+    return (err as Error)?.message !== 'SSRF_BLOCKED'
+  }
+}
 
 const subscribeBodySchema = z.object({
   endpoint: z.string().min(1).max(4096),
@@ -56,6 +114,10 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
 
     const { endpoint, keys } = parsed.data
 
+    if (!(await assertPushEndpointSafe(endpoint))) {
+      return reply.status(400).send({ error: 'INVALID_ENDPOINT' })
+    }
+
     // A push endpoint is device-global — it must map to exactly ONE account, or
     // a shared/handed-over device keeps delivering a prior user's notifications
     // (leaking chat_id + deep link). Reassign it to this user by removing any
@@ -93,6 +155,9 @@ export const pushRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
     const { endpoint, keys } = parsed.data.subscription
+    if (!(await assertPushEndpointSafe(endpoint))) {
+      return reply.status(400).send({ error: 'INVALID_ENDPOINT' })
+    }
     await db
       .delete(pushSubscriptions)
       .where(and(eq(pushSubscriptions.endpoint, endpoint), ne(pushSubscriptions.userId, user.id)))

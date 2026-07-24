@@ -16,6 +16,7 @@ import { wipeAllClientLocalState } from '@/lib/client-wipe'
 import { invalidateAvatarCache, clearAllAvatarCache } from '@/lib/avatar-cache'
 import { clearNativeSessionCookie, warmNativeSessionCookies } from '@/lib/native-session'
 import { clearOwnDrIdentity } from '@/lib/ratchet/session-manager'
+import { useSessionStore } from '@/store/sessionStore'
 
 /** * `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional).
  * `has_passkeys` indicates if the user has enrolled WebAuthn devices.
@@ -139,6 +140,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Zeroize in-memory DR identity and session wrap key so chain keys cannot
     // be decrypted from IndexedDB after the session ends.
     clearOwnDrIdentity()
+    // ...and the unwrapped vault key itself, which lived on. `setUnwrappedPrivateKey(null)`
+    // was reachable only from the manual lock buttons and the idle auto-lock —
+    // and auto-lock is mounted INSIDE chat-app, which unmounts on logout, so a
+    // session-expiry (401) logout left the previous user's ECDH private key in
+    // module state indefinitely. The vault gate in chat-app is a bare
+    // `if (!unwrappedPrivateKey)`, not bound to the current user, so anything
+    // that reached it without re-activating would have run on the old key.
+    // The store is module-level and survives SPA navigation — only a full
+    // reload cleared it.
+    useSessionStore.getState().reset()
     setUser(null)
     setLoading(false)
     // Clear all cached avatars on logout to prevent memory leaks

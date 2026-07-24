@@ -328,6 +328,12 @@ prime_compose_interpolation_env() {
   # the human-edited .env.prod can keep its inline annotations.
   sed -E '/^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=/ { s/[[:space:]]+#.*$//; s/[[:space:]]+$//; }' \
     "$ENV_FILE" > "${ROOT}/.env"
+  # Both files hold the full live secret set (JWT_SECRET, POSTGRES_PASSWORD,
+  # TOTP_WRAP_KEY, BACKUP_ENCRYPTION_KEY, VAPID_PRIVATE_KEY…). ./secrets is
+  # carefully 0700/0600 throughout this script, but these two were left at
+  # whatever the operator's umask happened to be — 0600 under umask 077, but
+  # world-readable 0644 under the far more common umask 022. Pin them.
+  chmod 600 "${ROOT}/.env" "$ENV_FILE" 2>/dev/null || true
 
   # Build stamp for the api (APP_VERSION build-arg) and the web bundle
   # (NEXT_PUBLIC_APP_VERSION). deploy.sh exports these, but the startup.sh path

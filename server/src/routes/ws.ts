@@ -937,7 +937,17 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
               return
             }
           }
-          void touchLastSeenPing(user.id)
+          // MUST have a terminal handler. index.ts escalates any
+          // unhandledRejection to a full process shutdown, so this detached
+          // best-effort DB write was a whole-API kill switch: during a brief
+          // Postgres blip (restart, failover, pool exhaustion) the first
+          // heartbeat ping to reject would take down every other user's socket,
+          // call and in-flight upload with it — and reconnecting clients ping
+          // again immediately, so it re-crashed for as long as the blip lasted.
+          // The sibling read-receipt write 20 lines up already guards itself.
+          void touchLastSeenPing(user.id).catch((err) =>
+            request.log.warn({ err: String(err), userId: user.id }, 'ws: last-seen ping failed')
+          )
           return
         }
 

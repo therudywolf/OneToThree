@@ -41,6 +41,7 @@ import {
   decryptMessageWithKeys,
   encryptOutboundTextV2,
   getAesKeyRingForChat,
+  type ChatCryptoContext,
 } from '@/lib/chat-crypto'
 import { generateAesGcm256Key, generateKeyPairIsolated, encryptMessage } from '@/lib/crypto'
 
@@ -327,7 +328,7 @@ describe('SECTOR per-epoch key ring (#32/#33)', () => {
     const postJoin = await encryptMessage(kNew, 'message-after-join')
 
     // Existing member keeps kOld in its ring → reads the whole backlog (UX win).
-    const existing = { mode: 'SECTOR', groupKey: kNew, groupKeyRing: [kNew, kOld] } as const
+    const existing: ChatCryptoContext = { mode: 'SECTOR', groupKey: kNew, groupKeyRing: [kNew, kOld] }
     expect(await decryptInboundText(EMPTY_PRIV, existing, preJoin.ciphertext, preJoin.iv))
       .toBe('history-before-join')
     expect(await decryptInboundText(EMPTY_PRIV, existing, postJoin.ciphertext, postJoin.iv))
@@ -335,7 +336,7 @@ describe('SECTOR per-epoch key ring (#32/#33)', () => {
 
     // Newly added member never held kOld → ring is current-only → pre-join
     // history stays sealed (backward secrecy, #32), but post-join opens.
-    const newcomer = { mode: 'SECTOR', groupKey: kNew, groupKeyRing: [kNew] } as const
+    const newcomer: ChatCryptoContext = { mode: 'SECTOR', groupKey: kNew, groupKeyRing: [kNew] }
     await expect(
       decryptInboundText(EMPTY_PRIV, newcomer, preJoin.ciphertext, preJoin.iv),
     ).rejects.toThrow()

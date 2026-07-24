@@ -46,12 +46,25 @@ async function deliverGroupKeyToMember(
   if (!target?.ecdh_public_key_jwk) return
   if (target.encrypted_group_key) return // already delivered
 
+  // #32 backward secrecy: a group_e2e join bumps `key_epoch`, so right after a
+  // join our stored key is STALE versus the chat. Delivering our current bytes
+  // would hand the joiner a PRE-bump epoch — exactly the history that must stay
+  // sealed. Rotate instead: minting the new epoch delivers the fresh key to
+  // EVERY member incl. this joiner, whose ring then holds only the post-join
+  // epoch. When our key already matches the epoch we deliver it directly (a
+  // re-delivery / heal, no membership change).
+  const chatEpoch = detail.chat.key_epoch ?? 0
+  const myEpoch = readStoredSectorKeyEpoch(me.encrypted_group_key) ?? 0
+  if (myEpoch < chatEpoch) {
+    await rotateGroupKeyIfStale(chatId, myUserId, myPrivKey)
+    return
+  }
+
   const groupKey = await unwrapGroupKeyFromStoredPayload(myPrivKey, me.encrypted_group_key)
   // Stamp the delivered key with the epoch of the material we are actually
   // handing over (our own stored key's epoch), so the recovery scan can later
   // tell whether this member is on the current key. Truthful labelling matters:
   // never stamp a key with an epoch newer than the bytes it carries.
-  const myEpoch = readStoredSectorKeyEpoch(me.encrypted_group_key) ?? 0
   const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
     myPrivKey,
     target.ecdh_public_key_jwk,
@@ -69,16 +82,30 @@ async function deliverGroupKeyToMember(
  * makes it a no-op once our key already matches the epoch, so repeat calls don't
  * churn. Returns true if a rotation was performed.
  */
+// Per-chat rotation lock. A group_e2e join now fires BOTH `member_joined` (→
+// deliver→rotate) and `group_key_epoch` (→rotate); rapid joins/departures can
+// also stack triggers. Two rotations racing would each mint a DIFFERENT key at
+// the same epoch and split the group across divergent keys. Coalesce them: only
+// one rotation per chat runs at a time; a concurrent trigger no-ops, because the
+// in-flight rotation already re-keys every current member (incl. any joiner).
+const rotationsInFlight = new Set<string>()
+
 async function rotateGroupKeyIfStale(
   chatId: string,
   myUserId: string,
   myPrivKey: CryptoKey
 ): Promise<boolean> {
-  const detail = await fetchChatDetail(chatId)
-  const epoch = detail.chat.key_epoch ?? 0
-  if (!shouldRotateGroupKey(detail, myUserId, epoch)) return false
-  const res = await rotateGroupKeyForChat(chatId, myUserId, myPrivKey, epoch)
-  return res.rotated
+  if (rotationsInFlight.has(chatId)) return false
+  rotationsInFlight.add(chatId)
+  try {
+    const detail = await fetchChatDetail(chatId)
+    const epoch = detail.chat.key_epoch ?? 0
+    if (!shouldRotateGroupKey(detail, myUserId, epoch)) return false
+    const res = await rotateGroupKeyForChat(chatId, myUserId, myPrivKey, epoch)
+    return res.rotated
+  } finally {
+    rotationsInFlight.delete(chatId)
+  }
 }
 
 /**
@@ -99,6 +126,15 @@ async function reconcileGroupKeysForChat(
   const me = detail.members.find((m) => m.user_id === myUserId)
   if (!me?.encrypted_group_key) return false
   const myEpoch = readStoredSectorKeyEpoch(me.encrypted_group_key) ?? 0
+
+  // #32 backward secrecy: if OUR key is behind the chat epoch (a join bumped it
+  // while we were offline), rotate to the current epoch instead of propagating
+  // our stale key — otherwise a member added while we were away could receive a
+  // pre-join epoch. Rotation delivers the fresh key to everyone incl. that
+  // joiner. Only when our key is current do we reconcile behind members directly.
+  if ((detail.chat.key_epoch ?? 0) > myEpoch) {
+    return rotateGroupKeyIfStale(chatId, myUserId, myPrivKey)
+  }
 
   let groupKey: CryptoKey | null = null
   let delivered = false

@@ -143,6 +143,82 @@ describe('chat create/update/member routes', () => {
     }
   })
 
+  // #32 backward secrecy: a member JOINING a group_e2e chat must also bump the
+  // key epoch, so the owner's rekey stamps a fresh epoch and the joiner receives
+  // only the post-join key — never a pre-join epoch it could read history with.
+  it('bumps the key epoch when a member joins a group_e2e chat via invite', async () => {
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`rk-join-owner-${stamp}`)
+    const seed = await createUser(`rk-join-seed-${stamp}`) // group_e2e needs ≥2 members
+    const joiner = await createUser(`rk-join-joiner-${stamp}`)
+    const ownerCookie = `fm_session=${await app!.jwt.sign({ sub: owner.id, username: owner.username, jti: randomUUID() })}`
+    const joinerCookie = `fm_session=${await app!.jwt.sign({ sub: joiner.id, username: joiner.username, jti: randomUUID() })}`
+
+    let chatId: string | null = null
+    try {
+      chatId = await createGroup(app!, ownerCookie, owner, [seed])
+      const before = await readKeyEpoch(chatId)
+
+      // Mint an invite code for the group and join through it.
+      const code = `join-${stamp}-${randomUUID().slice(0, 8)}`
+      await db.update(chats).set({ inviteCode: code }).where(eq(chats.id, chatId))
+
+      await request(app!.server)
+        .post(`/api/chats/join/${code}`)
+        .set('Cookie', joinerCookie)
+        .expect(200)
+
+      // Joiner is now a member AND the epoch advanced by exactly one.
+      const detail = await request(app!.server)
+        .get(`/api/chats/${chatId}`)
+        .set('Cookie', ownerCookie)
+        .expect(200)
+      expect(detail.body.members.some((m: { user_id: string }) => m.user_id === joiner.id)).toBe(true)
+      expect(await readKeyEpoch(chatId)).toBe(before + 1)
+    } finally {
+      if (chatId) {
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+        await db.delete(chats).where(eq(chats.id, chatId))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, seed.id, joiner.id]))
+    }
+  })
+
+  // A public_open join must NOT bump the epoch — it has no SECTOR key to rotate.
+  it('does NOT bump the key epoch when a member joins a public_open chat', async () => {
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`pj-owner-${stamp}`)
+    const joiner = await createUser(`pj-joiner-${stamp}`)
+    const ownerCookie = `fm_session=${await app!.jwt.sign({ sub: owner.id, username: owner.username, jti: randomUUID() })}`
+    const joinerCookie = `fm_session=${await app!.jwt.sign({ sub: joiner.id, username: joiner.username, jti: randomUUID() })}`
+
+    let chatId: string | null = null
+    try {
+      const created = await request(app!.server)
+        .post('/api/chats')
+        .set('Cookie', ownerCookie)
+        .send({ type: 'public_open', name: 'Public room', member_ids: [owner.id] })
+        .expect(201)
+      chatId = created.body.chat.id
+      const code = `pubjoin-${stamp}-${randomUUID().slice(0, 8)}`
+      await db.update(chats).set({ inviteCode: code }).where(eq(chats.id, chatId!))
+      const before = await readKeyEpoch(chatId!)
+
+      await request(app!.server)
+        .post(`/api/chats/join/${code}`)
+        .set('Cookie', joinerCookie)
+        .expect(200)
+
+      expect(await readKeyEpoch(chatId!)).toBe(before)
+    } finally {
+      if (chatId) {
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+        await db.delete(chats).where(eq(chats.id, chatId))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, joiner.id]))
+    }
+  })
+
   it('bumps the key epoch when a non-owner voluntarily leaves a group_e2e chat', async () => {
     const stamp = Date.now().toString(36)
     const owner = await createUser(`rk-leave-owner-${stamp}`)

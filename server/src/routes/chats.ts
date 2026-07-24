@@ -651,7 +651,23 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         throw new Error('JOIN_RACE')
       }
 
-      return { kind: 'joined' as const }
+      // #32 backward secrecy: bump the key epoch on a group_e2e join, in the
+      // SAME transaction as the membership insert (so the epoch can never lag
+      // the roster across a crash — mirrors the departure-side bump). The
+      // owner's rekey then stamps a fresh epoch and the joiner receives ONLY
+      // that new key; every pre-join epoch was sealed to the other members and
+      // was never on the server for the newcomer, so its history stays sealed.
+      let newKeyEpoch: number | null = null
+      if (chat.type === 'group_e2e') {
+        const bumped = await tx
+          .update(chats)
+          .set({ keyEpoch: sql`${chats.keyEpoch} + 1` })
+          .where(eq(chats.id, chat.id))
+          .returning({ keyEpoch: chats.keyEpoch })
+        newKeyEpoch = bumped[0]?.keyEpoch ?? null
+      }
+
+      return { kind: 'joined' as const, newKeyEpoch }
     })
 
     if (outcome.kind === 'consumed') {
@@ -684,6 +700,10 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         chat_id: chat.id,
         user_id: user.id,
       })
+      // …and announce the bumped epoch so the OWNER rekeys to the new epoch and
+      // hands the joiner the fresh key (backward secrecy, #32). Broadcast to all
+      // members: rotation is owner-only client-side, so it's a no-op for the rest.
+      broadcastKeyEpoch(chat.id, outcome.newKeyEpoch, memberIds)
     }
 
     return reply.send({

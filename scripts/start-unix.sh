@@ -328,6 +328,24 @@ prime_compose_interpolation_env() {
   # the human-edited .env.prod can keep its inline annotations.
   sed -E '/^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=/ { s/[[:space:]]+#.*$//; s/[[:space:]]+$//; }' \
     "$ENV_FILE" > "${ROOT}/.env"
+
+  # Build stamp for the api (APP_VERSION build-arg) and the web bundle
+  # (NEXT_PUBLIC_APP_VERSION). deploy.sh exports these, but the startup.sh path
+  # never did — so both sides built as "dev", GET /api/version answered "dev",
+  # and version-check.ts skips the comparison entirely when the client is "dev".
+  # Net effect: the update banner was dead on every deploy made this way, and
+  # operators had no way to tell which build prod was actually running.
+  # Appended AFTER the copy so an explicit value in .env.prod still wins.
+  if ! grep -qE '^[[:space:]]*APP_VERSION=' "${ROOT}/.env"; then
+    local app_version git_sha
+    app_version="$(tr -d '[:space:]' < "${ROOT}/VERSION" 2>/dev/null || true)"
+    git_sha="$(git -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || echo nogit)"
+    {
+      printf 'APP_VERSION=%s\n' "${app_version:-dev}"
+      printf 'GIT_SHA=%s\n' "$git_sha"
+      printf 'BUILT_AT=%s\n' "$(date -u +%FT%TZ)"
+    } >> "${ROOT}/.env"
+  fi
 }
 
 append_service_once() {

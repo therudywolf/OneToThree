@@ -27,6 +27,7 @@ export type AdminPurgeUserError =
   | 'CONFIRM_MISMATCH'
   | 'CANNOT_DELETE_SELF'
   | 'LAST_ADMIN'
+  | 'CREATOR_IMMUTABLE'
 
 export async function adminPurgeUser(params: {
   targetUserId: string
@@ -51,6 +52,7 @@ export async function adminPurgeUser(params: {
       id: users.id,
       username: users.username,
       role: users.role,
+      group: users.userGroup,
       avatarKey: users.avatarKey,
     })
     .from(users)
@@ -60,6 +62,14 @@ export async function adminPurgeUser(params: {
   if (!row) return { error: 'USER_NOT_FOUND' }
   if (!params.skipConfirm && row.username !== params.confirmUsername) {
     return { error: 'CONFIRM_MISMATCH' }
+  }
+
+  // PATCH /users/:id/group already treats the `creator` group as immutable, but
+  // purge and ban did not — so any admin could simply DELETE the creator (or
+  // ban them out of their own instance) even though they cannot demote them.
+  // LAST_ADMIN does not cover it: with two admins the count check passes.
+  if (row.group === 'creator') {
+    return { error: 'CREATOR_IMMUTABLE' }
   }
 
   if (row.role === 'admin') {

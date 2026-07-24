@@ -788,11 +788,31 @@ export function useWebRTC(userId: string | null) {
         }
 
         if (data.kind === 'relay_frame' && data.ciphertext && data.iv && typeof data.sampleRate === 'number') {
-          const sharedKey = await resolveRelaySharedKey(fromUserId)
-          if (!sharedKey) return
-          const pcm = await decryptBytes(sharedKey, data.ciphertext, data.iv)
-          const player = ensureRelayPlayer(fromUserId)
-          await player.pushFrame(pcm, data.sampleRate)
+          // Only a peer we are ACTUALLY in a relay call with may push audio at
+          // us. The server relay authorizes shared-chat + non-blocked and
+          // nothing more, so without this gate any contact could send
+          // relay_frame with no relay_offer at all: ensureRelayPlayer would
+          // register a remote stream, CallAudioSink autoplays every remote
+          // stream, and their live microphone would come out of our speakers
+          // with no ring, no modal and no hang-up. It also let one stray frame
+          // kill the caller's ringtone + no-answer timeout mid-dial.
+          //
+          // `relayPeersRef` holds exactly the right set: the CALLER adds the
+          // peer when it starts the relay call, the CALLEE only on accept — so
+          // frames arriving before the human accepts are correctly dropped.
+          // Mirrors the group path's `roomId` gate in group-call-manager.ts.
+          if (!relayPeersRef.current.has(fromUserId)) return
+          try {
+            const sharedKey = await resolveRelaySharedKey(fromUserId)
+            if (!sharedKey) return
+            const pcm = await decryptBytes(sharedKey, data.ciphertext, data.iv)
+            const player = ensureRelayPlayer(fromUserId)
+            await player.pushFrame(pcm, data.sampleRate)
+          } catch {
+            // A malformed/undecryptable frame must not reject the socket
+            // callback (unhandled rejection) — drop it like the group path.
+            return
+          }
           ringStopRef.current?.()
           if (connectTimeoutRef.current) {
             clearTimeout(connectTimeoutRef.current)

@@ -177,6 +177,21 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
 
+    // The `creator` group is immutable for PATCH /users/:id/group — but ban had
+    // no such guard, so any admin could lock the instance owner out of their own
+    // instance (and, via purge, delete them outright). Mirror the guard here.
+    const [banTarget] = await db
+      .select({ group: users.userGroup })
+      .from(users)
+      .where(eq(users.id, params.data.id))
+      .limit(1)
+    if (!banTarget) {
+      return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+    }
+    if (banTarget.group === 'creator') {
+      return reply.status(403).send({ error: 'CREATOR_IMMUTABLE' })
+    }
+
     const [after] = await db
       .update(users)
       .set({ isBanned: parsed.data.banned })

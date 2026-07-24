@@ -146,6 +146,69 @@ describe('app security contracts', () => {
     await closeRedis()
   }, 10_000)
 
+  // Cross-Site WebSocket Hijacking regression. CORS does not apply to WebSocket
+  // handshakes and the prod session cookie is deliberately SameSite=None, so an
+  // unchecked upgrade let any page open an authenticated socket as the victim.
+  // The upgrade is a GET, so the mutating-method CSRF filter never saw it.
+  it('rejects a cross-origin WebSocket upgrade but allows an allowlisted one', async () => {
+    process.env.NODE_ENV = 'test'
+    process.env.REDIS_URL = ''
+    process.env.CORS_ORIGIN = 'https://app.example'
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'vitest-jwt-secret-must-be-32-chars-min!!'
+
+    const app = await buildApp()
+    await app.ready()
+
+    const upgradeHeaders = {
+      connection: 'Upgrade',
+      upgrade: 'websocket',
+      'sec-websocket-version': '13',
+      // The RFC 6455 §1.3 example key. Derived rather than pasted so the
+      // secret scanner doesn't read a high-entropy base64 literal as a leak.
+      'sec-websocket-key': Buffer.from('the sample nonce').toString('base64'),
+    }
+
+    const evil = await app.inject({
+      method: 'GET',
+      url: '/api/ws',
+      headers: { ...upgradeHeaders, origin: 'https://evil.example' },
+    })
+    expect(evil.statusCode).toBe(403)
+    expect(evil.json()).toEqual({ error: 'CROSS_ORIGIN_FORBIDDEN' })
+
+    // The app's own origin must still get through to the WS handler (i.e. it is
+    // not rejected by the origin gate — whatever the handshake does next).
+    const good = await app.inject({
+      method: 'GET',
+      url: '/api/ws',
+      headers: { ...upgradeHeaders, origin: 'https://app.example' },
+    })
+    expect(good.statusCode).not.toBe(403)
+
+    // Case-insensitive header value, per RFC 6455 ("Upgrade: WebSocket").
+    const mixedCase = await app.inject({
+      method: 'GET',
+      url: '/api/ws',
+      headers: { ...upgradeHeaders, upgrade: 'WebSocket', origin: 'https://evil.example' },
+    })
+    expect(mixedCase.statusCode).toBe(403)
+
+    // A plain (non-upgrade) GET is unaffected — this hook must not become a
+    // blanket cross-origin block on reads.
+    const plainGet = await app.inject({
+      method: 'GET',
+      url: '/health',
+      headers: { origin: 'https://evil.example' },
+    })
+    expect(plainGet.statusCode).toBe(200)
+
+    await Promise.race([
+      app.close(),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+    ])
+    await closeRedis()
+  }, 15_000)
+
   it('refuses production boot when every CORS_ORIGIN entry is invalid', async () => {
     process.env.NODE_ENV = 'production'
     process.env.REDIS_URL = 'redis://localhost:6379'

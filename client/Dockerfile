@@ -27,6 +27,13 @@ ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ARG NEXT_PUBLIC_GIPHY_API_KEY
 ARG MINIO_PUBLIC_URL
 ARG NEXT_PUBLIC_DR_ENABLED=1
+# Build stamp. next.config.js falls back to reading ../VERSION, but the build
+# CONTEXT here is ./client, so that path does not exist inside the image and the
+# client silently shipped as "dev" — which is exactly the value version-check.ts
+# refuses to compare (`CLIENT_VERSION !== 'dev'`), so the update banner could
+# never fire in production. Pass it explicitly.
+ARG NEXT_PUBLIC_APP_VERSION
+ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION
 ENV API_INTERNAL_URL=$API_INTERNAL_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
@@ -51,6 +58,7 @@ RUN printf '%s\n' \
   "NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}" \
   "NEXT_PUBLIC_GIPHY_API_KEY=${NEXT_PUBLIC_GIPHY_API_KEY}" \
   "NEXT_PUBLIC_DR_ENABLED=${NEXT_PUBLIC_DR_ENABLED}" \
+  "NEXT_PUBLIC_APP_VERSION=${NEXT_PUBLIC_APP_VERSION}" \
   > .env.production
 
 RUN npm run build

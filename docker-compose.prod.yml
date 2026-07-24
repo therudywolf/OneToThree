@@ -258,6 +258,9 @@ services:
         NEXT_PUBLIC_LIVEKIT_URL: ${NEXT_PUBLIC_LIVEKIT_URL:-}
         MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-}
         NEXT_PUBLIC_DR_ENABLED: ${NEXT_PUBLIC_DR_ENABLED:-1}
+        # Must match the api's APP_VERSION build arg — /api/version is compared
+        # against this to offer the "new build, reload" banner.
+        NEXT_PUBLIC_APP_VERSION: ${APP_VERSION:-dev}
         # Target for Next's same-origin /api/* rewrite (next.config.js). Baked at
         # build (rewrites serialize into routes-manifest) AND kept as runtime ENV
         # by the Dockerfile. Must be the internal api service — the web container's
@@ -329,8 +332,13 @@ services:
     user: root
     cpu_shares: 2048
     mem_limit: 128m
-    env_file:
-      - .env.prod
+    # NO env_file here, deliberately. coturn is configured entirely through the
+    # `command:` args below, which docker compose interpolates from .env.prod on
+    # the HOST — the entrypoint reads no environment at all, and coturn does not
+    # substitute ${VAR} in turnserver.conf. Mounting the whole .env.prod into
+    # this container therefore bought nothing while handing JWT_SECRET, the
+    # Postgres password, the MinIO keys, TOTP_WRAP_KEY and the VAPID private key
+    # to a process that runs as root on the host network. Blast radius only.
     volumes:
       - ./docker/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
       - ./docker/coturn/tls:/etc/coturn/tls:ro

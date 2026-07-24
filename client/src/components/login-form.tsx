@@ -569,13 +569,13 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
 
               {/* TOS при регистрации — короткая строка + раскрываемые детали */}
               {mode === 'GENESIS' && (
-                <div className={`p-3 text-[9px] leading-relaxed ${isRetro ? 'p13-classic-input' : 'border border-border-strong bg-void/50 text-text-muted'}`}>
+                <div className={`leading-relaxed ${type.hint} ${isMd3 ? 'rounded-2xl border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] p-4 text-text-muted' : isRetro ? 'p13-classic-input p-3' : 'border border-border-strong bg-void/50 p-3 text-text-muted'}`}>
                   <p>{t('login.tosShort')}</p>
                   <details className="mt-1">
-                    <summary className={`cursor-pointer text-[9px] ${isRetro ? 'p13-classic-copy-muted' : 'text-neon-cyan/80 hover:text-neon-cyan'}`}>
+                    <summary className={`cursor-pointer ${type.hint} ${isRetro ? 'p13-classic-copy-muted' : 'text-neon-cyan/80 hover:text-neon-cyan'}`}>
                       {t('login.tosReadMore')}
                     </summary>
-                    <div className="mt-2 max-h-32 overflow-y-auto whitespace-pre-line pr-2 text-[9px] leading-relaxed text-text-muted custom-scrollbar">
+                    <div className={`mt-2 max-h-32 overflow-y-auto whitespace-pre-line pr-2 leading-relaxed text-text-muted custom-scrollbar ${type.hint}`}>
                       {t('login.tosRegisterBody')}
                     </div>
                   </details>

@@ -3,24 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { Fingerprint, ScanFace } from 'lucide-react'
-import {
-  exportEcdhPublicJwkFromPrivateKeyString,
-  importEcdhPrivateKey,
-} from '@/lib/crypto'
-import { patchMyEcdhPublicKey } from '@/lib/api/users'
-import { listEcdhPublicKeys, recordEcdhPublicKey } from '@/lib/ecdh-key-history'
-import { purgeOutboxStaleForKey } from '@/lib/outbox'
-import { parseVaultPlaintext } from '@/lib/vault-keyring'
-import {
-  deriveDrBundleFromEcdhJwk,
-  deriveSessionWrapKey,
-  deriveDeviceDrRoot,
-  deriveOtpBatch,
-  deriveOtpPrivKey,
-} from '@/lib/ratchet/identity-from-vault'
-import { setOwnDrIdentity, setSessionWrapKey, encodeBase64Url } from '@/lib/ratchet/session-manager'
-import { getOrCreateClientDeviceId } from '@/lib/client-device'
-import { publishIdentity, publishSignedPrekey, publishOneTimePrekeys, fetchInventory } from '@/lib/api/keys'
+import { activateVaultSession } from '@/lib/vault/activate-vault'
 import {
   CURRENT_VAULT_VERSION,
   readVaultBlob,
@@ -41,53 +24,12 @@ import {
   secureStoreGet,
   secureStoreSet,
 } from '@/lib/native-keychain'
-import { useSessionStore } from '@/store/sessionStore'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { vibrateShort } from '@/lib/vibrate'
 import { useTranslation } from '@/hooks/use-translation'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { useThemeStore } from '@/store/themeStore'
 import { LogoutButton } from '@/components/logout-button'
-
-// OTP pool tracking is per (user, device) — each device owns its own OTP
-// space in the device-scoped server key directory (track A4).
-const OTP_NEXT_ID_KEY = (userId: string, deviceId: string) =>
-  `p13:dr-otp-next:${userId}:${deviceId}`
-const OTP_REPLENISH_THRESHOLD = 5
-const OTP_BATCH_SIZE = 20
-
-async function publishDrOtpBatch(
-  userId: string,
-  deviceId: string,
-  dRoot: Uint8Array,
-  startId: number,
-  count: number
-): Promise<void> {
-  const batch = deriveOtpBatch(dRoot, startId, count)
-  await publishOneTimePrekeys({
-    keys: batch.map((k) => ({
-      pre_key_id: k.id,
-      public_key: encodeBase64Url(k.keypair.publicKey),
-    })),
-  })
-  localStorage.setItem(OTP_NEXT_ID_KEY(userId, deviceId), String(startId + count))
-}
-
-async function replenishOtpsIfNeeded(
-  userId: string,
-  deviceId: string,
-  dRoot: Uint8Array
-): Promise<void> {
-  try {
-    const inventory = await fetchInventory()
-    if (inventory.one_time_prekeys > OTP_REPLENISH_THRESHOLD) return
-    // If pool is empty use id=1 (fresh start); otherwise continue from where we left off.
-    const nextIdRaw = localStorage.getItem(OTP_NEXT_ID_KEY(userId, deviceId))
-    const nextId = nextIdRaw ? parseInt(nextIdRaw, 10) : 1
-    if (!Number.isFinite(nextId) || nextId <= 0) return
-    await publishDrOtpBatch(userId, deviceId, dRoot, nextId, OTP_BATCH_SIZE)
-  } catch { /* non-fatal */ }
-}
 
 /** Detect if the device likely uses Face ID (iOS) vs fingerprint (Android/other) */
 function useBiometricIcon() {
@@ -105,9 +47,8 @@ type Props = {
 
 export function VaultModal({ userId, displayHandle }: Props) {
   const { t } = useTranslation()
-  const setUnwrappedPrivateKey = useSessionStore((s) => s.setUnwrappedPrivateKey)
-  const setMyEcdhPublicKeyJwk = useSessionStore((s) => s.setMyEcdhPublicKeyJwk)
-  const setPriorMyEcdhPublicKeysJwk = useSessionStore((s) => s.setPriorMyEcdhPublicKeysJwk)
+  // Session wiring now lives in lib/vault/activate-vault (shared with the login
+  // path), so this component only owns the PROMPT, not the activation.
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
   const BiometricIcon = useBiometricIcon()
@@ -123,95 +64,19 @@ export function VaultModal({ userId, displayHandle }: Props) {
     void hasWebAuthnVaultMeta(userId).then(setBioEnrolled)
   }, [userId])
 
+  // The heavy lifting (key import, ECDH publish, per-device DR identity, OTP
+  // top-up) lives in lib/vault/activate-vault so the login path can run the
+  // EXACT same activation without prompting for the same password twice.
   const applyPlaintext = useCallback(
     async (plain: string) => {
-      const parsed = parseVaultPlaintext(plain)
-      if (!parsed) {
+      const res = await activateVaultSession(plain, userId)
+      if (!res.ok) {
         setError(t('login.invalidVaultFormat'))
         return
       }
-      const ecdhJwk = parsed.kind === 'V2' ? parsed.ecdhJwk : parsed.ecdhJwk
-      const key = await importEcdhPrivateKey(ecdhJwk)
-      setUnwrappedPrivateKey(key)
-
-      // Cache the matching public JWK so the decrypt path can do a sender-aware
-      // fallback (self-sent legacy DIRECT messages need MY public key, not peer's).
-      const myPubJwk = exportEcdhPublicJwkFromPrivateKeyString(ecdhJwk)
-      setMyEcdhPublicKeyJwk(myPubJwk)
-      // Append-only history so historical messages encrypted to a previous
-      // ECDH public key (after a vault re-import on the same device) can
-      // still be decrypted via the fallback path.
-      try {
-        await recordEcdhPublicKey(userId, myPubJwk)
-        const all = await listEcdhPublicKeys(userId)
-        // Exclude the active key from the prior list — it's already in `myEcdhPublicKeyJwk`.
-        setPriorMyEcdhPublicKeysJwk(all.filter((k) => k !== myPubJwk))
-      } catch {
-        /* best-effort: history is a recovery aid, not a hard requirement */
-      }
-
-      // If the user re-imported their vault while messages were waiting in
-      // the outbox, the queued ciphertexts[] were encrypted to the previous
-      // ECDH public key and recipients cannot decrypt them. Drop those
-      // entries rather than silently poisoning conversations.
-      void purgeOutboxStaleForKey(myPubJwk).catch(() => {
-        /* best-effort: outbox is recoverable after reload anyway */
-      })
-
-      // Upload ECDH public key so fan-out can find this device.
-      // Retry once — transient network errors are common on vault unlock.
-      let ecdhUploaded = false
-      for (let attempt = 0; attempt < 2 && !ecdhUploaded; attempt++) {
-        try {
-          await patchMyEcdhPublicKey(myPubJwk)
-          ecdhUploaded = true
-        } catch { /* retry */ }
-      }
-      if (!ecdhUploaded) {
-        console.warn('[vault] ECDH key upload failed — this device may miss future messages')
-      }
-
-      // Derive a PER-DEVICE DR identity from the vault ECDH key and activate
-      // it in-memory (track A4). The vault is per-user, so the stable
-      // per-browser device id is mixed into the derivation — every linked
-      // device thus owns a distinct identity / signed-prekey / OTP space and
-      // publishes its OWN bundle to the device-scoped /keys directory (the
-      // server resolves device_id from the session JWT).
-      try {
-        const deviceId = getOrCreateClientDeviceId()
-        const dRoot = deriveDeviceDrRoot(ecdhJwk, deviceId)
-        const bundle = deriveDrBundleFromEcdhJwk(ecdhJwk, deviceId)
-        const wrapKey = await deriveSessionWrapKey(bundle.identity)
-        setSessionWrapKey(wrapKey)
-        setOwnDrIdentity(
-          bundle.identity,
-          bundle.signedPreKey,
-          bundle.signedPreKeyId,
-          deviceId,
-          (id: number) => deriveOtpPrivKey(dRoot, id)
-        )
-
-        // Publish this device's identity + SPK on every unlock — the server
-        // deduplicates by (user_id, device_id, generation) so this is
-        // idempotent and self-healing if the server loses our keys.
-        await publishIdentity({
-          signing_public_key: encodeBase64Url(bundle.identity.signing.publicKey),
-          exchange_public_key: encodeBase64Url(bundle.identity.exchange.publicKey),
-          exchange_public_key_signature: encodeBase64Url(bundle.identityExchangeSignature),
-          generation: 1,
-        })
-        await publishSignedPrekey({
-          pre_key_id: bundle.signedPreKeyId,
-          public_key: encodeBase64Url(bundle.signedPreKey.publicKey),
-          signature: encodeBase64Url(bundle.signedPreKeySignature),
-        })
-        // Ensure this device's OTP pool is healthy; publish initial batch if empty.
-        await replenishOtpsIfNeeded(userId, deviceId, dRoot)
-      } catch { /* DR setup is non-fatal; v1 fanout still works */ }
-
       setPin('')
     },
-    [setUnwrappedPrivateKey, setMyEcdhPublicKeyJwk, setPriorMyEcdhPublicKeysJwk, t, userId]
+    [t, userId]
   )
 
   // Native path (Tauri desktop OS keychain OR Capacitor Android Keystore): if

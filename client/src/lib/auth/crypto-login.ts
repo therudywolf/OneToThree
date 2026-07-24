@@ -22,6 +22,7 @@ import {
   wrapPrivateJwkWithPin,
 } from '@/lib/vault'
 import { parseNickname } from '@/lib/nickname'
+import { activateVaultSession } from '@/lib/vault/activate-vault'
 
 export type CryptoLoginResult =
   | { ok: true; user: { id: string; username: string } }
@@ -55,6 +56,14 @@ export async function finalizeLoginWithTotp(params: {
   pendingToken: string
   code: string
   canonicalHandle: string
+  /**
+   * The one password, carried through the 2FA step so these users also skip the
+   * redundant unlock prompt. `cryptoLogin` returns `needs_2fa` BEFORE it can
+   * activate the vault, so without this a 2FA user would still be asked for the
+   * very same string a second time. Optional: omit it and the unlock modal
+   * simply takes over, exactly as before.
+   */
+  vaultPassword?: string
 }): Promise<
   { ok: true; user: { id: string; username: string } } | { ok: false; error: string }
 > {
@@ -66,6 +75,19 @@ export async function finalizeLoginWithTotp(params: {
       params.code.replace(/\D/g, '').slice(0, 6)
     )
     mirrorVaultLoginToUserId(nick.value, user.id)
+
+    if (params.vaultPassword) {
+      // Best-effort — never turn a successful 2FA login into a failure.
+      try {
+        const blob = readVaultBlobByLoginUsername(nick.value)
+        if (blob && blob.version <= CURRENT_VAULT_VERSION) {
+          const plain = await unwrapPrivateJwkWithPin(blob, params.vaultPassword)
+          await activateVaultSession(plain, user.id)
+        }
+      } catch {
+        /* fall back to the unlock modal */
+      }
+    }
     return { ok: true, user }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'TOTP_VERIFY_FAILED' }
@@ -185,6 +207,28 @@ export async function cryptoLogin(
     }
 
     mirrorVaultLoginToUserId(canonicalHandle, user.id)
+
+    // Bring the session fully online right here. There is only ONE password in
+    // this product — it never reaches the server, and its only job is wrapping
+    // this vault — so the keyring we just decrypted (login) or generated
+    // (register) is exactly what the unlock modal would ask for. Prompting for
+    // the same string a second time is what made people believe the "account
+    // password" and the "vault password" were two different things.
+    //
+    // Best-effort: a failure here is NOT a login failure. The user is
+    // authenticated either way, and the vault modal remains as the fallback
+    // surface (it is still required after a reload, idle auto-lock, or manual
+    // lock, since the unwrapped key is memory-only and never persisted).
+    if (ecdsaPrivateJwk && ecdhPrivateJwkForVault) {
+      try {
+        await activateVaultSession(
+          stringifyVaultKeyringV2(ecdsaPrivateJwk, ecdhPrivateJwkForVault),
+          user.id
+        )
+      } catch {
+        /* fall back to the unlock modal */
+      }
+    }
     return { ok: true, user }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'VERIFY_FAILED' }

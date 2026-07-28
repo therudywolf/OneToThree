@@ -24,6 +24,7 @@ import {
   acknowledgeTrustRegistryCorruption,
   isTrustRegistryCorrupt,
   resolveTrustStatus,
+  revokeVerifiedTrust,
   setVerifiedHash,
 } from './trust-store'
 
@@ -74,5 +75,40 @@ describe('trust-store corruption gate', () => {
     const status = resolveTrustStatus('peer-1', 'h1')
     expect(status.registryCorrupt).toBe(false)
     expect(status.verified).toBe(false)
+  })
+})
+
+describe('key-change alarm is sticky (must survive the silent sidebar probe)', () => {
+  beforeEach(() => {
+    memory.clear()
+  })
+
+  it('keeps reporting revokedByKeyChange after the first (probe) call consumed the pin', () => {
+    setVerifiedHash('peer-1', 'hash-old')
+
+    // 1st call = the sidebar's silent trusted-peer scan; it only reads .verified.
+    const probe = resolveTrustStatus('peer-1', 'hash-new')
+    expect(probe.revokedByKeyChange).toBe(true)
+
+    // 2nd call = the identity modal, which is the surface that can WARN the user.
+    // Before the fix this returned a plain "never verified" peer.
+    const modal = resolveTrustStatus('peer-1', 'hash-new')
+    expect(modal.revokedByKeyChange).toBe(true)
+    expect(modal.is_compromised).toBe(true)
+    expect(modal.verified).toBe(false)
+  })
+
+  it('clears only on an explicit re-pin or un-verify', () => {
+    setVerifiedHash('peer-1', 'hash-old')
+    resolveTrustStatus('peer-1', 'hash-new')
+
+    setVerifiedHash('peer-1', 'hash-new')
+    expect(resolveTrustStatus('peer-1', 'hash-new').revokedByKeyChange).toBe(false)
+    expect(resolveTrustStatus('peer-1', 'hash-new').verified).toBe(true)
+
+    setVerifiedHash('peer-2', 'p2-old')
+    resolveTrustStatus('peer-2', 'p2-new')
+    revokeVerifiedTrust('peer-2')
+    expect(resolveTrustStatus('peer-2', 'p2-new').revokedByKeyChange).toBe(false)
   })
 })

@@ -181,6 +181,15 @@ export function useMediaRecorder() {
     }
   }, [])
 
+  /** Stop and drop whatever media was already acquired for an aborted start. */
+  const releaseCapture = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    recorderRef.current = null
+    kindRef.current = null
+    setPreviewStream(null)
+  }, [])
+
   const beginStart = useCallback(() => {
     let resolveSettle: (ok: boolean) => void = () => {}
     startSettleRef.current = new Promise<boolean>((res) => {
@@ -235,7 +244,13 @@ export function useMediaRecorder() {
       settle(true)
     } catch (err) {
       debugVoice('startVoiceCapture: failed', err)
-      setPreviewStream(null)
+      // getUserMedia may already have succeeded and the MediaRecorder
+      // constructor then rejected the track set (no supported mime — older
+      // Android WebView, some Linux Firefox builds). Without this the composer
+      // reports "not recording" while the OS mic indicator stays lit for the
+      // rest of the session: chat-input never unmounts, so the cleanup effect
+      // never runs.
+      releaseCapture()
       setError(
         isMediaPermissionDenied(err)
           ? MEDIA_PERMISSION_DENIED_CODE
@@ -243,7 +258,7 @@ export function useMediaRecorder() {
       )
       settle(false)
     }
-  }, [beginStart])
+  }, [beginStart, releaseCapture])
 
   const startVideoCircleCapture = useCallback(async () => {
     debugVoice('startVideoCircleCapture: requested')
@@ -308,7 +323,8 @@ export function useMediaRecorder() {
       settle(true)
     } catch (err) {
       debugVoice('startVideoCircleCapture: failed', err)
-      setPreviewStream(null)
+      // Same leak as the voice path, but the camera stays on too.
+      releaseCapture()
       setError(
         isMediaPermissionDenied(err)
           ? MEDIA_PERMISSION_DENIED_CODE
@@ -316,7 +332,7 @@ export function useMediaRecorder() {
       )
       settle(false)
     }
-  }, [beginStart])
+  }, [beginStart, releaseCapture])
 
   const stopCapture = useCallback(async (): Promise<CaptureResult | null> => {
     debugVoice('stopCapture: requested')

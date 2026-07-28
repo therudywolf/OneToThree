@@ -4,7 +4,6 @@ import React, { useMemo, useState, useCallback } from 'react'
 import emojiRegex from 'emoji-regex'
 import { Copy, Check } from 'lucide-react'
 import { useTranslation } from '@/hooks/use-translation'
-import { sanitizeText } from '@/lib/sanitize'
 
 type Props = {
   text: string
@@ -132,7 +131,15 @@ function LinkSpan({ url }: { url: string }) {
 
 export function NoirPlaintext({ text, className = '' }: Props) {
   const processedNodes = useMemo(() => {
-    const safeText = sanitizeText(text)
+    // NO sanitizer here, deliberately. Everything below emits React text nodes
+    // and typed elements — never dangerouslySetInnerHTML — so React's own
+    // escaping is the XSS boundary. Running DOMPurify over decrypted plaintext
+    // instead *corrupted* it: `if (a<b and c>d)` lost `<b and c>` because the
+    // parser saw a tag, a fenced block containing HTML rendered empty, and a
+    // bare `5 < 3` came back as the double-escaped literal `5 &lt; 3`. An HTML
+    // parser/serializer round-trip is not identity on plain text, and the
+    // recipient was silently shown something other than what was sent.
+    const source = text
     const _emojiRe = emojiRegex()
 
     // First, split out code blocks
@@ -143,7 +150,7 @@ export function NoirPlaintext({ text, className = '' }: Props) {
     const codeBlocks: Array<{ start: number; end: number; lang?: string; code: string }> = []
     let cbMatch: RegExpExecArray | null
     const cbRe = new RegExp(CODE_BLOCK_RE.source, 'g')
-    while ((cbMatch = cbRe.exec(safeText)) !== null) {
+    while ((cbMatch = cbRe.exec(source)) !== null) {
       codeBlocks.push({
         start: cbMatch.index,
         end: cbMatch.index + cbMatch[0].length,
@@ -269,13 +276,13 @@ export function NoirPlaintext({ text, className = '' }: Props) {
 
     // Process text with code blocks
     if (codeBlocks.length === 0) {
-      return processInlineText(safeText)
+      return processInlineText(source)
     }
 
     for (const cb of codeBlocks) {
       // Plain text before code block
       if (cb.start > lastIdx) {
-        segments.push(...processInlineText(safeText.slice(lastIdx, cb.start)))
+        segments.push(...processInlineText(source.slice(lastIdx, cb.start)))
       }
 
       segments.push(
@@ -285,8 +292,8 @@ export function NoirPlaintext({ text, className = '' }: Props) {
     }
 
     // Remaining text after last code block
-    if (lastIdx < safeText.length) {
-      segments.push(...processInlineText(safeText.slice(lastIdx)))
+    if (lastIdx < source.length) {
+      segments.push(...processInlineText(source.slice(lastIdx)))
     }
 
     return segments

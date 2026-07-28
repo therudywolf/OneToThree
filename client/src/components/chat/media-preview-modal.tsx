@@ -31,7 +31,16 @@ type Props = {
   onCancel: () => void
 }
 
-/** Larger album-grid thumbnail with reorder + delete controls. */
+/**
+ * Larger album-grid thumbnail with reorder + delete controls.
+ *
+ * The controls are always visible below `md` and hover-revealed above it. They
+ * used to be `opacity-0` unconditionally, which on a phone — the device where
+ * albums are actually composed — meant the remove and reorder buttons never
+ * appeared at all, while staying hit-testable: the only way to drop a wrongly
+ * picked photo was to cancel the whole selection, and a stray tap in the corner
+ * deleted one with no affordance at all.
+ */
 function AlbumThumb({
   item,
   index,
@@ -70,18 +79,18 @@ function AlbumThumb({
       <button
         type="button"
         onClick={() => onRemove(index)}
-        className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center bg-void/80 text-text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-neon-red"
+        className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center bg-void/80 text-text-muted opacity-100 transition-opacity hover:text-neon-red md:opacity-0 md:group-hover:opacity-100"
         aria-label="Remove"
       >
         <X className="h-3 w-3" />
       </button>
       {onReorder ? (
-        <div className="absolute bottom-0 left-0 right-0 flex justify-between bg-void/70 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="absolute bottom-0 left-0 right-0 flex justify-between bg-void/70 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
           <button
             type="button"
             disabled={index === 0}
             onClick={() => onReorder(index, index - 1)}
-            className="flex h-5 w-5 items-center justify-center text-neon-cyan disabled:opacity-30"
+            className="flex h-8 w-8 items-center justify-center text-neon-cyan disabled:opacity-30"
             aria-label="Move up"
           >
             <ArrowUp className="h-3 w-3" />
@@ -90,7 +99,7 @@ function AlbumThumb({
             type="button"
             disabled={index === total - 1}
             onClick={() => onReorder(index, index + 1)}
-            className="flex h-5 w-5 items-center justify-center text-neon-cyan disabled:opacity-30"
+            className="flex h-8 w-8 items-center justify-center text-neon-cyan disabled:opacity-30"
             aria-label="Move down"
           >
             <ArrowDown className="h-3 w-3" />
@@ -295,7 +304,7 @@ export function MediaPreviewModal({
                 disabled={sending}
                 className="h-3 w-3 accent-neon-cyan"
               />
-              Отправить как файл (без сжатия)
+              {t('mediaPreview.sendAsFile')}
             </label>
           )}
           <button
@@ -306,7 +315,9 @@ export function MediaPreviewModal({
             className="flex items-center justify-center gap-1.5 border border-neon-cyan bg-void py-1.5 font-mono text-[9px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan hover:text-text-primary disabled:cursor-wait disabled:opacity-50"
           >
             <Send className="h-3 w-3" />
-            {sending ? t('mediaPreview.sending') : `Send ${queue.length} as album`}
+            {sending
+              ? t('mediaPreview.sending')
+              : t('mediaPreview.sendAlbum').replace('{count}', String(queue.length))}
           </button>
         </div>
       </div>
@@ -396,7 +407,7 @@ export function MediaPreviewModal({
                 disabled={sending}
                 className="h-3 w-3 accent-neon-cyan"
               />
-              Отправить как файл (без сжатия)
+              {t('mediaPreview.sendAsFile')}
             </label>
           )}
           {/* type=button + single onClick only, no onTouchEnd */}

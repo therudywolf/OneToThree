@@ -48,15 +48,27 @@ export function useAutoLock() {
   useEffect(() => {
     if (!unwrappedPrivateKey) return
 
-    const lockVault = () => {
-      // Don't lock during an active call
+    // Function declarations, not consts: `lockVault` has to be able to re-arm
+    // via `resetTimer`, and `resetTimer` schedules `lockVault` — hoisting is
+    // what lets the two reference each other inside this closure.
+    function lockVault() {
+      // Don't lock during an active call — but DO re-arm. The timeout is
+      // one-shot, so skipping without rescheduling meant that a call spanning
+      // the first tick disarmed auto-lock for the rest of the session: this
+      // effect doesn't re-run (its deps didn't change), and only a
+      // mousemove/keydown/touchstart/click could ever set the timer again. A
+      // video call where the user never touches the input devices, then walks
+      // away, left the vault unlocked indefinitely.
       const callState = useCallStore.getState()
-      if (callState.isCalling) return
+      if (callState.isCalling) {
+        resetTimer()
+        return
+      }
 
       setUnwrappedPrivateKey(null)
     }
 
-    const resetTimer = () => {
+    function resetTimer() {
       if (timerRef.current) clearTimeout(timerRef.current)
       const timeout = loadAutoLockTimeout()
       if (timeout === 0) return // "Never" — don't set timer

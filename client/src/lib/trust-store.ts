@@ -28,6 +28,10 @@ const MIGRATION_TS_KEY = `${REGISTRY_KEY}_djb2_migrated_at`
 // Persists until the user explicitly re-verifies their pinned peers, so a
 // single corruption event cannot be silently absorbed into a fresh TOFU pin.
 const CORRUPT_FLAG_KEY = `${REGISTRY_KEY}_corrupt`
+// Peers whose pinned key was seen to CHANGE. See `resolveTrustStatus` — the
+// alarm has to outlive the call that detected it, because the first caller is
+// almost always a silent probe, not a UI surface.
+const KEYCHANGE_KEY = `${REGISTRY_KEY}_keychange`
 
 type NodeRegistry = Record<string, string>
 
@@ -65,6 +69,54 @@ function flagCorruption(reason: 'parse_error' | 'checksum_mismatch' | 'shape_inv
   } catch {
     // localStorage may be full or disabled; the in-memory return path still
     // reports `registryCorrupt: true` for the lifetime of this tab.
+  }
+}
+
+/**
+ * Key-change alarm set. Kept OUTSIDE the checksummed registry: the registry
+ * holds pins the user granted, this holds the fact that a pin was broken, and
+ * the second must survive the first being deleted.
+ */
+function readKeyChangeSet(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(KEYCHANGE_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function isKeyChangeFlagged(userId: string): boolean {
+  return readKeyChangeSet().includes(userId)
+}
+
+function flagKeyChange(userId: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const set = readKeyChangeSet()
+    if (set.includes(userId)) return
+    localStorage.setItem(KEYCHANGE_KEY, JSON.stringify([...set, userId]))
+  } catch {
+    // Storage full/disabled — the caller still gets `revokedByKeyChange: true`
+    // for THIS call; only the persistence across calls is lost.
+  }
+}
+
+/** Clear the alarm for one peer. Only the explicit user actions (re-pin /
+ *  un-verify) may call this — never a passive read. */
+function clearKeyChange(userId: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    const set = readKeyChangeSet()
+    if (!set.includes(userId)) return
+    const next = set.filter((id) => id !== userId)
+    if (next.length) localStorage.setItem(KEYCHANGE_KEY, JSON.stringify(next))
+    else localStorage.removeItem(KEYCHANGE_KEY)
+  } catch {
+    // ignore
   }
 }
 
@@ -179,6 +231,9 @@ export function setVerifiedHash(userId: string, signatureHash: string): void {
   const registry = pullRegistry()
   registry[userId] = signatureHash
   commitRegistry(registry)
+  // The user has just looked at a safety number and re-pinned: that is the only
+  // event allowed to clear a key-change alarm.
+  clearKeyChange(userId)
 }
 
 /**
@@ -191,6 +246,9 @@ export function revokeVerifiedTrust(userId: string): void {
     delete registry[userId]
     commitRegistry(registry)
   }
+  // Explicit un-verify: the user has acknowledged this peer's state, so the
+  // sticky key-change alarm goes with the pin.
+  clearKeyChange(userId)
 }
 
 export function getTrustedPeerCount(): number {
@@ -223,6 +281,25 @@ export function resolveTrustStatus(userId: string, currentHash: string): TrustSt
   const corrupt = isTrustRegistryCorrupt() != null
   const pinnedSignature = registry[userId]
 
+  // [0] A previously detected key change is STICKY.
+  //
+  // Revoking the pin used to be the ONLY record of the alarm, which meant the
+  // first caller consumed it — and the first caller is never the UI. The sidebar
+  // runs `resolveTrustStatus` for every direct peer on mount (a silent probe
+  // that only reads `verified`), so by the time the user opened the identity
+  // modal the peer was merely "unpinned" and the substitution was reported
+  // nowhere. React StrictMode's double-invoke reproduced it inside one component.
+  // Report it on every call until the user explicitly re-pins or un-verifies.
+  if (isKeyChangeFlagged(userId)) {
+    return {
+      is_verified: false,
+      is_compromised: true,
+      verified: false,
+      revokedByKeyChange: true,
+      registryCorrupt: corrupt,
+    }
+  }
+
   // [1] Узел ранее не проверялся
   if (!pinnedSignature) {
     return {
@@ -251,6 +328,7 @@ export function resolveTrustStatus(userId: string, currentHash: string): TrustSt
   // commitRegistry would re-throw if the registry is corrupt; only persist
   // when we can still trust the checksum chain.
   if (!corrupt) commitRegistry(registry)
+  flagKeyChange(userId)
 
   console.warn(`>> [SYS.TRUST] SIGNATURE_MISMATCH_DETECTED: Node ${userId}`)
 

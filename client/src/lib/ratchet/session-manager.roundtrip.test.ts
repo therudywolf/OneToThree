@@ -166,17 +166,20 @@ vi.mock('@/lib/api/keys', () => {
 })
 
 import {
+  clearDrSession,
   clearOwnDrIdentity,
   decryptFromPeer,
   encodeBase64Url,
   encryptForPeer,
   generateLocalBundle,
+  sessionIdentityKeys,
   setOwnDrIdentity,
   setSessionWrapKey,
   type DrDeviceEnvelope,
   type DrFanoutResult,
   type LocalIdentityBundle,
 } from './session-manager'
+import { computeSafetyNumber } from './safety-number'
 
 interface Device {
   userId: string
@@ -374,5 +377,107 @@ describe('per-device Double Ratchet round-trip (A4)', () => {
     const second = await sendFrom(alice1, 'bob', 'world')
     expect(await receiveOn(bob1, 'alice', envelopeFor(second, 'bob-1'))).toBe('world')
     expect(await receiveOn(alice2, 'alice', envelopeFor(second, 'alice-2'))).toBe('world')
+  })
+
+  it('SAFETY NUMBER: both sides of one session read out the SAME digits', async () => {
+    const alice = registerDevice('alice', 'alice-1')
+    const bob = registerDevice('bob', 'bob-1')
+
+    // Establish the session in both directions so each side has a record.
+    const sent = await sendFrom(alice, 'bob', 'hi')
+    expect(await receiveOn(bob, 'alice', envelopeFor(sent, 'bob-1'))).toBe('hi')
+
+    // Compute the number exactly as identity-modal does, once per side.
+    actAs(alice)
+    const aKeys = await sessionIdentityKeys('alice', 'bob', 'bob-1')
+    actAs(bob)
+    const bKeys = await sessionIdentityKeys('bob', 'alice', 'alice-1')
+    if (!aKeys || !bKeys) throw new Error('test: no session identity keys')
+
+    // Each side supplies (ownKey, peerKey) in ITS OWN order — the whole point
+    // of the safety number is that the two orderings agree. Hashing them
+    // local-then-remote before calling computeSafetyNumber (what the old
+    // `sessionFingerprint` did) made this impossible on a clean session.
+    const aNumber = computeSafetyNumber(aKeys.own, aKeys.peer, 'alice', 'bob')
+    const bNumber = computeSafetyNumber(bKeys.own, bKeys.peer, 'bob', 'alice')
+    expect(aNumber).toBe(bNumber)
+    expect(aNumber.replace(/\s/g, '')).toMatch(/^\d{60}$/)
+
+    // Sanity: the keys really are the two distinct identity-signing keys.
+    expect(encodeBase64Url(aKeys.own)).toBe(
+      encodeBase64Url(alice.bundle.identity.signing.publicKey)
+    )
+    expect(encodeBase64Url(aKeys.peer)).toBe(
+      encodeBase64Url(bob.bundle.identity.signing.publicKey)
+    )
+  })
+
+  it('TOFU RESET: a peer that re-runs X3DH is adopted, and pre-reset messages still decrypt', async () => {
+    const alice = registerDevice('alice', 'alice-1')
+    const bob = registerDevice('bob', 'bob-1')
+
+    // PENDING_INIT_MAX_RESENDS sends carry the same dr_init; after that the
+    // handshake metadata is dropped, which is the realistic state for a message
+    // that then sits unsent in the outbox.
+    for (let i = 1; i <= 3; i += 1) {
+      const m = await sendFrom(alice, 'bob', `before-${i}`)
+      expect(await receiveOn(bob, 'alice', envelopeFor(m, 'bob-1'))).toBe(`before-${i}`)
+    }
+
+    // Sent before the reset, still sitting in /sync/pending when it happens.
+    const inFlight = envelopeFor(await sendFrom(alice, 'bob', 'in-flight'), 'bob-1')
+    expect(inFlight.i).toBeUndefined()
+
+    // Alice clicks "Accept new key & reset session" — that clears only HER
+    // records, so her next send is a brand-new X3DH handshake while Bob still
+    // holds the old one. Bob used to ignore the new dr_init and stay on the
+    // dead root key, silently failing every later message forever.
+    actAs(alice)
+    await clearDrSession('alice', 'bob')
+
+    const after = await sendFrom(alice, 'bob', 'after-reset')
+    expect(await receiveOn(bob, 'alice', envelopeFor(after, 'bob-1'))).toBe('after-reset')
+
+    // The superseded ratchet is archived, not dropped.
+    expect(await receiveOn(bob, 'alice', inFlight)).toBe('in-flight')
+
+    // And the new session keeps working afterwards.
+    const later = await sendFrom(alice, 'bob', 'after-reset-2')
+    expect(await receiveOn(bob, 'alice', envelopeFor(later, 'bob-1'))).toBe('after-reset-2')
+  })
+
+  // Regression: adopting a new handshake must not make a LATE message carrying
+  // the OLD one resurrect it. /sync/pending delivers out of order, so an
+  // envelope minted before the reset can land after it. Re-running X3DH against
+  // that dead handshake rolled `session.ratchet` back to a root key the peer had
+  // already destroyed — inbound kept working via archivedRatchets, so nothing
+  // looked wrong, while every message Bob SENT from then on was permanently
+  // undecryptable for Alice.
+  it('TOFU RESET: a late message carrying the SUPERSEDED handshake does not revert the session', async () => {
+    const alice = registerDevice('alice', 'alice-1')
+    const bob = registerDevice('bob', 'bob-1')
+
+    // First handshake, and an envelope from it left undelivered.
+    const first = await sendFrom(alice, 'bob', 'old-1')
+    expect(await receiveOn(bob, 'alice', envelopeFor(first, 'bob-1'))).toBe('old-1')
+    const strandedOld = envelopeFor(await sendFrom(alice, 'bob', 'old-2'), 'bob-1')
+
+    // Alice resets and Bob adopts the new handshake.
+    actAs(alice)
+    await clearDrSession('alice', 'bob')
+    const fresh = await sendFrom(alice, 'bob', 'new-1')
+    expect(await receiveOn(bob, 'alice', envelopeFor(fresh, 'bob-1'))).toBe('new-1')
+
+    // Now the stranded pre-reset envelope finally arrives. It must still decrypt
+    // (archived ratchet) but must NOT become the live session again.
+    expect(await receiveOn(bob, 'alice', strandedOld)).toBe('old-2')
+
+    // The proof: Bob's SEND direction still lands on the handshake Alice holds.
+    const reply = await sendFrom(bob, 'alice', 'bob-reply')
+    expect(await receiveOn(alice, 'bob', envelopeFor(reply, 'alice-1'))).toBe('bob-reply')
+
+    // ...and Alice can still reach Bob on the new session afterwards.
+    const more = await sendFrom(alice, 'bob', 'new-2')
+    expect(await receiveOn(bob, 'alice', envelopeFor(more, 'bob-1'))).toBe('new-2')
   })
 })

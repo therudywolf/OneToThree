@@ -859,7 +859,18 @@ export function useWebRTC(userId: string | null) {
               }
             }
           } else {
-            const current = useCallStore.getState().incomingCall
+            const callState = useCallStore.getState()
+            const current = callState.incomingCall
+            // Busy guard, mirroring the `call_invite` handler. The caller sends
+            // call_invite and the SDP offer as two independent messages: when we
+            // are already in a call the invite is auto-rejected, but the offer
+            // still lands here with no pc and used to stamp a phantom
+            // incomingCall — an IncomingCallModal (z-250) ringing OVER the live
+            // call for a call the other side already tore down. Accepting it ran
+            // a second getUserMedia and overwrote localStream, breaking the call
+            // actually in progress. Drop it; no call_reject, the offer carries no
+            // chatId and the invite handler already declined.
+            if (callState.isCalling || (current && current.peerId !== fromUserId)) return
             setIncomingCall(upsertIncomingCall(current, {
               peerId: fromUserId,
               isVideo: !!data.isVideo,
@@ -1235,13 +1246,21 @@ export function useWebRTC(userId: string | null) {
         await pc.setLocalDescription(answer)
         transmitSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
       }
-    } catch {
-      purgePeer(inc.peerId)
-      terminateFeed(stream)
+    } catch (err) {
+      // The SDP could not be applied (codec/bundle mismatch, truncated offer).
+      // Just closing the pc left isCalling=true and a dead localStream in the
+      // store, so ActiveCallOverlay kept rendering a full-screen call with a
+      // frozen tile and a running timer while no answer was ever sent — the
+      // user had to hang up a call that never existed. Tear the whole thing
+      // down and tell them why (severAllLinks clears mediaAccessError, so the
+      // message has to be set after it).
+      console.error('[SYS.SIGNAL] Answer negotiation failed:', err)
+      severAllLinks()
+      setMediaAccessError('CALL_SETUP_FAILED')
     } finally {
       setIncomingCall(null)
     }
-  }, [acceptAudioRelay, setLocalStream, addPeerConnection, setupPeerLink, flushIceQueue, purgePeer, setIncomingCall, setIsCalling])
+  }, [acceptAudioRelay, setLocalStream, addPeerConnection, setupPeerLink, flushIceQueue, severAllLinks, setIncomingCall, setIsCalling])
 
   const toggleMute = useCallback(() => {
     const local = useCallStore.getState().localStream
@@ -1251,6 +1270,19 @@ export function useWebRTC(userId: string | null) {
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'audio', enabled }))
     relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'media_state', media: 'audio', enabled }))
   }, [])
+
+  /**
+   * True when this 1:1 call runs over the WebSocket PCM relay instead of
+   * WebRTC (origin-safe deployment, or the 30s P2P timeout fell back to
+   * `websocket_audio`). The relay carries mono audio and nothing else, so every
+   * video path has to be a no-op: previously the camera/screen-share buttons
+   * lit up the camera LED, opened the OS screen picker and told the peer
+   * "video enabled" / "screen sharing" while not one frame was ever sent.
+   */
+  const isRelayOnlyCall = useCallback(
+    () => pcsRef.current.size === 0 && relayPeersRef.current.size > 0,
+    []
+  )
 
   const broadcastVideoState = useCallback((enabled: boolean) => {
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'video', enabled }))
@@ -1265,6 +1297,7 @@ export function useWebRTC(userId: string | null) {
    * owns the video sender, and the camera state is restored when sharing stops.
    */
   const toggleCamera = useCallback(async () => {
+    if (isRelayOnlyCall()) return
     const local = useCallStore.getState().localStream
     if (!local) return
 
@@ -1302,7 +1335,7 @@ export function useWebRTC(userId: string | null) {
     setIsCameraOn(camera.enabled)
     // Don't leak camera on/off signalling to peers while the screen is shared.
     if (!screenFeedRef.current) broadcastVideoState(camera.enabled)
-  }, [broadcastVideoState, setLocalStream])
+  }, [broadcastVideoState, isRelayOnlyCall, setLocalStream])
 
   /**
    * List available camera (videoinput) devices. Used by the desktop in-call
@@ -1366,6 +1399,7 @@ export function useWebRTC(userId: string | null) {
    * state via revertToOptics().
    */
   const toggleScreenShare = useCallback(async () => {
+    if (isRelayOnlyCall()) return
     if (isScreenSharing) {
       revertToOptics()
       return
@@ -1418,8 +1452,14 @@ export function useWebRTC(userId: string | null) {
     const screenAudioTrack = screenStream.getAudioTracks()[0]
     if (screenAudioTrack) {
       screenAudioFeedRef.current = screenAudioTrack
+      // Publish tab/system audio under the SAME msid as every other local track.
+      // Passing `screenStream` here minted a third m-line with a brand-new msid,
+      // so the peer's `ontrack` fired last with a MediaStream holding ONLY the
+      // screen audio and `setRemoteStream` replaced the entry — our mic and our
+      // shared screen both vanished on their side, permanently (removeTrack on
+      // stop fires no further ontrack, so it never recovered).
       pcsRef.current.forEach(pc => {
-        pc.addTrack(screenAudioTrack, screenStream)
+        pc.addTrack(screenAudioTrack, local)
       })
       const origOnEnded = screenVideoTrack.onended
       screenVideoTrack.onended = () => {
@@ -1427,7 +1467,7 @@ export function useWebRTC(userId: string | null) {
         if (typeof origOnEnded === 'function') origOnEnded.call(screenVideoTrack, new Event('ended'))
       }
     }
-  }, [isScreenSharing, revertToOptics, setLocalStream])
+  }, [isRelayOnlyCall, isScreenSharing, revertToOptics, setLocalStream])
 
   return {
     peerReady,

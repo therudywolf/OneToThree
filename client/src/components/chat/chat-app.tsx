@@ -31,7 +31,7 @@ import {
 import { lookupUsers } from '@/lib/api/users'
 import { canonicalUserId } from '@/lib/user-id'
 import { isSavedMessagesChat } from '@/lib/saved-messages-chat'
-import { exportEcdhPublicJwkFromPrivateKey, hashPublicKeyJwk } from '@/lib/crypto'
+import { hashPublicKeyJwk } from '@/lib/crypto'
 import { resolveTrustStatus } from '@/lib/trust-store'
 import { useChats } from '@/hooks/use-chats'
 import { usePresenceSync } from '@/hooks/use-presence-sync'
@@ -176,13 +176,15 @@ export function ChatApp({
     ecdhPublicKeyJwk: string
     verified: boolean
   } | null>(null)
-  const [myEcdhPublicKeyJwk, setMyEcdhPublicKeyJwk] = useState<string | null>(null)
-  useEffect(() => {
-    if (!unwrappedPrivateKey) { setMyEcdhPublicKeyJwk(null); return }
-    void exportEcdhPublicJwkFromPrivateKey(unwrappedPrivateKey)
-      .then(setMyEcdhPublicKeyJwk)
-      .catch(() => setMyEcdhPublicKeyJwk(null))
-  }, [unwrappedPrivateKey])
+  // Take the public JWK from the session store, NOT by re-deriving it from the
+  // CryptoKey: `unwrappedPrivateKey` is imported with extractable:false (Stage-1
+  // isolation), so exportKey('jwk') threw InvalidAccessError on every run, the
+  // catch pinned this to null forever, and the render guard below therefore
+  // never passed — the safety number, the peer fingerprint, the TOFU
+  // "identity changed" banner and the manual trust-pin button were all silently
+  // unreachable. activate-vault already computes the same value from the JWK
+  // *string* while it still has it.
+  const myEcdhPublicKeyJwk = useSessionStore((s) => s.myEcdhPublicKeyJwk)
   const [showGuide, setShowGuide] = useState(() => {
     if (typeof window === 'undefined') return false
     return !localStorage.getItem(`p13:onboarded:${userId}`)

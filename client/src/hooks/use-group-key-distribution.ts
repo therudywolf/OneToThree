@@ -17,7 +17,7 @@ import {
   rotateGroupKeyForChat,
 } from '@/lib/group-key-rotation'
 import { getFmSocket } from '@/lib/api/socket'
-import type { ChatCryptoContext } from '@/lib/chat-crypto'
+import { assertTrustOrThrow, type ChatCryptoContext } from '@/lib/chat-crypto'
 
 /**
  * Deliver a group key to a member who has none.
@@ -40,11 +40,16 @@ async function deliverGroupKeyToMember(
   if (my_role !== 'owner') return
 
   const me = detail.members.find((m) => m.user_id === myUserId)
-  if (!me?.encrypted_group_key) return
+  if (!me?.encrypted_group_key || !me.ecdh_public_key_jwk) return
 
   const target = detail.members.find((m) => m.user_id === targetUserId)
   if (!target?.ecdh_public_key_jwk) return
   if (target.encrypted_group_key) return // already delivered
+  // The roster is server-supplied: if this member's ECDH key contradicts a pin
+  // the user verified, wrapping to it would hand the sector key to whoever
+  // substituted it. Throws (the caller logs) rather than silently keying an
+  // attacker. See rotateGroupKeyForChat for the same guard on the rotation path.
+  await assertTrustOrThrow(target.user_id, target.ecdh_public_key_jwk)
 
   // #32 backward secrecy: a group_e2e join bumps `key_epoch`, so right after a
   // join our stored key is STALE versus the chat. Delivering our current bytes
@@ -60,7 +65,16 @@ async function deliverGroupKeyToMember(
     return
   }
 
-  const groupKey = await unwrapGroupKeyFromStoredPayload(myPrivKey, me.encrypted_group_key)
+  // D2: unwrap our OWN blob bound to our own (the owner's) ECDH key. Without the
+  // binding argument both the legacy-format rejection and the creator comparison
+  // are skipped, so a server that overwrites the OWNER's wrapped-key row with a
+  // key it controls gets that key laundered into a wrap under the owner's genuine
+  // identity — which every member then accepts. Fail closed here instead.
+  const groupKey = await unwrapGroupKeyFromStoredPayload(
+    myPrivKey,
+    me.encrypted_group_key,
+    me.ecdh_public_key_jwk
+  )
   // Stamp the delivered key with the epoch of the material we are actually
   // handing over (our own stored key's epoch), so the recovery scan can later
   // tell whether this member is on the current key. Truthful labelling matters:
@@ -70,7 +84,6 @@ async function deliverGroupKeyToMember(
   // derive it from the private key, which is imported NON-EXTRACTABLE — that
   // throws InvalidAccessError and the delivery silently failed, so a newly added
   // member never got a key at all.
-  if (!me.ecdh_public_key_jwk) return
   const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
     myPrivKey,
     target.ecdh_public_key_jwk,
@@ -87,6 +100,12 @@ async function deliverGroupKeyToMember(
  * to call on chat open and on the `group_key_epoch` event — `shouldRotateGroupKey`
  * makes it a no-op once our key already matches the epoch, so repeat calls don't
  * churn. Returns true if a rotation was performed.
+ *
+ * `false` means "we did not rotate" — which covers BOTH "nothing to do" and
+ * "another trigger is mid-rotation". It never means "our current key is safe to
+ * hand out": during an in-flight rotation the chat has already advanced past our
+ * key. Callers must re-check the chat epoch (as `reconcileGroupKeysForChat`
+ * does) before distributing anything.
  */
 // Per-chat rotation lock. A group_e2e join now fires BOTH `member_joined` (→
 // deliver→rotate) and `group_key_epoch` (→rotate); rapid joins/departures can
@@ -116,9 +135,10 @@ async function rotateGroupKeyIfStale(
 
 /**
  * Owner-only: deliver our CURRENT sector key to any member of `chatId` who is
- * missing it or is behind our key's epoch. Unlike the active-chat scan this takes
- * an explicit chatId and unwraps our own stored key (it does not depend on the
- * active chat's in-memory cryptoCtx), so it can reconcile ANY group we own.
+ * missing it or is behind our key's epoch. Takes an explicit chatId and unwraps
+ * our own STORED key — it never reads the active chat's in-memory cryptoCtx — so
+ * it can reconcile ANY group we own and cannot mix two chats' key material.
+ * Used by both the reconnect scan (part 4) and the active-chat scan (part 1b).
  * Returns true if at least one member was (re)keyed. Idempotent — members already
  * on our epoch are skipped, so repeat calls don't churn.
  */
@@ -128,9 +148,12 @@ async function reconcileGroupKeysForChat(
   myPrivKey: CryptoKey
 ): Promise<boolean> {
   const detail = await fetchChatDetail(chatId)
+  // Only SECTOR chats have a group key. The active-chat scan now routes through
+  // here with nothing but a chat id, so the type guard has to live here too.
+  if (detail.chat.type !== 'group_e2e') return false
   if (detail.chat.my_role !== 'owner') return false
   const me = detail.members.find((m) => m.user_id === myUserId)
-  if (!me?.encrypted_group_key) return false
+  if (!me?.encrypted_group_key || !me.ecdh_public_key_jwk) return false
   const myEpoch = readStoredSectorKeyEpoch(me.encrypted_group_key) ?? 0
 
   // #32 backward secrecy: if OUR key is behind the chat epoch (a join bumped it
@@ -152,13 +175,28 @@ async function reconcileGroupKeysForChat(
       : null
     const needsKey = stored === null || stored < myEpoch
     if (!needsKey) continue
+    // Never wrap to a roster key that contradicts a pin — see
+    // deliverGroupKeyToMember. Skip that one member rather than aborting the
+    // reconcile for everyone else.
+    try {
+      await assertTrustOrThrow(m.user_id, m.ecdh_public_key_jwk)
+    } catch (e) {
+      console.warn('>> [SYS.SECTOR] roster key contradicts a trust pin, skipping member', m.user_id, e)
+      continue
+    }
     // Unwrap our own key lazily — only once, and only when someone needs it.
+    // Bound to our own (the owner's) ECDH key: an unbound unwrap would let a
+    // substituted owner row be re-wrapped under our identity and accepted by
+    // every member (see deliverGroupKeyToMember).
     if (!groupKey) {
-      groupKey = await unwrapGroupKeyFromStoredPayload(myPrivKey, me.encrypted_group_key)
+      groupKey = await unwrapGroupKeyFromStoredPayload(
+        myPrivKey,
+        me.encrypted_group_key,
+        me.ecdh_public_key_jwk
+      )
     }
     // Own PUBLIC key from the roster — see deliverGroupKeyToMember: deriving it
     // from the non-extractable private key throws and kills the reconcile.
-    if (!me.ecdh_public_key_jwk) break
     const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
       myPrivKey,
       m.ecdh_public_key_jwk,
@@ -216,7 +254,13 @@ export function useGroupKeyDistribution(
       !userId ||
       !unwrappedPrivateKey ||
       !cryptoCtx ||
-      cryptoCtx.mode !== 'SECTOR'
+      cryptoCtx.mode !== 'SECTOR' ||
+      // `useChatCryptoContext` keeps the PREVIOUS chat's context in state until
+      // the new chat's build resolves (a network fetch). Without this check the
+      // scan ran for chat B while holding chat A's SECTOR context — and used to
+      // upload A's key into B's roster, permanently locking that member out of
+      // B while handing them a key for a group they may not even belong to.
+      cryptoCtx.chatId !== activeChatId
     ) {
       return
     }
@@ -227,10 +271,8 @@ export function useGroupKeyDistribution(
       busyRef.current = true
       try {
         // 1a. Rotate first if our key is stale (a member departed). A successful
-        // rotation already re-wrapped the FRESH key for every member, so skip the
-        // delivery scan below — it would otherwise hand out the pre-rotation key
-        // still held in `cryptoCtx.groupKey` (the in-memory context is rebuilt
-        // only after the rotation's `chats_updated` lands; see useChatCryptoContext).
+        // rotation already re-wrapped the FRESH key for every member, so the
+        // delivery scan below has nothing left to do.
         const rotated = await rotateGroupKeyIfStale(
           activeChatId,
           userId,
@@ -244,42 +286,26 @@ export function useGroupKeyDistribution(
 
         // 1b. Deliver our current key to members who are MISSING it, or whose key
         // is BEHIND ours (a rotation whose PUT failed for them left them split off
-        // on a stale key — re-wrap the current key so the group reconverges). The
-        // delivered key is stamped with our own key's epoch, and we only upgrade
-        // members who are strictly behind it — never downgrade.
-        const detail = await fetchChatDetail(activeChatId)
+        // on a stale key — re-wrap the current key so the group reconverges).
+        //
+        // This used to be an inline copy of `reconcileGroupKeysForChat` that
+        // wrapped `cryptoCtx.groupKey` while reading the epoch off the SERVER
+        // roster — two sources that drift apart. Two ways that bit:
+        //   - a join bumps `key_epoch` and the owner's rotation is still in
+        //     flight, so 1a returned false: the joiner has no key, so 1b handed
+        //     them the PRE-bump key, whose blob their ring keeps forever. That is
+        //     the whole pre-join backlog, i.e. exactly the history #32/#33 seals.
+        //   - if the rotation had already re-PUT the owner's own row, the epoch
+        //     read back was the NEW one while the bytes were still the old
+        //     in-memory key — a key stamped with an epoch it does not carry.
+        // Reconciling from the stored blob keeps the key and its epoch label from
+        // the same row, and bails when the chat has moved past our key.
+        const delivered = await reconcileGroupKeysForChat(
+          activeChatId,
+          userId,
+          unwrappedPrivateKey
+        )
         if (cancelled) return
-        const r = detail.chat.my_role
-        // Owner-only (D2): only the owner's wraps are accepted by members now.
-        if (r !== 'owner') return
-        const myMember = detail.members.find((m) => m.user_id === userId)
-        const myEpoch = myMember?.encrypted_group_key
-          ? (readStoredSectorKeyEpoch(myMember.encrypted_group_key) ?? 0)
-          : 0
-
-        let delivered = false
-        for (const m of detail.members) {
-          if (cancelled) return
-          if (m.user_id === userId) continue
-          if (!m.ecdh_public_key_jwk) continue
-          const stored = m.encrypted_group_key
-            ? readStoredSectorKeyEpoch(m.encrypted_group_key)
-            : null
-          const needsKey = stored === null || stored < myEpoch
-          if (!needsKey) continue
-          // Own PUBLIC key from the roster — deriving it from the
-          // non-extractable vault private key throws (see deliverGroupKeyToMember).
-          if (!myMember?.ecdh_public_key_jwk) break
-          const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
-            unwrappedPrivateKey,
-            m.ecdh_public_key_jwk,
-            cryptoCtx.groupKey,
-            myMember.ecdh_public_key_jwk,
-            myEpoch
-          )
-          await uploadMemberWrappedGroupKey(activeChatId, m.user_id, wrapped)
-          delivered = true
-        }
         if (delivered) reloadChats()
       } catch (e) {
         console.warn('>> [SYS.SECTOR] group-key rotation/delivery scan failed', e)

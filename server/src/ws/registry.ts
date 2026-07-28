@@ -36,18 +36,34 @@ const heartbeatTimer = setInterval(() => {
   const stillLive: string[] = []
   for (const [userId, sockets] of userSockets) {
     for (const ws of sockets) {
-      const heartbeatWs = ws as HeartbeatSocket
-      if (heartbeatWs.__isAlive === false) {
-        ws.terminate()
+      // Per-socket guard. `ping()`/`terminate()` throw on a socket in the wrong
+      // state, and this whole body ran unprotected inside a setInterval — so a
+      // single bad socket both aborted the tick (every LATER user went unpinged
+      // and refreshPresence never ran, silently staling presence server-wide)
+      // and escaped as an uncaughtException, which index.ts escalates to a full
+      // process shutdown. A dead socket must cost that one socket, nothing more.
+      try {
+        const heartbeatWs = ws as HeartbeatSocket
+        if (heartbeatWs.__isAlive === false) {
+          ws.terminate()
+          sockets.delete(ws)
+          continue
+        }
+        heartbeatWs.__isAlive = false
+        ws.ping()
+      } catch {
+        // Unusable socket — drop it from the registry rather than retrying it
+        // every 30s forever.
         sockets.delete(ws)
-        continue
       }
-      heartbeatWs.__isAlive = false
-      ws.ping()
     }
     if (sockets.size > 0) stillLive.push(userId)
   }
-  refreshPresence(stillLive)
+  try {
+    refreshPresence(stillLive)
+  } catch {
+    /* presence refresh is best-effort; never let it kill the heartbeat */
+  }
 }, PING_INTERVAL)
 // Don't let this maintenance timer keep the process alive during shutdown.
 heartbeatTimer.unref()
@@ -141,6 +157,25 @@ function publishFanout(userId: string, raw: string): void {
   })
 }
 
+/** Same, for a whole recipient list, in ONE round trip.
+ *
+ *  Wire format is unchanged (one message per recipient) so a mixed-version
+ *  rolling deploy stays compatible — the win is that a broadcast to a
+ *  10k-member channel no longer issues 10k separate un-pipelined PUBLISHes. */
+function publishFanoutMany(userIds: Iterable<string>, raw: string): void {
+  ensureFanout()
+  const publisher = _publisher
+  if (!publisher) return
+  const pipeline = publisher.pipeline()
+  for (const userId of userIds) {
+    const msg: FanoutMessage = { o: INSTANCE_ID, u: userId, r: raw }
+    pipeline.publish(FANOUT_CHANNEL, JSON.stringify(msg))
+  }
+  void pipeline.exec().catch(() => {
+    /* non-fatal: the local deliveries already happened */
+  })
+}
+
 // Per-socket outbound buffer ceiling (#23). Above this, a recipient's TCP is
 // backed up (slow/backgrounded client); dropping a fan-out/relay frame is fine
 // for real-time traffic and prevents unbounded ws heap buffering → OOM that
@@ -227,8 +262,11 @@ export function broadcastToUsers(userIds: string[], payload: unknown): void {
   if (ids.size === 0) return
   const raw = JSON.stringify(payload)
   for (const id of ids) {
-    sendToUser(id, raw, true)
+    deliverLocal(id, raw)
   }
+  // ONE pipelined round trip instead of one PUBLISH per recipient — a presence
+  // change for a member of a large public channel used to issue thousands.
+  publishFanoutMany(ids, raw)
 }
 
 /**
@@ -269,6 +307,18 @@ export function hasActiveSocket(userId: string): boolean {
 // only believed while its timestamp is fresh. If a process dies, its refreshes
 // stop and its field goes stale within PRESENCE_TTL_MS; if EVERY instance dies,
 // the whole key expires on its own.
+//
+// GATED ON THE SAME FLAG AS FAN-OUT, deliberately. Cross-instance presence used
+// to be unconditional while WS delivery was gated behind WS_REDIS_FANOUT, and
+// the mismatch is strictly worse than either half alone: with two replicas and
+// the flag unset (its default, and it is absent from every compose file), a
+// message for a user on the OTHER instance is neither delivered over the socket
+// (fan-out disabled) nor pushed (shared presence says "online"). Trusting a
+// shared presence record only when shared delivery actually works keeps the two
+// consistent — and with the flag off this degrades to the local-only registry,
+// whose failure mode is a spurious push, never a silently lost message.
+const presenceSharedEnabled = fanoutEnabled
+
 const PRESENCE_KEY = (userId: string): string => `presence:user:${userId}`
 /** Believed-fresh window. 3x the 30s heartbeat gives two missed ticks of slack. */
 const PRESENCE_TTL_MS = 90_000
@@ -287,6 +337,7 @@ function voidRedis(p: Promise<unknown> | undefined): void {
  *  synchronously (a client mid-reconnect, or a partial/mocked client). Presence
  *  is best-effort — losing it costs a spurious push, never a dropped socket. */
 function markPresenceLocal(userId: string): void {
+  if (!presenceSharedEnabled()) return
   const redis = getRedis()
   if (!redis) return
   try {
@@ -304,6 +355,7 @@ function markPresenceLocal(userId: string): void {
 
 /** Re-stamp every user this instance still holds sockets for, in ONE pipeline. */
 function refreshPresence(userIds: string[]): void {
+  if (!presenceSharedEnabled()) return
   const redis = getRedis()
   if (!redis || userIds.length === 0) return
   const now = String(Date.now())
@@ -322,6 +374,7 @@ function refreshPresence(userIds: string[]): void {
 /** Drop this instance's claim on `userId`. Redis deletes a hash whose last field
  *  is removed, so no separate DEL is needed. */
 function clearPresenceLocal(userId: string): void {
+  if (!presenceSharedEnabled()) return
   const redis = getRedis()
   if (!redis) return
   try {
@@ -350,6 +403,7 @@ function anyFieldFresh(hash: Record<string, string> | null | undefined): boolean
  */
 export async function isOnline(userId: string): Promise<boolean> {
   if (hasActiveSocket(userId)) return true
+  if (!presenceSharedEnabled()) return false
   const redis = getRedis()
   if (!redis) return false
   try {
@@ -373,7 +427,7 @@ export async function areOnline(userIds: string[]): Promise<Map<string, boolean>
     else remote.push(id)
   }
   if (remote.length === 0) return out
-  const redis = getRedis()
+  const redis = presenceSharedEnabled() ? getRedis() : null
   if (!redis) {
     for (const id of remote) out.set(id, false)
     return out
@@ -400,6 +454,7 @@ export async function areOnline(userIds: string[]): Promise<Map<string, boolean>
  * suppressing pushes for every connected user.
  */
 export async function clearInstancePresence(): Promise<void> {
+  if (!presenceSharedEnabled()) return
   const redis = getRedis()
   if (!redis) return
   const ids = [...userSockets.keys()]

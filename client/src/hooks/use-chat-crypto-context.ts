@@ -56,6 +56,19 @@ export function useChatCryptoContext() {
       setCtxError(null)
       return
     }
+    // Drop the PREVIOUS chat's context before awaiting the new one.
+    //
+    // This effect only nulled the context when there was no chat at all, so on a
+    // chat switch the old frame stayed in state for the whole duration of the
+    // `/chats/:id` round-trip — and every consumer reads `activeChatId` fresh
+    // from the store while guarding only on `if (!cryptoCtx)`. Hitting Enter on
+    // already-typed text (or an in-flight media upload completing) in that window
+    // encrypted the message under the PREVIOUS group's sector key and posted it
+    // to the new chat: permanently undecryptable for every member of the new
+    // group, and unrecoverable via the epoch ring, which never held that key.
+    // Clearing here enforces the `ChatCryptoContext.chatId` invariant for ALL
+    // consumers at once instead of asking each one to remember to check it.
+    setCryptoCtx(null)
     let cancelled = false
     ;(async () => {
       try {

@@ -32,6 +32,7 @@ import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { getFeatureFlags, type FeatureFlags } from './lib/feature-flags.js'
 import { requireSecret } from './lib/read-secret.js'
+import { getRedis } from './lib/redis.js'
 import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
 import { db } from './db/index.js'
 import { readFileSync } from 'node:fs'
@@ -189,9 +190,8 @@ export async function buildApp() {
 
   registerGlobalErrorHandler(app)
 
-  app.setNotFoundHandler((_request, reply) => {
-    reply.status(404).send({ error: 'NOT_FOUND' })
-  })
+  // NOTE: setNotFoundHandler is deliberately registered AFTER @fastify/rate-limit
+  // below, so it can carry the limiter as a preHandler — see there.
 
   assertProdSecurityEnv()
 
@@ -285,19 +285,44 @@ export async function buildApp() {
     mediaSrc.add(storageOrigin)
   }
 
-  // Localhost bypass: only safe when the API is not reachable from untrusted clients
-  // with spoofed X-Forwarded-For (edge proxy must strip/forbid client-supplied forwards).
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+    // Counters must survive a deploy. The default LocalStore is per-process, so
+    // `docker compose up -d --build api` (and any OOM/`restart: unless-stopped`
+    // bounce) handed every attacker a fresh budget — and two api replicas would
+    // each get their own. REDIS_URL is already a hard production requirement
+    // (assertProdSecurityEnv), and @fastify/rate-limit namespaces its keys per
+    // route, so the route-level `config.rateLimit` overrides stay independent.
+    redis: getRedis() ?? undefined,
+    // Fail OPEN on a store error: this limiter is abuse control, not an
+    // authorization boundary, and 500-ing every request during a Redis blip is a
+    // far worse outage than a window of unthrottled traffic. The auth lockout
+    // (per-username, Redis-backed, fail-closed) is the security-critical layer.
+    skipOnError: true,
     allowList: (request: FastifyRequest) => {
       // Escape hatch for load / end-to-end harnesses ONLY (e.g. the multi-account
       // e2e suite behind a reverse proxy, where requests don't arrive from
       // loopback). NEVER set this in production — it disables all rate limiting.
       if (process.env.RATE_LIMIT_DISABLED === '1') return true
-      const ip = request.ip?.trim()
-      return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1'
+      // Key the loopback bypass on the RAW SOCKET address, never on `request.ip`.
+      // With trustProxy set (1 in production) `request.ip` is derived from
+      // X-Forwarded-For, so any client able to reach the API directly — which the
+      // shipped docker-compose.yml allows via `ports: "8080:8080"` — could send
+      // `X-Forwarded-For: 127.0.0.1` and skip EVERY limiter, including the
+      // 5-per-15-min /auth/verify budget. The socket address cannot be spoofed.
+      const raw = request.socket.remoteAddress?.trim()
+      return raw === '127.0.0.1' || raw === '::1' || raw === '::ffff:127.0.0.1'
     },
+  })
+
+  // Unmatched paths must be throttled too. Without a limiter here every
+  // `/api/<anything>` was free: an attacker could enumerate the whole path space
+  // at line speed to fingerprint which feature-gated route groups this instance
+  // registered (a disabled group 404s, an enabled one 401/403s), and each probe
+  // still paid a full Fastify lifecycle.
+  app.setNotFoundHandler({ preHandler: app.rateLimit() }, (_request, reply) => {
+    reply.status(404).send({ error: 'NOT_FOUND' })
   })
 
   await app.register(helmet, {

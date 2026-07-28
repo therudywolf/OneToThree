@@ -38,16 +38,19 @@ export async function markMessageReadByReader(
   messageId: string,
   assertChatId?: string
 ): Promise<MarkReadResult> {
-  // Check if the reader has disabled read receipts
+  // "Disable read receipts" is a PRIVACY toggle about telling the SENDER —
+  // it must not stop us recording the read STATE. Bailing out here left
+  // read_at NULL forever, so the reader's own unread badge (derived from
+  // read_at in GET /chats) could never reach 0 and burn_at was never armed,
+  // which kept burn-after-read messages alive for the 30-day never-read
+  // fallback. Record the read below; only the sender-facing receipt is
+  // suppressed (here and in GET /messages/:chatId).
   const [readerRow] = await db
     .select({ disableReadReceipts: users.disableReadReceipts })
     .from(users)
     .where(eq(users.id, readerId))
     .limit(1)
-  if (readerRow?.disableReadReceipts) {
-    // Silently succeed — don't record read or notify sender
-    return { ok: false, error: 'READ_RECEIPTS_DISABLED' }
-  }
+  const suppressReceipt = readerRow?.disableReadReceipts === true
 
   const [msg] = await db
     .select({
@@ -128,14 +131,16 @@ export async function markMessageReadByReader(
     ? String(updated.burnAt)
     : null
 
-  sendToUser(msg.senderId, {
-    type: 'message_read_update',
-    chat_id: msg.chatId,
-    message_id: msg.id,
-    reader_id: readerId,
-    read_at: readAtIso,
-    ...(burnAtIso ? { burn_at: burnAtIso } : {}),
-  })
+  if (!suppressReceipt) {
+    sendToUser(msg.senderId, {
+      type: 'message_read_update',
+      chat_id: msg.chatId,
+      message_id: msg.id,
+      reader_id: readerId,
+      read_at: readAtIso,
+      ...(burnAtIso ? { burn_at: burnAtIso } : {}),
+    })
+  }
 
   // Notify reader's own sockets so their UI starts the burn countdown
   sendToUser(readerId, {
@@ -168,15 +173,14 @@ export async function markMessagesReadByReader(
 ): Promise<MarkReadResult[]> {
   if (!messageIds.length) return []
 
-  // Check if the reader has disabled read receipts
+  // See markMessageReadByReader: the toggle suppresses the sender-facing
+  // receipt, not the read state itself.
   const [readerRow] = await db
     .select({ disableReadReceipts: users.disableReadReceipts })
     .from(users)
     .where(eq(users.id, readerId))
     .limit(1)
-  if (readerRow?.disableReadReceipts) {
-    return messageIds.map((_id) => ({ ok: false as const, error: 'READ_RECEIPTS_DISABLED' }))
-  }
+  const suppressReceipt = readerRow?.disableReadReceipts === true
 
   const targetIds = Array.from(new Set(messageIds))
 
@@ -271,7 +275,7 @@ export async function markMessagesReadByReader(
         read_at: readAtIso,
         ...(burnAtIso ? { burn_at: burnAtIso } : {}),
       }
-      sendToUser(finalRow.senderId, event)
+      if (!suppressReceipt) sendToUser(finalRow.senderId, event)
       sendToUser(readerId, event)
     }
     results.push({

@@ -16,7 +16,7 @@ import { wipeAllClientLocalState } from '@/lib/client-wipe'
 import { invalidateAvatarCache, clearAllAvatarCache } from '@/lib/avatar-cache'
 import { clearNativeSessionCookie, warmNativeSessionCookies } from '@/lib/native-session'
 import { clearOwnDrIdentity } from '@/lib/ratchet/session-manager'
-import { useSessionStore } from '@/store/sessionStore'
+import { useChatStore } from '@/store/chatStore'
 import { isPublicRoute } from '@/lib/public-routes'
 
 /** * `is_discoverable` is synced from PATCH /users/me and GET /users/me/settings (optional).
@@ -97,6 +97,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ) {
           redirectedRef.current = true
           console.warn('[auth] Session expired (401) — redirecting to login')
+          // Same teardown as an explicit logout. A session-expiry logout used to
+          // reset nothing, so the PERSISTED unread store survived into the next
+          // account on this device: whoever signed in afterwards saw the
+          // previous user's badge count for chats they are not a member of, with
+          // no way to clear it (markChatRead can only fire from a chat they can
+          // open). chatStore.reset() cascades to session/presence/unread.
+          useChatStore.getState().reset()
+          clearOwnDrIdentity()
           setUser(null)
           setLoading(false)
           // Use a timeout to ensure state updates propagate
@@ -139,8 +147,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     refreshGeneration.current++
     redirectedRef.current = true
-    await logoutApi()
-    await clearNativeSessionCookie()
+    // Server-side logout is BEST-EFFORT. It used to be awaited unguarded, so a
+    // flaky connection (captive portal, 502 behind Caddy, the 15s
+    // fetchWithTimeout abort) rejected out of this callback and skipped every
+    // line below it: the unwrapped vault key stayed live, the DR identity stayed
+    // in module memory, the native bearer token was never cleared, and the user
+    // was left on the chat screen believing they had logged out — with
+    // `redirectedRef` already latched so the next 401 no longer bounced them to
+    // /login either. Local teardown must be unconditional.
+    try {
+      await logoutApi()
+    } catch {
+      /* server unreachable — wipe locally anyway */
+    }
+    try {
+      await clearNativeSessionCookie()
+    } catch {
+      /* best-effort */
+    }
     // Zeroize in-memory DR identity and session wrap key so chain keys cannot
     // be decrypted from IndexedDB after the session ends.
     clearOwnDrIdentity()
@@ -153,7 +177,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // that reached it without re-activating would have run on the old key.
     // The store is module-level and survives SPA navigation — only a full
     // reload cleared it.
-    useSessionStore.getState().reset()
+    //
+    // Reset through chatStore, not sessionStore directly: it cascades to
+    // session + presence + unread, and the unread store is PERSISTED, so
+    // resetting only the session left the outgoing user's badge counts in
+    // localStorage for whoever signs in next.
+    useChatStore.getState().reset()
     setUser(null)
     setLoading(false)
     // Clear all cached avatars on logout to prevent memory leaks

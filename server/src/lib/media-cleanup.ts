@@ -18,18 +18,46 @@ import {
 
 type S3Target = { bucket: string; key: string }
 
+/**
+ * Deleting a chat that accumulated tens of thousands of attachments used to
+ * fire every DeleteObject at once (`Promise.all` over the whole key list),
+ * which exhausts the SDK socket pool and starves every concurrent presign
+ * against MinIO. Keep a small fixed number of deletes in flight instead.
+ */
+const DELETE_CONCURRENCY = 12
+
 async function deleteAllInBackground(targets: S3Target[]): Promise<void> {
   if (targets.length === 0) return
   const client = createS3Client()
-  await Promise.all(
-    targets.map((t) =>
-      deleteObjectIfExists({ client, bucket: t.bucket, key: t.key }).catch(
+  let next = 0
+  const worker = async () => {
+    for (;;) {
+      const i = next++
+      if (i >= targets.length) return
+      const t = targets[i]!
+      await deleteObjectIfExists({ client, bucket: t.bucket, key: t.key }).catch(
         () => {
           /* best-effort */
         }
       )
-    )
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(DELETE_CONCURRENCY, targets.length) }, worker)
   )
+}
+
+/**
+ * `createS3Client()` throws when the MinIO credentials secret is unreadable
+ * (bucket name set, password not). The callers below only `void` the promise,
+ * so that rejection reached `process.on('unhandledRejection')` in index.ts and
+ * shut the whole API down on the next chat/message delete. Cleanup is
+ * best-effort by design — swallow it.
+ */
+function fireAndForgetDeletes(targets: S3Target[]): void {
+  void deleteAllInBackground(targets).catch(() => {
+    /* best-effort */
+  })
 }
 
 /**
@@ -39,7 +67,17 @@ async function deleteAllInBackground(targets: S3Target[]): Promise<void> {
  *
  * Returns immediately; cleanup runs in the background.
  */
-export async function scheduleMediaCleanupForChat(chatId: string): Promise<void> {
+/**
+ * COLLECT the S3 keys owned by a chat, without deleting anything.
+ *
+ * Split out from the delete so callers whose teardown is CONDITIONAL can gather
+ * the keys first (they must be read before the rows are gone — both sweeps are
+ * DB-driven) and only fire the deletes once the transaction has actually
+ * decided the chat is being dropped. POST /:chatId/leave used to delete first
+ * and decide afterwards, so a member joining in that window kept the chat and
+ * its whole message history while every media blob had already been wiped.
+ */
+export async function collectChatMediaTargets(chatId: string): Promise<S3Target[]> {
   const fallbackBucket = getBucketName()
 
   const attachRows = await db
@@ -67,8 +105,16 @@ export async function scheduleMediaCleanupForChat(chatId: string): Promise<void>
       targets.push({ bucket: fallbackBucket, key: k })
     }
   }
+  return targets
+}
 
-  void deleteAllInBackground(targets)
+/** Fire the deletes for a set previously gathered by `collectChatMediaTargets`. */
+export function deleteCollectedMediaTargets(targets: S3Target[]): void {
+  fireAndForgetDeletes(targets)
+}
+
+export async function scheduleMediaCleanupForChat(chatId: string): Promise<void> {
+  fireAndForgetDeletes(await collectChatMediaTargets(chatId))
 }
 
 /**
@@ -105,7 +151,7 @@ export async function scheduleMediaCleanupForMessage(messageId: string): Promise
     }
   }
 
-  void deleteAllInBackground(targets)
+  fireAndForgetDeletes(targets)
 }
 
 /** Batch variant for callers that already know the message ids being deleted. */
@@ -141,5 +187,5 @@ export async function scheduleMediaCleanupForMessages(
     }
   }
 
-  void deleteAllInBackground(targets)
+  fireAndForgetDeletes(targets)
 }

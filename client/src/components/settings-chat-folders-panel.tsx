@@ -160,16 +160,20 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                   className={`w-full px-2 py-1 text-[10px] ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'terminal-input'}`}
                 />
                 <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  {/* Translation KEYS, not literals: this rule editor shipped
+                      hardcoded Russian inside an otherwise translated panel, so
+                      an English user saw eight Cyrillic checkboxes — including
+                      the destructive "Сбросить правила" below. */}
                   {([
-                    ['includeDirect', 'Личные'],
-                    ['includeGroups', 'Группы'],
-                    ['includeChannels', 'Каналы'],
-                    ['includeSaved', 'Избранное'],
-                    ['includeMuted', 'С мьютом'],
-                    ['includeRead', 'Прочитанные'],
-                    ['selectedOnly', 'Только выбранные'],
-                    ['onlyBroadcastChannels', 'Только broadcast-каналы'],
-                  ] as const).map(([key, label]) => (
+                    ['includeDirect', 'folders.ruleIncludeDirect'],
+                    ['includeGroups', 'folders.ruleIncludeGroups'],
+                    ['includeChannels', 'folders.ruleIncludeChannels'],
+                    ['includeSaved', 'folders.ruleIncludeSaved'],
+                    ['includeMuted', 'folders.ruleIncludeMuted'],
+                    ['includeRead', 'folders.ruleIncludeRead'],
+                    ['selectedOnly', 'folders.selectedOnly'],
+                    ['onlyBroadcastChannels', 'folders.onlyBroadcastChannels'],
+                  ] as const).map(([key, labelKey]) => (
                     <label key={key} className="inline-flex items-center gap-2">
                       <input
                         type="checkbox"
@@ -180,7 +184,7 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                           })
                         }
                       />
-                      <span>{label}</span>
+                      <span>{t(labelKey)}</span>
                     </label>
                   ))}
                 </div>
@@ -193,7 +197,7 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                     }}
                     className={`flex-1 py-1 text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-border-strong text-text-muted font-mono uppercase tracking-widest'}`}
                   >
-                    Сдвинуть влево
+                    {t('folders.moveLeft')}
                   </button>
                   <button
                     type="button"
@@ -203,7 +207,7 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                     }}
                     className={`flex-1 py-1 text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-border-strong text-text-muted font-mono uppercase tracking-widest'}`}
                   >
-                    Сдвинуть вправо
+                    {t('folders.moveRight')}
                   </button>
                 </div>
                 <div className="flex gap-2">
@@ -218,7 +222,7 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                     }}
                     className={`flex-1 py-1 text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-border-strong text-text-muted font-mono uppercase tracking-widest'}`}
                   >
-                    Дублировать
+                    {t('folders.duplicate')}
                   </button>
                   <button
                     type="button"
@@ -228,7 +232,7 @@ export function SettingsChatFoldersPanel({ userId }: Props) {
                     }}
                     className={`flex-1 py-1 text-[10px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-border-strong text-text-muted font-mono uppercase tracking-widest'}`}
                   >
-                    Сбросить правила
+                    {t('folders.resetRules')}
                   </button>
                 </div>
                 <button

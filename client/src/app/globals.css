@@ -3708,8 +3708,15 @@ select {
     right: max(0.5rem, env(safe-area-inset-right, 0px));
     bottom: calc(4.75rem + var(--p13-keyboard-inset, 0px) + env(safe-area-inset-bottom, 0px));
     width: auto !important;
-    height: min(68dvh, max(12rem, calc(var(--p13-app-height, 100dvh) - 6rem - var(--p13-keyboard-inset, 0px)))) !important;
-    max-height: max(12rem, calc(var(--p13-app-height, 100dvh) - 6rem - var(--p13-keyboard-inset, 0px)));
+    /* --p13-app-height IS the visualViewport height, i.e. the keyboard is
+       ALREADY excluded from it. Subtracting --p13-keyboard-inset here as well
+       took it off twice: on a 844px iPhone with a ~336px keyboard the height
+       collapsed to the 12rem floor (two rows of emoji) even though ~430px was
+       free above the composer, and the taller the keyboard the smaller the
+       picker got. The inset stays on `bottom` — that IS correct, because a
+       position:fixed element is anchored to the LAYOUT viewport. */
+    height: min(68dvh, max(12rem, calc(var(--p13-app-height, 100dvh) - 6rem))) !important;
+    max-height: max(12rem, calc(var(--p13-app-height, 100dvh) - 6rem));
   }
 }
 

@@ -51,7 +51,6 @@ import * as keysApi from '@/lib/api/keys'
 import {
   decryptRatchet,
   encryptRatchet,
-  fingerprint,
   initRatchetAsAlice,
   initRatchetAsBob,
   type RatchetHeader,
@@ -162,7 +161,39 @@ interface SerializedSession {
   pendingInitSends?: number
   /** Set true once an inbound DR message confirms the responder has the session. */
   pendingInitAcked?: boolean
+  /**
+   * RESPONDER side only: the `initiatorEphemeralPublic` of the X3DH handshake
+   * this session was accepted from. It is the handshake's identity — a repeat
+   * of the same value is a `dr_init` RESEND, a different value is a brand-new
+   * handshake that supersedes this session. Absent on initiator-side sessions
+   * and on sessions accepted before this field existed.
+   */
+  acceptedInitEphemeral?: string
+  /**
+   * Ratchet states from superseded handshakes, newest first, so messages the
+   * peer sent under the old session before it was replaced still decrypt.
+   */
+  archivedRatchets?: SerializedRatchetState[]
+  /**
+   * `acceptedInitEphemeral` values we have ALREADY superseded, newest first.
+   *
+   * "Different ephemeral" does not mean "newer" — /sync/pending delivers out of
+   * order, and `encryptForPeer` re-attaches the same `dr_init` to the first few
+   * messages. Without this list a late message carrying a DEAD handshake made
+   * us re-run X3DH against it and revert `session.ratchet` to a root key the
+   * peer had already destroyed: inbound still worked via `archivedRatchets`, but
+   * everything we SENT from then on was undecryptable for them, forever, with
+   * no error on either side. Only an ephemeral never seen before may supersede.
+   */
+  supersededInitEphemerals?: string[]
 }
+
+/**
+ * How many superseded ratchets to keep. Signal keeps a small list of session
+ * states for exactly this; bounded because each one is live key material and
+ * is re-encrypted into IndexedDB on every save.
+ */
+const MAX_ARCHIVED_RATCHETS = 3
 
 /**
  * Outbound resend budget for X3DH metadata. Beyond this we stop attaching
@@ -204,6 +235,10 @@ function serializeRatchet(state: RatchetState): SerializedRatchetState {
 function deserializeRatchet(s: SerializedRatchetState): RatchetState {
   const skipped = new Map<string, Map<number, Uint8Array>>()
   for (const b of s.skipped) {
+    // Drop empty buckets on load: sessions written before `cacheSkipped` became
+    // lazy carry one per DH ratchet step, and re-serializing them re-encrypts
+    // dead weight into IndexedDB on every send and receive.
+    if (b.keys.length === 0) continue
     const bucket = new Map<number, Uint8Array>()
     for (const k of b.keys) bucket.set(k.counter, b64urlDecode(k.key))
     skipped.set(b.remote, bucket)
@@ -513,6 +548,9 @@ export async function bootstrapSession(
 
 /**
  * Accept an incoming X3DH handshake (Bob side) for one device pair.
+ *
+ * `superseded` is the session this handshake replaces (if any); its ratchet is
+ * archived onto the new record so in-flight messages under it still decrypt.
  */
 export async function acceptSession(
   ownerId: string,
@@ -526,7 +564,8 @@ export async function acceptSession(
     initiatorIdentityExchange: Uint8Array
     initiatorIdentitySigning: Uint8Array
     initiatorEphemeralPublic: Uint8Array
-  }
+  },
+  superseded?: SerializedSession | null
 ): Promise<SerializedSession> {
   const { sharedSecret } = x3dhResponder({
     responderIdentity: ownIdentity,
@@ -546,6 +585,19 @@ export async function acceptSession(
     ownIdentityExchange: b64urlEncode(ownIdentity.exchange.publicKey),
     ownIdentitySigning: b64urlEncode(ownIdentity.signing.publicKey),
     ratchet: serializeRatchet(ratchet),
+    acceptedInitEphemeral: b64urlEncode(initial.initiatorEphemeralPublic),
+  }
+  if (superseded) {
+    session.archivedRatchets = [
+      superseded.ratchet,
+      ...(superseded.archivedRatchets ?? []),
+    ].slice(0, MAX_ARCHIVED_RATCHETS)
+    // Remember the handshake we just retired (and everything it had retired) so
+    // a late-arriving message carrying it cannot resurrect it.
+    session.supersededInitEphemerals = [
+      ...(superseded.acceptedInitEphemeral ? [superseded.acceptedInitEphemeral] : []),
+      ...(superseded.supersededInitEphemerals ?? []),
+    ].slice(0, MAX_ARCHIVED_RATCHETS)
   }
   await saveSession(ownerId, ownDeviceId, peerId, peerDeviceId, session)
   return session
@@ -801,7 +853,8 @@ export async function encryptForPeer(
 /**
  * Accept an incoming X3DH init from the wire payload, for the device pair
  * `(ownerId, ownDeviceId) ⇄ (peerId, senderDeviceId)`.
- * Safe to call even if a session already exists (no-op in that case).
+ * A repeat of a handshake we already accepted is a no-op; a DIFFERENT handshake
+ * supersedes the pinned session (see below).
  */
 export async function acceptIncomingInit(
   ownerId: string,
@@ -811,7 +864,39 @@ export async function acceptIncomingInit(
   init: DrInitWirePayload
 ): Promise<void> {
   const existing = await loadSession(ownerId, ownDeviceId, peerId, senderDeviceId)
-  if (existing) return
+  if (existing) {
+    // `encryptForPeer` re-attaches the SAME `dr_init` to the first
+    // PENDING_INIT_MAX_RESENDS messages in case the first was dropped — those
+    // are resends of a handshake we already ran, not a new one.
+    if (existing.acceptedInitEphemeral === init.initiatorEphemeralPublic) return
+    // A handshake we have already retired. /sync/pending delivers out of order,
+    // so a message sent under the OLD handshake can arrive after we accepted the
+    // new one — re-accepting it would roll `session.ratchet` back to a root key
+    // the peer has destroyed and silently break our SEND direction forever.
+    // Its ciphertext still decrypts through `archivedRatchets`.
+    if (existing.supersededInitEphemerals?.includes(init.initiatorEphemeralPublic)) return
+    // Initiator-side sessions (from `bootstrapSession`) and sessions accepted
+    // before `acceptedInitEphemeral` existed carry no handshake id, so a new
+    // init cannot be told apart from a resend. Keep the old behaviour there
+    // rather than tearing down a working ratchet on an ambiguous signal — in
+    // particular this leaves simultaneous-init glare exactly as it was.
+    if (!existing.acceptedInitEphemeral) return
+    // A different ephemeral means the peer ran a fresh X3DH: they hit "Accept
+    // new key" (identity-modal) and dropped their side, or an older undelivered
+    // init is only now being pulled from /sync/pending. Ignoring it is NOT the
+    // safe default — our root key stays bound to the dead handshake, so every
+    // message they send fails AES-GCM auth forever, the rows are never acked,
+    // and neither side is shown an error. Re-accept, archiving the old ratchet.
+    //
+    // The TOFU pin still holds: a new handshake may not arrive under a new
+    // identity key. Only an explicit user-confirmed reset changes that.
+    if (
+      existing.peerIdentitySigning !== init.initiatorIdentitySigning ||
+      existing.peerIdentityExchange !== init.initiatorIdentityExchange
+    ) {
+      throw new Error('TOFU_IDENTITY_CHANGED')
+    }
+  }
   if (!_ownIdentity || !_ownSignedPreKey) throw new Error('RATCHET_NO_IDENTITY')
   if (init.signedPrekeyId !== _ownSignedPreKeyId) throw new Error('RATCHET_UNKNOWN_SPK')
   // Verify the wire-supplied initiator identity matches what the server has
@@ -832,8 +917,9 @@ export async function acceptIncomingInit(
     // is always a replay (a captured `dr_init` re-posted, or a server re-serving
     // an OTP it should have deleted) — never a legitimately fresh prekey. Reject
     // rather than silently re-consuming and forfeiting first-message forward
-    // secrecy. A legit retry for THIS exact session already returned at the
-    // `if (existing)` guard above, so this can only fire on reuse.
+    // secrecy. A legit resend of THIS handshake already returned at the
+    // `acceptedInitEphemeral` guard above, and a genuinely new handshake picks
+    // a fresh OTP id, so this can only fire on reuse.
     if (isOtpConsumed(ownerId, ownDeviceId, init.oneTimePrekeyId)) {
       throw new Error('X3DH_OTP_REPLAY')
     }
@@ -853,7 +939,8 @@ export async function acceptIncomingInit(
       initiatorIdentityExchange: b64urlDecode(init.initiatorIdentityExchange),
       initiatorIdentitySigning: b64urlDecode(init.initiatorIdentitySigning),
       initiatorEphemeralPublic: b64urlDecode(init.initiatorEphemeralPublic),
-    }
+    },
+    existing
   )
   // Burn the OTP id only AFTER the session is durably accepted, so a failed
   // accept doesn't waste a prekey the initiator will legitimately retry.
@@ -898,11 +985,35 @@ export async function decryptFromPeer(
       }
       const session = await loadSession(ownerId, ownDeviceId, peerId, senderDeviceId)
       if (!session) throw new Error('RATCHET_NO_SESSION')
-      const ratchet = deserializeRatchet(session.ratchet)
       const header = decodeHeader(envelope.h)
       const ciphertext = b64urlDecode(envelope.c)
-      const plaintext = await decryptRatchet(ratchet, { header, ciphertext })
-      session.ratchet = serializeRatchet(ratchet)
+      const ratchet = deserializeRatchet(session.ratchet)
+      let plaintext: Uint8Array
+      try {
+        plaintext = await decryptRatchet(ratchet, { header, ciphertext })
+        session.ratchet = serializeRatchet(ratchet)
+      } catch (err) {
+        // The peer may have re-run X3DH (see `acceptIncomingInit`), in which
+        // case anything they sent before the new init is still encrypted under
+        // the ratchet we archived. Without this those messages would be
+        // permanent [DECRYPT_FAIL] rows even though we hold the key.
+        const archived = session.archivedRatchets ?? []
+        let recovered: Uint8Array | null = null
+        for (let i = 0; i < archived.length && !recovered; i += 1) {
+          const old = deserializeRatchet(archived[i])
+          try {
+            recovered = await decryptRatchet(old, { header, ciphertext })
+            // Only the ratchet that actually authenticated is advanced; a
+            // failed attempt mutated a throwaway copy and is discarded.
+            archived[i] = serializeRatchet(old)
+          } catch {
+            // Not this one — keep looking.
+          }
+        }
+        if (!recovered) throw err
+        plaintext = recovered
+        session.archivedRatchets = archived
+      }
       // First successful inbound DR message proves the responder has the X3DH
       // session — we no longer need to resend pendingInit on subsequent sends.
       if (session.pendingInit && !session.pendingInitAcked) {
@@ -916,18 +1027,32 @@ export async function decryptFromPeer(
   )
 }
 
+/** The two Ed25519 identity-signing keys a safety number is computed over. */
+export interface SessionIdentityKeys {
+  /** THIS device's identity-signing public key. */
+  own: Uint8Array
+  /** The peer device's identity-signing public key. */
+  peer: Uint8Array
+}
+
 /**
- * Compute a session fingerprint for safety-number UI. Hashes the pair of
- * Ed25519 identity-SIGNING keys (the trust root — D3) for ONE device pair so
- * the output matches between the two devices regardless of who initiated.
+ * The pair of Ed25519 identity-SIGNING keys (the trust root — D3) pinned for
+ * ONE device pair, for the safety-number UI.
+ *
+ * Returns the RAW keys, not a digest. An earlier version hashed them as
+ * `sha256(own || peer)`: Alice hashed (A, B) and Bob hashed (B, A), so the two
+ * sides read out different 60-digit numbers on a perfectly clean session and
+ * the out-of-band MITM check could never succeed. `computeSafetyNumber` already
+ * does the length-prefixing, order-independent sorting and 5200-round hashing
+ * that Signal specifies — pre-hashing here was both lossy and wrong.
  *
  * `peerDeviceId` defaults to the most-recent device when omitted.
  */
-export async function sessionFingerprint(
+export async function sessionIdentityKeys(
   ownerId: string,
   peerId: string,
   peerDeviceId?: string
-): Promise<Uint8Array | null> {
+): Promise<SessionIdentityKeys | null> {
   if (!_ownDeviceId) return null
   const targetPeerDevice =
     peerDeviceId ??
@@ -943,10 +1068,10 @@ export async function sessionFingerprint(
   // Sessions persisted before D3 lack ownIdentitySigning → no number until the
   // ratchet re-bootstraps (the D4 key-directory reset forces that anyway).
   if (!session.ownIdentitySigning) return null
-  return fingerprint(
-    b64urlDecode(session.ownIdentitySigning),
-    b64urlDecode(session.peerIdentitySigning)
-  )
+  return {
+    own: b64urlDecode(session.ownIdentitySigning),
+    peer: b64urlDecode(session.peerIdentitySigning),
+  }
 }
 
 /**

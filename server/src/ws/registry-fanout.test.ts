@@ -78,6 +78,10 @@ class FakeRedis {
         ops.push(() => this.expire(k, s))
         return api
       },
+      publish: (c: string, r: string) => {
+        ops.push(() => this.publish(c, r))
+        return api
+      },
       exec: async () => {
         const out: Array<[Error | null, unknown]> = []
         for (const op of ops) out.push([null, await op()])
@@ -182,6 +186,33 @@ describe('ws registry Redis pub/sub fan-out (D19)', () => {
     expect(sock.sent).toEqual([JSON.stringify({ type: 'local-only' })])
     expect(fakeRedis.publish).not.toHaveBeenCalled()
   })
+
+  // A broadcast used to issue one un-pipelined PUBLISH per recipient — an
+  // online-status change for a member of a 10k-member public channel meant 10k
+  // round trips (and 10k JSON.stringify calls) on the event loop.
+  it('flag ON: broadcastToUsers serializes once and publishes in ONE pipeline', async () => {
+    process.env.WS_REDIS_FANOUT = '1'
+    const reg = await import('./registry.js')
+    const sock = makeSocket()
+    reg.registerUserSocket('u1', sock as unknown as never)
+
+    let pipelines = 0
+    const realPipeline = fakeRedis.pipeline.bind(fakeRedis)
+    fakeRedis.pipeline = () => {
+      pipelines += 1
+      return realPipeline()
+    }
+
+    reg.broadcastToUsers(['u1', 'u2', 'u3'], { type: 'bulk' })
+    // pipeline.exec() resolves the queued PUBLISHes asynchronously.
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(sock.sent).toEqual([JSON.stringify({ type: 'bulk' })])
+    expect(pipelines).toBe(1)
+    expect(fakeRedis.publish).toHaveBeenCalledTimes(3)
+
+    await reg.closeWsFanout()
+  })
 })
 
 /**
@@ -197,11 +228,16 @@ describe('cross-instance presence (#26)', () => {
   const KEY = (uid: string) => `presence:user:${uid}`
 
   beforeEach(() => {
+    // Shared presence is gated on WS_REDIS_FANOUT, the SAME flag as
+    // cross-instance DELIVERY: believing another instance holds this user is
+    // only sound when we can actually reach that instance.
+    process.env.WS_REDIS_FANOUT = '1'
     fakeRedis = new FakeRedis()
     vi.resetModules()
   })
 
   afterEach(() => {
+    delete process.env.WS_REDIS_FANOUT
     vi.clearAllMocks()
   })
 
@@ -270,6 +306,24 @@ describe('cross-instance presence (#26)', () => {
 
     await reg.clearInstancePresence()
     expect(fakeRedis.hashes.get(KEY('u-shut'))).toBeUndefined()
+  })
+
+  // The two used to be gated independently, and the mismatch was strictly worse
+  // than either half: with fan-out OFF and two replicas, a message for a user on
+  // the other instance was neither delivered over the socket (fan-out disabled)
+  // nor pushed (shared presence claimed they were online).
+  it('with fan-out OFF: writes no shared claim and never reports a foreign claim online', async () => {
+    delete process.env.WS_REDIS_FANOUT
+    vi.resetModules()
+    const reg = await import('./registry.js')
+
+    reg.registerUserSocket('u-nogate', makeSocket() as unknown as never)
+    expect(fakeRedis.hashes.get(KEY('u-nogate'))).toBeUndefined()
+
+    // A claim written by another instance must NOT suppress this user's push.
+    fakeRedis.hashes.set(KEY('u-elsewhere'), new Map([['other', String(Date.now())]]))
+    expect(await reg.isOnline('u-elsewhere')).toBe(false)
+    expect((await reg.areOnline(['u-elsewhere'])).get('u-elsewhere')).toBe(false)
   })
 
   it('never throws when the Redis client cannot serve presence commands', async () => {

@@ -29,7 +29,14 @@ export type PushPayload = {
   icon: string
   /** Chat ID for privacy-first notifications — SW navigates to /?chat=<id> without needing plaintext body. */
   chat_id?: string
-  type?: 'message' | 'incoming_call'
+  /**
+   * `group_call` is a call notification too: the "someone started a group call
+   * in this chat" push carried its own title/body but was typed 'message', so
+   * both transports rewrote it to "OneToThree / New message" on the ringtone-less
+   * `messages` channel — indistinguishable from a chat message, which is exactly
+   * what the offline-member push was added to avoid.
+   */
+  type?: 'message' | 'incoming_call' | 'group_call'
   /** Only for incoming_call notifications */
   caller_name?: string
   /**
@@ -39,6 +46,11 @@ export type PushPayload = {
    * user identifiers at all.
    */
   reply_to_me?: boolean
+}
+
+/** Call-flavoured pushes keep their own title/body; everything else is generic. */
+function isCallPayload(type: PushPayload['type']): boolean {
+  return type === 'incoming_call' || type === 'group_call'
 }
 
 function parseFirebaseServiceAccountJson(): Record<string, unknown> | null {
@@ -109,8 +121,8 @@ export async function sendPushToUser(
   // Apple/Google push infrastructure cannot read encrypted E2E messages.
   // SW receives chat_id and navigates; the app fetches + decrypts on open.
   const body = JSON.stringify({
-    title: payload.type === 'incoming_call' ? payload.title : 'OneToThree',
-    body: payload.type === 'incoming_call' ? (payload.body || 'Incoming call') : 'New message',
+    title: isCallPayload(payload.type) ? payload.title : 'OneToThree',
+    body: isCallPayload(payload.type) ? (payload.body || 'Incoming call') : 'New message',
     icon: payload.icon,
     type: payload.type || 'message',
     chat_id: payload.chat_id,
@@ -176,9 +188,9 @@ export async function sendNativePushToUser(
           android: {
             priority: 'high',
             notification: {
-              title: payload.type === 'incoming_call' ? payload.title : 'OneToThree',
-              body: payload.type === 'incoming_call' ? (payload.body || 'Incoming call') : 'New message',
-              channelId: payload.type === 'incoming_call' ? 'calls' : 'messages',
+              title: isCallPayload(payload.type) ? payload.title : 'OneToThree',
+              body: isCallPayload(payload.type) ? (payload.body || 'Incoming call') : 'New message',
+              channelId: isCallPayload(payload.type) ? 'calls' : 'messages',
             },
           },
           data,

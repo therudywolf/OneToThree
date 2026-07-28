@@ -19,6 +19,9 @@ function key(chatId: string): string {
 /** Store a draft text for a chat. Empty string clears the draft. */
 export function saveDraft(chatId: string, text: string): void {
   if (!chatId) return
+  // A clearing write must also disarm the debounce, otherwise the timer armed
+  // by the last keystroke fires afterwards and re-writes the cleared text.
+  if (!text.trim()) cancelPendingDraftSave(chatId)
   try {
     if (text.trim()) {
       localStorage.setItem(key(chatId), text)
@@ -43,6 +46,11 @@ export function loadDraft(chatId: string): string {
 /** Explicitly delete the stored draft (call on successful send). */
 export function clearDraft(chatId: string): void {
   if (!chatId) return
+  // Cancel the still-armed debounce FIRST. Sending "hello" with Enter resolves
+  // in ~150ms, well inside the 400ms window opened by the last keystroke; the
+  // timer then fired and resurrected the already-sent text, so reopening the
+  // chat repopulated the composer with it (one Enter away from a re-send).
+  cancelPendingDraftSave(chatId)
   try {
     localStorage.removeItem(key(chatId))
   } catch {
@@ -54,6 +62,14 @@ export function clearDraft(chatId: string): void {
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 
+/** Disarm a pending debounced write for a chat (no-op if none is armed). */
+export function cancelPendingDraftSave(chatId: string): void {
+  const existing = timers.get(chatId)
+  if (existing === undefined) return
+  clearTimeout(existing)
+  timers.delete(chatId)
+}
+
 /**
  * Debounced save — coalesces rapid keystrokes into a single write.
  * Default delay: 400 ms, matching typical UX for "stopped typing".
@@ -63,8 +79,7 @@ export function saveDraftDebounced(
   text: string,
   delayMs = 400
 ): void {
-  const existing = timers.get(chatId)
-  if (existing !== undefined) clearTimeout(existing)
+  cancelPendingDraftSave(chatId)
   const t = setTimeout(() => {
     timers.delete(chatId)
     saveDraft(chatId, text)

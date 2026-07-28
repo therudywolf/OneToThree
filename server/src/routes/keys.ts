@@ -21,11 +21,11 @@
  * All keys are transported as base64url strings. The bundle response MUST NOT
  * be cacheable.
  */
-import { and, desc, eq, or, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { devices, identityKeys, oneTimePrekeys, signedPrekeys } from '../db/schema.js'
+import { chatMembers, devices, identityKeys, oneTimePrekeys, signedPrekeys } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 
 /** Strict base64url matcher — 32 bytes = 43 chars (no padding), 64 bytes = 86. */
@@ -67,6 +67,63 @@ const deviceQuerySchema = z.object({
 
 /** Per-device cap on stored one-time pre-keys (flood protection). */
 const MAX_OPKS_PER_DEVICE = 200
+
+/**
+ * The same relationship gate `GET /api/users/:userId/devices` applies, because
+ * these routes expose the identical thing one path over: device count,
+ * device ids, X3DH keys and key-rotation generation. Without it any
+ * authenticated caller could walk the userbase from a uuid alone (invite links,
+ * /users/lookup and any public_open member list hand those out) — and, on
+ * /bundle, irreversibly POP a one-time prekey per request, draining a device's
+ * whole 200-key pool in minutes and silently downgrading every later X3DH
+ * handshake against it.
+ */
+async function sharesChatWith(viewerId: string, targetId: string): Promise<boolean> {
+  const shared = await db
+    .select({ chatId: chatMembers.chatId })
+    .from(chatMembers)
+    .where(
+      and(
+        eq(chatMembers.userId, targetId),
+        inArray(
+          chatMembers.chatId,
+          db
+            .select({ chatId: chatMembers.chatId })
+            .from(chatMembers)
+            .where(eq(chatMembers.userId, viewerId))
+        )
+      )
+    )
+    .limit(1)
+  return shared.length > 0
+}
+
+/**
+ * Per (requester → target device) budget for one-time-prekey POPs.
+ *
+ * A shared chat is cheap to obtain (just start a DIRECT chat), so the
+ * relationship gate alone does not stop a determined drainer. A legitimate
+ * sender pops ONE OPK per device when it bootstraps a ratchet session, so a
+ * handful per hour is far above real usage. Over budget we still serve the
+ * bundle — with `one_time_prekey: null` — because failing the fetch outright
+ * would break messaging, which is exactly what the attacker wants.
+ */
+const OPK_POPS_PER_TARGET_PER_HOUR = 10
+const OPK_POP_WINDOW_MS = 60 * 60 * 1000
+const opkPops = new Map<string, { count: number; expiresAt: number }>()
+
+function mayPopOpk(requesterId: string, targetDeviceId: string): boolean {
+  const now = Date.now()
+  for (const [k, v] of opkPops) if (v.expiresAt <= now) opkPops.delete(k)
+  const key = `${requesterId}:${targetDeviceId}`
+  const entry = opkPops.get(key)
+  if (!entry || entry.expiresAt <= now) {
+    opkPops.set(key, { count: 1, expiresAt: now + OPK_POP_WINDOW_MS })
+    return true
+  }
+  entry.count += 1
+  return entry.count <= OPK_POPS_PER_TARGET_PER_HOUR
+}
 
 /** The device that owns the caller's session — required to publish keys. */
 async function callerDeviceId(req: FastifyRequest): Promise<string | null> {
@@ -269,10 +326,23 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       if (!z.string().uuid().safeParse(req.params.userId).success) {
         return reply.status(400).send({ error: 'BAD_USER_ID' })
       }
+      if (req.params.userId !== u.id && !(await sharesChatWith(u.id, req.params.userId))) {
+        return reply.status(403).send({ error: 'FORBIDDEN' })
+      }
+      // Join `devices` so a REVOKED device can never be advertised: its identity
+      // row survives revocation, and peers kept running X3DH against the dead
+      // device (and popping its prekeys) on every message.
       const rows = await db
-        .select()
+        .select({
+          deviceId: identityKeys.deviceId,
+          signingPublicKey: identityKeys.signingPublicKey,
+          exchangePublicKey: identityKeys.exchangePublicKey,
+          exchangePublicKeySignature: identityKeys.exchangePublicKeySignature,
+          generation: identityKeys.generation,
+        })
         .from(identityKeys)
-        .where(eq(identityKeys.userId, req.params.userId))
+        .innerJoin(devices, eq(devices.id, identityKeys.deviceId))
+        .where(and(eq(identityKeys.userId, req.params.userId), isNull(devices.revokedAt)))
         .orderBy(desc(identityKeys.createdAt))
         // Bound the response: a real account has a handful of devices; a cap
         // stops a pathological/hostile row count from amplifying every fetch.
@@ -307,27 +377,63 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       }
       const q = deviceQuerySchema.safeParse(req.query)
       if (!q.success) return reply.status(400).send({ error: 'BAD_DEVICE_ID' })
+      if (req.params.userId !== u.id && !(await sharesChatWith(u.id, req.params.userId))) {
+        return reply.status(403).send({ error: 'FORBIDDEN' })
+      }
 
       const canonicalDeviceId = q.data.device_id
         ? await resolveCanonicalDeviceId(req.params.userId, q.data.device_id)
         : null
-      const where = canonicalDeviceId
+      // An EXPLICIT device_id must resolve even for a revoked device. This is
+      // the path `acceptIncomingInit` takes to validate a `dr_init`, and the
+      // ciphertext it validates was written BEFORE the revocation — hiding the
+      // identity here made every message still in flight from a since-revoked
+      // device permanently undecryptable (RATCHET_NO_SESSION, no possible
+      // retry). Identity is a verification key for data already on disk, not a
+      // routing address; `/keys/devices` and `/keys/bundle` keep the revoked
+      // filter, which is what actually stops fan-out to, and fresh X3DH
+      // against, a dead device.
+      //
+      // Without a device_id we return the newest identity and DO prefer a live
+      // device — right after revoking a freshly linked device the newest row was
+      // the revoked one, so the safety-number screen showed a device that no
+      // longer exists.
+      const baseWhere = canonicalDeviceId
         ? and(
             eq(identityKeys.userId, req.params.userId),
             eq(identityKeys.deviceId, canonicalDeviceId)
           )
-        : eq(identityKeys.userId, req.params.userId)
-      const [identity] = await db
-        .select()
-        .from(identityKeys)
-        .where(where)
-        .orderBy(desc(identityKeys.createdAt))
-        .limit(1)
+        : and(eq(identityKeys.userId, req.params.userId), isNull(devices.revokedAt))
+      const selectIdentity = (where: typeof baseWhere) =>
+        db
+          .select({
+            deviceId: identityKeys.deviceId,
+            signingPublicKey: identityKeys.signingPublicKey,
+            exchangePublicKey: identityKeys.exchangePublicKey,
+            exchangePublicKeySignature: identityKeys.exchangePublicKeySignature,
+            generation: identityKeys.generation,
+            revokedAt: devices.revokedAt,
+          })
+          .from(identityKeys)
+          .innerJoin(devices, eq(devices.id, identityKeys.deviceId))
+          .where(where)
+          .orderBy(desc(identityKeys.createdAt))
+          .limit(1)
+
+      // No fallback for the no-device_id case on purpose: a user whose devices
+      // are all revoked should not be advertised in the directory. The history
+      // path never needs it — `acceptIncomingInit` always asks by the envelope's
+      // explicit sender device id, which the branch above resolves regardless of
+      // revocation.
+      const [identity] = await selectIdentity(baseWhere)
       if (!identity) return reply.status(404).send({ error: 'NO_IDENTITY' })
       reply.header('Cache-Control', 'no-store')
       return reply.send({
         user_id: req.params.userId,
         device_id: identity.deviceId,
+        // Additive: lets the safety-number UI label a key that belongs to a
+        // device the peer has since revoked, instead of presenting it as live.
+        revoked: identity.revokedAt != null,
         identity: {
           signing_public_key: identity.signingPublicKey,
           exchange_public_key: identity.exchangePublicKey,
@@ -354,6 +460,9 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
       if (req.params.userId === u.id && !q.data.device_id) {
         return reply.status(400).send({ error: 'BUNDLE_FOR_SELF_FORBIDDEN' })
       }
+      if (req.params.userId !== u.id && !(await sharesChatWith(u.id, req.params.userId))) {
+        return reply.status(403).send({ error: 'FORBIDDEN' })
+      }
 
       const canonicalDeviceId = q.data.device_id
         ? await resolveCanonicalDeviceId(req.params.userId, q.data.device_id)
@@ -363,12 +472,20 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
         const identityWhere = canonicalDeviceId
           ? and(
               eq(identityKeys.userId, req.params.userId),
-              eq(identityKeys.deviceId, canonicalDeviceId)
+              eq(identityKeys.deviceId, canonicalDeviceId),
+              isNull(devices.revokedAt)
             )
-          : eq(identityKeys.userId, req.params.userId)
+          : and(eq(identityKeys.userId, req.params.userId), isNull(devices.revokedAt))
         const [identity] = await tx
-          .select()
+          .select({
+            deviceId: identityKeys.deviceId,
+            signingPublicKey: identityKeys.signingPublicKey,
+            exchangePublicKey: identityKeys.exchangePublicKey,
+            exchangePublicKeySignature: identityKeys.exchangePublicKeySignature,
+            generation: identityKeys.generation,
+          })
           .from(identityKeys)
+          .innerJoin(devices, eq(devices.id, identityKeys.deviceId))
           .where(identityWhere)
           .orderBy(desc(identityKeys.createdAt))
           .limit(1)
@@ -388,6 +505,12 @@ export const keysRoutes: FastifyPluginAsync = async (app) => {
           .orderBy(desc(signedPrekeys.createdAt))
           .limit(1)
         if (!spk) return { identity, spk: null, opk: null }
+
+        // Over the per-target pop budget: serve the bundle without an OPK
+        // rather than letting one caller empty the pool for everyone.
+        if (!mayPopOpk(u.id, targetDeviceId)) {
+          return { identity, spk, opk: null }
+        }
 
         // Pop one OPK for this specific device, atomically.
         const popped = await tx.execute(

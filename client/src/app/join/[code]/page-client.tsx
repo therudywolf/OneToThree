@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/auth/auth-provider'
 import { joinChatByInviteCode } from '@/lib/api/chats'
 import { useTranslation } from '@/hooks/use-translation'
@@ -10,36 +10,55 @@ import { useTranslation } from '@/hooks/use-translation'
 export function JoinPackClient({ code }: { code: string }) {
   const { t } = useTranslation()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user, loading } = useAuth()
   const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  // `?code=` wins over the path segment. The static export only contains
+  // /join/_ (generateStaticParams), so a native deep link to /join/<code> has no
+  // document to land on inside the Capacitor WebView — a query-based route on
+  // the exported page is the form that actually resolves there. The path form
+  // stays for the web build, which regenerates unknown params on demand.
+  const inviteCode = (searchParams.get('code') ?? code).trim()
 
   useEffect(() => {
     if (loading) return
     if (!user) {
-      router.replace(`/login?code=${encodeURIComponent(code.trim())}`)
+      router.replace(`/login?code=${encodeURIComponent(inviteCode)}`)
       return
     }
-    if (!code.trim()) {
+    if (!inviteCode || inviteCode === '_') {
       setErr('INVALID_INTEGRATION_CODE')
-      return
     }
+  }, [loading, user, inviteCode, router])
 
-    let cancelled = false
-    void joinChatByInviteCode(code)
+  /**
+   * Joining is a DELIBERATE act, never a side effect of opening a URL.
+   *
+   * This used to POST /join/<code> straight from the mount effect. /join/<code>
+   * is a top-level GET navigation, so the Origin/CSRF allowlist does not apply —
+   * the POST is issued by the app itself with a perfectly legitimate Origin.
+   * That meant any page (or an `onetothree://chat?code=` link on Android) could
+   * enrol a logged-in visitor into an attacker-controlled group with one tap:
+   * the attacker learned their user id, username and ECDH public key and could
+   * message them, bypassing the peer-approval gate, with no dialog ever shown.
+   */
+  const confirmJoin = () => {
+    if (busy || !inviteCode) return
+    setBusy(true)
+    setErr(null)
+    joinChatByInviteCode(inviteCode)
       .then(({ chat_id }) => {
-        if (cancelled) return
         router.replace(`/?chat=${encodeURIComponent(chat_id)}`)
       })
       .catch((e) => {
-        if (cancelled) return
-        const msg = e instanceof Error ? e.message : 'LINK_INTEGRATION_FAILED'
-        setErr(msg)
+        setBusy(false)
+        setErr(e instanceof Error ? e.message : 'LINK_INTEGRATION_FAILED')
       })
+  }
 
-    return () => {
-      cancelled = true
-    }
-  }, [loading, user, code, router])
+  const showConfirm = !loading && !!user && !err && !busy
 
   return (
     <main className="relative flex min-h-dvh flex-col items-center justify-center bg-void px-4 font-mono">
@@ -69,6 +88,33 @@ export function JoinPackClient({ code }: { code: string }) {
             >
               [ {t('common.back')} ]
             </Link>
+          </div>
+        ) : showConfirm ? (
+          <div className="space-y-5">
+            <p className="text-xs uppercase tracking-[0.2em] text-neon-cyan">
+              {t('join.confirmTitle')}
+            </p>
+            <p className="text-[10px] leading-relaxed text-text-muted">
+              {t('join.confirmBody')}
+            </p>
+            <p className="break-all text-[10px] tracking-widest text-text-muted/70">
+              {inviteCode}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={confirmJoin}
+                className="flex h-10 items-center justify-center border border-neon-cyan px-6 text-[10px] uppercase tracking-[0.3em] text-neon-cyan transition-all hover:bg-neon-cyan/10 hover:text-text-primary"
+              >
+                [ {t('join.confirmAction')} ]
+              </button>
+              <Link
+                href="/"
+                className="flex h-10 items-center justify-center border border-border-strong px-6 text-[10px] uppercase tracking-[0.3em] text-text-muted transition-all hover:text-text-primary"
+              >
+                [ {t('common.cancel')} ]
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center space-y-4">

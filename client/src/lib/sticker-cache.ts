@@ -30,41 +30,70 @@ function canUseIndexedDb(): boolean {
   return typeof indexedDB !== 'undefined'
 }
 
+/**
+ * FIFO purge under the TTL / entry / byte caps.
+ *
+ * This runs behind every sticker write, i.e. once per sticker while a 120-item
+ * pack loads. It must therefore stay cheap. It used to `orderBy('timestamp')
+ * .toArray()` the whole store — up to 500 structured-clone deserialisations —
+ * and did so up to THREE times per call, so opening a picker cost tens of
+ * thousands of row reads on the main thread and visibly stalled. Same treatment
+ * as `purgeOldSegments` in media-cache.ts: key-only queries for the TTL and
+ * entry caps, a streaming cursor for the byte cap.
+ */
 async function purgeStickerCache(): Promise<void> {
   if (!canUseIndexedDb()) return
 
-  let rows = await stickerCacheDb.items.orderBy('timestamp').toArray()
-
-  const expired = rows
-    .filter((row) => Date.now() - row.timestamp > STICKER_CACHE_TTL_MS)
-    .map((row) => row.mediaKey)
-
+  // 1. TTL — key-only range query on the `timestamp` index.
+  const cutoff = Date.now() - STICKER_CACHE_TTL_MS
+  const expired = await stickerCacheDb.items.where('timestamp').below(cutoff).primaryKeys()
   if (expired.length > 0) {
     await stickerCacheDb.items.bulkDelete(expired)
-    rows = await stickerCacheDb.items.orderBy('timestamp').toArray()
   }
 
-  if (rows.length > STICKER_CACHE_MAX_ENTRIES) {
-    const toDelete = rows
-      .slice(0, rows.length - STICKER_CACHE_MAX_ENTRIES)
-      .map((row) => row.mediaKey)
-    await stickerCacheDb.items.bulkDelete(toDelete)
-    rows = await stickerCacheDb.items.orderBy('timestamp').toArray()
+  // 2. Entry cap — count and evict by key, without reading any blob row.
+  const total = await stickerCacheDb.items.count()
+  if (total > STICKER_CACHE_MAX_ENTRIES) {
+    const ordered = await stickerCacheDb.items.orderBy('timestamp').primaryKeys()
+    await stickerCacheDb.items.bulkDelete(ordered.slice(0, total - STICKER_CACHE_MAX_ENTRIES))
   }
 
-  let currentBytes = rows.reduce((sum, row) => sum + row.blob.size, 0)
+  // 3. Byte cap — stream oldest-first. `Blob.size` is metadata; the bytes stay
+  //    on disk (a Blob is a lazy reference), so this never materialises the
+  //    cache contents in memory.
+  let currentBytes = 0
+  await stickerCacheDb.items.orderBy('timestamp').each((row) => {
+    currentBytes += row.blob?.size ?? 0
+  })
   if (currentBytes <= STICKER_CACHE_MAX_BYTES) return
 
   const overflowKeys: string[] = []
-  for (const row of rows) {
-    if (currentBytes <= STICKER_CACHE_MAX_BYTES) break
+  let running = currentBytes
+  await stickerCacheDb.items.orderBy('timestamp').each((row) => {
+    if (running <= STICKER_CACHE_MAX_BYTES) return
     overflowKeys.push(row.mediaKey)
-    currentBytes -= row.blob.size
-  }
+    running -= row.blob?.size ?? 0
+  })
 
   if (overflowKeys.length > 0) {
     await stickerCacheDb.items.bulkDelete(overflowKeys)
   }
+}
+
+// Coalesce bursts. A pack load fires setCachedStickerBlob ~120 times back to
+// back and the caps are soft — one trailing purge per burst is enough, and it
+// keeps the picker's first paint off the purge's critical path.
+const PURGE_DEBOUNCE_MS = 750
+let purgeTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleStickerCachePurge(): void {
+  if (!canUseIndexedDb() || purgeTimer !== null) return
+  purgeTimer = setTimeout(() => {
+    purgeTimer = null
+    void purgeStickerCache().catch(() => {
+      /* cache hygiene is best-effort */
+    })
+  }, PURGE_DEBOUNCE_MS)
 }
 
 export async function getCachedStickerBlob(
@@ -92,7 +121,7 @@ export async function setCachedStickerBlob(
     mimeType,
     timestamp: Date.now(),
   })
-  await purgeStickerCache()
+  scheduleStickerCachePurge()
 }
 
 export async function invalidateCachedStickerBlob(mediaKey: string): Promise<void> {

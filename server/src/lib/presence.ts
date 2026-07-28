@@ -1,7 +1,7 @@
 import { and, eq, inArray, ne } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { chatMembers, users } from '../db/schema.js'
-import { sendToUser } from '../ws/registry.js'
+import { broadcastToUsers } from '../ws/registry.js'
 
 export type LastSeenPrivacy = 'everyone' | 'contacts' | 'nobody'
 
@@ -102,19 +102,27 @@ export async function broadcastOnlineStatusChange(
     .limit(1)
   const sid = payload.user_id
 
-  for (const peer of relatedUserIds) {
-    const mask = shouldMaskPresenceForViewer({
-      viewerId: peer,
-      subjectId: sid,
-      hidePresence: subject?.hidePresence === true,
-      lastSeenPrivacy: subject?.lastSeenPrivacy,
-      viewerIsRelated: peer !== sid,
-    })
-    sendToUser(peer, {
-      type: 'online_status_change',
-      user_id: sid,
-      online: mask ? false : payload.online,
-      last_seen_at: mask ? null : payload.last_seen_at,
-    })
-  }
+  // Every input to the mask is SUBJECT-level: each id here shares a chat with
+  // the subject by construction (getRelatedUserIds), so `viewerIsRelated` is
+  // always true, and self is excluded. The decision — and therefore the payload
+  // — is identical for every peer, so compute it ONCE and let broadcastToUsers
+  // serialize once. The per-peer loop meant ~10k JSON.stringify calls (plus one
+  // un-pipelined Redis PUBLISH each with fan-out on) every time a member of a
+  // large public channel connected or disconnected, and a mobile client
+  // backgrounding produces a connect+disconnect pair.
+  const peers = relatedUserIds.filter((id) => id !== sid)
+  if (peers.length === 0) return
+  const mask = shouldMaskPresenceForViewer({
+    viewerId: peers[0],
+    subjectId: sid,
+    hidePresence: subject?.hidePresence === true,
+    lastSeenPrivacy: subject?.lastSeenPrivacy,
+    viewerIsRelated: true,
+  })
+  broadcastToUsers(peers, {
+    type: 'online_status_change',
+    user_id: sid,
+    online: mask ? false : payload.online,
+    last_seen_at: mask ? null : payload.last_seen_at,
+  })
 }

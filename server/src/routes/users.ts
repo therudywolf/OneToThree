@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { HeadObjectCommand } from '@aws-sdk/client-s3'
+import { HeadObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers, devices, loginEvents, messageDeliveries, messages, pushSubscriptions, userBlocks, users } from '../db/schema.js'
+import { attachments, chatMembers, devices, loginEvents, messageDeliveries, messages, oneTimePrekeys, pushSubscriptions, signedPrekeys, userBlocks, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { setPendingAvatarKey, takePendingAvatarKey } from '../lib/avatar-pending.js'
 import {
@@ -93,50 +93,105 @@ const avatarCommitBodySchema = z.object({
   avatar_key: z.string().min(1).max(512),
 })
 
+/**
+ * Hard ceiling for a committed avatar object.
+ *
+ * The presigned PUT itself cannot carry a content-length-range (SigV4 here
+ * deliberately excludes content-length so proxies may rewrite it — see s3.ts),
+ * so the size is enforced at COMMIT: anything larger is deleted again and
+ * rejected. Without this a single account could PUT arbitrarily large bodies
+ * into the avatars bucket, which no quota counts and which the media LRU
+ * evictor never scans (it only enumerates `attachments`).
+ */
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024
+
+/** The transaction handle drizzle hands to a `db.transaction` callback. */
+type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+/**
+ * Drop a device's PREKEY material (signed + one-time). Deliberately NOT the
+ * identity key.
+ *
+ * Revocation used to set `devices.revoked_at` and stop there, leaving the device
+ * fully live in the key directory: peers kept fetching it via
+ * GET /api/keys/devices/:userId, ran X3DH against the dead device (popping real
+ * one-time prekeys), and emitted a ciphertext slot for it on every message —
+ * which the delivery query then silently discarded. Purging the prekeys, plus
+ * hiding revoked devices from `/keys/devices` and `/keys/bundle`, is what
+ * actually stops that: no fan-out target, and no fresh session can be
+ * bootstrapped toward a dead device.
+ *
+ * The IDENTITY key must outlive the device. It is not a routing address, it is
+ * the VERIFICATION key for ciphertext that is already sitting on disk. Messages
+ * sent from a device before it was revoked carry a `dr_init` naming that device,
+ * and `acceptIncomingInit` hard-requires `fetchIdentity(peer, senderDeviceId)`
+ * to validate the handshake. Deleting the row made every such envelope — the
+ * ones already queued in /sync/pending when the user hit "sign out this
+ * session" — fail as RATCHET_NO_SESSION permanently, with no retry that could
+ * ever succeed. Losing a laptop is exactly when revocation is used, and exactly
+ * when the messages still in flight from it matter most.
+ *
+ * `tx` is the enclosing transaction so the deletion commits with `revoked_at`.
+ */
+async function purgeDeviceKeyMaterial(tx: DbTx, deviceIds: string[]): Promise<void> {
+  if (deviceIds.length === 0) return
+  await tx.delete(oneTimePrekeys).where(inArray(oneTimePrekeys.deviceId, deviceIds))
+  await tx.delete(signedPrekeys).where(inArray(signedPrekeys.deviceId, deviceIds))
+}
+
 export const userRoutes: FastifyPluginAsync = async (app) => {
   const s3 = createS3Client()
   const presignS3 = createS3ClientForPresigning()
 
-  app.post('/me/vault/change-pin', {
-    // Vault blob is opaque ciphertext; ~512 KiB ceiling protects against
-    // pathological PBKDF2/Argon2 wrapping payloads.
-    bodyLimit: 512 * 1024,
-    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
-  }, async (request, reply) => {
-    const user = await getAuthUser(request, reply)
-    if (!assertAuthed(reply, user)) return
-
-    const parsed = z
-      .object({ encrypted_blob: z.string().min(1) })
-      .safeParse(request.body)
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'INVALID_BODY' })
+  /**
+   * Delete every object under `avatars/{userId}/` except the one currently
+   * referenced by the account.
+   *
+   * Only a *committed* avatar is ever deleted (users.ts commit path replaces the
+   * previous key); an upload that is presigned and PUT but never committed had
+   * no owner and no cleanup at all, so a loop of presign → PUT → never-commit
+   * grew the bucket without bound. Sweeping the caller's own prefix each time a
+   * new upload starts keeps that garbage to at most one in-flight object.
+   * Best-effort: a failure here must not block the avatar change.
+   */
+  async function pruneOrphanAvatarObjects(
+    bucket: string,
+    userId: string,
+    keepKey: string | null
+  ): Promise<void> {
+    try {
+      const listed = await s3.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: `avatars/${userId}/`,
+          MaxKeys: 100,
+        })
+      )
+      for (const obj of listed.Contents ?? []) {
+        if (!obj.Key || obj.Key === keepKey) continue
+        await deleteObjectIfExists({ client: s3, bucket, key: obj.Key })
+      }
+    } catch {
+      /* best-effort housekeeping */
     }
+  }
 
-    const [current] = await db
-      .select({ vaultVersion: users.vaultVersion })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1)
-
-    const curVer = current?.vaultVersion ?? 0
-    const nextVer = curVer + 1
-    const now = new Date()
-
-    await db
-      .update(users)
-      .set({
-        vaultBlob: parsed.data.encrypted_blob,
-        vaultVersion: nextVer,
-        vaultUpdatedAt: now,
-      })
-      .where(eq(users.id, user.id))
-
-    return reply.send({
-      ok: true,
-      vault_version: nextVer,
-      updated_at: now.toISOString(),
-    })
+  /**
+   * GONE — server-side vault escrow is retired.
+   *
+   * This route accepted the wrapped keyring and stored it in `users.vault_blob`,
+   * which is exactly the escrow the product removed when `/vault/fetch` and
+   * `/vault/sync` were turned into 410s: the server is not supposed to hold a
+   * copy of the vault at all. The client stopped calling it, but the endpoint
+   * stayed reachable — so any script holding a valid session cookie could still
+   * push a blob into another account's row, and worse, the honest change-password
+   * flow had been silently re-uploading the keyring on every password change.
+   *
+   * Kept as an explicit 410 rather than deleted so an un-refreshed client gets a
+   * clear, non-retrying answer instead of a 404 that reads like a routing bug.
+   */
+  app.post('/me/vault/change-pin', async (_request, reply) => {
+    return reply.status(410).send({ error: 'VAULT_ESCROW_REMOVED' })
   })
 
   // ─── Account recovery (Option A) ──────────────────────────────────────────
@@ -275,14 +330,20 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true })
   })
 
-  app.get('/me/avatar-challenge', async (request, reply) => {
+  app.get('/me/avatar-challenge', {
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const nonce = await issueAvatarNonce(user.id)
     return reply.send({ nonce })
   })
 
-  app.post('/me/avatar/presign', async (request, reply) => {
+  // Route-level cap: presign hands out a write capability into a bucket that no
+  // quota counts, so it must not fall back to the global 100/min budget.
+  app.post('/me/avatar/presign', {
+    config: { rateLimit: { max: 10, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
 
@@ -325,6 +386,15 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const bucket = getAvatarsBucketName()
     await ensureBucketExists(s3, bucket)
 
+    // Reap whatever earlier presigns left behind before handing out another
+    // write capability for this prefix.
+    const [currentAvatar] = await db
+      .select({ avatarKey: users.avatarKey })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1)
+    await pruneOrphanAvatarObjects(bucket, user.id, currentAvatar?.avatarKey ?? null)
+
     const key = `avatars/${user.id}/${randomUUID()}.jpg`
     const uploadUrl = rewritePresignedUrlToPublicBase(
       await presignPutObject({
@@ -364,10 +434,17 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const bucket = getAvatarsBucketName()
     await ensureBucketExists(s3, bucket)
 
+    let uploadedBytes: number
     try {
-      await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: avatarKey }))
+      const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: avatarKey }))
+      uploadedBytes = Number(head.ContentLength ?? 0)
     } catch {
       return reply.status(412).send({ error: 'AVATAR_OBJECT_MISSING' })
+    }
+
+    if (uploadedBytes > MAX_AVATAR_BYTES) {
+      await deleteObjectIfExists({ client: s3, bucket, key: avatarKey })
+      return reply.status(413).send({ error: 'AVATAR_TOO_LARGE', max_bytes: MAX_AVATAR_BYTES })
     }
 
     const [row] = await db
@@ -385,7 +462,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, avatar_key: avatarKey })
   })
 
-  app.get('/:username/profile', async (request, reply) => {
+  app.get('/:username/profile', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const auth = await getAuthUser(request, reply)
     if (!assertAuthed(reply, auth)) return
 
@@ -406,6 +483,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         displayName: users.displayName,
         lastSeenAt: users.lastSeenAt,
         lastSeenPrivacy: users.lastSeenPrivacy,
+        isDiscoverable: users.isDiscoverable,
       })
       .from(users)
       .where(eq(users.username, params.data.username))
@@ -417,6 +495,17 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const viewerIsRelated = isSelf
       ? true
       : new Set(await getRelatedUserIds(row.id)).has(auth.id)
+
+    // GET /search gates every row on is_discoverable (default FALSE = shadow),
+    // but this route resolved any handle for any caller — so a wordlist against
+    // it enumerated accounts that opted out of discovery (404 vs 200) AND handed
+    // a stranger their bio/links plus an online/last_seen polling oracle, since
+    // the default last_seen_privacy is 'everyone'. Same gate as /search, plus
+    // the shared-chat relation so people you already talk to still resolve.
+    if (!isSelf && !viewerIsRelated && row.isDiscoverable !== true) {
+      return reply.status(404).send({ error: 'USER_NOT_FOUND' })
+    }
+
     const mask = shouldMaskPresenceForViewer({
       viewerId: auth.id,
       subjectId: row.id,
@@ -900,6 +989,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         })
         .where(and(eq(devices.id, deviceId), eq(devices.userId, user.id)))
       await tx.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, deviceId))
+      // The device must re-link and re-publish; its old X3DH material was
+      // already dropped on revoke, but clear it again so a stale generation
+      // can't 409 the fresh identity publish.
+      await purgeDeviceKeyMaterial(tx, [deviceId])
     })
 
     sendToUser(user.id, { type: 'server_notice', notice: 'device_reauthorized', device_id: deviceId })
@@ -935,6 +1028,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         .returning({ id: devices.id })
       if (!row) return null
       await tx.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, deviceId))
+      await purgeDeviceKeyMaterial(tx, [deviceId])
       return row
     })
     if (!updated) return reply.status(404).send({ error: 'DEVICE_NOT_FOUND' })
@@ -985,14 +1079,18 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
     const sessionId = normalizeUuid(params.data.sessionId)
 
-    const [updated] = await db
-      .update(devices)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(devices.id, sessionId), eq(devices.userId, user.id)))
-      .returning({ id: devices.id })
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(devices)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(devices.id, sessionId), eq(devices.userId, user.id)))
+        .returning({ id: devices.id })
+      if (!row) return null
+      await tx.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, sessionId))
+      await purgeDeviceKeyMaterial(tx, [sessionId])
+      return row
+    })
     if (!updated) return reply.status(404).send({ error: 'SESSION_NOT_FOUND' })
-
-    await db.delete(messageDeliveries).where(eq(messageDeliveries.deviceId, sessionId))
 
     sendToUser(user.id, { type: 'server_notice', notice: 'device_revoked', device_id: sessionId })
     return reply.send({ ok: true })
@@ -1012,32 +1110,29 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const { getRedis } = await import('../lib/redis.js')
     const r = getRedis()
 
-    if (currentDeviceId) {
-      const revokedRows = await db
+    const revokeWhere = currentDeviceId
+      ? and(eq(devices.userId, user.id), ne(devices.id, currentDeviceId))
+      : eq(devices.userId, user.id)
+
+    const ids = await db.transaction(async (tx) => {
+      const revokedRows = await tx
         .update(devices)
         .set({ revokedAt: new Date() })
-        .where(and(eq(devices.userId, user.id), ne(devices.id, currentDeviceId)))
+        .where(revokeWhere)
         .returning({ id: devices.id })
-      const ids = revokedRows.map((r) => r.id)
-      if (ids.length) await db.delete(messageDeliveries).where(inArray(messageDeliveries.deviceId, ids))
-      if (r && ids.length) {
-        const now = Date.now().toString()
-        await Promise.all(ids.map((id) => r.set(`device:revoked:${id}`, now, 'EX', 86400 + 60)))
+      const revokedIds = revokedRows.map((row) => row.id)
+      if (revokedIds.length) {
+        await tx.delete(messageDeliveries).where(inArray(messageDeliveries.deviceId, revokedIds))
       }
-    } else {
-      const revokedRows = await db
-        .update(devices)
-        .set({ revokedAt: new Date() })
-        .where(eq(devices.userId, user.id))
-        .returning({ id: devices.id })
-      const ids = revokedRows.map((r) => r.id)
-      if (ids.length) await db.delete(messageDeliveries).where(inArray(messageDeliveries.deviceId, ids))
-      if (r && ids.length) {
-        const now = Date.now().toString()
-        await Promise.all(ids.map((id) => r.set(`device:revoked:${id}`, now, 'EX', 86400 + 60)))
-      }
-      clearFmSessionCookie(reply)
+      await purgeDeviceKeyMaterial(tx, revokedIds)
+      return revokedIds
+    })
+
+    if (r && ids.length) {
+      const now = Date.now().toString()
+      await Promise.all(ids.map((id) => r.set(`device:revoked:${id}`, now, 'EX', 86400 + 60)))
     }
+    if (!currentDeviceId) clearFmSessionCookie(reply)
     return reply.send({ ok: true })
   })
 
@@ -1128,16 +1223,18 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       .from(messages)
       .where(and(eq(messages.senderId, user.id), isNotNull(messages.mediaPath)))
 
-    const bucket = getBucketName()
-    for (const row of mediaRows) {
-      if (row.mediaPath) void deleteObjectIfExists({ client: s3, bucket, key: row.mediaPath }).catch(() => {})
-    }
+    // messages.media_path only names the FIRST item of an album; items 2..N and
+    // every staged-but-never-sent upload live in `attachments`. Those rows
+    // cascade away with the user row, after which runOrphanAttachmentCleanup /
+    // the LRU evictor (both of which iterate `attachments`) can never reach the
+    // objects again — the user asked for deletion and their blobs would stay in
+    // the bucket forever.
+    const attachmentRows = await db
+      .select({ bucket: attachments.bucket, objectKey: attachments.objectKey })
+      .from(attachments)
+      .where(eq(attachments.uploaderId, user.id))
 
     const [avatarRow] = await db.select({ avatarKey: users.avatarKey }).from(users).where(eq(users.id, user.id)).limit(1)
-    if (avatarRow?.avatarKey) {
-      const avatarBucket = getAvatarsBucketName()
-      void deleteObjectIfExists({ client: s3, bucket: avatarBucket, key: avatarRow.avatarKey }).catch(() => {})
-    }
 
     await db.transaction(async (tx) => {
       // Tombstone, don't gap: re-point this user's messages to the shared
@@ -1151,15 +1248,19 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
       // Drop the DIRECT per-device ciphertext slots so a peer who still holds
       // the ratchet can't decrypt the surviving rows back to the original text.
-      const ownMsgs = await tx
-        .select({ id: messages.id })
-        .from(messages)
-        .where(eq(messages.senderId, user.id))
-      if (ownMsgs.length > 0) {
-        await tx
-          .delete(messageDeliveries)
-          .where(inArray(messageDeliveries.messageId, ownMsgs.map((m) => m.id)))
-      }
+      // Correlated subquery, NOT a materialised id list: a heavy account has
+      // more than 65534 sent messages, and one bind parameter per id blows the
+      // postgres wire-protocol limit (MAX_PARAMETERS_EXCEEDED). That aborted the
+      // transaction and left the account permanently undeletable — while the
+      // fire-and-forget S3 deletes had already destroyed its media.
+      await tx
+        .delete(messageDeliveries)
+        .where(
+          inArray(
+            messageDeliveries.messageId,
+            tx.select({ id: messages.id }).from(messages).where(eq(messages.senderId, user.id))
+          )
+        )
 
       // Redact to a self-describing system tombstone. iv='system:v1' makes the
       // client decrypt path return the content verbatim ("[deleted]") instead
@@ -1185,6 +1286,20 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       await tx.delete(userBlocks).where(eq(userBlocks.blockedId, user.id))
       await tx.delete(users).where(eq(users.id, user.id))
     })
+
+    // Only now that the delete has COMMITTED: destroying the objects first meant
+    // a rolled-back transaction left live message rows pointing at bytes that
+    // were already gone.
+    const bucket = getBucketName()
+    for (const row of mediaRows) {
+      if (row.mediaPath) void deleteObjectIfExists({ client: s3, bucket, key: row.mediaPath }).catch(() => {})
+    }
+    for (const row of attachmentRows) {
+      void deleteObjectIfExists({ client: s3, bucket: row.bucket || bucket, key: row.objectKey }).catch(() => {})
+    }
+    if (avatarRow?.avatarKey) {
+      void deleteObjectIfExists({ client: s3, bucket: getAvatarsBucketName(), key: avatarRow.avatarKey }).catch(() => {})
+    }
 
     clearFmSessionCookie(reply)
     return reply.send({ ok: true })

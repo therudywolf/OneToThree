@@ -115,6 +115,12 @@ services:
       start_period: 20s
 
   db-migrate:
+    # Mirrors the db/redis/minio hardening: the migrator only reads files and
+    # opens a TCP connection to db, and it is the one short-lived container that
+    # holds the production Postgres credentials.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     build:
       context: .
       dockerfile: docker/db-migrate/Dockerfile
@@ -271,6 +277,22 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    # web renders every unauthenticated page and proxies /api/* (next.config.js
+    # rewrites), and it sits on BOTH `internal` and `edge` — so it was the one
+    # internet-facing service still running with the default capability set
+    # (NET_RAW alone allows ARP/DNS spoofing against api and db on the shared
+    # bridge) and a writable rootfs. Same containment as api.
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    tmpfs:
+      # Next's standalone server writes nothing outside these two: /tmp and the
+      # ISR / next-image cache. Both are mounted uid=1001 because the runner
+      # stage runs as the non-root `nextjs` user (client/Dockerfile) and a
+      # root-owned tmpfs would make the server crash on its first cache write.
+      - /tmp:noexec,nosuid,nodev,size=64m,uid=1001,gid=1001
+      - /app/.next/cache:noexec,nosuid,nodev,size=256m,uid=1001,gid=1001
     cpu_shares: 1024
     mem_limit: 1536m
     mem_reservation: 512m
@@ -278,6 +300,9 @@ services:
       - '3000'
     environment:
       NODE_ENV: production
+      # `nextjs` is a --system user with no home directory; under read_only any
+      # library that touches $HOME would hit a read-only /. Point it at the tmpfs.
+      HOME: /tmp
     depends_on:
       api:
         condition: service_healthy
@@ -372,6 +397,21 @@ services:
   # entrypoint wrapper builds the LIVEKIT_KEYS env from the mounted Docker
   # secrets before exec'ing the server binary.  This keeps the api key /
   # secret out of .env.prod entirely.
+  #
+  # Firewall checklist (host) — mirrors the coturn block above:
+  #   - TCP 7881 and UDP 50000 for media. MUST be open.
+  #   - TCP 7880 (HTTP/WS signaling) MUST NOT be open to the internet. Under
+  #     host networking LiveKit listens on every interface, and 7880 is plain
+  #     HTTP: a direct ws://<public-ip>:7880/rtc?access_token=<jwt> join sends
+  #     the room JWT in the clear, and the Twirp admin surface
+  #     (/twirp/livekit.RoomService/*) answers outside Caddy — no TLS, no
+  #     Anubis proof-of-work, no CrowdSec rate limiting. Clients must reach it
+  #     only through wss://lk.${DOMAIN}. `ufw` default-deny already covers this
+  #     (DEPLOY.md never opens 7880) — verify with `ufw status` after deploy;
+  #     do NOT add an allow rule for it.
+  #   - Binding livekit.yaml `bind_addresses` to 127.0.0.1 does NOT work here:
+  #     the reverse proxy is a container (~/infra/caddy) and reaches the SFU at
+  #     host.docker.internal:7880, i.e. the docker bridge gateway, not loopback.
   livekit:
     # Drop all Linux capabilities: the SFU binds only high ports (7880 signaling,
     # 7881 ICE/TCP, and the UDP media range — all >1024) and the distroless image

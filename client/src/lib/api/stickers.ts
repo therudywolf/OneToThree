@@ -210,6 +210,39 @@ function touchStickerObjectUrl(mediaKey: string): void {
   }
 }
 
+/**
+ * Is this object URL still bound as the `src` of something on screen?
+ *
+ * Revoking a live `src` blanks the element permanently — a StickerBubble only
+ * re-resolves on mount/mediaKey change, so an evicted sticker message stayed a
+ * broken image until it was scrolled out and back in. Browsing four large packs
+ * is enough to push the message list's older URLs past the cap, so this was the
+ * normal case, not an edge case.
+ */
+function isStickerObjectUrlOnScreen(url: string): boolean {
+  if (typeof document === 'undefined') return false
+  // `url` is a browser-minted blob: URL — no quotes, safe to inline.
+  return document.querySelector(`img[src="${url}"], video[src="${url}"]`) !== null
+}
+
+function evictStickerObjectUrls(): void {
+  if (stickerBlobUrlByMediaKey.size <= STICKER_BLOB_URL_MAX) return
+  // Oldest-first over a snapshot. In-use URLs are skipped and re-inserted at
+  // the young end so the next eviction pass doesn't re-scan them; if everything
+  // held is on screen we simply overshoot the cap rather than break the UI.
+  for (const key of [...stickerBlobUrlByMediaKey.keys()]) {
+    if (stickerBlobUrlByMediaKey.size <= STICKER_BLOB_URL_MAX) return
+    const url = stickerBlobUrlByMediaKey.get(key)
+    if (url === undefined) continue
+    if (isStickerObjectUrlOnScreen(url)) {
+      touchStickerObjectUrl(key)
+      continue
+    }
+    URL.revokeObjectURL(url)
+    stickerBlobUrlByMediaKey.delete(key)
+  }
+}
+
 function rememberStickerObjectUrl(mediaKey: string, blob: Blob): string {
   const existing = stickerBlobUrlByMediaKey.get(mediaKey)
   if (existing) {
@@ -218,13 +251,7 @@ function rememberStickerObjectUrl(mediaKey: string, blob: Blob): string {
   }
   const objectUrl = URL.createObjectURL(blob)
   stickerBlobUrlByMediaKey.set(mediaKey, objectUrl)
-  while (stickerBlobUrlByMediaKey.size > STICKER_BLOB_URL_MAX) {
-    const oldestKey = stickerBlobUrlByMediaKey.keys().next().value
-    if (oldestKey === undefined) break
-    const oldUrl = stickerBlobUrlByMediaKey.get(oldestKey)
-    if (oldUrl) URL.revokeObjectURL(oldUrl)
-    stickerBlobUrlByMediaKey.delete(oldestKey)
-  }
+  evictStickerObjectUrls()
   return objectUrl
 }
 

@@ -213,11 +213,22 @@ export function useStickyScroll(
   }, [scrollRef])
 
   // === Layout-change observer ===
-  // ResizeObserver on the container AND each first-level child (so a single
+  // ResizeObserver on the container AND each message bubble (so a single
   // bubble's height change — late image decode, reaction add, edit reflow —
-  // triggers restore). MutationObserver tracks added children to keep the RO
-  // membership in sync. Capture-phase media `load` events catch <img>/<video>
-  // dimension settling. Everything funnels into one rAF-coalesced restoreNow.
+  // triggers restore). MutationObserver tracks added/removed children to keep
+  // the RO membership in sync. Capture-phase media `load` events catch
+  // <img>/<video> dimension settling. Everything funnels into one rAF-coalesced
+  // restoreNow.
+  //
+  // The RO targets `[data-message-id]` bubbles, NOT `el.children`: the direct
+  // children are Tailwind `.contents` wrappers, and an element with
+  // display:contents generates no CSS box — ResizeObserver reports it once as
+  // 0x0 and never again. So in-place growth (a peer's reaction landing on a
+  // message above the viewport, a CollapsibleText expand, an edit that adds a
+  // line) never fired a restore and the reader's line jumped away under them.
+  // Observed targets are tracked in a Set so unmounted rows — the 50-message
+  // ring buffer rotates constantly — get unobserved instead of being pinned as
+  // detached DOM for the whole chat session.
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -234,16 +245,25 @@ export function useStickyScroll(
     const containerRO =
       typeof ResizeObserver !== 'undefined' ? new ResizeObserver(queue) : null
     containerRO?.observe(el)
-    const observeChildren = () => {
+    const observed = new Set<Element>()
+    const syncObservedBubbles = () => {
       if (!childRO) return
-      const children = el.children
-      for (let i = 0; i < children.length; i++) {
-        childRO.observe(children[i] as Element)
+      for (const node of observed) {
+        if (node.isConnected) continue
+        childRO.unobserve(node)
+        observed.delete(node)
+      }
+      const bubbles = el.querySelectorAll('[data-message-id]')
+      for (let i = 0; i < bubbles.length; i++) {
+        const node = bubbles[i]
+        if (observed.has(node)) continue
+        childRO.observe(node)
+        observed.add(node)
       }
     }
-    observeChildren()
+    syncObservedBubbles()
     const mo = new MutationObserver(() => {
-      observeChildren()
+      syncObservedBubbles()
       queue()
     })
     mo.observe(el, { childList: true, subtree: false })
@@ -255,6 +275,7 @@ export function useStickyScroll(
     el.addEventListener('loadedmetadata', onMediaLoad, true)
     return () => {
       childRO?.disconnect()
+      observed.clear()
       containerRO?.disconnect()
       mo.disconnect()
       el.removeEventListener('load', onMediaLoad, true)

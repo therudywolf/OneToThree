@@ -27,6 +27,7 @@ import {
   generateAesGcm256Key,
   encryptMessage,
   decryptMessage,
+  hashPublicKeyJwk,
 } from './crypto'
 import { fetchChatDetail, uploadMemberWrappedGroupKey } from '@/lib/api/chats'
 import type { ChatDetailPayload, ChatMemberRole } from '@/lib/api/chats'
@@ -286,6 +287,58 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
     )
     expect(await sameKey(bobKey, ownerKey)).toBe(true)
     expect(readStoredSectorKeyEpoch(uploaded.get('bob')!)).toBe(3)
+  })
+
+  /**
+   * REGRESSION: the roster's `ecdh_public_key_jwk` is served by the API straight
+   * from the users table, and the SECTOR paths never consulted the trust
+   * registry — only DIRECT chats did. A server that substituted one member's key
+   * therefore received the fresh sector key on every rotation. A member whose
+   * roster key contradicts a pin must be skipped; everyone else still rotates.
+   */
+  it('does NOT wrap the sector key to a roster key that contradicts a trust pin', async () => {
+    const owner = await ecdhMember('owner', 'owner')
+    const bob = await ecdhMember('bob', 'member')
+    const attacker = await ecdhMember('attacker', 'member')
+    const carol = await ecdhMember('carol', 'member')
+
+    // Bob was verified in a 1:1 chat, so his real key is pinned…
+    const bobPin = await hashPublicKeyJwk(JSON.parse(bob.pubJwk) as JsonWebKey)
+    const store = new Map<string, string>([
+      ['p13_trust_registry', JSON.stringify({ bob: bobPin })],
+    ])
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    })
+
+    try {
+      // …but the roster hands us the attacker's key under Bob's user id.
+      vi.mocked(fetchChatDetail).mockResolvedValue(
+        mockDetail('owner', 2, [
+          { id: 'owner', role: 'owner', ecdh: owner.pubJwk },
+          { id: 'bob', role: 'member', ecdh: attacker.pubJwk },
+          { id: 'carol', role: 'member', ecdh: carol.pubJwk },
+        ])
+      )
+      const uploaded = new Map<string, string>()
+      vi.mocked(uploadMemberWrappedGroupKey).mockImplementation(async (_c, uid, blob) => {
+        uploaded.set(uid, blob)
+      })
+
+      const res = await rotateGroupKeyForChat('g1', owner.id, owner.priv, 2)
+
+      expect(res).toEqual({ rotated: true, epoch: 2, members: 2 })
+      expect([...uploaded.keys()].sort()).toEqual(['carol', 'owner'])
+      // The substituted key never received anything to open.
+      expect(uploaded.has('bob')).toBe(false)
+      await expect(
+        unwrapGroupKeyFromStoredPayload(attacker.priv, uploaded.get('carol')!, owner.pubJwk)
+      ).rejects.toThrow()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('refuses to rotate when we are not the owner', async () => {

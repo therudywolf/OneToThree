@@ -51,6 +51,7 @@ import {
   wrapGroupKeyForMemberWithCreatorEcdh,
   readStoredSectorKeyEpoch,
 } from '@/lib/chat-logic'
+import { assertTrustOrThrow } from '@/lib/chat-crypto'
 
 export type RotationResult =
   | { rotated: true; epoch: number; members: number }
@@ -143,6 +144,19 @@ export async function rotateGroupKeyForChat(
   let delivered = 0
   for (const m of detail.members) {
     if (!m.ecdh_public_key_jwk) continue
+    // `members[].ecdh_public_key_jwk` comes straight from the server's users
+    // table, and nothing on the SECTOR path ever consulted the trust registry —
+    // only DIRECT chats did. So a server that swapped one member's key received
+    // the fresh sector key on every rotation, i.e. read the whole group from that
+    // epoch on, while the real member's decrypt failures looked like an ordinary
+    // delivery fault and provoked yet more re-deliveries to the attacker's key.
+    // Skip a member whose roster key contradicts a pin; the rest still rotate.
+    try {
+      await assertTrustOrThrow(m.user_id, m.ecdh_public_key_jwk)
+    } catch (e) {
+      console.warn('>> [SYS.SECTOR] roster key contradicts a trust pin, not rekeying', m.user_id, e)
+      continue
+    }
     try {
       const wrapped = await wrapGroupKeyForMemberWithCreatorEcdh(
         myPrivateKey,

@@ -259,23 +259,37 @@ function cacheSkipped(
   upTo: number
 ): void {
   if (!state.recvChain) return
+  // Bail BEFORE touching `state.skipped`. `decryptRatchet` calls this twice on
+  // every DH ratchet step, and in the in-order case both loops run zero times —
+  // eagerly creating the bucket there leaked two permanent empty Map entries
+  // per step. Nothing removes them (`tryDecryptSkipped` only prunes on a hit),
+  // so a long conversation accumulated thousands of `{remote, keys: []}`
+  // records that `serializeRatchet` re-encrypted into IndexedDB on every single
+  // send AND receive. With lazy creation an empty bucket can never exist, so
+  // the bucket count is bounded by GLOBAL_SKIP_CAP like the key count is.
+  if (state.recvCounter >= upTo) return
   const bucketKey = bytesToB64(remote)
   let bucket = state.skipped.get(bucketKey)
-  if (!bucket) {
-    bucket = new Map()
-    state.skipped.set(bucketKey, bucket)
-  }
+  // `totalSkipped` walks every bucket; hoist it out of the loop and track the
+  // running total locally, otherwise a peer claiming previousChainLength = 2^31
+  // turns `maxSkip` derivations into `maxSkip × buckets` pre-auth work.
+  let total = totalSkipped(state)
   while (state.recvCounter < upTo) {
-    if (bucket.size >= state.maxSkip) {
+    if ((bucket?.size ?? 0) >= state.maxSkip) {
       throw new Error('RATCHET_SKIP_LIMIT')
     }
-    if (totalSkipped(state) >= GLOBAL_SKIP_CAP) {
+    if (total >= GLOBAL_SKIP_CAP) {
       throw new Error('RATCHET_GLOBAL_SKIP_LIMIT')
     }
     const { messageKey, nextChainKey } = kdfMessageKey(state.recvChain)
     state.recvChain = nextChainKey
+    if (!bucket) {
+      bucket = new Map()
+      state.skipped.set(bucketKey, bucket)
+    }
     bucket.set(state.recvCounter, messageKey)
     state.recvCounter += 1
+    total += 1
   }
 }
 

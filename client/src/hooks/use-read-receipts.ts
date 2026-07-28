@@ -85,6 +85,12 @@ export function useReadReceipts(
     const root = scrollRootRef.current
     if (!root) return
 
+    // Rows currently handed to the observer. An IntersectionObserver keeps a
+    // strong reference to every target, and the 50-message ring buffer unmounts
+    // rows continuously — without this bookkeeping a long session in one chat
+    // pins thousands of detached subtrees until the user switches chats.
+    const observed = new Set<Element>()
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -101,6 +107,11 @@ export function useReadReceipts(
           if (!senderId || senderId === userId || effectiveReadAt) continue
 
           processedRef.current.add(msgId)
+          // A read receipt is one-shot per message — keep observing and the
+          // IntersectionObserver holds a strong ref to every row the 50-message
+          // ring buffer later unmounts, pinning thousands of detached subtrees
+          // for as long as the user stays in the chat.
+          observer.unobserve(node)
           syncQueueRef.current.add(msgId)
           useUnreadStore.getState().updateReadAtOverride(msgId, new Date().toISOString())
           triggerBatchSync()
@@ -112,8 +123,17 @@ export function useReadReceipts(
     const scanNodes = () => {
       const container = scrollRootRef.current
       if (!container) return
+      for (const el of observed) {
+        if (el.isConnected) continue
+        observer.unobserve(el)
+        observed.delete(el)
+      }
       container.querySelectorAll('[data-message-id]').forEach((el) => {
+        // Already-read rows stay in `observed` (so we don't re-observe them)
+        // but were unobserved the moment their receipt fired.
+        if (observed.has(el)) return
         observer.observe(el)
+        observed.add(el)
       })
     }
 
@@ -140,6 +160,7 @@ export function useReadReceipts(
     return () => {
       monitor.disconnect()
       observer.disconnect()
+      observed.clear()
     }
   }, [isEnabled, activeChatId, userId, scrollRootRef])
 }

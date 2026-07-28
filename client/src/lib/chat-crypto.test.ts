@@ -43,7 +43,12 @@ import {
   getAesKeyRingForChat,
   type ChatCryptoContext,
 } from '@/lib/chat-crypto'
-import { generateAesGcm256Key, generateKeyPairIsolated, encryptMessage } from '@/lib/crypto'
+import {
+  generateAesGcm256Key,
+  generateKeyPairIsolated,
+  encryptMessage,
+  hashPublicKeyJwk,
+} from '@/lib/crypto'
 
 describe('decryptInboundTextV2', () => {
   beforeEach(() => {
@@ -262,35 +267,51 @@ describe('assertTrustOrThrow — trust registry must fail closed', () => {
 
   const jwkA = JSON.stringify({ kty: 'EC', crv: 'P-256', x: 'AAA', y: 'BBB' })
   const jwkB = JSON.stringify({ kty: 'EC', crv: 'P-256', x: 'XXX', y: 'YYY' })
+  // The registry holds SHA-256 digests, never JWKs — this is the shape
+  // identity-modal's `setVerifiedHash(peerId, hashPublicKeyJwk(jwk))` writes.
+  // Seeding raw JWKs here was what hid the pin/received format mismatch that
+  // made every verified peer's chat throw on their honest key.
+  const pin = (jwk: string) => hashPublicKeyJwk(JSON.parse(jwk) as JsonWebKey)
 
-  it('no registry — passes', () => {
+  it('no registry — passes', async () => {
     setRegistry(null)
-    expect(() => assertTrustOrThrow('peer', jwkA)).not.toThrow()
+    await expect(assertTrustOrThrow('peer', jwkA)).resolves.toBeUndefined()
   })
 
-  it('peer not pinned — passes', () => {
-    setRegistry(JSON.stringify({ other: jwkB }))
-    expect(() => assertTrustOrThrow('peer', jwkA)).not.toThrow()
+  it('peer not pinned — passes', async () => {
+    setRegistry(JSON.stringify({ other: await pin(jwkB) }))
+    await expect(assertTrustOrThrow('peer', jwkA)).resolves.toBeUndefined()
   })
 
-  it('pinned key matches — passes', () => {
-    setRegistry(JSON.stringify({ peer: jwkA }))
-    expect(() => assertTrustOrThrow('peer', jwkA)).not.toThrow()
+  it('pinned key matches — passes', async () => {
+    setRegistry(JSON.stringify({ peer: await pin(jwkA) }))
+    await expect(assertTrustOrThrow('peer', jwkA)).resolves.toBeUndefined()
   })
 
-  it('pinned key mismatch — throws', () => {
-    setRegistry(JSON.stringify({ peer: jwkA }))
-    expect(() => assertTrustOrThrow('peer', jwkB)).toThrow(/MISMATCH/)
+  it('pinned key matches despite JWK field reordering — passes', async () => {
+    setRegistry(JSON.stringify({ peer: await pin(jwkA) }))
+    const reordered = JSON.stringify({ y: 'BBB', x: 'AAA', crv: 'P-256', kty: 'EC' })
+    await expect(assertTrustOrThrow('peer', reordered)).resolves.toBeUndefined()
   })
 
-  it('corrupt registry JSON — fails closed, does NOT silently disable pinning', () => {
+  it('pinned key mismatch — throws', async () => {
+    setRegistry(JSON.stringify({ peer: await pin(jwkA) }))
+    await expect(assertTrustOrThrow('peer', jwkB)).rejects.toThrow(/MISMATCH/)
+  })
+
+  it('a pin that is not a digest string — fails closed', async () => {
+    setRegistry(JSON.stringify({ peer: { not: 'a digest' } }))
+    await expect(assertTrustOrThrow('peer', jwkA)).rejects.toThrow(/MISMATCH/)
+  })
+
+  it('corrupt registry JSON — fails closed, does NOT silently disable pinning', async () => {
     setRegistry('{not valid json')
-    expect(() => assertTrustOrThrow('peer', jwkA)).toThrow(/COMPROMISED_LINK/)
+    await expect(assertTrustOrThrow('peer', jwkA)).rejects.toThrow(/COMPROMISED_LINK/)
   })
 
-  it('registry is valid JSON but not an object — fails closed', () => {
+  it('registry is valid JSON but not an object — fails closed', async () => {
     setRegistry('"just a string"')
-    expect(() => assertTrustOrThrow('peer', jwkA)).toThrow(/COMPROMISED_LINK/)
+    await expect(assertTrustOrThrow('peer', jwkA)).rejects.toThrow(/COMPROMISED_LINK/)
   })
 })
 
@@ -328,7 +349,7 @@ describe('SECTOR per-epoch key ring (#32/#33)', () => {
     const postJoin = await encryptMessage(kNew, 'message-after-join')
 
     // Existing member keeps kOld in its ring → reads the whole backlog (UX win).
-    const existing: ChatCryptoContext = { mode: 'SECTOR', groupKey: kNew, groupKeyRing: [kNew, kOld] }
+    const existing: ChatCryptoContext = { mode: 'SECTOR', chatId: 'c1', groupKey: kNew, groupKeyRing: [kNew, kOld] }
     expect(await decryptInboundText(EMPTY_PRIV, existing, preJoin.ciphertext, preJoin.iv))
       .toBe('history-before-join')
     expect(await decryptInboundText(EMPTY_PRIV, existing, postJoin.ciphertext, postJoin.iv))
@@ -336,7 +357,7 @@ describe('SECTOR per-epoch key ring (#32/#33)', () => {
 
     // Newly added member never held kOld → ring is current-only → pre-join
     // history stays sealed (backward secrecy, #32), but post-join opens.
-    const newcomer: ChatCryptoContext = { mode: 'SECTOR', groupKey: kNew, groupKeyRing: [kNew] }
+    const newcomer: ChatCryptoContext = { mode: 'SECTOR', chatId: 'c1', groupKey: kNew, groupKeyRing: [kNew] }
     await expect(
       decryptInboundText(EMPTY_PRIV, newcomer, preJoin.ciphertext, preJoin.iv),
     ).rejects.toThrow()
@@ -347,10 +368,10 @@ describe('SECTOR per-epoch key ring (#32/#33)', () => {
   it('getAesKeyRingForChat falls back to [groupKey] when no ring is attached', async () => {
     const k = await generateAesGcm256Key()
     const withRing = await getAesKeyRingForChat(EMPTY_PRIV, {
-      mode: 'SECTOR', groupKey: k, groupKeyRing: [k, k],
+      mode: 'SECTOR', chatId: 'c1', groupKey: k, groupKeyRing: [k, k],
     })
     expect(withRing).toHaveLength(2)
-    const noRing = await getAesKeyRingForChat(EMPTY_PRIV, { mode: 'SECTOR', groupKey: k })
+    const noRing = await getAesKeyRingForChat(EMPTY_PRIV, { mode: 'SECTOR', chatId: 'c1', groupKey: k })
     expect(noRing).toEqual([k])
     expect(await getAesKeyRingForChat(EMPTY_PRIV, { mode: 'PUBLIC' })).toBeNull()
   })

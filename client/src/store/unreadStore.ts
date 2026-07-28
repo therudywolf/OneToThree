@@ -64,7 +64,16 @@ export type UnreadState = {
   updateReadAtOverride: (nodeId: string, timestamp: string) => void
   clearReadAtOverrides: () => void
   /** Seed unread counts from server-reported delivery counts at startup. */
-  seedUnreadFromApi: (chats: ApiChatRow[], activeChatId: string | null) => void
+  /**
+   * `authoritative` gates the destructive prune: only the newest completed
+   * chat-list response may delete tracked chats (see use-chats.ts). An older
+   * in-flight response still seeds counts additively, which is always safe.
+   */
+  seedUnreadFromApi: (
+    chats: ApiChatRow[],
+    activeChatId: string | null,
+    authoritative?: boolean
+  ) => void
   reset: () => void
 }
 
@@ -129,10 +138,31 @@ export const useUnreadStore = create<UnreadState>()(
 
       setHistoryDecryptBusy: (busy) => set({ historyDecryptBusy: busy }),
 
-      seedUnreadFromApi: (chats, activeChatId) =>
+      seedUnreadFromApi: (chats, activeChatId, authoritative = true) =>
         set((s) => {
           const nextUnread = { ...s.unreadByChat }
           let changed = false
+          // Authoritative in BOTH directions. This map is persisted, so an entry
+          // for a chat the user has left (or been kicked from) could never be
+          // cleared: `markChatRead` only fires when the chat is opened, and the
+          // chat is no longer openable — so the PWA icon badge and the tab title
+          // stayed pinned at a count with nothing to read, forever. The caller
+          // always passes the FULL server chat list, so anything missing from it
+          // is a chat this account no longer has.
+          //
+          // ...but ONLY when this list is the newest one to have come back.
+          // `useChats` is mounted twice with independent debounces, so a stale
+          // response arriving last would otherwise delete a group the user had
+          // just joined — and the server reports `unread_count = 0` for groups
+          // by design, so the additive pass below could never restore it.
+          if (authoritative) {
+            const known = new Set(chats.map((c) => c.id))
+            for (const chatId of Object.keys(nextUnread)) {
+              if (known.has(chatId)) continue
+              delete nextUnread[chatId]
+              changed = true
+            }
+          }
           for (const chat of chats) {
             const serverCount = chat.unread_count ?? 0
             if (serverCount <= 0) continue

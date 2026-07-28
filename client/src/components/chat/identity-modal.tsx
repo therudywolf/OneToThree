@@ -23,7 +23,7 @@ import {
 import { useTranslation } from '@/hooks/use-translation'
 import { computeSafetyNumber } from '@/lib/ratchet/safety-number'
 import {
-  sessionFingerprint,
+  sessionIdentityKeys,
   getSessionPeerIdentity,
   clearDrSession,
 } from '@/lib/ratchet/session-manager'
@@ -95,9 +95,14 @@ export function IdentityModal({
 
         // DR safety number (if a session exists)
         if (myUserId) {
-          const fpBytes = await sessionFingerprint(myUserId, peerUserId)
-          if (fpBytes && !cancelled) {
-            const drNum = computeSafetyNumber(fpBytes.slice(0, 32), fpBytes.slice(32, 64), myUserId, peerUserId)
+          // Feed the two RAW identity-signing keys to computeSafetyNumber — it
+          // does the Signal length-prefixing and order-independent sorting
+          // itself. The previous code hashed them first and then sliced bytes
+          // 32..64 out of a 32-byte digest, so the peer half was always empty
+          // and the number could never match the one the peer read out.
+          const ids = await sessionIdentityKeys(myUserId, peerUserId)
+          if (ids && !cancelled) {
+            const drNum = computeSafetyNumber(ids.own, ids.peer, myUserId, peerUserId)
             setDrSafetyNumber(drNum)
           }
           // TOFU: check if server bundle identity differs from session identity

@@ -52,6 +52,19 @@ export function useFocusTrap<T extends HTMLElement>(
       const first = focusable[0]!
       const last = focusable[focusable.length - 1]!
 
+      // Focus is not on any trapped element — the usual cause is a click on a
+      // non-focusable region inside the dialog (its heading, a row's text, the
+      // padding), which leaves document.activeElement === document.body. Neither
+      // the `first` nor the `last` branch matched, so Tab was never prevented
+      // and the browser walked into the page BEHIND an aria-modal overlay: the
+      // chat sidebar under the forward modal, the app under a live call.
+      const idx = focusable.indexOf(document.activeElement as HTMLElement)
+      if (idx === -1) {
+        e.preventDefault()
+        ;(e.shiftKey ? last : first).focus()
+        return
+      }
+
       if (e.shiftKey) {
         if (document.activeElement === first) { e.preventDefault(); last.focus() }
       } else {

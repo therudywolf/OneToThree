@@ -9,6 +9,7 @@ import {
   decryptMessage,
   deriveSharedSecret,
   encryptMessage,
+  hashPublicKeyJwk,
   importEcdhPublicKey,
 } from './crypto'
 import { readStoredSectorKeyEpoch, unwrapGroupKeyFromStoredPayload } from './chat-logic'
@@ -30,6 +31,16 @@ export type ChatCryptoContext =
   | { mode: 'SELF'; selfPublicKeyJwk: string }
   | {
       mode: 'SECTOR'
+      /**
+       * The chat this frame was built for. `useChatCryptoContext` keeps the
+       * PREVIOUS chat's context in state while the new one is being fetched, so
+       * a consumer that reads `groupKey` on an `activeChatId` change can be
+       * handed the wrong group's key — the owner's key-distribution scan did
+       * exactly that and PUT group A's key into group B's roster, permanently
+       * locking that member out of B. Consumers MUST check this against the id
+       * they are acting on before touching `groupKey`.
+       */
+      chatId: string
       /** Current (highest-epoch) key — used to ENCRYPT and tried FIRST on
        *  decrypt, so current traffic is byte-identical to the pre-#32 path. */
       groupKey: CryptoKey
@@ -52,18 +63,26 @@ type SectorDetailResponse = {
 
 /**
  * [TRUST_VERIFICATION] :: Проверка отпечатка в локальном реестре доверия.
- * Сравниваются только криптографически значимые поля JWK (kty/crv/x/y),
- * чтобы избежать ложных тревог при разных необязательных полях (key_ops, ext…).
  * Бросает исключение при несовпадении закреплённого и полученного ключа,
  * а также если реестр доверия повреждён (fail-closed — повреждённый реестр
  * никогда не должен молча «расцеплять» все pin'ы).
+ *
+ * The registry stores exactly ONE representation: the SHA-256 hex digest that
+ * `hashPublicKeyJwk` produces, which is the only thing `setVerifiedHash` is ever
+ * called with (identity-modal.tsx). This function used to compare that digest
+ * against the RAW roster JWK, which can never be equal — so verifying a peer
+ * threw SECURITY_SIGNAL_MISMATCH for that peer's honest, unchanged key and
+ * bricked the chat (and its forward/media path) until the user un-verified.
+ * Pinning therefore protected nobody: it was inert for unpinned peers and fatal
+ * for pinned ones. Hash the received key the same way the pin was minted and
+ * compare digests.
  *
  * Named `assertTrustOrThrow` to make the throwing contract explicit at call
  * sites. Both `buildChatCryptoContext` and `buildChatCryptoContextWithMeta`
  * must call this so that neither the primary path nor the meta/forward path
  * can bypass trust verification.
  */
-export function assertTrustOrThrow(peerUserId: string, receivedJwk: string): void {
+export async function assertTrustOrThrow(peerUserId: string, receivedJwk: string): Promise<void> {
   const registryRaw = typeof localStorage !== 'undefined' ? localStorage.getItem('p13_trust_registry') : null
   if (!registryRaw) return
 
@@ -81,17 +100,20 @@ export function assertTrustOrThrow(peerUserId: string, receivedJwk: string): voi
 
   const pinnedSignal = registry[peerUserId]
   if (!pinnedSignal) return
-  const keyFields = ['crv', 'kty', 'x', 'y'] as const
-  const extractKey = (jwk: unknown) => {
-    if (typeof jwk !== 'string') return JSON.stringify(jwk)
-    try {
-      const parsed = JSON.parse(jwk) as Record<string, unknown>
-      return JSON.stringify(Object.fromEntries(keyFields.map((k) => [k, parsed[k] ?? null])))
-    } catch {
-      return jwk
-    }
+  if (typeof pinnedSignal !== 'string') {
+    // A non-string pin cannot have come from `setVerifiedHash` → treat it as
+    // tampering rather than as "no pin".
+    throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
   }
-  if (extractKey(pinnedSignal) !== extractKey(receivedJwk)) {
+
+  let receivedHash: string
+  try {
+    receivedHash = await hashPublicKeyJwk(JSON.parse(receivedJwk) as JsonWebKey)
+  } catch {
+    // An unparseable roster key can never be proven equal to a pin.
+    throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
+  }
+  if (pinnedSignal !== receivedHash) {
     throw new Error('SECURITY_SIGNAL_MISMATCH :: COMPROMISED_LINK')
   }
 }
@@ -154,16 +176,30 @@ async function buildSectorFrame(
 
   const ring: CryptoKey[] = [currentKey]
   for (const entry of await getRingEntries(myUserId, chatId)) {
-    if (entry.epoch >= currentEpoch) continue // current already at [0]
+    if (entry.wrapped === me.encrypted_group_key) continue // current already at [0]
     try {
-      ring.push(await unwrapGroupKeyFromStoredPayload(privateKey, entry.wrapped, ownerEcdhJwk))
+      // Retained entries are NOT re-checked against today's owner. Every blob in
+      // the ring was admitted by the `addRingEntry` above, i.e. only after it had
+      // passed the owner binding at the epoch it belonged to; the ring is local
+      // IndexedDB, so re-verifying buys nothing an XSS attacker could not already
+      // do. Re-checking against the CURRENT owner was actively harmful: a single
+      // voluntary owner departure (the server auto-promotes a new owner and bumps
+      // the epoch) made every entry from the previous owner's epochs throw
+      // SECTOR_CREATOR_KEY_UNTRUSTED, erasing the group's whole readable history
+      // for every member — exactly what the #33 ring exists to prevent.
+      //
+      // Matching on the blob, not on `epoch >= currentEpoch`, also keeps a
+      // same-epoch-but-different key readable: two owner sessions can each mint a
+      // key at one epoch, and the member that received the other one must still
+      // be able to open its own already-sent messages.
+      ring.push(await unwrapGroupKeyFromStoredPayload(privateKey, entry.wrapped))
     } catch {
-      // Older blob no longer unwraps (owner changed / corrupt). Skip it — that
-      // one epoch's history is unreadable, but the rest of the ring is intact.
+      // Older blob no longer unwraps (our vault key changed / corrupt). Skip it —
+      // that one epoch's history is unreadable, but the rest of the ring is intact.
     }
   }
 
-  return { mode: 'SECTOR', groupKey: currentKey, groupKeyRing: ring }
+  return { mode: 'SECTOR', chatId, groupKey: currentKey, groupKeyRing: ring }
 }
 
 /** [CALIBRATE_FRAME] :: Снятие показаний и построение крипто-контекста для сектора */
@@ -193,7 +229,7 @@ export async function buildChatCryptoContext(
     const peer = members.find((m) => m.user_id !== myUserId)
     if (!peer?.ecdh_public_key_jwk) throw new Error('ERR_MISSING_PEER_SIGNAL')
 
-    assertTrustOrThrow(peer.user_id, peer.ecdh_public_key_jwk)
+    await assertTrustOrThrow(peer.user_id, peer.ecdh_public_key_jwk)
 
     return { mode: 'DIRECT', peerPublicKeyJwk: peer.ecdh_public_key_jwk }
   }
@@ -243,7 +279,7 @@ export async function buildChatCryptoContextWithMeta(
     if (!peer?.ecdh_public_key_jwk) throw new Error('ERR_MISSING_PEER_SIGNAL')
 
     /** [TRUST_VERIFICATION] :: Forward/media paths must also verify the trust registry */
-    assertTrustOrThrow(peer.user_id, peer.ecdh_public_key_jwk)
+    await assertTrustOrThrow(peer.user_id, peer.ecdh_public_key_jwk)
 
     return {
       ctx: { mode: 'DIRECT', peerPublicKeyJwk: peer.ecdh_public_key_jwk },

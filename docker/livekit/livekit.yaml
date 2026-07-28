@@ -11,6 +11,15 @@
 #     narrow (100 ports ≈ 50 concurrent calls).
 
 port: 7880
+# Empty = listen on every interface, and under host networking that means the
+# public IP. 7880 is PLAINTEXT HTTP/WS: reachable directly it leaks the room JWT
+# and exposes /twirp/livekit.RoomService/* outside Caddy/Anubis/CrowdSec, so the
+# host firewall MUST keep 7880 closed (see the livekit block in
+# docker-compose.prod.yml). It cannot be narrowed to 127.0.0.1: the reverse
+# proxy runs in its own container and dials host.docker.internal:7880 — the
+# docker bridge gateway address, not loopback — so a loopback-only bind kills
+# all SFU signaling. Pinning the gateway IP here instead would hard-code
+# 172.17.0.1 and fail to start the SFU on any host that renumbered docker0.
 bind_addresses:
   - ''
 

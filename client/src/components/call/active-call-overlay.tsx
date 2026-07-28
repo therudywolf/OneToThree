@@ -327,6 +327,7 @@ export function ActiveCallOverlay({
   const isConnectionLost = useCallStore((s) => s.isConnectionLost)
   const connectionQuality = useCallStore((s) => s.connectionQuality)
   const peerConnectionTypes = useCallStore((s) => s.peerConnectionTypes)
+  const peerConnections = useCallStore((s) => s.peerConnections)
   const qualityLevel = useCallStore((s) => s.qualityLevel)
   const callStartTime = useCallStore((s) => s.callStartTime)
 
@@ -419,6 +420,13 @@ export function ActiveCallOverlay({
   }, [isCalling, localStream, callStartTime])
 
   const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
+  // The 1:1 call runs over the WebSocket PCM relay (origin-safe deployment, or
+  // the 30s P2P timeout fell back to `websocket_audio`) — it has no
+  // RTCPeerConnection at all, so it can only carry mono audio. Hide the video
+  // controls exactly like group-call-screen does for its `audio_relay`
+  // transport: they used to run getUserMedia/getDisplayMedia and announce
+  // "screen sharing" to the peer while transmitting nothing at all.
+  const isAudioRelay = Object.keys(peerConnections).length === 0
 
   function toggleLayout() {
     setLayout((prev) => {
@@ -586,10 +594,16 @@ export function ActiveCallOverlay({
           )}
         </div>
 
-        {/* CONTROLS */}
+        {/* CONTROLS
+
+            Every MD3 `--*-container` / `--error` / `--outline-variant` token below
+            carries an explicit fallback: ThemeApplicator only emits --surface-variant,
+            --secondary-container and friends, so `var(--error)` was guaranteed-invalid
+            and fell back to `initial` — the end-call FAB rendered as a bare icon with
+            NO red pill, and mute/deafen looked identical on and off. */}
         <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'} ${
           isMd3
-            ? 'gap-2 rounded-[28px] bg-[var(--surface-container-high)]/95 px-3 py-2'
+            ? 'gap-2 rounded-[28px] bg-[var(--surface-container-high,var(--surface-elevated))]/95 px-3 py-2'
             : isRetro
               ? 'p13-classic-menu gap-1 px-2 py-2'
               : 'border border-border-strong bg-void/90'
@@ -599,7 +613,7 @@ export function ActiveCallOverlay({
             onClick={() => { onToggleMute(); setTick(t_ => t_ + 1); }}
             className={`flex items-center justify-center transition-colors ${
               isMd3
-                ? `h-12 w-12 rounded-full ${audioMuted ? 'bg-[var(--error-container)] text-[var(--on-error-container)]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
+                ? `h-12 w-12 rounded-full ${audioMuted ? 'bg-[var(--error-container,color-mix(in_srgb,var(--danger)_24%,var(--surface)))] text-[var(--on-error-container,var(--danger))]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
                 : `h-12 w-14 border-r border-border-strong ${audioMuted ? 'bg-danger/30 text-neon-red' : 'text-text-primary hover:bg-surface/5'}`
             }`}
             title={audioMuted ? t('call.unmute') : t('call.mute')}
@@ -612,7 +626,7 @@ export function ActiveCallOverlay({
             onClick={() => setDeafened(!deafened)}
             className={`flex items-center justify-center transition-colors ${
               isMd3
-                ? `h-12 w-12 rounded-full ${deafened ? 'bg-[var(--error-container)] text-[var(--on-error-container)]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
+                ? `h-12 w-12 rounded-full ${deafened ? 'bg-[var(--error-container,color-mix(in_srgb,var(--danger)_24%,var(--surface)))] text-[var(--on-error-container,var(--danger))]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
                 : `h-12 w-14 border-r border-border-strong ${deafened ? 'bg-danger/30 text-neon-red' : 'text-text-primary hover:bg-surface/5'}`
             }`}
             title={deafened ? t('call.undeafen') : t('call.deafen')}
@@ -626,7 +640,8 @@ export function ActiveCallOverlay({
               (isCameraOn), never the screen track. */}
           <button
             onClick={() => { onToggleCamera(); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
-            className={`flex items-center justify-center transition-colors ${
+            disabled={isAudioRelay}
+            className={`flex items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
               isMd3
                 ? `h-12 w-12 rounded-full ${isCameraOn ? 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)]/60'}`
                 : `h-12 w-14 border-r border-border-strong ${isCameraOn ? 'text-text-primary hover:bg-surface/5' : 'bg-void/50 text-text-muted/70'}`
@@ -641,7 +656,7 @@ export function ActiveCallOverlay({
           {/* Camera control split by platform.
               Mobile: front/back flip. Desktop: device selector. Both only make
               sense when a camera is on and not while screen-sharing. */}
-          {isCameraOn && !isScreenSharing && (
+          {isCameraOn && !isScreenSharing && !isAudioRelay && (
             isMobileDevice ? (
               <button
                 onClick={() => { onFlipCamera(); setTick(t_ => t_ + 1); }}
@@ -674,7 +689,7 @@ export function ActiveCallOverlay({
                 {showCameraMenu && (
                   <div className={`absolute bottom-14 left-1/2 -translate-x-1/2 z-50 min-w-[200px] max-w-[280px] shadow-2xl ${
                     isMd3
-                      ? 'rounded-2xl bg-[var(--surface-container-high)] overflow-hidden'
+                      ? 'rounded-2xl bg-[var(--surface-container-high,var(--surface-elevated))] overflow-hidden'
                       : 'border border-border-strong bg-void/95 backdrop-blur-xl'
                   }`}>
                     {cameras.length === 0 ? (
@@ -705,12 +720,12 @@ export function ActiveCallOverlay({
             )
           )}
 
-          {screenShareAllowed && (
+          {screenShareAllowed && !isAudioRelay && (
             <button
               onClick={() => { onToggleScreenShare(); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
               className={`hidden md:flex items-center justify-center transition-colors ${
                 isMd3
-                  ? `h-12 w-12 rounded-full ${isScreenSharing ? 'bg-[var(--primary-container)] text-[var(--on-primary-container)]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
+                  ? `h-12 w-12 rounded-full ${isScreenSharing ? 'bg-[var(--primary-container,color-mix(in_srgb,var(--primary)_24%,var(--surface)))] text-[var(--on-primary-container,var(--primary))]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
                   : `h-12 w-14 border-r border-border-strong ${isScreenSharing ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-surface/5'}`
               }`}
               title={isScreenSharing ? t('call.stopScreenShare') : t('call.startScreenShare')}
@@ -737,7 +752,7 @@ export function ActiveCallOverlay({
             {showQualityMenu && (
               <div className={`absolute bottom-14 left-1/2 -translate-x-1/2 z-50 min-w-[140px] shadow-2xl ${
                 isMd3
-                  ? 'rounded-2xl bg-[var(--surface-container-high)] overflow-hidden'
+                  ? 'rounded-2xl bg-[var(--surface-container-high,var(--surface-elevated))] overflow-hidden'
                   : 'border border-border-strong bg-void/95 backdrop-blur-xl'
               }`}>
                 {QUALITY_OPTIONS.map((opt) => (
@@ -746,7 +761,7 @@ export function ActiveCallOverlay({
                     onClick={() => { onSetQuality(opt); setShowQualityMenu(false); }}
                     className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
                       isMd3
-                        ? `${qualityLevel === opt ? 'bg-[var(--primary-container)] text-[var(--on-primary-container)]' : 'text-[var(--on-surface)] hover:bg-[var(--surface-variant)]'}`
+                        ? `${qualityLevel === opt ? 'bg-[var(--primary-container,color-mix(in_srgb,var(--primary)_24%,var(--surface)))] text-[var(--on-primary-container,var(--primary))]' : 'text-[var(--on-surface)] hover:bg-[var(--surface-variant)]'}`
                         : `font-mono text-[11px] uppercase tracking-wider ${qualityLevel === opt ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-surface/5'}`
                     }`}
                   >
@@ -828,13 +843,13 @@ export function ActiveCallOverlay({
             <Minimize2 className="h-4 w-4" />
           </button>
 
-          {isMd3 && <div className="mx-1 h-8 w-px bg-[var(--outline-variant)]" />}
+          {isMd3 && <div className="mx-1 h-8 w-px bg-[var(--outline-variant,var(--border-strong))]" />}
 
           <button
             onClick={onEndCall}
             className={`flex items-center justify-center transition-all ${
               isMd3
-                ? 'h-12 w-12 rounded-full bg-[var(--error)] text-[var(--on-error)] hover:opacity-90'
+                ? 'h-12 w-12 rounded-full bg-[var(--error,var(--danger))] text-[var(--on-error,var(--on-primary))] hover:opacity-90'
                 : 'h-12 w-16 bg-neon-red/10 text-neon-red hover:bg-neon-red hover:text-text-primary'
             }`}
             title={t('call.endCall')}

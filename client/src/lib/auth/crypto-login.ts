@@ -25,7 +25,12 @@ import { parseNickname } from '@/lib/nickname'
 import { activateVaultSession } from '@/lib/vault/activate-vault'
 
 export type CryptoLoginResult =
-  | { ok: true; user: { id: string; username: string } }
+  /**
+   * `warning` is a non-fatal degradation on an otherwise successful sign-in —
+   * currently only 'ECDH_KEY_UPLOAD_FAILED' on the register path, where the
+   * account already exists server-side and refusing would strand it.
+   */
+  | { ok: true; user: { id: string; username: string }; warning?: string }
   | { ok: 'needs_2fa'; pendingToken: string; userId: string }
   | { ok: false; error: string }
 
@@ -193,16 +198,33 @@ export async function cryptoLogin(
     // the sender ECDH key and recipients can't decrypt. Failure here is
     // not "non-fatal" — we surface it so the UI can ask the user to retry
     // before they start typing.
+    //
+    // ...but NOT on register. By this point POST /auth/verify has already
+    // succeeded, the account exists server-side, the session cookie is set and
+    // the vault blob is on disk. Returning {ok:false} orphaned that account:
+    // the caller skipped `markBackupPending` and the post-register backup
+    // prompt — the only warning this product ever gives about permanent account
+    // loss — and a retry then hit VAULT_ALREADY_EXISTS because the blob was
+    // there. So retry once (transient blips are common right here) and, on
+    // register, fall through with a warning: `activateVaultSession` below
+    // retries the same upload again anyway.
+    let ecdhUploadError: string | null = null
     if (ecdhPrivateJwkForVault) {
-      try {
-        await patchMyEcdhPublicKey(
-          exportEcdhPublicJwkFromPrivateKeyString(ecdhPrivateJwkForVault)
-        )
-      } catch (e) {
-        return {
-          ok: false,
-          error: e instanceof Error ? e.message : 'ECDH_KEY_UPLOAD_FAILED',
+      const myPubJwk = exportEcdhPublicJwkFromPrivateKeyString(ecdhPrivateJwkForVault)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          await patchMyEcdhPublicKey(myPubJwk)
+          ecdhUploadError = null
+          break
+        } catch (e) {
+          ecdhUploadError = e instanceof Error ? e.message : 'ECDH_KEY_UPLOAD_FAILED'
         }
+      }
+      if (ecdhUploadError && params.mode !== 'register') {
+        return { ok: false, error: ecdhUploadError }
+      }
+      if (ecdhUploadError) {
+        console.warn('[register] ECDH key upload failed — retrying at vault activation', ecdhUploadError)
       }
     }
 
@@ -229,7 +251,9 @@ export async function cryptoLogin(
         /* fall back to the unlock modal */
       }
     }
-    return { ok: true, user }
+    return ecdhUploadError
+      ? { ok: true, user, warning: 'ECDH_KEY_UPLOAD_FAILED' }
+      : { ok: true, user }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'VERIFY_FAILED' }
   }

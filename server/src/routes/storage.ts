@@ -9,6 +9,7 @@ import { uuidSchema } from '../lib/zod-uuid.js'
 import {
   createS3Client,
   createS3ClientForPresigning,
+  deleteObjectIfExists,
   ensureBucketExists,
   getAvatarsBucketName,
   getBucketName,
@@ -19,7 +20,9 @@ import {
 import {
   getUserQuotaBytes,
   getUserUsageBytes,
+  headObjectSize,
   maybeTriggerEviction,
+  reconcileUploaderAttachmentSizes,
 } from '../lib/media-lru-evict.js'
 import {
   categorizeMime,
@@ -80,8 +83,35 @@ function isAllowedExtension(ext: string): boolean {
   return ALLOWED_EXTENSIONS.has(ext.toLowerCase())
 }
 
+/**
+ * MIME types a browser will RENDER — and run script from — if MinIO hands them
+ * back inline. The presigned PUT signs whatever Content-Type the client asks
+ * for, so declaring `text/html` for an allowlisted `.txt` name was enough to
+ * store an active HTML page and get it executed from `s3.<domain>`; `fm_session`
+ * is scoped to the registrable domain, so that origin can overwrite the app's
+ * cookies. We cannot force a safe Content-Type instead (it is part of the
+ * signature — the client would get SignatureDoesNotMatch), so these are refused
+ * outright. `image/svg+xml` keeps its own error code for the client.
+ */
+const RENDERABLE_MIME_DENYLIST = new Set([
+  'text/html',
+  'text/x-html',
+  'application/xhtml+xml',
+  'text/xml',
+  'application/xml',
+  'text/xsl',
+  'application/xslt+xml',
+  'image/svg+xml',
+  'image/svg',
+])
+
+function baseMimeType(mime: string): string {
+  return mime.toLowerCase().split(';')[0].trim()
+}
+
 function isAllowedMimeType(mime: string): boolean {
-  const lower = mime.toLowerCase().split(';')[0].trim()
+  const lower = baseMimeType(mime)
+  if (RENDERABLE_MIME_DENYLIST.has(lower)) return false
   return ALLOWED_MIME_PREFIXES.some((prefix) => lower.startsWith(prefix))
 }
 
@@ -137,7 +167,17 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
   const bucket = getBucketName()
   let bucketInit: Promise<void> | null = null
   async function ensureBucketOnce() {
-    if (!bucketInit) bucketInit = ensureBucketExists(client, bucket)
+    // Drop the memo when init fails. Caching the REJECTED promise meant that a
+    // single request landing while MinIO was still coming up (api starts faster
+    // than minio on `docker compose up -d`) wedged every upload/download/avatar
+    // call with a 500 until the api container was restarted. Mirrors the same
+    // guard in s3.ts's ensureBucketExists.
+    if (!bucketInit) {
+      bucketInit = ensureBucketExists(client, bucket).catch((err) => {
+        bucketInit = null
+        throw err
+      })
+    }
     await bucketInit
   }
 
@@ -184,10 +224,22 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       })
     }
 
+    // The fileSize above is CLIENT-DECLARED and the presigned PUT cannot bind
+    // it (see the unsignableHeaders comment in s3.ts), so before reserving more
+    // space we verify what this user actually stored on their previous presigns
+    // against S3. That corrects understated size_bytes, deletes objects that
+    // came back over their category ceiling, and returns a pessimistic charge
+    // for reservations that cannot be verified yet. Failures inside are
+    // swallowed by the reconciler itself — it must never block an upload.
+    const reconciled = await reconcileUploaderAttachmentSizes({
+      uploaderId: user.id,
+      log: request.log,
+    })
+
     // Sprint A1-5 — per-user quota check (0 = unlimited).
     const userQuota = await getUserQuotaBytes(user.id)
     if (userQuota > 0) {
-      const used = await getUserUsageBytes(user.id)
+      const used = (await getUserUsageBytes(user.id)) + reconciled.pendingBytes
       if (used + fileSize > userQuota) {
         return reply.status(413).send({
           error: 'USER_QUOTA_EXCEEDED',
@@ -220,10 +272,9 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       })
     )
 
-    // Sprint M1 — register the upload in the lifecycle index. We trust the
-    // client-declared size here; presigned PUTs cannot enforce Content-Length
-    // without breaking the proxy path (see s3.ts unsignableHeaders comment).
-    // A background reconciler may later correct sizeBytes from S3 HEAD.
+    // Sprint M1 — register the upload in the lifecycle index. The size recorded
+    // here is provisional (client-declared); `reconcileUploaderAttachmentSizes`
+    // above replaces it with the real ContentLength on this user's next presign.
     try {
       await db.insert(attachments).values({
         chatId,
@@ -398,7 +449,12 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const [att] = await db
-      .select({ id: attachments.id, bucket: attachments.bucket, evictedAt: attachments.evictedAt })
+      .select({
+        id: attachments.id,
+        bucket: attachments.bucket,
+        contentType: attachments.contentType,
+        evictedAt: attachments.evictedAt,
+      })
       .from(attachments)
       .where(eq(attachments.objectKey, filePath))
       .limit(1)
@@ -408,6 +464,28 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     }
     if (!att.evictedAt) {
       return reply.status(409).send({ error: 'MEDIA_ALREADY_PRESENT' })
+    }
+
+    // Restoring must never RE-TYPE the object. Any member of the chat may
+    // restore from their own cache (recipients cache the blob too, so we cannot
+    // limit this to the uploader), and without this check one member could
+    // re-presign another member's key as text/html and have it served, active,
+    // from s3.<domain>. Compare base types only: the client strips `;codecs=…`
+    // before re-uploading, so an exact match would break voice/video restore.
+    if (baseMimeType(parsed.data.fileType) !== baseMimeType(att.contentType)) {
+      return reply.status(409).send({ error: 'CONTENT_TYPE_MISMATCH' })
+    }
+
+    // Re-run the ceiling /upload-url enforces — restore bypassed it entirely.
+    const restoreCategory = categorizeMime(att.contentType)
+    const restoreLimit = categoryLimitBytes(restoreCategory)
+    if (parsed.data.fileSize > restoreLimit) {
+      return reply.status(413).send({
+        error: 'CATEGORY_LIMIT_EXCEEDED',
+        category: restoreCategory,
+        limit_bytes: restoreLimit,
+        size_bytes: parsed.data.fileSize,
+      })
     }
 
     const uploadUrl = rewritePresignedUrlToPublicBase(
@@ -457,15 +535,54 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(410).send({ error: 'FILE_EXPIRED' })
     }
 
+    const [att] = await db
+      .select({
+        id: attachments.id,
+        bucket: attachments.bucket,
+        contentType: attachments.contentType,
+      })
+      .from(attachments)
+      .where(eq(attachments.objectKey, filePath))
+      .limit(1)
+
+    if (!att) {
+      return reply.status(404).send({ error: 'ATTACHMENT_NOT_FOUND' })
+    }
+    // Same no-re-typing rule as /restore-url (see the comment there).
+    if (baseMimeType(parsed.data.fileType) !== baseMimeType(att.contentType)) {
+      return reply.status(409).send({ error: 'CONTENT_TYPE_MISMATCH' })
+    }
+
+    // The PUT has already happened, so unlike /upload-url we can just ask MinIO
+    // how big the object really is instead of believing the body. Before this,
+    // a restore could re-declare a many-megabyte object as 1 byte and erase the
+    // uploader's accounted usage. Fall back to the declared size only when the
+    // HEAD is unavailable.
+    const category = categorizeMime(att.contentType)
+    const limitBytes = categoryLimitBytes(category)
+    const actualBytes = await headObjectSize(att.bucket || bucket, filePath)
+    const sizeBytes = actualBytes ?? parsed.data.fileSize
+    if (sizeBytes > limitBytes) {
+      // Refusing alone would leak the blob: the row keeps evicted_at set, so
+      // neither the LRU evictor nor the size reconciler (both scoped to live
+      // rows) would ever come back for it.
+      await deleteObjectIfExists({ client, bucket: att.bucket || bucket, key: filePath })
+      return reply.status(413).send({
+        error: 'CATEGORY_LIMIT_EXCEEDED',
+        category,
+        limit_bytes: limitBytes,
+        size_bytes: sizeBytes,
+      })
+    }
+
     const restored = await db
       .update(attachments)
       .set({
-        contentType: parsed.data.fileType,
-        sizeBytes: parsed.data.fileSize,
+        sizeBytes,
         evictedAt: null,
         lastAccessedAt: sql`now()`,
       })
-      .where(eq(attachments.objectKey, filePath))
+      .where(eq(attachments.id, att.id))
       .returning({ id: attachments.id })
 
     if (!restored.length) {

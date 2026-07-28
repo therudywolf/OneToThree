@@ -26,6 +26,14 @@ import type { DecryptedMessage } from '@/types/chat'
  * Vibe: Clinical Pure / Terminal Noir / Dead Inside
  */
 
+/**
+ * How long an identical (chat, reply-to, body) submit is treated as a
+ * duplicate event rather than a second message. Long enough to absorb a
+ * doubled DOM event, short enough that a human deliberately sending "ok" twice
+ * is not silently swallowed.
+ */
+const DOUBLE_SUBMIT_WINDOW_MS = 600
+
 export function useSendMessage(
   cryptoCtx: ChatCryptoContext | null,
   directPeerUserId: string | null
@@ -48,15 +56,6 @@ export function useSendMessage(
       meta?: { burn_duration_secs?: number | null }
     ) => {
       const content = body.trim()
-      const dispatchKey = `${activeChatId ?? 'none'}::${replyToId ?? 'none'}::${content}`
-      const now = Date.now()
-      if (
-        dispatchKey === lastDispatchRef.current.key &&
-        now - lastDispatchRef.current.at < 2000
-      ) {
-        return
-      }
-      lastDispatchRef.current = { key: dispatchKey, at: now }
 
       // [0] PRE_FLIGHT_CHECK :: Проверка целостности контура
       if (!content) return
@@ -73,6 +72,29 @@ export function useSendMessage(
       if (!cryptoCtx) {
         toastError(explainSendError(new Error('SEND_CRYPTO_NOT_READY')), { title: 'SEND FAILED' })
         return
+      }
+
+      // [1] DOUBLE_SUBMIT_GUARD :: swallow a submit that fired twice for one
+      // user action (Enter key-repeat, a click+touch pair), nothing more.
+      //
+      // It used to be a 2-second content-keyed window that was armed BEFORE the
+      // network call and never disarmed, so it silently ate real messages: a
+      // second "ok"/"+1"/"да" within 2s vanished with no bubble and no error
+      // (the composer clears on the resolved promise), and a send that had just
+      // toasted SEND FAILED could not be retried with the same text. Now the
+      // window is short, and any failure disarms it so a retry always goes
+      // through.
+      const dispatchKey = `${activeChatId}::${replyToId ?? 'none'}::${content}`
+      const now = Date.now()
+      if (
+        dispatchKey === lastDispatchRef.current.key &&
+        now - lastDispatchRef.current.at < DOUBLE_SUBMIT_WINDOW_MS
+      ) {
+        return
+      }
+      lastDispatchRef.current = { key: dispatchKey, at: now }
+      const disarmDoubleSubmitGuard = () => {
+        lastDispatchRef.current = { key: '', at: 0 }
       }
 
       let encrypted_content: string
@@ -100,6 +122,7 @@ export function useSendMessage(
           iv = enc.iv
         }
       } catch (err) {
+        disarmDoubleSubmitGuard()
         toastError(explainSendError(err), { title: 'SEND FAILED' })
         return
       }
@@ -138,6 +161,7 @@ export function useSendMessage(
           )
         }
       } catch (err) {
+        disarmDoubleSubmitGuard()
         toastError(explainSendError(err), { title: 'SEND FAILED' })
         return
       }

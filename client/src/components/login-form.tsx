@@ -148,7 +148,32 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
     if (!authLoading && user) {
       const params = new URLSearchParams(window.location.search)
       const inviteCode = params.get('code')?.trim()
-      router.replace(inviteCode ? `/join/${encodeURIComponent(inviteCode)}` : '/')
+      // `?next=` is what proxy.ts writes when it bounces a logged-out visitor
+      // off a deep link (/join/..., /stickers/add/...). Nothing used to read it
+      // back, so every such link was silently discarded and the user landed on
+      // the chat home screen with no way to recover the invite.
+      // Same-origin only — and RESOLVED, not pattern-matched. A `^\/(?!\/)`
+      // test looks right but only rejects a second forward slash: the WHATWG
+      // parser treats `\` as `/` for special schemes, so `?next=/\evil.com`
+      // passed the regex and `new URL('/\\evil.com', origin).href` is
+      // `https://evil.com/` — Next then sees a foreign origin and does a hard
+      // window.location navigation. A victim who clicked the link would type
+      // the one vault password on a genuine-looking sign-in page and be handed
+      // straight to the attacker's "session expired, re-enter it" clone.
+      // Resolving and comparing origins rejects `/\evil.com`, `//evil.com`,
+      // `https://evil.com` and tab/newline-obfuscated variants in one check.
+      const next = params.get('next')
+      let safeNext = '/'
+      if (next) {
+        try {
+          const u = new URL(next, window.location.origin)
+          if (u.origin === window.location.origin) safeNext = u.pathname + u.search + u.hash
+        } catch {
+          /* unparseable — fall back to home */
+        }
+      }
+      const dest = inviteCode ? `/join/${encodeURIComponent(inviteCode)}` : safeNext
+      router.replace(dest)
     }
   }, [authLoading, user, router, showVaultPrompt])
 
@@ -237,6 +262,14 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
       if (!res.ok) {
         if (res.error === 'USERNAME_TAKEN' || res.error === 'PUBLIC_KEY_CONFLICT') {
           setInfoLog(t('login.accountExists'))
+          return
+        }
+        if (res.error === 'VAULT_ALREADY_EXISTS') {
+          // A vault for this nickname is already on this device, so "Create
+          // account" is a dead end. Surface it as INFO with the same
+          // switch-to-sign-in affordance as USERNAME_TAKEN instead of a red
+          // error the user can only stare at.
+          setInfoLog(t('login.vaultExists'))
           return
         }
         setErrorLog(explainLoginError(res.error, t))
@@ -547,8 +580,15 @@ export function LoginForm({ initialMode = 'ACCESS' }: { initialMode?: FormMode }
                       resetForm()
                       // Keep the address bar truthful so /login and /register are
                       // real screens (shareable, back-button-able) even though
-                      // the switch itself is instant.
-                      router.replace(m === 'GENESIS' ? '/register' : '/login')
+                      // the switch itself is instant. CARRY THE QUERY: dropping
+                      // it threw away the pending `?code=` (invite) / `?next=`
+                      // (deep link) that brought the user here, and since the
+                      // two routes are different page components the form
+                      // remounts with an empty search string — so the invite was
+                      // unrecoverable after registering.
+                      router.replace(
+                        `${m === 'GENESIS' ? '/register' : '/login'}${window.location.search}`
+                      )
                     }}
                     aria-pressed={active}
                     className={`py-2 ${type.tab} tracking-wide transition-all ${

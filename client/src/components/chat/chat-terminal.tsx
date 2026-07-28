@@ -45,7 +45,6 @@ import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 import { explainStickerError } from '@/lib/sticker-errors'
 
 const OLDER_PAGE_SIZE = 25
-const OLDER_RAM_CAP = 200
 
 function shortId(id: string) {
   return `${id.slice(0, 8)}…`
@@ -151,36 +150,6 @@ export function ChatTerminal({
   const messages = useChatStore((s) => s.messages)
   const removeMessage = useChatStore((s) => s.removeMessage)
 
-  // Tick counter so burn-timer countdowns re-render every second.
-  const [, setBurnTick] = useState(0)
-  // Stable signature of the *armed* burn timers (id+deadline). Only changes when
-  // a burn timer is added/removed/retimed — NOT on every unrelated message
-  // append or read receipt. Keying the interval off this string means we don't
-  // tear down and recreate the per-second timer on every store update (D22).
-  const burnSignature = useMemo(
-    () =>
-      messages
-        .filter((m) => m.burn_at)
-        .map((m) => `${m.id}:${m.burn_at}`)
-        .sort()
-        .join('|'),
-    [messages]
-  )
-  useEffect(() => {
-    if (!burnSignature) return
-    const id = setInterval(() => {
-      const now = Date.now()
-      // Read the latest messages from the store inside the tick so we always act
-      // on current state without listing `messages` as an effect dependency.
-      for (const m of useChatStore.getState().messages) {
-        if (m.burn_at && new Date(m.burn_at).getTime() <= now) {
-          removeMessage(m.id)
-        }
-      }
-      setBurnTick((t) => t + 1)
-    }, 1000)
-    return () => clearInterval(id)
-  }, [burnSignature, removeMessage])
   const setReplyTo = useChatStore((s) => s.setReplyTo)
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const historyDecryptBusy = useUnreadStore((s) => s.historyDecryptBusy)
@@ -296,13 +265,21 @@ export function ChatTerminal({
       el.removeEventListener('contextmenu', block)
     }
   }, [privacy.noCopy])
-  // Native (Android) FLAG_SECURE bridge — actually blocks screenshots
-  // when running inside Capacitor with the Privacy plugin installed.
-  // Web is a no-op. On chat exit / privacy toggle off, FLAG_SECURE is
-  // released so the rest of the app stays screenshot-able.
+  // Native (Android) FLAG_SECURE bridge — actually blocks screenshots when
+  // running inside Capacitor with the Privacy plugin installed. Web is a no-op.
+  //
+  // ONE-WAY on purpose. FLAG_SECURE is ON by default (MainActivity.onCreate)
+  // and `privacy.noCopy` is false for every chat until somebody opts in, so the
+  // old `setNativeFlagSecure(privacy.noCopy)` + cleanup `false` pair cleared the
+  // window flag for the whole Activity milliseconds after the first chat
+  // rendered: screenshots, screen recorders and the recents thumbnail all came
+  // back on decrypted E2EE conversations, for every normal user. A per-chat
+  // cosmetic toggle must never drive the global window flag downward — that
+  // needs an explicit user-facing "allow screenshots" preference, which does
+  // not exist.
   useEffect(() => {
-    void setNativeFlagSecure(privacy.noCopy)
-    return () => { void setNativeFlagSecure(false) }
+    if (!privacy.noCopy) return
+    void setNativeFlagSecure(true)
   }, [privacy.noCopy])
   const isSelfChat = activeChat != null && isSavedMessagesChat(activeChat, userId)
 
@@ -381,6 +358,18 @@ export function ChatTerminal({
   useEffect(() => {
     renderMessagesRef.current = renderMessages
   }, [renderMessages])
+
+  // Same trick for the grouped view, consumed by handleMediaClick. Listing
+  // groupedMessages in that callback's dep array gave it a new identity on
+  // EVERY append, read receipt, reaction and edit — chatStore mints a new
+  // messages array for all of those — which changed the onMediaClick prop on
+  // every row and defeated MessageRow's memo for the whole (up to ~250-row)
+  // list, re-running parseStickerEnvelope / JSON.parse / envelope parsing per
+  // row each time. Exactly what the memo comments above were written to prevent.
+  const groupedMessagesRef = useRef(groupedMessages)
+  useEffect(() => {
+    groupedMessagesRef.current = groupedMessages
+  }, [groupedMessages])
 
   // Stable sorted-id key for the set of peer senders. The key only changes when
   // the *set* of senders changes — not on every read receipt / message append
@@ -518,6 +507,82 @@ export function ChatTerminal({
     firstUnreadIdRef.current = nextUnread.id
   }, [activeChatId, firstUnreadAnchorId, messages, readAtOverrides, userId])
 
+  // chatStore.messages is capped at the newest RAM_CACHE_LIMIT rows; anything
+  // the top-sentinel paginated in lives ONLY in `olderMessages` and is disjoint
+  // from the store, so removeMessage() filters an array that doesn't contain it.
+  // A delete therefore has to hit both, otherwise the bubble stays fully
+  // readable on screen (while the success toast claims otherwise) until the user
+  // leaves the chat.
+  const dropMessageEverywhere = useCallback(
+    (id: string) => {
+      removeMessage(id)
+      setOlderMessages((prev) =>
+        prev.some((m) => m.id === id) ? prev.filter((m) => m.id !== id) : prev
+      )
+    },
+    [removeMessage]
+  )
+
+  // Stable signature of the *armed* burn timers (id+deadline). Only changes when
+  // a burn timer is added/removed/retimed — NOT on every unrelated message
+  // append or read receipt. Keying the interval off this string means we don't
+  // tear down and recreate the per-second timer on every store update (D22).
+  //
+  // Derived from `renderMessages`, not `messages`: a self-destruct message that
+  // has been paginated in lives only in `olderMessages`, so keying off the store
+  // meant no interval was ever armed for it and its deadline passed with the
+  // bubble still on screen. This effect therefore sits below both
+  // `renderMessages` and `dropMessageEverywhere`.
+  const burnSignature = useMemo(
+    () =>
+      renderMessages
+        .filter((m) => m.burn_at)
+        .map((m) => `${m.id}:${m.burn_at}`)
+        .sort()
+        .join('|'),
+    [renderMessages]
+  )
+  // Per-second sweep that drops messages whose burn deadline has passed.
+  //
+  // It used to also bump a `burnTick` state counter "so the countdowns
+  // re-render". That did nothing except rebuild the entire message-list JSX
+  // once a second: no MessageRow prop changes on a tick, so memo(MessageRowImpl)
+  // short-circuits every row and the rendered countdown never actually moves.
+  // Refreshing the visible countdown needs the tick threaded into the affected
+  // rows (or a self-ticking countdown child) in message-row.tsx — until then,
+  // don't pay for a full-list reconciliation every second for nothing.
+  useEffect(() => {
+    if (!burnSignature) return
+    const id = setInterval(() => {
+      const now = Date.now()
+      // Read the latest rows through the existing live mirror so we always act
+      // on current state without listing them as an effect dependency.
+      for (const m of renderMessagesRef.current) {
+        if (m.burn_at && new Date(m.burn_at).getTime() <= now) {
+          dropMessageEverywhere(m.id)
+        }
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [burnSignature, dropMessageEverywhere])
+
+  // The peer's "delete for everyone" arrives over the WS in use-chat-realtime,
+  // which can only reach the store — so a deleted message that had been
+  // paginated into `olderMessages` stayed fully readable on screen until the
+  // user left the chat. That hook announces the deletion; this is the half that
+  // can actually remove it from the local paginated window.
+  useEffect(() => {
+    const onDeleted = (ev: Event) => {
+      const id = (ev as CustomEvent<{ id?: string; chatId?: string }>).detail?.id
+      if (!id) return
+      setOlderMessages((prev) =>
+        prev.some((m) => m.id === id) ? prev.filter((m) => m.id !== id) : prev
+      )
+    }
+    window.addEventListener('p13:message-deleted', onDeleted)
+    return () => window.removeEventListener('p13:message-deleted', onDeleted)
+  }, [])
+
   const handleMessageAction = useCallback(
     (action: string, msg: DecryptedMessage) => {
       const mine = msg.sender_id === userId
@@ -543,7 +608,7 @@ export function ChatTerminal({
           if (!window.confirm(t('chat.deleteForMeConfirm'))) {
             break
           }
-          removeMessage(msg.id)
+          dropMessageEverywhere(msg.id)
           void deleteCachedMessage(msg.id, msg.chat_id)
           toastSuccess(t('chat.originalDeleted'))
           break
@@ -555,7 +620,7 @@ export function ChatTerminal({
             void (async () => {
               try {
                 await deleteMessage(msg.id, true)
-                removeMessage(msg.id)
+                dropMessageEverywhere(msg.id)
                 await deleteCachedMessage(msg.id, msg.chat_id)
                 toastSuccess(t('chat.originalDeleted'))
               } catch {
@@ -628,7 +693,7 @@ export function ChatTerminal({
         }
       }
     },
-    [userId, setReplyTo, removeMessage],
+    [userId, setReplyTo, dropMessageEverywhere, t],
   )
 
   // Forward handler: re-encrypts msg.plaintext under the target chat's crypto
@@ -885,6 +950,13 @@ export function ChatTerminal({
     return m
   }, [voiceMessageIds])
 
+  // Mirror for navigateVoice — same memo-preserving reason as
+  // groupedMessagesRef above.
+  const voiceMessageIdsRef = useRef(voiceMessageIds)
+  useEffect(() => {
+    voiceMessageIdsRef.current = voiceMessageIds
+  }, [voiceMessageIds])
+
   const scrollToAndPlayVoice = useCallback((targetId: string) => {
     const el = ref.current?.querySelector(`[data-message-id="${targetId}"]`)
     if (el) {
@@ -897,12 +969,13 @@ export function ChatTerminal({
   }, [])
 
   const navigateVoice = useCallback((currentId: string, direction: 'prev' | 'next') => {
-    const idx = voiceMessageIds.indexOf(currentId)
+    const ids = voiceMessageIdsRef.current
+    const idx = ids.indexOf(currentId)
     if (idx === -1) return
     const targetIdx = direction === 'prev' ? idx - 1 : idx + 1
-    const targetId = voiceMessageIds[targetIdx]
+    const targetId = ids[targetIdx]
     if (targetId) scrollToAndPlayVoice(targetId)
-  }, [voiceMessageIds, scrollToAndPlayVoice])
+  }, [scrollToAndPlayVoice])
 
   const handleMediaClick = useCallback((media: { id: string; url: string; type: 'image' | 'video'; mimeType: string }) => {
     const allMedia: Array<{ id: string; url: string; type: 'image' | 'video'; mimeType: string; owned?: boolean }> = []
@@ -952,7 +1025,7 @@ export function ChatTerminal({
       }
     }
 
-    for (const group of groupedMessages) {
+    for (const group of groupedMessagesRef.current) {
       if (group.type === 'UNIT') {
         collectMsg(group.message)
       } else {
@@ -969,7 +1042,7 @@ export function ChatTerminal({
       setLightboxIndex(currentIndex)
       setLightboxOpen(true)
     }
-  }, [groupedMessages])
+  }, [])
 
   const handleLightboxLoadMedia = useCallback(async (index: number): Promise<string | null> => {
     const items = lightboxMedia
@@ -1112,11 +1185,24 @@ export function ChatTerminal({
               setHasMoreOlder(false)
               return
             }
-            setOlderMessages((prev) => {
-              const merged = [...rows, ...prev]
-              if (merged.length <= OLDER_RAM_CAP) return merged
-              return merged.slice(0, OLDER_RAM_CAP)
-            })
+            // Prepend unbounded. The original `merged.slice(0, OLDER_RAM_CAP)`
+            // is ordered oldest-first, so it discarded the NEWEST paginated rows
+            // — precisely the ones bridging the paginated window to the live
+            // chatStore window — punching a silent, unrefillable 25-message hole
+            // into the middle of the rendered history (there is no "load newer"
+            // path), widened by another 25 on every further page.
+            //
+            // Decrypted text rows are small; an unbounded prepend is the cheap
+            // option here, and the alternative trim would have to evict from the
+            // NEWEST end (chatStore can re-supply those) rather than the oldest.
+            setOlderMessages((prev) => [...rows, ...prev])
+            // Stop ONLY when the cache is genuinely exhausted. Tying the stop to
+            // OLDER_RAM_CAP turned a RAM trim into a hard scrollback wall: after
+            // 8 pages `hasMoreOlder` went false, the top sentinel went dead, and
+            // everything older than ~250 messages became unreachable in the UI
+            // even though it sits decrypted in IndexedDB — with no way back
+            // short of leaving the chat, which resets to the newest 50 and hits
+            // the same wall again.
             if (rows.length < OLDER_PAGE_SIZE) {
               setHasMoreOlder(false)
             }

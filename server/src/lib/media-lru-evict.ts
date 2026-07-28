@@ -1,7 +1,9 @@
-import { and, asc, eq, isNull, lt, sql } from 'drizzle-orm'
+import { HeadObjectCommand } from '@aws-sdk/client-s3'
+import { and, asc, desc, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm'
 import type { FastifyBaseLogger } from 'fastify'
 import { db } from '../db/index.js'
 import { attachments, users } from '../db/schema.js'
+import { categorizeMime, categoryLimitBytes } from './media-limits.js'
 import {
   createS3Client,
   deleteObjectIfExists,
@@ -122,6 +124,212 @@ export async function getCachedUsageBytes(): Promise<number> {
 }
 
 /**
+ * Presign PUT TTL (see `DEFAULT_PRESIGN_PUT_TTL_S` in s3.ts) plus slack. Once
+ * this has elapsed an attachments row whose object is still absent can never be
+ * filled — the signed URL has expired — so it stops being charged.
+ */
+const PRESIGN_GRACE_MS = 15 * 60 * 1000
+
+/**
+ * Below this age a missing object just means "the PUT is still running" — an
+ * album presigns every item in parallel, so charging those siblings would 413
+ * the user out of their own album on any instance with a per-user quota.
+ */
+const UPLOAD_SETTLE_MS = 60 * 1000
+
+/** How many of a user's most recent rows one reconcile pass verifies. */
+const RECONCILE_BATCH = 10
+
+/**
+ * AES-GCM authentication tag. Attachments are uploaded as ciphertext while the
+ * client declares the PLAINTEXT byte length, so every honest object is exactly
+ * this much larger than its `size_bytes` row.
+ */
+const GCM_TAG_BYTES = 16
+
+/** Upper bound on time the reconcile may steal from the upload request path. */
+const RECONCILE_BUDGET_MS = 1_500
+
+export type SizeReconcileResult = {
+  checked: number
+  corrected: number
+  removed: number
+  /** Extra bytes to charge for rows whose object could not be verified yet. */
+  pendingBytes: number
+}
+
+/** True stored size of one object, or null when it cannot be determined. */
+export async function headObjectSize(
+  bucket: string,
+  key: string
+): Promise<number | null> {
+  try {
+    const client = createS3Client()
+    const head = await client.send(
+      new HeadObjectCommand({ Bucket: bucket, Key: key }),
+      { abortSignal: AbortSignal.timeout(RECONCILE_BUDGET_MS) }
+    )
+    return typeof head.ContentLength === 'number' ? head.ContentLength : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Sprint M1-3 — reconcile recorded attachment sizes against S3 truth.
+ *
+ * `/upload-url` can only record the CLIENT-declared fileSize: a presigned PUT
+ * cannot sign content-length without breaking the rewriting-proxy path (see the
+ * `unsignableHeaders` comment in s3.ts). A client that declares 1 byte and then
+ * PUTs 5 GiB is therefore invisible to every quota check — `getCurrentUsageBytes`
+ * never reaches the high watermark, eviction never fires, and the media volume
+ * fills up until the service dies. A HeadObject is the only server-side
+ * authority over what was actually stored, so run one across the caller's most
+ * recent uploads before handing out the next presigned URL:
+ *
+ *  - real size above the per-category ceiling → the object was never allowed to
+ *    exist (`/upload-url` rejects that declaration up front), so delete it and
+ *    tombstone the row;
+ *  - real size merely different from the declared one → record the truth so
+ *    quota math and LRU eviction operate on real bytes;
+ *  - object still absent, but old enough that the PUT is not merely in flight
+ *    and young enough that the signed URL still works → nothing to verify yet,
+ *    so report it via `pendingBytes` charged at the category ceiling.
+ *    Pessimistic on purpose: an unverified reservation is assumed to be as
+ *    large as policy allows, which is what stops "grab N presigns first, then
+ *    PUT N huge bodies".
+ *
+ * Best-effort throughout — MinIO being unreachable must never block an upload.
+ */
+export async function reconcileUploaderAttachmentSizes(opts: {
+  uploaderId: string
+  log: FastifyBaseLogger
+  limit?: number
+}): Promise<SizeReconcileResult> {
+  const result: SizeReconcileResult = {
+    checked: 0,
+    corrected: 0,
+    removed: 0,
+    pendingBytes: 0,
+  }
+
+  let client: ReturnType<typeof createS3Client> | null = null
+  let fallbackBucket = ''
+  try {
+    client = createS3Client()
+    fallbackBucket = getBucketName()
+  } catch (err) {
+    opts.log.warn({ err: String(err) }, 'attachment size reconcile skipped (no s3 client)')
+  }
+  if (!client) return result
+
+  const rows = await db
+    .select({
+      id: attachments.id,
+      bucket: attachments.bucket,
+      objectKey: attachments.objectKey,
+      sizeBytes: attachments.sizeBytes,
+      contentType: attachments.contentType,
+      createdAt: attachments.createdAt,
+      messageId: attachments.messageId,
+    })
+    .from(attachments)
+    .where(and(eq(attachments.uploaderId, opts.uploaderId), isNull(attachments.evictedAt)))
+    .orderBy(desc(attachments.createdAt))
+    .limit(opts.limit ?? RECONCILE_BATCH)
+
+  const deadline = Date.now() + RECONCILE_BUDGET_MS
+  for (const row of rows) {
+    if (Date.now() > deadline) break
+    const declared = Number(row.sizeBytes) || 0
+    const limitBytes = categoryLimitBytes(categorizeMime(row.contentType))
+
+    let actual: number | null
+    try {
+      const head = await client.send(
+        new HeadObjectCommand({
+          Bucket: row.bucket || fallbackBucket,
+          Key: row.objectKey,
+        }),
+        { abortSignal: AbortSignal.timeout(RECONCILE_BUDGET_MS) }
+      )
+      actual = typeof head.ContentLength === 'number' ? head.ContentLength : null
+    } catch (err) {
+      const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata
+        ?.httpStatusCode
+      // Anything other than a definite 404 (transport error, mocked client in
+      // tests, MinIO down) says nothing about this row — leave it alone.
+      if (status !== 404) continue
+      const age = Date.now() - new Date(row.createdAt).getTime()
+      if (age >= UPLOAD_SETTLE_MS && age < PRESIGN_GRACE_MS) {
+        result.pendingBytes += Math.max(0, limitBytes - declared)
+      }
+      continue
+    }
+
+    result.checked++
+    if (actual == null) continue
+
+    // The stored object is CIPHERTEXT while the declared size is the PLAINTEXT
+    // the client measured, so `actual` is systematically `declared + 16` (the
+    // AES-GCM tag). /upload-url accepts a file exactly at the limit (it rejects
+    // only `>`), so without this tolerance a legitimate at-the-limit upload HEADs
+    // 16 bytes over and gets destroyed on the uploader's very next presign.
+    const ceilingBytes = limitBytes + GCM_TAG_BYTES
+    if (actual > ceilingBytes) {
+      // NEVER hard-delete media that is already attached to a delivered message.
+      // This reconciler runs from the request path over historical rows, so an
+      // operator lowering MEDIA_LIMIT_* would otherwise silently mass-delete
+      // every older attachment above the new value, 10 at a time, with no
+      // warning and no way back. Record the true size so quota accounting is
+      // honest and leave the bytes for an explicit operator sweep.
+      if (row.messageId != null) {
+        await db
+          .update(attachments)
+          .set({ sizeBytes: actual })
+          .where(eq(attachments.id, row.id))
+        result.corrected++
+        opts.log.warn(
+          { key: row.objectKey, declared, actual, limitBytes },
+          'delivered attachment exceeds its category limit — size corrected, object KEPT'
+        )
+        continue
+      }
+      await deleteObjectIfExists({
+        client,
+        bucket: row.bucket || fallbackBucket,
+        key: row.objectKey,
+      })
+      await db
+        .update(attachments)
+        .set({ sizeBytes: actual, evictedAt: sql`now()` })
+        .where(eq(attachments.id, row.id))
+      result.removed++
+      opts.log.warn(
+        { key: row.objectKey, declared, actual, limitBytes },
+        'orphan attachment exceeded its category limit — object removed'
+      )
+      continue
+    }
+
+    if (actual !== declared) {
+      await db
+        .update(attachments)
+        .set({ sizeBytes: actual })
+        .where(eq(attachments.id, row.id))
+      result.corrected++
+    }
+  }
+
+  if (result.corrected > 0 || result.removed > 0) {
+    // Live totals just moved — do not let the watermark check keep reading the
+    // pre-correction (understated) number.
+    usageCache = null
+  }
+  return result
+}
+
+/**
  * Evict least-recently-accessed live attachments until usage falls under
  * `targetBytes`. Orphan rows (no message_id) are picked first within each
  * batch as a soft preference — they have no UI consequence beyond the
@@ -143,9 +351,21 @@ export async function evictLruUntilUnderTarget(opts: {
   let freedBytes = 0
   let usage = await getCurrentUsageBytes()
 
-  while (usage > target && evicted < cap) {
-    // Orphans first (cheaper UX hit), then real attachments — both ordered by LRU.
-    const batch = await db
+  // Orphans first (cheaper UX hit), then real attachments — both ordered by LRU.
+  //
+  // This used to be one query ordered by `message_id ASC NULLS FIRST`, under a
+  // comment claiming NULLs sort first in Postgres. They do not: btree ASC is
+  // NULLS LAST, so `attachments_lru_idx` stores (message_id NULLS LAST,
+  // last_accessed_at) and could satisfy neither that ordering nor its exact
+  // reverse — every 32-row batch fell back to a seq scan of the whole live
+  // attachments table plus a top-N sort, re-run once per batch, on the
+  // /upload-url request path. Splitting the two tiers keeps the same eviction
+  // order while making the predicate index-friendly: `message_id IS NULL` is an
+  // indexable leading qual, so the orphan pass walks the index already ordered
+  // by last_accessed_at, and the linked pass scans the (far smaller) partial
+  // index rather than the table.
+  const selectLruBatch = (orphansOnly: boolean) =>
+    db
       .select({
         id: attachments.id,
         bucket: attachments.bucket,
@@ -154,13 +374,20 @@ export async function evictLruUntilUnderTarget(opts: {
         messageId: attachments.messageId,
       })
       .from(attachments)
-      .where(isNull(attachments.evictedAt))
-      .orderBy(
-        // NULL sorts FIRST in Postgres asc by default — orphans come first.
-        sql`${attachments.messageId} asc nulls first`,
-        asc(attachments.lastAccessedAt)
+      .where(
+        and(
+          isNull(attachments.evictedAt),
+          orphansOnly
+            ? isNull(attachments.messageId)
+            : isNotNull(attachments.messageId)
+        )
       )
+      .orderBy(asc(attachments.lastAccessedAt))
       .limit(DEFAULT_BATCH)
+
+  while (usage > target && evicted < cap) {
+    let batch = await selectLruBatch(true)
+    if (batch.length === 0) batch = await selectLruBatch(false)
 
     if (batch.length === 0) break
 

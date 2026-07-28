@@ -143,14 +143,30 @@ export function scheduleMediaRetentionPurge(
   log: FastifyBaseLogger,
   opts?: { intervalMs?: number; initialDelayMs?: number }
 ): () => void {
-  const intervalMs = opts?.intervalMs ?? 24 * 60 * 60 * 1000
+  // Tick HOURLY, not daily. With a 24h period anchored to process boot, every
+  // run landed at the same UTC minute forever — so unless the API happened to
+  // start inside the 01:00-06:00 off-peak window, `purgeSkippedForOffPeak()`
+  // skipped every single run and MEDIA_RETENTION_DAYS was silently never
+  // enforced (S3 grew until the LRU evictor started deleting LIVE media
+  // instead). An hourly tick guarantees the window is hit whatever time we
+  // booted; the off-peak check remains the only gate on when work happens.
+  const intervalMs = opts?.intervalMs ?? 60 * 60 * 1000
   const initialDelayMs = opts?.initialDelayMs ?? 60 * 1000
 
   let timer: ReturnType<typeof setInterval> | null = null
+  // A purge over a large backlog can easily outlive the tick; without this the
+  // runs overlap and fight over the same rows.
+  let inFlight = false
   const run = () => {
-    void runMediaRetentionPurge(log).catch((err) => {
-      log.warn({ err: String(err) }, 'media retention purge failed')
-    })
+    if (inFlight) return
+    inFlight = true
+    void runMediaRetentionPurge(log)
+      .catch((err) => {
+        log.warn({ err: String(err) }, 'media retention purge failed')
+      })
+      .finally(() => {
+        inFlight = false
+      })
   }
 
   const t0 = setTimeout(() => {

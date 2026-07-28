@@ -10,6 +10,7 @@ import { eq, inArray, sql } from 'drizzle-orm'
 vi.mock('../lib/s3.js', () => ({
   createS3Client: () => ({}),
   createS3ClientForPresigning: () => ({}),
+  deleteObjectIfExists: async () => undefined,
   ensureBucketExists: async () => undefined,
   getAvatarsBucketName: () => 'avatars',
   getBucketName: () => 'test-bucket',
@@ -144,6 +145,73 @@ describe('storage media evict -> restore lifecycle', () => {
         .send({ filePath, fileType: 'image/jpeg', fileSize: 10 })
         .expect(409)
       expect(r.body.error).toBe('MEDIA_ALREADY_PRESENT')
+    } finally {
+      await db.delete(attachments).where(eq(attachments.chatId, chat.id))
+      await db.delete(messages).where(eq(messages.chatId, chat.id))
+      await db.delete(chatMembers).where(eq(chatMembers.chatId, chat.id))
+      await db.delete(chats).where(eq(chats.id, chat.id))
+      await db.delete(users).where(inArray(users.id, [user.id]))
+    }
+  })
+
+  // The presigned PUT signs the client's Content-Type, so whatever is declared
+  // here is what s3.<domain> serves later — an active text/html object on a
+  // sibling of the app origin (fm_session is scoped to the registrable domain).
+  it('refuses renderable Content-Types and refuses to re-type an object on restore', async () => {
+    const [user] = await db
+      .insert(users)
+      .values({
+        username: `stor3-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`,
+        publicKeyJwk: JSON.stringify({ kty: 'EC', crv: 'P-256', x: randomUUID(), y: randomUUID() }),
+      })
+      .returning({ id: users.id, username: users.username })
+    const cookie = `fm_session=${await app!.jwt.sign({ sub: user.id, username: user.username, jti: randomUUID() })}`
+    const [chat] = await db.insert(chats).values({ type: 'group_e2e', name: 'stor chat3' }).returning({ id: chats.id })
+    await db.insert(chatMembers).values({ chatId: chat.id, userId: user.id, encryptedGroupKey: null, role: 'owner' })
+    try {
+      // .txt is an allowlisted extension and 'text/' an allowlisted prefix —
+      // only the renderable-type denylist stops this combination.
+      const html = await request(app!.server)
+        .post('/api/storage/upload-url')
+        .set('Cookie', cookie)
+        .send({ fileName: 'note.txt', fileType: 'text/html', chatId: chat.id, fileSize: 2000 })
+        .expect(400)
+      expect(html.body.error).toBe('MIME_TYPE_NOT_ALLOWED')
+
+      for (const fileType of ['application/xhtml+xml', 'text/xml']) {
+        await request(app!.server)
+          .post('/api/storage/upload-url')
+          .set('Cookie', cookie)
+          .send({ fileName: 'note.xml', fileType, chatId: chat.id, fileSize: 2000 })
+          .expect(400)
+      }
+
+      // A real upload, then an evicted object another member could re-presign.
+      const up = await request(app!.server)
+        .post('/api/storage/upload-url')
+        .set('Cookie', cookie)
+        .send({ fileName: 'photo.jpg', fileType: 'image/jpeg', chatId: chat.id, fileSize: 1024 })
+        .expect(200)
+      const filePath = up.body.filePath as string
+      await db.insert(messages).values({
+        chatId: chat.id, senderId: user.id, content: null, iv: null,
+        mediaPath: filePath, mediaType: 'image', mediaIv: 'iv',
+      })
+      await db.update(attachments).set({ evictedAt: sql`now()` }).where(eq(attachments.objectKey, filePath))
+
+      const swap = await request(app!.server)
+        .post('/api/storage/restore-url')
+        .set('Cookie', cookie)
+        .send({ filePath, fileType: 'text/plain', fileSize: 1024 })
+        .expect(409)
+      expect(swap.body.error).toBe('CONTENT_TYPE_MISMATCH')
+
+      // The codec-parameter form the client sends back must still be accepted.
+      await request(app!.server)
+        .post('/api/storage/restore-url')
+        .set('Cookie', cookie)
+        .send({ filePath, fileType: 'image/jpeg; charset=binary', fileSize: 1024 })
+        .expect(200)
     } finally {
       await db.delete(attachments).where(eq(attachments.chatId, chat.id))
       await db.delete(messages).where(eq(messages.chatId, chat.id))

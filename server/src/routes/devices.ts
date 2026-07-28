@@ -27,7 +27,8 @@ import { z } from 'zod'
 import { db } from '../db/index.js'
 import { users, devices } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
-import { verifyNonceSignatureEcdsaP256 } from '../lib/ecdsa-verify.js'
+import { safeEqualNonce, verifyNonceSignatureEcdsaP256 } from '../lib/ecdsa-verify.js'
+import { deletePending, getPending, setChallenge } from '../lib/challenge-store.js'
 import { consumeTotpCode } from '../lib/totp-replay-guard.js'
 import { saveLinkToken, consumeLinkToken } from '../lib/link-token-store.js'
 import { verifyTotpSync } from '../lib/totp.js'
@@ -144,11 +145,37 @@ function buildConfirmMessage(
   return createHash('sha256').update(raw, 'utf8').digest('base64url')
 }
 
+/** Challenge namespace for the /link/init re-auth signature. */
+const linkChallengeKey = (userId: string) => `device-link:${userId}`
+
 export const devicesRoutes: FastifyPluginAsync = async (app) => {
+  /**
+   * GET /api/devices/link/challenge
+   *
+   * Issues the single-use nonce that /link/init must sign. Without a
+   * server-chosen nonce the "ECDSA re-authentication" factor proved nothing:
+   * the caller picked the nonce itself, nothing was consumed, and any
+   * (nonce, signature) pair the account's key ever produced over a bare string
+   * — an earlier /link/init body, a /auth/verify challenge-response (identical
+   * message construction) — stayed a valid re-auth token forever.
+   */
+  app.get(
+    '/link/challenge',
+    { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } },
+    async (request, reply) => {
+      const user = await getAuthUser(request, reply)
+      if (!assertAuthed(reply, user)) return
+      const nonce = randomUUID()
+      await setChallenge(linkChallengeKey(user.id), nonce)
+      return reply.send({ nonce })
+    }
+  )
+
   /**
    * POST /api/devices/link/init
    *
-   * Factor 1: ECDSA re-authentication.
+   * Factor 1: ECDSA re-authentication over a server-issued, single-use nonce
+   *           (GET /link/challenge).
    * Factor 1.5: TOTP (if enabled).
    * Returns a one-time link_token valid for 5 minutes.
    */
@@ -182,6 +209,17 @@ export const devicesRoutes: FastifyPluginAsync = async (app) => {
       }
       if (!row.allowDeviceLinking) {
         return reply.status(403).send({ error: 'DEVICE_LINKING_DISABLED' })
+      }
+
+      // Consume the challenge BEFORE verifying, so a wrong signature burns the
+      // nonce too (same shape as the vault proof in users.ts).
+      const pending = await getPending(linkChallengeKey(user.id))
+      if (!pending) {
+        return reply.status(401).send({ error: 'NO_CHALLENGE' })
+      }
+      await deletePending(linkChallengeKey(user.id))
+      if (!safeEqualNonce(pending.nonce, nonce)) {
+        return reply.status(401).send({ error: 'NONCE_MISMATCH' })
       }
 
       const sigOk = verifyNonceSignatureEcdsaP256(nonce, signature, row.publicKeyJwk)

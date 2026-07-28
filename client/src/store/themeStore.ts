@@ -88,7 +88,18 @@ export type ShellPreset = {
   controlRadius: string
   crtOpacity: string
   crtVignetteOpacity: string
-  /** CSS percentage string, e.g. '35%' or '0%' for MD3. */
+  /**
+   * UNITLESS number as a string, e.g. '0.35' (or '0' for MD3).
+   *
+   * Every consumer multiplies it: `calc(var(--text-shadow-intensity) * 100%)`.
+   * It used to be emitted as '35%', which makes that `calc(35% * 100%)` — a
+   * percentage times a percentage is not a valid product, so the whole
+   * color-mix() and with it the text-shadow declaration became invalid at
+   * computed-value time. The pre-hydration [data-theme] baseline supplies 0.35,
+   * so the terminal CRT glow visibly popped off the instant ThemeApplicator
+   * stamped its inline value, and no palette switch could bring it back
+   * (the inline style always wins).
+   */
   textShadowIntensity: string
 }
 
@@ -102,7 +113,7 @@ export const SHELL_PRESETS: ShellPreset[] = [
     controlRadius: '0px',
     crtOpacity: '0.16',
     crtVignetteOpacity: '0.4',
-    textShadowIntensity: '35%',
+    textShadowIntensity: '0.35',
   },
   {
     id: 'md3',
@@ -113,7 +124,7 @@ export const SHELL_PRESETS: ShellPreset[] = [
     controlRadius: '18px',
     crtOpacity: '0',
     crtVignetteOpacity: '0',
-    textShadowIntensity: '0%',
+    textShadowIntensity: '0',
   },
 ]
 
@@ -504,14 +515,22 @@ export const THEME_BY_ID: Record<ThemeId, ThemeConfig> = THEMES.reduce(
   {} as Record<ThemeId, ThemeConfig>
 )
 
+/**
+ * Every preset must be a DISTINCT pair. Mint / Violet / Mono used to be
+ * byte-identical copies of Signal, and Sunset a copy of Amber, so the picker
+ * painted six swatches in two colours: clicking "Mint" expecting green handed
+ * you the red/cyan Signal palette, and stepping Mint → Violet → Mono changed
+ * nothing at all while the selection highlight moved. The ids are persisted, so
+ * they stay — only the colours were wrong.
+ */
 export const ACCENT_PRESETS: AccentPreset[] = [
   { id: 'theme', label: 'Theme', primary: '', accent: '' },
   { id: 'signal', label: 'Signal', primary: VOID_PRIMARY, accent: VOID_ACCENT },
-  { id: 'mint', label: 'Mint', primary: VOID_PRIMARY, accent: VOID_ACCENT },
+  { id: 'mint', label: 'Mint', primary: '#12c48b', accent: '#7ef0c8' },
   { id: 'amber', label: 'Amber', primary: VOID_PRIMARY, accent: VOID_AMBER },
-  { id: 'violet', label: 'Violet', primary: VOID_PRIMARY, accent: VOID_ACCENT },
-  { id: 'sunset', label: 'Sunset', primary: VOID_PRIMARY, accent: VOID_AMBER },
-  { id: 'mono', label: 'Mono', primary: VOID_PRIMARY, accent: VOID_ACCENT },
+  { id: 'violet', label: 'Violet', primary: '#a06bff', accent: '#ff6bd6' },
+  { id: 'sunset', label: 'Sunset', primary: '#ff6b4a', accent: '#ffc46b' },
+  { id: 'mono', label: 'Mono', primary: '#9aa4b2', accent: '#d6dde6' },
 ]
 
 export const ACCENT_PRESET_BY_ID: Record<AccentPresetId, AccentPreset> =

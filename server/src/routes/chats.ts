@@ -2,18 +2,23 @@ import { randomBytes } from 'node:crypto'
 import { and, asc, count, desc, eq, ilike, inArray, isNull, max, ne, or, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { db } from '../db/index.js'
-import { chatFavorites, chatMembers, chats, messages, users } from '../db/schema.js'
+import { db, type Db } from '../db/index.js'
+import { chatFavorites, chatMembers, chats, messages, userBlocks, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import {
   getChatById,
   getMemberRole,
   type ChatMemberRole,
 } from '../lib/chat-permissions.js'
-import { isBlocked } from '../lib/block-check.js'
 import { broadcastToUsers } from '../ws/registry.js'
+import { isUserInRoom, leaveRoom } from '../ws/group-call-rooms.js'
+import { getRedis } from '../lib/redis.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
-import { scheduleMediaCleanupForChat } from '../lib/media-cleanup.js'
+import {
+  collectChatMediaTargets,
+  deleteCollectedMediaTargets,
+  scheduleMediaCleanupForChat,
+} from '../lib/media-cleanup.js'
 
 const patchRoleSchema = z.object({
   role: z.enum(['owner', 'admin', 'member']),
@@ -30,11 +35,19 @@ const inviteSlugPatchSchema = z.object({
   invite_slug: z.string().trim().min(4).max(32).regex(/^[a-z0-9_]+$/),
 })
 
+/**
+ * Upper bound on the member list accepted at creation. Unbounded arrays turned
+ * one request into thousands of `users`/`user_blocks` lookups (and, past ~65k
+ * entries, blew the driver's bind-parameter limit into a 500). Growing a chat
+ * beyond this goes through invites, one member at a time.
+ */
+const MAX_CHAT_MEMBERS = 256
+
 const createChatSchema = z
   .object({
     type: z.enum(['direct_e2e', 'group_e2e', 'public_open', 'channel']),
     name: z.string().max(256).optional().nullable(),
-    member_ids: z.array(uuidSchema).optional(),
+    member_ids: z.array(uuidSchema).max(MAX_CHAT_MEMBERS).optional(),
     members: z
       .array(
         z.object({
@@ -42,6 +55,7 @@ const createChatSchema = z
           encryptedGroupKey: z.string().min(1),
         })
       )
+      .max(MAX_CHAT_MEMBERS)
       .optional(),
   })
   .superRefine((data, ctx) => {
@@ -81,12 +95,82 @@ function isGroupType(t: string): boolean {
   return t === 'group_e2e' || t === 'public_open' || t === 'channel'
 }
 
-/** If a direct_e2e chat already links exactly these two users, return it (idempotent create). */
+/**
+ * True if a block exists between `meId` and ANY of `otherIds`.
+ *
+ * One set query instead of a sequential `isBlocked()` round-trip per member:
+ * the loop held a pool connection for its whole walk, so a single create-chat
+ * call with a large member list could pin connections for seconds.
+ */
+async function anyBlockBetween(meId: string, otherIds: string[]): Promise<boolean> {
+  const targets = otherIds.filter((id) => id !== meId)
+  if (targets.length === 0) return false
+  const [hit] = await db
+    .select({ blockerId: userBlocks.blockerId })
+    .from(userBlocks)
+    .where(
+      or(
+        and(eq(userBlocks.blockerId, meId), inArray(userBlocks.blockedId, targets)),
+        and(eq(userBlocks.blockedId, meId), inArray(userBlocks.blockerId, targets))
+      )
+    )
+    .limit(1)
+  return Boolean(hit)
+}
+
+/**
+ * Evict a departing member from this chat's group-call room.
+ *
+ * Group-call membership lives in Redis (`group-call:room:{chatId}`, 8h TTL) and
+ * is authorized ONCE, at join: every later media/signaling frame only checks
+ * `isUserInRoom`. So a kicked — or self-removed — member kept sending and
+ * hearing call audio for up to the room TTL, silently defeating the key-epoch
+ * bump that is supposed to cut them off. Mirrors the WS gcLeave cleanup,
+ * including the per-call session-key rotation once the room empties.
+ */
+async function evictFromGroupCall(chatId: string, userId: string): Promise<void> {
+  // Cheap HEXISTS guard: departures vastly outnumber calls, and without it every
+  // kick/leave would broadcast a bogus group_call:ended for a room that was
+  // never active (leaveRoom on an empty room returns "no participants left").
+  if (!(await isUserInRoom(chatId, userId))) return
+
+  const remaining = await leaveRoom(chatId, userId)
+  broadcastToUsers([...remaining.map((p) => p.userId), userId], {
+    type: 'group_call:member_leave',
+    room_id: chatId,
+    user_id: userId,
+  })
+  if (remaining.length > 0) return
+
+  const redis = getRedis()
+  if (redis) {
+    try {
+      await redis.del(`call:session:${chatId}`)
+    } catch {
+      /* best-effort */
+    }
+  }
+  const memberIds = await db
+    .select({ userId: chatMembers.userId })
+    .from(chatMembers)
+    .where(eq(chatMembers.chatId, chatId))
+  broadcastToUsers(
+    memberIds.map((r) => r.userId),
+    { type: 'group_call:ended', room_id: chatId }
+  )
+}
+
+/**
+ * If a direct_e2e chat already links exactly these two users, return it
+ * (idempotent create). `exec` lets the caller run the lookup INSIDE the
+ * transaction that holds the pair's advisory lock — see POST /.
+ */
 async function findExistingDirectE2EBetween(
   userA: string,
-  userB: string
+  userB: string,
+  exec: Db = db
 ): Promise<{ id: string; name: string | null; type: string } | null> {
-  const rows = await db
+  const rows = await exec
     .select({
       id: chats.id,
       name: chats.name,
@@ -120,12 +204,12 @@ async function findExistingDirectE2EBetween(
   return rows[0] ?? null
 }
 
-/** Find or create a self-chat (Saved Messages) for the given user. Returns the chat row. */
-async function getOrCreateSelfChat(userId: string) {
-  // Single-query self-chat lookup: pick direct_e2e chats where the user is a
-  // member AND the chat has exactly one member total (i.e. just the user).
-  // Replaces the previous N+1 loop (one members-query per direct chat).
-  const selfChats = await db
+/** Single-query self-chat lookup. `exec` may be a transaction (see below). */
+async function findSelfChat(userId: string, exec: Db = db) {
+  // Pick direct_e2e chats where the user is a member AND the chat has exactly
+  // one member total (i.e. just the user). Replaces the previous N+1 loop (one
+  // members-query per direct chat).
+  const selfChats = await exec
     .select({
       id: chats.id,
       name: chats.name,
@@ -148,11 +232,28 @@ async function getOrCreateSelfChat(userId: string) {
     .groupBy(chats.id, chats.name, chats.type, chats.inviteCode, chats.inviteOneTime)
     .having(sql`count(${chatMembers.userId}) = 1`)
     .limit(1)
-  if (selfChats[0]) {
-    return { chat: selfChats[0], created: false }
+  return selfChats[0] ?? null
+}
+
+/** Find or create a self-chat (Saved Messages) for the given user. Returns the chat row. */
+async function getOrCreateSelfChat(userId: string) {
+  const existing = await findSelfChat(userId)
+  if (existing) {
+    return { chat: existing, created: false }
   }
 
-  const [created] = await db.transaction(async (tx) => {
+  // Check-then-insert with nothing to serialize it: two tabs bootstrapping at
+  // once both saw "no self chat" and both inserted, leaving TWO "Saved
+  // Messages" chats — after which the .limit(1) lookup picks one arbitrarily
+  // and saved notes appear to vanish. Re-check under a txn-scoped advisory
+  // lock keyed on the user (same technique as the poll-vote lock in polls.ts):
+  // the loser blocks until the winner commits, then finds the winner's chat.
+  return db.transaction(async (tx) => {
+    const txDb = tx as unknown as Db
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`self_chat:${userId}`}))`)
+    const raced = await findSelfChat(userId, txDb)
+    if (raced) return { chat: raced, created: false }
+
     const inserted = await tx
       .insert(chats)
       .values({ type: 'direct_e2e', name: 'Saved Messages' })
@@ -165,11 +266,8 @@ async function getOrCreateSelfChat(userId: string) {
       encryptedGroupKey: null,
       role: 'owner',
     })
-    return inserted
+    return { chat, created: true }
   })
-
-  if (!created) throw new Error('CREATE_FAILED')
-  return { chat: created, created: true }
 }
 
 async function generateUniqueInviteCode(): Promise<string> {
@@ -750,11 +848,8 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       // Block check: creator cannot add users with whom there is a block relationship
-      for (const uid of uniqueIds) {
-        if (uid === user.id) continue
-        if (await isBlocked(user.id, uid)) {
-          return reply.status(403).send({ error: 'BLOCKED' })
-        }
+      if (await anyBlockBetween(user.id, uniqueIds)) {
+        return reply.status(403).send({ error: 'BLOCKED' })
       }
 
       const [created] = await db.transaction(async (tx) => {
@@ -887,29 +982,62 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Block check for direct and public chats
-    for (const uid of uniqueIds) {
-      if (uid === authId) continue
-      if (await isBlocked(authId, uid)) {
-        return reply.status(403).send({ error: 'BLOCKED' })
-      }
+    if (await anyBlockBetween(authId, uniqueIds)) {
+      return reply.status(403).send({ error: 'BLOCKED' })
     }
 
     if (type === 'direct_e2e') {
       const peerId = uniqueIds.find((id) => id !== authId)
       if (peerId) {
-        const existingDirect = await findExistingDirectE2EBetween(authId, peerId)
-        if (existingDirect) {
-          return reply.status(201).send({
-            chat: {
-              id: existingDirect.id,
-              name: existingDirect.name,
-              type: existingDirect.type,
-              is_group: false,
-              member_ids: uniqueIds,
-              my_role: 'member' as const,
-            },
-          })
-        }
+        // Check-then-insert with nothing serializing it: A tapping "Message" on
+        // B while B taps "Message" on A (or one client retrying a timed-out
+        // POST) had both requests see "no chat" and create one each — two DMs
+        // with the same peer, each holding half of the conversation, with
+        // findExistingDirectE2EBetween's .limit(1) then picking between them
+        // arbitrarily on every later lookup. Re-check and insert under a
+        // txn-scoped advisory lock on the sorted uuid pair (same technique as
+        // the poll-vote lock in polls.ts): the loser blocks until the winner
+        // commits and then finds the winner's chat.
+        const [lo, hi] = [authId, peerId].sort()
+        let createdDirect = false
+        const direct = await db.transaction(async (tx) => {
+          const txDb = tx as unknown as Db
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext(${`direct_chat:${lo}:${hi}`}))`
+          )
+          const raced = await findExistingDirectE2EBetween(authId, peerId, txDb)
+          if (raced) return raced
+
+          const inserted = await tx
+            .insert(chats)
+            .values({ type: 'direct_e2e', name: name ?? null })
+            .returning()
+          const chat = inserted[0]
+          if (!chat) throw new Error('INSERT_CHAT_FAILED')
+          await tx.insert(chatMembers).values(
+            uniqueIds.map((uid) => ({
+              chatId: chat.id,
+              userId: uid,
+              encryptedGroupKey: null as string | null,
+              role: 'member' as const,
+            }))
+          )
+          createdDirect = true
+          return { id: chat.id, name: chat.name, type: chat.type }
+        })
+
+        if (createdDirect) broadcastToUsers(uniqueIds, { type: 'chats_updated' })
+
+        return reply.status(201).send({
+          chat: {
+            id: direct.id,
+            name: direct.name,
+            type: direct.type,
+            is_group: false,
+            member_ids: uniqueIds,
+            my_role: 'member' as const,
+          },
+        })
       }
     }
 
@@ -1182,12 +1310,30 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       })
 
       if (transferred) {
+        await evictFromGroupCall(chatId, user.id)
         broadcastToUsers(notifyIds, { type: 'chats_updated' })
         broadcastKeyEpoch(chatId, newKeyEpoch, notifyIds)
         return reply.send({ ok: true })
       }
       // else: no eligible next owner — fall through to the plain-leave path.
     }
+
+    // Last member out tears the chat down below — and that teardown is what
+    // makes the S3 objects unreclaimable: both sweeps are DB-driven (they scan
+    // `messages.media_path` and `attachments`), so once those rows are gone
+    // nothing can ever enumerate the keys again and the blobs sit in MinIO
+    // forever. Gather them first, exactly as DELETE /:chatId does.
+    // COLLECT only. Whether the chat actually dies is decided by the
+    // transaction below, and these two reads are not serialized with each other:
+    // deleting here meant that if someone redeemed the invite link in the
+    // millisecond between them, the chat and its full message history survived
+    // with every media blob already wiped — and with no `evicted_at` stamped, so
+    // /storage/download-url kept handing out presigned URLs to keys that no
+    // longer exist (a raw MinIO 404 instead of the MEDIA_EVICTED placeholder the
+    // client knows how to render). The keys must still be gathered BEFORE the
+    // rows are deleted: both sweeps are DB-driven, so once the rows are gone
+    // nothing can enumerate the blobs again.
+    const mediaTargets = await collectChatMediaTargets(chatId)
 
     // Non-owner leave (or owner who turned out to be the last member). Remove
     // ourselves and, in the same transaction, either delete the now-empty chat
@@ -1228,6 +1374,13 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     if (!wasMember) {
       return reply.status(404).send({ error: 'NOT_A_MEMBER' })
     }
+    // Only now, once the transaction has committed the decision, is it safe to
+    // wipe the blobs — and only on the branch that actually dropped the chat.
+    if (chatDeleted) {
+      deleteCollectedMediaTargets(mediaTargets)
+    }
+    // Membership is gone — so must be the seat in the group call (see evictFromGroupCall).
+    await evictFromGroupCall(chatId, user.id)
     if (!chatDeleted) {
       const notifyIds = [...remaining.map((r) => r.userId), user.id]
       broadcastToUsers(notifyIds, { type: 'chats_updated' })
@@ -1408,6 +1561,10 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       }
     })
 
+    // The epoch bump above only cuts the kicked member out of MESSAGE traffic;
+    // the call channel needs its own eviction (see evictFromGroupCall).
+    await evictFromGroupCall(chatId, targetUserId)
+
     const memberIds = (
       await db
         .select({ userId: chatMembers.userId })
@@ -1510,6 +1667,26 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       .select({ userId: chatMembers.userId })
       .from(chatMembers)
       .where(eq(chatMembers.chatId, chatId))
+
+    // direct_e2e has no owner, so the gate above lets EITHER participant here —
+    // and this endpoint used to hard-delete every message in the chat, wiping
+    // the peer's whole history (including everything THEY sent) on demand. That
+    // contradicts DELETE /messages/:messageId, which refuses a non-sender even
+    // for one message, and the button is only labelled 'Delete History'. Make
+    // it per-user, exactly like POST /:chatId/leave: drop our own membership and
+    // only tear the chat down once nobody is left (which still covers Saved
+    // Messages, a one-member direct chat).
+    if (!isGroupType(chat.type) && allMembers.some((m) => m.userId !== user.id)) {
+      await db
+        .delete(chatMembers)
+        .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, user.id)))
+      await evictFromGroupCall(chatId, user.id)
+      broadcastToUsers(
+        allMembers.map((m) => m.userId),
+        { type: 'chats_updated' }
+      )
+      return reply.send({ ok: true })
+    }
 
     // Gather attachment keys before the DB cascade so we can free the
     // S3 objects (DB rows cascade, but blobs would otherwise linger

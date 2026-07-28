@@ -17,6 +17,15 @@ function signB64(input: string, privateKey: KeyObject): string {
 describe('devices link routes', () => {
   let app: FastifyInstance | undefined
 
+  /** /link/init only accepts a server-issued, single-use nonce. */
+  async function fetchLinkNonce(sessionToken: string): Promise<string> {
+    const res = await request(app!.server)
+      .get('/api/devices/link/challenge')
+      .set('Cookie', `fm_session=${sessionToken}`)
+      .expect(200)
+    return res.body.nonce as string
+  }
+
   beforeAll(async () => {
     app = await buildApp()
     await app.ready()
@@ -76,7 +85,7 @@ describe('devices link routes', () => {
       jti: randomUUID(),
     })
 
-    const nonce = randomUUID()
+    const nonce = await fetchLinkNonce(token)
     const init = await request(app!.server)
       .post('/api/devices/link/init')
       .set('Cookie', `fm_session=${token}`)
@@ -123,6 +132,49 @@ describe('devices link routes', () => {
     await db.delete(users).where(eq(users.id, u.id))
   })
 
+  it('refuses a replayed link/init nonce+signature pair', async () => {
+    // The re-auth factor used to accept a caller-chosen nonce, so the identical
+    // body worked forever — any (nonce, signature) the key ever produced over a
+    // bare string was a permanent link_token voucher.
+    const username = `replay${Date.now().toString(36)}`
+    const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+    const [u] = await db
+      .insert(users)
+      .values({
+        username,
+        publicKeyJwk: JSON.stringify(publicKey.export({ format: 'jwk' })),
+        allowDeviceLinking: true,
+      })
+      .returning({ id: users.id, username: users.username })
+
+    const token = await app!.jwt.sign({ sub: u.id, username: u.username, jti: randomUUID() })
+
+    const nonce = await fetchLinkNonce(token)
+    const body = { nonce, signature: signB64(nonce, privateKey) }
+
+    await request(app!.server)
+      .post('/api/devices/link/init')
+      .set('Cookie', `fm_session=${token}`)
+      .send(body)
+      .expect(200)
+
+    const replay = await request(app!.server)
+      .post('/api/devices/link/init')
+      .set('Cookie', `fm_session=${token}`)
+      .send(body)
+      .expect(401)
+    expect(replay.body.error).toBe('NO_CHALLENGE')
+
+    // A nonce the server never issued is refused as well.
+    await request(app!.server)
+      .post('/api/devices/link/init')
+      .set('Cookie', `fm_session=${token}`)
+      .send({ nonce: 'attacker-chosen', signature: signB64('attacker-chosen', privateKey) })
+      .expect(401)
+
+    await db.delete(users).where(eq(users.id, u.id))
+  })
+
   it('refreshes an existing revoked device row during confirm', async () => {
     const username = `relink${Date.now().toString(36)}`
     const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
@@ -155,7 +207,7 @@ describe('devices link routes', () => {
       jti: randomUUID(),
     })
 
-    const nonce = randomUUID()
+    const nonce = await fetchLinkNonce(token)
     const init = await request(app!.server)
       .post('/api/devices/link/init')
       .set('Cookie', `fm_session=${token}`)

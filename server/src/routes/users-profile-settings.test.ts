@@ -74,4 +74,33 @@ describe('users profile/settings routes', () => {
       await db.delete(users).where(eq(users.id, user.id))
     }
   })
+
+  it('hides a non-discoverable stranger behind the same 404 as an unknown handle', async () => {
+    // GET /search gates on is_discoverable (default FALSE), but this route
+    // resolved any handle for any caller: a wordlist enumerated shadow accounts
+    // and each hit leaked their profile plus an online/last_seen oracle.
+    if (!dbAvailable) return
+    const viewer = await createUser(`viewer-${Date.now().toString(36)}`)
+    const subject = await createUser(`subject-${Date.now().toString(36)}`)
+    const cookie = `fm_session=${await app!.jwt.sign({ sub: viewer.id, username: viewer.username, jti: randomUUID() })}`
+
+    try {
+      const hidden = await request(app!.server)
+        .get(`/api/users/${subject.username}/profile`)
+        .set('Cookie', cookie)
+        .expect(404)
+      expect(hidden.body.error).toBe('USER_NOT_FOUND')
+
+      // Opting in to discovery makes the profile resolvable again.
+      await db.update(users).set({ isDiscoverable: true }).where(eq(users.id, subject.id))
+      const shown = await request(app!.server)
+        .get(`/api/users/${subject.username}/profile`)
+        .set('Cookie', cookie)
+        .expect(200)
+      expect(shown.body.username).toBe(subject.username)
+    } finally {
+      await db.delete(users).where(eq(users.id, viewer.id))
+      await db.delete(users).where(eq(users.id, subject.id))
+    }
+  })
 })

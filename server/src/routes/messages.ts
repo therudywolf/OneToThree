@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 therudywolf
 
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
@@ -180,10 +180,27 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
 
     // burn_duration_secs takes precedence: server computes burn_at at read time.
     // burn_at (legacy absolute) is accepted only when no duration is given.
+    //
+    // ...and "read time" only exists in DIRECT chats: markMessage(s)ReadByReader
+    // rejects every other chat type with READ_RECEIPTS_DIRECT_ONLY, so a
+    // duration burn sent to a group/channel/public chat leaves burn_at NULL and
+    // the sender sees a countdown badge on a message that actually lives until
+    // the 30-day never-read fallback. That is a COSMETIC bug and it stays
+    // unfixed here on purpose.
+    //
+    // Arming the timer at SEND time instead is not the fix — it is burn-after-
+    // SEND, and it destroys data: purgeExpiredBurnMessages hard-DELETEs the row
+    // (deliveries cascade) within 60s, so on a 500-subscriber channel with a 5s
+    // timer every subscriber who was not connected at that exact instant — i.e.
+    // nearly all of them — never receives the post and there is no trace it
+    // existed. A correct group burn has to start from DELIVERY, not from send,
+    // which needs the countdown armed when the last device slot is marked
+    // delivered. Until that exists, keep the badge cosmetic rather than lossy,
+    // and gate the picker client-side.
     const burnDurationSecs = p.burn_duration_secs ?? null
     const burn = burnDurationSecs == null
       ? parseOptionalBurnAt(p.burn_at ?? null)
-      : { ok: true as const, date: null }  // burn_at will be set at read time
+      : { ok: true as const, date: null }
     if (!burn.ok) return reply.status(400).send({ error: burn.error })
 
     // Pin sender's ECDH key at send time so decryption survives multi-device key rotation.
@@ -377,6 +394,28 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       .orderBy(asc(messages.createdAt))
       .limit(200)
 
+    // `read_at` is now PERSISTED even when the reader has receipts disabled (only
+    // the live WS notification is suppressed), so every endpoint that returns it
+    // has to re-apply the privacy filter. GET /messages/:chatId does; this one
+    // did not, and it is reachable for the sender's OWN other devices — so a
+    // second device syncing later showed a read tick for a peer who had turned
+    // receipts off. Same rule as hidePeerReadAt, but per-chat: this response
+    // spans every chat the caller belongs to.
+    const ownReadChatIds = [
+      ...new Set(rows.filter((m) => m.readAt != null && m.senderId === user.id).map((m) => m.chatId)),
+    ]
+    const hideReadAtForChat = new Set<string>()
+    if (ownReadChatIds.length > 0) {
+      const peers = await db
+        .select({ chatId: chatMembers.chatId, disableReadReceipts: users.disableReadReceipts })
+        .from(chatMembers)
+        .innerJoin(users, eq(users.id, chatMembers.userId))
+        .where(and(inArray(chatMembers.chatId, ownReadChatIds), ne(chatMembers.userId, user.id)))
+      for (const p of peers) {
+        if (p.disableReadReceipts) hideReadAtForChat.add(p.chatId)
+      }
+    }
+
     return reply.send({
       messages: rows.map((m) => ({
         id: m.id,
@@ -390,7 +429,12 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         media_path: m.mediaPath,
         media_type: m.mediaType,
         media_iv: m.mediaIv,
-        read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
+        read_at:
+          m.readAt == null || (m.senderId === user.id && hideReadAtForChat.has(m.chatId))
+            ? null
+            : m.readAt instanceof Date
+              ? m.readAt.toISOString()
+              : String(m.readAt),
         burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
         burn_duration_secs: m.burnDurationSecs ?? null,
         created_at: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
@@ -741,6 +785,24 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    // "Disable read receipts" no longer blocks the read_at UPDATE (that broke
+    // the reader's own unread badge and the burn countdown — see
+    // mark-message-read.ts), so the suppression has to happen on the way OUT:
+    // the peer's read timestamp must not reach the sender through history
+    // either. Only messages the CALLER sent can carry someone else's read
+    // state, and read_at is only ever set in direct chats — so this costs one
+    // extra query, and only when such a row is actually on the page.
+    let hidePeerReadAt = false
+    if (rows.some((m) => m.readAt != null && m.senderId === user.id)) {
+      const [peer] = await db
+        .select({ disableReadReceipts: users.disableReadReceipts })
+        .from(chatMembers)
+        .innerJoin(users, eq(users.id, chatMembers.userId))
+        .where(and(eq(chatMembers.chatId, chatId), ne(chatMembers.userId, user.id)))
+        .limit(1)
+      hidePeerReadAt = peer?.disableReadReceipts === true
+    }
+
     return reply.send({
       messages: rows.map((m) => ({
         id: m.id,
@@ -756,7 +818,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
         device_ciphertext: m.deliveryCiphertext ?? null,
         device_iv: m.deliveryIv ?? null,
         sender_ecdh_public_key_jwk: m.senderEcdhPublicKeyJwk ?? null,
-        read_at: m.readAt == null ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
+        read_at: m.readAt == null || (hidePeerReadAt && m.senderId === user.id) ? null : m.readAt instanceof Date ? m.readAt.toISOString() : String(m.readAt),
         burn_at: m.burnAt == null ? null : m.burnAt instanceof Date ? m.burnAt.toISOString() : String(m.burnAt),
         burn_duration_secs: m.burnDurationSecs ?? null,
         is_pinned: m.isPinned,
@@ -995,6 +1057,13 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       // the sender. If the requester is not the sender, the row is left
       // untouched — surface that to the caller instead of pretending the
       // delete succeeded (audit C.P2).
+      if (msg.senderId !== user.id) return reply.status(403).send({ error: 'NOT_SENDER' })
+      // Collect the S3 keys BEFORE the row goes away, exactly like the
+      // for_everyone branch: attachments.message_id is ON DELETE SET NULL, so
+      // scheduling the cleanup afterwards found zero attachments and left the
+      // blobs in MinIO — still reachable through /storage/download-url, which
+      // authorizes on the (chat-scoped) attachments row.
+      await scheduleMediaCleanupForMessage(messageId)
       const deleted = await db
         .delete(messages)
         .where(and(eq(messages.id, messageId), eq(messages.senderId, user.id)))
@@ -1002,7 +1071,6 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       if (deleted.length === 0) {
         return reply.status(403).send({ error: 'NOT_SENDER' })
       }
-      await scheduleMediaCleanupForMessage(messageId)
     }
 
     return reply.send({ ok: true })

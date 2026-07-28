@@ -2,7 +2,7 @@
 // Copyright (C) 2026 therudywolf
 
 import { randomUUID } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync, FastifyReply } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import QRCode from 'qrcode'
@@ -133,6 +133,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         username: user.username,
         scope: 'ws',
         ...(sess?.device_id ? { device_id: sess.device_id } : {}),
+        // Carry the SESSION's jti (#19 follow-up): ws.ts re-checks the denylist
+        // per frame and on presence_ping, but both short-circuit on a falsy
+        // jti — so a ticket-authed socket survived logout and kept streaming
+        // every message for the account until the socket happened to close.
+        ...(sess?.jti ? { jti: sess.jti } : {}),
       },
       { expiresIn: 120 }
     )
@@ -319,6 +324,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(401).send({ error: 'TOTP_ALREADY_USED' })
     }
 
+    // Both factors have now passed — this is the only place the login-failure
+    // counter may be cleared (see the note in /verify's TOTP branch).
+    await resetLockout(row.username)
+
     const canonicalId = normalizeUuid(row.id)
     const dev = await upsertDeviceForSession(request, canonicalId)
     if (!dev.ok) {
@@ -417,7 +426,15 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(401).send({ error: 'NONCE_MISMATCH' })
         }
 
-        const existingRows = await db.select().from(users).where(eq(users.username, username)).limit(1)
+        // Case-insensitive: `username` is already canonical (lower-cased) but
+        // rows registered before canonicalisation can carry any casing, and a
+        // case-sensitive `eq` on them would fall through to the REGISTRATION
+        // branch and mint a second account with a look-alike handle.
+        const existingRows = await db
+          .select()
+          .from(users)
+          .where(sql`lower(${users.username}) = ${username}`)
+          .limit(1)
         const existing = existingRows[0]
 
         const clientDeviceKey = (request.headers['x-client-device-id'] as string | undefined)?.trim() ?? null
@@ -484,7 +501,6 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         }
 
         await deletePending(username)
-        await resetLockout(username)
 
         if (existing?.isBanned) {
           await recordLoginEvent(request, { userId: existing.id, username, outcome: 'fail_banned' })
@@ -512,10 +528,19 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         }
 
         const canonicalId = normalizeUuid(userId)
+        // Report the handle as STORED: a pre-canonicalisation account may carry
+        // different casing than the (now lower-cased) lookup key.
+        const accountUsername = existing?.username ?? username
 
         if (existing?.isTotpEnabled) {
           if (!existing.totpSecret) return reply.status(500).send({ error: 'TOTP_STATE_INVALID' })
-          return reply.send(await buildPending2faResponse(reply, canonicalId, username))
+          // Deliberately NO resetLockout here: the signature is only factor 1.
+          // Clearing the shared counter before the TOTP gate let an attacker
+          // holding the victim's device key loop /verify → 4 wrong codes →
+          // /verify …, zeroing the counter every round so the per-account TOTP
+          // lockout (#40) could never fire. The reset happens in /login/2fa,
+          // once the code has actually verified.
+          return reply.send(await buildPending2faResponse(reply, canonicalId, accountUsername))
         }
 
         const dev = await upsertDeviceForSession(request, canonicalId)
@@ -523,13 +548,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           if (dev.error === 'DEVICE_REVOKED') return reply.status(403).send({ error: 'DEVICE_REVOKED' })
           return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
         }
+        await resetLockout(username)
         const token = await reply.jwtSign(
-          { sub: canonicalId, username, device_id: dev.deviceId, jti: generateJti() },
+          { sub: canonicalId, username: accountUsername, device_id: dev.deviceId, jti: generateJti() },
           { expiresIn: SESSION_MAX_AGE_S }
         )
         commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
-        await recordLoginEvent(request, { userId: canonicalId, username, outcome: 'success', deviceId: dev.deviceId })
-        return reply.send({ user: { id: canonicalId, username }, ...(clientWantsBodyToken(request) ? { token } : {}) })
+        await recordLoginEvent(request, { userId: canonicalId, username: accountUsername, outcome: 'success', deviceId: dev.deviceId })
+        return reply.send({ user: { id: canonicalId, username: accountUsername }, ...(clientWantsBodyToken(request) ? { token } : {}) })
       })
     }
   )
@@ -608,7 +634,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           recoveryRequireTotp: users.recoveryRequireTotp,
         })
         .from(users)
-        .where(eq(users.username, username))
+        // Same case-insensitive resolution as /verify — `username` is canonical
+        // but stored handles may predate canonicalisation.
+        .where(sql`lower(${users.username}) = ${username}`)
         .limit(1)
 
       // Always run exactly ONE ECDSA verification — against the real recovery

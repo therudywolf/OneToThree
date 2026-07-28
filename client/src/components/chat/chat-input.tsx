@@ -284,6 +284,23 @@ export function ChatInput({ sendText, sendMedia, sendAlbum, cryptoCtx, directPee
     return () => {
       if (recordTimerRef.current) clearInterval(recordTimerRef.current)
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
+      // Same teardown as stopRecording. useMediaRecorder stops the mic tracks on
+      // its own unmount, but nothing used to cancel OUR waveform rAF or close
+      // OUR AudioContext — so a hands-free voice note interrupted by the
+      // auto-lock (which unmounts the whole chat tree), a logout or a 401
+      // redirect left `tick` re-scheduling itself ~60x/s and setting state on an
+      // unmounted component for the rest of the page's life, and leaked an
+      // AudioContext each time. Chrome caps those at ~6 per document, shared
+      // with the call ringtones.
+      if (waveformRafRef.current !== null) {
+        cancelAnimationFrame(waveformRafRef.current)
+        waveformRafRef.current = null
+      }
+      analyserRef.current = null
+      if (waveformAudioCtxRef.current) {
+        void waveformAudioCtxRef.current.close().catch(() => { /* already closed */ })
+        waveformAudioCtxRef.current = null
+      }
     }
   }, [])
 

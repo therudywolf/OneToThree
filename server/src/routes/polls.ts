@@ -5,7 +5,7 @@ import { db } from '../db/index.js'
 import { chatMembers, chats, polls, pollVotes } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { channelRoleAllowsPost } from '../lib/chat-permissions.js'
-import { broadcastToUsers } from '../ws/registry.js'
+import { broadcastToUsers, sendToUser } from '../ws/registry.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 
 export type PollResults = {
@@ -52,8 +52,10 @@ async function getPollResults(pollId: string, viewerId: string, isAnonymous: boo
     }
   }
 
-  // Non-anonymous: use raw rows. Fetched only here — anonymous polls compute
-  // counts via GROUP BY above and never touch this set.
+  // Non-anonymous: use raw rows. Anonymous polls compute counts via the GROUP
+  // BY above and never touch this set. (broadcastPollResults does read raw rows
+  // for both kinds — it needs the per-voter ballot to fan out — but a voter's
+  // indices only ever go to that voter.)
   const voteRows = await db
     .select({ optionIndex: pollVotes.optionIndex })
     .from(pollVotes)
@@ -76,6 +78,73 @@ async function getPollResults(pollId: string, viewerId: string, isAnonymous: boo
     my_votes: myVotes,
     is_anonymous: false,
   }
+}
+
+/**
+ * Fold raw vote rows into the member-agnostic tallies plus a per-voter ballot
+ * index. Exported for the unit test — `my_votes` is the whole reason
+ * poll_updated cannot be broadcast as one shared object (see broadcastPollResults).
+ */
+export function tallyPollVotes(
+  rows: { userId: string; optionIndex: number }[]
+): {
+  voteCounts: { optionIndex: number; count: number }[]
+  totalVoters: number
+  byUser: Map<string, number[]>
+} {
+  const countMap = new Map<number, number>()
+  const byUser = new Map<string, number[]>()
+  for (const row of rows) {
+    countMap.set(row.optionIndex, (countMap.get(row.optionIndex) ?? 0) + 1)
+    const mine = byUser.get(row.userId)
+    if (mine) mine.push(row.optionIndex)
+    else byUser.set(row.userId, [row.optionIndex])
+  }
+  return {
+    voteCounts: Array.from(countMap.entries()).map(([optionIndex, count]) => ({ optionIndex, count })),
+    totalVoters: byUser.size,
+    byUser,
+  }
+}
+
+/**
+ * Fan `poll_updated` out PER RECIPIENT and return the voter's own view.
+ *
+ * getPollResults() is viewer-scoped: `my_votes` holds the VOTER's ballot.
+ * Broadcasting that object verbatim shipped the voter's ballot to every member
+ * — which in an anonymous poll disclosed who voted for what, and (worse) made
+ * every other client treat those indices as its OWN vote: the next member to
+ * tap an option re-POSTed the leaked indices alongside their own, silently
+ * casting a vote they never made. Counts are shared; `my_votes` never is.
+ */
+async function broadcastPollResults(
+  pollId: string,
+  chatId: string,
+  isAnonymous: boolean,
+  voterId: string
+): Promise<PollResults> {
+  const voteRows = await db
+    .select({ userId: pollVotes.userId, optionIndex: pollVotes.optionIndex })
+    .from(pollVotes)
+    .where(eq(pollVotes.pollId, pollId))
+  const { voteCounts, totalVoters, byUser } = tallyPollVotes(voteRows)
+
+  const resultsFor = (userId: string): PollResults => ({
+    vote_counts: voteCounts,
+    total_voters: totalVoters,
+    my_votes: byUser.get(userId) ?? [],
+    is_anonymous: isAnonymous,
+  })
+
+  const memberRows = await db
+    .select({ userId: chatMembers.userId })
+    .from(chatMembers)
+    .where(eq(chatMembers.chatId, chatId))
+  for (const userId of new Set(memberRows.map((r) => r.userId))) {
+    sendToUser(userId, { type: 'poll_updated', poll_id: pollId, results: resultsFor(userId) })
+  }
+
+  return resultsFor(voterId)
 }
 
 export const pollsRoutes: FastifyPluginAsync = async (app) => {
@@ -254,17 +323,9 @@ export const pollsRoutes: FastifyPluginAsync = async (app) => {
       }
     })
 
-    const results = await getPollResults(pollId, user.id, poll.isAnonymous)
-
-    // Broadcast poll_updated to chat members
-    const memberRows = await db
-      .select({ userId: chatMembers.userId })
-      .from(chatMembers)
-      .where(eq(chatMembers.chatId, poll.chatId))
-    broadcastToUsers(
-      memberRows.map((r) => r.userId),
-      { type: 'poll_updated', poll_id: pollId, results }
-    )
+    // Per-recipient fan-out: every member gets the shared counts, but only
+    // their OWN my_votes (see broadcastPollResults).
+    const results = await broadcastPollResults(pollId, poll.chatId, poll.isAnonymous, user.id)
 
     return reply.send({ results })
   })

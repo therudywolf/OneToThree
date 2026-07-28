@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Download, Share2, X } from 'lucide-react'
 import { usePwaInstall } from '@/hooks/use-pwa-install'
 import { useTranslation } from '@/hooks/use-translation'
-import { isIOSOrIPadOS } from '@/lib/ios'
+import { isIOSOrIPadOS, isPureSafari } from '@/lib/ios'
 
 const DISMISS_KEY = 'p13:pwa-install-banner-dismissed'
 
@@ -16,7 +16,10 @@ function isStandaloneDisplay(): boolean {
 }
 
 function isIosSafariLike(): boolean {
-  return isIOSOrIPadOS()
+  // The hint tells the user to use the Share sheet → "Add to Home Screen",
+  // which only exists in Safari. iOS Chrome/Firefox are also WebKit but have
+  // no such entry, so showing it there is instructions to nowhere.
+  return isIOSOrIPadOS() && isPureSafari()
 }
 
 export function PwaInstallBanner() {
@@ -51,9 +54,13 @@ export function PwaInstallBanner() {
     clearDeferred()
   }
 
+  // The banner sits ABOVE MobileBottomNav on compact layouts: at bottom-0 it
+  // (~86px tall) painted straight over the 48px+inset nav, so a first-time
+  // visitor had no visible bottom navigation at all. The nav already pads the
+  // home-indicator inset, so the banner only needs that padding from md up.
   return (
     <div
-      className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[85] border-t border-neon-cyan/50 bg-void/95 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_32px_rgba(0,0,0,0.85)] backdrop-blur-sm md:px-6"
+      className="pointer-events-auto fixed bottom-[calc(3rem_+_env(safe-area-inset-bottom))] left-0 right-0 z-[85] border-t border-neon-cyan/50 bg-void/95 px-3 py-3 shadow-[0_-8px_32px_rgba(0,0,0,0.85)] backdrop-blur-sm md:bottom-0 md:px-6 md:pb-[max(0.75rem,env(safe-area-inset-bottom))]"
       role="region"
       aria-label={t('pwa.installAria')}
     >

@@ -1,0 +1,71 @@
+// @vitest-environment jsdom
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import {
+  requestAndroidEssentialPermissionsOnce,
+  requestAndroidEssentialPermissionsNow,
+  getMissingAndroidPermissions,
+} from './native-permissions'
+
+type Result = { allGranted?: boolean; missing?: string[] }
+
+function installPlugin(requestEssentialPermissions: () => Promise<Result>) {
+  const requestBackgroundExecution = vi.fn().mockResolvedValue({ supported: true })
+  ;(window as unknown as { Capacitor?: unknown }).Capacitor = {
+    isNativePlatform: () => true,
+    Plugins: {
+      DevicePermissions: { requestEssentialPermissions, requestBackgroundExecution },
+    },
+  }
+  return { requestBackgroundExecution }
+}
+
+describe('requestAndroidEssentialPermissionsOnce', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor
+  })
+
+  it('does not burn the single prompt when the request never completes', async () => {
+    const request = vi.fn().mockRejectedValue(new Error('activity destroyed'))
+    installPlugin(request)
+
+    await requestAndroidEssentialPermissionsOnce()
+    await requestAndroidEssentialPermissionsOnce()
+
+    // The old implementation set the "prompted" flag in a finally block, so the
+    // second launch never asked again and the user could not recover.
+    expect(request).toHaveBeenCalledTimes(2)
+  })
+
+  it('stops asking once everything is granted', async () => {
+    const request = vi.fn().mockResolvedValue({ allGranted: true, missing: [] })
+    installPlugin(request)
+
+    await requestAndroidEssentialPermissionsOnce()
+    await requestAndroidEssentialPermissionsOnce()
+
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(getMissingAndroidPermissions()).toEqual([])
+  })
+
+  it('retries after a denial but stops at the attempt cap', async () => {
+    const request = vi.fn().mockResolvedValue({ allGranted: false, missing: ['microphone'] })
+    installPlugin(request)
+
+    for (let i = 0; i < 5; i++) await requestAndroidEssentialPermissionsOnce()
+
+    expect(request).toHaveBeenCalledTimes(3)
+    expect(getMissingAndroidPermissions()).toEqual(['microphone'])
+  })
+
+  it('exposes the outstanding permissions after an explicit re-request', async () => {
+    const request = vi.fn().mockResolvedValue({ allGranted: false, missing: ['camera'] })
+    const { requestBackgroundExecution } = installPlugin(request)
+
+    const result = await requestAndroidEssentialPermissionsNow()
+
+    expect(result).toEqual({ allGranted: false, missing: ['camera'] })
+    expect(requestBackgroundExecution).toHaveBeenCalledTimes(1)
+    expect(getMissingAndroidPermissions()).toEqual(['camera'])
+  })
+})

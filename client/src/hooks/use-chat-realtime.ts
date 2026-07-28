@@ -90,7 +90,20 @@ export function useChatRealtime(
         return
       }
       if (msg.type === 'message_deleted') {
-        if (msg.chat_id === activeChatId) removeMessage(msg.message_id)
+        if (msg.chat_id === activeChatId) {
+          removeMessage(msg.message_id)
+          // The store only holds the newest RAM_CACHE_LIMIT rows. Anything the
+          // user scrolled back to lives in ChatTerminal's local paginated window
+          // and is invisible to removeMessage, so it stayed on screen after the
+          // peer deleted it for everyone. Announce it so the view can drop it.
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('p13:message-deleted', {
+                detail: { id: msg.message_id, chatId: msg.chat_id },
+              })
+            )
+          }
+        }
         void deleteCachedMessage(msg.message_id, msg.chat_id)
         return
       }
@@ -216,29 +229,9 @@ export function useChatRealtime(
       }
       if (msg.type !== 'chat_message') return
       const m = msg.message
-      // NOTE: unread/mention tracking deliberately does NOT live here — this
-      // effect is gated on `activeChatId`, so it would stop counting the moment
-      // no chat is open. It runs in its own ungated effect below (#5).
-      if (userId && m.sender_id !== userId) {
-        // Per-chat mute: suppress both the local chime and the background
-        // push trigger entirely. Unread tracking above still runs so counters
-        // update — muting is a notification concern, not a read-state one.
-        const muted = isChatIdMuted(m.chat_id)
-        if (!muted) {
-          // Play sound only if chatSoundEnabled AND window is NOT focused
-          // (while focused the user sees the chat, no need to interrupt)
-          if (chatSoundEnabled && !document.hasFocus()) {
-            playNotificationSound()
-          }
-          if (triggerBackgroundPush) {
-            triggerBackgroundPush(
-              'Project 13: Новая активность',
-              'Получено новое зашифрованное сообщение',
-              `/?chat=${encodeURIComponent(m.chat_id)}`
-            )
-          }
-        }
-      }
+      // NOTE: neither unread/mention tracking NOR the notification trigger live
+      // here — this effect is gated on `activeChatId`, so both would stop the
+      // moment no chat is open. They run in their own ungated effect below (#5).
       if (!cryptoCtx || !unwrappedPrivateKey) return
       if (m.chat_id !== activeChatId) return
 
@@ -397,7 +390,6 @@ export function useChatRealtime(
   }, [
     activeChatId,
     appendMessage,
-    chatSoundEnabled,
     clearTypingUser,
     clearTypingUserEverywhere,
     cryptoCtx,
@@ -406,7 +398,6 @@ export function useChatRealtime(
     removeMessage,
     setTypingUser,
     trackInboundUnread,
-    triggerBackgroundPush,
     unwrappedPrivateKey,
     myEcdhPublicKeyJwk,
     priorMyEcdhPublicKeysJwk,
@@ -417,14 +408,17 @@ export function useChatRealtime(
   ])
 
   /**
-   * Unread + mention tracking, deliberately NOT gated on `activeChatId` (#5).
+   * Unread + mention tracking AND the notification trigger, deliberately NOT
+   * gated on `activeChatId` (#5).
    *
    * The main realtime effect above returns early when no chat is open, so while
    * the user sits on the chat list — or has the app backgrounded with no chat
-   * selected — it never subscribes and NOTHING was counted: unread badges and
-   * mention counts both stayed at zero, which is exactly the scenario the
-   * "background mention counting" fix is about. This effect owns that counting
-   * on its own, for every chat, and depends only on the user id.
+   * selected — it never subscribes and NOTHING happened: unread badges and
+   * mention counts both stayed at zero, and no chime/push fired either. The
+   * notification case is the worse half: the WS is still connected, so the
+   * server sees the device as online and skips Web Push/FCM entirely, meaning a
+   * backgrounded app with no chat selected got NO notification from anywhere.
+   * This effect owns both, for every chat, and depends only on the user id.
    */
   useEffect(() => {
     if (!userId) return
@@ -433,6 +427,23 @@ export function useChatRealtime(
       if (msg.type !== 'chat_message') return
       const m = msg.message
       if (m.sender_id === userId) return
+      // Per-chat mute: suppress both the local chime and the background push
+      // trigger entirely. Unread tracking below still runs so counters update —
+      // muting is a notification concern, not a read-state one.
+      if (!isChatIdMuted(m.chat_id)) {
+        // Play sound only if chatSoundEnabled AND window is NOT focused
+        // (while focused the user sees the chat, no need to interrupt)
+        if (chatSoundEnabled && !document.hasFocus()) {
+          playNotificationSound()
+        }
+        if (triggerBackgroundPush) {
+          triggerBackgroundPush(
+            'Project 13: Новая активность',
+            'Получено новое зашифрованное сообщение',
+            `/?chat=${encodeURIComponent(m.chat_id)}`
+          )
+        }
+      }
       trackInboundUnread({
         chatId: m.chat_id,
         senderId: m.sender_id,
@@ -446,7 +457,7 @@ export function useChatRealtime(
       })
     })
     return () => off()
-  }, [userId, trackInboundUnread])
+  }, [userId, trackInboundUnread, chatSoundEnabled, triggerBackgroundPush])
 
   useEffect(() => {
     const id = window.setInterval(() => pruneTypingUsers(Date.now()), 1000)

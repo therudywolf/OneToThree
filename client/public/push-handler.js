@@ -275,10 +275,36 @@ function outboxDelete(db, id) {
   })
 }
 
+/** Same absolute age cap the page applies (lib/outbox.ts MAX_OUTBOX_AGE_MS). */
+const OUTBOX_MAX_AGE_MS = 24 * 60 * 60 * 1000
+
 self.addEventListener('sync', (event) => {
   if (event.tag === 'outbox') {
     event.waitUntil(
       (async () => {
+        // If a page is alive it owns the outbox: flushOutboxPending() runs off
+        // the WS `open` / window `online` events at exactly this moment. Both
+        // draining it read every entry before either deletes anything, so the
+        // recipient got each queued message TWICE (/api/messages/send has no
+        // idempotency key), and whenever the SW won the delete the page never
+        // saw `p13:outbox_flushed` and its optimistic bubble stayed stuck.
+        // Nudge the page and let it do the work; only send ourselves when
+        // there is no page at all.
+        const clientList = await self.clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true,
+        })
+        if (clientList.length > 0) {
+          for (const client of clientList) {
+            try {
+              client.postMessage({ type: 'outbox_flush' })
+            } catch {
+              /* best-effort */
+            }
+          }
+          return
+        }
+
         let db
         try {
           db = await openOutboxDb()
@@ -286,7 +312,15 @@ self.addEventListener('sync', (event) => {
           return
         }
         const entries = await outboxGetAll(db)
+        const now = Date.now()
         for (const entry of entries) {
+          // Drop poison/stale entries instead of replaying them forever — the
+          // ciphertexts were sealed against a key that may no longer be active.
+          const createdMs = Date.parse(entry.created_at)
+          if (Number.isFinite(createdMs) && now - createdMs > OUTBOX_MAX_AGE_MS) {
+            await outboxDelete(db, entry.id)
+            continue
+          }
           try {
             const res = await fetch('/api/messages/send', {
               method: 'POST',

@@ -137,7 +137,23 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
-})
+}, (t) => ({
+  /**
+   * Handles are compared case-INSENSITIVELY everywhere that matters (login
+   * resolves with `lower(username) = ?`, and the lockout counter has always
+   * keyed on the lower-cased handle), but the column's own UNIQUE constraint is
+   * case-SENSITIVE. Those two disagreeing is what let `RudyWolf` register
+   * alongside an existing `rudywolf` — a ready-made impersonation setup in a
+   * messenger whose only human-readable identifier is the handle, and a
+   * lockout-sharing footgun where either account's failures lock both.
+   *
+   * This functional unique index is the constraint that actually holds the
+   * invariant. Verified safe to add on the live database first:
+   * `SELECT lower(username) FROM users GROUP BY 1 HAVING count(*)>1` returns
+   * zero rows, so there is nothing to reconcile before it applies.
+   */
+  usernameLowerUnique: uniqueIndex('users_username_lower_unique').on(sql`lower(${t.username})`),
+}))
 
 export const devices = pgTable(
   'devices',

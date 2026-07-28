@@ -6,6 +6,8 @@ import { eq, sql } from 'drizzle-orm'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import {
+  chatMembers,
+  chats,
   devices,
   identityKeys,
   oneTimePrekeys,
@@ -41,6 +43,22 @@ async function createUserWithDevice(username: string) {
   const user = await createUser(username)
   const device = await createDevice(user.id)
   return { user, device }
+}
+
+/**
+ * The key-directory GETs are gated on a shared chat (same predicate
+ * /api/users/:userId/devices uses), so every cross-user fixture needs one.
+ */
+async function shareChat(userA: string, userB: string) {
+  const [chat] = await db
+    .insert(chats)
+    .values({ type: 'direct_e2e', name: null })
+    .returning({ id: chats.id })
+  await db.insert(chatMembers).values([
+    { chatId: chat.id, userId: userA, encryptedGroupKey: null, role: 'owner' as const },
+    { chatId: chat.id, userId: userB, encryptedGroupKey: null, role: 'member' as const },
+  ])
+  return chat.id
 }
 
 describe('keys routes', () => {
@@ -103,6 +121,7 @@ describe('keys routes', () => {
     if (!dbAvailable) return
     const requester = await createUser(`keys-r-${Date.now().toString(36)}`)
     const { user: target, device } = await createUserWithDevice(`keys-t-${Date.now().toString(36)}`)
+    const chatId = await shareChat(requester.id, target.id)
     const token = await app!.jwt.sign({ sub: requester.id, username: requester.username, jti: randomUUID() })
     const cookie = `fm_session=${token}`
 
@@ -143,6 +162,111 @@ describe('keys routes', () => {
         .expect(200)
       expect(second.body.one_time_prekey).toBeNull()
     } finally {
+      await db.delete(chats).where(eq(chats.id, chatId))
+      await db.delete(users).where(eq(users.id, requester.id))
+      await db.delete(users).where(eq(users.id, target.id))
+    }
+  })
+
+  it('refuses the key directory to a user with no shared chat', async () => {
+    // Regression: /keys/{devices,identity,bundle} exposed the same device set,
+    // ids and X3DH keys that /api/users/:userId/devices deliberately gates —
+    // and /bundle additionally POPped a one-time prekey per call, so a stranger
+    // holding only a uuid could drain a victim device's whole pool.
+    if (!dbAvailable) return
+    const stranger = await createUser(`keys-x-${Date.now().toString(36)}`)
+    const { user: target, device } = await createUserWithDevice(`keys-v-${Date.now().toString(36)}`)
+    const token = await app!.jwt.sign({ sub: stranger.id, username: stranger.username, jti: randomUUID() })
+    const cookie = `fm_session=${token}`
+
+    await db.insert(identityKeys).values({
+      userId: target.id,
+      deviceId: device.id,
+      signingPublicKey: 'A'.repeat(43),
+      exchangePublicKey: 'B'.repeat(43),
+      exchangePublicKeySignature: 'F'.repeat(86),
+      generation: 1,
+    })
+
+    try {
+      for (const path of [
+        `/api/keys/devices/${target.id}`,
+        `/api/keys/identity/${target.id}`,
+        `/api/keys/bundle/${target.id}`,
+      ]) {
+        const res = await request(app!.server).get(path).set('Cookie', cookie).expect(403)
+        expect(res.body.error).toBe('FORBIDDEN')
+      }
+    } finally {
+      await db.delete(users).where(eq(users.id, stranger.id))
+      await db.delete(users).where(eq(users.id, target.id))
+    }
+  })
+
+  it('stops advertising a device once it is revoked', async () => {
+    // Revocation only set devices.revoked_at; the identity row survived, so
+    // peers kept running X3DH against the dead device on every message and the
+    // key directory never reflected the revocation at all.
+    if (!dbAvailable) return
+    const requester = await createUser(`keys-rv-r-${Date.now().toString(36)}`)
+    const { user: target, device } = await createUserWithDevice(`keys-rv-t-${Date.now().toString(36)}`)
+    const chatId = await shareChat(requester.id, target.id)
+    const token = await app!.jwt.sign({ sub: requester.id, username: requester.username, jti: randomUUID() })
+    const cookie = `fm_session=${token}`
+
+    await db.insert(identityKeys).values({
+      userId: target.id,
+      deviceId: device.id,
+      signingPublicKey: 'A'.repeat(43),
+      exchangePublicKey: 'B'.repeat(43),
+      exchangePublicKeySignature: 'F'.repeat(86),
+      generation: 1,
+    })
+
+    try {
+      const before = await request(app!.server)
+        .get(`/api/keys/devices/${target.id}`)
+        .set('Cookie', cookie)
+        .expect(200)
+      expect(before.body.devices).toHaveLength(1)
+
+      await db.update(devices).set({ revokedAt: new Date() }).where(eq(devices.id, device.id))
+
+      const after = await request(app!.server)
+        .get(`/api/keys/devices/${target.id}`)
+        .set('Cookie', cookie)
+        .expect(200)
+      expect(after.body.devices).toHaveLength(0)
+
+      // Not advertised when asked generically...
+      await request(app!.server)
+        .get(`/api/keys/identity/${target.id}`)
+        .set('Cookie', cookie)
+        .expect(404)
+
+      // ...but an EXPLICIT device_id must still resolve. That identity is the
+      // verification key for ciphertext already on disk: messages sent from this
+      // device before it was revoked carry a dr_init naming it, and
+      // acceptIncomingInit hard-requires the fetch to validate the handshake.
+      // 404ing it here made every envelope still in flight from a since-revoked
+      // device fail as RATCHET_NO_SESSION permanently — losing a laptop is
+      // exactly when revocation is used, and exactly when those messages matter.
+      const byDevice = await request(app!.server)
+        .get(`/api/keys/identity/${target.id}?device_id=${device.id}`)
+        .set('Cookie', cookie)
+        .expect(200)
+      expect(byDevice.body.device_id).toBe(device.id)
+      expect(byDevice.body.revoked).toBe(true)
+      expect(byDevice.body.identity.signing_public_key).toBe('A'.repeat(43))
+
+      // The prekeys, by contrast, must be gone — no fresh X3DH against a dead
+      // device.
+      await request(app!.server)
+        .get(`/api/keys/bundle/${target.id}?device_id=${device.id}`)
+        .set('Cookie', cookie)
+        .expect(404)
+    } finally {
+      await db.delete(chats).where(eq(chats.id, chatId))
       await db.delete(users).where(eq(users.id, requester.id))
       await db.delete(users).where(eq(users.id, target.id))
     }
@@ -163,6 +287,7 @@ describe('keys routes', () => {
       .insert(devices)
       .values({ userId: target.id, clientDeviceKey: clientKey, deviceName: 'cdk-dev' })
       .returning({ id: devices.id })
+    const chatId = await shareChat(requester.id, target.id)
     const token = await app!.jwt.sign({ sub: requester.id, username: requester.username, jti: randomUUID() })
     const cookie = `fm_session=${token}`
 
@@ -205,6 +330,7 @@ describe('keys routes', () => {
         .expect(200)
       expect(bundle.body.device_id).toBe(device!.id)
     } finally {
+      await db.delete(chats).where(eq(chats.id, chatId))
       await db.delete(users).where(eq(users.id, requester.id))
       await db.delete(users).where(eq(users.id, target.id))
     }
@@ -217,6 +343,7 @@ describe('keys routes', () => {
       `keys-dl-t-${Date.now().toString(36)}`
     )
     const deviceB = await createDevice(target.id, 'keys-test-device-b')
+    const chatId = await shareChat(requester.id, target.id)
     const token = await app!.jwt.sign({ sub: requester.id, username: requester.username, jti: randomUUID() })
     const cookie = `fm_session=${token}`
 
@@ -250,6 +377,7 @@ describe('keys routes', () => {
         .sort()
       expect(ids).toEqual([deviceA.id, deviceB.id].sort())
     } finally {
+      await db.delete(chats).where(eq(chats.id, chatId))
       await db.delete(users).where(eq(users.id, requester.id))
       await db.delete(users).where(eq(users.id, target.id))
     }

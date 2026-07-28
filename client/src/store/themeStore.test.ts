@@ -1,11 +1,36 @@
 import { describe, expect, it } from 'vitest'
 import {
+  ACCENT_PRESETS,
+  SHELL_PRESETS,
   resolveThemeAppearance,
   THEMES,
   THEME_BY_ID,
   type ThemeId,
   type ThemeTokens,
 } from './themeStore'
+
+describe('accent presets', () => {
+  it('exposes a distinct colour pair per preset', () => {
+    // Mint/Violet/Mono were byte-identical to Signal and Sunset to Amber, so the
+    // picker offered six swatches in two colours and three of the buttons were
+    // no-ops.
+    const pairs = ACCENT_PRESETS.filter((p) => p.id !== 'theme').map(
+      (p) => `${p.primary}|${p.accent}`
+    )
+    expect(new Set(pairs).size).toBe(pairs.length)
+  })
+})
+
+describe('shell presets', () => {
+  it('emits textShadowIntensity unitless', () => {
+    // Consumers write calc(var(--text-shadow-intensity) * 100%). A '%' here made
+    // that calc invalid and silently dropped the terminal CRT glow at hydration.
+    for (const preset of SHELL_PRESETS) {
+      expect(preset.textShadowIntensity).not.toContain('%')
+      expect(Number.isFinite(Number(preset.textShadowIntensity))).toBe(true)
+    }
+  })
+})
 
 describe('theme appearance resolution', () => {
   it('resolves base theme tokens for custom themes', () => {

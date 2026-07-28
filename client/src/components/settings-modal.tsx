@@ -13,7 +13,6 @@ import {
   persistVaultBlob,
   persistVaultBlobByLoginUsername,
 } from '@/lib/vault'
-import { changeVaultPinOnServer } from '@/lib/api/vault'
 import {
   AUTO_LOCK_OPTIONS,
   loadAutoLockTimeout,
@@ -382,8 +381,13 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     try {
       const jwkString = await unwrapPrivateJwkWithPin(blob, changePinOld)
       const newBlob = await wrapPrivateJwkWithPin(jwkString, changePinNew)
-      const result = await changeVaultPinOnServer({ encrypted_blob: JSON.stringify(newBlob) })
-      if (!result.ok) throw new Error(result.error ?? 'CHANGE_PIN_FAILED')
+      // Re-wrapping happens purely on this device. We used to POST the fresh
+      // blob to /users/me/vault/change-pin, which parked the complete keyring
+      // ciphertext — plus its salt, IV and KDF parameters — in users.vault_blob
+      // forever. Nothing ever read that column, so it bought nothing and turned
+      // any `users` table dump into an offline brute-force target against a
+      // 6-character human password; cracking one yields the ECDSA identity key
+      // (account takeover) and the ECDH key (every derived DR prekey).
       persistVaultBlob(userId, newBlob)
       persistVaultBlobByLoginUsername(username, newBlob)
       setChangePinOld('')

@@ -164,6 +164,33 @@ describe('Double Ratchet', () => {
     expect(decrypted.sort()).toEqual(['m0', 'm1', 'm2', 'm3', 'm4'])
   })
 
+  it('does not accumulate empty skipped-key buckets across DH ratchet steps', async () => {
+    const { alice, bob } = await establish()
+    // Ping-pong: every reply is a DH ratchet step, and `decryptRatchet` calls
+    // `cacheSkipped` twice per step. Both loops run zero times in the in-order
+    // case, but the bucket used to be created eagerly — leaving two permanent
+    // empty entries per step that the persisted session then re-encrypted into
+    // IndexedDB on every single send and receive.
+    for (let i = 0; i < 10; i += 1) {
+      expect(td(await decryptRatchet(bob, await encryptRatchet(alice, te(`a${i}`))))).toBe(`a${i}`)
+      expect(td(await decryptRatchet(alice, await encryptRatchet(bob, te(`b${i}`))))).toBe(`b${i}`)
+    }
+    expect(alice.skipped.size).toBe(0)
+    expect(bob.skipped.size).toBe(0)
+  })
+
+  it('keeps a skipped bucket only while it still holds keys', async () => {
+    const { alice, bob } = await establish()
+    const m0 = await encryptRatchet(alice, te('m0'))
+    const m1 = await encryptRatchet(alice, te('m1'))
+    // m1 arrives first, so m0's message key must be retained…
+    expect(td(await decryptRatchet(bob, m1))).toBe('m1')
+    expect(bob.skipped.size).toBe(1)
+    // …and the bucket goes away again once it is consumed.
+    expect(td(await decryptRatchet(bob, m0))).toBe('m0')
+    expect(bob.skipped.size).toBe(0)
+  })
+
   it('rejects tampered ciphertext', async () => {
     const { alice, bob } = await establish()
     const msg = await encryptRatchet(alice, te('critical'))

@@ -91,6 +91,34 @@ async function tgApiGet<T>(token: string, method: string, params: Record<string,
   return json.result
 }
 
+/**
+ * Ceiling on one downloaded Telegram file. Telegram's own sticker limits are
+ * 512 KB (static), 256 KB (video) and 64 KB (animated), so this is pure
+ * headroom — but `res.arrayBuffer()` buffers whatever the other end sends into
+ * this process's heap, 100 files per import, with no cap of its own.
+ */
+const TG_FILE_MAX_BYTES = 1024 * 1024
+
+async function readBodyCapped(res: Response, maxBytes: number): Promise<Buffer> {
+  const declared = Number(res.headers.get('content-length') ?? '')
+  if (Number.isFinite(declared) && declared > maxBytes) throw new Error('TG_FILE_TOO_LARGE')
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('TG_FILE_EMPTY')
+  const chunks: Buffer[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) {
+      await reader.cancel()
+      throw new Error('TG_FILE_TOO_LARGE')
+    }
+    chunks.push(Buffer.from(value))
+  }
+  return Buffer.concat(chunks)
+}
+
 async function downloadTgFile(token: string, fileId: string): Promise<{ data: Buffer; ext: string }> {
   const file = await tgApiGet<TgFile>(token, 'getFile', { file_id: fileId })
   const filePath = file.file_path
@@ -98,7 +126,7 @@ async function downloadTgFile(token: string, fileId: string): Promise<{ data: Bu
   const ext = filePath.split('.').pop() ?? 'bin'
   const res = await fetch(`${TG_API}/file/bot${token}/${filePath}`, { signal: AbortSignal.timeout(5000) })
   if (!res.ok) throw new Error(`TG_FILE_DOWNLOAD_${res.status}`)
-  const data = Buffer.from(await res.arrayBuffer())
+  const data = await readBodyCapped(res, TG_FILE_MAX_BYTES)
   return { data, ext }
 }
 
@@ -1126,6 +1154,21 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       .where(and(eq(stickerPacks.tgSource, shortName), eq(stickerPacks.ownerId, user.id)))
       .limit(1)
     if (existing) return reply.send({ pack_id: existing.id, imported: false })
+
+    // Same per-user cap POST /packs enforces. Import used to have none: every
+    // new Telegram set short_name defeated the (tgSource, ownerId) dedup above
+    // and wrote up to 100 objects into MINIO_BUCKET, and sticker objects are
+    // NOT registered in `attachments` — so the global watermark, the per-user
+    // quota and the LRU evictor are all structurally blind to them. The pack
+    // count is the only budget we can enforce without a schema change.
+    const owned = await db
+      .select({ id: stickerPacks.id })
+      .from(stickerPacks)
+      .where(eq(stickerPacks.ownerId, user.id))
+      .limit(NATIVE_PACKS_PER_USER_MAX + 1)
+    if (owned.length >= NATIVE_PACKS_PER_USER_MAX) {
+      return reply.status(409).send({ error: 'PACK_LIMIT_REACHED' })
+    }
 
     let stickerSet: TgStickerSet
     try {

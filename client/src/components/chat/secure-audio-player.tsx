@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { decryptBinary } from '@/lib/crypto'
+import { decryptBinaryWithRing } from '@/lib/crypto'
 import { getDownloadUrl } from '@/lib/api/storage'
 
 type Props = {
@@ -52,7 +52,7 @@ export function SecureAudioPlayer({ mediaPath, mediaIv, mimeType, sharedKey }: P
         const res = await fetch(s3Url)
         if (!res.ok) throw new Error('FETCH_FAILED')
         const encryptedBuf = await res.arrayBuffer()
-        const decryptedBuf = await decryptBinary(sharedKey, encryptedBuf, mediaIv)
+        const decryptedBuf = await decryptBinaryWithRing(sharedKey, encryptedBuf, mediaIv)
         const blobMime = (mimeType || 'audio/webm').split(';')[0]
         const blob = new Blob([decryptedBuf], { type: blobMime })
         if (!isSubscribed) return

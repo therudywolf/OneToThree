@@ -44,6 +44,10 @@ export async function createKeyedGroupChat(
   const members = await Promise.all(
     rows.map(async (r) => ({
       userId: r.id,
+      // Creation-time keys stay v2: the chat id does not exist yet (the POST
+      // that creates it carries these wraps), so there is nothing to bind them
+      // to. They are epoch 0 and are replaced by a v3 wrap on the first
+      // rotation or key-distribution pass.
       encryptedGroupKey: await wrapGroupKeyForMemberWithCreatorEcdh(
         creatorPrivateKey,
         r.ecdh_public_key_jwk!,

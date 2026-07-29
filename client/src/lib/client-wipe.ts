@@ -4,6 +4,7 @@ import { clearAllMediaCache } from '@/lib/media-cache'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { deleteWebAuthnMetaDb } from '@/lib/webauthn-vault'
 import { clearPrekeysForUser } from '@/lib/ratchet/prekey-store'
+import { clearAllSectorMediaRings } from '@/lib/sector-media-ring'
 import { isNativeSecureStorageAvailable, secureStoreDelete } from '@/lib/native-keychain'
 
 /**
@@ -34,6 +35,12 @@ export async function wipeAllClientLocalState(): Promise<void> {
   // leave live key material behind after the vault itself was gone.
   try {
     for (const id of userIds) await clearPrekeysForUser(id)
+  } catch {
+    /* ignore */
+  }
+  // Live sector key handles held for media decryption.
+  try {
+    clearAllSectorMediaRings()
   } catch {
     /* ignore */
   }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { decryptBinary } from '@/lib/crypto'
+import { decryptBinaryWithRing } from '@/lib/crypto'
 import { getDownloadUrl } from '@/lib/api/storage'
 
 type Props = {
@@ -40,7 +40,7 @@ export function SecureVideoCircle({
         if (!res.ok) throw new Error('FETCH_FAILED')
         const encryptedBuf = await res.arrayBuffer()
 
-        const decryptedBuf = await decryptBinary(sharedKey, encryptedBuf, mediaIv)
+        const decryptedBuf = await decryptBinaryWithRing(sharedKey, encryptedBuf, mediaIv)
         // Strip codec params (e.g. "video/webm;codecs=vp8,opus" → "video/webm")
         const blobMime = (mimeType || 'video/webm').split(';')[0]
         const decryptedBlob = new Blob([decryptedBuf], { type: blobMime })

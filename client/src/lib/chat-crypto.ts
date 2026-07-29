@@ -13,6 +13,7 @@ import {
   importEcdhPublicKey,
 } from './crypto'
 import { readStoredSectorKeyEpoch, unwrapGroupKeyFromStoredPayload } from './chat-logic'
+import { setSectorMediaRing } from './sector-media-ring'
 import { addRingEntry, getRingEntries } from './sector-keyring'
 
 /**
@@ -165,7 +166,8 @@ async function buildSectorFrame(
   const currentKey = await unwrapGroupKeyFromStoredPayload(
     privateKey,
     me.encrypted_group_key,
-    ownerEcdhJwk
+    ownerEcdhJwk,
+    { chatId, memberUserId: myUserId }
   )
 
   // Retain THIS epoch's blob locally, then build the ring newest-first with the
@@ -192,12 +194,23 @@ async function buildSectorFrame(
       // same-epoch-but-different key readable: two owner sessions can each mint a
       // key at one epoch, and the member that received the other one must still
       // be able to open its own already-sent messages.
-      ring.push(await unwrapGroupKeyFromStoredPayload(privateKey, entry.wrapped))
+      ring.push(
+        await unwrapGroupKeyFromStoredPayload(privateKey, entry.wrapped, undefined, {
+          chatId,
+          memberUserId: myUserId,
+        })
+      )
     } catch {
       // Older blob no longer unwraps (our vault key changed / corrupt). Skip it —
       // that one epoch's history is unreadable, but the rest of the ring is intact.
     }
   }
+
+  // Publish the ring for MEDIA decryption too. Messages consult
+  // `groupKeyRing` directly, but media goes through the single `sharedKey`
+  // prop, so without this every file uploaded before a rotation stopped
+  // opening — and rotation happens on every membership change.
+  setSectorMediaRing(chatId, ring)
 
   return { mode: 'SECTOR', chatId, groupKey: currentKey, groupKeyRing: ring }
 }

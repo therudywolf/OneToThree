@@ -174,7 +174,8 @@ export async function rotateGroupKeyForChat(
         myPubJwk,
         // Keys are stamped with the epoch the rotation SETTLES on, which the
         // claim below returns — not the one we observed before claiming.
-        epochClaimed ? settledEpoch : epoch + 1
+        epochClaimed ? settledEpoch : epoch + 1,
+        { chatId, memberUserId: m.user_id }
       )
       const res = await uploadMemberWrappedGroupKey(
         chatId,

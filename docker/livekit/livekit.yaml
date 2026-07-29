@@ -11,15 +11,19 @@
 #     narrow (100 ports ≈ 50 concurrent calls).
 
 port: 7880
-# Empty = listen on every interface, and under host networking that means the
-# public IP. 7880 is PLAINTEXT HTTP/WS: reachable directly it leaks the room JWT
-# and exposes /twirp/livekit.RoomService/* outside Caddy/Anubis/CrowdSec, so the
-# host firewall MUST keep 7880 closed (see the livekit block in
-# docker-compose.prod.yml). It cannot be narrowed to 127.0.0.1: the reverse
-# proxy runs in its own container and dials host.docker.internal:7880 — the
-# docker bridge gateway address, not loopback — so a loopback-only bind kills
-# all SFU signaling. Pinning the gateway IP here instead would hard-code
-# 172.17.0.1 and fail to start the SFU on any host that renumbered docker0.
+# Left empty ON PURPOSE — the bind is decided at runtime by entrypoint.sh, which
+# passes `--bind <docker-bridge-gateway> --bind 127.0.0.1`.
+#
+# 7880 is PLAINTEXT HTTP/WS: reachable directly it carries the room JWT in the
+# clear and exposes /twirp/livekit.RoomService/* outside Caddy/Anubis/CrowdSec.
+# This used to say the host firewall MUST keep it closed — it did not, a probe
+# from the internet answered 200, so the SFU was listening publicly on plaintext
+# signaling. It also cannot simply be narrowed to 127.0.0.1: the reverse proxy
+# runs in its own container and dials host.docker.internal:7880, i.e. the docker
+# bridge gateway, not loopback. Hard-coding 172.17.0.1 here would break any host
+# that renumbered docker0, hence the runtime discovery in the entrypoint.
+#
+# Media is unaffected and MUST stay internet-reachable: UDP 50000 and TCP 7881.
 bind_addresses:
   - ''
 

@@ -425,6 +425,17 @@ export const messages = pgTable(
     mediaPurgeIdx: index('messages_media_path_idx')
       .on(t.createdAt)
       .where(sql`${t.mediaPath} IS NOT NULL`),
+    /**
+     * The RETENTION sweep is served by the index above (it leads on
+     * `created_at`), but the download / evict / restore routes all look a row up
+     * by object key alone — `WHERE media_path = ?` with no chat and no date —
+     * and nothing supported that. `messages_chat_media_idx` cannot help either:
+     * it leads with `chat_id`, which those queries do not constrain. Three hot
+     * paths were doing a sequential scan of `messages`.
+     */
+    mediaPathLookupIdx: index('messages_media_path_lookup_idx')
+      .on(t.mediaPath)
+      .where(sql`${t.mediaPath} IS NOT NULL`),
   })
 )
 

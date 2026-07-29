@@ -46,6 +46,7 @@ import {
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { QRCodeSVG } from 'qrcode.react'
 import { prepareRecoveryEnrollment, commitRecoveryEnrollment } from '@/lib/recovery/enroll-recovery'
+import { clearBackupPending } from '@/lib/backup-reminder'
 import { getRecoveryStatus, getRecoverySetupChallenge, disableRecovery, type RecoveryStatus } from '@/lib/api/recovery'
 import { importEcdsaPrivateKeyForSign, signUtf8WithEcdsaP256 } from '@/lib/crypto'
 import { parseVaultPlaintext } from '@/lib/vault-keyring'
@@ -448,6 +449,10 @@ export function SettingsModal({ userId, username, onClose }: Props) {
     setRecoveryBusy(true)
     try {
       await commitRecoveryEnrollment(recoveryEnable, recoveryRequireTotp)
+      // Enrolling the phrase makes the account genuinely recoverable — the other
+      // event (besides saving the key file) that should silence the backup nag.
+      // Neither was wired up, so the banner had no way to ever go away.
+      if (userId) clearBackupPending(userId)
       setRecoveryEnable(null)
       setRecoverySavedConfirmed(false)
       try { setRecoveryStatus(await getRecoveryStatus()) } catch { /* refreshed lazily */ }

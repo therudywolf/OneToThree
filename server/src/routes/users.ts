@@ -69,6 +69,13 @@ const patchMeSchema = z
     social_links: z.array(socialLinkSchema).max(10).optional(),
     display_name: z.string().max(64).optional(),
     last_seen_privacy: z.enum(['everyone', 'contacts', 'nobody']).optional(),
+    /**
+     * Vault-unlock proof, REQUIRED whenever `ecdh_public_key_jwk` is present.
+     * See the guard in the handler — publishing this key decides who peers
+     * encrypt to, so it must not be reachable with the session cookie alone.
+     */
+    proof_nonce: z.string().min(1).max(200).optional(),
+    proof_signature: z.string().min(1).max(1000).optional(),
   })
   .strict()
 
@@ -220,10 +227,22 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     }
   }
 
-  async function verifyVaultProof(userId: string, proofNonce: string, proofSignature: string): Promise<boolean> {
-    const pending = await getPending(`recovery-setup:${userId}`)
+  /**
+   * `scope` keeps each proof single-purpose. Without it, a nonce issued for the
+   * recovery-setup screen would also authorize an ECDH key swap — one UI flow's
+   * challenge must never be spendable on a different, unrelated privileged
+   * operation.
+   */
+  async function verifyVaultProof(
+    userId: string,
+    proofNonce: string,
+    proofSignature: string,
+    scope: 'recovery-setup' | 'ecdh-publish' = 'recovery-setup'
+  ): Promise<boolean> {
+    const key = `${scope}:${userId}`
+    const pending = await getPending(key)
     if (!pending) return false
-    await deletePending(`recovery-setup:${userId}`)
+    await deletePending(key)
     if (!safeEqualNonce(pending.nonce, proofNonce)) return false
     const [idRow] = await db
       .select({ publicKeyJwk: users.publicKeyJwk })
@@ -240,6 +259,27 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (!assertAuthed(reply, user)) return
     const nonce = randomUUID()
     await setChallenge(`recovery-setup:${user.id}`, nonce)
+    return reply.send({ nonce })
+  })
+
+  /**
+   * Same proof, separate scope, for publishing this device's ECDH public key.
+   *
+   * That key decides who every peer encrypts to. Before this it was writable
+   * with nothing but a valid session cookie, so a stolen session (XSS, a
+   * borrowed logged-in browser, a lifted cookie) could swap in the attacker's
+   * key and silently redirect the whole conversation to them — no vault
+   * password required, and the E2E guarantee gone with it. The signature is
+   * made with the keyring's ECDSA key, which only exists after the vault
+   * password has unlocked the keyring.
+   */
+  app.get('/me/ecdh/publish-challenge', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const nonce = randomUUID()
+    await setChallenge(`ecdh-publish:${user.id}`, nonce)
     return reply.send({ nonce })
   })
 
@@ -608,6 +648,19 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       catch { return reply.status(400).send({ error: 'INVALID_JWK' }) }
       if (jwk.kty !== 'EC' || (jwk.crv !== 'P-256' && jwk.crv !== 'P-384')) {
         return reply.status(400).send({ error: 'INVALID_JWK' })
+      }
+      // VAULT-UNLOCK PROOF REQUIRED. This key is what every peer encrypts to,
+      // so a bare session cookie must not be able to replace it — otherwise a
+      // stolen session silently redirects the victim's incoming messages to the
+      // attacker, with no vault password anywhere in the flow. The signature is
+      // over a single-use server nonce and is made with the keyring's ECDSA
+      // key, which only exists once the vault password has unlocked the keyring.
+      const { proof_nonce: proofNonce, proof_signature: proofSignature } = parsed.data
+      if (!proofNonce || !proofSignature) {
+        return reply.status(400).send({ error: 'ECDH_PROOF_REQUIRED' })
+      }
+      if (!(await verifyVaultProof(user.id, proofNonce, proofSignature, 'ecdh-publish'))) {
+        return reply.status(403).send({ error: 'ECDH_PROOF_INVALID' })
       }
       updates.ecdhPublicKeyJwk = parsed.data.ecdh_public_key_jwk
     }

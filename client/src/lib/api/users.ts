@@ -1,6 +1,7 @@
 import { fetchWithTimeout } from '@/lib/api/fetch'
 import { API_URL } from './auth'
 import { canonicalUserId } from '@/lib/user-id'
+import { importEcdsaPrivateKeyForSign, signUtf8WithEcdsaP256 } from '@/lib/crypto'
 
 export type SearchUserRow = {
   id: string
@@ -129,14 +130,45 @@ export async function patchMyProfile(patch: ProfilePatch): Promise<void> {
   }
 }
 
+/** Single-use nonce for the ECDH-publish vault proof. */
+export async function getEcdhPublishChallenge(): Promise<string> {
+  const res = await fetchWithTimeout(`${API_URL}/users/me/ecdh/publish-challenge`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as { nonce?: string; error?: string }
+  if (!res.ok || !data.nonce) {
+    throw new Error(data.error ?? 'ECDH_CHALLENGE_FAILED')
+  }
+  return data.nonce
+}
+
+/**
+ * Publish this device's ECDH public key.
+ *
+ * Requires a VAULT-UNLOCK PROOF: `ecdsaPrivateJwk` is the keyring's signing key,
+ * which only exists after the vault password has unlocked the keyring. The
+ * server refuses the write without it, because this key is what every peer
+ * encrypts to — with only a session cookie behind it, a stolen session could
+ * swap in an attacker's key and silently redirect the victim's incoming
+ * messages, no vault password needed.
+ */
 export async function patchMyEcdhPublicKey(
-  ecdh_public_key_jwk: string
+  ecdh_public_key_jwk: string,
+  ecdsaPrivateJwk: string
 ): Promise<void> {
+  const nonce = await getEcdhPublishChallenge()
+  const signingKey = await importEcdsaPrivateKeyForSign(ecdsaPrivateJwk)
+  const proof_signature = await signUtf8WithEcdsaP256(signingKey, nonce)
+
   const res = await fetchWithTimeout(`${API_URL}/users/me`, {
     method: 'PATCH',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ecdh_public_key_jwk }),
+    body: JSON.stringify({
+      ecdh_public_key_jwk,
+      proof_nonce: nonce,
+      proof_signature,
+    }),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) {

@@ -213,7 +213,7 @@ export async function cryptoLogin(
       const myPubJwk = exportEcdhPublicJwkFromPrivateKeyString(ecdhPrivateJwkForVault)
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          await patchMyEcdhPublicKey(myPubJwk)
+          await patchMyEcdhPublicKey(myPubJwk, ecdsaPrivateJwk)
           ecdhUploadError = null
           break
         } catch (e) {

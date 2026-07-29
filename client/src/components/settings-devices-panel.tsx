@@ -14,6 +14,7 @@ import { useAuth } from '@/components/auth/auth-provider'
 import { SettingsLinkDeviceModal } from '@/components/settings-link-device-modal'
 import { useTranslation } from '@/hooks/use-translation'
 import { readVaultBlob, unwrapPrivateJwkWithPin } from '@/lib/vault'
+import { clearBackupPending } from '@/lib/backup-reminder'
 import { TerminalGlitchButton } from '@/components/terminal-glitch-button'
 import { VaultPinGate } from '@/components/vault-pin-gate'
 import { explainSettingsError } from '@/lib/settings-errors'
@@ -194,6 +195,10 @@ export function SettingsDevicesPanel({ userId, active }: Props) {
     a.download = `13vault.key`
     a.click()
     URL.revokeObjectURL(url)
+    // The account is now recoverable from this file, so stop nagging. Without
+    // this the banner had NO production caller at all and kept telling people
+    // they had no way back in long after they had saved the key.
+    clearBackupPending(userId)
     setShowVaultExportPrompt(false)
   }
 

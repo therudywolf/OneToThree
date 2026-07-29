@@ -67,6 +67,38 @@ unset LIVEKIT_API_KEY LIVEKIT_API_SECRET LIVEKIT_API_KEY_VAL LIVEKIT_API_SECRET_
 # same public IP coturn uses); LIVEKIT_NODE_IP overrides if ever needed. Keeping
 # the IP out of the YAML keeps the config portable across deployments.
 NODE_IP_VAL="${LIVEKIT_NODE_IP:-${TURN_EXTERNAL_IP:-}}"
+
+# ---------------------------------------------------------------------------
+# Keep the PLAINTEXT signaling port off the public interface.
+#
+# 7880 is HTTP/WS: reached directly it carries the room JWT in the clear and
+# exposes /twirp/livekit.RoomService/* outside Caddy — no TLS, no Anubis
+# proof-of-work, no CrowdSec rate limiting on an auth endpoint. The YAML said
+# the host firewall "MUST keep 7880 closed"; it did not — a probe from the
+# internet answered 200 — so relying on that alone was not good enough.
+#
+# It cannot be pinned to 127.0.0.1: the reverse proxy runs in its own container
+# and dials host.docker.internal:7880, which resolves to the DOCKER BRIDGE
+# GATEWAY, not loopback. So bind exactly that gateway (plus loopback for local
+# probes), discovered at runtime rather than hard-coded, because docker0 can be
+# renumbered. If discovery fails we leave LiveKit's own default alone — a
+# non-starting SFU would be worse than the exposure we are closing.
+#
+# Media is unaffected: UDP 50000 and TCP 7881 keep their own binding and MUST
+# stay open to the internet.
+# ---------------------------------------------------------------------------
+BRIDGE_GW="$(ip -4 route show default 0.0.0.0/0 dev docker0 2>/dev/null | awk '{print $NF}' | head -n1)"
+if [ -z "${BRIDGE_GW}" ]; then
+  BRIDGE_GW="$(ip -4 addr show docker0 2>/dev/null | awk '/inet /{sub(/\/.*/,"",$2); print $2; exit}')"
+fi
+
+if [ -n "${BRIDGE_GW}" ]; then
+  echo "[livekit-entrypoint] binding signaling to ${BRIDGE_GW} + 127.0.0.1 (7880 stays off the public interface)" >&2
+  set -- "$@" --bind "${BRIDGE_GW}" --bind 127.0.0.1
+else
+  echo "[livekit-entrypoint] WARN: could not discover the docker bridge gateway — leaving the default bind. Verify 7880 is firewalled." >&2
+fi
+
 if [ -n "${NODE_IP_VAL}" ]; then
   echo "[livekit-entrypoint] advertising node-ip ${NODE_IP_VAL}" >&2
   exec /livekit-server "$@" --node-ip "${NODE_IP_VAL}"

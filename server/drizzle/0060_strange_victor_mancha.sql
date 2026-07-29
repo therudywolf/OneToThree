@@ -1,0 +1,1 @@
+CREATE INDEX "messages_media_path_lookup_idx" ON "messages" USING btree ("media_path") WHERE "messages"."media_path" IS NOT NULL;

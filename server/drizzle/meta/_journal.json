@@ -421,6 +421,13 @@
       "when": 1785280367007,
       "tag": "0059_lonely_mariko_yashida",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1785362531830,
+      "tag": "0060_strange_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

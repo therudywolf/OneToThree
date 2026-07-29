@@ -3,6 +3,7 @@ import { fetchWithTimeout } from '@/lib/api/fetch'
 import { clearAllMediaCache } from '@/lib/media-cache'
 import { purgeLocalMessageCache } from '@/lib/message-cache'
 import { deleteWebAuthnMetaDb } from '@/lib/webauthn-vault'
+import { clearPrekeysForUser } from '@/lib/ratchet/prekey-store'
 import { isNativeSecureStorageAvailable, secureStoreDelete } from '@/lib/native-keychain'
 
 /**
@@ -25,6 +26,14 @@ export async function wipeAllClientLocalState(): Promise<void> {
   }
   try {
     await deleteWebAuthnMetaDb()
+  } catch {
+    /* ignore */
+  }
+  // X3DH prekey private keys. These are RANDOM and stored locally now (they
+  // used to be re-derivable from the vault), so a wipe that missed them would
+  // leave live key material behind after the vault itself was gone.
+  try {
+    for (const id of userIds) await clearPrekeysForUser(id)
   } catch {
     /* ignore */
   }

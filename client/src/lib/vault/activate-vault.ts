@@ -35,10 +35,13 @@ import { parseVaultPlaintext } from '@/lib/vault-keyring'
 import {
   deriveDrBundleFromEcdhJwk,
   deriveSessionWrapKey,
-  deriveDeviceDrRoot,
-  deriveOtpBatch,
-  deriveOtpPrivKey,
 } from '@/lib/ratchet/identity-from-vault'
+import { signWithIdentity } from '@/lib/ratchet/keys'
+import {
+  deletePrekeyPrivate,
+  getPrekeyPrivate,
+  putPrekeyPrivate,
+} from '@/lib/ratchet/prekey-store'
 import {
   setOwnDrIdentity,
   setSessionWrapKey,
@@ -60,18 +63,36 @@ const OTP_NEXT_ID_KEY = (userId: string, deviceId: string) =>
 const OTP_REPLENISH_THRESHOLD = 5
 const OTP_BATCH_SIZE = 20
 
+/**
+ * Generate a batch of RANDOM one-time prekeys, keep the private halves locally,
+ * publish the public halves.
+ *
+ * These used to be `deriveOtpBatch(dRoot, …)` — HKDF over the vault scalar — so
+ * every "one-time" key was a deterministic function of a long-term secret and
+ * contributed zero forward secrecy: anyone who later obtained the vault could
+ * recompute them and unwrap the X3DH secret of every past session. Random keys
+ * are the whole point of the mechanism.
+ */
 async function publishDrOtpBatch(
   userId: string,
   deviceId: string,
-  dRoot: Uint8Array,
   startId: number,
   count: number
 ): Promise<void> {
-  const batch = deriveOtpBatch(dRoot, startId, count)
+  const { x25519 } = await import('@noble/curves/ed25519')
+  const batch = Array.from({ length: count }, (_, i) => {
+    const privateKey = crypto.getRandomValues(new Uint8Array(32))
+    return { id: startId + i, privateKey, publicKey: x25519.getPublicKey(privateKey) }
+  })
+  // Persist BEFORE publishing: a public key advertised without its private half
+  // is a handshake we can never accept.
+  for (const k of batch) {
+    await putPrekeyPrivate(userId, deviceId, 'otp', k.id, k.privateKey)
+  }
   await publishOneTimePrekeys({
     keys: batch.map((k) => ({
       pre_key_id: k.id,
-      public_key: encodeBase64Url(k.keypair.publicKey),
+      public_key: encodeBase64Url(k.publicKey),
     })),
   })
   localStorage.setItem(OTP_NEXT_ID_KEY(userId, deviceId), String(startId + count))
@@ -79,8 +100,7 @@ async function publishDrOtpBatch(
 
 export async function replenishOtpsIfNeeded(
   userId: string,
-  deviceId: string,
-  dRoot: Uint8Array
+  deviceId: string
 ): Promise<void> {
   try {
     const inventory = await fetchInventory()
@@ -90,7 +110,7 @@ export async function replenishOtpsIfNeeded(
     const nextIdRaw = localStorage.getItem(OTP_NEXT_ID_KEY(userId, deviceId))
     const nextId = nextIdRaw ? parseInt(nextIdRaw, 10) : 1
     if (!Number.isFinite(nextId) || nextId <= 0) return
-    await publishDrOtpBatch(userId, deviceId, dRoot, nextId, OTP_BATCH_SIZE)
+    await publishDrOtpBatch(userId, deviceId, nextId, OTP_BATCH_SIZE)
   } catch { /* non-fatal */ }
 }
 
@@ -166,16 +186,36 @@ export async function activateVaultSession(
   // identity / signed-prekey / OTP space and publishes its OWN bundle.
   try {
     const deviceId = getOrCreateClientDeviceId()
-    const dRoot = deriveDeviceDrRoot(ecdhJwk, deviceId)
     const bundle = deriveDrBundleFromEcdhJwk(ecdhJwk, deviceId)
     const wrapKey = await deriveSessionWrapKey(bundle.identity)
     setSessionWrapKey(wrapKey)
+
+    // The IDENTITY stays derived from the vault — an identity is meant to be
+    // long-term and stable, and it is what the safety number certifies. The
+    // SIGNED PREKEY does not: derived from the same scalar, it handed a future
+    // vault holder the X3DH secret of every past session. Generate it randomly,
+    // keep the private half locally, reuse it across activations on this device
+    // so a peer's in-flight `dr_init` (which names the SPK id) stays acceptable.
+    const spkId = bundle.signedPreKeyId
+    let spkPriv = await getPrekeyPrivate(userId, deviceId, 'spk', spkId)
+    if (!spkPriv) {
+      spkPriv = crypto.getRandomValues(new Uint8Array(32))
+      await putPrekeyPrivate(userId, deviceId, 'spk', spkId, spkPriv)
+    }
+    const { x25519 } = await import('@noble/curves/ed25519')
+    const signedPreKey = { privateKey: spkPriv, publicKey: x25519.getPublicKey(spkPriv) }
+    const signedPreKeySignature = signWithIdentity(bundle.identity, signedPreKey.publicKey)
+
     setOwnDrIdentity(
       bundle.identity,
-      bundle.signedPreKey,
-      bundle.signedPreKeyId,
+      signedPreKey,
+      spkId,
       deviceId,
-      (id: number) => deriveOtpPrivKey(dRoot, id)
+      // Lookup, not derivation. Returns null when the key is unknown (store
+      // cleared, or an id we never issued) — `acceptIncomingInit` then refuses
+      // the handshake instead of fabricating a key that cannot match.
+      (id: number) => getPrekeyPrivate(userId, deviceId, 'otp', id),
+      (id: number) => deletePrekeyPrivate(userId, deviceId, 'otp', id)
     )
 
     // Publish identity + SPK on every activation — the server deduplicates by
@@ -187,11 +227,11 @@ export async function activateVaultSession(
       generation: 1,
     })
     await publishSignedPrekey({
-      pre_key_id: bundle.signedPreKeyId,
-      public_key: encodeBase64Url(bundle.signedPreKey.publicKey),
-      signature: encodeBase64Url(bundle.signedPreKeySignature),
+      pre_key_id: spkId,
+      public_key: encodeBase64Url(signedPreKey.publicKey),
+      signature: encodeBase64Url(signedPreKeySignature),
     })
-    await replenishOtpsIfNeeded(userId, deviceId, dRoot)
+    await replenishOtpsIfNeeded(userId, deviceId)
   } catch { /* DR setup is non-fatal; v1 fan-out still works */ }
 
   return { ok: true }

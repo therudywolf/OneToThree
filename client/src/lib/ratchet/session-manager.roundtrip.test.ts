@@ -185,7 +185,7 @@ interface Device {
   userId: string
   deviceId: string
   bundle: LocalIdentityBundle
-  otpDeriver: (id: number) => Uint8Array
+  otpDeriver: (id: number) => Promise<Uint8Array | null>
 }
 
 /** Generate a device identity, publish it to the fake key directory. */
@@ -215,10 +215,11 @@ function registerDevice(userId: string, deviceId: string, otpCount = 50): Device
     userId,
     deviceId,
     bundle,
-    otpDeriver: (id: number) => {
+    // Async lookup, matching production: prekeys are random and stored, not
+    // derived, so "unknown id" is a normal result rather than an impossibility.
+    otpDeriver: async (id: number) => {
       const k = bundle.oneTimePreKeys.find((o) => o.id === id)
-      if (!k) throw new Error(`test: unknown otp id ${id}`)
-      return k.keypair.privateKey
+      return k ? k.keypair.privateKey : null
     },
   }
 }

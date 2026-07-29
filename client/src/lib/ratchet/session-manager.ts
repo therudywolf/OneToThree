@@ -278,8 +278,18 @@ let _ownSignedPreKey: KeyPair | null = null
 let _ownSignedPreKeyId = 1
 /** This device's own id — the sender-side device dimension. */
 let _ownDeviceId: string | null = null
-/** Derives an OTP private key by id — set from vault unlock. */
-let _ownOtpDeriver: ((id: number) => Uint8Array) | null = null
+/**
+ * Looks up an OTP private key by id — set from vault unlock.
+ *
+ * A LOOKUP, not a derivation. Prekeys used to be HKDF over the vault scalar,
+ * which meant a future vault holder could recompute every one of them and
+ * recover the X3DH secret of every past session; they are now random and stored
+ * locally (`prekey-store.ts`). Returning null is normal and means "that key is
+ * gone" — the handshake must then be refused, never guessed.
+ */
+let _ownOtpDeriver: ((id: number) => Promise<Uint8Array | null>) | null = null
+/** Drops a consumed OTP private key. One-time means one time. */
+let _ownOtpConsumer: ((id: number) => Promise<void>) | null = null
 
 /**
  * Called by vault unlock to register the local DR identity.
@@ -293,19 +303,22 @@ export function setOwnDrIdentity(
   signedPreKey: KeyPair,
   signedPreKeyId: number,
   ownDeviceId: string,
-  otpDeriver?: (id: number) => Uint8Array
+  otpDeriver?: (id: number) => Promise<Uint8Array | null>,
+  otpConsumer?: (id: number) => Promise<void>
 ): void {
   _ownIdentity = identity
   _ownSignedPreKey = signedPreKey
   _ownSignedPreKeyId = signedPreKeyId
   _ownDeviceId = ownDeviceId
   _ownOtpDeriver = otpDeriver ?? null
+  _ownOtpConsumer = otpConsumer ?? null
 }
 
 export function clearOwnDrIdentity(): void {
   _ownIdentity = null
   _ownSignedPreKey = null
   _ownOtpDeriver = null
+  _ownOtpConsumer = null
   _ownDeviceId = null
   // Also zeroize the session wrap key so chain keys cannot be decrypted after
   // logout even if IndexedDB remains accessible in the same process.
@@ -923,7 +936,13 @@ export async function acceptIncomingInit(
     if (isOtpConsumed(ownerId, ownDeviceId, init.oneTimePrekeyId)) {
       throw new Error('X3DH_OTP_REPLAY')
     }
-    const priv = _ownOtpDeriver(init.oneTimePrekeyId)
+    const priv = await _ownOtpDeriver(init.oneTimePrekeyId)
+    // Prekeys are random and stored locally now, so "not found" is a real
+    // outcome (site data cleared, or an id this device never issued). Refusing
+    // is the only correct answer: X3DH cannot be completed without that exact
+    // private key, and continuing without it would silently produce a shared
+    // secret neither side agrees on.
+    if (!priv) throw new Error('X3DH_OTP_UNKNOWN')
     const { x25519 } = await import('@noble/curves/ed25519')
     otpKeyPair = { privateKey: priv, publicKey: x25519.getPublicKey(priv) }
   }
@@ -946,6 +965,11 @@ export async function acceptIncomingInit(
   // accept doesn't waste a prekey the initiator will legitimately retry.
   if (init.oneTimePrekeyId != null && _ownOtpDeriver) {
     markOtpConsumed(ownerId, ownDeviceId, init.oneTimePrekeyId)
+    // ...and delete the private key itself. It is single-use by definition, so
+    // retaining it only leaves material on disk that could re-derive a secret we
+    // already hold. The ledger above still remembers the id, so a replay is
+    // rejected even though the key is gone.
+    await _ownOtpConsumer?.(init.oneTimePrekeyId).catch(() => { /* best-effort */ })
   }
 }
 

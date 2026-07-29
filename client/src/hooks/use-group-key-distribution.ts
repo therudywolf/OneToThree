@@ -73,7 +73,8 @@ async function deliverGroupKeyToMember(
   const groupKey = await unwrapGroupKeyFromStoredPayload(
     myPrivKey,
     me.encrypted_group_key,
-    me.ecdh_public_key_jwk
+    me.ecdh_public_key_jwk,
+    { chatId, memberUserId: me.user_id }
   )
   // Stamp the delivered key with the epoch of the material we are actually
   // handing over (our own stored key's epoch), so the recovery scan can later
@@ -89,7 +90,8 @@ async function deliverGroupKeyToMember(
     target.ecdh_public_key_jwk,
     groupKey,
     me.ecdh_public_key_jwk,
-    myEpoch
+    myEpoch,
+    { chatId, memberUserId: targetUserId }
   )
   await uploadMemberWrappedGroupKey(chatId, targetUserId, wrapped)
 }
@@ -192,7 +194,8 @@ async function reconcileGroupKeysForChat(
       groupKey = await unwrapGroupKeyFromStoredPayload(
         myPrivKey,
         me.encrypted_group_key,
-        me.ecdh_public_key_jwk
+        me.ecdh_public_key_jwk,
+        { chatId, memberUserId: me.user_id }
       )
     }
     // Own PUBLIC key from the roster — see deliverGroupKeyToMember: deriving it
@@ -202,7 +205,8 @@ async function reconcileGroupKeysForChat(
       m.ecdh_public_key_jwk,
       groupKey,
       me.ecdh_public_key_jwk,
-      myEpoch
+      myEpoch,
+      { chatId, memberUserId: m.user_id }
     )
     await uploadMemberWrappedGroupKey(chatId, m.user_id, wrapped)
     delivered = true

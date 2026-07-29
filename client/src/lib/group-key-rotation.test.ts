@@ -207,9 +207,18 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
     expect([...uploaded.keys()].sort()).toEqual(['alice', 'bob', 'owner'])
 
     // Each staying member unwraps to the SAME fresh key, stamped at the new epoch.
-    const ownerKey = await unwrapGroupKeyFromStoredPayload(owner.priv, uploaded.get('owner')!)
-    const aliceKey = await unwrapGroupKeyFromStoredPayload(alice.priv, uploaded.get('alice')!)
-    const bobKey = await unwrapGroupKeyFromStoredPayload(bob.priv, uploaded.get('bob')!)
+    // Rotation mints v3 wraps, so opening one requires the same (chat, member)
+    // context it was sealed under — that binding is the point.
+    const bindFor = (uid: string) => ({ chatId: 'g1', memberUserId: uid })
+    const ownerKey = await unwrapGroupKeyFromStoredPayload(
+      owner.priv, uploaded.get('owner')!, undefined, bindFor('owner')
+    )
+    const aliceKey = await unwrapGroupKeyFromStoredPayload(
+      alice.priv, uploaded.get('alice')!, undefined, bindFor('alice')
+    )
+    const bobKey = await unwrapGroupKeyFromStoredPayload(
+      bob.priv, uploaded.get('bob')!, undefined, bindFor('bob')
+    )
     expect(await sameKey(ownerKey, aliceKey)).toBe(true)
     expect(await sameKey(aliceKey, bobKey)).toBe(true)
     expect(readStoredSectorKeyEpoch(uploaded.get('alice')!)).toBe(targetEpoch + 1)
@@ -288,9 +297,12 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
     expect(res).toEqual({ rotated: true, epoch: 4, members: 2 })
 
     // Bob really can open the rotated key, and it is bound to the owner.
-    const bobKey = await unwrapGroupKeyFromStoredPayload(bob.priv, uploaded.get('bob')!, ownerPubJwk)
+    const bobKey = await unwrapGroupKeyFromStoredPayload(
+      bob.priv, uploaded.get('bob')!, ownerPubJwk, { chatId: 'g1', memberUserId: 'bob' }
+    )
     const ownerKey = await unwrapGroupKeyFromStoredPayload(
-      nonExtractablePriv, uploaded.get('owner')!, ownerPubJwk
+      nonExtractablePriv, uploaded.get('owner')!, ownerPubJwk,
+      { chatId: 'g1', memberUserId: 'owner' }
     )
     expect(await sameKey(bobKey, ownerKey)).toBe(true)
     expect(readStoredSectorKeyEpoch(uploaded.get('bob')!)).toBe(4)

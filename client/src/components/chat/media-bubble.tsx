@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   base64ToArrayBuffer,
-  decryptBinary,
+  decryptBinary, decryptBinaryWithRing,
   importAesGcm256RawKey,
 } from '@/lib/crypto'
 import { getDownloadUrl, MediaEvictedError, postRestoreComplete, postRestoreUrl } from '@/lib/api/storage'
@@ -314,7 +314,7 @@ export function MediaBubble({ message, sharedKey, onMediaClick, onAudioEnd, onPr
             cipher as BufferSource
           )
         } else {
-          plain = await decryptBinary(sharedKey!, cipher, mediaIv)
+          plain = await decryptBinaryWithRing(sharedKey!, cipher, mediaIv)
         }
       }
 

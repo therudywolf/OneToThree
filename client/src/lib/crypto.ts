@@ -469,6 +469,41 @@ export async function decryptBinary(
   )
 }
 
+/**
+ * Decrypt media, falling back through a chat's EPOCH KEY RING.
+ *
+ * Group media is sealed with the sector key that was current at upload time, and
+ * that key is replaced on every membership change. Messages have had a ring
+ * since #32; media only ever got the single current key, so every file uploaded
+ * before a rotation silently stopped opening — one person added to a group and
+ * its whole media history went dark.
+ *
+ * Tries the caller's key first (the overwhelmingly common case, and the only one
+ * for DIRECT/SELF), then each retained older epoch of the open chat. Falls back
+ * to plain `decryptBinary` behaviour when no ring is registered.
+ */
+export async function decryptBinaryWithRing(
+  sharedKey: CryptoKey,
+  ciphertext: ArrayBuffer,
+  ivBase64: string,
+  chatId?: string | null
+): Promise<ArrayBuffer> {
+  try {
+    return await decryptBinary(sharedKey, ciphertext, ivBase64)
+  } catch (firstError) {
+    const { getSectorMediaRing } = await import('./sector-media-ring')
+    for (const key of getSectorMediaRing(chatId)) {
+      if (key === sharedKey) continue
+      try {
+        return await decryptBinary(key, ciphertext, ivBase64)
+      } catch {
+        /* try the next epoch */
+      }
+    }
+    throw firstError
+  }
+}
+
 /** Base64 (standard) for arbitrary binary (e.g. attachment key wrap). */
 export function arrayBufferToBase64(buf: ArrayBuffer): string {
   return uint8ToBase64(new Uint8Array(buf))

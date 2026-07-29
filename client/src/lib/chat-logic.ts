@@ -46,10 +46,18 @@ export type SectorKeyAuthWrap = {
    *  label; v2 uses the domain-separated `KDF_CTX.GROUP_WRAP` label (#34). The
    *  unwrap side selects the label from this field — see
    *  {@link unwrapGroupKeyFromStoredPayload}. */
-  v: 1 | 2
+  v: 1 | 2 | 3
   ciphertext: string
   iv: string
   creatorEcdhPublicKeyJwk: string
+  /**
+   * v3 only. The chat and member this wrap was minted for. Both are bound into
+   * the AEAD's additionalData together with the epoch and the creator key, so
+   * they are ASSERTIONS the unseal verifies — not metadata anyone can edit.
+   * Present in the clear purely so the reader can reconstruct the same AAD.
+   */
+  chatId?: string
+  memberUserId?: string
   /**
    * Key-rotation generation this wrapped key belongs to (mirrors
    * `chats.key_epoch`). Present only on keys minted by a rotation; absent on
@@ -68,22 +76,57 @@ export type PreparedSectorKeyRow = {
 
 // --- INTERNAL_CRYPTO_OPS ---
 
-async function sealBytes(key: CryptoKey, plain: Uint8Array) {
+async function sealBytes(key: CryptoKey, plain: Uint8Array, aad?: Uint8Array) {
   const iv = crypto.getRandomValues(new Uint8Array(GCM_IV_LEN))
-  const buf = await getSubtle().encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, key, plain as BufferSource)
+  const buf = await getSubtle().encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource, ...(aad ? { additionalData: aad as BufferSource } : {}) },
+    key,
+    plain as BufferSource
+  )
   return {
     ciphertext: toB64(new Uint8Array(buf)),
     iv: toB64(iv),
   }
 }
 
-async function unsealBytes(key: CryptoKey, cipherB64: string, ivB64: string) {
+async function unsealBytes(key: CryptoKey, cipherB64: string, ivB64: string, aad?: Uint8Array) {
   const buf = await getSubtle().decrypt(
-    { name: 'AES-GCM', iv: fromB64(ivB64) as BufferSource },
+    { name: 'AES-GCM', iv: fromB64(ivB64) as BufferSource, ...(aad ? { additionalData: aad as BufferSource } : {}) },
     key,
     fromB64(cipherB64) as BufferSource
   )
   return new Uint8Array(buf)
+}
+
+/**
+ * [SECTOR_WRAP_AAD] :: the context a v3 wrap is bound to.
+ *
+ * A v2 wrap authenticated only its own ciphertext, so nothing in it said WHICH
+ * chat, WHICH epoch or WHOSE key it was — the epoch lived in a plaintext JSON
+ * field the AEAD never covered. An old wrapped key could therefore be replayed
+ * as the current epoch: re-serve epoch 3's blob with `epoch: 7` stamped on it
+ * and the member happily adopts a key the group has already rotated away from,
+ * which hands a departed member back the traffic that rotation was supposed to
+ * lock them out of.
+ *
+ * Binding all of it as additionalData means changing any one of those fields
+ * makes the unseal fail outright, instead of succeeding with a lie attached.
+ * Canonical, order-fixed, and versioned so the string itself can never drift.
+ */
+function sectorWrapAad(params: {
+  chatId: string
+  epoch: number
+  creatorEcdhPublicKeyJwk: string
+  memberUserId: string
+}): Uint8Array {
+  const canonical = [
+    'p13:sector-wrap:v3',
+    params.chatId,
+    String(params.epoch),
+    canonicalEcdhKeyId(params.creatorEcdhPublicKeyJwk),
+    params.memberUserId,
+  ].join('')
+  return new TextEncoder().encode(canonical)
 }
 
 function packPayload(payload: SectorKeyUnit | SectorKeyAuthWrap): string {
@@ -175,7 +218,13 @@ export async function wrapGroupKeyForMemberWithCreatorEcdh(
   memberPublicKeyJwk: string,
   sectorKey: CryptoKey,
   creatorPublicKeyJwk?: string,
-  epoch?: number
+  epoch?: number,
+  /**
+   * Supply BOTH to mint a v3 wrap, which binds chat + epoch + creator + member
+   * into the AEAD. Omitting them falls back to v2, whose `epoch` field is
+   * unauthenticated plaintext and therefore replayable.
+   */
+  bind?: { chatId: string; memberUserId: string }
 ): Promise<string> {
   const creatorPubJwk =
     creatorPublicKeyJwk ?? (await exportEcdhPublicJwkFromPrivateKey(creatorPrivateKey))
@@ -185,6 +234,29 @@ export async function wrapGroupKeyForMemberWithCreatorEcdh(
   const wrapKey = await deriveSharedSecret(creatorPrivateKey, memberPub, KDF_CTX.GROUP_WRAP)
 
   const rawKey = new Uint8Array(await getSubtle().exportKey('raw', sectorKey))
+
+  if (bind) {
+    // v3: everything that identifies this wrap is authenticated.
+    const boundEpoch = epoch ?? 0
+    const aad = sectorWrapAad({
+      chatId: bind.chatId,
+      epoch: boundEpoch,
+      creatorEcdhPublicKeyJwk: creatorPubJwk,
+      memberUserId: bind.memberUserId,
+    })
+    const sealed = await sealBytes(wrapKey, rawKey, aad)
+    return packPayload({
+      kind: 'CREATOR_AUTH_WRAP',
+      v: 3,
+      ciphertext: sealed.ciphertext,
+      iv: sealed.iv,
+      creatorEcdhPublicKeyJwk: creatorPubJwk,
+      epoch: boundEpoch,
+      chatId: bind.chatId,
+      memberUserId: bind.memberUserId,
+    })
+  }
+
   const { ciphertext, iv } = await sealBytes(wrapKey, rawKey)
 
   const payload: SectorKeyAuthWrap = {
@@ -247,12 +319,21 @@ export function readStoredSectorKeyEpoch(encryptedBase64: string): number | null
 export async function unwrapGroupKeyFromStoredPayload(
   memberPrivateKey: CryptoKey,
   encryptedBase64: string,
-  expectedCreatorEcdhPublicKeyJwk?: string
+  expectedCreatorEcdhPublicKeyJwk?: string,
+  /**
+   * The chat and member the CALLER believes this key is for. Supplying them
+   * makes a v3 wrap verify its binding: the AEAD only opens if the blob was
+   * minted for exactly this chat, this member and the epoch it claims. Without
+   * them a v3 wrap cannot be opened at all — a reader that does not know its own
+   * context has no business adopting a group key.
+   */
+  bind?: { chatId: string; memberUserId: string }
 ): Promise<CryptoKey> {
   const signal = new TextDecoder().decode(fromB64(encryptedBase64))
   const data = JSON.parse(signal) as SectorKeyAuthWrap | SectorKeyUnit
 
   let wrapKey: CryptoKey
+  let aad: Uint8Array | undefined
 
   if ('kind' in data && data.kind === 'CREATOR_AUTH_WRAP') {
     // Bind the wrap to the chat owner's identity BEFORE any DH: the creator key
@@ -271,6 +352,23 @@ export async function unwrapGroupKeyFromStoredPayload(
     const creatorPub = await importEcdhPublicKey(data.creatorEcdhPublicKeyJwk)
     const wrapCtx = (data.v ?? 1) >= 2 ? KDF_CTX.GROUP_WRAP : KDF_CTX.LEGACY
     wrapKey = await deriveSharedSecret(memberPrivateKey, creatorPub, wrapCtx)
+
+    if (data.v === 3) {
+      // Reconstruct the AAD from what the caller expects, NOT from the blob.
+      // Taking chatId/epoch/member from the payload would authenticate the
+      // attacker's own claims and prove nothing; the point is that the sealed
+      // key only opens if the sender's context matches the reader's.
+      if (!bind) throw new Error('SECTOR_V3_REQUIRES_BINDING')
+      if (data.chatId !== bind.chatId || data.memberUserId !== bind.memberUserId) {
+        throw new Error('SECTOR_WRAP_CONTEXT_MISMATCH :: COMPROMISED_LINK')
+      }
+      aad = sectorWrapAad({
+        chatId: bind.chatId,
+        epoch: data.epoch ?? 0,
+        creatorEcdhPublicKeyJwk: data.creatorEcdhPublicKeyJwk,
+        memberUserId: bind.memberUserId,
+      })
+    }
   } else {
     // Legacy ephemeral wrap (`SectorKeyUnit`): unauthenticated by construction.
     // When an owner binding is required, refuse it — the only legitimate SECTOR
@@ -287,7 +385,7 @@ export async function unwrapGroupKeyFromStoredPayload(
     wrapKey = await deriveSharedSecret(memberPrivateKey, ephemeralPub)
   }
 
-  const rawKey = await unsealBytes(wrapKey, data.ciphertext, data.iv)
+  const rawKey = await unsealBytes(wrapKey, data.ciphertext, data.iv, aad)
 
   return getSubtle().importKey(
     'raw',

@@ -16,7 +16,7 @@ import {
   deleteCachedMessage,
   getOlderCachedMessages,
 } from '@/lib/message-cache'
-import { decryptBinary, base64ToArrayBuffer, importAesGcm256RawKey } from '@/lib/crypto'
+import { decryptBinary, decryptBinaryWithRing, base64ToArrayBuffer, importAesGcm256RawKey } from '@/lib/crypto'
 import { getDownloadUrl } from '@/lib/api/storage'
 import { getCachedMedia, setCachedMedia } from '@/lib/media-cache'
 import { lookupUsers } from '@/lib/api/users'
@@ -1095,7 +1095,7 @@ export function ChatTerminal({
             cipher as BufferSource
           )
         } else {
-          plain = await decryptBinary(sharedKey, cipher, meta.mediaIv)
+          plain = await decryptBinaryWithRing(sharedKey, cipher, meta.mediaIv, activeChatId)
         }
       }
 

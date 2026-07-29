@@ -95,9 +95,10 @@ type SignalPayload =
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null }
   | { kind: 'media_state'; media: 'audio' | 'video'; enabled: boolean }
   | { kind: 'screen_share'; active: boolean }
-  | { kind: 'relay_offer' }
-  | { kind: 'relay_answer' }
-  | { kind: 'relay_frame'; ciphertext: string; iv: string; sampleRate: number }
+  /** `callNonce` salts the per-call frame key — see relayCallNonceRef. */
+  | { kind: 'relay_offer'; callNonce?: string }
+  | { kind: 'relay_answer'; callNonce?: string }
+  | { kind: 'relay_frame'; ciphertext: string; iv: string; sampleRate: number; seq?: number }
   /** 1:1 → group promotion (#4): the initiator created a keyed group chat and
    *  is moving the call there; the peer tears down the 1:1 and joins the room. */
   | { kind: 'promote_to_group'; chatId: string }
@@ -153,6 +154,20 @@ export function useWebRTC(userId: string | null) {
   const relayCapturesRef = useRef(new Map<string, AudioRelayCaptureController>())
   const relayKeysRef = useRef(new Map<string, Promise<CryptoKey | null>>())
   const relayPeersRef = useRef(new Set<string>())
+  /**
+   * Per-call salt for the relay frame key.
+   *
+   * The frame key used to be the raw static ECDH secret of the two identities,
+   * so EVERY call between the same pair reused one key forever: frames captured
+   * from one call decrypt in the next, and there is no forward secrecy across
+   * calls at all. The caller mints a nonce with relay_offer, the callee echoes
+   * it in relay_answer, and both fold it into the HKDF info label — a fresh key
+   * per call for free, with no new primitive.
+   */
+  const relayCallNonceRef = useRef(new Map<string, string>())
+  /** Outbound frame counter per peer, and the highest inbound seq accepted. */
+  const relaySeqOutRef = useRef(new Map<string, number>())
+  const relaySeqInRef = useRef(new Map<string, number>())
   /** Last 1:1 call peer + grace deadline — lets a `promote_to_group` that lost
    *  the race against the peer's call_leave still be honored (#4). */
   const recentCallPeerRef = useRef<{ peerId: string; until: number } | null>(null)
@@ -174,6 +189,18 @@ export function useWebRTC(userId: string | null) {
     setCallChatId,
   } = useCallStore.getState()
 
+  /**
+   * Bind each relay frame to its direction and position in the stream.
+   *
+   * Frames carried no associated data and no counter, so a captured frame could
+   * be replayed verbatim — or reordered — and the receiver would decrypt and
+   * play it, because AES-GCM only proved "someone with the key made this", not
+   * "this is frame N of this call, from them to me".
+   */
+  const relayFrameAad = useCallback((fromId: string, toId: string, seq: number): Uint8Array => {
+    return new TextEncoder().encode(`p13:call-relay:v1|${fromId}|${toId}|${seq}`)
+  }, [])
+
   const resolveRelaySharedKey = useCallback(async (peerId: string): Promise<CryptoKey | null> => {
     const cached = relayKeysRef.current.get(peerId)
     if (cached) return cached
@@ -184,11 +211,25 @@ export function useWebRTC(userId: string | null) {
       if (!peer?.ecdh_public_key_jwk) return null
       const peerPublicKey = await importEcdhPublicKey(peer.ecdh_public_key_jwk)
       // #34: call relay derives under its own domain, separate from the message
-      // fan-out / group-wrap key of the same identity ECDH pair.
-      return deriveSharedSecret(ownPrivateKey, peerPublicKey, KDF_CTX.CALL)
+      // fan-out / group-wrap key of the same identity ECDH pair. The per-call
+      // nonce is folded into the same info label so each call gets a distinct
+      // key instead of reusing one static secret for the pair forever.
+      const nonce = relayCallNonceRef.current.get(peerId)
+      const ctx = nonce ? `${KDF_CTX.CALL}|${nonce}` : KDF_CTX.CALL
+      return deriveSharedSecret(ownPrivateKey, peerPublicKey, ctx)
     })().catch(() => null)
     relayKeysRef.current.set(peerId, task)
     return task
+  }, [])
+
+  /** Install the call nonce and drop any key cached under the previous one. */
+  const setRelayCallNonce = useCallback((peerId: string, nonce: string | undefined) => {
+    if (!nonce) return
+    if (relayCallNonceRef.current.get(peerId) === nonce) return
+    relayCallNonceRef.current.set(peerId, nonce)
+    relayKeysRef.current.delete(peerId)
+    relaySeqOutRef.current.delete(peerId)
+    relaySeqInRef.current.delete(peerId)
   }, [])
 
   const stopRelayPeer = useCallback((peerId: string) => {
@@ -222,12 +263,19 @@ export function useWebRTC(userId: string | null) {
       busy = true
       void (async () => {
         try {
-          const encrypted = await encryptBytes(sharedKey, pcm)
+          const seq = (relaySeqOutRef.current.get(peerId) ?? 0) + 1
+          relaySeqOutRef.current.set(peerId, seq)
+          const encrypted = await encryptBytes(
+            sharedKey,
+            pcm,
+            relayFrameAad(userId ?? '', peerId, seq)
+          )
           transmitSignal(peerId, {
             kind: 'relay_frame',
             ciphertext: encrypted.ciphertext,
             iv: encrypted.iv,
             sampleRate,
+            seq,
           })
         } finally {
           busy = false
@@ -238,7 +286,7 @@ export function useWebRTC(userId: string | null) {
     relayPeersRef.current.add(peerId)
     setPeerConnectionType(peerId, 'relay')
     return true
-  }, [resolveRelaySharedKey, setPeerConnectionType])
+  }, [relayFrameAad, resolveRelaySharedKey, setPeerConnectionType, userId])
 
   const flushIceQueue = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const queue = pendingIceRef.current[peerId]
@@ -485,7 +533,10 @@ export function useWebRTC(userId: string | null) {
         is_video: false,
       })
     }
-    transmitSignal(peerId, { kind: 'relay_offer' })
+    // Mint the per-call salt before any key is derived for this peer.
+    const callNonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))))
+    setRelayCallNonce(peerId, callNonce)
+    transmitSignal(peerId, { kind: 'relay_offer', callNonce })
     ringStopRef.current = startOutgoingRingtone()
     if (requestedVideo) {
       toastWarn(t('call.audioRelayFallback'), { title: t('call.iceRelayTitle') })
@@ -556,7 +607,10 @@ export function useWebRTC(userId: string | null) {
       setIncomingCall(null)
       return
     }
-    transmitSignal(peerId, { kind: 'relay_answer' })
+    transmitSignal(peerId, {
+      kind: 'relay_answer',
+      callNonce: relayCallNonceRef.current.get(peerId),
+    })
     setIncomingCall(null)
   }, [resolveRelaySharedKey, setCallStartTime, setIncomingCall, setIsCalling, setLocalStream, setPeerConnectionType, startRelayCapture])
 
@@ -688,6 +742,10 @@ export function useWebRTC(userId: string | null) {
           iv?: string
           sampleRate?: number
           chatId?: string
+          /** Per-call key salt (relay_offer / relay_answer). */
+          callNonce?: string
+          /** Monotonic frame counter, bound into the AAD (relay_frame). */
+          seq?: number
         }
         if (fromUserId === userId) return
 
@@ -723,6 +781,8 @@ export function useWebRTC(userId: string | null) {
         }
 
         if (data.kind === 'relay_offer') {
+          // Adopt the caller's per-call salt before any key is derived for them.
+          setRelayCallNonce(fromUserId, data.callNonce)
           if (useCallStore.getState().isCalling) {
             const pc = pcsRef.current.get(fromUserId)
             if (pc) {
@@ -739,7 +799,10 @@ export function useWebRTC(userId: string | null) {
             if (localStream) {
               const started = await startRelayCapture(fromUserId, localStream)
               if (started) {
-                transmitSignal(fromUserId, { kind: 'relay_answer' })
+                transmitSignal(fromUserId, {
+                  kind: 'relay_answer',
+                  callNonce: relayCallNonceRef.current.get(fromUserId),
+                })
                 ensureRelayPlayer(fromUserId)
               } else {
                 setMediaAccessError('CALL_RELAY_KEY_UNAVAILABLE')
@@ -771,6 +834,9 @@ export function useWebRTC(userId: string | null) {
         }
 
         if (data.kind === 'relay_answer') {
+          // The callee echoes the salt; adopting it keeps both sides on the
+          // same per-call key even if our own offer raced a reconnect.
+          setRelayCallNonce(fromUserId, data.callNonce)
           relayAwaitingAnswerRef.current.delete(fromUserId)
           ringStopRef.current?.()
           if (connectTimeoutRef.current) {
@@ -802,10 +868,26 @@ export function useWebRTC(userId: string | null) {
           // frames arriving before the human accepts are correctly dropped.
           // Mirrors the group path's `roomId` gate in group-call-manager.ts.
           if (!relayPeersRef.current.has(fromUserId)) return
+          // Strictly increasing sequence. Without it a captured frame replays
+          // verbatim (the key is the same for the whole call) and out-of-order
+          // frames play as if fresh — audio an attacker can rewind and repeat.
+          const seq = typeof data.seq === 'number' ? data.seq : null
+          if (seq === null) return
+          const lastSeq = relaySeqInRef.current.get(fromUserId) ?? 0
+          if (seq <= lastSeq) return
           try {
             const sharedKey = await resolveRelaySharedKey(fromUserId)
             if (!sharedKey) return
-            const pcm = await decryptBytes(sharedKey, data.ciphertext, data.iv)
+            // AAD must match the sender's exactly: direction + position. A frame
+            // lifted from the other direction, or from another position in the
+            // stream, fails the tag rather than decrypting.
+            const pcm = await decryptBytes(
+              sharedKey,
+              data.ciphertext,
+              data.iv,
+              relayFrameAad(fromUserId, userId ?? '', seq)
+            )
+            relaySeqInRef.current.set(fromUserId, seq)
             const player = ensureRelayPlayer(fromUserId)
             await player.pushFrame(pcm, data.sampleRate)
           } catch {

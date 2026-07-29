@@ -383,13 +383,15 @@ export async function encryptMessage(
  */
 export async function encryptBytes(
   sharedKey: CryptoKey,
-  plaintext: Uint8Array
+  plaintext: Uint8Array,
+  /** Optional AES-GCM additionalData. Additive: existing callers are unchanged. */
+  aad?: Uint8Array
 ): Promise<EncryptedMessage> {
   const iv = new Uint8Array(AES_GCM_IV_LENGTH)
   crypto.getRandomValues(iv)
 
   const cipherBuffer = await getSubtle().encrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
+    { name: 'AES-GCM', iv: iv as BufferSource, ...(aad ? { additionalData: aad as BufferSource } : {}) },
     sharedKey,
     plaintext as BufferSource
   )
@@ -426,13 +428,15 @@ export async function decryptMessage(
 export async function decryptBytes(
   sharedKey: CryptoKey,
   ciphertextBase64: string,
-  ivBase64: string
+  ivBase64: string,
+  /** Must byte-match the `aad` used to encrypt, or the unseal fails. */
+  aad?: Uint8Array
 ): Promise<Uint8Array> {
   const ciphertext = base64ToUint8(ciphertextBase64)
   const iv = base64ToUint8(ivBase64)
 
   const plainBuffer = await getSubtle().decrypt(
-    { name: 'AES-GCM', iv: iv as BufferSource },
+    { name: 'AES-GCM', iv: iv as BufferSource, ...(aad ? { additionalData: aad as BufferSource } : {}) },
     sharedKey,
     ciphertext as BufferSource
   )

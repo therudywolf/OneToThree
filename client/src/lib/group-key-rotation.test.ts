@@ -191,14 +191,18 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
     )
     const uploaded = new Map<string, string>()
     vi.mocked(uploadMemberWrappedGroupKey).mockImplementation(
-      async (_chatId: string, userId: string, wrapped: string) => {
+      async (_chatId: string, userId: string, wrapped: string, claimFrom?: number) => {
         uploaded.set(userId, wrapped)
+        // Mirror the server CAS: the first write claims the epoch.
+        return { keyEpoch: claimFrom !== undefined ? claimFrom + 1 : null }
       }
     )
 
     const res = await rotateGroupKeyForChat('g1', owner.id, owner.priv, targetEpoch)
 
-    expect(res).toEqual({ rotated: true, epoch: targetEpoch, members: 3 })
+    // The rotation now SETTLES one epoch past the one it observed — the server
+    // bumps as part of claiming it, so keys are stamped with the new value.
+    expect(res).toEqual({ rotated: true, epoch: targetEpoch + 1, members: 3 })
     // Every staying member — INCLUDING the owner self-target — received a key.
     expect([...uploaded.keys()].sort()).toEqual(['alice', 'bob', 'owner'])
 
@@ -208,8 +212,8 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
     const bobKey = await unwrapGroupKeyFromStoredPayload(bob.priv, uploaded.get('bob')!)
     expect(await sameKey(ownerKey, aliceKey)).toBe(true)
     expect(await sameKey(aliceKey, bobKey)).toBe(true)
-    expect(readStoredSectorKeyEpoch(uploaded.get('alice')!)).toBe(targetEpoch)
-    expect(readStoredSectorKeyEpoch(uploaded.get('owner')!)).toBe(targetEpoch)
+    expect(readStoredSectorKeyEpoch(uploaded.get('alice')!)).toBe(targetEpoch + 1)
+    expect(readStoredSectorKeyEpoch(uploaded.get('owner')!)).toBe(targetEpoch + 1)
 
     // It is a genuinely NEW key — not the pre-rotation one.
     expect(await sameKey(ownerKey, oldSectorKey)).toBe(false)
@@ -226,7 +230,7 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
     vi.mocked(fetchChatDetail).mockResolvedValue(
       mockDetail('owner', 1, [{ id: 'owner', role: 'owner', ecdh: null }])
     )
-    vi.mocked(uploadMemberWrappedGroupKey).mockResolvedValue(undefined as unknown as void)
+    vi.mocked(uploadMemberWrappedGroupKey).mockResolvedValue({ keyEpoch: null })
     const res = await rotateGroupKeyForChat('g1', owner.id, owner.priv, 1)
     // The owner's own public key is what every wrap is bound to (D2), so without
     // it nothing can be minted at all — a more precise answer than the old
@@ -243,7 +247,7 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
         { id: 'keyless', role: 'member', ecdh: null },
       ])
     )
-    vi.mocked(uploadMemberWrappedGroupKey).mockResolvedValue(undefined as unknown as void)
+    vi.mocked(uploadMemberWrappedGroupKey).mockResolvedValue({ keyEpoch: null })
     const res = await rotateGroupKeyForChat('g1', 'nobody-in-roster', owner.priv, 1)
     expect(res).toEqual({ rotated: false, reason: 'NO_OWNER_ECDH_IN_ROSTER' })
     expect(uploadMemberWrappedGroupKey).not.toHaveBeenCalled()
@@ -273,12 +277,15 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
       ])
     )
     const uploaded = new Map<string, string>()
-    vi.mocked(uploadMemberWrappedGroupKey).mockImplementation(async (_c, uid, blob) => {
-      uploaded.set(uid, blob)
-    })
+    vi.mocked(uploadMemberWrappedGroupKey).mockImplementation(
+      async (_c, uid, blob, claimFrom) => {
+        uploaded.set(uid, blob)
+        return { keyEpoch: claimFrom !== undefined ? claimFrom + 1 : null }
+      }
+    )
 
     const res = await rotateGroupKeyForChat('g1', 'owner', nonExtractablePriv, 3)
-    expect(res).toEqual({ rotated: true, epoch: 3, members: 2 })
+    expect(res).toEqual({ rotated: true, epoch: 4, members: 2 })
 
     // Bob really can open the rotated key, and it is bound to the owner.
     const bobKey = await unwrapGroupKeyFromStoredPayload(bob.priv, uploaded.get('bob')!, ownerPubJwk)
@@ -286,7 +293,7 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
       nonExtractablePriv, uploaded.get('owner')!, ownerPubJwk
     )
     expect(await sameKey(bobKey, ownerKey)).toBe(true)
-    expect(readStoredSectorKeyEpoch(uploaded.get('bob')!)).toBe(3)
+    expect(readStoredSectorKeyEpoch(uploaded.get('bob')!)).toBe(4)
   })
 
   /**
@@ -323,13 +330,18 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
         ])
       )
       const uploaded = new Map<string, string>()
-      vi.mocked(uploadMemberWrappedGroupKey).mockImplementation(async (_c, uid, blob) => {
-        uploaded.set(uid, blob)
-      })
+      vi.mocked(uploadMemberWrappedGroupKey).mockImplementation(
+        async (_c, uid, blob, claimFrom) => {
+          uploaded.set(uid, blob)
+          // Mirror the server: the first write claims the epoch and reports the
+          // value the rotation settled on.
+          return { keyEpoch: claimFrom !== undefined ? claimFrom + 1 : null }
+        }
+      )
 
       const res = await rotateGroupKeyForChat('g1', owner.id, owner.priv, 2)
 
-      expect(res).toEqual({ rotated: true, epoch: 2, members: 2 })
+      expect(res).toEqual({ rotated: true, epoch: 3, members: 2 })
       expect([...uploaded.keys()].sort()).toEqual(['carol', 'owner'])
       // The substituted key never received anything to open.
       expect(uploaded.has('bob')).toBe(false)

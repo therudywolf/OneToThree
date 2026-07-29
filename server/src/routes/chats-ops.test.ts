@@ -368,4 +368,66 @@ describe('chat create/update/member routes', () => {
       await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
     }
   })
+
+  /**
+   * Backlog #2 — two owner sessions must not both rotate off the same epoch.
+   *
+   * Nothing serialized rotation before this. Two sessions of the same owner
+   * (phone + laptop, or two tabs) each read epoch N, each minted a DIFFERENT
+   * group key, and each wrote wrapped keys for every member — leaving members
+   * split across two keys under one epoch number, unable to read each other and
+   * with no way to self-heal, because every staleness check compares epochs and
+   * the epochs matched.
+   */
+  it('lets only ONE rotation claim a given key epoch (CAS)', async () => {
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`cas-owner-${stamp}`)
+    const member = await createUser(`cas-member-${stamp}`)
+    const cookie = `fm_session=${await app!.jwt.sign({ sub: owner.id, username: owner.username, jti: randomUUID() })}`
+
+    let chatId: string | null = null
+    try {
+      chatId = await createGroup(app!, cookie, owner, [member])
+      const start = await readKeyEpoch(chatId)
+
+      // Session A claims the epoch — succeeds and bumps.
+      const a = await request(app!.server)
+        .put(`/api/chats/${chatId}/members/${member.id}/wrapped-key`)
+        .set('Cookie', cookie)
+        .send({ encrypted_group_key: 'key-from-session-A', claim_from_epoch: start })
+        .expect(200)
+      expect(a.body.key_epoch).toBe(start + 1)
+
+      // Session B, which observed the SAME starting epoch, is refused.
+      const b = await request(app!.server)
+        .put(`/api/chats/${chatId}/members/${member.id}/wrapped-key`)
+        .set('Cookie', cookie)
+        .send({ encrypted_group_key: 'key-from-session-B', claim_from_epoch: start })
+        .expect(409)
+      expect(b.body.error).toBe('KEY_EPOCH_STALE')
+
+      // Exactly one bump happened, and B's key never landed.
+      expect(await readKeyEpoch(chatId)).toBe(start + 1)
+      const [row] = await db
+        .select({ key: chatMembers.encryptedGroupKey })
+        .from(chatMembers)
+        .where(eq(chatMembers.userId, member.id))
+        .limit(1)
+      expect(row?.key).toBe('key-from-session-A')
+
+      // Follow-up writes of the SAME rotation carry no claim and still apply.
+      await request(app!.server)
+        .put(`/api/chats/${chatId}/members/${owner.id}/wrapped-key`)
+        .set('Cookie', cookie)
+        .send({ encrypted_group_key: 'owner-key-from-A' })
+        .expect(200)
+      expect(await readKeyEpoch(chatId)).toBe(start + 1)
+    } finally {
+      if (chatId) {
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, chatId))
+        await db.delete(chats).where(eq(chats.id, chatId))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
+    }
+  })
 })

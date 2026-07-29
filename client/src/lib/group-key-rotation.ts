@@ -142,6 +142,15 @@ export async function rotateGroupKeyForChat(
   )
 
   let delivered = 0
+  // The first successful write CLAIMS the epoch (compare-and-swap server-side),
+  // so only one rotation can move the chat off `epoch`. A concurrent rotation by
+  // another session of the same owner gets 409 KEY_EPOCH_STALE and aborts here
+  // instead of scattering a second, different key across the same roster —
+  // which used to split the group across two keys under one epoch number, with
+  // no way to detect or heal it (every staleness check compares epochs, and the
+  // epochs matched).
+  let epochClaimed = false
+  let settledEpoch = epoch
   for (const m of detail.members) {
     if (!m.ecdh_public_key_jwk) continue
     // `members[].ecdh_public_key_jwk` comes straight from the server's users
@@ -163,19 +172,36 @@ export async function rotateGroupKeyForChat(
         m.ecdh_public_key_jwk,
         newKey,
         myPubJwk,
-        epoch
+        // Keys are stamped with the epoch the rotation SETTLES on, which the
+        // claim below returns — not the one we observed before claiming.
+        epochClaimed ? settledEpoch : epoch + 1
       )
-      await uploadMemberWrappedGroupKey(chatId, m.user_id, wrapped)
+      const res = await uploadMemberWrappedGroupKey(
+        chatId,
+        m.user_id,
+        wrapped,
+        epochClaimed ? undefined : epoch
+      )
+      if (!epochClaimed) {
+        epochClaimed = true
+        settledEpoch = res.keyEpoch ?? epoch + 1
+      }
       delivered += 1
-    } catch {
-      // Best-effort: a transient PUT failure or a member mid-rekey is recovered
-      // by the next rotation pass or the key-distribution scan. Do not abort —
-      // partial delivery still advances remaining members off the old key.
+    } catch (e) {
+      // A lost CAS is NOT a transient fault — another session is already
+      // rotating this chat off the same epoch. Abort so we do not write a second
+      // key alongside theirs.
+      if (e instanceof Error && e.message === 'KEY_EPOCH_STALE') {
+        return { rotated: false, reason: 'EPOCH_CLAIMED_BY_OTHER_SESSION' }
+      }
+      // Otherwise best-effort: a transient PUT failure or a member mid-rekey is
+      // recovered by the next rotation pass or the key-distribution scan. Do not
+      // abort — partial delivery still advances remaining members off the old key.
     }
   }
 
   if (delivered === 0) {
     return { rotated: false, reason: 'NO_MEMBERS_DELIVERED' }
   }
-  return { rotated: true, epoch, members: delivered }
+  return { rotated: true, epoch: settledEpoch, members: delivered }
 }

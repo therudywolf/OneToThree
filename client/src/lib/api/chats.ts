@@ -446,24 +446,38 @@ export async function kickChatMember(
   }
 }
 
+/**
+ * `claimFromEpoch` turns this write into the start of a rotation: the server
+ * bumps `chats.key_epoch` only if it is still that value, and answers 409
+ * KEY_EPOCH_STALE otherwise. Pass it on the FIRST write of a rotation and only
+ * there — it is what stops two owner sessions from each minting a different key
+ * at the same epoch and splitting the group across two keys nobody can
+ * reconcile. Returns the epoch the server settled on, when it claimed one.
+ */
 export async function uploadMemberWrappedGroupKey(
   chatId: string,
   targetUserId: string,
-  encryptedGroupKeyBase64: string
-): Promise<void> {
+  encryptedGroupKeyBase64: string,
+  claimFromEpoch?: number
+): Promise<{ keyEpoch: number | null }> {
   const r = await fetchWithTimeout(
     `${API_URL}/chats/${chatId}/members/${canonicalUserId(targetUserId)}/wrapped-key`,
     {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ encrypted_group_key: encryptedGroupKeyBase64 }),
+      body: JSON.stringify({
+        encrypted_group_key: encryptedGroupKeyBase64,
+        ...(claimFromEpoch !== undefined ? { claim_from_epoch: claimFromEpoch } : {}),
+      }),
     }
   )
   if (!r.ok) {
     const d = (await r.json().catch(() => ({}))) as { error?: string }
     throw new Error(d.error ?? 'WRAPPED_KEY_FAILED')
   }
+  const body = (await r.json().catch(() => ({}))) as { key_epoch?: number | null }
+  return { keyEpoch: body.key_epoch ?? null }
 }
 
 export async function deleteMessage(

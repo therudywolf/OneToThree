@@ -140,10 +140,19 @@ export async function activateVaultSession(
 
   // Upload the ECDH public key so fan-out can reach this device. Retry once —
   // transient network errors are common right at unlock.
+  //
+  // The publish is proof-gated (see patchMyEcdhPublicKey), and the proof needs
+  // the keyring's ECDSA key. A LEGACY vault has no ECDSA key, so it cannot
+  // publish — that is intentional: silently skipping the proof would hand the
+  // hole straight back. Such a vault has to be re-created.
+  const ecdsaJwk = parsed.kind === 'V2' ? parsed.ecdsaJwk : null
   let ecdhUploaded = false
-  for (let attempt = 0; attempt < 2 && !ecdhUploaded; attempt++) {
+  if (!ecdsaJwk) {
+    console.warn('[vault] legacy keyring has no ECDSA key — cannot prove vault unlock, ECDH key not published')
+  }
+  for (let attempt = 0; ecdsaJwk && attempt < 2 && !ecdhUploaded; attempt++) {
     try {
-      await patchMyEcdhPublicKey(myPubJwk)
+      await patchMyEcdhPublicKey(myPubJwk, ecdsaJwk)
       ecdhUploaded = true
     } catch { /* retry */ }
   }

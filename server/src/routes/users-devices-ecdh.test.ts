@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID, webcrypto } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
@@ -6,6 +6,29 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import { chatMembers, chats, devices, users } from '../db/schema.js'
+
+/**
+ * A REAL ECDSA P-256 keypair. The ECDH-publish proof is a genuine signature
+ * check, so a fixture with a made-up `x`/`y` cannot exercise it.
+ */
+async function makeLoginKeypair(): Promise<{ publicJwk: string; privateKey: CryptoKey }> {
+  const pair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    true,
+    ['sign', 'verify']
+  )
+  const pub = await webcrypto.subtle.exportKey('jwk', pair.publicKey)
+  return { publicJwk: JSON.stringify(pub), privateKey: pair.privateKey }
+}
+
+async function signNonce(privateKey: CryptoKey, nonce: string): Promise<string> {
+  const sig = await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    privateKey,
+    new TextEncoder().encode(nonce)
+  )
+  return Buffer.from(new Uint8Array(sig)).toString('base64')
+}
 
 describe('users device ECDH publishing', () => {
   let app: FastifyInstance | undefined
@@ -21,17 +44,10 @@ describe('users device ECDH publishing', () => {
 
   it('PATCH /api/users/me publishes ecdh key to the current device record', async () => {
     const username = `ecdh${Date.now().toString(36)}`
+    const login = await makeLoginKeypair()
     const [user] = await db
       .insert(users)
-      .values({
-        username,
-        publicKeyJwk: JSON.stringify({
-          kty: 'EC',
-          crv: 'P-256',
-          x: randomUUID(),
-          y: randomUUID(),
-        }),
-      })
+      .values({ username, publicKeyJwk: login.publicJwk })
       .returning({ id: users.id, username: users.username })
 
     const [device] = await db
@@ -57,13 +73,76 @@ describe('users device ECDH publishing', () => {
       y: '4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM',
     })
 
+    const cookie = `fm_session=${token}`
+
+    // A bare session cookie must NOT be able to swap this key — it decides who
+    // every peer encrypts to, so without the proof a stolen session silently
+    // redirects the victim's incoming messages to the attacker.
+    await request(app!.server)
+      .patch('/api/users/me')
+      .set('Cookie', cookie)
+      .send({ ecdh_public_key_jwk: ecdhPublicKeyJwk })
+      .expect(400)
+
+    // A signature over a nonce the server never issued is refused too.
+    await request(app!.server)
+      .patch('/api/users/me')
+      .set('Cookie', cookie)
+      .send({
+        ecdh_public_key_jwk: ecdhPublicKeyJwk,
+        proof_nonce: randomUUID(),
+        proof_signature: await signNonce(login.privateKey, 'some-other-nonce'),
+      })
+      .expect(403)
+
+    const chal = await request(app!.server)
+      .get('/api/users/me/ecdh/publish-challenge')
+      .set('Cookie', cookie)
+      .expect(200)
+    const nonce = chal.body.nonce as string
+
+    // ...and a real nonce signed by the WRONG key is refused.
+    const attacker = await makeLoginKeypair()
+    await request(app!.server)
+      .patch('/api/users/me')
+      .set('Cookie', cookie)
+      .send({
+        ecdh_public_key_jwk: ecdhPublicKeyJwk,
+        proof_nonce: nonce,
+        proof_signature: await signNonce(attacker.privateKey, nonce),
+      })
+      .expect(403)
+
+    // That attempt consumed the nonce (single-use), so take a fresh one.
+    const chal2 = await request(app!.server)
+      .get('/api/users/me/ecdh/publish-challenge')
+      .set('Cookie', cookie)
+      .expect(200)
+    const nonce2 = chal2.body.nonce as string
+    const goodSig = await signNonce(login.privateKey, nonce2)
+
     const res = await request(app!.server)
       .patch('/api/users/me')
-      .set('Cookie', `fm_session=${token}`)
-      .send({ ecdh_public_key_jwk: ecdhPublicKeyJwk })
+      .set('Cookie', cookie)
+      .send({
+        ecdh_public_key_jwk: ecdhPublicKeyJwk,
+        proof_nonce: nonce2,
+        proof_signature: goodSig,
+      })
       .expect(200)
 
     expect(res.body.ok).toBe(true)
+
+    // Replaying that same proof must fail — the nonce is spent.
+    await request(app!.server)
+      .patch('/api/users/me')
+      .set('Cookie', cookie)
+      .send({
+        ecdh_public_key_jwk: ecdhPublicKeyJwk,
+        proof_nonce: nonce2,
+        proof_signature: goodSig,
+      })
+      .expect(403)
 
     const [updatedDevice] = await db
       .select({ ecdhPublicKey: devices.ecdhPublicKey })

@@ -26,6 +26,12 @@ const patchRoleSchema = z.object({
 
 const wrappedKeySchema = z.object({
   encrypted_group_key: z.string().min(1),
+  /**
+   * Set by the FIRST write of a rotation to atomically claim the epoch it is
+   * rotating away from. See the CAS in the handler — this is what stops two
+   * owner sessions from both minting a key at the same epoch.
+   */
+  claim_from_epoch: z.number().int().min(0).optional(),
 })
 
 const invitePostSchema = z.object({
@@ -1619,6 +1625,31 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ error: 'NOT_A_MEMBER' })
     }
 
+    // COMPARE-AND-SWAP on the epoch, when the caller is starting a rotation.
+    //
+    // Nothing serialized rotations before this. Two sessions of the same owner
+    // (phone + laptop, or two tabs) could each observe epoch N, each mint a
+    // DIFFERENT group key, and each write wrapped keys for every member — so
+    // members ended up split across two keys under one epoch number and simply
+    // could not read each other. It never self-healed either: the epoch matched
+    // everywhere, so every "is my key stale?" check said no.
+    //
+    // The conditional bump is the serialization point. Exactly one rotation can
+    // move the chat off epoch N; the loser is told to re-read and try again
+    // rather than scattering a second key across the roster.
+    let claimedEpoch: number | null = null
+    if (parsed.data.claim_from_epoch !== undefined) {
+      const bumped = await db
+        .update(chats)
+        .set({ keyEpoch: sql`${chats.keyEpoch} + 1` })
+        .where(and(eq(chats.id, chatId), eq(chats.keyEpoch, parsed.data.claim_from_epoch)))
+        .returning({ keyEpoch: chats.keyEpoch })
+      if (!bumped.length) {
+        return reply.status(409).send({ error: 'KEY_EPOCH_STALE' })
+      }
+      claimedEpoch = bumped[0]?.keyEpoch ?? null
+    }
+
     await db
       .update(chatMembers)
       .set({ encryptedGroupKey: parsed.data.encrypted_group_key })
@@ -1630,7 +1661,14 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       )
 
     broadcastToUsers([user.id, targetUserId], { type: 'chats_updated' })
-    return reply.send({ ok: true })
+    if (claimedEpoch != null) {
+      const memberRows = await db
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+      broadcastKeyEpoch(chatId, claimedEpoch, memberRows.map((r) => r.userId))
+    }
+    return reply.send({ ok: true, key_epoch: claimedEpoch })
   })
 
   app.delete('/:chatId', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {

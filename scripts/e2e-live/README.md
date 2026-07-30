@@ -41,7 +41,7 @@ ssh forestserver 'docker run --rm --network host -v ~/e2e:/w -w /w mcr.microsoft
 | `LIVEKIT_HOST` | `lk.onetothree.ru`            | SFU hostname the group-call check looks for  |
 | `ONLY`         | *(all)*                       | Comma-separated scenario filter              |
 
-Scenarios: `group`, `media`, `rotation`, `groupcall`, `dm`, `call`, `devicelink`.
+Scenarios: `group`, `media`, `rotation`, `groupcall`, `dm`, `call`, `devicelink`, `recovery`.
 Registration always runs — everything else needs the accounts.
 
 ```bash

@@ -80,7 +80,9 @@ vi.mock('@/lib/crypto', () => ({
 const pushed: number[] = []
 vi.mock('@/lib/call-audio-relay', () => ({
   AudioRelayPlayer: class {
-    stream = {} as MediaStream
+    // Well-formed enough for teardown: the store hands remote streams back to
+    // `getTracks()` when the call ends.
+    stream = { getTracks: () => [] } as unknown as MediaStream
     pushFrame = async (pcm: Uint8Array) => { pushed.push(pcm.length) }
     stop = () => {}
   },
@@ -92,7 +94,12 @@ vi.mock('@/lib/call-audio-relay', () => ({
 
 let capturedOnFrame: ((f: { sampleRate: number; pcm: Uint8Array }) => void) | null = null
 
-import { joinGroupCall, handleParticipantList, handleGroupCallRelayFrame } from '@/lib/group-call-manager'
+import {
+  joinGroupCall,
+  handleParticipantList,
+  handleGroupCallRelayFrame,
+  leaveGroupCall,
+} from '@/lib/group-call-manager'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { useSessionStore } from '@/store/sessionStore'
 
@@ -195,6 +202,32 @@ describe('group relay frames', () => {
     // Forward progress still works.
     await handleGroupCallRelayFrame(ROOM, PEER, frame(6, 200), 'iv', 48_000, 6)
     expect(pushed).toEqual([160, 200])
+  })
+
+  /**
+   * The key is bound to the room, but the cache is keyed by peer. A key derived
+   * during a call the peer never sent a usable frame in leaves no player and no
+   * capture, so the per-peer teardown loop never reaches it — and carrying it
+   * into the next call, in a different room, would make every frame there fail
+   * to open.
+   */
+  it('does not carry a room-bound key into the next call', async () => {
+    await joinRelayCallWithPeer(nextPeer())
+    // A sender who was never in our participant list, so no capture was ever
+    // started for them, and whose frame does not decrypt, so no player is
+    // created either — the key is cached with nothing to hang teardown off.
+    const GHOST = nextPeer()
+    await handleGroupCallRelayFrame(ROOM, GHOST, 'garbage##nope##1', 'iv', 48_000, 1)
+    expect(pushed).toEqual([])
+
+    leaveGroupCall()
+    const OTHER_ROOM = '22222222-2222-4222-8222-222222222222'
+    expect(await joinGroupCall(OTHER_ROOM, false)).toBe(true)
+
+    // Sealed under the SECOND room's key, as that peer would now send it.
+    const frame = `${CALL_CTX}|${OTHER_ROOM}##p13:group-relay:v1|${OTHER_ROOM}|${GHOST}|${ME}|1##160`
+    await handleGroupCallRelayFrame(OTHER_ROOM, GHOST, frame, 'iv', 48_000, 1)
+    expect(pushed).toEqual([160])
   })
 
   it('refuses a frame whose sequence is missing or whose AAD does not match', async () => {

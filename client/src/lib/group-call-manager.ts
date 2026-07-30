@@ -190,8 +190,12 @@ async function startRelayCaptureForPeer(peerId: string): Promise<boolean> {
     busy = true
     void (async () => {
       try {
+        // Bail if the room moved under us: `sharedKey` is bound to the room we
+        // started in, so a frame stamped with a newer room id would be sealed
+        // under a key the recipient cannot derive. The capture is torn down on
+        // leave anyway — this closes the window before that lands.
         const roomId = useGroupCallStore.getState().roomId
-        if (!roomId) return
+        if (roomId !== callRoomId) return
         const seq = (relaySeqOut.get(peerId) ?? 0) + 1
         relaySeqOut.set(peerId, seq)
         const encrypted = await encryptBytes(
@@ -435,6 +439,15 @@ function cleanupAll() {
   for (const peerId of Array.from(new Set([...relayPlayers.keys(), ...relayCaptures.keys()]))) {
     stopRelayPeer(peerId)
   }
+  // Belt and braces: the loop above only reaches peers that got as far as a
+  // player or a capture. Receiving a frame derives the key BEFORE the player
+  // exists, so a sender whose frames never decrypt leaves an orphan entry — and
+  // since the key is now bound to the ROOM, carrying it into the next call
+  // would make every frame there fail to open. Leaving ends every relay
+  // relationship, so drop the lot.
+  relayKeys.clear()
+  relaySeqOut.clear()
+  relaySeqIn.clear()
 
   // Stop the screen track(s) (if sharing) and local stream.
   groupScreenTrack?.stop()

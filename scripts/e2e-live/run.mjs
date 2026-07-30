@@ -422,6 +422,15 @@ async function scenarioGroup(A, B, idB) {
  * the AAD-bound v3 wrap exist for, and it is not observable from unit tests.
  */
 async function scenarioRotation(A, chatId, idB) {
+  // Open the group explicitly rather than inheriting whatever the previous
+  // scenario left on screen. It used to rely on the group call leaving A here;
+  // once the relay scenario started ending on a DM instead, "A sends on the new
+  // epoch" passed by sending into the WRONG chat and the two history checks
+  // then failed looking for group messages that were never on that page.
+  await A.page.goto(`${APP}/?chat=${chatId}`, { waitUntil: 'domcontentloaded' })
+  await A.page.waitForTimeout(6000)
+  await unlockVaultIfAsked(A, PW)
+
   const before = await api(A.page, 'GET', `/chats/${chatId}`, undefined)
   const epochBefore = before.body?.chat?.key_epoch ?? before.body?.key_epoch ?? null
 
@@ -810,6 +819,13 @@ async function scenarioDeviceLink(A, username) {
  * the AAD and sequence round-tripped correctly between two real browsers.
  */
 async function scenarioRelay(A, B, chatId, idB) {
+  // `sockets` accumulates for the whole run, and the SFU scenario before this
+  // one legitimately opened LiveKit sockets. Only the ones opened from here on
+  // say anything about the relay.
+  const socketMark = { A: A.sockets.length, B: B.sockets.length }
+  const sfuSince = (c, mark) =>
+    c.sockets.slice(mark).filter((u) => u.includes(LIVEKIT_HOST)).length
+
   for (const c of [A, B]) {
     await forceRelayTransport(c)
     c.framesOut = 0
@@ -858,9 +874,8 @@ async function scenarioRelay(A, B, chatId, idB) {
       A.framesOut > 0 && B.framesOut > 0 && A.framesIn > 0 && B.framesIn > 0,
       `A out/in ${A.framesOut}/${A.framesIn}, B out/in ${B.framesOut}/${B.framesIn}`)
     record('relay: no SFU was contacted',
-      A.sockets.filter((u) => u.includes(LIVEKIT_HOST)).length === 0
-      && B.sockets.filter((u) => u.includes(LIVEKIT_HOST)).length === 0,
-      `A=${A.sockets.filter((u) => u.includes(LIVEKIT_HOST)).length} B=${B.sockets.filter((u) => u.includes(LIVEKIT_HOST)).length}`)
+      sfuSince(A, socketMark.A) === 0 && sfuSince(B, socketMark.B) === 0,
+      `A=${sfuSince(A, socketMark.A)} B=${sfuSince(B, socketMark.B)}`)
 
     for (const c of [A, B]) await clickFirstVisible(c.page, '[title="Завершить звонок"]').catch(() => {})
     await A.page.waitForTimeout(3000)

@@ -236,7 +236,13 @@ const groupCallRelayFrameSchema = z.object({
   // the frame anyway) — the RECEIVER rejects a non-increasing seq and folds it
   // into the AAD, which is what stops a captured frame replaying. Same scheme
   // the 1:1 relay already uses.
-  seq: z.number().int().nonnegative(),
+  //
+  // OPTIONAL on purpose. A client that predates this field would fail the whole
+  // schema, and the fall-through sends back `UNKNOWN_MESSAGE_TYPE` — once per
+  // audio frame, so ~50 error messages a second down that socket. Accepting the
+  // frame and letting the receiver drop it costs nothing: enforcement lives on
+  // the receiving client either way, and a frame with no seq never opens.
+  seq: z.number().int().nonnegative().optional(),
 })
 
 const toggleReactionSchema = z.object({

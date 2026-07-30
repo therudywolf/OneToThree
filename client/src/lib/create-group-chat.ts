@@ -57,5 +57,24 @@ export async function createKeyedGroupChat(
     }))
   )
 
-  return createGroupE2EChat({ name: name?.trim() || null, members })
+  const chat = await createGroupE2EChat({ name: name?.trim() || null, members })
+
+  // Immediately rotate onto a v3 (AAD-bound) key.
+  //
+  // The creation wraps above are unavoidably v2: the chat id does not exist yet,
+  // so there is nothing to bind them to. Leaving it there would mean a group
+  // that is never rotated keeps an unauthenticated-epoch wrap forever — exactly
+  // the replay window v3 exists to close. One rotation right after creation
+  // costs a single round trip and retires v2 from circulation.
+  //
+  // Best-effort: on failure the group is still perfectly usable on its v2 key,
+  // and the owner's normal staleness scan rotates it later.
+  try {
+    const { rotateGroupKeyForChat } = await import('@/lib/group-key-rotation')
+    await rotateGroupKeyForChat(chat.id, currentUserId, creatorPrivateKey, chat.key_epoch ?? 0)
+  } catch (e) {
+    console.warn('[sector] post-create rotation to v3 failed; group stays on the v2 creation key', e)
+  }
+
+  return chat
 }

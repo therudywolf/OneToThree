@@ -314,6 +314,33 @@ export async function buildApp() {
       const raw = request.socket.remoteAddress?.trim()
       return raw === '127.0.0.1' || raw === '::1' || raw === '::ffff:127.0.0.1'
     },
+    /**
+     * Key AUTHENTICATED traffic by user, anonymous traffic by IP.
+     *
+     * Keying everything by IP means everyone behind one NAT — an office, a
+     * campus, a CGNAT carrier — shares a single budget, so a handful of ordinary
+     * users throttle each other. That is not theoretical: a 30/min IP budget on
+     * the ECDH-publish challenge silently stopped devices from registering their
+     * encryption keys, and the only symptom peers ever saw was "this contact has
+     * no encryption keys yet". Per-user keying removes the collision while
+     * keeping the cap that matters — one account still cannot exceed its own
+     * budget, and unauthenticated abuse is still capped per address.
+     *
+     * The session lookup is the SAME memoized `sessionJwt()` every route uses
+     * (D12), so this costs at most one verify per request, shared downstream.
+     * It must be the verified payload, never the raw cookie: a forged cookie
+     * would otherwise let an attacker pick someone else's bucket — or mint a
+     * fresh one per request and evade the limiter entirely.
+     */
+    keyGenerator: async (request: FastifyRequest) => {
+      try {
+        const session = await request.sessionJwt()
+        if (session?.sub) return `user:${session.sub}`
+      } catch {
+        /* fall through to the address */
+      }
+      return `ip:${request.ip}`
+    },
   })
 
   // Unmatched paths must be throttled too. Without a limiter here every

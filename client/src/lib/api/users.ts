@@ -152,10 +152,28 @@ export async function getEcdhPublishChallenge(): Promise<string> {
  * swap in an attacker's key and silently redirect the victim's incoming
  * messages, no vault password needed.
  */
+/**
+ * The last key this tab successfully published.
+ *
+ * Registration reaches this function TWICE within a second — once from
+ * crypto-login right after /auth/verify, once from activateVaultSession — with
+ * the same key. Both did the full challenge→sign→PATCH dance, which doubled the
+ * challenge spend per sign-in and, before the server was taught to keep more
+ * than one outstanding nonce, made the two attempts cancel each other so the key
+ * was never published at all. One publish per key per tab is enough.
+ */
+let lastPublishedEcdhJwk: string | null = null
+
+/** Force a re-publish on the next call (account switch, vault re-import). */
+export function resetEcdhPublishCache(): void {
+  lastPublishedEcdhJwk = null
+}
+
 export async function patchMyEcdhPublicKey(
   ecdh_public_key_jwk: string,
   ecdsaPrivateJwk: string
 ): Promise<void> {
+  if (lastPublishedEcdhJwk === ecdh_public_key_jwk) return
   const nonce = await getEcdhPublishChallenge()
   const signingKey = await importEcdsaPrivateKeyForSign(ecdsaPrivateJwk)
   const proof_signature = await signUtf8WithEcdsaP256(signingKey, nonce)
@@ -171,6 +189,9 @@ export async function patchMyEcdhPublicKey(
     }),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (res.ok) {
+    lastPublishedEcdhJwk = ecdh_public_key_jwk
+  }
   if (!res.ok) {
     throw new Error(data.error ?? 'PATCH_ECDH_FAILED')
   }

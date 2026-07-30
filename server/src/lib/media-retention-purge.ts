@@ -160,7 +160,12 @@ export function scheduleMediaRetentionPurge(
   const run = () => {
     if (inFlight) return
     inFlight = true
-    void runMediaRetentionPurge(log)
+    // Terminal handler: this runs on an interval, so a rejection here has no
+    // caller. Rejections no longer kill the process, which makes an unattributed
+    // one easy to miss entirely — log it against this job by name.
+    void runMediaRetentionPurge(log).catch((err) =>
+      log.warn({ err: String(err) }, 'media retention purge failed')
+    )
       .catch((err) => {
         log.warn({ err: String(err) }, 'media retention purge failed')
       })

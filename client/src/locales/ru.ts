@@ -279,6 +279,9 @@ const ru = {
 
   // [ONBOARDING]
   'guide.step': 'Шаг',
+  'errors.deviceKeysTitle': 'КЛЮЧИ УСТРОЙСТВА',
+  'errors.deviceKeysNotPublished': 'Не удалось опубликовать ключи этого устройства. Собеседники не смогут вам написать. Перезагрузите страницу.',
+  'errors.legacyKeyringCannotPublish': 'Связка ключей устарела и не может подтвердить разблокировку. Создайте аккаунт заново или восстановите его по фразе.',
   'guide.onboardingTitle': 'Знакомство',
   'guide.enter': 'Начать',
   'guide.keyGeneration.title': 'Настройка на устройстве',

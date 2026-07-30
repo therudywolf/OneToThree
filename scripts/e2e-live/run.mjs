@@ -574,7 +574,10 @@ async function forceRelayTransport(client) {
         group_relay_enabled: true,
       }),
     }))
-  await client.page.route('**/webrtc/ice-servers', (route) =>
+  // `**/ice-servers`, not `**/webrtc/ice-servers`: the route is registered at
+  // the API root. The client also has a second candidate root it falls back to,
+  // and this pattern covers both.
+  await client.page.route('**/ice-servers', (route) =>
     route.fulfill({
       status: 503,
       contentType: 'application/json',

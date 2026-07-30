@@ -109,7 +109,32 @@ function sendGroupCallSignal(payload: object) {
   getFmSocket().send(payload)
 }
 
-async function resolveRelaySharedKey(peerId: string): Promise<CryptoKey | null> {
+/**
+ * Bind each group relay frame to its room, direction and position.
+ *
+ * The 1:1 relay got this treatment already; this path did not, and it is the
+ * same primitive with the same weakness: AES-GCM over a bare PCM buffer proves
+ * only "someone with the key made this", so a captured frame replayed verbatim
+ * — or fed back out of order — decrypts and PLAYS. Binding room, sender,
+ * recipient and sequence into the AAD makes every one of those fail the tag.
+ */
+function groupRelayFrameAad(
+  roomId: string,
+  fromId: string,
+  toId: string,
+  seq: number
+): Uint8Array {
+  return new TextEncoder().encode(`p13:group-relay:v1|${roomId}|${fromId}|${toId}|${seq}`)
+}
+
+/** Outbound/inbound frame counters, per peer. Reset when the peer is dropped. */
+const relaySeqOut = new Map<string, number>()
+const relaySeqIn = new Map<string, number>()
+
+async function resolveRelaySharedKey(
+  peerId: string,
+  roomId: string
+): Promise<CryptoKey | null> {
   const cached = relayKeys.get(peerId)
   if (cached) return cached
   const task = (async () => {
@@ -119,7 +144,9 @@ async function resolveRelaySharedKey(peerId: string): Promise<CryptoKey | null> 
     if (!peer?.ecdh_public_key_jwk) return null
     const peerPublicKey = await importEcdhPublicKey(peer.ecdh_public_key_jwk)
     // #34: group-call relay derives under the call domain (see use-webrtc).
-    return deriveSharedSecret(ownPrivateKey, peerPublicKey, KDF_CTX.CALL)
+    // The ROOM is folded in as well, so two people who talk in several groups
+    // do not protect every one of them with the same static pairwise secret.
+    return deriveSharedSecret(ownPrivateKey, peerPublicKey, `${KDF_CTX.CALL}|${roomId}`)
   })().catch(() => null)
   relayKeys.set(peerId, task)
   return task
@@ -140,6 +167,10 @@ function stopRelayPeer(peerId: string) {
   relayPlayers.get(peerId)?.stop()
   relayPlayers.delete(peerId)
   relayKeys.delete(peerId)
+  // Drop the counters with the key. A stale inbound high-water mark would
+  // silently swallow the first frames of the next call with this peer.
+  relaySeqOut.delete(peerId)
+  relaySeqIn.delete(peerId)
 }
 
 async function startRelayCaptureForPeer(peerId: string): Promise<boolean> {
@@ -147,7 +178,10 @@ async function startRelayCaptureForPeer(peerId: string): Promise<boolean> {
   if (!groupRelayMode || !store.roomId || !store.localStream) return false
   if (relayCaptures.has(peerId)) return true
 
-  const sharedKey = await resolveRelaySharedKey(peerId)
+  const callRoomId = store.roomId
+  const myUserId = useSessionStore.getState().userId
+  if (!myUserId) return false
+  const sharedKey = await resolveRelaySharedKey(peerId, callRoomId)
   if (!sharedKey) return false
 
   let busy = false
@@ -156,9 +190,15 @@ async function startRelayCaptureForPeer(peerId: string): Promise<boolean> {
     busy = true
     void (async () => {
       try {
-        const encrypted = await encryptBytes(sharedKey, pcm)
         const roomId = useGroupCallStore.getState().roomId
         if (!roomId) return
+        const seq = (relaySeqOut.get(peerId) ?? 0) + 1
+        relaySeqOut.set(peerId, seq)
+        const encrypted = await encryptBytes(
+          sharedKey,
+          pcm,
+          groupRelayFrameAad(roomId, myUserId, peerId, seq)
+        )
         sendGroupCallSignal({
           type: 'group_call:relay_frame',
           room_id: roomId,
@@ -166,6 +206,7 @@ async function startRelayCaptureForPeer(peerId: string): Promise<boolean> {
           ciphertext: encrypted.ciphertext,
           iv: encrypted.iv,
           sample_rate: sampleRate,
+          seq,
         })
       } finally {
         busy = false
@@ -939,14 +980,32 @@ export async function handleGroupCallRelayFrame(
   fromUserId: string,
   ciphertext: string,
   iv: string,
-  sampleRate: number
+  sampleRate: number,
+  seq: number | null
 ): Promise<void> {
   const store = useGroupCallStore.getState()
   if (!groupRelayMode || store.roomId !== roomId) return
-  const sharedKey = await resolveRelaySharedKey(fromUserId)
+  // Strictly increasing, exactly like the 1:1 path. Without it a captured frame
+  // replays verbatim — the key is stable for the whole call — and reordered
+  // frames play as if fresh: audio an attacker can rewind and repeat.
+  if (seq === null) return
+  const lastSeq = relaySeqIn.get(fromUserId) ?? 0
+  if (seq <= lastSeq) return
+  const myUserId = useSessionStore.getState().userId
+  if (!myUserId) return
+  const sharedKey = await resolveRelaySharedKey(fromUserId, roomId)
   if (!sharedKey) return
   try {
-    const pcm = await decryptBytes(sharedKey, ciphertext, iv)
+    // The AAD must reproduce the sender's exactly. A frame lifted from the
+    // other direction, another room, or another position fails the tag instead
+    // of decrypting.
+    const pcm = await decryptBytes(
+      sharedKey,
+      ciphertext,
+      iv,
+      groupRelayFrameAad(roomId, fromUserId, myUserId, seq)
+    )
+    relaySeqIn.set(fromUserId, seq)
     const player = ensureRelayPlayer(fromUserId)
     await player.pushFrame(pcm, sampleRate)
     store.updateParticipant(fromUserId, { connectionState: 'connected' })

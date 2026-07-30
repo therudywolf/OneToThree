@@ -431,12 +431,21 @@ async function scenarioRotation(A, chatId, idB) {
  * back to mesh WebRTC, and to a WS audio relay after that, so a broken SFU
  * looks exactly like a working one on screen. The socket list is the ground
  * truth — LiveKit is only really in play if a socket to the SFU host opened.
+ *
+ * The transport assertion follows what the SERVER advertises rather than a
+ * hard-coded expectation, so the same run is meaningful against an origin-safe
+ * (orange-cloud) deployment, where group calls are supposed to ride the app
+ * WebSocket as pairwise-encrypted audio and a LiveKit socket would be the bug.
  */
 async function scenarioGroupCall(A, B, chatId) {
   const cfg = await api(A.page, 'GET', '/call/config', undefined)
   const livekitAdvertised = Boolean(cfg.body?.livekit_enabled && cfg.body?.livekit_url)
-  record('server advertises the LiveKit SFU', livekitAdvertised,
-    `livekit_enabled=${cfg.body?.livekit_enabled} url=${cfg.body?.livekit_url ?? '-'}`)
+  const relayMode = Boolean(cfg.body?.origin_safe || cfg.body?.group_relay_enabled)
+  log(`  call transport: ${relayMode ? 'WS audio relay' : livekitAdvertised ? 'LiveKit SFU' : 'mesh'}`)
+  if (!relayMode) {
+    record('server advertises the LiveKit SFU', livekitAdvertised,
+      `livekit_enabled=${cfg.body?.livekit_enabled} url=${cfg.body?.livekit_url ?? '-'}`)
+  }
 
   for (const c of [A, B]) {
     await c.page.goto(`${APP}/?chat=${chatId}`, { waitUntil: 'domcontentloaded' })
@@ -467,9 +476,9 @@ async function scenarioGroupCall(A, B, chatId) {
   }
   record('GROUP CALL joined on both sides', aIn > 0 && bIn > 0, `A=${aIn} B=${bIn}`)
 
-  // Both sides connecting to the SFU independently is not proof that media
-  // flowed between them. The participant badge counts 1 + REMOTE STREAMS, so a
-  // 2 means the peer's track actually arrived through the SFU.
+  // Both sides connecting independently is not proof that media flowed BETWEEN
+  // them. The participant badge counts 1 + REMOTE STREAMS, so a 2 means the
+  // peer's track actually arrived.
   let nodesA = 0
   let nodesB = 0
   for (let i = 0; i < 10; i++) {
@@ -478,14 +487,21 @@ async function scenarioGroupCall(A, B, chatId) {
     if (nodesA >= 2 && nodesB >= 2) break
     await A.page.waitForTimeout(2000)
   }
-  record('each side receives the other\'s stream through the SFU',
+  record(`each side receives the other's stream (${relayMode ? 'WS relay' : 'SFU'})`,
     nodesA >= 2 && nodesB >= 2, `A sees ${nodesA}, B sees ${nodesB}`)
 
   const lkA = A.sockets.filter((u) => u.includes(LIVEKIT_HOST))
   const lkB = B.sockets.filter((u) => u.includes(LIVEKIT_HOST))
-  record('both clients reached the LiveKit SFU (not a silent mesh fallback)',
-    lkA.length > 0 && lkB.length > 0, `A=${lkA.length} B=${lkB.length} sockets to ${LIVEKIT_HOST}`)
-  if (lkA.length === 0 || lkB.length === 0) {
+  if (relayMode) {
+    // Origin-safe exists precisely so nothing but the app origin is contacted.
+    // A socket to the SFU here means the mode leaked.
+    record('origin-safe mode contacted NO self-hosted SFU',
+      lkA.length === 0 && lkB.length === 0, `A=${lkA.length} B=${lkB.length}`)
+  } else {
+    record('both clients reached the LiveKit SFU (not a silent mesh fallback)',
+      lkA.length > 0 && lkB.length > 0, `A=${lkA.length} B=${lkB.length} sockets to ${LIVEKIT_HOST}`)
+  }
+  if (!relayMode && (lkA.length === 0 || lkB.length === 0)) {
     log('  [A] sockets', JSON.stringify(A.sockets).slice(0, 400))
     log('  [B] sockets', JSON.stringify(B.sockets).slice(0, 400))
   }
@@ -503,6 +519,25 @@ async function readNodeCount(page) {
     const n = parseInt((btn?.innerText || '').trim(), 10)
     return Number.isFinite(n) ? n : 0
   }).catch(() => 0)
+}
+
+/**
+ * Did this browser actually land in the app?
+ *
+ * Poll, and clear the first-run wizard first: on a brand-new profile it is a
+ * full-screen overlay, so an immediate DOM check sees the guide rather than the
+ * chat and reports a healthy sign-in as a failure.
+ */
+async function reachedChatShell(client, userId, password) {
+  await settleFirstRun(client, userId, password)
+  for (let i = 0; i < 15; i++) {
+    const ok = await client.page.evaluate(() =>
+      Boolean(document.querySelector('.p13-chat-scroll') || document.querySelector('form textarea')))
+    if (ok) return true
+    await client.page.waitForTimeout(2000)
+  }
+  await dumpCallState(client, 'never reached the chat shell')
+  return false
 }
 
 /** Everything worth knowing about why a call did not reach the connected UI. */
@@ -633,15 +668,23 @@ async function scenarioDeviceLink(A, username) {
     await C.page.locator('[data-testid=qr-manual-toggle]').first().click()
     await C.page.locator('[data-testid=qr-manual-input]').first().fill(code)
     await C.page.locator('[data-testid=qr-manual-submit]').first().click()
-    await C.page.waitForTimeout(6000)
 
     // Mode B: both sides show a 6-digit code and the OLD device must confirm.
+    // Poll — the code appears only after the rendezvous accepts C's ephemeral
+    // key, which is a round trip, not a render.
     const codeA = A.page.locator('[data-testid=link-verification-code]')
     const codeC = C.page.locator('[data-testid=link-verification-code]')
-    const shownA = (await codeA.innerText().catch(() => '')).trim()
-    const shownC = (await codeC.innerText().catch(() => '')).trim()
+    let shownA = ''
+    let shownC = ''
+    for (let i = 0; i < 20; i++) {
+      shownA = (await codeA.innerText().catch(() => '')).trim()
+      shownC = (await codeC.innerText().catch(() => '')).trim()
+      if (shownA && shownC) break
+      await C.page.waitForTimeout(1500)
+    }
     record('device link: verification codes match on both devices',
       shownA.length > 0 && shownA === shownC, `${shownA || '-'} / ${shownC || '-'}`)
+    if (!shownC) await dumpCallState(C, 'new device never showed a code')
     const confirm = A.page.getByRole('button', { name: /Числа совпадают/i })
     record('device link: old device offered the confirm control',
       (await confirm.count().catch(() => 0)) > 0)
@@ -665,14 +708,11 @@ async function scenarioDeviceLink(A, username) {
     await C.page.locator('#username').first().fill(username)
     await C.page.locator('#password').first().fill(PW)
     await C.page.getByRole('button', { name: /^Войти$/ }).last().click().catch(() => {})
-    const adopted = await waitAuthed(C.page, 90_000).then(() => true).catch(() => false)
-    record('device link: new device signed in on the linked vault', adopted)
-    if (adopted) {
-      await C.page.waitForTimeout(6000)
-      await unlockVaultIfAsked(C, PW)
-      const online = await C.page.evaluate(() =>
-        Boolean(document.querySelector('.p13-chat-scroll') || document.querySelector('form textarea')))
-      record('device link: new device reached the chat shell', online)
+    const linkedId = await waitAuthed(C.page, 90_000).catch(() => null)
+    record('device link: new device signed in on the linked vault', Boolean(linkedId))
+    if (linkedId) {
+      record('device link: new device reached the chat shell',
+        await reachedChatShell(C, linkedId, PW))
     } else {
       await dumpCallState(C, 'sign-in after link')
     }
@@ -749,29 +789,23 @@ async function scenarioRecovery(A, username) {
     await D.page.waitForTimeout(2500)
     await D.page.getByRole('button', { name: /Забыли пароль/i }).first().click().catch(() => {})
     await D.page.waitForTimeout(1500)
-    await D.page.locator('input, textarea').first().waitFor({ state: 'visible', timeout: 20_000 })
-
-    // Fill by placeholder — the recovery form shares the page with the login
-    // form, so positional selectors pick up the wrong field.
-    await D.page.getByPlaceholder(/слово1/).fill(phrase).catch(() => {})
-    const unameField = D.page.locator('#username')
-    if (await unameField.count().catch(() => 0)) await unameField.first().fill(username).catch(() => {})
-    const pwFields = D.page.locator('input[type=password]')
-    const n = await pwFields.count().catch(() => 0)
-    if (n > 0) await pwFields.last().fill(NEW_PW)
+    // Explicit ids: the recovery form replaces the login form in place, and
+    // positional selectors happily fill the wrong one and submit nothing.
+    await D.page.locator('#recover-username').waitFor({ state: 'visible', timeout: 20_000 })
+    await D.page.locator('#recover-username').fill(username)
+    await D.page.locator('#recover-phrase').fill(phrase)
+    await D.page.locator('#recover-new-pass').fill(NEW_PW)
+    await D.page.locator('#recover-confirm').fill(NEW_PW)
     await D.page.getByRole('button', { name: /Восстановить доступ/i }).first().click().catch(() => {})
 
-    const restored = await waitAuthed(D.page, 90_000).then(() => true).catch(() => false)
-    record('recovery: signed in from the phrase alone', restored)
-    if (!restored) {
+    const restoredId = await waitAuthed(D.page, 90_000).catch(() => null)
+    record('recovery: signed in from the phrase alone', Boolean(restoredId))
+    if (!restoredId) {
       await dumpCallState(D, 'recovery form state')
       return
     }
-    await D.page.waitForTimeout(6000)
-    await unlockVaultIfAsked(D, NEW_PW)
     record('recovery: restored device reached the chat shell',
-      await D.page.evaluate(() =>
-        Boolean(document.querySelector('.p13-chat-scroll') || document.querySelector('form textarea'))))
+      await reachedChatShell(D, restoredId, NEW_PW))
   } catch (e) {
     record('recovery scenario ran to completion', false, String(e).slice(0, 200))
   } finally {

@@ -18,11 +18,24 @@ describe('recovery phrase', () => {
     expect(validateRecoveryMnemonic(m)).toBe(true)
   })
 
+  /**
+   * Fixed vectors, not a freshly generated phrase with one word swapped: a
+   * 24-word mnemonic carries an 8-bit checksum, so a random single-word tamper
+   * still validates about 1 run in 256. That is exactly often enough to fail a
+   * CI job for no reason and teach everyone to re-run it.
+   *
+   * The pair below is all-zero entropy (the canonical BIP39 vector) and the
+   * same phrase with its checksum word replaced. The positive case is asserted
+   * too, so a wrong vector shows up as a wrong vector rather than as a passing
+   * test that proves nothing.
+   */
+  const VALID_VECTOR = `${'abandon '.repeat(23)}art`
+  const TAMPERED_VECTOR = `${'abandon '.repeat(23)}zoo`
+
   it('rejects garbage / a tampered word (BIP39 checksum)', () => {
     expect(validateRecoveryMnemonic('not a real recovery phrase at all')).toBe(false)
-    const words = generateRecoveryMnemonic().split(' ')
-    words[0] = words[0] === 'zoo' ? 'zone' : 'zoo'
-    expect(validateRecoveryMnemonic(words.join(' '))).toBe(false)
+    expect(validateRecoveryMnemonic(VALID_VECTOR)).toBe(true)
+    expect(validateRecoveryMnemonic(TAMPERED_VECTOR)).toBe(false)
   })
 
   it('derives the auth keypair deterministically (case/space-insensitive)', () => {

@@ -465,6 +465,18 @@ export async function joinGroupCall(
       const ok = await lk.joinLiveKitCall(roomId, isVideo)
       if (ok) {
         livekitActive = true
+        // PRESENCE still rides the app WebSocket, even though MEDIA does not.
+        // The SFU knows who is in its room, but our server is what tells the
+        // rest of the chat that a call is happening: the join banner, the
+        // offline push, and the room bookkeeping all hang off this signal.
+        // Without it a LiveKit call is invisible to everyone not already in it
+        // — nobody can ever be the second participant, which makes a group call
+        // useless in exactly the mode meant to carry the big ones.
+        sendGroupCallSignal({
+          type: 'group_call:join',
+          room_id: roomId,
+          is_video: isVideo,
+        })
         return true
       }
     }
@@ -509,6 +521,12 @@ export async function joinGroupCall(
 export function leaveGroupCall() {
   if (livekitActive) {
     livekitActive = false
+    // Symmetric with the join above: the server drops us from the room, updates
+    // everyone's banner count, and emits `group_call:ended` when we were the
+    // last one out. Relying on the socket closing instead would leave a phantom
+    // "call in progress" banner up for every other member until the tab is.
+    const roomId = useGroupCallStore.getState().roomId
+    if (roomId) sendGroupCallSignal({ type: 'group_call:leave', room_id: roomId })
     void loadLiveKitManager().then((lk) => lk.leaveLiveKitCall())
   } else {
     cleanupAll()
@@ -528,6 +546,13 @@ export async function handleParticipantList(
 ) {
   const store = useGroupCallStore.getState()
   if (store.roomId !== roomId) return
+
+  // LiveKit owns the media. We now send `group_call:join` in SFU mode too (for
+  // presence), so the server answers with a participant list here as well —
+  // but acting on it would open a second, parallel mesh to peers we are already
+  // connected to through the SFU, publishing the microphone twice. The LiveKit
+  // manager populates the participant store from room events instead.
+  if (livekitActive) return
 
   const iceServers = groupRelayMode ? [] : await ensureIceServers()
 

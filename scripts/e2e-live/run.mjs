@@ -65,13 +65,34 @@ async function launch(label) {
       '--no-sandbox',
     ],
   })
-  const ctx = await browser.newContext({ userAgent: UA, permissions: ['microphone', 'camera'] })
+  const ctx = await browser.newContext({
+    userAgent: UA,
+    permissions: ['microphone', 'camera'],
+    // The production build registers the next-pwa service worker, and it
+    // intercepts `/api/*`. A request it answers never reaches `page.route`, so
+    // the relay scenario's config overrides were silently ignored and the call
+    // went out over the SFU as usual. Same reason client/playwright.config.ts
+    // blocks them.
+    serviceWorkers: 'block',
+  })
   await ctx.addInitScript(() => {
     try { localStorage.setItem('p13:onboarding_shown', 'true') } catch { /* ignore */ }
   })
   const page = await ctx.newPage()
-  const client = { browser, ctx, page, label, sockets: [] }
-  page.on('websocket', (ws) => client.sockets.push(ws.url()))
+  const client = { browser, ctx, page, label, sockets: [], framesOut: 0, framesIn: 0 }
+  page.on('websocket', (ws) => {
+    client.sockets.push(ws.url())
+    // Relay audio rides the app socket as `*_relay_frame` messages. Counting
+    // them is the only way to tell "the call connected" from "the call
+    // connected AND audio is actually crossing the relay".
+    const count = (data, dir) => {
+      if (typeof data !== 'string' || !data.includes('relay_frame')) return
+      if (dir === 'out') client.framesOut++
+      else client.framesIn++
+    }
+    ws.on('framesent', (f) => count(f.payload, 'out'))
+    ws.on('framereceived', (f) => count(f.payload, 'in'))
+  })
   page.on('console', (m) => {
     const t = m.text()
     if (/error|fail|denied|SECTOR|RATCHET|X3DH|livekit/i.test(t)) {
@@ -522,6 +543,46 @@ async function readNodeCount(page) {
 }
 
 /**
+ * Put this browser on the WebSocket audio relay.
+ *
+ * Not a hack, and not a prod change: the relay is defined by what the client
+ * sees from these two endpoints, so replaying those exact answers in the
+ * browser puts it on precisely the code path a real origin-safe deployment
+ * takes. Everything downstream is genuine — the real server relays the frames,
+ * the real crypto seals them.
+ *
+ *  - `/call/config` reporting origin_safe routes GROUP calls to
+ *    `joinGroupAudioRelayCall` instead of the SFU.
+ *  - `/webrtc/ice-servers` failing is what routes a 1:1 call to
+ *    `establishAudioRelay`. Note this is the ONLY way in: the route returns
+ *    503 whenever TURN cannot be resolved, so a successful response always
+ *    carries a TURN server, and the client's `!hasRelay && !p2pAllowed`
+ *    condition can never be met by one. The relay is the TURN-is-down
+ *    fallback, and a failing request is exactly how it is reached in the wild.
+ */
+async function forceRelayTransport(client) {
+  await client.page.route('**/call/config', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        media_mode: 'origin_safe',
+        origin_safe: true,
+        livekit_enabled: false,
+        livekit_url: null,
+        mesh_fallback_enabled: false,
+        group_relay_enabled: true,
+      }),
+    }))
+  await client.page.route('**/webrtc/ice-servers', (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'TURN_NOT_CONFIGURED' }),
+    }))
+}
+
+/**
  * Did this browser actually land in the app?
  *
  * Poll, and clear the first-run wizard first: on a brand-new profile it is a
@@ -733,6 +794,136 @@ async function scenarioDeviceLink(A, username) {
 }
 
 /**
+ * The WebSocket audio relay — both implementations of it.
+ *
+ * This is the fallback for deployments that cannot expose an SFU or TURN
+ * (Cloudflare orange-cloud), and it carries pairwise-encrypted audio over the
+ * app socket. Nothing on this prod ever takes it, because coturn and LiveKit
+ * are both up, so it had zero live coverage — including the frame binding that
+ * was added to it.
+ *
+ * The group half proves decryption, not merely transport: a remote stream only
+ * comes into existence after a frame OPENS, so a participant count of 2 means
+ * the AAD and sequence round-tripped correctly between two real browsers.
+ */
+async function scenarioRelay(A, B, chatId, idB) {
+  for (const c of [A, B]) {
+    await forceRelayTransport(c)
+    c.framesOut = 0
+    c.framesIn = 0
+  }
+
+  // ---- group call over the relay ----
+  for (const c of [A, B]) {
+    await c.page.goto(`${APP}/?chat=${chatId}`, { waitUntil: 'domcontentloaded' })
+  }
+  await A.page.waitForTimeout(7000)
+  await B.page.waitForTimeout(7000)
+  await unlockVaultIfAsked(A, PW)
+  await unlockVaultIfAsked(B, PW)
+
+  const started = await clickFirstVisible(A.page, '[title="Позвонить"]')
+  record('relay: A started a group call with no SFU available', started)
+  if (started) {
+    await A.page.waitForTimeout(9000)
+    const join = B.page.getByRole('button', { name: /Присоединиться|Join/i })
+    if (await join.count().catch(() => 0)) await join.first().click().catch(() => {})
+
+    let aIn = 0
+    let bIn = 0
+    for (let i = 0; i < 20; i++) {
+      await B.page.waitForTimeout(2000)
+      aIn = await A.page.locator('[title="Завершить звонок"]').count().catch(() => 0)
+      bIn = await B.page.locator('[title="Завершить звонок"]').count().catch(() => 0)
+      if (aIn > 0 && bIn > 0) break
+    }
+    record('relay: group call joined on both sides', aIn > 0 && bIn > 0, `A=${aIn} B=${bIn}`)
+
+    let nodesA = 0
+    let nodesB = 0
+    for (let i = 0; i < 12; i++) {
+      nodesA = await readNodeCount(A.page)
+      nodesB = await readNodeCount(B.page)
+      if (nodesA >= 2 && nodesB >= 2) break
+      await A.page.waitForTimeout(2000)
+    }
+    // A remote stream exists only once a frame has DECRYPTED — this is the
+    // assertion that the group AAD + sequence binding actually works live.
+    record('relay: each side DECRYPTED the other\'s audio frames',
+      nodesA >= 2 && nodesB >= 2, `A sees ${nodesA}, B sees ${nodesB}`)
+    record('relay: frames crossed the app socket both ways',
+      A.framesOut > 0 && B.framesOut > 0 && A.framesIn > 0 && B.framesIn > 0,
+      `A out/in ${A.framesOut}/${A.framesIn}, B out/in ${B.framesOut}/${B.framesIn}`)
+    record('relay: no SFU was contacted',
+      A.sockets.filter((u) => u.includes(LIVEKIT_HOST)).length === 0
+      && B.sockets.filter((u) => u.includes(LIVEKIT_HOST)).length === 0,
+      `A=${A.sockets.filter((u) => u.includes(LIVEKIT_HOST)).length} B=${B.sockets.filter((u) => u.includes(LIVEKIT_HOST)).length}`)
+
+    for (const c of [A, B]) await clickFirstVisible(c.page, '[title="Завершить звонок"]').catch(() => {})
+    await A.page.waitForTimeout(3000)
+  }
+
+  // ---- 1:1 call over the relay ----
+  const dm = await api(A.page, 'POST', '/chats', { type: 'direct_e2e', member_ids: [idB] })
+  const dmId = dm.body?.chat?.id ?? null
+  if (!dmId) {
+    record('relay: direct chat for the 1:1 relay', false, `status ${dm.status}`)
+    return
+  }
+  for (const c of [A, B]) {
+    c.framesOut = 0
+    c.framesIn = 0
+    await c.page.goto(`${APP}/?chat=${dmId}`, { waitUntil: 'domcontentloaded' })
+  }
+  await A.page.waitForTimeout(9000)
+  await B.page.waitForTimeout(9000)
+  await unlockVaultIfAsked(A, PW)
+  await unlockVaultIfAsked(B, PW)
+  await A.page.waitForTimeout(3000)
+
+  const dialled = await clickFirstVisible(A.page, '[title="Позвонить"]')
+  record('relay: A dialled with TURN unavailable', dialled)
+  if (!dialled) return
+  const accept = B.page.getByRole('button', { name: /^Принять$/ })
+  let ringing = false
+  for (let i = 0; i < 15 && !ringing; i++) {
+    ringing = (await accept.count().catch(() => 0)) > 0
+    if (!ringing) await B.page.waitForTimeout(2000)
+  }
+  record('relay: B saw the incoming call', ringing)
+  if (!ringing) {
+    await dumpCallState(B, 'no incoming UI on the relay path')
+    return
+  }
+  await accept.first().click().catch(() => {})
+
+  let aIn = 0
+  let bIn = 0
+  for (let i = 0; i < 20; i++) {
+    await B.page.waitForTimeout(2000)
+    aIn = await A.page.locator('[title="Завершить звонок"]').count().catch(() => 0)
+    bIn = await B.page.locator('[title="Завершить звонок"]').count().catch(() => 0)
+    if (aIn > 0 && bIn > 0) break
+  }
+  record('relay: 1:1 CALL CONNECTED on both sides', aIn > 0 && bIn > 0, `A=${aIn} B=${bIn}`)
+  await A.page.waitForTimeout(6000)
+  record('relay: 1:1 audio frames crossed the app socket both ways',
+    A.framesOut > 0 && B.framesOut > 0 && A.framesIn > 0 && B.framesIn > 0,
+    `A out/in ${A.framesOut}/${A.framesIn}, B out/in ${B.framesOut}/${B.framesIn}`)
+  if (!(aIn > 0 && bIn > 0)) {
+    await dumpCallState(A, 'relay caller stuck')
+    await dumpCallState(B, 'relay callee stuck')
+  }
+  await clickFirstVisible(A.page, '[title="Завершить звонок"]').catch(() => {})
+
+  // Hand the browsers back to the real config for anything that follows.
+  for (const c of [A, B]) {
+    await c.page.unroute('**/call/config').catch(() => {})
+    await c.page.unroute('**/webrtc/ice-servers').catch(() => {})
+  }
+}
+
+/**
  * The recovery phrase, both halves.
  *
  * Worth an end-to-end run because it is the ONE path back into an account
@@ -849,6 +1040,7 @@ async function main() {
     let chatId = null
     if (want('group')) chatId = await scenarioGroup(A, B, idB)
     if (chatId && want('groupcall')) await scenarioGroupCall(A, B, chatId)
+    if (chatId && want('relay')) await scenarioRelay(A, B, chatId, idB)
     // Rotation LAST among the group scenarios: it removes B from the chat.
     if (chatId && want('rotation')) await scenarioRotation(A, chatId, idB)
     if (want('dm')) await scenarioDmAndCall(A, B, idB)

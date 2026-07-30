@@ -236,7 +236,7 @@ export async function initPushWorker(): Promise<ServiceWorkerRegistration> {
         )
       } catch (legacyErr) {
         console.error('>> [SYS.PUSH] WORKER_GENESIS_FAULT:', legacyErr)
-        throw new Error('SERVICE_WORKER_REGISTER_FAILED')
+        throw new Error('SERVICE_WORKER_REGISTER_FAILED', { cause: legacyErr })
       }
     }
   } else if (reg) {
@@ -477,7 +477,7 @@ export async function subscribeNativePush(): Promise<void> {
 }
 
 export async function unsubscribeNativePush(): Promise<void> {
-  let token: string | null = null
+  let token: string | null
   try {
     token = localStorage.getItem('p13:native_push_token')
   } catch {

@@ -1118,8 +1118,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
 
-    let code = chat.inviteCode
-    if (!code) {
+    // No local `code` to carry out of the loop: the handler re-reads the row
+    // below and answers with THAT, so anything assigned here was a dead store.
+    if (!chat.inviteCode) {
       // Atomic: only write if invite_code is still NULL so concurrent requests
       // don't silently overwrite each other.
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -1132,20 +1133,14 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           })
           .where(and(eq(chats.id, chatId), sql`${chats.inviteCode} IS NULL`))
           .returning({ inviteCode: chats.inviteCode })
-        if (updated.length > 0) {
-          code = candidate
-          break
-        }
-        // Another request beat us; read back what they wrote.
+        if (updated.length > 0) break
+        // Another request beat us; stop once a code exists either way.
         const [existing] = await db
           .select({ inviteCode: chats.inviteCode })
           .from(chats)
           .where(eq(chats.id, chatId))
           .limit(1)
-        if (existing?.inviteCode) {
-          code = existing.inviteCode
-          break
-        }
+        if (existing?.inviteCode) break
       }
     } else if (typeof wantOneTime === 'boolean') {
       await db

@@ -239,7 +239,24 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     proofSignature: string,
     scope: 'recovery-setup' | 'ecdh-publish' = 'recovery-setup'
   ): Promise<boolean> {
-    const key = `${scope}:${userId}`
+    // The ECDH-publish challenge is addressed BY ITS OWN VALUE, not by "the
+    // latest nonce for this user".
+    //
+    // Registration publishes the ECDH key from two places at once — crypto-login
+    // right after /auth/verify, and activateVaultSession moments later. With one
+    // slot per user the second GET overwrote the first nonce, so BOTH publishes
+    // then failed 403: one presented a nonce the server had just replaced, the
+    // other presented a nonce the first attempt had already consumed. Net effect
+    // on a live prod registration: the ECDH key was never published at all, so
+    // peers saw "this contact has no encryption keys yet" and no direct message
+    // could be sent to that account, ever.
+    //
+    // Keying by nonce keeps every property that matters — single-use (deleted on
+    // consumption), user-scoped, unguessable — while letting concurrent honest
+    // publishers each hold their own outstanding challenge.
+    const key = scope === 'ecdh-publish'
+      ? `${scope}:${userId}:${proofNonce}`
+      : `${scope}:${userId}`
     const pending = await getPending(key)
     if (!pending) return false
     await deletePending(key)
@@ -279,7 +296,10 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
     const nonce = randomUUID()
-    await setChallenge(`ecdh-publish:${user.id}`, nonce)
+    // Keyed by the nonce itself — see verifyVaultProof. Two honest publishers
+    // race here on every registration, and a single per-user slot made them
+    // cancel each other out.
+    await setChallenge(`ecdh-publish:${user.id}:${nonce}`, nonce)
     return reply.send({ nonce })
   })
 

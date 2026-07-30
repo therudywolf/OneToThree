@@ -144,6 +144,44 @@ describe('users device ECDH publishing', () => {
       })
       .expect(403)
 
+    // TWO OUTSTANDING CHALLENGES must both remain valid.
+    //
+    // Registration publishes the ECDH key from two places at once (crypto-login
+    // right after /auth/verify, then activateVaultSession). With one challenge
+    // slot per user the second GET overwrote the first nonce and BOTH publishes
+    // then 403'd — so on a live prod registration the key was never published,
+    // and every peer saw "this contact has no encryption keys yet". Found by the
+    // multi-client E2E, not by any unit test.
+    const c1 = await request(app!.server)
+      .get('/api/users/me/ecdh/publish-challenge').set('Cookie', cookie).expect(200)
+    const c2 = await request(app!.server)
+      .get('/api/users/me/ecdh/publish-challenge').set('Cookie', cookie).expect(200)
+    const n1 = c1.body.nonce as string
+    const n2 = c2.body.nonce as string
+    expect(n1).not.toBe(n2)
+
+    // The OLDER one still works even though a newer challenge was issued after it.
+    await request(app!.server)
+      .patch('/api/users/me')
+      .set('Cookie', cookie)
+      .send({
+        ecdh_public_key_jwk: ecdhPublicKeyJwk,
+        proof_nonce: n1,
+        proof_signature: await signNonce(login.privateKey, n1),
+      })
+      .expect(200)
+
+    // ...and so does the newer one; neither cancelled the other.
+    await request(app!.server)
+      .patch('/api/users/me')
+      .set('Cookie', cookie)
+      .send({
+        ecdh_public_key_jwk: ecdhPublicKeyJwk,
+        proof_nonce: n2,
+        proof_signature: await signNonce(login.privateKey, n2),
+      })
+      .expect(200)
+
     const [updatedDevice] = await db
       .select({ ecdhPublicKey: devices.ecdhPublicKey })
       .from(devices)

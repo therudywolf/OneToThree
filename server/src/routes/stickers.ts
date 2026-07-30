@@ -164,6 +164,15 @@ function normalizeTelegramShortName(input: string): string | null {
   return clean
 }
 
+/**
+ * Fire-and-forget S3 cleanup with a terminal handler. Detached rejections no
+ * longer terminate the process, so an unguarded one would simply vanish into the
+ * generic unhandledRejection log with no hint of which sweep failed.
+ */
+function catchOrphanCleanup(keys: string[]): Promise<void> {
+  return cleanupOrphanStickerObjects(keys).catch(() => { /* best-effort sweep */ })
+}
+
 export const stickersRoutes: FastifyPluginAsync = async (app) => {
   type PgErrorLike = { code?: string; message?: string }
 
@@ -747,7 +756,7 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       await db.select({ mediaKey: stickers.mediaKey }).from(stickers).where(eq(stickers.packId, params.data.packId))
     ).map((r) => r.mediaKey)
     await db.delete(stickerPacks).where(eq(stickerPacks.id, params.data.packId))
-    void cleanupOrphanStickerObjects(keys)
+    void catchOrphanCleanup(keys)
     return reply.status(204).send()
   })
 
@@ -980,7 +989,7 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
       await db.insert(stickers).values(stickerRows)
     }
 
-    void cleanupOrphanStickerObjects(oldKeys)
+    void catchOrphanCleanup(oldKeys)
     return reply.send({ count: stickerRows.length })
   })
 
@@ -1123,7 +1132,7 @@ export const stickersRoutes: FastifyPluginAsync = async (app) => {
     if (row.ownerId !== user.id) return reply.status(403).send({ error: 'FORBIDDEN' })
 
     await db.delete(stickers).where(eq(stickers.id, params.data.stickerId))
-    void cleanupOrphanStickerObjects([row.mediaKey])
+    void catchOrphanCleanup([row.mediaKey])
     return reply.status(204).send()
   })
 

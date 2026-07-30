@@ -277,6 +277,9 @@ const en = {
 
   // [ONBOARDING]
   'guide.step': 'Step',
+  'errors.deviceKeysTitle': 'DEVICE KEYS',
+  'errors.deviceKeysNotPublished': 'This device could not publish its encryption keys. Contacts will not be able to message you. Reload the page.',
+  'errors.legacyKeyringCannotPublish': 'This keyring is too old to prove a vault unlock. Re-create the account or restore it from your recovery phrase.',
   'guide.onboardingTitle': 'Getting Started',
   'guide.enter': 'Get Started',
   'guide.keyGeneration.title': 'Set up on your device',

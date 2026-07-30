@@ -55,6 +55,20 @@ import {
   fetchInventory,
 } from '@/lib/api/keys'
 import { useSessionStore } from '@/store/sessionStore'
+import { useLocaleStore } from '@/store/localeStore'
+import { toastError } from '@/store/toastStore'
+import en from '@/locales/en'
+import ru from '@/locales/ru'
+
+/**
+ * Translate outside React. `useTranslation` is a hook and this module is called
+ * from plain async code (login, unlock), so the dictionary is read directly.
+ */
+function tr(key: keyof typeof en): string {
+  const mod = useLocaleStore.getState().module
+  const dict = mod === 'en' ? en : ru
+  return dict[key] ?? key
+}
 
 // OTP pool tracking is per (user, device) — each device owns its own OTP space
 // in the device-scoped server key directory (track A4).
@@ -167,17 +181,35 @@ export async function activateVaultSession(
   // hole straight back. Such a vault has to be re-created.
   const ecdsaJwk = parsed.kind === 'V2' ? parsed.ecdsaJwk : null
   let ecdhUploaded = false
+  let lastPublishError: string | null = null
   if (!ecdsaJwk) {
-    console.warn('[vault] legacy keyring has no ECDSA key — cannot prove vault unlock, ECDH key not published')
+    lastPublishError = 'LEGACY_KEYRING_NO_ECDSA'
   }
-  for (let attempt = 0; ecdsaJwk && attempt < 2 && !ecdhUploaded; attempt++) {
+  for (let attempt = 0; ecdsaJwk && attempt < 3 && !ecdhUploaded; attempt++) {
     try {
       await patchMyEcdhPublicKey(myPubJwk, ecdsaJwk)
       ecdhUploaded = true
-    } catch { /* retry */ }
+    } catch (e) {
+      lastPublishError = e instanceof Error ? e.message : 'ECDH_KEY_UPLOAD_FAILED'
+      // A 429 here is transient by definition — back off rather than burning
+      // the remaining attempts instantly.
+      await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)))
+    }
   }
   if (!ecdhUploaded) {
-    console.warn('[vault] ECDH key upload failed — this device may miss future messages')
+    // TELL THE USER. This failure is otherwise completely invisible: the app
+    // looks fine, but no peer can encrypt to this device, so every contact is
+    // told "this contact has no encryption keys yet" and no direct message can
+    // reach the account. It stayed hidden for a whole release precisely because
+    // it was a console.warn. The toast is deliberately actionable — reloading
+    // re-runs activation, which is the real remedy.
+    console.error('[vault] ECDH key upload failed', lastPublishError)
+    toastError(
+      lastPublishError === 'LEGACY_KEYRING_NO_ECDSA'
+        ? tr('errors.legacyKeyringCannotPublish')
+        : tr('errors.deviceKeysNotPublished'),
+      { title: tr('errors.deviceKeysTitle'), ttlMs: 15000 }
+    )
   }
 
   // Derive a PER-DEVICE Double Ratchet identity from the vault ECDH key and

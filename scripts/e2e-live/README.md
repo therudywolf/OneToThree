@@ -41,8 +41,16 @@ ssh forestserver 'docker run --rm --network host -v ~/e2e:/w -w /w mcr.microsoft
 | `LIVEKIT_HOST` | `lk.onetothree.ru`            | SFU hostname the group-call check looks for  |
 | `ONLY`         | *(all)*                       | Comma-separated scenario filter              |
 
-Scenarios: `group`, `media`, `rotation`, `groupcall`, `dm`, `call`, `devicelink`, `recovery`.
-Registration always runs — everything else needs the accounts.
+Scenarios: `group`, `media`, `rotation`, `groupcall`, `relay`, `dm`, `call`,
+`devicelink`, `recovery`. Registration always runs — everything else needs the
+accounts, except `devicelink` and `recovery`, which need only one and so skip
+creating the second.
+
+`relay` is the odd one out: it replays an origin-safe `/call/config` and a
+failing `/ice-servers` into the browser so the calls take the WebSocket audio
+relay instead of the SFU. Nothing on prod ever reaches that path — coturn and
+LiveKit are both up — so this is the only way it gets exercised. Everything
+downstream is real: the server relays the frames and the crypto seals them.
 
 ```bash
 ONLY=group,groupcall node run.mjs

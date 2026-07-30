@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, type Mock } from 'vitest'
 import {
   applyVideoTrack,
   planScreenShareStart,
@@ -12,10 +12,13 @@ function makeTrack(kind: 'video' | 'audio', enabled = true): TrackLike {
   return { kind, enabled, stop: vi.fn() }
 }
 
-function makePeer(senders: SenderLike[]): PeerLike & { addTrack: ReturnType<typeof vi.fn> } {
+// Typed rather than `ReturnType<typeof vi.fn>`: since vitest 4 a bare mock is
+// `Mock<Procedure | Constructable>`, which no longer satisfies a specific
+// signature in an intersection.
+function makePeer(senders: SenderLike[]): PeerLike & { addTrack: Mock<PeerLike['addTrack']> } {
   return {
     getSenders: () => senders,
-    addTrack: vi.fn(),
+    addTrack: vi.fn<PeerLike['addTrack']>(),
   }
 }
 

@@ -33,7 +33,9 @@ async function pullPendingForChat(
   ).length
   const showBusy = cipherCount >= BATCH_WORKER_MIN
   if (showBusy) setDecryptBusy?.(true)
-  let decrypted: DecryptedMessage[] = []
+  // No initializer: the try either assigns it or throws past every read below,
+  // so an empty-array default only ever masked a bug.
+  let decrypted: DecryptedMessage[]
   try {
     decrypted = await decryptApiMessageRows(
       unwrappedPrivateKey,

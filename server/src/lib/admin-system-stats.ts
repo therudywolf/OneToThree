@@ -38,7 +38,8 @@ export async function collectSystemStats(s3: S3Client): Promise<SystemStatsPaylo
   const av = getAvatarsBucketName()
   const buckets = av === main ? [main] : [main, av]
 
-  let minioTotal = 0n
+  // The catch already supplies the fallback, so an initializer here is dead.
+  let minioTotal: bigint
   try {
     minioTotal = await getBucketsTotalBytes(s3, buckets)
   } catch {

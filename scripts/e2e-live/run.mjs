@@ -531,8 +531,14 @@ async function readNodeCount(page) {
 async function reachedChatShell(client, userId, password) {
   await settleFirstRun(client, userId, password)
   for (let i = 0; i < 15; i++) {
+    // The CHAT LIST, not the message pane: a freshly linked or restored device
+    // opens on "pick a conversation", so `.p13-chat-scroll` / the composer only
+    // exist once something is selected. A rendered list is also the stronger
+    // signal — those titles come out of the transferred keyring.
     const ok = await client.page.evaluate(() =>
-      Boolean(document.querySelector('.p13-chat-scroll') || document.querySelector('form textarea')))
+      document.querySelectorAll('[aria-label^="Открыть чат"]').length > 0
+      || Boolean(document.querySelector('.p13-chat-scroll'))
+      || Boolean(document.querySelector('form textarea')))
     if (ok) return true
     await client.page.waitForTimeout(2000)
   }

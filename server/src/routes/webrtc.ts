@@ -308,16 +308,23 @@ export const webrtcRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(503).send({ error: 'ICE_SERVERS_UNAVAILABLE', mediaMode })
       }
 
+      // Past the guard above, `source` is always set — so these three fields
+      // were ternaries whose false branch could never be taken. Stating the
+      // constants instead removes the suggestion that a 200 might come back
+      // WITHOUT a TURN server, which is what made the client's
+      // `!hasRelay && !p2pAllowed` look like a reachable condition. It is not:
+      // when TURN cannot be resolved this route 503s, and a failed request is
+      // how the caller reaches the WebSocket audio relay.
       reply.header('cache-control', 'private, max-age=0, must-revalidate')
       return reply.send({
         iceServers,
         source,
         expiresAt,
-        transportPolicy: source ? 'relay' : 'all',
+        transportPolicy: 'relay',
         mediaMode,
         originSafe: false,
-        p2pAllowed: !source,
-        relayFallback: source ? null : 'websocket_audio',
+        p2pAllowed: false,
+        relayFallback: null,
       })
     } catch (err) {
       request.log.error({ err }, 'ice-servers route failed unexpectedly')

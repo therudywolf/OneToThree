@@ -232,6 +232,11 @@ const groupCallRelayFrameSchema = z.object({
   ciphertext: z.string().min(1).max(16_384),
   iv: z.string().min(1).max(256),
   sample_rate: z.number().int().min(8_000).max(192_000),
+  // Position in the sender's stream. Relayed verbatim (the server cannot read
+  // the frame anyway) — the RECEIVER rejects a non-increasing seq and folds it
+  // into the AAD, which is what stops a captured frame replaying. Same scheme
+  // the 1:1 relay already uses.
+  seq: z.number().int().nonnegative(),
 })
 
 const toggleReactionSchema = z.object({
@@ -1378,7 +1383,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
 
         const gcRelayFrame = groupCallRelayFrameSchema.safeParse(json)
         if (gcRelayFrame.success) {
-          const { room_id, target_user_id, ciphertext, iv, sample_rate } = gcRelayFrame.data
+          const { room_id, target_user_id, ciphertext, iv, sample_rate, seq } = gcRelayFrame.data
           if (!(await isUserInRoomTracked(room_id, user.id))) return
           if (!(await ensureGroupCallTargetInRoom(room_id, target_user_id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'TARGET_NOT_IN_CALL' }))
@@ -1395,6 +1400,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             ciphertext,
             iv,
             sample_rate,
+            seq,
           })
           return
         }

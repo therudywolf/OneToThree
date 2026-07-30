@@ -219,6 +219,8 @@ export type WsInboundMessage =
       ciphertext: string
       iv: string
       sample_rate: number
+      /** Position in the sender's stream; the receiver rejects non-increasing. */
+      seq?: number
     }
   | {
       type: 'group_call:active'

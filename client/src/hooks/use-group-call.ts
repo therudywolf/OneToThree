@@ -93,7 +93,8 @@ export function useGroupCall(userId: string | null) {
             msg.from_user_id,
             msg.ciphertext,
             msg.iv,
-            msg.sample_rate
+            msg.sample_rate,
+            typeof msg.seq === 'number' ? msg.seq : null
           )
           break
 

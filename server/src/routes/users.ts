@@ -291,7 +291,15 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
    * password has unlocked the keyring.
    */
   app.get('/me/ecdh/publish-challenge', {
-    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    // Deliberately generous. The endpoint is authenticated and costs a UUID plus
+    // one store write, while the limiter keys on IP — so every user behind one
+    // NAT shares this budget, and a single sign-in spends TWO (crypto-login and
+    // activateVaultSession both publish). At 30/min a handful of people in one
+    // office signing in together would start getting 429s, and the failure is
+    // silent and severe: the publish is best-effort, so the device simply never
+    // registers its ECDH key and every peer is told the account "has no
+    // encryption keys yet". Abuse is already bounded by needing a valid session.
+    config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, notExists, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
 import { chatMembers, chats, messageDeliveries, messages, users } from '../db/schema.js'
 import { DELETED_USER_ID, DELETED_USER_USERNAME } from './deleted-user.js'
@@ -190,6 +190,38 @@ export async function adminPurgeUser(params: {
     }
 
     await tx.delete(users).where(eq(users.id, params.targetUserId))
+
+    // Sweep chats the purge just emptied.
+    //
+    // Only DIRECT chats were deleted above; a GROUP whose last member was the
+    // purged user survived with zero members. Nobody can open it, nobody can be
+    // invited into it, and no sweep enumerates it — it is unreachable rows that
+    // still hold messages. Purging three test accounts on prod left 26 of them
+    // behind, which is how this was found.
+    //
+    // Scoped to the chats this user actually belonged to, so a concurrently
+    // created (still empty) chat elsewhere is never touched.
+    if (allChatIds.length > 0) {
+      const emptied = await tx
+        .select({ id: chats.id })
+        .from(chats)
+        .where(
+          and(
+            inArray(chats.id, allChatIds),
+            notExists(
+              tx
+                .select({ one: sql`1` })
+                .from(chatMembers)
+                .where(eq(chatMembers.chatId, chats.id))
+            )
+          )
+        )
+      if (emptied.length > 0) {
+        const emptyIds = emptied.map((c) => c.id)
+        await tx.delete(messages).where(inArray(messages.chatId, emptyIds))
+        await tx.delete(chats).where(inArray(chats.id, emptyIds))
+      }
+    }
   })
 
   await purgeChatMediaKeys(mediaKeys)

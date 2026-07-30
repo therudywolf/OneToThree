@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify'
 import { eq, sql } from 'drizzle-orm'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
-import { adminAuditLog, reports, users } from '../db/schema.js'
+import { adminAuditLog, chatMembers, chats, reports, users } from '../db/schema.js'
 
 type Grp = 'creator' | 'admin' | 'premium' | 'regular' | 'test'
 async function createUser(username: string, role: 'user' | 'admin' = 'user', group?: Grp) {
@@ -374,6 +374,58 @@ describe('admin routes — authorization & self-protection', () => {
     } finally {
       await db.delete(users).where(eq(users.id, target.id))
       await db.delete(users).where(eq(users.id, creator.id))
+    }
+  })
+  /**
+   * A purge must not leave unreachable rows behind. Only DIRECT chats were
+   * deleted, so a GROUP whose last member was the purged user survived with zero
+   * members: nobody can open it, nobody can be invited into it, no sweep
+   * enumerates it. Purging three test accounts on prod left 26 such chats, which
+   * is how this was found.
+   */
+  it('purging the last member of a group deletes the now-empty chat', async () => {
+    if (!dbAvailable) return
+    const stamp = Date.now().toString(36)
+    const admin = await createUser(`orph-adm-${stamp}`, 'admin', 'admin')
+    const victim = await createUser(`orph-victim-${stamp}`, 'user', 'regular')
+    const bystander = await createUser(`orph-by-${stamp}`, 'user', 'regular')
+
+    // A group the victim is alone in, and one they share with someone else.
+    const [soloGroup] = await db
+      .insert(chats).values({ type: 'group_e2e', name: 'solo' }).returning({ id: chats.id })
+    const [sharedGroup] = await db
+      .insert(chats).values({ type: 'group_e2e', name: 'shared' }).returning({ id: chats.id })
+    await db.insert(chatMembers).values([
+      { chatId: soloGroup.id, userId: victim.id, encryptedGroupKey: null, role: 'owner' },
+      { chatId: sharedGroup.id, userId: victim.id, encryptedGroupKey: null, role: 'owner' },
+      { chatId: sharedGroup.id, userId: bystander.id, encryptedGroupKey: null, role: 'member' },
+    ])
+
+    try {
+      await request(app!.server)
+        .post(`/api/admin/users/${victim.id}/purge`)
+        .set('Cookie', await cookieFor(admin))
+        .send({ confirm_username: victim.username })
+        .expect(200)
+
+      // The emptied group is gone...
+      const solo = await db.select({ id: chats.id }).from(chats).where(eq(chats.id, soloGroup.id))
+      expect(solo).toHaveLength(0)
+
+      // ...while the one that still has a member survives untouched.
+      const shared = await db.select({ id: chats.id }).from(chats).where(eq(chats.id, sharedGroup.id))
+      expect(shared).toHaveLength(1)
+      const left = await db
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, sharedGroup.id))
+      expect(left.map((r) => r.userId)).toEqual([bystander.id])
+    } finally {
+      await db.delete(chatMembers).where(eq(chatMembers.chatId, sharedGroup.id))
+      await db.delete(chats).where(eq(chats.id, sharedGroup.id))
+      await db.delete(chats).where(eq(chats.id, soloGroup.id))
+      await db.delete(users).where(eq(users.id, bystander.id))
+      await db.delete(users).where(eq(users.id, admin.id))
     }
   })
 })

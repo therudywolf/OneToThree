@@ -594,6 +594,14 @@ export function handleMemberJoin(roomId: string, userId: string, username: strin
   const store = useGroupCallStore.getState()
   if (store.roomId !== roomId) return
 
+  // In SFU mode the ROOM is authoritative about who is in the call: the LiveKit
+  // manager maintains the participant map from `ParticipantConnected`, with the
+  // real mute/camera state attached. Writing a defaults-filled entry from the
+  // WS signal would race it and show a muted peer as unmuted until their next
+  // toggle. These signals reach us at all only because we now announce the join
+  // for presence — they are not meant to drive the call UI.
+  if (livekitActive) return
+
   store.setParticipant(userId, {
     userId,
     username,
@@ -614,6 +622,11 @@ export function handleMemberJoin(roomId: string, userId: string, username: strin
 export function handleMemberLeave(roomId: string, userId: string) {
   const store = useGroupCallStore.getState()
   if (store.roomId !== roomId) return
+  // Same reasoning as handleMemberJoin: `ParticipantDisconnected` from the SFU
+  // is what ends a peer's presence in SFU mode. Acting on the WS signal would
+  // tear down a tile whose media is still arriving if the peer's app socket
+  // merely blipped.
+  if (livekitActive) return
   cleanupPeer(userId)
 }
 

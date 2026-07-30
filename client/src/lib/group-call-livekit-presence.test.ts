@@ -76,6 +76,8 @@ import {
   joinGroupCall,
   leaveGroupCall,
   handleParticipantList,
+  handleMemberJoin,
+  handleMemberLeave,
 } from '@/lib/group-call-manager'
 import { useGroupCallStore } from '@/store/groupCallStore'
 
@@ -124,6 +126,28 @@ describe('group call presence in LiveKit mode', () => {
       )
     ).resolves.toBeUndefined()
     expect(sent.filter((m) => m.type === 'group_call:offer')).toHaveLength(0)
+  })
+
+  it('lets the SFU, not the WS signals, own the participant map', async () => {
+    await joinGroupCall(ROOM, false)
+    const store = useGroupCallStore.getState()
+    // Stand in for what the LiveKit manager writes on ParticipantConnected —
+    // real mute state attached.
+    store.setParticipant('peer-1', {
+      userId: 'peer-1',
+      username: 'peer',
+      isMuted: true,
+      isVideoOff: true,
+      isSpeaking: false,
+      connectionState: 'connected',
+    })
+
+    // The WS signals now reach us (we announce the join for presence). Acting
+    // on them would reset the peer to defaults, then delete them outright.
+    handleMemberJoin(ROOM, 'peer-1', 'peer')
+    expect(useGroupCallStore.getState().participants['peer-1']?.isMuted).toBe(true)
+    handleMemberLeave(ROOM, 'peer-1')
+    expect(useGroupCallStore.getState().participants['peer-1']).toBeDefined()
   })
 
   it('announces the leave so the banner clears for everyone else', async () => {

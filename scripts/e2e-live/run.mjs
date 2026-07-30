@@ -128,6 +128,21 @@ async function waitAuthed(page, timeoutMs = 90_000) {
 async function register(client, username, password) {
   const { page, label } = client
   log(`[${label}] register ${username}`)
+  // Registration is rate-limited per address, and this harness burns accounts
+  // fast. Without the status the failure surfaces as "never authenticated",
+  // which sends you hunting for a crypto bug that is not there.
+  // There is no /auth/register: sign-up is the same ECDSA challenge dance as
+  // sign-in (`/auth/challenge` then `/auth/verify`), so watch both.
+  let registerStatus = null
+  const onResponse = (res) => {
+    const u = res.url()
+    if (u.includes('/auth/challenge') || u.includes('/auth/verify')) {
+      const s = res.status()
+      // Keep the first non-2xx: that is the one that explains the failure.
+      if (registerStatus === null || (registerStatus < 400 && s >= 400)) registerStatus = s
+    }
+  }
+  page.on('response', onResponse)
   await page.goto(`${APP}/register`, { waitUntil: 'domcontentloaded', timeout: 120_000 })
   await page.waitForTimeout(2500) // Anubis proof-of-work
 
@@ -140,7 +155,19 @@ async function register(client, username, password) {
   await page.getByRole('button', { name: 'Зарегистрироваться', exact: true }).click()
   await page.waitForTimeout(3000)
 
-  const id = await waitAuthed(page)
+  let id
+  try {
+    id = await waitAuthed(page)
+  } catch (e) {
+    if (registerStatus === 429) {
+      throw new Error(
+        'registration rate-limited (429) — this host has created too many accounts; wait and re-run'
+      )
+    }
+    throw new Error(`${e.message} (/auth/* -> ${registerStatus ?? 'no response seen'})`)
+  } finally {
+    page.off('response', onResponse)
+  }
   log(`[${label}] authed id=${id.slice(0, 8)}`)
   await settleFirstRun(client, id, password)
   await api(page, 'PATCH', '/users/me', { is_discoverable: true })
@@ -440,6 +467,20 @@ async function scenarioGroupCall(A, B, chatId) {
   }
   record('GROUP CALL joined on both sides', aIn > 0 && bIn > 0, `A=${aIn} B=${bIn}`)
 
+  // Both sides connecting to the SFU independently is not proof that media
+  // flowed between them. The participant badge counts 1 + REMOTE STREAMS, so a
+  // 2 means the peer's track actually arrived through the SFU.
+  let nodesA = 0
+  let nodesB = 0
+  for (let i = 0; i < 10; i++) {
+    nodesA = await readNodeCount(A.page)
+    nodesB = await readNodeCount(B.page)
+    if (nodesA >= 2 && nodesB >= 2) break
+    await A.page.waitForTimeout(2000)
+  }
+  record('each side receives the other\'s stream through the SFU',
+    nodesA >= 2 && nodesB >= 2, `A sees ${nodesA}, B sees ${nodesB}`)
+
   const lkA = A.sockets.filter((u) => u.includes(LIVEKIT_HOST))
   const lkB = B.sockets.filter((u) => u.includes(LIVEKIT_HOST))
   record('both clients reached the LiveKit SFU (not a silent mesh fallback)',
@@ -453,6 +494,15 @@ async function scenarioGroupCall(A, B, chatId) {
     await clickFirstVisible(c.page, '[title="Завершить звонок"]').catch(() => {})
   }
   await A.page.waitForTimeout(3000)
+}
+
+/** Participant badge on the group-call screen: 1 + remote streams. */
+async function readNodeCount(page) {
+  return page.evaluate(() => {
+    const btn = document.querySelector('[title="Участники"]')
+    const n = parseInt((btn?.innerText || '').trim(), 10)
+    return Number.isFinite(n) ? n : 0
+  }).catch(() => 0)
 }
 
 /** Everything worth knowing about why a call did not reach the connected UI. */
@@ -528,7 +578,7 @@ async function scenarioDmAndCall(A, B, idB) {
  * headless browser cannot scan its own screen — the code is the exact string
  * the QR encodes, so the same rendezvous and the same verification path run.
  */
-async function scenarioDeviceLink(A) {
+async function scenarioDeviceLink(A, username) {
   const C = await launch('C')
   try {
     await A.page.goto(`${APP}/`, { waitUntil: 'domcontentloaded' })
@@ -570,7 +620,16 @@ async function scenarioDeviceLink(A) {
 
     await C.page.goto(`${APP}/login`, { waitUntil: 'domcontentloaded', timeout: 120_000 })
     await C.page.waitForTimeout(2500)
-    await C.page.locator('[data-testid=qr-link-toggle]').first().click()
+    // On /login the panel sits behind a disclosure and is rendered `embedded`,
+    // which suppresses its own collapse chrome — so there is no
+    // `qr-link-toggle` here, only on the standalone panel.
+    await C.page.getByRole('button', { name: /Войти с помощью другого устройства/i })
+      .first().click()
+    await C.page.waitForTimeout(1500)
+    // The manual-code fallback lives inside SCAN mode (it feeds the same
+    // handler as a successful camera scan), so pick that mode first.
+    await C.page.getByRole('button', { name: /^Сканировать QR$/ }).first().click()
+    await C.page.waitForTimeout(2500)
     await C.page.locator('[data-testid=qr-manual-toggle]').first().click()
     await C.page.locator('[data-testid=qr-manual-input]').first().fill(code)
     await C.page.locator('[data-testid=qr-manual-submit]').first().click()
@@ -583,16 +642,39 @@ async function scenarioDeviceLink(A) {
     const shownC = (await codeC.innerText().catch(() => '')).trim()
     record('device link: verification codes match on both devices',
       shownA.length > 0 && shownA === shownC, `${shownA || '-'} / ${shownC || '-'}`)
-    const confirm = A.page.getByRole('button', { name: /Подтвердить|Совпада/i })
-    if (await confirm.count().catch(() => 0)) await confirm.first().click().catch(() => {})
+    const confirm = A.page.getByRole('button', { name: /Числа совпадают/i })
+    record('device link: old device offered the confirm control',
+      (await confirm.count().catch(() => 0)) > 0)
+    await confirm.first().click().catch(() => {})
 
+    // The deposit is the crypto payload: the old device encrypts the vault to
+    // the new device's ephemeral key and hands the server a blob it cannot
+    // read. C confirms receipt in words, then still has to sign in normally —
+    // linking transfers the KEYRING, never the session.
+    let received = false
+    for (let i = 0; i < 30 && !received; i++) {
+      received = (await C.page.getByText(/Готово! Введите имя пользователя/i).count().catch(() => 0)) > 0
+      if (!received) await C.page.waitForTimeout(2000)
+    }
+    record('device link: new device received and decrypted the vault', received)
+    if (!received) {
+      await dumpCallState(C, 'new device state')
+      return
+    }
+
+    await C.page.locator('#username').first().fill(username)
+    await C.page.locator('#password').first().fill(PW)
+    await C.page.getByRole('button', { name: /^Войти$/ }).last().click().catch(() => {})
     const adopted = await waitAuthed(C.page, 90_000).then(() => true).catch(() => false)
-    record('device link: new device signed in', adopted)
+    record('device link: new device signed in on the linked vault', adopted)
     if (adopted) {
       await C.page.waitForTimeout(6000)
+      await unlockVaultIfAsked(C, PW)
       const online = await C.page.evaluate(() =>
         Boolean(document.querySelector('.p13-chat-scroll') || document.querySelector('form textarea')))
       record('device link: new device reached the chat shell', online)
+    } else {
+      await dumpCallState(C, 'sign-in after link')
     }
   } catch (e) {
     record('device link scenario ran to completion', false, String(e).slice(0, 200))
@@ -601,21 +683,125 @@ async function scenarioDeviceLink(A) {
   }
 }
 
+/**
+ * The recovery phrase, both halves.
+ *
+ * Worth an end-to-end run because it is the ONE path back into an account
+ * whose password is gone, and because it exercises the recovery-wrapped vault
+ * blob — a second, independently-wrapped copy of the keyring that no other test
+ * touches. If enrolment and restore ever drift apart, nobody finds out until
+ * somebody actually needs it.
+ *
+ * Runs last: it changes A's vault password.
+ */
+async function scenarioRecovery(A, username) {
+  const D = await launch('D')
+  try {
+    await A.page.goto(`${APP}/`, { waitUntil: 'domcontentloaded' })
+    await A.page.waitForTimeout(4000)
+    await unlockVaultIfAsked(A, PW)
+    await clickFirstVisible(A.page, '[title="Настройки"]')
+    await A.page.waitForTimeout(2000)
+    await A.page.getByRole('button', { name: /^Безопасность$/ }).first().click().catch(() => {})
+    await A.page.waitForTimeout(2000)
+
+    const enable = A.page.getByRole('button', { name: /Создать фразу восстановления/i })
+    if (!(await enable.count().catch(() => 0))) {
+      record('recovery: found the enrolment control', false, 'no enable button on the security tab')
+      await dumpCallState(A, 'security tab contents')
+      return
+    }
+    await enable.first().click()
+    await A.page.waitForTimeout(1500)
+
+    const gate = A.page.locator('input[type=password]')
+    if (await gate.count().catch(() => 0)) {
+      await gate.first().fill(PW)
+      await gate.first().press('Enter')
+    }
+
+    // The 24 words are rendered one per cell and shown exactly once. Poll:
+    // enrolment derives a keypair from the phrase and re-wraps the vault, which
+    // is deliberately slow.
+    let phrase = ''
+    for (let i = 0; i < 30 && !phrase; i++) {
+      await A.page.waitForTimeout(2000)
+      const got = await A.page.evaluate(() =>
+        Array.from(document.querySelectorAll('span.select-all')).map((n) => n.textContent.trim()).join(' '))
+      if (got.split(' ').filter(Boolean).length === 24) phrase = got
+    }
+    const words = phrase.split(' ').filter(Boolean)
+    record('recovery: enrolment produced a 24-word phrase', words.length === 24, `${words.length} words`)
+    if (words.length !== 24) {
+      await dumpCallState(A, 'recovery enrolment state')
+      return
+    }
+
+    await A.page.locator('input[type=checkbox]').last().check().catch(() => {})
+    await A.page.getByRole('button', { name: /Включить восстановление/i }).first().click().catch(() => {})
+    await A.page.waitForTimeout(6000)
+    record('recovery: enrolment committed',
+      (await A.page.getByText(/Восстановление ВКЛ/i).count().catch(() => 0)) > 0)
+
+    // --- restore on a device that has never seen this account ---
+    const NEW_PW = 'Recovered-Passw0rd-2026!'
+    await D.page.goto(`${APP}/login`, { waitUntil: 'domcontentloaded', timeout: 120_000 })
+    await D.page.waitForTimeout(2500)
+    await D.page.getByRole('button', { name: /Забыли пароль/i }).first().click().catch(() => {})
+    await D.page.waitForTimeout(1500)
+    await D.page.locator('input, textarea').first().waitFor({ state: 'visible', timeout: 20_000 })
+
+    // Fill by placeholder — the recovery form shares the page with the login
+    // form, so positional selectors pick up the wrong field.
+    await D.page.getByPlaceholder(/слово1/).fill(phrase).catch(() => {})
+    const unameField = D.page.locator('#username')
+    if (await unameField.count().catch(() => 0)) await unameField.first().fill(username).catch(() => {})
+    const pwFields = D.page.locator('input[type=password]')
+    const n = await pwFields.count().catch(() => 0)
+    if (n > 0) await pwFields.last().fill(NEW_PW)
+    await D.page.getByRole('button', { name: /Восстановить доступ/i }).first().click().catch(() => {})
+
+    const restored = await waitAuthed(D.page, 90_000).then(() => true).catch(() => false)
+    record('recovery: signed in from the phrase alone', restored)
+    if (!restored) {
+      await dumpCallState(D, 'recovery form state')
+      return
+    }
+    await D.page.waitForTimeout(6000)
+    await unlockVaultIfAsked(D, NEW_PW)
+    record('recovery: restored device reached the chat shell',
+      await D.page.evaluate(() =>
+        Boolean(document.querySelector('.p13-chat-scroll') || document.querySelector('form textarea'))))
+  } catch (e) {
+    record('recovery scenario ran to completion', false, String(e).slice(0, 200))
+  } finally {
+    await D.browser.close().catch(() => {})
+  }
+}
+
 // ------------------------------------------------------------------ main ---
 
 async function main() {
   const A = await launch('A')
-  const B = await launch('B')
   const userA = `e2e_a_${STAMP}`
   const userB = `e2e_b_${STAMP}`
+  // Device linking is the one scenario that needs no peer, and registration is
+  // rate-limited per address — do not spend an account we will not use.
+  const needsPeer = ONLY.length === 0
+    || ['group', 'media', 'rotation', 'groupcall', 'dm', 'call'].some((s) => ONLY.includes(s))
+  const B = needsPeer ? await launch('B') : null
 
   try {
     // Serialized: one client generating edge traffic at a time keeps Anubis and
-    // the per-user rate limits out of the way.
+    // the per-address limits out of the way.
     const idA = await register(A, userA, PW)
-    await sleep(4000)
-    const idB = await register(B, userB, PW)
-    record('registration ×2 (ECDH publish proof + dedupe)', Boolean(idA && idB))
+    let idB = null
+    if (B) {
+      await sleep(4000)
+      idB = await register(B, userB, PW)
+    }
+    record(`registration ×${B ? 2 : 1} (ECDH publish proof + dedupe)`,
+      Boolean(idA && (!B || idB)))
 
     let chatId = null
     if (want('group')) chatId = await scenarioGroup(A, B, idB)
@@ -623,18 +809,21 @@ async function main() {
     // Rotation LAST among the group scenarios: it removes B from the chat.
     if (chatId && want('rotation')) await scenarioRotation(A, chatId, idB)
     if (want('dm')) await scenarioDmAndCall(A, B, idB)
-    if (want('devicelink')) await scenarioDeviceLink(A)
+    if (want('devicelink')) await scenarioDeviceLink(A, userA)
+    // Last: recovery changes A's vault password.
+    if (want('recovery')) await scenarioRecovery(A, userA)
   } catch (e) {
     record('harness completed without throwing', false, String(e).slice(0, 300))
   } finally {
     for (const [c, u] of [[A, userA], [B, userB]]) {
+      if (!c) continue
       try {
         const r = await api(c.page, 'DELETE', '/users/me/account', { confirm_username: u })
         log(`cleanup ${u}: ${r.status}`)
       } catch { /* best effort */ }
     }
     await A.browser.close().catch(() => {})
-    await B.browser.close().catch(() => {})
+    await B?.browser.close().catch(() => {})
   }
 
   console.log('\n================ SUMMARY ================')

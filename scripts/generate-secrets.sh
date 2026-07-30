@@ -166,7 +166,21 @@ if [[ -n "$VAPID_PUBLIC_KEY" ]]; then
   echo -n "$VAPID_PRIVATE_KEY"  > "$SECRETS_DIR/vapid_private_key"
 fi
 
-chmod 600 "$SECRETS_DIR"/*
+# 0644, NOT 0600 — and that is not a weakening.
+#
+# The api image runs as uid 1001 (`app`), while these files are written by the
+# deploying user (typically uid 1000). Compose `secrets:` outside swarm is a
+# plain bind mount: the host mode is what the container sees, so 0600 meant the
+# app could not read a single one of them. `readSecret()` then fell back to the
+# plain env var — which quietly rescued every secret that also has one, and left
+# LIVEKIT_API_KEY/SECRET (which do not) empty. The visible symptom was group
+# calls silently degrading from the SFU to mesh WebRTC, with nothing in any log.
+#
+# The real access gate is the DIRECTORY, kept at 0700 above: no other host user
+# can traverse into it, whatever the files inside are set to. The docker daemon
+# runs as root and bypasses that, which is exactly what lets the container read
+# them.
+chmod 644 "$SECRETS_DIR"/*
 
 # --- Display secrets ONCE -----------------------------------------------------
 echo ""

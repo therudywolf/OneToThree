@@ -58,15 +58,41 @@ async function main() {
     process.on(signal, () => void shutdown(signal, 0))
   }
 
-  // A fire-and-forget rejection (push sends, fan-out, last-seen pings) would
-  // otherwise crash the process abruptly with no drain. Log and shut down
-  // gracefully instead.
+  /**
+   * An unhandled REJECTION does not shut the server down.
+   *
+   * It used to. That made every detached best-effort promise a kill switch for
+   * the whole instance: one push send, one fan-out, one last-seen ping that
+   * rejected during a brief Postgres or Redis blip took down every other user's
+   * WebSocket, call and in-flight upload — and because clients reconnect and
+   * immediately retry, the container restarted straight back into it for as long
+   * as the blip lasted. Three separate paths in this codebase were exactly that
+   * bug (ws presence ping, offline-push fan-out, the WS heartbeat), and each was
+   * only a missing `.catch()` away from being harmless.
+   *
+   * A rejected promise is not evidence that the process state is corrupt. It is
+   * evidence that ONE operation failed, and the correct response is to make it
+   * loud and keep serving the other N users. So: log with the real stack, count
+   * it so the volume is visible, and continue.
+   *
+   * An uncaught EXCEPTION is different and still terminates: it means a
+   * synchronous throw escaped every frame, so no invariant can be trusted
+   * afterwards. That one drains and exits, per Node's own guidance.
+   */
+  let unhandledRejections = 0
   process.on('unhandledRejection', (reason) => {
-    app.log.error({ err: String(reason) }, 'unhandledRejection — shutting down')
-    void shutdown('unhandledRejection', 1)
+    unhandledRejections += 1
+    const err = reason instanceof Error ? reason : new Error(String(reason))
+    app.log.error(
+      { err: { message: err.message, stack: err.stack }, unhandledRejections },
+      'unhandledRejection — logged, NOT fatal (one failed operation must not evict every session)'
+    )
   })
   process.on('uncaughtException', (err) => {
-    app.log.error({ err: String(err) }, 'uncaughtException — shutting down')
+    app.log.error(
+      { err: { message: err.message, stack: err.stack } },
+      'uncaughtException — draining and exiting (process state is no longer trustworthy)'
+    )
     void shutdown('uncaughtException', 1)
   })
 }

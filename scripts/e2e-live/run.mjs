@@ -531,12 +531,15 @@ async function readNodeCount(page) {
 async function reachedChatShell(client, userId, password) {
   await settleFirstRun(client, userId, password)
   for (let i = 0; i < 15; i++) {
-    // The CHAT LIST, not the message pane: a freshly linked or restored device
-    // opens on "pick a conversation", so `.p13-chat-scroll` / the composer only
-    // exist once something is selected. A rendered list is also the stronger
-    // signal — those titles come out of the transferred keyring.
+    // The app SHELL, not the message pane and not the chat list: a freshly
+    // linked or restored device opens on "pick a conversation" (so
+    // `.p13-chat-scroll` and the composer do not exist yet), and when only that
+    // one account was created there are no conversations to list either. The
+    // navigation landmark is present either way and only renders inside the
+    // authenticated app.
     const ok = await client.page.evaluate(() =>
-      document.querySelectorAll('[aria-label^="Открыть чат"]').length > 0
+      Boolean(document.querySelector('[aria-label="Main navigation"]'))
+      || document.querySelectorAll('[aria-label^="Открыть чат"]').length > 0
       || Boolean(document.querySelector('.p13-chat-scroll'))
       || Boolean(document.querySelector('form textarea')))
     if (ok) return true

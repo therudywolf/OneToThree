@@ -133,9 +133,34 @@ if [[ -z "$CADDY_VOL" ]]; then
 fi
 
 SRC_ROOT="$CADDY_VOL/caddy/certificates"
-SRC="$(find "$SRC_ROOT" -type d -name "$TURN_HOST" 2>/dev/null | head -1 || true)"
+SRC=""
+if [[ -r "$SRC_ROOT" ]]; then
+  SRC="$(find "$SRC_ROOT" -type d -name "$TURN_HOST" 2>/dev/null | head -1 || true)"
+fi
+
+# The volume mountpoint lives under /var/lib/docker, which is root-only (0700).
+# Running from cron as a normal user therefore saw an empty directory and this
+# script reported "certificate missing" every single night for months while the
+# certificate actually existed. Being in the docker group is enough to read it
+# out of the running Caddy container, so fall back to that instead of failing.
 if [[ ! -d "$SRC" ]]; then
-  err "Certificate directory missing for $TURN_HOST under $SRC_ROOT"
+  CADDY_CID="$(docker ps -q --filter "volume=$CADDY_VOLUME_NAME" | head -1 || true)"
+  if [[ -n "$CADDY_CID" ]]; then
+    CERT_DIR_IN="$(docker exec "$CADDY_CID" sh -c "find /data/caddy/certificates -type d -name '$TURN_HOST' 2>/dev/null | head -1" 2>/dev/null | tr -d '\r')"
+    if [[ -n "$CERT_DIR_IN" ]]; then
+      SRC="$(mktemp -d)"
+      TMP_SRC="$SRC"
+      trap 'rm -rf "${TMP_SRC:-}"' EXIT
+      docker cp "$CADDY_CID:$CERT_DIR_IN/$TURN_HOST.crt" "$SRC/$TURN_HOST.crt" >/dev/null 2>&1 || true
+      docker cp "$CADDY_CID:$CERT_DIR_IN/$TURN_HOST.key" "$SRC/$TURN_HOST.key" >/dev/null 2>&1 || true
+      chmod 0600 "$SRC/$TURN_HOST.key" 2>/dev/null || true
+      log "read TLS material for $TURN_HOST from container $CADDY_CID"
+    fi
+  fi
+fi
+
+if [[ ! -d "$SRC" ]]; then
+  err "Certificate directory missing for $TURN_HOST (host path $SRC_ROOT unreadable and container lookup failed)"
   err "Make sure Caddy has a site block for $TURN_HOST that forces TLS provisioning"
   err "and DNS/ports allow ACME issuance."
   exit 3

@@ -24,6 +24,7 @@ import {
   writeArtifacts,
   composeArgs,
   generateVapidKeys,
+  readExistingEnv,
 } from './lite-core.mjs'
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -123,7 +124,14 @@ async function main() {
   }
 
   // ── Write artifacts ─────────────────────────────────────────────────────────
-  const env = buildEnv({ cfg, flags, s3PublicUrl, livekit, vapid })
+  // Re-running the installer must not mint new DB / JWT / TOTP / MinIO secrets:
+  // the volumes still hold the originals, so a fresh set means the stack comes
+  // back up with `password authentication failed`.
+  const existing = readExistingEnv(REPO)
+  const env = buildEnv({ cfg, flags, s3PublicUrl, livekit, vapid, existing })
+  if (Object.keys(existing).length) {
+    line('  (existing install detected — keeping its database and session secrets)')
+  }
   writeArtifacts(REPO, env, renderCaddyfile(cfg))
   const args = composeArgs(flags, ['up', '-d', '--build'])
 

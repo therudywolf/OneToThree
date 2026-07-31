@@ -151,6 +151,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:push
+      - run: npm run test:lite
       - run: npm run test:server
       - run: npm run test:unit -w project-13-client
       - run: npm run check:locales

@@ -62,7 +62,9 @@ services:
     # http://localhost:9000 (OT_S3_PUBLIC_URL); a public domain should front this
     # with its own s3.<domain> — see docs/guides/LITE.md.
     ports:
-      - "${OT_MINIO_PORT:-9000}:9000"
+      # Same OT_BIND as Caddy: in `local` mode the browser reaches MinIO on
+      # http://localhost:9000, which hits the same IPv6-accepts-then-hangs trap.
+      - "${OT_BIND:-}${OT_MINIO_PORT:-9000}:9000"
     networks: [lite]
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
@@ -123,6 +125,19 @@ services:
       VAPID_PRIVATE_KEY: ${OT_VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${OT_VAPID_SUBJECT:-mailto:admin@localhost}
       # Calls (only used when calls is on).
+      #
+      # CALL_MEDIA_MODE has to be stated. The server defaults to `origin_safe`,
+      # and in that mode /call/config reports `livekit_enabled: false` no matter
+      # what the three vars below hold — while the client checks `origin_safe`
+      # FIRST and takes the WebSocket audio relay without ever looking at the
+      # SFU. So an operator who filled in a LiveKit URL, key and secret got them
+      # silently ignored. The installer sets this to `self_hosted` when a
+      # LiveKit URL is configured and leaves it `origin_safe` otherwise.
+      #
+      # `self_hosted` without coturn is deliberate here: /ice-servers 503s, and
+      # a failed ICE fetch is exactly how a 1:1 call falls back to the same
+      # encrypted WebSocket relay. Group calls get the SFU, 1:1 keeps the relay.
+      CALL_MEDIA_MODE: ${OT_CALL_MEDIA_MODE:-origin_safe}
       LIVEKIT_URL: ${OT_LIVEKIT_URL:-}
       LIVEKIT_API_KEY: ${OT_LIVEKIT_API_KEY:-}
       LIVEKIT_API_SECRET: ${OT_LIVEKIT_API_SECRET:-}
@@ -177,9 +192,18 @@ services:
     #   domain → Caddy listens :80 + :443 (Let's Encrypt)     → 80:80 + 443:443
     # OT_HTTPS_CONTAINER_PORT lets `lan` map the host HTTPS port 1:1 to the port
     # Caddy actually listens on (so the site address host:port matches exactly).
+    #
+    # OT_BIND pins `local` mode to 127.0.0.1. Two reasons, and the first is not
+    # theoretical: published with no host, Docker Desktop also listens on `[::]`,
+    # and on Windows that IPv6 listener ACCEPTS the connection and then answers
+    # nothing. `localhost` resolves to ::1 first, so the very URL the installer
+    # prints gave the browser ERR_EMPTY_RESPONSE — and because the socket was
+    # accepted rather than refused, nothing falls back to IPv4. Second: `local`
+    # means this machine only, so not publishing it to the network is the point.
+    # `lan` and `domain` leave OT_BIND empty and stay on 0.0.0.0.
     ports:
-      - "${OT_HTTP_PORT:-80}:80"
-      - "${OT_HTTPS_PORT:-443}:${OT_HTTPS_CONTAINER_PORT:-443}"
+      - "${OT_BIND:-}${OT_HTTP_PORT:-80}:80"
+      - "${OT_BIND:-}${OT_HTTPS_PORT:-443}:${OT_HTTPS_CONTAINER_PORT:-443}"
     volumes:
       - ./infra/lite/Caddyfile:/etc/caddy/Caddyfile:ro
       - lite_caddy_data:/data

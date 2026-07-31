@@ -10,7 +10,7 @@
  * See docs/guides/LITE.md and docs/project/ROADMAP_SELFHOST_LITE.md.
  */
 import { randomBytes, generateKeyPairSync } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { networkInterfaces } from 'node:os'
@@ -113,14 +113,56 @@ export function computeModeConfig(mode, opts = {}) {
 }
 
 /**
+ * Secrets that MUST survive a re-run of the installer.
+ *
+ * The guide tells operators to re-run it to change mode or features, and that
+ * used to mint a fresh set — which bricks an existing install. Postgres and
+ * MinIO only apply their root credentials on FIRST init, so the volumes keep
+ * the old ones and the stack comes up with `password authentication failed`.
+ * Rotating the other two is quieter and worse: a new TOTP_WRAP_KEY makes every
+ * enrolled 2FA secret undecryptable, and a new JWT_SECRET logs everyone out.
+ */
+const PERSISTENT_SECRETS = [
+  'OT_DB_PASSWORD',
+  'OT_JWT_SECRET',
+  'OT_TOTP_WRAP_KEY',
+  'OT_MINIO_PASSWORD',
+  'OT_VAPID_PUBLIC_KEY',
+  'OT_VAPID_PRIVATE_KEY',
+]
+
+/** Parse an existing `.env.lite` into a map. `{}` when there isn't one yet. */
+export function readExistingEnv(repo) {
+  const path = join(repo, '.env.lite')
+  if (!existsSync(path)) return {}
+  const out = {}
+  for (const raw of readFileSync(path, 'utf8').split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const eq = line.indexOf('=')
+    if (eq > 0) out[line.slice(0, eq)] = line.slice(eq + 1)
+  }
+  return out
+}
+
+/**
  * Build the `.env.lite` variable map. `flags` is `{ MEDIA:'1', CALLS:'0', … }`.
  * VAPID keys are appended only when PUSH is on (keeps the non-push output
  * identical to the historical CLI).
+ *
+ * Pass `existing` (from {@link readExistingEnv}) to keep the credentials the
+ * running volumes were created with — see PERSISTENT_SECRETS.
  */
-export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = null }) {
+export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = null, existing = {} }) {
   const env = {
     OT_MODE: cfg.mode,
     OT_ORIGIN: cfg.origin,
+    // Host part of every published port. `local` pins to 127.0.0.1 — it means
+    // this machine only, and it dodges Docker Desktop's IPv6 listener, which
+    // accepts the connection and answers nothing (the URL the installer prints
+    // resolves to ::1 first, so the browser got ERR_EMPTY_RESPONSE with no
+    // fallback). The other modes have to stay on 0.0.0.0 to be reachable.
+    OT_BIND: cfg.mode === 'local' ? '127.0.0.1:' : '',
     OT_HTTP_PORT: cfg.httpPort,
     OT_HTTPS_PORT: cfg.httpsPort,
     OT_HTTPS_CONTAINER_PORT: cfg.httpsContainerPort,
@@ -139,6 +181,11 @@ export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = n
     OT_ENABLE_GIF: flags.GIF,
     OT_ENABLE_PUSH: flags.PUSH,
     OT_ENABLE_2FA: flags['2FA'],
+    // Without this the API keeps its `origin_safe` default, where
+    // /call/config reports `livekit_enabled: false` regardless of the three
+    // vars below — and the client takes the WebSocket audio relay without ever
+    // asking for an SFU token. A configured LiveKit was simply ignored.
+    OT_CALL_MEDIA_MODE: livekit.url ? 'self_hosted' : 'origin_safe',
     OT_LIVEKIT_URL: livekit.url || '',
     OT_LIVEKIT_API_KEY: livekit.key || '',
     OT_LIVEKIT_API_SECRET: livekit.secret || '',
@@ -148,6 +195,17 @@ export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = n
     env.OT_VAPID_PUBLIC_KEY = v.publicKey
     env.OT_VAPID_PRIVATE_KEY = v.privateKey
     env.OT_VAPID_SUBJECT = v.subject || 'mailto:admin@localhost'
+  }
+  // Keep what the existing volumes were created with. Anything the caller did
+  // NOT explicitly supply this run falls back to the previous value; a caller
+  // that deliberately passes new VAPID keys still wins.
+  for (const key of PERSISTENT_SECRETS) {
+    if (!existing[key]) continue
+    if (key.startsWith('OT_VAPID') && vapid) continue
+    if (key in env) env[key] = existing[key]
+  }
+  if (flags.PUSH === '1' && existing.OT_VAPID_SUBJECT && !vapid) {
+    env.OT_VAPID_SUBJECT = existing.OT_VAPID_SUBJECT
   }
   return env
 }

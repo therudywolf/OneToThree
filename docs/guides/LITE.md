@@ -94,7 +94,12 @@ $C --profile media up -d --build   # restart after changing .env.lite
 ```
 
 Re-run `npm run lite` any time to change mode/features (it rewrites `.env.lite`
-and the Caddyfile).
+and the Caddyfile). It **keeps the secrets of an existing install** — the
+database and MinIO passwords, the JWT secret, the TOTP wrap key and the VAPID
+pair. It has to: Postgres and MinIO only apply their root credentials the first
+time their volume is created, so a fresh password would leave the stack unable
+to authenticate against its own data — and a new TOTP wrap key would make every
+enrolled 2FA secret undecryptable.
 
 ## Notes
 
@@ -102,15 +107,40 @@ and the Caddyfile).
   origin). On a **public domain**, front MinIO with your own `s3.<domain>` and
   set `OT_S3_PUBLIC_URL` — or turn media off. (A Docker-free local-filesystem
   media driver is planned — see the [roadmap](../project/ROADMAP_SELFHOST_LITE.md).)
-- **Calls** are not bundled (a LiveKit SFU needs coturn + open UDP ports). When
-  you turn calls on, the installer asks for your **LiveKit URL + API key/secret**
-  and wires them to the API (`OT_LIVEKIT_*` in `.env.lite`) — the API hands the
-  URL + a token to clients at call time, so no rebuild is needed. Leave them blank
-  to fill in later. A bundled LiveKit is on the
+- **Calls.** With no SFU configured, calls ride the **app WebSocket** as
+  pairwise-encrypted audio — no TURN, no extra ports, nothing to open. That is
+  fine for one-to-one and small groups; it is a mesh, so every participant sends
+  a copy to every other one.
+  For bigger groups, point Lite at a **LiveKit** SFU (not bundled — it needs
+  coturn and open UDP ports). Turn calls on and the installer asks for the
+  **LiveKit URL + API key/secret**, writes them as `OT_LIVEKIT_*` and switches
+  the API to `self_hosted` so it actually uses them. Group calls then go through
+  the SFU; one-to-one keeps the WebSocket relay. Leave the URL blank to stay on
+  the relay. A bundled LiveKit is on the
   [roadmap](../project/ROADMAP_SELFHOST_LITE.md).
+- **`local` mode publishes on `127.0.0.1` only** — it means *this machine*, so
+  it is not exposed to your network. (It also avoids a Docker Desktop quirk on
+  Windows where the IPv6 listener accepts the connection and then answers
+  nothing, which made `http://localhost:<port>` fail outright.) Use **LAN** mode
+  to reach it from other devices.
 - Your data lives in Docker volumes (`lite_pgdata`, `lite_minio`). Never
   `docker compose down -v` unless you mean to erase it.
 - Turning a feature off removes both its UI and the infra it needs.
+
+## Verified
+
+Against a freshly installed `local` instance, with two real browsers:
+registration, group creation with a client-side key, messages decrypting both
+ways, an image attachment, a key rotation that keeps the pre-rotation history
+and media readable, a direct message over the Double Ratchet, linking a second
+device, and recovering an account from its 24-word phrase — 27/27.
+
+Reproduce with the live harness (see `scripts/e2e-live/README.md`):
+
+```bash
+APP_URL=http://localhost:8443 API_URL=http://localhost:8443/api \
+  ONLY=group,media,rotation,dm,devicelink,recovery node scripts/e2e-live/run.mjs
+```
 
 ---
 ---
@@ -189,7 +219,12 @@ $C down                # остановить (данные сохраняютс
 $C --profile media up -d --build   # перезапуск после правок .env.lite
 ```
 
-Запусти `npm run lite` заново когда угодно, чтобы поменять режим/функции.
+Запусти `npm run lite` заново когда угодно, чтобы поменять режим/функции. Он
+**сохраняет секреты уже поставленного инстанса** — пароли базы и MinIO, JWT-секрет,
+ключ шифрования TOTP и пару VAPID. Иначе никак: Postgres и MinIO применяют
+root-пароль только при первом создании тома, поэтому новый пароль оставил бы стек
+без доступа к собственным данным, а новый ключ TOTP сделал бы нерасшифровываемыми
+все заведённые секреты 2FA.
 
 ## Заметки
 
@@ -197,11 +232,35 @@ $C --profile media up -d --build   # перезапуск после право�
   origin). На **публичном домене** выстави MinIO через свой `s3.<домен>` и задай
   `OT_S3_PUBLIC_URL` — либо выключи медиа. (Драйвер медиа на локальной ФС без
   Docker — в [роадмапе](../project/ROADMAP_SELFHOST_LITE.md).)
-- **Звонки** не встроены (LiveKit-SFU требует coturn + открытые UDP-порты). При
-  включении звонков установщик спросит **URL LiveKit + API-ключ/секрет** и
-  пропишет их API (`OT_LIVEKIT_*` в `.env.lite`) — API отдаёт клиентам URL и токен
-  во время звонка, пересборка не нужна. Можно оставить пустыми и заполнить позже.
-  Встроенный LiveKit — в [роадмапе](../project/ROADMAP_SELFHOST_LITE.md).
+- **Звонки.** Без SFU звук идёт **по тому же WebSocket** попарно зашифрованными
+  кадрами — ни TURN, ни лишних портов открывать не нужно. Для 1:1 и небольших
+  групп этого достаточно; это меш, поэтому каждый участник шлёт копию каждому.
+  Для групп побольше подключи **LiveKit** (не встроен — ему нужны coturn и
+  открытые UDP-порты). Включи звонки, установщик спросит **URL LiveKit +
+  API-ключ/секрет**, запишет их в `OT_LIVEKIT_*` и переведёт API в `self_hosted`,
+  чтобы он их действительно использовал. Тогда групповые звонки идут через SFU,
+  а 1:1 остаётся на relay. Оставь URL пустым — останешься на relay. Встроенный
+  LiveKit — в [роадмапе](../project/ROADMAP_SELFHOST_LITE.md).
+- **Режим `local` слушает только `127.0.0.1`** — это значит «только эта машина»,
+  и в сеть он не выставляется. (Заодно обходится особенность Docker Desktop на
+  Windows, где IPv6-слушатель принимает соединение и ничего не отвечает, из-за
+  чего `http://localhost:<порт>` просто не открывался.) Чтобы зайти с других
+  устройств — режим **LAN**.
 - Данные — в Docker-томах (`lite_pgdata`, `lite_minio`). Не делай
   `docker compose down -v`, если не хочешь всё стереть.
 - Выключение функции убирает и её UI, и нужную ей инфраструктуру.
+
+## Проверено
+
+На свежепоставленном инстансе в режиме `local`, двумя настоящими браузерами:
+регистрация, создание группы с клиентским ключом, расшифровка сообщений в обе
+стороны, вложение-картинка, ротация ключа с сохранением доступа к прежней
+истории и медиа, личное сообщение через Double Ratchet, привязка второго
+устройства и восстановление аккаунта по фразе из 24 слов — 27/27.
+
+Воспроизвести (см. `scripts/e2e-live/README.md`):
+
+```bash
+APP_URL=http://localhost:8443 API_URL=http://localhost:8443/api \
+  ONLY=group,media,rotation,dm,devicelink,recovery node scripts/e2e-live/run.mjs
+```

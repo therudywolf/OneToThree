@@ -29,6 +29,7 @@ import {
   generateVapidKeys,
   suggestLanIp,
   preflight,
+  readExistingEnv,
 } from '../lite-core.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -98,12 +99,15 @@ const server = createServer(async (req, res) => {
         FEATURES.map((f) => [f.key, b.flags && b.flags[f.key] ? '1' : '0'])
       )
       const vapid = flags.PUSH === '1' ? generateVapidKeys(normSubject(b.vapidSubject)) : null
+      // Same as the text installer: re-running must not mint new DB / JWT /
+      // TOTP / MinIO secrets, or the existing volumes stop authenticating.
       const env = buildEnv({
         cfg,
         flags,
         s3PublicUrl: (b.s3PublicUrl || '').trim(),
         livekit: b.livekit || {},
         vapid,
+        existing: readExistingEnv(REPO),
       })
       writeArtifacts(REPO, env, renderCaddyfile(cfg))
       const upArgs = composeArgs(flags, ['up', '-d', '--build'])

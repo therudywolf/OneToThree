@@ -98,92 +98,30 @@ const nextConfig = {
   ...serverRoutesConfig,
 }
 
-let withPWA
-try {
-  withPWA = require('next-pwa')({
-    dest: 'public',
-    register: true,
-    skipWaiting: true,
-    disable: process.env.NODE_ENV === 'development',
-    importScripts: ['/push-handler.js'],
-    // The default `cacheStartUrl: true` registers a NetworkFirst handler for
-    // `/` that morphs `opaqueredirect` into a `200`. If the home route ever
-    // serves an auth-guard redirect (e.g. `/` → `/login`) that fake-200 gets
-    // cached and pins the PWA on the login screen even after the user has a
-    // valid session. Skip it — the precache + standard NetworkOnly fallback
-    // are enough.
-    cacheStartUrl: false,
-    runtimeCaching: [
-      {
-        urlPattern: /^https?:\/\/[^/]+\/(_next\/static|icon-\d+\.png|wolf-logo\.png|manifest\.webmanifest)/,
-        handler: 'StaleWhileRevalidate',
-        options: {
-          cacheName: 'p13-static',
-          expiration: {
-            maxEntries: 80,
-            maxAgeSeconds: 60 * 60 * 24 * 14,
-          },
-        },
-      },
-      {
-        // ONLY the GIF proxy. Cache Storage is keyed by URL and shared by every
-        // account that uses this browser, so caching a per-user authenticated
-        // response leaks it across an account switch: `/api/users/me/devices` is
-        // literally the same URL for everyone, so after A signed out and B
-        // signed in, StaleWhileRevalidate handed B user A's device list —
-        // names, ids, last-seen — for the whole 5-minute TTL. The same applied
-        // to `/api/users/:id/profile`, `/api/storage/avatar-url` (a presigned
-        // URL scoped to the CALLER) and `/api/stickers` (the caller's packs).
-        // `/api/gif` is an upstream GIPHY/Tenor proxy — identical for everyone,
-        // and the only one of the set that was ever safe to cache. The `(\/|\?|$)`
-        // tail keeps `/api/gif-favorites`, which IS per-user, out.
-        urlPattern: ({ url, request }) =>
-          request.method === 'GET' &&
-          /^\/api\/gif(\/|\?|$)/.test(url.pathname + url.search),
-        handler: 'StaleWhileRevalidate',
-        options: {
-          cacheName: 'p13-readonly-api',
-          cacheableResponse: { statuses: [200] },
-          expiration: {
-            maxEntries: 160,
-            maxAgeSeconds: 5 * 60,
-          },
-        },
-      },
-      {
-        urlPattern: ({ url, request }) =>
-          request.method === 'GET' &&
-          /^\/(chats|avatars|stickers)\//.test(url.pathname),
-        handler: 'CacheFirst',
-        options: {
-          cacheName: 'p13-presigned-media',
-          cacheableResponse: { statuses: [200] },
-          expiration: {
-            maxEntries: 300,
-            maxAgeSeconds: 60 * 60 * 24 * 7,
-          },
-        },
-      },
-      {
-        // Auth, mutations, chat history, and presign endpoints remain network-only.
-        urlPattern: /^https?:\/\/[^/]+\/api\//,
-        handler: 'NetworkOnly',
-      },
-      {
-        urlPattern: /(_rsc=|__rsc=)/,
-        handler: 'NetworkOnly',
-        options: {
-          cacheableResponse: { statuses: [200] },
-        },
-      },
-      {
-        urlPattern: /^https:\/\/cdn\.jsdelivr\.net/,
-        handler: 'NetworkOnly',
-      },
-    ],
-  })
-} catch {
-  withPWA = (config) => config
-}
+// Service worker: Serwist, replacing next-pwa.
+//
+// next-pwa is abandoned at 5.6.0 and pins workbox-build 6.x, which drags in an
+// old glob → minimatch → brace-expansion chain (a DoS advisory with no
+// backport for those majors). Its maintained fork pins workbox 7.1 and carries
+// the same chain, and npm cannot override across that major boundary. Serwist
+// is the successor and is on glob 13.
+//
+// The rules moved to `src/app/sw.ts` — Serwist compiles a worker source rather
+// than generating one from config. Output path is unchanged (`public/sw.js`),
+// which matters: push-subscription.ts registers `/sw.js`, and installed PWAs
+// already hold that registration.
+// No silent try/catch around this. The old config swallowed a missing next-pwa
+// and built on without a service worker — push and offline would simply be
+// gone, with nothing in the log to say so. If the plugin cannot load, the build
+// should fail and say why.
+const withSerwist = require('@serwist/next').default({
+  swSrc: 'src/app/sw.ts',
+  swDest: 'public/sw.js',
+  disable: process.env.NODE_ENV === 'development',
+  // Same reason the old config set `cacheStartUrl: false`: `/` answers with an
+  // auth-guard redirect, and precaching a followed redirect pins the PWA on the
+  // login screen.
+  additionalPrecacheEntries: [],
+})
 
-module.exports = withPWA(nextConfig)
+module.exports = withSerwist(nextConfig)

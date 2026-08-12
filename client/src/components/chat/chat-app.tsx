@@ -135,6 +135,20 @@ const GroupCallBanner = dynamic(
     ),
   { ssr: false }
 )
+const GuestKnockOverlay = dynamic(
+  () =>
+    import('@/components/guest/guest-knock-overlay').then(
+      (m) => m.GuestKnockOverlay
+    ),
+  { ssr: false }
+)
+const GuestLinksModal = dynamic(
+  () =>
+    import('@/components/guest/guest-links-modal').then(
+      (m) => m.GuestLinksModal
+    ),
+  { ssr: false }
+)
 
 /** Right dock (xl+ only). Loaded lazily so `emoji-picker-react` is not evaluated on every mobile session — some WebViews crash on that import. */
 const DockPanel = dynamic(
@@ -169,6 +183,15 @@ export function ChatApp({
   const unreadTotal = useUnreadStore((s) => s.unreadTotal)
   const unreadByChat = useUnreadStore((s) => s.unreadByChat)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [guestLinksOpen, setGuestLinksOpen] = useState(false)
+
+  // Sidebar (and any other surface) opens the guest-links manager via a window
+  // event — same decoupling pattern as `p13_open_group_settings`.
+  useEffect(() => {
+    const onOpenGuestLinks = () => setGuestLinksOpen(true)
+    window.addEventListener('p13_open_guest_links', onOpenGuestLinks)
+    return () => window.removeEventListener('p13_open_guest_links', onOpenGuestLinks)
+  }, [])
   const [identityOpen, setIdentityOpen] = useState(false)
   const [peerIdentity, setPeerIdentity] = useState<{
     userId: string
@@ -1033,6 +1056,13 @@ export function ChatApp({
           userId={userId}
           username={username}
           onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
+      {capabilities.guests ? <GuestKnockOverlay /> : null}
+      {capabilities.guests && guestLinksOpen ? (
+        <GuestLinksModal
+          activeChatId={activeChatId}
+          onClose={() => setGuestLinksOpen(false)}
         />
       ) : null}
       {identityOpen && peerIdentity && myEcdhPublicKeyJwk ? (

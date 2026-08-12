@@ -1252,7 +1252,10 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
           if (participants.length === 1) {
             const groupOnline = await areOnline(nonCallMembers)
             const groupPayload = {
-              type: 'message' as const,
+              // 'group_call' (not 'message'): the privacy rewrite keeps call-
+              // flavoured titles and routes FCM to the ringing `calls` channel;
+              // as 'message' this push landed silently as generic "New message".
+              type: 'group_call' as const,
               title: `📞 ${user.username}`,
               body: 'Звонок в группе — откройте, чтобы присоединиться',
               url: `/?chat=${room_id}`,

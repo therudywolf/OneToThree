@@ -28,6 +28,10 @@ import { gifRoutes } from './routes/gif.js'
 import { sql } from 'drizzle-orm'
 import { linkPreviewRoutes } from './routes/link-preview.js'
 import { pollsRoutes } from './routes/polls.js'
+import { guestRoutes } from './routes/guest.js'
+import { isGuestAllowedRoute } from './lib/guest-allowed-routes.js'
+import { startGuestSweeper } from './lib/guest-sweeper.js'
+import { readFmSessionToken } from './lib/session-cookie.js'
 import { writeApiAccessLog } from './lib/api-access-log.js'
 import { registerGlobalErrorHandler } from './lib/error-handler.js'
 import { getFeatureFlags, type FeatureFlags } from './lib/feature-flags.js'
@@ -500,6 +504,28 @@ export async function buildApp() {
     reply.header('X-Request-Id', request.id)
   })
 
+  // Deny-by-default guest gate (docs/project/GUEST_MODE_CONCEPT.ru.md §6.3).
+  // A temp-chat guest session carries `grp:'guest'`; outside the explicit
+  // allowlist every route — including any future one — answers 403 from this
+  // single chokepoint. Decode-only (no signature verify) is sound here because
+  // the gate can only DENY: forging a token without the claim gains nothing
+  // (getAuthUser still rejects the bad signature), and forging one WITH the
+  // claim only restricts the forger. The authoritative user_group check stays
+  // in the handlers via getAuthUser.
+  app.addHook('onRequest', async (request, reply) => {
+    const token = readFmSessionToken(request)
+    if (!token) return
+    let grp: string | undefined
+    try {
+      grp = app.jwt.decode<{ grp?: string }>(token)?.grp
+    } catch {
+      return
+    }
+    if (grp !== 'guest') return
+    if (isGuestAllowedRoute(request.method, request.routeOptions?.url)) return
+    return reply.status(403).send({ error: 'GUEST_FORBIDDEN' })
+  })
+
   // Always-on core (text messaging, auth, devices, keys, chats, polls, vault).
   await app.register(authRoutes, { prefix: '/api/auth' })
   await app.register(userRoutes, { prefix: '/api/users' })
@@ -534,6 +560,16 @@ export async function buildApp() {
   }
   if (flags.admin) {
     await app.register(adminRoutes, { prefix: '/api/admin' })
+  }
+  if (flags.guests) {
+    await app.register(guestRoutes, { prefix: '/api' })
+  }
+
+  // The guest sweeper runs regardless of FEATURE_GUESTS so that turning the
+  // flag off still cleans up existing guests, dead links, and temp chats.
+  if (process.env.NODE_ENV !== 'test') {
+    const stopGuestSweeper = startGuestSweeper(app.log)
+    app.addHook('onClose', async () => stopGuestSweeper())
   }
 
   app.get('/health', async () => ({ ok: true }))

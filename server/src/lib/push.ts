@@ -36,7 +36,7 @@ export type PushPayload = {
    * `messages` channel — indistinguishable from a chat message, which is exactly
    * what the offline-member push was added to avoid.
    */
-  type?: 'message' | 'incoming_call' | 'group_call'
+  type?: 'message' | 'incoming_call' | 'group_call' | 'guest_knock'
   /** Only for incoming_call notifications */
   caller_name?: string
   /**
@@ -48,9 +48,14 @@ export type PushPayload = {
   reply_to_me?: boolean
 }
 
-/** Call-flavoured pushes keep their own title/body; everything else is generic. */
+/**
+ * Call-flavoured pushes keep their own title/body; everything else is generic.
+ * `guest_knock` ("guest X is knocking") is call-flavoured too: it is actionable
+ * only while the knock's 5-minute window is open, so it must ring on the calls
+ * channel with its real title, not land silently as "New message".
+ */
 function isCallPayload(type: PushPayload['type']): boolean {
-  return type === 'incoming_call' || type === 'group_call'
+  return type === 'incoming_call' || type === 'group_call' || type === 'guest_knock'
 }
 
 function parseFirebaseServiceAccountJson(): Record<string, unknown> | null {

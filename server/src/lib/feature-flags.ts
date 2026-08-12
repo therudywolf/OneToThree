@@ -17,9 +17,22 @@
 const off = (v: string | undefined): boolean =>
   v != null && /^(0|false|no|off)$/i.test(v.trim())
 
+const on = (v: string | undefined): boolean =>
+  v != null && /^(1|true|yes|on)$/i.test(v.trim())
+
 /** A flag is ON unless explicitly set to a falsey value. */
 function flag(name: string): boolean {
   return !off(process.env[name])
+}
+
+/**
+ * A flag that is OFF unless explicitly enabled. Deliberate deviation from the
+ * default-ON pattern above: features that widen the UNAUTHENTICATED surface
+ * (guest links) must be an explicit operator opt-in, never an accident of an
+ * unset env var.
+ */
+function optInFlag(name: string): boolean {
+  return on(process.env[name])
 }
 
 export type FeatureFlags = {
@@ -31,6 +44,14 @@ export type FeatureFlags = {
   twofa: boolean
   admin: boolean
   groups: boolean
+  /** One-time guest links (calls + temp chats). Opt-in, default OFF. */
+  guests: boolean
+  /**
+   * Open self-registration (the historical behaviour, hence default ON).
+   * OFF = POST /api/auth/verify refuses to create new accounts; existing
+   * users (and approved guests) keep logging in unchanged.
+   */
+  openRegistration: boolean
 }
 
 export function getFeatureFlags(): FeatureFlags {
@@ -43,6 +64,8 @@ export function getFeatureFlags(): FeatureFlags {
     twofa: flag('FEATURE_2FA'),
     admin: flag('FEATURE_ADMIN'),
     groups: flag('FEATURE_GROUPS'),
+    guests: optInFlag('FEATURE_GUESTS'),
+    openRegistration: flag('FEATURE_OPEN_REGISTRATION'),
   }
 }
 

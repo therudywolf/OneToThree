@@ -1323,6 +1323,25 @@ const en = {
   'poll.create': 'Create poll',
   'poll.send': 'Send Poll',
   'poll.sending': 'Sending...',
+
+  // [GUEST MODE] one-time guest links
+  'guest.knockTitle': 'Guest knocking',
+  'guest.knockBody': 'wants to join your meeting',
+  'guest.badge': 'guest',
+  'guest.admit': 'Admit',
+  'guest.deny': 'Deny',
+  'guest.linksTitle': 'Guest links',
+  'guest.linksHint': 'One-time links for people without an account. Each link admits exactly one guest and expires in 24 hours.',
+  'guest.createInstant': 'Instant meeting',
+  'guest.createCallHere': 'Invite a guest into this call',
+  'guest.createChat': 'Temporary chat with me',
+  'guest.copy': 'Copy link',
+  'guest.copied': 'Link copied to clipboard',
+  'guest.revoke': 'Revoke',
+  'guest.empty': 'No active guest links',
+  'guest.purposeCall': 'Instant meeting',
+  'guest.purposeCallChat': 'Call guest (this chat)',
+  'guest.purposeChat': 'Temporary chat',
 } as const;
 
 export default en;

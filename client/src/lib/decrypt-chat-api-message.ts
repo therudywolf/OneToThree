@@ -163,11 +163,46 @@ async function decryptRowPlaintext(
   // protocol-downgrade attempt or a malformed row. The v1 static-ECDH path
   // derives its key from a server-supplied sender key and is not
   // sender-authenticated; never fall through to it for a DIRECT chat.
-  if (cryptoCtx.mode === 'DIRECT') {
+  //
+  // The ONE sanctioned exception: a server-marked temp-chat GUEST peer
+  // (ChatCryptoContext.peerIsGuest). Guests cannot run the Double Ratchet —
+  // no vault, no X3DH bundle — so their chats ride v1 fan-out by design, and
+  // the flag comes from the server-assigned user_group, never from the row.
+  const directGuestV1 = cryptoCtx.mode === 'DIRECT' && cryptoCtx.peerIsGuest === true
+  if (cryptoCtx.mode === 'DIRECT' && !directGuestV1) {
     throw new Error('ERR_DIRECT_V1_REJECTED')
   }
 
-  // v1 fan-out: per-device ECDH slot. DIRECT v1 is rejected above, so this
+  // Temp-chat guest fan-out slot: decrypt with ECDH(myPriv, senderPub) where
+  // the sender key is the row-pinned one, falling back to the peer's (or my
+  // own, for self-echo rows from my other devices) user-level key.
+  if (directGuestV1 && row.device_ciphertext && row.device_iv) {
+    const isOwnRow = hints?.myUserId != null && row.sender_id === hints.myUserId
+    const candidates: string[] = []
+    const pushUnique = (k: string | null | undefined) => {
+      if (k && !candidates.includes(k)) candidates.push(k)
+    }
+    pushUnique(row.sender_ecdh_public_key_jwk)
+    if (cryptoCtx.mode === 'DIRECT') pushUnique(cryptoCtx.peerPublicKeyJwk)
+    if (isOwnRow) pushUnique(hints?.myEcdhPublicKeyJwk)
+    hints?.priorPeerEcdhPublicKeysJwk?.forEach(pushUnique)
+    let lastGuestErr: unknown
+    for (const key of candidates) {
+      try {
+        return await decryptFanoutSlot(
+          unwrappedPrivateKey,
+          key,
+          row.device_ciphertext,
+          row.device_iv
+        )
+      } catch (err) {
+        lastGuestErr = err
+      }
+    }
+    throw lastGuestErr ?? new Error('FANOUT_DECRYPT_NO_CANDIDATE')
+  }
+
+  // v1 fan-out: per-device ECDH slot. DIRECT v1 is handled above, so this
   // path is SELF-only — Saved Messages self-fanout slots. The sender is always
   // the user themselves; the candidate list covers ECDH key rotation (the
   // server may still return an old pinned jwk after a vault key change).

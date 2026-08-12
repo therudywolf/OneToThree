@@ -1903,6 +1903,8 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         encryptedGroupKey: chatMembers.encryptedGroupKey,
         role: chatMembers.role,
         channelRole: chatMembers.channelRole,
+        userGroup: users.userGroup,
+        displayName: users.displayName,
       })
       .from(chatMembers)
       .innerJoin(users, eq(users.id, chatMembers.userId))
@@ -1937,6 +1939,13 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         encrypted_group_key: m.encryptedGroupKey,
         role: m.role,
         channel_role: m.channelRole,
+        // Server-assigned tier: `'guest'` marks a link-invited temp-chat guest.
+        // Clients use it for the guest badge AND to allow the v1 fan-out
+        // exception in DIRECT decrypt (guests cannot run the Double Ratchet) —
+        // it must come from the server, a `guest_`-looking username is not
+        // proof (and registering such handles is refused anyway).
+        user_group: m.userGroup,
+        display_name: m.displayName,
       })),
     })
   })

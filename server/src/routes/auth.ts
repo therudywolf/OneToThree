@@ -78,6 +78,24 @@ const DUMMY_RECOVERY_PUB_JWK = JSON.stringify({
 const SESSION_MAX_AGE_S = 60 * 60 * 24
 const PENDING_2FA_MAX_AGE_S = 300
 
+/** Guest sessions are short-lived (docs/project/GUEST_MODE_CONCEPT.ru.md §6.2). */
+const GUEST_SESSION_MAX_AGE_S = Math.max(
+  600,
+  Math.floor(Number(process.env.GUEST_SESSION_TTL_HOURS ?? 12) * 3600)
+)
+
+/**
+ * TTL for a guest fm_session: capped by both the knob and the guest's hard
+ * expiry, so refresh can never extend a session past `guest_expires_at`.
+ * Returns null when the guest is (about to be) expired.
+ */
+function guestSessionTtlS(guestExpiresAt: Date | null): number | null {
+  if (!guestExpiresAt) return null
+  const remain = Math.floor((guestExpiresAt.getTime() - Date.now()) / 1000)
+  if (remain <= 10) return null
+  return Math.min(GUEST_SESSION_MAX_AGE_S, remain)
+}
+
 const totpCodeSchema = z.string().regex(/^\d{6}$/)
 const verifySetupBodySchema = z.object({
   code: totpCodeSchema,
@@ -192,11 +210,26 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       } catch { /* already invalid */ }
     }
 
+    // Rotation preserves the guest marker and never extends past the guest's
+    // hard expiry (docs/project/GUEST_MODE_CONCEPT.ru.md §6.2).
+    let refreshTtlS = SESSION_MAX_AGE_S
+    const refreshGuestClaims: Record<string, string> = {}
+    if (user.group === 'guest') {
+      const [guestRow] = await db
+        .select({ guestExpiresAt: users.guestExpiresAt })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1)
+      const guestTtl = guestSessionTtlS(guestRow?.guestExpiresAt ?? null)
+      if (guestTtl == null) return reply.status(401).send({ error: 'GUEST_EXPIRED' })
+      refreshTtlS = guestTtl
+      refreshGuestClaims.grp = 'guest'
+    }
     const newToken = await reply.jwtSign(
-      { sub: normalizeUuid(user.id), username: user.username, device_id: sess.device_id, jti: generateJti() },
-      { expiresIn: SESSION_MAX_AGE_S }
+      { sub: normalizeUuid(user.id), username: user.username, device_id: sess.device_id, jti: generateJti(), ...refreshGuestClaims },
+      { expiresIn: refreshTtlS }
     )
-    commitFmSessionCookie(reply, newToken, SESSION_MAX_AGE_S)
+    commitFmSessionCookie(reply, newToken, refreshTtlS)
     return reply.send({ ok: true, ...(clientWantsBodyToken(request) ? { token: newToken } : {}) })
   })
 
@@ -439,6 +472,21 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
         const clientDeviceKey = (request.headers['x-client-device-id'] as string | undefined)?.trim() ?? null
 
+        // FEATURE_OPEN_REGISTRATION=off closes account creation. A supplied
+        // public_key_jwk that does not match the stored one gets a UNIFORM
+        // rejection for both "free username" and "taken, different key" — the
+        // response reveals only the global policy, never per-account state.
+        // Login (no public_key_jwk) is untouched; so is re-verifying with the
+        // account's own key.
+        if (
+          !request.server.featureFlags.openRegistration &&
+          public_key_jwk?.trim() &&
+          !(existing && safeEqualUtf8(public_key_jwk.trim(), existing.publicKeyJwk))
+        ) {
+          await deletePending(username)
+          return reply.status(403).send({ error: 'REGISTRATION_DISABLED' })
+        }
+
         let publicKeyJwkStr: string
 
         if (existing) {
@@ -511,6 +559,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         if (existing) {
           userId = existing.id
         } else {
+          // The `guest_` namespace belongs to server-created ephemeral guests.
+          // A self-registered look-alike handle would both impersonate the
+          // guest badge and abuse the client-side v1-fanout allowance that
+          // keys off the server-assigned guest group.
+          if (username.startsWith('guest_')) {
+            return reply.status(400).send({ error: 'INVALID_NICKNAME' })
+          }
           let inserted
           try {
             inserted = await db
@@ -549,11 +604,34 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(400).send({ error: 'CLIENT_DEVICE_ID_REQUIRED' })
         }
         await resetLockout(username)
+        // Guests get a short session capped by their hard expiry, marked with
+        // the `grp` claim (NOT `scope` — any scoped token is rejected as a
+        // session by verifySessionJwt). The claim is what the deny-by-default
+        // guest gate in app.ts keys on.
+        let sessionTtlS = SESSION_MAX_AGE_S
+        const guestClaims: Record<string, string> = {}
+        if (existing?.userGroup === 'guest') {
+          const guestTtl = guestSessionTtlS(existing.guestExpiresAt)
+          if (guestTtl == null) return reply.status(401).send({ error: 'GUEST_EXPIRED' })
+          sessionTtlS = guestTtl
+          guestClaims.grp = 'guest'
+          // Stamp the guest's single device row with the ECDH key uploaded at
+          // /guest/enter. Regular clients publish it via PATCH /users/me after
+          // vault unlock — a surface guests don't have (and shouldn't get).
+          // Without this, GET /users/:guestId/devices is empty and the host
+          // has no fan-out slot target, so host→guest messages are impossible.
+          if (existing.ecdhPublicKeyJwk) {
+            await db
+              .update(devices)
+              .set({ ecdhPublicKey: existing.ecdhPublicKeyJwk, linkedAt: new Date() })
+              .where(eq(devices.id, dev.deviceId))
+          }
+        }
         const token = await reply.jwtSign(
-          { sub: canonicalId, username: accountUsername, device_id: dev.deviceId, jti: generateJti() },
-          { expiresIn: SESSION_MAX_AGE_S }
+          { sub: canonicalId, username: accountUsername, device_id: dev.deviceId, jti: generateJti(), ...guestClaims },
+          { expiresIn: sessionTtlS }
         )
-        commitFmSessionCookie(reply, token, SESSION_MAX_AGE_S)
+        commitFmSessionCookie(reply, token, sessionTtlS)
         await recordLoginEvent(request, { userId: canonicalId, username: accountUsername, outcome: 'success', deviceId: dev.deviceId })
         return reply.send({ user: { id: canonicalId, username: accountUsername }, ...(clientWantsBodyToken(request) ? { token } : {}) })
       })

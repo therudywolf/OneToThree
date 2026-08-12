@@ -65,6 +65,12 @@ export const userGroupEnum = pgEnum('user_group', [
   'premium',
   'regular',
   'test',
+  /**
+   * Ephemeral link-invited guest (mechanism B of the guest-mode concept,
+   * docs/project/GUEST_MODE_CONCEPT.ru.md). Lowest tier; a guest row always
+   * carries `guest_expires_at` and is swept away by the guest sweeper.
+   */
+  'guest',
 ])
 
 export const reportStatusEnum = pgEnum('report_status', ['open', 'closed'])
@@ -142,6 +148,17 @@ export const users = pgTable('users', {
    * can never exceed this slice regardless of overall usage.
    */
   storageQuotaBytes: bigint('storage_quota_bytes', { mode: 'number' }),
+  /**
+   * Guest lifecycle (user_group = 'guest' only; NULL for everyone else).
+   * Hard expiry — the sweeper purges the guest (and their temp chat) past it,
+   * and session refresh never extends beyond it.
+   */
+  guestExpiresAt: timestamp('guest_expires_at', { withTimezone: true }),
+  /** The registered user whose one-time link admitted this guest. */
+  guestInvitedBy: uuid('guest_invited_by').references(
+    (): AnyPgColumn => users.id,
+    { onDelete: 'set null' }
+  ),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -1050,10 +1067,62 @@ export const callSessions = pgTable(
     callType: text('call_type').notNull().default('audio'),
     participantIds: uuid('participant_ids').array().notNull().default(sql`'{}'::uuid[]`),
     endReason: text('end_reason'),
+    /**
+     * Link-invited call guests ("bodiless" — no users row ever exists for
+     * them). The ONLY trace a call guest leaves:
+     * `[{ nick, joined_at, left_at?, kicked? }]`.
+     */
+    guests: jsonb('guests'),
   },
   (t) => ({
     chatIdx: index('call_sessions_chat_idx').on(t.chatId),
     initiatedByIdx: index('call_sessions_initiated_by_idx').on(t.initiatedBy),
     startedAtIdx: index('call_sessions_started_at_idx').on(t.startedAt),
+  })
+)
+
+/**
+ * One-time guest links (docs/project/GUEST_MODE_CONCEPT.ru.md).
+ *
+ * Each row admits exactly ONE guest, then is consumed (`used_at`). Two kinds:
+ * - purpose 'call' — bodiless guest joins a LiveKit room. `chat_id` set when
+ *   the link targets an existing chat's call (room = chat uuid); `room_id` set
+ *   for a standalone "instant meeting" room that is NOT a chat.
+ * - purpose 'chat' — ephemeral guest account + temp direct chat with creator.
+ *
+ * Pending knocks (call flow) never touch this table beyond `used_at` — they
+ * live in Redis only (guest-knock-store.ts), so an unapproved stranger cannot
+ * create Postgres rows.
+ */
+export const guestInvites = pgTable(
+  'guest_invites',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** >=128-bit random base64url slug; the whole capability. */
+    token: text('token').notNull(),
+    purpose: text('purpose').notNull(), // 'call' | 'chat'
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Call link bound to an existing chat's call (LiveKit room = chat uuid). */
+    chatId: uuid('chat_id').references(() => chats.id, { onDelete: 'cascade' }),
+    /** Standalone call room (no chat). Mutually exclusive with chat_id. */
+    roomId: uuid('room_id'),
+    /** TTL until first (only) use; sweeper removes expired rows. */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    /** One-time consumption stamp (approve for calls, enter for chats). */
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    /** "Quiet guest": issue the LiveKit token with canPublish=false. */
+    canPublish: boolean('can_publish').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tokenUnique: uniqueIndex('guest_invites_token_unique').on(t.token),
+    createdByIdx: index('guest_invites_created_by_idx').on(t.createdBy),
+    chatIdIdx: index('guest_invites_chat_id_idx').on(t.chatId),
+    expiresAtIdx: index('guest_invites_expires_at_idx').on(t.expiresAt),
   })
 )

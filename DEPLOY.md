@@ -130,6 +130,26 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 4. Log out and back in, then open `/admin`
 
+### Enabling guest links (optional, off by default)
+
+One-time guest links (call guests + temp chats — see
+`docs/project/GUEST_MODE_CONCEPT.ru.md`) are an explicit opt-in:
+
+1. Set `FEATURE_GUESTS=1` in the api service environment (guest call links also
+   need working calls: `FEATURE_CALLS` on + LiveKit configured). Optionally set
+   `FEATURE_OPEN_REGISTRATION=0` to close self-registration so guest links
+   become the only door for strangers.
+2. **Edge checklist** (if your reverse proxy / Anubis / CrowdSec config is
+   path-aware): allow `/guest/*` (the public entry pages) and `/api/guest/*`
+   (resolve/knock/poll/enter). Keeping Anubis proof-of-work in front of
+   `/guest/*` is recommended — it is the only anonymous app surface.
+   Consider a CrowdSec scenario for bursts of `POST /api/guest/knock` or
+   `/api/guest/enter` from one IP.
+3. Tunables (env, with defaults): `GUEST_LINK_TTL_HOURS=24`,
+   `GUEST_CHAT_TTL_HOURS=12`, `GUEST_SESSION_TTL_HOURS=12`,
+   `GUEST_OFFLINE_GRACE_MIN=60`, `GUEST_MAX_LINKS_PER_USER=20`,
+   `GUEST_MAX_ACTIVE=50`, `GUEST_MSG_PER_MINUTE=20`.
+
 ---
 
 ## Updating

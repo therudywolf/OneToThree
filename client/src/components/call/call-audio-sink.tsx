@@ -1,9 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useCallStore } from '@/store/callStore'
 import { useGroupCallStore } from '@/store/groupCallStore'
-import { applyPreferredAudioOutput } from '@/lib/media-devices'
+import {
+  applyPreferredAudioOutput,
+  loadMediaPrefs,
+  MEDIA_PREFS_CHANGED_EVENT,
+} from '@/lib/media-devices'
 import { startCallForegroundService, stopCallForegroundService } from '@/lib/native-call-service'
 
 /**
@@ -102,6 +106,24 @@ function RemoteAudio({
   )
 }
 
+const subscribePrefs = (cb: () => void) => {
+  window.addEventListener(MEDIA_PREFS_CHANGED_EVENT, cb)
+  window.addEventListener('storage', cb)
+  return () => {
+    window.removeEventListener(MEDIA_PREFS_CHANGED_EVENT, cb)
+    window.removeEventListener('storage', cb)
+  }
+}
+
+/** Master call volume from settings, reactive to live changes. */
+function useOutputVolume(): number {
+  return useSyncExternalStore(
+    subscribePrefs,
+    () => loadMediaPrefs().outputVolume,
+    () => 1
+  )
+}
+
 export function CallAudioSink() {
   const p2pStreams = useCallStore((s) => s.remoteStreams)
   const groupStreams = useGroupCallStore((s) => s.remoteStreams)
@@ -110,6 +132,7 @@ export function CallAudioSink() {
   const peerLocalMuted = useCallStore((s) => s.peerLocalMuted)
   const isCalling = useCallStore((s) => s.isCalling)
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
+  const outputVolume = useOutputVolume()
 
   // Android: hold a microphone foreground service for the lifetime of a call so
   // backgrounding the app doesn't drop the mic / peer audio (issue #3/#13).
@@ -126,7 +149,7 @@ export function CallAudioSink() {
           key={`p2p:${id}`}
           stream={stream}
           muted={deafened || !!peerLocalMuted[id]}
-          volume={peerVolumes[id] ?? 1}
+          volume={(peerVolumes[id] ?? 1) * outputVolume}
         />
       ))}
       {Object.entries(groupStreams).map(([id, stream]) => (
@@ -134,7 +157,7 @@ export function CallAudioSink() {
           key={`grp:${id}`}
           stream={stream}
           muted={deafened || !!peerLocalMuted[id]}
-          volume={peerVolumes[id] ?? 1}
+          volume={(peerVolumes[id] ?? 1) * outputVolume}
         />
       ))}
     </div>

@@ -34,7 +34,7 @@ import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import { toastWarn } from '@/store/toastStore'
 import { buildCallRejectMessage, upsertIncomingCall } from '@/lib/incoming-call'
-import { applyVideoTrack, planScreenShareStart, planScreenShareStop, tuneScreenShareSender } from '@/lib/call-media-tracks'
+import { applyVideoTrack, tuneScreenShareSender } from '@/lib/call-media-tracks'
 import { createKeyedGroupChat } from '@/lib/create-group-chat'
 import { joinGroupCall } from '@/lib/group-call-manager'
 
@@ -107,7 +107,10 @@ type SignalPayload =
   | { kind: 'answer'; sdp: string }
   | { kind: 'ice'; candidate: RTCIceCandidateInit | null }
   | { kind: 'media_state'; media: 'audio' | 'video'; enabled: boolean }
-  | { kind: 'screen_share'; active: boolean }
+  /** `streamId` (new clients) announces the dedicated msid of the SECOND video
+   * m-line carrying the screen, so the receiver routes it into a separate
+   * `peer#screen` tile while the camera keeps flowing on the main one. */
+  | { kind: 'screen_share'; active: boolean; streamId?: string }
   /** `callNonce` salts the per-call frame key — see relayCallNonceRef. */
   | { kind: 'relay_offer'; callNonce?: string }
   | { kind: 'relay_answer'; callNonce?: string }
@@ -142,6 +145,9 @@ export function useWebRTC(userId: string | null) {
   /** Whether the current share captured an audio track, and its local mute. */
   const [hasScreenAudio, setHasScreenAudio] = useState(false)
   const [isScreenAudioMuted, setIsScreenAudioMuted] = useState(false)
+  /** Local preview stream of the OWN screen share (video only) — rendered as
+   * its own tile now that the camera keeps its slot during a share. */
+  const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null)
   // Camera lifecycle is tracked independently from screen-share. A call starts
   // audio-only; the camera track is created lazily the first time the user opts
   // into video. `isCameraOn` reflects whether a *camera* track exists AND is
@@ -157,6 +163,15 @@ export function useWebRTC(userId: string | null) {
   /** The screen-share AUDIO track (tab/system audio), tracked so the in-app
    * stop can remove it from peers and stop it — not just the video track. */
   const screenAudioFeedRef = useRef<MediaStreamTrack | null>(null)
+  /** Dedicated msid stream for OUTGOING screen tracks — its id is announced in
+   * the screen_share signal so receivers can split the screen into its own
+   * tile while the camera stays on the main m-line. */
+  const screenMsidStreamRef = useRef<MediaStream | null>(null)
+  /** Per-peer RTP senders carrying the screen (video + optional audio), so
+   * camera operations can exclude them and stop can remove exactly them. */
+  const screenSendersRef = useRef(new Map<string, { video: RTCRtpSender; audio?: RTCRtpSender }>())
+  /** Announced screen msid per REMOTE peer (from their screen_share signal). */
+  const remoteScreenStreamIdsRef = useRef(new Map<string, string>())
   const disconnectTimersRef = useRef(new Map<string, number>())
   const ringStopRef = useRef<(() => void) | null>(null)
   const facingModeRef = useRef<'user' | 'environment'>('user')
@@ -346,6 +361,9 @@ export function useWebRTC(userId: string | null) {
 
     removePeerConnection(peerId)
     removeRemoteStream(peerId)
+    removeRemoteStream(`${peerId}#screen`)
+    remoteScreenStreamIdsRef.current.delete(peerId)
+    screenSendersRef.current.delete(peerId)
     clearRemotePeerMedia(peerId)
     clearPeerConnectionType(peerId)
     stopRelayPeer(peerId)
@@ -402,54 +420,37 @@ export function useWebRTC(userId: string | null) {
   }, [])
 
   /**
-   * Stop screen-share and restore the pre-share video state. Restores the
-   * camera track ONLY if the camera was on before/while sharing; an audio-only
-   * call returns to audio-only. Never calls getUserMedia.
+   * Stop screen-share. The screen lives on its OWN senders now (camera + screen
+   * are published simultaneously), so stopping is just removing those senders
+   * and stopping the capture — the camera is never touched.
    */
   const revertToOptics = useCallback(() => {
     const screen = screenFeedRef.current
-    const camera = cameraFeedRef.current
-    const local = useCallStore.getState().localStream
-
     if (screen) screen.onended = null
 
-    if (local) {
-      const plan = planScreenShareStop(camera, screen)
-      // Drop the screen track from the local stream.
-      if (plan.detachFromLocal && local.getVideoTracks().includes(plan.detachFromLocal)) {
-        local.removeTrack(plan.detachFromLocal)
+    pcsRef.current.forEach((pc, id) => {
+      const senders = screenSendersRef.current.get(id)
+      if (!senders) return
+      try { pc.removeTrack(senders.video) } catch { /* closed */ }
+      if (senders.audio) {
+        try { pc.removeTrack(senders.audio) } catch { /* closed */ }
       }
-      // Re-attach the camera track if it exists, otherwise leave video cleared.
-      if (plan.attachToLocal && !local.getVideoTracks().includes(plan.attachToLocal)) {
-        local.addTrack(plan.attachToLocal)
-      }
-      pcsRef.current.forEach(pc => applyVideoTrack(pc, plan.publish, local))
-      setLocalStream(local)
-    }
+    })
+    screenSendersRef.current.clear()
 
     screen?.stop()
-    // Stop and unpublish the screen AUDIO track too. It was only cleaned up in
-    // the video track's onended (browser-native "Stop sharing"); the in-app
-    // stop path nulls onended, so without this captured tab/system audio kept
-    // streaming to every peer after the user "stopped". Match the sender by
-    // track IDENTITY so the microphone sender is never removed.
-    const screenAudio = screenAudioFeedRef.current
-    if (screenAudio) {
-      pcsRef.current.forEach((pc) => {
-        const sender = pc.getSenders().find((s) => s.track === screenAudio)
-        if (sender) pc.removeTrack(sender)
-      })
-      screenAudio.stop()
-      screenAudioFeedRef.current = null
-    }
+    screenAudioFeedRef.current?.stop()
+    screenAudioFeedRef.current = null
     screenFeedRef.current = null
+    screenMsidStreamRef.current = null
+    setLocalScreenStream(null)
     setIsScreenSharing(false)
     setHasScreenAudio(false)
     setIsScreenAudioMuted(false)
     bumpLocalMediaRev()
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: false }))
     relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'screen_share', active: false }))
-  }, [setLocalStream, bumpLocalMediaRev])
+  }, [bumpLocalMediaRev])
 
   const severAllLinks = useCallback(() => {
     ringStopRef.current?.()
@@ -503,9 +504,16 @@ export function useWebRTC(userId: string | null) {
       if (track && track.readyState === 'live') receiving.push(track)
     }
     if (receiving.length === 0) return
-    const current = useCallStore.getState().remoteStreams[peerId]
+    const state = useCallStore.getState()
+    // Tracks already routed into the peer's SCREEN entry must not be merged
+    // into the main stream too.
+    const screenEntry = state.remoteStreams[`${peerId}#screen`]
+    const screenTracks = new Set(screenEntry ? screenEntry.getTracks() : [])
+    const wanted = receiving.filter((t_) => !screenTracks.has(t_))
+    if (wanted.length === 0) return
+    const current = state.remoteStreams[peerId]
     const curTracks = current ? current.getTracks() : []
-    const missing = receiving.filter((t_) => !curTracks.includes(t_))
+    const missing = wanted.filter((t_) => !curTracks.includes(t_))
     if (missing.length === 0) return
     setRemoteStream(
       peerId,
@@ -597,8 +605,16 @@ export function useWebRTC(userId: string | null) {
     }
 
     pc.ontrack = (ev) => {
-      if (ev.streams[0]) {
-        setRemoteStream(peerId, ev.streams[0])
+      const evStream = ev.streams[0]
+      // The peer's announced screen msid routes into a SEPARATE tile entry —
+      // camera and screen flow simultaneously on their own m-lines.
+      const screenSid = remoteScreenStreamIdsRef.current.get(peerId)
+      if (evStream && screenSid && evStream.id === screenSid) {
+        setRemoteStream(`${peerId}#screen`, evStream)
+        return
+      }
+      if (evStream) {
+        setRemoteStream(peerId, evStream)
         return
       }
       // No msid: the track arrived via replaceTrack on a reused transceiver
@@ -868,6 +884,8 @@ export function useWebRTC(userId: string | null) {
           callNonce?: string
           /** Monotonic frame counter, bound into the AAD (relay_frame). */
           seq?: number
+          /** Dedicated screen msid (screen_share) — dual camera+screen. */
+          streamId?: string
         }
         if (fromUserId === userId) return
 
@@ -899,6 +917,14 @@ export function useWebRTC(userId: string | null) {
 
         if (data.kind === 'screen_share') {
           useCallStore.getState().setRemotePeerMedia(fromUserId, { screenSharing: data.active })
+          if (data.active && typeof data.streamId === 'string' && data.streamId) {
+            // New clients announce the dedicated screen msid BEFORE adding the
+            // tracks — register it so ontrack routes them into `peer#screen`.
+            remoteScreenStreamIdsRef.current.set(fromUserId, data.streamId)
+          } else if (!data.active) {
+            remoteScreenStreamIdsRef.current.delete(fromUserId)
+            removeRemoteStream(`${fromUserId}#screen`)
+          }
           return
         }
 
@@ -1149,6 +1175,15 @@ export function useWebRTC(userId: string | null) {
         frameRate: { ideal: dims.frameRate },
       }).catch(() => {})
     })
+    // Give the CAMERA sender an encoder budget matching the level — the track
+    // constraints alone don't move the default bitrate cap.
+    const cam = cameraFeedRef.current
+    if (cam) {
+      const bps = level === '720p' ? 2_500_000 : level === '480p' ? 1_000_000 : 600_000
+      pcsRef.current.forEach((pc) => {
+        void tuneScreenShareSender(pc, cam, bps, 'balanced')
+      })
+    }
     useCallStore.getState().bumpLocalMediaRev()
   }, [])
 
@@ -1567,15 +1602,14 @@ export function useWebRTC(userId: string | null) {
       camera = await wrapCameraTrack(camera)
       cameraFeedRef.current = camera
       camera.enabled = true
-      // While screen-sharing keep the camera detached; otherwise publish it.
-      if (!screenFeedRef.current) {
-        if (!local.getVideoTracks().includes(camera)) local.addTrack(camera)
-        pcsRef.current.forEach(pc => applyVideoTrack(pc, camera, local))
-      }
+      // The camera is fully independent of the screen share now — publish it
+      // on the CAMERA slot (excluding the screen's own sender).
+      if (!local.getVideoTracks().includes(camera)) local.addTrack(camera)
+      pcsRef.current.forEach(pc => applyVideoTrack(pc, camera, local, screenFeedRef.current))
       setLocalStream(local)
       bumpLocalMediaRev()
       setIsCameraOn(true)
-      if (!screenFeedRef.current) broadcastVideoState(true)
+      broadcastVideoState(true)
       return
     }
 
@@ -1583,10 +1617,8 @@ export function useWebRTC(userId: string | null) {
     // device open (webcam LED stayed on — issue: "выключение не отключает").
     // stopCameraTrack also tears down the effects chain, releasing the RAW
     // hardware track hidden inside it.
-    if (!screenFeedRef.current) {
-      pcsRef.current.forEach(pc => applyVideoTrack(pc, null, local))
-      broadcastVideoState(false)
-    }
+    pcsRef.current.forEach(pc => applyVideoTrack(pc, null, local, screenFeedRef.current))
+    broadcastVideoState(false)
     if (local.getVideoTracks().includes(camera)) local.removeTrack(camera)
     stopCameraTrack(camera)
     cameraFeedRef.current = null
@@ -1616,7 +1648,7 @@ export function useWebRTC(userId: string | null) {
    */
   const switchCamera = useCallback(async (deviceId?: string) => {
     const local = useCallStore.getState().localStream
-    if (!local || screenFeedRef.current) return
+    if (!local) return
     const oldTrack = cameraFeedRef.current
     if (!oldTrack) return
 
@@ -1641,7 +1673,7 @@ export function useWebRTC(userId: string | null) {
       // Preserve the prior on/off state on the replacement track.
       newTrack.enabled = wasEnabled
 
-      pcsRef.current.forEach(pc => applyVideoTrack(pc, newTrack, local))
+      pcsRef.current.forEach(pc => applyVideoTrack(pc, newTrack, local, screenFeedRef.current))
 
       if (local.getVideoTracks().includes(oldTrack)) local.removeTrack(oldTrack)
       oldTrack.stop()
@@ -1668,8 +1700,7 @@ export function useWebRTC(userId: string | null) {
       return
     }
 
-    const local = useCallStore.getState().localStream
-    if (!local) return
+    if (!useCallStore.getState().localStream) return
 
     let screenStream: MediaStream
     try {
@@ -1690,22 +1721,41 @@ export function useWebRTC(userId: string | null) {
       return
     }
     applyScreenTrackSettings(screenVideoTrack)
+    const screenAudioTrack = screenStream.getAudioTracks()[0] ?? null
 
-    // Detach the camera track from the local stream without stopping it — the
-    // camera keeps its on/off state and is restored when sharing ends. The
-    // camera is never enabled or (re)acquired here.
-    const plan = planScreenShareStart(cameraFeedRef.current, screenVideoTrack)
-    if (plan.detachFromLocal && local.getVideoTracks().includes(plan.detachFromLocal)) {
-      local.removeTrack(plan.detachFromLocal)
-    }
-
-    // Publish the screen track in place of the camera.
-    pcsRef.current.forEach(pc => applyVideoTrack(pc, plan.publish, local))
-    local.addTrack(plan.attachToLocal)
+    // The screen goes out on its OWN senders under a DEDICATED msid — the
+    // camera keeps its slot untouched, so face + screen flow simultaneously
+    // (Discord-style). The msid is announced via the screen_share signal
+    // BEFORE the tracks are added, so the receiver routes the renegotiated
+    // tracks into a separate `peer#screen` tile instead of clobbering the
+    // main stream entry.
+    const msidStream = new MediaStream()
+    screenMsidStreamRef.current = msidStream
     screenFeedRef.current = screenVideoTrack
-    setLocalStream(local)
-    bumpLocalMediaRev()
+    screenAudioFeedRef.current = screenAudioTrack
+
+    pcsRef.current.forEach((_, id) =>
+      transmitSignal(id, { kind: 'screen_share', active: true, streamId: msidStream.id })
+    )
+    relayPeersRef.current.forEach((id) =>
+      transmitSignal(id, { kind: 'screen_share', active: true, streamId: msidStream.id })
+    )
+
+    pcsRef.current.forEach((pc, id) => {
+      const videoSender = pc.addTrack(screenVideoTrack, msidStream)
+      const entry: { video: RTCRtpSender; audio?: RTCRtpSender } = { video: videoSender }
+      if (screenAudioTrack) {
+        entry.audio = pc.addTrack(screenAudioTrack, msidStream)
+      }
+      screenSendersRef.current.set(id, entry)
+    })
+
+    setLocalScreenStream(new MediaStream([screenVideoTrack]))
     setIsScreenSharing(true)
+    setHasScreenAudio(!!screenAudioTrack)
+    setIsScreenAudioMuted(false)
+    bumpLocalMediaRev()
+
     // Encoder budget for the chosen preset — 4K/120fps are unusable on the
     // default ~2.5 Mbps cap (see getScreenShareMaxBitrateBps).
     {
@@ -1716,35 +1766,12 @@ export function useWebRTC(userId: string | null) {
         void tuneScreenShareSender(pc, screenVideoTrack, maxBitrate, degradation)
       })
     }
-    pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: true }))
-    relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'screen_share', active: true }))
 
-    // "Stop sharing" from the browser-native control.
+    // "Stop sharing" from the browser-native control tears everything down.
     screenVideoTrack.onended = () => {
       revertToOptics()
     }
-
-    const screenAudioTrack = screenStream.getAudioTracks()[0]
-    if (screenAudioTrack) {
-      screenAudioFeedRef.current = screenAudioTrack
-      setHasScreenAudio(true)
-      setIsScreenAudioMuted(false)
-      // Publish tab/system audio under the SAME msid as every other local track.
-      // Passing `screenStream` here minted a third m-line with a brand-new msid,
-      // so the peer's `ontrack` fired last with a MediaStream holding ONLY the
-      // screen audio and `setRemoteStream` replaced the entry — our mic and our
-      // shared screen both vanished on their side, permanently (removeTrack on
-      // stop fires no further ontrack, so it never recovered).
-      pcsRef.current.forEach(pc => {
-        pc.addTrack(screenAudioTrack, local)
-      })
-      const origOnEnded = screenVideoTrack.onended
-      screenVideoTrack.onended = () => {
-        screenAudioTrack.stop()
-        if (typeof origOnEnded === 'function') origOnEnded.call(screenVideoTrack, new Event('ended'))
-      }
-    }
-  }, [isRelayOnlyCall, isScreenSharing, revertToOptics, setLocalStream])
+  }, [isRelayOnlyCall, isScreenSharing, revertToOptics, bumpLocalMediaRev])
 
   /**
    * Locally mute/unmute the captured screen-share AUDIO without touching the
@@ -1784,13 +1811,9 @@ export function useWebRTC(userId: string | null) {
       camFxRef.current = handle
       const processed = handle.processedTrack
       processed.enabled = raw.enabled
-      if (!screenFeedRef.current) {
-        pcsRef.current.forEach(pc => applyVideoTrack(pc, processed, local))
-      }
+      pcsRef.current.forEach(pc => applyVideoTrack(pc, processed, local, screenFeedRef.current))
       if (local.getVideoTracks().includes(raw)) local.removeTrack(raw)
-      // While screen-sharing the camera stays DETACHED (the screen owns the
-      // local video slot); revertToOptics re-attaches cameraFeedRef later.
-      if (!screenFeedRef.current && !local.getVideoTracks().includes(processed)) {
+      if (!local.getVideoTracks().includes(processed)) {
         local.addTrack(processed)
       }
       cameraFeedRef.current = processed
@@ -1817,6 +1840,7 @@ export function useWebRTC(userId: string | null) {
     switchCamera,
     isScreenSharing,
     toggleScreenShare,
+    localScreenStream,
     hasScreenAudio,
     isScreenAudioMuted,
     toggleScreenAudioMuted,

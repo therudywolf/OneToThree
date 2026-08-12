@@ -152,12 +152,30 @@ test.describe('call media surfaces', () => {
         )
         .toBe(false)
 
-      // B shares the screen; A must actually render it (transceiver reuse +
-      // receiver-sync path).
+      // B shares the screen; A must actually render it (dedicated msid entry).
       await B.mouse.move(720, 400)
       await B.getByRole('button', { name: /Share Screen|Показать экран/i }).first().click()
       await expect.poll(() => anyVideoPlaying(B), { timeout: 15_000 }).toBe(true)
       await expect.poll(() => anyVideoPlaying(A), { timeout: 15_000 }).toBe(true)
+
+      // CAMERA + SCREEN SIMULTANEOUSLY: B turns the camera on while sharing —
+      // A must render TWO live videos at once (face + screen, Discord-style).
+      await B.mouse.move(700, 380)
+      await B.getByRole('button', { name: /Turn On Camera|Включить камеру/i }).first().click()
+      const countPlayingVideos = (page: Page) =>
+        page.evaluate(
+          () =>
+            Array.from(document.querySelectorAll('video')).filter(
+              (v) => v.srcObject && v.videoWidth > 0
+            ).length
+        )
+      await expect.poll(() => countPlayingVideos(A), { timeout: 20_000 }).toBeGreaterThanOrEqual(2)
+      await expect.poll(() => countPlayingVideos(B), { timeout: 20_000 }).toBeGreaterThanOrEqual(2)
+      // B's camera off again — the screen must keep flowing on A.
+      await B.mouse.move(700, 420)
+      await B.getByRole('button', { name: /Turn Off Camera|Выключить камеру/i }).first().click()
+      await expect.poll(() => anyVideoPlaying(A), { timeout: 10_000 }).toBe(true)
+
       await B.mouse.move(700, 420)
       await B.getByRole('button', { name: /Stop Sharing|Остановить показ/i }).first().click()
 

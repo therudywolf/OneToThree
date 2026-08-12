@@ -31,8 +31,10 @@ export type VoiceProcessingHandle = {
   setGateThreshold: (db: number) => void
   /** Subscribe to ~30/s level reports (UI meters). Returns unsubscribe. */
   onLevel: (cb: (r: VoiceLevelReport) => void) => () => void
-  /** Stop the raw track, tear the graph down, close the context. */
-  dispose: () => void
+  /** Tear the graph down and close the context. Stops the raw hardware track
+   * too unless `keepRawTrack` — the settings mic-test wraps a preview stream
+   * whose raw track must survive the loopback toggle. */
+  dispose: (opts?: { keepRawTrack?: boolean }) => void
 }
 
 const activeHandles = new Set<VoiceProcessingHandle>()
@@ -107,14 +109,16 @@ export async function createProcessedMicTrack(
       levelSubs.add(cb)
       return () => levelSubs.delete(cb)
     },
-    dispose: () => {
+    dispose: (opts) => {
       activeHandles.delete(handle)
       levelSubs.clear()
       try { workletNode.port.onmessage = null } catch { /* detached */ }
       try { source.disconnect() } catch { /* detached */ }
       try { workletNode.disconnect() } catch { /* detached */ }
       try { processed.stop() } catch { /* stopped */ }
-      try { rawTrack.stop() } catch { /* stopped */ }
+      if (!opts?.keepRawTrack) {
+        try { rawTrack.stop() } catch { /* stopped */ }
+      }
       void ctx.close().catch(() => {})
     },
   }

@@ -23,6 +23,9 @@
   --void: #000000;
   --surface: #0a0a0a;
   --surface-elevated: #111111;
+  /* MD3 popovers set bg-[var(--surface-container-high)] directly — the token
+     must resolve in every theme, otherwise those menus render transparent. */
+  --surface-container-high: var(--surface-elevated);
   --on-surface: #e0e0e0;
   --text-primary: var(--on-surface);
   --text-muted: color-mix(in srgb, var(--on-surface) 55%, transparent);

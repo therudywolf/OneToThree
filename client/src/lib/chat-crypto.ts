@@ -228,6 +228,10 @@ export async function buildChatCryptoContext(
 
   if (chat.type === 'public_open') return { mode: 'PUBLIC' as const }
 
+  // Channels are plaintext broadcast on the wire (same shape as public_open);
+  // WHO may post is enforced server-side via chat_members.channel_role.
+  if (chat.type === 'channel') return { mode: 'PUBLIC' as const }
+
   // [1] DIRECT_E2E_LINK :: Прямой канал между двумя узлами
   if (chat.type === 'direct_e2e') {
     // Self-chat (Saved Messages): exactly one member, which is me. Use my own
@@ -274,7 +278,8 @@ export async function buildChatCryptoContextWithMeta(
   if (!response.ok) return null
   const { chat, members } = (await response.json()) as SectorDetailResponse
 
-  if (chat.type === 'public_open') {
+  // Channel rides the PUBLIC path here too — see buildChatCryptoContext.
+  if (chat.type === 'public_open' || chat.type === 'channel') {
     return { ctx: { mode: 'PUBLIC' }, peerUserId: null, chatType: chat.type }
   }
 

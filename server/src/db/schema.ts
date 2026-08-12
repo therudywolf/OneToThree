@@ -128,6 +128,14 @@ export const users = pgTable('users', {
   /** JSON array of {platform,url} social links. */
   socialLinks: text('social_links'),
   /**
+   * Personal channel pinned to the profile («стена»). Must point at a
+   * `chats.type = 'channel'` row owned by this user — enforced in
+   * PATCH /users/me; the DB guarantees only the FK + unlink-on-delete.
+   */
+  profileChannelId: uuid('profile_channel_id').references(() => chats.id, {
+    onDelete: 'set null',
+  }),
+  /**
    * Sprint A1-5 — per-user override for media storage quota in bytes.
    * NULL means "use global default" (env MEDIA_QUOTA_PER_USER_BYTES).
    * The check runs additively on top of the global LRU quota: the user

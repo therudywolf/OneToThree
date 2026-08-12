@@ -5,17 +5,20 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Github,
   Globe,
+  Megaphone,
   Send,
   MessageSquare,
   Phone,
   Video,
   ShieldX,
-  Flag,
   ImageIcon,
   FileText,
   X,
 } from 'lucide-react'
-import { fetchUserProfile, type UserProfile } from '@/lib/api/users'
+import { blockUser, fetchBlockedUsers, fetchUserProfile, unblockUser, type UserProfile } from '@/lib/api/users'
+import { joinChatByInviteCode } from '@/lib/api/chats'
+import { canonicalUserId } from '@/lib/user-id'
+import { useSessionStore } from '@/store/sessionStore'
 import { fetchSharedMedia, type SharedMediaRow } from '@/lib/api/messages'
 import { useTranslation } from '@/hooks/use-translation'
 import { useFocusTrap } from '@/hooks/use-focus-trap'
@@ -60,6 +63,12 @@ export function UserProfileModal({
   const [filesLoading, setFilesLoading] = useState(false)
   const [mediaLoaded, setMediaLoaded] = useState(false)
   const [filesLoaded, setFilesLoaded] = useState(false)
+  // null = the blocked-list fetch hasn't resolved (or failed) — button disabled.
+  const [blocked, setBlocked] = useState<boolean | null>(null)
+  const [blockArmed, setBlockArmed] = useState(false)
+  const [blockBusy, setBlockBusy] = useState(false)
+  const [channelBusy, setChannelBusy] = useState(false)
+  const [channelErr, setChannelErr] = useState(false)
 
   // ESC-to-close + Tab focus trap + body scroll lock, matching every other dialog.
   // When the fullscreen avatar overlay is open, Escape dismisses that layer
@@ -90,6 +99,65 @@ export function UserProfileModal({
       cancelled = true
     }
   }, [username])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchBlockedUsers()
+      .then((rows) => {
+        if (cancelled) return
+        setBlocked(rows.some((r) => canonicalUserId(r.user_id) === canonicalUserId(userId)))
+      })
+      .catch(() => {
+        if (!cancelled) setBlocked(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+
+  const toggleBlock = async () => {
+    if (blockBusy || blocked === null) return
+    // Blocking is destructive-ish — require a second click within 3s.
+    if (!blocked && !blockArmed) {
+      setBlockArmed(true)
+      setTimeout(() => setBlockArmed(false), 3000)
+      return
+    }
+    setBlockBusy(true)
+    try {
+      if (blocked) await unblockUser(userId)
+      else await blockUser(userId)
+      setBlocked(!blocked)
+    } catch {
+      // keep the current state — the next click retries
+    } finally {
+      setBlockBusy(false)
+      setBlockArmed(false)
+    }
+  }
+
+  // Subscribe to (or just open) the profile-pinned channel. Join is idempotent
+  // for existing members, so one call covers both cases.
+  const openProfileChannel = async () => {
+    const channel = profile?.profile_channel
+    if (!channel || channelBusy) return
+    const joinKey = channel.invite_slug || channel.invite_code
+    setChannelBusy(true)
+    setChannelErr(false)
+    try {
+      let chatId = channel.id
+      if (joinKey) {
+        const joined = await joinChatByInviteCode(joinKey)
+        chatId = joined.chat_id
+      }
+      useSessionStore.getState().setActiveChatId(chatId)
+      onClose()
+    } catch {
+      setChannelErr(true)
+    } finally {
+      setChannelBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (activeTab === 'media' && !mediaLoaded) {
@@ -272,17 +340,13 @@ export function UserProfileModal({
               ) : null}
               <button
                 type="button"
-                className="flex items-center gap-1.5 border border-danger/40 bg-void px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10"
-                title={t('profile.block')}
+                disabled={blockBusy || blocked === null}
+                onClick={() => void toggleBlock()}
+                className="flex items-center gap-1.5 border border-danger/40 bg-void px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10 disabled:opacity-40"
+                title={blocked ? t('profile.unblock') : t('profile.block')}
               >
                 <ShieldX className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className="flex items-center gap-1.5 border border-danger/40 bg-void px-3 py-2 font-mono text-[9px] uppercase tracking-widest text-danger transition-colors hover:border-neon-red hover:bg-neon-red/10"
-                title={t('profile.report')}
-              >
-                <Flag className="h-3.5 w-3.5" />
+                {blocked ? t('profile.unblock') : blockArmed ? t('profile.blockConfirm') : t('profile.block')}
               </button>
             </div>
 
@@ -356,6 +420,37 @@ export function UserProfileModal({
                     </div>
                   ) : null}
 
+                  {/* Profile-pinned channel («стена») */}
+                  {profile?.profile_channel ? (
+                    <div className="space-y-2">
+                      <p className="font-mono text-[9px] uppercase tracking-widest text-neon-cyan/60">
+                        {t('explore.typeChannel')}
+                      </p>
+                      <div className="flex items-center justify-between gap-2 border border-neon-cyan/30 bg-void/50 px-3 py-2">
+                        <span className="flex min-w-0 items-center gap-2 font-mono text-[10px] text-neon-cyan/80">
+                          <Megaphone className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">
+                            {sanitizeText(profile.profile_channel.name) || profile.profile_channel.id.slice(0, 8)}
+                          </span>
+                          <span className="shrink-0 text-text-muted/70">
+                            · {profile.profile_channel.member_count} {t('profile.subscribers')}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          disabled={channelBusy}
+                          onClick={() => void openProfileChannel()}
+                          className="shrink-0 border border-neon-cyan/50 bg-void px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan transition-colors hover:bg-neon-cyan/10 disabled:opacity-40"
+                        >
+                          {t('profile.subscribeChannel')}
+                        </button>
+                      </div>
+                      {channelErr ? (
+                        <p className="font-mono text-[9px] text-danger">{t('profile.joinFailed')}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {/* Mutual groups */}
                   <div>
                     <p className="mb-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/60">
@@ -369,7 +464,7 @@ export function UserProfileModal({
                             className="flex items-center gap-2 border border-neon-cyan/20 bg-void/50 px-3 py-2 font-mono text-[10px] text-neon-cyan/80"
                           >
                             <span className="h-2 w-2 rounded-full bg-neon-cyan/40 shrink-0" />
-                            <span className="truncate">{g.name}</span>
+                            <span className="truncate">{sanitizeText(g.name) || g.id.slice(0, 8)}</span>
                           </div>
                         ))}
                       </div>

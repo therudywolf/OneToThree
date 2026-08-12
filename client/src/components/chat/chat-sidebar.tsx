@@ -599,7 +599,6 @@ export function ChatSidebar({
       USER_NOT_FOUND_OR_HIDDEN: t('sidebar.userNotFound'),
       CANNOT_OPEN_DIRECT_WITH_SELF: t('sidebar.cannotOpenSelf'),
       CREATE_FAILED: t('sidebar.createFailed'),
-      INVITE_LINK_COPIED: t('sidebar.copyInviteSuccess'),
     }
     return m[code] ?? code
   }
@@ -1295,7 +1294,7 @@ export function ChatSidebar({
           </p>
 
           {createErr ? (
-            <p className={`mb-2 text-[9px] uppercase tracking-wider p-1 border ${isMd3 ? (createErr === 'INVITE_LINK_COPIED' ? 'rounded-lg border-[color-mix(in_srgb,var(--primary)_30%,transparent)] bg-[color-mix(in_srgb,var(--primary)_10%,transparent)] text-[var(--primary)]' : 'rounded-lg border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]') : (createErr === 'INVITE_LINK_COPIED' ? 'font-mono border-neon-cyan text-neon-cyan bg-neon-cyan/10' : 'font-mono border-neon-red text-neon-red bg-neon-red/10')}`}>
+            <p className={`mb-2 text-[9px] uppercase tracking-wider p-1 border ${isMd3 ? 'rounded-lg border-[color-mix(in_srgb,var(--danger)_30%,transparent)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]' : 'font-mono border-neon-red text-neon-red bg-neon-red/10'}`}>
               {mapSidebarError(createErr)}
             </p>
           ) : null}
@@ -1351,27 +1350,6 @@ export function ChatSidebar({
               >
                 <Megaphone className="h-3.5 w-3.5 shrink-0" />
                 {t('sidebar.createChannel')}
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setFabOpen(false)
-                  const link = `${window.location.origin}/?invite=${encodeURIComponent(userId)}`
-                  try {
-                    await navigator.clipboard.writeText(link)
-                    setCreateErr('INVITE_LINK_COPIED')
-                  } catch {
-                    setCreateErr(link)
-                  }
-                }}
-                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
-                  isMd3
-                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
-                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
-                }`}
-              >
-                <Lock className="h-3.5 w-3.5 shrink-0" />
-                {t('sidebar.copyMyInvite')}
               </button>
               <button
                 type="button"
@@ -1462,27 +1440,6 @@ export function ChatSidebar({
               >
                 <Megaphone className="h-3.5 w-3.5 shrink-0" />
                 {t('sidebar.createChannel')}
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setFabOpen(false)
-                  const link = `${window.location.origin}/?invite=${encodeURIComponent(userId)}`
-                  try {
-                    await navigator.clipboard.writeText(link)
-                    setCreateErr('INVITE_LINK_COPIED')
-                  } catch {
-                    setCreateErr(link)
-                  }
-                }}
-                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
-                  isMd3
-                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
-                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
-                }`}
-              >
-                <Lock className="h-3.5 w-3.5 shrink-0" />
-                {t('sidebar.copyMyInvite')}
               </button>
               <button
                 type="button"

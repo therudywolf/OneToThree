@@ -32,6 +32,7 @@ import { useCapabilities } from '@/components/capabilities-provider'
 import { LogoutButton } from '@/components/logout-button'
 import { useTranslation } from '@/hooks/use-translation'
 import { patchMyProfile, deleteMyAccount } from '@/lib/api/users'
+import { fetchChatsList } from '@/lib/api/chats'
 import { useChatStore } from '@/store/chatStore'
 import { CHAT_SOUND_SCHEMES, type ChatSoundSchemeId } from '@/store/chatStore'
 import {
@@ -150,6 +151,38 @@ export function SettingsModal({ userId, username, onClose }: Props) {
   const [statusText, setStatusText] = useState('')
   const [socialLinks, setSocialLinks] = useState<Array<{ platform: string; url: string }>>([])
   const [profileBusy, setProfileBusy] = useState(false)
+  const [myLinkCopied, setMyLinkCopied] = useState(false)
+  const myInviteLink = typeof window === 'undefined' ? '' : `${window.location.origin}/?invite=${encodeURIComponent(userId)}`
+  // Personal channel pinned to the profile («стена»). '' = not linked.
+  const [profileChannelId, setProfileChannelId] = useState('')
+  const [myChannels, setMyChannels] = useState<Array<{ id: string; name: string | null }>>([])
+  const [channelSaveBusy, setChannelSaveBusy] = useState(false)
+
+  useEffect(() => {
+    void fetchChatsList()
+      .then((rows) => {
+        setMyChannels(
+          rows
+            .filter((r) => r.type === 'channel' && r.my_role === 'owner')
+            .map((r) => ({ id: r.id, name: r.name ?? null }))
+        )
+      })
+      .catch(() => setMyChannels([]))
+  }, [userId])
+
+  const saveProfileChannel = async (next: string) => {
+    const prev = profileChannelId
+    setProfileChannelId(next)
+    setChannelSaveBusy(true)
+    try {
+      await patchMyProfile({ profile_channel_id: next === '' ? null : next })
+    } catch (e) {
+      setProfileChannelId(prev)
+      setError(explainSettingsError(e instanceof Error ? e.message : '', t, 'profile.saveFailed'))
+    } finally {
+      setChannelSaveBusy(false)
+    }
+  }
   const [displayName, setDisplayName] = useState('')
   const [lastSeenPrivacy, setLastSeenPrivacy] = useState<'everyone' | 'contacts' | 'nobody'>('everyone')
   const [disableReadReceipts, setDisableReadReceipts] = useState<boolean | null>(null)
@@ -251,6 +284,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
         bio?: string | null; status_text?: string | null; display_name?: string | null
         last_seen_privacy?: string | null
         social_links?: Array<{ platform: string; url: string }>; error?: string
+        profile_channel_id?: string | null
       }
       if (!r.ok) { setError(explainSettingsError(d.error ?? '', tRef.current, 'settings.loadFailed')); return }
       const value = readDiscoverableFromPayload(d.is_discoverable)
@@ -268,6 +302,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
           : 'everyone'
       )
       setSocialLinks(Array.isArray(d.social_links) ? d.social_links : [])
+      setProfileChannelId(typeof d.profile_channel_id === 'string' ? d.profile_channel_id : '')
     } catch { setError(tRef.current('settings.loadFailed')) }
   }, [updateUser])
 
@@ -1300,12 +1335,48 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   <span className="font-mono text-sm text-neon-cyan/70">@{username}</span>
                   <span className="font-mono text-[8px] uppercase tracking-widest text-text-muted/70">({t('profile.readOnly')})</span>
                 </div>
+                <p className="terminal-label pt-2">{t('sidebar.copyMyInvite')}</p>
+                <p className="text-[9px] text-text-muted/80">{t('profile.myLinkHint')}</p>
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-neon-cyan/70">{myInviteLink}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!myInviteLink) return
+                      void navigator.clipboard.writeText(myInviteLink)
+                        .then(() => { setMyLinkCopied(true); setTimeout(() => setMyLinkCopied(false), 1500) })
+                        .catch(() => {})
+                    }}
+                    className="shrink-0 border border-neon-cyan/40 bg-void px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-neon-cyan/80 hover:bg-neon-cyan/10"
+                  >
+                    {myLinkCopied ? t('common.copied') : t('common.copy')}
+                  </button>
+                </div>
+              </div>
+              <div className="border border-neon-cyan/30 p-3 space-y-2">
+                <label className="terminal-label" htmlFor="profile-channel-select">{t('profile.myChannel')}</label>
+                <p className="text-[9px] text-text-muted/80">{t('profile.myChannelHint')}</p>
+                <select
+                  id="profile-channel-select"
+                  className="terminal-input w-full text-[10px]"
+                  value={profileChannelId}
+                  disabled={channelSaveBusy}
+                  onChange={(e) => { void saveProfileChannel(e.target.value) }}
+                >
+                  <option value="">{t('profile.myChannelNone')}</option>
+                  {myChannels.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name || c.id.slice(0, 8)}</option>
+                  ))}
+                </select>
+                {myChannels.length === 0 ? (
+                  <p className="text-[9px] text-text-muted/70">{t('profile.myChannelEmpty')}</p>
+                ) : null}
               </div>
               <div className="border border-neon-cyan/30 p-3 space-y-2">
                 <label className="terminal-label" htmlFor="profile-bio-tab">{t('profile.bio')}</label>
                 <textarea id="profile-bio-tab" className="terminal-input mt-1 min-h-[5rem] w-full resize-y text-[10px]"
-                  maxLength={500} value={bio} onChange={(e) => setBio(e.target.value)} placeholder={t('profile.bioPlaceholder')} />
-                <p className={`text-right font-mono text-[8px] ${bio.length > 450 ? 'text-neon-red' : 'text-text-muted/70'}`}>{bio.length}/500</p>
+                  maxLength={256} value={bio} onChange={(e) => setBio(e.target.value)} placeholder={t('profile.bioPlaceholder')} />
+                <p className={`text-right font-mono text-[8px] ${bio.length > 230 ? 'text-neon-red' : 'text-text-muted/70'}`}>{bio.length}/256</p>
               </div>
               <div className="border border-neon-cyan/30 p-3 space-y-2">
                 <label className="terminal-label" htmlFor="profile-status-tab">{t('profile.statusText')}</label>

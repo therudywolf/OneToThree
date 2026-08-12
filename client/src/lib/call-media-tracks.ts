@@ -56,17 +56,30 @@ export type PeerLike<T extends TrackLike = TrackLike> = {
 export function applyVideoTrack<T extends TrackLike>(
   pc: PeerLike<T>,
   track: T | null,
-  stream: unknown
+  stream: unknown,
+  /** A video track whose sender must NOT be touched (the screen-share sender
+   * while camera + screen are published simultaneously — with two video
+   * senders the by-kind heuristic would otherwise grab either one). */
+  excludeTrack?: T | null
 ): void {
   const sender: SenderLike<T> | null =
-    pc.getSenders().find((s) => s.track?.kind === 'video') ?? null
+    pc
+      .getSenders()
+      .find((s) => s.track?.kind === 'video' && (!excludeTrack || s.track !== excludeTrack)) ??
+    null
   if (sender) {
     sender.replaceTrack(track)
     return
   }
   if (typeof pc.getTransceivers === 'function') {
     const transceiver =
-      pc.getTransceivers().find((t) => t.receiver?.track?.kind === 'video') ?? null
+      pc
+        .getTransceivers()
+        .find(
+          (t) =>
+            t.receiver?.track?.kind === 'video' &&
+            (!excludeTrack || t.sender.track !== excludeTrack)
+        ) ?? null
     if (transceiver) {
       transceiver.sender.replaceTrack(track)
       // A video m-line this side never sent on is answered `recvonly` — a bare

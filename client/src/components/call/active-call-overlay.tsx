@@ -68,6 +68,8 @@ type Props = {
   hasScreenAudio?: boolean
   isScreenAudioMuted?: boolean
   onToggleScreenAudio?: () => void
+  /** Local preview of the OWN screen share (camera + screen run together). */
+  localScreenStream?: MediaStream | null
   /** Peer's display name — shown as the remote tile label instead of a hex id (#12). */
   peerName?: string
   /** Direct-chat contact ids that can be pulled into this call (1:1→group, #4). */
@@ -185,6 +187,7 @@ export function ActiveCallOverlay({
   hasScreenAudio = false,
   isScreenAudioMuted = false,
   onToggleScreenAudio,
+  localScreenStream = null,
   onSetQuality,
   peerName,
   promoteCandidateIds,
@@ -340,14 +343,24 @@ export function ActiveCallOverlay({
   }, [onToggleMute, setDeafened])
 
   const remoteEntries = useMemo(() => Object.entries(remoteStreams), [remoteStreams])
-  const tileCount = 1 + remoteEntries.length
+  // `peer#screen` entries are SCREEN tiles, not people — the peer's camera and
+  // screen flow simultaneously on separate m-lines now.
+  const basePeerEntries = useMemo(
+    () => remoteEntries.filter(([id]) => !id.endsWith('#screen')),
+    [remoteEntries]
+  )
+  const remoteScreenEntries = useMemo(
+    () => remoteEntries.filter(([id]) => id.endsWith('#screen')),
+    [remoteEntries]
+  )
+  const tileCount = 1 + basePeerEntries.length
 
   // Resolve display names for every remote (a promoted mesh call can carry
   // several peers; `peerName` only covers the classic 1:1 case). Requested ids
   // are remembered so an id the lookup can't resolve is not refetched in a loop.
   const requestedNamesRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const ids = remoteEntries
+    const ids = basePeerEntries
       .map(([id]) => id)
       .filter((id) => !remoteNames[id] && !requestedNamesRef.current.has(id))
     if (ids.length === 0) return
@@ -364,11 +377,15 @@ export function ActiveCallOverlay({
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [remoteEntries, remoteNames])
+  }, [basePeerEntries, remoteNames])
 
   const nameFor = useCallback(
-    (id: string) => remoteNames[id] || peerName || id.slice(0, 8),
-    [remoteNames, peerName]
+    (id: string) => {
+      const base = id.endsWith('#screen') ? id.slice(0, -'#screen'.length) : id
+      const name = remoteNames[base] || peerName || base.slice(0, 8)
+      return id.endsWith('#screen') ? `${name} · ${t('call.screenSharing')}` : name
+    },
+    [remoteNames, peerName, t]
   )
 
   useEffect(() => {
@@ -383,28 +400,35 @@ export function ActiveCallOverlay({
   }, [isCalling, localStream, callStartTime])
 
   // Auto-spotlight a remote that STARTS screen sharing (unless the user pinned
-  // something themselves).
+  // something themselves). Watches both the new dedicated screen ENTRIES and
+  // the legacy media flag (older peers replace their camera with the screen).
   const prevSharingRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const sharing = new Set(
-      Object.entries(remotePeerMedia)
+    const sharing = new Set([
+      ...Object.entries(remotePeerMedia)
         .filter(([, m]) => m.screenSharing)
-        .map(([id]) => id)
-    )
+        .map(([id]) => id),
+      ...remoteScreenEntries.map(([id]) => id),
+    ])
     const started = Array.from(sharing).find((id) => !prevSharingRef.current.has(id))
     prevSharingRef.current = sharing
-    if (started && remoteStreams[started]) {
+    if (started) {
       setLayout('spotlight')
       setPinnedId((prev) => prev ?? null) // keep manual pin; auto-pin handles the rest
     }
-  }, [remotePeerMedia, remoteStreams])
+  }, [remotePeerMedia, remoteScreenEntries])
 
-  // Drop a manual pin when that participant leaves.
+  // Drop a manual pin when that tile disappears.
   useEffect(() => {
-    if (pinnedId && pinnedId !== 'local' && !remoteStreams[pinnedId]) {
+    if (!pinnedId || pinnedId === 'local') return
+    if (pinnedId === 'local#screen') {
+      if (!localScreenStream) setPinnedId(null)
+      return
+    }
+    if (!remoteStreams[pinnedId]) {
       setPinnedId(null)
     }
-  }, [pinnedId, remoteStreams])
+  }, [pinnedId, remoteStreams, localScreenStream])
 
   const audioMuted = localStream?.getAudioTracks().some((t_) => !t_.enabled) ?? false
   // WebSocket PCM relay call (no RTCPeerConnection): audio only — every video
@@ -416,12 +440,14 @@ export function ActiveCallOverlay({
     try { window.localStorage.setItem(LAYOUT_STORAGE_KEY, next) } catch { /* quota */ }
   }, [])
 
-  // Spotlight target: manual pin → remote screen share → first remote → local.
+  // Spotlight target: manual pin → remote screen ENTRY → legacy screen flag →
+  // first remote → local.
   const autoSpotlightId = useMemo(() => {
-    const sharing = remoteEntries.find(([id]) => remotePeerMedia[id]?.screenSharing)
+    if (remoteScreenEntries.length > 0) return remoteScreenEntries[0]![0]
+    const sharing = basePeerEntries.find(([id]) => remotePeerMedia[id]?.screenSharing)
     if (sharing) return sharing[0]
-    return remoteEntries[0]?.[0] ?? 'local'
-  }, [remoteEntries, remotePeerMedia])
+    return basePeerEntries[0]?.[0] ?? 'local'
+  }, [remoteScreenEntries, basePeerEntries, remotePeerMedia])
   const spotlightId = pinnedId ?? autoSpotlightId
 
   const pinToggle = useCallback((id: string) => {
@@ -512,11 +538,13 @@ export function ActiveCallOverlay({
           <div style={{ flex: 1, minHeight: 0 }}>
             <PipVideo
               stream={
-                spotlightId !== 'local'
-                  ? remoteStreams[spotlightId] ?? remoteEntries[0]?.[1] ?? null
-                  : localStream
+                spotlightId === 'local'
+                  ? localStream
+                  : spotlightId === 'local#screen'
+                    ? localScreenStream
+                    : remoteStreams[spotlightId] ?? basePeerEntries[0]?.[1] ?? null
               }
-              mirrored={spotlightId === 'local' && !isScreenSharing}
+              mirrored={spotlightId === 'local'}
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 8 }}>
@@ -549,17 +577,79 @@ export function ActiveCallOverlay({
   const chatShrink = chatOpen && !isNarrow
   const sidePanelOpen = sidePanel !== 'none'
 
-  // Tiles other than the spotlight (local included). With exactly two
-  // participants the local tile floats instead of sitting in a strip.
-  const stripTiles: Array<{ id: string; stream: MediaStream | null }> = []
-  if (layout === 'spotlight') {
-    if (spotlightId !== 'local') stripTiles.push({ id: 'local', stream: localStream })
-    for (const [id, stream] of remoteEntries) {
-      if (id !== spotlightId) stripTiles.push({ id, stream })
+  // Every renderable tile, in display order: local camera, own screen share,
+  // remote people, remote screen shares.
+  const allTileIds: string[] = [
+    'local',
+    ...(localScreenStream ? ['local#screen'] : []),
+    ...basePeerEntries.map(([id]) => id),
+    ...remoteScreenEntries.map(([id]) => id),
+  ]
+
+  /** One tile by id — camera tiles carry peer signals, screen tiles are pure video. */
+  const renderTile = (id: string, showPin = true) => {
+    if (id === 'local') {
+      return (
+        <CallTile
+          peerId="local"
+          stream={localStream}
+          label={t('call.you')}
+          isLocal
+          micMuted={audioMuted}
+          camOff={!isCameraOn}
+          pinned={pinnedId === 'local'}
+          onPinToggle={() => pinToggle('local')}
+          showPin={showPin}
+          mediaRev={localMediaRev}
+        />
+      )
     }
+    if (id === 'local#screen') {
+      return (
+        <CallTile
+          peerId="local#screen"
+          stream={localScreenStream}
+          label={`${t('call.you')} · ${t('call.screenSharing')}`}
+          isLocal
+          screenSharing
+          pinned={pinnedId === 'local#screen'}
+          onPinToggle={() => pinToggle('local#screen')}
+          showPin={showPin}
+          mediaRev={localMediaRev}
+        />
+      )
+    }
+    const isScreen = id.endsWith('#screen')
+    const base = isScreen ? id.slice(0, -'#screen'.length) : id
+    // The legacy screen flag styles the MAIN tile only for old peers that
+    // replace their camera with the screen (no dedicated entry).
+    const legacyScreenOnMain =
+      !isScreen && !!remotePeerMedia[base]?.screenSharing && !remoteStreams[`${base}#screen`]
+    return (
+      <CallTile
+        peerId={id}
+        stream={remoteStreams[id] ?? null}
+        label={nameFor(id)}
+        micMuted={!isScreen && remotePeerMedia[base]?.micMuted}
+        camOff={!isScreen && remotePeerMedia[base]?.cameraOff}
+        screenSharing={isScreen || legacyScreenOnMain}
+        connectionType={peerConnectionTypes[base]}
+        pinned={pinnedId === id}
+        onPinToggle={() => pinToggle(id)}
+        showPin={showPin}
+      />
+    )
   }
-  const useFloatingSelf = layout === 'spotlight' && spotlightId !== 'local' && stripTiles.length === 1
-  const visibleStrip = useFloatingSelf ? [] : stripTiles
+
+  // Tiles other than the spotlight. With the classic two-person layout (no
+  // screen shares anywhere) the local tile floats instead of sitting in a strip.
+  const stripIds = layout === 'spotlight' ? allTileIds.filter((id) => id !== spotlightId) : []
+  const useFloatingSelf =
+    layout === 'spotlight' &&
+    spotlightId !== 'local' &&
+    stripIds.length === 1 &&
+    stripIds[0] === 'local'
+  const visibleStripIds = useFloatingSelf ? [] : stripIds
 
   const participantRows: ParticipantRow[] = [
     {
@@ -570,7 +660,7 @@ export function ActiveCallOverlay({
       camOff: !isCameraOn && !isScreenSharing,
       screenSharing: isScreenSharing,
     },
-    ...remoteEntries.map(([id]) => ({
+    ...basePeerEntries.map(([id]) => ({
       userId: id,
       label: nameFor(id),
       micMuted: remotePeerMedia[id]?.micMuted,
@@ -704,94 +794,21 @@ export function ActiveCallOverlay({
           <div ref={tilesAreaRef} className="relative min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void p-2">
             {layout === 'spotlight' ? (
               <div className="flex h-full flex-col gap-2">
-                <div className="min-h-0 flex-1">
-                  {spotlightId === 'local' ? (
-                    <CallTile
-                      peerId="local"
-                      stream={localStream}
-                      label={t('call.you')}
-                      isLocal
-                      micMuted={audioMuted}
-                      camOff={!isCameraOn && !isScreenSharing}
-                      screenSharing={isScreenSharing}
-                      pinned={pinnedId === 'local'}
-                      onPinToggle={() => pinToggle('local')}
-                      mediaRev={localMediaRev}
-                    />
-                  ) : (
-                    <CallTile
-                      peerId={spotlightId}
-                      stream={remoteStreams[spotlightId] ?? null}
-                      label={nameFor(spotlightId)}
-                      micMuted={remotePeerMedia[spotlightId]?.micMuted}
-                      camOff={remotePeerMedia[spotlightId]?.cameraOff}
-                      screenSharing={remotePeerMedia[spotlightId]?.screenSharing}
-                      connectionType={peerConnectionTypes[spotlightId]}
-                      pinned={pinnedId === spotlightId}
-                      onPinToggle={() => pinToggle(spotlightId)}
-                    />
-                  )}
-                </div>
-                {visibleStrip.length > 0 && (
+                <div className="min-h-0 flex-1">{renderTile(spotlightId)}</div>
+                {visibleStripIds.length > 0 && (
                   <div className="flex shrink-0 gap-2 overflow-x-auto pb-1">
-                    {visibleStrip.map(({ id, stream }) => (
+                    {visibleStripIds.map((id) => (
                       <div key={id} className="h-24 w-40 flex-shrink-0 md:h-28 md:w-48">
-                        {id === 'local' ? (
-                          <CallTile
-                            peerId="local"
-                            stream={localStream}
-                            label={t('call.you')}
-                            isLocal
-                            micMuted={audioMuted}
-                            camOff={!isCameraOn && !isScreenSharing}
-                            screenSharing={isScreenSharing}
-                            onPinToggle={() => pinToggle('local')}
-                            showPin={false}
-                            mediaRev={localMediaRev}
-                          />
-                        ) : (
-                          <CallTile
-                            peerId={id}
-                            stream={stream}
-                            label={nameFor(id)}
-                            micMuted={remotePeerMedia[id]?.micMuted}
-                            camOff={remotePeerMedia[id]?.cameraOff}
-                            screenSharing={remotePeerMedia[id]?.screenSharing}
-                            connectionType={peerConnectionTypes[id]}
-                            onPinToggle={() => pinToggle(id)}
-                            showPin={false}
-                          />
-                        )}
+                        {renderTile(id, false)}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
             ) : (
-              <div className={`grid h-full auto-rows-fr gap-2 ${getGridClass(tileCount)}`}>
-                <CallTile
-                  peerId="local"
-                  stream={localStream}
-                  label={t('call.you')}
-                  isLocal
-                  micMuted={audioMuted}
-                  camOff={!isCameraOn && !isScreenSharing}
-                  screenSharing={isScreenSharing}
-                  onPinToggle={() => pinToggle('local')}
-                  mediaRev={localMediaRev}
-                />
-                {remoteEntries.map(([id, stream]) => (
-                  <CallTile
-                    key={id}
-                    peerId={id}
-                    stream={stream}
-                    label={nameFor(id)}
-                    micMuted={remotePeerMedia[id]?.micMuted}
-                    camOff={remotePeerMedia[id]?.cameraOff}
-                    screenSharing={remotePeerMedia[id]?.screenSharing}
-                    connectionType={peerConnectionTypes[id]}
-                    onPinToggle={() => pinToggle(id)}
-                  />
+              <div className={`grid h-full auto-rows-fr gap-2 ${getGridClass(allTileIds.length)}`}>
+                {allTileIds.map((id) => (
+                  <div key={id} className="min-h-0">{renderTile(id)}</div>
                 ))}
               </div>
             )}
@@ -811,18 +828,7 @@ export function ActiveCallOverlay({
                 }}
                 onPointerDown={(e) => onLocalPipPointerDown(e, 'move')}
               >
-                <CallTile
-                  peerId="local"
-                  stream={localStream}
-                  label={t('call.you')}
-                  isLocal
-                  micMuted={audioMuted}
-                  camOff={!isCameraOn && !isScreenSharing}
-                  screenSharing={isScreenSharing}
-                  onPinToggle={() => pinToggle('local')}
-                  showPin={false}
-                  mediaRev={localMediaRev}
-                />
+                {renderTile('local', false)}
                 {/* resize handle */}
                 <div
                   className="absolute bottom-0 right-0 z-20 h-5 w-5 cursor-nwse-resize"

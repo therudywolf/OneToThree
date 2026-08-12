@@ -384,6 +384,7 @@ export function ChatApp({
     switchCamera,
     isScreenSharing,
     toggleScreenShare,
+    localScreenStream,
     hasScreenAudio,
     isScreenAudioMuted,
     toggleScreenAudioMuted,
@@ -913,6 +914,7 @@ export function ChatApp({
         onFlipCamera={() => void switchCamera()}
         isScreenSharing={isScreenSharing}
         onToggleScreenShare={() => void toggleScreenShare()}
+        localScreenStream={localScreenStream}
         hasScreenAudio={hasScreenAudio}
         isScreenAudioMuted={isScreenAudioMuted}
         onToggleScreenAudio={toggleScreenAudioMuted}

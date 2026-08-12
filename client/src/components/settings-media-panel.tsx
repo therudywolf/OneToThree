@@ -13,7 +13,11 @@ import {
   type ScreenShareFps,
   type ScreenShareRes,
 } from '@/lib/media-devices'
-import { applyVoiceSettingsToActiveCalls } from '@/lib/voice-processing'
+import {
+  applyVoiceSettingsToActiveCalls,
+  createProcessedMicTrack,
+  type VoiceProcessingHandle,
+} from '@/lib/voice-processing'
 import {
   applyCameraEffectToActiveCalls,
   createEffectedCameraTrack,
@@ -133,6 +137,45 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   const [camImageBusy, setCamImageBusy] = useState(false)
   /** Effects chain for the settings viewfinder — previews blur/image live. */
   const previewFxRef = useRef<CameraEffectsHandle | null>(null)
+  /** Mic loopback ("hear yourself"): processed chain + its playback element. */
+  const [loopbackOn, setLoopbackOn] = useState(false)
+  const loopbackAudioRef = useRef<HTMLAudioElement | null>(null)
+  const loopbackFxRef = useRef<VoiceProcessingHandle | null>(null)
+
+  const stopLoopback = useCallback(() => {
+    // keepRawTrack: the raw mic belongs to the settings PREVIEW stream and
+    // must keep feeding the meter after the loopback toggle goes off.
+    loopbackFxRef.current?.dispose({ keepRawTrack: true })
+    loopbackFxRef.current = null
+    const el = loopbackAudioRef.current
+    if (el) {
+      el.srcObject = null
+      el.pause()
+    }
+    setLoopbackOn(false)
+  }, [])
+
+  const startLoopback = useCallback(async () => {
+    const raw = streamRef.current?.getAudioTracks()[0]
+    const el = loopbackAudioRef.current
+    if (!raw || !el) return
+    // Route through the SAME processing chain calls use (noise gate included)
+    // so the user hears exactly what peers would hear.
+    let playStream: MediaStream | null = null
+    try {
+      const fx = await createProcessedMicTrack(raw)
+      if (fx) {
+        loopbackFxRef.current = fx
+        playStream = new MediaStream([fx.processedTrack])
+      }
+    } catch { /* fall back to the raw mic below */ }
+    el.srcObject = playStream ?? new MediaStream([raw])
+    el.muted = false
+    el.volume = 1
+    void el.play().catch(() => {})
+    void applyPreferredAudioOutput(el)
+    setLoopbackOn(true)
+  }, [])
   const [previewError, setPreviewError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [denBytes, setDenBytes] = useState<number | null>(null)
@@ -260,6 +303,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
 
   useEffect(() => {
     if (!active) {
+      stopLoopback()
       previewFxRef.current?.dispose()
       previewFxRef.current = null
       stopTracks(streamRef.current)
@@ -272,6 +316,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
     void refreshDeviceList()
     void startPreview()
     return () => {
+      stopLoopback()
       previewFxRef.current?.dispose()
       previewFxRef.current = null
       stopTracks(streamRef.current)
@@ -280,7 +325,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
       const el = videoRef.current
       if (el) el.srcObject = null
     }
-  }, [active, refreshDeviceList, startPreview])
+  }, [active, refreshDeviceList, startPreview, stopLoopback])
 
   useEffect(() => {
     if (!active) return
@@ -436,6 +481,23 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           </button>
         </div>
         <MicLevelMeter stream={previewStream} thresholdDb={noiseGateDb} gateOn={noiseGate} />
+        {/* Mic loopback — hear yourself through the real processing chain. */}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[9px] text-text-muted">{t('settings.voiceLoopbackHint')}</p>
+          <button
+            type="button"
+            onClick={() => { if (loopbackOn) stopLoopback(); else void startLoopback() }}
+            className={`shrink-0 px-3 py-1.5 text-[10px] ${
+              loopbackOn
+                ? (isMd3 ? 'rounded-full bg-[var(--neon-red)] text-[var(--surface)]' : 'border-2 border-neon-cyan bg-neon-cyan/10 font-mono uppercase tracking-widest text-neon-cyan')
+                : (isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-text-muted' : 'border-2 border-border-strong/60 bg-void font-mono uppercase tracking-widest text-text-muted hover:border-neon-cyan hover:text-neon-cyan')
+            }`}
+            aria-pressed={loopbackOn}
+          >
+            {loopbackOn ? t('settings.voiceLoopbackStop') : t('settings.voiceLoopbackStart')}
+          </button>
+        </div>
+        <audio ref={loopbackAudioRef} className="hidden" playsInline />
         {noiseGate ? (
           <div className="flex items-center gap-2">
             <input

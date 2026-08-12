@@ -23,15 +23,70 @@ import {
   type LocalParticipant,
   type LocalTrackPublication,
   ConnectionState,
-  createLocalTracks,
   type RoomConnectOptions,
   ExternalE2EEKeyProvider,
 } from 'livekit-client'
 import { createCallToken } from '@/lib/api/call'
 import { useGroupCallStore } from '@/store/groupCallStore'
-import { loadMediaPrefs } from '@/lib/media-devices'
+import {
+  loadMediaPrefs,
+  loadCamEffectImage,
+  getUserMediaConstraints,
+} from '@/lib/media-devices'
+import { upgradeLocalStreamAudio, type VoiceProcessingHandle } from '@/lib/voice-processing'
+import { createEffectedCameraTrack, type CameraEffectsHandle } from '@/lib/camera-effects'
 
 let activeRoom: Room | null = null
+/** Voice-processing chain (noise gate) — same treatment the mesh paths get. */
+let lkVoiceHandle: VoiceProcessingHandle | null = null
+/** Camera background-effects chain for the SFU-published camera. */
+let lkCamFx: CameraEffectsHandle | null = null
+/** Raw camera track when no effects chain wraps it (stopped on unpublish). */
+let lkRawCameraTrack: MediaStreamTrack | null = null
+
+function disposeLkProcessing() {
+  lkVoiceHandle?.dispose()
+  lkVoiceHandle = null
+  lkCamFx?.dispose()
+  lkCamFx = null
+  lkRawCameraTrack?.stop()
+  lkRawCameraTrack = null
+}
+
+/** Acquire + wrap a camera track per the saved background-effect pref. */
+async function acquireLkCameraTrack(): Promise<MediaStreamTrack | null> {
+  const prefs = loadMediaPrefs()
+  let raw: MediaStreamTrack | null = null
+  try {
+    const gum = await navigator.mediaDevices.getUserMedia({
+      video: getUserMediaConstraints({ video: true, hd: !prefs.lowBandwidth }).video,
+      audio: false,
+    })
+    raw = gum.getVideoTracks()[0] ?? null
+  } catch {
+    return null
+  }
+  if (!raw) return null
+  if (prefs.camEffect === 'none') {
+    lkRawCameraTrack = raw
+    return raw
+  }
+  try {
+    const fx = await createEffectedCameraTrack(raw, {
+      kind: prefs.camEffect,
+      imageDataUrl: loadCamEffectImage(),
+    })
+    if (!fx) {
+      lkRawCameraTrack = raw
+      return raw
+    }
+    lkCamFx = fx
+    return fx.processedTrack
+  } catch {
+    lkRawCameraTrack = raw
+    return raw
+  }
+}
 
 /** Decode base64 (standard or url-safe) to Uint8Array. */
 function b64ToBytes(b64: string): Uint8Array {
@@ -236,6 +291,7 @@ export async function joinLiveKitCall(
       store.setLocalStream(tracks.length > 0 ? new MediaStream(tracks) : null)
     })
     .on(RoomEvent.Disconnected, () => {
+      disposeLkProcessing()
       store.reset()
       activeRoom = null
     })
@@ -253,29 +309,37 @@ export async function joinLiveKitCall(
     const connectOpts: RoomConnectOptions = {}
     await room.connect(tokenResp.url, tokenResp.token, connectOpts)
 
+    // Same processing the mesh paths get: device prefs + echo/noise/AGC at
+    // capture, the noise-gate worklet on the mic, background effects on the
+    // camera. Processed tracks are published as custom tracks.
     const prefs = loadMediaPrefs()
-    const localTracks = await createLocalTracks({
-      // Honor the voice-processing prefs (echo/noise/AGC) + mic device choice.
-      audio: {
-        deviceId: prefs.micId ?? undefined,
-        echoCancellation: prefs.echoCancel,
-        noiseSuppression: prefs.noiseSuppress,
-        autoGainControl: prefs.autoGain,
-      },
-      video: isVideo
-        ? {
-            deviceId: prefs.cameraId ?? undefined,
-            resolution: { width: 1280, height: 720, frameRate: 30 },
-          }
-        : false,
-    })
-
-    const localStream = new MediaStream(
-      localTracks.map((t) => t.mediaStreamTrack)
+    const gum = await navigator.mediaDevices.getUserMedia(
+      getUserMediaConstraints({ video: false, hd: !prefs.lowBandwidth })
     )
-    store.setLocalStream(localStream)
+    try {
+      lkVoiceHandle = await upgradeLocalStreamAudio(gum)
+    } catch {
+      lkVoiceHandle = null
+    }
+    const micTrack = gum.getAudioTracks()[0]
+    const camTrack = isVideo ? await acquireLkCameraTrack() : null
 
-    await Promise.all(localTracks.map((t) => room.localParticipant.publishTrack(t)))
+    const localTracks: MediaStreamTrack[] = [
+      ...(micTrack ? [micTrack] : []),
+      ...(camTrack ? [camTrack] : []),
+    ]
+    store.setLocalStream(new MediaStream(localTracks))
+
+    if (micTrack) {
+      await room.localParticipant.publishTrack(micTrack, {
+        source: Track.Source.Microphone,
+      })
+    }
+    if (camTrack) {
+      await room.localParticipant.publishTrack(camTrack, {
+        source: Track.Source.Camera,
+      })
+    }
     storeParticipantFromLk(room.localParticipant, true)
 
     store.setIsInGroupCall(true)
@@ -286,6 +350,7 @@ export async function joinLiveKitCall(
       console.debug('[livekit] E2EE active for room', roomId)
     }
   } catch {
+    disposeLkProcessing()
     await room.disconnect()
     activeRoom = null
     return false
@@ -295,6 +360,7 @@ export async function joinLiveKitCall(
 }
 
 export function leaveLiveKitCall() {
+  disposeLkProcessing()
   if (activeRoom) {
     void activeRoom.disconnect()
     activeRoom = null
@@ -314,10 +380,32 @@ export async function toggleLiveKitMute(): Promise<void> {
 export async function toggleLiveKitVideo(): Promise<void> {
   if (!activeRoom) return
   const lp = activeRoom.localParticipant
-  await lp.setCameraEnabled(lp.isCameraEnabled ? false : true)
-  useGroupCallStore
-    .getState()
-    .updateParticipant(lp.identity, { isVideoOff: !lp.isCameraEnabled })
+  const camPub = lp.getTrackPublication(Track.Source.Camera)
+  if (camPub?.track) {
+    // OFF: unpublish + stop the track and its processing chain (LED out).
+    try {
+      await lp.unpublishTrack(camPub.track, true)
+    } catch { /* already gone */ }
+    lkCamFx?.dispose()
+    lkCamFx = null
+    lkRawCameraTrack?.stop()
+    lkRawCameraTrack = null
+    useGroupCallStore.getState().updateParticipant(lp.identity, { isVideoOff: true })
+    return
+  }
+  // ON: acquire (through background effects when configured) and publish.
+  const camTrack = await acquireLkCameraTrack()
+  if (!camTrack) return
+  try {
+    await lp.publishTrack(camTrack, { source: Track.Source.Camera })
+  } catch {
+    lkCamFx?.dispose()
+    lkCamFx = null
+    lkRawCameraTrack?.stop()
+    lkRawCameraTrack = null
+    return
+  }
+  useGroupCallStore.getState().updateParticipant(lp.identity, { isVideoOff: false })
 }
 
 export async function toggleLiveKitScreenShare(): Promise<boolean> {

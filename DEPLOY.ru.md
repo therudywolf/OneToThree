@@ -130,6 +130,26 @@ docker exec -it forestmessenger-db-1 psql -U forest -d forest \
 
 4. Выйдите и войдите снова, затем откройте `/admin`
 
+### Гостевые ссылки (опционально, по умолчанию выключено)
+
+Одноразовые гостевые ссылки (гость на созвоне + временный чат — см.
+`docs/project/GUEST_MODE_CONCEPT.ru.md`) включаются явно:
+
+1. Задайте `FEATURE_GUESTS=1` в окружении api-сервиса (для гостей на созвоне
+   также нужны работающие звонки: `FEATURE_CALLS` + настроенный LiveKit).
+   Опционально `FEATURE_OPEN_REGISTRATION=0` — закрыть самостоятельную
+   регистрацию, чтобы гостевые ссылки стали единственной дверью для чужих.
+2. **Чеклист периметра** (если ваш reverse proxy / Anubis / CrowdSec настроены
+   по путям): пропустите `/guest/*` (публичные страницы входа) и
+   `/api/guest/*` (resolve/knock/poll/enter). Anubis proof-of-work ПЕРЕД
+   `/guest/*` рекомендуется оставить — это единственная анонимная поверхность
+   приложения. Полезен CrowdSec-сценарий на всплески `POST /api/guest/knock`
+   и `/api/guest/enter` с одного IP.
+3. Ручки (env, дефолты): `GUEST_LINK_TTL_HOURS=24`, `GUEST_CHAT_TTL_HOURS=12`,
+   `GUEST_SESSION_TTL_HOURS=12`, `GUEST_OFFLINE_GRACE_MIN=60`,
+   `GUEST_MAX_LINKS_PER_USER=20`, `GUEST_MAX_ACTIVE=50`,
+   `GUEST_MSG_PER_MINUTE=20`.
+
 ---
 
 ## Обновление

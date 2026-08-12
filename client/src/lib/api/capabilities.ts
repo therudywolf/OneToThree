@@ -16,6 +16,12 @@ export type Capabilities = {
   twofa: boolean
   admin: boolean
   groups: boolean
+  /**
+   * One-time guest links. OPT-IN, unlike everything else: the server enables
+   * it explicitly (FEATURE_GUESTS=1) and the client must never fail-open into
+   * showing guest-link UI against a server whose guest routes 404.
+   */
+  guests: boolean
 }
 
 /**
@@ -32,6 +38,9 @@ export const ALL_ON: Capabilities = {
   twofa: true,
   admin: true,
   groups: true,
+  // Deliberately fail-CLOSED (see the type doc). Not really "all on", but the
+  // constant keeps its name as the canonical client default.
+  guests: false,
 }
 
 /**
@@ -46,6 +55,8 @@ export function mergeCapabilities(raw: unknown): Capabilities {
     for (const key of Object.keys(ALL_ON) as (keyof Capabilities)[]) {
       if (features[key] === false) out[key] = false
     }
+    // Opt-in features enable only on an explicit `true` (fail-closed).
+    out.guests = features.guests === true
   }
   return out
 }

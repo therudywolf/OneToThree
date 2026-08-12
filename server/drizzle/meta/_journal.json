@@ -435,6 +435,13 @@
       "when": 1786523999000,
       "tag": "0061_users_profile_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1786600000000,
+      "tag": "0062_guest_mode",
+      "breakpoints": true
     }
   ]
 }

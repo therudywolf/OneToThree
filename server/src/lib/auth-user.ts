@@ -10,7 +10,7 @@ import { normalizeUuid } from './uuid.js'
 import { isJtiDenied } from './jwt-denylist.js'
 import { maybeAutoMigrateDevice } from './device-auto-migrate.js'
 
-export type UserGroup = 'creator' | 'admin' | 'premium' | 'regular' | 'test'
+export type UserGroup = 'creator' | 'admin' | 'premium' | 'regular' | 'test' | 'guest'
 
 export type AuthUser = {
   id: string

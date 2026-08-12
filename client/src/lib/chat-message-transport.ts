@@ -79,6 +79,12 @@ export type SendChatMessageTransportInput = {
    *  a queued send is dropped (instead of replayed) if the user re-imports
    *  their vault while the message was waiting for connectivity. */
   my_ecdh_public_key_jwk?: string | null
+  /**
+   * Server-marked temp-chat guest peer. The ONE case where a DIRECT send may
+   * use v1 static-ECDH fan-out (guests cannot run the Double Ratchet) — see
+   * ChatCryptoContext.peerIsGuest.
+   */
+  peer_is_guest?: boolean
 }
 
 export type SendChatMessageTransportResult = {
@@ -208,6 +214,37 @@ export async function sendChatMessageOverTransport(
     if (input.protocol_version === 2 && input.dr_slots && input.dr_slots.length > 0) {
       body.ciphertexts = input.dr_slots
       body.protocol_version = 2
+      body.content = null
+      body.iv = null
+    } else if (input.peer_is_guest) {
+      // Temp-chat guest peer: v1 per-device static-ECDH fan-out, the ONE
+      // sanctioned exception to DIRECT_V2_REQUIRED (guests have no vault and
+      // no X3DH bundle — a DR session cannot exist). The receiving side allows
+      // this only for server-marked guest chats (decrypt-chat-api-message).
+      if (!input.plaintext?.length) {
+        throw new Error('DIRECT_PLAINTEXT_REQUIRED')
+      }
+      if (!input.sender_private_key) {
+        throw new Error('DIRECT_FANOUT_KEYS_REQUIRED')
+      }
+      const excludeOwnDeviceId = getClientDeviceId() ?? undefined
+      const fanout = await buildFanoutSlotsDetailed(
+        input.sender_private_key,
+        input.my_user_id,
+        input.peer_user_id,
+        input.plaintext,
+        excludeOwnDeviceId
+      )
+      if (fanout.slots.length === 0) {
+        throw new Error('DIRECT_FANOUT_UNAVAILABLE')
+      }
+      if (fanout.failedDeviceIds.length > 0) {
+        partialDelivery = {
+          failedDeviceIds: fanout.failedDeviceIds,
+          attemptedDeviceIds: fanout.attemptedDeviceIds,
+        }
+      }
+      body.ciphertexts = fanout.slots
       body.content = null
       body.iv = null
     } else {

@@ -23,7 +23,19 @@ import { addRingEntry, getRingEntries } from './sector-keyring'
  */
 
 export type ChatCryptoContext =
-  | { mode: 'DIRECT'; peerPublicKeyJwk: string }
+  | {
+      mode: 'DIRECT'
+      peerPublicKeyJwk: string
+      /**
+       * Server-marked temp-chat guest peer (users.user_group === 'guest').
+       * Guests cannot run the Double Ratchet (no vault, no published prekey
+       * bundle), so — for this one deliberate case — the DIRECT send/decrypt
+       * paths allow the v1 static-ECDH fan-out that is otherwise rejected as
+       * a downgrade. The flag comes from the server; a `guest_`-looking
+       * username is NOT proof (and registering such handles is refused).
+       */
+      peerIsGuest?: boolean
+    }
   /**
    * SELF mode: Saved Messages / self-chat (one member = me). We key off
    * our OWN public JWK — ECDH(priv, pub) gives a deterministic secret that
@@ -59,6 +71,8 @@ type SectorDetailResponse = {
     ecdh_public_key_jwk: string | null
     encrypted_group_key: string | null
     role?: 'owner' | 'admin' | 'member'
+    /** Server-assigned tier; `'guest'` marks a link-invited temp-chat guest. */
+    user_group?: string
   }>
 }
 
@@ -248,7 +262,11 @@ export async function buildChatCryptoContext(
 
     await assertTrustOrThrow(peer.user_id, peer.ecdh_public_key_jwk)
 
-    return { mode: 'DIRECT', peerPublicKeyJwk: peer.ecdh_public_key_jwk }
+    return {
+      mode: 'DIRECT',
+      peerPublicKeyJwk: peer.ecdh_public_key_jwk,
+      peerIsGuest: peer.user_group === 'guest',
+    }
   }
 
   // [2] SECTOR_E2E_LINK :: Групповой зашифрованный канал стаи
@@ -300,7 +318,11 @@ export async function buildChatCryptoContextWithMeta(
     await assertTrustOrThrow(peer.user_id, peer.ecdh_public_key_jwk)
 
     return {
-      ctx: { mode: 'DIRECT', peerPublicKeyJwk: peer.ecdh_public_key_jwk },
+      ctx: {
+        mode: 'DIRECT',
+        peerPublicKeyJwk: peer.ecdh_public_key_jwk,
+        peerIsGuest: peer.user_group === 'guest',
+      },
       peerUserId: peer.user_id,
       chatType: chat.type,
     }
@@ -433,6 +455,19 @@ export async function encryptOutboundTextV2(
   // DIRECT: Double Ratchet only. No fallback — the send path must never be
   // downgraded to the unauthenticated v1 static-ECDH scheme.
   if (frame.mode === 'DIRECT') {
+    // The ONE deliberate exception: a server-marked temp-chat guest peer.
+    // Guests have no vault and no X3DH bundle, so DR is impossible; the
+    // transport builds v1 per-device fan-out slots from the plaintext instead
+    // (chat-message-transport.ts DIRECT guest branch).
+    if (frame.peerIsGuest) {
+      return {
+        protocol_version: 1,
+        encrypted_content: '',
+        iv: '',
+        dr_header: null,
+        dr_init: null,
+      }
+    }
     if (!ctx.peerUserId) throw new Error('ERR_NO_DR_KEYS')
     const { getDrFanoutSafety, DR_SLOT_SENTINEL } = await import('@/lib/fanout-crypto')
     const safety = await getDrFanoutSafety(ctx.ownerUserId, ctx.peerUserId)

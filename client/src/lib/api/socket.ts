@@ -245,6 +245,22 @@ export type WsInboundMessage =
       chat_id: string
       reactions: Record<string, string[]>
     }
+  | {
+      /** A link-invited guest is knocking on a call (creator-only event). */
+      type: 'guest_knock'
+      knock_id: string
+      nickname: string
+      chat_id: string | null
+      room_id: string
+    }
+  | { type: 'guest_knock_cancelled'; knock_id: string }
+  | {
+      /** A guest entered a temp chat via a one-time link (creator-only event). */
+      type: 'guest_joined'
+      chat_id: string
+      guest_user_id: string
+      nickname: string
+    }
   | { type: 'error'; error: string }
 
 class FmSocketClient {

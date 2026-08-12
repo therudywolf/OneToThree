@@ -1325,6 +1325,25 @@ const ru = {
   'poll.create': 'Создать опрос',
   'poll.send': 'Отправить опрос',
   'poll.sending': 'Отправка...',
+
+  // [GUEST MODE] одноразовые гостевые ссылки
+  'guest.knockTitle': 'Гость стучится',
+  'guest.knockBody': 'хочет присоединиться к встрече',
+  'guest.badge': 'гость',
+  'guest.admit': 'Впустить',
+  'guest.deny': 'Отклонить',
+  'guest.linksTitle': 'Гостевые ссылки',
+  'guest.linksHint': 'Одноразовые ссылки для людей без аккаунта. Каждая впускает ровно одного гостя и истекает через 24 часа.',
+  'guest.createInstant': 'Быстрая встреча',
+  'guest.createCallHere': 'Гость в звонок этого чата',
+  'guest.createChat': 'Временный чат со мной',
+  'guest.copy': 'Скопировать ссылку',
+  'guest.copied': 'Ссылка скопирована',
+  'guest.revoke': 'Отозвать',
+  'guest.empty': 'Нет активных гостевых ссылок',
+  'guest.purposeCall': 'Быстрая встреча',
+  'guest.purposeCallChat': 'Гость в звонке (этот чат)',
+  'guest.purposeChat': 'Временный чат',
 } as const;
 
 export default ru;

@@ -16,17 +16,26 @@
  * fall back to the mesh WebRTC path. This intentional fail-open keeps the
  * messenger usable when LiveKit is not yet deployed.
  */
-import { createHmac, randomUUID } from 'node:crypto'
-import { and, eq } from 'drizzle-orm'
+import { createHmac } from 'node:crypto'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { chatMembers } from '../db/schema.js'
+import { callSessions, chatMembers, guestInvites, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { readSecret } from '../lib/read-secret.js'
-import { getRedis } from '../lib/redis.js'
 import { getCallMediaMode } from '../lib/call-media-mode.js'
 import { verifyLivekitWebhook } from '../lib/livekit-webhook.js'
+import {
+  deriveCallE2eeKey,
+  dropCallSession,
+  getOrCreateCallSessionId,
+} from '../lib/call-e2ee-session.js'
+import {
+  isGuestIdentityDenied,
+  removeLivekitParticipant,
+} from '../lib/livekit-admin.js'
+import { drainGuestCallLog, recordGuestLeft } from '../lib/guest-call-log.js'
 
 const tokenBodySchema = z.object({
   room: z
@@ -58,8 +67,6 @@ function signLivekitToken(
   const sig = createHmac('sha256', apiSecret).update(signingInput).digest()
   return `${signingInput}.${b64url(sig)}`
 }
-
-const callSessionFallback = new Map<string, string>()
 
 /** Default LiveKit token / E2EE-session lifetime: 2h, ample for a long call. */
 const DEFAULT_CALL_TOKEN_TTL_SECONDS = 60 * 60 * 2
@@ -115,7 +122,29 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
       .where(and(eq(chatMembers.chatId, roomId), eq(chatMembers.userId, u.id)))
       .limit(1)
     if (!membership) {
-      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+      // Standalone guest-call rooms (docs/project/GUEST_MODE_CONCEPT.ru.md
+      // §3.1) are NOT chats — the creator of a live guest link for this room
+      // is authorized to join their own room; everyone else still 403s.
+      // Guests never reach this route at all (their grant arrives via the
+      // knock poll); this branch is for the CREATOR's side of the room.
+      let standaloneOk = false
+      if (req.server.featureFlags.guests) {
+        const [inviteRow] = await db
+          .select({ id: guestInvites.id })
+          .from(guestInvites)
+          .where(
+            and(
+              eq(guestInvites.roomId, roomId),
+              eq(guestInvites.createdBy, u.id),
+              isNull(guestInvites.revokedAt)
+            )
+          )
+          .limit(1)
+        standaloneOk = Boolean(inviteRow)
+      }
+      if (!standaloneOk) {
+        return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+      }
     }
 
     const apiKey = readSecret('LIVEKIT_API_KEY')
@@ -135,12 +164,23 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
     // a fresh token (and re-derives the room key) if a call somehow runs longer.
     const ttlSeconds = resolveCallTokenTtlSeconds()
 
+    // `name` claim: LiveKit renders participants by identity (a bare UUID)
+    // when the token carries no name — the SFU-mode name merge over app-WS is
+    // disabled, so without this claim remote tiles show `id.slice(0,8)`.
+    const [profile] = await db
+      .select({ displayName: users.displayName })
+      .from(users)
+      .where(eq(users.id, u.id))
+      .limit(1)
+
     const token = signLivekitToken(apiKey, apiSecret, {
       iss: apiKey,
       sub: u.id,
       nbf: now - 5,
       exp: now + ttlSeconds,
       jti: `${u.id}.${roomId}.${now}`,
+      name: profile?.displayName?.trim() || u.username,
+      metadata: JSON.stringify({ guest: false }),
       video: {
         room: roomId,
         roomJoin: true,
@@ -161,35 +201,14 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
     // the server (unlike the 1:1 path, whose keys are ECDH-derived per peer and
     // never seen by the server). True E2E-vs-server group calls require deriving
     // the room key from participant ECDH material — tracked as backlog N11.
-    const redisKey = `call:session:${roomId}`
-    const redis = getRedis()
     // D16/D20: bound the session key to the token window (+ a short grace) rather
     // than a fixed 8h. The authoritative teardown is the LiveKit `room_finished`
     // webhook (below) which deletes this key the moment the room empties, giving
     // the next call a fresh room key. The TTL is only the safety net for a missed
-    // webhook — keeping it near the token lifetime avoids a stale key lingering
-    // for hours and being decryptable by a former member who cached it.
-    const CALL_SESSION_TTL = ttlSeconds + 60 * 5
-    let callSessionId: string
-    if (redis) {
-      const existing = await redis.get(redisKey)
-      if (existing) {
-        callSessionId = existing
-      } else {
-        callSessionId = randomUUID()
-        await redis.set(redisKey, callSessionId, 'EX', CALL_SESSION_TTL)
-      }
-    } else {
-      // No Redis — fall back to a per-process map (single-node dev only)
-      callSessionId = callSessionFallback.get(roomId) ?? (() => {
-        const id = randomUUID()
-        callSessionFallback.set(roomId, id)
-        return id
-      })()
-    }
-    const e2eeKey = createHmac('sha256', apiSecret)
-      .update(`e2ee:${roomId}:${callSessionId}`)
-      .digest('base64')
+    // webhook. Shared with the guest grant path (lib/call-e2ee-session.ts) so an
+    // approved guest receives the exact key current participants use.
+    const callSessionId = await getOrCreateCallSessionId(roomId, ttlSeconds + 60 * 5)
+    const e2eeKey = deriveCallE2eeKey(apiSecret, roomId, callSessionId)
 
     reply.header('Cache-Control', 'no-store')
     return reply.send({
@@ -255,25 +274,68 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
 
       const event = result.event
       const eventType = typeof event.event === 'string' ? event.event : null
-      if (eventType === 'room_finished') {
-        const room = event.room
-        const roomName =
-          room && typeof room === 'object' && typeof (room as { name?: unknown }).name === 'string'
-            ? (room as { name: string }).name
-            : null
-        const roomId = roomName ? resolveAuthorizedRoomId(roomName) : null
-        if (roomId) {
-          const redis = getRedis()
-          if (redis) {
-            try {
-              await redis.del(`call:session:${roomId}`)
-            } catch (err) {
-              req.log.warn({ err, roomId }, 'livekit webhook: failed to drop call session key')
+      const room = event.room
+      const roomName =
+        room && typeof room === 'object' && typeof (room as { name?: unknown }).name === 'string'
+          ? (room as { name: string }).name
+          : null
+      const roomId = roomName ? resolveAuthorizedRoomId(roomName) : null
+      const participant = (event as { participant?: unknown }).participant
+      const identity =
+        participant &&
+        typeof participant === 'object' &&
+        typeof (participant as { identity?: unknown }).identity === 'string'
+          ? (participant as { identity: string }).identity
+          : null
+
+      if (eventType === 'room_finished' && roomId) {
+        try {
+          await dropCallSession(roomId)
+        } catch (err) {
+          req.log.warn({ err, roomId }, 'livekit webhook: failed to drop call session key')
+        }
+        req.log.info({ roomId }, 'livekit room_finished: rotated call E2EE session')
+        // Drain the per-room guest log into the chat's call history — the only
+        // trace a bodiless call guest leaves. Standalone rooms have no
+        // call_sessions row (they are not chats), so their entries just drop.
+        try {
+          const entries = await drainGuestCallLog(roomId)
+          if (entries.length > 0) {
+            const nowIso = new Date().toISOString()
+            const closed = entries.map((e) => ({ ...e, left_at: e.left_at ?? nowIso }))
+            const [sessionRow] = await db
+              .select({ id: callSessions.id })
+              .from(callSessions)
+              .where(eq(callSessions.chatId, roomId))
+              .orderBy(desc(callSessions.startedAt))
+              .limit(1)
+            if (sessionRow) {
+              await db
+                .update(callSessions)
+                .set({
+                  guests: sql`coalesce(${callSessions.guests}, '[]'::jsonb) || ${JSON.stringify(closed)}::jsonb`,
+                })
+                .where(eq(callSessions.id, sessionRow.id))
             }
-          } else {
-            callSessionFallback.delete(roomId)
           }
-          req.log.info({ roomId }, 'livekit room_finished: rotated call E2EE session')
+        } catch (err) {
+          req.log.warn({ err, roomId }, 'livekit webhook: failed to persist guest call log')
+        }
+      }
+
+      // A kicked guest can reconnect on their still-valid room JWT (LiveKit
+      // has no ban list) — re-remove denylisted identities the moment the SFU
+      // reports them back in.
+      if (eventType === 'participant_joined' && roomId && identity?.startsWith('guest:')) {
+        if (await isGuestIdentityDenied(roomId, identity)) {
+          void removeLivekitParticipant(roomId, identity)
+        }
+      }
+      if (eventType === 'participant_left' && roomId && identity?.startsWith('guest:')) {
+        try {
+          await recordGuestLeft(roomId, identity)
+        } catch (err) {
+          req.log.warn({ err, roomId }, 'livekit webhook: failed to record guest leave')
         }
       }
 

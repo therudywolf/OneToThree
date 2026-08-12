@@ -11,6 +11,7 @@ import {
   Star,
   ShieldAlert,
   Settings,
+  DoorOpen,
   Lock,
   Bell,
   PhoneOff,
@@ -781,6 +782,23 @@ export function ChatSidebar({
         >
           <Settings className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
         </button>
+        {capabilities.guests ? (
+          <button
+            type="button"
+            title={t('guest.linksTitle')}
+            aria-label={t('guest.linksTitle')}
+            onClick={() => {
+              window.dispatchEvent(new Event('p13_open_guest_links'))
+            }}
+            className={`inline-flex items-center justify-center transition-colors ${
+              isMd3
+                ? 'h-8 w-8 rounded-full text-[var(--on-surface-variant)] hover:bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]'
+                : 'h-10 w-10 rounded-xl border border-neon-cyan/25 text-neon-cyan/75 hover:border-neon-cyan hover:text-neon-cyan'
+            }`}
+          >
+            <DoorOpen className={isMd3 ? 'h-[18px] w-[18px]' : 'h-4 w-4'} />
+          </button>
+        ) : null}
         <button
           type="button"
           title={pushEnabled ? t('settings.pushDisable') : t('settings.pushEnable')}

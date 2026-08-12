@@ -36,7 +36,12 @@ const PUBLIC_PATHS: ReadonlySet<string> = new Set([
 ])
 
 /** Public route trees. */
-const PUBLIC_PREFIXES: readonly string[] = ['/legal/']
+const PUBLIC_PREFIXES: readonly string[] = [
+  '/legal/',
+  // One-time guest links (docs/project/GUEST_MODE_CONCEPT.ru.md): the entry
+  // pages for link-invited guests, who by definition have no session yet.
+  '/guest/',
+]
 
 /**
  * The two sign-in screens specifically. An ALREADY-authenticated visitor gets

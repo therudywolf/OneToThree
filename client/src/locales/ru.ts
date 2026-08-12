@@ -816,6 +816,8 @@ const ru = {
   'settings.voiceNoiseHint': 'Фильтрует фоновый шум (вентиляторы, клавиатура).',
   'settings.voiceAgc': 'Автоусиление (AGC)',
   'settings.voiceAgcHint': 'Держит громкость голоса на стабильном уровне.',
+  'settings.voiceMl': 'ML-шумодав (RNNoise)',
+  'settings.voiceMlHint': 'Нейросетевой шумодав на устройстве. В идущем звонке применится после переподключения; проверить можно кнопкой «Прослушать себя».',
   'settings.voiceGate': 'Шумовой гейт (чувствительность)',
   'settings.voiceGateHint': 'Передавать звук только когда вы говорите громче порога.',
   'settings.voiceGateThreshold': 'Порог гейта',

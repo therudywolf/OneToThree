@@ -127,6 +127,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   const [autoGain, setAutoGain] = useState(true)
   const [noiseGate, setNoiseGate] = useState(false)
   const [noiseGateDb, setNoiseGateDb] = useState(-55)
+  const [noiseMl, setNoiseMl] = useState(false)
   const [screenAudio, setScreenAudio] = useState(true)
   const [screenRes, setScreenRes] = useState<ScreenShareRes>('1080p')
   const [screenFps, setScreenFps] = useState<ScreenShareFps>('30')
@@ -214,6 +215,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
     setAutoGain(p.autoGain)
     setNoiseGate(p.noiseGate)
     setNoiseGateDb(p.noiseGateDb)
+    setNoiseMl(p.noiseMl)
     setScreenAudio(p.screenAudio)
     setScreenRes(p.screenRes)
     setScreenFps(p.screenFps)
@@ -428,6 +430,7 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
         {([
           { key: 'echo', label: t('settings.voiceEcho'), hint: t('settings.voiceEchoHint'), value: echoCancel, set: (v: boolean) => { setEchoCancel(v); saveMediaPrefs({ echoCancel: v }) } },
           { key: 'noise', label: t('settings.voiceNoise'), hint: t('settings.voiceNoiseHint'), value: noiseSuppress, set: (v: boolean) => { setNoiseSuppress(v); saveMediaPrefs({ noiseSuppress: v }) } },
+          { key: 'ml', label: t('settings.voiceMl'), hint: t('settings.voiceMlHint'), value: noiseMl, set: (v: boolean) => { setNoiseMl(v); saveMediaPrefs({ noiseMl: v }) } },
           { key: 'agc', label: t('settings.voiceAgc'), hint: t('settings.voiceAgcHint'), value: autoGain, set: (v: boolean) => { setAutoGain(v); saveMediaPrefs({ autoGain: v }) } },
         ] as const).map((row) => (
           <div key={row.key} className="flex items-center justify-between gap-3">

@@ -19,6 +19,7 @@ export const SENSOR_NOISE_SUPPRESS = 'p13_noise_suppress'
 export const SENSOR_AUTO_GAIN = 'p13_auto_gain'
 export const SENSOR_NOISE_GATE = 'p13_noise_gate'
 export const SENSOR_NOISE_GATE_DB = 'p13_noise_gate_db'
+export const SENSOR_NOISE_ML = 'p13_noise_ml'
 // Screen-share prefs. Resolution and frame rate are SEPARATE knobs (Discord
 // style): p13_screen_quality historically held combined values ('1080p60') —
 // loadMediaPrefs migrates them.
@@ -53,6 +54,8 @@ export type SensorConfig = {
   noiseGate: boolean
   /** Порог гейта в dBFS (примерно -90…-20). */
   noiseGateDb: number
+  /** ML-шумодав (RNNoise) в аудио-цепочке. Применяется со следующего звонка. */
+  noiseMl: boolean
   /** Захватывать звук при демонстрации экрана. */
   screenAudio: boolean
   /** Разрешение демонстрации экрана. */
@@ -124,6 +127,7 @@ export function loadMediaPrefs(): SensorConfig {
     autoGain: readBool(SENSOR_AUTO_GAIN, true),
     noiseGate: readBool(SENSOR_NOISE_GATE, false),
     noiseGateDb: Math.min(-20, Math.max(-90, readNum(SENSOR_NOISE_GATE_DB, -55))),
+    noiseMl: readBool(SENSOR_NOISE_ML, false),
     screenAudio: readBool(SENSOR_SCREEN_AUDIO, true),
     screenRes,
     screenFps,
@@ -182,6 +186,9 @@ export function saveMediaPrefs(map: Partial<SensorConfig>): void {
     }
     if (map.noiseGateDb !== undefined) {
       localStorage.setItem(SENSOR_NOISE_GATE_DB, String(map.noiseGateDb))
+    }
+    if (map.noiseMl !== undefined) {
+      localStorage.setItem(SENSOR_NOISE_ML, map.noiseMl ? 'true' : 'false')
     }
     if (map.screenAudio !== undefined) {
       localStorage.setItem(SENSOR_SCREEN_AUDIO, map.screenAudio ? 'true' : 'false')

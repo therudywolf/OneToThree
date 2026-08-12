@@ -213,6 +213,14 @@ export type WsInboundMessage =
       is_speaking: boolean
     }
   | {
+      type: 'group_call:screen_share'
+      room_id: string
+      user_id: string
+      active: boolean
+      /** Dedicated screen msid (dual camera+screen), null from older senders. */
+      stream_id: string | null
+    }
+  | {
       type: 'group_call:relay_frame'
       room_id: string
       from_user_id: string

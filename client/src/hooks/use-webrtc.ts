@@ -1318,10 +1318,23 @@ export function useWebRTC(userId: string | null) {
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [createAndSendOffer])
 
-  // Clean up call on page unload / tab close
+  // Clean up call on page unload / tab close. A same-tab reload additionally
+  // leaves a short-lived marker in sessionStorage so ChatApp can auto-redial
+  // (the peer gets a clean call_leave + a fresh ring — no zombie pc state).
   useEffect(() => {
     const handleUnload = () => {
-      if (useCallStore.getState().isCalling) severAllLinks()
+      const state = useCallStore.getState()
+      if (!state.isCalling) return
+      const chatId = state.callChatId
+      severAllLinks()
+      if (chatId) {
+        try {
+          sessionStorage.setItem(
+            'p13_active_call',
+            JSON.stringify({ chatId, ts: Date.now() })
+          )
+        } catch { /* storage unavailable */ }
+      }
     }
     window.addEventListener('beforeunload', handleUnload)
     return () => window.removeEventListener('beforeunload', handleUnload)

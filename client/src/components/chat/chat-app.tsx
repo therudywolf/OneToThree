@@ -865,6 +865,32 @@ export function ChatApp({
     await initiateCall(peers, false, activeChatId)
   }
 
+  // Auto-redial after a mid-call page reload: the unload handler in use-webrtc
+  // leaves a short-lived sessionStorage marker; once the socket is ready we
+  // reopen the chat and dial again (the peer simply gets a fresh ring).
+  const redialAttemptedRef = useRef(false)
+  useEffect(() => {
+    if (!peerReady || redialAttemptedRef.current) return
+    redialAttemptedRef.current = true
+    let marker: { chatId?: string; ts?: number } | null = null
+    try {
+      const raw = sessionStorage.getItem('p13_active_call')
+      if (!raw) return
+      sessionStorage.removeItem('p13_active_call')
+      marker = JSON.parse(raw) as { chatId?: string; ts?: number }
+    } catch {
+      return
+    }
+    if (!marker?.chatId || typeof marker.ts !== 'number') return
+    if (Date.now() - marker.ts > 45_000) return
+    const chatId = marker.chatId
+    setActiveChatId(chatId)
+    void (async () => {
+      const peers = await fetchPeerIdsForChat(chatId, userId)
+      if (peers.length > 0) await initiateCall(peers, false, chatId)
+    })()
+  }, [peerReady, userId, setActiveChatId, initiateCall])
+
   async function handleGroupCall() {
     if (!activeChatId) return
     await startGroupCall(activeChatId, false)

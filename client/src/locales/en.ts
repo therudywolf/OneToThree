@@ -813,6 +813,8 @@ const en = {
   'settings.voiceNoiseHint': 'Filters background noise (fans, keyboard).',
   'settings.voiceAgc': 'Automatic gain control',
   'settings.voiceAgcHint': 'Keeps your voice at a steady level.',
+  'settings.voiceMl': 'ML noise suppression (RNNoise)',
+  'settings.voiceMlHint': 'On-device neural denoiser. Live calls pick it up on the next call; try it with "Hear yourself".',
   'settings.voiceGate': 'Noise gate (input sensitivity)',
   'settings.voiceGateHint': 'Transmit only when you speak louder than the threshold.',
   'settings.voiceGateThreshold': 'Gate threshold',

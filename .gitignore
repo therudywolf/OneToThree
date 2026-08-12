@@ -156,3 +156,6 @@ credentials.json
 # not shipped; tracking them only surfaced build-time Dependabot noise.
 mobile/capacitor/package-lock.json
 desktop/tauri/package-lock.json
+
+# MediaPipe wasm — vendored from @mediapipe/tasks-vision by client postinstall (scripts/copy-vendor-assets.js)
+**/public/mediapipe-wasm/

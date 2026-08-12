@@ -69,6 +69,24 @@ export type CallProtocolState = {
   // call. Shared flag for 1:1 and group (a user is only ever in one at a time).
   deafened: boolean
 
+  // [PER_PEER_AUDIO] — local-only volume (0..1) and mute-for-me per peer.
+  // Shared between 1:1 and group (keys are user ids; a user is only ever in
+  // one call at a time). Applied by CallAudioSink; never signalled to peers.
+  peerVolumes: Record<string, number>
+  peerLocalMuted: Record<string, boolean>
+
+  // [SIDE_PANELS] — in-call side panel (participants / debug) and the
+  // Discord-style side chat. Chat is a store flag (not overlay-local state)
+  // because ChatApp renders the actual chat panel next to the shrunk overlay.
+  sidePanel: 'none' | 'participants' | 'debug'
+  chatOpen: boolean
+
+  // [LOCAL_MEDIA_REV] — bumped after every LOCAL stream mutation (camera
+  // on/off, screen share, device switch). Script-added tracks fire NO events
+  // (`addtrack` is UA-only) and the stream keeps its identity, so tiles need
+  // an explicit signal to re-read track state.
+  localMediaRev: number
+
   // [ACTIONS]
   setLocalStream: (feed: MediaStream | null) => void
   setRemoteStream: (peerId: string, feed: MediaStream) => void
@@ -97,6 +115,11 @@ export type CallProtocolState = {
   setDndEnabled: (v: boolean) => void
   setDeafened: (v: boolean) => void
   setCallChatId: (chatId: string | null) => void
+  setPeerVolume: (peerId: string, volume: number) => void
+  setPeerLocalMuted: (peerId: string, muted: boolean) => void
+  setSidePanel: (panel: 'none' | 'participants' | 'debug') => void
+  setChatOpen: (open: boolean) => void
+  bumpLocalMediaRev: () => void
 
   /** Полная деактивация протокола и очистка контура */
   reset: () => void
@@ -161,6 +184,15 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
   }
   const setCallChatId = (chatId: string | null) => set({ callChatId: chatId })
   const setDeafened = (v: boolean) => set({ deafened: v })
+  const setPeerVolume = (peerId: string, volume: number) =>
+    set((state) => ({
+      peerVolumes: { ...state.peerVolumes, [peerId]: Math.min(1, Math.max(0, volume)) },
+    }))
+  const setPeerLocalMuted = (peerId: string, muted: boolean) =>
+    set((state) => ({ peerLocalMuted: { ...state.peerLocalMuted, [peerId]: muted } }))
+  const setSidePanel = (panel: 'none' | 'participants' | 'debug') => set({ sidePanel: panel })
+  const setChatOpen = (open: boolean) => set({ chatOpen: open })
+  const bumpLocalMediaRev = () => set((state) => ({ localMediaRev: state.localMediaRev + 1 }))
   const reset = () => {
     // FIX 9: Close peer connections and stop media tracks before clearing state
     const state = get()
@@ -177,7 +209,7 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
         try { track.stop() } catch { /* ignore */ }
       }
     }
-    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false, deafened: false, callChatId: null })
+    set({ localStream: null, remoteStreams: {}, remotePeerMedia: {}, peerConnections: {}, isCalling: false, isReconnecting: false, isConnectionLost: false, iceRetryCount: 0, connectionQuality: null, incomingCall: null, peerConnectionTypes: {}, isMiniPlayer: false, callStartTime: null, showRelayToast: false, deafened: false, callChatId: null, peerVolumes: {}, peerLocalMuted: {}, sidePanel: 'none', chatOpen: false })
   }
 
   return {
@@ -199,6 +231,11 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     showRelayToast: false,
     dndEnabled: loadDndEnabled(),
     deafened: false,
+    peerVolumes: {},
+    peerLocalMuted: {},
+    sidePanel: 'none',
+    chatOpen: false,
+    localMediaRev: 0,
 
     setLocalStream,
     setRemoteStream,
@@ -222,6 +259,11 @@ export const useCallStore = create<CallProtocolState>((set, get) => {
     setDndEnabled,
     setDeafened,
     setCallChatId,
+    setPeerVolume,
+    setPeerLocalMuted,
+    setSidePanel,
+    setChatOpen,
+    bumpLocalMediaRev,
     reset,
   }
 })

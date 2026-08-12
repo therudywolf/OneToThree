@@ -25,9 +25,19 @@ export type SenderLike<T extends TrackLike = TrackLike> = {
   replaceTrack: (track: T | null) => unknown
 }
 
+/** Minimal structural shape of a transceiver: enough to recover the m-line
+ * kind when the sender's track has been cleared (camera hard-off), and to
+ * re-open the send direction when the m-line was answered receive-only. */
+export type TransceiverLike<T extends TrackLike = TrackLike> = {
+  receiver?: { track: T | null } | null
+  sender: SenderLike<T>
+  direction?: RTCRtpTransceiverDirection | string
+}
+
 /** Minimal structural shape of a peer connection, generic over its track type. */
 export type PeerLike<T extends TrackLike = TrackLike> = {
   getSenders: () => SenderLike<T>[]
+  getTransceivers?: () => TransceiverLike<T>[]
   addTrack: (track: T, stream: never) => unknown
 }
 
@@ -36,16 +46,44 @@ export type PeerLike<T extends TrackLike = TrackLike> = {
  * its track is replaced (no renegotiation); otherwise the track is added
  * (triggers onnegotiationneeded). Passing `null` clears the sender's track so
  * the remote sees video stop without tearing the connection down.
+ *
+ * A sender whose track was cleared (`replaceTrack(null)` on camera hard-off)
+ * no longer matches by `s.track.kind` — the transceiver's receiver side still
+ * knows the m-line kind, so it is used as the fallback. Without it, re-enabling
+ * the camera after a hard-off would addTrack a SECOND video m-line, and the
+ * remote element (playing the first, permanently-muted track) stayed black.
  */
 export function applyVideoTrack<T extends TrackLike>(
   pc: PeerLike<T>,
   track: T | null,
   stream: unknown
 ): void {
-  const sender = pc.getSenders().find((s) => s.track?.kind === 'video')
+  const sender: SenderLike<T> | null =
+    pc.getSenders().find((s) => s.track?.kind === 'video') ?? null
   if (sender) {
     sender.replaceTrack(track)
-  } else if (track) {
+    return
+  }
+  if (typeof pc.getTransceivers === 'function') {
+    const transceiver =
+      pc.getTransceivers().find((t) => t.receiver?.track?.kind === 'video') ?? null
+    if (transceiver) {
+      transceiver.sender.replaceTrack(track)
+      // A video m-line this side never sent on is answered `recvonly` — a bare
+      // replaceTrack on it transmits NOTHING and fires no negotiation (the
+      // peer who screen-shares without ever enabling the camera hit exactly
+      // this: their preview worked, the remote saw nothing). Re-opening the
+      // direction triggers onnegotiationneeded and the track actually flows.
+      if (
+        track &&
+        (transceiver.direction === 'recvonly' || transceiver.direction === 'inactive')
+      ) {
+        transceiver.direction = 'sendrecv'
+      }
+      return
+    }
+  }
+  if (track) {
     pc.addTrack(track, stream as never)
   }
 }

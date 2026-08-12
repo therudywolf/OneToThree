@@ -19,6 +19,27 @@
  */
 
 import { applyVoiceConstraintsToTrack, loadMediaPrefs } from '@/lib/media-devices'
+import type { RnnoiseWorkletNode as RnnoiseWorkletNodeT } from '@sapphi-red/web-noise-suppressor'
+
+// RNNoise wasm binary — fetched once per session from the self-hosted assets
+// (vendored by copy-vendor-assets.js). Null = unavailable/failed.
+let rnnoiseWasmPromise: Promise<ArrayBuffer | null> | null = null
+function getRnnoiseWasm(): Promise<ArrayBuffer | null> {
+  if (rnnoiseWasmPromise) return rnnoiseWasmPromise
+  rnnoiseWasmPromise = (async () => {
+    try {
+      const { loadRnnoise } = await import('@sapphi-red/web-noise-suppressor')
+      return await loadRnnoise({
+        url: '/noise-suppressor/rnnoise.wasm',
+        simdUrl: '/noise-suppressor/rnnoise_simd.wasm',
+      })
+    } catch (err) {
+      console.warn('[voice] RNNoise wasm unavailable — ML denoise disabled', err)
+      return null
+    }
+  })()
+  return rnnoiseWasmPromise
+}
 
 export type VoiceLevelReport = { db: number; open: boolean; gain: number }
 
@@ -69,9 +90,31 @@ export async function createProcessedMicTrack(
     return null
   }
 
+  // Optional ML denoiser (RNNoise) ahead of the gate: raw → rnnoise → gate.
+  // Best-effort — any failure falls back to the plain gate chain.
+  let rnnoiseNode: RnnoiseWorkletNodeT | null = null
+  if (prefs.noiseMl) {
+    try {
+      const wasmBinary = await getRnnoiseWasm()
+      if (wasmBinary) {
+        const { RnnoiseWorkletNode } = await import('@sapphi-red/web-noise-suppressor')
+        await ctx.audioWorklet.addModule('/noise-suppressor/rnnoise-worklet.js')
+        rnnoiseNode = new RnnoiseWorkletNode(ctx, { wasmBinary, maxChannels: 1 })
+      }
+    } catch (err) {
+      console.warn('[voice] RNNoise node failed — continuing without ML denoise', err)
+      rnnoiseNode = null
+    }
+  }
+
   const source = ctx.createMediaStreamSource(new MediaStream([rawTrack]))
   const destination = ctx.createMediaStreamDestination()
-  source.connect(workletNode)
+  if (rnnoiseNode) {
+    source.connect(rnnoiseNode)
+    rnnoiseNode.connect(workletNode)
+  } else {
+    source.connect(workletNode)
+  }
   workletNode.connect(destination)
 
   const processed = destination.stream.getAudioTracks()[0]
@@ -114,6 +157,8 @@ export async function createProcessedMicTrack(
       levelSubs.clear()
       try { workletNode.port.onmessage = null } catch { /* detached */ }
       try { source.disconnect() } catch { /* detached */ }
+      try { rnnoiseNode?.destroy() } catch { /* detached */ }
+      try { rnnoiseNode?.disconnect() } catch { /* detached */ }
       try { workletNode.disconnect() } catch { /* detached */ }
       try { processed.stop() } catch { /* stopped */ }
       if (!opts?.keepRawTrack) {

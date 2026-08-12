@@ -225,6 +225,16 @@ const groupCallSpeakingSchema = z.object({
   is_speaking: z.boolean(),
 })
 
+// Dual camera+screen for mesh group calls: the sharer announces the dedicated
+// msid of its screen m-lines so receivers can split the screen into its own
+// tile (mirrors the 1:1 screen_share signal's streamId).
+const groupCallScreenShareSchema = z.object({
+  type: z.literal('group_call:screen_share'),
+  room_id: z.string().uuid(),
+  active: z.boolean(),
+  stream_id: z.string().min(1).max(256).optional(),
+})
+
 const groupCallRelayFrameSchema = z.object({
   type: z.literal('group_call:relay_frame'),
   room_id: z.string().uuid(),
@@ -1409,6 +1419,21 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             room_id,
             user_id: user.id,
             is_video_off,
+          })
+          return
+        }
+
+        const gcScreenShare = groupCallScreenShareSchema.safeParse(json)
+        if (gcScreenShare.success) {
+          const { room_id, active, stream_id } = gcScreenShare.data
+          if (!(await isUserInRoomTracked(room_id, user.id))) return
+          const otherIds = (await getRoomParticipantIds(room_id)).filter(id => id !== user.id)
+          broadcastToUsers(otherIds, {
+            type: 'group_call:screen_share',
+            room_id,
+            user_id: user.id,
+            active,
+            stream_id: stream_id ?? null,
           })
           return
         }

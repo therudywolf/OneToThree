@@ -27,6 +27,8 @@ export type GroupCallState = {
 
   // [STREAMS]
   localStream: MediaStream | null
+  /** Local preview of the OWN screen share (dual camera+screen, mesh). */
+  localScreenStream: MediaStream | null
   remoteStreams: Record<string, MediaStream>
 
   // [PARTICIPANTS]
@@ -54,6 +56,7 @@ export type GroupCallState = {
   setTransport: (transport: GroupCallTransport) => void
   setIsScreenSharing: (sharing: boolean) => void
   setLocalStream: (stream: MediaStream | null) => void
+  setLocalScreenStream: (stream: MediaStream | null) => void
   setRemoteStream: (userId: string, stream: MediaStream) => void
   removeRemoteStream: (userId: string) => void
   setParticipant: (userId: string, participant: GroupCallParticipant) => void
@@ -78,6 +81,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   transport: 'mesh',
   isScreenSharing: false,
   localStream: null,
+  localScreenStream: null,
   remoteStreams: {},
   participants: {},
   peerConnections: {},
@@ -94,6 +98,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   setTransport: (transport) => set({ transport }),
   setIsScreenSharing: (sharing) => set({ isScreenSharing: sharing }),
   setLocalStream: (stream) => set({ localStream: stream }),
+  setLocalScreenStream: (stream) => set({ localScreenStream: stream }),
   setRemoteStream: (userId, stream) =>
     set((s) => ({ remoteStreams: { ...s.remoteStreams, [userId]: stream } })),
   removeRemoteStream: (userId) =>
@@ -156,6 +161,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
       transport: 'mesh',
       isScreenSharing: false,
       localStream: null,
+      localScreenStream: null,
       remoteStreams: {},
       participants: {},
       peerConnections: {},

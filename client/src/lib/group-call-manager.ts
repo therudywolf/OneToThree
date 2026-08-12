@@ -34,12 +34,7 @@ function loadLiveKitManager(): Promise<LiveKitCallManager> {
 /** Local mirror of livekit-call-manager's active-room state (D9). */
 let livekitActive = false
 import { fetchCallConfig } from '@/lib/api/call'
-import {
-  applyVideoTrack,
-  planScreenShareStart,
-  planScreenShareStop,
-  tuneScreenShareSender,
-} from '@/lib/call-media-tracks'
+import { applyVideoTrack, tuneScreenShareSender } from '@/lib/call-media-tracks'
 import {
   getUserMediaConstraints,
   loadMediaPrefs,
@@ -100,6 +95,10 @@ let groupScreenTrack: MediaStreamTrack | null = null
 /** Screen-share audio track, tracked so the in-app stop / call teardown stops
  * and unpublishes it — not only the video track. */
 let groupScreenAudioTrack: MediaStreamTrack | null = null
+/** Per-peer RTP senders carrying the screen, so stop removes exactly them. */
+const groupScreenSenders = new Map<string, { video: RTCRtpSender; audio?: RTCRtpSender }>()
+/** Announced screen msid per REMOTE participant. */
+const groupRemoteScreenStreamIds = new Map<string, string>()
 /** Live mic-processing chain (noise gate) for the mesh/relay group call. */
 let groupVoiceHandle: VoiceProcessingHandle | null = null
 
@@ -329,6 +328,12 @@ function createPeerConnection(
   // Remote track handler
   pc.ontrack = (ev) => {
     const store2 = useGroupCallStore.getState()
+    // The peer's announced screen msid routes into a SEPARATE tile entry.
+    const screenSid = groupRemoteScreenStreamIds.get(peerId)
+    if (ev.streams[0] && screenSid && ev.streams[0].id === screenSid) {
+      store2.setRemoteStream(`${peerId}#screen`, ev.streams[0])
+      return
+    }
     if (ev.streams[0]) {
       store2.setRemoteStream(peerId, ev.streams[0])
       setupSpeakingDetection(peerId, ev.streams[0])
@@ -459,9 +464,14 @@ function syncRemoteFromReceivers(peerId: string, pc: RTCPeerConnection) {
   }
   if (receiving.length === 0) return
   const store = useGroupCallStore.getState()
+  // Tracks already routed into the peer's SCREEN entry stay out of the main one.
+  const screenEntry = store.remoteStreams[`${peerId}#screen`]
+  const screenTracks = new Set(screenEntry ? screenEntry.getTracks() : [])
+  const wanted = receiving.filter((t) => !screenTracks.has(t))
+  if (wanted.length === 0) return
   const current = store.remoteStreams[peerId]
   const curTracks = current ? current.getTracks() : []
-  const missing = receiving.filter((t) => !curTracks.includes(t))
+  const missing = wanted.filter((t) => !curTracks.includes(t))
   if (missing.length === 0) return
   const merged = new MediaStream([
     ...curTracks.filter((t) => t.readyState === 'live'),
@@ -511,10 +521,13 @@ function cleanupPeer(peerId: string) {
     store.removePeerConnection(peerId)
   }
 
-  // Clean remote stream
+  // Clean remote stream(s) — the dedicated screen entry too.
   const remote = store.remoteStreams[peerId]
   if (remote) terminateFeed(remote)
   store.removeRemoteStream(peerId)
+  store.removeRemoteStream(`${peerId}#screen`)
+  groupRemoteScreenStreamIds.delete(peerId)
+  groupScreenSenders.delete(peerId)
 
   // Remove participant
   store.removeParticipant(peerId)
@@ -564,6 +577,8 @@ function cleanupAll() {
   groupCameraTrack = null
   groupScreenTrack = null
   groupScreenAudioTrack = null
+  groupScreenSenders.clear()
+  groupRemoteScreenStreamIds.clear()
 
   // Clear cached ICE servers
   cachedIceServers = null
@@ -996,32 +1011,27 @@ export async function toggleGroupCallVideo(): Promise<void> {
     const camera = await wrapGroupCameraTrack(rawCamera)
     groupCameraTrack = camera
     camera.enabled = true
-    // While screen-sharing keep the camera detached; otherwise publish it.
-    if (!groupScreenTrack) {
-      if (!local.getVideoTracks().includes(camera)) local.addTrack(camera)
-      for (const pc of Object.values(store.peerConnections)) {
-        applyVideoTrack(pc, camera, local)
-      }
+    // The camera is fully independent of the screen share (dual mode) —
+    // publish on the CAMERA slot, excluding the screen's own sender.
+    if (!local.getVideoTracks().includes(camera)) local.addTrack(camera)
+    for (const pc of Object.values(store.peerConnections)) {
+      applyVideoTrack(pc, camera, local, groupScreenTrack)
     }
     store.setLocalStream(local)
     store.bumpLocalMediaRev()
-    if (!groupScreenTrack) {
-      sendGroupCallSignal({
-        type: 'group_call:video_toggle',
-        room_id: store.roomId,
-        is_video_off: false,
-      })
-    }
+    sendGroupCallSignal({
+      type: 'group_call:video_toggle',
+      room_id: store.roomId,
+      is_video_off: false,
+    })
     return
   }
 
   // Existing camera track -> HARD off: stop the hardware (LED out), clear the
   // sender track, drop the ref. `enabled = false` alone kept the device open.
   const cam = groupCameraTrack
-  if (!groupScreenTrack) {
-    for (const pc of Object.values(store.peerConnections)) {
-      applyVideoTrack(pc, null, local)
-    }
+  for (const pc of Object.values(store.peerConnections)) {
+    applyVideoTrack(pc, null, local, groupScreenTrack)
   }
   if (local.getVideoTracks().includes(cam)) local.removeTrack(cam)
   // Tears down the effects chain too — it owns the RAW hardware track.
@@ -1029,9 +1039,6 @@ export async function toggleGroupCallVideo(): Promise<void> {
   groupCameraTrack = null
   store.setLocalStream(local)
   store.bumpLocalMediaRev()
-
-  // Don't leak camera on/off signalling to peers while the screen is shared.
-  if (groupScreenTrack) return
 
   sendGroupCallSignal({
     type: 'group_call:video_toggle',
@@ -1070,23 +1077,32 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
       return false
     }
     applyScreenTrackSettings(screenVideoTrack)
+    const screenAudioTrack = screenStream.getAudioTracks()[0] ?? null
 
-    const local = store.localStream
-    // Detach the camera track from the local stream WITHOUT stopping it — the
-    // camera keeps its enabled/disabled state and is restored when sharing
-    // ends. The camera is never enabled or (re)acquired here.
-    const plan = planScreenShareStart(groupCameraTrack, screenVideoTrack)
-    if (plan.detachFromLocal && local.getVideoTracks().includes(plan.detachFromLocal)) {
-      local.removeTrack(plan.detachFromLocal)
-    }
-
-    // Publish the screen track in place of the camera on every peer.
-    for (const pc of Object.values(store.peerConnections)) {
-      applyVideoTrack(pc, plan.publish, local)
-    }
-    local.addTrack(plan.attachToLocal)
+    // Dual camera+screen: the screen rides its OWN senders under a DEDICATED
+    // msid announced ahead of the tracks, so peers split it into a separate
+    // tile while the camera keeps flowing untouched (mirrors the 1:1 path).
+    const msidStream = new MediaStream()
     groupScreenTrack = screenVideoTrack
-    store.setLocalStream(local)
+    groupScreenAudioTrack = screenAudioTrack
+
+    sendGroupCallSignal({
+      type: 'group_call:screen_share',
+      room_id: store.roomId,
+      active: true,
+      stream_id: msidStream.id,
+    })
+
+    for (const [peerId, pc] of Object.entries(store.peerConnections)) {
+      const videoSender = pc.addTrack(screenVideoTrack, msidStream)
+      const entry: { video: RTCRtpSender; audio?: RTCRtpSender } = { video: videoSender }
+      if (screenAudioTrack) {
+        entry.audio = pc.addTrack(screenAudioTrack, msidStream)
+      }
+      groupScreenSenders.set(peerId, entry)
+    }
+
+    store.setLocalScreenStream(new MediaStream([screenVideoTrack]))
     store.bumpLocalMediaRev()
 
     // Encoder budget for the chosen preset (4K/120fps need far more than the
@@ -1100,37 +1116,9 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
       }
     }
 
-    // Remote peers now receive video (the screen) — keep their video-off
-    // indicator accurate. Uses the existing video_toggle channel.
-    sendGroupCallSignal({
-      type: 'group_call:video_toggle',
-      room_id: store.roomId,
-      is_video_off: false,
-    })
-
     // "Stop sharing" from the browser-native control.
     screenVideoTrack.onended = () => {
       void stopGroupCallScreenShare()
-    }
-
-    // Add screen audio (if the user shared a tab with audio) to every peer.
-    // Publish it under the SAME msid as the rest of the local tracks: passing
-    // `screenStream` minted a new remote MediaStream holding ONLY the screen
-    // audio, and the peer's ontrack replaced their entry with it — mic and
-    // shared screen both vanished on their side (same bug the 1:1 path fixed).
-    const screenAudioTrack = screenStream.getAudioTracks()[0]
-    if (screenAudioTrack) {
-      groupScreenAudioTrack = screenAudioTrack
-      for (const pc of Object.values(store.peerConnections)) {
-        pc.addTrack(screenAudioTrack, local)
-      }
-      const origOnEnded = screenVideoTrack.onended
-      screenVideoTrack.onended = () => {
-        screenAudioTrack.stop()
-        if (typeof origOnEnded === 'function') {
-          origOnEnded.call(screenVideoTrack, new Event('ended'))
-        }
-      }
     }
 
     return true
@@ -1182,60 +1170,58 @@ export async function handleGroupCallRelayFrame(
 }
 
 /**
- * Stop screen sharing and restore the pre-share video state. Restores the
- * camera track ONLY if a camera track existed before/while sharing — keeping
- * its prior enabled/disabled state untouched; an audio-only call returns to
- * audio-only. Never calls getUserMedia and never enables the camera.
+ * Stop screen sharing. The screen lives on its OWN senders (dual
+ * camera+screen), so stopping is removing those senders and the capture —
+ * the camera is never touched.
  */
 export function stopGroupCallScreenShare(): void {
   if (groupRelayMode) return
   const screen = groupScreenTrack
   if (!screen) return
   const store = useGroupCallStore.getState()
-  const local = store.localStream
 
   screen.onended = null
 
-  if (local) {
-    const plan = planScreenShareStop(groupCameraTrack, screen)
-    // Drop the screen track from the local stream.
-    if (plan.detachFromLocal && local.getVideoTracks().includes(plan.detachFromLocal)) {
-      local.removeTrack(plan.detachFromLocal)
+  for (const [peerId, pc] of Object.entries(store.peerConnections)) {
+    const senders = groupScreenSenders.get(peerId)
+    if (!senders) continue
+    try { pc.removeTrack(senders.video) } catch { /* closed */ }
+    if (senders.audio) {
+      try { pc.removeTrack(senders.audio) } catch { /* closed */ }
     }
-    // Re-attach the camera track if it exists, otherwise leave video cleared.
-    if (plan.attachToLocal && !local.getVideoTracks().includes(plan.attachToLocal)) {
-      local.addTrack(plan.attachToLocal)
-    }
-    for (const pc of Object.values(store.peerConnections)) {
-      applyVideoTrack(pc, plan.publish, local)
-    }
-    store.setLocalStream(local)
   }
+  groupScreenSenders.clear()
 
   screen.stop()
-  // Stop and unpublish the screen AUDIO track too (only the native onended
-  // stopped it before; the in-app stop nulls onended). Match by track identity
-  // so the microphone sender survives.
-  const screenAudio = groupScreenAudioTrack
-  if (screenAudio) {
-    for (const pc of Object.values(store.peerConnections)) {
-      const sender = pc.getSenders().find((s) => s.track === screenAudio)
-      if (sender) pc.removeTrack(sender)
-    }
-    screenAudio.stop()
-    groupScreenAudioTrack = null
-  }
+  groupScreenAudioTrack?.stop()
+  groupScreenAudioTrack = null
   groupScreenTrack = null
+  store.setLocalScreenStream(null)
   store.bumpLocalMediaRev()
 
-  // Sync remote video-off indicators with the restored camera state: video is
-  // off unless a camera track exists and is enabled.
   if (store.roomId) {
     sendGroupCallSignal({
-      type: 'group_call:video_toggle',
+      type: 'group_call:screen_share',
       room_id: store.roomId,
-      is_video_off: !(groupCameraTrack !== null && groupCameraTrack.enabled),
+      active: false,
     })
+  }
+}
+
+/** Incoming screen_share signal: register/unregister the peer's screen msid. */
+export function handleGroupScreenShare(
+  roomId: string,
+  fromUserId: string,
+  active: boolean,
+  streamId: string | null
+): void {
+  const store = useGroupCallStore.getState()
+  if (store.roomId !== roomId) return
+  if (active && streamId) {
+    groupRemoteScreenStreamIds.set(fromUserId, streamId)
+  } else if (!active) {
+    groupRemoteScreenStreamIds.delete(fromUserId)
+    store.removeRemoteStream(`${fromUserId}#screen`)
   }
 }
 

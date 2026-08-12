@@ -79,6 +79,7 @@ export function GroupCallScreen({
 }: Props) {
   const { t } = useTranslation()
   const localStream = useGroupCallStore((s) => s.localStream)
+  const localScreenStream = useGroupCallStore((s) => s.localScreenStream)
   const remoteStreams = useGroupCallStore((s) => s.remoteStreams)
   const participants = useGroupCallStore((s) => s.participants)
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
@@ -206,14 +207,18 @@ export function GroupCallScreen({
     hadScreenRef.current = has
   }, [screenEntryId])
 
-  // Release a manual pin when the pinned participant leaves (#7). Never clears
+  // Release a manual pin when the pinned tile disappears (#7). Never clears
   // a self-pin (the local user is always present).
   useEffect(() => {
     if (!pinnedId || pinnedId === userId) return
+    if (pinnedId === `${userId}#screen`) {
+      if (!localScreenStream) setPinnedId(null)
+      return
+    }
     if (!participants[pinnedId] && !remoteStreams[pinnedId]) {
       setPinnedId(null)
     }
-  }, [pinnedId, participants, remoteStreams, userId])
+  }, [pinnedId, participants, remoteStreams, userId, localScreenStream])
 
   const pinToggle = useCallback((id: string) => {
     setPinnedId((prev) => (prev === id ? null : id))
@@ -254,12 +259,24 @@ export function GroupCallScreen({
       isLocal
       micMuted={audioMuted}
       camOff={videoOff}
-      screenSharing={isScreenSharing}
       pinned={pinnedId === userId}
       onPinToggle={() => pinToggle(userId)}
       mediaRev={localMediaRev}
     />
   )
+
+  const localScreenTile = localScreenStream ? (
+    <CallTile
+      peerId={`${userId}#screen`}
+      stream={localScreenStream}
+      label={`${username} · ${t('call.screenSharing')}`}
+      isLocal
+      screenSharing
+      pinned={pinnedId === `${userId}#screen`}
+      onPinToggle={() => pinToggle(`${userId}#screen`)}
+      mediaRev={localMediaRev}
+    />
+  ) : null
 
   const remoteTile = (id: string, stream: MediaStream | null, showPin = true) => {
     const isScreenTile = id.endsWith('#screen')
@@ -359,11 +376,16 @@ export function GroupCallScreen({
                 <div className="min-h-0 flex-1">
                   {spotlightId === userId
                     ? localTile
-                    : remoteTile(spotlightId, remoteStreams[spotlightId] ?? null)}
+                    : spotlightId === `${userId}#screen`
+                      ? localScreenTile
+                      : remoteTile(spotlightId, remoteStreams[spotlightId] ?? null)}
                 </div>
                 <div className="scrollbar-none flex shrink-0 gap-2 overflow-x-auto pb-1">
                   {spotlightId !== userId && (
                     <div className="h-24 w-36 flex-shrink-0">{localTile}</div>
+                  )}
+                  {localScreenTile && spotlightId !== `${userId}#screen` && (
+                    <div className="h-24 w-36 flex-shrink-0">{localScreenTile}</div>
                   )}
                   {remoteEntries
                     .filter(([id]) => id !== spotlightId)
@@ -375,8 +397,9 @@ export function GroupCallScreen({
                 </div>
               </div>
             ) : (
-              <div className={`grid h-full auto-rows-fr gap-2 ${getGridClass(totalCount)}`}>
+              <div className={`grid h-full auto-rows-fr gap-2 ${getGridClass(totalCount + (localScreenTile ? 1 : 0))}`}>
                 {localTile}
+                {localScreenTile ? <div className="min-h-0">{localScreenTile}</div> : null}
                 {remoteEntries.map(([id, stream]) => (
                   <div key={id} className="min-h-0">{remoteTile(id, stream)}</div>
                 ))}

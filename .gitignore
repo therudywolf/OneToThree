@@ -159,3 +159,4 @@ desktop/tauri/package-lock.json
 
 # MediaPipe wasm — vendored from @mediapipe/tasks-vision by client postinstall (scripts/copy-vendor-assets.js)
 **/public/mediapipe-wasm/
+**/public/noise-suppressor/

@@ -13,10 +13,13 @@ import {
   saveMediaPrefs,
   getDisplayMediaOptions,
   applyScreenTrackSettings,
+  getScreenShareMaxBitrateBps,
+  getScreenShareDegradationPreference,
   type CameraEffectPref,
 } from '@/lib/media-devices'
 import { upgradeLocalStreamAudio, type VoiceProcessingHandle } from '@/lib/voice-processing'
 import { createEffectedCameraTrack, type CameraEffectsHandle } from '@/lib/camera-effects'
+import { mungeOpusStereo } from '@/lib/sdp-munge'
 import {
   isMediaPermissionDenied,
   MEDIA_ACCESS_ERROR_MESSAGE,
@@ -31,7 +34,7 @@ import { notifyIfIceStunOnlyOnce } from '@/lib/ice-relay-warning'
 import { AudioRelayPlayer, startAudioRelayCapture, type AudioRelayCaptureController } from '@/lib/call-audio-relay'
 import { toastWarn } from '@/store/toastStore'
 import { buildCallRejectMessage, upsertIncomingCall } from '@/lib/incoming-call'
-import { applyVideoTrack, planScreenShareStart, planScreenShareStop } from '@/lib/call-media-tracks'
+import { applyVideoTrack, planScreenShareStart, planScreenShareStop, tuneScreenShareSender } from '@/lib/call-media-tracks'
 import { createKeyedGroupChat } from '@/lib/create-group-chat'
 import { joinGroupCall } from '@/lib/group-call-manager'
 
@@ -136,6 +139,9 @@ export function useWebRTC(userId: string | null) {
   const [peerReady, setPeerReady] = useState(false)
   const [mediaAccessError, setMediaAccessError] = useState<string | null>(null)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
+  /** Whether the current share captured an audio track, and its local mute. */
+  const [hasScreenAudio, setHasScreenAudio] = useState(false)
+  const [isScreenAudioMuted, setIsScreenAudioMuted] = useState(false)
   // Camera lifecycle is tracked independently from screen-share. A call starts
   // audio-only; the camera track is created lazily the first time the user opts
   // into video. `isCameraOn` reflects whether a *camera* track exists AND is
@@ -438,6 +444,8 @@ export function useWebRTC(userId: string | null) {
     }
     screenFeedRef.current = null
     setIsScreenSharing(false)
+    setHasScreenAudio(false)
+    setIsScreenAudioMuted(false)
     bumpLocalMediaRev()
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: false }))
     relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'screen_share', active: false }))
@@ -512,6 +520,8 @@ export function useWebRTC(userId: string | null) {
   ) => {
     if (pc.signalingState !== 'stable') return
     const offer = await pc.createOffer(options)
+    // Opus stereo + bitrate ceiling for screen-share audio (see sdp-munge.ts).
+    offer.sdp = mungeOpusStereo(offer.sdp ?? '')
     await pc.setLocalDescription(offer)
     transmitSignal(peerId, {
       kind: 'offer',
@@ -1045,6 +1055,7 @@ export function useWebRTC(userId: string | null) {
               await pc.setRemoteDescription({ type: 'offer', sdp: data.sdp })
               await flushIceQueue(fromUserId, pc)
               const answer = await pc.createAnswer()
+              answer.sdp = mungeOpusStereo(answer.sdp ?? '')
               await pc.setLocalDescription(answer)
               transmitSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
               syncRemoteFromReceivers(fromUserId, pc)
@@ -1475,6 +1486,7 @@ export function useWebRTC(userId: string | null) {
         await pc.setRemoteDescription(inc.offer)
         await flushIceQueue(inc.peerId, pc)
         const answer = await pc.createAnswer()
+        answer.sdp = mungeOpusStereo(answer.sdp ?? '')
         await pc.setLocalDescription(answer)
         transmitSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
         syncRemoteFromReceivers(inc.peerId, pc)
@@ -1694,6 +1706,16 @@ export function useWebRTC(userId: string | null) {
     setLocalStream(local)
     bumpLocalMediaRev()
     setIsScreenSharing(true)
+    // Encoder budget for the chosen preset — 4K/120fps are unusable on the
+    // default ~2.5 Mbps cap (see getScreenShareMaxBitrateBps).
+    {
+      const prefs = loadMediaPrefs()
+      const maxBitrate = getScreenShareMaxBitrateBps(prefs.screenRes, prefs.screenFps)
+      const degradation = getScreenShareDegradationPreference(prefs.screenContent)
+      pcsRef.current.forEach((pc) => {
+        void tuneScreenShareSender(pc, screenVideoTrack, maxBitrate, degradation)
+      })
+    }
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: true }))
     relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'screen_share', active: true }))
 
@@ -1705,6 +1727,8 @@ export function useWebRTC(userId: string | null) {
     const screenAudioTrack = screenStream.getAudioTracks()[0]
     if (screenAudioTrack) {
       screenAudioFeedRef.current = screenAudioTrack
+      setHasScreenAudio(true)
+      setIsScreenAudioMuted(false)
       // Publish tab/system audio under the SAME msid as every other local track.
       // Passing `screenStream` here minted a third m-line with a brand-new msid,
       // so the peer's `ontrack` fired last with a MediaStream holding ONLY the
@@ -1721,6 +1745,18 @@ export function useWebRTC(userId: string | null) {
       }
     }
   }, [isRelayOnlyCall, isScreenSharing, revertToOptics, setLocalStream])
+
+  /**
+   * Locally mute/unmute the captured screen-share AUDIO without touching the
+   * video. Flips the track's `enabled` flag — peers receive silence while
+   * muted, no renegotiation.
+   */
+  const toggleScreenAudioMuted = useCallback(() => {
+    const track = screenAudioFeedRef.current
+    if (!track) return
+    track.enabled = !track.enabled
+    setIsScreenAudioMuted(!track.enabled)
+  }, [])
 
   /**
    * Switch the camera background effect. Persists the pref and applies it to
@@ -1781,6 +1817,9 @@ export function useWebRTC(userId: string | null) {
     switchCamera,
     isScreenSharing,
     toggleScreenShare,
+    hasScreenAudio,
+    isScreenAudioMuted,
+    toggleScreenAudioMuted,
     setQuality,
     setCameraEffect,
     promoteToGroup,

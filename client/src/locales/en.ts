@@ -145,6 +145,8 @@ const en = {
   'call.backgroundNone': 'No background',
   'call.backgroundBlur': 'Blur',
   'call.backgroundImage': 'Image',
+  'call.screenAudioOff': 'Mute share audio',
+  'call.screenAudioOn': 'Unmute share audio',
 
   // [LOGIN]
   'login.usernameRequired': 'Username required.',
@@ -815,8 +817,11 @@ const en = {
   'settings.screenSectionTitle': 'Screen sharing',
   'settings.screenAudio': 'Capture audio',
   'settings.screenAudioHint': 'Share tab/system sound with your screen.',
-  'settings.screenQuality': 'Quality',
+  'settings.screenQuality': 'Resolution',
   'settings.screenQualitySource': 'Source (native)',
+  'settings.screenFps': 'Frame rate',
+  'settings.screenFpsSource': 'Source (native)',
+  'settings.screenFpsHint': '4K and 120 fps need a fast connection; the browser caps at your display refresh rate.',
   'settings.screenContent': 'Optimize for',
   'settings.screenContentAuto': 'Auto',
   'settings.screenContentMotion': 'Smooth motion (video, games)',

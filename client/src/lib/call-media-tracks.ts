@@ -141,3 +141,36 @@ export function planScreenShareStop<T extends TrackLike>(
     publish: cameraTrack,
   }
 }
+
+/**
+ * Apply the screen-share encoder budget to the sender carrying `track`:
+ * maxBitrate for the preset (4K/120fps need far more than WebRTC's ~2.5 Mbps
+ * default) and the degradation trade-off (framerate vs resolution). Never
+ * throws — setParameters support varies and a failure just leaves defaults.
+ */
+export async function tuneScreenShareSender(
+  pc: RTCPeerConnection,
+  track: MediaStreamTrack,
+  maxBitrateBps: number,
+  degradation: RTCDegradationPreference
+): Promise<void> {
+  const sender = pc.getSenders().find((s) => s.track === track)
+  if (!sender || typeof sender.setParameters !== 'function') return
+  try {
+    const params = sender.getParameters()
+    params.degradationPreference = degradation
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}]
+    }
+    const enc = params.encodings[0]
+    if (enc) {
+      enc.maxBitrate = maxBitrateBps
+      // Never let the encoder downscale a shared screen on its own — the
+      // degradationPreference governs the frame/resolution trade instead.
+      delete enc.scaleResolutionDownBy
+    }
+    await sender.setParameters(params)
+  } catch {
+    /* parameter tuning unsupported — encoder defaults apply */
+  }
+}

@@ -34,14 +34,22 @@ function loadLiveKitManager(): Promise<LiveKitCallManager> {
 /** Local mirror of livekit-call-manager's active-room state (D9). */
 let livekitActive = false
 import { fetchCallConfig } from '@/lib/api/call'
-import { applyVideoTrack, planScreenShareStart, planScreenShareStop } from '@/lib/call-media-tracks'
+import {
+  applyVideoTrack,
+  planScreenShareStart,
+  planScreenShareStop,
+  tuneScreenShareSender,
+} from '@/lib/call-media-tracks'
 import {
   getUserMediaConstraints,
   loadMediaPrefs,
   loadCamEffectImage,
   getDisplayMediaOptions,
   applyScreenTrackSettings,
+  getScreenShareMaxBitrateBps,
+  getScreenShareDegradationPreference,
 } from '@/lib/media-devices'
+import { mungeOpusStereo } from '@/lib/sdp-munge'
 import { upgradeLocalStreamAudio, type VoiceProcessingHandle } from '@/lib/voice-processing'
 import { createEffectedCameraTrack, type CameraEffectsHandle } from '@/lib/camera-effects'
 
@@ -283,6 +291,8 @@ async function sendGroupOffer(
   if (pc.signalingState !== 'stable') return
   const store = useGroupCallStore.getState()
   const offer = await pc.createOffer(options)
+  // Opus stereo + bitrate ceiling for screen-share audio (see sdp-munge.ts).
+  offer.sdp = mungeOpusStereo(offer.sdp ?? '')
   await pc.setLocalDescription(offer)
   sendGroupCallSignal({
     type: 'group_call:offer',
@@ -829,6 +839,7 @@ export async function handleGroupCallOffer(
     await pc.setRemoteDescription({ type: 'offer', sdp })
     await flushIceQueue(fromUserId, pc)
     const answer = await pc.createAnswer()
+    answer.sdp = mungeOpusStereo(answer.sdp ?? '')
     await pc.setLocalDescription(answer)
     sendGroupCallSignal({
       type: 'group_call:answer',
@@ -1078,6 +1089,17 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
     store.setLocalStream(local)
     store.bumpLocalMediaRev()
 
+    // Encoder budget for the chosen preset (4K/120fps need far more than the
+    // ~2.5 Mbps WebRTC default).
+    {
+      const prefs = loadMediaPrefs()
+      const maxBitrate = getScreenShareMaxBitrateBps(prefs.screenRes, prefs.screenFps)
+      const degradation = getScreenShareDegradationPreference(prefs.screenContent)
+      for (const pc of Object.values(store.peerConnections)) {
+        void tuneScreenShareSender(pc, screenVideoTrack, maxBitrate, degradation)
+      }
+    }
+
     // Remote peers now receive video (the screen) — keep their video-off
     // indicator accurate. Uses the existing video_toggle channel.
     sendGroupCallSignal({
@@ -1221,4 +1243,25 @@ export function stopGroupCallScreenShare(): void {
 export function getGroupCallParticipantCount(): number {
   const store = useGroupCallStore.getState()
   return Object.keys(store.participants).length + 1 // +1 for self
+}
+
+/** Whether the current group screen-share captured an audio track. */
+export function hasGroupScreenAudio(): boolean {
+  return groupScreenAudioTrack !== null
+}
+
+/** Whether the group screen-share audio is currently muted locally. */
+export function isGroupScreenAudioMuted(): boolean {
+  return groupScreenAudioTrack !== null && !groupScreenAudioTrack.enabled
+}
+
+/**
+ * Mute/unmute the group screen-share AUDIO (video untouched). Returns the new
+ * muted state. Peers receive silence while muted; no renegotiation.
+ */
+export function toggleGroupScreenAudioMuted(): boolean {
+  const track = groupScreenAudioTrack
+  if (!track) return false
+  track.enabled = !track.enabled
+  return !track.enabled
 }

@@ -259,6 +259,15 @@ export async function createEffectedCameraTrack(
   return handle
 }
 
+/**
+ * Preload the segmenter (wasm + model fetch + delegate init) so the first
+ * camera-on with an effect doesn't stall for seconds. Fire-and-forget; safe to
+ * call repeatedly (the pool memoizes).
+ */
+export function warmupCameraEffects(): void {
+  void getSegmenter()
+}
+
 /** Push a new effect into every LIVE camera chain (settings panel hook). */
 export function applyCameraEffectToActiveCalls(
   kind: CameraEffectKind,

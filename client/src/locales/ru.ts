@@ -145,6 +145,8 @@ const ru = {
   'call.backgroundNone': 'Без фона',
   'call.backgroundBlur': 'Размытие',
   'call.backgroundImage': 'Картинка',
+  'call.screenAudioOff': 'Заглушить звук демонстрации',
+  'call.screenAudioOn': 'Включить звук демонстрации',
 
   // [LOGIN]
   'login.usernameRequired': 'Введите никнейм.',
@@ -818,8 +820,11 @@ const ru = {
   'settings.screenSectionTitle': 'Демонстрация экрана',
   'settings.screenAudio': 'Захватывать звук',
   'settings.screenAudioHint': 'Передавать звук вкладки/системы вместе с экраном.',
-  'settings.screenQuality': 'Качество',
+  'settings.screenQuality': 'Разрешение',
   'settings.screenQualitySource': 'Как в источнике',
+  'settings.screenFps': 'Частота кадров',
+  'settings.screenFpsSource': 'Как в источнике',
+  'settings.screenFpsHint': '4K и 120 fps требуют быстрой сети; браузер ограничит частоту герцовкой монитора.',
   'settings.screenContent': 'Оптимизация',
   'settings.screenContentAuto': 'Авто',
   'settings.screenContentMotion': 'Плавность (видео, игры)',

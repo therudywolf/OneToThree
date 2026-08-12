@@ -24,6 +24,11 @@
  */
 
 import type { ImageSegmenter as ImageSegmenterT } from '@mediapipe/tasks-vision'
+import {
+  CAM_BLUR_MAX_PX,
+  CAM_BLUR_MIN_PX,
+  loadMediaPrefs,
+} from '@/lib/media-devices'
 
 export type CameraEffectKind = 'none' | 'blur' | 'image'
 
@@ -34,12 +39,16 @@ export type CameraEffectsHandle = {
   rawTrack: MediaStreamTrack
   /** Switch the effect live. `imageDataUrl` only matters for kind 'image'. */
   setEffect: (kind: CameraEffectKind, imageDataUrl?: string | null) => void
+  /** Change the background blur radius live (px, clamped to the pref bounds). */
+  setBlurStrength: (px: number) => void
   /** Stop the loop and BOTH tracks (raw hardware released — LED off). */
   dispose: () => void
 }
 
 const FRAME_INTERVAL_MS = 1000 / 30
-const BLUR_PX = 14
+
+const clampBlur = (px: number) =>
+  Math.min(CAM_BLUR_MAX_PX, Math.max(CAM_BLUR_MIN_PX, px))
 
 // One segmenter for the whole session: model load costs ~300ms and ~20MB of
 // memory; a call toggles the camera far more often than the tab reloads. VIDEO
@@ -80,16 +89,117 @@ async function getSegmenter(): Promise<ImageSegmenterT | null> {
 
 const activeHandles = new Set<CameraEffectsHandle>()
 
+/** Chromium's MediaStream Insertable Streams — the worker pipeline needs both. */
+function insertableStreamsSupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof (window as unknown as Record<string, unknown>).MediaStreamTrackProcessor === 'function' &&
+    typeof (window as unknown as Record<string, unknown>).MediaStreamTrackGenerator === 'function'
+  )
+}
+
+async function dataUrlToBitmap(dataUrl: string | null | undefined): Promise<ImageBitmap | null> {
+  if (!dataUrl) return null
+  try {
+    const blob = await (await fetch(dataUrl)).blob()
+    return await createImageBitmap(blob)
+  } catch {
+    return null
+  }
+}
+
 /**
- * Build the effects chain around a raw camera track. Returns null when the
- * segmenter can't start (missing assets, no wasm, headless quirks) — callers
- * keep the raw track.
+ * Worker/OffscreenCanvas pipeline (Chromium): camera frames are processed
+ * entirely OFF the main thread — segmentation, compositing and frame output
+ * all live in camera-effects.worker.ts. Because the loop is driven by the
+ * capture stream rather than main-thread timers, a backgrounded tab keeps the
+ * effect at full frame rate instead of collapsing to ~1fps.
+ */
+async function createWorkerEffectedTrack(
+  rawTrack: MediaStreamTrack,
+  initial: { kind: CameraEffectKind; imageDataUrl?: string | null; blurPx?: number }
+): Promise<CameraEffectsHandle | null> {
+  try {
+    const worker = new Worker(new URL('./camera-effects.worker.ts', import.meta.url))
+    const processor = new MediaStreamTrackProcessor({ track: rawTrack })
+    const generator = new MediaStreamTrackGenerator({ kind: 'video' })
+    const settings = rawTrack.getSettings()
+    const width = settings.width && settings.width > 0 ? settings.width : 1280
+    const height = settings.height && settings.height > 0 ? settings.height : 720
+    const bmp = initial.kind === 'image' ? await dataUrlToBitmap(initial.imageDataUrl) : null
+    const transfers: Transferable[] = [
+      processor.readable as unknown as Transferable,
+      generator.writable as unknown as Transferable,
+    ]
+    if (bmp) transfers.push(bmp)
+    worker.postMessage(
+      {
+        type: 'init',
+        readable: processor.readable,
+        writable: generator.writable,
+        width,
+        height,
+        kind: initial.kind,
+        imageBitmap: bmp,
+        blurPx: clampBlur(initial.blurPx ?? loadMediaPrefs().camBlurPx),
+      },
+      transfers
+    )
+    const processed = generator as MediaStreamTrack
+    try { processed.contentHint = 'motion' } catch { /* optional */ }
+
+    let disposed = false
+    const handle: CameraEffectsHandle = {
+      processedTrack: processed,
+      rawTrack,
+      setEffect: (kind, imageDataUrl) => {
+        void (async () => {
+          const bmp2 = kind === 'image' ? await dataUrlToBitmap(imageDataUrl) : null
+          try {
+            worker.postMessage({ type: 'effect', kind, imageBitmap: bmp2 }, bmp2 ? [bmp2] : [])
+          } catch { /* worker gone */ }
+        })()
+      },
+      setBlurStrength: (px) => {
+        try {
+          worker.postMessage({ type: 'blur', px: clampBlur(px) })
+        } catch { /* worker gone */ }
+      },
+      dispose: () => {
+        if (disposed) return
+        disposed = true
+        activeHandles.delete(handle)
+        try { worker.postMessage({ type: 'close' }) } catch { /* gone */ }
+        // Stopping the raw track ends the processor stream → the worker's pump
+        // exits and the worker self-closes; terminate() is the backstop.
+        try { processed.stop() } catch { /* stopped */ }
+        try { rawTrack.stop() } catch { /* stopped */ }
+        setTimeout(() => { try { worker.terminate() } catch { /* gone */ } }, 250)
+      },
+    }
+    activeHandles.add(handle)
+    return handle
+  } catch (err) {
+    console.warn('[cam-fx] worker pipeline unavailable — DOM fallback', err)
+    return null
+  }
+}
+
+/**
+ * Build the effects chain around a raw camera track. Prefers the worker
+ * pipeline (background-tab safe); falls back to the main-thread DOM pipeline,
+ * then to null (caller keeps the raw track).
  */
 export async function createEffectedCameraTrack(
   rawTrack: MediaStreamTrack,
-  initial: { kind: CameraEffectKind; imageDataUrl?: string | null }
+  initial: { kind: CameraEffectKind; imageDataUrl?: string | null; blurPx?: number }
 ): Promise<CameraEffectsHandle | null> {
   if (typeof document === 'undefined') return null
+  if (rawTrack.readyState !== 'live') return null
+  if (insertableStreamsSupported()) {
+    const workerHandle = await createWorkerEffectedTrack(rawTrack, initial)
+    if (workerHandle) return workerHandle
+  }
   const segmenter = await getSegmenter()
   if (!segmenter) return null
   if (rawTrack.readyState !== 'live') return null
@@ -123,6 +233,7 @@ export async function createEffectedCameraTrack(
   if (!outCtx || !personCtx || !maskCtx) return null
 
   let effect: CameraEffectKind = initial.kind
+  let blurPx = clampBlur(initial.blurPx ?? loadMediaPrefs().camBlurPx)
   let bgImage: HTMLImageElement | null = null
   let disposed = false
 
@@ -172,9 +283,9 @@ export async function createEffectedCameraTrack(
     // Background layer.
     if (effect === 'blur' || !bgImage) {
       outCtx.save()
-      outCtx.filter = `blur(${BLUR_PX}px)`
+      outCtx.filter = `blur(${blurPx}px)`
       // Slight overscan hides the transparent halo canvas blur leaves at edges.
-      outCtx.drawImage(video, -BLUR_PX, -BLUR_PX, width + BLUR_PX * 2, height + BLUR_PX * 2)
+      outCtx.drawImage(video, -blurPx, -blurPx, width + blurPx * 2, height + blurPx * 2)
       outCtx.restore()
     } else {
       drawCover(outCtx, bgImage)
@@ -236,6 +347,9 @@ export async function createEffectedCameraTrack(
       effect = kind
       if (kind === 'image') loadBgImage(imageDataUrl)
     },
+    setBlurStrength: (px) => {
+      blurPx = clampBlur(px)
+    },
     dispose: () => {
       if (disposed) return
       disposed = true
@@ -271,9 +385,13 @@ export function warmupCameraEffects(): void {
 /** Push a new effect into every LIVE camera chain (settings panel hook). */
 export function applyCameraEffectToActiveCalls(
   kind: CameraEffectKind,
-  imageDataUrl?: string | null
+  imageDataUrl?: string | null,
+  blurPx?: number
 ): void {
-  for (const h of Array.from(activeHandles)) h.setEffect(kind, imageDataUrl)
+  for (const h of Array.from(activeHandles)) {
+    h.setEffect(kind, imageDataUrl)
+    if (blurPx !== undefined) h.setBlurStrength(blurPx)
+  }
 }
 
 /** Whether any call currently runs an effected camera chain. */

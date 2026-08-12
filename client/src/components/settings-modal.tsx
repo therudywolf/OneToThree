@@ -835,7 +835,7 @@ export function SettingsModal({ userId, username, onClose }: Props) {
                   key={tab.id}
                   type="button"
                   onClick={() => setSettingsTab(tab.id)}
-                  className={`${settingsBtn} w-full text-left hover:scale-[1.01] active:scale-95 ${
+                  className={`${settingsBtn} w-full text-left active:scale-95 ${
                     settingsTab === tab.id
                       ? tab.id === 'security'
                         ? (isMd3 ? 'border-transparent bg-[color-mix(in_srgb,var(--danger)_16%,transparent)] text-[var(--danger)]' : 'border-neon-red bg-neon-red/10 text-neon-red')

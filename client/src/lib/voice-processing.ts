@@ -50,6 +50,8 @@ export type VoiceProcessingHandle = {
   rawTrack: MediaStreamTrack
   setGateEnabled: (on: boolean) => void
   setGateThreshold: (db: number) => void
+  /** Input volume, 0…2 (1 = unity). Applied ahead of denoise/gate. */
+  setInputGain: (gain: number) => void
   /** Subscribe to ~30/s level reports (UI meters). Returns unsubscribe. */
   onLevel: (cb: (r: VoiceLevelReport) => void) => () => void
   /** Tear the graph down and close the context. Stops the raw hardware track
@@ -108,12 +110,17 @@ export async function createProcessedMicTrack(
   }
 
   const source = ctx.createMediaStreamSource(new MediaStream([rawTrack]))
+  // Input volume ("mic gain") sits ahead of denoise/gate so the whole chain —
+  // including the gate threshold — hears the boosted/attenuated signal.
+  const inputGain = ctx.createGain()
+  inputGain.gain.value = Math.min(2, Math.max(0, prefs.micGain))
   const destination = ctx.createMediaStreamDestination()
+  source.connect(inputGain)
   if (rnnoiseNode) {
-    source.connect(rnnoiseNode)
+    inputGain.connect(rnnoiseNode)
     rnnoiseNode.connect(workletNode)
   } else {
-    source.connect(workletNode)
+    inputGain.connect(workletNode)
   }
   workletNode.connect(destination)
 
@@ -148,6 +155,9 @@ export async function createProcessedMicTrack(
     setGateThreshold: (db) => {
       if (thresholdParam) thresholdParam.value = db
     },
+    setInputGain: (gain) => {
+      inputGain.gain.value = Math.min(2, Math.max(0, gain))
+    },
     onLevel: (cb) => {
       levelSubs.add(cb)
       return () => levelSubs.delete(cb)
@@ -157,6 +167,7 @@ export async function createProcessedMicTrack(
       levelSubs.clear()
       try { workletNode.port.onmessage = null } catch { /* detached */ }
       try { source.disconnect() } catch { /* detached */ }
+      try { inputGain.disconnect() } catch { /* detached */ }
       try { rnnoiseNode?.destroy() } catch { /* detached */ }
       try { rnnoiseNode?.disconnect() } catch { /* detached */ }
       try { workletNode.disconnect() } catch { /* detached */ }
@@ -197,6 +208,7 @@ export async function applyVoiceSettingsToActiveCalls(): Promise<void> {
   for (const h of Array.from(activeHandles)) {
     h.setGateEnabled(prefs.noiseGate)
     h.setGateThreshold(prefs.noiseGateDb)
+    h.setInputGain(prefs.micGain)
     await applyVoiceConstraintsToTrack(h.rawTrack)
   }
 }

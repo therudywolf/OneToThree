@@ -64,6 +64,26 @@
   --page-glow-secondary: #2d0f2f;
 }
 
+/* Pre-hydration baseline; ThemeApplicator overwrites html.style.colorScheme
+ * per theme. Without this, native widgets (select popups, scrollbars) follow
+ * the OS scheme and render white-on-white in the dark default theme. */
+:root {
+  color-scheme: dark;
+}
+[data-theme="md3light"] {
+  color-scheme: light;
+}
+
+/* Native <select> popups paint option rows with the page's option styles.
+ * Left unstyled, a light-scheme popup shows the select's pale text on white
+ * (settings → screen share quality was unreadable). Pin both to theme tokens
+ * so the list is legible in every theme regardless of popup chrome. */
+select option,
+select optgroup {
+  background-color: var(--surface);
+  color: var(--on-surface);
+}
+
 html,
 body {
   min-height: 100dvh;
@@ -3822,10 +3842,15 @@ select {
 
 /* ── Desktop chat header — dual-theme refinements ─────────────────────────── */
 
-/* MD3: minimal elevation, smooth transitions */
+/* MD3: minimal elevation, smooth transitions.
+ * position+z-index: the backdrop-filter below creates a stacking context, so
+ * without an explicit z-index the header's dropdowns (chat ⋮ menu) paint UNDER
+ * the messages area that follows it in the DOM. */
 [data-shell="md3"] .p13-desktop-chat-header {
   background: color-mix(in srgb, var(--surface) 96%, var(--void));
   border-bottom: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent);
+  position: relative;
+  z-index: 20;
 }
 [data-shell="md3"] .p13-desktop-chat-header:has(~ *) {
   backdrop-filter: blur(8px);

@@ -8,6 +8,8 @@ import {
   saveMediaPrefs,
   loadCamEffectImage,
   saveCamEffectImage,
+  CAM_BLUR_MAX_PX,
+  CAM_BLUR_MIN_PX,
   type CameraEffectPref,
   type ScreenShareContent,
   type ScreenShareFps,
@@ -128,6 +130,9 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   const [noiseGate, setNoiseGate] = useState(false)
   const [noiseGateDb, setNoiseGateDb] = useState(-55)
   const [noiseMl, setNoiseMl] = useState(false)
+  const [micGain, setMicGain] = useState(1)
+  const [outputVolume, setOutputVolume] = useState(1)
+  const [camBlurPx, setCamBlurPx] = useState(14)
   const [screenAudio, setScreenAudio] = useState(true)
   const [screenRes, setScreenRes] = useState<ScreenShareRes>('1080p')
   const [screenFps, setScreenFps] = useState<ScreenShareFps>('30')
@@ -216,6 +221,9 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
     setNoiseGate(p.noiseGate)
     setNoiseGateDb(p.noiseGateDb)
     setNoiseMl(p.noiseMl)
+    setMicGain(p.micGain)
+    setOutputVolume(p.outputVolume)
+    setCamBlurPx(p.camBlurPx)
     setScreenAudio(p.screenAudio)
     setScreenRes(p.screenRes)
     setScreenFps(p.screenFps)
@@ -458,6 +466,57 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
           </div>
         ))}
 
+        {/* Input / output volume — Discord-style gain knobs. Mic gain lives in
+            the processing chain (live via applyVoiceSettingsToActiveCalls);
+            output volume is picked up by CallAudioSink through the prefs event. */}
+        <div className="border-t border-border-strong/40 pt-2">
+          <p className="text-[10px] uppercase tracking-widest text-text-primary">{t('settings.voiceMicGain')}</p>
+          <p className="text-[9px] text-text-muted">{t('settings.voiceMicGainHint')}</p>
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              type="range"
+              min={0}
+              max={200}
+              step={5}
+              value={Math.round(micGain * 100)}
+              onChange={(e) => {
+                const v = Number(e.target.value) / 100
+                setMicGain(v)
+                saveMediaPrefs({ micGain: v })
+                void applyVoiceSettingsToActiveCalls()
+              }}
+              className="h-1 w-full cursor-pointer accent-[var(--neon-cyan,#0ff)]"
+              aria-label={t('settings.voiceMicGain')}
+            />
+            <span className="w-14 shrink-0 text-right font-mono text-[9px] text-text-muted">
+              {Math.round(micGain * 100)}%
+            </span>
+          </div>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-text-primary">{t('settings.voiceOutputVolume')}</p>
+          <p className="text-[9px] text-text-muted">{t('settings.voiceOutputVolumeHint')}</p>
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(outputVolume * 100)}
+              onChange={(e) => {
+                const v = Number(e.target.value) / 100
+                setOutputVolume(v)
+                saveMediaPrefs({ outputVolume: v })
+              }}
+              className="h-1 w-full cursor-pointer accent-[var(--neon-cyan,#0ff)]"
+              aria-label={t('settings.voiceOutputVolume')}
+            />
+            <span className="w-14 shrink-0 text-right font-mono text-[9px] text-text-muted">
+              {Math.round(outputVolume * 100)}%
+            </span>
+          </div>
+        </div>
+
         {/* Noise gate + threshold + live meter */}
         <div className="flex items-center justify-between gap-3 border-t border-border-strong/40 pt-2">
           <div>
@@ -649,6 +708,35 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
             )
           })}
         </div>
+        {camEffect === 'blur' ? (
+          <div>
+            <p className="text-[9px] uppercase tracking-wider text-text-muted">
+              {t('settings.camBgBlurStrength')}
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                type="range"
+                min={CAM_BLUR_MIN_PX}
+                max={CAM_BLUR_MAX_PX}
+                step={2}
+                value={camBlurPx}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setCamBlurPx(v)
+                  saveMediaPrefs({ camBlurPx: v })
+                  // Live: retargets every registered chain — active calls AND
+                  // the settings viewfinder preview. No preview restart needed.
+                  applyCameraEffectToActiveCalls('blur', loadCamEffectImage(), v)
+                }}
+                className="h-1 w-full cursor-pointer accent-[var(--neon-cyan,#0ff)]"
+                aria-label={t('settings.camBgBlurStrength')}
+              />
+              <span className="w-14 shrink-0 text-right font-mono text-[9px] text-text-muted">
+                {camBlurPx} px
+              </span>
+            </div>
+          </div>
+        ) : null}
         {camEffect === 'image' ? (
           <div className="flex items-center gap-3">
             {camImage ? (

@@ -30,6 +30,22 @@ export const SENSOR_SCREEN_CONTENT = 'p13_screen_content'
 // Camera background effect (MediaPipe segmentation): none | blur | image.
 export const SENSOR_CAM_EFFECT = 'p13_cam_effect'
 export const SENSOR_CAM_EFFECT_IMG = 'p13_cam_effect_img'
+export const SENSOR_CAM_BLUR_PX = 'p13_cam_blur_px'
+// Voice chain gain knobs (Discord-style input/output volume).
+export const SENSOR_MIC_GAIN = 'p13_mic_gain'
+export const SENSOR_OUTPUT_VOLUME = 'p13_output_volume'
+
+/** Blur radius bounds for the camera background effect (px on the canvas). */
+export const CAM_BLUR_MIN_PX = 4
+export const CAM_BLUR_MAX_PX = 40
+export const CAM_BLUR_DEFAULT_PX = 14
+
+/**
+ * Fired on window whenever saveMediaPrefs writes anything. Lets always-mounted
+ * consumers (CallAudioSink's master volume) react to settings changes without
+ * polling localStorage.
+ */
+export const MEDIA_PREFS_CHANGED_EVENT = 'p13:media-prefs-changed'
 
 export type ScreenShareRes = '720p' | '1080p' | '1440p' | '4k' | 'source'
 export type ScreenShareFps = '30' | '60' | '120' | 'source'
@@ -66,6 +82,12 @@ export type SensorConfig = {
   screenContent: ScreenShareContent
   /** Фон камеры: без обработки, размытие или картинка. */
   camEffect: CameraEffectPref
+  /** Радиус размытия фона камеры, px (CAM_BLUR_MIN_PX…CAM_BLUR_MAX_PX). */
+  camBlurPx: number
+  /** Усиление микрофона (0…2, 1 = как есть). Применяется в аудио-цепочке. */
+  micGain: number
+  /** Общая громкость входящего звука в звонках (0…1). */
+  outputVolume: number
 }
 
 const readRaw = (key: string): string | null => {
@@ -137,6 +159,12 @@ export function loadMediaPrefs(): SensorConfig {
       const v = readRaw(SENSOR_CAM_EFFECT)
       return v === 'blur' || v === 'image' ? v : 'none'
     })(),
+    camBlurPx: Math.min(
+      CAM_BLUR_MAX_PX,
+      Math.max(CAM_BLUR_MIN_PX, readNum(SENSOR_CAM_BLUR_PX, CAM_BLUR_DEFAULT_PX))
+    ),
+    micGain: Math.min(2, Math.max(0, readNum(SENSOR_MIC_GAIN, 1))),
+    outputVolume: Math.min(1, Math.max(0, readNum(SENSOR_OUTPUT_VOLUME, 1))),
   }
 }
 
@@ -205,7 +233,19 @@ export function saveMediaPrefs(map: Partial<SensorConfig>): void {
     if (map.camEffect !== undefined) {
       localStorage.setItem(SENSOR_CAM_EFFECT, map.camEffect)
     }
+    if (map.camBlurPx !== undefined) {
+      localStorage.setItem(SENSOR_CAM_BLUR_PX, String(map.camBlurPx))
+    }
+    if (map.micGain !== undefined) {
+      localStorage.setItem(SENSOR_MIC_GAIN, String(map.micGain))
+    }
+    if (map.outputVolume !== undefined) {
+      localStorage.setItem(SENSOR_OUTPUT_VOLUME, String(map.outputVolume))
+    }
   } catch { /* Quota fault */ }
+  try {
+    window.dispatchEvent(new Event(MEDIA_PREFS_CHANGED_EVENT))
+  } catch { /* SSR / detached */ }
 }
 
 /** [GENERATE_CONSTRAINTS] :: Формирование протокола захвата */

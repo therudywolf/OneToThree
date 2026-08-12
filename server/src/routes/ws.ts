@@ -919,12 +919,42 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             chat_id,
             from_user_id: user.id,
           })
-          // C-2: if caller leaves and nobody answered, insert missed-call system message
+          // C-2: if caller leaves and nobody answered, insert missed-call system
+          // message; if the call WAS answered (key rewritten by call_accept),
+          // insert a call-ended event with the talk duration instead.
           const redis = getRedis()
           if (redis) {
             const redisKey = `call:active:${chat_id}:${user.id}`
             const activeVal = await redis.get(redisKey)
-            if (activeVal !== null) {
+            if (activeVal !== null && activeVal.startsWith('answered:')) {
+              // `answered:<videoFlag>:<acceptTs>` → the call connected; log the
+              // duration. Only the CALLER's key exists, so exactly one event is
+              // written no matter which side hangs up first.
+              await redis.del(redisKey)
+              const [, videoFlag, acceptTsStr] = activeVal.split(':')
+              const isVideo = videoFlag === '1'
+              const durationSecs = Math.max(
+                0,
+                Math.round((Date.now() - Number(acceptTsStr || Date.now())) / 1000)
+              )
+              await persistChatMessageAndFanOut({
+                chatId: chat_id,
+                senderId: user.id,
+                content: JSON.stringify({
+                  kind: 'call_ended',
+                  is_video: isVideo,
+                  duration_secs: durationSecs,
+                }),
+                iv: 'system:v1',
+              })
+              await db.insert(callSessions).values({
+                chatId: chat_id,
+                initiatedBy: user.id,
+                callType: isVideo ? 'video' : 'audio',
+                participantIds: [user.id],
+                endReason: 'completed',
+              }).catch(() => { /* non-fatal */ })
+            } else if (activeVal !== null) {
               // key still exists → nobody answered
               await redis.del(redisKey)
               const [videoFlag, tsStr] = activeVal.split(':')
@@ -1000,16 +1030,26 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
             type: 'call_cancel_on_other_devices',
             chat_id,
           })
-          // Also delete any pending missed-call Redis key (call was answered)
+          // The call was answered: rewrite the caller's ringing key into an
+          // `answered:<videoFlag>:<acceptTs>` marker (instead of deleting it)
+          // so the caller's eventual call_leave logs a call-ended event with
+          // the talk duration. 12h TTL bounds a crash-orphaned key.
           const redis = getRedis()
           let hadRingingCall = false
           if (redis) {
             const members = await getChatMemberIds(chat_id)
             const callerIds = members.filter((id) => id !== user.id)
-            const cleared = await Promise.all(
-              callerIds.map((callerId) => redis.del(`call:active:${chat_id}:${callerId}`))
+            const results = await Promise.all(
+              callerIds.map(async (callerId) => {
+                const key = `call:active:${chat_id}:${callerId}`
+                const val = await redis.get(key)
+                if (val === null || val.startsWith('answered:')) return false
+                const videoFlag = val.split(':')[0] === '1' ? '1' : '0'
+                await redis.set(key, `answered:${videoFlag}:${Date.now()}`, 'EX', 43200)
+                return true
+              })
             )
-            hadRingingCall = cleared.some((n) => n > 0)
+            hadRingingCall = results.some(Boolean)
           }
           // #24: only answering a call that was REALLY ringing grants the full
           // elevated tier — otherwise any chat member could self-elevate by

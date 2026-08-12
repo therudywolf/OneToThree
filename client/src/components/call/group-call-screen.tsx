@@ -18,10 +18,20 @@ import {
   Activity,
   Grid3X3,
   Focus,
+  Volume2,
+  VolumeX,
 } from 'lucide-react'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
-import { isGroupCallCameraOn, isGroupCallScreenSharing } from '@/lib/group-call-manager'
+import {
+  isGroupCallCameraOn,
+  isGroupCallScreenSharing,
+  hasGroupScreenAudio,
+  isGroupScreenAudioMuted,
+  toggleGroupScreenAudioMuted,
+} from '@/lib/group-call-manager'
+import { loadMediaPrefs } from '@/lib/media-devices'
+import { warmupCameraEffects } from '@/lib/camera-effects'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { useCallStore } from '@/store/callStore'
 import { useSessionStore } from '@/store/sessionStore'
@@ -93,6 +103,7 @@ export function GroupCallScreen({
   // state after a minimize→expand cycle (#4).
   const [isScreenSharing, setIsScreenSharing] = useState(() => isGroupCallScreenSharing())
   const [isCameraOn, setIsCameraOn] = useState(() => isGroupCallCameraOn())
+  const [screenAudioMuted, setScreenAudioMuted] = useState(() => isGroupScreenAudioMuted())
   const [isMobileDevice, setIsMobileDevice] = useState(false)
   const [layout, setLayout] = useState<'grid' | 'spotlight'>('grid')
   const [pinnedId, setPinnedId] = useState<string | null>(null)
@@ -100,6 +111,33 @@ export function GroupCallScreen({
   useEffect(() => {
     setIsMobileDevice(isAndroidMobile() || isIOSOrIPadOS())
   }, [])
+
+  // Warm the segmentation runtime while the call UI is up (see 1:1 overlay).
+  useEffect(() => {
+    if (loadMediaPrefs().camEffect !== 'none') warmupCameraEffects()
+  }, [])
+
+  // Hotkeys: Ctrl+Shift+M mute, Ctrl+Shift+D deafen (skip while typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.shiftKey) return
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) return
+      const key = e.key.toUpperCase()
+      if (key === 'M') {
+        e.preventDefault()
+        onToggleMute()
+      } else if (key === 'D') {
+        e.preventDefault()
+        useCallStore.getState().setDeafened(!useCallStore.getState().deafened)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onToggleMute])
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 900px)')
@@ -444,6 +482,23 @@ export function GroupCallScreen({
               ) : (
                 <Monitor className="h-4 w-4" />
               )}
+            </button>
+          )}
+
+          {/* Screen-share AUDIO mute — visible only while sharing with audio. */}
+          {isScreenSharing && hasGroupScreenAudio() && (
+            <button
+              onClick={() => setScreenAudioMuted(toggleGroupScreenAudioMuted())}
+              className={`hidden h-12 w-12 items-center justify-center border-r border-border-strong transition-colors sm:flex md:w-14 ${
+                screenAudioMuted
+                  ? 'bg-danger/30 text-neon-red'
+                  : 'text-text-muted hover:bg-surface/5 hover:text-text-primary'
+              }`}
+              title={screenAudioMuted ? t('call.screenAudioOn') : t('call.screenAudioOff')}
+              aria-label={screenAudioMuted ? t('call.screenAudioOn') : t('call.screenAudioOff')}
+              aria-pressed={screenAudioMuted}
+            >
+              {screenAudioMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
           )}
 

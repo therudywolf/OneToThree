@@ -29,11 +29,14 @@ import {
   ExternalLink,
   MoreHorizontal,
   ArrowLeftRight,
+  Volume2,
+  VolumeX,
 } from 'lucide-react'
 import { lookupUsers } from '@/lib/api/users'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { loadMediaPrefs, type CameraEffectPref } from '@/lib/media-devices'
+import { warmupCameraEffects } from '@/lib/camera-effects'
 import { useCallStore } from '@/store/callStore'
 import type { QualityLevel, PeerConnectionType } from '@/store/callStore'
 import { useSessionStore } from '@/store/sessionStore'
@@ -61,6 +64,10 @@ type Props = {
   onFlipCamera: () => void
   isScreenSharing: boolean
   onToggleScreenShare: () => void
+  /** Screen-share audio: present in the current share, its local mute, toggle. */
+  hasScreenAudio?: boolean
+  isScreenAudioMuted?: boolean
+  onToggleScreenAudio?: () => void
   /** Peer's display name — shown as the remote tile label instead of a hex id (#12). */
   peerName?: string
   /** Direct-chat contact ids that can be pulled into this call (1:1→group, #4). */
@@ -175,6 +182,9 @@ export function ActiveCallOverlay({
   onFlipCamera,
   isScreenSharing,
   onToggleScreenShare,
+  hasScreenAudio = false,
+  isScreenAudioMuted = false,
+  onToggleScreenAudio,
   onSetQuality,
   peerName,
   promoteCandidateIds,
@@ -298,6 +308,36 @@ export function ActiveCallOverlay({
       clearTimeout(timeout)
     }
   }, [])
+
+  // Warm the segmentation runtime while the call UI is up, so the first
+  // camera-on with a background effect doesn't stall on wasm/model load.
+  useEffect(() => {
+    if (loadMediaPrefs().camEffect !== 'none') warmupCameraEffects()
+  }, [])
+
+  // Hotkeys: Ctrl+Shift+M mute, Ctrl+Shift+D deafen. Ignored while typing
+  // (side chat composer, menus with inputs).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.shiftKey) return
+      const target = e.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) return
+      const key = e.key.toUpperCase()
+      if (key === 'M') {
+        e.preventDefault()
+        onToggleMute()
+        setTick((t_) => t_ + 1)
+      } else if (key === 'D') {
+        e.preventDefault()
+        setDeafened(!useCallStore.getState().deafened)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onToggleMute, setDeafened])
 
   const remoteEntries = useMemo(() => Object.entries(remoteStreams), [remoteStreams])
   const tileCount = 1 + remoteEntries.length
@@ -827,7 +867,7 @@ export function ActiveCallOverlay({
           <button
             onClick={() => { onToggleMute(); setTick(t_ => t_ + 1); }}
             className={`flex items-center justify-center transition-colors ${controlBtn(false, audioMuted)}`}
-            title={audioMuted ? t('call.unmute') : t('call.mute')}
+            title={`${audioMuted ? t('call.unmute') : t('call.mute')} (Ctrl+Shift+M)`}
             aria-pressed={audioMuted}
           >
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
@@ -836,7 +876,7 @@ export function ActiveCallOverlay({
           <button
             onClick={() => setDeafened(!deafened)}
             className={`flex items-center justify-center transition-colors ${controlBtn(false, deafened)}`}
-            title={deafened ? t('call.undeafen') : t('call.deafen')}
+            title={`${deafened ? t('call.undeafen') : t('call.deafen')} (Ctrl+Shift+D)`}
             aria-label={deafened ? t('call.undeafen') : t('call.deafen')}
             aria-pressed={deafened}
           >
@@ -954,6 +994,19 @@ export function ActiveCallOverlay({
               aria-pressed={isScreenSharing}
             >
               {isScreenSharing ? <MonitorOff className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+            </button>
+          )}
+
+          {/* Screen-share AUDIO mute — visible only while sharing with audio. */}
+          {isScreenSharing && hasScreenAudio && onToggleScreenAudio && (
+            <button
+              onClick={() => { onToggleScreenAudio(); setTick(t_ => t_ + 1); }}
+              className={`hidden items-center justify-center transition-colors md:flex ${controlBtn(false, isScreenAudioMuted)}`}
+              title={isScreenAudioMuted ? t('call.screenAudioOn') : t('call.screenAudioOff')}
+              aria-label={isScreenAudioMuted ? t('call.screenAudioOn') : t('call.screenAudioOff')}
+              aria-pressed={isScreenAudioMuted}
+            >
+              {isScreenAudioMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
             </button>
           )}
 

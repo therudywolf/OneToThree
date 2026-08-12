@@ -42,11 +42,20 @@ vi.mock('@/lib/call-audio-relay', () => ({
   startAudioRelayCapture: vi.fn(),
 }))
 vi.mock('@/lib/media-devices', () => ({
-  loadMediaPrefs: () => ({ lowBandwidth: false }),
+  loadMediaPrefs: () => ({
+    lowBandwidth: false,
+    camEffect: 'none',
+    screenRes: '1080p',
+    screenFps: '30',
+    screenContent: 'auto',
+  }),
+  loadCamEffectImage: () => null,
   getUserMediaConstraints: () => ({ audio: true, video: true }),
   getDisplayMediaOptions: () => ({ video: true, audio: true }),
   applyScreenTrackSettings: vi.fn(),
   applyVoiceConstraintsToTrack: vi.fn(async () => false),
+  getScreenShareMaxBitrateBps: () => 5_000_000,
+  getScreenShareDegradationPreference: () => 'balanced',
 }))
 vi.mock('@/lib/voice-processing', () => ({
   upgradeLocalStreamAudio: vi.fn(async () => null),

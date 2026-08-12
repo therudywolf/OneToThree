@@ -384,6 +384,9 @@ export function ChatApp({
     switchCamera,
     isScreenSharing,
     toggleScreenShare,
+    hasScreenAudio,
+    isScreenAudioMuted,
+    toggleScreenAudioMuted,
     setQuality,
     setCameraEffect,
     promoteToGroup,
@@ -910,6 +913,9 @@ export function ChatApp({
         onFlipCamera={() => void switchCamera()}
         isScreenSharing={isScreenSharing}
         onToggleScreenShare={() => void toggleScreenShare()}
+        hasScreenAudio={hasScreenAudio}
+        isScreenAudioMuted={isScreenAudioMuted}
+        onToggleScreenAudio={toggleScreenAudioMuted}
         onSetQuality={setQuality}
         onSetCameraEffect={(kind) => void setCameraEffect(kind)}
         peerName={peerIdentity?.username ?? undefined}

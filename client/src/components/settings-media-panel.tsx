@@ -10,7 +10,8 @@ import {
   saveCamEffectImage,
   type CameraEffectPref,
   type ScreenShareContent,
-  type ScreenShareQuality,
+  type ScreenShareFps,
+  type ScreenShareRes,
 } from '@/lib/media-devices'
 import { applyVoiceSettingsToActiveCalls } from '@/lib/voice-processing'
 import {
@@ -123,7 +124,8 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
   const [noiseGate, setNoiseGate] = useState(false)
   const [noiseGateDb, setNoiseGateDb] = useState(-55)
   const [screenAudio, setScreenAudio] = useState(true)
-  const [screenQuality, setScreenQuality] = useState<ScreenShareQuality>('1080p30')
+  const [screenRes, setScreenRes] = useState<ScreenShareRes>('1080p')
+  const [screenFps, setScreenFps] = useState<ScreenShareFps>('30')
   const [screenContent, setScreenContent] = useState<ScreenShareContent>('auto')
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null)
   const [camEffect, setCamEffect] = useState<CameraEffectPref>('none')
@@ -170,7 +172,8 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
     setNoiseGate(p.noiseGate)
     setNoiseGateDb(p.noiseGateDb)
     setScreenAudio(p.screenAudio)
-    setScreenQuality(p.screenQuality)
+    setScreenRes(p.screenRes)
+    setScreenFps(p.screenFps)
     setScreenContent(p.screenContent)
     setCamEffect(p.camEffect)
     setCamImage(loadCamEffectImage())
@@ -485,23 +488,44 @@ export function SettingsMediaPanel({ active }: { active: boolean }) {
             {screenAudio ? '[ ON ]' : '[ OFF ]'}
           </button>
         </div>
-        <label className="block space-y-1">
-          <span className="terminal-label">{t('settings.screenQuality')}</span>
-          <select
-            className={`w-full py-2 text-xs ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] px-4' : 'terminal-input'}`}
-            value={screenQuality}
-            onChange={(e) => {
-              const v = e.target.value as ScreenShareQuality
-              setScreenQuality(v)
-              saveMediaPrefs({ screenQuality: v })
-            }}
-          >
-            <option value="720p30">720p · 30fps</option>
-            <option value="1080p30">1080p · 30fps</option>
-            <option value="1080p60">1080p · 60fps</option>
-            <option value="source">{t('settings.screenQualitySource')}</option>
-          </select>
-        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block space-y-1">
+            <span className="terminal-label">{t('settings.screenQuality')}</span>
+            <select
+              className={`w-full py-2 text-xs ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] px-4' : 'terminal-input'}`}
+              value={screenRes}
+              onChange={(e) => {
+                const v = e.target.value as ScreenShareRes
+                setScreenRes(v)
+                saveMediaPrefs({ screenRes: v })
+              }}
+            >
+              <option value="720p">720p</option>
+              <option value="1080p">1080p (Full HD)</option>
+              <option value="1440p">1440p (2K)</option>
+              <option value="4k">2160p (4K)</option>
+              <option value="source">{t('settings.screenQualitySource')}</option>
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="terminal-label">{t('settings.screenFps')}</span>
+            <select
+              className={`w-full py-2 text-xs ${isMd3 ? 'rounded-full border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] px-4' : 'terminal-input'}`}
+              value={screenFps}
+              onChange={(e) => {
+                const v = e.target.value as ScreenShareFps
+                setScreenFps(v)
+                saveMediaPrefs({ screenFps: v })
+              }}
+            >
+              <option value="30">30 fps</option>
+              <option value="60">60 fps</option>
+              <option value="120">120 fps</option>
+              <option value="source">{t('settings.screenFpsSource')}</option>
+            </select>
+          </label>
+        </div>
+        <p className="text-[9px] text-text-muted">{t('settings.screenFpsHint')}</p>
         <label className="block space-y-1">
           <span className="terminal-label">{t('settings.screenContent')}</span>
           <select

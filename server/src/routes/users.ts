@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { HeadObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
-import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
-import { attachments, chatMembers, devices, loginEvents, messageDeliveries, messages, oneTimePrekeys, pushSubscriptions, signedPrekeys, userBlocks, users } from '../db/schema.js'
+import { attachments, chatMembers, chats, devices, loginEvents, messageDeliveries, messages, oneTimePrekeys, pushSubscriptions, signedPrekeys, userBlocks, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser, verifySessionJwt } from '../lib/auth-user.js'
 import { setPendingAvatarKey, takePendingAvatarKey } from '../lib/avatar-pending.js'
 import {
@@ -69,6 +70,8 @@ const patchMeSchema = z
     social_links: z.array(socialLinkSchema).max(10).optional(),
     display_name: z.string().max(64).optional(),
     last_seen_privacy: z.enum(['everyone', 'contacts', 'nobody']).optional(),
+    /** Personal channel pinned to the profile; null unlinks. Owner-only, validated in the handler. */
+    profile_channel_id: uuidSchema.nullable().optional(),
     /**
      * Vault-unlock proof, REQUIRED whenever `ecdh_public_key_jwk` is present.
      * See the guard in the handler — publishing this key decides who peers
@@ -552,6 +555,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         lastSeenAt: users.lastSeenAt,
         lastSeenPrivacy: users.lastSeenPrivacy,
         isDiscoverable: users.isDiscoverable,
+        profileChannelId: users.profileChannelId,
       })
       .from(users)
       .where(eq(users.username, params.data.username))
@@ -587,6 +591,70 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       try { socialLinks = JSON.parse(row.socialLinks) as typeof socialLinks } catch { /* ignore */ }
     }
 
+    // «Общие группы» on the profile card: group-kind chats where BOTH the
+    // viewer and the subject are members. The viewer only ever learns about
+    // rooms they are already in, so nothing new is disclosed.
+    let mutualGroups: Array<{ id: string; name: string | null }> = []
+    if (!isSelf) {
+      const subjectMembership = alias(chatMembers, 'subject_membership')
+      mutualGroups = await db
+        .select({ id: chats.id, name: chats.name })
+        .from(chats)
+        .innerJoin(
+          chatMembers,
+          and(eq(chatMembers.chatId, chats.id), eq(chatMembers.userId, auth.id))
+        )
+        .innerJoin(
+          subjectMembership,
+          and(eq(subjectMembership.chatId, chats.id), eq(subjectMembership.userId, row.id))
+        )
+        .where(inArray(chats.type, ['group_e2e', 'public_open', 'channel']))
+        .orderBy(asc(chats.name))
+        .limit(20)
+    }
+
+    // Personal channel pinned to this profile. Returned only while it still
+    // points at a live channel AND carries a stable join handle — without one
+    // the card would dead-end for strangers. A consumable one-time code is
+    // never exposed (same rule as /chats/discover).
+    let profileChannel: {
+      id: string
+      name: string
+      invite_slug: string | null
+      invite_code: string | null
+      member_count: number
+    } | null = null
+    if (row.profileChannelId) {
+      const [channel] = await db
+        .select({
+          id: chats.id,
+          name: chats.name,
+          type: chats.type,
+          inviteCode: chats.inviteCode,
+          inviteOneTime: chats.inviteOneTime,
+          inviteSlug: chats.inviteSlug,
+        })
+        .from(chats)
+        .where(eq(chats.id, row.profileChannelId))
+        .limit(1)
+      if (channel && channel.type === 'channel') {
+        const inviteCode = channel.inviteOneTime ? null : channel.inviteCode
+        if (channel.inviteSlug || inviteCode) {
+          const [membersRow] = await db
+            .select({ memberCount: count(chatMembers.userId) })
+            .from(chatMembers)
+            .where(eq(chatMembers.chatId, channel.id))
+          profileChannel = {
+            id: channel.id,
+            name: channel.name ?? '',
+            invite_slug: channel.inviteSlug,
+            invite_code: inviteCode,
+            member_count: Number(membersRow?.memberCount ?? 0),
+          }
+        }
+      }
+    }
+
     // Sprint M2-1 — profile mostly static; allow browser to keep a fresh
     // copy for ~30s before re-fetching. Presence is masked / re-evaluated
     // server-side, so a brief stale window is acceptable.
@@ -598,6 +666,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       bio: row.bio ?? null,
       status_text: row.statusText ?? null,
       social_links: socialLinks,
+      mutual_groups: mutualGroups.map((g) => ({ id: g.id, name: g.name ?? '' })),
+      profile_channel: profileChannel,
       // #26: cross-instance. Short-circuited when masked so a hidden profile
       // costs no Redis call at all.
       online: mask ? false : await isOnline(row.id),
@@ -639,6 +709,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         socialLinks: users.socialLinks,
         displayName: users.displayName,
         lastSeenPrivacy: users.lastSeenPrivacy,
+        profileChannelId: users.profileChannelId,
       })
       .from(users)
       .where(eq(users.id, user.id))
@@ -659,6 +730,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       display_name: row?.displayName ?? null,
       last_seen_privacy: normalizeLastSeenPrivacy(row?.lastSeenPrivacy),
       social_links: socialLinks,
+      profile_channel_id: row?.profileChannelId ?? null,
     })
   })
 
@@ -701,6 +773,32 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (parsed.data.status_text !== undefined) updates.statusText = parsed.data.status_text || null
     if (parsed.data.last_seen_privacy !== undefined) updates.lastSeenPrivacy = parsed.data.last_seen_privacy
     if (parsed.data.social_links !== undefined) updates.socialLinks = JSON.stringify(parsed.data.social_links)
+    if (parsed.data.profile_channel_id !== undefined) {
+      const channelId = parsed.data.profile_channel_id
+      if (channelId === null) {
+        updates.profileChannelId = null
+      } else {
+        // The pointer must aim at a channel THIS user owns — otherwise any
+        // profile could pin (and advertise) somebody else's room.
+        const [chat] = await db
+          .select({ id: chats.id, type: chats.type })
+          .from(chats)
+          .where(eq(chats.id, channelId))
+          .limit(1)
+        if (!chat || chat.type !== 'channel') {
+          return reply.status(400).send({ error: 'NOT_CHANNEL_CHAT' })
+        }
+        const [membership] = await db
+          .select({ role: chatMembers.role })
+          .from(chatMembers)
+          .where(and(eq(chatMembers.chatId, channelId), eq(chatMembers.userId, user.id)))
+          .limit(1)
+        if (membership?.role !== 'owner') {
+          return reply.status(403).send({ error: 'NOT_CHANNEL_OWNER' })
+        }
+        updates.profileChannelId = channelId
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
       return reply.status(400).send({ error: 'NOTHING_TO_UPDATE' })
@@ -735,6 +833,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
         statusText: users.statusText,
         lastSeenPrivacy: users.lastSeenPrivacy,
         socialLinks: users.socialLinks,
+        profileChannelId: users.profileChannelId,
       })
 
     if (parsed.data.ecdh_public_key_jwk !== undefined && currentDeviceId) {
@@ -763,6 +862,7 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
       status_text: after?.statusText ?? null,
       last_seen_privacy: normalizeLastSeenPrivacy(after?.lastSeenPrivacy),
       social_links: socialLinksOut,
+      profile_channel_id: after?.profileChannelId ?? null,
     })
   })
 

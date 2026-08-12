@@ -41,6 +41,18 @@ const inviteSlugPatchSchema = z.object({
   invite_slug: z.string().trim().min(4).max(32).regex(/^[a-z0-9_]+$/),
 })
 
+// 'owner' is deliberately not accepted here: channel ownership moves only via
+// the ownership transfer in PATCH .../role, which updates role AND
+// channel_role together so the two columns can never disagree about who owns
+// the feed.
+const patchChannelRoleSchema = z.object({
+  channel_role: z.enum(['subscriber', 'editor']),
+})
+
+const patchDiscussionSchema = z.object({
+  discussion_chat_id: uuidSchema.nullable(),
+})
+
 /**
  * Upper bound on the member list accepted at creation. Unbounded arrays turned
  * one request into thousands of `users`/`user_blocks` lookups (and, past ~65k
@@ -1514,6 +1526,115 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(403).send({ error: 'FORBIDDEN' })
   })
 
+  // The "posting mode" buttons in channel settings apply one PATCH per member,
+  // so this limit must absorb a full-member sweep, not just single clicks.
+  app.patch('/:chatId/members/:userId/channel-role', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema, userId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId, userId: targetUserId } = params.data
+
+    const parsed = patchChannelRoleSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const chat = await getChatById(chatId)
+    if (!chat || chat.type !== 'channel') {
+      return reply.status(400).send({ error: 'NOT_CHANNEL_CHAT' })
+    }
+
+    const actorRole = await getMemberRole(chatId, user.id)
+    const targetRole = await getMemberRole(chatId, targetUserId)
+    if (!actorRole || !targetRole) {
+      return reply.status(404).send({ error: 'NOT_A_MEMBER' })
+    }
+    if (actorRole !== 'owner') {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
+    if (targetUserId === user.id) {
+      return reply.status(400).send({ error: 'CANNOT_PATCH_SELF' })
+    }
+
+    await db
+      .update(chatMembers)
+      .set({ channelRole: parsed.data.channel_role })
+      .where(
+        and(
+          eq(chatMembers.chatId, chatId),
+          eq(chatMembers.userId, targetUserId)
+        )
+      )
+
+    const memberIds = (
+      await db
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+    ).map((r) => r.userId)
+    broadcastToUsers(memberIds, { type: 'chats_updated' })
+    return reply.send({ ok: true })
+  })
+
+  app.patch('/:chatId/discussion', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
+
+    const parsed = patchDiscussionSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+    const discussionChatId = parsed.data.discussion_chat_id
+
+    const chat = await getChatById(chatId)
+    if (!chat || chat.type !== 'channel') {
+      return reply.status(400).send({ error: 'NOT_CHANNEL_CHAT' })
+    }
+
+    const actorRole = await getMemberRole(chatId, user.id)
+    if (!actorRole) {
+      return reply.status(404).send({ error: 'NOT_A_MEMBER' })
+    }
+    if (actorRole !== 'owner') {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
+
+    if (discussionChatId !== null) {
+      if (discussionChatId === chatId) {
+        return reply.status(400).send({ error: 'DISCUSSION_SELF' })
+      }
+      const target = await getChatById(discussionChatId)
+      if (!target || (target.type !== 'group_e2e' && target.type !== 'public_open')) {
+        return reply.status(400).send({ error: 'DISCUSSION_NOT_GROUP' })
+      }
+      // The owner must be inside the discussion room: linking a foreign chat
+      // would point subscribers at a room the owner can't even see, and leak
+      // that the room exists.
+      const targetMembership = await getMemberRole(discussionChatId, user.id)
+      if (!targetMembership) {
+        return reply.status(403).send({ error: 'DISCUSSION_NOT_MEMBER' })
+      }
+    }
+
+    await db
+      .update(chats)
+      .set({ discussionChatId })
+      .where(eq(chats.id, chatId))
+
+    const memberIds = (
+      await db
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+    ).map((r) => r.userId)
+    broadcastToUsers(memberIds, { type: 'chats_updated' })
+    return reply.send({ ok: true })
+  })
+
   app.delete('/:chatId/members/:userId', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -1781,6 +1902,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         avatarKey: users.avatarKey,
         encryptedGroupKey: chatMembers.encryptedGroupKey,
         role: chatMembers.role,
+        channelRole: chatMembers.channelRole,
       })
       .from(chatMembers)
       .innerJoin(users, eq(users.id, chatMembers.userId))
@@ -1805,6 +1927,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         // epoch stamped in its stored wrapped key to detect a stale key after a
         // membership change and (owner only) mint a fresh one.
         key_epoch: chat.keyEpoch,
+        discussion_chat_id: chat.discussionChatId ?? null,
       },
       members: members.map((m) => ({
         user_id: m.userId,
@@ -1813,6 +1936,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         avatar_key: m.avatarKey,
         encrypted_group_key: m.encryptedGroupKey,
         role: m.role,
+        channel_role: m.channelRole,
       })),
     })
   })

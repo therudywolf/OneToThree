@@ -488,7 +488,6 @@ export function GroupChatSettings({
                         >
                           <option value="subscriber">{t('group.roleSubscriber')}</option>
                           <option value="editor">{t('group.roleEditor')}</option>
-                          <option value="owner">{t('group.roleOwner')}</option>
                         </select>
                       ) : null}
 

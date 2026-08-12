@@ -95,6 +95,14 @@ export type UserProfile = {
   online: boolean
   last_seen_at: string | null
   mutual_groups?: Array<{ id: string; name: string }>
+  /** Personal channel pinned to the profile; null/absent when not linked or not joinable. */
+  profile_channel?: {
+    id: string
+    name: string
+    invite_slug: string | null
+    invite_code: string | null
+    member_count: number
+  } | null
 }
 
 export async function fetchUserProfile(username: string): Promise<UserProfile> {
@@ -109,12 +117,57 @@ export async function fetchUserProfile(username: string): Promise<UserProfile> {
   return data
 }
 
+export type BlockedUserRow = {
+  user_id: string
+  username: string
+  avatar_key: string | null
+  blocked_at: string
+}
+
+export async function fetchBlockedUsers(): Promise<BlockedUserRow[]> {
+  const res = await fetchWithTimeout(`${API_URL}/users/me/blocked`, {
+    credentials: 'include',
+  })
+  const data = (await res.json().catch(() => ({}))) as {
+    blocked?: BlockedUserRow[]
+    error?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'BLOCKED_LIST_FAILED')
+  }
+  return data.blocked ?? []
+}
+
+export async function blockUser(targetId: string): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${API_URL}/users/me/block/${canonicalUserId(targetId)}`,
+    { method: 'POST', credentials: 'include' }
+  )
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'BLOCK_FAILED')
+  }
+}
+
+export async function unblockUser(targetId: string): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${API_URL}/users/me/block/${canonicalUserId(targetId)}`,
+    { method: 'DELETE', credentials: 'include' }
+  )
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) {
+    throw new Error(data.error ?? 'UNBLOCK_FAILED')
+  }
+}
+
 export type ProfilePatch = {
   bio?: string
   status_text?: string
   display_name?: string
   last_seen_privacy?: 'everyone' | 'contacts' | 'nobody'
   social_links?: Array<{ platform: string; url: string }>
+  /** Personal channel pinned to the profile; null unlinks. */
+  profile_channel_id?: string | null
 }
 
 export async function patchMyProfile(patch: ProfilePatch): Promise<void> {

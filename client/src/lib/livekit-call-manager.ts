@@ -29,6 +29,7 @@ import {
 } from 'livekit-client'
 import { createCallToken } from '@/lib/api/call'
 import { useGroupCallStore } from '@/store/groupCallStore'
+import { loadMediaPrefs } from '@/lib/media-devices'
 
 let activeRoom: Room | null = null
 
@@ -84,24 +85,35 @@ function storeParticipantFromLk(
   })
 }
 
-function buildRemoteStream(participant: RemoteParticipant): MediaStream | null {
-  const tracks: MediaStreamTrack[] = []
-  for (const pub of participant.trackPublications.values()) {
-    if (pub.track?.mediaStreamTrack) {
-      tracks.push(pub.track.mediaStreamTrack)
-    }
-  }
-  if (tracks.length === 0) return null
-  return new MediaStream(tracks)
-}
+/** Suffix for the screen-share stream entry of a participant. */
+export const LIVEKIT_SCREEN_SUFFIX = '#screen'
 
 function updateRemoteStream(participant: RemoteParticipant) {
-  const stream = buildRemoteStream(participant)
+  // Camera+mic and screen-share go into SEPARATE store entries. One combined
+  // MediaStream used to hold two video tracks, and a <video> element only ever
+  // plays the first — a remote screen share never showed up at all.
+  const camTracks: MediaStreamTrack[] = []
+  const screenTracks: MediaStreamTrack[] = []
+  for (const pub of participant.trackPublications.values()) {
+    const t = pub.track?.mediaStreamTrack
+    if (!t) continue
+    if (pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio) {
+      screenTracks.push(t)
+    } else {
+      camTracks.push(t)
+    }
+  }
   const store = useGroupCallStore.getState()
-  if (stream) {
-    store.setRemoteStream(participant.identity, stream)
+  if (camTracks.length > 0) {
+    store.setRemoteStream(participant.identity, new MediaStream(camTracks))
   } else {
     store.removeRemoteStream(participant.identity)
+  }
+  const screenId = `${participant.identity}${LIVEKIT_SCREEN_SUFFIX}`
+  if (screenTracks.length > 0) {
+    store.setRemoteStream(screenId, new MediaStream(screenTracks))
+  } else {
+    store.removeRemoteStream(screenId)
   }
 }
 
@@ -162,6 +174,7 @@ export async function joinLiveKitCall(
     .on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
       store.removeParticipant(participant.identity)
       store.removeRemoteStream(participant.identity)
+      store.removeRemoteStream(`${participant.identity}${LIVEKIT_SCREEN_SUFFIX}`)
     })
     .on(
       RoomEvent.TrackSubscribed,
@@ -240,10 +253,20 @@ export async function joinLiveKitCall(
     const connectOpts: RoomConnectOptions = {}
     await room.connect(tokenResp.url, tokenResp.token, connectOpts)
 
+    const prefs = loadMediaPrefs()
     const localTracks = await createLocalTracks({
-      audio: true,
+      // Honor the voice-processing prefs (echo/noise/AGC) + mic device choice.
+      audio: {
+        deviceId: prefs.micId ?? undefined,
+        echoCancellation: prefs.echoCancel,
+        noiseSuppression: prefs.noiseSuppress,
+        autoGainControl: prefs.autoGain,
+      },
       video: isVideo
-        ? { resolution: { width: 1280, height: 720, frameRate: 30 } }
+        ? {
+            deviceId: prefs.cameraId ?? undefined,
+            resolution: { width: 1280, height: 720, frameRate: 30 },
+          }
         : false,
     })
 

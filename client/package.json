@@ -20,9 +20,10 @@
     "docker:dev": "docker compose -f ../docker-compose.yml up --build",
     "setup": "node scripts/setup.js",
     "env:local": "node scripts/write-env-local.js",
-    "postinstall": "node -e \"const {cpSync,existsSync}=require('fs'),p=require('path'),s=p.join(__dirname,'node_modules','livekit-client','dist','livekit-client.e2ee.worker.js');if(existsSync(s))cpSync(s,p.join(__dirname,'public','livekit-e2ee-worker.js'));\""
+    "postinstall": "node scripts/copy-vendor-assets.js"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1",
     "@noble/curves": "^1.9.0",
     "@noble/hashes": "^1.8.0",
     "@scure/bip39": "^1.6.0",

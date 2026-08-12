@@ -385,6 +385,7 @@ export function ChatApp({
     isScreenSharing,
     toggleScreenShare,
     setQuality,
+    setCameraEffect,
     promoteToGroup,
   } = useWebRTC(userId)
 
@@ -405,6 +406,24 @@ export function ChatApp({
   const callLocalStream = useCallStore((s) => s.localStream)
   const callIsVideo = (callLocalStream?.getVideoTracks().length ?? 0) > 0
   const callRemoteStreams = useCallStore((s) => s.remoteStreams)
+  const callIsCalling = useCallStore((s) => s.isCalling)
+  const callIsMiniPlayer = useCallStore((s) => s.isMiniPlayer)
+  const callChatOpen = useCallStore((s) => s.chatOpen)
+  const setCallChatOpen = useCallStore((s) => s.setChatOpen)
+
+  // In-call side chat (Discord-style): visible while a full-screen call surface
+  // is up and the user toggled the chat button. The overlay shrinks to make
+  // room (see ActiveCallOverlay/GroupCallScreen), this panel fills the gap with
+  // the REAL chat — full compose/media/replies, not a stripped-down copy.
+  const callSurfaceFullscreen =
+    (callIsCalling && !callIsMiniPlayer) || (isInGroupCall && !groupCallIsMiniPlayer)
+  const showCallSideChat = callChatOpen && callSurfaceFullscreen
+
+  // Reset the flag when every call surface is gone so the next call doesn't
+  // start with a phantom open panel.
+  useEffect(() => {
+    if (!callIsCalling && !isInGroupCall && callChatOpen) setCallChatOpen(false)
+  }, [callIsCalling, isInGroupCall, callChatOpen, setCallChatOpen])
 
   // Direct-chat contacts that can be pulled into the current 1:1 call (#4):
   // everyone we have a direct chat with, minus ourselves and whoever is already
@@ -892,6 +911,7 @@ export function ChatApp({
         isScreenSharing={isScreenSharing}
         onToggleScreenShare={() => void toggleScreenShare()}
         onSetQuality={setQuality}
+        onSetCameraEffect={(kind) => void setCameraEffect(kind)}
         peerName={peerIdentity?.username ?? undefined}
         promoteCandidateIds={promoteCandidateIds}
         onPromote={promoteToGroup}
@@ -919,6 +939,42 @@ export function ChatApp({
           onToggleMute={toggleGroupMute}
         />
       )}
+      {showCallSideChat ? (
+        <div className="fixed inset-y-0 right-0 z-[201] hidden w-[min(400px,45vw)] flex-col border-l border-border-strong bg-void min-[901px]:flex">
+          <div className="flex shrink-0 items-center justify-between border-b border-border-strong px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+            <span className="truncate font-mono text-[10px] uppercase tracking-[0.2em] text-neon-cyan">
+              {activeRow?.name || peerIdentity?.username || t('call.chatTitle')}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCallChatOpen(false)}
+              className="flex h-8 w-8 items-center justify-center text-text-muted transition-colors hover:text-text-primary"
+              aria-label={t('common.close')}
+              title={t('common.close')}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ChatTerminal
+              userId={userId}
+              sharedKey={sharedKey}
+              currentUsername={user?.username ?? username}
+              activeChat={activeRow}
+              directPeerUsername={peerIdentity?.username ?? null}
+              senderRoles={memberRoleByUser}
+              myAvatarKey={user?.avatar_key ?? null}
+              peerAvatarKey={peerAvatarKey}
+              cryptoCtx={cryptoCtx}
+              sendText={sendText}
+              sendMedia={sendMedia}
+              sendAlbum={sendAlbum}
+              directPeerUserId={directPeerUserId}
+              composeDisabled={!activeChatId || !!ctxError || isChannelSubscriber}
+            />
+          </div>
+        </div>
+      ) : null}
       </>
       ) : null}
 

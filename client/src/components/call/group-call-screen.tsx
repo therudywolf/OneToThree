@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Mic,
   MicOff,
@@ -11,19 +11,25 @@ import {
   VideoOff,
   Users,
   Radio,
-  X,
   Minimize2,
   Headphones,
   HeadphoneOff,
+  MessageSquare,
+  Activity,
+  Grid3X3,
+  Focus,
 } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
 import { isGroupCallCameraOn, isGroupCallScreenSharing } from '@/lib/group-call-manager'
-import { useGroupCallStore, type GroupCallParticipant } from '@/store/groupCallStore'
+import { useGroupCallStore } from '@/store/groupCallStore'
 import { useCallStore } from '@/store/callStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { PortalRoot } from '@/components/portal-root'
 import { useTranslation } from '@/hooks/use-translation'
+import { CallTile } from '@/components/call/call-tile'
+import { CallDebugPanel } from '@/components/call/call-debug-panel'
+import { CallParticipantsPanel, type ParticipantRow } from '@/components/call/call-participants-panel'
 
 type Props = {
   userId: string
@@ -35,8 +41,6 @@ type Props = {
   /** Toggle screen-share; returns the resulting screen-sharing state. */
   onToggleScreenShare: () => Promise<boolean>
 }
-
-// --- LAYOUT HELPERS ---
 
 function getGridClass(count: number): string {
   if (count <= 1) return 'grid-cols-1'
@@ -51,208 +55,6 @@ function formatDuration(ms: number): string {
   const m = Math.floor(s / 60)
   const r = s % 60
   return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
-}
-
-// --- PARTICIPANT TILE ---
-
-function ParticipantTile({
-  stream,
-  label,
-  isMuted,
-  isVideoOff,
-  isSpeaking,
-  isLocal,
-  connectionState,
-  onClick,
-  isSpotlighted,
-}: {
-  stream: MediaStream | null
-  label: string
-  isMuted: boolean
-  isVideoOff: boolean
-  isSpeaking: boolean
-  isLocal: boolean
-  connectionState?: string
-  onClick?: () => void
-  isSpotlighted?: boolean
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const hasVideo = stream ? stream.getVideoTracks().some((t) => t.enabled) : false
-
-  useEffect(() => {
-    const v = videoRef.current
-    const a = audioRef.current
-    if (!stream) return
-
-    // Remote audio is played by the always-mounted CallAudioSink (survives
-    // minimize — see components/call/call-audio-sink.tsx). Tiles render VIDEO
-    // only and stay muted to avoid double audio.
-    if (hasVideo && v) {
-      v.srcObject = stream
-      void v.play().catch(() => {})
-    } else if (v) {
-      v.srcObject = null
-    }
-    if (a) {
-      a.srcObject = null
-      a.pause()
-    }
-
-    return () => {
-      if (v) v.srcObject = null
-      if (a) {
-        a.srcObject = null
-        a.pause()
-      }
-    }
-  }, [stream, hasVideo])
-
-  const speakingBorder = isSpeaking
-    ? 'border-neon-cyan shadow-[0_0_12px_rgba(0,255,255,0.3)]'
-    : 'border-border-strong'
-
-  return (
-    <div
-      className={`relative overflow-hidden bg-void transition-all duration-200 border ${speakingBorder} ${
-        isSpotlighted ? 'col-span-full row-span-2 min-h-[50vh]' : ''
-      }`}
-      onClick={onClick}
-    >
-      {!isLocal && <audio ref={audioRef} className="hidden" playsInline />}
-
-      {hasVideo && stream ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          controls={false}
-          className={`w-full h-full object-cover ${
-            isLocal ? 'transform scale-x-[-1]' : ''
-          }`}
-        />
-      ) : (
-        <div className="flex w-full h-full items-center justify-center bg-void min-h-[120px]">
-          <div className="space-y-2 text-center">
-            <div
-              className={`mx-auto h-14 w-14 rounded-full flex items-center justify-center border ${
-                isSpeaking
-                  ? 'border-neon-cyan bg-neon-cyan/10'
-                  : 'border-border-strong bg-void'
-              }`}
-            >
-              <span className="font-mono text-lg uppercase text-text-muted">
-                {label.slice(0, 2)}
-              </span>
-            </div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-text-muted">
-              {label}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Name + Status overlay */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-void/80 to-transparent px-2 py-1.5">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[10px] uppercase tracking-wider text-text-primary/80 truncate max-w-[70%]">
-            {label}
-          </span>
-          <div className="flex items-center gap-1">
-            {isMuted && (
-              <MicOff className="h-3 w-3 text-neon-red" />
-            )}
-            {isVideoOff && (
-              <VideoOff className="h-3 w-3 text-text-muted" />
-            )}
-            {connectionState === 'failed' && (
-              <span className="font-mono text-[8px] text-neon-red uppercase">FAIL</span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Speaking glow ring */}
-      {isSpeaking && (
-        <div className="absolute inset-0 border-2 border-neon-cyan/50 pointer-events-none animate-pulse" />
-      )}
-    </div>
-  )
-}
-
-// --- PARTICIPANT PANEL ---
-
-function ParticipantPanel({
-  participants,
-  onClose,
-}: {
-  participants: Record<string, GroupCallParticipant>
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <motion.div
-      initial={{ y: '100%' }}
-      animate={{ y: 0 }}
-      exit={{ y: '100%' }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="absolute bottom-20 left-0 right-0 max-h-[60vh] bg-void/95 border-t border-border-strong backdrop-blur-xl z-30 overflow-y-auto"
-    >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border-strong">
-        <span className="font-mono text-xs uppercase tracking-wider text-text-muted">
-          {t('groupCall.participants')} ({Object.keys(participants).length + 1})
-        </span>
-        <button
-          onClick={onClose}
-          className="inline-flex h-10 w-10 items-center justify-center text-text-muted transition-colors hover:bg-surface/5 hover:text-text-primary"
-          aria-label={t('common.close')}
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      <div className="divide-y divide-border-strong">
-        {Object.values(participants).map((p) => (
-          <div
-            key={p.userId}
-            className="flex items-center justify-between px-4 py-2.5"
-          >
-            <div className="flex items-center gap-3">
-              <div
-                className={`h-8 w-8 rounded-full flex items-center justify-center border ${
-                  p.isSpeaking
-                    ? 'border-neon-cyan bg-neon-cyan/10'
-                    : 'border-border-strong bg-void'
-                }`}
-              >
-                <span className="font-mono text-[10px] uppercase text-text-muted">
-                  {p.username.slice(0, 2)}
-                </span>
-              </div>
-              <div>
-                <p className="font-mono text-xs text-text-primary">{p.username}</p>
-                <p className="font-mono text-[9px] text-text-muted/70 uppercase">
-                  {p.connectionState === 'connected' || p.connectionState === 'completed'
-                    ? 'LINKED'
-                    : p.connectionState === 'failed'
-                      ? 'FAILED'
-                      : 'CONNECTING'}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              {p.isMuted && <MicOff className="h-3.5 w-3.5 text-neon-red" />}
-              {p.isVideoOff && <VideoOff className="h-3.5 w-3.5 text-text-muted/70" />}
-              {p.isSpeaking && (
-                <span className="h-2 w-2 rounded-full bg-neon-cyan animate-pulse" />
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </motion.div>
-  )
 }
 
 // --- MAIN GROUP CALL SCREEN ---
@@ -271,33 +73,40 @@ export function GroupCallScreen({
   const participants = useGroupCallStore((s) => s.participants)
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
   const transport = useGroupCallStore((s) => s.transport)
+  const roomId = useGroupCallStore((s) => s.roomId)
+  const peerConnections = useGroupCallStore((s) => s.peerConnections)
   const showParticipantPanel = useGroupCallStore((s) => s.showParticipantPanel)
   const setShowParticipantPanel = useGroupCallStore((s) => s.setShowParticipantPanel)
+  const localMediaRev = useGroupCallStore((s) => s.localMediaRev)
   const deafened = useCallStore((s) => s.deafened)
   const setDeafened = useCallStore((s) => s.setDeafened)
+  const chatOpen = useCallStore((s) => s.chatOpen)
+  const setChatOpen = useCallStore((s) => s.setChatOpen)
 
   const [elapsed, setElapsed] = useState(0)
   const [showControls, setShowControls] = useState(true)
+  const [showDebug, setShowDebug] = useState(false)
+  const [isNarrow, setIsNarrow] = useState(false)
   // Seed from the manager's LIVE media state, not from props/false — minimizing
   // fully unmounts this screen, so on expand these must re-read the actual track
   // state or the camera/screen-share buttons show (and toggle) the wrong/inverted
   // state after a minimize→expand cycle (#4).
   const [isScreenSharing, setIsScreenSharing] = useState(() => isGroupCallScreenSharing())
-  // Camera state is tracked independently from the screen track — flipping the
-  // camera never reflects, and is never reflected by, screen-share.
   const [isCameraOn, setIsCameraOn] = useState(() => isGroupCallCameraOn())
   const [isMobileDevice, setIsMobileDevice] = useState(false)
-  const [spotlightId, setSpotlightId] = useState<string | null>(null)
-  // Manual pin (user clicked a tile) — the auto-spotlight effect must NOT clobber
-  // it, otherwise the pin was reverted on the next effect flush (dead feature).
-  const pinnedRef = useRef(false)
-  const pinTile = (id: string | null) => {
-    pinnedRef.current = id !== null
-    setSpotlightId(id)
-  }
+  const [layout, setLayout] = useState<'grid' | 'spotlight'>('grid')
+  const [pinnedId, setPinnedId] = useState<string | null>(null)
 
   useEffect(() => {
     setIsMobileDevice(isAndroidMobile() || isIOSOrIPadOS())
+  }, [])
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 900px)')
+    const apply = () => setIsNarrow(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
   }, [])
 
   // Timer — seed the start time in the store once so it survives minimize→expand
@@ -335,67 +144,137 @@ export function GroupCallScreen({
     }
   }, [isMobileDevice])
 
-  // Auto-spotlight dominant speaker when 7+ participants
   const remoteEntries = useMemo(() => Object.entries(remoteStreams), [remoteStreams])
-  const totalCount = 1 + remoteEntries.length
-  const useDominantSpeaker = totalCount >= 7
+  // '#screen' entries are LiveKit screen-share streams — extra TILES, not people.
+  const totalCount = 1 + remoteEntries.filter(([id]) => !id.endsWith('#screen')).length
 
+  // Auto-spotlight: a shared screen wins, then the dominant speaker in big
+  // rooms (unless manually pinned).
+  const speakingId = useMemo(
+    () => Object.values(participants).find((p) => p.isSpeaking)?.userId ?? null,
+    [participants]
+  )
+  const screenEntryId = remoteEntries.find(([id]) => id.endsWith('#screen'))?.[0] ?? null
+  const autoSpotlightId =
+    screenEntryId ??
+    (totalCount >= 7 && speakingId ? speakingId : remoteEntries[0]?.[0] ?? userId)
+  const spotlightId = pinnedId ?? autoSpotlightId
+
+  // Jump to spotlight when a remote screen share appears.
+  const hadScreenRef = useRef(false)
   useEffect(() => {
-    // Never override a user's manual pin (the auto-spotlight used to instantly
-    // revert it below 7 participants and re-pin the speaker above 7).
-    if (pinnedRef.current) return
-    if (!useDominantSpeaker) {
-      setSpotlightId(null)
+    const has = screenEntryId !== null
+    if (has && !hadScreenRef.current) setLayout('spotlight')
+    hadScreenRef.current = has
+  }, [screenEntryId])
+
+  // Release a manual pin when the pinned participant leaves (#7). Never clears
+  // a self-pin (the local user is always present).
+  useEffect(() => {
+    if (!pinnedId || pinnedId === userId) return
+    if (!participants[pinnedId] && !remoteStreams[pinnedId]) {
+      setPinnedId(null)
+    }
+  }, [pinnedId, participants, remoteStreams, userId])
+
+  const pinToggle = useCallback((id: string) => {
+    setPinnedId((prev) => (prev === id ? null : id))
+    setLayout('spotlight')
+  }, [])
+
+  const audioMuted = localStream?.getAudioTracks().some((t_) => !t_.enabled) ?? false
+  const isAudioRelay = transport === 'audio_relay'
+  const videoOff = !isCameraOn && !isScreenSharing
+
+  const openInCallChat = useCallback(() => {
+    if (roomId) useSessionStore.getState().setActiveChatId(roomId)
+    if (isNarrow) {
+      useGroupCallStore.getState().setIsMiniPlayer(true)
       return
     }
-    // Find the first speaking participant
-    const speaking = Object.values(participants).find((p) => p.isSpeaking)
-    if (speaking && spotlightId !== speaking.userId) {
-      setSpotlightId(speaking.userId)
-    }
-  }, [participants, useDominantSpeaker, spotlightId])
-
-  // Release a manual pin (or any spotlight) when the pinned participant leaves,
-  // so the spotlight doesn't stay stuck on a blank "UNKNOWN" tile (#7). Never
-  // clears a self-pin (spotlightId === userId, the local user, always present).
-  useEffect(() => {
-    if (!spotlightId || spotlightId === userId) return
-    if (!participants[spotlightId] && !remoteStreams[spotlightId]) {
-      pinnedRef.current = false
-      setSpotlightId(null)
-    }
-  }, [spotlightId, participants, remoteStreams, userId])
-
-  const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
-  const isAudioRelay = transport === 'audio_relay'
-  // "Video off" for the local tile/controls reflects the *camera* — never the
-  // screen track. While screen-sharing the local tile still shows live video
-  // (the shared screen), so the off-indicator is suppressed.
-  const videoOff = !isCameraOn && !isScreenSharing
+    setChatOpen(!chatOpen)
+  }, [roomId, isNarrow, chatOpen, setChatOpen])
 
   if (!isInGroupCall || !localStream) return null
 
-  // Camera toggle keeps local state in sync with the actual camera track —
-  // flipping a track's `enabled` flag does not re-render React on its own.
   const handleVideoToggle = async () => {
     setIsCameraOn(await onToggleVideo())
   }
 
-  // Screen-share is a real toggle: onToggleScreenShare starts it when off and
-  // stops it when on, returning the resulting state. Mirrors the 1:1 control.
   const handleScreenShareToggle = async () => {
     const sharing = await onToggleScreenShare()
     setIsScreenSharing(sharing)
   }
 
+  const chatShrink = chatOpen && !isNarrow
+
+  const localTile = (
+    <CallTile
+      peerId={userId}
+      stream={localStream}
+      label={username}
+      isLocal
+      micMuted={audioMuted}
+      camOff={videoOff}
+      screenSharing={isScreenSharing}
+      pinned={pinnedId === userId}
+      onPinToggle={() => pinToggle(userId)}
+      mediaRev={localMediaRev}
+    />
+  )
+
+  const remoteTile = (id: string, stream: MediaStream | null, showPin = true) => {
+    const isScreenTile = id.endsWith('#screen')
+    const ownerId = isScreenTile ? id.slice(0, -'#screen'.length) : id
+    const ownerName = participants[ownerId]?.username ?? ownerId.slice(0, 8)
+    return (
+      <CallTile
+        peerId={id}
+        stream={stream}
+        label={isScreenTile ? `${ownerName} · ${t('call.screenSharing')}` : ownerName}
+        micMuted={!isScreenTile && (participants[id]?.isMuted ?? false)}
+        camOff={!isScreenTile && (participants[id]?.isVideoOff ?? false)}
+        screenSharing={isScreenTile}
+        pinned={pinnedId === id}
+        onPinToggle={() => pinToggle(id)}
+        showPin={showPin}
+      />
+    )
+  }
+
+  const participantRows: ParticipantRow[] = [
+    {
+      userId,
+      label: username,
+      isLocal: true,
+      micMuted: audioMuted,
+      camOff: videoOff,
+      screenSharing: isScreenSharing,
+    },
+    ...Object.values(participants)
+      .filter((p) => p.userId !== userId)
+      .map((p) => ({
+        userId: p.userId,
+        label: p.username,
+        micMuted: p.isMuted,
+        camOff: p.isVideoOff,
+        speaking: p.isSpeaking,
+        connectionState: p.connectionState,
+      })),
+  ]
+
   return (
     <PortalRoot>
-      <div className="fixed inset-0 z-[200] flex flex-col bg-void font-mono" role="dialog">
+      <div
+        className="fixed inset-y-0 left-0 z-[200] flex flex-col bg-void font-mono"
+        style={{ right: chatShrink ? 'min(400px, 45vw)' : 0 }}
+        role="dialog"
+      >
         {/* HEADER */}
         <div className="flex shrink-0 items-center justify-between border-b border-border-strong bg-void/50 px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-md">
           <div className="flex items-center gap-3">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full bg-neon-cyan opacity-75" />
+              <span className="absolute inline-flex h-full w-full animate-ping bg-neon-cyan opacity-75" />
               <span className="relative inline-flex h-2 w-2 bg-neon-cyan" />
             </span>
             <p className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
@@ -404,7 +283,7 @@ export function GroupCallScreen({
           </div>
           <div className="flex items-center gap-2">
             {isScreenSharing && (
-              <span className="flex items-center gap-1.5 border border-neon-cyan/50 bg-neon-cyan/10 px-2 py-0.5">
+              <span className="hidden items-center gap-1.5 border border-neon-cyan/50 bg-neon-cyan/10 px-2 py-0.5 sm:flex">
                 <Monitor className="h-3 w-3 text-neon-cyan" />
                 <span className="font-mono text-[9px] uppercase tracking-wider text-neon-cyan">
                   {t('call.screenSharing')}
@@ -419,7 +298,7 @@ export function GroupCallScreen({
                 </span>
               </span>
             )}
-            <p className="text-xs text-neon-cyan/70 tracking-wider">
+            <p className="text-xs tracking-wider text-neon-cyan/70">
               [{formatDuration(elapsed)}]
             </p>
             <button
@@ -434,119 +313,70 @@ export function GroupCallScreen({
           </div>
         </div>
 
-        {/* STREAMS GRID */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-2 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void">
-          {spotlightId ? (
-            // SPOTLIGHT LAYOUT — a pinned tile (click any tile to pin at any
-            // size; auto-pins the dominant speaker at 7+). Click the big tile to unpin.
-            <div className="flex flex-col h-full gap-2">
-              {/* Spotlight */}
-              <div className="flex-1 min-h-[50vh] cursor-pointer" onClick={() => pinTile(null)}>
-                {spotlightId === userId ? (
-                  <ParticipantTile
-                    stream={localStream}
-                    label={username}
-                    isMuted={audioMuted}
-                    isVideoOff={videoOff}
-                    isSpeaking={false}
-                    isLocal
-                    isSpotlighted
-                  />
-                ) : (
-                  <ParticipantTile
-                    stream={remoteStreams[spotlightId] ?? null}
-                    label={participants[spotlightId]?.username ?? 'UNKNOWN'}
-                    isMuted={participants[spotlightId]?.isMuted ?? false}
-                    isVideoOff={participants[spotlightId]?.isVideoOff ?? false}
-                    isSpeaking={participants[spotlightId]?.isSpeaking ?? false}
-                    isLocal={false}
-                    connectionState={participants[spotlightId]?.connectionState}
-                    isSpotlighted
-                  />
-                )}
+        {/* BODY: tiles + optional side panel */}
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1 overflow-y-auto overscroll-y-contain bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void p-2">
+            {layout === 'spotlight' || pinnedId ? (
+              <div className="flex h-full flex-col gap-2">
+                <div className="min-h-0 flex-1">
+                  {spotlightId === userId
+                    ? localTile
+                    : remoteTile(spotlightId, remoteStreams[spotlightId] ?? null)}
+                </div>
+                <div className="scrollbar-none flex shrink-0 gap-2 overflow-x-auto pb-1">
+                  {spotlightId !== userId && (
+                    <div className="h-24 w-36 flex-shrink-0">{localTile}</div>
+                  )}
+                  {remoteEntries
+                    .filter(([id]) => id !== spotlightId)
+                    .map(([id, stream]) => (
+                      <div key={id} className="h-24 w-36 flex-shrink-0">
+                        {remoteTile(id, stream, false)}
+                      </div>
+                    ))}
+                </div>
               </div>
-              {/* Bottom strip */}
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-                {spotlightId !== userId && (
-                  <div
-                    className="flex-shrink-0 w-32 h-24 cursor-pointer"
-                    onClick={() => pinTile(userId)}
-                  >
-                    <ParticipantTile
-                      stream={localStream}
-                      label={username}
-                      isMuted={audioMuted}
-                      isVideoOff={videoOff}
-                      isSpeaking={false}
-                      isLocal
-                    />
-                  </div>
-                )}
-                {remoteEntries
-                  .filter(([id]) => id !== spotlightId)
-                  .map(([id, stream]) => (
-                    <div
-                      key={id}
-                      className="flex-shrink-0 w-32 h-24 cursor-pointer"
-                      onClick={() => pinTile(id)}
-                    >
-                      <ParticipantTile
-                        stream={stream}
-                        label={participants[id]?.username ?? id.slice(0, 8)}
-                        isMuted={participants[id]?.isMuted ?? false}
-                        isVideoOff={participants[id]?.isVideoOff ?? false}
-                        isSpeaking={participants[id]?.isSpeaking ?? false}
-                        isLocal={false}
-                        connectionState={participants[id]?.connectionState}
-                      />
-                    </div>
-                  ))}
+            ) : (
+              <div className={`grid h-full auto-rows-fr gap-2 ${getGridClass(totalCount)}`}>
+                {localTile}
+                {remoteEntries.map(([id, stream]) => (
+                  <div key={id} className="min-h-0">{remoteTile(id, stream)}</div>
+                ))}
               </div>
-            </div>
-          ) : (
-            // GRID LAYOUT (2x2, 3x2, etc.)
-            <div className={`grid gap-2 h-full auto-rows-fr ${getGridClass(totalCount)}`}>
-              <ParticipantTile
-                stream={localStream}
-                label={username}
-                isMuted={audioMuted}
-                isVideoOff={videoOff}
-                isSpeaking={false}
-                isLocal
-              />
-              {remoteEntries.map(([id, stream]) => (
-                <ParticipantTile
-                  key={id}
-                  stream={stream}
-                  label={participants[id]?.username ?? id.slice(0, 8)}
-                  isMuted={participants[id]?.isMuted ?? false}
-                  isVideoOff={participants[id]?.isVideoOff ?? false}
-                  isSpeaking={participants[id]?.isSpeaking ?? false}
-                  isLocal={false}
-                  connectionState={participants[id]?.connectionState}
-                  onClick={() => pinTile(spotlightId === id ? null : id)}
+            )}
+          </div>
+
+          {(showParticipantPanel || showDebug) && (
+            <aside className="w-[300px] max-w-[85vw] shrink-0 border-l border-border-strong">
+              {showDebug ? (
+                <CallDebugPanel
+                  peers={peerConnections}
+                  labels={Object.fromEntries(
+                    Object.values(participants).map((p) => [p.userId, p.username])
+                  )}
+                  extraLines={[
+                    `transport: ${transport}`,
+                    ...(transport === 'livekit' ? [t('call.debugLivekitNote')] : []),
+                    ...(isAudioRelay ? [t('call.debugRelayNote')] : []),
+                  ]}
+                  onClose={() => setShowDebug(false)}
                 />
-              ))}
-            </div>
+              ) : (
+                <CallParticipantsPanel
+                  rows={participantRows}
+                  onClose={() => setShowParticipantPanel(false)}
+                />
+              )}
+            </aside>
           )}
         </div>
 
-        {/* PARTICIPANT PANEL */}
-        <AnimatePresence>
-          {showParticipantPanel && (
-            <ParticipantPanel
-              participants={participants}
-              onClose={() => setShowParticipantPanel(false)}
-            />
-          )}
-        </AnimatePresence>
-
         {/* CONTROL BAR */}
         <div
-          className={`absolute bottom-2 left-2 right-2 flex items-center justify-center bg-void/90 border border-border-strong backdrop-blur-xl shadow-2xl transition-all duration-300 pb-[env(safe-area-inset-bottom)] md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2 ${
+          className={`absolute bottom-2 left-2 right-2 flex items-center justify-center border border-border-strong bg-void/90 pb-[env(safe-area-inset-bottom)] shadow-2xl backdrop-blur-xl transition-all duration-300 md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2 ${
             showControls
               ? 'translate-y-0 opacity-100'
-              : 'translate-y-4 opacity-0 pointer-events-none'
+              : 'pointer-events-none translate-y-4 opacity-0'
           }`}
         >
           {/* Mute */}
@@ -555,7 +385,7 @@ export function GroupCallScreen({
             className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
               audioMuted
                 ? 'bg-danger/30 text-neon-red hover:bg-danger/30'
-                : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
+                : 'text-text-primary hover:bg-surface/5 hover:text-text-primary'
             }`}
             title={audioMuted ? t('call.unmute') : t('call.mute')}
             aria-label={audioMuted ? t('call.unmute') : t('call.mute')}
@@ -563,13 +393,13 @@ export function GroupCallScreen({
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
 
-          {/* Deafen — output mute: silences all remote audio (issue #5/#7). */}
+          {/* Deafen */}
           <button
             onClick={() => setDeafened(!deafened)}
             className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
               deafened
                 ? 'bg-danger/30 text-neon-red hover:bg-danger/30'
-                : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
+                : 'text-text-primary hover:bg-surface/5 hover:text-text-primary'
             }`}
             title={deafened ? t('call.undeafen') : t('call.deafen')}
             aria-label={deafened ? t('call.undeafen') : t('call.deafen')}
@@ -578,15 +408,14 @@ export function GroupCallScreen({
             {deafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
           </button>
 
-          {/* Camera on/off — reflects the *camera* track state (isCameraOn),
-              never the screen track. */}
+          {/* Camera */}
           <button
             onClick={isAudioRelay ? undefined : handleVideoToggle}
             disabled={isAudioRelay}
             className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
               isAudioRelay || !isCameraOn
                 ? 'bg-void/50 text-text-muted/70 hover:bg-elevated'
-                : 'text-text-primary hover:text-text-primary hover:bg-surface/5'
+                : 'text-text-primary hover:bg-surface/5 hover:text-text-primary'
             } disabled:cursor-not-allowed disabled:opacity-50`}
             title={isCameraOn ? t('call.videoOff') : t('call.videoOn')}
             aria-label={isCameraOn ? t('call.videoOff') : t('call.videoOn')}
@@ -599,10 +428,10 @@ export function GroupCallScreen({
           {!isMobileDevice && !isAudioRelay && (
             <button
               onClick={handleScreenShareToggle}
-              className={`hidden sm:flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
+              className={`hidden h-12 w-12 items-center justify-center border-r border-border-strong transition-colors sm:flex md:w-14 ${
                 isScreenSharing
                   ? 'bg-neon-cyan/10 text-neon-cyan'
-                  : 'text-text-muted hover:text-text-primary hover:bg-surface/5'
+                  : 'text-text-muted hover:bg-surface/5 hover:text-text-primary'
               }`}
               title={
                 isScreenSharing
@@ -618,23 +447,63 @@ export function GroupCallScreen({
             </button>
           )}
 
+          {/* Layout toggle */}
+          <button
+            onClick={() => { setLayout(layout === 'grid' ? 'spotlight' : 'grid'); if (layout === 'spotlight') setPinnedId(null) }}
+            className="hidden h-12 w-12 items-center justify-center border-r border-border-strong text-text-muted transition-colors hover:bg-surface/5 hover:text-text-primary md:flex md:w-14"
+            title={t('call.toggleLayout')}
+            aria-label={t('call.toggleLayout')}
+          >
+            {layout === 'grid' && !pinnedId ? <Focus className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
+          </button>
+
+          {/* Chat */}
+          <button
+            onClick={openInCallChat}
+            className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
+              chatOpen && !isNarrow
+                ? 'bg-neon-cyan/10 text-neon-cyan'
+                : 'text-text-muted hover:bg-surface/5 hover:text-text-primary'
+            }`}
+            title={t('call.openChat')}
+            aria-label={t('call.openChat')}
+            aria-pressed={chatOpen && !isNarrow}
+          >
+            <MessageSquare className="h-4 w-4" />
+          </button>
+
           {/* Participants */}
           <button
-            onClick={() => setShowParticipantPanel(!showParticipantPanel)}
+            onClick={() => { setShowDebug(false); setShowParticipantPanel(!showParticipantPanel) }}
             className={`flex h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:w-14 ${
               showParticipantPanel
                 ? 'bg-neon-cyan/10 text-neon-cyan'
-                : 'text-text-muted hover:text-text-primary hover:bg-surface/5'
+                : 'text-text-muted hover:bg-surface/5 hover:text-text-primary'
             }`}
             title={t('groupCall.participants')}
             aria-label={t('groupCall.participants')}
           >
             <div className="relative">
               <Users className="h-4 w-4" />
-              <span className="absolute -top-1.5 -right-2 font-mono text-[8px] text-neon-cyan">
+              <span className="absolute -right-2 -top-1.5 font-mono text-[8px] text-neon-cyan">
                 {totalCount}
               </span>
             </div>
+          </button>
+
+          {/* Debug */}
+          <button
+            onClick={() => { setShowParticipantPanel(false); setShowDebug(!showDebug) }}
+            className={`hidden h-12 w-12 items-center justify-center border-r border-border-strong transition-colors md:flex md:w-14 ${
+              showDebug
+                ? 'bg-neon-cyan/10 text-neon-cyan'
+                : 'text-text-muted hover:bg-surface/5 hover:text-text-primary'
+            }`}
+            title={t('call.debugTitle')}
+            aria-label={t('call.debugTitle')}
+            aria-pressed={showDebug}
+          >
+            <Activity className="h-4 w-4" />
           </button>
 
           {/* End Call */}

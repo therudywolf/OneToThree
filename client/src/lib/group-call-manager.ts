@@ -35,7 +35,15 @@ function loadLiveKitManager(): Promise<LiveKitCallManager> {
 let livekitActive = false
 import { fetchCallConfig } from '@/lib/api/call'
 import { applyVideoTrack, planScreenShareStart, planScreenShareStop } from '@/lib/call-media-tracks'
-import { getUserMediaConstraints, loadMediaPrefs } from '@/lib/media-devices'
+import {
+  getUserMediaConstraints,
+  loadMediaPrefs,
+  loadCamEffectImage,
+  getDisplayMediaOptions,
+  applyScreenTrackSettings,
+} from '@/lib/media-devices'
+import { upgradeLocalStreamAudio, type VoiceProcessingHandle } from '@/lib/voice-processing'
+import { createEffectedCameraTrack, type CameraEffectsHandle } from '@/lib/camera-effects'
 
 
 
@@ -84,6 +92,51 @@ let groupScreenTrack: MediaStreamTrack | null = null
 /** Screen-share audio track, tracked so the in-app stop / call teardown stops
  * and unpublishes it — not only the video track. */
 let groupScreenAudioTrack: MediaStreamTrack | null = null
+/** Live mic-processing chain (noise gate) for the mesh/relay group call. */
+let groupVoiceHandle: VoiceProcessingHandle | null = null
+
+async function attachGroupVoiceChain(stream: MediaStream): Promise<void> {
+  groupVoiceHandle?.dispose()
+  groupVoiceHandle = null
+  try {
+    groupVoiceHandle = await upgradeLocalStreamAudio(stream)
+  } catch {
+    groupVoiceHandle = null
+  }
+}
+
+/** Live camera-effects chain (background blur/replacement) for the mesh call.
+ * When active, `groupCameraTrack` holds the PROCESSED track and this handle
+ * owns the raw hardware one. */
+let groupCamFx: CameraEffectsHandle | null = null
+
+/** Wrap a raw camera track per the saved pref; returns the track to publish. */
+async function wrapGroupCameraTrack(raw: MediaStreamTrack): Promise<MediaStreamTrack> {
+  groupCamFx?.dispose()
+  groupCamFx = null
+  const prefs = loadMediaPrefs()
+  if (prefs.camEffect === 'none') return raw
+  try {
+    const handle = await createEffectedCameraTrack(raw, {
+      kind: prefs.camEffect,
+      imageDataUrl: loadCamEffectImage(),
+    })
+    if (!handle) return raw
+    groupCamFx = handle
+    return handle.processedTrack
+  } catch {
+    return raw
+  }
+}
+
+/** Stop the published camera track AND its effects chain (raw included). */
+function stopGroupCameraTrack(published: MediaStreamTrack | null): void {
+  if (groupCamFx) {
+    groupCamFx.dispose()
+    groupCamFx = null
+  }
+  published?.stop()
+}
 
 /** Whether the local user is currently screen-sharing in the mesh call. */
 export function isGroupCallScreenSharing(): boolean {
@@ -265,10 +318,19 @@ function createPeerConnection(
 
   // Remote track handler
   pc.ontrack = (ev) => {
+    const store2 = useGroupCallStore.getState()
     if (ev.streams[0]) {
-      useGroupCallStore.getState().setRemoteStream(peerId, ev.streams[0])
+      store2.setRemoteStream(peerId, ev.streams[0])
       setupSpeakingDetection(peerId, ev.streams[0])
+      return
     }
+    // No msid (replaceTrack on a reused transceiver — e.g. screen share from a
+    // camera-less peer). Merge into the peer's stream under a NEW identity.
+    const current = store2.remoteStreams[peerId]
+    const tracks = current ? current.getTracks().filter((t) => t !== ev.track) : []
+    const merged = new MediaStream([...tracks, ev.track])
+    store2.setRemoteStream(peerId, merged)
+    setupSpeakingDetection(peerId, merged)
   }
 
   // Connection state monitoring
@@ -371,6 +433,34 @@ function cleanupSpeakingDetection(peerId: string) {
   audioAnalysers.delete(peerId)
 }
 
+/**
+ * Reconcile the peer's remote MediaStream with the pc's live RECEIVERS after
+ * an SDP exchange — renegotiation reusing a transceiver does not reliably
+ * re-fire ontrack, and replaceTrack'd senders ship no msid (mirrors the 1:1
+ * hook's syncRemoteFromReceivers).
+ */
+function syncRemoteFromReceivers(peerId: string, pc: RTCPeerConnection) {
+  const receiving: MediaStreamTrack[] = []
+  for (const tr of pc.getTransceivers()) {
+    const dir = tr.currentDirection
+    if (!dir || dir === 'inactive' || dir === 'stopped' || dir === 'sendonly') continue
+    const track = tr.receiver?.track
+    if (track && track.readyState === 'live') receiving.push(track)
+  }
+  if (receiving.length === 0) return
+  const store = useGroupCallStore.getState()
+  const current = store.remoteStreams[peerId]
+  const curTracks = current ? current.getTracks() : []
+  const missing = receiving.filter((t) => !curTracks.includes(t))
+  if (missing.length === 0) return
+  const merged = new MediaStream([
+    ...curTracks.filter((t) => t.readyState === 'live'),
+    ...missing,
+  ])
+  store.setRemoteStream(peerId, merged)
+  setupSpeakingDetection(peerId, merged)
+}
+
 /** Flush pending ICE candidates for a peer. */
 async function flushIceQueue(peerId: string, pc: RTCPeerConnection) {
   const queue = pendingIce.get(peerId)
@@ -452,6 +542,14 @@ function cleanupAll() {
   // Stop the screen track(s) (if sharing) and local stream.
   groupScreenTrack?.stop()
   groupScreenAudioTrack?.stop()
+  // Release the mic + camera-effects chains — they own the RAW hardware
+  // tracks (terminateFeed below only reaches the processed tracks in
+  // localStream).
+  groupVoiceHandle?.dispose()
+  groupVoiceHandle = null
+  groupCamFx?.dispose()
+  groupCamFx = null
+  groupCameraTrack?.stop()
   terminateFeed(store.localStream)
   groupCameraTrack = null
   groupScreenTrack = null
@@ -472,14 +570,15 @@ async function joinGroupAudioRelayCall(roomId: string): Promise<boolean> {
   const store = useGroupCallStore.getState()
   let stream: MediaStream
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: false,
-    })
+    // Honor the mic device + echo/noise/AGC prefs (was a bare `audio: true`).
+    stream = await navigator.mediaDevices.getUserMedia(
+      getUserMediaConstraints({ video: false, hd: false })
+    )
   } catch (err) {
     console.error('[GC.RELAY] Failed to get audio media:', err)
     return false
   }
+  await attachGroupVoiceChain(stream)
 
   groupRelayMode = true
   store.setLocalStream(stream)
@@ -542,15 +641,29 @@ export async function joinGroupCall(
   // Mesh WebRTC fallback
   let stream: MediaStream
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: isVideo
-        ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
-        : false,
-    })
+    const prefs = loadMediaPrefs()
+    stream = await navigator.mediaDevices.getUserMedia(
+      getUserMediaConstraints({ video: isVideo, hd: !prefs.lowBandwidth })
+    )
   } catch (err) {
     console.error('[GC.MEDIA] Failed to get media:', err)
     return false
+  }
+  await attachGroupVoiceChain(stream)
+
+  // Remember the camera track so screen-share can detach (never stop) it and
+  // restore it afterwards — distinct from the screen track. Background
+  // effects wrap the raw track before anything is published.
+  const rawCam = stream.getVideoTracks()[0] ?? null
+  if (rawCam) {
+    const published = await wrapGroupCameraTrack(rawCam)
+    if (published !== rawCam) {
+      stream.removeTrack(rawCam)
+      stream.addTrack(published)
+    }
+    groupCameraTrack = published
+  } else {
+    groupCameraTrack = null
   }
 
   store.setLocalStream(stream)
@@ -558,9 +671,6 @@ export async function joinGroupCall(
   store.setRoomId(roomId)
   store.setIsVideo(isVideo)
   store.setTransport('mesh')
-  // Remember the camera track so screen-share can detach (never stop) it and
-  // restore it afterwards — distinct from the screen track.
-  groupCameraTrack = stream.getVideoTracks()[0] ?? null
 
   sendGroupCallSignal({
     type: 'group_call:join',
@@ -726,6 +836,7 @@ export async function handleGroupCallOffer(
       target_user_id: fromUserId,
       sdp: answer.sdp ?? '',
     })
+    syncRemoteFromReceivers(fromUserId, pc)
   } catch (err) {
     console.error(`[GC.SIGNAL] Failed to handle offer from ${fromUserId.slice(0, 8)}:`, err)
     cleanupPeer(fromUserId)
@@ -748,6 +859,7 @@ export async function handleGroupCallAnswer(
   try {
     await pc.setRemoteDescription({ type: 'answer', sdp })
     await flushIceQueue(fromUserId, pc)
+    syncRemoteFromReceivers(fromUserId, pc)
   } catch (err) {
     console.error(`[GC.SIGNAL] Failed to handle answer from ${fromUserId.slice(0, 8)}:`, err)
   }
@@ -855,7 +967,7 @@ export async function toggleGroupCallVideo(): Promise<void> {
   if (!local || !store.roomId) return
 
   // Lazy acquisition: no camera track yet -> turn the camera ON.
-  if (!groupCameraTrack) {
+  if (!groupCameraTrack || groupCameraTrack.readyState === 'ended') {
     let camStream: MediaStream
     try {
       const prefs = loadMediaPrefs()
@@ -867,8 +979,10 @@ export async function toggleGroupCallVideo(): Promise<void> {
       console.error('[GC.MEDIA] Camera acquisition failed:', err)
       return
     }
-    const camera = camStream.getVideoTracks()[0] ?? null
-    if (!camera) return
+    const rawCamera = camStream.getVideoTracks()[0] ?? null
+    if (!rawCamera) return
+    // Background effects wrap the raw track before publishing.
+    const camera = await wrapGroupCameraTrack(rawCamera)
     groupCameraTrack = camera
     camera.enabled = true
     // While screen-sharing keep the camera detached; otherwise publish it.
@@ -879,6 +993,7 @@ export async function toggleGroupCallVideo(): Promise<void> {
       }
     }
     store.setLocalStream(local)
+    store.bumpLocalMediaRev()
     if (!groupScreenTrack) {
       sendGroupCallSignal({
         type: 'group_call:video_toggle',
@@ -889,8 +1004,20 @@ export async function toggleGroupCallVideo(): Promise<void> {
     return
   }
 
-  // Existing camera track -> flip enabled state.
-  groupCameraTrack.enabled = !groupCameraTrack.enabled
+  // Existing camera track -> HARD off: stop the hardware (LED out), clear the
+  // sender track, drop the ref. `enabled = false` alone kept the device open.
+  const cam = groupCameraTrack
+  if (!groupScreenTrack) {
+    for (const pc of Object.values(store.peerConnections)) {
+      applyVideoTrack(pc, null, local)
+    }
+  }
+  if (local.getVideoTracks().includes(cam)) local.removeTrack(cam)
+  // Tears down the effects chain too — it owns the RAW hardware track.
+  stopGroupCameraTrack(cam)
+  groupCameraTrack = null
+  store.setLocalStream(local)
+  store.bumpLocalMediaRev()
 
   // Don't leak camera on/off signalling to peers while the screen is shared.
   if (groupScreenTrack) return
@@ -898,7 +1025,7 @@ export async function toggleGroupCallVideo(): Promise<void> {
   sendGroupCallSignal({
     type: 'group_call:video_toggle',
     room_id: store.roomId,
-    is_video_off: !groupCameraTrack.enabled,
+    is_video_off: true,
   })
 }
 
@@ -922,16 +1049,16 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
   if (groupScreenTrack) return true
 
   try {
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: true,
-    })
+    const screenStream = await navigator.mediaDevices.getDisplayMedia(
+      getDisplayMediaOptions()
+    )
 
     const screenVideoTrack = screenStream.getVideoTracks()[0]
     if (!screenVideoTrack) {
       screenStream.getTracks().forEach((t) => t.stop())
       return false
     }
+    applyScreenTrackSettings(screenVideoTrack)
 
     const local = store.localStream
     // Detach the camera track from the local stream WITHOUT stopping it — the
@@ -949,6 +1076,7 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
     local.addTrack(plan.attachToLocal)
     groupScreenTrack = screenVideoTrack
     store.setLocalStream(local)
+    store.bumpLocalMediaRev()
 
     // Remote peers now receive video (the screen) — keep their video-off
     // indicator accurate. Uses the existing video_toggle channel.
@@ -964,11 +1092,15 @@ export async function startGroupCallScreenShare(): Promise<boolean> {
     }
 
     // Add screen audio (if the user shared a tab with audio) to every peer.
+    // Publish it under the SAME msid as the rest of the local tracks: passing
+    // `screenStream` minted a new remote MediaStream holding ONLY the screen
+    // audio, and the peer's ontrack replaced their entry with it — mic and
+    // shared screen both vanished on their side (same bug the 1:1 path fixed).
     const screenAudioTrack = screenStream.getAudioTracks()[0]
     if (screenAudioTrack) {
       groupScreenAudioTrack = screenAudioTrack
       for (const pc of Object.values(store.peerConnections)) {
-        pc.addTrack(screenAudioTrack, screenStream)
+        pc.addTrack(screenAudioTrack, local)
       }
       const origOnEnded = screenVideoTrack.onended
       screenVideoTrack.onended = () => {
@@ -1072,6 +1204,7 @@ export function stopGroupCallScreenShare(): void {
     groupScreenAudioTrack = null
   }
   groupScreenTrack = null
+  store.bumpLocalMediaRev()
 
   // Sync remote video-off indicators with the restored camera state: video is
   // off unless a camera track exists and is enabled.

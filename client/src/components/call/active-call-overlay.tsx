@@ -1,16 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Mic,
   MicOff,
-  MonitorUp,
   Monitor,
+  MonitorOff,
   PhoneOff,
   RefreshCw,
   Video,
   VideoOff,
-  Maximize2,
   Minimize2,
   Grid3X3,
   Focus,
@@ -18,22 +18,33 @@ import {
   Lock,
   Radio,
   ChevronDown,
-  MonitorOff,
   Camera,
   SwitchCamera,
   Headphones,
   HeadphoneOff,
   UserPlus,
+  MessageSquare,
+  Users,
+  Activity,
+  ExternalLink,
+  MoreHorizontal,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { lookupUsers } from '@/lib/api/users'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
+import { loadMediaPrefs, type CameraEffectPref } from '@/lib/media-devices'
 import { useCallStore } from '@/store/callStore'
 import type { QualityLevel, PeerConnectionType } from '@/store/callStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { useThemeStore } from '@/store/themeStore'
 import { PortalRoot } from '@/components/portal-root'
 import { useTranslation, type TranslationKey } from '@/hooks/use-translation'
 import { RelayToast } from '@/components/call/relay-toast'
+import { CallTile } from '@/components/call/call-tile'
+import { CallDebugPanel } from '@/components/call/call-debug-panel'
+import { CallParticipantsPanel, type ParticipantRow } from '@/components/call/call-participants-panel'
+import { isDocPipSupported, openDocPipWindow } from '@/lib/call-pip'
 
 type Props = {
   onEndCall: () => void
@@ -57,6 +68,8 @@ type Props = {
   /** Promote this 1:1 call to a group call with the given invitee (#4). */
   onPromote?: (inviteeUserId: string) => Promise<void>
   onSetQuality: (level: QualityLevel) => void
+  /** Switch the camera background effect (none/blur/image) live. */
+  onSetCameraEffect?: (kind: CameraEffectPref) => void
 }
 
 function formatDuration(ms: number): string {
@@ -74,211 +87,19 @@ function getQualityDotColor(quality: { rtt: number | null; outgoingBitrate: numb
   return 'green'
 }
 
-// Solid, legible, semantically-correct status colors. The design token --success
-// is actually amber (#ffbf47), so a "good" connection used to render as a faint
-// amber dot (read as a warning) and "medium" as faint cyan — inverted and nearly
-// invisible. Use explicit values at full opacity instead (issue #12).
+// Solid, legible, semantically-correct status colors (issue #12).
 const DOT_COLORS = {
   green: 'bg-[#22c55e]',
   yellow: 'bg-[#f59e0b]',
   red: 'bg-neon-red',
 } as const
 
-function getGridClass(count: number, layoutMode: 'grid' | 'focus'): string {
-  if (layoutMode === 'focus') return 'grid-cols-1'
+function getGridClass(count: number): string {
   if (count <= 1) return 'grid-cols-1'
   if (count <= 2) return 'grid-cols-1 md:grid-cols-2'
   if (count <= 4) return 'grid-cols-2'
   if (count <= 6) return 'grid-cols-2 md:grid-cols-3'
   return 'grid-cols-3 md:grid-cols-4'
-}
-
-// --- PEER TILE (TERMINAL NODE) ---
-function PeerTile({
-  peerId,
-  stream,
-  label,
-  muted = false,
-  isLocal = false,
-  remoteMicMuted = false,
-  remoteCamOff = false,
-  remoteScreenSharing = false,
-  isFullscreen = false,
-  onFullscreenToggle,
-  isDragging = false,
-  position,
-  isFocused = false,
-  onFocusToggle,
-  layout = 'grid',
-  connectionType,
-}: {
-  peerId: string
-  stream: MediaStream
-  label: string
-  muted?: boolean
-  isLocal?: boolean
-  remoteMicMuted?: boolean
-  remoteCamOff?: boolean
-  remoteScreenSharing?: boolean
-  isFullscreen?: boolean
-  onFullscreenToggle?: () => void
-  isDragging?: boolean
-  position?: { x: number; y: number }
-  isFocused?: boolean
-  onFocusToggle?: () => void
-  layout?: 'grid' | 'focus'
-  connectionType?: PeerConnectionType
-}) {
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const isMd3 = useThemeStore((s) => s.shellMode) === 'md3'
-  const hasVideo = stream.getVideoTracks().length > 0
-  const [tapCount, setTapCount] = useState(0)
-  const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  useEffect(() => {
-    const v = videoRef.current
-    const a = audioRef.current
-    // Remote audio is played by the always-mounted CallAudioSink (which survives
-    // minimize — see components/call/call-audio-sink.tsx). Tiles render VIDEO only
-    // and stay muted to avoid double audio.
-    if (hasVideo && v) {
-      v.srcObject = stream
-      void v.play().catch(() => {})
-    } else if (v) {
-      v.srcObject = null
-    }
-    if (a) {
-      a.srcObject = null
-      a.pause()
-    }
-    return () => {
-      if (v) v.srcObject = null
-      if (a) {
-        a.srcObject = null
-        a.pause()
-      }
-    }
-  }, [stream, hasVideo])
-
-  const handleInteraction = () => {
-    if (layout === 'focus' && onFocusToggle) {
-      onFocusToggle()
-      return
-    }
-    // Double tap mechanic
-    setTapCount((c) => c + 1)
-    if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current)
-    if (tapCount === 1 && onFullscreenToggle && !label.includes('LOCAL')) {
-      onFullscreenToggle()
-      setTapCount(0)
-    } else {
-      tapTimeoutRef.current = setTimeout(() => setTapCount(0), 300)
-    }
-  }
-
-  const isRemote = !isLocal
-  const _showWarnings = isRemote && (remoteMicMuted || remoteCamOff)
-
-  const containerClass = layout === 'grid'
-    ? 'relative w-full h-full bg-void border border-border-strong group'
-    : 'relative w-full h-full bg-void group'
-
-  // No decorative grayscale/contrast on live video — it desaturates real faces
-  // and shared screens. Discord/Telegram never post-process the feed (issue #12).
-  const videoClass = 'w-full h-full object-cover'
-
-  const isLocalPIP = layout === 'focus' && !isRemote
-  const localPIPClass = 'absolute bottom-24 right-6 w-32 h-48 md:w-48 md:h-72 object-cover border border-neon-cyan/50 shadow-[0_0_15px_rgba(0,255,255,0.15)] z-10'
-
-  return (
-    <div
-      className={`relative bg-void transition-all duration-200 ${
-        isFullscreen
-          ? 'fixed inset-0 z-[210] border-2 border-neon-red'
-          : isFocused
-            ? 'border border-neon-cyan ring-1 ring-neon-cyan/30'
-            : isLocalPIP 
-              ? localPIPClass 
-              : 'border border-border-strong hover:border-border-strong'
-      }`}
-      style={isDragging && position ? {
-        position: 'fixed', left: `${position.x}px`, top: `${position.y}px`, width: '150px', height: '200px', zIndex: 199
-      } : undefined}
-      onClick={handleInteraction}
-    >
-      {/* NODE HEADER */}
-      <div className="absolute top-0 left-0 w-full z-10 flex items-center justify-between border-b border-border-strong/5 bg-void/80 px-2 py-1 opacity-100 transition-opacity duration-300 md:opacity-0 md:group-hover:opacity-100">
-        <p className={`${isMd3 ? '' : 'font-mono '}text-[10px] uppercase tracking-widest text-text-primary/70`}>
-          <span className={isRemote ? 'text-neon-cyan' : 'text-text-muted'}>[{label}]</span> :: {peerId.slice(0, 8)}
-        </p>
-        {isRemote && onFullscreenToggle && (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onFullscreenToggle(); }}
-            className="text-text-primary/50 hover:text-neon-cyan transition-colors"
-          >
-            {isFullscreen ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-          </button>
-        )}
-      </div>
-
-      <audio ref={audioRef} className="hidden" playsInline muted={muted} />
-      
-      {hasVideo ? (
-        <div className={containerClass} style={layout === 'grid' ? undefined : { aspectRatio: '16/9' }}>
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            controls={false}
-            className={isLocalPIP ? 'w-full h-full object-cover transform scale-x-[-1]' : `${videoClass}${isRemote ? '' : ' transform scale-x-[-1]'}`}
-          />
-        </div>
-      ) : (
-        <div className="flex w-full h-full items-center justify-center bg-void inset-0 absolute">
-          <div className="space-y-2 text-center">
-            <div className="mx-auto h-10 w-10 border border-border-strong bg-void flex items-center justify-center">
-              <span className="block w-2 h-2 bg-neon-red animate-pulse" />
-            </div>
-            <p className={`${isMd3 ? '' : 'font-mono '}text-[10px] uppercase tracking-widest text-text-muted/70`}>VIDEO_OFFLINE</p>
-          </div>
-        </div>
-      )}
-
-      {/* STATUS OVERLAYS */}
-      <div className="pointer-events-none absolute bottom-2 left-2 flex flex-col gap-1 z-10">
-        {/* P2P / Relay indicator per tile */}
-        {connectionType && connectionType !== 'unknown' && (
-          <span className={`flex items-center gap-1 border px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider backdrop-blur-md ${
-            connectionType === 'p2p'
-              ? 'border-success/40 bg-void/90 text-success'
-              : 'border-accent-2/40 bg-void/90 text-accent-2'
-          }`}>
-            {connectionType === 'p2p' ? <Lock className="h-2.5 w-2.5" /> : <Radio className="h-2.5 w-2.5" />}
-            {connectionType === 'p2p' ? 'P2P' : 'RELAY'}
-          </span>
-        )}
-        {remoteMicMuted && (
-          <span className={`border border-neon-red/50 bg-void/90 px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md`}>
-            AUDIO_CUT
-          </span>
-        )}
-        {remoteCamOff && hasVideo && (
-          <span className={`border border-neon-red/50 bg-void/90 px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-red backdrop-blur-md`}>
-            FEED_LOST
-          </span>
-        )}
-        {remoteScreenSharing && (
-          <span className={`flex items-center gap-1 border border-neon-cyan/50 bg-void/90 px-1.5 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-cyan backdrop-blur-md`}>
-            <MonitorUp className="h-2.5 w-2.5" />
-            SCREEN
-          </span>
-        )}
-      </div>
-    </div>
-  )
 }
 
 const QUALITY_OPTIONS: QualityLevel[] = ['auto', '720p', '480p', '360p', 'audio_only']
@@ -298,6 +119,51 @@ function connectionTypeLabel(type: PeerConnectionType, t: (key: TranslationKey) 
   return { label: t('call.connP2P'), icon: 'lock' }
 }
 
+const LAYOUT_STORAGE_KEY = 'p13_call_layout'
+const LOCAL_PIP_STORAGE_KEY = 'p13_call_local_pip'
+
+type LocalPipRect = { x: number | null; y: number | null; w: number }
+
+function loadLocalPipRect(): LocalPipRect {
+  if (typeof window === 'undefined') return { x: null, y: null, w: 224 }
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PIP_STORAGE_KEY)
+    if (!raw) return { x: null, y: null, w: 224 }
+    const v = JSON.parse(raw) as LocalPipRect
+    return {
+      x: typeof v.x === 'number' ? v.x : null,
+      y: typeof v.y === 'number' ? v.y : null,
+      w: typeof v.w === 'number' ? Math.min(480, Math.max(140, v.w)) : 224,
+    }
+  } catch {
+    return { x: null, y: null, w: 224 }
+  }
+}
+
+/** Simple always-live video element for the Document-PiP popout. */
+function PipVideo({ stream, mirrored }: { stream: MediaStream | null; mirrored?: boolean }) {
+  const ref = useRef<HTMLVideoElement | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (stream) {
+      if (el.srcObject !== stream) el.srcObject = stream
+      void el.play().catch(() => {})
+    } else {
+      el.srcObject = null
+    }
+  }, [stream])
+  return (
+    <video
+      ref={ref}
+      autoPlay
+      playsInline
+      muted
+      className={`h-full w-full object-contain ${mirrored ? 'scale-x-[-1]' : ''}`}
+    />
+  )
+}
+
 // --- MAIN OVERLAY ---
 export function ActiveCallOverlay({
   onEndCall,
@@ -313,6 +179,7 @@ export function ActiveCallOverlay({
   peerName,
   promoteCandidateIds,
   onPromote,
+  onSetCameraEffect,
 }: Props) {
   const { t } = useTranslation()
   const shellMode = useThemeStore((s) => s.shellMode)
@@ -330,25 +197,47 @@ export function ActiveCallOverlay({
   const peerConnections = useCallStore((s) => s.peerConnections)
   const qualityLevel = useCallStore((s) => s.qualityLevel)
   const callStartTime = useCallStore((s) => s.callStartTime)
+  const callChatId = useCallStore((s) => s.callChatId)
 
   const isMiniPlayer = useCallStore((s) => s.isMiniPlayer)
   const setMiniPlayer = useCallStore((s) => s.setMiniPlayer)
   const deafened = useCallStore((s) => s.deafened)
   const setDeafened = useCallStore((s) => s.setDeafened)
+  const sidePanel = useCallStore((s) => s.sidePanel)
+  const setSidePanel = useCallStore((s) => s.setSidePanel)
+  const chatOpen = useCallStore((s) => s.chatOpen)
+  const setChatOpen = useCallStore((s) => s.setChatOpen)
+  const localMediaRev = useCallStore((s) => s.localMediaRev)
 
   const [tick, setTick] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const [screenShareAllowed, setScreenShareAllowed] = useState(true)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
-  const [layout, setLayout] = useState<'grid' | 'focus'>('grid')
-  const [focusedPeerId, setFocusedPeerId] = useState<string | null>(null)
+  const [isNarrow, setIsNarrow] = useState(false)
+  const [layout, setLayout] = useState<'grid' | 'spotlight'>(() => {
+    if (typeof window === 'undefined') return 'spotlight'
+    return window.localStorage.getItem(LAYOUT_STORAGE_KEY) === 'grid' ? 'grid' : 'spotlight'
+  })
+  const [pinnedId, setPinnedId] = useState<string | null>(null)
   const [showControls, setShowControls] = useState(true)
   const [showQualityMenu, setShowQualityMenu] = useState(false)
   const [showCameraMenu, setShowCameraMenu] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
   // 1:1 → group promotion picker (#4)
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [addCandidates, setAddCandidates] = useState<Array<{ id: string; username: string }>>([])
   const [promoteBusy, setPromoteBusy] = useState(false)
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
+  const [remoteNames, setRemoteNames] = useState<Record<string, string>>({})
+  // Local floating self-view (spotlight mode, 2 participants): drag + resize.
+  // Positioned ABSOLUTE inside the tiles area (not the viewport) so it can
+  // never cover the side chat / panels.
+  const [localPip, setLocalPip] = useState<LocalPipRect>(() => loadLocalPipRect())
+  const localPipDragRef = useRef<{ mode: 'move' | 'resize'; startX: number; startY: number; baseX: number; baseY: number; baseW: number } | null>(null)
+  const localPipElRef = useRef<HTMLDivElement | null>(null)
+  const tilesAreaRef = useRef<HTMLDivElement | null>(null)
+  // Document-PiP popout window (null = not popped out).
+  const [pipWindow, setPipWindow] = useState<Window | null>(null)
 
   useEffect(() => {
     if (!showAddMenu || !promoteCandidateIds?.length) return
@@ -361,24 +250,29 @@ export function ActiveCallOverlay({
       .catch(() => { if (!cancelled) setAddCandidates([]) })
     return () => { cancelled = true }
   }, [showAddMenu, promoteCandidateIds])
-  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([])
 
   useEffect(() => {
     setScreenShareAllowed(!isAndroidMobile())
     setIsMobileDevice(isAndroidMobile() || isIOSOrIPadOS())
   }, [])
 
-  // Refresh the desktop camera list whenever the selector is opened (labels are
-  // only populated once camera permission has been granted).
+  // Viewport class for the chat-panel shrink (side chat only makes sense wide).
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 900px)')
+    const apply = () => setIsNarrow(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
+
+  // Refresh the desktop camera list whenever the selector is opened.
   useEffect(() => {
     if (!showCameraMenu) return
     let cancelled = false
     void onListCameras().then((list) => {
       if (!cancelled) setCameras(list)
     })
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [showCameraMenu, onListCameras])
 
   // Cleanup: end call if the overlay unmounts while still calling (but not when minimized)
@@ -408,6 +302,35 @@ export function ActiveCallOverlay({
   const remoteEntries = useMemo(() => Object.entries(remoteStreams), [remoteStreams])
   const tileCount = 1 + remoteEntries.length
 
+  // Resolve display names for every remote (a promoted mesh call can carry
+  // several peers; `peerName` only covers the classic 1:1 case). Requested ids
+  // are remembered so an id the lookup can't resolve is not refetched in a loop.
+  const requestedNamesRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const ids = remoteEntries
+      .map(([id]) => id)
+      .filter((id) => !remoteNames[id] && !requestedNamesRef.current.has(id))
+    if (ids.length === 0) return
+    ids.forEach((id) => requestedNamesRef.current.add(id))
+    let cancelled = false
+    void lookupUsers(ids)
+      .then((rows) => {
+        if (cancelled) return
+        setRemoteNames((prev) => {
+          const next = { ...prev }
+          for (const r of rows) next[r.id] = r.username
+          return next
+        })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [remoteEntries, remoteNames])
+
+  const nameFor = useCallback(
+    (id: string) => remoteNames[id] || peerName || id.slice(0, 8),
+    [remoteNames, peerName]
+  )
+
   useEffect(() => {
     if (!isCalling || !localStream || !callStartTime) {
       setElapsed(0)
@@ -419,71 +342,262 @@ export function ActiveCallOverlay({
     return () => window.clearInterval(id)
   }, [isCalling, localStream, callStartTime])
 
-  const audioMuted = localStream?.getAudioTracks().some((t) => !t.enabled) ?? false
-  // The 1:1 call runs over the WebSocket PCM relay (origin-safe deployment, or
-  // the 30s P2P timeout fell back to `websocket_audio`) — it has no
-  // RTCPeerConnection at all, so it can only carry mono audio. Hide the video
-  // controls exactly like group-call-screen does for its `audio_relay`
-  // transport: they used to run getUserMedia/getDisplayMedia and announce
-  // "screen sharing" to the peer while transmitting nothing at all.
+  // Auto-spotlight a remote that STARTS screen sharing (unless the user pinned
+  // something themselves).
+  const prevSharingRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const sharing = new Set(
+      Object.entries(remotePeerMedia)
+        .filter(([, m]) => m.screenSharing)
+        .map(([id]) => id)
+    )
+    const started = Array.from(sharing).find((id) => !prevSharingRef.current.has(id))
+    prevSharingRef.current = sharing
+    if (started && remoteStreams[started]) {
+      setLayout('spotlight')
+      setPinnedId((prev) => prev ?? null) // keep manual pin; auto-pin handles the rest
+    }
+  }, [remotePeerMedia, remoteStreams])
+
+  // Drop a manual pin when that participant leaves.
+  useEffect(() => {
+    if (pinnedId && pinnedId !== 'local' && !remoteStreams[pinnedId]) {
+      setPinnedId(null)
+    }
+  }, [pinnedId, remoteStreams])
+
+  const audioMuted = localStream?.getAudioTracks().some((t_) => !t_.enabled) ?? false
+  // WebSocket PCM relay call (no RTCPeerConnection): audio only — every video
+  // control is hidden exactly like before.
   const isAudioRelay = Object.keys(peerConnections).length === 0
 
-  function toggleLayout() {
-    setLayout((prev) => {
-      const next = prev === 'grid' ? 'focus' : 'grid'
-      if (next === 'focus') setFocusedPeerId(remoteEntries[0]?.[0] || 'LOCAL_UNIT')
-      else setFocusedPeerId(null)
-      return next
-    })
-  }
+  const setLayoutPersist = useCallback((next: 'grid' | 'spotlight') => {
+    setLayout(next)
+    try { window.localStorage.setItem(LAYOUT_STORAGE_KEY, next) } catch { /* quota */ }
+  }, [])
 
-  function _cycleQuality() {
-    const idx = QUALITY_OPTIONS.indexOf(qualityLevel)
-    const next = QUALITY_OPTIONS[(idx + 1) % QUALITY_OPTIONS.length]
-    onSetQuality(next)
-    setShowQualityMenu(false)
-  }
+  // Spotlight target: manual pin → remote screen share → first remote → local.
+  const autoSpotlightId = useMemo(() => {
+    const sharing = remoteEntries.find(([id]) => remotePeerMedia[id]?.screenSharing)
+    if (sharing) return sharing[0]
+    return remoteEntries[0]?.[0] ?? 'local'
+  }, [remoteEntries, remotePeerMedia])
+  const spotlightId = pinnedId ?? autoSpotlightId
 
-  if (!isCalling || !localStream || isMiniPlayer) return null
+  const pinToggle = useCallback((id: string) => {
+    setPinnedId((prev) => (prev === id ? null : id))
+    setLayout('spotlight')
+  }, [])
+
+  // --- Local floating self-view drag/resize (pointer events) ---
+  // Coordinates are relative to the tiles area container, clamped inside it.
+  const onLocalPipPointerDown = useCallback((e: React.PointerEvent, mode: 'move' | 'resize') => {
+    const el = localPipElRef.current
+    const area = tilesAreaRef.current
+    if (!el || !area) return
+    e.preventDefault()
+    e.stopPropagation()
+    const rect = el.getBoundingClientRect()
+    const areaRect = area.getBoundingClientRect()
+    localPipDragRef.current = {
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: rect.left - areaRect.left,
+      baseY: rect.top - areaRect.top,
+      baseW: rect.width,
+    }
+    const onMove = (ev: PointerEvent) => {
+      const drag = localPipDragRef.current
+      const areaEl = tilesAreaRef.current
+      if (!drag || !areaEl) return
+      if (drag.mode === 'move') {
+        const w = localPipElRef.current?.offsetWidth ?? drag.baseW
+        const h = localPipElRef.current?.offsetHeight ?? (drag.baseW * 9) / 16
+        const x = Math.min(areaEl.clientWidth - w - 4, Math.max(4, drag.baseX + ev.clientX - drag.startX))
+        const y = Math.min(areaEl.clientHeight - h - 4, Math.max(4, drag.baseY + ev.clientY - drag.startY))
+        setLocalPip((prev) => ({ ...prev, x, y }))
+      } else {
+        const maxW = Math.max(160, Math.min(520, (tilesAreaRef.current?.clientWidth ?? 520) - 24))
+        const w = Math.min(maxW, Math.max(140, drag.baseW + (ev.clientX - drag.startX)))
+        setLocalPip((prev) => ({ ...prev, w }))
+      }
+    }
+    const onUp = () => {
+      localPipDragRef.current = null
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      setLocalPip((prev) => {
+        try { window.localStorage.setItem(LOCAL_PIP_STORAGE_KEY, JSON.stringify(prev)) } catch { /* quota */ }
+        return prev
+      })
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [])
+
+  // --- Document PiP popout ---
+  const openPopout = useCallback(async () => {
+    const win = await openDocPipWindow({ width: 420, height: 320 })
+    if (!win) return
+    setPipWindow(win)
+    win.addEventListener('pagehide', () => setPipWindow(null))
+  }, [])
+
+  useEffect(() => {
+    // Close the popout with the call.
+    if (!isCalling && pipWindow) {
+      try { pipWindow.close() } catch { /* closed */ }
+      setPipWindow(null)
+    }
+  }, [isCalling, pipWindow])
+
+  const openInCallChat = useCallback(() => {
+    // Focus the call's chat first, so the panel shows the right conversation.
+    if (callChatId) useSessionStore.getState().setActiveChatId(callChatId)
+    if (isNarrow) {
+      // Mobile: the "chat" is the real app behind the call — minimize to it.
+      setMiniPlayer(true)
+      return
+    }
+    setChatOpen(!chatOpen)
+  }, [callChatId, isNarrow, chatOpen, setChatOpen, setMiniPlayer])
+
+  if (!isCalling || !localStream) return null
+
+  // Popout content survives minimize: the overlay hides, the PiP window stays.
+  const popoutPortal = pipWindow
+    ? createPortal(
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#eee', fontFamily: 'monospace' }}>
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <PipVideo
+              stream={
+                spotlightId !== 'local'
+                  ? remoteStreams[spotlightId] ?? remoteEntries[0]?.[1] ?? null
+                  : localStream
+              }
+              mirrored={spotlightId === 'local' && !isScreenSharing}
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 8 }}>
+            <button
+              onClick={() => { onToggleMute(); setTick((v) => v + 1) }}
+              style={{ background: audioMuted ? '#7f1d1d' : '#222', color: '#eee', border: '1px solid #444', padding: '8px 14px', cursor: 'pointer' }}
+            >
+              {audioMuted ? t('call.unmute') : t('call.mute')}
+            </button>
+            <button
+              onClick={() => setDeafened(!deafened)}
+              style={{ background: deafened ? '#7f1d1d' : '#222', color: '#eee', border: '1px solid #444', padding: '8px 14px', cursor: 'pointer' }}
+            >
+              {deafened ? t('call.undeafen') : t('call.deafen')}
+            </button>
+            <button
+              onClick={onEndCall}
+              style={{ background: '#dc2626', color: '#fff', border: '1px solid #dc2626', padding: '8px 14px', cursor: 'pointer' }}
+            >
+              {t('call.endCall')}
+            </button>
+          </div>
+        </div>,
+        pipWindow.document.body
+      )
+    : null
+
+  if (isMiniPlayer) return popoutPortal
+
+  const chatShrink = chatOpen && !isNarrow
+  const sidePanelOpen = sidePanel !== 'none'
+
+  // Tiles other than the spotlight (local included). With exactly two
+  // participants the local tile floats instead of sitting in a strip.
+  const stripTiles: Array<{ id: string; stream: MediaStream | null }> = []
+  if (layout === 'spotlight') {
+    if (spotlightId !== 'local') stripTiles.push({ id: 'local', stream: localStream })
+    for (const [id, stream] of remoteEntries) {
+      if (id !== spotlightId) stripTiles.push({ id, stream })
+    }
+  }
+  const useFloatingSelf = layout === 'spotlight' && spotlightId !== 'local' && stripTiles.length === 1
+  const visibleStrip = useFloatingSelf ? [] : stripTiles
+
+  const participantRows: ParticipantRow[] = [
+    {
+      userId: 'local',
+      label: t('call.you'),
+      isLocal: true,
+      micMuted: audioMuted,
+      camOff: !isCameraOn && !isScreenSharing,
+      screenSharing: isScreenSharing,
+    },
+    ...remoteEntries.map(([id]) => ({
+      userId: id,
+      label: nameFor(id),
+      micMuted: remotePeerMedia[id]?.micMuted,
+      camOff: remotePeerMedia[id]?.cameraOff,
+      screenSharing: remotePeerMedia[id]?.screenSharing,
+      connectionType: peerConnectionTypes[id],
+    })),
+  ]
+
+  const controlBtn = (active: boolean, danger = false) =>
+    isMd3
+      ? `h-12 w-12 rounded-full ${
+          danger
+            ? 'bg-[var(--error-container,color-mix(in_srgb,var(--danger)_24%,var(--surface)))] text-[var(--on-error-container,var(--danger))]'
+            : active
+              ? 'bg-[var(--primary-container,color-mix(in_srgb,var(--primary)_24%,var(--surface)))] text-[var(--on-primary-container,var(--primary))]'
+              : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
+        }`
+      : `h-12 w-12 md:w-14 border-r border-border-strong ${
+          danger
+            ? 'bg-danger/30 text-neon-red'
+            : active
+              ? 'bg-neon-cyan/10 text-neon-cyan'
+              : 'text-text-muted hover:text-text-primary hover:bg-surface/5'
+        }`
 
   return (
     <PortalRoot>
       <RelayToast />
-      <div className={`fixed inset-0 z-[200] flex flex-col ${isRetro ? 'p13-classic-overlay font-["Tahoma"]' : 'bg-void'} ${isMd3 ? '' : 'font-mono'}`} role="dialog">
+      {popoutPortal}
+      <div
+        className={`fixed inset-y-0 left-0 z-[200] flex flex-col ${isRetro ? 'p13-classic-overlay font-["Tahoma"]' : 'bg-void'} ${isMd3 ? '' : 'font-mono'}`}
+        style={{ right: chatShrink ? 'min(400px, 45vw)' : 0 }}
+        role="dialog"
+      >
         {/* HEADER BAR */}
-        <div className={`flex shrink-0 items-center justify-between border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] ${isRetro ? 'p13-titlebar' : 'border-border-strong bg-void/50 backdrop-blur-md'}`}>
-          <div className="flex items-center gap-3">
-            <span className="relative flex h-2.5 w-2.5">
+        <div className={`flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] ${isRetro ? 'p13-titlebar' : 'border-border-strong bg-void/50 backdrop-blur-md'}`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isMd3 ? 'bg-[var(--primary)]' : 'bg-neon-cyan'} opacity-75`}></span>
               <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isMd3 ? 'bg-[var(--primary)]' : 'bg-neon-cyan'}`}></span>
             </span>
             {isMd3 ? (
-              <p className="text-sm font-medium text-[var(--on-surface)]">
-                {t('call.activePeer')} · {tileCount}
+              <p className="truncate text-sm font-medium text-[var(--on-surface)]">
+                {peerName || t('call.activePeer')} · {tileCount}
               </p>
             ) : (
-              <p className="text-[10px] uppercase tracking-[0.2em] text-text-muted">
-                SYS.LINK // <span className="text-text-primary">NODES: {tileCount}</span>
+              <p className="truncate text-[10px] uppercase tracking-[0.2em] text-text-muted">
+                SYS.LINK // <span className="text-text-primary">{peerName || `NODES: ${tileCount}`}</span>
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            {/* Screen sharing indicator */}
+          <div className="flex shrink-0 items-center gap-2">
             {isScreenSharing && (
-              <span className="flex items-center gap-1.5 border border-neon-cyan/50 bg-neon-cyan/10 px-2 py-0.5">
+              <span className="hidden items-center gap-1.5 border border-neon-cyan/50 bg-neon-cyan/10 px-2 py-0.5 md:flex">
                 <Monitor className="h-3 w-3 text-neon-cyan" />
                 <span className={`${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-neon-cyan`}>{t('call.screenSharing')}</span>
               </span>
             )}
 
-            {/* P2P / Relay indicators per peer */}
             {Object.entries(peerConnectionTypes).map(([peerId, connType]) => {
               if (connType === 'unknown') return null
               const info = connectionTypeLabel(connType, t)
               return (
                 <span
                   key={peerId}
-                  className={`flex items-center gap-1 border px-2 py-0.5 ${
+                  className={`hidden items-center gap-1 border px-2 py-0.5 md:flex ${
                     connType === 'p2p'
                       ? 'border-success/40 bg-success/20'
                       : 'border-accent-2/40 bg-accent-2/15'
@@ -501,13 +615,7 @@ export function ActiveCallOverlay({
               )
             })}
 
-            {/* Connection quality dot */}
             <span className={`inline-block h-2 w-2 rounded-full ${DOT_COLORS[getQualityDotColor(connectionQuality)]}`} title={t('call.quality')} />
-
-            {/* Quality badge */}
-            <span className={`border border-border-strong bg-void/80 px-2 py-0.5 ${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-text-muted`}>
-              {qualityLabel(qualityLevel, t)}
-            </span>
 
             {isConnectionLost && (
               <span className="flex items-center gap-1.5 border border-neon-red/50 bg-danger/30 px-2 py-0.5">
@@ -516,92 +624,199 @@ export function ActiveCallOverlay({
               </span>
             )}
             {isReconnecting && !isConnectionLost && (
-              <span className="flex items-center gap-1.5 border border-accent-2/40 bg-accent-2/15 px-2 py-0.5 animate-pulse">
-                <RefreshCw className="h-3 w-3 text-accent-2 animate-spin" />
+              <span className="flex animate-pulse items-center gap-1.5 border border-accent-2/40 bg-accent-2/15 px-2 py-0.5">
+                <RefreshCw className="h-3 w-3 animate-spin text-accent-2" />
                 <span className={`${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-accent-2`}>{t('call.reconnecting')}</span>
               </span>
             )}
-            {!isReconnecting && !isConnectionLost && connectionQuality?.poor && (
-              <span className="flex items-center gap-1.5 border border-accent-2/40 bg-accent-2/15 px-2 py-0.5">
-                <WifiOff className="h-3 w-3 text-accent-2" />
-                <span className={`${isMd3 ? '' : 'font-mono '}text-[9px] uppercase tracking-wider text-accent-2`}>POOR_LINK</span>
-              </span>
-            )}
-            <p className="text-xs text-neon-cyan/70 tracking-wider">
+            <p className="text-xs tracking-wider text-neon-cyan/70">
               [{formatDuration(elapsed)}]
             </p>
+            {isDocPipSupported() ? (
+              <button
+                type="button"
+                onClick={() => { if (pipWindow) { pipWindow.close(); setPipWindow(null) } else void openPopout() }}
+                className={`flex h-8 w-8 items-center justify-center border transition-colors ${
+                  pipWindow
+                    ? 'border-neon-cyan/60 text-neon-cyan'
+                    : 'border-border-strong text-text-muted hover:border-neon-cyan/60 hover:text-neon-cyan'
+                }`}
+                title={t('call.popOut')}
+                aria-label={t('call.popOut')}
+              >
+                <ExternalLink className="h-4 w-4" strokeWidth={1.5} />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setMiniPlayer(true)}
+              className="flex h-8 w-8 items-center justify-center border border-border-strong text-text-muted transition-colors hover:border-neon-cyan/60 hover:text-neon-cyan"
+              title={t('call.minimize')}
+              aria-label={t('call.minimize')}
+            >
+              <Minimize2 className="h-4 w-4" strokeWidth={1.5} />
+            </button>
           </div>
         </div>
 
-        {/* STREAMS CONTAINER */}
-        <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain p-2 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void">
-          {layout === 'focus' && focusedPeerId ? (
-            <div className="relative flex-1 h-full flex flex-col">
-              <div className="relative flex-1 w-full min-h-[50vh]">
-                {focusedPeerId === 'LOCAL_UNIT' ? (
-                  <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted isLocal layout={layout} />
-                ) : (
-                  remoteEntries.filter(([id]) => id === focusedPeerId).map(([id, stream]) => (
-                    <PeerTile
-                      key={id} peerId={id} stream={stream} label={peerName || 'REMOTE_LINK'}
-                      remoteMicMuted={remotePeerMedia[id]?.micMuted}
-                      remoteCamOff={remotePeerMedia[id]?.cameraOff}
-                      remoteScreenSharing={remotePeerMedia[id]?.screenSharing}
-                      layout={layout}
-                      connectionType={peerConnectionTypes[id]}
+        {/* BODY: tiles + optional side panel */}
+        <div className="flex min-h-0 flex-1">
+          <div ref={tilesAreaRef} className="relative min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-y-contain bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-elevated to-void p-2">
+            {layout === 'spotlight' ? (
+              <div className="flex h-full flex-col gap-2">
+                <div className="min-h-0 flex-1">
+                  {spotlightId === 'local' ? (
+                    <CallTile
+                      peerId="local"
+                      stream={localStream}
+                      label={t('call.you')}
+                      isLocal
+                      micMuted={audioMuted}
+                      camOff={!isCameraOn && !isScreenSharing}
+                      screenSharing={isScreenSharing}
+                      pinned={pinnedId === 'local'}
+                      onPinToggle={() => pinToggle('local')}
+                      mediaRev={localMediaRev}
                     />
-                  ))
+                  ) : (
+                    <CallTile
+                      peerId={spotlightId}
+                      stream={remoteStreams[spotlightId] ?? null}
+                      label={nameFor(spotlightId)}
+                      micMuted={remotePeerMedia[spotlightId]?.micMuted}
+                      camOff={remotePeerMedia[spotlightId]?.cameraOff}
+                      screenSharing={remotePeerMedia[spotlightId]?.screenSharing}
+                      connectionType={peerConnectionTypes[spotlightId]}
+                      pinned={pinnedId === spotlightId}
+                      onPinToggle={() => pinToggle(spotlightId)}
+                    />
+                  )}
+                </div>
+                {visibleStrip.length > 0 && (
+                  <div className="flex shrink-0 gap-2 overflow-x-auto pb-1">
+                    {visibleStrip.map(({ id, stream }) => (
+                      <div key={id} className="h-24 w-40 flex-shrink-0 md:h-28 md:w-48">
+                        {id === 'local' ? (
+                          <CallTile
+                            peerId="local"
+                            stream={localStream}
+                            label={t('call.you')}
+                            isLocal
+                            micMuted={audioMuted}
+                            camOff={!isCameraOn && !isScreenSharing}
+                            screenSharing={isScreenSharing}
+                            onPinToggle={() => pinToggle('local')}
+                            showPin={false}
+                            mediaRev={localMediaRev}
+                          />
+                        ) : (
+                          <CallTile
+                            peerId={id}
+                            stream={stream}
+                            label={nameFor(id)}
+                            micMuted={remotePeerMedia[id]?.micMuted}
+                            camOff={remotePeerMedia[id]?.cameraOff}
+                            screenSharing={remotePeerMedia[id]?.screenSharing}
+                            connectionType={peerConnectionTypes[id]}
+                            onPinToggle={() => pinToggle(id)}
+                            showPin={false}
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {/* LOCAL PIP IN FOCUS MODE */}
-              {focusedPeerId !== 'LOCAL_UNIT' && (
-                 <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted isLocal onFocusToggle={() => setFocusedPeerId('LOCAL_UNIT')} layout={layout} />
-              )}
-
-              {/* FOCUS THUMBNAILS */}
-              {focusedPeerId === 'LOCAL_UNIT' && remoteEntries.length > 0 && (
-                <div className="mt-2 flex gap-2 overflow-x-auto border-t border-border-strong pt-2 px-2">
-                  {remoteEntries.map(([id, stream]) => (
-                    <div key={id} className="flex-shrink-0 w-40 h-28 cursor-pointer opacity-70 hover:opacity-100 transition-opacity">
-                      <PeerTile
-                        peerId={id} stream={stream} label={peerName || 'REMOTE_LINK'}
-                        remoteMicMuted={remotePeerMedia[id]?.micMuted}
-                        remoteCamOff={remotePeerMedia[id]?.cameraOff}
-                        remoteScreenSharing={remotePeerMedia[id]?.screenSharing}
-                        onFocusToggle={() => setFocusedPeerId(id)} layout="grid"
-                        connectionType={peerConnectionTypes[id]}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className={`grid gap-2 h-full ${getGridClass(tileCount, layout)}`}>
-              <PeerTile peerId="LOCAL_UNIT" stream={localStream} label="LOCAL_UNIT" muted isLocal onFocusToggle={() => setFocusedPeerId('LOCAL_UNIT')} layout={layout} />
-              {remoteEntries.map(([id, stream]) => (
-                <PeerTile
-                  key={id} peerId={id} stream={stream} label={peerName || 'REMOTE_LINK'}
-                  remoteMicMuted={remotePeerMedia[id]?.micMuted}
-                  remoteCamOff={remotePeerMedia[id]?.cameraOff}
-                  remoteScreenSharing={remotePeerMedia[id]?.screenSharing}
-                  onFocusToggle={() => setFocusedPeerId(id)} layout={layout}
-                  connectionType={peerConnectionTypes[id]}
+            ) : (
+              <div className={`grid h-full auto-rows-fr gap-2 ${getGridClass(tileCount)}`}>
+                <CallTile
+                  peerId="local"
+                  stream={localStream}
+                  label={t('call.you')}
+                  isLocal
+                  micMuted={audioMuted}
+                  camOff={!isCameraOn && !isScreenSharing}
+                  screenSharing={isScreenSharing}
+                  onPinToggle={() => pinToggle('local')}
+                  mediaRev={localMediaRev}
                 />
-              ))}
-            </div>
+                {remoteEntries.map(([id, stream]) => (
+                  <CallTile
+                    key={id}
+                    peerId={id}
+                    stream={stream}
+                    label={nameFor(id)}
+                    micMuted={remotePeerMedia[id]?.micMuted}
+                    camOff={remotePeerMedia[id]?.cameraOff}
+                    screenSharing={remotePeerMedia[id]?.screenSharing}
+                    connectionType={peerConnectionTypes[id]}
+                    onPinToggle={() => pinToggle(id)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Floating draggable/resizable self-view (classic 1:1 spotlight) */}
+            {useFloatingSelf && (
+              <div
+                ref={localPipElRef}
+                className="absolute z-30 cursor-grab touch-none shadow-2xl active:cursor-grabbing"
+                style={{
+                  width: `${localPip.w}px`,
+                  left: localPip.x !== null ? `${localPip.x}px` : undefined,
+                  top: localPip.y !== null ? `${localPip.y}px` : undefined,
+                  right: localPip.x === null ? '1rem' : undefined,
+                  bottom: localPip.y === null ? '6.5rem' : undefined,
+                  aspectRatio: '16/9',
+                }}
+                onPointerDown={(e) => onLocalPipPointerDown(e, 'move')}
+              >
+                <CallTile
+                  peerId="local"
+                  stream={localStream}
+                  label={t('call.you')}
+                  isLocal
+                  micMuted={audioMuted}
+                  camOff={!isCameraOn && !isScreenSharing}
+                  screenSharing={isScreenSharing}
+                  onPinToggle={() => pinToggle('local')}
+                  showPin={false}
+                  mediaRev={localMediaRev}
+                />
+                {/* resize handle */}
+                <div
+                  className="absolute bottom-0 right-0 z-20 h-5 w-5 cursor-nwse-resize"
+                  onPointerDown={(e) => onLocalPipPointerDown(e, 'resize')}
+                  title={t('call.resize')}
+                >
+                  <ArrowLeftRight className="h-3.5 w-3.5 rotate-45 text-text-muted" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SIDE PANEL (participants / debug) */}
+          {sidePanelOpen && (
+            <aside className="w-[300px] max-w-[85vw] shrink-0 border-l border-border-strong">
+              {sidePanel === 'participants' ? (
+                <CallParticipantsPanel
+                  rows={participantRows}
+                  onClose={() => setSidePanel('none')}
+                />
+              ) : (
+                <CallDebugPanel
+                  peers={peerConnections}
+                  labels={Object.fromEntries(remoteEntries.map(([id]) => [id, nameFor(id)]))}
+                  extraLines={isAudioRelay ? [t('call.debugRelayNote')] : []}
+                  onClose={() => setSidePanel('none')}
+                />
+              )}
+            </aside>
           )}
         </div>
 
-        {/* CONTROLS
-
-            Every MD3 `--*-container` / `--error` / `--outline-variant` token below
-            carries an explicit fallback: ThemeApplicator only emits --surface-variant,
-            --secondary-container and friends, so `var(--error)` was guaranteed-invalid
-            and fell back to `initial` — the end-call FAB rendered as a bare icon with
-            NO red pill, and mute/deafen looked identical on and off. */}
-        <div className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0 pointer-events-none'} ${
+        {/* CONTROLS */}
+        <div className={`absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'} ${
           isMd3
             ? 'gap-2 rounded-[28px] bg-[var(--surface-container-high,var(--surface-elevated))]/95 px-3 py-2'
             : isRetro
@@ -611,24 +826,16 @@ export function ActiveCallOverlay({
 
           <button
             onClick={() => { onToggleMute(); setTick(t_ => t_ + 1); }}
-            className={`flex items-center justify-center transition-colors ${
-              isMd3
-                ? `h-12 w-12 rounded-full ${audioMuted ? 'bg-[var(--error-container,color-mix(in_srgb,var(--danger)_24%,var(--surface)))] text-[var(--on-error-container,var(--danger))]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
-                : `h-12 w-14 border-r border-border-strong ${audioMuted ? 'bg-danger/30 text-neon-red' : 'text-text-primary hover:bg-surface/5'}`
-            }`}
+            className={`flex items-center justify-center transition-colors ${controlBtn(false, audioMuted)}`}
             title={audioMuted ? t('call.unmute') : t('call.mute')}
+            aria-pressed={audioMuted}
           >
             {audioMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
           </button>
 
-          {/* Deafen — output mute: silences all remote call audio (issue #5/#7). */}
           <button
             onClick={() => setDeafened(!deafened)}
-            className={`flex items-center justify-center transition-colors ${
-              isMd3
-                ? `h-12 w-12 rounded-full ${deafened ? 'bg-[var(--error-container,color-mix(in_srgb,var(--danger)_24%,var(--surface)))] text-[var(--on-error-container,var(--danger))]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
-                : `h-12 w-14 border-r border-border-strong ${deafened ? 'bg-danger/30 text-neon-red' : 'text-text-primary hover:bg-surface/5'}`
-            }`}
+            className={`flex items-center justify-center transition-colors ${controlBtn(false, deafened)}`}
             title={deafened ? t('call.undeafen') : t('call.deafen')}
             aria-label={deafened ? t('call.undeafen') : t('call.deafen')}
             aria-pressed={deafened}
@@ -636,16 +843,11 @@ export function ActiveCallOverlay({
             {deafened ? <HeadphoneOff className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
           </button>
 
-          {/* Camera on/off — single toggle. Reflects the *camera* track state
-              (isCameraOn), never the screen track. */}
+          {/* Camera on/off — reflects the *camera* track state, never the screen. */}
           <button
             onClick={() => { onToggleCamera(); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
             disabled={isAudioRelay}
-            className={`flex items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              isMd3
-                ? `h-12 w-12 rounded-full ${isCameraOn ? 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)]/60'}`
-                : `h-12 w-14 border-r border-border-strong ${isCameraOn ? 'text-text-primary hover:bg-surface/5' : 'bg-void/50 text-text-muted/70'}`
-            }`}
+            className={`flex items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${controlBtn(isCameraOn)}`}
             title={isCameraOn ? t('call.videoOff') : t('call.videoOn')}
             aria-label={isCameraOn ? t('call.videoOff') : t('call.videoOn')}
             aria-pressed={isCameraOn}
@@ -653,18 +855,11 @@ export function ActiveCallOverlay({
             {isCameraOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
           </button>
 
-          {/* Camera control split by platform.
-              Mobile: front/back flip. Desktop: device selector. Both only make
-              sense when a camera is on and not while screen-sharing. */}
           {isCameraOn && !isScreenSharing && !isAudioRelay && (
             isMobileDevice ? (
               <button
                 onClick={() => { onFlipCamera(); setTick(t_ => t_ + 1); }}
-                className={`flex items-center justify-center transition-colors ${
-                  isMd3
-                    ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
-                    : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5'
-                }`}
+                className={`flex items-center justify-center transition-colors ${controlBtn(false)}`}
                 title={t('call.flipCamera')}
                 aria-label={t('call.flipCamera')}
               >
@@ -673,23 +868,19 @@ export function ActiveCallOverlay({
             ) : (
               <div className="relative">
                 <button
-                  onClick={() => setShowCameraMenu((prev) => !prev)}
-                  className={`flex items-center justify-center transition-colors ${
-                    isMd3
-                      ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
-                      : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5'
-                  }`}
+                  onClick={() => { setShowCameraMenu((prev) => !prev); setShowMoreMenu(false); setShowQualityMenu(false) }}
+                  className={`flex items-center justify-center transition-colors ${controlBtn(showCameraMenu)}`}
                   title={t('call.selectCamera')}
                   aria-label={t('call.selectCamera')}
                   aria-expanded={showCameraMenu}
                 >
                   <Camera className="h-4 w-4" />
-                  <ChevronDown className="h-3 w-3 ml-0.5" />
+                  <ChevronDown className="ml-0.5 h-3 w-3" />
                 </button>
                 {showCameraMenu && (
-                  <div className={`absolute bottom-14 left-1/2 -translate-x-1/2 z-50 min-w-[200px] max-w-[280px] shadow-2xl ${
+                  <div className={`absolute bottom-14 left-1/2 z-50 min-w-[220px] max-w-[280px] -translate-x-1/2 shadow-2xl ${
                     isMd3
-                      ? 'rounded-2xl bg-[var(--surface-container-high,var(--surface-elevated))] overflow-hidden'
+                      ? 'overflow-hidden rounded-2xl bg-[var(--surface-container-high,var(--surface-elevated))]'
                       : 'border border-border-strong bg-void/95 backdrop-blur-xl'
                   }`}>
                     {cameras.length === 0 ? (
@@ -703,10 +894,10 @@ export function ActiveCallOverlay({
                         <button
                           key={cam.deviceId || idx}
                           onClick={() => { onSelectCamera(cam.deviceId); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
-                          className={`w-full px-4 py-2.5 text-left truncate transition-colors ${
+                          className={`w-full truncate px-4 py-2.5 text-left transition-colors ${
                             isMd3
                               ? 'text-sm text-[var(--on-surface)] hover:bg-[var(--surface-variant)]'
-                              : 'font-mono text-[11px] uppercase tracking-wider text-text-muted hover:text-text-primary hover:bg-surface/5'
+                              : 'font-mono text-[11px] uppercase tracking-wider text-text-muted hover:bg-surface/5 hover:text-text-primary'
                           }`}
                           title={cam.label || `${t('call.camera')} ${idx + 1}`}
                         >
@@ -714,6 +905,40 @@ export function ActiveCallOverlay({
                         </button>
                       ))
                     )}
+                    {/* Background effect (blur / image) — live switch. */}
+                    {onSetCameraEffect ? (
+                      <>
+                        <p className={`border-t px-4 pb-1 pt-2 text-left ${
+                          isMd3
+                            ? 'border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-[11px] text-[var(--on-surface)]/60'
+                            : 'border-border-strong/60 font-mono text-[9px] uppercase tracking-[0.2em] text-text-muted/70'
+                        }`}>
+                          {t('call.background')}
+                        </p>
+                        {(['none', 'blur', 'image'] as const).map((kind) => {
+                          const active = loadMediaPrefs().camEffect === kind
+                          const label =
+                            kind === 'none'
+                              ? t('call.backgroundNone')
+                              : kind === 'blur'
+                                ? t('call.backgroundBlur')
+                                : t('call.backgroundImage')
+                          return (
+                            <button
+                              key={kind}
+                              onClick={() => { onSetCameraEffect(kind); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
+                              className={`w-full truncate px-4 py-2 text-left transition-colors ${
+                                isMd3
+                                  ? `text-sm ${active ? 'bg-[var(--primary-container,color-mix(in_srgb,var(--primary)_24%,var(--surface)))] text-[var(--on-primary-container,var(--primary))]' : 'text-[var(--on-surface)] hover:bg-[var(--surface-variant)]'}`
+                                  : `font-mono text-[11px] uppercase tracking-wider ${active ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:bg-surface/5 hover:text-text-primary'}`
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </>
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -723,11 +948,7 @@ export function ActiveCallOverlay({
           {screenShareAllowed && !isAudioRelay && (
             <button
               onClick={() => { onToggleScreenShare(); setShowCameraMenu(false); setTick(t_ => t_ + 1); }}
-              className={`hidden md:flex items-center justify-center transition-colors ${
-                isMd3
-                  ? `h-12 w-12 rounded-full ${isScreenSharing ? 'bg-[var(--primary-container,color-mix(in_srgb,var(--primary)_24%,var(--surface)))] text-[var(--on-primary-container,var(--primary))]' : 'bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'}`
-                  : `h-12 w-14 border-r border-border-strong ${isScreenSharing ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-surface/5'}`
-              }`}
+              className={`hidden items-center justify-center transition-colors md:flex ${controlBtn(isScreenSharing)}`}
               title={isScreenSharing ? t('call.stopScreenShare') : t('call.startScreenShare')}
               aria-label={isScreenSharing ? t('call.stopScreenShare') : t('call.startScreenShare')}
               aria-pressed={isScreenSharing}
@@ -736,112 +957,138 @@ export function ActiveCallOverlay({
             </button>
           )}
 
-          <div className="relative">
-            <button
-              onClick={() => setShowQualityMenu(prev => !prev)}
-              className={`flex items-center justify-center transition-colors ${
-                isMd3
-                  ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
-                  : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5'
-              }`}
-              title={t('call.quality')}
-            >
-              <span className={`text-[10px] font-bold ${isMd3 ? '' : 'font-mono'}`}>{qualityLevel === 'auto' ? 'A' : qualityLevel === 'audio_only' ? '♪' : qualityLevel}</span>
-              <ChevronDown className="h-3 w-3 ml-0.5" />
-            </button>
-            {showQualityMenu && (
-              <div className={`absolute bottom-14 left-1/2 -translate-x-1/2 z-50 min-w-[140px] shadow-2xl ${
-                isMd3
-                  ? 'rounded-2xl bg-[var(--surface-container-high,var(--surface-elevated))] overflow-hidden'
-                  : 'border border-border-strong bg-void/95 backdrop-blur-xl'
-              }`}>
-                {QUALITY_OPTIONS.map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => { onSetQuality(opt); setShowQualityMenu(false); }}
-                    className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
-                      isMd3
-                        ? `${qualityLevel === opt ? 'bg-[var(--primary-container,color-mix(in_srgb,var(--primary)_24%,var(--surface)))] text-[var(--on-primary-container,var(--primary))]' : 'text-[var(--on-surface)] hover:bg-[var(--surface-variant)]'}`
-                        : `font-mono text-[11px] uppercase tracking-wider ${qualityLevel === opt ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:text-text-primary hover:bg-surface/5'}`
-                    }`}
-                  >
-                    {qualityLabel(opt, t)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
+          {/* In-call chat (Discord-style side panel; minimizes on mobile) */}
           <button
-            onClick={toggleLayout}
-            className={`flex items-center justify-center transition-colors ${
-              isMd3
-                ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
-                : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-text-primary hover:bg-surface/5'
-            }`}
+            onClick={openInCallChat}
+            className={`flex items-center justify-center transition-colors ${controlBtn(chatOpen && !isNarrow)}`}
+            title={t('call.openChat')}
+            aria-label={t('call.openChat')}
+            aria-pressed={chatOpen && !isNarrow}
+          >
+            <MessageSquare className="h-4 w-4" />
+          </button>
+
+          {/* Participants */}
+          <button
+            onClick={() => setSidePanel(sidePanel === 'participants' ? 'none' : 'participants')}
+            className={`flex items-center justify-center transition-colors ${controlBtn(sidePanel === 'participants')}`}
+            title={t('groupCall.participants')}
+            aria-label={t('groupCall.participants')}
+            aria-pressed={sidePanel === 'participants'}
+          >
+            <div className="relative">
+              <Users className="h-4 w-4" />
+              <span className={`absolute -right-2 -top-1.5 text-[8px] ${isMd3 ? '' : 'font-mono '}text-neon-cyan`}>
+                {tileCount}
+              </span>
+            </div>
+          </button>
+
+          {/* Layout toggle */}
+          <button
+            onClick={() => setLayoutPersist(layout === 'grid' ? 'spotlight' : 'grid')}
+            className={`hidden items-center justify-center transition-colors md:flex ${controlBtn(false)}`}
             title={t('call.toggleLayout')}
+            aria-label={t('call.toggleLayout')}
           >
             {layout === 'grid' ? <Focus className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
           </button>
 
-          {/* Add participant — promote this 1:1 call to a group call (#4). */}
-          {onPromote && (promoteCandidateIds?.length ?? 0) > 0 && (
-            <div className="relative">
-              <button
-                onClick={() => setShowAddMenu((v) => !v)}
-                disabled={promoteBusy}
-                className={`flex items-center justify-center transition-colors disabled:opacity-50 ${
-                  isMd3
-                    ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
-                    : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-neon-cyan hover:bg-neon-cyan/5'
-                }`}
-                title={t('call.addParticipant')}
-                aria-label={t('call.addParticipant')}
-                aria-expanded={showAddMenu}
-              >
-                <UserPlus className="h-4 w-4" />
-              </button>
-              {showAddMenu && (
-                <div className="absolute bottom-14 left-1/2 z-50 max-h-64 w-52 -translate-x-1/2 overflow-y-auto border border-border-strong bg-void/95 shadow-2xl backdrop-blur-xl">
-                  {addCandidates.length === 0 ? (
-                    <p className="px-3 py-2.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
-                      {t('call.addParticipantNone')}
-                    </p>
-                  ) : (
-                    addCandidates.map((c) => (
-                      <button
-                        key={c.id}
-                        disabled={promoteBusy}
-                        onClick={() => {
-                          setPromoteBusy(true)
-                          setShowAddMenu(false)
-                          void onPromote(c.id)
-                            .catch((err) => console.warn('[call] promote failed', err))
-                            .finally(() => setPromoteBusy(false))
-                        }}
-                        className="block w-full truncate px-3 py-2.5 text-left font-mono text-[11px] tracking-wider text-text-primary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
-                      >
-                        {c.username}
-                      </button>
-                    ))
+          {/* More menu: quality, debug, add-user */}
+          <div className="relative">
+            <button
+              onClick={() => { setShowMoreMenu((v) => !v); setShowQualityMenu(false); setShowCameraMenu(false); setShowAddMenu(false) }}
+              className={`flex items-center justify-center transition-colors ${controlBtn(showMoreMenu || sidePanel === 'debug')}`}
+              title={t('call.more')}
+              aria-label={t('call.more')}
+              aria-expanded={showMoreMenu}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {showMoreMenu && (
+              <div className={`absolute bottom-14 left-1/2 z-50 min-w-[200px] -translate-x-1/2 shadow-2xl ${
+                isMd3
+                  ? 'overflow-hidden rounded-2xl bg-[var(--surface-container-high,var(--surface-elevated))]'
+                  : 'border border-border-strong bg-void/95 backdrop-blur-xl'
+              }`}>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowQualityMenu((v) => !v)}
+                    className={`flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors ${
+                      isMd3 ? 'text-sm text-[var(--on-surface)] hover:bg-[var(--surface-variant)]' : 'font-mono text-[11px] uppercase tracking-wider text-text-muted hover:bg-surface/5 hover:text-text-primary'
+                    }`}
+                  >
+                    <span>{t('call.quality')}: {qualityLabel(qualityLevel, t)}</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </button>
+                  {showQualityMenu && (
+                    <div className={isMd3 ? '' : 'border-t border-border-strong/50'}>
+                      {QUALITY_OPTIONS.map((opt) => (
+                        <button
+                          key={opt}
+                          onClick={() => { onSetQuality(opt); setShowQualityMenu(false); setShowMoreMenu(false) }}
+                          className={`w-full px-6 py-2 text-left text-sm transition-colors ${
+                            isMd3
+                              ? `${qualityLevel === opt ? 'bg-[var(--primary-container,color-mix(in_srgb,var(--primary)_24%,var(--surface)))] text-[var(--on-primary-container,var(--primary))]' : 'text-[var(--on-surface)] hover:bg-[var(--surface-variant)]'}`
+                              : `font-mono text-[11px] uppercase tracking-wider ${qualityLevel === opt ? 'bg-neon-cyan/10 text-neon-cyan' : 'text-text-muted hover:bg-surface/5 hover:text-text-primary'}`
+                          }`}
+                        >
+                          {qualityLabel(opt, t)}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          )}
-
-          <button
-            onClick={() => setMiniPlayer(true)}
-            className={`flex items-center justify-center transition-colors ${
-              isMd3
-                ? 'h-12 w-12 rounded-full bg-[var(--surface-variant)] text-[var(--on-surface-variant)] hover:bg-[var(--surface-variant)]/80'
-                : 'h-12 w-14 border-r border-border-strong text-text-muted hover:text-neon-cyan hover:bg-neon-cyan/5'
-            }`}
-            title={t('call.minimize')}
-            aria-label={t('call.minimize')}
-          >
-            <Minimize2 className="h-4 w-4" />
-          </button>
+                <button
+                  onClick={() => { setSidePanel(sidePanel === 'debug' ? 'none' : 'debug'); setShowMoreMenu(false) }}
+                  className={`flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors ${
+                    isMd3 ? 'text-sm text-[var(--on-surface)] hover:bg-[var(--surface-variant)]' : 'font-mono text-[11px] uppercase tracking-wider text-text-muted hover:bg-surface/5 hover:text-text-primary'
+                  }`}
+                >
+                  <Activity className="h-3.5 w-3.5" />
+                  {t('call.debugTitle')}
+                </button>
+                {onPromote && (promoteCandidateIds?.length ?? 0) > 0 && (
+                  <button
+                    onClick={() => { setShowAddMenu(true); setShowMoreMenu(false) }}
+                    disabled={promoteBusy}
+                    className={`flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors disabled:opacity-50 ${
+                      isMd3 ? 'text-sm text-[var(--on-surface)] hover:bg-[var(--surface-variant)]' : 'font-mono text-[11px] uppercase tracking-wider text-text-muted hover:bg-surface/5 hover:text-text-primary'
+                    }`}
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    {t('call.addParticipant')}
+                  </button>
+                )}
+              </div>
+            )}
+            {showAddMenu && (
+              <div className="absolute bottom-14 left-1/2 z-50 max-h-64 w-52 -translate-x-1/2 overflow-y-auto border border-border-strong bg-void/95 shadow-2xl backdrop-blur-xl">
+                {addCandidates.length === 0 ? (
+                  <p className="px-3 py-2.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">
+                    {t('call.addParticipantNone')}
+                  </p>
+                ) : (
+                  addCandidates.map((c) => (
+                    <button
+                      key={c.id}
+                      disabled={promoteBusy}
+                      onClick={() => {
+                        setPromoteBusy(true)
+                        setShowAddMenu(false)
+                        void onPromote?.(c.id)
+                          .catch((err) => console.warn('[call] promote failed', err))
+                          .finally(() => setPromoteBusy(false))
+                      }}
+                      className="block w-full truncate px-3 py-2.5 text-left font-mono text-[11px] tracking-wider text-text-primary transition-colors hover:bg-neon-cyan/10 hover:text-neon-cyan disabled:opacity-50"
+                    >
+                      {c.username}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
 
           {isMd3 && <div className="mx-1 h-8 w-px bg-[var(--outline-variant,var(--border-strong))]" />}
 

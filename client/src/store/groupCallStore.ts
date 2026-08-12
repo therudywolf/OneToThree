@@ -39,6 +39,9 @@ export type GroupCallState = {
   showParticipantPanel: boolean
   showChatPanel: boolean
   isMiniPlayer: boolean
+  /** Bumped after every LOCAL stream mutation — script-added tracks fire no
+   * events, so tiles re-read track state off this counter. */
+  localMediaRev: number
   /** Epoch ms when the group call started — held in the store so the in-call
    *  timer survives minimize→expand remounts instead of resetting to 00:00 (#12). */
   callStartTime: number | null
@@ -61,6 +64,7 @@ export type GroupCallState = {
   setShowParticipantPanel: (show: boolean) => void
   setShowChatPanel: (show: boolean) => void
   setIsMiniPlayer: (mini: boolean) => void
+  bumpLocalMediaRev: () => void
   setCallStartTime: (t: number | null) => void
   setActiveCallBanner: (roomId: string, count: number) => void
   clearActiveCallBanner: (roomId: string) => void
@@ -80,6 +84,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   showParticipantPanel: false,
   showChatPanel: false,
   isMiniPlayer: false,
+  localMediaRev: 0,
   callStartTime: null,
   activeCallBanner: {},
 
@@ -119,6 +124,7 @@ export const useGroupCallStore = create<GroupCallState>((set, get) => ({
   setShowParticipantPanel: (show) => set({ showParticipantPanel: show }),
   setShowChatPanel: (show) => set({ showChatPanel: show }),
   setIsMiniPlayer: (mini) => set({ isMiniPlayer: mini }),
+  bumpLocalMediaRev: () => set((s) => ({ localMediaRev: s.localMediaRev + 1 })),
   setCallStartTime: (t) => set({ callStartTime: t }),
   setActiveCallBanner: (roomId, count) =>
     set((s) => ({ activeCallBanner: { ...s.activeCallBanner, [roomId]: count } })),

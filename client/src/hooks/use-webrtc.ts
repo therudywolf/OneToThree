@@ -6,7 +6,17 @@ import { startOutgoingRingtone } from '@/lib/call-ringtones'
 import { isAndroidMobile as _isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS as _isIOSOrIPadOS } from '@/lib/ios'
 import { useTranslation } from '@/hooks/use-translation'
-import { getUserMediaConstraints, loadMediaPrefs } from '@/lib/media-devices'
+import {
+  getUserMediaConstraints,
+  loadMediaPrefs,
+  loadCamEffectImage,
+  saveMediaPrefs,
+  getDisplayMediaOptions,
+  applyScreenTrackSettings,
+  type CameraEffectPref,
+} from '@/lib/media-devices'
+import { upgradeLocalStreamAudio, type VoiceProcessingHandle } from '@/lib/voice-processing'
+import { createEffectedCameraTrack, type CameraEffectsHandle } from '@/lib/camera-effects'
 import {
   isMediaPermissionDenied,
   MEDIA_ACCESS_ERROR_MESSAGE,
@@ -144,6 +154,12 @@ export function useWebRTC(userId: string | null) {
   const disconnectTimersRef = useRef(new Map<string, number>())
   const ringStopRef = useRef<(() => void) | null>(null)
   const facingModeRef = useRef<'user' | 'environment'>('user')
+  /** Live mic-processing chain (noise gate). Disposed on call teardown so the
+   * raw hardware track (and its LED) is released with the call. */
+  const voiceProcRef = useRef<VoiceProcessingHandle | null>(null)
+  /** Live camera-effects chain (background blur/replacement). When active,
+   * cameraFeedRef holds the PROCESSED track and this handle owns the raw one. */
+  const camFxRef = useRef<CameraEffectsHandle | null>(null)
 
   const statsIntervalRef = useRef<number | null>(null)
 
@@ -186,7 +202,7 @@ export function useWebRTC(userId: string | null) {
     setConnectionQuality,
     setPeerConnectionType, clearPeerConnectionType,
     setCallStartTime, setMiniPlayer: _setMiniPlayer,
-    setCallChatId,
+    setCallChatId, bumpLocalMediaRev,
   } = useCallStore.getState()
 
   /**
@@ -332,6 +348,54 @@ export function useWebRTC(userId: string | null) {
   }, [removePeerConnection, removeRemoteStream, clearRemotePeerMedia, clearPeerConnectionType, stopRelayPeer])
 
   /**
+   * Swap the raw mic track of a freshly captured stream for the processed one
+   * (noise gate chain). Best-effort: on failure the raw track stays and the
+   * call proceeds unprocessed.
+   */
+  const attachVoiceChain = useCallback(async (stream: MediaStream) => {
+    voiceProcRef.current?.dispose()
+    voiceProcRef.current = null
+    try {
+      voiceProcRef.current = await upgradeLocalStreamAudio(stream)
+    } catch {
+      voiceProcRef.current = null
+    }
+  }, [])
+
+  /**
+   * Wrap a freshly acquired RAW camera track in the background-effects chain
+   * when the pref asks for one. Returns the track to PUBLISH (processed, or
+   * the raw one when effects are off/unavailable). Any previous chain is
+   * disposed first (its raw hardware track is stopped with it).
+   */
+  const wrapCameraTrack = useCallback(async (raw: MediaStreamTrack): Promise<MediaStreamTrack> => {
+    camFxRef.current?.dispose()
+    camFxRef.current = null
+    const prefs = loadMediaPrefs()
+    if (prefs.camEffect === 'none') return raw
+    try {
+      const handle = await createEffectedCameraTrack(raw, {
+        kind: prefs.camEffect,
+        imageDataUrl: loadCamEffectImage(),
+      })
+      if (!handle) return raw
+      camFxRef.current = handle
+      return handle.processedTrack
+    } catch {
+      return raw
+    }
+  }, [])
+
+  /** Stop the published camera track AND its effects chain (raw included). */
+  const stopCameraTrack = useCallback((published: MediaStreamTrack | null) => {
+    if (camFxRef.current) {
+      camFxRef.current.dispose()
+      camFxRef.current = null
+    }
+    published?.stop()
+  }, [])
+
+  /**
    * Stop screen-share and restore the pre-share video state. Restores the
    * camera track ONLY if the camera was on before/while sharing; an audio-only
    * call returns to audio-only. Never calls getUserMedia.
@@ -374,9 +438,10 @@ export function useWebRTC(userId: string | null) {
     }
     screenFeedRef.current = null
     setIsScreenSharing(false)
+    bumpLocalMediaRev()
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: false }))
     relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'screen_share', active: false }))
-  }, [setLocalStream])
+  }, [setLocalStream, bumpLocalMediaRev])
 
   const severAllLinks = useCallback(() => {
     ringStopRef.current?.()
@@ -393,16 +458,52 @@ export function useWebRTC(userId: string | null) {
     Array.from(relayPeersRef.current).forEach(purgePeer)
     p2pFallbackStartedRef.current.clear()
 
-    // Tear down the camera track and reset opt-in media state for the next call.
+    // Tear down the camera track and reset opt-in media state for the next
+    // call. The effects chain (if any) is disposed too — it owns the RAW
+    // hardware track whose LED would otherwise stay lit.
+    camFxRef.current?.dispose()
+    camFxRef.current = null
     cameraFeedRef.current?.stop()
     cameraFeedRef.current = null
     facingModeRef.current = 'user'
     setIsCameraOn(false)
 
+    // Release the mic-processing chain — stops the RAW hardware track too
+    // (terminateFeed below only reaches the processed track in localStream).
+    voiceProcRef.current?.dispose()
+    voiceProcRef.current = null
+
     const state = useCallStore.getState()
     terminateFeed(state.localStream)
     resetCallStore()
   }, [purgePeer, resetCallStore, revertToOptics])
+
+  /**
+   * Reconcile the peer's remote MediaStream with the pc's live RECEIVERS.
+   * Renegotiation that reuses a transceiver (camera re-on after a hard-off,
+   * screen share from a camera-less peer) does not reliably re-fire ontrack,
+   * and a replaceTrack'd sender ships no msid — the receiver set after an SDP
+   * exchange is the only truth. Publishes a NEW stream identity when a track
+   * was missing so tiles re-run their effects.
+   */
+  const syncRemoteFromReceivers = useCallback((peerId: string, pc: RTCPeerConnection) => {
+    const receiving: MediaStreamTrack[] = []
+    for (const tr of pc.getTransceivers()) {
+      const dir = tr.currentDirection
+      if (!dir || dir === 'inactive' || dir === 'stopped' || dir === 'sendonly') continue
+      const track = tr.receiver?.track
+      if (track && track.readyState === 'live') receiving.push(track)
+    }
+    if (receiving.length === 0) return
+    const current = useCallStore.getState().remoteStreams[peerId]
+    const curTracks = current ? current.getTracks() : []
+    const missing = receiving.filter((t_) => !curTracks.includes(t_))
+    if (missing.length === 0) return
+    setRemoteStream(
+      peerId,
+      new MediaStream([...curTracks.filter((t_) => t_.readyState === 'live'), ...missing])
+    )
+  }, [setRemoteStream])
 
   const createAndSendOffer = useCallback(async (
     peerId: string,
@@ -486,7 +587,16 @@ export function useWebRTC(userId: string | null) {
     }
 
     pc.ontrack = (ev) => {
-      if (ev.streams[0]) setRemoteStream(peerId, ev.streams[0])
+      if (ev.streams[0]) {
+        setRemoteStream(peerId, ev.streams[0])
+        return
+      }
+      // No msid: the track arrived via replaceTrack on a reused transceiver
+      // (e.g. screen share from a peer that never enabled the camera). Merge it
+      // into this peer's stream under a NEW identity so React effects re-run.
+      const current = useCallStore.getState().remoteStreams[peerId]
+      const tracks = current ? current.getTracks().filter((t_) => t_ !== ev.track) : []
+      setRemoteStream(peerId, new MediaStream([...tracks, ev.track]))
     }
 
     pc.onicecandidate = (ev) => {
@@ -506,6 +616,7 @@ export function useWebRTC(userId: string | null) {
       setMediaAccessError(isMediaPermissionDenied(err) ? MEDIA_PERMISSION_DENIED_CODE : MEDIA_ACCESS_ERROR_MESSAGE)
       return
     }
+    await attachVoiceChain(stream)
 
     const sharedKey = await resolveRelaySharedKey(peerId)
     if (!sharedKey) {
@@ -548,7 +659,7 @@ export function useWebRTC(userId: string | null) {
         severAllLinks()
       }
     }, 30_000)
-  }, [resolveRelaySharedKey, setCallStartTime, setIsCalling, setLocalStream, setPeerConnectionType, severAllLinks, t])
+  }, [attachVoiceChain, resolveRelaySharedKey, setCallStartTime, setIsCalling, setLocalStream, setPeerConnectionType, severAllLinks, t])
 
   const fallbackToAudioRelay = useCallback(async (peerId: string, chatId: string, requestedVideo: boolean) => {
     if (relayPeersRef.current.has(peerId) || relayAwaitingAnswerRef.current.has(peerId)) return
@@ -585,6 +696,7 @@ export function useWebRTC(userId: string | null) {
       setIncomingCall(null)
       return
     }
+    await attachVoiceChain(stream)
 
     const sharedKey = await resolveRelaySharedKey(peerId)
     if (!sharedKey) {
@@ -612,7 +724,7 @@ export function useWebRTC(userId: string | null) {
       callNonce: relayCallNonceRef.current.get(peerId),
     })
     setIncomingCall(null)
-  }, [resolveRelaySharedKey, setCallStartTime, setIncomingCall, setIsCalling, setLocalStream, setPeerConnectionType, startRelayCapture])
+  }, [attachVoiceChain, resolveRelaySharedKey, setCallStartTime, setIncomingCall, setIsCalling, setLocalStream, setPeerConnectionType, startRelayCapture])
 
   const rejectLink = useCallback(() => {
     const reject = buildCallRejectMessage(useCallStore.getState().incomingCall)
@@ -935,6 +1047,7 @@ export function useWebRTC(userId: string | null) {
               const answer = await pc.createAnswer()
               await pc.setLocalDescription(answer)
               transmitSignal(fromUserId, { kind: 'answer', sdp: answer.sdp ?? '' })
+              syncRemoteFromReceivers(fromUserId, pc)
             } catch (err) {
               if (typeof console !== 'undefined') {
                 console.warn('[webrtc] renegotiation offer handling failed', err)
@@ -976,6 +1089,7 @@ export function useWebRTC(userId: string | null) {
         if (data.kind === 'answer' && pc) {
           await pc.setRemoteDescription({ type: 'answer', sdp: data.sdp })
           await flushIceQueue(fromUserId, pc)
+          syncRemoteFromReceivers(fromUserId, pc)
         }
       }
     })
@@ -996,6 +1110,7 @@ export function useWebRTC(userId: string | null) {
     clearRemotePeerMedia,
     clearPeerConnectionType,
     setMediaAccessError,
+    syncRemoteFromReceivers,
   ])
 
   const applyQualityConstraints = useCallback((level: '720p' | '480p' | '360p' | 'audio_only') => {
@@ -1004,6 +1119,7 @@ export function useWebRTC(userId: string | null) {
 
     if (level === 'audio_only') {
       local.getVideoTracks().forEach(t => { t.enabled = false })
+      useCallStore.getState().bumpLocalMediaRev()
       pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'media_state', media: 'video', enabled: false }))
       return
     }
@@ -1022,6 +1138,7 @@ export function useWebRTC(userId: string | null) {
         frameRate: { ideal: dims.frameRate },
       }).catch(() => {})
     })
+    useCallStore.getState().bumpLocalMediaRev()
   }, [])
 
   const setQuality = useCallback((level: 'auto' | '720p' | '480p' | '360p' | 'audio_only') => {
@@ -1217,6 +1334,22 @@ export function useWebRTC(userId: string | null) {
       setMediaAccessError(isMediaPermissionDenied(err) ? MEDIA_PERMISSION_DENIED_CODE : MEDIA_ACCESS_ERROR_MESSAGE)
       return
     }
+    await attachVoiceChain(stream)
+    // A video call starts with the camera live — register it as the camera
+    // track so the in-call toggle can hard-stop it. Background effects wrap
+    // the raw track before anything is published.
+    const rawCam = stream.getVideoTracks()[0] ?? null
+    if (rawCam) {
+      const published = await wrapCameraTrack(rawCam)
+      if (published !== rawCam) {
+        stream.removeTrack(rawCam)
+        stream.addTrack(published)
+      }
+      cameraFeedRef.current = published
+    } else {
+      cameraFeedRef.current = null
+    }
+    setIsCameraOn(!!cameraFeedRef.current)
     setLocalStream(stream)
     setIsCalling(true)
     setCallStartTime(Date.now())
@@ -1274,7 +1407,7 @@ export function useWebRTC(userId: string | null) {
     } else {
       severAllLinks()
     }
-  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime, establishAudioRelay, createAndSendOffer, fallbackToAudioRelay])
+  }, [userId, setLocalStream, setIsCalling, addPeerConnection, setupPeerLink, severAllLinks, setCallStartTime, establishAudioRelay, createAndSendOffer, fallbackToAudioRelay, attachVoiceChain, wrapCameraTrack])
 
   const acceptLink = useCallback(async () => {
     const inc = useCallStore.getState().incomingCall
@@ -1307,6 +1440,23 @@ export function useWebRTC(userId: string | null) {
       setIncomingCall(null)
       return
     }
+    await attachVoiceChain(stream)
+    // Register the initial camera track (video answer) — previously it was
+    // never stored, so the first in-call camera toggle acquired a SECOND
+    // camera while the original kept streaming (and its LED kept burning).
+    // Background effects wrap the raw track before anything is published.
+    const rawCam = stream.getVideoTracks()[0] ?? null
+    if (rawCam) {
+      const published = await wrapCameraTrack(rawCam)
+      if (published !== rawCam) {
+        stream.removeTrack(rawCam)
+        stream.addTrack(published)
+      }
+      cameraFeedRef.current = published
+    } else {
+      cameraFeedRef.current = null
+    }
+    setIsCameraOn(!!cameraFeedRef.current)
     setLocalStream(stream)
     const pc = new RTCPeerConnection({
       iceServers: signalConfig.iceServers,
@@ -1327,6 +1477,7 @@ export function useWebRTC(userId: string | null) {
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         transmitSignal(inc.peerId, { kind: 'answer', sdp: answer.sdp ?? '' })
+        syncRemoteFromReceivers(inc.peerId, pc)
       }
     } catch (err) {
       // The SDP could not be applied (codec/bundle mismatch, truncated offer).
@@ -1342,7 +1493,7 @@ export function useWebRTC(userId: string | null) {
     } finally {
       setIncomingCall(null)
     }
-  }, [acceptAudioRelay, setLocalStream, addPeerConnection, setupPeerLink, flushIceQueue, severAllLinks, setIncomingCall, setIsCalling])
+  }, [acceptAudioRelay, setLocalStream, addPeerConnection, setupPeerLink, flushIceQueue, severAllLinks, setIncomingCall, setIsCalling, attachVoiceChain, syncRemoteFromReceivers, wrapCameraTrack])
 
   const toggleMute = useCallback(() => {
     const local = useCallStore.getState().localStream
@@ -1373,10 +1524,11 @@ export function useWebRTC(userId: string | null) {
 
   /**
    * Toggle the camera. The first time the user opts into video this lazily
-   * acquires the camera via getUserMedia (a call starts audio-only); afterwards
-   * it just flips the existing camera track's `enabled` flag. While screen-share
-   * is active the camera track is kept but NOT attached to peers — the screen
-   * owns the video sender, and the camera state is restored when sharing stops.
+   * acquires the camera via getUserMedia (a call starts audio-only). Turning it
+   * OFF is a HARD off: the hardware track is stopped (LED goes out), the sender
+   * track is cleared, and the next ON re-acquires the device. While screen-share
+   * is active the camera track is kept detached from peers — the screen owns
+   * the video sender.
    */
   const toggleCamera = useCallback(async () => {
     if (isRelayOnlyCall()) return
@@ -1385,8 +1537,8 @@ export function useWebRTC(userId: string | null) {
 
     let camera = cameraFeedRef.current
 
-    // Lazy acquisition: no camera track yet -> turn the camera ON.
-    if (!camera) {
+    // No camera track -> acquire and turn ON.
+    if (!camera || camera.readyState === 'ended') {
       try {
         const prefs = loadMediaPrefs()
         const camStream = await navigator.mediaDevices.getUserMedia({
@@ -1399,6 +1551,8 @@ export function useWebRTC(userId: string | null) {
         return
       }
       if (!camera) return
+      // Background effects (blur / image replacement) wrap the raw track.
+      camera = await wrapCameraTrack(camera)
       cameraFeedRef.current = camera
       camera.enabled = true
       // While screen-sharing keep the camera detached; otherwise publish it.
@@ -1407,17 +1561,27 @@ export function useWebRTC(userId: string | null) {
         pcsRef.current.forEach(pc => applyVideoTrack(pc, camera, local))
       }
       setLocalStream(local)
+      bumpLocalMediaRev()
       setIsCameraOn(true)
       if (!screenFeedRef.current) broadcastVideoState(true)
       return
     }
 
-    // Existing camera track -> flip enabled state.
-    camera.enabled = !camera.enabled
-    setIsCameraOn(camera.enabled)
-    // Don't leak camera on/off signalling to peers while the screen is shared.
-    if (!screenFeedRef.current) broadcastVideoState(camera.enabled)
-  }, [broadcastVideoState, isRelayOnlyCall, setLocalStream])
+    // Existing camera track -> HARD off. `enabled = false` alone kept the
+    // device open (webcam LED stayed on — issue: "выключение не отключает").
+    // stopCameraTrack also tears down the effects chain, releasing the RAW
+    // hardware track hidden inside it.
+    if (!screenFeedRef.current) {
+      pcsRef.current.forEach(pc => applyVideoTrack(pc, null, local))
+      broadcastVideoState(false)
+    }
+    if (local.getVideoTracks().includes(camera)) local.removeTrack(camera)
+    stopCameraTrack(camera)
+    cameraFeedRef.current = null
+    setLocalStream(local)
+    bumpLocalMediaRev()
+    setIsCameraOn(false)
+  }, [broadcastVideoState, isRelayOnlyCall, setLocalStream, bumpLocalMediaRev, wrapCameraTrack, stopCameraTrack])
 
   /**
    * List available camera (videoinput) devices. Used by the desktop in-call
@@ -1455,11 +1619,15 @@ export function useWebRTC(userId: string | null) {
         video: videoConstraint,
         audio: false,
       })
-      const newTrack = newStream.getVideoTracks()[0]
-      if (!newTrack) return
+      const rawTrack = newStream.getVideoTracks()[0]
+      if (!rawTrack) return
 
+      const wasEnabled = oldTrack.enabled
+      // Re-wrap the NEW device through the effects chain (wrapCameraTrack
+      // disposes the previous chain, which also stops the previous raw track).
+      const newTrack = await wrapCameraTrack(rawTrack)
       // Preserve the prior on/off state on the replacement track.
-      newTrack.enabled = oldTrack.enabled
+      newTrack.enabled = wasEnabled
 
       pcsRef.current.forEach(pc => applyVideoTrack(pc, newTrack, local))
 
@@ -1469,10 +1637,11 @@ export function useWebRTC(userId: string | null) {
       cameraFeedRef.current = newTrack
       if (!deviceId) facingModeRef.current = nextMode
       setLocalStream(local)
+      bumpLocalMediaRev()
     } catch (err) {
       console.error('[SYS.MEDIA] CAMERA_SWITCH_FAULT:', err)
     }
-  }, [setLocalStream])
+  }, [setLocalStream, bumpLocalMediaRev, wrapCameraTrack])
 
   /**
    * Toggle screen-share. Acquires the screen via getDisplayMedia ONLY — it never
@@ -1492,10 +1661,10 @@ export function useWebRTC(userId: string | null) {
 
     let screenStream: MediaStream
     try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
-        audio: true,
-      })
+      // Options honor the screen-share prefs: audio capture (with the
+      // system-audio checkbox forced on in the Chrome picker), quality caps
+      // and surface switching. See getDisplayMediaOptions.
+      screenStream = await navigator.mediaDevices.getDisplayMedia(getDisplayMediaOptions())
     } catch (err) {
       if ((err as Error)?.name !== 'NotAllowedError') {
         console.error('[SYS.MEDIA] SCREENSHARE_FAULT:', err)
@@ -1508,6 +1677,7 @@ export function useWebRTC(userId: string | null) {
       screenStream.getTracks().forEach(t => t.stop())
       return
     }
+    applyScreenTrackSettings(screenVideoTrack)
 
     // Detach the camera track from the local stream without stopping it — the
     // camera keeps its on/off state and is restored when sharing ends. The
@@ -1522,6 +1692,7 @@ export function useWebRTC(userId: string | null) {
     local.addTrack(plan.attachToLocal)
     screenFeedRef.current = screenVideoTrack
     setLocalStream(local)
+    bumpLocalMediaRev()
     setIsScreenSharing(true)
     pcsRef.current.forEach((_, id) => transmitSignal(id, { kind: 'screen_share', active: true }))
     relayPeersRef.current.forEach((id) => transmitSignal(id, { kind: 'screen_share', active: true }))
@@ -1551,6 +1722,49 @@ export function useWebRTC(userId: string | null) {
     }
   }, [isRelayOnlyCall, isScreenSharing, revertToOptics, setLocalStream])
 
+  /**
+   * Switch the camera background effect. Persists the pref and applies it to
+   * the LIVE camera without renegotiation when possible:
+   *  - chain already running → just retarget it (blur ⇄ image ⇄ passthrough);
+   *  - camera on RAW and effect requested → wrap the live track and swap the
+   *    published track via replaceTrack;
+   *  - camera off → the pref simply applies on the next camera-on.
+   */
+  const setCameraEffect = useCallback(async (kind: CameraEffectPref) => {
+    saveMediaPrefs({ camEffect: kind })
+    const imageDataUrl = loadCamEffectImage()
+    const chain = camFxRef.current
+    if (chain) {
+      chain.setEffect(kind, imageDataUrl)
+      return
+    }
+    if (kind === 'none') return
+    const raw = cameraFeedRef.current
+    const local = useCallStore.getState().localStream
+    if (!raw || raw.readyState !== 'live' || !local) return
+    try {
+      const handle = await createEffectedCameraTrack(raw, { kind, imageDataUrl })
+      if (!handle) return
+      camFxRef.current = handle
+      const processed = handle.processedTrack
+      processed.enabled = raw.enabled
+      if (!screenFeedRef.current) {
+        pcsRef.current.forEach(pc => applyVideoTrack(pc, processed, local))
+      }
+      if (local.getVideoTracks().includes(raw)) local.removeTrack(raw)
+      // While screen-sharing the camera stays DETACHED (the screen owns the
+      // local video slot); revertToOptics re-attaches cameraFeedRef later.
+      if (!screenFeedRef.current && !local.getVideoTracks().includes(processed)) {
+        local.addTrack(processed)
+      }
+      cameraFeedRef.current = processed
+      setLocalStream(local)
+      bumpLocalMediaRev()
+    } catch (err) {
+      console.warn('[SYS.MEDIA] camera effect switch failed', err)
+    }
+  }, [setLocalStream, bumpLocalMediaRev])
+
   return {
     peerReady,
     mediaAccessError,
@@ -1568,6 +1782,7 @@ export function useWebRTC(userId: string | null) {
     isScreenSharing,
     toggleScreenShare,
     setQuality,
+    setCameraEffect,
     promoteToGroup,
   }
 }

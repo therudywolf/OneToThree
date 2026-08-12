@@ -3,6 +3,8 @@ FROM node:20-alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
+# postinstall (scripts/copy-vendor-assets.js) must exist for npm ci's lifecycle.
+COPY scripts ./scripts
 # Prefer deterministic `npm ci`, but if package-lock is out-of-sync with
 # package.json (common after dependabot PRs or new feature deps that weren't
 # pre-locked), self-heal by rebuilding the lockfile and retrying.  This keeps
@@ -61,6 +63,10 @@ RUN printf '%s\n' \
   "NEXT_PUBLIC_APP_VERSION=${NEXT_PUBLIC_APP_VERSION}" \
   > .env.production
 
+# Re-run the vendor-asset copy against the FULL context: the deps stage wrote
+# public/ inside its own layer, which is not carried into this stage, and a
+# fresh git clone has no public/mediapipe-wasm (gitignored).
+RUN node scripts/copy-vendor-assets.js
 RUN npm run build
 
 # Standalone: `outputFileTracingRoot` is the client dir so `.next/standalone/server.js` lives here.

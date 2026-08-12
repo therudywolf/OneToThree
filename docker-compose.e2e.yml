@@ -17,6 +17,9 @@ services:
   api:
     environment:
       NODE_ENV: test
+      # The browser origin is the Caddy front (:8090), not the dev client
+      # (:3000) — without this every mutating request 403s CROSS_ORIGIN_FORBIDDEN.
+      CORS_ORIGIN: http://localhost:8090,http://127.0.0.1:8090,http://localhost:3000,http://127.0.0.1:3000
       TOTP_WRAP_KEY: ${TOTP_WRAP_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
       # Disable rate limiting for the full multi-account suite (requests arrive via
       # Caddy, not loopback, so the default allowList wouldn't exempt them). Test/

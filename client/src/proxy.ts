@@ -16,7 +16,10 @@ const SESSION_COOKIE = 'fm_session'
 // unauthenticated, and a redirect to /login fails verification (the file is
 // `.json`, which the static-asset regex below deliberately does not match).
 const BYPASS_PREFIXES = ['/_next/', '/api/', '/workbox-', '/.well-known/']
-const STATIC_ASSETS_RE = /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml)$/i
+// wasm + tflite: the MediaPipe camera-effects runtime (/mediapipe-wasm/*,
+// /models/*.tflite) is fetched by the page like any other static asset — a
+// 307→/login here silently breaks background blur.
+const STATIC_ASSETS_RE = /\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|wasm|tflite)$/i
 
 /** [PROBE_BYPASS] :: Фильтрация системного шума */
 function isBypassPath(pathname: string): boolean {

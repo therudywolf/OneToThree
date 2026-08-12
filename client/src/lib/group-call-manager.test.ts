@@ -44,6 +44,13 @@ vi.mock('@/lib/call-audio-relay', () => ({
 vi.mock('@/lib/media-devices', () => ({
   loadMediaPrefs: () => ({ lowBandwidth: false }),
   getUserMediaConstraints: () => ({ audio: true, video: true }),
+  getDisplayMediaOptions: () => ({ video: true, audio: true }),
+  applyScreenTrackSettings: vi.fn(),
+  applyVoiceConstraintsToTrack: vi.fn(async () => false),
+}))
+vi.mock('@/lib/voice-processing', () => ({
+  upgradeLocalStreamAudio: vi.fn(async () => null),
+  applyVoiceSettingsToActiveCalls: vi.fn(async () => {}),
 }))
 
 import {
@@ -60,8 +67,10 @@ import { useGroupCallStore } from '@/store/groupCallStore'
 
 class FakeTrack {
   enabled = true
+  readyState: 'live' | 'ended' = 'live'
   readonly stop = vi.fn(() => {
     this.stopped = true
+    this.readyState = 'ended'
   })
   stopped = false
   onended: (() => void) | null = null
@@ -167,34 +176,31 @@ describe('group-call screen-share — must NOT turn on the webcam', () => {
     expect(screenTrack.enabled).toBe(true)
   })
 
-  it('leaves an already-off camera track disabled while screen-sharing', async () => {
-    // Camera turned on then off before sharing — a disabled camera track exists.
+  it('keeps a hard-stopped camera off while screen-sharing', async () => {
+    // Camera turned on then off before sharing. Camera-off is a HARD off now:
+    // the hardware track is STOPPED (LED out), not merely disabled.
     const audio = new FakeTrack('audio')
     const camera = new FakeTrack('video')
     const local = new FakeStream([audio, camera])
     const peer = new FakePeerConnection([audio, camera])
     seedMeshCall(local, peer)
-    // First flip the camera ON via the lazy path is not needed — simulate the
-    // camera already being the published video track, then disabled.
     vi.stubGlobal('navigator', {
       mediaDevices: {
         getUserMedia: vi.fn(async () => new FakeStream([camera])),
       },
     })
     await toggleGroupCallVideo() // ON (lazy acquire returns `camera`)
-    await toggleGroupCallVideo() // OFF
-    expect(camera.enabled).toBe(false)
+    await toggleGroupCallVideo() // OFF -> hard stop
+    expect(camera.stopped).toBe(true)
     expect(isGroupCallCameraOn()).toBe(false)
+    expect(local.getVideoTracks()).toEqual([])
 
     const screenTrack = stubDisplayMedia()
     const ok = await startGroupCallScreenShare()
 
     expect(ok).toBe(true)
-    // THE REGRESSION ASSERTION: screen-share must not flip the camera back on.
-    expect(camera.enabled).toBe(false)
+    // THE REGRESSION ASSERTION: screen-share must not resurrect the camera.
     expect(isGroupCallCameraOn()).toBe(false)
-    // The camera track is detached (not stopped — state preserved for restore).
-    expect(camera.stopped).toBe(false)
     expect(local.getVideoTracks()).toEqual([screenTrack])
   })
 
@@ -212,7 +218,34 @@ describe('group-call screen-share — must NOT turn on the webcam', () => {
     expect(videoSender?.track).toBe(screenTrack)
   })
 
-  it('restores a disabled camera (still disabled) when screen-share stops', async () => {
+  it('restores a live camera as the published video when screen-share stops', async () => {
+    const audio = new FakeTrack('audio')
+    const camera = new FakeTrack('video')
+    const local = new FakeStream([audio, camera])
+    const peer = new FakePeerConnection([audio, camera])
+    seedMeshCall(local, peer)
+    vi.stubGlobal('navigator', {
+      mediaDevices: { getUserMedia: vi.fn(async () => new FakeStream([camera])) },
+    })
+    await toggleGroupCallVideo() // ON — camera live during the share
+
+    stubDisplayMedia()
+    await startGroupCallScreenShare()
+    stopGroupCallScreenShare()
+
+    expect(isGroupCallScreenSharing()).toBe(false)
+    // Camera restored as the published video track, still live and enabled.
+    const store = useGroupCallStore.getState()
+    expect((store.localStream as unknown as FakeStream).getVideoTracks()).toEqual([
+      camera,
+    ])
+    expect(camera.enabled).toBe(true)
+    expect(camera.stopped).toBe(false)
+    const videoSender = peer.getSenders().find((s) => s.track?.kind === 'video')
+    expect(videoSender?.track).toBe(camera)
+  })
+
+  it('returns to no-video when the camera was hard-stopped before sharing', async () => {
     const audio = new FakeTrack('audio')
     const camera = new FakeTrack('video')
     const local = new FakeStream([audio, camera])
@@ -222,19 +255,16 @@ describe('group-call screen-share — must NOT turn on the webcam', () => {
       mediaDevices: { getUserMedia: vi.fn(async () => new FakeStream([camera])) },
     })
     await toggleGroupCallVideo() // ON
-    await toggleGroupCallVideo() // OFF -> camera.enabled === false
+    await toggleGroupCallVideo() // OFF -> hard stop, no camera track remains
 
     stubDisplayMedia()
     await startGroupCallScreenShare()
     stopGroupCallScreenShare()
 
     expect(isGroupCallScreenSharing()).toBe(false)
-    // Camera restored as the published video track, still disabled.
     const store = useGroupCallStore.getState()
-    expect((store.localStream as unknown as FakeStream).getVideoTracks()).toEqual([
-      camera,
-    ])
-    expect(camera.enabled).toBe(false)
+    expect((store.localStream as unknown as FakeStream).getVideoTracks()).toEqual([])
+    expect(isGroupCallCameraOn()).toBe(false)
   })
 
   it('clears video entirely when an audio-only call stops screen-sharing', async () => {
@@ -257,7 +287,7 @@ describe('group-call screen-share — must NOT turn on the webcam', () => {
 })
 
 describe('group-call camera toggle — independent of the screen track', () => {
-  it('flips the camera track, not the screen track, while screen-sharing', async () => {
+  it('stops the camera track, not the screen track, while screen-sharing', async () => {
     const audio = new FakeTrack('audio')
     const camera = new FakeTrack('video')
     const local = new FakeStream([audio, camera])
@@ -272,11 +302,16 @@ describe('group-call camera toggle — independent of the screen track', () => {
     const screenTrack = stubDisplayMedia()
     await startGroupCallScreenShare()
 
-    // Toggle camera OFF while screen-sharing.
+    // Toggle camera OFF while screen-sharing — hard off.
     await toggleGroupCallVideo()
 
-    // The CAMERA track flipped; the SCREEN track stays enabled (it owns video).
-    expect(camera.enabled).toBe(false)
+    // The CAMERA track stopped; the SCREEN track stays live (it owns video).
+    expect(camera.stopped).toBe(true)
+    expect(isGroupCallCameraOn()).toBe(false)
     expect(screenTrack.enabled).toBe(true)
+    expect(screenTrack.stopped).toBe(false)
+    // The published video sender still carries the SCREEN, untouched.
+    const videoSender = peer.getSenders().find((s) => s.track?.kind === 'video')
+    expect(videoSender?.track).toBe(screenTrack)
   })
 })

@@ -38,6 +38,17 @@ export async function registerNewUser(
   await page.locator('#username').fill(handle)
   await page.locator('#password').fill(passphrase)
   await page.locator('#confirmPassword').fill(passphrase)
+  // Hydration race: filling while React replaces the pre-hydration form loses
+  // the username silently and the submit then fails native validation. Verify
+  // the value stuck and re-fill if the pane re-rendered underneath us.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const v = await page.locator('#username').inputValue().catch(() => '')
+    if (v === handle) break
+    await page.waitForTimeout(400)
+    await page.locator('#username').fill(handle)
+    await page.locator('#password').fill(passphrase)
+    await page.locator('#confirmPassword').fill(passphrase)
+  }
   await page
     .getByRole('button', { name: /Register|Зарегистрироваться|REGISTER/i })
     .first()

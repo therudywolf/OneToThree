@@ -26,6 +26,7 @@ export function DeviceLinkDisclosure() {
         <button
           type="button"
           onClick={() => setOpen(true)}
+          data-testid="device-link-toggle"
           className={`w-full py-3 text-[10px] transition-colors ${
             isMd3
               ? 'rounded-full border border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]'
@@ -38,6 +39,7 @@ export function DeviceLinkDisclosure() {
 
       {open && (
         <div
+          data-testid="device-link-panel"
           className={`p-5 ${
             isMd3
               ? 'rounded-[28px] border border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] bg-[var(--surface)] shadow-[var(--md3-elevation-2)]'

@@ -6,16 +6,20 @@ import { registerNewUser, uniqueHandle } from './helpers'
  * Full avatar + MinIO + QR redeem flows require a running API + DB (see auth.spec).
  */
 test.describe('verification plan (UI contracts)', () => {
-  test('login page exposes QR token redeem section', async ({ page }) => {
+  // The device-link entry point moved twice: manual token field → always-open
+  // QR panel → a secondary disclosure that embeds the QR panel (see
+  // app/(auth)/device-link-disclosure.tsx). The contract under test is the same:
+  // linking another device is reachable from /login without a session.
+  test('login page exposes the device-link entry point', async ({ page }) => {
     await page.goto('/login')
-    await expect(page.getByTestId('qr-link-toggle')).toBeVisible()
+    await expect(page.getByTestId('device-link-toggle')).toBeVisible()
   })
 
-  test('login QR panel expands to the device-link (show/scan) flow', async ({ page }) => {
+  test('login device-link disclosure expands to the QR show/scan flow', async ({ page }) => {
     await page.goto('/login')
-    await page.getByTestId('qr-link-toggle').click()
-    // The panel was refactored from a manual token field to a QR show/scan
-    // device-link flow; assert the expanded panel appears.
+    await page.getByTestId('device-link-toggle').click()
+    await expect(page.getByTestId('device-link-panel')).toBeVisible()
+    // The embedded panel is the QR show/scan flow itself.
     await expect(page.getByTestId('qr-link-panel')).toBeVisible()
   })
 

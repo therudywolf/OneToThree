@@ -110,11 +110,22 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
+// google-services.json is gitignored (it is per-project Firebase config), so a
+// clean checkout builds an APK with NO push at all. That used to be announced
+// at `info` level — invisible in a normal build — and the resulting APK looks
+// perfectly healthy until you notice notifications never arrive. Say it loudly
+// instead; see docs/guides/android-release-runbook.md → "FCM push setup".
 try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
         apply plugin: 'com.google.gms.google-services'
     }
 } catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+    logger.warn("")
+    logger.warn("*********************************************************************")
+    logger.warn("* google-services.json NOT FOUND — this APK ships WITHOUT FCM push. *")
+    logger.warn("* Local/debug builds are fine; a RELEASE build almost certainly is  *")
+    logger.warn("* not. See docs/guides/android-release-runbook.md → FCM push setup. *")
+    logger.warn("*********************************************************************")
+    logger.warn("")
 }

@@ -7,6 +7,29 @@
 - Firebase project created for `ru.onetothree.app`.
 - Backend secrets for FCM configured.
 
+### FCM push setup (owner action — the build does NOT fail without it)
+
+`google-services.json` is per-project Firebase configuration and is gitignored,
+so a clean checkout builds a perfectly healthy-looking APK that simply never
+receives a push. The build prints a loud warning when the file is missing;
+treat that warning as blocking for anything you hand to a user.
+
+Both halves have to be configured, and they come from the SAME Firebase project:
+
+1. **App half.** Firebase console → your project → add an Android app with the
+   package name `ru.onetothree.app` → download `google-services.json` → place it
+   at `mobile/capacitor/android/app/google-services.json`. Do not commit it.
+2. **Server half.** Firebase console → Project settings → Service accounts →
+   generate a private key, then give the API either
+   `FIREBASE_SERVICE_ACCOUNT_JSON` (the whole JSON, simplest) or the trio
+   `FIREBASE_PROJECT_ID` + `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`.
+   All are read through the standard secret loader, so `*_FILE` works too — and
+   on this deployment `secrets/*` must be `0644` (the api runs as uid 1001).
+   Without them `sendNativePushToUser` silently no-ops.
+
+Web Push (browsers/PWA) is independent of all this and keeps working — the gap
+only affects native Android notifications.
+
 ## 2) Build and sync web assets
 
 ```bash

@@ -51,7 +51,8 @@ LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/onetothree-deploy.lock}"
 if [ "${FORCE:-0}" != "1" ] && command -v flock >/dev/null 2>&1; then
   exec 9>"$LOCK_FILE"
   if ! flock -n 9; then
-    echo "[deploy] REFUSING: another deploy is already running (holder pid: $(cat "$LOCK_FILE" 2>/dev/null || echo unknown))." >&2
+    holder="$(cat "$LOCK_FILE" 2>/dev/null || true)"
+    echo "[deploy] REFUSING: another deploy is already running (holder pid: ${holder:-unknown})." >&2
     echo "[deploy] Wait for it, or re-run with FORCE=1 if you are certain it is dead." >&2
     exit 1
   fi
@@ -62,8 +63,14 @@ fi
 #    script — the exact shape of both incidents. The lock cannot see those, and
 #    an orphan left by a dropped SSH session outlives its parent, so match on
 #    the compose file name instead of on a parent process.
+#
+#    The pattern must anchor on the docker BINARY (`docker compose …` or the
+#    `…/cli-plugins/docker-compose compose …` child). Matching the compose file
+#    name anywhere in a command line also flags every shell, editor or ssh
+#    invocation that merely mentions it — a false refusal teaches people to
+#    reach for FORCE=1, which is exactly the habit this guard exists to prevent.
 if [ "${FORCE:-0}" != "1" ] && command -v pgrep >/dev/null 2>&1; then
-  foreign="$(pgrep -af 'docker-compose\.prod\.yml.*up' 2>/dev/null | grep -v "^$$ " || true)"
+  foreign="$(pgrep -af '(^|/)docker(-compose)? +(compose +)?.*-f +[^ ]*docker-compose\.prod\.yml.* up' 2>/dev/null | grep -v "^$$ " || true)"
   if [ -n "$foreign" ]; then
     echo "[deploy] REFUSING: a compose run for this stack is already in flight:" >&2
     printf '  %s\n' "$foreign" >&2

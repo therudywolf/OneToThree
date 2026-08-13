@@ -320,8 +320,10 @@ export function GroupCallScreen({
 
   return (
     <PortalRoot>
+      {/* Clamped to the VISUAL viewport (see .p13-call-surface in globals.css) —
+          `inset-y-0` alone pushes the control bar below the fold. */}
       <div
-        className="fixed inset-y-0 left-0 z-[200] flex flex-col bg-void font-mono"
+        className="p13-call-surface fixed left-0 top-0 z-[200] flex flex-col bg-void font-mono"
         style={{ right: chatShrink ? 'min(400px, 45vw)' : 0 }}
         role="dialog"
       >
@@ -434,11 +436,12 @@ export function GroupCallScreen({
 
         {/* CONTROL BAR */}
         <div
-          className={`absolute bottom-2 left-2 right-2 flex items-center justify-center border border-border-strong bg-void/90 pb-[env(safe-area-inset-bottom)] shadow-2xl backdrop-blur-xl transition-all duration-300 md:bottom-6 md:left-1/2 md:right-auto md:-translate-x-1/2 ${
+          className={`absolute left-2 right-2 flex items-center justify-center border border-border-strong bg-void/90 shadow-2xl backdrop-blur-xl transition-all duration-300 md:left-1/2 md:right-auto md:max-w-[calc(100%-1rem)] md:-translate-x-1/2 ${
             showControls
               ? 'translate-y-0 opacity-100'
               : 'pointer-events-none translate-y-4 opacity-0'
           }`}
+          style={{ bottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
         >
           {/* Mute */}
           <button

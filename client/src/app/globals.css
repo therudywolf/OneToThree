@@ -4412,3 +4412,18 @@ select {
   border: 1px solid rgba(0, 255, 255, 0.12);
   padding: 10px;
 }
+
+/* ---------------------------------------------------------------------------
+   Call surfaces (1:1 overlay + group screen)
+   ---------------------------------------------------------------------------
+   `position: fixed; inset-y: 0` spans the LAYOUT viewport, which stays tall
+   while browser chrome (or an on-screen keyboard) shrinks the VISIBLE one. The
+   call surface then extends below the fold and its bottom control bar looks
+   clipped. Clamp to the same visual height the app shell uses, so the controls
+   always land inside the visible area. */
+.p13-call-surface {
+  height: 100dvh;
+  height: min(var(--p13-visual-height, var(--p13-app-height, 100svh)), 100dvh);
+  max-height: 100dvh;
+  max-height: min(var(--p13-visual-height, var(--p13-app-height, 100svh)), 100dvh);
+}

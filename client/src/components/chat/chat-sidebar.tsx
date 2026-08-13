@@ -33,6 +33,7 @@ import {
   CHAT_ARCHIVE_EVENT,
 } from '@/lib/chat-archive'
 import { ChatRowContextMenu } from '@/components/chat/chat-row-context-menu'
+import { parseSystemMessage, formatCallDuration } from '@/lib/system-message'
 import Link from 'next/link'
 import { useSessionStore } from '@/store/sessionStore'
 import { usePresenceStore } from '@/store/presenceStore'
@@ -470,6 +471,18 @@ export function ChatSidebar({
         : t('chat.previewSticker')
     }
     if (msg.plaintext === '[DECRYPT_FAIL]') return t('chat.decryptFailedPreview')
+    // Call events are system envelopes, not text — their raw JSON must never
+    // become the chat preview.
+    const sys = parseSystemMessage(msg.plaintext, msg.kind)
+    if (sys) {
+      if (sys.kind === 'call_missed') {
+        return `📵 ${sys.isVideo ? t('call.missedVideo') : t('call.missedAudio')}`
+      }
+      const label = sys.isVideo ? t('call.endedVideo') : t('call.endedAudio')
+      return sys.durationSecs !== null
+        ? `📞 ${label} · ${formatCallDuration(sys.durationSecs)}`
+        : `📞 ${label}`
+    }
     return msg.plaintext?.slice(0, 60) ?? ''
   }
 

@@ -691,8 +691,12 @@ export function ActiveCallOverlay({
     <PortalRoot>
       <RelayToast />
       {popoutPortal}
+      {/* `inset-y-0` spans the LAYOUT viewport, which is taller than the visible
+          one whenever browser chrome / an on-screen keyboard is up — the control
+          bar then sits below the fold and its buttons look clipped. Clamp to the
+          visual height the rest of the shell uses (see globals.css). */}
       <div
-        className={`fixed inset-y-0 left-0 z-[200] flex flex-col ${isRetro ? 'p13-classic-overlay font-["Tahoma"]' : 'bg-void'} ${isMd3 ? '' : 'font-mono'}`}
+        className={`p13-call-surface fixed left-0 top-0 z-[200] flex flex-col ${isRetro ? 'p13-classic-overlay font-["Tahoma"]' : 'bg-void'} ${isMd3 ? '' : 'font-mono'}`}
         style={{ right: chatShrink ? 'min(400px, 45vw)' : 0 }}
         role="dialog"
       >
@@ -861,14 +865,22 @@ export function ActiveCallOverlay({
           )}
         </div>
 
-        {/* CONTROLS */}
-        <div className={`absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'} ${
+        {/* CONTROLS — bottom offset includes the safe-area inset so the bar
+            never tucks under a home indicator / browser chrome. */}
+        {/* NOTE: no `overflow-*` here — the quality/camera/more dropdowns are
+            absolutely positioned CHILDREN, and any overflow value other than
+            visible clips them (setting overflow-x alone forces overflow-y to
+            auto). Width is bounded by hiding non-essential controls on small
+            screens instead. */}
+        <div className={`absolute left-1/2 flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center shadow-2xl transition-all duration-300 ${showControls ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'} ${
           isMd3
             ? 'gap-2 rounded-[28px] bg-[var(--surface-container-high,var(--surface-elevated))]/95 px-3 py-2'
             : isRetro
               ? 'p13-classic-menu gap-1 px-2 py-2'
               : 'border border-border-strong bg-void/90'
-        }`}>
+        }`}
+          style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+        >
 
           <button
             onClick={() => { onToggleMute(); setTick(t_ => t_ + 1); }}

@@ -119,8 +119,15 @@ async function makeE2eeKeyProvider(
   }
 }
 
-/** Server-set participant metadata: `{"guest":true,"invited_by":"…"}`. */
-function isGuestParticipant(metadata: string | undefined): boolean {
+/**
+ * Server-set participant metadata: `{"guest":true,"invited_by":"…"}`.
+ *
+ * The ONLY source of the guest badge. It has to come from the token (the
+ * server signs `metadata` when it approves a knock) rather than from the
+ * display name, or any participant could label themselves a guest — or, worse,
+ * an actual guest could drop the label by renaming.
+ */
+export function isGuestParticipant(metadata: string | undefined): boolean {
   if (!metadata) return false
   try {
     return (JSON.parse(metadata) as { guest?: boolean }).guest === true

@@ -381,6 +381,17 @@ export async function decryptApiMessageRows(
     // to re-open rows the current key couldn't (post-rotation history).
     const ring = await getAesKeyRingForChat(unwrappedPrivateKey, cryptoCtx)
     if (!ring || ring.length === 0) {
+      // Every row becomes EMPTY here — not "[DECRYPT_FAIL]", empty. The bubbles
+      // render with no text at all, which reads as a UI glitch rather than a
+      // key problem and is the reason a group chat could look like it had
+      // blank messages with nothing logged anywhere.
+      if (rows.length > 0) {
+        console.warn('[dr] no key ring for chat — rows left blank', {
+          mode: cryptoCtx.mode,
+          chatId: cryptoCtx.chatId ?? null,
+          rows: rows.length,
+        })
+      }
       return rows.map((m) => apiRowToDecrypted(m, ''))
     }
     const aesKey = ring[0]

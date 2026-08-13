@@ -423,6 +423,23 @@ export async function decryptApiMessageRows(
         pending = pending.filter((j) => plaintextByIndex.get(j.index) === '[DECRYPT_FAIL]')
       }
     }
+
+    // Same reason the single-row path says why it failed: a group/sector row
+    // that stays unreadable after the whole epoch ring has been tried is worth
+    // a line in the console. Reported once per batch — a rotation gone wrong
+    // fails every row at once, and one line describes it as well as fifty.
+    const stillFailing = jobs.filter(
+      (j) => plaintextByIndex.get(j.index) === '[DECRYPT_FAIL]'
+    )
+    if (stillFailing.length > 0) {
+      console.warn('[dr] batch decrypt failed', {
+        mode: cryptoCtx.mode,
+        rows: stillFailing.length,
+        of: jobs.length,
+        keysTried: ring.length,
+        firstId: rows[stillFailing[0].index]?.id ?? null,
+      })
+    }
   }
 
   return rows.map((m, i) =>

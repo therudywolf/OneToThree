@@ -235,12 +235,24 @@ async function reconcileGroupKeysForChat(
  */
 export function useGroupKeyDistribution(
   cryptoCtx: ChatCryptoContext | null,
-  reloadChats: () => void
+  reloadChats: () => void,
+  /**
+   * Called after THIS client re-keys a group. A rotation replaces our own
+   * wrapped key on the server, but `useChatCryptoContext` only rebuilds on a WS
+   * echo — so the rotator itself went on holding the superseded key and sealed
+   * everything it sent next with a key no other member would ever hold. Those
+   * messages are unreadable for the whole group, permanently, and nothing
+   * anywhere reports it: the sender reads its own copy back just fine.
+   */
+  onOwnKeyMaterialChanged?: () => void
 ) {
   const activeChatId = useSessionStore((s) => s.activeChatId)
   const userId = useSessionStore((s) => s.userId)
   const unwrappedPrivateKey = useSessionStore((s) => s.unwrappedPrivateKey)
   const busyRef = useRef(false)
+  // Kept in a ref so a fresh callback identity never re-arms the effects below.
+  const onKeyChangedRef = useRef(onOwnKeyMaterialChanged)
+  onKeyChangedRef.current = onOwnKeyMaterialChanged
   // Part-4 refs — kept render-stable so the owned-group reconnect scan fires ONLY
   // on mount and a true offline→online edge, never on every chat switch (reloadChats
   // gets a fresh identity per activeChatId change and must not re-arm the effect).
@@ -284,6 +296,10 @@ export function useGroupKeyDistribution(
         )
         if (cancelled) return
         if (rotated) {
+          // Our own key just changed on the server — pick it up NOW rather than
+          // waiting for a broadcast, or the next message goes out under the key
+          // we just retired.
+          onKeyChangedRef.current?.()
           reloadChats()
           return
         }
@@ -344,7 +360,11 @@ export function useGroupKeyDistribution(
         // `chats_updated` the wrapped-key upload broadcasts.
         const { chat_id } = msg
         void rotateGroupKeyIfStale(chat_id, userId, unwrappedPrivateKey)
-          .then((rotated) => { if (rotated) reloadChats() })
+          .then((rotated) => {
+            if (!rotated) return
+            onKeyChangedRef.current?.()
+            reloadChats()
+          })
           .catch((e) => {
             console.warn('>> [SYS.SECTOR] group-key rotation on epoch event failed', e)
           })
@@ -383,7 +403,12 @@ export function useGroupKeyDistribution(
             console.warn('>> [SYS.SECTOR] key reconcile failed for chat', c.id, e)
           }
         }
-        if (any && !cancelled) reloadChatsRef.current()
+        if (any && !cancelled) {
+          // `reconcileGroupKeysForChat` rotates when our key is behind the
+          // chat, so this scan can retire our own key too.
+          onKeyChangedRef.current?.()
+          reloadChatsRef.current()
+        }
       } catch (e) {
         console.warn('>> [SYS.SECTOR] owned-group key reconcile scan failed', e)
       } finally {

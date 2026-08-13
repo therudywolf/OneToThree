@@ -48,7 +48,7 @@ test.describe('D2: direct fanout — two real accounts', () => {
     await expect(pageB.getByText(msgAtoB).first()).toBeVisible({
       timeout: 30_000,
     })
-    await expect(pageB.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+    await expect(pageB.getByTestId('decrypt-failed')).not.toBeVisible()
 
     // Bob replies
     const msgBtoA = `d2-btoa-${Date.now()}`
@@ -58,7 +58,7 @@ test.describe('D2: direct fanout — two real accounts', () => {
     await expect(pageA.getByText(msgBtoA).first()).toBeVisible({
       timeout: 30_000,
     })
-    await expect(pageA.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+    await expect(pageA.getByTestId('decrypt-failed')).not.toBeVisible()
 
     await ctxA.close()
     await ctxB.close()
@@ -113,7 +113,7 @@ test.describe('D1: group E2E runtime — member receives group key', () => {
     await expect(pageB.getByText(msgBeforeJoin).first()).toBeVisible({
       timeout: 30_000,
     })
-    await expect(pageB.getByText('[DECRYPT_FAIL]')).not.toBeVisible({ timeout: 15_000 })
+    await expect(pageB.getByTestId('decrypt-failed')).not.toBeVisible({ timeout: 15_000 })
 
     // Bob sends a message, Alice receives it
     const msgBobToGroup = `d1-bob-${Date.now()}`
@@ -123,7 +123,7 @@ test.describe('D1: group E2E runtime — member receives group key', () => {
     await expect(pageA.getByText(msgBobToGroup).first()).toBeVisible({
       timeout: 30_000,
     })
-    await expect(pageA.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+    await expect(pageA.getByTestId('decrypt-failed')).not.toBeVisible()
 
     await ctxA.close()
     await ctxB.close()
@@ -160,7 +160,7 @@ test.describe('D3: Saved Messages — self-chat persistence across reload', () =
 
     // Message must still be visible after reload
     await expect(page.getByText(msg).first()).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+    await expect(page.getByTestId('decrypt-failed')).not.toBeVisible()
   })
 
   // D3b — SELF edit propagation: Saved Messages read from a per-device
@@ -211,7 +211,7 @@ test.describe('D3: Saved Messages — self-chat persistence across reload', () =
     await chatSelf.waitForChatReady(PASS)
     await expect(page.getByText(edited).first()).toBeVisible({ timeout: 30_000 })
     await expect(page.getByText(orig)).toHaveCount(0, { timeout: 10_000 })
-    await expect(page.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+    await expect(page.getByTestId('decrypt-failed')).not.toBeVisible()
   })
 })
 
@@ -254,7 +254,7 @@ test.describe('D4: DR runtime — direct message uses protocol_version 2', () =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((capturedBody as any)['protocol_version']).toBe(2)
     }
-    await expect(pageA.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+    await expect(pageA.getByTestId('decrypt-failed')).not.toBeVisible()
 
     await ctxA.close()
     await ctxB.close()

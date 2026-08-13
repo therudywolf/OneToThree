@@ -107,6 +107,37 @@ export async function rotateGroupKeyForChat(
   myPrivateKey: CryptoKey,
   targetEpoch: number
 ): Promise<RotationResult> {
+  // One rotation per chat AT THIS CHOKE POINT, not per caller.
+  //
+  // A rotation is not atomic across members: the first upload CAS-bumps the
+  // chat epoch, and the owner's own wrapped key is rewritten somewhere later in
+  // the loop. A staleness scan that reads the roster inside that window sees
+  // the new epoch next to the owner's OLD stamp and concludes — correctly, from
+  // what it can see — that a rotation is due, so it starts a second one. Each
+  // extra rotation retires the key the owner is actively holding, and every
+  // message sent under the retired key is unreadable for the rest of the group
+  // forever. The distribution hook had a guard, but the post-create rotation
+  // calls this directly and sailed straight past it.
+  if (rotationsInFlight.has(chatId)) {
+    return { rotated: false, reason: 'ROTATION_ALREADY_IN_FLIGHT' }
+  }
+  rotationsInFlight.add(chatId)
+  try {
+    return await runRotation(chatId, myUserId, myPrivateKey, targetEpoch)
+  } finally {
+    rotationsInFlight.delete(chatId)
+  }
+}
+
+/** Chats this client is mid-rotation on — see `rotateGroupKeyForChat`. */
+const rotationsInFlight = new Set<string>()
+
+async function runRotation(
+  chatId: string,
+  myUserId: string,
+  myPrivateKey: CryptoKey,
+  targetEpoch: number
+): Promise<RotationResult> {
   const detail = await fetchChatDetail(chatId)
   if (detail.chat.type !== 'group_e2e') {
     return { rotated: false, reason: 'NOT_GROUP' }
@@ -204,5 +235,15 @@ export async function rotateGroupKeyForChat(
   if (delivered === 0) {
     return { rotated: false, reason: 'NO_MEMBERS_DELIVERED' }
   }
+  // Re-keying a group retires the key every member (including this one) was
+  // just using, so anything already sent under the old key is unreadable to
+  // everyone else from here on. Rare, security-relevant, and previously
+  // invisible — worth one line.
+  console.warn('[sector] group re-keyed', {
+    chatId,
+    fromEpoch: epoch,
+    toEpoch: settledEpoch,
+    members: delivered,
+  })
   return { rotated: true, epoch: settledEpoch, members: delivered }
 }

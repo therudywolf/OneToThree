@@ -60,7 +60,7 @@ test.describe('chat / message operations cross-delivery', () => {
       // there — Bob has no edit banner, so this is the clean cross-delivery check.
       await expect(pageB.getByText(edited).first()).toBeVisible({ timeout: 20_000 })
       await expect(pageB.getByText(orig)).toHaveCount(0, { timeout: 10_000 })
-      await expect(pageB.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+      await expect(pageB.getByTestId('decrypt-failed')).not.toBeVisible()
     } finally {
       await ctxA.close()
       await ctxB.close()
@@ -84,7 +84,7 @@ test.describe('chat / message operations cross-delivery', () => {
       await expect(
         pageA.locator('.p13-reply-quote').filter({ hasText: msgA }).first()
       ).toBeVisible({ timeout: 15_000 })
-      await expect(pageA.getByText('[DECRYPT_FAIL]')).not.toBeVisible()
+      await expect(pageA.getByTestId('decrypt-failed')).not.toBeVisible()
     } finally {
       await ctxA.close()
       await ctxB.close()

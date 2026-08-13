@@ -714,7 +714,7 @@ export function ChatApp({
     return () => { cancelled = true }
   }, [activeChatId, chats, userId])
 
-  const { cryptoCtx, ctxError } = useChatCryptoContext()
+  const { cryptoCtx, ctxError, refreshCryptoCtx } = useChatCryptoContext()
   const { emitPhantomSignal } = usePhantomPush()
   const sharedKey = useChatAesKey(cryptoCtx)
   // Derive peer ID synchronously from the chat list so drCtx is available
@@ -787,7 +787,7 @@ export function ChatApp({
     },
     [rawSendAlbum],
   )
-  useGroupKeyDistribution(cryptoCtx, reload)
+  useGroupKeyDistribution(cryptoCtx, reload, refreshCryptoCtx)
 
   useEffect(() => {
     const tick = () => useChatStore.getState().pruneBurnedMessages()

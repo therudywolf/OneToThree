@@ -61,7 +61,17 @@ export async function runGuestSweepOnce(log?: FastifyBaseLogger): Promise<{
       and(
         eq(users.userGroup, 'guest'),
         gt(users.guestExpiresAt, now),
-        lt(sql`greatest(coalesce(${users.lastSeenAt}, ${users.createdAt}), ${users.createdAt})`, graceCutoff)
+        // `.toISOString()`, not the Date: the left side is a raw SQL expression,
+        // so drizzle has no column type to serialise the bound value against and
+        // hands the driver a Date object, which throws ("the string argument
+        // must be of type string ... received an instance of Date"). The whole
+        // sweep then failed on EVERY tick — expired guests were purged (query 1
+        // above runs first) but nobody who merely closed the tab ever was, and
+        // dead invite links were never dropped, because both come after this.
+        lt(
+          sql`greatest(coalesce(${users.lastSeenAt}, ${users.createdAt}), ${users.createdAt})`,
+          graceCutoff.toISOString()
+        )
       )
     )
     .limit(200)

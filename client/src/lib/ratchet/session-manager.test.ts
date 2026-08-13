@@ -22,7 +22,10 @@ import {
   acceptIncomingInit,
   bootstrapSession,
   clearOwnDrIdentity,
+  decryptFromPeer,
   generateLocalBundle,
+  isDrIdentityReady,
+  whenDrIdentityReady,
   setOwnDrIdentity,
   type DrInitWirePayload,
 } from './session-manager'
@@ -152,5 +155,51 @@ describe('bootstrapSession TOFU fail-closed', () => {
 
     // Must not have persisted a new session.
     expect(sessionStore.putSessionRecord).not.toHaveBeenCalled()
+  })
+})
+
+describe('DR identity readiness gate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    clearOwnDrIdentity()
+  })
+
+  it('reports not-ready before vault activation and ready after it', () => {
+    expect(isDrIdentityReady()).toBe(false)
+    const bob = generateLocalBundle(0)
+    setOwnDrIdentity(bob.identity, bob.signedPreKey.keypair, bob.signedPreKey.id, 'bob-device')
+    expect(isDrIdentityReady()).toBe(true)
+  })
+
+  it('resolves immediately when the identity is already installed', async () => {
+    const bob = generateLocalBundle(0)
+    setOwnDrIdentity(bob.identity, bob.signedPreKey.keypair, bob.signedPreKey.id, 'bob-device')
+    await expect(whenDrIdentityReady(0)).resolves.toBe(true)
+  })
+
+  it('parks a reader that arrives first and releases it on activation', async () => {
+    // The bug this gate exists for: opening a chat on a cold load reaches the
+    // decrypt before vault activation installs the identity.
+    const waiting = whenDrIdentityReady(5_000)
+    const bob = generateLocalBundle(0)
+    setOwnDrIdentity(bob.identity, bob.signedPreKey.keypair, bob.signedPreKey.id, 'bob-device')
+    await expect(waiting).resolves.toBe(true)
+  })
+
+  it('gives up rather than hanging when activation never happens', async () => {
+    vi.useFakeTimers()
+    try {
+      const waiting = whenDrIdentityReady(1_000)
+      await vi.advanceTimersByTimeAsync(1_000)
+      await expect(waiting).resolves.toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('decryptFromPeer names the unready identity apart from a missing session', async () => {
+    await expect(
+      decryptFromPeer('bob-id', 'alice-id', { v: 2, sd: 'alice-device', h: 'h', c: 'c' })
+    ).rejects.toThrowError('RATCHET_IDENTITY_NOT_READY')
   })
 })

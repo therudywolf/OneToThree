@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   buildChatCryptoContext,
   type ChatCryptoContext,
@@ -81,14 +81,27 @@ export function useChatCryptoContext() {
         if (!ctx) {
           setCryptoCtx(null)
           setCtxError('CRYPTO_BACKEND_PENDING')
+          console.warn('[chat] crypto context unavailable', {
+            chatId: activeChatId,
+            reason: 'CRYPTO_BACKEND_PENDING',
+          })
           return
         }
         setCryptoCtx(ctx)
         setCtxError(null)
       } catch (e) {
         if (!cancelled) {
+          const reason = e instanceof Error ? e.message : 'CRYPTO_CTX_FAIL'
           setCryptoCtx(null)
-          setCtxError(e instanceof Error ? e.message : 'CRYPTO_CTX_FAIL')
+          setCtxError(reason)
+          // Without a context nothing decrypts AND nothing loads — the message
+          // list bails out early, so the chat reads as empty rather than as
+          // broken. Say which chat and why; the banner alone does not survive
+          // into a bug report.
+          console.warn('[chat] crypto context unavailable', {
+            chatId: activeChatId,
+            reason,
+          })
         }
       }
     })()
@@ -97,5 +110,16 @@ export function useChatCryptoContext() {
     }
   }, [activeChatId, userId, unwrappedPrivateKey, keyRebuildNonce])
 
-  return { cryptoCtx, ctxError }
+  // Rebuild on demand, for the client that changed the key material ITSELF.
+  //
+  // The nonce above only moves on a WS echo, which is fine for the members
+  // being re-keyed and useless for the one doing the re-keying: after its own
+  // rotation the owner kept the SUPERSEDED key in memory and every message it
+  // sent next was sealed with a key no other member would ever hold — readable
+  // to the sender, permanently unreadable to the group, with no error anywhere.
+  const refreshCryptoCtx = useCallback(() => {
+    setKeyRebuildNonce((n) => n + 1)
+  }, [])
+
+  return { cryptoCtx, ctxError, refreshCryptoCtx }
 }

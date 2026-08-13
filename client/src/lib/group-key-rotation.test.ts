@@ -375,3 +375,35 @@ describe('rotateGroupKeyForChat — end-to-end rotation round-trip', () => {
     expect(uploadMemberWrappedGroupKey).not.toHaveBeenCalled()
   })
 })
+
+describe('rotation is serialized at the choke point', () => {
+  it('refuses a second rotation for the same chat while one is in flight', async () => {
+    // The post-create rotation calls rotateGroupKeyForChat directly, so a guard
+    // living in the distribution hook never saw it. A staleness scan reading the
+    // roster mid-rotation (new epoch, owner's stamp not rewritten yet) would
+    // start another one and retire the key the owner is sending under.
+    // A holder, not a bare `let`: TS narrows a variable assigned only inside a
+    // callback back to `null` at the call site below.
+    const gate: { release: (() => void) | null } = { release: null }
+    vi.mocked(fetchChatDetail).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          gate.release = () =>
+            resolve({
+              chat: { id: 'c1', type: 'group_e2e', my_role: 'owner', key_epoch: 1 },
+              members: [],
+            } as unknown as ChatDetailPayload)
+        })
+    )
+
+    const first = rotateGroupKeyForChat('c1', 'owner-1', {} as CryptoKey, 1)
+    const second = await rotateGroupKeyForChat('c1', 'owner-1', {} as CryptoKey, 1)
+    expect(second).toEqual({ rotated: false, reason: 'ROTATION_ALREADY_IN_FLIGHT' })
+
+    gate.release?.()
+    await first
+    // ...and the lock is released, so a later rotation is allowed again.
+    const third = await rotateGroupKeyForChat('c1', 'owner-1', {} as CryptoKey, 1)
+    expect(third).not.toEqual({ rotated: false, reason: 'ROTATION_ALREADY_IN_FLIGHT' })
+  })
+})

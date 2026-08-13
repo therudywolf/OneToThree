@@ -364,6 +364,12 @@ function MessageRowImpl({
           {pollEnv ? <PollBubble pollId={pollEnv} /> : null}
           {m.plaintext === '[DECRYPT_FAIL]' ? (
             <span
+              // Locale-independent hook: every spec asserting "nothing failed to
+              // decrypt" matched the literal "[DECRYPT_FAIL]", which the UI has
+              // never rendered — it shows the translated sentence. Those
+              // assertions passed on unreadable messages for as long as they
+              // have existed.
+              data-testid="decrypt-failed"
               className="inline-flex items-center gap-1.5 text-text-muted/60 text-[11px] italic"
               title={t('chat.decryptFailed')}
             >

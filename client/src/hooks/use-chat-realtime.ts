@@ -344,12 +344,32 @@ export function useChatRealtime(
             // DIRECT chats are Double Ratchet (v2) only and never carry shared
             // wire content — a DIRECT chat_message with `content` set is a v1
             // protocol-downgrade attempt. Refuse to decrypt it.
+            //
+            // Refusing in silence made this indistinguishable from a key
+            // problem: the bubble says "could not be decrypted" either way.
+            // A downgrade attempt is worth naming, and so is the far more
+            // likely benign case — a row judged against the wrong chat's
+            // context.
+            console.warn('[dr] refused a v1 row in a DIRECT chat', {
+              id: m.id,
+              chatId: m.chat_id,
+            })
             plaintext = '[DECRYPT_FAIL]'
           } else {
             try {
               const { decryptInboundText } = await import('@/lib/chat-crypto')
               plaintext = await decryptInboundText(unwrappedPrivateKey, cryptoCtx, m.content, m.iv)
-            } catch {
+            } catch (err) {
+              // The third place a decrypt used to fail in silence. This one
+              // renders the bubble a user actually complains about, so it is the
+              // one worth naming: a sector row that fails every key in the ring
+              // is normally a message sealed under an epoch this member was
+              // never given, not a broken key.
+              console.warn('[dr] realtime decrypt failed', {
+                id: m.id,
+                mode: cryptoCtx.mode,
+                reason: err instanceof Error ? err.message || err.name : String(err),
+              })
               plaintext = '[DECRYPT_FAIL]'
             }
           }

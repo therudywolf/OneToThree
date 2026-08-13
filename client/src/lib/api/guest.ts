@@ -203,6 +203,19 @@ export async function kickGuestFromCall(room: string, identity: string): Promise
   await jsonOrThrow<{ ok: boolean }>(res, 'KICK_FAILED')
 }
 
+/**
+ * Host side of ending a temp chat early: purges the guest account AND the chat.
+ * The guest could always leave; without this the person who handed out the link
+ * had to wait out the TTL.
+ */
+export async function endGuestChat(chatId: string): Promise<void> {
+  const res = await fetchWithTimeout(
+    `${API_URL}/guest-chats/${encodeURIComponent(chatId)}/kick`,
+    { method: 'POST', credentials: 'include' }
+  )
+  await jsonOrThrow<{ ok: boolean }>(res, 'END_CHAT_FAILED')
+}
+
 /** Guest self-destruct: purge the ephemeral account and the temp chat now. */
 export async function guestLeave(): Promise<void> {
   const res = await fetchWithTimeout(`${API_URL}/guest/me/leave`, {

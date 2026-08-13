@@ -976,14 +976,24 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     const ids = parsed.data.user_ids
     const unique = [...new Set(ids)]
     const rows = await db
-      .select({ id: users.id, username: users.username, ecdhPublicKeyJwk: users.ecdhPublicKeyJwk, avatarKey: users.avatarKey })
+      .select({ id: users.id, username: users.username, displayName: users.displayName, ecdhPublicKeyJwk: users.ecdhPublicKeyJwk, avatarKey: users.avatarKey, userGroup: users.userGroup })
       .from(users)
       .where(inArray(users.id, unique))
 
     if (rows.length !== unique.length) return reply.status(400).send({ error: 'UNKNOWN_USER' })
 
     return reply.send({
-      users: rows.map((u) => ({ id: u.id, username: u.username, ecdh_public_key_jwk: u.ecdhPublicKeyJwk, avatar_key: u.avatarKey })),
+      users: rows.map((u) => ({
+        id: u.id,
+        username: u.username,
+        display_name: u.displayName ?? null,
+        ecdh_public_key_jwk: u.ecdhPublicKeyJwk,
+        avatar_key: u.avatarKey,
+        // Server-assigned tier. `'guest'` is what the chat header badges: a
+        // link-invited identity nobody verified, so it must be visible where
+        // the conversation happens, not only in the call UI.
+        user_group: u.userGroup,
+      })),
     })
   })
 

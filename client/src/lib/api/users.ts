@@ -31,8 +31,12 @@ export async function searchUsers(query: string): Promise<SearchUserRow[]> {
 export type UserLookupRow = {
   id: string
   username: string
+  /** Optional user-chosen label; prefer it over `username` when rendering. */
+  display_name?: string | null
   ecdh_public_key_jwk: string | null
   avatar_key?: string | null
+  /** Server-assigned tier; `'guest'` marks a link-invited temp-chat guest. */
+  user_group?: string
 }
 
 export type PresenceRow = {

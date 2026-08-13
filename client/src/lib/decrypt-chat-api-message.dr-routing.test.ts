@@ -21,6 +21,9 @@ import { describe, expect, it, vi } from 'vitest'
 const drSessions = vi.hoisted(() => new Map<string, string>())
 
 vi.mock('@/lib/ratchet/session-manager', () => ({
+  // The decrypt path waits for vault activation to install the DR identity
+  // before routing a v2 row; here it is installed from the start.
+  whenDrIdentityReady: vi.fn(async () => true),
   decryptFromPeer: vi.fn(
     async (ownerId: string, peerId: string, env: { sd: string }) => {
       const plain = drSessions.get(`${ownerId}|${peerId}|${env.sd}`)

@@ -290,6 +290,8 @@ let _ownDeviceId: string | null = null
 let _ownOtpDeriver: ((id: number) => Promise<Uint8Array | null>) | null = null
 /** Drops a consumed OTP private key. One-time means one time. */
 let _ownOtpConsumer: ((id: number) => Promise<void>) | null = null
+/** Readers parked until the identity above is installed (see `whenDrIdentityReady`). */
+let _identityWaiters: (() => void)[] = []
 
 /**
  * Called by vault unlock to register the local DR identity.
@@ -312,6 +314,40 @@ export function setOwnDrIdentity(
   _ownDeviceId = ownDeviceId
   _ownOtpDeriver = otpDeriver ?? null
   _ownOtpConsumer = otpConsumer ?? null
+  const waiters = _identityWaiters
+  _identityWaiters = []
+  for (const w of waiters) w()
+}
+
+/** True once vault activation has installed the DR identity on this device. */
+export function isDrIdentityReady(): boolean {
+  return _ownDeviceId !== null
+}
+
+/**
+ * Resolves once the DR identity is installed, or `false` if it isn't within
+ * `timeoutMs`.
+ *
+ * Vault activation installs the identity as its LAST step, after publishing
+ * keys over the network — so anything that decrypts on mount (opening a chat
+ * straight from a cold load) can easily get there first. Without this gate that
+ * race was indistinguishable from a broken handshake: the row decrypted to
+ * "[DECRYPT_FAIL]", nothing retried, and the very first message from a new
+ * contact was simply lost.
+ */
+export function whenDrIdentityReady(timeoutMs = 10_000): Promise<boolean> {
+  if (isDrIdentityReady()) return Promise.resolve(true)
+  return new Promise<boolean>((resolve) => {
+    let settled = false
+    const done = (ready: boolean) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(ready)
+    }
+    const timer = setTimeout(() => done(isDrIdentityReady()), timeoutMs)
+    _identityWaiters.push(() => done(true))
+  })
 }
 
 export function clearOwnDrIdentity(): void {
@@ -983,7 +1019,11 @@ export async function decryptFromPeer(
   peerId: string,
   envelope: DrDeviceEnvelope
 ): Promise<string> {
-  if (!_ownDeviceId) throw new Error('RATCHET_NO_SESSION')
+  // Distinct from "no session for this pair": the DR identity itself is not
+  // installed, i.e. vault activation has not reached `setOwnDrIdentity` yet.
+  // Sharing one code with the session miss made a startup race look exactly
+  // like a broken handshake.
+  if (!_ownDeviceId) throw new Error('RATCHET_IDENTITY_NOT_READY')
   const ownDeviceId = _ownDeviceId
   const senderDeviceId = envelope.sd
   if (!senderDeviceId) throw new Error('RATCHET_NO_SENDER_DEVICE')
@@ -1005,6 +1045,14 @@ export async function decryptFromPeer(
           // identity that doesn't match the device's published bundle.
           if (err instanceof Error && err.message === 'X3DH_IDENTITY_MISMATCH') throw err
           // Other failures are non-fatal; fall through and see if a session exists.
+          // Say so, though: a swallowed handshake failure downgrades into a bare
+          // `RATCHET_NO_SESSION` below, which is indistinguishable from "identity
+          // not installed yet" and hides the actual cause (unknown SPK, consumed
+          // OTP, vault not unlocked, …) from anyone debugging a lost message.
+          console.warn(
+            '[dr] incoming init not accepted',
+            err instanceof Error ? err.message : String(err)
+          )
         }
       }
       const session = await loadSession(ownerId, ownDeviceId, peerId, senderDeviceId)

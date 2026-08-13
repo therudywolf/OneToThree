@@ -148,7 +148,17 @@ async function decryptRowPlaintext(
   ) {
     const drEnv = parseDrDeviceEnvelope(c)
     if (!drEnv) throw new Error('ERR_DR_ENVELOPE_INVALID')
-    const { decryptFromPeer } = await import('@/lib/ratchet/session-manager')
+    const { decryptFromPeer, whenDrIdentityReady } = await import(
+      '@/lib/ratchet/session-manager'
+    )
+    // Opening a chat on a cold load races vault activation, which installs the
+    // DR identity only at the very end. Losing that race threw
+    // RATCHET_IDENTITY_NOT_READY, the row rendered as "[DECRYPT_FAIL]", and
+    // nothing ever retried it — so the FIRST message from a new contact stayed
+    // permanently unreadable. Wait for the identity instead. Gating here rather
+    // than in each hook covers every reader: history load, realtime, pending
+    // sync. Already-ready is the overwhelmingly common case and costs nothing.
+    await whenDrIdentityReady()
     // A row from one of the user's OWN devices is a self-sync copy: it rode
     // the (ownDevice <-> ownOtherDevice) ratchet, so its DR peer is the user
     // themselves. Routing it to the chat peer looks up a ratchet that does not
@@ -156,6 +166,15 @@ async function decryptRowPlaintext(
     const drPeerUserId =
       row.sender_id === drCtx.ownerUserId ? drCtx.ownerUserId : drCtx.peerUserId
     return decryptFromPeer(drCtx.ownerUserId, drPeerUserId, drEnv)
+  }
+
+  // A v2 row we simply cannot route yet: the chat list hasn't resolved the peer
+  // user id, so there is no `drCtx`. Distinct from the downgrade rejection
+  // below — this row IS Double Ratchet, and the caller re-runs once the peer
+  // resolves. Calling it a v1 downgrade attempt sent anyone reading the logs
+  // hunting a protocol attack that never happened.
+  if (row.protocol_version === 2 && iv === DR_SLOT_SENTINEL && !drCtx) {
+    throw new Error('ERR_DR_PEER_UNRESOLVED')
   }
 
   // DIRECT conversations are Double Ratchet (v2) ONLY. Reaching here for a
@@ -260,6 +279,26 @@ async function decryptRowPlaintext(
 }
 
 /**
+ * A failed decrypt used to be COMPLETELY silent — `catch {}` turned every
+ * cause into the same "[DECRYPT_FAIL]" bubble. That is the one piece of
+ * information needed to tell a transient DR-session race apart from a real
+ * key mismatch, and its absence is why a first-message failure could survive
+ * unnoticed. Logs the reason only: never key material, never plaintext.
+ */
+function noteDecryptFailure(row: ApiMessageRow, err: unknown): void {
+  // WebCrypto throws `OperationError` with an EMPTY message on a failed AES-GCM
+  // auth tag — the single most likely failure here — so fall back to the name.
+  const reason =
+    err instanceof Error ? err.message || err.name || 'Error' : String(err)
+  console.warn('[dr] message decrypt failed', {
+    id: row.id,
+    pv: row.protocol_version ?? null,
+    iv: row.device_iv ?? row.iv ?? null,
+    reason,
+  })
+}
+
+/**
  * Decrypt many API rows with one ECDH derive + batched AES-GCM (worker for large backlogs).
  * Pass `drCtx` for chats that may carry DR v2 messages.
  */
@@ -278,7 +317,8 @@ export async function decryptApiMessageRows(
             m,
             await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx, hints)
           )
-        } catch {
+        } catch (err) {
+          noteDecryptFailure(m, err)
           return apiRowToDecrypted(m, '[DECRYPT_FAIL]')
         }
       })
@@ -380,7 +420,8 @@ export async function decryptApiMessageRow(
   ) {
     try {
       plaintext = await decryptRowPlaintext(unwrappedPrivateKey, cryptoCtx, m, drCtx, hints)
-    } catch {
+    } catch (err) {
+      noteDecryptFailure(m, err)
       plaintext = '[DECRYPT_FAIL]'
     }
   }

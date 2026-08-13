@@ -45,6 +45,7 @@ import { useCapabilities } from '@/components/capabilities-provider'
 import { ExploreModal } from '@/components/chat/explore-modal'
 import { GroupChatSettings } from '@/components/chat/group-chat-settings'
 import { UserAvatar } from '@/components/user-avatar'
+import { ChatAvatar } from '@/components/chat-avatar'
 import { lookupUsers, searchUsers } from '@/lib/api/users'
 import { useTranslation } from '@/hooks/use-translation'
 import { useCallStore } from '@/store/callStore'
@@ -1134,9 +1135,18 @@ export function ChatSidebar({
                         size={isCollapsed ? 44 : 44}
                       />
                     ) : c.is_group ? (
-                      <div className={`flex shrink-0 items-center justify-center h-11 w-11 text-[13px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)] font-sans font-semibold' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan'}`}>
-                        {isMd3 ? (c.name?.slice(0, 2)?.toUpperCase() || 'GR') : 'GRP'}
-                      </div>
+                      c.avatar_key ? (
+                        <ChatAvatar
+                          chatId={c.id}
+                          name={c.name ?? ''}
+                          avatarKey={c.avatar_key}
+                          size={44}
+                        />
+                      ) : (
+                        <div className={`flex shrink-0 items-center justify-center h-11 w-11 text-[13px] ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)] font-sans font-semibold' : 'border border-neon-cyan/50 bg-void font-mono text-neon-cyan'}`}>
+                          {isMd3 ? (c.name?.slice(0, 2)?.toUpperCase() || 'GR') : 'GRP'}
+                        </div>
+                      )
                     ) : null}
 
                     {!c.is_group && pres?.online ? (
@@ -1158,6 +1168,9 @@ export function ChatSidebar({
                       ) : null}
                       {!c.is_group && approvedPeerIds.has(peerId ?? '') ? (
                         <UserCheck className="h-3.5 w-3.5 text-accent-2 shrink-0" />
+                      ) : null}
+                      {c.type === 'channel' ? (
+                        <Megaphone className="h-3.5 w-3.5 shrink-0 text-neon-cyan/70" aria-label={t('explore.typeChannel')} />
                       ) : null}
                       <span className={`p13-sidebar-title min-w-0 flex-1 truncate text-[14px] leading-tight ${activeChatId === c.id ? (isMd3 ? 'font-semibold text-[var(--on-surface)]' : 'font-semibold text-neon-cyan') : (isMd3 ? 'font-medium text-[var(--on-surface)]' : 'font-medium text-neon-cyan/90')}`}>
                         {listTitle}
@@ -1181,7 +1194,9 @@ export function ChatSidebar({
                                 ? new Date(pres.last_seen_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
                                 : '—'}
                             </>
-                          ) : c.is_group ? `${c.member_ids.length} ${t('sidebar.members')}` : ''
+                          ) : c.is_group
+                            ? `${c.member_ids.length} ${c.type === 'channel' ? t('profile.subscribers') : t('sidebar.members')}`
+                            : ''
                         )}
                       </span>
                       <span className="ml-auto inline-flex shrink-0 items-center gap-1">

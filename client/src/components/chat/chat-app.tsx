@@ -67,6 +67,7 @@ import { useNotificationOpen } from '@/hooks/use-notification-open'
 import { useThemeStore } from '@/store/themeStore'
 import { isApprovedContact } from '@/lib/contacts-store'
 import { UserAvatar } from '@/components/user-avatar'
+import { ChatAvatar } from '@/components/chat-avatar'
 import { TELEGRAM_BEHAVIOR } from '@/components/chat/telegram-behavior'
 import {
   getStoredNotificationMode,
@@ -1430,9 +1431,18 @@ export function ChatApp({
                     ) : null}
                   </div>
                 ) : activeRow?.is_group ? (
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${isMd3 ? 'bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan font-mono'}`}>
-                    {activeRow.name?.slice(0, 2)?.toUpperCase() || 'GR'}
-                  </div>
+                  activeRow.avatar_key ? (
+                    <ChatAvatar
+                      chatId={activeRow.id}
+                      name={activeRow.name ?? ''}
+                      avatarKey={activeRow.avatar_key}
+                      size={40}
+                    />
+                  ) : (
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold ${isMd3 ? 'bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-[var(--primary)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan font-mono'}`}>
+                      {activeRow.name?.slice(0, 2)?.toUpperCase() || 'GR'}
+                    </div>
+                  )
                 ) : null}
 
                 <div className="flex min-w-0 flex-1 flex-col">

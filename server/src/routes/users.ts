@@ -620,6 +620,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     let profileChannel: {
       id: string
       name: string
+      description: string | null
+      avatar_key: string | null
       invite_slug: string | null
       invite_code: string | null
       member_count: number
@@ -630,6 +632,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
           id: chats.id,
           name: chats.name,
           type: chats.type,
+          description: chats.description,
+          avatarKey: chats.avatarKey,
           inviteCode: chats.inviteCode,
           inviteOneTime: chats.inviteOneTime,
           inviteSlug: chats.inviteSlug,
@@ -647,6 +651,8 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
           profileChannel = {
             id: channel.id,
             name: channel.name ?? '',
+            description: channel.description ?? null,
+            avatar_key: channel.avatarKey ?? null,
             invite_slug: channel.inviteSlug,
             invite_code: inviteCode,
             member_count: Number(membersRow?.memberCount ?? 0),

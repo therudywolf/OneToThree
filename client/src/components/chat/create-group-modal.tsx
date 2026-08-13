@@ -244,7 +244,7 @@ export function CreateGroupModal({ userId, onClose, onCreated, initialMode = 'gr
           {/* CHANNEL_NAME_INPUT */}
           <div className="space-y-2">
             <label className="text-[9px] uppercase tracking-widest text-text-muted" htmlFor="grp-name">
-              {t('group.channelName')}{createMode === 'channel' ? ' *' : ''}
+              {createMode === 'channel' ? `${t('group.channelNameReal')} *` : t('group.channelName')}
             </label>
             <input
               id="grp-name"

@@ -112,6 +112,9 @@ services:
       FEATURE_2FA: ${OT_ENABLE_2FA:-1}
       FEATURE_ADMIN: ${OT_ENABLE_ADMIN:-1}
       FEATURE_GROUPS: ${OT_ENABLE_GROUPS:-1}
+      # Guest links are OPT-IN (the only unauthenticated app surface), so this
+      # one defaults to 0 and is enabled only when explicitly ticked.
+      FEATURE_GUESTS: ${OT_ENABLE_GUESTS:-0}
       # Media (only used when media is on).
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_URL: ${OT_S3_PUBLIC_URL:-http://localhost:9000}

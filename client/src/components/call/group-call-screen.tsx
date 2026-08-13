@@ -34,6 +34,7 @@ import { loadMediaPrefs } from '@/lib/media-devices'
 import { warmupCameraEffects } from '@/lib/camera-effects'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { useCallStore } from '@/store/callStore'
+import { toastError } from '@/store/toastStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { PortalRoot } from '@/components/portal-root'
 import { useTranslation } from '@/hooks/use-translation'
@@ -187,6 +188,27 @@ export function GroupCallScreen({
   // '#screen' entries are LiveKit screen-share streams — extra TILES, not people.
   const totalCount = 1 + remoteEntries.filter(([id]) => !id.endsWith('#screen')).length
 
+  /**
+   * Remove a link-invited guest from the room. Authorization is the server's
+   * (the link's creator, or an admin/owner of the chat the call belongs to) —
+   * the button is offered on every guest row and a 403 is reported as such,
+   * because the client cannot know who minted the link.
+   */
+  const handleKickGuest = useCallback(
+    async (guestIdentity: string, label: string) => {
+      if (!roomId) return
+      if (!window.confirm(t('guest.kickConfirm').replace('{name}', label))) return
+      try {
+        const { kickGuestFromCall } = await import('@/lib/api/guest')
+        await kickGuestFromCall(roomId, guestIdentity)
+      } catch (err) {
+        const code = err instanceof Error ? err.message : ''
+        toastError(code === 'FORBIDDEN' ? t('guest.kickForbidden') : t('guest.kickFailed'))
+      }
+    },
+    [roomId, t]
+  )
+
   // Auto-spotlight: a shared screen wins, then the dominant speaker in big
   // rooms (unless manually pinned).
   const speakingId = useMemo(
@@ -289,6 +311,7 @@ export function GroupCallScreen({
         label={isScreenTile ? `${ownerName} · ${t('call.screenSharing')}` : ownerName}
         micMuted={!isScreenTile && (participants[id]?.isMuted ?? false)}
         camOff={!isScreenTile && (participants[id]?.isVideoOff ?? false)}
+        isGuest={participants[ownerId]?.isGuest ?? false}
         screenSharing={isScreenTile}
         pinned={pinnedId === id}
         onPinToggle={() => pinToggle(id)}
@@ -315,6 +338,7 @@ export function GroupCallScreen({
         camOff: p.isVideoOff,
         speaking: p.isSpeaking,
         connectionState: p.connectionState,
+        isGuest: p.isGuest,
       })),
   ]
 
@@ -428,6 +452,7 @@ export function GroupCallScreen({
                 <CallParticipantsPanel
                   rows={participantRows}
                   onClose={() => setShowParticipantPanel(false)}
+                  onKickGuest={handleKickGuest}
                 />
               )}
             </aside>

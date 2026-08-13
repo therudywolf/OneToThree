@@ -1,6 +1,6 @@
 # OneToThree Feature Matrix
 
-Last updated: 2026-05-07
+Last updated: 2026-08-13
 
 Legend:
 - `implemented`: done and covered by checks
@@ -60,6 +60,8 @@ Legend:
 | P2P audio/video calls | implemented | Full mesh; UDP/TCP/TLS ICE fallback matrix |
 | TURN relay (coturn) | implemented | Plain TURN always active; TURNS:5349 activates automatically after `sync-turn-certs.sh` |
 | LiveKit SFU (3+ participants) | implemented | Token issuance + client integration; `joinGroupCall` tries SFU first, mesh fallback |
+| Guest links — meeting guests (no account) | implemented | Opt-in `FEATURE_GUESTS`; knock → host approves → LiveKit token with `name`/`metadata`; seats (`max_uses`), kick via RoomService + identity denylist; no `users` row is ever created |
+| Guest links — temporary chat | implemented | Ephemeral `users` row (`user_group='guest'`), keys live in the tab's sessionStorage; deny-by-default route allowlist; purged on leave / kick / offline grace / TTL |
 | Call E2EE via Insertable Streams | implemented | LiveKit `ExternalE2EEKeyProvider`; server derives HMAC-SHA256 room key per session (Redis TTL); client imports as AES-GCM CryptoKey and passes to Room e2ee options |
 
 ### Stickers

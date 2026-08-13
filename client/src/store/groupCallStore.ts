@@ -13,6 +13,13 @@ export type GroupCallParticipant = {
   isVideoOff: boolean
   isSpeaking: boolean
   connectionState: RTCIceConnectionState | 'new' | 'pending'
+  /**
+   * Link-invited guest (SFU only): `userId` here is the LiveKit identity
+   * `guest:<random>`, NOT a users row — there is none. Set from the token's
+   * `metadata` claim, i.e. by the server, so the badge cannot be spoofed by a
+   * participant renaming themselves.
+   */
+  isGuest?: boolean
 }
 
 export type GroupCallTransport = 'mesh' | 'livekit' | 'audio_relay'

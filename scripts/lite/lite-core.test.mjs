@@ -244,4 +244,21 @@ describe('features', () => {
     ])
     assert.deepEqual(args.slice(-2), ['up', '-d'])
   })
+
+  /**
+   * Guest links are the ONLY unauthenticated entry into the app, so an
+   * operator has to ask for them: the checkbox ships off, and the env var must
+   * carry that through — a default-on guest mode would silently open a door on
+   * every Lite install.
+   */
+  test('guest links are opt-in and reach the API as OT_ENABLE_GUESTS', () => {
+    assert.equal(FEATURES.find((f) => f.key === 'GUESTS')?.on, false)
+    const off = buildEnv({ cfg: computeModeConfig('local', {}), flags: flagsFor() })
+    assert.equal(off.OT_ENABLE_GUESTS, '0')
+    const on = buildEnv({
+      cfg: computeModeConfig('local', {}),
+      flags: flagsFor({ GUESTS: '1' }),
+    })
+    assert.equal(on.OT_ENABLE_GUESTS, '1')
+  })
 })

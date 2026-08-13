@@ -508,6 +508,7 @@ const en = {
   'group.title': 'Create Group',
   'group.hintEcdh': 'All members must have active ECDH keys. Unlock your vault to sync.',
   'group.channelName': 'Group name',
+  'group.channelNameReal': 'Channel name',
   'group.optional': 'optional',
   'group.searchLabel': 'Search users',
   'group.searchPlaceholder': 'username, ID, or invite link',
@@ -1357,6 +1358,11 @@ const en = {
   'guest.enterMeeting': 'Enter the meeting',
   'guest.seatsFree': 'Seats taken / total — the link still admits guests',
   'guest.seatsFull': 'All seats taken — the link admits no one new',
+
+  'guest.kick': 'Remove the guest from the call',
+  'guest.kickConfirm': 'Remove guest {name} from the call?',
+  'guest.kickForbidden': 'Only the person who invited the guest, or a chat admin, can remove them',
+  'guest.kickFailed': 'Could not remove the guest — try again',
 } as const;
 
 export default en;

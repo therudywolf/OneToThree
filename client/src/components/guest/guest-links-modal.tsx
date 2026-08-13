@@ -10,11 +10,13 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Copy, DoorOpen, Link2, MessageSquare, Trash2, Video, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Copy, DoorOpen, Link2, LogIn, MessageSquare, Trash2, Video, X } from 'lucide-react'
 import {
   createGuestInvite,
   guestInviteUrl,
   listGuestInvites,
+  meetingHref,
   revokeGuestInvite,
   type GuestInvite,
 } from '@/lib/api/guest'
@@ -28,6 +30,7 @@ type Props = {
 
 export function GuestLinksModal({ activeChatId, onClose }: Props) {
   const { t } = useTranslation()
+  const router = useRouter()
   const capabilities = useCapabilities()
   const [invites, setInvites] = useState<GuestInvite[]>([])
   const [loading, setLoading] = useState(true)
@@ -60,13 +63,22 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
         setInvites((prev) => [invite, ...prev])
         await copyLink(invite)
         setCopiedId(invite.id)
+        // "Быстрая встреча" means the host wants to be IN it now: the link is
+        // already on the clipboard, so walk them into the room instead of
+        // leaving them on a screen with a link and no way in. A chat-bound
+        // call link is different — the host is already in that chat.
+        const href = meetingHref(invite)
+        if (href && !chatId) {
+          onClose()
+          router.push(href)
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'ERROR')
       } finally {
         setBusy(false)
       }
     },
-    []
+    [onClose, router]
   )
 
   const copyLink = async (invite: GuestInvite) => {
@@ -161,46 +173,82 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
               {t('guest.empty')}
             </div>
           ) : (
-            invites.map((invite) => (
-              <div
-                key={invite.id}
-                className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-medium text-neutral-200">
-                    {invite.purpose === 'call'
-                      ? invite.chat_id
-                        ? t('guest.purposeCallChat')
-                        : t('guest.purposeCall')
-                      : t('guest.purposeChat')}
+            invites.map((invite) => {
+              const href = meetingHref(invite)
+              return (
+                <div
+                  key={invite.id}
+                  className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-neutral-200">
+                      <span className="truncate">
+                        {invite.purpose === 'call'
+                          ? invite.chat_id
+                            ? t('guest.purposeCallChat')
+                            : t('guest.purposeCall')
+                          : t('guest.purposeChat')}
+                      </span>
+                      {/* Seats taken — a meeting link admits several guests. */}
+                      <span
+                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
+                          invite.exhausted
+                            ? 'bg-neutral-800 text-neutral-400'
+                            : 'bg-emerald-500/15 text-emerald-300'
+                        }`}
+                        title={
+                          invite.exhausted
+                            ? t('guest.seatsFull')
+                            : t('guest.seatsFree')
+                        }
+                      >
+                        {invite.used_count}/{invite.max_uses}
+                      </span>
+                    </div>
+                    <div className="truncate text-[11px] text-neutral-500">
+                      {invite.exhausted ? t('guest.seatsFull') : guestInviteUrl(invite)}
+                    </div>
                   </div>
-                  <div className="truncate text-[11px] text-neutral-500">
-                    {guestInviteUrl(invite)}
-                  </div>
+                  {href ? (
+                    <button
+                      type="button"
+                      aria-label={t('guest.enterMeeting')}
+                      title={t('guest.enterMeeting')}
+                      onClick={() => {
+                        onClose()
+                        router.push(href)
+                      }}
+                      className="rounded p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-emerald-300"
+                    >
+                      <LogIn className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                  {invite.exhausted ? null : (
+                    <button
+                      type="button"
+                      aria-label={t('guest.copy')}
+                      title={t('guest.copy')}
+                      onClick={() => {
+                        void copyLink(invite)
+                        setCopiedId(invite.id)
+                      }}
+                      className="rounded p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-200"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={t('guest.revoke')}
+                    title={t('guest.revoke')}
+                    onClick={() => void revoke(invite.id)}
+                    className="rounded p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-red-400"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  aria-label={t('guest.copy')}
-                  title={t('guest.copy')}
-                  onClick={() => {
-                    void copyLink(invite)
-                    setCopiedId(invite.id)
-                  }}
-                  className="rounded p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-200"
-                >
-                  <Copy className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  aria-label={t('guest.revoke')}
-                  title={t('guest.revoke')}
-                  onClick={() => void revoke(invite.id)}
-                  className="rounded p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-red-400"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

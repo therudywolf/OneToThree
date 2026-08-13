@@ -120,6 +120,22 @@ async function decryptJobsOnMain(
   return map
 }
 
+/**
+ * One decrypt per row while several readers want it at once.
+ *
+ * Opening a chat can put the history load, the realtime pull and the pending
+ * sync on the same envelope within the same tick. The ratchet serialises them,
+ * so the first advances the chain and the others fail their AES-GCM tag against
+ * a message key that no longer exists — on production that showed up as three
+ * `OperationError`s for one message, and a losing reader can render
+ * "[DECRYPT_FAIL]" over a message that decrypted perfectly well.
+ *
+ * Sharing the IN-FLIGHT promise fixes the race without touching ratchet state
+ * or replay behaviour: nothing is retained once the decrypt settles, so a later
+ * re-read still goes through the ratchet exactly as before.
+ */
+const inFlightDrRows = new Map<string, Promise<string>>()
+
 async function decryptRowPlaintext(
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
@@ -165,7 +181,15 @@ async function decryptRowPlaintext(
     // exist, so the copy never decrypts on the user's other devices.
     const drPeerUserId =
       row.sender_id === drCtx.ownerUserId ? drCtx.ownerUserId : drCtx.peerUserId
-    return decryptFromPeer(drCtx.ownerUserId, drPeerUserId, drEnv)
+    const shared = inFlightDrRows.get(row.id)
+    if (shared) return shared
+    const pending = decryptFromPeer(drCtx.ownerUserId, drPeerUserId, drEnv).finally(
+      () => {
+        inFlightDrRows.delete(row.id)
+      }
+    )
+    inFlightDrRows.set(row.id, pending)
+    return pending
   }
 
   // A v2 row we simply cannot route yet: the chat list hasn't resolved the peer

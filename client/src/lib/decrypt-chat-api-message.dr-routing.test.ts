@@ -109,3 +109,31 @@ describe('decryptApiMessageRows — per-device DR inbound routing (A4)', () => {
     expect(out.plaintext).toBe('[DECRYPT_FAIL]')
   })
 })
+
+/**
+ * The other half of the in-flight sharing — that two SIMULTANEOUS readers get
+ * one decrypt — cannot be asserted here: two concurrent `decryptApiMessageRow`
+ * calls each run the dynamic `import()` the routing note above describes, one
+ * of them receives the UNMOCKED session manager, and the real identity gate
+ * then parks the test until it times out. That path is covered live instead
+ * (`scripts/e2e-live/run.mjs` → `firstcontact`, where the duplicate readers
+ * used to log an `OperationError` apiece).
+ *
+ * What is worth pinning down here is the safety property: nothing is retained.
+ */
+describe('repeated reads of one DR row', () => {
+  it('does not retain the plaintext once the decrypt settles', async () => {
+    drSessions.clear()
+    drSessions.set('alice|bob|bob-dev', 'first read')
+    const row = drRow('sequential-row', 'bob', 'bob-dev')
+    const ctx = { mode: 'DIRECT' as const, peerPublicKeyJwk: 'unused-in-v2' }
+    const drCtx: DrContext = { ownerUserId: 'alice', peerUserId: 'bob' }
+
+    await decryptApiMessageRow({} as CryptoKey, ctx, row, drCtx)
+    // Sequential re-reads must go back through the ratchet, not a cache — that
+    // is what keeps replay handling where it belongs.
+    drSessions.delete('alice|bob|bob-dev')
+    const again = await decryptApiMessageRow({} as CryptoKey, ctx, row, drCtx)
+    expect(again.plaintext).toBe('[DECRYPT_FAIL]')
+  })
+})

@@ -726,6 +726,52 @@ async function dumpCallState(client, why) {
   log(`  [${client.label}] ${why}`, JSON.stringify(d).slice(0, 800))
 }
 
+/**
+ * The FIRST message to a brand-new contact, read for the first time AFTER it
+ * arrived.
+ *
+ * `scenarioDmAndCall` below opens the chat on BOTH sides before anything is
+ * sent, so the Double Ratchet session is already up by the time a message
+ * exists — which is precisely why it never noticed that a recipient arriving
+ * afterwards could not read that first message at all. Here B has never opened
+ * the chat, and reloads first, so the decrypt starts on a cold page and races
+ * vault activation exactly as a real recipient does.
+ *
+ * Runs before the DM scenario and creates the same direct chat it will reuse
+ * (`POST /chats` is idempotent for a pair).
+ */
+async function scenarioFirstContact(A, B, idB) {
+  const dm = await api(A.page, 'POST', '/chats', { type: 'direct_e2e', member_ids: [idB] })
+  const chatId = dm.body?.chat?.id ?? null
+  record('first-contact chat created', Boolean(chatId), `status ${dm.status}`)
+  if (!chatId) return
+
+  // A alone. B must not see this chat until after the message exists.
+  await A.page.goto(`${APP}/?chat=${chatId}`, { waitUntil: 'domcontentloaded' })
+  await A.page.waitForTimeout(9000)
+  await unlockVaultIfAsked(A, PW)
+  await A.page.waitForTimeout(4000)
+
+  const first = `FIRST-${STAMP}`
+  record('A sent the first message to a new contact', await sendMessage(A, first))
+
+  await B.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {})
+  await B.page.goto(`${APP}/?chat=${chatId}`, { waitUntil: 'domcontentloaded' })
+  await B.page.waitForTimeout(6000)
+  await unlockVaultIfAsked(B, PW)
+
+  const read = await waitForBubble(B, first)
+  record('B READ the first message on a cold first open', read)
+  if (!read) {
+    const shown = await readBubbles(B.page)
+    record(
+      'first message did not fall back to [DECRYPT_FAIL]',
+      !shown.some((t) => t.includes('DECRYPT_FAIL') || t.includes('не удалось расшифровать')),
+      shown.join(' | ').slice(0, 200)
+    )
+  }
+}
+
 async function scenarioDmAndCall(A, B, idB) {
   const dm = await api(A.page, 'POST', '/chats', { type: 'direct_e2e', member_ids: [idB] })
   const dmId = dm.body?.chat?.id ?? null
@@ -1132,7 +1178,8 @@ async function main() {
   // Device linking is the one scenario that needs no peer, and registration is
   // rate-limited per address — do not spend an account we will not use.
   const needsPeer = ONLY.length === 0
-    || ['group', 'media', 'rotation', 'groupcall', 'dm', 'call', 'channel'].some((s) => ONLY.includes(s))
+    || ['group', 'media', 'rotation', 'groupcall', 'dm', 'call', 'channel', 'firstcontact']
+      .some((s) => ONLY.includes(s))
   const B = needsPeer ? await launch('B') : null
 
   try {
@@ -1154,6 +1201,9 @@ async function main() {
     // Rotation LAST among the group scenarios: it removes B from the chat.
     if (chatId && want('rotation')) await scenarioRotation(A, chatId, idB)
     if (want('channel')) await scenarioChannel(A, B, idA, idB)
+    // Before the DM scenario: it opens the chat on both sides, which is exactly
+    // the state that hides a first-contact decrypt failure.
+    if (want('firstcontact')) await scenarioFirstContact(A, B, idB)
     if (want('dm')) await scenarioDmAndCall(A, B, idB)
     if (want('devicelink')) await scenarioDeviceLink(A, userA)
     // Last: recovery changes A's vault password.

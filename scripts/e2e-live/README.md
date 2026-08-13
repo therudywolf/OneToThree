@@ -41,10 +41,16 @@ ssh forestserver 'docker run --rm --network host -v ~/e2e:/w -w /w mcr.microsoft
 | `LIVEKIT_HOST` | `lk.onetothree.ru`            | SFU hostname the group-call check looks for  |
 | `ONLY`         | *(all)*                       | Comma-separated scenario filter              |
 
-Scenarios: `group`, `media`, `rotation`, `groupcall`, `relay`, `channel`, `dm`,
-`call`, `devicelink`, `recovery`. Registration always runs — everything else
-needs the accounts, except `devicelink` and `recovery`, which need only one and
-so skip creating the second.
+Scenarios: `group`, `media`, `rotation`, `groupcall`, `relay`, `channel`,
+`firstcontact`, `dm`, `call`, `devicelink`, `recovery`. Registration always runs
+— everything else needs the accounts, except `devicelink` and `recovery`, which
+need only one and so skip creating the second.
+
+`firstcontact` is the one that has to run before `dm`: `dm` opens the chat on
+both sides before sending, so the ratchet is already up when a message appears.
+`firstcontact` instead leaves the recipient away until the message exists, then
+reloads them and opens the chat cold — the case where the first message someone
+ever sends you was silently unreadable.
 
 `channel` covers the broadcast side: a subscriber is refused by name
 (`CHANNEL_SUBSCRIBERS_CANNOT_POST`), the owner posts through the real composer

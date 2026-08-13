@@ -746,6 +746,15 @@ async function scenarioFirstContact(A, B, idB) {
   record('first-contact chat created', Boolean(chatId), `status ${dm.status}`)
   if (!chatId) return
 
+  // B activates its vault once — that is what PUBLISHES the X3DH bundle, and
+  // without it the app correctly refuses to send at all ("this contact has no
+  // encryption keys yet"), which is a different failure from the one under
+  // test. B still never opens the chat: that is the part that matters.
+  await B.page.goto(`${APP}/`, { waitUntil: 'domcontentloaded' })
+  await B.page.waitForTimeout(6000)
+  await unlockVaultIfAsked(B, PW)
+  await B.page.waitForTimeout(3000)
+
   // A alone. B must not see this chat until after the message exists.
   await A.page.goto(`${APP}/?chat=${chatId}`, { waitUntil: 'domcontentloaded' })
   await A.page.waitForTimeout(9000)

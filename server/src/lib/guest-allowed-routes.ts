@@ -35,7 +35,9 @@ const ALLOWED = [
   'GET /api/messages/:chatId',
   // Co-member device ECDH keys — required to encrypt to the creator. Public
   // key material only; a guest only knows the ids of their one chat's peer.
-  'GET /api/users/:id/devices',
+  // Param names are normalized below, but keep them matching the real route
+  // (`:userId`) so the list stays readable next to users.ts.
+  'GET /api/users/:userId/devices',
   // Self-destruct.
   'POST /api/guest/me/leave',
   // Harmless public probes the guest tab hits with its cookie attached.
@@ -47,7 +49,24 @@ const ALLOWED = [
   'GET /api/capabilities',
 ] as const
 
-export const GUEST_ALLOWED_ROUTES: ReadonlySet<string> = new Set(ALLOWED)
+/**
+ * Param NAMES must not matter: `GET /api/users/:id/devices` in this list and a
+ * route registered as `/:userId/devices` are the same door, but exact string
+ * matching silently 403'd it (2026-08-13: guests could not fetch the host's
+ * device keys, so their messages fanned out to nobody but themselves). Collapse
+ * every `:param` to a fixed placeholder on BOTH sides before comparing.
+ */
+export const normalizeGuestRoutePattern = (pattern: string): string =>
+  pattern.replace(/:[^/]+/g, ':p')
+
+const normalize = normalizeGuestRoutePattern
+
+export const GUEST_ALLOWED_ROUTES: ReadonlySet<string> = new Set(
+  ALLOWED.map((entry) => {
+    const sp = entry.indexOf(' ')
+    return `${entry.slice(0, sp)} ${normalize(entry.slice(sp + 1))}`
+  })
+)
 
 export function isGuestAllowedRoute(
   method: string,
@@ -56,5 +75,5 @@ export function isGuestAllowedRoute(
   if (!routeUrl) return false
   // Fastify auto-registers HEAD alongside GET; treat it as the read it is.
   const m = method === 'HEAD' ? 'GET' : method
-  return GUEST_ALLOWED_ROUTES.has(`${m} ${routeUrl}`)
+  return GUEST_ALLOWED_ROUTES.has(`${m} ${normalize(routeUrl)}`)
 }

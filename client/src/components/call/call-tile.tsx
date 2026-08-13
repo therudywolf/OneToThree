@@ -43,6 +43,7 @@ export function CallTile({
   fillHeight = true,
   showPin = true,
   mediaRev = 0,
+  isGuest = false,
 }: {
   peerId: string
   stream: MediaStream | null
@@ -61,6 +62,12 @@ export function CallTile({
   showPin?: boolean
   /** Bumped after local stream mutations (script addTrack fires no events). */
   mediaRev?: number
+  /**
+   * Link-invited guest — an unverified identity that got in through a one-time
+   * link, so it is labelled everywhere it appears (docs/project/
+   * GUEST_MODE_CONCEPT.ru.md §7). Server-set, not self-declared.
+   */
+  isGuest?: boolean
 }) {
   const { t } = useTranslation()
   const isMd3 = useThemeStore((s) => s.shellMode) === 'md3'
@@ -231,8 +238,13 @@ export function CallTile({
 
       {/* Name + status (bottom-left) */}
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 flex items-end justify-between bg-gradient-to-t from-void/80 to-transparent px-2 py-1.5">
-        <span className={`${isMd3 ? '' : 'font-mono '}max-w-[70%] truncate text-[10px] uppercase tracking-wider text-text-primary/85`}>
-          {isLocal ? `${label}` : label}
+        <span className={`${isMd3 ? '' : 'font-mono '}flex max-w-[70%] items-center gap-1.5 truncate text-[10px] uppercase tracking-wider text-text-primary/85`}>
+          <span className="truncate">{isLocal ? `${label}` : label}</span>
+          {isGuest ? (
+            <span className="shrink-0 rounded bg-warning/20 px-1 py-0.5 text-[9px] text-warning">
+              {t('guest.badge')}
+            </span>
+          ) : null}
         </span>
         <span className="flex items-center gap-1.5">
           {connectionType && connectionType !== 'unknown' ? (

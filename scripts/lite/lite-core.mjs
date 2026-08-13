@@ -29,6 +29,10 @@ export const FEATURES = [
   { key: 'GIF', label: 'GIF search (Tenor / Giphy)', on: true },
   { key: 'PUSH', label: 'Push notifications (Web Push)', on: false },
   { key: '2FA', label: 'Two-factor auth (TOTP)', on: true },
+  // Off by default like every feature that widens the UNAUTHENTICATED surface:
+  // guest links are the only anonymous entry into the app, so an operator has
+  // to ask for them. Guest CALLS additionally need CALLS + a LiveKit.
+  { key: 'GUESTS', label: 'Guest links — meetings / temp chats without an account', on: false },
 ]
 
 /**
@@ -181,6 +185,7 @@ export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = n
     OT_ENABLE_GIF: flags.GIF,
     OT_ENABLE_PUSH: flags.PUSH,
     OT_ENABLE_2FA: flags['2FA'],
+    OT_ENABLE_GUESTS: flags.GUESTS,
     // Without this the API keeps its `origin_safe` default, where
     // /call/config reports `livekit_enabled: false` regardless of the three
     // vars below — and the client takes the WebSocket audio relay without ever

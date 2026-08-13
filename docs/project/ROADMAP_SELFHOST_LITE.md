@@ -28,6 +28,7 @@ every one is a checkbox except where noted. Env flag = `FEATURE_*`.
 | **GIF** (Tenor/Giphy) | ✅ on | `FEATURE_GIF` (checkbox) | third-party requests / API keys |
 | **Push** (Web Push/VAPID) | ⬜ off | `FEATURE_PUSH` (checkbox) | VAPID keys; not needed for a personal server |
 | **2FA** (TOTP) | ✅ on | `FEATURE_2FA` (checkbox) | cheap, keep on |
+| **Guest links** (meetings / temp chats) | ⬜ off | `FEATURE_GUESTS` (checkbox) | the only unauthenticated surface — explicit opt-in; guest calls also need LiveKit |
 | **Admin panel** | ✅ on | `FEATURE_ADMIN` (env only) | single-user servers may hide it |
 | **Groups/channels** | ✅ on | `FEATURE_GROUPS` (env only) | core-ish; not a wizard checkbox |
 | Object storage (MinIO) | on with media/stickers | derived (`media` compose profile) | — |
@@ -103,6 +104,7 @@ included); calls/push are off. Each checkbox adds the infra it needs.
 | **GIF** (Tenor/Giphy) | ✅ вкл | `FEATURE_GIF` (галочка) | сторонние запросы / API-ключи |
 | **Push** (VAPID) | ⬜ выкл | `FEATURE_PUSH` (галочка) | не нужен на личном сервере |
 | **2FA** (TOTP) | ✅ вкл | `FEATURE_2FA` (галочка) | дёшево, оставляем |
+| **Гостевые ссылки** (встречи / временные чаты) | ⬜ выкл | `FEATURE_GUESTS` (галочка) | единственная неаутентифицированная поверхность — только явным согласием; гостевым звонкам нужен ещё LiveKit |
 | **Админка** | ✅ вкл | `FEATURE_ADMIN` (только env) | на одиночном сервере можно скрыть |
 | **Группы/каналы** | ✅ вкл | `FEATURE_GROUPS` (только env) | почти ядро; не галочка мастера |
 | MinIO | вкл при медиа/стикерах | производное (профиль `media`) | — |

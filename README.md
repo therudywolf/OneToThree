@@ -58,6 +58,11 @@ Additional project docs are organized in [docs/README.md](./docs/README.md).
 - **Multi-device** — QR-based device linking, phrase-based recovery, device
   revocation.
 - **2FA** — optional TOTP (RFC 6238).
+- **Guest links** (opt-in, `FEATURE_GUESTS`) — invite someone without an
+  account: a **meeting link** seats several guests who knock and are let in
+  one by one (no account is ever created for them), or a **temporary chat**
+  that lives only until the guest closes the tab. See
+  [GUEST_MODE_CONCEPT.ru.md](./docs/project/GUEST_MODE_CONCEPT.ru.md).
 - **Clients** — installable PWA (web) with Web Push (VAPID), native **Android**
   app (Capacitor), and **desktop** app (Tauri — Windows/macOS/Linux), all from
   one Next.js bundle.

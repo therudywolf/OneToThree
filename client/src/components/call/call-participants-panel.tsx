@@ -1,6 +1,6 @@
 'use client'
 
-import { X, MicOff, VideoOff, Volume2, VolumeX, Lock, Radio, MonitorUp } from 'lucide-react'
+import { X, MicOff, VideoOff, Volume2, VolumeX, Lock, Radio, MonitorUp, UserMinus } from 'lucide-react'
 import { useCallStore, type PeerConnectionType } from '@/store/callStore'
 import { useTranslation } from '@/hooks/use-translation'
 
@@ -14,6 +14,8 @@ export type ParticipantRow = {
   speaking?: boolean
   connectionType?: PeerConnectionType
   connectionState?: string
+  /** Link-invited guest — server-marked, shown as a badge. */
+  isGuest?: boolean
 }
 
 /**
@@ -27,9 +29,12 @@ export type ParticipantRow = {
 export function CallParticipantsPanel({
   rows,
   onClose,
+  onKickGuest,
 }: {
   rows: ParticipantRow[]
   onClose: () => void
+  /** Remove a link-invited guest from the room (host/admin action). */
+  onKickGuest?: (userId: string, label: string) => void
 }) {
   const { t } = useTranslation()
   const peerVolumes = useCallStore((s) => s.peerVolumes)
@@ -77,6 +82,11 @@ export function CallParticipantsPanel({
                           ({t('call.you')})
                         </span>
                       ) : null}
+                      {row.isGuest ? (
+                        <span className="ml-1.5 rounded bg-warning/20 px-1 py-0.5 text-[9px] uppercase text-warning">
+                          {t('guest.badge')}
+                        </span>
+                      ) : null}
                     </p>
                     <p className="flex items-center gap-1.5 text-[9px] uppercase text-text-muted/70">
                       {row.connectionType === 'p2p' ? (
@@ -97,6 +107,17 @@ export function CallParticipantsPanel({
                   {row.micMuted ? <MicOff className="h-3.5 w-3.5 text-neon-red" /> : null}
                   {row.camOff ? <VideoOff className="h-3.5 w-3.5 text-text-muted/70" /> : null}
                   {row.speaking ? <span className="h-2 w-2 animate-pulse rounded-full bg-neon-cyan" /> : null}
+                  {row.isGuest && !row.isLocal && onKickGuest ? (
+                    <button
+                      type="button"
+                      onClick={() => onKickGuest(row.userId, row.label)}
+                      className="flex h-7 w-7 items-center justify-center text-text-muted transition-colors hover:text-neon-red"
+                      title={t('guest.kick')}
+                      aria-label={t('guest.kick')}
+                    >
+                      <UserMinus className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
 

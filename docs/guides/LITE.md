@@ -64,6 +64,7 @@ The installer asks:
    | GIF search (Tenor/Giphy) | on | third-party requests |
    | Push notifications | off | VAPID keys |
    | Two-factor auth (TOTP) | on | — |
+   | Guest links (meetings / temp chats) | off | needs Calls + LiveKit for guest CALLS |
 
 It then generates secrets, writes `.env.lite` + `infra/lite/Caddyfile`, and (if you
 say yes) launches the stack. First run pulls images + builds — a few minutes.
@@ -190,6 +191,7 @@ npm run lite          # или: node scripts/lite/install.mjs  (Windows: scripts
    | Поиск GIF (Tenor/Giphy) | вкл | сторонние запросы |
    | Push-уведомления | выкл | VAPID-ключи |
    | 2FA (TOTP) | вкл | — |
+   | Гостевые ссылки (встречи / временные чаты) | выкл | для гостевых ЗВОНКОВ нужны Звонки + LiveKit |
 
 Дальше генерятся секреты, пишутся `.env.lite` + `infra/lite/Caddyfile`, и (если
 согласишься) стек запускается. Первый запуск тянет образы и собирает — пара минут.

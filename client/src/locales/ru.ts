@@ -510,6 +510,7 @@ const ru = {
   'group.title': 'Создать группу',
   'group.hintEcdh': 'У всех участников должны быть активные ECDH-ключи. Разблокируйте хранилище для синхронизации.',
   'group.channelName': 'Название группы',
+  'group.channelNameReal': 'Название канала',
   'group.optional': 'необязательно',
   'group.searchLabel': 'Поиск пользователей',
   'group.searchPlaceholder': 'никнейм, ID или ссылка',
@@ -1359,6 +1360,11 @@ const ru = {
   'guest.enterMeeting': 'Войти во встречу',
   'guest.seatsFree': 'Занято мест из всех — ссылка ещё впускает гостей',
   'guest.seatsFull': 'Все места заняты — ссылка больше никого не впустит',
+
+  'guest.kick': 'Удалить гостя из звонка',
+  'guest.kickConfirm': 'Удалить гостя {name} из звонка?',
+  'guest.kickForbidden': 'Удалить гостя может только пригласивший или админ чата',
+  'guest.kickFailed': 'Не удалось удалить гостя — попробуйте ещё раз',
 } as const;
 
 export default ru;

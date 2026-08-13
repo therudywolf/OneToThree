@@ -119,6 +119,16 @@ async function makeE2eeKeyProvider(
   }
 }
 
+/** Server-set participant metadata: `{"guest":true,"invited_by":"…"}`. */
+function isGuestParticipant(metadata: string | undefined): boolean {
+  if (!metadata) return false
+  try {
+    return (JSON.parse(metadata) as { guest?: boolean }).guest === true
+  } catch {
+    return false
+  }
+}
+
 function storeParticipantFromLk(
   p: RemoteParticipant | LocalParticipant,
   isSelf: boolean
@@ -129,6 +139,7 @@ function storeParticipantFromLk(
   store.setParticipant(userId, {
     userId,
     username: p.name ?? p.identity,
+    isGuest: isGuestParticipant(p.metadata),
     isMuted: isSelf
       ? !p.isMicrophoneEnabled
       : !(p as RemoteParticipant).isMicrophoneEnabled,

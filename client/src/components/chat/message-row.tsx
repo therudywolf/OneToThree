@@ -2,6 +2,7 @@
 
 import { memo } from 'react'
 import { Crown, Star, Reply, SmilePlus, MoreHorizontal, Lock, Flame, PhoneMissed, Phone } from 'lucide-react'
+import { parseSystemMessage, formatCallDuration } from '@/lib/system-message'
 import type { DecryptedMessage } from '@/types/chat'
 import type { ChatMemberRole } from '@/lib/api/chats'
 import { MediaMessage } from '@/components/chat/media-message'
@@ -181,12 +182,12 @@ function MessageRowImpl({
       return parsed?.type === 'poll' && parsed?.poll_id ? parsed.poll_id : null
     } catch { return null }
   })()
-  const missedCallMeta = m.kind === 'call_missed'
-    ? (m.kindMeta as { is_video?: boolean } | undefined)
-    : null
-  const endedCallMeta = m.kind === 'call_ended'
-    ? (m.kindMeta as { is_video?: boolean; duration_secs?: number } | undefined)
-    : null
+  // Parse the envelope from the PLAINTEXT (not just the stamped kind): rows
+  // replayed from the local cache carry no kind, and their raw JSON used to
+  // render as a chat bubble.
+  const systemEnvelope = parseSystemMessage(m.plaintext, m.kind)
+  const missedCallMeta = systemEnvelope?.kind === 'call_missed' ? systemEnvelope : null
+  const endedCallMeta = systemEnvelope?.kind === 'call_ended' ? systemEnvelope : null
   const isSwiping = swipeOffset > 0
   // Effective read state = server-confirmed read_at, else the optimistic store
   // override threaded in as a narrow per-row prop (see chat-terminal D5 fix).
@@ -310,9 +311,16 @@ function MessageRowImpl({
         </div>
         )}
         <div
-          className={`p13-msg-bubble p13-bubble w-full leading-relaxed ${
-            mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
-          }`}
+          className={
+            // Call events are timeline NOTICES, not messages: rendering them in
+            // a chat bubble put a cyan badge on the sender's own bubble colour
+            // (unreadable). Drop the bubble chrome and let the badge stand alone.
+            systemEnvelope
+              ? 'p13-msg-bubble w-full bg-transparent p-0 leading-relaxed shadow-none'
+              : `p13-msg-bubble p13-bubble w-full leading-relaxed ${
+                  mine ? 'p13-bubble--mine' : 'p13-bubble--peer'
+                }`
+          }
         >
           {replyMsg ? (
             <div
@@ -337,25 +345,17 @@ function MessageRowImpl({
           {missedCallMeta ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-neon-red/10 border border-neon-red/30 px-3 py-1.5 text-neon-red text-[11px] font-mono uppercase tracking-wider">
               <PhoneMissed className="h-3.5 w-3.5 shrink-0" />
-              {missedCallMeta.is_video ? t('call.missedVideo') : t('call.missedAudio')}
+              {missedCallMeta.isVideo ? t('call.missedVideo') : t('call.missedAudio')}
             </span>
           ) : null}
           {endedCallMeta ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-neon-cyan/10 border border-neon-cyan/30 px-3 py-1.5 text-neon-cyan text-[11px] font-mono uppercase tracking-wider">
               <Phone className="h-3.5 w-3.5 shrink-0" />
-              {endedCallMeta.is_video ? t('call.endedVideo') : t('call.endedAudio')}
-              {typeof endedCallMeta.duration_secs === 'number' ? (
+              {endedCallMeta.isVideo ? t('call.endedVideo') : t('call.endedAudio')}
+              {endedCallMeta.durationSecs !== null ? (
                 <span className="text-neon-cyan/70">
                   {' · '}
-                  {(() => {
-                    const s = endedCallMeta.duration_secs
-                    const h = Math.floor(s / 3600)
-                    const m2 = Math.floor((s % 3600) / 60)
-                    const r = s % 60
-                    return h > 0
-                      ? `${h}:${String(m2).padStart(2, '0')}:${String(r).padStart(2, '0')}`
-                      : `${m2}:${String(r).padStart(2, '0')}`
-                  })()}
+                  {formatCallDuration(endedCallMeta.durationSecs)}
                 </span>
               ) : null}
             </span>
@@ -370,7 +370,7 @@ function MessageRowImpl({
               <Lock className="h-3 w-3 shrink-0 text-text-muted/50" aria-hidden />
               {t('chat.decryptFailed')}
             </span>
-          ) : m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv && !pollEnv ? (
+          ) : m.plaintext && !parseAttachmentEnvelope(m.plaintext) && !stickerEnv && !pollEnv && !systemEnvelope ? (
             <>
               <CollapsibleText text={m.plaintext}>
                 {(visibleText) => (

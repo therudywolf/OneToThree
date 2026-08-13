@@ -98,12 +98,36 @@ function insertableStreamsSupported(): boolean {
   )
 }
 
+/**
+ * Decode a background-image data URL into an ImageBitmap for the worker.
+ *
+ * Decoded BY HAND rather than with `fetch(dataUrl)`: the production CSP is
+ * `connect-src 'self'`, which blocks fetching a `data:` URL outright — the
+ * background image silently never loaded and the worker fell back to blur
+ * (the DOM path never hit this because <img src="data:…"> is governed by
+ * img-src, where data: is allowed).
+ */
 async function dataUrlToBitmap(dataUrl: string | null | undefined): Promise<ImageBitmap | null> {
   if (!dataUrl) return null
   try {
-    const blob = await (await fetch(dataUrl)).blob()
+    const comma = dataUrl.indexOf(',')
+    if (!dataUrl.startsWith('data:') || comma < 0) return null
+    const meta = dataUrl.slice(5, comma)
+    const payload = dataUrl.slice(comma + 1)
+    const isBase64 = /;base64$/i.test(meta)
+    const mime = meta.replace(/;base64$/i, '') || 'image/jpeg'
+    let blob: Blob
+    if (isBase64) {
+      const bin = atob(payload)
+      const bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+      blob = new Blob([bytes], { type: mime })
+    } else {
+      blob = new Blob([decodeURIComponent(payload)], { type: mime })
+    }
     return await createImageBitmap(blob)
-  } catch {
+  } catch (err) {
+    console.warn('[cam-fx] background image decode failed', err)
     return null
   }
 }

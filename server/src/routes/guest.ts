@@ -219,13 +219,26 @@ async function notifyKnock(
 
 export const guestRoutes: FastifyPluginAsync = async (app) => {
   // ── Public surface (the ONLY unauthenticated app endpoints besides auth) ──
-  // Strict per-IP limits in the auth-scope style; the poll endpoint gets its
-  // own budget sized for 2-3s polling over the 5-minute knock window.
+  // Per-IP limits in the auth-scope style; the poll endpoint gets its own
+  // budget sized for 2-3s polling over the 5-minute knock window.
+  //
+  // BUDGETS ARE SIZED PER MEETING, NOT PER PERSON. Guests share an IP far more
+  // often than the original 10-per-15-minutes budget assumed: everyone in one
+  // office, one flat or one conference room is a single address. Each joining
+  // guest spends 1 resolve + 1 knock, so a 10-seat meeting needs 20 — the old
+  // budget locked out the sixth guest for a quarter of an hour, mid-meeting,
+  // with a link that was still perfectly valid.
+  //
+  // The rate limit is NOT what protects a link: tokens are 32 random chars,
+  // seats are capped in Postgres and live guests by GUEST_MAX_ACTIVE. It is
+  // defence in depth against floods, so read-only resolve gets a wide budget
+  // and the state-creating pair (knock/enter) a tighter one.
+  const RESOLVE_MAX = Number(process.env.GUEST_RESOLVE_RATE_LIMIT_MAX ?? 60)
+  const PUBLIC_MAX = Number(process.env.GUEST_PUBLIC_RATE_LIMIT_MAX ?? 30)
+  const PUBLIC_WINDOW = process.env.GUEST_PUBLIC_RATE_LIMIT_WINDOW ?? '15 minutes'
+
   await app.register(async (scoped) => {
-    await scoped.register(rateLimit, {
-      max: Number(process.env.GUEST_PUBLIC_RATE_LIMIT_MAX ?? 10),
-      timeWindow: process.env.GUEST_PUBLIC_RATE_LIMIT_WINDOW ?? '15 minutes',
-    })
+    await scoped.register(rateLimit, { max: RESOLVE_MAX, timeWindow: PUBLIC_WINDOW })
 
     /** Token → what am I joining? Uniform 404 for any dead/unknown token. */
     scoped.post('/guest/resolve', async (request, reply) => {
@@ -246,6 +259,13 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         can_join: invite.purpose === 'call' ? livekitReady() && app.featureFlags.calls : true,
       })
     })
+  })
+
+  // knock + enter CREATE state (a Redis knock, a `users` row), so they keep the
+  // tighter budget — still ~3 tries each for a full 10-seat meeting behind one
+  // address, which is what the "Попробовать ещё раз" button costs after a deny.
+  await app.register(async (scoped) => {
+    await scoped.register(rateLimit, { max: PUBLIC_MAX, timeWindow: PUBLIC_WINDOW })
 
     /** Mechanism A step 1: knock. Creates NOTHING outside Redis. */
     scoped.post('/guest/knock', async (request, reply) => {

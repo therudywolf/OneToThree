@@ -186,6 +186,32 @@ Useful modes: `--full`, `--no-pull`, `--no-cache`, `--skip-smoke`, `--skip-turn-
 
 ---
 
+### Surgical redeploy (rebuild only web/api)
+
+When only application code changed, `scripts/deploy-prod.sh` rebuilds just those
+images: it migrates first, exports the build stamp, and verifies afterwards that
+both the API and the client bundle report the version you actually built.
+
+```bash
+setsid nohup bash scripts/deploy-prod.sh > /tmp/deploy.log 2>&1 < /dev/null &
+```
+
+Two rules the script now enforces, because breaking them took production down:
+
+- **One deploy at a time.** It refuses to start while another deploy — its own
+  or a bare `docker compose … up --build` — is in flight. Two runs reaching the
+  container-swap phase together leave the API removed and not restarted.
+  `FORCE=1` overrides, for when you know the other run is dead.
+- **Never deploy with a bare `docker compose up --build`.** That skips the
+  migrations and bakes `APP_VERSION=dev` into both halves, which silently kills
+  the "new build, reload" banner (`version-check.ts` skips the comparison for
+  `dev`) and leaves nobody able to tell which commit prod is running.
+
+Run it detached, as above: if the SSH session drops mid-build, the compose it
+started keeps running as an orphan, and the next attempt would race it.
+
+---
+
 ### Rollback
 
 If a bad update breaks something:

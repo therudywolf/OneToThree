@@ -66,6 +66,8 @@ describe('guest mode', () => {
   let onApp: FastifyInstance | undefined
   let offApp: FastifyInstance | undefined
   let regClosedApp: FastifyInstance | undefined
+  /** Tiny resolve budget (2) — for the rate-limit scope separation test. */
+  let rateApp: FastifyInstance | undefined
   let dbAvailable = true
   const prevEnv = new Map<string, string | undefined>()
   const ENVS = [
@@ -76,6 +78,7 @@ describe('guest mode', () => {
     'LIVEKIT_API_SECRET',
     'LIVEKIT_URL',
     'GUEST_PUBLIC_RATE_LIMIT_MAX',
+    'GUEST_RESOLVE_RATE_LIMIT_MAX',
     'GUEST_POLL_RATE_LIMIT_MAX',
   ] as const
 
@@ -86,6 +89,7 @@ describe('guest mode', () => {
     process.env.LIVEKIT_API_SECRET = 'test-livekit-secret-must-be-32-chars'
     process.env.LIVEKIT_URL = 'wss://livekit.example.test'
     process.env.GUEST_PUBLIC_RATE_LIMIT_MAX = '1000'
+    process.env.GUEST_RESOLVE_RATE_LIMIT_MAX = '1000'
     process.env.GUEST_POLL_RATE_LIMIT_MAX = '1000'
 
     try {
@@ -112,12 +116,21 @@ describe('guest mode', () => {
     process.env.FEATURE_OPEN_REGISTRATION = '0'
     regClosedApp = await buildApp()
     await regClosedApp.ready()
+
+    // One more instance with a deliberately tiny RESOLVE budget, to pin that
+    // resolve and knock draw on SEPARATE buckets.
+    delete process.env.FEATURE_OPEN_REGISTRATION
+    process.env.GUEST_RESOLVE_RATE_LIMIT_MAX = '2'
+    rateApp = await buildApp()
+    await rateApp.ready()
+    process.env.GUEST_RESOLVE_RATE_LIMIT_MAX = '1000'
   })
 
   afterAll(async () => {
     await onApp?.close()
     await offApp?.close()
     await regClosedApp?.close()
+    await rateApp?.close()
     _resetGuestKnocksForTests()
     for (const k of ENVS) {
       const v = prevEnv.get(k)
@@ -176,6 +189,29 @@ describe('guest mode', () => {
       .send({ token: created.body.token })
     expect(after.status).toBe(404)
     expect(after.body.error).toBe('INVITE_NOT_FOUND')
+  })
+
+  it('resolve and knock draw on separate rate-limit budgets', async () => {
+    // Guests share an IP constantly (one office, one flat, one conference
+    // room), and a joining guest spends resolve + knock. With both on ONE
+    // 10-per-15-minutes bucket the sixth guest of a ten-seat meeting was
+    // locked out mid-meeting with a link that was still valid. Two buckets,
+    // the read-only one wider: exhausting resolve must NOT close the door
+    // that actually admits people.
+    const dead = 'z'.repeat(24)
+    const first = await request(rateApp!.server).post('/api/guest/resolve').send({ token: dead })
+    expect(first.status).toBe(404)
+    const second = await request(rateApp!.server).post('/api/guest/resolve').send({ token: dead })
+    expect(second.status).toBe(404)
+    const third = await request(rateApp!.server).post('/api/guest/resolve').send({ token: dead })
+    expect(third.status).toBe(429)
+
+    // Same IP, resolve budget spent — knock still answers on its own budget
+    // (404 for the unknown token, which is the "not rate limited" proof).
+    const knock = await request(rateApp!.server)
+      .post('/api/guest/knock')
+      .send({ token: dead, nickname: 'Гость' })
+    expect(knock.status).toBe(404)
   })
 
   it('call flow: knock → creator approves → one-time grant pickup', async () => {

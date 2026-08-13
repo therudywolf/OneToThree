@@ -18,7 +18,7 @@
 // ---------------------------------------------------------------------------
 
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { and, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import rateLimit from '@fastify/rate-limit'
 import { z } from 'zod'
@@ -51,6 +51,11 @@ const LINK_TTL_HOURS = Math.max(1, Number(process.env.GUEST_LINK_TTL_HOURS ?? 24
 const MAX_LINKS_PER_USER = Math.max(1, Number(process.env.GUEST_MAX_LINKS_PER_USER ?? 20))
 const MAX_ACTIVE_GUESTS = Math.max(1, Number(process.env.GUEST_MAX_ACTIVE ?? 50))
 const GUEST_CHAT_TTL_HOURS = Math.max(1, Number(process.env.GUEST_CHAT_TTL_HOURS ?? 12))
+/** Default seats on a meeting link — a meeting is not a tête-à-tête. */
+const MEETING_DEFAULT_SEATS = Math.min(
+  50,
+  Math.max(1, Number(process.env.GUEST_MEETING_SEATS ?? 10))
+)
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
@@ -72,6 +77,8 @@ const createInviteSchema = z.object({
   purpose: z.enum(['call', 'chat']),
   chat_id: z.string().uuid().optional(),
   can_publish: z.boolean().optional().default(true),
+  /** Seats. Omitted → 1 for a temp chat, MEETING_DEFAULT_SEATS for a meeting. */
+  max_uses: z.number().int().min(1).max(50).optional(),
 })
 
 const kickBodySchema = z.object({
@@ -118,7 +125,7 @@ async function nickCollides(nick: string): Promise<boolean> {
 
 type LiveInvite = typeof guestInvites.$inferSelect
 
-/** A usable invite: not revoked, not consumed, not expired. Uniform miss. */
+/** A usable invite: not revoked, seats left, not expired. Uniform miss. */
 async function findLiveInviteByToken(token: string): Promise<LiveInvite | null> {
   const [row] = await db
     .select()
@@ -127,12 +134,56 @@ async function findLiveInviteByToken(token: string): Promise<LiveInvite | null> 
       and(
         eq(guestInvites.token, token),
         isNull(guestInvites.revokedAt),
-        isNull(guestInvites.usedAt),
+        sql`${guestInvites.usedCount} < ${guestInvites.maxUses}`,
         gt(guestInvites.expiresAt, new Date())
       )
     )
     .limit(1)
   return row ?? null
+}
+
+/** Wire shape of an invite — one place, so create/list never drift. */
+function serializeInvite(row: LiveInvite) {
+  return {
+    id: row.id,
+    token: row.token,
+    purpose: row.purpose,
+    chat_id: row.chatId,
+    room_id: row.roomId,
+    can_publish: row.canPublish,
+    max_uses: row.maxUses,
+    used_count: row.usedCount,
+    /** No seats left: the link cannot admit anyone new (its room may be live). */
+    exhausted: row.usedCount >= row.maxUses,
+    expires_at: row.expiresAt.toISOString(),
+    created_at: row.createdAt.toISOString(),
+    path: `/guest/${row.purpose}/${row.token}`,
+  }
+}
+
+/**
+ * Take ONE seat on a link, atomically. The row-level guard is what makes
+ * concurrent approvals safe: two hosts approving the last seat at once, or a
+ * revoke racing an approve, and exactly one wins. `used_at` is stamped when the
+ * final seat goes, keeping the sweeper's retention semantics unchanged.
+ */
+async function consumeInviteSeat(inviteId: string): Promise<boolean> {
+  const taken = await db
+    .update(guestInvites)
+    .set({
+      usedCount: sql`${guestInvites.usedCount} + 1`,
+      usedAt: sql`case when ${guestInvites.usedCount} + 1 >= ${guestInvites.maxUses} then now() else ${guestInvites.usedAt} end`,
+    })
+    .where(
+      and(
+        eq(guestInvites.id, inviteId),
+        isNull(guestInvites.revokedAt),
+        gt(guestInvites.expiresAt, new Date()),
+        sql`${guestInvites.usedCount} < ${guestInvites.maxUses}`
+      )
+    )
+    .returning({ id: guestInvites.id })
+  return taken.length > 0
 }
 
 function livekitReady(): boolean {
@@ -219,8 +270,10 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
       if (!roomId) return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
 
       const knockId = randomUUID()
-      // One pending knock per one-time link; a deny releases the slot.
-      if (!(await reserveKnockSlot(invite.id, knockId))) {
+      // The waiting room holds at most as many guests as the link still has
+      // seats for; a deny/cancel/pickup frees a slot.
+      const seatsLeft = Math.max(0, invite.maxUses - invite.usedCount)
+      if (!(await reserveKnockSlot(invite.id, knockId, seatsLeft))) {
         return reply.status(429).send({ error: 'KNOCK_PENDING' })
       }
       const secret = randomBytes(24).toString('base64url')
@@ -284,13 +337,9 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(503).send({ error: 'GUEST_CAPACITY' })
       }
 
-      // Burn the one-time link first; the row-level guard makes the race safe.
-      const burned = await db
-        .update(guestInvites)
-        .set({ usedAt: new Date() })
-        .where(and(eq(guestInvites.id, invite.id), isNull(guestInvites.usedAt)))
-        .returning({ id: guestInvites.id })
-      if (burned.length === 0) {
+      // Take the seat first; the row-level guard makes the race safe. Temp-chat
+      // links are single-seat, so this is the one-time burn it always was.
+      if (!(await consumeInviteSeat(invite.id))) {
         return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
       }
 
@@ -387,7 +436,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         return reply.send({ status: 'pending' })
       }
       await consumeKnock(id)
-      await releaseKnockSlot(knock.inviteId)
+      await releaseKnockSlot(knock.inviteId, id)
       if (knock.status === 'denied' || !knock.grant) {
         return reply.send({ status: 'denied' })
       }
@@ -411,7 +460,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         return reply.status(404).send({ error: 'KNOCK_NOT_FOUND' })
       }
       await consumeKnock(id)
-      await releaseKnockSlot(knock.inviteId)
+      await releaseKnockSlot(knock.inviteId, id)
       broadcastToUsers([knock.creatorId], { type: 'guest_knock_cancelled', knock_id: id })
       return reply.send({ ok: true })
     })
@@ -428,6 +477,13 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
     const parsed = createInviteSchema.safeParse(request.body)
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
     const { purpose, chat_id: chatId, can_publish: canPublish } = parsed.data
+    // A temp chat is a tête-à-tête (one guest, ever). A meeting link seats
+    // several — the host still approves each guest individually.
+    const maxUses =
+      parsed.data.max_uses ?? (purpose === 'chat' ? 1 : MEETING_DEFAULT_SEATS)
+    if (purpose === 'chat' && maxUses !== 1) {
+      return reply.status(400).send({ error: 'CHAT_LINK_IS_SINGLE_SEAT' })
+    }
 
     if (purpose === 'call' && !app.featureFlags.calls) {
       return reply.status(403).send({ error: 'CALLS_DISABLED' })
@@ -458,7 +514,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         and(
           eq(guestInvites.createdBy, user.id),
           isNull(guestInvites.revokedAt),
-          isNull(guestInvites.usedAt),
+          sql`${guestInvites.usedCount} < ${guestInvites.maxUses}`,
           gt(guestInvites.expiresAt, new Date())
         )
       )
@@ -476,23 +532,24 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         chatId: purpose === 'call' ? chatId ?? null : null,
         roomId,
         canPublish,
+        maxUses,
         expiresAt: new Date(Date.now() + LINK_TTL_HOURS * 3600_000),
       })
       .returning()
     if (!row) return reply.status(500).send({ error: 'INSERT_FAILED' })
-    return reply.send({
-      id: row.id,
-      token: row.token,
-      purpose: row.purpose,
-      chat_id: row.chatId,
-      room_id: row.roomId,
-      can_publish: row.canPublish,
-      expires_at: row.expiresAt.toISOString(),
-      path: `/guest/${row.purpose}/${row.token}`,
-    })
+    return reply.send(serializeInvite(row))
   })
 
-  /** My live links. */
+  /**
+   * My links.
+   *
+   * Deliberately NOT filtered by remaining seats: a link the creator can no
+   * longer hand out is still the handle on a LIVE meeting (its room is where
+   * the guests are) and on a temp chat that exists. Hiding used links made
+   * them look like they had vanished — and left an instant meeting with no
+   * way back in. Exhausted links come back flagged, and the client renders
+   * them as "войти" rather than "скопировать".
+   */
   app.get('/guest-invites', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -504,23 +561,11 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         and(
           eq(guestInvites.createdBy, user.id),
           isNull(guestInvites.revokedAt),
-          isNull(guestInvites.usedAt),
           gt(guestInvites.expiresAt, new Date())
         )
       )
-    return reply.send({
-      invites: rows.map((row) => ({
-        id: row.id,
-        token: row.token,
-        purpose: row.purpose,
-        chat_id: row.chatId,
-        room_id: row.roomId,
-        can_publish: row.canPublish,
-        expires_at: row.expiresAt.toISOString(),
-        created_at: row.createdAt.toISOString(),
-        path: `/guest/${row.purpose}/${row.token}`,
-      })),
-    })
+      .orderBy(desc(guestInvites.createdAt))
+    return reply.send({ invites: rows.map(serializeInvite) })
   })
 
   /** Revoke a link ("leaked to the wrong person"). */
@@ -569,21 +614,11 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(503).send({ error: 'LIVEKIT_SECRET_TOO_SHORT' })
     }
 
-    // Burn the one-time link; a concurrent revoke or double-approve loses here.
-    const burned = await db
-      .update(guestInvites)
-      .set({ usedAt: new Date() })
-      .where(
-        and(
-          eq(guestInvites.id, knock.inviteId),
-          isNull(guestInvites.usedAt),
-          isNull(guestInvites.revokedAt)
-        )
-      )
-      .returning({ id: guestInvites.id })
-    if (burned.length === 0) {
+    // Take a seat; a concurrent revoke, an expiry, or the last seat going to
+    // another guest loses here.
+    if (!(await consumeInviteSeat(knock.inviteId))) {
       await consumeKnock(id)
-      await releaseKnockSlot(knock.inviteId)
+      await releaseKnockSlot(knock.inviteId, id)
       return reply.status(409).send({ error: 'INVITE_GONE' })
     }
 
@@ -631,7 +666,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
     await saveKnock(id, { ...knock, status: 'denied' })
-    await releaseKnockSlot(knock.inviteId)
+    await releaseKnockSlot(knock.inviteId, id)
     return reply.send({ ok: true })
   })
 

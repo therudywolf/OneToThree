@@ -57,6 +57,9 @@ async function ensureGuestSchema(): Promise<void> {
     "created_at" timestamp with time zone NOT NULL DEFAULT now()
   )`)
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS "guest_invites_token_unique" ON "guest_invites" ("token")`)
+  // …and drizzle/0064_guest_invite_multi_use.sql (multi-seat meeting links).
+  await db.execute(sql`ALTER TABLE "guest_invites" ADD COLUMN IF NOT EXISTS "max_uses" integer NOT NULL DEFAULT 1`)
+  await db.execute(sql`ALTER TABLE "guest_invites" ADD COLUMN IF NOT EXISTS "used_count" integer NOT NULL DEFAULT 0`)
 }
 
 describe('guest mode', () => {
@@ -88,6 +91,10 @@ describe('guest mode', () => {
     try {
       await db.execute(sql`select 1`)
       await ensureGuestSchema()
+      // Guests from earlier runs are never swept in tests (the sweeper is off
+      // under NODE_ENV=test) and they count against GUEST_MAX_ACTIVE, so a
+      // repeatedly-run suite eventually 503s on /guest/enter. Start clean.
+      await db.execute(sql`DELETE FROM users WHERE user_group = 'guest'`)
     } catch {
       dbAvailable = false
     }
@@ -171,19 +178,22 @@ describe('guest mode', () => {
     expect(after.body.error).toBe('INVITE_NOT_FOUND')
   })
 
-  it('call flow: knock → single pending slot → creator approves → one-time grant pickup', async () => {
+  it('call flow: knock → creator approves → one-time grant pickup', async () => {
     if (!dbAvailable) return
     const creator = await createUser(`gm-host-${uniq()}`)
     const outsider = await createUser(`gm-out-${uniq()}`)
     const cookie = await sessionCookie(creator)
     const outsiderCookie = await sessionCookie(outsider)
 
+    // Single-seat meeting link — the strictest variant of the flow.
     const created = await request(onApp!.server)
       .post('/api/guest-invites')
       .set('Cookie', cookie)
-      .send({ purpose: 'call' })
+      .send({ purpose: 'call', max_uses: 1 })
     expect(created.status).toBe(200)
     expect(created.body.room_id).toBeTruthy()
+    expect(created.body.max_uses).toBe(1)
+    expect(created.body.used_count).toBe(0)
 
     const knock = await request(onApp!.server)
       .post('/api/guest/knock')
@@ -191,7 +201,7 @@ describe('guest mode', () => {
     expect(knock.status).toBe(200)
     const { knock_id: knockId, knock_secret: knockSecret } = knock.body
 
-    // One pending knock per one-time link.
+    // The waiting room holds at most as many guests as there are free seats.
     const knock2 = await request(onApp!.server)
       .post('/api/guest/knock')
       .send({ token: created.body.token, nickname: 'Второй' })
@@ -232,11 +242,87 @@ describe('guest mode', () => {
     )
     expect(again.status).toBe(404)
 
-    // The link burned with the approval.
+    // Its only seat went with the approval.
     const deadResolve = await request(onApp!.server)
       .post('/api/guest/resolve')
       .send({ token: created.body.token })
     expect(deadResolve.status).toBe(404)
+
+    // …but the creator still sees the link — it is the handle on a live
+    // meeting room, flagged exhausted rather than hidden.
+    const listed = await request(onApp!.server)
+      .get('/api/guest-invites')
+      .set('Cookie', cookie)
+    const row = listed.body.invites.find((i: { id: string }) => i.id === created.body.id)
+    expect(row).toBeTruthy()
+    expect(row.exhausted).toBe(true)
+    expect(row.used_count).toBe(1)
+    expect(row.room_id).toBe(created.body.room_id)
+  })
+
+  it('a meeting link seats several guests, each approved separately', async () => {
+    if (!dbAvailable) return
+    const creator = await createUser(`gm-seats-${uniq()}`)
+    const cookie = await sessionCookie(creator)
+
+    const created = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', cookie)
+      .send({ purpose: 'call', max_uses: 2 })
+    expect(created.status).toBe(200)
+    expect(created.body.max_uses).toBe(2)
+
+    const knockAs = async (nickname: string) =>
+      request(onApp!.server)
+        .post('/api/guest/knock')
+        .send({ token: created.body.token, nickname })
+
+    const first = await knockAs('Гость Один')
+    const second = await knockAs('Гость Два')
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    // Two seats → at most two guests waiting at once.
+    expect((await knockAs('Гость Три')).status).toBe(429)
+
+    for (const k of [first, second]) {
+      const approved = await request(onApp!.server)
+        .post(`/api/guest/knock/${k.body.knock_id}/approve`)
+        .set('Cookie', cookie)
+      expect(approved.status).toBe(200)
+      const grant = await request(onApp!.server).get(
+        `/api/guest/knock/${k.body.knock_id}?secret=${encodeURIComponent(k.body.knock_secret)}`
+      )
+      expect(grant.body.status).toBe('approved')
+      // Both guests land in the SAME room — that is what makes it a meeting.
+      expect(grant.body.room).toBe(created.body.room_id)
+    }
+
+    // Seats exhausted: the link stops admitting anyone.
+    expect((await knockAs('Гость Четыре')).status).toBe(404)
+    const listed = await request(onApp!.server)
+      .get('/api/guest-invites')
+      .set('Cookie', cookie)
+    const row = listed.body.invites.find((i: { id: string }) => i.id === created.body.id)
+    expect(row.used_count).toBe(2)
+    expect(row.exhausted).toBe(true)
+  })
+
+  it('a temp-chat link is single-seat by construction', async () => {
+    if (!dbAvailable) return
+    const creator = await createUser(`gm-1seat-${uniq()}`)
+    const cookie = await sessionCookie(creator)
+    const rejected = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', cookie)
+      .send({ purpose: 'chat', max_uses: 5 })
+    expect(rejected.status).toBe(400)
+    expect(rejected.body.error).toBe('CHAT_LINK_IS_SINGLE_SEAT')
+
+    const created = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', cookie)
+      .send({ purpose: 'chat' })
+    expect(created.body.max_uses).toBe(1)
   })
 
   it('knock rejects a nickname colliding with an existing handle', async () => {

@@ -6,10 +6,12 @@
 // device lookup 403 → empty device list → messages addressed to nobody but the
 // guest, so the host silently never received them.
 //
-// Param names are normalized away by the allowlist itself, so the remaining
-// failure mode is a wrong PATH or METHOD. This test pins both against the live
-// route table. `app.hasRoute()` is unusable here: find-my-way answers for the
-// runtime router, not for the registered pattern strings.
+// Param names are normalized away by the allowlist itself (and find-my-way
+// merges differently-named params at the same position anyway — the route table
+// literally prints `:username|:userId`), so the remaining failure modes are a
+// wrong PATH or a wrong METHOD. This test pins both against the live route
+// table. `app.hasRoute()` cannot do it: it answers for the runtime router, so
+// `:id` and `:userId` both "exist".
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../app.js'
@@ -18,20 +20,27 @@ import {
   normalizeGuestRoutePattern,
 } from './guest-allowed-routes.js'
 
-/** `├── /api/users/:userId/devices (GET, HEAD)` → `GET /api/users/:p/devices` */
+/**
+ * `printRoutes({ commonPrefix: false })` is a TREE, not a flat list: children
+ * carry only their own path fragment (`/health` → `└── /ready`), so full paths
+ * must be rebuilt from the indentation depth.
+ */
 function registeredRoutes(app: FastifyInstance): Set<string> {
   const out = new Set<string>()
+  const stack: string[] = []
   for (const line of app.printRoutes({ commonPrefix: false }).split('\n')) {
-    const m = /(\/\S*)\s+\(([^)]+)\)\s*$/.exec(line)
-    if (!m) continue
-    const path = normalizeGuestRoutePattern(m[1])
-    for (const rawMethod of m[2].split(',')) {
-      const method = rawMethod.trim()
-      out.add(`${method} ${path}`)
-      // A `/` route under a prefix registers as `/api/x/`; the allowlist may
-      // spell it either way. Accept both on the route-table side.
-      if (path.endsWith('/') && path.length > 1) out.add(`${method} ${path.slice(0, -1)}`)
-      else out.add(`${method} ${path}/`)
+    const branch = /^([\s│]*)(?:├──|└──)\s(.*)$/.exec(line)
+    if (!branch) continue
+    const depth = Math.floor(branch[1].length / 4)
+    const withMethods = /^(.*?)\s+\(([^)]+)\)\s*$/.exec(branch[2])
+    const segment = withMethods ? withMethods[1] : branch[2]
+    const full = (depth === 0 ? '' : stack[depth - 1] ?? '') + segment
+    stack[depth] = full
+    stack.length = depth + 1
+    if (!withMethods) continue
+    const path = normalizeGuestRoutePattern(full)
+    for (const rawMethod of withMethods[2].split(',')) {
+      out.add(`${rawMethod.trim()} ${path}`)
     }
   }
   return out
@@ -61,16 +70,25 @@ describe('guest allowlist ↔ route table', () => {
 
   it('every allowlisted pattern exists in the route table', () => {
     const registered = registeredRoutes(app!)
-    const missing = [...GUEST_ALLOWED_ROUTES].filter((entry) => !registered.has(entry))
+    const missing = [...GUEST_ALLOWED_ROUTES].filter((entry) => {
+      if (registered.has(entry)) return false
+      // `/api/chats` and `/api/chats/` are both registered by a `/` route under
+      // a prefix; accept either spelling in the list.
+      const [method, path] = entry.split(' ') as [string, string]
+      const alt = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : `${path}/`
+      return !registered.has(`${method} ${alt}`)
+    })
     expect(
       missing,
       `allowlist entries with no matching route (wrong path or method?): ${missing.join(' | ')}`
     ).toEqual([])
   })
 
-  it('the route-table parser really resolves patterns (guards the guard)', () => {
+  it('the route-table parser really resolves nested patterns (guards the guard)', () => {
     const registered = registeredRoutes(app!)
-    // The device route the guest depends on, and a path that does not exist.
+    // A top-level route, a nested child, and a parametric leaf.
+    expect(registered.has('GET /capabilities')).toBe(true)
+    expect(registered.has('GET /health/ready')).toBe(true)
     expect(registered.has('GET /api/users/:p/devices')).toBe(true)
     expect(registered.has('GET /api/users/:p/devices/nope')).toBe(false)
   })

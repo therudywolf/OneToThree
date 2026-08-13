@@ -10,11 +10,12 @@
 // device-rendezvous-store.ts: TTL'd JSON blobs, secret-hash gated polling,
 // one-time result pickup.
 //
-// One-pending-knock-per-invite invariant: a one-time link admits one guest, so
-// while a knock for invite X is pending, further knocks on X get KNOCK_PENDING.
-// A deny releases the slot (the right person may still use the link); an
-// approve consumes the link itself in Postgres (`used_at`), so the slot never
-// matters again.
+// Pending knocks are capped per invite by its REMAINING seats: a one-time
+// temp-chat link admits a single waiting guest, a meeting link admits as many
+// as it still has seats for (each approved individually). Over the cap the
+// knock is refused with KNOCK_PENDING rather than queued, so the host is never
+// buried under a stack of cards. A deny/cancel/pickup frees the slot; an
+// approve takes a real seat in Postgres (`used_count`).
 // ---------------------------------------------------------------------------
 
 import { getRedis } from './redis.js'
@@ -54,44 +55,61 @@ const SLOT_PREFIX = 'fm:guest:knock:invite:'
 export const KNOCK_TTL_S = 300
 
 const mem = new Map<string, GuestKnock>()
-const memSlots = new Map<string, { knockId: string; exp: number }>()
+/** inviteId → knockId → absolute expiry (ms). Redis-less fallback. */
+const memSlots = new Map<string, Map<string, number>>()
 
 function ttlSecondsFor(exp: number): number {
   return Math.max(1, Math.ceil((exp - Date.now()) / 1000))
 }
 
+function memSlotsFor(inviteId: string): Map<string, number> {
+  const now = Date.now()
+  const slots = memSlots.get(inviteId) ?? new Map<string, number>()
+  for (const [id, exp] of slots) if (exp <= now) slots.delete(id)
+  memSlots.set(inviteId, slots)
+  return slots
+}
+
 /**
- * Reserve the invite's single pending-knock slot. Returns false when another
- * knock is already pending for this invite.
+ * Reserve one of the invite's pending-knock slots. `maxPending` is the link's
+ * remaining seat count. Returns false when the waiting room is already full.
  */
 export async function reserveKnockSlot(
   inviteId: string,
-  knockId: string
+  knockId: string,
+  maxPending = 1
 ): Promise<boolean> {
+  const limit = Math.max(1, maxPending)
   const r = getRedis()
   if (r) {
-    const ok = await r.set(
-      `${SLOT_PREFIX}${inviteId}`,
-      knockId,
-      'EX',
-      KNOCK_TTL_S,
-      'NX'
-    )
-    return ok === 'OK'
+    const key = `${SLOT_PREFIX}${inviteId}`
+    await r.sadd(key, knockId)
+    await r.expire(key, KNOCK_TTL_S)
+    const size = await r.scard(key)
+    if (size > limit) {
+      await r.srem(key, knockId)
+      return false
+    }
+    return true
   }
-  const slot = memSlots.get(inviteId)
-  if (slot && Date.now() <= slot.exp) return false
-  memSlots.set(inviteId, { knockId, exp: Date.now() + KNOCK_TTL_S * 1000 })
+  const slots = memSlotsFor(inviteId)
+  if (slots.size >= limit) return false
+  slots.set(knockId, Date.now() + KNOCK_TTL_S * 1000)
   return true
 }
 
-export async function releaseKnockSlot(inviteId: string): Promise<void> {
+/** Free one pending slot (deny / cancel / result pickup / expiry). */
+export async function releaseKnockSlot(
+  inviteId: string,
+  knockId: string
+): Promise<void> {
   const r = getRedis()
   if (r) {
-    await r.del(`${SLOT_PREFIX}${inviteId}`)
+    await r.srem(`${SLOT_PREFIX}${inviteId}`, knockId)
     return
   }
-  memSlots.delete(inviteId)
+  const slots = memSlotsFor(inviteId)
+  slots.delete(knockId)
 }
 
 export async function saveKnock(id: string, payload: GuestKnock): Promise<void> {

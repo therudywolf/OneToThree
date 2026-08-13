@@ -114,6 +114,11 @@ export type GuestInvite = {
   chat_id: string | null
   room_id: string | null
   can_publish: boolean
+  /** Seats: how many guests this link admits in total (1 = one-time). */
+  max_uses: number
+  used_count: number
+  /** No seats left — the link cannot admit anyone new (its room may be live). */
+  exhausted: boolean
   expires_at: string
   created_at?: string
   path: string
@@ -128,6 +133,8 @@ export async function createGuestInvite(params: {
   purpose: 'call' | 'chat'
   chatId?: string
   canPublish?: boolean
+  /** Seats. Omit for the server default (1 for a chat, several for a meeting). */
+  maxUses?: number
 }): Promise<GuestInvite> {
   const res = await fetchWithTimeout(`${API_URL}/guest-invites`, {
     method: 'POST',
@@ -137,9 +144,21 @@ export async function createGuestInvite(params: {
       purpose: params.purpose,
       ...(params.chatId ? { chat_id: params.chatId } : {}),
       ...(params.canPublish === undefined ? {} : { can_publish: params.canPublish }),
+      ...(params.maxUses === undefined ? {} : { max_uses: params.maxUses }),
     }),
   })
   return jsonOrThrow<GuestInvite>(res, 'INVITE_CREATE_FAILED')
+}
+
+/**
+ * Where the CREATOR goes to be in the meeting their link points at:
+ * a chat-bound link opens that chat's call, a standalone room has its own page.
+ */
+export function meetingHref(invite: GuestInvite): string | null {
+  if (invite.purpose !== 'call') return null
+  if (invite.chat_id) return `/?chat=${encodeURIComponent(invite.chat_id)}`
+  if (invite.room_id) return `/meet/${encodeURIComponent(invite.room_id)}`
+  return null
 }
 
 export async function listGuestInvites(): Promise<GuestInvite[]> {

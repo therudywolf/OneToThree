@@ -35,6 +35,8 @@ export type ApiChatRow = {
   key_epoch?: number
   /** Unread delivery count for this device (messages delivered but not yet read). */
   unread_count?: number
+  /** Group/channel picture: object key in the avatars bucket. */
+  avatar_key?: string | null
 }
 
 /** Client-side helper: is this chat currently muted? */
@@ -69,6 +71,10 @@ export type ChatDetailPayload = {
     invite_one_time: boolean | null
     my_role: ChatMemberRole
     discussion_chat_id?: string | null
+    /** Presentation + catalog visibility (group-kind chats). */
+    description?: string | null
+    avatar_key?: string | null
+    is_public?: boolean
     /** Current key-rotation generation; compared against the stored key's epoch. */
     key_epoch?: number
   }
@@ -407,6 +413,88 @@ export async function patchDiscussionChat(
     const d = (await r.json().catch(() => ({}))) as { error?: string }
     throw new Error(d.error ?? 'DISCUSSION_PATCH_FAILED')
   }
+}
+
+/** Rename / describe / (un)list a group-kind chat. Owner-only server-side. */
+export async function patchChatMeta(
+  chatId: string,
+  patch: { name?: string; description?: string | null; is_public?: boolean }
+): Promise<{
+  name: string | null
+  description: string | null
+  is_public: boolean
+  avatar_key: string | null
+}> {
+  const r = await fetchWithTimeout(`${API_URL}/chats/${chatId}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  const d = (await r.json().catch(() => ({}))) as {
+    name?: string | null
+    description?: string | null
+    is_public?: boolean
+    avatar_key?: string | null
+    error?: string
+  }
+  if (!r.ok) {
+    throw new Error(d.error ?? 'CHAT_META_PATCH_FAILED')
+  }
+  return {
+    name: d.name ?? null,
+    description: d.description ?? null,
+    is_public: d.is_public ?? true,
+    avatar_key: d.avatar_key ?? null,
+  }
+}
+
+/**
+ * Upload a chat/channel picture: presign → PUT the JPEG → commit.
+ *
+ * No vault signature, unlike the user avatar — see the server route comment;
+ * the owner check plus the per-hour cap is the gate here.
+ */
+export async function uploadChatAvatarJpeg(
+  chatId: string,
+  jpegBlob: Blob
+): Promise<{ avatar_key: string }> {
+  const presign = await fetchWithTimeout(`${API_URL}/chats/${chatId}/avatar/presign`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  })
+  const presignData = (await presign.json().catch(() => ({}))) as {
+    uploadUrl?: string
+    avatar_key?: string
+    error?: string
+  }
+  if (!presign.ok || !presignData.uploadUrl || !presignData.avatar_key) {
+    throw new Error(presignData.error ?? 'CHAT_AVATAR_PRESIGN_FAILED')
+  }
+
+  const put = await fetch(presignData.uploadUrl, {
+    method: 'PUT',
+    body: jpegBlob,
+    headers: { 'Content-Type': 'image/jpeg' },
+  })
+  if (!put.ok) throw new Error('CHAT_AVATAR_UPLOAD_FAILED')
+
+  const commit = await fetchWithTimeout(`${API_URL}/chats/${chatId}/avatar/commit`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ avatar_key: presignData.avatar_key }),
+  })
+  const commitData = (await commit.json().catch(() => ({}))) as {
+    avatar_key?: string
+    error?: string
+  }
+  if (!commit.ok || !commitData.avatar_key) {
+    throw new Error(commitData.error ?? 'CHAT_AVATAR_COMMIT_FAILED')
+  }
+  return { avatar_key: commitData.avatar_key }
 }
 
 export async function patchChannelMemberFeedRole(

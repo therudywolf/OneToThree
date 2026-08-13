@@ -5,6 +5,7 @@ const ru = {
   'common.copied': 'Скопировано',
   'common.next': 'Далее',
   'common.skip': 'Пропустить',
+  'common.save': 'Сохранить',
   'common.saved': 'Сохранено',
   'common.settings': 'Настройки',
   'common.language': 'Язык',
@@ -582,6 +583,16 @@ const ru = {
   'group.mediaArchiveTitle': 'Файлы в этом чате',
   'group.mediaArchiveLoading': 'Загрузка...',
   'group.mediaArchiveEmpty': 'Нет файлов.',
+  'group.appearanceTitle': 'Оформление',
+  'group.changePhoto': 'Сменить фото',
+  'group.chatNameLabel': 'Название',
+  'group.chatDescriptionLabel': 'Описание',
+  'group.chatDescriptionPlaceholder': 'О чём этот канал',
+  'group.publicityTitle': 'Публичность',
+  'group.publicityOnHint': 'Виден в каталоге «Группы и каналы».',
+  'group.publicityOffHint': 'Скрыт из каталога, вступить можно только по ссылке.',
+  'group.publicityUnlist': 'Скрыть',
+  'group.publicityList': 'Показать',
 
   // [SETTINGS - GENERAL]
   'settings.discoverable': 'Видимость профиля',
@@ -1344,6 +1355,10 @@ const ru = {
   'guest.purposeCall': 'Быстрая встреча',
   'guest.purposeCallChat': 'Гость в звонке (этот чат)',
   'guest.purposeChat': 'Временный чат',
+
+  'guest.enterMeeting': 'Войти во встречу',
+  'guest.seatsFree': 'Занято мест из всех — ссылка ещё впускает гостей',
+  'guest.seatsFull': 'Все места заняты — ссылка больше никого не впустит',
 } as const;
 
 export default ru;

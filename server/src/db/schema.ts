@@ -255,6 +255,16 @@ export const chats = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     name: text('name'),
     type: chatTypeEnum('type').notNull(),
+    /** Channel/group "about" text shown on the info panel and in discovery. */
+    description: text('description'),
+    /** Object key in the avatars bucket: `avatars/{chatId}/{uuid}.jpg`. */
+    avatarKey: text('avatar_key'),
+    /**
+     * Whether the chat may appear in `GET /chats/discover`. Defaults to true so
+     * existing catalog entries keep their visibility; a private channel is still
+     * fully reachable through its invite link or permanent slug.
+     */
+    isPublic: boolean('is_public').notNull().default(true),
     /**
      * Increments when membership changes require clients to rotate the shared
      * group key (e.g. member kicked). Server does not hold the key material.
@@ -1108,9 +1118,17 @@ export const guestInvites = pgTable(
     chatId: uuid('chat_id').references(() => chats.id, { onDelete: 'cascade' }),
     /** Standalone call room (no chat). Mutually exclusive with chat_id. */
     roomId: uuid('room_id'),
-    /** TTL until first (only) use; sweeper removes expired rows. */
+    /** TTL until the link stops admitting guests; sweeper removes dead rows. */
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    /** One-time consumption stamp (approve for calls, enter for chats). */
+    /**
+     * Seats: how many guests this link may admit in total (1 = one-time, the
+     * temp-chat case). A meeting link is multi-seat — every guest is still
+     * approved individually by the host.
+     */
+    maxUses: integer('max_uses').notNull().default(1),
+    /** Seats taken so far (approve for calls, enter for chats). */
+    usedCount: integer('used_count').notNull().default(0),
+    /** Stamped when the LAST seat is taken; drives sweeper retention. */
     usedAt: timestamp('used_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     /** "Quiet guest": issue the LiveKit token with canPublish=false. */

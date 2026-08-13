@@ -30,6 +30,17 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     /** Production build registers next-pwa SW; it can intercept `/api/*` and bypass Playwright `page.route`. */
     serviceWorkers: 'block',
+    launchOptions: {
+      args: [
+        // Windows resolves `localhost` to ::1 first, but Docker publishes the
+        // e2e stack (scripts/e2e-local.sh → :8090) on IPv4 only — every
+        // navigation then dies with ERR_EMPTY_RESPONSE. The base URL must stay
+        // `localhost` (it is the origin the web image was built for, so the
+        // session cookie and CORS depend on it), hence pin the name instead.
+        // No-op where localhost is already IPv4 (Linux/CI).
+        '--host-resolver-rules=MAP localhost 127.0.0.1',
+      ],
+    },
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

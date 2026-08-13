@@ -1133,12 +1133,39 @@ export function ChatTerminal({
   }
 
   const openProfile = useCallback((senderId: string) => {
-    setProfileTarget({
-      userId: senderId,
-      username: labelForSender(senderId),
-      avatarKey: avatarKeyForSender(senderId),
-    })
-  }, [labelForSender, avatarKeyForSender])
+    // The profile route resolves by HANDLE, but `labelForSender` falls back to
+    // a shortened user id for anyone we never resolved — feeding that in 404s
+    // and the modal opens blank. Use the real handle, looking it up by id when
+    // we do not have it yet.
+    const known =
+      senderId === userId
+        ? currentUsername.trim()
+        : isGroup
+          ? senderMeta[senderId]?.username?.trim()
+          : directPeerUsername?.trim()
+
+    if (known) {
+      setProfileTarget({
+        userId: senderId,
+        username: known,
+        avatarKey: avatarKeyForSender(senderId),
+      })
+      return
+    }
+
+    void lookupUsers([senderId])
+      .then((rows) => {
+        const handle = rows[0]?.username?.trim()
+        if (!handle) return
+        setProfileTarget({
+          userId: senderId,
+          username: handle,
+          avatarKey: rows[0]?.avatar_key ?? avatarKeyForSender(senderId),
+        })
+      })
+      // Better to leave the card closed than to open one that cannot load.
+      .catch(() => { /* unresolvable sender */ })
+  }, [userId, currentUsername, isGroup, senderMeta, directPeerUsername, avatarKeyForSender])
 
   function roleGlyph(senderId: string) {
     if (!isGroup) return null

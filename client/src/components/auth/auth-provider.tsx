@@ -34,6 +34,8 @@ export type AuthUser = {
   /** Session-bound device row id (JWT), when present. */
   device_id?: string | null
   avatar_key?: string | null
+  /** Optional user-chosen label shown instead of the immutable @username. */
+  display_name?: string | null
 }
 
 type AuthContextValue = {

@@ -9,8 +9,13 @@ import { ShellSurface, ShellText, ShellIconButton, useShell } from '@/components
 import { ChatSearchPanel } from '@/components/chat/chat-search-panel'
 import { ComposerPickerPanel } from '@/components/chat/composer-picker-panel'
 import { ChatEmojiPicker } from '@/components/chat/chat-emoji-picker'
-import { lookupUsers } from '@/lib/api/users'
+import { lookupUsers, fetchUserProfile, type UserProfile } from '@/lib/api/users'
 import { UserAvatar } from '@/components/user-avatar'
+import { ChatAvatar } from '@/components/chat-avatar'
+import { joinChatByInviteCode } from '@/lib/api/chats'
+import { useSessionStore } from '@/store/sessionStore'
+import { sanitizeText, sanitizeUrl } from '@/lib/sanitize'
+import { Megaphone } from 'lucide-react'
 
 /**
  * DockPanel — right-side slide-in panel on xl+ screens. Hosts profile,
@@ -32,6 +37,10 @@ export function DockPanel() {
   const composerOnGifPick = useDockStore((s) => s.composerOnGifPick)
   const searchOnJump = useDockStore((s) => s.searchOnJump)
   const [profileSummary, setProfileSummary] = useState<{ id: string; username: string; avatar_key: string | null } | null>(null)
+  // The dock used to stop at avatar + handle + id, so the SAME profile was rich
+  // in the modal on a narrow window and a stub on a wide one. Pull the full
+  // card here too.
+  const [profileFull, setProfileFull] = useState<UserProfile | null>(null)
 
   useEffect(() => {
     if (slot === 'profile' && !profileUserId) {
@@ -40,14 +49,21 @@ export function DockPanel() {
     }
     if (slot !== 'profile' || !profileUserId) {
       setProfileSummary(null)
+      setProfileFull(null)
       return
     }
     let cancelled = false
+    setProfileFull(null)
     void lookupUsers([profileUserId])
-      .then((rows) => {
+      .then(async (rows) => {
         if (cancelled) return
         const row = rows[0]
         setProfileSummary(row ? { id: row.id, username: row.username, avatar_key: row.avatar_key ?? null } : null)
+        if (!row?.username) return
+        // Best effort: a profile hidden by its owner's discovery setting 404s,
+        // and the summary above is still worth showing.
+        const full = await fetchUserProfile(row.username).catch(() => null)
+        if (!cancelled) setProfileFull(full)
       })
       .catch(() => {
         if (!cancelled) setProfileSummary(null)
@@ -56,6 +72,18 @@ export function DockPanel() {
       cancelled = true
     }
   }, [slot, profileUserId])
+
+  const openProfileChannel = async () => {
+    const channel = profileFull?.profile_channel
+    if (!channel) return
+    const joinKey = channel.invite_slug || channel.invite_code
+    try {
+      let chatId = channel.id
+      if (joinKey) chatId = (await joinChatByInviteCode(joinKey)).chat_id
+      useSessionStore.getState().setActiveChatId(chatId)
+      close()
+    } catch { /* leave the panel open; the button can be retried */ }
+  }
 
   useEffect(() => {
     if (!slot) return
@@ -110,21 +138,92 @@ export function DockPanel() {
                 : 'border-[color-mix(in_srgb,var(--on-surface)_12%,transparent)] bg-[color-mix(in_srgb,var(--on-surface)_6%,transparent)]'
             }`}>
               {profileSummary ? (
-                <div className="flex items-center gap-3">
-                  <UserAvatar
-                    userId={profileSummary.id}
-                    username={profileSummary.username}
-                    avatarKey={profileSummary.avatar_key}
-                    size={42}
-                  />
-                  <div className="min-w-0">
-                    <p className={`truncate text-sm font-semibold ${isTerminal ? 'text-neon-cyan' : 'text-[var(--on-surface)]'}`}>
-                      {profileSummary.username}
-                    </p>
-                    <p className={`truncate text-xs ${isTerminal ? 'text-neon-cyan/70' : 'text-text-muted'}`}>
-                      ID: {profileSummary.id}
-                    </p>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <UserAvatar
+                      userId={profileSummary.id}
+                      username={profileSummary.username}
+                      avatarKey={profileSummary.avatar_key}
+                      size={42}
+                    />
+                    <div className="min-w-0">
+                      <p className={`truncate text-sm font-semibold ${isTerminal ? 'text-neon-cyan' : 'text-[var(--on-surface)]'}`}>
+                        {profileFull?.display_name?.trim() || profileSummary.username}
+                      </p>
+                      <p className={`truncate text-xs ${isTerminal ? 'text-neon-cyan/70' : 'text-text-muted'}`}>
+                        @{profileSummary.username}
+                      </p>
+                      {profileFull ? (
+                        <p className={`truncate text-[10px] ${isTerminal ? 'text-neon-cyan/60' : 'text-text-muted'}`}>
+                          {profileFull.status_text?.trim()
+                            ? sanitizeText(profileFull.status_text)
+                            : profileFull.online
+                              ? t('profile.online')
+                              : t('profile.offline')}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
+
+                  {profileFull?.bio?.trim() ? (
+                    <div>
+                      <p className={`mb-1 text-[10px] uppercase tracking-widest ${isTerminal ? 'text-neon-cyan/60' : 'text-text-muted'}`}>
+                        {t('profile.bio')}
+                      </p>
+                      <p className={`whitespace-pre-wrap break-words text-xs ${isTerminal ? 'text-neon-cyan/80' : 'text-[var(--on-surface)]'}`}>
+                        {sanitizeText(profileFull.bio)}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {profileFull?.profile_channel ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2 text-xs">
+                        {profileFull.profile_channel.avatar_key ? (
+                          <ChatAvatar
+                            chatId={profileFull.profile_channel.id}
+                            name={profileFull.profile_channel.name}
+                            avatarKey={profileFull.profile_channel.avatar_key}
+                            size={20}
+                          />
+                        ) : (
+                          <Megaphone className="h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span className="truncate">{sanitizeText(profileFull.profile_channel.name)}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void openProfileChannel()}
+                        className={`shrink-0 px-2 py-1 text-[10px] uppercase tracking-widest ${isTerminal ? 'border border-neon-cyan/50 text-neon-cyan hover:bg-neon-cyan/10' : 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-[var(--on-surface)]'}`}
+                      >
+                        {t('profile.subscribeChannel')}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {profileFull?.social_links?.length ? (
+                    <div className="space-y-1">
+                      {profileFull.social_links.map((link, idx) => {
+                        const safe = sanitizeUrl(link.url)
+                        if (!safe) return null
+                        return (
+                          <a
+                            key={idx}
+                            href={safe}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`block truncate text-[11px] ${isTerminal ? 'text-neon-cyan/80 hover:text-neon-cyan' : 'text-[var(--primary)]'}`}
+                          >
+                            {sanitizeText(link.platform)}
+                          </a>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+
+                  <p className={`truncate text-[10px] ${isTerminal ? 'text-neon-cyan/50' : 'text-text-muted'}`}>
+                    ID: {profileSummary.id}
+                  </p>
                 </div>
               ) : (
                 <p className={`text-xs ${isTerminal ? 'text-neon-cyan/70' : 'text-text-muted'}`}>

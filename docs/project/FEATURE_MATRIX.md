@@ -48,8 +48,10 @@ Legend:
 | Feature | Status | Notes |
 |---|---|---|
 | Group chats (SECTOR) | implemented | E2E group key wrapped per member; role management (kick, promote, transfer) in `group-chat-settings.tsx` |
-| Channels (broadcast, Telegram-style) | implemented | DB + server routes complete; subscriber gating (read-only bar, `my_channel_role`); creation modal with channel tab; Megaphone header icon |
-| Open groups / public discovery | implemented | `ExploreModal` + `discoverChats` API; FAB "Explore" button in sidebar |
+| Channels (broadcast, Telegram-style) | implemented | Posting fixed 2026-08-13 — the missing `channel` branch in `buildChatCryptoContext` had left the composer disabled for EVERYONE including the owner while this row already said "implemented". Subscriber gating (`channel_role`, server-enforced), `PATCH .../channel-role`, discussion link, megaphone + subscriber count in the list. Live coverage: `ONLY=channel` in `scripts/e2e-live/run.mjs` |
+| Channel metadata & publicity | implemented | Migration 0063: `chats.description` / `avatar_key` / `is_public`. Owner-only `PATCH /chats/:id` (rename — the name used to be write-once), avatar upload (`/chats/:id/avatar/{presign,commit}`, owner-only, 10/hour, server-issued key only), catalog switch (unlisted stays joinable by link) |
+| Personal channel on the profile | implemented | `users.profile_channel_id` (migration 0061, FK → chats, SET NULL). Owner-validated in `PATCH /users/me`; profile serves a channel card with a join handle; picker in Настройки → Профиль |
+| Open groups / public discovery | implemented | `ExploreModal` + `discoverChats`, filtered by `is_public`. Entry point sits with the peer search, not under "Создать" — browsing is finding, not creating |
 | Closed groups | implemented | Invite-only join; admin/kick/promote UI in group settings |
 | Member roles / moderation | implemented | `group-chat-settings.tsx`: kick, promote to admin/owner, transfer ownership, channel feed role; server PATCH/DELETE /chats/:id/members/:userId |
 

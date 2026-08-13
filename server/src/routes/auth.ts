@@ -167,7 +167,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const user = await getAuthUser(request, reply)
     if (user) {
       const [totpRow] = await db
-        .select({ isTotpEnabled: users.isTotpEnabled, avatarKey: users.avatarKey })
+        .select({ isTotpEnabled: users.isTotpEnabled, avatarKey: users.avatarKey, displayName: users.displayName })
         .from(users)
         .where(eq(users.id, user.id))
         .limit(1)
@@ -182,6 +182,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
           totp_enabled: totpRow?.isTotpEnabled ?? false,
           device_id: sess?.device_id ?? null,
           avatar_key: totpRow?.avatarKey ?? null,
+          // Without this the display name a user sets in Настройки → Профиль
+          // was visible nowhere but the profile modal — the setting looked
+          // saved and did nothing.
+          display_name: totpRow?.displayName ?? null,
         },
       })
     }

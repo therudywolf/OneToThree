@@ -25,6 +25,7 @@ import {
   Folder,
   Archive,
   ArchiveRestore,
+  Link2,
 } from 'lucide-react'
 import {
   getArchivedChatIds,
@@ -46,6 +47,7 @@ import { ExploreModal } from '@/components/chat/explore-modal'
 import { GroupChatSettings } from '@/components/chat/group-chat-settings'
 import { UserAvatar } from '@/components/user-avatar'
 import { ChatAvatar } from '@/components/chat-avatar'
+import { useAuth } from '@/components/auth/auth-provider'
 import { lookupUsers, searchUsers } from '@/lib/api/users'
 import { useTranslation } from '@/hooks/use-translation'
 import { useCallStore } from '@/store/callStore'
@@ -151,6 +153,7 @@ export function ChatSidebar({
   onLockVault,
 }: ChatSidebarProps) {
   const { t } = useTranslation()
+  const { user: authUser } = useAuth()
   const shellMode = useThemeStore((s) => s.shellMode)
   const isMd3 = shellMode === 'md3'
   const activeChatId = useSessionStore((s) => s.activeChatId)
@@ -172,7 +175,7 @@ export function ChatSidebar({
   const [ghostHitChatIds, setGhostHitChatIds] = useState<Set<string> | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [peerLookupByUserId, setPeerLookupByUserId] = useState<
-    Record<string, { username: string; avatar_key: string | null }>
+    Record<string, { username: string; display_name: string | null; avatar_key: string | null }>
   >({})
   const [folders, setFolders] = useState<ChatFolder[]>([])
   const [activeFolderId, setActiveFolderId] = useState('all')
@@ -196,6 +199,9 @@ export function ChatSidebar({
   const [showArchive, setShowArchive] = useState(false)
   const [fabOpen, setFabOpen] = useState(false)
   const fabRef = useRef<HTMLDivElement>(null)
+  const [selfMenuOpen, setSelfMenuOpen] = useState(false)
+  const selfMenuRef = useRef<HTMLDivElement>(null)
+  const selfAvatarRef = useRef<HTMLButtonElement>(null)
   // Second FAB anchor lives in the icon-only footer; both share fabOpen so
   // only one popover is visually open at a time (collapsed mode hides the
   // expanded footer via CSS).
@@ -270,10 +276,11 @@ export function ChatSidebar({
     void lookupUsers(peerIds)
       .then((rows) => {
         if (cancelled) return
-        const next: Record<string, { username: string; avatar_key: string | null }> = {}
+        const next: Record<string, { username: string; display_name: string | null; avatar_key: string | null }> = {}
         for (const r of rows) {
           next[r.id] = {
             username: r.username,
+            display_name: r.display_name?.trim() || null,
             avatar_key: r.avatar_key ?? null,
           }
         }
@@ -567,6 +574,22 @@ export function ChatSidebar({
     }
   }, [fabOpen])
 
+  useEffect(() => {
+    if (!selfMenuOpen) return
+    function handleDown(e: MouseEvent | TouchEvent) {
+      const target = e.target as Node
+      const inMenu = selfMenuRef.current?.contains(target) ?? false
+      const onAvatar = selfAvatarRef.current?.contains(target) ?? false
+      if (!inMenu && !onAvatar) setSelfMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handleDown)
+    document.addEventListener('touchstart', handleDown)
+    return () => {
+      document.removeEventListener('mousedown', handleDown)
+      document.removeEventListener('touchstart', handleDown)
+    }
+  }, [selfMenuOpen])
+
   function togglePin(chatId: string) {
     setPinnedIds((prev) =>
       prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId]
@@ -614,6 +637,7 @@ export function ChatSidebar({
       USER_NOT_FOUND_OR_HIDDEN: t('sidebar.userNotFound'),
       CANNOT_OPEN_DIRECT_WITH_SELF: t('sidebar.cannotOpenSelf'),
       CREATE_FAILED: t('sidebar.createFailed'),
+      INVITE_LINK_COPIED: t('sidebar.copyInviteSuccess'),
     }
     return m[code] ?? code
   }
@@ -780,6 +804,64 @@ export function ChatSidebar({
         })}
       </nav>
       <div className={`flex shrink-0 flex-col items-center gap-1 border-t px-1.5 py-2 ${isMd3 ? 'border-[color-mix(in_srgb,var(--on-surface)_8%,transparent)]' : 'border-neon-cyan/15'}`}>
+        {/* Your own face, top of the action cluster: the only route to your
+            profile used to be Settings → Профиль, three clicks deep, which is
+            an odd place to keep the thing other people see. */}
+        <button
+          ref={selfAvatarRef}
+          type="button"
+          title={t('dock.profileTitle')}
+          aria-label={t('dock.profileTitle')}
+          aria-expanded={selfMenuOpen}
+          onClick={() => setSelfMenuOpen((v) => !v)}
+          className="mb-1 inline-flex items-center justify-center"
+        >
+          <UserAvatar
+            userId={userId}
+            username={authUser?.display_name?.trim() || authUser?.username || userId}
+            avatarKey={authUser?.avatar_key ?? null}
+            size={isMd3 ? 30 : 34}
+          />
+        </button>
+        {selfMenuOpen ? (
+          <div
+            ref={selfMenuRef}
+            className={`absolute bottom-16 left-14 z-50 min-w-[11rem] overflow-hidden ${
+              isMd3
+                ? 'rounded-2xl bg-[var(--surface-container-high)] shadow-[var(--md3-elevation-3)]'
+                : 'border border-neon-cyan/30 bg-void shadow-[0_4px_20px_rgba(0,0,0,0.7)]'
+            }`}
+          >
+            <div className={`px-3 py-2 text-[10px] ${isMd3 ? 'text-[var(--on-surface-variant)]' : 'font-mono text-neon-cyan/60'}`}>
+              @{authUser?.username || userId.slice(0, 8)}
+            </div>
+            <button
+              type="button"
+              onClick={() => { setSelfMenuOpen(false); onOpenSettings?.(); onNavigate?.() }}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors ${isMd3 ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]' : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10'}`}
+            >
+              <Settings className="h-3.5 w-3.5 shrink-0" />
+              {t('dock.profileTitle')}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setSelfMenuOpen(false)
+                const link = `${window.location.origin}/?invite=${encodeURIComponent(userId)}`
+                try {
+                  await navigator.clipboard.writeText(link)
+                  setCreateErr('INVITE_LINK_COPIED')
+                } catch {
+                  setCreateErr(link)
+                }
+              }}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors ${isMd3 ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]' : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10'}`}
+            >
+              <Link2 className="h-3.5 w-3.5 shrink-0" />
+              {t('sidebar.copyMyInvite')}
+            </button>
+          </div>
+        ) : null}
         <button
           type="button"
           title={t('common.settings')}
@@ -1090,14 +1172,19 @@ export function ChatSidebar({
             : null
           const pres = peerId ? peerPresence[peerId] : undefined
           const resolved = peerId ? peerLookupByUserId[peerId] : undefined
+          // A peer's chosen display name wins over the immutable @handle —
+          // otherwise setting one in Настройки → Профиль changes nothing that
+          // anybody can see.
+          const resolvedLabel =
+            resolved?.display_name?.trim() || resolved?.username?.trim()
           const peerName =
             c.name?.trim() ||
-            resolved?.username?.trim() ||
+            resolvedLabel ||
             (peerId ? `${peerId.slice(0, 8)}…` : '')
           const listTitle = c.is_group
             ? c.name?.trim() || t('sidebar.groupUntitled')
             : c.name?.trim() ||
-              resolved?.username?.trim() ||
+              resolvedLabel ||
               (peerId ? `${peerId.slice(0, 8)}…` : `${c.id.slice(0, 8)}…`)
 
           return (
@@ -1363,6 +1450,22 @@ export function ChatSidebar({
               {t('sidebar.openPeer')}
             </button>
           </div>
+
+          {/* Browsing the public catalog is FINDING someone else's room, not
+              creating one — it sits with the "open a peer" search, not under
+              the Create button where it used to hide. */}
+          <button
+            type="button"
+            onClick={() => setExploreOpen(true)}
+            className={`mt-2 flex h-9 w-full items-center justify-center gap-2 text-[10px] uppercase tracking-[0.14em] transition-colors ${
+              isMd3
+                ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)] hover:bg-[color-mix(in_srgb,var(--on-surface)_12%,transparent)]'
+                : 'border border-neon-cyan/40 bg-void font-mono text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
+            }`}
+          >
+            <Search className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {t('explore.title')}
+          </button>
         </div>
 
         {/* FAB "+" — New Group / New Channel / My Invite */}
@@ -1396,18 +1499,6 @@ export function ChatSidebar({
               >
                 <Megaphone className="h-3.5 w-3.5 shrink-0" />
                 {t('sidebar.createChannel')}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setFabOpen(false); setExploreOpen(true) }}
-                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
-                  isMd3
-                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
-                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
-                }`}
-              >
-                <Search className="h-3.5 w-3.5 shrink-0" />
-                {t('explore.title')}
               </button>
             </div>
           ) : null}
@@ -1486,18 +1577,6 @@ export function ChatSidebar({
               >
                 <Megaphone className="h-3.5 w-3.5 shrink-0" />
                 {t('sidebar.createChannel')}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setFabOpen(false); setExploreOpen(true) }}
-                className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-[11px] transition-colors ${
-                  isMd3
-                    ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]'
-                    : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10 hover:text-neon-cyan'
-                }`}
-              >
-                <Search className="h-3.5 w-3.5 shrink-0" />
-                {t('explore.title')}
               </button>
             </div>
           ) : null}

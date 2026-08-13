@@ -324,14 +324,15 @@ export function resetChatFolderRules(folderId: string): void {
 function detectChatKind(chat: ApiChatRow): 'saved' | 'direct' | 'group' | 'channel' {
   if (chat.is_self) return 'saved'
   if (!chat.is_group) return 'direct'
-  const type = (chat.type || '').toLowerCase()
-  if (type.includes('channel') || type === 'public_open') return 'channel'
+  // `public_open` is an OPEN GROUP, not a broadcast channel: everyone posts in
+  // it. Counting it as a channel put every public group into the "Каналы"
+  // folder and out of "Группы", which is exactly backwards.
+  if ((chat.type || '').toLowerCase().includes('channel')) return 'channel'
   return 'group'
 }
 
 function isBroadcastChannel(chat: ApiChatRow): boolean {
-  const type = (chat.type || '').toLowerCase()
-  return type.includes('channel') || type === 'public_open'
+  return (chat.type || '').toLowerCase().includes('channel')
 }
 
 export function folderMatchesChat(

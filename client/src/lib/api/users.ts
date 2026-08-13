@@ -99,6 +99,8 @@ export type UserProfile = {
   profile_channel?: {
     id: string
     name: string
+    description: string | null
+    avatar_key: string | null
     invite_slug: string | null
     invite_code: string | null
     member_count: number

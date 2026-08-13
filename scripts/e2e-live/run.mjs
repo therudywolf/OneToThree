@@ -417,6 +417,98 @@ async function scenarioGroup(A, B, idB) {
 }
 
 /**
+ * Channels: the broadcast gating, the metadata surface, and the catalog switch.
+ *
+ * The regression this exists to catch is not subtle but was invisible to unit
+ * tests: `buildChatCryptoContext` had no `channel` branch, so the composer sat
+ * disabled forever and NOBODY — not even the owner — could post. That only
+ * shows up when a real browser opens a real channel, which is why the send here
+ * goes through the UI rather than the API.
+ */
+async function scenarioChannel(A, B, idA, idB) {
+  const name = `e2e-chn-${STAMP}`
+  const created = await api(A.page, 'POST', '/chats', {
+    type: 'channel',
+    name,
+    member_ids: [idA, idB],
+  })
+  const chatId = created.body?.chat?.id ?? null
+  record('channel created', Boolean(chatId),
+    chatId ? chatId.slice(0, 8) : `status ${created.status}`)
+  if (!chatId) return null
+
+  // Server-side broadcast gate: a subscriber is refused by name, not by a
+  // generic 403, so a future permission refactor cannot quietly pass this.
+  const denied = await api(B.page, 'POST', '/messages/send', {
+    chat_id: chatId,
+    content: Buffer.from(`SUBSCRIBER-${STAMP}`).toString('base64'),
+    iv: 'public',
+  })
+  record('subscriber cannot post in a channel',
+    denied.status === 403 && denied.body?.error === 'CHANNEL_SUBSCRIBERS_CANNOT_POST',
+    `status ${denied.status} ${denied.body?.error ?? ''}`)
+
+  // The owner posts through the real composer — this is the crypto-context fix.
+  await A.page.goto(`${APP}/?chat=${chatId}`, { waitUntil: 'domcontentloaded' })
+  await B.page.goto(`${APP}/?chat=${chatId}`, { waitUntil: 'domcontentloaded' })
+  await A.page.waitForTimeout(6000)
+  await B.page.waitForTimeout(6000)
+  await unlockVaultIfAsked(A, PW)
+  await unlockVaultIfAsked(B, PW)
+
+  const post = `CHANNEL-POST-${STAMP}`
+  record('owner posted to the channel via the UI composer', await sendMessage(A, post))
+  record('subscriber received the channel post', await waitForBubble(B, post))
+
+  // Presentation: rename + describe in one PATCH, then read it back.
+  const renamed = `${name}-renamed`
+  const patched = await api(A.page, 'PATCH', `/chats/${chatId}`, {
+    name: renamed,
+    description: `about ${STAMP}`,
+  })
+  const detail = await api(A.page, 'GET', `/chats/${chatId}`)
+  record('owner edited channel title + description',
+    patched.status === 200 &&
+      detail.body?.chat?.name === renamed &&
+      detail.body?.chat?.description === `about ${STAMP}`,
+    `patch ${patched.status}, name ${detail.body?.chat?.name ?? '?'}`)
+
+  // A subscriber must not be able to repaint the room.
+  const forbidden = await api(B.page, 'PATCH', `/chats/${chatId}`, { name: 'hijacked' })
+  record('subscriber cannot edit channel metadata',
+    forbidden.status === 403, `status ${forbidden.status}`)
+
+  // Publicity: listed by default, gone from the catalog once unlisted, and the
+  // room itself stays reachable either way.
+  const listed = await api(B.page, 'GET', `/chats/discover?q=${encodeURIComponent(renamed)}`)
+  const wasListed = Array.isArray(listed.body) && listed.body.some((r) => r.id === chatId)
+  await api(A.page, 'PATCH', `/chats/${chatId}`, { is_public: false })
+  const afterUnlist = await api(B.page, 'GET', `/chats/discover?q=${encodeURIComponent(renamed)}`)
+  const goneFromCatalog = Array.isArray(afterUnlist.body)
+    && !afterUnlist.body.some((r) => r.id === chatId)
+  const stillReachable = (await api(B.page, 'GET', `/chats/${chatId}`)).status === 200
+  record('channel is listed in the catalog by default', wasListed)
+  record('unlisting removes it from the catalog but not from its members',
+    goneFromCatalog && stillReachable,
+    `catalog ${goneFromCatalog ? 'clean' : 'still lists it'}, member access ${stillReachable ? 'ok' : 'broken'}`)
+
+  // Promoting the subscriber to editor opens the feed for them.
+  const promoted = await api(A.page, 'PATCH', `/chats/${chatId}/members/${idB}/channel-role`, {
+    channel_role: 'editor',
+  })
+  const allowed = await api(B.page, 'POST', '/messages/send', {
+    chat_id: chatId,
+    content: Buffer.from(`EDITOR-${STAMP}`).toString('base64'),
+    iv: 'public',
+  })
+  record('promoting a subscriber to editor lets them post',
+    promoted.status === 200 && allowed.status === 200,
+    `promote ${promoted.status}, send ${allowed.status}`)
+
+  return chatId
+}
+
+/**
  * A membership change must re-key the chat, and BOTH the new epoch and the old
  * history have to keep working — that pair is exactly what the epoch ring and
  * the AAD-bound v3 wrap exist for, and it is not observable from unit tests.
@@ -1040,7 +1132,7 @@ async function main() {
   // Device linking is the one scenario that needs no peer, and registration is
   // rate-limited per address — do not spend an account we will not use.
   const needsPeer = ONLY.length === 0
-    || ['group', 'media', 'rotation', 'groupcall', 'dm', 'call'].some((s) => ONLY.includes(s))
+    || ['group', 'media', 'rotation', 'groupcall', 'dm', 'call', 'channel'].some((s) => ONLY.includes(s))
   const B = needsPeer ? await launch('B') : null
 
   try {
@@ -1061,6 +1153,7 @@ async function main() {
     if (chatId && want('relay')) await scenarioRelay(A, B, chatId, idB)
     // Rotation LAST among the group scenarios: it removes B from the chat.
     if (chatId && want('rotation')) await scenarioRotation(A, chatId, idB)
+    if (want('channel')) await scenarioChannel(A, B, idA, idB)
     if (want('dm')) await scenarioDmAndCall(A, B, idB)
     if (want('devicelink')) await scenarioDeviceLink(A, userA)
     // Last: recovery changes A's vault password.

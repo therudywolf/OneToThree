@@ -41,10 +41,17 @@ ssh forestserver 'docker run --rm --network host -v ~/e2e:/w -w /w mcr.microsoft
 | `LIVEKIT_HOST` | `lk.onetothree.ru`            | SFU hostname the group-call check looks for  |
 | `ONLY`         | *(all)*                       | Comma-separated scenario filter              |
 
-Scenarios: `group`, `media`, `rotation`, `groupcall`, `relay`, `dm`, `call`,
-`devicelink`, `recovery`. Registration always runs — everything else needs the
-accounts, except `devicelink` and `recovery`, which need only one and so skip
-creating the second.
+Scenarios: `group`, `media`, `rotation`, `groupcall`, `relay`, `channel`, `dm`,
+`call`, `devicelink`, `recovery`. Registration always runs — everything else
+needs the accounts, except `devicelink` and `recovery`, which need only one and
+so skip creating the second.
+
+`channel` covers the broadcast side: a subscriber is refused by name
+(`CHANNEL_SUBSCRIBERS_CANNOT_POST`), the owner posts through the real composer
+— which is the only way to catch a missing crypto-context branch leaving the
+composer disabled — title/description edits round-trip, a subscriber cannot
+edit them, unlisting drops the room from the catalog without cutting members
+off, and promoting a subscriber to editor opens the feed.
 
 `relay` is the odd one out: it replays an origin-safe `/call/config` and a
 failing `/ice-servers` into the browser so the calls take the WebSocket audio

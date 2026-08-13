@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Search, X, Users, Megaphone, Loader2 } from 'lucide-react'
 import { discoverChats, type DiscoverChatRow } from '@/lib/api/chats'
+import { ChatAvatar } from '@/components/chat-avatar'
+import { sanitizeText } from '@/lib/sanitize'
 import { useFocusTrap } from '@/hooks/use-focus-trap'
 import { useTranslation } from '@/hooks/use-translation'
 import { useThemeStore } from '@/store/themeStore'
@@ -122,22 +124,37 @@ export function ExploreModal({ onJoin, onClose }: ExploreModalProps) {
                 }}
                 disabled={!(row.invite_slug ?? row.invite_code)}
               >
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center ${
-                  isMd3
-                    ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)]'
-                    : 'border border-neon-cyan/40 bg-void text-neon-cyan'
-                }`}>
-                  {row.type === 'channel'
-                    ? <Megaphone className="h-4 w-4" />
-                    : <Users className="h-4 w-4" />
-                  }
-                </div>
+                {row.avatar_key ? (
+                  <ChatAvatar
+                    chatId={row.id}
+                    name={row.name ?? ''}
+                    avatarKey={row.avatar_key}
+                    size={36}
+                  />
+                ) : (
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center ${
+                    isMd3
+                      ? 'rounded-full bg-[color-mix(in_srgb,var(--primary)_15%,transparent)] text-[var(--primary)]'
+                      : 'border border-neon-cyan/40 bg-void text-neon-cyan'
+                  }`}>
+                    {row.type === 'channel'
+                      ? <Megaphone className="h-4 w-4" />
+                      : <Users className="h-4 w-4" />
+                    }
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className={`truncate font-medium ${isMd3 ? 'text-sm text-[var(--on-surface)]' : 'text-[12px] text-neon-cyan/90'}`}>
                     {row.name ?? t('sidebar.groupUntitled')}
                   </p>
+                  {row.description?.trim() ? (
+                    <p className={`truncate text-[10px] ${isMd3 ? 'text-[var(--on-surface-variant)]' : 'text-neon-cyan/60'}`}>
+                      {sanitizeText(row.description)}
+                    </p>
+                  ) : null}
                   <p className={`text-[10px] ${isMd3 ? 'text-text-muted' : 'font-mono text-text-muted/60'}`}>
-                    {row.member_count.toLocaleString()} {t('sidebar.members')} · {row.type === 'channel' ? t('explore.typeChannel') : t('explore.typeGroup')}
+                    {row.member_count.toLocaleString()}{' '}
+                    {row.type === 'channel' ? t('profile.subscribers') : t('sidebar.members')} · {row.type === 'channel' ? t('explore.typeChannel') : t('explore.typeGroup')}
                   </p>
                 </div>
                 <span className={`shrink-0 text-[10px] ${isMd3 ? 'text-[var(--primary)]' : 'font-mono uppercase tracking-widest text-neon-cyan'}`}>

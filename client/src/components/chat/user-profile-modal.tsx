@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { blockUser, fetchBlockedUsers, fetchUserProfile, unblockUser, type UserProfile } from '@/lib/api/users'
 import { joinChatByInviteCode } from '@/lib/api/chats'
+import { ChatAvatar } from '@/components/chat-avatar'
 import { canonicalUserId } from '@/lib/user-id'
 import { useSessionStore } from '@/store/sessionStore'
 import { fetchSharedMedia, type SharedMediaRow } from '@/lib/api/messages'
@@ -428,7 +429,16 @@ export function UserProfileModal({
                       </p>
                       <div className="flex items-center justify-between gap-2 border border-neon-cyan/30 bg-void/50 px-3 py-2">
                         <span className="flex min-w-0 items-center gap-2 font-mono text-[10px] text-neon-cyan/80">
-                          <Megaphone className="h-3.5 w-3.5 shrink-0" />
+                          {profile.profile_channel.avatar_key ? (
+                            <ChatAvatar
+                              chatId={profile.profile_channel.id}
+                              name={profile.profile_channel.name}
+                              avatarKey={profile.profile_channel.avatar_key}
+                              size={20}
+                            />
+                          ) : (
+                            <Megaphone className="h-3.5 w-3.5 shrink-0" />
+                          )}
                           <span className="truncate">
                             {sanitizeText(profile.profile_channel.name) || profile.profile_channel.id.slice(0, 8)}
                           </span>

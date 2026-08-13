@@ -70,6 +70,23 @@ export async function fetchAvatarChallenge(): Promise<{ nonce: string }> {
   return { nonce: data.nonce }
 }
 
+/** Presigned GET for a chat/channel picture (`chats.avatar_key`). */
+export async function fetchChatAvatarDownloadUrl(
+  chatId: string
+): Promise<string | null> {
+  const res = await fetchWithTimeout(
+    `${API_URL}/storage/chat-avatar-url?chatId=${encodeURIComponent(chatId)}`,
+    { credentials: 'include' }
+  )
+  const data = (await res.json().catch(() => ({}))) as {
+    downloadUrl?: string
+    error?: string
+  }
+  if (res.status === 404) return null
+  if (!res.ok || !data.downloadUrl) return null
+  return data.downloadUrl
+}
+
 export async function fetchAvatarDownloadUrl(
   userId: string
 ): Promise<string | null> {

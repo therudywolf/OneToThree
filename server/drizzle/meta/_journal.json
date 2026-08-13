@@ -442,6 +442,20 @@
       "when": 1786600000000,
       "tag": "0062_guest_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1786610000000,
+      "tag": "0063_chats_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1786650000000,
+      "tag": "0064_guest_invite_multi_use",
+      "breakpoints": true
     }
   ]
 }

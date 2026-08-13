@@ -5,6 +5,7 @@ const en = {
   'common.copied': 'Copied',
   'common.next': 'Next',
   'common.skip': 'Skip',
+  'common.save': 'Save',
   'common.saved': 'Saved',
   'common.settings': 'Settings',
   'common.language': 'Language',
@@ -1171,6 +1172,16 @@ const en = {
   // [GROUP DESCRIPTION TOOLTIP]
   'group.publicHintChecked': 'Open group \u2014 the group will have a public link, anyone with the link can join.',
   'group.publicHintUnchecked': 'Private group \u2014 members by invitation only.',
+  'group.appearanceTitle': 'Appearance',
+  'group.changePhoto': 'Change photo',
+  'group.chatNameLabel': 'Title',
+  'group.chatDescriptionLabel': 'Description',
+  'group.chatDescriptionPlaceholder': 'What this channel is about',
+  'group.publicityTitle': 'Publicity',
+  'group.publicityOnHint': 'Listed in the "Groups and channels" catalog.',
+  'group.publicityOffHint': 'Hidden from the catalog \u2014 join by link only.',
+  'group.publicityUnlist': 'Unlist',
+  'group.publicityList': 'List',
 
   // [QR SCANNER]
   'login.qrScanTitle': 'Scan QR Code',
@@ -1342,6 +1353,10 @@ const en = {
   'guest.purposeCall': 'Instant meeting',
   'guest.purposeCallChat': 'Call guest (this chat)',
   'guest.purposeChat': 'Temporary chat',
+
+  'guest.enterMeeting': 'Enter the meeting',
+  'guest.seatsFree': 'Seats taken / total — the link still admits guests',
+  'guest.seatsFull': 'All seats taken — the link admits no one new',
 } as const;
 
 export default en;

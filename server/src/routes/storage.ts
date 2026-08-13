@@ -3,7 +3,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/index.js'
-import { attachments, chatMembers, messages, users } from '../db/schema.js'
+import { attachments, chatMembers, chats, messages, users } from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import { uuidSchema } from '../lib/zod-uuid.js'
 import {
@@ -629,6 +629,60 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
 
     // Sprint M2-1 — avatars rotate infrequently; let the browser cache the
     // presigned URL response for ~30 minutes (half of the upstream TTL).
+    reply.header('Cache-Control', 'private, max-age=1800')
+    return reply.send({ downloadUrl })
+  })
+
+  /**
+   * Chat/channel avatar. Same bucket and key shape as user avatars, so the
+   * AVATAR_KEY_RE above validates it unchanged.
+   *
+   * Visible to anyone who can legitimately see the room: members always, plus
+   * everyone for a chat that is listed in discovery — the catalog renders these
+   * pictures for strangers by design. An unlisted room's avatar stays behind
+   * membership.
+   */
+  app.get('/chat-avatar-url', async (request, reply) => {
+    await ensureBucketOnce()
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+
+    const q = z.object({ chatId: uuidSchema }).safeParse(request.query)
+    if (!q.success) {
+      return reply.status(400).send({ error: 'INVALID_QUERY' })
+    }
+
+    const [row] = await db
+      .select({ avatarKey: chats.avatarKey, isPublic: chats.isPublic })
+      .from(chats)
+      .where(eq(chats.id, q.data.chatId))
+      .limit(1)
+
+    const key = row?.avatarKey?.trim()
+    if (!key || !AVATAR_KEY_RE.test(key)) {
+      return reply.status(404).send({ error: 'NO_AVATAR' })
+    }
+
+    if (!row.isPublic) {
+      const [member] = await db
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(and(eq(chatMembers.chatId, q.data.chatId), eq(chatMembers.userId, user.id)))
+        .limit(1)
+      if (!member) return reply.status(404).send({ error: 'NO_AVATAR' })
+    }
+
+    const bucket = getAvatarsBucketName()
+    await ensureBucketExists(client, bucket)
+    const downloadUrl = rewritePresignedUrlToPublicBase(
+      await presignGetObject({
+        client: presignClient,
+        bucket,
+        key,
+        expiresIn: 3600,
+      })
+    )
+
     reply.header('Cache-Control', 'private, max-age=1800')
     return reply.send({ downloadUrl })
   })

@@ -1,4 +1,5 @@
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
+import { HeadObjectCommand } from '@aws-sdk/client-s3'
 import { and, asc, count, desc, eq, ilike, inArray, isNull, max, ne, or, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
@@ -19,6 +20,15 @@ import {
   deleteCollectedMediaTargets,
   scheduleMediaCleanupForChat,
 } from '../lib/media-cleanup.js'
+import {
+  createS3Client,
+  createS3ClientForPresigning,
+  deleteObjectIfExists,
+  ensureBucketExists,
+  getAvatarsBucketName,
+  presignPutObject,
+  rewritePresignedUrlToPublicBase,
+} from '../lib/s3.js'
 
 const patchRoleSchema = z.object({
   role: z.enum(['owner', 'admin', 'member']),
@@ -52,6 +62,20 @@ const patchChannelRoleSchema = z.object({
 const patchDiscussionSchema = z.object({
   discussion_chat_id: uuidSchema.nullable(),
 })
+
+/**
+ * Presentation + publicity of a group-kind chat. Every field is optional; an
+ * empty object is rejected so a no-op PATCH cannot masquerade as a change.
+ * `name` keeps the 256 cap used at creation.
+ */
+const patchChatMetaSchema = z
+  .object({
+    name: z.string().trim().min(1).max(256).optional(),
+    description: z.string().max(1024).nullable().optional(),
+    is_public: z.boolean().optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, { message: 'NOTHING_TO_UPDATE' })
 
 /**
  * Upper bound on the member list accepted at creation. Unbounded arrays turned
@@ -332,6 +356,7 @@ type UserChatRow = {
   id: string
   name: string | null
   type: string
+  avatarKey: string | null
   keyEpoch: number
   encryptedGroupKey: string | null
   inviteCode: string | null
@@ -348,6 +373,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
       id: chats.id,
       name: chats.name,
       type: chats.type,
+      avatarKey: chats.avatarKey,
       keyEpoch: chats.keyEpoch,
       encryptedGroupKey: chatMembers.encryptedGroupKey,
       inviteCode: chats.inviteCode,
@@ -369,6 +395,7 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
     id: r.id,
     name: r.name,
     type: r.type,
+    avatarKey: r.avatarKey,
     keyEpoch: r.keyEpoch ?? 0,
     encryptedGroupKey: r.encryptedGroupKey,
     inviteCode: r.inviteCode,
@@ -381,6 +408,16 @@ async function loadUserChats(userId: string): Promise<UserChatRow[]> {
 }
 
 export const chatsRoutes: FastifyPluginAsync = async (app) => {
+  // Chat avatars live in the same bucket and key shape as user avatars
+  // (`avatars/{uuid}/{uuid}.jpg`), so the existing AVATAR_KEY_RE and the
+  // presigned-GET route keep working unchanged.
+  const s3 = createS3Client()
+  const presignS3 = createS3ClientForPresigning()
+  /** Presigned chat-avatar PUTs awaiting their commit, keyed by chat. */
+  const pendingChatAvatars = new Map<string, { key: string; exp: number }>()
+  const CHAT_AVATAR_TTL_MS = 15 * 60 * 1000
+  const MAX_CHAT_AVATAR_BYTES = 2 * 1024 * 1024
+
   app.get('/', async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -483,6 +520,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
           id: c.id,
           name: c.name,
           type: c.type,
+          avatar_key: c.avatarKey,
           is_group: isGroup,
           member_ids: memberIds,
           encrypted_group_key: c.encryptedGroupKey,
@@ -1526,6 +1564,179 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(403).send({ error: 'FORBIDDEN' })
   })
 
+  /**
+   * Rename / describe / (un)list a group-kind chat.
+   *
+   * Owner-only, deliberately: `name`, `description` and the catalog switch are
+   * how the room presents itself to strangers, which is the owner's call rather
+   * than any admin's. Members below owner keep every existing power (invites,
+   * kicks, roles) — this only adds the presentation surface that did not exist
+   * at all before, when `name` was write-once at creation.
+   */
+  app.patch('/:chatId', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
+
+    const parsed = patchChatMetaSchema.safeParse(request.body)
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'INVALID_BODY' })
+    }
+
+    const chat = await getChatById(chatId)
+    if (!chat || !isGroupType(chat.type)) {
+      return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
+    }
+
+    const actorRole = await getMemberRole(chatId, user.id)
+    if (!actorRole) {
+      return reply.status(404).send({ error: 'NOT_A_MEMBER' })
+    }
+    if (actorRole !== 'owner') {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
+
+    const updates: Partial<{ name: string; description: string | null; isPublic: boolean }> = {}
+    if (parsed.data.name !== undefined) updates.name = parsed.data.name
+    if (parsed.data.description !== undefined) {
+      // Empty string clears the description rather than storing a blank line.
+      updates.description = parsed.data.description?.trim() ? parsed.data.description.trim() : null
+    }
+    if (parsed.data.is_public !== undefined) updates.isPublic = parsed.data.is_public
+
+    const [after] = await db
+      .update(chats)
+      .set(updates)
+      .where(eq(chats.id, chatId))
+      .returning({
+        name: chats.name,
+        description: chats.description,
+        isPublic: chats.isPublic,
+        avatarKey: chats.avatarKey,
+      })
+
+    const memberIds = (
+      await db
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+    ).map((r) => r.userId)
+    broadcastToUsers(memberIds, { type: 'chats_updated' })
+
+    return reply.send({
+      ok: true,
+      name: after?.name ?? null,
+      description: after?.description ?? null,
+      is_public: after?.isPublic ?? true,
+      avatar_key: after?.avatarKey ?? null,
+    })
+  })
+
+  /**
+   * Chat avatar upload, owner-only.
+   *
+   * Unlike the user-avatar presign this does NOT demand a vault signature. That
+   * proof exists because a profile picture is an identity claim, and a stolen
+   * session must not be able to repaint someone's face. A chat avatar is plain
+   * room decoration that the same session could already change by other means
+   * (it can rename the room through PATCH /chats/:id, or simply post), so a
+   * vault prompt here would buy nothing and cost an unlock on every edit. The
+   * anti-abuse property that DOES matter — a write capability into a bucket no
+   * quota counts — is preserved by the tight per-hour cap below.
+   */
+  app.post('/:chatId/avatar/presign', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
+
+    const chat = await getChatById(chatId)
+    if (!chat || !isGroupType(chat.type)) {
+      return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
+    }
+    if ((await getMemberRole(chatId, user.id)) !== 'owner') {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
+
+    const bucket = getAvatarsBucketName()
+    await ensureBucketExists(s3, bucket)
+
+    const key = `avatars/${chatId}/${randomUUID()}.jpg`
+    const uploadUrl = rewritePresignedUrlToPublicBase(
+      await presignPutObject({
+        client: presignS3,
+        bucket,
+        key,
+        contentType: 'image/jpeg',
+      })
+    )
+    pendingChatAvatars.set(chatId, { key, exp: Date.now() + CHAT_AVATAR_TTL_MS })
+
+    return reply.send({ uploadUrl, avatar_key: key })
+  })
+
+  app.post('/:chatId/avatar/commit', { config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    const params = z.object({ chatId: uuidSchema }).safeParse(request.params)
+    if (!params.success) return reply.status(400).send({ error: 'INVALID_PARAMS' })
+    const { chatId } = params.data
+
+    const parsed = z.object({ avatar_key: z.string().min(1).max(512) }).safeParse(request.body)
+    if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
+    const avatarKey = parsed.data.avatar_key
+
+    const chat = await getChatById(chatId)
+    if (!chat || !isGroupType(chat.type)) {
+      return reply.status(400).send({ error: 'NOT_GROUP_CHAT' })
+    }
+    if ((await getMemberRole(chatId, user.id)) !== 'owner') {
+      return reply.status(403).send({ error: 'FORBIDDEN' })
+    }
+
+    // The key must be the one WE handed out for THIS chat — never a
+    // caller-chosen path, which would let an owner point their room at (or
+    // overwrite) another chat's or a user's avatar object.
+    const pending = pendingChatAvatars.get(chatId)
+    pendingChatAvatars.delete(chatId)
+    if (!pending || pending.exp < Date.now() || pending.key !== avatarKey) {
+      return reply.status(400).send({ error: 'NO_PENDING_AVATAR' })
+    }
+
+    const bucket = getAvatarsBucketName()
+    await ensureBucketExists(s3, bucket)
+
+    let uploadedBytes: number
+    try {
+      const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: avatarKey }))
+      uploadedBytes = Number(head.ContentLength ?? 0)
+    } catch {
+      return reply.status(412).send({ error: 'AVATAR_OBJECT_MISSING' })
+    }
+    if (uploadedBytes > MAX_CHAT_AVATAR_BYTES) {
+      await deleteObjectIfExists({ client: s3, bucket, key: avatarKey })
+      return reply.status(413).send({ error: 'AVATAR_TOO_LARGE', max_bytes: MAX_CHAT_AVATAR_BYTES })
+    }
+
+    if (chat.avatarKey && chat.avatarKey !== avatarKey) {
+      await deleteObjectIfExists({ client: s3, bucket, key: chat.avatarKey })
+    }
+    await db.update(chats).set({ avatarKey }).where(eq(chats.id, chatId))
+
+    const memberIds = (
+      await db
+        .select({ userId: chatMembers.userId })
+        .from(chatMembers)
+        .where(eq(chatMembers.chatId, chatId))
+    ).map((r) => r.userId)
+    broadcastToUsers(memberIds, { type: 'chats_updated' })
+
+    return reply.send({ ok: true, avatar_key: avatarKey })
+  })
+
   // The "posting mode" buttons in channel settings apply one PATCH per member,
   // so this limit must absorb a full-member sweep, not just single clicks.
   app.patch('/:chatId/members/:userId/channel-role', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
@@ -1930,6 +2141,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         // membership change and (owner only) mint a fresh one.
         key_epoch: chat.keyEpoch,
         discussion_chat_id: chat.discussionChatId ?? null,
+        description: chat.description ?? null,
+        avatar_key: chat.avatarKey ?? null,
+        is_public: chat.isPublic,
       },
       members: members.map((m) => ({
         user_id: m.userId,
@@ -1972,6 +2186,9 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
     const baseWhere = and(
       or(eq(chats.type, 'public_open'), eq(chats.type, 'channel')),
+      // Owners can unlist a room without giving up its invite link; an unlisted
+      // chat stays fully joinable by code/slug, it just leaves the catalog.
+      eq(chats.isPublic, true),
       q ? ilike(chats.name, `%${q}%`) : undefined
     )
 
@@ -1980,6 +2197,8 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         id: chats.id,
         name: chats.name,
         type: chats.type,
+        description: chats.description,
+        avatarKey: chats.avatarKey,
         inviteCode: chats.inviteCode,
         inviteOneTime: chats.inviteOneTime,
         inviteSlug: chats.inviteSlug,
@@ -1997,6 +2216,8 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
         id: r.id,
         name: r.name,
         type: r.type,
+        description: r.description,
+        avatar_key: r.avatarKey,
         // Never expose a CONSUMABLE one-time invite code to strangers browsing
         // discovery — anyone could read and burn an owner's single-use invite,
         // denying it to the intended recipient. The stable slug is a safe public

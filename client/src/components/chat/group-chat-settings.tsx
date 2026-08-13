@@ -1,16 +1,20 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Crown, Star, ShieldAlert, Database } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Crown, Star, ShieldAlert, Database, Globe, Lock, ImagePlus } from 'lucide-react'
+import { AvatarCropModal } from '@/components/ui/cropper'
+import { ChatAvatar } from '@/components/chat-avatar'
 import {
   ensureGroupInviteCode,
   fetchChatDetail,
   fetchChatsList,
   kickChatMember,
+  patchChatMeta,
   patchInviteSlug,
   patchChatMemberRole,
   patchChannelMemberFeedRole,
   patchDiscussionChat,
+  uploadChatAvatarJpeg,
   type ApiChatRow,
   type ChannelFeedRole,
   type ChatDetailMember,
@@ -57,9 +61,19 @@ export function GroupChatSettings({
     invite_code: string | null
     invite_slug: string | null
     invite_one_time: boolean | null
+    name: string | null
+    description: string | null
+    avatar_key: string | null
+    is_public: boolean
     members: ChatDetailMember[]
   } | null>(null)
 
+  const [nameDraft, setNameDraft] = useState('')
+  const [descriptionDraft, setDescriptionDraft] = useState('')
+  const [metaSaved, setMetaSaved] = useState(false)
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const [avatarCropSrc, setAvatarCropSrc] = useState<string | null>(null)
+  const avatarFileRef = useRef<HTMLInputElement | null>(null)
   const [discussionPick, setDiscussionPick] = useState<string>('')
   const [inviteSlugDraft, setInviteSlugDraft] = useState('')
   const [discussionCandidates, setDiscussionCandidates] = useState<ApiChatRow[]>([])
@@ -78,8 +92,14 @@ export function GroupChatSettings({
         invite_code: d.chat.invite_code,
         invite_slug: d.chat.invite_slug ?? null,
         invite_one_time: d.chat.invite_one_time,
+        name: d.chat.name ?? null,
+        description: d.chat.description ?? null,
+        avatar_key: d.chat.avatar_key ?? null,
+        is_public: d.chat.is_public ?? true,
         members: d.members,
       })
+      setNameDraft(d.chat.name ?? '')
+      setDescriptionDraft(d.chat.description ?? '')
       setDiscussionPick(d.chat.discussion_chat_id ?? '')
       setInviteSlugDraft(d.chat.invite_slug ?? '')
       if (typeof d.chat.invite_one_time === 'boolean') {
@@ -194,6 +214,62 @@ export function GroupChatSettings({
       setErrorLog(e instanceof Error ? e.message : 'CHANNEL_ROLE_FAILED')
     } finally {
       setIsBusy(false)
+    }
+  }
+
+  /** Save title + description together — one PATCH, one toast. */
+  const saveChatMeta = async () => {
+    if (!protocol) return
+    const name = nameDraft.trim()
+    if (!name) {
+      setErrorLog('CHAT_NAME_REQUIRED')
+      return
+    }
+    setIsBusy(true)
+    setErrorLog(null)
+    try {
+      await patchChatMeta(chatId, { name, description: descriptionDraft.trim() })
+      await syncSector()
+      onChanged()
+      setMetaSaved(true)
+      setTimeout(() => setMetaSaved(false), 1500)
+    } catch (e) {
+      setErrorLog(e instanceof Error ? e.message : 'CHAT_META_SAVE_FAILED')
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const toggleIsPublic = async () => {
+    if (!protocol) return
+    setIsBusy(true)
+    setErrorLog(null)
+    try {
+      await patchChatMeta(chatId, { is_public: !protocol.is_public })
+      await syncSector()
+      onChanged()
+    } catch (e) {
+      setErrorLog(e instanceof Error ? e.message : 'CHAT_META_SAVE_FAILED')
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const onAvatarCropped = async (blob: Blob) => {
+    if (avatarCropSrc) {
+      URL.revokeObjectURL(avatarCropSrc)
+      setAvatarCropSrc(null)
+    }
+    setAvatarBusy(true)
+    setErrorLog(null)
+    try {
+      await uploadChatAvatarJpeg(chatId, blob)
+      await syncSector()
+      onChanged()
+    } catch (e) {
+      setErrorLog(e instanceof Error ? e.message : 'CHAT_AVATAR_FAILED')
+    } finally {
+      setAvatarBusy(false)
     }
   }
 
@@ -336,6 +412,115 @@ export function GroupChatSettings({
                 )}
               </div>
             )}
+
+            {canOwner ? (
+              <div className={`space-y-3 p-3 ${isMd3 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]' : 'border border-neon-cyan/25 bg-void/40'}`}>
+                <p className={`text-[9px] ${isMd3 ? 'text-[var(--primary)]' : 'text-neon-cyan/90'}`}>{t('group.appearanceTitle')}</p>
+
+                <div className="flex items-center gap-3">
+                  <ChatAvatar
+                    chatId={chatId}
+                    name={protocol.name ?? ''}
+                    avatarKey={protocol.avatar_key}
+                    size={48}
+                  />
+                  <button
+                    type="button"
+                    disabled={avatarBusy || isBusy}
+                    onClick={() => avatarFileRef.current?.click()}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[9px] uppercase tracking-widest transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-[var(--on-surface)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
+                  >
+                    <ImagePlus className="h-3 w-3" />
+                    {avatarBusy ? t('common.loading') : t('group.changePhoto')}
+                  </button>
+                  <input
+                    ref={avatarFileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      e.target.value = ''
+                      if (!f || !f.type.startsWith('image/')) return
+                      setAvatarCropSrc(URL.createObjectURL(f))
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] text-text-muted/80" htmlFor="chat-name-draft">
+                    {t('group.chatNameLabel')}
+                  </label>
+                  <input
+                    id="chat-name-draft"
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    maxLength={256}
+                    className={`w-full px-2 py-1.5 text-[10px] ${isMd3 ? 'rounded-lg border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-border-strong bg-void text-neon-cyan/90'}`}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] text-text-muted/80" htmlFor="chat-description-draft">
+                    {t('group.chatDescriptionLabel')}
+                  </label>
+                  <textarea
+                    id="chat-description-draft"
+                    value={descriptionDraft}
+                    onChange={(e) => setDescriptionDraft(e.target.value)}
+                    maxLength={1024}
+                    rows={3}
+                    placeholder={t('group.chatDescriptionPlaceholder')}
+                    className={`w-full resize-y px-2 py-1.5 text-[10px] ${isMd3 ? 'rounded-lg border-0 bg-[color-mix(in_srgb,var(--on-surface)_8%,transparent)] text-[var(--on-surface)]' : 'border border-border-strong bg-void text-neon-cyan/90'}`}
+                  />
+                  <p className="text-right text-[8px] text-text-muted/60">{descriptionDraft.length}/1024</p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isBusy || !nameDraft.trim()}
+                  onClick={() => void saveChatMeta()}
+                  className={`w-full py-1.5 text-[9px] uppercase tracking-widest transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-full bg-[var(--primary)] text-[var(--on-primary)]' : 'border border-neon-cyan bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
+                >
+                  {metaSaved ? t('common.saved') : t('common.save')}
+                </button>
+
+                {/* Publicity applies only where a catalog exists — a private E2E
+                    group is never listed, so the switch would be a lie there. */}
+                {protocol.chat_type === 'channel' || protocol.chat_type === 'public_open' ? (
+                  <div className={`flex items-start justify-between gap-3 pt-2 ${isMd3 ? 'border-t border-[color-mix(in_srgb,var(--on-surface)_10%,transparent)]' : 'border-t border-border-strong'}`}>
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 text-[9px] text-text-primary">
+                        {protocol.is_public ? <Globe className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+                        {t('group.publicityTitle')}
+                      </p>
+                      <p className="mt-0.5 text-[8px] text-text-muted/70">
+                        {protocol.is_public ? t('group.publicityOnHint') : t('group.publicityOffHint')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void toggleIsPublic()}
+                      className={`shrink-0 px-3 py-1.5 text-[9px] uppercase tracking-widest transition-colors disabled:opacity-40 ${isMd3 ? 'rounded-full bg-[color-mix(in_srgb,var(--on-surface)_10%,transparent)] text-[var(--on-surface)]' : 'border border-neon-cyan/50 bg-void text-neon-cyan hover:bg-neon-cyan/10'}`}
+                    >
+                      {protocol.is_public ? t('group.publicityUnlist') : t('group.publicityList')}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {avatarCropSrc ? (
+              <AvatarCropModal
+                imageSrc={avatarCropSrc}
+                onCancel={() => {
+                  URL.revokeObjectURL(avatarCropSrc)
+                  setAvatarCropSrc(null)
+                }}
+                onCropped={(blob) => void onAvatarCropped(blob)}
+              />
+            ) : null}
 
             {protocol.chat_type === 'channel' && canOwner ? (
               <div className={`space-y-2 p-3 ${isMd3 ? 'rounded-2xl bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]' : 'border border-neon-cyan/25 bg-void/40'}`}>

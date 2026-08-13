@@ -29,18 +29,59 @@ export class ChatPage {
     await expect(pinInput).not.toBeVisible({ timeout: 60_000 })
   }
 
+  /**
+   * Did the web build get replaced underneath this page?
+   *
+   * Rebuilding the container mid-run (a parallel session, or your own
+   * `compose up --build` while the suite is going) swaps every chunk hash. A
+   * page loaded before the swap then 404s on the chunks it still wants, part of
+   * the app never hydrates, and messages quietly stop arriving — which reads
+   * exactly like a decryption bug and cost a long investigation before the
+   * loaded chunk names were compared against the ones the container actually
+   * had. Say it plainly instead.
+   */
+  private async assertBuildNotSwapped(): Promise<void> {
+    const loaded = await this.page
+      .evaluate(() =>
+        Array.from(document.scripts)
+          .map((s) => s.src.split('/').pop() ?? '')
+          .find((n) => n.startsWith('main-app-'))
+      )
+      .catch(() => undefined)
+    if (!loaded) return
+    // Compare against what the server hands out RIGHT NOW. A 404 check is not
+    // enough: a page can hold a complete older build whose chunks still sit in
+    // the browser cache, so nothing errors — it just runs code the container no
+    // longer serves.
+    const served = await this.page
+      .request.get('/')
+      .then((r) => r.text())
+      .then((html) => html.match(/main-app-[a-z0-9]+\.js/)?.[0])
+      .catch(() => undefined)
+    if (served && loaded !== served) {
+      throw new Error(
+        `web build was replaced while this test was running — the page runs ${loaded}, the server now serves ${served}. ` +
+          'Do not rebuild the stack during a run, and give a freshly recreated container a moment before starting the suite.'
+      )
+    }
+  }
+
   async waitForChatReady(passphrase?: string): Promise<void> {
     const textarea = this.page.locator('form textarea')
     const dialog = this.page.getByRole('dialog', { name: /Key vault/i })
 
     for (let attempt = 0; attempt < 60; attempt += 1) {
-      if (await textarea.isVisible().catch(() => false)) return
+      if (await textarea.isVisible().catch(() => false)) {
+        await this.assertBuildNotSwapped()
+        return
+      }
       if (passphrase && await dialog.first().isVisible().catch(() => false)) {
         await this.unlockVaultIfNeeded(passphrase)
       }
       await this.page.waitForTimeout(1_000)
     }
 
+    await this.assertBuildNotSwapped()
     await expect(textarea).toBeVisible({ timeout: 5_000 })
   }
 

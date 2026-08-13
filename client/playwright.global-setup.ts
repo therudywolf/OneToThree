@@ -62,6 +62,33 @@ async function assertSessionCookieIsBrowserSafe(apiBase: string): Promise<void> 
   }
 }
 
+/**
+ * Pay the web server's cold start once, here, instead of inside the first spec.
+ *
+ * A freshly recreated container serves its first requests slowly, and the suite
+ * opens several browsers at once — page loads then take long enough that the
+ * 30-second waits in the chat specs expire while the app is still coming up.
+ * The failures look like messages never arriving, i.e. a decryption bug, and
+ * they cluster in exactly one situation: a run started seconds after
+ * `compose up --build`. Measured, not guessed: 3 of 4 group-runtime runs failed
+ * against a one-minute-old container, 24 of 26 passed once it had settled.
+ */
+async function warmWebServer(baseUrl: string): Promise<void> {
+  const deadline = Date.now() + 60_000
+  let quick = 0
+  while (Date.now() < deadline && quick < 2) {
+    const started = Date.now()
+    const ok = await fetch(`${baseUrl}/login`, { signal: AbortSignal.timeout(20_000) })
+      .then((r) => r.ok)
+      .catch(() => false)
+    // Two consecutive quick responses mean the cold start is behind us. A slow
+    // success resets the counter but still counts as progress, so a loaded
+    // machine cannot spin here forever.
+    quick = ok && Date.now() - started < 1_500 ? quick + 1 : 0
+    if (quick < 2) await new Promise((r) => setTimeout(r, 500))
+  }
+}
+
 async function globalSetup(_config: FullConfig) {
   const healthUrl =
     process.env.PLAYWRIGHT_API_HEALTH ?? 'http://127.0.0.1:8080/health'
@@ -81,6 +108,7 @@ async function globalSetup(_config: FullConfig) {
   }
 
   await assertSessionCookieIsBrowserSafe(new URL(healthUrl).origin)
+  await warmWebServer(process.env.E2E_BASE_URL ?? 'http://localhost:8090')
 }
 
 export default globalSetup

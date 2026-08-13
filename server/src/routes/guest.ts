@@ -732,6 +732,41 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ ok: true, removed })
   })
 
+  /**
+   * The HOST's side of "выйти": end a temp chat early.
+   *
+   * A guest could always destroy their own session, and the sweeper eventually
+   * takes care of the rest, but the person who handed out the link had no way
+   * to end it — a link sent to the wrong person meant waiting out the TTL with
+   * a stranger sitting in the chat. Same purge as the guest's own leave (the
+   * ephemeral account AND the chat go together), gated on the caller being the
+   * OTHER member of that very chat.
+   */
+  app.post('/guest-chats/:chatId/kick', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    if (user.group === 'guest') return reply.status(403).send({ error: 'GUEST_FORBIDDEN' })
+    const { chatId } = request.params as { chatId: string }
+    if (!z.string().uuid().safeParse(chatId).success) {
+      return reply.status(400).send({ error: 'INVALID_ID' })
+    }
+
+    const members = await db
+      .select({ userId: chatMembers.userId, group: users.userGroup })
+      .from(chatMembers)
+      .innerJoin(users, eq(users.id, chatMembers.userId))
+      .where(eq(chatMembers.chatId, chatId))
+    if (!members.some((m) => m.userId === user.id)) {
+      return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+    }
+    const guest = members.find((m) => m.userId !== user.id && m.group === 'guest')
+    if (!guest) return reply.status(404).send({ error: 'NO_GUEST_IN_CHAT' })
+
+    const result = await purgeGuestUser(guest.userId)
+    if (!result.ok) return reply.status(500).send({ error: 'PURGE_FAILED' })
+    return reply.send({ ok: true })
+  })
+
   /** Guest self-destruct ("Выйти"): purge the account + the temp chat now. */
   app.post('/guest/me/leave', async (request, reply) => {
     const user = await getAuthUser(request, reply)

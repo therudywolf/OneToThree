@@ -1363,6 +1363,11 @@ const en = {
   'guest.kickConfirm': 'Remove guest {name} from the call?',
   'guest.kickForbidden': 'Only the person who invited the guest, or a chat admin, can remove them',
   'guest.kickFailed': 'Could not remove the guest — try again',
+
+  'guest.peerHint': 'A link-invited guest — this identity is not verified',
+  'guest.endChat': 'End the chat and remove the guest',
+  'guest.endChatConfirm': 'End this temporary chat? The guest and the whole conversation are deleted.',
+  'guest.endChatFailed': 'Could not end the chat — try again',
 } as const;
 
 export default en;

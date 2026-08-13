@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useSearchParams } from 'next/navigation'
-import { Menu, ShieldCheck, ShieldOff, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft, MoreVertical, BellOff, Bell, Trash2, Megaphone } from 'lucide-react'
+import { Menu, ShieldCheck, ShieldOff, Star, Settings, Search, UserCheck, Lock, X, ArrowLeft, MoreVertical, BellOff, Bell, Trash2, Megaphone, UserMinus } from 'lucide-react'
 import { MobileBottomNav, type MobileNavTab } from '@/components/chat/mobile-bottom-nav'
 import { useAuth } from '@/components/auth/auth-provider'
 import { getFmSocket } from '@/lib/api/socket'
@@ -11,6 +11,7 @@ import { runPostLoginVaultSync } from '@/lib/vault-sync'
 import { useShallow } from 'zustand/shallow'
 import { useChatStore } from '@/store/chatStore'
 import { useSessionStore } from '@/store/sessionStore'
+import { toastError } from '@/store/toastStore'
 import { usePresenceStore } from '@/store/presenceStore'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useCallStore } from '@/store/callStore'
@@ -197,8 +198,16 @@ export function ChatApp({
   const [peerIdentity, setPeerIdentity] = useState<{
     userId: string
     username: string
+    /** Peer's chosen label, when set. `username` stays the immutable handle. */
+    displayName: string | null
     ecdhPublicKeyJwk: string
     verified: boolean
+    /**
+     * Server-assigned tier. `'guest'` means the peer walked in through a
+     * one-time link and nobody verified who they are — the chat has to say so
+     * where the conversation happens, not only in the call UI.
+     */
+    isGuest: boolean
   } | null>(null)
   // Take the public JWK from the session store, NOT by re-deriving it from the
   // CryptoKey: `unwrappedPrivateKey` is imported with extractable:false (Stage-1
@@ -377,6 +386,21 @@ export function ChatApp({
     }
     setHeaderProfileOpen(true)
   }, [])
+
+  /** End a temp guest chat early: purges the guest AND the conversation. */
+  const endTempGuestChat = useCallback(async () => {
+    if (!activeChatId) return
+    if (!window.confirm(t('guest.endChatConfirm'))) return
+    try {
+      const { endGuestChat } = await import('@/lib/api/guest')
+      await endGuestChat(activeChatId)
+      // The server broadcasts `chats_updated` on purge; clearing the selection
+      // keeps the UI off a chat row that is about to disappear.
+      useSessionStore.getState().setActiveChatId(null)
+    } catch {
+      toastError(t('guest.endChatFailed'))
+    }
+  }, [activeChatId, t])
 
   const toggleSearchSurface = useCallback(() => {
     if (!activeChatId) return
@@ -647,8 +671,10 @@ export function ChatApp({
         setPeerIdentity({
           userId: row.id,
           username: row.username,
+          displayName: row.display_name?.trim() || null,
           ecdhPublicKeyJwk: row.ecdh_public_key_jwk,
           verified: trust.verified,
+          isGuest: row.user_group === 'guest',
         })
         setPeerApproved(isApprovedContact(peerId))
       } catch {
@@ -1174,8 +1200,33 @@ export function ChatApp({
                 {peerApproved ? (
                   <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" />
                 ) : null}
-                <span className="truncate max-w-[140px] md:max-w-xs">@{peerIdentity.username}</span>
+                <span className="truncate max-w-[140px] md:max-w-xs">
+                  {peerIdentity.isGuest
+                    ? peerIdentity.displayName || peerIdentity.username
+                    : `@${peerIdentity.username}`}
+                </span>
               </button>
+              {peerIdentity.isGuest ? (
+                <>
+                  <span
+                    className="shrink-0 rounded bg-warning/20 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-warning"
+                    title={t('guest.peerHint')}
+                  >
+                    {t('guest.badge')}
+                  </span>
+                  {/* The host's half of "выйти": without it a link sent to the
+                      wrong person could only be waited out. */}
+                  <button
+                    type="button"
+                    onClick={() => void endTempGuestChat()}
+                    className="shrink-0 rounded p-1 text-text-muted transition-colors hover:text-neon-red"
+                    title={t('guest.endChat')}
+                    aria-label={t('guest.endChat')}
+                  >
+                    <UserMinus className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              ) : null}
               {/* Presence */}
               {peerPresenceRow ? (
                 <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[9px] normal-case tracking-normal">
@@ -1464,7 +1515,9 @@ export function ChatApp({
                         ) : null}
                         {peerApproved ? <UserCheck className="h-3.5 w-3.5 shrink-0 text-accent-2" /> : null}
                         <span className="truncate">
-                          {isMd3 ? peerIdentity.username : `@${peerIdentity.username}`}
+                          {peerIdentity.displayName
+                            ? peerIdentity.displayName
+                            : isMd3 ? peerIdentity.username : `@${peerIdentity.username}`}
                         </span>
                       </span>
                       {peerPresenceRow ? (

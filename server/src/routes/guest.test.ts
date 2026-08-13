@@ -490,6 +490,77 @@ describe('guest mode', () => {
     expect(goneChat).toBeUndefined()
   })
 
+  it('the host can end a temp chat early, and only their own', async () => {
+    if (!dbAvailable) return
+    const creator = await createUser(`gm-end-${uniq()}`)
+    const outsider = await createUser(`gm-end-out-${uniq()}`)
+    const cookie = await sessionCookie(creator)
+    const outsiderCookie = await sessionCookie(outsider)
+
+    const created = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', cookie)
+      .send({ purpose: 'chat' })
+    const enter = await request(onApp!.server).post('/api/guest/enter').send({
+      token: created.body.token,
+      nickname: 'Гость Ухода',
+      public_key_jwk: VALID_EC_JWK,
+      ecdh_public_key_jwk: VALID_EC_JWK,
+    })
+    expect(enter.status).toBe(200)
+
+    // Someone who is not in that chat cannot end it.
+    const foreign = await request(onApp!.server)
+      .post(`/api/guest-chats/${enter.body.chat_id}/kick`)
+      .set('Cookie', outsiderCookie)
+    expect(foreign.status).toBe(403)
+
+    const ended = await request(onApp!.server)
+      .post(`/api/guest-chats/${enter.body.chat_id}/kick`)
+      .set('Cookie', cookie)
+    expect(ended.status).toBe(200)
+
+    // Guest and conversation go together — "временный" значит временный.
+    const [goneUser] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, enter.body.user_id))
+      .limit(1)
+    expect(goneUser).toBeUndefined()
+    const [goneChat] = await db
+      .select({ id: chats.id })
+      .from(chats)
+      .where(eq(chats.id, enter.body.chat_id))
+      .limit(1)
+    expect(goneChat).toBeUndefined()
+  })
+
+  it('a chat with no guest in it cannot be "ended" as one', async () => {
+    if (!dbAvailable) return
+    const a = await createUser(`gm-plain-a-${uniq()}`)
+    const b = await createUser(`gm-plain-b-${uniq()}`)
+    const [chat] = await db
+      .insert(chats)
+      .values({ type: 'direct_e2e', name: null })
+      .returning({ id: chats.id })
+    await db.insert(chatMembers).values([
+      { chatId: chat.id, userId: a.id, encryptedGroupKey: null, role: 'member' as const },
+      { chatId: chat.id, userId: b.id, encryptedGroupKey: null, role: 'member' as const },
+    ])
+    const res = await request(onApp!.server)
+      .post(`/api/guest-chats/${chat.id}/kick`)
+      .set('Cookie', await sessionCookie(a))
+    expect(res.status).toBe(404)
+    expect(res.body.error).toBe('NO_GUEST_IN_CHAT')
+    // …and the ordinary peer is untouched.
+    const [stillThere] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, b.id))
+      .limit(1)
+    expect(stillThere?.id).toBe(b.id)
+  })
+
   it('FEATURE_OPEN_REGISTRATION=0: new-account verify gets a uniform 403, no row is created', async () => {
     if (!dbAvailable) return
     const username = `gm-reg-${uniq()}`

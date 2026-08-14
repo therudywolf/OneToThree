@@ -36,6 +36,7 @@ import {
   removeLivekitParticipant,
 } from '../lib/livekit-admin.js'
 import { drainGuestCallLog, recordGuestLeft } from '../lib/guest-call-log.js'
+import { takeSeatHolder } from '../lib/guest-knock-store.js'
 
 const tokenBodySchema = z.object({
   room: z
@@ -336,6 +337,25 @@ export const callRoutes: FastifyPluginAsync = async (app) => {
           await recordGuestLeft(roomId, identity)
         } catch (err) {
           req.log.warn({ err, roomId }, 'livekit webhook: failed to record guest leave')
+        }
+        // A seat on a meeting link is CONCURRENT capacity, the way the UI reads
+        // it — not a lifetime ticket. `used_count` only ever went up, so a guest
+        // whose tab reloaded had to re-knock and burn a second seat, and a live
+        // meeting could exhaust its own link mid-call. Only identities that
+        // actually took a seat release one: takeSeatHolder is a read-and-delete,
+        // so a duplicated or stray webhook cannot drive the counter down.
+        // `used_at` is deliberately untouched — it is the sweeper's retention
+        // clock, not a seat count.
+        try {
+          const inviteId = await takeSeatHolder(roomId, identity)
+          if (inviteId) {
+            await db
+              .update(guestInvites)
+              .set({ usedCount: sql`greatest(${guestInvites.usedCount} - 1, 0)` })
+              .where(eq(guestInvites.id, inviteId))
+          }
+        } catch (err) {
+          req.log.warn({ err, roomId }, 'livekit webhook: failed to release guest seat')
         }
       }
 

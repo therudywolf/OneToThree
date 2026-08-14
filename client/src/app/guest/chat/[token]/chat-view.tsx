@@ -30,20 +30,24 @@ function MessageBubble({ m }: { m: GuestChatMessage }) {
       <div
         className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
           m.mine
-            ? 'rounded-br-md bg-emerald-700/80 text-emerald-50'
-            : 'rounded-bl-md bg-neutral-800 text-neutral-100'
+            ? 'rounded-br-md bg-[var(--secondary-container)] text-[var(--on-secondary-container)]'
+            : 'rounded-bl-md bg-surface-elevated text-text-primary'
         }`}
       >
         {m.failed ? (
-          <p className="italic text-neutral-400">
+          <p className="italic text-text-muted">
             Не удалось расшифровать сообщение
           </p>
         ) : (
           <p className="whitespace-pre-wrap break-words">{m.text}</p>
         )}
+        {/* On my own bubble the only ink guaranteed readable over the tonal
+            container is its own on-colour, so the timestamp inherits and
+            merely dims; the peer bubble sits on a plain surface and can use
+            the muted text token directly. */}
         <p
           className={`mt-0.5 text-right text-[10px] tabular-nums ${
-            m.mine ? 'text-emerald-200/70' : 'text-neutral-500'
+            m.mine ? 'opacity-70' : 'text-text-muted'
           }`}
         >
           {formatTime(m.createdAt)}
@@ -91,13 +95,13 @@ export function GuestChatView({
   )
 
   return (
-    <div className="flex h-dvh flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+    <div className="flex h-dvh flex-col bg-void text-text-primary">
+      <header className="flex items-center justify-between gap-3 border-b border-border-strong px-4 py-3">
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold">
             {hostName} · временный чат
           </h1>
-          <p className="truncate text-[11px] text-neutral-500">
+          <p className="truncate text-[11px] text-text-muted">
             Сквозное шифрование · чат исчезнет вместе с этой вкладкой
           </p>
         </div>
@@ -106,14 +110,14 @@ export function GuestChatView({
             <button
               type="button"
               onClick={onLeave}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-500"
+              className="rounded-lg bg-danger px-3 py-1.5 text-xs font-medium text-[var(--on-primary)] transition hover:opacity-90"
             >
               Точно удалить
             </button>
             <button
               type="button"
               onClick={() => setConfirmLeave(false)}
-              className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 transition hover:bg-neutral-800"
+              className="rounded-lg border border-border-strong px-3 py-1.5 text-xs text-text-muted transition hover:bg-[var(--state-hover)]"
             >
               Отмена
             </button>
@@ -122,7 +126,7 @@ export function GuestChatView({
           <button
             type="button"
             onClick={() => setConfirmLeave(true)}
-            className="shrink-0 rounded-lg border border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-900/40"
+            className="shrink-0 rounded-lg border border-[color-mix(in_srgb,var(--danger)_45%,transparent)] bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] px-3 py-1.5 text-xs font-medium text-danger transition hover:bg-[color-mix(in_srgb,var(--danger)_26%,transparent)]"
           >
             Выйти и удалить
           </button>
@@ -130,7 +134,7 @@ export function GuestChatView({
       </header>
 
       {notice ? (
-        <div className="border-b border-amber-900/40 bg-amber-950/30 px-4 py-1.5 text-xs text-amber-300">
+        <div className="border-b border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] px-4 py-1.5 text-xs text-warning">
           {notice}
         </div>
       ) : null}
@@ -140,7 +144,7 @@ export function GuestChatView({
         className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-3"
       >
         {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-neutral-500">
+          <div className="flex h-full items-center justify-center text-sm text-text-muted">
             Пока сообщений нет — напишите первым
           </div>
         ) : (
@@ -150,7 +154,7 @@ export function GuestChatView({
 
       <form
         onSubmit={submit}
-        className="flex items-end gap-2 border-t border-neutral-800 px-3 py-3"
+        className="flex items-end gap-2 border-t border-border-strong px-3 py-3"
       >
         <input
           type="text"
@@ -159,12 +163,12 @@ export function GuestChatView({
           placeholder="Сообщение…"
           maxLength={4000}
           autoFocus
-          className="min-w-0 flex-1 rounded-xl border border-neutral-700 bg-neutral-900 px-3.5 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none"
+          className="min-w-0 flex-1 rounded-xl border border-border-strong bg-surface-elevated px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-neon-cyan focus:outline-none"
         />
         <button
           type="submit"
           disabled={sending || draft.trim().length === 0}
-          className="shrink-0 rounded-xl bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-xl bg-on-surface px-4 py-2.5 text-sm font-medium text-void transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {sending ? 'Отправка…' : 'Отправить'}
         </button>

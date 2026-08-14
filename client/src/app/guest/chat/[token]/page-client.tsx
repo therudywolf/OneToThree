@@ -55,6 +55,10 @@ import { GuestChatView } from './chat-view'
 type Stage =
   | { kind: 'loading' }
   | { kind: 'invalid' }
+  // Seat taken rather than link dead — a one-seat chat link that someone else
+  // opened first, or lost the race at enter. Distinguishing the two stops the
+  // «истекла» wording from sending people looking for a broken link.
+  | { kind: 'taken' }
   | { kind: 'form' }
   | { kind: 'entering' }
   | { kind: 'chat' }
@@ -66,8 +70,8 @@ type Stage =
 
 function CenterCard({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-neutral-950 px-4 text-neutral-100">
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-xl">
+    <div className="flex min-h-dvh items-center justify-center bg-void px-4 text-text-primary">
+      <div className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface-elevated p-6 shadow-xl">
         {children}
       </div>
     </div>
@@ -77,7 +81,7 @@ function CenterCard({ children }: { children: ReactNode }) {
 function Spinner() {
   return (
     <div
-      className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-100"
+      className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-text-primary"
       aria-label="Загрузка"
     />
   )
@@ -260,8 +264,10 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
         }
         setHostName(info.host_name)
         setStage({ kind: 'form' })
-      } catch {
-        if (aliveRef.current) setStage({ kind: 'invalid' })
+      } catch (err) {
+        if (!aliveRef.current) return
+        const code = err instanceof Error ? err.message : ''
+        setStage({ kind: code === 'INVITE_FULL' ? 'taken' : 'invalid' })
       }
     })()
 
@@ -319,6 +325,9 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
           case 'INVITE_NOT_FOUND':
             setStage({ kind: 'invalid' })
             break
+          case 'INVITE_FULL':
+            setStage({ kind: 'taken' })
+            break
           default:
             setFormError('Не удалось войти — попробуйте ещё раз')
         }
@@ -375,7 +384,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
       <CenterCard>
         <div className="flex flex-col items-center gap-4 py-4">
           <Spinner />
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-text-muted">
             {stage.kind === 'loading'
               ? 'Проверяем приглашение…'
               : 'Входим в чат…'}
@@ -391,9 +400,21 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
         <h1 className="text-lg font-semibold">
           Ссылка недействительна или истекла
         </h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-text-muted">
           Ссылка одноразовая: если чат уже открывали или срок вышел, попросите
           пригласившего вас человека прислать новую.
+        </p>
+      </CenterCard>
+    )
+  }
+
+  if (stage.kind === 'taken') {
+    return (
+      <CenterCard>
+        <h1 className="text-lg font-semibold">Этой ссылкой уже воспользовались</h1>
+        <p className="mt-2 text-sm text-text-muted">
+          Ссылка одноразовая, и чат по ней уже открыли. Попросите пригласившего
+          вас человека прислать новую.
         </p>
       </CenterCard>
     )
@@ -403,12 +424,12 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">Временный чат с {hostName}</h1>
-        <p className="mt-1 text-sm text-neutral-400">
+        <p className="mt-1 text-sm text-text-muted">
           Представьтесь, чтобы начать переписку.
         </p>
         <form onSubmit={(e) => void submitEnter(e)} className="mt-4 space-y-3">
           <label className="block">
-            <span className="mb-1 block text-sm text-neutral-300">Ваше имя</span>
+            <span className="mb-1 block text-sm text-text-muted">Ваше имя</span>
             <input
               type="text"
               value={nickname}
@@ -419,22 +440,22 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
               maxLength={32}
               autoFocus
               placeholder="Например, Аня"
-              className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none"
+              className="w-full rounded-lg border border-border-strong bg-void px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-neon-cyan focus:outline-none"
             />
           </label>
           {formError ? (
-            <p className="text-sm text-red-400" role="alert">
+            <p className="text-sm text-neon-red" role="alert">
               {formError}
             </p>
           ) : null}
           <button
             type="submit"
             disabled={busy || nickname.trim().length === 0}
-            className="w-full rounded-lg bg-neutral-100 px-4 py-2 font-medium text-neutral-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? 'Входим…' : 'Войти'}
           </button>
-          <p className="text-xs leading-relaxed text-neutral-500">
+          <p className="text-xs leading-relaxed text-text-muted">
             Чат существует, пока открыта эта вкладка. Закроете — вернуться будет
             нельзя.
           </p>
@@ -447,7 +468,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">Чат удалён</h1>
-        <p className="mt-2 text-sm text-neutral-400">Вкладку можно закрыть.</p>
+        <p className="mt-2 text-sm text-text-muted">Вкладку можно закрыть.</p>
       </CenterCard>
     )
   }
@@ -456,7 +477,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">Сессия гостя завершена</h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-text-muted">
           Временный чат больше недоступен. Чтобы продолжить общение, попросите
           новую ссылку.
         </p>
@@ -468,7 +489,7 @@ export function GuestChatClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">Что-то пошло не так</h1>
-        <p className="mt-2 text-sm text-neutral-400">{stage.message}</p>
+        <p className="mt-2 text-sm text-text-muted">{stage.message}</p>
       </CenterCard>
     )
   }

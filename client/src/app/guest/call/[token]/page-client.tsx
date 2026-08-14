@@ -42,6 +42,9 @@ import {
 type Stage =
   | { kind: 'loading' }
   | { kind: 'invalid' }
+  // A full link is not a dead link: the meeting is running, every seat is
+  // taken. Saying «истекла» here is what sent hosts hunting for a bug.
+  | { kind: 'full' }
   | { kind: 'calls-unavailable' }
   | { kind: 'form' }
   | { kind: 'waiting' }
@@ -102,8 +105,10 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
         }
         setHostName(info.host_name)
         setStage({ kind: 'form' })
-      } catch {
-        if (alive) setStage({ kind: 'invalid' })
+      } catch (err) {
+        if (!alive) return
+        const code = err instanceof Error ? err.message : ''
+        setStage({ kind: code === 'INVITE_FULL' ? 'full' : 'invalid' })
       }
     })()
     return () => {
@@ -215,6 +220,10 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
           case 'INVITE_NOT_FOUND':
             setStage({ kind: 'invalid' })
             break
+          case 'INVITE_FULL':
+          case 'INVITE_GONE':
+            setStage({ kind: 'full' })
+            break
           default:
             setFormError('Не удалось отправить запрос — попробуйте ещё раз')
         }
@@ -241,7 +250,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
       <CenterCard>
         <div className="flex flex-col items-center gap-4 py-4">
           <Spinner />
-          <p className="text-sm text-neutral-400">Проверяем приглашение…</p>
+          <p className="text-sm text-text-muted">Проверяем приглашение…</p>
         </div>
       </CenterCard>
     )
@@ -253,8 +262,20 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
         <h1 className="text-lg font-semibold">
           Ссылка недействительна или истекла
         </h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-text-muted">
           Попросите пригласившего вас человека прислать новую ссылку.
+        </p>
+      </CenterCard>
+    )
+  }
+
+  if (stage.kind === 'full') {
+    return (
+      <CenterCard>
+        <h1 className="text-lg font-semibold">Во встрече не осталось мест</h1>
+        <p className="mt-2 text-sm text-text-muted">
+          Ссылка рабочая — просто заняты все места. Попробуйте ещё раз, когда
+          кто-нибудь выйдет, или попросите пригласившего прислать новую.
         </p>
       </CenterCard>
     )
@@ -266,7 +287,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
         <h1 className="text-lg font-semibold">
           Звонки на этом сервере недоступны
         </h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-text-muted">
           Присоединиться к встрече по этой ссылке сейчас нельзя.
         </p>
       </CenterCard>
@@ -277,12 +298,12 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">Встреча у {hostName}</h1>
-        <p className="mt-1 text-sm text-neutral-400">
+        <p className="mt-1 text-sm text-text-muted">
           Представьтесь, чтобы постучаться в комнату.
         </p>
         <form onSubmit={(e) => void submitKnock(e)} className="mt-4 space-y-3">
           <label className="block">
-            <span className="mb-1 block text-sm text-neutral-300">
+            <span className="mb-1 block text-sm text-text-muted">
               Ваше имя
             </span>
             <input
@@ -295,18 +316,18 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
               maxLength={32}
               autoFocus
               placeholder="Например, Аня"
-              className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100 placeholder:text-neutral-600 focus:border-neutral-500 focus:outline-none"
+              className="w-full rounded-lg border border-border-strong bg-void px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-neon-cyan focus:outline-none"
             />
           </label>
           {formError ? (
-            <p className="text-sm text-red-400" role="alert">
+            <p className="text-sm text-neon-red" role="alert">
               {formError}
             </p>
           ) : null}
           <button
             type="submit"
             disabled={busy || nickname.trim().length === 0}
-            className="w-full rounded-lg bg-neutral-100 px-4 py-2 font-medium text-neutral-900 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? 'Отправляем…' : 'Постучаться'}
           </button>
@@ -320,13 +341,13 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
       <CenterCard>
         <div className="flex flex-col items-center gap-4 py-2 text-center">
           <Spinner />
-          <p className="text-sm text-neutral-300">
+          <p className="text-sm text-text-muted">
             Ждём, пока {hostName} вас впустит…
           </p>
           <button
             type="button"
             onClick={cancelWaiting}
-            className="rounded-lg border border-neutral-700 px-4 py-2 text-sm text-neutral-300 transition hover:bg-neutral-800"
+            className="rounded-lg border border-border-strong px-4 py-2 text-sm text-text-muted transition hover:bg-[var(--state-hover)]"
           >
             Отменить
           </button>
@@ -339,7 +360,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">Никто не ответил</h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-text-muted">
           {hostName} не отреагировал(а) на ваш запрос вовремя.
         </p>
         <button
@@ -348,7 +369,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
             setFormError(null)
             setStage({ kind: 'form' })
           }}
-          className="mt-4 w-full rounded-lg bg-neutral-100 px-4 py-2 font-medium text-neutral-900 transition hover:bg-white"
+          className="mt-4 w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90"
         >
           Попробовать ещё раз
         </button>
@@ -360,7 +381,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">Вам отказали во входе</h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-text-muted">
           {hostName} не впустил(а) вас в эту встречу.
         </p>
       </CenterCard>
@@ -375,7 +396,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
             ? 'Встреча завершена'
             : 'Вы покинули встречу или были отключены'}
         </h1>
-        <p className="mt-2 text-sm text-neutral-400">
+        <p className="mt-2 text-sm text-text-muted">
           {stage.left
             ? 'Можете закрыть вкладку.'
             : 'Если это произошло по ошибке — попросите новую ссылку.'}
@@ -388,7 +409,7 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">Не получилось подключиться</h1>
-        <p className="mt-2 text-sm text-neutral-400">{stage.message}</p>
+        <p className="mt-2 text-sm text-text-muted">{stage.message}</p>
       </CenterCard>
     )
   }

@@ -1349,6 +1349,12 @@ const ru = {
   'meet.previewBlocked': 'Нет доступа к камере или микрофону. Разрешите его в браузере — войти можно и без них.',
   'meet.previewToggleCamOn': 'Включить камеру в превью',
   'meet.previewToggleCamOff': 'Выключить камеру в превью',
+
+  'guest.copyMeetingLink': 'Скопировать гостевую ссылку на встречу',
+  'guest.linkCopied': 'Гостевая ссылка скопирована',
+  'guest.linkCopyFailed': 'Не удалось подготовить гостевую ссылку',
+  'guest.meetJoinFailed': 'Не удалось открыть встречу',
+  'guest.openingMeeting': 'Открываем встречу…',
 } as const;
 
 export default ru;

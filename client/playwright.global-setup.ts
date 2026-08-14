@@ -62,6 +62,30 @@ async function assertSessionCookieIsBrowserSafe(apiBase: string): Promise<void> 
   }
 }
 
+/** Where the docker e2e stack (scripts/e2e-local.sh → Caddy) publishes the app. */
+const DOCKER_E2E_BASE_URL = 'http://localhost:8090'
+
+/**
+ * The URL the warm-up must probe: the one Playwright is about to drive.
+ *
+ * This used to read `E2E_BASE_URL`, which is set nowhere in the repo — so the
+ * warm-up only worked by accident, on the one path whose base URL happens to
+ * equal the hardcoded fallback. Everywhere else it hammered a dead port for a
+ * full minute and returned silently, i.e. the cold start it exists to absorb
+ * was still there when the specs started.
+ *
+ * The resolved project `use.baseURL` wins because that is literally what the
+ * specs navigate against (playwright.config.ts derives it from
+ * PLAYWRIGHT_BASE_URL, which scripts/e2e-local.sh exports); the env var is the
+ * fallback for a setup that runs before/without a project.
+ */
+export function resolveWebBaseUrl(
+  configBaseUrl: string | undefined,
+  envBaseUrl: string | undefined
+): string {
+  return configBaseUrl?.trim() || envBaseUrl?.trim() || DOCKER_E2E_BASE_URL
+}
+
 /**
  * Pay the web server's cold start once, here, instead of inside the first spec.
  *
@@ -74,22 +98,42 @@ async function assertSessionCookieIsBrowserSafe(apiBase: string): Promise<void> 
  * against a one-minute-old container, 24 of 26 passed once it had settled.
  */
 async function warmWebServer(baseUrl: string): Promise<void> {
-  const deadline = Date.now() + 60_000
+  const startedWarmup = Date.now()
+  const deadline = startedWarmup + 60_000
   let quick = 0
+  let lastFailure: unknown
   while (Date.now() < deadline && quick < 2) {
     const started = Date.now()
     const ok = await fetch(`${baseUrl}/login`, { signal: AbortSignal.timeout(20_000) })
-      .then((r) => r.ok)
-      .catch(() => false)
+      .then((r) => {
+        if (!r.ok) lastFailure = `HTTP ${r.status}`
+        return r.ok
+      })
+      .catch((e) => {
+        lastFailure = e
+        return false
+      })
     // Two consecutive quick responses mean the cold start is behind us. A slow
     // success resets the counter but still counts as progress, so a loaded
     // machine cannot spin here forever.
     quick = ok && Date.now() - started < 1_500 ? quick + 1 : 0
     if (quick < 2) await new Promise((r) => setTimeout(r, 500))
   }
+  if (quick < 2) {
+    // Not fatal — the specs may still pass — but it must never again be silent:
+    // a warm-up that probed the wrong URL looks exactly like a warm-up that
+    // worked, and the cold-start failures it hides read as a decryption bug.
+    console.warn(
+      `[playwright] gave up warming ${baseUrl}/login after ` +
+        `${Math.round((Date.now() - startedWarmup) / 1000)}s without two quick responses` +
+        (lastFailure ? ` (last: ${lastFailure})` : '') +
+        `. The first specs will pay the cold start themselves; if this is the wrong ` +
+        `URL, check PLAYWRIGHT_BASE_URL / the config's use.baseURL.`
+    )
+  }
 }
 
-async function globalSetup(_config: FullConfig) {
+async function globalSetup(config: FullConfig) {
   const healthUrl =
     process.env.PLAYWRIGHT_API_HEALTH ?? 'http://127.0.0.1:8080/health'
   try {
@@ -108,7 +152,12 @@ async function globalSetup(_config: FullConfig) {
   }
 
   await assertSessionCookieIsBrowserSafe(new URL(healthUrl).origin)
-  await warmWebServer(process.env.E2E_BASE_URL ?? 'http://localhost:8090')
+  await warmWebServer(
+    resolveWebBaseUrl(
+      config.projects[0]?.use?.baseURL,
+      process.env.PLAYWRIGHT_BASE_URL
+    )
+  )
 }
 
 export default globalSetup

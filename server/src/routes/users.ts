@@ -37,6 +37,7 @@ import { requireTotpStepUp, sendStepUpError } from '../lib/totp-stepup.js'
 import { deletePending, getPending, setChallenge } from '../lib/challenge-store.js'
 import { safeEqualNonce } from '../lib/ecdsa-verify.js'
 import { DELETED_USER_ID, DELETED_USER_USERNAME } from '../lib/deleted-user.js'
+import { displayNameCollides, sanitizeDisplayName } from '../lib/display-name.js'
 import { invalidateCallAuth } from '../lib/call-auth-cache.js'
 
 // Re-exported for existing importers (account-deletion tests, etc.). The
@@ -775,7 +776,21 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
     if (parsed.data.disable_read_receipts !== undefined) updates.disableReadReceipts = parsed.data.disable_read_receipts
     if (parsed.data.allow_device_linking !== undefined) updates.allowDeviceLinking = parsed.data.allow_device_linking
     if (parsed.data.bio !== undefined) updates.bio = parsed.data.bio || null
-    if (parsed.data.display_name !== undefined) updates.displayName = parsed.data.display_name || null
+    if (parsed.data.display_name !== undefined) {
+      // display_name used to appear nowhere but the profile modal and was
+      // stored verbatim. It is now the label the product actually reads —
+      // the chat-list row title, the desktop chat header, and the `name`
+      // claim in the LiveKit token that remote call tiles render — with no
+      // '@' and no handle beside it. A guest nickname landing in this very
+      // column is sanitized and refused when it collides with an existing
+      // handle; a registered account writing it was not, which left the
+      // cheaper half of the impersonation surface wide open.
+      const cleaned = sanitizeDisplayName(parsed.data.display_name)
+      if (cleaned !== null && (await displayNameCollides(cleaned, user.id))) {
+        return reply.status(409).send({ error: 'DISPLAY_NAME_TAKEN' })
+      }
+      updates.displayName = cleaned
+    }
     if (parsed.data.status_text !== undefined) updates.statusText = parsed.data.status_text || null
     if (parsed.data.last_seen_privacy !== undefined) updates.lastSeenPrivacy = parsed.data.last_seen_privacy
     if (parsed.data.social_links !== undefined) updates.socialLinks = JSON.stringify(parsed.data.social_links)

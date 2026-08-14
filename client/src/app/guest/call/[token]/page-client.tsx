@@ -36,6 +36,7 @@ import {
   Spinner,
   type LiveKitGrant,
 } from '@/components/guest/livekit-room-stage'
+import { MediaCheck } from '@/components/media/media-check'
 
 // ─── Stages ─────────────────────────────────────────────────────────────────
 
@@ -296,11 +297,17 @@ export function GuestCallClient({ routeToken }: { routeToken: string }) {
 
   if (stage.kind === 'form') {
     return (
-      <CenterCard>
+      <CenterCard wide>
         <h1 className="text-lg font-semibold">Встреча у {hostName}</h1>
         <p className="mt-1 text-sm text-text-muted">
           Представьтесь, чтобы постучаться в комнату.
         </p>
+        {/* Camera and microphone are checked BEFORE the knock: the host is
+            about to be interrupted, and discovering a dead microphone after
+            they let you in wastes their time, not just yours. */}
+        <div className="mt-4">
+          <MediaCheck />
+        </div>
         <form onSubmit={(e) => void submitKnock(e)} className="mt-4 space-y-3">
           <label className="block">
             <span className="mb-1 block text-sm text-text-muted">

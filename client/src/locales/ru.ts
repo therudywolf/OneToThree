@@ -1327,6 +1327,28 @@ const ru = {
   'meet.leftBody': 'Комната остаётся доступной по той же ссылке, пока у неё есть места и не истёк срок.',
   'meet.rejoin': 'Вернуться',
   'meet.toChats': 'К чатам',
+
+  // [MEET] устройства и проверка перед входом
+  'meet.settings': 'Настройки звука и видео',
+  'meet.settingsClose': 'Закрыть настройки',
+  'meet.deviceDefault': 'По умолчанию',
+  'meet.deviceCamera': 'Камера',
+  'meet.deviceMic': 'Микрофон',
+  'meet.deviceSpeaker': 'Динамик',
+  'meet.deviceSpeakerUnsupported': 'Этот браузер не умеет выбирать динамик — звук идёт в системный.',
+  'meet.background': 'Фон камеры',
+  'meet.bgNone': 'Нет',
+  'meet.bgBlur': 'Размытие',
+  'meet.bgImage': 'Картинка',
+  'meet.bgUpload': 'Загрузить картинку',
+  'meet.bgUploading': 'Загружаем…',
+  'meet.checkTitle': 'Проверьте камеру и микрофон',
+  'meet.checkHint': 'Выбор запомнится в этом браузере.',
+  'meet.micLevel': 'Уровень микрофона',
+  'meet.previewOff': 'Камера выключена',
+  'meet.previewBlocked': 'Нет доступа к камере или микрофону. Разрешите его в браузере — войти можно и без них.',
+  'meet.previewToggleCamOn': 'Включить камеру в превью',
+  'meet.previewToggleCamOff': 'Выключить камеру в превью',
 } as const;
 
 export default ru;

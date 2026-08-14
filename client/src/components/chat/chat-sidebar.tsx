@@ -202,6 +202,18 @@ export function ChatSidebar({
   const [selfMenuOpen, setSelfMenuOpen] = useState(false)
   const selfMenuRef = useRef<HTMLDivElement>(null)
   const selfAvatarRef = useRef<HTMLButtonElement>(null)
+  /**
+   * Feedback for the rail's own actions ("copy my link"), rendered BESIDE the
+   * rail. The rail is always mounted, but `createErr` is painted deep inside
+   * the expanded chrome — hidden by the `showExpandedSidebarChrome` guard AND,
+   * independently, by the `[data-collapsed='true']` display:none rules — so a
+   * collapsed sidebar (a preference that persists across sessions) swallowed
+   * both the "copied" confirmation and the fallback link the user was supposed
+   * to copy by hand. It also has a tone: a success painted in the danger
+   * palette reads as a failure.
+   */
+  const [railNotice, setRailNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
+  const railNoticeTimerRef = useRef<number | null>(null)
   // Second FAB anchor lives in the icon-only footer; both share fabOpen so
   // only one popover is visually open at a time (collapsed mode hides the
   // expanded footer via CSS).
@@ -480,8 +492,9 @@ export function ChatSidebar({
     }
     if (msg.plaintext === '[DECRYPT_FAIL]') return t('chat.decryptFailedPreview')
     // Call events are system envelopes, not text — their raw JSON must never
-    // become the chat preview.
-    const sys = parseSystemMessage(msg.plaintext, msg.kind)
+    // become the chat preview. The row goes in whole: only its server-stamped
+    // provenance makes it a notice, never the shape of what it says.
+    const sys = parseSystemMessage(msg)
     if (sys) {
       if (sys.kind === 'call_missed') {
         return `📵 ${sys.isVideo ? t('call.missedVideo') : t('call.missedAudio')}`
@@ -590,6 +603,31 @@ export function ChatSidebar({
     }
   }, [selfMenuOpen])
 
+  /**
+   * Show a transient rail notice, clearing itself the way the group-settings
+   * "saved" flash does. A failure holds longer than a confirmation: its text IS
+   * the invite link, and the user has to select and copy it by hand.
+   */
+  function flashRailNotice(tone: 'ok' | 'error', text: string) {
+    if (railNoticeTimerRef.current !== null) {
+      window.clearTimeout(railNoticeTimerRef.current)
+    }
+    setRailNotice({ tone, text })
+    railNoticeTimerRef.current = window.setTimeout(
+      () => {
+        railNoticeTimerRef.current = null
+        setRailNotice(null)
+      },
+      tone === 'ok' ? 2000 : 12000
+    )
+  }
+
+  useEffect(() => () => {
+    if (railNoticeTimerRef.current !== null) {
+      window.clearTimeout(railNoticeTimerRef.current)
+    }
+  }, [])
+
   function togglePin(chatId: string) {
     setPinnedIds((prev) =>
       prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId]
@@ -637,7 +675,6 @@ export function ChatSidebar({
       USER_NOT_FOUND_OR_HIDDEN: t('sidebar.userNotFound'),
       CANNOT_OPEN_DIRECT_WITH_SELF: t('sidebar.cannotOpenSelf'),
       CREATE_FAILED: t('sidebar.createFailed'),
-      INVITE_LINK_COPIED: t('sidebar.copyInviteSuccess'),
     }
     return m[code] ?? code
   }
@@ -850,9 +887,11 @@ export function ChatSidebar({
                 const link = `${window.location.origin}/?invite=${encodeURIComponent(userId)}`
                 try {
                   await navigator.clipboard.writeText(link)
-                  setCreateErr('INVITE_LINK_COPIED')
+                  flashRailNotice('ok', t('sidebar.copyInviteSuccess'))
                 } catch {
-                  setCreateErr(link)
+                  // Clipboard refused (insecure context, permission denied):
+                  // the link itself is the message — the user copies it by hand.
+                  flashRailNotice('error', link)
                 }
               }}
               className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] transition-colors ${isMd3 ? 'font-sans text-sm text-[var(--on-surface)] hover:bg-[var(--state-hover)]' : 'font-mono uppercase tracking-widest text-neon-cyan/85 hover:bg-neon-cyan/10'}`}
@@ -860,6 +899,31 @@ export function ChatSidebar({
               <Link2 className="h-3.5 w-3.5 shrink-0" />
               {t('sidebar.copyMyInvite')}
             </button>
+          </div>
+        ) : null}
+        {railNotice ? (
+          <div
+            // Anchored to the aside like the self menu, NOT to the expanded
+            // chrome: the rail survives the collapsed state, the chrome does not.
+            data-testid="rail-notice"
+            data-tone={railNotice.tone}
+            role="status"
+            aria-live="polite"
+            className={`absolute bottom-4 left-14 z-50 max-w-[18rem] break-all px-3 py-2 text-[10px] leading-snug ${
+              isMd3
+                ? `rounded-2xl shadow-[var(--md3-elevation-3)] ${
+                    railNotice.tone === 'ok'
+                      ? 'bg-[var(--surface-container-high)] text-[var(--on-surface)]'
+                      : 'bg-[color-mix(in_srgb,var(--danger)_12%,var(--surface-container-high))] text-[var(--danger)]'
+                  }`
+                : `border bg-void font-mono uppercase tracking-wider shadow-[0_4px_20px_rgba(0,0,0,0.7)] ${
+                    railNotice.tone === 'ok'
+                      ? 'border-neon-cyan/40 text-neon-cyan'
+                      : 'border-neon-red text-neon-red normal-case tracking-normal'
+                  }`
+            }`}
+          >
+            {railNotice.text}
           </div>
         ) : null}
         <button

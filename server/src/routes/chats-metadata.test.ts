@@ -1,8 +1,24 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
 import { eq, inArray } from 'drizzle-orm'
+
+// S3/MinIO is mocked so this runs anywhere (the predeploy gate has no MinIO).
+// Presigning is a local HMAC op, but ensureBucketExists() would hit MinIO — the
+// avatar authorization under test is pure DB.
+vi.mock('../lib/s3.js', () => ({
+  createS3Client: () => ({}),
+  createS3ClientForPresigning: () => ({}),
+  deleteObjectIfExists: async () => undefined,
+  ensureBucketExists: async () => undefined,
+  getAvatarsBucketName: () => 'avatars',
+  getBucketName: () => 'test-bucket',
+  presignGetObject: async () => 'https://minio.test/get?sig=x',
+  presignPutObject: async () => 'https://minio.test/put?sig=x',
+  rewritePresignedUrlToPublicBase: (u: string) => u,
+}))
+
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import { chatMembers, chats, users } from '../db/schema.js'
@@ -184,6 +200,74 @@ describe('PATCH /chats/:chatId — title, description, publicity', () => {
         await db.delete(chats).where(eq(chats.id, id))
       }
       await db.delete(users).where(inArray(users.id, [owner.id, member.id]))
+    }
+  })
+
+  it('chat avatar url: a private group hides behind membership, a listed room does not', async () => {
+    // `is_public` is a column on EVERY chat with NOT NULL DEFAULT true, and the
+    // client hides the publicity toggle for a private E2E group (the switch
+    // would be a lie there — such a room is never listed). So gating this route
+    // on `is_public` alone protected nothing for exactly the chats the docblock
+    // promised to protect: any logged-in stranger who knew the uuid got a
+    // 1-hour presigned GET for a private group's picture, in the same second
+    // GET /chats/:chatId answered 403 for them.
+    const stamp = Date.now().toString(36)
+    const owner = await createUser(`meta-av-owner-${stamp}`)
+    const stranger = await createUser(`meta-av-out-${stamp}`)
+    const ownerCookie = await cookieFor(owner)
+    const strangerCookie = await cookieFor(stranger)
+    const avatarKey = () => `avatars/${randomUUID()}/${randomUUID()}.jpg`
+
+    let groupId: string | null = null
+    let listedId: string | null = null
+    try {
+      const [group] = await db
+        .insert(chats)
+        .values({ type: 'group_e2e', name: `Private group ${stamp}`, avatarKey: avatarKey() })
+        .returning({ id: chats.id, isPublic: chats.isPublic })
+      groupId = group.id
+      await db.insert(chatMembers).values({ chatId: groupId, userId: owner.id, role: 'owner' })
+      // The premise of the bug: nobody ever set this, it defaulted on.
+      expect(group.isPublic).toBe(true)
+
+      const denied = await request(app!.server)
+        .get(`/api/storage/chat-avatar-url?chatId=${groupId}`)
+        .set('Cookie', strangerCookie)
+        .expect(404)
+      expect(denied.body.error).toBe('NO_AVATAR')
+
+      // …and the member it belongs to still gets the picture.
+      const allowed = await request(app!.server)
+        .get(`/api/storage/chat-avatar-url?chatId=${groupId}`)
+        .set('Cookie', ownerCookie)
+        .expect(200)
+      expect(allowed.body.downloadUrl).toContain('minio.test')
+
+      // A room the catalog actually lists renders for strangers by design.
+      const [listed] = await db
+        .insert(chats)
+        .values({ type: 'public_open', name: `Listed room ${stamp}`, avatarKey: avatarKey() })
+        .returning({ id: chats.id })
+      listedId = listed.id
+      const shown = await request(app!.server)
+        .get(`/api/storage/chat-avatar-url?chatId=${listedId}`)
+        .set('Cookie', strangerCookie)
+        .expect(200)
+      expect(shown.body.downloadUrl).toContain('minio.test')
+
+      // Unlist it and the same stranger falls back to the membership check.
+      await db.update(chats).set({ isPublic: false }).where(eq(chats.id, listedId))
+      await request(app!.server)
+        .get(`/api/storage/chat-avatar-url?chatId=${listedId}`)
+        .set('Cookie', strangerCookie)
+        .expect(404)
+    } finally {
+      for (const id of [groupId, listedId]) {
+        if (!id) continue
+        await db.delete(chatMembers).where(eq(chatMembers.chatId, id))
+        await db.delete(chats).where(eq(chats.id, id))
+      }
+      await db.delete(users).where(inArray(users.id, [owner.id, stranger.id]))
     }
   })
 })

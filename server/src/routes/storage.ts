@@ -641,6 +641,15 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
    * everyone for a chat that is listed in discovery — the catalog renders these
    * pictures for strangers by design. An unlisted room's avatar stays behind
    * membership.
+   *
+   * "Listed in discovery" is `type IN ('public_open','channel') AND is_public`,
+   * exactly the catalog's own predicate (see the /chats/discover query) — NOT
+   * `is_public` alone. That column exists on every chat and defaults to true, so
+   * a private group_e2e (which can have a picture, and whose publicity toggle
+   * the client deliberately hides because the switch would be a lie there)
+   * always carried is_public = true. Keying on it alone made this the one route
+   * that handed an ex-member a 1-hour presigned GET for a private group's
+   * avatar while GET /chats/:chatId answered 403 for the same session.
    */
   app.get('/chat-avatar-url', async (request, reply) => {
     await ensureBucketOnce()
@@ -653,7 +662,7 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const [row] = await db
-      .select({ avatarKey: chats.avatarKey, isPublic: chats.isPublic })
+      .select({ avatarKey: chats.avatarKey, isPublic: chats.isPublic, type: chats.type })
       .from(chats)
       .where(eq(chats.id, q.data.chatId))
       .limit(1)
@@ -663,7 +672,9 @@ export const storageRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(404).send({ error: 'NO_AVATAR' })
     }
 
-    if (!row.isPublic) {
+    const listedInDiscovery =
+      (row.type === 'public_open' || row.type === 'channel') && row.isPublic
+    if (!listedInDiscovery) {
       const [member] = await db
         .select({ userId: chatMembers.userId })
         .from(chatMembers)

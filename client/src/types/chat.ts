@@ -67,6 +67,15 @@ export type DecryptedMessage = {
   kind?: string
   /** Extra data for system messages (e.g. { is_video: boolean }). */
   kindMeta?: Record<string, unknown>
+  /**
+   * True when the row arrived under the `system:v1` iv sentinel, which only the
+   * server writes. This is the provenance renderers gate on before treating a
+   * row as a timeline notice — the plaintext's shape proves nothing, since a
+   * peer can type the same JSON into the composer. Set by every path that
+   * branches on the sentinel; it structured-clones into the IndexedDB feed
+   * cache with the rest of the node, so a replayed row keeps its provenance.
+   */
+  isSystemStamped?: boolean
 }
 
 export type ChannelNode = {

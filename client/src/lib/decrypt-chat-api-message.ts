@@ -45,10 +45,15 @@ function apiRowToDecrypted(
   m: ApiMessageRow,
   plaintext: string
 ): DecryptedMessage {
-  // Parse system:v1 messages to expose kind/kindMeta
+  // Parse system:v1 messages to expose kind/kindMeta. The sentinel itself is
+  // recorded too: only the SERVER writes `system:v1`, so it — not the shape of
+  // the plaintext — is what tells a genuine call notice apart from a peer who
+  // typed the same JSON into the composer. Renderers gate on this flag, and it
+  // rides into the message cache with the rest of the node.
+  const isSystemStamped = m.iv === 'system:v1'
   let kind: string | undefined
   let kindMeta: Record<string, unknown> | undefined
-  if (m.iv === 'system:v1' && plaintext) {
+  if (isSystemStamped && plaintext) {
     try {
       const parsed = JSON.parse(plaintext) as Record<string, unknown>
       kind = typeof parsed.kind === 'string' ? parsed.kind : undefined
@@ -79,6 +84,7 @@ function apiRowToDecrypted(
     is_pinned: m.is_pinned ?? false,
     reactions: m.reactions ?? {},
     ...(kind !== undefined ? { kind, kindMeta } : {}),
+    ...(isSystemStamped ? { isSystemStamped: true } : {}),
   }
 }
 
@@ -136,6 +142,28 @@ async function decryptJobsOnMain(
  */
 const inFlightDrRows = new Map<string, Promise<string>>()
 
+/**
+ * Join an already-running decrypt for `key`, or start one and publish it for
+ * the duration.
+ *
+ * Exported so the concurrency property can be asserted directly: two
+ * SIMULTANEOUS `decryptApiMessageRow` calls each run a dynamic `import()` of
+ * the session manager, and under vitest one of them receives the UNMOCKED
+ * module — a test written that way parks until it times out instead of failing.
+ */
+export function shareInFlightDrDecrypt(
+  key: string,
+  start: () => Promise<string>
+): Promise<string> {
+  const shared = inFlightDrRows.get(key)
+  if (shared) return shared
+  const pending = start().finally(() => {
+    inFlightDrRows.delete(key)
+  })
+  inFlightDrRows.set(key, pending)
+  return pending
+}
+
 async function decryptRowPlaintext(
   unwrappedPrivateKey: CryptoKey,
   cryptoCtx: ChatCryptoContext,
@@ -181,15 +209,17 @@ async function decryptRowPlaintext(
     // exist, so the copy never decrypts on the user's other devices.
     const drPeerUserId =
       row.sender_id === drCtx.ownerUserId ? drCtx.ownerUserId : drCtx.peerUserId
-    const shared = inFlightDrRows.get(row.id)
-    if (shared) return shared
-    const pending = decryptFromPeer(drCtx.ownerUserId, drPeerUserId, drEnv).finally(
-      () => {
-        inFlightDrRows.delete(row.id)
-      }
+    // The id does NOT identify the envelope: PATCH /messages/:messageId
+    // re-encrypts an edited message under the SAME id. A /sync/pending response
+    // carrying the pre-edit slot can still be decrypting when `message_edited`
+    // fires its own fetch for the post-edit one, and keying on the id alone
+    // handed the edit handler the OLD plaintext — which it stored as the new
+    // text, with the new editedAt, and acked. Key on what is actually being
+    // decrypted; the envelope is already in hand.
+    return shareInFlightDrDecrypt(
+      `${row.id}|${row.device_iv ?? ''}|${c}`,
+      () => decryptFromPeer(drCtx.ownerUserId, drPeerUserId, drEnv)
     )
-    inFlightDrRows.set(row.id, pending)
-    return pending
   }
 
   // A v2 row we simply cannot route yet: the chat list hasn't resolved the peer
@@ -358,6 +388,18 @@ export async function decryptApiMessageRows(
     }
   })
   if (jobs.length === 0) {
+    // Every row becomes EMPTY here — not "[DECRYPT_FAIL]", empty. The bubbles
+    // render with no text at all, which reads as a UI glitch rather than a data
+    // problem, and is why a group chat could look like it had blank messages
+    // with nothing logged anywhere. THIS is where that lands: not one row in
+    // the batch carried a (content, iv) pair to decrypt.
+    if (rows.length > 0) {
+      console.warn('[dr] no decryptable content on any row — rows left blank', {
+        mode: cryptoCtx.mode,
+        chatId: cryptoCtx.mode === 'SECTOR' ? cryptoCtx.chatId : null,
+        rows: rows.length,
+      })
+    }
     return rows.map((m) => apiRowToDecrypted(m, ''))
   }
 
@@ -381,17 +423,14 @@ export async function decryptApiMessageRows(
     // to re-open rows the current key couldn't (post-rotation history).
     const ring = await getAesKeyRingForChat(unwrappedPrivateKey, cryptoCtx)
     if (!ring || ring.length === 0) {
-      // Every row becomes EMPTY here — not "[DECRYPT_FAIL]", empty. The bubbles
-      // render with no text at all, which reads as a UI glitch rather than a
-      // key problem and is the reason a group chat could look like it had
-      // blank messages with nothing logged anywhere.
-      if (rows.length > 0) {
-        console.warn('[dr] no key ring for chat — rows left blank', {
-          mode: cryptoCtx.mode,
-          chatId: cryptoCtx.chatId ?? null,
-          rows: rows.length,
-        })
-      }
+      // Type guard, not a diagnostic: SECTOR is the only mode that reaches here
+      // (DIRECT/SELF returned above, PUBLIC took the branch before this one),
+      // and its ring is `groupKeyRing ?? [groupKey]` — always at least the
+      // current epoch, because a sector with no readable key throws
+      // ERR_MISSING_SECTOR_KEY while the crypto context is still being built
+      // and never gets as far as decrypting rows. The blank-row warning that
+      // used to sit here could not fire; it lives on the `jobs.length === 0`
+      // return above, where rows genuinely come back empty.
       return rows.map((m) => apiRowToDecrypted(m, ''))
     }
     const aesKey = ring[0]

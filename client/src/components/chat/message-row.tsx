@@ -182,10 +182,12 @@ function MessageRowImpl({
       return parsed?.type === 'poll' && parsed?.poll_id ? parsed.poll_id : null
     } catch { return null }
   })()
-  // Parse the envelope from the PLAINTEXT (not just the stamped kind): rows
-  // replayed from the local cache carry no kind, and their raw JSON used to
-  // render as a chat bubble.
-  const systemEnvelope = parseSystemMessage(m.plaintext, m.kind)
+  // Pass the whole row, never the bare plaintext: the recognizer gates on the
+  // server-only `system:v1` provenance the row carries (and which survives a
+  // cache replay). Matching on the text's shape alone let a peer paint a
+  // "call ended" badge by typing the envelope into the composer — and hid the
+  // text of anyone who legitimately sent that JSON.
+  const systemEnvelope = parseSystemMessage(m)
   const missedCallMeta = systemEnvelope?.kind === 'call_missed' ? systemEnvelope : null
   const endedCallMeta = systemEnvelope?.kind === 'call_ended' ? systemEnvelope : null
   const isSwiping = swipeOffset > 0

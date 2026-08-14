@@ -321,6 +321,7 @@ export function useChatRealtime(
         // device delivery slots (content is null), so it is handled by the
         // pending-pull branch above.
         let plaintext = ''
+        let isSystemStamped = false
         let kind: string | undefined
         let kindMeta: Record<string, unknown> | undefined
         if (m.content != null && m.iv != null && m.content !== '') {
@@ -334,6 +335,11 @@ export function useChatRealtime(
             // legitimately delivered into DIRECT chats too.
             plaintext = m.content
             if (m.iv === 'system:v1') {
+              // Record the sentinel, not just what it decoded to: it is written
+              // by the server alone, and it is the only thing that separates a
+              // real call notice from a peer who typed the same JSON. The
+              // renderers refuse to draw a notice without it.
+              isSystemStamped = true
               try {
                 const parsed = JSON.parse(plaintext) as Record<string, unknown>
                 kind = typeof parsed.kind === 'string' ? parsed.kind : undefined
@@ -397,6 +403,7 @@ export function useChatRealtime(
           is_pinned: (m as { is_pinned?: boolean }).is_pinned ?? false,
           reactions: (m as { reactions?: Record<string, string[]> }).reactions ?? {},
           ...(kind !== undefined ? { kind, kindMeta } : {}),
+          ...(isSystemStamped ? { isSystemStamped: true } : {}),
         }
         await cacheMessage(row).catch(() => { /* best-effort */ })
         appendMessage(row)

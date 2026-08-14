@@ -718,6 +718,21 @@ export function ChatTerminal({
       const meta = await buildChatCryptoContextWithMeta(chatId, userId, privateKeyForForward)
       if (!meta) throw new Error('FORWARD_CTX_FAIL')
 
+      // A temp-chat guest is a text-only surface: the guest view renders `m.text`
+      // only, and the transport opens its guest v1 fan-out branch solely for
+      // callers that pass `peer_is_guest` — which only the composer's text send
+      // does. Forwarding here got the sanctioned v1 stub back from
+      // encryptOutboundTextV2 (empty content, no dr_slots) and then died in the
+      // transport's v2 guard with a raw DIRECT_V2_REQUIRED. The guest surface is
+      // deliberately narrow, so say that instead of failing with a protocol code.
+      if (meta.ctx.mode === 'DIRECT' && meta.ctx.peerIsGuest) {
+        toastError(
+          'This is a temporary guest chat — it only carries messages typed in it. Forwarding is not supported.',
+          { title: 'FORWARD' }
+        )
+        throw new Error('FORWARD_TO_GUEST_CHAT')
+      }
+
       // Forward was the last caller still using the v1 encryptOutboundText for
       // DIRECT/SELF. Because it never set protocol_version/dr_slots, the
       // transport's v2 guard failed and it silently took the v1 static-ECDH

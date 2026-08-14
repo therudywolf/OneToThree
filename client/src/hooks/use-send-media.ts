@@ -226,6 +226,38 @@ type SendContext = {
 }
 
 /**
+ * A temp-chat guest peer is a TEXT-ONLY surface.
+ *
+ * guest-allowed-routes.ts lets a guest POST /api/messages/send but neither
+ * /api/storage/upload-url nor /api/storage/download-url, and the guest chat
+ * view renders `m.text` and nothing else — so an attachment could not be
+ * fetched or shown on the other side even if it went out. It did not go out
+ * either: encryptOutboundTextV2 answers a guest DIRECT frame with the
+ * sanctioned v1 stub (empty content, no dr_slots), and the transport only
+ * takes its guest fan-out branch when the caller passes `peer_is_guest` —
+ * which only the text send does. Every photo/voice/video/file/GIF/sticker and
+ * every album therefore died on DIRECT_V2_REQUIRED *after* the encrypted bytes
+ * had already been PUT to MinIO, leaving the object orphaned.
+ *
+ * So refuse before the presign, and tell the host why instead of leaking a
+ * protocol code into the toast.
+ */
+export const GUEST_CHAT_TEXT_ONLY_CODE = 'SEND_GUEST_CHAT_TEXT_ONLY'
+
+/** True for a DIRECT chat whose peer the server marked as a temp-chat guest. */
+export function isTextOnlyGuestChat(ctx: ChatCryptoContext | null | undefined): boolean {
+  return ctx?.mode === 'DIRECT' && ctx.peerIsGuest === true
+}
+
+/** explainSendError + the media-only guest case (it has no text equivalent). */
+function explainMediaSendError(err: unknown): string {
+  if (err instanceof Error && err.message === GUEST_CHAT_TEXT_ONLY_CODE) {
+    return 'Temporary guest chats are text only — the guest cannot download attachments.'
+  }
+  return explainSendError(err)
+}
+
+/**
  * Raise a precise error when the caller is missing prerequisites.
  * Previously the hook returned silently, leaving the user with no feedback
  * after holding the record button — classic "voice / circles don't send" bug.
@@ -240,6 +272,9 @@ function requireSendContext(ctx: {
   if (!ctx.userId) throw new Error('SEND_NO_USER_ID')
   if (!ctx.unwrappedPrivateKey) throw new Error('SEND_VAULT_LOCKED')
   if (!ctx.cryptoCtx) throw new Error('SEND_CRYPTO_NOT_READY')
+  // Guest chats: bail here, i.e. before a single byte is encrypted, presigned
+  // or uploaded. See GUEST_CHAT_TEXT_ONLY_CODE.
+  if (isTextOnlyGuestChat(ctx.cryptoCtx)) throw new Error(GUEST_CHAT_TEXT_ONLY_CODE)
   return {
     activeChatId: ctx.activeChatId,
     userId: ctx.userId,
@@ -419,7 +454,7 @@ export function useSendMedia(
       try {
         ctx = requireSendContext({ activeChatId, userId, unwrappedPrivateKey, cryptoCtx })
       } catch (err) {
-        toastError(explainSendError(err), { title: 'SEND FAILED' })
+        toastError(explainMediaSendError(err), { title: 'SEND FAILED' })
         throw err
       }
 
@@ -537,7 +572,7 @@ export function useSendMedia(
         }
       } catch (err) {
         console.error('[SEND_MEDIA] failed', err)
-        toastError(explainSendError(err), { title: 'SEND FAILED' })
+        toastError(explainMediaSendError(err), { title: 'SEND FAILED' })
         throw err
       }
     },
@@ -558,7 +593,7 @@ export function useSendMedia(
       try {
         ctx = requireSendContext({ activeChatId, userId, unwrappedPrivateKey, cryptoCtx })
       } catch (err) {
-        toastError(explainSendError(err), { title: 'SEND FAILED' })
+        toastError(explainMediaSendError(err), { title: 'SEND FAILED' })
         throw err
       }
 
@@ -703,7 +738,7 @@ export function useSendMedia(
         }
       } catch (err) {
         console.error('[SEND_ALBUM] failed', err)
-        toastError(explainSendError(err), { title: 'SEND FAILED' })
+        toastError(explainMediaSendError(err), { title: 'SEND FAILED' })
         throw err
       }
     },

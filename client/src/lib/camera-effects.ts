@@ -133,6 +133,121 @@ async function dataUrlToBitmap(dataUrl: string | null | undefined): Promise<Imag
 }
 
 /**
+ * The 'effect' message the worker expects.
+ *
+ * `clearImage` exists because a missing bitmap is AMBIGUOUS: the main thread
+ * deliberately omits it when only the kind changes (so image → blur → image
+ * costs no re-transfer of a ~350KB photo), but it is also what "the user
+ * removed the background" produces. The worker read both as "keep", so the
+ * remove-image button in settings updated the local viewfinder while every peer
+ * kept seeing the photo — and switching blur → image resurrected an image the
+ * user had already deleted. Mirrors the DOM path, which clears exactly when
+ * kind is 'image' and no data URL came with it.
+ */
+export type CameraEffectWorkerMessage = {
+  type: 'effect'
+  id: number
+  seq: number
+  kind: CameraEffectKind
+  imageBitmap: ImageBitmap | null
+  clearImage: boolean
+}
+
+export function buildEffectMessage(
+  id: number,
+  seq: number,
+  kind: CameraEffectKind,
+  imageDataUrl: string | null | undefined,
+  bitmap: ImageBitmap | null
+): CameraEffectWorkerMessage {
+  return {
+    type: 'effect',
+    id,
+    seq,
+    kind,
+    imageBitmap: bitmap,
+    // A decode failure is NOT a removal — keep whatever is on screen, exactly
+    // as the DOM path does when img.onload never fires.
+    clearImage: kind === 'image' && !imageDataUrl,
+  }
+}
+
+/**
+ * ONE worker for the whole session (see the worker's header): it owns the
+ * shared segmenter, so a camera off→on, a device switch or opening the settings
+ * viewfinder no longer re-pays the ~300ms/~20MB model load.
+ */
+let effectsWorker: Worker | null = null
+let effectsWorkerReady: Promise<Worker | null> | null = null
+let nextPipelineId = 1
+
+/** How long the worker gets to prove it loaded before we fall back. */
+const WORKER_READY_TIMEOUT_MS = 2000
+
+/**
+ * Resolve the shared worker only once it has ACKed — `new Worker()` succeeding
+ * proves nothing. A rotated chunk hash under a service-worker-cached page, a
+ * MIME error or a parse failure all fail asynchronously, and the old code
+ * happily published a MediaStreamTrackGenerator into whose writable nothing was
+ * ever written: a permanently black tile, unrecoverable because the streams had
+ * already been transferred. Resolves null instead, and the caller falls through
+ * to the DOM path (or, in that same deploy race, to the raw track — unblurred
+ * beats black).
+ */
+function ensureEffectsWorker(): Promise<Worker | null> {
+  if (effectsWorkerReady) return effectsWorkerReady
+  effectsWorkerReady = new Promise<Worker | null>((resolve) => {
+    let worker: Worker
+    try {
+      worker = new Worker(new URL('./camera-effects.worker.ts', import.meta.url))
+    } catch (err) {
+      console.warn('[cam-fx] worker unavailable — DOM fallback', err)
+      resolve(null)
+      return
+    }
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const forget = () => {
+      // Never clobber a worker that replaced this one — a late error event from
+      // a corpse must not send the live one to the DOM path.
+      if (effectsWorker && effectsWorker !== worker) return
+      effectsWorker = null
+      effectsWorkerReady = null
+    }
+    const onReady = (e: MessageEvent) => {
+      if ((e.data as { type?: string } | null)?.type !== 'ready') return
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      worker.removeEventListener('message', onReady)
+      effectsWorker = worker
+      resolve(worker)
+    }
+    const onFail = (why: unknown) => {
+      if (settled) {
+        // Died later: drop it so the next camera-on builds a fresh one. Chains
+        // already running are lost with it — their streams were transferred.
+        console.warn('[cam-fx] effects worker died', why)
+        forget()
+        return
+      }
+      console.warn('[cam-fx] effects worker failed to load — DOM fallback', why)
+      settled = true
+      clearTimeout(timer)
+      worker.removeEventListener('message', onReady)
+      try { worker.terminate() } catch { /* gone */ }
+      forget()
+      resolve(null)
+    }
+    timer = setTimeout(() => onFail('no ready ack'), WORKER_READY_TIMEOUT_MS)
+    worker.addEventListener('message', onReady)
+    worker.addEventListener('error', onFail)
+    worker.addEventListener('messageerror', onFail)
+  })
+  return effectsWorkerReady
+}
+
+/**
  * Worker/OffscreenCanvas pipeline (Chromium): camera frames are processed
  * entirely OFF the main thread — segmentation, compositing and frame output
  * all live in camera-effects.worker.ts. Because the loop is driven by the
@@ -143,14 +258,22 @@ async function createWorkerEffectedTrack(
   rawTrack: MediaStreamTrack,
   initial: { kind: CameraEffectKind; imageDataUrl?: string | null; blurPx?: number }
 ): Promise<CameraEffectsHandle | null> {
+  const worker = await ensureEffectsWorker()
+  if (!worker) return null
   try {
-    const worker = new Worker(new URL('./camera-effects.worker.ts', import.meta.url))
-    const processor = new MediaStreamTrackProcessor({ track: rawTrack })
-    const generator = new MediaStreamTrackGenerator({ kind: 'video' })
     const settings = rawTrack.getSettings()
     const width = settings.width && settings.width > 0 ? settings.width : 1280
     const height = settings.height && settings.height > 0 ? settings.height : 720
     const bmp = initial.kind === 'image' ? await dataUrlToBitmap(initial.imageDataUrl) : null
+    // Everything that can fail is done BEFORE the processor exists: once the
+    // readable is transferred the raw track is encumbered for good.
+    if (rawTrack.readyState !== 'live') {
+      bmp?.close()
+      return null
+    }
+    const processor = new MediaStreamTrackProcessor({ track: rawTrack })
+    const generator = new MediaStreamTrackGenerator({ kind: 'video' })
+    const id = nextPipelineId++
     const transfers: Transferable[] = [
       processor.readable as unknown as Transferable,
       generator.writable as unknown as Transferable,
@@ -159,6 +282,7 @@ async function createWorkerEffectedTrack(
     worker.postMessage(
       {
         type: 'init',
+        id,
         readable: processor.readable,
         writable: generator.writable,
         width,
@@ -173,32 +297,47 @@ async function createWorkerEffectedTrack(
     try { processed.contentHint = 'motion' } catch { /* optional */ }
 
     let disposed = false
+    // Minted synchronously in setEffect: the 'image' branch awaits a decode
+    // while every other kind posts inside the click handler, so two taps 50ms
+    // apart used to land reversed and the peer kept the picture forever.
+    let effectSeq = 0
     const handle: CameraEffectsHandle = {
       processedTrack: processed,
       rawTrack,
       setEffect: (kind, imageDataUrl) => {
+        const seq = ++effectSeq
         void (async () => {
           const bmp2 = kind === 'image' ? await dataUrlToBitmap(imageDataUrl) : null
+          if (disposed) {
+            bmp2?.close()
+            return
+          }
           try {
-            worker.postMessage({ type: 'effect', kind, imageBitmap: bmp2 }, bmp2 ? [bmp2] : [])
-          } catch { /* worker gone */ }
+            worker.postMessage(
+              buildEffectMessage(id, seq, kind, imageDataUrl, bmp2),
+              bmp2 ? [bmp2] : []
+            )
+          } catch {
+            bmp2?.close()
+          }
         })()
       },
       setBlurStrength: (px) => {
         try {
-          worker.postMessage({ type: 'blur', px: clampBlur(px) })
+          worker.postMessage({ type: 'blur', id, px: clampBlur(px) })
         } catch { /* worker gone */ }
       },
       dispose: () => {
         if (disposed) return
         disposed = true
         activeHandles.delete(handle)
-        try { worker.postMessage({ type: 'close' }) } catch { /* gone */ }
+        // Only THIS pipeline goes away; the worker (and its warm segmenter)
+        // outlives every chain for the rest of the session.
+        try { worker.postMessage({ type: 'close', id }) } catch { /* gone */ }
         // Stopping the raw track ends the processor stream → the worker's pump
-        // exits and the worker self-closes; terminate() is the backstop.
+        // for this id exits and releases its canvases.
         try { processed.stop() } catch { /* stopped */ }
         try { rawTrack.stop() } catch { /* stopped */ }
-        setTimeout(() => { try { worker.terminate() } catch { /* gone */ } }, 250)
       },
     }
     activeHandles.add(handle)
@@ -400,9 +539,20 @@ export async function createEffectedCameraTrack(
 /**
  * Preload the segmenter (wasm + model fetch + delegate init) so the first
  * camera-on with an effect doesn't stall for seconds. Fire-and-forget; safe to
- * call repeatedly (the pool memoizes).
+ * call repeatedly (both pools memoize).
+ *
+ * Warms the pool the browser will ACTUALLY use: on Chromium every frame goes
+ * through the worker, which never consults the main-thread segmenter — warming
+ * that one allocated ~20MB of MediaPipe nobody would ever read, while the
+ * worker still paid the load in full on the first camera-on.
  */
 export function warmupCameraEffects(): void {
+  if (insertableStreamsSupported()) {
+    void ensureEffectsWorker().then((worker) => {
+      try { worker?.postMessage({ type: 'warmup' }) } catch { /* gone */ }
+    })
+    return
+  }
   void getSegmenter()
 }
 

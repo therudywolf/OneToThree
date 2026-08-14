@@ -3,7 +3,7 @@
 
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
-import type { FastifyPluginAsync } from 'fastify'
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, chats, devices, messageDeliveries, messageReactions, messages, users } from '../db/schema.js'
@@ -72,6 +72,73 @@ const sendMessageBodySchema = z.object({
   { message: 'DR_HEADER_REQUIRED_FOR_V2', path: ['dr_header'] }
 )
 
+/**
+ * `iv` doubles as a provenance marker on the message row: the rows the SERVER
+ * writes for itself carry a reserved sentinel where a real nonce would be —
+ * `system:v1` for the join/leave/rename/tombstone rows written from ws.ts,
+ * users.ts and admin-purge-user.ts, `poll:v1` for the poll payloads polls.ts
+ * writes. Clients key on that value to render the row as trusted, unencrypted
+ * system text, so a client that simply puts `iv: 'system:v1'` on its own
+ * message forges one — "X покинул чат" in the sender's own words. Nothing
+ * legitimate ever sends these, so refuse them by name rather than letting them
+ * through to persist. (The client-side half is a provenance flag on the row;
+ * this is the door.)
+ */
+const RESERVED_IV_SENTINELS: ReadonlySet<string> = new Set(['system:v1', 'poll:v1'])
+
+function usesReservedIvSentinel(iv: string | null | undefined): boolean {
+  return typeof iv === 'string' && RESERVED_IV_SENTINELS.has(iv.trim())
+}
+
+/** Flat per-minute send budget for everyone who is not a temp-chat guest. */
+const SEND_PER_MINUTE = 30
+const GUEST_MSG_PER_MINUTE_DEFAULT = 20
+
+/**
+ * `GUEST_MSG_PER_MINUTE` is the documented guest anti-flood tunable
+ * (DEPLOY.md, docs/project/GUEST_MODE_CONCEPT.ru.md) and until now no code read
+ * it: the only cap on a guest was this route's flat 30/min, so an operator who
+ * tightened it to 5 got a silent no-op.
+ *
+ * A bad value must not be honoured. @fastify/rate-limit compares `current > max`,
+ * so a NaN max (`Number('five')`) is never exceeded — i.e. garbage in the env
+ * would REMOVE the limiter it was set to tighten — and a negative one rejects
+ * every request. Both fall back to the documented default, loudly.
+ */
+export function guestMsgPerMinute(log?: { warn: (obj: object, msg: string) => void }): number {
+  const raw = process.env.GUEST_MSG_PER_MINUTE?.trim()
+  if (!raw) return GUEST_MSG_PER_MINUTE_DEFAULT
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    log?.warn(
+      { GUEST_MSG_PER_MINUTE: raw },
+      `GUEST_MSG_PER_MINUTE must be a positive integer; falling back to ${GUEST_MSG_PER_MINUTE_DEFAULT}/min`
+    )
+    return GUEST_MSG_PER_MINUTE_DEFAULT
+  }
+  return parsed
+}
+
+/**
+ * Per-request `max` for POST /send. The tier comes from the VERIFIED session's
+ * `grp` claim — the same claim the deny-by-default guest gate in app.ts keys on
+ * and the same memoized `sessionJwt()` the global keyGenerator already paid
+ * for, so this costs no extra verify and no DB round-trip inside the limiter.
+ * A forged claim can only lower the forger's own budget.
+ */
+export async function sendRateLimitMax(request: FastifyRequest): Promise<number> {
+  // `grp` is a guest-only claim and is not part of SessionJwtPayload; app.ts's
+  // guest gate reads it off the raw claims the same way.
+  let session: { grp?: string } | null = null
+  try {
+    session = (await request.sessionJwt()) as ({ grp?: string } | null)
+  } catch {
+    /* unauthenticated / unverifiable — the handler 401s, keep the normal budget */
+  }
+  if (session?.grp !== 'guest') return SEND_PER_MINUTE
+  return guestMsgPerMinute(request.log)
+}
+
 const deliveredAckSchema = z.object({
   message_ids: z.array(z.string().uuid()).min(1).max(200),
 })
@@ -106,7 +173,7 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     // base64-encoded for PUBLIC chats. DIRECT/group fan-out ciphertext
     // arrays stay well below this.
     bodyLimit: 2 * 1024 * 1024,
-    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    config: { rateLimit: { max: sendRateLimitMax, timeWindow: '1 minute' } },
   }, async (request, reply) => {
     const user = await getAuthUser(request, reply)
     if (!assertAuthed(reply, user)) return
@@ -118,6 +185,10 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'INVALID_BODY' })
     }
     const p = parsed.data
+
+    if (usesReservedIvSentinel(p.iv)) {
+      return reply.status(400).send({ error: 'RESERVED_IV_SENTINEL' })
+    }
 
     const memberOk = await db
       .select({ channelRole: chatMembers.channelRole })
@@ -941,6 +1012,13 @@ export const messagesRoutes: FastifyPluginAsync = async (app) => {
     const parsed = editMessageBodySchema.safeParse(request.body ?? {})
     if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY', details: parsed.error })
     const body = parsed.data
+
+    // An edit writes `iv` onto the row just like a send does, so the same
+    // sentinel door has to be shut here — otherwise the forgery is a two-step:
+    // send an ordinary message, then edit it into a system row.
+    if (usesReservedIvSentinel(body.iv)) {
+      return reply.status(400).send({ error: 'RESERVED_IV_SENTINEL' })
+    }
 
     // Load message + verify sender
     const [msg] = await db

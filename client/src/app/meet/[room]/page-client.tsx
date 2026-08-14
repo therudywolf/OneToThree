@@ -4,163 +4,41 @@
 // Copyright (C) 2026 therudywolf
 
 /**
- * Host view of a standalone guest meeting room.
+ * `/meet/<room>` — the HOST's entry into a standalone guest meeting.
  *
- * The room is a bare LiveKit room (not a chat), so the token comes from the
- * normal POST /api/call/token — the server authorizes the creator of a live
- * guest link for that room. The room screen itself is the SAME component the
- * guest sees after approval; here it additionally gets the kick control.
+ * It used to render the guest room stage, which is the wrong way round: the
+ * stripped screen exists because a GUEST has no app to run — the host does, and
+ * expects the ordinary call UI (device settings, screen share, participants,
+ * mini player, layout). So this route no longer renders a meeting at all; it
+ * hands the room to the app shell, which joins it exactly like a chat call.
  *
- * The knock overlay is mounted too: knocks arrive over the app WS, and the host
- * is most likely to be sitting on this very screen when a guest arrives.
+ * The route stays because links to it are already out there (the links list,
+ * bookmarks, the address bar after "Быстрая встреча").
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createCallToken } from '@/lib/api/call'
-import { kickGuestFromCall } from '@/lib/api/guest'
-import {
-  CenterCard,
-  LiveKitRoomStage,
-  Spinner,
-  type LiveKitGrant,
-} from '@/components/guest/livekit-room-stage'
-import { GuestKnockOverlay } from '@/components/guest/guest-knock-overlay'
+import { CenterCard, Spinner } from '@/components/guest/livekit-room-stage'
 import { useTranslation } from '@/hooks/use-translation'
 
-type Stage =
-  | { kind: 'loading' }
-  | { kind: 'in-call'; grant: LiveKitGrant }
-  | { kind: 'ended' }
-  | { kind: 'error'; message: string }
-
 export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
-  const { t } = useTranslation()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { t } = useTranslation()
   // Static export ships only /meet/_ — accept ?room= there.
   const room =
     routeRoom && routeRoom !== '_' ? routeRoom : (searchParams.get('room') ?? '')
 
-  const [stage, setStage] = useState<Stage>({ kind: 'loading' })
-  /** Bumped to re-enter the same room after leaving (the room id never changes). */
-  const [joinNonce, setJoinNonce] = useState(0)
-  // Read through a ref: `t` changes identity on a locale switch, and this effect
-  // mints the LiveKit grant — re-running it would redial the room just because
-  // someone flipped the language.
-  const tRef = useRef(t)
-  tRef.current = t
-
   useEffect(() => {
-    if (!room) {
-      setStage({ kind: 'error', message: tRef.current('meet.noRoom') })
-      return
-    }
-    let alive = true
-    void (async () => {
-      try {
-        const grant = await createCallToken(room)
-        if (!alive) return
-        setStage({
-          kind: 'in-call',
-          grant: {
-            url: grant.url,
-            token: grant.token,
-            e2eeKey: grant.call_e2ee_key,
-          },
-        })
-      } catch (err) {
-        if (!alive) return
-        const code = err instanceof Error ? err.message : ''
-        setStage({
-          kind: 'error',
-          message:
-            code === 'NOT_A_MEMBER'
-              ? tRef.current('meet.notYours')
-              : code === 'LIVEKIT_NOT_CONFIGURED' || code === 'LIVEKIT_SECRET_TOO_SHORT'
-                ? tRef.current('meet.callsOff')
-                : tRef.current('meet.openFailed'),
-        })
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [room, joinNonce])
-
-  const kick = useCallback(
-    async (identity: string) => {
-      await kickGuestFromCall(room, identity)
-    },
-    [room]
-  )
-
-  if (stage.kind === 'loading') {
-    return (
-      <CenterCard>
-        <div className="flex flex-col items-center gap-4 py-4">
-          <Spinner />
-          <p className="text-sm text-text-muted">{t('meet.opening')}</p>
-        </div>
-      </CenterCard>
-    )
-  }
-
-  if (stage.kind === 'error') {
-    return (
-      <CenterCard>
-        <h1 className="text-lg font-semibold">{t('meet.unavailable')}</h1>
-        <p className="mt-2 text-sm text-text-muted">{stage.message}</p>
-        <button
-          type="button"
-          onClick={() => router.push('/')}
-          className="mt-4 w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90"
-        >
-          {t('meet.toChats')}
-        </button>
-      </CenterCard>
-    )
-  }
-
-  if (stage.kind === 'ended') {
-    return (
-      <CenterCard>
-        <h1 className="text-lg font-semibold">{t('meet.leftTitle')}</h1>
-        <p className="mt-2 text-sm text-text-muted">{t('meet.leftBody')}</p>
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setStage({ kind: 'loading' })
-              setJoinNonce((n) => n + 1)
-            }}
-            className="flex-1 rounded-lg border border-border-strong px-4 py-2 text-sm text-text-primary transition hover:bg-surface-elevated"
-          >
-            {t('meet.rejoin')}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push('/')}
-            className="flex-1 rounded-lg bg-on-surface px-4 py-2 text-sm font-medium text-void transition hover:opacity-90"
-          >
-            {t('meet.toChats')}
-          </button>
-        </div>
-      </CenterCard>
-    )
-  }
+    router.replace(room ? `/?meet=${encodeURIComponent(room)}` : '/')
+  }, [room, router])
 
   return (
-    <>
-      <LiveKitRoomStage
-        grant={stage.grant}
-        title={t('meet.instantTitle')}
-        onKickGuest={kick}
-        onEnded={() => setStage({ kind: 'ended' })}
-        onError={(message) => setStage({ kind: 'error', message })}
-      />
-      {/* Approve knocks without leaving the meeting. */}
-      <GuestKnockOverlay />
-    </>
+    <CenterCard>
+      <div className="flex flex-col items-center gap-4 py-4">
+        <Spinner />
+        <p className="text-sm text-text-muted">{t('guest.openingMeeting')}</p>
+      </div>
+    </CenterCard>
   )
 }

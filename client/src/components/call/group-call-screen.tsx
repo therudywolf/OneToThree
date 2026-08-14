@@ -20,6 +20,7 @@ import {
   Focus,
   Volume2,
   VolumeX,
+  Link2,
 } from 'lucide-react'
 import { isAndroidMobile } from '@/lib/android'
 import { isIOSOrIPadOS } from '@/lib/ios'
@@ -34,10 +35,11 @@ import { loadMediaPrefs } from '@/lib/media-devices'
 import { warmupCameraEffects } from '@/lib/camera-effects'
 import { useGroupCallStore } from '@/store/groupCallStore'
 import { useCallStore } from '@/store/callStore'
-import { toastError } from '@/store/toastStore'
+import { toastError, toastSuccess } from '@/store/toastStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { PortalRoot } from '@/components/portal-root'
 import { useTranslation } from '@/hooks/use-translation'
+import { useCapabilities } from '@/components/capabilities-provider'
 import { CallTile } from '@/components/call/call-tile'
 import { CallDebugPanel } from '@/components/call/call-debug-panel'
 import { CallParticipantsPanel, type ParticipantRow } from '@/components/call/call-participants-panel'
@@ -79,6 +81,7 @@ export function GroupCallScreen({
   onToggleScreenShare,
 }: Props) {
   const { t } = useTranslation()
+  const capabilities = useCapabilities()
   const localStream = useGroupCallStore((s) => s.localStream)
   const localScreenStream = useGroupCallStore((s) => s.localScreenStream)
   const remoteStreams = useGroupCallStore((s) => s.remoteStreams)
@@ -187,6 +190,40 @@ export function GroupCallScreen({
   const remoteEntries = useMemo(() => Object.entries(remoteStreams), [remoteStreams])
   // '#screen' entries are LiveKit screen-share streams — extra TILES, not people.
   const totalCount = 1 + remoteEntries.filter(([id]) => !id.endsWith('#screen')).length
+
+  /**
+   * Copy this meeting's guest link — from INSIDE the meeting.
+   *
+   * "Быстрая встреча" drops the host straight into the room, at which point the
+   * link they are supposed to hand out lived only in the links modal behind the
+   * call overlay. Reuses a live link for this room when there is one (so the
+   * seat counter keeps counting the same link) and mints one otherwise, which
+   * doubles as "invite a guest" for an ordinary chat call.
+   */
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const handleCopyGuestLink = useCallback(async () => {
+    if (!roomId || inviteBusy) return
+    setInviteBusy(true)
+    try {
+      const { listGuestInvites, createGuestInvite, guestInviteUrl } = await import(
+        '@/lib/api/guest'
+      )
+      const live = await listGuestInvites()
+      const existing = live.find(
+        (i) => i.purpose === 'call' && !i.exhausted && (i.room_id === roomId || i.chat_id === roomId)
+      )
+      // No live link yet ⇒ this room is a CHAT (a standalone meeting room only
+      // exists because a link created it, so it always has one), and a
+      // chat-bound link is what an ordinary call wants anyway.
+      const invite = existing ?? (await createGuestInvite({ purpose: 'call', chatId: roomId }))
+      await navigator.clipboard.writeText(guestInviteUrl(invite))
+      toastSuccess(t('guest.linkCopied'))
+    } catch {
+      toastError(t('guest.linkCopyFailed'))
+    } finally {
+      setInviteBusy(false)
+    }
+  }, [roomId, inviteBusy, t])
 
   /**
    * Remove a link-invited guest from the room. Authorization is the server's
@@ -596,6 +633,19 @@ export function GroupCallScreen({
               </span>
             </div>
           </button>
+
+          {/* Guest link — the thing you came to hand out */}
+          {capabilities.guests ? (
+            <button
+              onClick={() => void handleCopyGuestLink()}
+              disabled={inviteBusy}
+              className="flex h-12 w-12 items-center justify-center border-r border-border-strong text-text-muted transition-colors hover:bg-surface/5 hover:text-text-primary disabled:opacity-50 md:w-14"
+              title={t('guest.copyMeetingLink')}
+              aria-label={t('guest.copyMeetingLink')}
+            >
+              <Link2 className="h-4 w-4" />
+            </button>
+          ) : null}
 
           {/* Debug */}
           <button

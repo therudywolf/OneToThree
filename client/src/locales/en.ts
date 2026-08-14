@@ -1347,6 +1347,12 @@ const en = {
   'meet.previewBlocked': 'No access to the camera or microphone. Allow it in your browser — you can join without them.',
   'meet.previewToggleCamOn': 'Turn the preview camera on',
   'meet.previewToggleCamOff': 'Turn the preview camera off',
+
+  'guest.copyMeetingLink': 'Copy the guest link for this meeting',
+  'guest.linkCopied': 'Guest link copied',
+  'guest.linkCopyFailed': 'Could not prepare the guest link',
+  'guest.meetJoinFailed': 'Could not open the meeting',
+  'guest.openingMeeting': 'Opening the meeting…',
 } as const;
 
 export default en;

@@ -157,7 +157,10 @@ export async function createGuestInvite(params: {
 export function meetingHref(invite: GuestInvite): string | null {
   if (invite.purpose !== 'call') return null
   if (invite.chat_id) return `/?chat=${encodeURIComponent(invite.chat_id)}`
-  if (invite.room_id) return `/meet/${encodeURIComponent(invite.room_id)}`
+  // Both land in the app shell with its ordinary call UI — the stripped-down
+  // room screen is the GUEST's, who has no app to run. `/meet/<room>` still
+  // works (it redirects here) for links already handed out.
+  if (invite.room_id) return `/?meet=${encodeURIComponent(invite.room_id)}`
   return null
 }
 

@@ -534,6 +534,31 @@ export function ChatApp({
     if (chat) setActiveChatId(chat)
   }, [searchParams, setActiveChatId])
 
+  /**
+   * `?meet=<roomId>` — the HOST entering a standalone guest meeting.
+   *
+   * The host gets the app's ORDINARY call screen (devices, screen share,
+   * participants, mini player…); the stripped-down room stage is for guests,
+   * who have no app to run it in. Joining is exactly the chat call path — the
+   * room id simply is not a chat id, which only the server has to care about.
+   */
+  const meetJoinedRef = useRef<string | null>(null)
+  useEffect(() => {
+    const room = searchParams.get('meet')
+    if (!room || meetJoinedRef.current === room) return
+    meetJoinedRef.current = room
+    // Drop the param first: a refresh mid-call should not re-join, and the URL
+    // is a share-looking thing that is NOT the guest link.
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('meet')
+      window.history.replaceState(null, '', url.toString())
+    }
+    void startGroupCall(room, false).catch(() => {
+      toastError(t('guest.meetJoinFailed'))
+    })
+  }, [searchParams, startGroupCall, t])
+
   useEffect(() => {
     if (activeChatId) {
       // Chat opened — hide mobile overlay
@@ -1519,6 +1544,16 @@ export function ChatApp({
                             ? peerIdentity.displayName
                             : isMd3 ? peerIdentity.username : `@${peerIdentity.username}`}
                         </span>
+                        {/* A temporary chat has to say so on the DESKTOP header
+                            too — this is where most people actually read it. */}
+                        {peerIdentity.isGuest ? (
+                          <span
+                            className="shrink-0 rounded bg-warning/20 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-warning"
+                            title={t('guest.peerHint')}
+                          >
+                            {t('guest.badge')}
+                          </span>
+                        ) : null}
                       </span>
                       {peerPresenceRow ? (
                         <span className={`truncate text-[12px] ${isMd3 ? 'text-text-muted' : 'font-mono text-[11px] text-text-muted/70'}`}>
@@ -1559,6 +1594,20 @@ export function ChatApp({
 
               {/* Right: search + identity + calls */}
               <div className="flex shrink-0 items-center gap-1 max-[1180px]:gap-0.5">
+                {/* End a temporary guest chat. The guest can always destroy
+                    their own session; without this the host who handed out the
+                    link could only wait out the TTL. */}
+                {peerIdentity?.isGuest ? (
+                  <button
+                    type="button"
+                    onClick={() => void endTempGuestChat()}
+                    className="p13-icon-btn text-text-muted hover:text-neon-red"
+                    title={t('guest.endChat')}
+                    aria-label={t('guest.endChat')}
+                  >
+                    <UserMinus className="h-4 w-4" strokeWidth={1.5} />
+                  </button>
+                ) : null}
                 {isMd3 ? (
                   <button
                     type="button"

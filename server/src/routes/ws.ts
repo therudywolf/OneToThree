@@ -1,11 +1,11 @@
-import { and, eq, inArray, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { randomUUID } from 'node:crypto'
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import type { WebSocket } from 'ws'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { persistChatMessageAndFanOut } from '../lib/chat-message-persist.js'
-import { callSessions, chatMembers, messageReactions, messages, userBlocks, users } from '../db/schema.js'
+import { callSessions, chatMembers, guestInvites, messageReactions, messages, userBlocks, users } from '../db/schema.js'
 import {
   getAuthUser,
   isUserDeviceSessionValid,
@@ -489,6 +489,35 @@ async function isMemberOfChat(chatId: string, userId: string): Promise<boolean> 
     .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, userId)))
     .limit(1)
   return member.length > 0
+}
+
+/**
+ * May this user be PRESENT in this group-call room?
+ *
+ * Normally "room" is a chat id and membership is the answer. A standalone
+ * meeting room ("Быстрая встреча") is deliberately not a chat, so its creator
+ * is not a member of anything — they own a live guest link pointing at the
+ * room instead. Without this the host joined the SFU fine and then got a bare
+ * NOT_A_MEMBER back from the presence step, so their own meeting never showed
+ * a participant list and never announced them to anyone.
+ *
+ * Guests never reach this path at all: they hold only a LiveKit token and have
+ * no app session, hence no WebSocket.
+ */
+async function canBePresentInRoom(roomId: string, userId: string): Promise<boolean> {
+  if (await isMemberOfChat(roomId, userId)) return true
+  const [ownRoom] = await db
+    .select({ id: guestInvites.id })
+    .from(guestInvites)
+    .where(
+      and(
+        eq(guestInvites.roomId, roomId),
+        eq(guestInvites.createdBy, userId),
+        isNull(guestInvites.revokedAt)
+      )
+    )
+    .limit(1)
+  return Boolean(ownRoom)
 }
 
 /** Returns all member ids of a chat for secure fan-out routing. */
@@ -1211,7 +1240,7 @@ export const wsRoutes: FastifyPluginAsync = async (app) => {
         const gcJoin = groupCallJoinSchema.safeParse(json)
         if (gcJoin.success) {
           const { room_id } = gcJoin.data
-          if (!(await isMemberOfChat(room_id, user.id))) {
+          if (!(await canBePresentInRoom(room_id, user.id))) {
             safeSend(ws, JSON.stringify({ type: 'error', error: 'NOT_A_MEMBER' }))
             return
           }

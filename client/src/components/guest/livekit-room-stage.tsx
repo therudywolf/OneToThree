@@ -90,9 +90,9 @@ export function CenterCard({
   wide?: boolean
 }) {
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-neutral-950 px-4 py-6 text-neutral-100">
+    <div className="flex min-h-dvh items-center justify-center bg-void px-4 py-6 text-text-primary">
       <div
-        className={`w-full rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-xl ${
+        className={`w-full rounded-2xl border border-border-strong bg-surface-elevated p-6 shadow-xl ${
           wide ? 'max-w-md' : 'max-w-sm'
         }`}
       >
@@ -106,7 +106,7 @@ export function Spinner() {
   const { t } = useTranslation()
   return (
     <div
-      className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-100"
+      className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-neon-cyan"
       aria-label={t('common.loading')}
     />
   )
@@ -218,8 +218,8 @@ function ParticipantTile({
 
   return (
     <div
-      className={`relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border bg-neutral-900 ${
-        participant.isSpeaking ? 'border-emerald-500' : 'border-neutral-800'
+      className={`relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border bg-surface-elevated ${
+        participant.isSpeaking ? 'border-success' : 'border-border-strong'
       }`}
     >
       {videoTrack ? (
@@ -230,22 +230,22 @@ function ParticipantTile({
           className="h-full w-full object-contain"
         />
       ) : (
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-800 text-2xl font-semibold text-neutral-300">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-2xl font-semibold text-text-primary">
           {name.slice(0, 1).toUpperCase()}
         </div>
       )}
       {audioTracks.map(({ sid, track }) => (
         <AudioSink key={sid} track={track} />
       ))}
-      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-neutral-950/70 px-2 py-1 text-xs">
+      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-void/70 px-2 py-1 text-xs">
         <span className="max-w-[10rem] truncate">{name}</span>
         {guest ? (
-          <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+          <span className="rounded bg-neon-amber/20 px-1.5 py-0.5 text-[10px] font-medium text-neon-amber">
             {t('guest.badge')}
           </span>
         ) : null}
         {micOff ? (
-          <span className="text-neutral-400">
+          <span className="text-text-muted">
             <MicIcon off />
           </span>
         ) : null}
@@ -255,7 +255,7 @@ function ParticipantTile({
           type="button"
           onClick={() => onKick(participant.identity, name)}
           title={t('meet.kickGuestTitle').replace('{name}', name)}
-          className="absolute right-2 top-2 rounded-md bg-neutral-950/70 px-2 py-1 text-xs text-neutral-300 transition hover:bg-red-600 hover:text-white"
+          className="absolute right-2 top-2 rounded-md bg-void/70 px-2 py-1 text-xs text-text-primary transition hover:bg-neon-red hover:text-text-primary"
         >
           {t('meet.kickGuestAction')}
         </button>
@@ -696,7 +696,7 @@ export function LiveKitRoomStage({
       <CenterCard>
         <div className="flex flex-col items-center gap-4 py-4">
           <Spinner />
-          <p className="text-sm text-neutral-400">{t('meet.connecting')}</p>
+          <p className="text-sm text-text-muted">{t('meet.connecting')}</p>
         </div>
       </CenterCard>
     )
@@ -709,13 +709,13 @@ export function LiveKitRoomStage({
   const participantCount = remotes.length + 1
 
   return (
-    <div className="flex h-dvh flex-col bg-neutral-950 text-neutral-100">
-      <header className="flex items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+    <div className="flex h-dvh flex-col bg-void text-text-primary">
+      <header className="flex items-center justify-between gap-3 border-b border-border-strong px-4 py-3">
         <h1 className="truncate text-sm font-semibold">{title}</h1>
-        <div className="flex shrink-0 items-center gap-2 text-xs text-neutral-400">
+        <div className="flex shrink-0 items-center gap-2 text-xs text-text-muted">
           {e2eeActive ? (
             <span
-              className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300"
+              className="rounded bg-success/15 px-1.5 py-0.5 text-success"
               title={t('meet.encryptedHint')}
             >
               {t('meet.encrypted')}
@@ -727,7 +727,7 @@ export function LiveKitRoomStage({
 
       <main className="min-h-0 flex-1 overflow-y-auto p-3">
         {remotes.length === 0 ? (
-          <div className="flex h-full min-h-[10rem] items-center justify-center text-sm text-neutral-500">
+          <div className="flex h-full min-h-[10rem] items-center justify-center text-sm text-text-muted">
             {t('meet.aloneHere')}
           </div>
         ) : null}
@@ -744,7 +744,7 @@ export function LiveKitRoomStage({
             />
           ))}
           {/* Local tile: preview when the camera is on, avatar otherwise. */}
-          <div className="relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900">
+          <div className="relative flex min-h-[10rem] items-center justify-center overflow-hidden rounded-xl border border-border-strong bg-surface-elevated">
             {camOn ? (
               <video
                 ref={localVideoRef}
@@ -754,19 +754,19 @@ export function LiveKitRoomStage({
                 className="h-full w-full -scale-x-100 object-contain"
               />
             ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-800 text-2xl font-semibold text-neutral-300">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated text-2xl font-semibold text-text-primary">
                 {selfName.slice(0, 1).toUpperCase()}
               </div>
             )}
-            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-neutral-950/70 px-2 py-1 text-xs">
+            <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-void/70 px-2 py-1 text-xs">
               <span>{selfName}</span>
               {selfIsGuest ? (
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
+                <span className="rounded bg-neon-amber/20 px-1.5 py-0.5 text-[10px] font-medium text-neon-amber">
                   {t('guest.badge')}
                 </span>
               ) : null}
               {!micEnabled ? (
-                <span className="text-neutral-400">
+                <span className="text-text-muted">
                   <MicIcon off />
                 </span>
               ) : null}
@@ -775,15 +775,15 @@ export function LiveKitRoomStage({
         </div>
       </main>
 
-      <footer className="flex items-center justify-center gap-3 border-t border-neutral-800 px-4 py-3">
+      <footer className="flex items-center justify-center gap-3 border-t border-border-strong px-4 py-3">
         <button
           type="button"
           onClick={() => void toggleMic()}
           title={micEnabled ? t('meet.micOff') : t('meet.micOn')}
           className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
             micEnabled
-              ? 'bg-neutral-800 text-neutral-100 hover:bg-neutral-700'
-              : 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
+              ? 'bg-surface-elevated text-text-primary hover:bg-neon-cyan/10'
+              : 'bg-neon-red/20 text-neon-red hover:bg-neon-red/30'
           }`}
         >
           <MicIcon off={!micEnabled} />
@@ -795,8 +795,8 @@ export function LiveKitRoomStage({
           title={camOn ? t('meet.camOff') : t('meet.camOn')}
           className={`flex h-11 w-11 items-center justify-center rounded-full transition disabled:opacity-50 ${
             camOn
-              ? 'bg-neutral-800 text-neutral-100 hover:bg-neutral-700'
-              : 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
+              ? 'bg-surface-elevated text-text-primary hover:bg-neon-cyan/10'
+              : 'bg-neon-red/20 text-neon-red hover:bg-neon-red/30'
           }`}
         >
           <CamIcon off={!camOn} />
@@ -808,8 +808,8 @@ export function LiveKitRoomStage({
           title={settingsOpen ? t('meet.settingsClose') : t('meet.settings')}
           className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
             settingsOpen
-              ? 'bg-neutral-700 text-neutral-100'
-              : 'bg-neutral-800 text-neutral-100 hover:bg-neutral-700'
+              ? 'bg-neon-cyan/10 text-text-primary'
+              : 'bg-surface-elevated text-text-primary hover:bg-neon-cyan/10'
           }`}
         >
           <GearIcon />
@@ -817,7 +817,7 @@ export function LiveKitRoomStage({
         <button
           type="button"
           onClick={() => void leaveCall()}
-          className="flex h-11 items-center gap-2 rounded-full bg-red-600 px-5 font-medium text-white transition hover:bg-red-500"
+          className="flex h-11 items-center gap-2 rounded-full bg-neon-red px-5 font-medium text-text-primary transition hover:bg-neon-red/80"
         >
           <LeaveIcon />
           <span className="text-sm">{t('meet.leave')}</span>
@@ -825,7 +825,7 @@ export function LiveKitRoomStage({
       </footer>
 
       {settingsOpen ? (
-        <div className="border-t border-neutral-800 bg-neutral-950 px-4 py-4">
+        <div className="border-t border-border-strong bg-void px-4 py-4">
           <div className="mx-auto max-w-md">
             <MediaDeviceSettings onChange={(kind) => void onPrefChange(kind)} />
           </div>

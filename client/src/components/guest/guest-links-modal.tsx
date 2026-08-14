@@ -100,31 +100,31 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-void/60 p-4"
       role="dialog"
       aria-modal="true"
       aria-label={t('guest.linksTitle')}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl border border-neutral-800 bg-neutral-900 p-4 shadow-2xl"
+        className="w-full max-w-lg rounded-xl border border-border-strong bg-surface-elevated p-4 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-base font-semibold text-neutral-100">
-            <DoorOpen className="h-5 w-5 text-amber-400" aria-hidden />
+          <h2 className="flex items-center gap-2 text-base font-semibold text-text-primary">
+            <DoorOpen className="h-5 w-5 text-neon-amber" aria-hidden />
             {t('guest.linksTitle')}
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label={t('common.close')}
-            className="rounded p-1 text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-200"
+            className="rounded p-1 text-text-muted transition hover:bg-surface-elevated hover:text-text-primary"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="mt-1 text-xs text-neutral-400">{t('guest.linksHint')}</p>
+        <p className="mt-1 text-xs text-text-muted">{t('guest.linksHint')}</p>
 
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {capabilities.calls ? (
@@ -132,9 +132,9 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
               type="button"
               disabled={busy}
               onClick={() => void create('call')}
-              className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800/60 px-3 py-2 text-left text-sm text-neutral-100 transition hover:border-amber-500/50 hover:bg-neutral-800 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg border border-border-strong bg-surface-elevated/60 px-3 py-2 text-left text-sm text-text-primary transition hover:border-neon-amber/50 hover:bg-surface-elevated disabled:opacity-50"
             >
-              <Video className="h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+              <Video className="h-4 w-4 shrink-0 text-neon-amber" aria-hidden />
               {t('guest.createInstant')}
             </button>
           ) : null}
@@ -143,9 +143,9 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
               type="button"
               disabled={busy}
               onClick={() => void create('call', activeChatId)}
-              className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800/60 px-3 py-2 text-left text-sm text-neutral-100 transition hover:border-amber-500/50 hover:bg-neutral-800 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg border border-border-strong bg-surface-elevated/60 px-3 py-2 text-left text-sm text-text-primary transition hover:border-neon-amber/50 hover:bg-surface-elevated disabled:opacity-50"
             >
-              <Link2 className="h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+              <Link2 className="h-4 w-4 shrink-0 text-neon-amber" aria-hidden />
               {t('guest.createCallHere')}
             </button>
           ) : null}
@@ -153,23 +153,23 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
             type="button"
             disabled={busy}
             onClick={() => void create('chat')}
-            className="flex items-center gap-2 rounded-lg border border-neutral-700 bg-neutral-800/60 px-3 py-2 text-left text-sm text-neutral-100 transition hover:border-amber-500/50 hover:bg-neutral-800 disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg border border-border-strong bg-surface-elevated/60 px-3 py-2 text-left text-sm text-text-primary transition hover:border-neon-amber/50 hover:bg-surface-elevated disabled:opacity-50"
           >
-            <MessageSquare className="h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+            <MessageSquare className="h-4 w-4 shrink-0 text-neon-amber" aria-hidden />
             {t('guest.createChat')}
           </button>
         </div>
 
-        {error ? <div className="mt-2 text-xs text-red-400">{error}</div> : null}
+        {error ? <div className="mt-2 text-xs text-neon-red">{error}</div> : null}
         {copiedId ? (
-          <div className="mt-2 text-xs text-emerald-400">{t('guest.copied')}</div>
+          <div className="mt-2 text-xs text-success">{t('guest.copied')}</div>
         ) : null}
 
         <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
           {loading ? (
-            <div className="py-4 text-center text-xs text-neutral-500">…</div>
+            <div className="py-4 text-center text-xs text-text-muted">…</div>
           ) : invites.length === 0 ? (
-            <div className="py-4 text-center text-xs text-neutral-500">
+            <div className="py-4 text-center text-xs text-text-muted">
               {t('guest.empty')}
             </div>
           ) : (
@@ -178,10 +178,10 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
               return (
                 <div
                   key={invite.id}
-                  className="flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2"
+                  className="flex items-center gap-2 rounded-lg border border-border-strong bg-void/60 px-3 py-2"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 text-xs font-medium text-neutral-200">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-text-primary">
                       <span className="truncate">
                         {invite.purpose === 'call'
                           ? invite.chat_id
@@ -193,8 +193,8 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
                       <span
                         className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
                           invite.exhausted
-                            ? 'bg-neutral-800 text-neutral-400'
-                            : 'bg-emerald-500/15 text-emerald-300'
+                            ? 'bg-surface-elevated text-text-muted'
+                            : 'bg-success/15 text-success'
                         }`}
                         title={
                           invite.exhausted
@@ -205,7 +205,7 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
                         {invite.used_count}/{invite.max_uses}
                       </span>
                     </div>
-                    <div className="truncate text-[11px] text-neutral-500">
+                    <div className="truncate text-[11px] text-text-muted">
                       {invite.exhausted ? t('guest.seatsFull') : guestInviteUrl(invite)}
                     </div>
                   </div>
@@ -218,7 +218,7 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
                         onClose()
                         router.push(href)
                       }}
-                      className="rounded p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-emerald-300"
+                      className="rounded p-1.5 text-text-muted transition hover:bg-surface-elevated hover:text-success"
                     >
                       <LogIn className="h-4 w-4" />
                     </button>
@@ -232,7 +232,7 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
                         void copyLink(invite)
                         setCopiedId(invite.id)
                       }}
-                      className="rounded p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-200"
+                      className="rounded p-1.5 text-text-muted transition hover:bg-surface-elevated hover:text-text-primary"
                     >
                       <Copy className="h-4 w-4" />
                     </button>
@@ -242,7 +242,7 @@ export function GuestLinksModal({ activeChatId, onClose }: Props) {
                     aria-label={t('guest.revoke')}
                     title={t('guest.revoke')}
                     onClick={() => void revoke(invite.id)}
-                    className="rounded p-1.5 text-neutral-400 transition hover:bg-neutral-800 hover:text-red-400"
+                    className="rounded p-1.5 text-text-muted transition hover:bg-surface-elevated hover:text-neon-red"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

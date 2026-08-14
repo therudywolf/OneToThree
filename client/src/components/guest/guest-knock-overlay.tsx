@@ -199,31 +199,31 @@ export function GuestKnockOverlay() {
       {knocks.map((k) => (
         <div
           key={k.id}
-          className="rounded-lg border border-amber-500/40 bg-neutral-900/95 p-3 shadow-xl backdrop-blur"
+          className="rounded-lg border border-neon-amber/40 bg-surface-elevated/95 p-3 shadow-xl backdrop-blur"
           role="alertdialog"
           aria-label={t('guest.knockTitle')}
         >
           <div className="flex items-center gap-2">
-            <DoorOpen className="h-5 w-5 shrink-0 text-amber-400" aria-hidden />
+            <DoorOpen className="h-5 w-5 shrink-0 text-neon-amber" aria-hidden />
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-neutral-100">
+              <div className="truncate text-sm font-semibold text-text-primary">
                 {k.nickname}
-                <span className="ml-1.5 rounded bg-amber-500/20 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300">
+                <span className="ml-1.5 rounded bg-neon-amber/20 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wide text-neon-amber">
                   {t('guest.badge')}
                 </span>
               </div>
-              <div className="text-xs text-neutral-400">{t('guest.knockBody')}</div>
+              <div className="text-xs text-text-muted">{t('guest.knockBody')}</div>
             </div>
           </div>
           {k.error ? (
-            <div className="mt-1.5 text-xs text-red-400">{k.error}</div>
+            <div className="mt-1.5 text-xs text-neon-red">{k.error}</div>
           ) : null}
           <div className="mt-2 flex gap-2">
             <button
               type="button"
               disabled={k.busy}
               onClick={() => void act(k.id, 'approve')}
-              className="flex-1 rounded-md bg-emerald-600 px-2 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+              className="flex-1 rounded-md bg-success px-2 py-1.5 text-xs font-semibold text-void transition hover:opacity-90 disabled:opacity-50"
             >
               {t('guest.admit')}
             </button>
@@ -231,7 +231,7 @@ export function GuestKnockOverlay() {
               type="button"
               disabled={k.busy}
               onClick={() => void act(k.id, 'deny')}
-              className="flex-1 rounded-md bg-neutral-700 px-2 py-1.5 text-xs font-semibold text-neutral-200 transition hover:bg-neutral-600 disabled:opacity-50"
+              className="flex-1 rounded-md bg-surface-elevated px-2 py-1.5 text-xs font-semibold text-text-primary transition hover:bg-neon-cyan/10 disabled:opacity-50"
             >
               {t('guest.deny')}
             </button>

@@ -13,9 +13,10 @@
 #   2. tags the current api/web images as forestmessenger-*:rollback and
 #      pg_dumps the database into ./backups/ — both BEFORE migrations run.
 #
-# Bakes APP_VERSION (from ./VERSION), GIT_SHA (short HEAD), and BUILT_AT
-# (UTC ISO-8601) into the api image as build args so GET /version is
-# always accurate without a separate release process.
+# Bakes APP_VERSION (./VERSION + short HEAD — see scripts/lib/build-stamp.sh,
+# the single formula shared with startup.sh and scripts/deploy-prod.sh),
+# GIT_SHA (short HEAD), and BUILT_AT (UTC ISO-8601) into the api image as build
+# args so GET /version is always accurate without a separate release process.
 #
 # Rollback (when a deploy misbehaves):
 #   # fast — restore the previous images, no rebuild:
@@ -209,12 +210,16 @@ snapshot_database
 # the directory move — clean them up first.
 docker rm -f forestmessenger-db-migrate-1 2>/dev/null || true
 
-APP_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]')"
-APP_VERSION="${APP_VERSION:-dev}"
-GIT_SHA="$(git rev-parse --short=8 HEAD 2>/dev/null || printf 'nogit')"
-BUILT_AT="$(date -u +%FT%TZ)"
+# The stamp comes from scripts/lib/build-stamp.sh and from nowhere else. This
+# script used to stamp bare ./VERSION while scripts/deploy-prod.sh stamped
+# `git describe --tags`; both do partial rebuilds, so an api deployed from here
+# and a web bundle deployed from there could never compare equal and pinned the
+# client's "new build, reload" banner permanently on.
+# shellcheck source=scripts/lib/build-stamp.sh
+. ./scripts/lib/build-stamp.sh
 
-export APP_VERSION GIT_SHA BUILT_AT
+build_stamp_export "$PWD" \
+  || die "no ./VERSION, or this is not a git checkout — refusing to bake a \"dev\" stamp, which silently disables the client's update banner"
 
 log "APP_VERSION=$APP_VERSION  GIT_SHA=$GIT_SHA  BUILT_AT=$BUILT_AT"
 

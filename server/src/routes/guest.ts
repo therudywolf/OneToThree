@@ -20,7 +20,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import type { FastifyPluginAsync } from 'fastify'
-import rateLimit from '@fastify/rate-limit'
 import { z } from 'zod'
 import { db } from '../db/index.js'
 import { chatMembers, chats, guestInvites, users } from '../db/schema.js'
@@ -34,7 +33,9 @@ import {
   consumeKnock,
   getKnock,
   KNOCK_TTL_S,
+  listPendingKnocksForCreator,
   releaseKnockSlot,
+  rememberSeatHolder,
   reserveKnockSlot,
   saveKnock,
   type GuestKnock,
@@ -125,8 +126,13 @@ async function nickCollides(nick: string): Promise<boolean> {
 
 type LiveInvite = typeof guestInvites.$inferSelect
 
-/** A usable invite: not revoked, seats left, not expired. Uniform miss. */
-async function findLiveInviteByToken(token: string): Promise<LiveInvite | null> {
+/**
+ * An invite that still EXISTS: not revoked, not expired — seats not considered.
+ * Only /guest/resolve uses this, to tell "the meeting is full right now" apart
+ * from "this link is dead"; every state-creating path takes the stricter
+ * lookup below. The extra disclosure needs possession of a real 192-bit token.
+ */
+async function findUnexpiredInviteByToken(token: string): Promise<LiveInvite | null> {
   const [row] = await db
     .select()
     .from(guestInvites)
@@ -134,12 +140,18 @@ async function findLiveInviteByToken(token: string): Promise<LiveInvite | null> 
       and(
         eq(guestInvites.token, token),
         isNull(guestInvites.revokedAt),
-        sql`${guestInvites.usedCount} < ${guestInvites.maxUses}`,
         gt(guestInvites.expiresAt, new Date())
       )
     )
     .limit(1)
   return row ?? null
+}
+
+/** A usable invite: not revoked, seats left, not expired. Uniform miss. */
+async function findLiveInviteByToken(token: string): Promise<LiveInvite | null> {
+  const row = await findUnexpiredInviteByToken(token)
+  if (!row || row.usedCount >= row.maxUses) return null
+  return row
 }
 
 /** Wire shape of an invite — one place, so create/list never drift. */
@@ -233,19 +245,38 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
   // seats are capped in Postgres and live guests by GUEST_MAX_ACTIVE. It is
   // defence in depth against floods, so read-only resolve gets a wide budget
   // and the state-creating pair (knock/enter) a tighter one.
+  //
+  // The budgets ride on the APP-LEVEL limiter via per-route `config.rateLimit`
+  // rather than a `register(rateLimit, …)` of their own: a nested registration
+  // builds a fresh in-process LocalStore, so the counters died with every
+  // `docker compose up -d --build api` and two api replicas each handed out a
+  // full budget — exactly what app.ts registers the Redis store to prevent.
+  // Per-route config reuses that store (namespaced per route, so the budgets
+  // below stay independent of each other) and the app's allowList.
   const RESOLVE_MAX = Number(process.env.GUEST_RESOLVE_RATE_LIMIT_MAX ?? 60)
   const PUBLIC_MAX = Number(process.env.GUEST_PUBLIC_RATE_LIMIT_MAX ?? 30)
   const PUBLIC_WINDOW = process.env.GUEST_PUBLIC_RATE_LIMIT_WINDOW ?? '15 minutes'
+  const POLL_MAX = Number(process.env.GUEST_POLL_RATE_LIMIT_MAX ?? 45)
 
-  await app.register(async (scoped) => {
-    await scoped.register(rateLimit, { max: RESOLVE_MAX, timeWindow: PUBLIC_WINDOW })
-
-    /** Token → what am I joining? Uniform 404 for any dead/unknown token. */
-    scoped.post('/guest/resolve', async (request, reply) => {
+  /**
+   * Token → what am I joining? Uniform 404 for any dead/unknown token, and the
+   * one exception: a link whose seats are all taken right now (409).
+   */
+  app.post(
+    '/guest/resolve',
+    { config: { rateLimit: { max: RESOLVE_MAX, timeWindow: PUBLIC_WINDOW } } },
+    async (request, reply) => {
       const parsed = tokenOnlySchema.safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
-      const invite = await findLiveInviteByToken(parsed.data.token)
+      const invite = await findUnexpiredInviteByToken(parsed.data.token)
       if (!invite) return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
+      // A full link is not a dead link. Seats are CONCURRENT capacity, so a
+      // running meeting whose guests all have a seat used to answer the uniform
+      // 404 — rendered as «Ссылка недействительна или истекла», i.e. a live
+      // meeting telling its own guests the link had expired.
+      if (invite.usedCount >= invite.maxUses) {
+        return reply.status(409).send({ error: 'INVITE_FULL' })
+      }
       const [creator] = await db
         .select({ username: users.username, displayName: users.displayName })
         .from(users)
@@ -258,17 +289,17 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         // tell the guest up front instead of failing after the knock.
         can_join: invite.purpose === 'call' ? livekitReady() && app.featureFlags.calls : true,
       })
-    })
-  })
+    }
+  )
 
   // knock + enter CREATE state (a Redis knock, a `users` row), so they keep the
   // tighter budget — still ~3 tries each for a full 10-seat meeting behind one
   // address, which is what the "Попробовать ещё раз" button costs after a deny.
-  await app.register(async (scoped) => {
-    await scoped.register(rateLimit, { max: PUBLIC_MAX, timeWindow: PUBLIC_WINDOW })
+  {
+    const publicLimit = { config: { rateLimit: { max: PUBLIC_MAX, timeWindow: PUBLIC_WINDOW } } }
 
     /** Mechanism A step 1: knock. Creates NOTHING outside Redis. */
-    scoped.post('/guest/knock', async (request, reply) => {
+    app.post('/guest/knock', publicLimit, async (request, reply) => {
       const parsed = knockBodySchema.safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
@@ -291,7 +322,8 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
 
       const knockId = randomUUID()
       // The waiting room holds at most as many guests as the link still has
-      // seats for; a deny/cancel/pickup frees a slot.
+      // seats for; an approve/deny/cancel/pickup frees a slot, and one nobody
+      // ever answered expires on its own.
       const seatsLeft = Math.max(0, invite.maxUses - invite.usedCount)
       if (!(await reserveKnockSlot(invite.id, knockId, seatsLeft))) {
         return reply.status(429).send({ error: 'KNOCK_PENDING' })
@@ -325,7 +357,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
     })
 
     /** Mechanism B: enter a temp chat. Consumes the link atomically. */
-    scoped.post('/guest/enter', async (request, reply) => {
+    app.post('/guest/enter', publicLimit, async (request, reply) => {
       const parsed = enterBodySchema.safeParse(request.body)
       if (!parsed.success) return reply.status(400).send({ error: 'INVALID_BODY' })
 
@@ -359,8 +391,10 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
 
       // Take the seat first; the row-level guard makes the race safe. Temp-chat
       // links are single-seat, so this is the one-time burn it always was.
+      // Losing that race means the seat is gone, not that the link is bogus —
+      // same distinction /guest/resolve now draws.
       if (!(await consumeInviteSeat(invite.id))) {
-        return reply.status(404).send({ error: 'INVITE_NOT_FOUND' })
+        return reply.status(409).send({ error: 'INVITE_FULL' })
       }
 
       const expiresAt = new Date(Date.now() + GUEST_CHAT_TTL_HOURS * 3600_000)
@@ -435,17 +469,14 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
         expires_at: expiresAt.toISOString(),
       })
     })
-  })
+  }
 
   // Poll gets its own generous budget: 2-3s polling for the 5-minute window.
-  await app.register(async (scoped) => {
-    await scoped.register(rateLimit, {
-      max: Number(process.env.GUEST_POLL_RATE_LIMIT_MAX ?? 45),
-      timeWindow: '1 minute',
-    })
+  {
+    const pollLimit = { config: { rateLimit: { max: POLL_MAX, timeWindow: '1 minute' } } }
 
     /** Mechanism A step 2: poll the knock. Approved/denied is a ONE-TIME read. */
-    scoped.get('/guest/knock/:id', async (request, reply) => {
+    app.get('/guest/knock/:id', pollLimit, async (request, reply) => {
       const { id } = request.params as { id: string }
       const secret = (request.query as { secret?: string }).secret ?? ''
       const knock = await getKnock(id)
@@ -472,7 +503,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
     })
 
     /** The guest changed their mind while waiting. */
-    scoped.post('/guest/knock/:id/cancel', async (request, reply) => {
+    app.post('/guest/knock/:id/cancel', pollLimit, async (request, reply) => {
       const { id } = request.params as { id: string }
       const secret = ((request.body ?? {}) as { secret?: string }).secret ?? ''
       const knock = await getKnock(id)
@@ -484,7 +515,7 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
       broadcastToUsers([knock.creatorId], { type: 'guest_knock_cancelled', knock_id: id })
       return reply.send({ ok: true })
     })
-  })
+  }
 
   // ── Authenticated surface (creator side + guest self-destruct) ────────────
 
@@ -623,6 +654,20 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
     if (knock.creatorId !== user.id) {
       return reply.status(403).send({ error: 'FORBIDDEN' })
     }
+    // Creating the link is not a standing right over the chat's room. A link
+    // outlived the membership that authorized it: its creator leaves (or is
+    // removed) and the invite still mints a LiveKit token for THIS chat's room
+    // plus the exact media key the remaining members hold — for a stranger.
+    // Their own /call/token is already refused, so the system knows they are
+    // unauthorized; it just kept letting them mint entry for someone else.
+    if (knock.chatId) {
+      const [membership] = await db
+        .select({ chatId: chatMembers.chatId })
+        .from(chatMembers)
+        .where(and(eq(chatMembers.chatId, knock.chatId), eq(chatMembers.userId, user.id)))
+        .limit(1)
+      if (!membership) return reply.status(403).send({ error: 'NOT_A_MEMBER' })
+    }
 
     const apiKey = readSecret('LIVEKIT_API_KEY')
     const apiSecret = readSecret('LIVEKIT_API_SECRET')
@@ -669,8 +714,40 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
       status: 'approved',
       grant: { livekitUrl, token, identity, e2eeKey },
     })
+    // The waiting room slot has done its job — the seat in Postgres is what
+    // caps this guest now. Holding it until the pickup poll (which a guest who
+    // closed the tab never sends) kept the door shut behind them.
+    await releaseKnockSlot(knock.inviteId, id)
+    // Remember whose seat this is, so participant_left can give it back.
+    await rememberSeatHolder(knock.roomId, identity, knock.inviteId)
     await recordGuestJoined(knock.roomId, identity, knock.nickname)
     return reply.send({ ok: true, identity })
+  })
+
+  /**
+   * Knocks currently waiting at this creator's door.
+   *
+   * The `guest_knock` WS push is fire-and-forget: a host with no live socket
+   * (offline, or simply mid-reload) got a notification and nothing else, and
+   * the overlay is event-only — the knock could never be approved, it just
+   * expired at the door. This is the hydration source, mirroring the group-call
+   * hydration on WS connect in ws.ts. Same fields as the WS message so the
+   * overlay can render either without a second shape.
+   */
+  app.get('/guest/knocks', async (request, reply) => {
+    const user = await getAuthUser(request, reply)
+    if (!assertAuthed(reply, user)) return
+    if (user.group === 'guest') return reply.status(403).send({ error: 'GUEST_FORBIDDEN' })
+    const pending = await listPendingKnocksForCreator(user.id)
+    return reply.send({
+      knocks: pending.map(({ id, knock }) => ({
+        knock_id: id,
+        nickname: knock.nickname,
+        chat_id: knock.chatId,
+        room_id: knock.roomId,
+        expires_at: new Date(knock.exp).toISOString(),
+      })),
+    })
   })
 
   /** Deny a pending knock — creator only. The link survives (revoke is separate). */
@@ -705,30 +782,46 @@ export const guestRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(400).send({ error: 'NOT_A_GUEST' })
     }
 
-    const [ownInvite] = await db
-      .select({ id: guestInvites.id })
-      .from(guestInvites)
-      .where(
-        and(
-          eq(guestInvites.createdBy, user.id),
-          sql`(${guestInvites.chatId} = ${room} or ${guestInvites.roomId} = ${room})`
-        )
-      )
+    const [membership] = await db
+      .select({ role: chatMembers.role })
+      .from(chatMembers)
+      .where(and(eq(chatMembers.chatId, room), eq(chatMembers.userId, user.id)))
       .limit(1)
-    let allowed = Boolean(ownInvite)
+    let allowed = membership?.role === 'admin' || membership?.role === 'owner'
     if (!allowed) {
-      const [membership] = await db
-        .select({ role: chatMembers.role })
-        .from(chatMembers)
-        .where(and(eq(chatMembers.chatId, room), eq(chatMembers.userId, user.id)))
-        .limit(1)
-      allowed = membership?.role === 'admin' || membership?.role === 'owner'
+      const ownInvites = await db
+        .select({ chatId: guestInvites.chatId })
+        .from(guestInvites)
+        .where(
+          and(
+            eq(guestInvites.createdBy, user.id),
+            sql`(${guestInvites.chatId} = ${room} or ${guestInvites.roomId} = ${room})`
+          )
+        )
+        .limit(10)
+      // Having made a link is not a standing right over someone else's room:
+      // a creator who has since left the chat keeps none of it (same reason
+      // approve re-checks membership). A STANDALONE guest room is not a chat
+      // and has no members — there its creator stays in charge.
+      allowed = ownInvites.some((inv) => inv.chatId === null || Boolean(membership))
     }
     if (!allowed) return reply.status(403).send({ error: 'FORBIDDEN' })
 
     await denyGuestIdentity(room, identity)
     const removed = await removeLivekitParticipant(room, identity)
     await recordGuestLeft(room, identity, true).catch(() => {})
+    if (!removed) {
+      // The denylist is the durable half, but it is only consulted from the
+      // participant_joined webhook — i.e. it bites only if the guest leaves and
+      // comes back. Reporting ok:true for a kick LiveKit never performed left
+      // the host looking at a guest who is still in the call and a UI that said
+      // it worked.
+      request.log.warn(
+        { room, identity },
+        'guest kick: LiveKit did not remove the participant'
+      )
+      return reply.status(502).send({ error: 'KICK_NOT_APPLIED' })
+    }
     return reply.send({ ok: true, removed })
   })
 

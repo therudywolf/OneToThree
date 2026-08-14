@@ -4,7 +4,15 @@ import { and, asc, count, desc, eq, ilike, inArray, isNull, max, ne, or, sql } f
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { db, type Db } from '../db/index.js'
-import { chatFavorites, chatMembers, chats, messages, userBlocks, users } from '../db/schema.js'
+import {
+  chatFavorites,
+  chatMembers,
+  chats,
+  guestInvites,
+  messages,
+  userBlocks,
+  users,
+} from '../db/schema.js'
 import { assertAuthed, getAuthUser } from '../lib/auth-user.js'
 import {
   getChatById,
@@ -200,6 +208,37 @@ async function evictFromGroupCall(chatId: string, userId: string): Promise<void>
     memberIds.map((r) => r.userId),
     { type: 'group_call:ended', room_id: chatId }
   )
+}
+
+/**
+ * Revoke the guest links a departing member made for THIS chat.
+ *
+ * A guest link outlived the membership that authorized it: nothing re-checked
+ * the creator after POST /guest-invites, so an ex-member's link kept minting
+ * LiveKit tokens for the chat's room — with the very media key the remaining
+ * members hold — and the group's owner had no way to kill it (DELETE
+ * /guest-invites/:id is scoped to the creator). Their own call token is already
+ * refused; the links they can still hand out must go the same way.
+ *
+ * Only when guest mode is on: with FEATURE_GUESTS off no such link can be
+ * created or redeemed, and the table need not exist in that deployment.
+ */
+async function revokeGuestInvitesFor(
+  chatId: string,
+  userId: string,
+  guestsEnabled: boolean
+): Promise<void> {
+  if (!guestsEnabled) return
+  await db
+    .update(guestInvites)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(guestInvites.chatId, chatId),
+        eq(guestInvites.createdBy, userId),
+        isNull(guestInvites.revokedAt)
+      )
+    )
 }
 
 /**
@@ -1362,6 +1401,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
 
       if (transferred) {
         await evictFromGroupCall(chatId, user.id)
+        await revokeGuestInvitesFor(chatId, user.id, request.server.featureFlags.guests)
         broadcastToUsers(notifyIds, { type: 'chats_updated' })
         broadcastKeyEpoch(chatId, newKeyEpoch, notifyIds)
         return reply.send({ ok: true })
@@ -1432,6 +1472,7 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     }
     // Membership is gone — so must be the seat in the group call (see evictFromGroupCall).
     await evictFromGroupCall(chatId, user.id)
+    await revokeGuestInvitesFor(chatId, user.id, request.server.featureFlags.guests)
     if (!chatDeleted) {
       const notifyIds = [...remaining.map((r) => r.userId), user.id]
       broadcastToUsers(notifyIds, { type: 'chats_updated' })
@@ -1895,8 +1936,11 @@ export const chatsRoutes: FastifyPluginAsync = async (app) => {
     })
 
     // The epoch bump above only cuts the kicked member out of MESSAGE traffic;
-    // the call channel needs its own eviction (see evictFromGroupCall).
+    // the call channel needs its own eviction (see evictFromGroupCall) — and
+    // the guest links they made for this chat are a third door out of the same
+    // room (see revokeGuestInvitesFor).
     await evictFromGroupCall(chatId, targetUserId)
+    await revokeGuestInvitesFor(chatId, targetUserId, request.server.featureFlags.guests)
 
     const memberIds = (
       await db

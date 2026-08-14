@@ -6,11 +6,12 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import request from 'supertest'
 import type { FastifyInstance } from 'fastify'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { buildApp } from '../app.js'
 import { db } from '../db/index.js'
 import { chatMembers, chats, guestInvites, users } from '../db/schema.js'
 import { _resetGuestKnocksForTests } from '../lib/guest-knock-store.js'
+import { signLivekitWebhookTokenForTest } from '../lib/livekit-webhook.js'
 
 const uniq = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`
 
@@ -142,6 +143,34 @@ describe('guest mode', () => {
   const sessionCookie = async (u: { id: string; username: string }) =>
     `fm_session=${await onApp!.jwt.sign({ sub: u.id, username: u.username, jti: randomUUID() })}`
 
+  /** A group chat with `owner` in the chair and `member` alongside. */
+  async function makeGroupChat(ownerId: string, memberId: string): Promise<string> {
+    const [chat] = await db
+      .insert(chats)
+      .values({ type: 'group_e2e', name: `gm-grp-${uniq()}` })
+      .returning({ id: chats.id })
+    await db.insert(chatMembers).values([
+      { chatId: chat.id, userId: ownerId, encryptedGroupKey: null, role: 'owner' as const },
+      { chatId: chat.id, userId: memberId, encryptedGroupKey: null, role: 'member' as const },
+    ])
+    return chat.id
+  }
+
+  /** A LiveKit webhook exactly as the SFU sends it (raw body + signing JWT). */
+  const postWebhook = async (event: Record<string, unknown>) => {
+    const raw = JSON.stringify(event)
+    const token = signLivekitWebhookTokenForTest(
+      process.env.LIVEKIT_API_KEY as string,
+      process.env.LIVEKIT_API_SECRET as string,
+      raw
+    )
+    return request(onApp!.server)
+      .post('/api/call/livekit/webhook')
+      .set('Content-Type', 'application/webhook+json')
+      .set('Authorization', `Bearer ${token}`)
+      .send(raw)
+  }
+
   it('FEATURE_GUESTS off: guest routes are not registered and capabilities say so', async () => {
     const res = await request(offApp!.server)
       .post('/api/guest/resolve')
@@ -191,27 +220,39 @@ describe('guest mode', () => {
     expect(after.body.error).toBe('INVITE_NOT_FOUND')
   })
 
-  it('resolve and knock draw on separate rate-limit budgets', async () => {
+  it('resolve and knock draw on separate rate-limit budgets, from the app-wide limiter', async () => {
     // Guests share an IP constantly (one office, one flat, one conference
     // room), and a joining guest spends resolve + knock. With both on ONE
     // 10-per-15-minutes bucket the sixth guest of a ten-seat meeting was
     // locked out mid-meeting with a link that was still valid. Two buckets,
     // the read-only one wider: exhausting resolve must NOT close the door
     // that actually admits people.
+    //
+    // The requests come through `inject` with a routable address because these
+    // budgets now ride on the APP-LEVEL limiter (Redis-backed in production,
+    // so the counters survive a deploy and are shared by both api replicas)
+    // instead of a private in-process store — which means the app's own
+    // loopback allowList applies to them, as asserted at the end.
     const dead = 'z'.repeat(24)
-    const first = await request(rateApp!.server).post('/api/guest/resolve').send({ token: dead })
-    expect(first.status).toBe(404)
-    const second = await request(rateApp!.server).post('/api/guest/resolve').send({ token: dead })
-    expect(second.status).toBe(404)
-    const third = await request(rateApp!.server).post('/api/guest/resolve').send({ token: dead })
-    expect(third.status).toBe(429)
+    const fromNet = (url: string, payload: Record<string, unknown>) =>
+      rateApp!.inject({ method: 'POST', url, payload, remoteAddress: '203.0.113.7' })
+
+    expect((await fromNet('/api/guest/resolve', { token: dead })).statusCode).toBe(404)
+    expect((await fromNet('/api/guest/resolve', { token: dead })).statusCode).toBe(404)
+    expect((await fromNet('/api/guest/resolve', { token: dead })).statusCode).toBe(429)
 
     // Same IP, resolve budget spent — knock still answers on its own budget
     // (404 for the unknown token, which is the "not rate limited" proof).
-    const knock = await request(rateApp!.server)
-      .post('/api/guest/knock')
-      .send({ token: dead, nickname: 'Гость' })
-    expect(knock.status).toBe(404)
+    const knock = await fromNet('/api/guest/knock', { token: dead, nickname: 'Гость' })
+    expect(knock.statusCode).toBe(404)
+
+    // The same flood from loopback is not throttled at all: a scoped
+    // `register(rateLimit, …)` of its own would have had neither the shared
+    // store nor this allowList.
+    for (let i = 0; i < 4; i++) {
+      const res = await request(rateApp!.server).post('/api/guest/resolve').send({ token: dead })
+      expect(res.status).toBe(404)
+    }
   })
 
   it('call flow: knock → creator approves → one-time grant pickup', async () => {
@@ -278,11 +319,14 @@ describe('guest mode', () => {
     )
     expect(again.status).toBe(404)
 
-    // Its only seat went with the approval.
-    const deadResolve = await request(onApp!.server)
+    // Its only seat went with the approval — and a full link says so, rather
+    // than answering the uniform 404 the client renders as «Ссылка
+    // недействительна или истекла» for a meeting that is very much alive.
+    const fullResolve = await request(onApp!.server)
       .post('/api/guest/resolve')
       .send({ token: created.body.token })
-    expect(deadResolve.status).toBe(404)
+    expect(fullResolve.status).toBe(409)
+    expect(fullResolve.body.error).toBe('INVITE_FULL')
 
     // …but the creator still sees the link — it is the handle on a live
     // meeting room, flagged exhausted rather than hidden.
@@ -608,5 +652,232 @@ describe('guest mode', () => {
     expect(res.status).toBe(429)
     expect(res.body.error).toBe('TOO_MANY_LINKS')
     await db.delete(guestInvites).where(eq(guestInvites.createdBy, creator.id))
+  })
+
+  it('a chat-bound link does not outlive its creator membership', async () => {
+    if (!dbAvailable) return
+    // Membership was checked ONCE, at creation. Afterwards the invite kept
+    // minting LiveKit tokens for the chat's room — with the very media key the
+    // remaining members hold — for anyone the ex-member felt like approving.
+    // Their own POST /call/token has always been refused, so the system knew
+    // they were unauthorized; it just let them mint entry for someone else.
+    const owner = await createUser(`gm-ex-owner-${uniq()}`)
+    const creator = await createUser(`gm-ex-${uniq()}`)
+    const cookie = await sessionCookie(creator)
+    const chatId = await makeGroupChat(owner.id, creator.id)
+
+    const created = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', cookie)
+      .send({ purpose: 'call', chat_id: chatId, max_uses: 1 })
+    expect(created.status).toBe(200)
+    expect(created.body.chat_id).toBe(chatId)
+
+    const knock = await request(onApp!.server)
+      .post('/api/guest/knock')
+      .send({ token: created.body.token, nickname: 'Гость Бывшего' })
+    expect(knock.status).toBe(200)
+
+    // However the membership ended — kicked, left, or removed back when
+    // nothing revoked the links.
+    await db
+      .delete(chatMembers)
+      .where(and(eq(chatMembers.chatId, chatId), eq(chatMembers.userId, creator.id)))
+
+    const approve = await request(onApp!.server)
+      .post(`/api/guest/knock/${knock.body.knock_id}/approve`)
+      .set('Cookie', cookie)
+    expect(approve.status).toBe(403)
+    expect(approve.body.error).toBe('NOT_A_MEMBER')
+
+    // The knock is still pending, so the guest was told nothing yet — but no
+    // seat was taken and no grant exists.
+    const polled = await request(onApp!.server).get(
+      `/api/guest/knock/${knock.body.knock_id}?secret=${encodeURIComponent(knock.body.knock_secret)}`
+    )
+    expect(polled.body.status).toBe('pending')
+
+    // The same invite is no longer a kick right over that room either.
+    const kick = await request(onApp!.server)
+      .post('/api/guest-calls/kick')
+      .set('Cookie', cookie)
+      .send({ room: chatId, identity: 'guest:abcdef012345' })
+    expect(kick.status).toBe(403)
+    expect(kick.body.error).toBe('FORBIDDEN')
+  })
+
+  it('removing a member — or their own leave — revokes the links they made for that chat', async () => {
+    if (!dbAvailable) return
+    // DELETE /guest-invites/:id is scoped to the creator, so the group owner
+    // had no way to kill a departed member's link at all.
+    const owner = await createUser(`gm-rev-owner-${uniq()}`)
+    const member = await createUser(`gm-rev-${uniq()}`)
+    const ownerCookie = await sessionCookie(owner)
+    const memberCookie = await sessionCookie(member)
+
+    const kickedChat = await makeGroupChat(owner.id, member.id)
+    const kickedLink = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', memberCookie)
+      .send({ purpose: 'call', chat_id: kickedChat, max_uses: 2 })
+    expect(kickedLink.status).toBe(200)
+
+    const removed = await request(onApp!.server)
+      .delete(`/api/chats/${kickedChat}/members/${member.id}`)
+      .set('Cookie', ownerCookie)
+    expect(removed.status).toBe(200)
+
+    const deadLink = await request(onApp!.server)
+      .post('/api/guest/resolve')
+      .send({ token: kickedLink.body.token })
+    expect(deadLink.status).toBe(404)
+    expect(deadLink.body.error).toBe('INVITE_NOT_FOUND')
+
+    // Walking out on your own does the same.
+    const leftChat = await makeGroupChat(owner.id, member.id)
+    const leftLink = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', memberCookie)
+      .send({ purpose: 'call', chat_id: leftChat, max_uses: 2 })
+    expect(leftLink.status).toBe(200)
+
+    const left = await request(onApp!.server)
+      .post(`/api/chats/${leftChat}/leave`)
+      .set('Cookie', memberCookie)
+    expect(left.status).toBe(200)
+
+    const [revokedRow] = await db
+      .select({ revokedAt: guestInvites.revokedAt })
+      .from(guestInvites)
+      .where(eq(guestInvites.id, leftLink.body.id))
+      .limit(1)
+    expect(revokedRow?.revokedAt).toBeTruthy()
+  })
+
+  it('a meeting seat is concurrent capacity: leaving the room gives it back', async () => {
+    if (!dbAvailable) return
+    // used_count only ever went up, so a guest whose tab reloaded had to
+    // re-knock and burn a second seat; a live meeting could exhaust its own
+    // link and then tell everyone the link had expired.
+    const creator = await createUser(`gm-seat-${uniq()}`)
+    const cookie = await sessionCookie(creator)
+    const created = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', cookie)
+      .send({ purpose: 'call', max_uses: 1 })
+    expect(created.status).toBe(200)
+
+    const knock = await request(onApp!.server)
+      .post('/api/guest/knock')
+      .send({ token: created.body.token, nickname: 'Гость Возврата' })
+    const approve = await request(onApp!.server)
+      .post(`/api/guest/knock/${knock.body.knock_id}/approve`)
+      .set('Cookie', cookie)
+    expect(approve.status).toBe(200)
+    const identity = String(approve.body.identity)
+
+    const whileSeated = await request(onApp!.server)
+      .post('/api/guest/resolve')
+      .send({ token: created.body.token })
+    expect(whileSeated.status).toBe(409)
+
+    const leftEvent = {
+      event: 'participant_left',
+      room: { name: created.body.room_id },
+      participant: { identity },
+    }
+    expect((await postWebhook(leftEvent)).status).toBe(200)
+
+    const afterLeave = await request(onApp!.server)
+      .post('/api/guest/resolve')
+      .send({ token: created.body.token })
+    expect(afterLeave.status).toBe(200)
+    expect(afterLeave.body.kind).toBe('call')
+
+    // A duplicated (or plain stray) webhook must not hand out a bonus seat.
+    expect((await postWebhook(leftEvent)).status).toBe(200)
+    await postWebhook({
+      event: 'participant_left',
+      room: { name: created.body.room_id },
+      participant: { identity: 'guest:neverjoined' },
+    })
+    const listed = await request(onApp!.server)
+      .get('/api/guest-invites')
+      .set('Cookie', cookie)
+    const row = listed.body.invites.find((i: { id: string }) => i.id === created.body.id)
+    expect(row.used_count).toBe(0)
+    expect(row.exhausted).toBe(false)
+  })
+
+  it('a kick LiveKit never performed is reported as a failure, denylist kept', async () => {
+    if (!dbAvailable) return
+    // LIVEKIT_URL points at a host that does not exist, so RemoveParticipant
+    // fails exactly as it does when the SFU is down or misconfigured. The
+    // denylist only bites on a re-join, so answering ok:true showed the host a
+    // success over a guest who is still sitting in the call.
+    const creator = await createUser(`gm-kick-${uniq()}`)
+    const cookie = await sessionCookie(creator)
+    const created = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', cookie)
+      .send({ purpose: 'call', max_uses: 1 })
+
+    const res = await request(onApp!.server)
+      .post('/api/guest-calls/kick')
+      .set('Cookie', cookie)
+      .send({ room: created.body.room_id, identity: 'guest:abcdef012345' })
+    expect(res.status).toBe(502)
+    expect(res.body.error).toBe('KICK_NOT_APPLIED')
+    // RemoveParticipant is given 5s before it gives up; the default per-test
+    // budget is exactly that, which would make a slow DNS failure look like a
+    // broken kick route.
+  }, 15_000)
+
+  it('pending knocks can be fetched by the host who missed the push', async () => {
+    if (!dbAvailable) return
+    // The guest_knock WS message is fire-and-forget and the overlay is
+    // event-only: a host who was offline (or merely reloading) got a push
+    // saying someone is at the door and no way to open it.
+    const creator = await createUser(`gm-hydrate-${uniq()}`)
+    const outsider = await createUser(`gm-hydrate-out-${uniq()}`)
+    const cookie = await sessionCookie(creator)
+    const created = await request(onApp!.server)
+      .post('/api/guest-invites')
+      .set('Cookie', cookie)
+      .send({ purpose: 'call', max_uses: 1 })
+
+    const knock = await request(onApp!.server)
+      .post('/api/guest/knock')
+      .send({ token: created.body.token, nickname: 'Гость Стука' })
+    expect(knock.status).toBe(200)
+
+    const listed = await request(onApp!.server)
+      .get('/api/guest/knocks')
+      .set('Cookie', cookie)
+    expect(listed.status).toBe(200)
+    expect(listed.body.knocks).toHaveLength(1)
+    // Same fields the WS message carries, so the overlay renders either.
+    expect(listed.body.knocks[0]).toMatchObject({
+      knock_id: knock.body.knock_id,
+      nickname: 'Гость Стука',
+      chat_id: null,
+      room_id: created.body.room_id,
+    })
+    expect(Date.parse(listed.body.knocks[0].expires_at)).toBeGreaterThan(Date.now())
+
+    // Someone else's door is none of their business.
+    const foreign = await request(onApp!.server)
+      .get('/api/guest/knocks')
+      .set('Cookie', await sessionCookie(outsider))
+    expect(foreign.body.knocks).toEqual([])
+
+    const approve = await request(onApp!.server)
+      .post(`/api/guest/knock/${knock.body.knock_id}/approve`)
+      .set('Cookie', cookie)
+    expect(approve.status).toBe(200)
+    const afterApprove = await request(onApp!.server)
+      .get('/api/guest/knocks')
+      .set('Cookie', cookie)
+    expect(afterApprove.body.knocks).toEqual([])
   })
 })

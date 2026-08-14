@@ -29,6 +29,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Единственная формула build stamp на все пути деплоя (см. комментарий в
+# prime_compose_interpolation_env и scripts/lib/build-stamp.sh).
+# shellcheck source=lib/build-stamp.sh
+. "${ROOT}/scripts/lib/build-stamp.sh"
+
 # --- Цвета -------------------------------------------------------------------
 RED='\033[0;31m'
 GRN='\033[0;32m'
@@ -341,15 +346,32 @@ prime_compose_interpolation_env() {
   # and version-check.ts skips the comparison entirely when the client is "dev".
   # Net effect: the update banner was dead on every deploy made this way, and
   # operators had no way to tell which build prod was actually running.
-  # Appended AFTER the copy so an explicit value in .env.prod still wins.
+  #
+  # Writing it into ${ROOT}/.env was not enough on its own, and that is why the
+  # bug survived: EVERY compose invocation in this script passes
+  # `--env-file "$ENV_FILE"`, and specifying --env-file makes Compose ignore the
+  # project .env outright. So the stamp has to be EXPORTED — the shell
+  # environment is the one channel that reaches interpolation past --env-file.
+  # The .env line stays too, so a bare `docker compose … ps` without flags (the
+  # whole point of the mirror above) still interpolates.
+  #
+  # Appended AFTER the copy so an explicit value in .env.prod still wins: if the
+  # operator pinned one, it is already in ${ROOT}/.env and we neither append nor
+  # export over it. Computed once per run so the api and the web half of the
+  # same deploy cannot get two different BUILT_AT values.
   if ! grep -qE '^[[:space:]]*APP_VERSION=' "${ROOT}/.env"; then
-    local app_version git_sha
-    app_version="$(tr -d '[:space:]' < "${ROOT}/VERSION" 2>/dev/null || true)"
-    git_sha="$(git -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || echo nogit)"
+    # prime_compose_interpolation_env runs several times per command; stamp once
+    # so the api and the web half of the same `update` cannot end up with two
+    # different BUILT_AT values.
+    if [[ -z "${BUILD_STAMP_DONE:-}" ]]; then
+      build_stamp_export "$ROOT" \
+        || warn "Build stamp не вычислен (нет ./VERSION или это не git-checkout): сборка будет помечена как \"${APP_VERSION}\", баннер обновления в клиенте работать не будет."
+      BUILD_STAMP_DONE=1
+    fi
     {
-      printf 'APP_VERSION=%s\n' "${app_version:-dev}"
-      printf 'GIT_SHA=%s\n' "$git_sha"
-      printf 'BUILT_AT=%s\n' "$(date -u +%FT%TZ)"
+      printf 'APP_VERSION=%s\n' "$APP_VERSION"
+      printf 'GIT_SHA=%s\n' "$GIT_SHA"
+      printf 'BUILT_AT=%s\n' "$BUILT_AT"
     } >> "${ROOT}/.env"
   fi
 }

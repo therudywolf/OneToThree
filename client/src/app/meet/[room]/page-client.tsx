@@ -15,7 +15,7 @@
  * is most likely to be sitting on this very screen when a guest arrives.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createCallToken } from '@/lib/api/call'
 import { kickGuestFromCall } from '@/lib/api/guest'
@@ -26,6 +26,7 @@ import {
   type LiveKitGrant,
 } from '@/components/guest/livekit-room-stage'
 import { GuestKnockOverlay } from '@/components/guest/guest-knock-overlay'
+import { useTranslation } from '@/hooks/use-translation'
 
 type Stage =
   | { kind: 'loading' }
@@ -34,6 +35,7 @@ type Stage =
   | { kind: 'error'; message: string }
 
 export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
+  const { t } = useTranslation()
   const router = useRouter()
   const searchParams = useSearchParams()
   // Static export ships only /meet/_ — accept ?room= there.
@@ -43,20 +45,29 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
   const [stage, setStage] = useState<Stage>({ kind: 'loading' })
   /** Bumped to re-enter the same room after leaving (the room id never changes). */
   const [joinNonce, setJoinNonce] = useState(0)
+  // Read through a ref: `t` changes identity on a locale switch, and this effect
+  // mints the LiveKit grant — re-running it would redial the room just because
+  // someone flipped the language.
+  const tRef = useRef(t)
+  tRef.current = t
 
   useEffect(() => {
     if (!room) {
-      setStage({ kind: 'error', message: 'Не указана комната встречи.' })
+      setStage({ kind: 'error', message: tRef.current('meet.noRoom') })
       return
     }
     let alive = true
     void (async () => {
       try {
-        const t = await createCallToken(room)
+        const grant = await createCallToken(room)
         if (!alive) return
         setStage({
           kind: 'in-call',
-          grant: { url: t.url, token: t.token, e2eeKey: t.call_e2ee_key },
+          grant: {
+            url: grant.url,
+            token: grant.token,
+            e2eeKey: grant.call_e2ee_key,
+          },
         })
       } catch (err) {
         if (!alive) return
@@ -65,10 +76,10 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
           kind: 'error',
           message:
             code === 'NOT_A_MEMBER'
-              ? 'Эта встреча вам не принадлежит или её ссылка отозвана.'
+              ? tRef.current('meet.notYours')
               : code === 'LIVEKIT_NOT_CONFIGURED' || code === 'LIVEKIT_SECRET_TOO_SHORT'
-                ? 'Звонки на этом сервере не настроены.'
-                : 'Не удалось открыть встречу. Попробуйте ещё раз.',
+                ? tRef.current('meet.callsOff')
+                : tRef.current('meet.openFailed'),
         })
       }
     })()
@@ -89,7 +100,7 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
       <CenterCard>
         <div className="flex flex-col items-center gap-4 py-4">
           <Spinner />
-          <p className="text-sm text-neutral-400">Открываем встречу…</p>
+          <p className="text-sm text-neutral-400">{t('meet.opening')}</p>
         </div>
       </CenterCard>
     )
@@ -98,14 +109,14 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
   if (stage.kind === 'error') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Встреча недоступна</h1>
+        <h1 className="text-lg font-semibold">{t('meet.unavailable')}</h1>
         <p className="mt-2 text-sm text-neutral-400">{stage.message}</p>
         <button
           type="button"
           onClick={() => router.push('/')}
           className="mt-4 w-full rounded-lg bg-neutral-100 px-4 py-2 font-medium text-neutral-900 transition hover:bg-white"
         >
-          К чатам
+          {t('meet.toChats')}
         </button>
       </CenterCard>
     )
@@ -114,11 +125,8 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
   if (stage.kind === 'ended') {
     return (
       <CenterCard>
-        <h1 className="text-lg font-semibold">Вы вышли из встречи</h1>
-        <p className="mt-2 text-sm text-neutral-400">
-          Комната остаётся доступной по той же ссылке, пока у неё есть места и
-          не истёк срок.
-        </p>
+        <h1 className="text-lg font-semibold">{t('meet.leftTitle')}</h1>
+        <p className="mt-2 text-sm text-neutral-400">{t('meet.leftBody')}</p>
         <div className="mt-4 flex gap-2">
           <button
             type="button"
@@ -128,14 +136,14 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
             }}
             className="flex-1 rounded-lg border border-neutral-700 px-4 py-2 text-sm text-neutral-200 transition hover:bg-neutral-800"
           >
-            Вернуться
+            {t('meet.rejoin')}
           </button>
           <button
             type="button"
             onClick={() => router.push('/')}
             className="flex-1 rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition hover:bg-white"
           >
-            К чатам
+            {t('meet.toChats')}
           </button>
         </div>
       </CenterCard>
@@ -146,7 +154,7 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
     <>
       <LiveKitRoomStage
         grant={stage.grant}
-        title="Быстрая встреча"
+        title={t('meet.instantTitle')}
         onKickGuest={kick}
         onEnded={() => setStage({ kind: 'ended' })}
         onError={(message) => setStage({ kind: 'error', message })}

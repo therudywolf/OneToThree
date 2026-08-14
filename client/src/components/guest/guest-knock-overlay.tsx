@@ -9,15 +9,26 @@
  * `guest_knock_cancelled` removes it; cards auto-expire with the knock's
  * 5-minute server TTL. Approve/deny call the creator-side endpoints — approval
  * is what releases the LiveKit grant to the polling guest.
+ *
+ * The WS is not the only source. A knock raised while the host had no socket is
+ * broadcast to nobody and only produces a push; the host taps it, connects after
+ * the fact, and the event is long gone. So the overlay also HYDRATES from
+ * GET /guest/knocks on mount and on every offline→online edge, merged by knock
+ * id with whatever the socket already delivered.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { DoorOpen } from 'lucide-react'
 import { getFmSocket } from '@/lib/api/socket'
-import { approveGuestKnock, denyGuestKnock } from '@/lib/api/guest'
+import {
+  approveGuestKnock,
+  denyGuestKnock,
+  listPendingGuestKnocks,
+  type GuestPendingKnock,
+} from '@/lib/api/guest'
 import { useTranslation } from '@/hooks/use-translation'
 
-type KnockCard = {
+export type KnockCard = {
   id: string
   nickname: string
   chatId: string | null
@@ -28,22 +39,59 @@ type KnockCard = {
 
 const KNOCK_TTL_MS = 5 * 60_000
 
+/**
+ * Fold a hydration snapshot into the cards already on screen.
+ *
+ * The knock id is the identity: the same knock reaches us over the WS AND in
+ * every snapshot until it is answered, so re-adding it would stack duplicate
+ * cards on top of each other. An existing card always wins — it may be mid
+ * approve/deny (`busy`) or showing the error from a failed one, and neither may
+ * be reset by a refetch. Nothing is REMOVED here: a card the socket delivered
+ * microseconds after the server built the snapshot is not stale.
+ */
+export function mergeKnockCards(
+  prev: KnockCard[],
+  pending: GuestPendingKnock[],
+  now: number = Date.now()
+): KnockCard[] {
+  const known = new Set(prev.map((k) => k.id))
+  const added: KnockCard[] = []
+  for (const p of pending) {
+    if (known.has(p.knock_id)) continue
+    known.add(p.knock_id)
+    added.push({
+      id: p.knock_id,
+      nickname: p.nickname,
+      chatId: p.chat_id ?? null,
+      expiresAt: knockExpiry(p.expires_at, now),
+      busy: false,
+      error: null,
+    })
+  }
+  return added.length === 0 ? prev : [...prev, ...added]
+}
+
+/**
+ * A hydrated knock is already part-way through its window, so the server's
+ * `expires_at` is what the card must count down to — `now + TTL` would keep a
+ * dead card on screen for another five minutes. An absent or unparseable value
+ * (older server) falls back to the full TTL.
+ */
+function knockExpiry(expiresAt: string | null | undefined, now: number): number {
+  if (!expiresAt) return now + KNOCK_TTL_MS
+  const at = Date.parse(expiresAt)
+  return Number.isNaN(at) ? now + KNOCK_TTL_MS : at
+}
+
 export function GuestKnockOverlay() {
   const { t } = useTranslation()
   const [knocks, setKnocks] = useState<KnockCard[]>([])
-  const timersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
   const removeKnock = useCallback((id: string) => {
     setKnocks((prev) => prev.filter((k) => k.id !== id))
-    const timer = timersRef.current.get(id)
-    if (timer) {
-      clearTimeout(timer)
-      timersRef.current.delete(id)
-    }
   }, [])
 
   useEffect(() => {
-    const timers = timersRef.current
     const unsubscribe = getFmSocket().subscribe((m) => {
       if (m.type === 'guest_knock') {
         const { knock_id: id, nickname, chat_id: chatId } = m
@@ -62,18 +110,61 @@ export function GuestKnockOverlay() {
                 },
               ]
         )
-        const timer = setTimeout(() => removeKnock(id), KNOCK_TTL_MS)
-        timers.set(id, timer)
       } else if (m.type === 'guest_knock_cancelled') {
         removeKnock(m.knock_id)
       }
     })
-    return () => {
-      unsubscribe()
-      for (const timer of timers.values()) clearTimeout(timer)
-      timers.clear()
-    }
+    return unsubscribe
   }, [removeKnock])
+
+  // Hydration: the mount pull covers "host tapped the push", the connect edge
+  // covers "the socket was down while a guest knocked".
+  useEffect(() => {
+    let cancelled = false
+    const socket = getFmSocket()
+
+    const hydrate = async () => {
+      let pending: GuestPendingKnock[]
+      try {
+        pending = await listPendingGuestKnocks()
+      } catch {
+        // Nothing to show and nothing to say: WS delivery still works, and a
+        // server without the endpoint must not paint an error over the app.
+        return
+      }
+      if (cancelled) return
+      setKnocks((prev) => mergeKnockCards(prev, pending))
+    }
+
+    void hydrate()
+
+    // subscribeStatus fires immediately with the current state and again on
+    // every connect/disconnect; refetch only on a false→true edge, since the
+    // mount pull above already covers "connected all along".
+    let wasConnected = socket.connected
+    const offStatus = socket.subscribeStatus(() => {
+      const nowConnected = socket.connected
+      if (nowConnected && !wasConnected) void hydrate()
+      wasConnected = nowConnected
+    })
+
+    return () => {
+      cancelled = true
+      offStatus()
+    }
+  }, [])
+
+  // One expiry timer per card, re-armed off the card's own deadline whenever the
+  // set changes — a hydrated knock may have seconds left, not the full TTL.
+  useEffect(() => {
+    if (knocks.length === 0) return
+    const timers = knocks.map((k) =>
+      setTimeout(() => removeKnock(k.id), Math.max(0, k.expiresAt - Date.now()))
+    )
+    return () => {
+      for (const timer of timers) clearTimeout(timer)
+    }
+  }, [knocks, removeKnock])
 
   const act = useCallback(
     async (id: string, action: 'approve' | 'deny') => {

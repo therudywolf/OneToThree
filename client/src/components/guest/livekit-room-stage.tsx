@@ -38,6 +38,13 @@ import type {
   Room,
   RoomOptions,
 } from 'livekit-client'
+// The badge predicate comes from the call manager and is NOT re-implemented
+// here: this screen used to carry its own byte-identical copy, and a copy is
+// exactly how the "guest label is server-issued, never name-derived" property
+// gets weakened on one screen while the test keeps passing on the other.
+import { isGuestParticipant } from '@/lib/livekit-call-manager'
+import { toastError } from '@/store/toastStore'
+import { useTranslation } from '@/hooks/use-translation'
 
 // ─── Lazy livekit-client module (kept out of the main bundle) ───────────────
 
@@ -59,16 +66,6 @@ function b64ToBytes(b64: string): Uint8Array {
   return out
 }
 
-/** Participant metadata JSON {"guest":true} marks link-invited guests. */
-function isGuestMeta(meta: string | undefined): boolean {
-  if (!meta) return false
-  try {
-    return (JSON.parse(meta) as { guest?: boolean }).guest === true
-  } catch {
-    return false
-  }
-}
-
 function displayName(p: RemoteParticipant): string {
   return p.name && p.name.length > 0 ? p.name : p.identity
 }
@@ -86,10 +83,11 @@ export function CenterCard({ children }: { children: ReactNode }) {
 }
 
 export function Spinner() {
+  const { t } = useTranslation()
   return (
     <div
       className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-100"
-      aria-label="Загрузка"
+      aria-label={t('common.loading')}
     />
   )
 }
@@ -148,6 +146,7 @@ function ParticipantTile({
   /** Present only for a host who may remove guests. */
   onKick?: (identity: string, name: string) => void
 }) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const lk = lkModule
 
@@ -178,7 +177,7 @@ function ParticipantTile({
   }, [videoTrack])
 
   const name = displayName(participant)
-  const guest = isGuestMeta(participant.metadata)
+  const guest = isGuestParticipant(participant.metadata)
   const micOff = !participant.isMicrophoneEnabled
 
   return (
@@ -206,7 +205,7 @@ function ParticipantTile({
         <span className="max-w-[10rem] truncate">{name}</span>
         {guest ? (
           <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
-            гость
+            {t('guest.badge')}
           </span>
         ) : null}
         {micOff ? (
@@ -219,10 +218,10 @@ function ParticipantTile({
         <button
           type="button"
           onClick={() => onKick(participant.identity, name)}
-          title={`Удалить гостя ${name} из встречи`}
+          title={t('meet.kickGuestTitle').replace('{name}', name)}
           className="absolute right-2 top-2 rounded-md bg-neutral-950/70 px-2 py-1 text-xs text-neutral-300 transition hover:bg-red-600 hover:text-white"
         >
-          Удалить
+          {t('meet.kickGuestAction')}
         </button>
       ) : null}
     </div>
@@ -242,7 +241,7 @@ type Props = {
   grant: LiveKitGrant
   /** Header line, e.g. "Встреча у Ани" or "Быстрая встреча". */
   title: string
-  /** Label under the local tile. */
+  /** Label under the local tile; defaults to the localized "you". */
   selfLabel?: string
   /** Show the «гость» badge on the local tile (the guest's own view). */
   selfIsGuest?: boolean
@@ -257,12 +256,14 @@ type Props = {
 export function LiveKitRoomStage({
   grant,
   title,
-  selfLabel = 'Вы',
+  selfLabel,
   selfIsGuest = false,
   onKickGuest,
   onEnded,
   onError,
 }: Props) {
+  const { t } = useTranslation()
+  const selfName = selfLabel ?? t('meet.self')
   const [connected, setConnected] = useState(false)
   const [micEnabled, setMicEnabled] = useState(false)
   const [camOn, setCamOn] = useState(false)
@@ -278,11 +279,15 @@ export function LiveKitRoomStage({
   const leavingRef = useRef(false)
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   // The join runs once per grant; callbacks are read through refs so a parent
-  // re-render never re-triggers it.
+  // re-render never re-triggers it. `t` gets the same treatment — it changes
+  // identity when the locale is switched, and a language toggle must never
+  // tear down and redial a live room.
   const endedRef = useRef(onEnded)
   const errorRef = useRef(onError)
+  const tRef = useRef(t)
   endedRef.current = onEnded
   errorRef.current = onError
+  tRef.current = t
 
   useEffect(() => {
     let cancelled = false
@@ -292,7 +297,7 @@ export function LiveKitRoomStage({
       try {
         lk = await loadLk()
       } catch {
-        errorRef.current('Не удалось загрузить модуль звонков. Обновите страницу.')
+        errorRef.current(tRef.current('meet.moduleFailed'))
         return
       }
       if (cancelled) return
@@ -310,9 +315,7 @@ export function LiveKitRoomStage({
           const worker = new Worker('/livekit-e2ee-worker.js')
           options.e2ee = { keyProvider: provider, worker }
         } catch {
-          errorRef.current(
-            'Не удалось настроить шифрование звонка. Подключение без шифрования запрещено — попробуйте другой браузер.'
-          )
+          errorRef.current(tRef.current('meet.e2eeFailed'))
           return
         }
       }
@@ -352,9 +355,7 @@ export function LiveKitRoomStage({
         } catch {
           /* never connected */
         }
-        errorRef.current(
-          'Не удалось подключиться к встрече. Обновите страницу и попробуйте снова.'
-        )
+        errorRef.current(tRef.current('meet.connectFailed'))
         return
       }
       if (cancelled) {
@@ -471,17 +472,22 @@ export function LiveKitRoomStage({
   const kickGuest = useCallback(
     async (identity: string, name: string) => {
       if (!onKickGuest) return
-      if (!window.confirm(`Удалить гостя ${name} из встречи?`)) return
+      if (!window.confirm(t('guest.kickConfirm').replace('{name}', name))) return
       setKicking(identity)
       try {
         await onKickGuest(identity)
-      } catch {
-        /* the tile stays; the host can retry */
+      } catch (err) {
+        // The tile staying put IS the whole symptom, so silence here read as
+        // success: a 403 (someone else minted the link) and a kick the SFU
+        // never applied both looked exactly like a slow removal. Same split
+        // the in-chat call screen makes — not allowed vs. try again.
+        const code = err instanceof Error ? err.message : ''
+        toastError(code === 'FORBIDDEN' ? t('guest.kickForbidden') : t('guest.kickFailed'))
       } finally {
         setKicking(null)
       }
     },
-    [onKickGuest]
+    [onKickGuest, t]
   )
 
   // Local camera preview attach/detach.
@@ -501,7 +507,7 @@ export function LiveKitRoomStage({
       <CenterCard>
         <div className="flex flex-col items-center gap-4 py-4">
           <Spinner />
-          <p className="text-sm text-neutral-400">Подключаемся к встрече…</p>
+          <p className="text-sm text-neutral-400">{t('meet.connecting')}</p>
         </div>
       </CenterCard>
     )
@@ -521,19 +527,19 @@ export function LiveKitRoomStage({
           {e2eeActive ? (
             <span
               className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300"
-              title="Медиапотоки шифруются"
+              title={t('meet.encryptedHint')}
             >
-              шифрование
+              {t('meet.encrypted')}
             </span>
           ) : null}
-          <span>Участников: {participantCount}</span>
+          <span>{t('meet.participants').replace('{n}', String(participantCount))}</span>
         </div>
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto p-3">
         {remotes.length === 0 ? (
           <div className="flex h-full min-h-[10rem] items-center justify-center text-sm text-neutral-500">
-            Пока здесь больше никого нет
+            {t('meet.aloneHere')}
           </div>
         ) : null}
         <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
@@ -560,14 +566,14 @@ export function LiveKitRoomStage({
               />
             ) : (
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-800 text-2xl font-semibold text-neutral-300">
-                {selfLabel.slice(0, 1).toUpperCase()}
+                {selfName.slice(0, 1).toUpperCase()}
               </div>
             )}
             <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-neutral-950/70 px-2 py-1 text-xs">
-              <span>{selfLabel}</span>
+              <span>{selfName}</span>
               {selfIsGuest ? (
                 <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-300">
-                  гость
+                  {t('guest.badge')}
                 </span>
               ) : null}
               {!micEnabled ? (
@@ -584,7 +590,7 @@ export function LiveKitRoomStage({
         <button
           type="button"
           onClick={() => void toggleMic()}
-          title={micEnabled ? 'Выключить микрофон' : 'Включить микрофон'}
+          title={micEnabled ? t('meet.micOff') : t('meet.micOn')}
           className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
             micEnabled
               ? 'bg-neutral-800 text-neutral-100 hover:bg-neutral-700'
@@ -597,7 +603,7 @@ export function LiveKitRoomStage({
           type="button"
           onClick={() => void toggleCam()}
           disabled={camBusy}
-          title={camOn ? 'Выключить камеру' : 'Включить камеру'}
+          title={camOn ? t('meet.camOff') : t('meet.camOn')}
           className={`flex h-11 w-11 items-center justify-center rounded-full transition disabled:opacity-50 ${
             camOn
               ? 'bg-neutral-800 text-neutral-100 hover:bg-neutral-700'
@@ -612,7 +618,7 @@ export function LiveKitRoomStage({
           className="flex h-11 items-center gap-2 rounded-full bg-red-600 px-5 font-medium text-white transition hover:bg-red-500"
         >
           <LeaveIcon />
-          <span className="text-sm">Покинуть встречу</span>
+          <span className="text-sm">{t('meet.leave')}</span>
         </button>
       </footer>
     </div>

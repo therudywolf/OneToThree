@@ -177,6 +177,33 @@ export async function revokeGuestInvite(id: string): Promise<void> {
   await jsonOrThrow<{ ok: boolean }>(res, 'REVOKE_FAILED')
 }
 
+export type GuestPendingKnock = {
+  knock_id: string
+  nickname: string
+  chat_id: string | null
+  room_id: string
+  /** End of the knock's 5-minute window; optional — an older server omits it. */
+  expires_at?: string | null
+}
+
+/**
+ * Knocks still waiting for THIS user's answer.
+ *
+ * `guest_knock` is a broadcast and nothing more: a knock raised while the host
+ * had no live socket goes out to zero sockets, and the push that follows it
+ * («Гость стучится во встречу — откройте, чтобы впустить») used to open a screen
+ * that only ever listened for the NEXT knock. The overlay pulls this on mount
+ * and after every reconnect so the card the host was pushed about is actually
+ * there when they arrive.
+ */
+export async function listPendingGuestKnocks(): Promise<GuestPendingKnock[]> {
+  const res = await fetchWithTimeout(`${API_URL}/guest/knocks`, {
+    credentials: 'include',
+  })
+  const data = await jsonOrThrow<{ knocks: GuestPendingKnock[] }>(res, 'KNOCKS_LIST_FAILED')
+  return data.knocks ?? []
+}
+
 export async function approveGuestKnock(id: string): Promise<void> {
   const res = await fetchWithTimeout(`${API_URL}/guest/knock/${encodeURIComponent(id)}/approve`, {
     method: 'POST',
@@ -193,6 +220,16 @@ export async function denyGuestKnock(id: string): Promise<void> {
   await jsonOrThrow<{ ok: boolean }>(res, 'DENY_FAILED')
 }
 
+/**
+ * Remove a guest from a live call.
+ *
+ * The denylist write and the LiveKit removal are two different things, and only
+ * the first one always happens: when the SFU call fails the server answers
+ * `removed: false` (older builds, with a 200) or 502 KICK_NOT_APPLIED. Both mean
+ * the same to the host — the guest is still sitting in the room and the kick has
+ * to be retried — so both throw. Reading `ok` alone reported those as success and
+ * the tile just stayed there with no explanation.
+ */
 export async function kickGuestFromCall(room: string, identity: string): Promise<void> {
   const res = await fetchWithTimeout(`${API_URL}/guest-calls/kick`, {
     method: 'POST',
@@ -200,7 +237,8 @@ export async function kickGuestFromCall(room: string, identity: string): Promise
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ room, identity }),
   })
-  await jsonOrThrow<{ ok: boolean }>(res, 'KICK_FAILED')
+  const data = await jsonOrThrow<{ ok: boolean; removed?: boolean }>(res, 'KICK_FAILED')
+  if (data.removed === false) throw new Error('KICK_NOT_APPLIED')
 }
 
 /**

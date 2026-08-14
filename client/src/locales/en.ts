@@ -1325,6 +1325,28 @@ const en = {
   'meet.leftBody': 'The room stays reachable at the same link while it has free seats and has not expired.',
   'meet.rejoin': 'Go back',
   'meet.toChats': 'To chats',
+
+  // [MEET] devices and the pre-join check
+  'meet.settings': 'Audio and video settings',
+  'meet.settingsClose': 'Close settings',
+  'meet.deviceDefault': 'System default',
+  'meet.deviceCamera': 'Camera',
+  'meet.deviceMic': 'Microphone',
+  'meet.deviceSpeaker': 'Speaker',
+  'meet.deviceSpeakerUnsupported': 'This browser cannot choose a speaker — audio follows the system output.',
+  'meet.background': 'Camera background',
+  'meet.bgNone': 'None',
+  'meet.bgBlur': 'Blur',
+  'meet.bgImage': 'Image',
+  'meet.bgUpload': 'Upload an image',
+  'meet.bgUploading': 'Uploading…',
+  'meet.checkTitle': 'Check your camera and microphone',
+  'meet.checkHint': 'Your choice is remembered in this browser.',
+  'meet.micLevel': 'Microphone level',
+  'meet.previewOff': 'Camera is off',
+  'meet.previewBlocked': 'No access to the camera or microphone. Allow it in your browser — you can join without them.',
+  'meet.previewToggleCamOn': 'Turn the preview camera on',
+  'meet.previewToggleCamOff': 'Turn the preview camera off',
 } as const;
 
 export default en;

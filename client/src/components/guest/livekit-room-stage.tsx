@@ -30,8 +30,6 @@ import {
   type ReactNode,
 } from 'react'
 import type {
-  LocalAudioTrack,
-  LocalVideoTrack,
   RemoteParticipant,
   RemoteTrack,
   RemoteTrackPublication,
@@ -45,6 +43,17 @@ import type {
 import { isGuestParticipant } from '@/lib/livekit-call-manager'
 import { toastError } from '@/store/toastStore'
 import { useTranslation } from '@/hooks/use-translation'
+import {
+  applyPreferredAudioOutput,
+  loadCamEffectImage,
+  loadMediaPrefs,
+  MEDIA_PREFS_CHANGED_EVENT,
+} from '@/lib/media-devices'
+import { acquireMedia } from '@/lib/media-capture'
+import { upgradeLocalStreamAudio, type VoiceProcessingHandle } from '@/lib/voice-processing'
+import { createEffectedCameraTrack, type CameraEffectsHandle } from '@/lib/camera-effects'
+import { MediaDeviceSettings } from '@/components/media/media-device-settings'
+import { tracksAffectedBy, type MediaPrefKind } from '@/lib/media-device-list'
 
 // ─── Lazy livekit-client module (kept out of the main bundle) ───────────────
 
@@ -72,10 +81,21 @@ function displayName(p: RemoteParticipant): string {
 
 // ─── Small UI atoms (shared with the guest entry screens) ───────────────────
 
-export function CenterCard({ children }: { children: ReactNode }) {
+/** `wide` is for the pre-join check, which carries a video preview. */
+export function CenterCard({
+  children,
+  wide = false,
+}: {
+  children: ReactNode
+  wide?: boolean
+}) {
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-neutral-950 px-4 text-neutral-100">
-      <div className="w-full max-w-sm rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-xl">
+    <div className="flex min-h-dvh items-center justify-center bg-neutral-950 px-4 py-6 text-neutral-100">
+      <div
+        className={`w-full rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-xl ${
+          wide ? 'max-w-md' : 'max-w-sm'
+        }`}
+      >
         {children}
       </div>
     </div>
@@ -113,6 +133,15 @@ function CamIcon({ off }: { off: boolean }) {
   )
 }
 
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  )
+}
+
 function LeaveIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -131,7 +160,14 @@ function AudioSink({ track }: { track: RemoteTrack }) {
     const el = ref.current
     if (!el) return
     track.attach(el)
+    // Route to the chosen speaker. Every sink has to be told separately — a
+    // sink created later (someone joins mid-meeting) would otherwise land on
+    // the system default while the rest of the room plays where it was asked to.
+    void applyPreferredAudioOutput(el)
+    const onPrefs = () => void applyPreferredAudioOutput(el)
+    window.addEventListener(MEDIA_PREFS_CHANGED_EVENT, onPrefs)
     return () => {
+      window.removeEventListener(MEDIA_PREFS_CHANGED_EVENT, onPrefs)
       track.detach(el)
     }
   }, [track])
@@ -270,12 +306,18 @@ export function LiveKitRoomStage({
   const [camBusy, setCamBusy] = useState(false)
   const [e2eeActive, setE2eeActive] = useState(false)
   const [kicking, setKicking] = useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   // Bumped on every relevant RoomEvent so the tile grid re-renders.
   const [, setRoomVersion] = useState(0)
 
   const roomRef = useRef<Room | null>(null)
-  const micTrackRef = useRef<LocalAudioTrack | null>(null)
-  const camTrackRef = useRef<LocalVideoTrack | null>(null)
+  /** Raw capture streams, kept so the hardware is released on teardown. */
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const micTrackRef = useRef<MediaStreamTrack | null>(null)
+  const voiceRef = useRef<VoiceProcessingHandle | null>(null)
+  const camRawRef = useRef<MediaStreamTrack | null>(null)
+  const camTrackRef = useRef<MediaStreamTrack | null>(null)
+  const camFxRef = useRef<CameraEffectsHandle | null>(null)
   const leavingRef = useRef(false)
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
   // The join runs once per grant; callbacks are read through refs so a parent
@@ -366,13 +408,25 @@ export function LiveKitRoomStage({
       setE2eeActive(Boolean(options.e2ee))
 
       // Audio-first: mic only; the camera is a toggle inside the call.
+      //
+      // Not `createLocalTracks`: that ignores the saved device and the voice
+      // chain, so a guest with a headset selected in Settings was published
+      // from the laptop's built-in microphone. Same acquisition the members'
+      // SFU path uses — saved device + echo/noise/AGC at capture, then the
+      // noise-gate worklet — published as a custom track.
       try {
-        const tracks = await lk.createLocalTracks({ audio: true, video: false })
-        const mic = tracks.find((t) => t.kind === lk.Track.Kind.Audio) as
-          | LocalAudioTrack
-          | undefined
+        const stream = await acquireMedia({ video: false, audio: true })
+        micStreamRef.current = stream
+        try {
+          voiceRef.current = await upgradeLocalStreamAudio(stream)
+        } catch {
+          voiceRef.current = null
+        }
+        const mic = stream.getAudioTracks()[0] ?? null
         if (mic) {
-          await room.localParticipant.publishTrack(mic)
+          await room.localParticipant.publishTrack(mic, {
+            source: lk.Track.Source.Microphone,
+          })
           micTrackRef.current = mic
           setMicEnabled(true)
         } else {
@@ -389,8 +443,15 @@ export function LiveKitRoomStage({
 
     return () => {
       cancelled = true
-      micTrackRef.current?.stop()
+      voiceRef.current?.dispose()
+      voiceRef.current = null
+      micStreamRef.current?.getTracks().forEach((tr) => tr.stop())
+      micStreamRef.current = null
       micTrackRef.current = null
+      camFxRef.current?.dispose()
+      camFxRef.current = null
+      camRawRef.current?.stop()
+      camRawRef.current = null
       camTrackRef.current?.stop()
       camTrackRef.current = null
       const room = roomRef.current
@@ -411,6 +472,63 @@ export function LiveKitRoomStage({
     setMicEnabled(lp.isMicrophoneEnabled)
   }, [])
 
+  /** Drop the published camera and release the hardware (LED out). */
+  const stopCamera = useCallback(async () => {
+    const room = roomRef.current
+    const track = camTrackRef.current
+    camTrackRef.current = null
+    if (room && track) {
+      try {
+        await room.localParticipant.unpublishTrack(track, true)
+      } catch {
+        /* already gone */
+      }
+    }
+    // dispose() stops the raw track too; when there is no effects chain the
+    // published track IS the raw one, hence the separate stop below.
+    camFxRef.current?.dispose()
+    camFxRef.current = null
+    camRawRef.current?.stop()
+    camRawRef.current = null
+    track?.stop()
+  }, [])
+
+  /**
+   * Acquire the camera the way the members' SFU path does — saved device and
+   * resolution from the prefs, then the background effect — and publish it.
+   */
+  const startCamera = useCallback(async () => {
+    const room = roomRef.current
+    const lk = lkModule
+    if (!room || !lk) return
+    const prefs = loadMediaPrefs()
+    const gum = await acquireMedia({ video: true, audio: false })
+    const raw = gum.getVideoTracks()[0] ?? null
+    if (!raw) return
+    camRawRef.current = raw
+    let publish: MediaStreamTrack = raw
+    if (prefs.camEffect !== 'none') {
+      try {
+        const fx = await createEffectedCameraTrack(raw, {
+          kind: prefs.camEffect,
+          imageDataUrl: loadCamEffectImage(),
+          blurPx: prefs.camBlurPx,
+        })
+        if (fx) {
+          camFxRef.current = fx
+          publish = fx.processedTrack
+        }
+      } catch {
+        /* effects unavailable — publish the plain camera rather than nothing */
+      }
+    }
+    await room.localParticipant.publishTrack(publish, {
+      source: lk.Track.Source.Camera,
+    })
+    camTrackRef.current = publish
+    setCamOn(true)
+  }, [])
+
   const toggleCam = useCallback(async () => {
     const room = roomRef.current
     const lk = lkModule
@@ -418,42 +536,108 @@ export function LiveKitRoomStage({
     setCamBusy(true)
     try {
       if (camTrackRef.current) {
-        const track = camTrackRef.current
-        camTrackRef.current = null
-        try {
-          await room.localParticipant.unpublishTrack(track, true)
-        } catch {
-          /* already gone */
-        }
-        track.stop()
+        await stopCamera()
         setCamOn(false)
       } else {
-        const tracks = await lk.createLocalTracks({
-          audio: false,
-          video: { resolution: lk.VideoPresets.h720.resolution },
-        })
-        const cam = tracks.find((t) => t.kind === lk.Track.Kind.Video) as
-          | LocalVideoTrack
-          | undefined
-        if (cam) {
-          await room.localParticipant.publishTrack(cam)
-          camTrackRef.current = cam
-          setCamOn(true)
-        }
+        await startCamera()
       }
     } catch {
-      camTrackRef.current?.stop()
-      camTrackRef.current = null
+      await stopCamera()
       setCamOn(false)
     } finally {
       setCamBusy(false)
     }
-  }, [camBusy])
+  }, [camBusy, startCamera, stopCamera])
+
+  /**
+   * Apply a settings change to the LIVE session.
+   *
+   * Republish only what the change invalidates — `tracksAffectedBy` decides —
+   * so picking a speaker touches no published media and swapping a background
+   * never drops the microphone. A background change on an existing chain is a
+   * live swap, not a re-acquire: tearing the camera down would blink the LED
+   * and flash a black tile at everyone in the room.
+   */
+  const onPrefChange = useCallback(
+    async (kind: MediaPrefKind) => {
+      const affected = tracksAffectedBy(kind)
+      if (affected.output) return // AudioSink re-routes itself on the prefs event
+
+      if (affected.camera && camTrackRef.current) {
+        if (kind === 'background' && camFxRef.current) {
+          const prefs = loadMediaPrefs()
+          camFxRef.current.setEffect(prefs.camEffect, loadCamEffectImage())
+          return
+        }
+        setCamBusy(true)
+        try {
+          await stopCamera()
+          await startCamera()
+        } catch {
+          await stopCamera()
+          setCamOn(false)
+        } finally {
+          setCamBusy(false)
+        }
+        return
+      }
+
+      if (affected.mic && micTrackRef.current) {
+        const room = roomRef.current
+        const lk = lkModule
+        if (!room || !lk) return
+        const previous = micTrackRef.current
+        try {
+          await room.localParticipant.unpublishTrack(previous, true)
+        } catch {
+          /* already gone */
+        }
+        voiceRef.current?.dispose()
+        voiceRef.current = null
+        micStreamRef.current?.getTracks().forEach((tr) => tr.stop())
+        micStreamRef.current = null
+        micTrackRef.current = null
+        try {
+          const stream = await acquireMedia({ video: false, audio: true })
+          micStreamRef.current = stream
+          try {
+            voiceRef.current = await upgradeLocalStreamAudio(stream)
+          } catch {
+            voiceRef.current = null
+          }
+          const mic = stream.getAudioTracks()[0] ?? null
+          if (!mic) {
+            setMicEnabled(false)
+            return
+          }
+          await room.localParticipant.publishTrack(mic, {
+            source: lk.Track.Source.Microphone,
+          })
+          micTrackRef.current = mic
+          setMicEnabled(true)
+        } catch {
+          // The new device did not open. Say so rather than leaving a dead
+          // button: the old track is already gone and cannot be restored.
+          setMicEnabled(false)
+        }
+      }
+    },
+    [startCamera, stopCamera]
+  )
 
   const leaveCall = useCallback(async () => {
     leavingRef.current = true
-    micTrackRef.current?.stop()
+    // Release the hardware before the socket: a stranger watching their own
+    // camera LED is the only confirmation they get that we let go.
+    voiceRef.current?.dispose()
+    voiceRef.current = null
+    micStreamRef.current?.getTracks().forEach((tr) => tr.stop())
+    micStreamRef.current = null
     micTrackRef.current = null
+    camFxRef.current?.dispose()
+    camFxRef.current = null
+    camRawRef.current?.stop()
+    camRawRef.current = null
     camTrackRef.current?.stop()
     camTrackRef.current = null
     setCamOn(false)
@@ -490,17 +674,22 @@ export function LiveKitRoomStage({
     [onKickGuest, t]
   )
 
-  // Local camera preview attach/detach.
+  // Local camera preview. The published track is a plain MediaStreamTrack now
+  // (it comes out of the effects chain, not out of livekit-client), so it is
+  // wired by srcObject rather than the SDK's attach/detach. camBusy is in the
+  // deps because a device or background swap replaces the track underneath a
+  // camOn that never changed.
   useEffect(() => {
     if (!camOn) return
     const el = localVideoRef.current
     const track = camTrackRef.current
     if (!el || !track) return
-    track.attach(el)
+    el.srcObject = new MediaStream([track])
+    void el.play().catch(() => {})
     return () => {
-      track.detach(el)
+      el.srcObject = null
     }
-  }, [camOn])
+  }, [camOn, camBusy])
 
   if (!connected) {
     return (
@@ -614,6 +803,19 @@ export function LiveKitRoomStage({
         </button>
         <button
           type="button"
+          onClick={() => setSettingsOpen((v) => !v)}
+          aria-expanded={settingsOpen}
+          title={settingsOpen ? t('meet.settingsClose') : t('meet.settings')}
+          className={`flex h-11 w-11 items-center justify-center rounded-full transition ${
+            settingsOpen
+              ? 'bg-neutral-700 text-neutral-100'
+              : 'bg-neutral-800 text-neutral-100 hover:bg-neutral-700'
+          }`}
+        >
+          <GearIcon />
+        </button>
+        <button
+          type="button"
           onClick={() => void leaveCall()}
           className="flex h-11 items-center gap-2 rounded-full bg-red-600 px-5 font-medium text-white transition hover:bg-red-500"
         >
@@ -621,6 +823,14 @@ export function LiveKitRoomStage({
           <span className="text-sm">{t('meet.leave')}</span>
         </button>
       </footer>
+
+      {settingsOpen ? (
+        <div className="border-t border-neutral-800 bg-neutral-950 px-4 py-4">
+          <div className="mx-auto max-w-md">
+            <MediaDeviceSettings onChange={(kind) => void onPrefChange(kind)} />
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -97,6 +97,11 @@ function getQualityDotColor(quality: { rtt: number | null; outgoingBitrate: numb
 }
 
 // Solid, legible, semantically-correct status colors (issue #12).
+//
+// Deliberately NOT theme tokens, and the design-token linter flags them for it:
+// most palettes define --success and --neon-amber as the same value (#ffbf47),
+// so "connection is fine" and "connection is degrading" would render as one
+// colour. A traffic light needs three hues the token set does not carry.
 const DOT_COLORS = {
   green: 'bg-[#22c55e]',
   yellow: 'bg-[#f59e0b]',

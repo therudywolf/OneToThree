@@ -100,7 +100,7 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
       <CenterCard>
         <div className="flex flex-col items-center gap-4 py-4">
           <Spinner />
-          <p className="text-sm text-neutral-400">{t('meet.opening')}</p>
+          <p className="text-sm text-text-muted">{t('meet.opening')}</p>
         </div>
       </CenterCard>
     )
@@ -110,11 +110,11 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">{t('meet.unavailable')}</h1>
-        <p className="mt-2 text-sm text-neutral-400">{stage.message}</p>
+        <p className="mt-2 text-sm text-text-muted">{stage.message}</p>
         <button
           type="button"
           onClick={() => router.push('/')}
-          className="mt-4 w-full rounded-lg bg-neutral-100 px-4 py-2 font-medium text-neutral-900 transition hover:bg-white"
+          className="mt-4 w-full rounded-lg bg-on-surface px-4 py-2 font-medium text-void transition hover:opacity-90"
         >
           {t('meet.toChats')}
         </button>
@@ -126,7 +126,7 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
     return (
       <CenterCard>
         <h1 className="text-lg font-semibold">{t('meet.leftTitle')}</h1>
-        <p className="mt-2 text-sm text-neutral-400">{t('meet.leftBody')}</p>
+        <p className="mt-2 text-sm text-text-muted">{t('meet.leftBody')}</p>
         <div className="mt-4 flex gap-2">
           <button
             type="button"
@@ -134,14 +134,14 @@ export function HostMeetingClient({ routeRoom }: { routeRoom: string }) {
               setStage({ kind: 'loading' })
               setJoinNonce((n) => n + 1)
             }}
-            className="flex-1 rounded-lg border border-neutral-700 px-4 py-2 text-sm text-neutral-200 transition hover:bg-neutral-800"
+            className="flex-1 rounded-lg border border-border-strong px-4 py-2 text-sm text-text-primary transition hover:bg-surface-elevated"
           >
             {t('meet.rejoin')}
           </button>
           <button
             type="button"
             onClick={() => router.push('/')}
-            className="flex-1 rounded-lg bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 transition hover:bg-white"
+            className="flex-1 rounded-lg bg-on-surface px-4 py-2 text-sm font-medium text-void transition hover:opacity-90"
           >
             {t('meet.toChats')}
           </button>

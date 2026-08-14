@@ -29,6 +29,46 @@ const OFFLINE_GRACE_MIN = Math.max(
   Number(process.env.GUEST_OFFLINE_GRACE_MIN ?? 60)
 )
 
+/**
+ * Step 2's predicate — "guest whose tab has been shut longer than the grace
+ * window". Exported (not inlined below) so guest-sweeper.query.test.ts renders
+ * the expression the sweeper ACTUALLY runs: the first version of that test
+ * rebuilt the where clause by hand, so it pinned a property of drizzle's `lt()`
+ * and would have stayed green through a full re-break of the sweeper.
+ *
+ * `greatest(last_seen_at, created_at)` protects a guest who was just admitted
+ * and has not connected yet; `.toISOString()`, not the Date, because the left
+ * side is a raw SQL expression, so drizzle has no column type to serialise the
+ * bound value against and hands the driver a Date object, which throws ("the
+ * string argument must be of type string ... received an instance of Date").
+ * The whole sweep then failed on EVERY tick — expired guests were purged (step
+ * 1 runs first) but nobody who merely closed the tab ever was, and dead invite
+ * links were never dropped, because both come after this.
+ */
+export const offlineGraceWhere = (now: Date, graceCutoff: Date) =>
+  and(
+    eq(users.userGroup, 'guest'),
+    gt(users.guestExpiresAt, now),
+    lt(
+      sql`greatest(coalesce(${users.lastSeenAt}, ${users.createdAt}), ${users.createdAt})`,
+      graceCutoff.toISOString()
+    )
+  )
+
+/**
+ * Step 3's predicate. Every comparison here is against a typed timestamp
+ * column, so drizzle serialises the Date itself — correct as written. It lives
+ * beside `offlineGraceWhere` for the same reason: the query test renders it too,
+ * so a future rewrite into raw SQL trips the same "no Date reaches the driver"
+ * assertion instead of silently killing the sweep again.
+ */
+export const deadInviteWhere = (cutoff: Date) =>
+  or(
+    lt(guestInvites.expiresAt, cutoff),
+    and(isNotNull(guestInvites.usedAt), lt(guestInvites.usedAt, cutoff)),
+    and(isNotNull(guestInvites.revokedAt), lt(guestInvites.revokedAt, cutoff))
+  )
+
 export async function runGuestSweepOnce(log?: FastifyBaseLogger): Promise<{
   purgedExpired: number
   purgedOffline: number
@@ -51,29 +91,12 @@ export async function runGuestSweepOnce(log?: FastifyBaseLogger): Promise<{
   }
 
   // 2. Offline grace — "closed the tab". `last_seen_at` is maintained by the
-  // WS layer; greatest(last_seen_at, created_at) protects a guest who was
-  // just admitted and has not connected yet.
+  // WS layer; see `offlineGraceWhere` for why the cutoff is bound as a string.
   const graceCutoff = new Date(Date.now() - OFFLINE_GRACE_MIN * 60_000)
   const stale = await db
     .select({ id: users.id })
     .from(users)
-    .where(
-      and(
-        eq(users.userGroup, 'guest'),
-        gt(users.guestExpiresAt, now),
-        // `.toISOString()`, not the Date: the left side is a raw SQL expression,
-        // so drizzle has no column type to serialise the bound value against and
-        // hands the driver a Date object, which throws ("the string argument
-        // must be of type string ... received an instance of Date"). The whole
-        // sweep then failed on EVERY tick — expired guests were purged (query 1
-        // above runs first) but nobody who merely closed the tab ever was, and
-        // dead invite links were never dropped, because both come after this.
-        lt(
-          sql`greatest(coalesce(${users.lastSeenAt}, ${users.createdAt}), ${users.createdAt})`,
-          graceCutoff.toISOString()
-        )
-      )
-    )
+    .where(offlineGraceWhere(now, graceCutoff))
     .limit(200)
   if (stale.length > 0) {
     // A quiet-but-connected guest (tab open, WS alive) must survive: presence
@@ -92,13 +115,7 @@ export async function runGuestSweepOnce(log?: FastifyBaseLogger): Promise<{
   const dayAgo = new Date(Date.now() - 24 * 3600_000)
   const dropped = await db
     .delete(guestInvites)
-    .where(
-      or(
-        lt(guestInvites.expiresAt, dayAgo),
-        and(isNotNull(guestInvites.usedAt), lt(guestInvites.usedAt, dayAgo)),
-        and(isNotNull(guestInvites.revokedAt), lt(guestInvites.revokedAt, dayAgo))
-      )
-    )
+    .where(deadInviteWhere(dayAgo))
     .returning({ id: guestInvites.id })
 
   return { purgedExpired, purgedOffline, droppedInvites: dropped.length }

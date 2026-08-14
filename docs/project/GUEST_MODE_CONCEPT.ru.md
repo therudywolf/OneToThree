@@ -5,6 +5,8 @@
 > прячет использованные, у хоста есть вход в собственную встречу `/meet/[room]`.
 > v2 — только личные ссылки от зарегистрированного пользователя).
 > Статус: **реализовано**; включение — DEPLOY.md → «Enabling guest links».
+> 2026-08-14: §4.2, §6.1, §6.4 и таблица угроз сверены с кодом — проектные
+> цифры лимитов и `GUEST_CALL_TOKEN_TTL_HOURS` разошлись с реализацией.
 
 ---
 
@@ -200,7 +202,7 @@ rendezvous линковки устройств (`server/src/lib/device-rendezvou
 /api/ws                                            — реалтайм
 /api/chats/:id + /api/chats/:id/messages           — только свой чат
 /api/messages/send | /api/messages/pending         — текст, E2EE fan-out
-/api/users/:id/devices                             — ТОЛЬКО со-участник чата
+/api/users/:userId/devices                         — ТОЛЬКО со-участник чата
                                                      (ECDH для шифрования)
 /api/guest/me/leave                                — выйти = самоуничтожиться
 ```
@@ -209,8 +211,12 @@ rendezvous линковки устройств (`server/src/lib/device-rendezvou
 ни поиска людей, ни создания чатов/ссылок, ни профиля, ни vault/recovery/TOTP,
 ни линковки устройств, ни push-подписок. Переписка — обычный per-device
 fan-out E2EE (гость единственное устройство; чат создан пустым — истории до
-гостя не существует, гейтить нечего). Rate-limit: глобальный `user:<id>`
-(`server/src/app.ts:288-344`) + `GUEST_MSG_PER_MINUTE` (дефолт 20).
+гостя не существует, гейтить нечего). Rate-limit: `POST /api/messages/send`
+берёт `max` по клейму `grp` проверенной сессии — гостю `GUEST_MSG_PER_MINUTE`
+(дефолт 20), всем остальным неизменные 30/мин
+(`server/src/routes/messages.ts` → `sendRateLimitMax`/`guestMsgPerMinute`),
+ключ — user id самого гостя. Сверху — глобальный лимитер приложения 100/мин с
+ключом `user:<id>` (`server/src/app.ts:292-348`).
 
 ### 4.3. Смерть гостя
 
@@ -272,13 +278,22 @@ ALTER TABLE call_sessions ADD COLUMN guests jsonb;          -- [{nick,…}]
 
 ## 6. Сдерживание и периметр
 
-### 6.1. Новая публичная поверхность — ровно четыре роута
+### 6.1. Новая публичная поверхность — пять роутов
 
-`resolve`, `knock`, `knock/:id` (поллинг), `enter` + две публичные страницы
-`/guest/call/*`, `/guest/chat/*`. Регистрируются **только** при
-`FEATURE_GUESTS` (паттерн отключаемых групп роутов — `server/src/app.ts:521-537`,
-выключено = 404). Rate-limit по образцу auth-скоупа
-(`server/src/routes/auth.ts:352-361`): 5/15 мин per-IP + пер-токен.
+`resolve`, `knock`, `knock/:id` (поллинг), `knock/:id/cancel`, `enter` + две
+публичные страницы `/guest/call/*`, `/guest/chat/*`. Регистрируются **только**
+при `FEATURE_GUESTS` (паттерн отключаемых групп роутов, выключено = 404).
+
+Rate-limit — не «5/15 мин на всё», как задумывалось по образцу auth-скоупа:
+такой бюджет считает гостей поштучно, а они сидят за одним адресом целыми
+переговорками, и шестой гость десятиместной встречи вылетал на четверть часа
+с живой ссылкой в руках. Бюджеты рассчитаны **на встречу**, тремя корзинами
+(значения — §6.4), и висят на общем лимитере через per-route
+`config.rateLimit`: своя `register(rateLimit, …)` подняла бы свежий
+in-process LocalStore, и счётчики умирали бы на каждом пересборе api.
+
+Лимит — не то, что защищает ссылку (32 случайных символа, места в Postgres,
+`GUEST_MAX_ACTIVE` на живых гостях), а защита от флуда.
 
 ### 6.2. Сессии
 
@@ -300,15 +315,28 @@ ALTER TABLE call_sessions ADD COLUMN guests jsonb;          -- [{nick,…}]
 
 ### 6.4. Ручки (env, с дефолтами)
 
+Реализованные ручки (сверено с кодом; операторская версия — DEPLOY(.ru).md):
+
 | Ручка | Дефолт | Что |
 |---|---|---|
 | `GUEST_LINK_TTL_HOURS` | 24 | жизнь непринятой ссылки |
-| `GUEST_CALL_TOKEN_TTL_HOURS` | 2 | LiveKit-JWT гостя |
+| `GUEST_MEETING_SEATS` | 10 | мест на новой ссылке-встрече, зажато в 1…50 (у B-ссылки всегда 1) |
 | `GUEST_CHAT_TTL_HOURS` | 12 | жёсткий предел жизни B-гостя |
+| `GUEST_SESSION_TTL_HOURS` | 12 | `fm_session` B-гостя (за `guest_expires_at` не продлевается) |
 | `GUEST_OFFLINE_GRACE_MIN` | 60 | офлайн до purge B-гостя |
-| `GUEST_MSG_PER_MINUTE` | 20 | сообщения B-гостя |
+| `GUEST_SWEEP_INTERVAL_MS` | 300000 | период sweeper'а |
 | `GUEST_MAX_LINKS_PER_USER` | 20 | активных ссылок на пользователя |
 | `GUEST_MAX_ACTIVE` | 50 | одновременных гостей на сервер (A+B) |
+| `GUEST_MSG_PER_MINUTE` | 20 | `POST /messages/send` от B-гостя (у прочих — 30) |
+| `GUEST_RESOLVE_RATE_LIMIT_MAX` | 60 | `resolve` за окно ниже |
+| `GUEST_PUBLIC_RATE_LIMIT_MAX` | 30 | `knock` + `enter` за окно ниже |
+| `GUEST_PUBLIC_RATE_LIMIT_WINDOW` | `15 minutes` | окно двух ручек выше |
+| `GUEST_POLL_RATE_LIMIT_MAX` | 45 | поллинг + `cancel`, в минуту |
+
+Отдельной `GUEST_CALL_TOKEN_TTL_HOURS` из ранних редакций этого документа
+**нет**: LiveKit-JWT гостя минтится общим `LIVEKIT_TOKEN_TTL_SECONDS`
+(дефолт 2 ч, зажат в 5 мин…4 ч — `resolveCallTokenTtlSeconds` в
+`server/src/routes/call.ts`), тем же, что у обычного участника.
 
 ### 6.5. Прод-периметр
 
@@ -348,7 +376,7 @@ Edge (Caddy + Anubis + CrowdSec) живёт вне репозитория (`Cadd
 | Перебор токенов | ≥128 бит; scoped rate-limit; единый 404; Anubis PoW |
 | Ссылку переслали не тому | одноразовость; A — личный апрув создателя; B — мгновенное уведомление + кик/блок; отзыв ссылки |
 | Имперсонация ником | ник ≠ существующий username (case-insensitive) + резерв-лист; вечный бейдж «гость»; в A ник зашит в токен (`name`), сменить нельзя |
-| Спам/флуд B-гостя | text-only; `GUEST_MSG_PER_MINUTE`; глобальный лимитер; кик/блок; `user_blocks` работает штатно |
+| Спам/флуд B-гостя | text-only; `GUEST_MSG_PER_MINUTE` на `POST /messages/send` по клейму `grp:'guest'` (`server/src/routes/messages.ts` → `sendRateLimitMax`); сверху глобальный лимитер `server/src/app.ts:292-348`; кик/блок; `user_blocks` работает штатно |
 | B-гость лезет в чужие API | deny-by-default hook — один код-путь на ревью |
 | A-гость лезет куда-либо | не может физически: нет ни cookie, ни users-строки, ни WS |
 | «Вечный гость» | A: JWT ≤ 2 ч, комната умирает; B: TTL 12 ч + офлайн-grace + sweeper |

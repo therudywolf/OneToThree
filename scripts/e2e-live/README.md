@@ -69,6 +69,27 @@ downstream is real: the server relays the frames and the crypto seals them.
 ONLY=group,groupcall node run.mjs
 ```
 
+## `guest-v3-check.mjs` — the guest-link surfaces
+
+A second, self-contained script next to `run.mjs`, for the parts of guest mode
+that only exist once a real deployment is answering: meeting-link SEATS (several
+guests on one link, each approved separately, all landing in the same room), the
+links list keeping an exhausted link instead of hiding it, the `name`/`metadata`
+claims the guest badge is built on, `/meet/<room>` handing the room to the app
+shell (the HOST gets the ordinary call UI — the stripped screen is the guest's),
+and a temp chat that says it is temporary and can be ended by its host.
+
+```bash
+scp scripts/e2e-live/guest-v3-check.mjs forestserver:~/e2e/
+ssh forestserver 'docker run --rm --network host -v ~/e2e:/root/e2e -w /root/e2e mcr.microsoft.com/playwright:v1.49.1-noble node guest-v3-check.mjs'
+```
+
+Mind the per-IP budgets when chaining runs: registration is 5 / 15 min and the
+public guest scope is small too, so two suites back to back produce `429`s that
+look exactly like a broken feature (an "entered the temp chat" timeout is the
+usual shape). Space the runs, or read `docker logs forestmessenger-api-1` and
+count the 429s before believing a failure.
+
 ## What it leaves behind
 
 Nothing, normally: the two accounts are deleted in a `finally`, including after

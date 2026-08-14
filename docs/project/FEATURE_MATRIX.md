@@ -1,6 +1,6 @@
 # OneToThree Feature Matrix
 
-Last updated: 2026-08-13
+Last updated: 2026-08-14
 
 Legend:
 - `implemented`: done and covered by checks
@@ -23,7 +23,8 @@ Legend:
 | Future-only history for new linked devices | implemented | A newly-linked device is served only post-link messages by the server (`messages.ts`); the chat backlog is never handed to it |
 | JWT denylist (logout/revocation) | implemented | Redis-backed |
 | TOTP replay guard | implemented | Single-use codes via Redis |
-| Rate limiting | implemented | Defined inline per route handler |
+| Rate limiting | implemented | App-wide limiter in `app.ts` (100/min, Redis-backed so counters survive a deploy and two replicas share them), keyed `user:<id>` for authenticated traffic and `ip:<addr>` otherwise; routes tighten it via `config.rateLimit`. Fails **open** on a store error — it is abuse control, not an authorization boundary |
+| Closable self-registration | implemented | `FEATURE_OPEN_REGISTRATION` (default on); off makes guest links the only door for strangers |
 
 ### Messaging
 
@@ -49,7 +50,7 @@ Legend:
 |---|---|---|
 | Group chats (SECTOR) | implemented | E2E group key wrapped per member; role management (kick, promote, transfer) in `group-chat-settings.tsx` |
 | Channels (broadcast, Telegram-style) | implemented | Posting fixed 2026-08-13 — the missing `channel` branch in `buildChatCryptoContext` had left the composer disabled for EVERYONE including the owner while this row already said "implemented". Subscriber gating (`channel_role`, server-enforced), `PATCH .../channel-role`, discussion link, megaphone + subscriber count in the list. Live coverage: `ONLY=channel` in `scripts/e2e-live/run.mjs` |
-| Channel metadata & publicity | implemented | Migration 0063: `chats.description` / `avatar_key` / `is_public`. Owner-only `PATCH /chats/:id` (rename — the name used to be write-once), avatar upload (`/chats/:id/avatar/{presign,commit}`, owner-only, 10/hour, server-issued key only), catalog switch (unlisted stays joinable by link) |
+| Channel metadata & publicity | implemented | Migration 0063: `chats.description` / `avatar_key` / `is_public`. Owner-only `PATCH /chats/:id` (rename — the name used to be write-once), avatar upload (`/chats/:id/avatar/{presign,commit}`, owner-only, 10/hour, server-issued key only), catalog switch (unlisted stays joinable by link). Rendered where a channel is actually met — chat list, chat header, discovery catalog, profile card — with a megaphone and a subscriber count instead of a group's "N участников"; `chat-folders` no longer files open groups under "Каналы" |
 | Personal channel on the profile | implemented | `users.profile_channel_id` (migration 0061, FK → chats, SET NULL). Owner-validated in `PATCH /users/me`; profile serves a channel card with a join handle; picker in Настройки → Профиль |
 | Open groups / public discovery | implemented | `ExploreModal` + `discoverChats`, filtered by `is_public`. Entry point sits with the peer search, not under "Создать" — browsing is finding, not creating |
 | Closed groups | implemented | Invite-only join; admin/kick/promote UI in group settings |
@@ -62,9 +63,14 @@ Legend:
 | P2P audio/video calls | implemented | Full mesh; UDP/TCP/TLS ICE fallback matrix |
 | TURN relay (coturn) | implemented | Plain TURN always active; TURNS:5349 activates automatically after `sync-turn-certs.sh` |
 | LiveKit SFU (3+ participants) | implemented | Token issuance + client integration; `joinGroupCall` tries SFU first, mesh fallback |
-| Guest links — meeting guests (no account) | implemented | Opt-in `FEATURE_GUESTS`; knock → host approves → LiveKit token with `name`/`metadata`; seats (`max_uses`), kick via RoomService + identity denylist; no `users` row is ever created |
-| Guest links — temporary chat | implemented | Ephemeral `users` row (`user_group='guest'`), keys live in the tab's sessionStorage; deny-by-default route allowlist; purged on leave / kick / offline grace / TTL |
+| Guest links — meeting guests (no account) | implemented | Opt-in `FEATURE_GUESTS`; knock → host approves → LiveKit token with `name`/`metadata`; seats (`max_uses`), kick via RoomService + identity denylist; no `users` row is ever created. Badged on the call tile and in the participants panel of both `/meet/[room]` and the in-app group call, from the token's `metadata` claim — server-set, so a participant cannot self-declare or shed the badge by renaming |
+| Guest links — temporary chat | implemented | Ephemeral `users` row (`user_group='guest'`), keys live in the tab's sessionStorage; deny-by-default route allowlist; `POST /users/lookup` returns `user_group` so the chat header badges the peer; purged on leave / host kick / offline grace / TTL — account and conversation go together |
 | Call E2EE via Insertable Streams | implemented | LiveKit `ExternalE2EEKeyProvider`; server derives HMAC-SHA256 room key per session (Redis TTL); client imports as AES-GCM CryptoKey and passes to Room e2ee options |
+| Camera background blur / replacement | implemented | MediaPipe selfie segmentation on a Worker + OffscreenCanvas pipeline, driven by the capture stream rather than main-thread timers (a backgrounded tab kept ~1fps under timer throttling); DOM pipeline is the non-Chromium fallback. Assets self-hosted — needs `'wasm-unsafe-eval'` in the CSP and `.wasm`/`.tflite` in `proxy.ts` STATIC_ASSETS_RE, or the effect silently never starts |
+| Microphone processing (gate + RNNoise) | implemented | AudioWorklet noise gate, optional RNNoise ML denoise (self-hosted wasm+worklet); "hear yourself" loopback in Settings runs the real chain. Published on the LiveKit path too, not just mesh |
+| Simultaneous camera + screen share | implemented | Screen rides its own senders under a dedicated msid (`screen_share` / `group_call:screen_share` signal); separate `peer#screen` tile, local own-screen preview, camera independent during a share. 1:1 and mesh groups |
+| Screen share quality | implemented | Resolution × frame rate up to 4K/120, encoder budgets on the sender (`maxBitrate` + `degradationPreference`); stereo tab/system audio via Opus fmtp munge, with a share-audio mute |
+| Call timeline events | implemented | Completed calls log a `system:v1` `call_ended` message with talk duration — exactly one per call regardless of who hangs up first; previously only missed calls appeared |
 
 ### Stickers
 
@@ -81,6 +87,7 @@ Legend:
 | Feature | Status | Notes |
 |---|---|---|
 | Web Push baseline | implemented | VAPID keys; subscription lifecycle; retry policy |
+| Native Android push (FCM) | partial | Code is complete, credentials are not in the repo: the APK needs a per-project `google-services.json` (gitignored) and the server needs `FIREBASE_SERVICE_ACCOUNT_JSON`. A build without them succeeds and simply never delivers a notification — now a loud build-time warning, and both halves are documented in `docs/guides/android-release-runbook.md` + `server/.env.example` |
 | Unread counts / badge | partial | Push delivered; open-on-tap and badge parity incomplete |
 | PWA install / offline | partial | Service worker registered; background sync for outbox |
 

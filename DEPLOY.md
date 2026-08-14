@@ -145,10 +145,49 @@ One-time guest links (call guests + temp chats — see
    `/guest/*` is recommended — it is the only anonymous app surface.
    Consider a CrowdSec scenario for bursts of `POST /api/guest/knock` or
    `/api/guest/enter` from one IP.
-3. Tunables (env, with defaults): `GUEST_LINK_TTL_HOURS=24`,
-   `GUEST_CHAT_TTL_HOURS=12`, `GUEST_SESSION_TTL_HOURS=12`,
-   `GUEST_OFFLINE_GRACE_MIN=60`, `GUEST_MAX_LINKS_PER_USER=20`,
-   `GUEST_MAX_ACTIVE=50`, `GUEST_MSG_PER_MINUTE=20`.
+3. Lifetime and capacity tunables (env, with defaults):
+
+   | Env | Default | What it bounds |
+   |-----|---------|----------------|
+   | `GUEST_LINK_TTL_HOURS` | `24` | Life of an unredeemed link |
+   | `GUEST_MEETING_SEATS` | `10` | Seats on a new meeting link, clamped to 1…50 (a temp-chat link is always 1) |
+   | `GUEST_MAX_LINKS_PER_USER` | `20` | Live links one member may hold |
+   | `GUEST_MAX_ACTIVE` | `50` | Concurrent guests server-wide |
+   | `GUEST_CHAT_TTL_HOURS` | `12` | Hard lifetime of a temp-chat guest |
+   | `GUEST_SESSION_TTL_HOURS` | `12` | Guest session cookie; never extends past the guest's hard expiry |
+   | `GUEST_OFFLINE_GRACE_MIN` | `60` | Offline time before the sweeper purges a guest who closed the tab |
+   | `GUEST_SWEEP_INTERVAL_MS` | `300000` | Sweeper period (expired guests, dead links) |
+
+   A guest's LiveKit token is minted with the ordinary
+   `LIVEKIT_TOKEN_TTL_SECONDS` (default 2 h, clamped to 5 min…4 h) — there is
+   no guest-specific knob for it.
+
+4. Rate limits. These are flood defence, not what protects a link — a token is
+   32 random characters, seats are capped in Postgres and live guests by
+   `GUEST_MAX_ACTIVE`. Budgets are sized **per meeting, not per person**: a
+   whole office, flat or conference room is one address, and each joining guest
+   spends one `resolve` plus one `knock`.
+
+   | Route | Env | Default |
+   |-------|-----|---------|
+   | `POST /api/guest/resolve` (read-only) | `GUEST_RESOLVE_RATE_LIMIT_MAX` | `60` per `GUEST_PUBLIC_RATE_LIMIT_WINDOW` (`15 minutes`) |
+   | `POST /api/guest/knock`, `POST /api/guest/enter` (create state) | `GUEST_PUBLIC_RATE_LIMIT_MAX` | `30` per the same window |
+   | `GET /api/guest/knock/:id` + `/cancel` (polling) | `GUEST_POLL_RATE_LIMIT_MAX` | `45` per minute |
+   | `POST /api/messages/send` from a temp-chat guest | `GUEST_MSG_PER_MINUTE` | `20` per minute (everyone else keeps a flat 30) |
+
+   `GUEST_MSG_PER_MINUTE` is keyed on the guest's own user id, so one guest
+   cannot spend another's budget. A non-numeric, non-integer or non-positive
+   value is refused: the default is used instead and the API logs a warning on
+   every guest send. Do not read that warning as noise — the value you set is
+   *not* in effect. (It has to fail loudly rather than silently: the limiter
+   compares `current > max`, so a `NaN` max is never exceeded and garbage in
+   this variable would REMOVE the limit it was set to tighten.)
+
+   On top of all of the above sits the app-wide limiter (100/min, keyed
+   `user:<id>` for an authenticated caller and `ip:<addr>` otherwise), so a
+   guest is bounded even on a route with no budget of its own. It is
+   Redis-backed and fails **open** on a store error: a Redis outage removes
+   throttling, it does not lock the instance out.
 
 ---
 

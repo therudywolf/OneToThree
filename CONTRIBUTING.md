@@ -81,10 +81,30 @@ npm run docker:down  # stop and remove containers
 ### Database
 
 ```bash
-npm run db:generate   # generate migration from schema changes
 npm run db:push       # apply schema to running DB (dev only)
 npm run db:studio     # open Drizzle Studio UI
 ```
+
+**`npm run db:generate` does not currently work — do not run it.** Migrations in
+this repo are hand-written SQL: add `server/drizzle/00NN_<name>.sql` and an entry
+for it in `server/drizzle/meta/_journal.json`. That is what production applies
+(`docker/db-migrate/migrate.mjs` walks the journal and records each file in
+`__drizzle_migrations`), so a migration that is correct there is correct in prod.
+
+The generator is broken because the snapshot chain stopped at `0060` while the
+journal is at `0064`. Run it and drizzle-kit diffs your schema against a
+four-migrations-stale snapshot: it re-emits SQL that already ran (`ALTER TYPE …
+ADD VALUE 'guest'`, `CREATE TABLE "guest_invites"` — neither guarded by
+`IF NOT EXISTS`), proposes dropping five long-dead Discord-era tables, and in a
+non-TTY it hangs on an interactive "did you rename this table?" prompt. Nothing
+it offers is safe to apply. Fixing it means regenerating snapshots 0061–0064,
+which nobody has needed enough to do.
+
+Write the SQL yourself, and make it re-runnable (`IF NOT EXISTS`, `ADD COLUMN IF
+NOT EXISTS`, `DROP … IF EXISTS`): a dev database that has been through `db:push`
+usually already carries part of your schema, and an additive migration that
+tolerates that is the difference between a clean `startup.sh update` and an
+operator editing SQL on a production box.
 
 ---
 

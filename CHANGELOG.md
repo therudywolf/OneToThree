@@ -7,8 +7,74 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+Six weeks of work on the three surfaces people actually spend time in: **calls**
+(rebuilt, with a real media pipeline behind them), **guests** (let someone into a
+meeting or a temporary chat without an account), and **channels** (which finally
+have a face and, more to the point, a working composer).
+
+### Added
+- **The call screens are rebuilt.** 1:1 and group share one tile component and
+  gain a participants panel, a draggable floating window (PiP), a stats/debug
+  panel, and an in-call side chat that docks the *real* chat next to the call
+  rather than a stripped-down copy.
+- **Camera background blur and replacement.** MediaPipe selfie segmentation runs
+  in a dedicated Worker on OffscreenCanvas, driven by the capture stream instead
+  of main-thread timers — so a backgrounded tab keeps full frame rate instead of
+  collapsing to ~1 fps. The DOM pipeline stays as the non-Chromium fallback.
+  Segmentation assets are self-hosted; nothing is fetched from a CDN.
+- **Noise suppression on your microphone** — an AudioWorklet noise gate plus an
+  optional RNNoise ML denoise stage, and a "hear yourself" mic check in Settings
+  that loops back through the real processing chain so you can judge it before a
+  call rather than during one.
+- **Camera and screen at the same time.** A share now rides its own senders, so
+  your face keeps flowing while you present: the other side gets a separate
+  screen tile, you get your own preview, and the camera is untouched throughout.
+  Works in 1:1, in mesh group calls, and on the LiveKit path — which now
+  publishes the *processed* mic and camera, so the gate and the background
+  effects apply in group calls too.
+- **Screen share up to 4K at 120 fps**, with the encoder budget pushed onto the
+  sender (the old ~2.5 Mbps cap made 4K unusable), stereo tab/system audio, a
+  share-audio mute that silences the captured sound without stopping the video,
+  and `Ctrl+Shift+M` / `Ctrl+Shift+D` mute/deafen hotkeys.
+- **Completed calls appear in the timeline**, with talk duration — until now the
+  history showed only missed ones. Exactly one event per call, whoever hangs up
+  first.
+- **A mid-call page reload redials.** Instead of a dead call, the app reopens the
+  chat and rings again once the socket is back; the peer just sees a fresh ring.
+- **Guest links — let someone in without an account.** Opt-in via
+  `FEATURE_GUESTS` (**default off**; nothing changes on an existing install
+  until an operator turns it on). Two flavours:
+  - **Meeting guests.** Mint a link, a stranger opens it, picks a name and
+    knocks; you approve each one personally and they land in the call with a
+    short-lived LiveKit token. **No account row is ever created.** Links carry
+    *seats*, so one link can admit a whole meeting; a `/meet/<room>` page lets
+    the host into their own standalone meeting. Guests are badged on the call
+    tile and in the participants panel — from the server-issued token, so nobody
+    can badge or un-badge themselves by renaming — and the host can remove one.
+  - **Temporary chats.** A one-seat link opens an E2EE chat with an ephemeral
+    guest whose keys live only in that browser tab: close it and there is no way
+    back. The guest is badged in the chat header too, the host can end the chat
+    at any time, and account plus conversation are purged together — on leave,
+    on kick, after an offline grace period, or at the hard TTL.
+
+    Every API route is deny-by-default for a guest session: a new route is
+    closed to guests until someone adds it to the allowlist by hand.
+- **Channels have a face.** A channel can now be renamed (the name used to be
+  write-once), described, given a picture, and kept out of the public catalog
+  while staying joinable by link. All of it shows where a channel is actually
+  met — the chat list, the chat header, discovery, and the profile card — and a
+  channel is no longer indistinguishable from a group: it gets a megaphone and
+  counts subscribers.
+- **You can post in a channel.** Channels shipped as "implemented" while the
+  composer was disabled for everyone including the owner. Posting works, and
+  subscriber/editor roles and the discussion-group link have the routes the
+  client had been calling into a 404.
+- **A personal channel on your profile** — pin one of your channels as a wall,
+  Telegram-style; visitors get a channel card with a join handle.
+- **`FEATURE_OPEN_REGISTRATION`** (default on) closes self-registration, so guest
+  links can be the only door for strangers.
+
 ### Changed
-- **Lite installer — three explicit deployment modes** (`scripts/lite/install.mjs`):
   *no-domain / this machine* (HTTP on `localhost`, everything works incl. media),
   *no-domain / LAN* (self-signed HTTPS via Caddy's internal CA so E2EE works off the
   local machine — Web Crypto needs a secure context, which plain HTTP over a LAN IP
@@ -17,6 +83,63 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   gains `OT_HTTPS_CONTAINER_PORT` so LAN mode publishes its HTTPS port 1:1.
 - **Release notes** now clearly separate **client apps** (download & connect to the
   hosted service) from **self-hosting** (`npm run lite`, not a download).
+- **Your display name is real.** Setting one used to change nothing anybody could
+  see — it never left the profile modal. The chat list and chat header now prefer
+  it over the immutable `@handle`.
+- **Finding your own profile takes one click.** Your avatar sits at the top of
+  the rail with a small menu; the dock profile on wide screens carries the same
+  bio, status, links and channel card the modal always had; and browsing the
+  public catalog moved next to the peer search, because finding someone else's
+  room is not creating one.
+- **Guest rate limits are sized per meeting, not per person.** Guests share an
+  address constantly — one office, one flat, one conference room — and the
+  original budget locked the sixth guest of a ten-seat meeting out for a quarter
+  of an hour holding a link that was still perfectly valid.
+- **Android push has instructions.** `google-services.json` is per-project and
+  gitignored, so a clean checkout built an APK that looked healthy and simply
+  never received a notification. That is now a loud warning at build time, and
+  both halves of the FCM setup (app and server) are written down.
+- **Deploys refuse to race each other.** Two `docker compose up --build` runs
+  reaching the container-swap phase together left the API removed and not
+  restarted — production down until a human noticed. A deploy now declines to
+  start while another is in flight.
+- Dropped the dead Discord-era `groups` / `channels` / `group_messages` /
+  `message_threads` models and their 72 orphaned locale keys. (The physical
+  tables are left alone — dropping those is a separate, irreversible decision.)
+
+### Fixed
+- **The first message from a new contact was lost.** On a cold load, opening a
+  direct chat reached history decryption before the vault finished installing the
+  Double Ratchet identity. Losing that race rendered `[DECRYPT_FAIL]` and nothing
+  ever retried it — so the single most visible message there is, the first one
+  somebody ever sends you, was the one that broke.
+- **A message could show as undecryptable while decrypting perfectly well.**
+  Opening a chat can put the history load, the realtime pull and the pending sync
+  on the same envelope in one tick; the ratchet serialises them, and the losers
+  failed against a message key that no longer existed. They now share one
+  decrypt.
+- **Group messages could be stranded behind the sender's own re-key.** The client
+  that performed a rotation kept its superseded key and sealed everything it sent
+  next with a key no other member would ever hold — unreadable for the whole
+  group, forever, and silent, because the sender reads its own copy back from its
+  own ring. Group creation also kicked off two rotations in a row.
+- **Decrypt failures say what went wrong.** Every failing branch used to be
+  silent: single rows swallowed the reason, batched group/sector rows swallowed
+  the whole epoch ring, and a chat with no key ring at all rendered every bubble
+  *empty* — which reads as a rendering glitch rather than a key problem. Reasons
+  are now logged (never key material, never plaintext).
+- **A guest's messages reached nobody.** The route allowlist named a URL
+  parameter `:id` where the real route registers `:userId`, so the guest's device
+  lookup 403'd, the fan-out went out to an empty device list, and the host simply
+  never saw the message. Parameter names can no longer matter, and every
+  allowlist entry is now pinned against the live route table.
+- **The guest sweeper had been failing on every tick in production** since the
+  feature shipped: only the hard-expiry pass ever ran, so guests who just closed
+  the tab were never reclaimed and expired invite rows accumulated forever.
+- **Call UI**: the control bar sat under the browser chrome with its buttons
+  looking cut off; call events rendered their raw JSON in a bubble when read from
+  the local cache; and a replacement background image silently never loaded under
+  the production CSP, falling back to blur.
 
 ## [0.10.0] — 2026-07-03 — OneToThree **Lite**: one-click self-host + feature flags
 

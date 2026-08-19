@@ -70,7 +70,10 @@ copy_apk_artifacts() {
   if [[ "${APK_NO_VERSIONED_COPY:-0}" != "1" ]]; then
     local stamp sha versioned_name
     stamp="$(date +%Y%m%d-%H%M)"
-    sha="$(git -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || printf 'nogit')"
+    # -c safe.directory: the container runs as root over a bind-mounted repo
+    # owned by another uid, and git refuses "dubious ownership" — which turned
+    # every containerised build's artifact name into onetothree-debug-…-nogit.
+    sha="$(git -c safe.directory='*' -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || printf 'nogit')"
     versioned_name="onetothree-${kind}-${stamp}-${sha}.apk"
     cp "$source_apk" "$releases_dir/$versioned_name"
     sha256_sidecar "$releases_dir/$versioned_name"

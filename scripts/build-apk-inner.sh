@@ -18,6 +18,26 @@ log()  { printf '\033[0;34m[docker] ▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[0;32m[docker] ✓ %s\033[0m\n' "$*"; }
 die()  { printf '\033[0;31m[docker] ✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
+# sha256, portably and WITHOUT the build machine's absolute path.
+#
+# `sha256sum /abs/path/file.apk > file.apk.sha256` writes the absolute path into
+# the sidecar, so `sha256sum -c` on the downloader's machine looks for a
+# directory that does not exist — and the build host's path ends up published in
+# the release. macOS has no `sha256sum` at all, so the native build died here
+# with the APK already sitting on disk.
+sha256_sidecar() {
+  local file="$1" dir base
+  dir="$(dirname "$file")"
+  base="$(basename "$file")"
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$dir" && sha256sum "$base" > "$base.sha256")
+  elif command -v shasum >/dev/null 2>&1; then
+    (cd "$dir" && shasum -a 256 "$base" > "$base.sha256")
+  else
+    die "no sha256sum or shasum available to checksum $base"
+  fi
+}
+
 copy_apk_artifacts() {
   local source_apk="$1"
   local kind="$2"
@@ -27,7 +47,7 @@ copy_apk_artifacts() {
 
   mkdir -p "$releases_dir"
   cp "$source_apk" "$releases_dir/$stable_name"
-  sha256sum "$releases_dir/$stable_name" > "$releases_dir/$stable_name.sha256"
+  sha256_sidecar "$releases_dir/$stable_name"
 
   if [[ "${APK_NO_VERSIONED_COPY:-0}" != "1" ]]; then
     local stamp sha versioned_name
@@ -35,7 +55,7 @@ copy_apk_artifacts() {
     sha="$(git -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || printf 'nogit')"
     versioned_name="onetothree-${kind}-${stamp}-${sha}.apk"
     cp "$source_apk" "$releases_dir/$versioned_name"
-    sha256sum "$releases_dir/$versioned_name" > "$releases_dir/$versioned_name.sha256"
+    sha256_sidecar "$releases_dir/$versioned_name"
     ok "APK ready: releases/android/$versioned_name"
     ok "SHA256 : releases/android/$versioned_name.sha256"
   fi
@@ -59,8 +79,12 @@ npm ci --no-audit --no-fund --prefer-offline 2>&1 | tail -3
 log "Cleaning previous Next.js export (client/out, client/.next)…"
 rm -rf "$CLIENT_DIR/out" "$CLIENT_DIR/.next"
 log "Building Next.js static export (output: client/out)…"
+# Through the repo's own entry point, from the ROOT: it runs the export inside
+# the client workspace (so Next finds app/) and fills in the public-instance
+# defaults for anything unset. Calling `npx next build` here instead relied on
+# the previous step having left the shell inside client/.
+cd "$ROOT"
 env \
-  NEXT_EXPORT=1 \
   NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}" \
   NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-}" \
   NEXT_PUBLIC_WS_ORIGIN="${NEXT_PUBLIC_WS_ORIGIN:-${NEXT_PUBLIC_API_URL}}" \
@@ -68,7 +92,7 @@ env \
   NEXT_PUBLIC_TURN_URLS="${NEXT_PUBLIC_TURN_URLS:-}" \
   NEXT_PUBLIC_TURN_USERNAME="${NEXT_PUBLIC_TURN_USERNAME:-}" \
   NEXT_PUBLIC_TURN_PASSWORD="${NEXT_PUBLIC_TURN_PASSWORD:-}" \
-  npx next build --webpack
+  npm run build:client:export
 ok "Next.js export complete → client/out/"
 
 # ── 3. Capacitor deps ─────────────────────────────────────────────────────

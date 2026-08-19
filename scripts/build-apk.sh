@@ -36,6 +36,26 @@ die()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 source "$ROOT/scripts/lib/env-value.sh"
 val_for_key() { env_value "$1" "$ENV_FILE"; }
 
+# sha256, portably and WITHOUT the build machine's absolute path.
+#
+# `sha256sum /abs/path/file.apk > file.apk.sha256` writes the absolute path into
+# the sidecar, so `sha256sum -c` on the downloader's machine looks for a
+# directory that does not exist — and the build host's path ends up published in
+# the release. macOS has no `sha256sum` at all, so the native build died here
+# with the APK already sitting on disk.
+sha256_sidecar() {
+  local file="$1" dir base
+  dir="$(dirname "$file")"
+  base="$(basename "$file")"
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$dir" && sha256sum "$base" > "$base.sha256")
+  elif command -v shasum >/dev/null 2>&1; then
+    (cd "$dir" && shasum -a 256 "$base" > "$base.sha256")
+  else
+    die "no sha256sum or shasum available to checksum $base"
+  fi
+}
+
 copy_apk_artifacts() {
   local source_apk="$1"
   local kind="$2"
@@ -45,7 +65,7 @@ copy_apk_artifacts() {
 
   mkdir -p "$releases_dir"
   cp "$source_apk" "$releases_dir/$stable_name"
-  sha256sum "$releases_dir/$stable_name" > "$releases_dir/$stable_name.sha256"
+  sha256_sidecar "$releases_dir/$stable_name"
 
   if [[ "${APK_NO_VERSIONED_COPY:-0}" != "1" ]]; then
     local stamp sha versioned_name
@@ -53,7 +73,7 @@ copy_apk_artifacts() {
     sha="$(git -C "$ROOT" rev-parse --short=8 HEAD 2>/dev/null || printf 'nogit')"
     versioned_name="onetothree-${kind}-${stamp}-${sha}.apk"
     cp "$source_apk" "$releases_dir/$versioned_name"
-    sha256sum "$releases_dir/$versioned_name" > "$releases_dir/$versioned_name.sha256"
+    sha256_sidecar "$releases_dir/$versioned_name"
     ok "APK ready: releases/android/$versioned_name"
     ok "SHA256 : releases/android/$versioned_name.sha256"
   fi
@@ -136,13 +156,14 @@ command -v npx  >/dev/null 2>&1 || die "npx not found."
 
 # 1. Next.js static export
 log "Step 1/3: Next.js static export…"
-cd "$CLIENT_DIR"
 # Wipe any prior export first so stale pages (e.g. a route removed in a later
 # commit) can never be packaged into the APK.
 log "Cleaning previous Next.js export (client/out, client/.next)…"
 rm -rf "$CLIENT_DIR/out" "$CLIENT_DIR/.next"
+# The repo's own entry point, from the root: it runs inside the client
+# workspace and fills in the public-instance defaults for anything unset.
+cd "$ROOT"
 env \
-  NEXT_EXPORT=1 \
   NEXT_PUBLIC_API_URL="$API_URL" \
   NEXT_PUBLIC_APP_URL="${APP_URL:-}" \
   NEXT_PUBLIC_WS_ORIGIN="$API_URL" \
@@ -150,7 +171,7 @@ env \
   NEXT_PUBLIC_TURN_URLS="${TURN_URLS:-}" \
   NEXT_PUBLIC_TURN_USERNAME="${TURN_USER:-}" \
   NEXT_PUBLIC_TURN_PASSWORD="${TURN_PASS:-}" \
-  npx next build --webpack
+  npm run build:client:export
 ok "Next.js export complete → client/out/"
 
 # 2. Capacitor sync

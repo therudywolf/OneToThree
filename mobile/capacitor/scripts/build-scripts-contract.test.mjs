@@ -167,6 +167,31 @@ describe('release signing material cannot be committed', () => {
   })
 })
 
+/**
+ * `.env.prod` on the production host sets NEXT_PUBLIC_API_URL and no
+ * NEXT_PUBLIC_APP_URL, and the build scripts used to fill the gap with the API
+ * host. That is not a harmless default: the app URL is what invite and share
+ * links are built from, so every link the APK produced pointed at the API
+ * hostname. An unset value now falls through to the export's own default.
+ */
+describe('the app URL is never faked from the API URL', () => {
+  test('no build script substitutes one for the other', () => {
+    let seen = 0
+    for (const file of BUILD_SCRIPTS) {
+      for (const [i, line] of read(file).split('\n').entries()) {
+        if (!/NEXT_PUBLIC_APP_URL/.test(line)) continue
+        seen++
+        assert.doesNotMatch(
+          line,
+          /APP_URL:-\$?\{?(NEXT_PUBLIC_)?API_URL/,
+          `${file}:${i + 1} falls back to the API host for the app URL`
+        )
+      }
+    }
+    assert.ok(seen > 0, 'found no NEXT_PUBLIC_APP_URL lines to check')
+  })
+})
+
 describe('the build entry points agree with each other', () => {
   test('all of them write APKs into releases/android', () => {
     for (const file of BUILD_SCRIPTS.filter((f) => /build-apk/.test(f))) {

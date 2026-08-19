@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
-    "build:export": "cross-env NEXT_EXPORT=1 NEXT_PUBLIC_API_URL=https://api.onetothree.ru NEXT_PUBLIC_APP_URL=https://onetothree.ru next build --webpack",
+    "build:export": "node scripts/export-client.mjs",
     "build:export:env": "cross-env NEXT_EXPORT=1 next build --webpack",
     "start": "next start",
     "lint": "eslint \"src/**/*.{ts,tsx}\" \"tests/**/*.ts\" \"playwright*.ts\" --max-warnings=0",

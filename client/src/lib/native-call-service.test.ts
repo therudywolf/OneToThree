@@ -37,6 +37,24 @@ describe('call foreground service bridge', () => {
     expect(plugin.stop).toHaveBeenCalledTimes(1)
   })
 
+  /**
+   * The service is typed at start, and a microphone-typed one keeps the mic
+   * alive in the background and nothing else — a backgrounded video call went
+   * on being heard and stopped being seen. The native side can't tell whether a
+   * camera track is live, so this flag is the only signal it gets.
+   */
+  it('tells the native side whether the camera is live', () => {
+    const plugin = installPlugin()
+    startCallForegroundService(true)
+    expect(plugin.start).toHaveBeenCalledWith({ video: true })
+  })
+
+  it('defaults to audio-only, so an audio call never claims the camera type', () => {
+    const plugin = installPlugin()
+    startCallForegroundService()
+    expect(plugin.start).toHaveBeenCalledWith({ video: false })
+  })
+
   /** A web build has no Capacitor at all; calling must not throw. */
   it('is a no-op with no Capacitor present', () => {
     expect(() => {

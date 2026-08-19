@@ -6,11 +6,14 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
 /**
  * Keeps a call alive while the app is backgrounded. WebRTC media runs inside the
@@ -22,6 +25,8 @@ import androidx.core.app.NotificationCompat;
  */
 public class CallForegroundService extends Service {
   public static final String ACTION_START = "ru.onetothree.app.call.START";
+  /** Set by CallServicePlugin when the call currently has a live camera track. */
+  public static final String EXTRA_VIDEO = "ru.onetothree.app.call.VIDEO";
   public static final String ACTION_STOP = "ru.onetothree.app.call.STOP";
   public static final String CHANNEL_ID = "ongoing_call";
   public static final int NOTIFICATION_ID = 13014;
@@ -54,16 +59,13 @@ public class CallForegroundService extends Service {
 
     running = true;
     // Android 10+ requires the foregroundServiceType at start; 14+ additionally
-    // requires the FOREGROUND_SERVICE_MICROPHONE permission (declared in the
+    // requires the matching FOREGROUND_SERVICE_* permission (declared in the
     // manifest) AND that the start is currently permitted — startForeground can
     // throw ForegroundServiceStartNotAllowedException / SecurityException, so
     // fail closed (stop) rather than crashing the process.
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(
-          NOTIFICATION_ID,
-          buildNotification(),
-          ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        startForeground(NOTIFICATION_ID, buildNotification(), foregroundTypes(intent));
       } else {
         startForeground(NOTIFICATION_ID, buildNotification());
       }
@@ -75,6 +77,26 @@ public class CallForegroundService extends Service {
     // NOT_STICKY: a call is a live session driven by the web layer; if the
     // process dies the call is already gone, so do not resurrect the service.
     return START_NOT_STICKY;
+  }
+
+  /**
+   * A microphone-typed service keeps the mic alive in the background and NOTHING
+   * else — a backgrounded video call went on holding its mic while the camera
+   * was cut, so the other side kept hearing and stopped seeing. The camera type
+   * has to be added for that, but only when it is actually true: Android 14+
+   * throws if a declared type's permission is missing, so an audio call, or a
+   * video call whose camera permission was refused, must stay microphone-only.
+   */
+  private int foregroundTypes(Intent intent) {
+    int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+    final boolean wantsCamera = intent != null && intent.getBooleanExtra(EXTRA_VIDEO, false);
+    final boolean mayUseCamera =
+      ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+        == PackageManager.PERMISSION_GRANTED;
+    if (wantsCamera && mayUseCamera && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      types |= ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA;
+    }
+    return types;
   }
 
   @Override

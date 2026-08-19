@@ -78,12 +78,16 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="messages" />
 
-        <!-- Keeps a call alive (mic + audio) while the app is backgrounded (#3/#13). -->
+        <!-- Keeps a call alive while the app is backgrounded (#3/#13). The camera
+             type is declared as well but only requested at runtime for a call
+             that actually has a live camera track AND holds CAMERA — Android 14+
+             throws when a declared type's permission is missing. Without it a
+             backgrounded video call kept its mic and lost its picture. -->
         <service
             android:name=".CallForegroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone|camera" />
     </application>
 
     <!-- Permissions -->
@@ -93,6 +97,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <!-- Required from Android 14 for the specialUse-typed DirectNotificationService (#13). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.CAMERA" />

@@ -51,3 +51,62 @@ describe('fetchWithTimeout — native Bearer token origin scoping (N1)', () => {
     expect(seen[1]?.native).toBeNull()
   })
 })
+
+/**
+ * capacitor.config.json enables CapacitorHttp, whose patched fetch routes
+ * anything that is not GET/HEAD/OPTIONS/TRACE through the native bridge — and
+ * the bridge ignores AbortSignal. Inside the APK every POST, PUT and DELETE
+ * therefore had no timeout at all: a request that never came back left the
+ * caller waiting forever, on a spinner, with no error to show.
+ */
+describe('fetchWithTimeout — the timeout has to fire even when abort is ignored', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'https://api.example.com')
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('rejects on the deadline even if the request ignores the abort signal', async () => {
+    // A transport that never settles and never listens to the signal — exactly
+    // what the native bridge does with a POST.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+
+    const { fetchWithTimeout } = await import('./fetch')
+    const pending = fetchWithTimeout('https://api.example.com/api/messages', {
+      method: 'POST',
+      timeoutMs: 5000,
+    })
+    const settled = expect(pending).rejects.toMatchObject({ name: 'TimeoutError' })
+
+    await vi.advanceTimersByTimeAsync(5000)
+    await settled
+  })
+
+  it('a response that arrives in time still wins', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 201 })))
+
+    const { fetchWithTimeout } = await import('./fetch')
+    const res = await fetchWithTimeout('https://api.example.com/api/messages', {
+      method: 'POST',
+      timeoutMs: 5000,
+    })
+    expect(res.status).toBe(201)
+  })
+
+  it('does not leave the deadline timer running after a normal response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+
+    const { fetchWithTimeout } = await import('./fetch')
+    await fetchWithTimeout('https://api.example.com/api/auth/me', { timeoutMs: 5000 })
+    // Both the abort timer and the deadline timer must be cleared, or every
+    // request would keep the event loop busy for its full timeout.
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})

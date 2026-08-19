@@ -49,6 +49,7 @@ export function fetchWithTimeout(
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let timedOut: ReturnType<typeof setTimeout> | undefined
 
   // If the caller supplied their own signal, abort when either fires.
   if (callerSignal) {
@@ -69,10 +70,31 @@ export function fetchWithTimeout(
   // Service-Worker cache — a stale `/auth/me` 401 would persist past a fresh
   // login. Callers can opt back in to caching by passing an explicit
   // `cache:` value (e.g. `'force-cache'` for static media manifests).
-  return fetch(input, {
+  const request = fetch(input, {
     ...rest,
     headers,
     cache: cache ?? 'no-store',
     signal: controller.signal,
-  }).finally(() => clearTimeout(timer))
+  })
+
+  // The abort above is not enough inside the APK. capacitor.config.json enables
+  // CapacitorHttp, whose patched fetch routes anything that is not
+  // GET/HEAD/OPTIONS/TRACE through the native bridge — and the bridge ignores
+  // AbortSignal entirely. Every POST, PUT and DELETE therefore had no timeout
+  // at all: a request that never came back left the caller waiting forever,
+  // with a spinner and no error.
+  //
+  // Racing a timer gives the caller the same rejection it would have got from
+  // the abort. The native request may still be in flight; its result is
+  // discarded, which is exactly what an abort would have delivered anyway.
+  const deadline = new Promise<never>((_, reject) => {
+    timedOut = setTimeout(() => {
+      reject(new DOMException(`Request timed out after ${timeoutMs} ms`, 'TimeoutError'))
+    }, timeoutMs)
+  })
+
+  return Promise.race([request, deadline]).finally(() => {
+    clearTimeout(timer)
+    if (timedOut) clearTimeout(timedOut)
+  }) as Promise<Response>
 }

@@ -5,6 +5,7 @@
  */
 
 import { API_URL } from '@/lib/api/auth'
+import { attachNativeListener } from '@/lib/native-listener'
 import { fetchWithTimeout } from '@/lib/api/fetch'
 
 const RETRY_DELAYS_MS = [250, 800, 1600] as const
@@ -445,23 +446,45 @@ export async function subscribeNativePush(): Promise<void> {
   const perm = await plugin.requestPermissions()
   if (perm.receive !== 'granted') throw new Error('NOTIFICATION_DENIED')
 
-  const token = await new Promise<string>((resolve, reject) => {
-    let timeout: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-      timeout = null
-      reject(new Error('NATIVE_PUSH_REGISTER_TIMEOUT'))
-    }, 10000)
-    void plugin.addListener('registration', (payload) => {
-      const value = (payload as { value?: string } | null)?.value
-      if (!value) return
-      if (timeout) clearTimeout(timeout)
-      resolve(value)
-    })
-    void plugin.addListener('registrationError', (err) => {
-      if (timeout) clearTimeout(timeout)
-      reject(new Error((err as { error?: string } | null)?.error || 'NATIVE_PUSH_REGISTER_FAILED'))
-    })
-    void plugin.register()
+  // Both listeners are removed again in the finally below. They used to be
+  // attached with a bare `void`, so every retry — and a denied or timed-out
+  // registration is retried — left another pair registered against the native
+  // bridge for the lifetime of the process, each one firing into a promise that
+  // had already settled.
+  let resolveToken!: (value: string) => void
+  let rejectToken!: (error: Error) => void
+  const tokenPromise = new Promise<string>((resolve, reject) => {
+    resolveToken = resolve
+    rejectToken = reject
   })
+  const timeout = setTimeout(
+    () => rejectToken(new Error('NATIVE_PUSH_REGISTER_TIMEOUT')),
+    10000
+  )
+  const detach = await Promise.all([
+    attachNativeListener(() =>
+      plugin.addListener('registration', (payload) => {
+        const value = (payload as { value?: string } | null)?.value
+        if (value) resolveToken(value)
+      })
+    ),
+    attachNativeListener(() =>
+      plugin.addListener('registrationError', (err) => {
+        rejectToken(
+          new Error((err as { error?: string } | null)?.error || 'NATIVE_PUSH_REGISTER_FAILED')
+        )
+      })
+    ),
+  ])
+
+  let token: string
+  try {
+    void plugin.register()
+    token = await tokenPromise
+  } finally {
+    clearTimeout(timeout)
+    for (const stop of detach) stop?.()
+  }
 
   await requestNativePushSync('/push/native/register', {
     method: 'POST',

@@ -83,6 +83,11 @@ export const FEATURES = [
   // guest links are the only anonymous entry into the app, so an operator has
   // to ask for them. Guest CALLS additionally need CALLS + a LiveKit.
   { key: 'GUESTS', label: 'Guest links — meetings / temp chats without an account', on: false },
+  // On by default because that is how the server has always behaved; surfaced
+  // because on a public domain it is the only thing standing between "my
+  // friends" and "anyone with the URL", and Lite used to offer no way to
+  // close sign-ups at all.
+  { key: 'OPEN_REGISTRATION', label: 'Open registration — anyone with the address can sign up', on: true },
 ]
 
 /**
@@ -266,6 +271,7 @@ export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = n
     OT_ENABLE_PUSH: flags.PUSH,
     OT_ENABLE_2FA: flags['2FA'],
     OT_ENABLE_GUESTS: flags.GUESTS,
+    OT_ENABLE_OPEN_REGISTRATION: flags.OPEN_REGISTRATION,
     // Without this the API keeps its `origin_safe` default, where
     // /call/config reports `livekit_enabled: false` regardless of the three
     // vars below — and the client takes the WebSocket audio relay without ever

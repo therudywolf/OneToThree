@@ -26,12 +26,17 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri://localhost; script-src 'self' tauri://localhost 'unsafe-inline'; style-src 'self' tauri://localhost 'unsafe-inline'; img-src 'self' tauri://localhost blob: data: https://api.onetothree.ru https://s3.onetothree.ru https://*.giphy.com https://media.tenor.com https://*.tenor.com; media-src 'self' tauri://localhost blob: https://api.onetothree.ru https://s3.onetothree.ru https://*.giphy.com https://media.tenor.com https://*.tenor.com; connect-src 'self' tauri://localhost https://api.onetothree.ru wss://api.onetothree.ru https://s3.onetothree.ru https://cdn.jsdelivr.net wss://lk.onetothree.ru https://lk.onetothree.ru https://*.giphy.com https://api.giphy.com https://media.tenor.com https://*.tenor.com https://api.tenor.com https://tenor.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
+      "csp": "default-src 'self' tauri://localhost; script-src 'self' tauri://localhost 'unsafe-inline' 'wasm-unsafe-eval' blob:; style-src 'self' tauri://localhost 'unsafe-inline'; img-src 'self' tauri://localhost blob: data: https://api.onetothree.ru https://s3.onetothree.ru https://*.giphy.com https://media.tenor.com https://*.tenor.com; media-src 'self' tauri://localhost blob: https://api.onetothree.ru https://s3.onetothree.ru https://*.giphy.com https://media.tenor.com https://*.tenor.com; connect-src 'self' tauri://localhost ipc://localhost http://ipc.localhost https://api.onetothree.ru wss://api.onetothree.ru https://s3.onetothree.ru https://cdn.jsdelivr.net wss://lk.onetothree.ru https://lk.onetothree.ru https://*.giphy.com https://api.giphy.com https://media.tenor.com https://*.tenor.com https://api.tenor.com https://tenor.googleapis.com; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "appimage", "nsis", "dmg"],
+    "targets": [
+      "deb",
+      "appimage",
+      "nsis",
+      "dmg"
+    ],
     "category": "SocialNetworking",
     "shortDescription": "Self-hosted E2EE messenger",
     "longDescription": "OneToThree desktop client. Connects to your self-hosted OneToThree server with end-to-end encryption.",
@@ -48,19 +53,27 @@
     ],
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ]
       }
     },
     "windows": {
       "wix": {
-        "language": ["en-US", "ru-RU"]
+        "language": [
+          "en-US",
+          "ru-RU"
+        ]
       }
     }
   },
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["onetothree"]
+        "schemes": [
+          "onetothree"
+        ]
       }
     }
   }

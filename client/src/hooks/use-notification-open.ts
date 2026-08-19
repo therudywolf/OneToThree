@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { parseTargetChatIdFromUrl, parseAcceptCallFromUrl } from '@/lib/notification-open'
+import { attachNativeListener } from '@/lib/native-listener'
 import { useSessionStore } from '@/store/sessionStore'
 
 type SwMessageData = {
@@ -61,10 +62,12 @@ export function useNotificationOpen(acceptIncomingCall?: () => void) {
         isNativePlatform?: () => boolean
         Plugins?: {
           PushNotifications?: {
+            // Plain `{ remove }` from the injected bridge, a Promise of one
+            // from the npm package — see attachNativeListener.
             addListener: (
               eventName: 'pushNotificationActionPerformed',
               listenerFunc: (payload: CapacitorPushAction) => void
-            ) => Promise<{ remove: () => void }>
+            ) => { remove: () => unknown } | Promise<{ remove: () => unknown }>
           }
         }
       }
@@ -74,8 +77,8 @@ export function useNotificationOpen(acceptIncomingCall?: () => void) {
     if (!plugin) return
 
     let remove: (() => void) | null = null
-    void plugin
-      .addListener('pushNotificationActionPerformed', (payload) => {
+    void attachNativeListener(() =>
+      plugin.addListener('pushNotificationActionPerformed', (payload) => {
         const url = payload.notification?.data?.url ?? ''
         const chatId =
           payload.notification?.data?.chat_id ??
@@ -87,12 +90,9 @@ export function useNotificationOpen(acceptIncomingCall?: () => void) {
           }, 400)
         }
       })
-      .then((h) => {
-        remove = () => h.remove()
-      })
-      .catch(() => {
-        remove = null
-      })
+    ).then((detach) => {
+      remove = detach
+    })
 
     return () => {
       remove?.()

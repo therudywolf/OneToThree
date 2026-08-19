@@ -36,7 +36,7 @@
     "test:e2e:local": "bash ./scripts/e2e-local.sh",
     "test:e2e:live": "node scripts/e2e-live/run.mjs",
     "test:lite": "node --test \"scripts/lite/**/*.test.mjs\"",
-    "test:scripts": "node --test \"scripts/lib/**/*.test.mjs\"",
+    "test:scripts": "node --test \"scripts/lib/**/*.test.mjs\" \"client/scripts/**/*.test.mjs\"",
     "test:desktop": "node --test \"desktop/tauri/scripts/**/*.test.mjs\"",
     "test:mobile": "node --test \"mobile/capacitor/scripts/**/*.test.mjs\"",
     "test:p0:auth": "bash ./scripts/p0-auth-suite.sh",

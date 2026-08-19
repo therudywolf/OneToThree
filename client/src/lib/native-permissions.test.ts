@@ -25,16 +25,21 @@ describe('requestAndroidEssentialPermissionsOnce', () => {
     delete (window as unknown as { Capacitor?: unknown }).Capacitor
   })
 
-  it('does not burn the single prompt when the request never completes', async () => {
+  it('does not burn a prompt attempt when the request never completes', async () => {
     const request = vi.fn().mockRejectedValue(new Error('activity destroyed'))
     installPlugin(request)
 
-    await requestAndroidEssentialPermissionsOnce()
-    await requestAndroidEssentialPermissionsOnce()
+    // The old implementation set the "prompted" flag in a finally block, so a
+    // request that never came back still consumed an attempt and the user ran
+    // out of prompts without ever seeing a dialog.
+    //
+    // This has to run past the attempt cap (3) to mean anything: with the bug,
+    // the first three calls each burn an attempt and every later call is a
+    // silent no-op. Two calls would pass either way — which is exactly what
+    // this test used to do.
+    for (let i = 0; i < 5; i++) await requestAndroidEssentialPermissionsOnce()
 
-    // The old implementation set the "prompted" flag in a finally block, so the
-    // second launch never asked again and the user could not recover.
-    expect(request).toHaveBeenCalledTimes(2)
+    expect(request).toHaveBeenCalledTimes(5)
   })
 
   it('stops asking once everything is granted', async () => {

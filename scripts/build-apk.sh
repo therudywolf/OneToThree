@@ -30,9 +30,11 @@ log()  { printf '\033[0;34m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[0;32m✓ %s\033[0m\n' "$*"; }
 die()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
-val_for_key() {
-  grep "^${1}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '\r'
-}
+# Shared reader: strips CR, quotes and an inline `# comment`. The local
+# one-liner this replaced baked the comment into the APK as part of the URL.
+# shellcheck source=lib/env-value.sh
+source "$ROOT/scripts/lib/env-value.sh"
+val_for_key() { env_value "$1" "$ENV_FILE"; }
 
 copy_apk_artifacts() {
   local source_apk="$1"
@@ -154,7 +156,10 @@ ok "Next.js export complete → client/out/"
 # 2. Capacitor sync
 log "Step 2/3: Capacitor sync…"
 cd "$CAP_DIR"
-npx cap sync android --no-build 2>&1 | tail -5
+# `cap sync` takes only --deployment / --inline; the --no-build that used to be
+# passed here is not an option commander knows, so every run of this script died
+# right here with "unknown option".
+npx cap sync android 2>&1 | tail -5
 ok "Capacitor sync complete."
 
 # 3. Gradle build

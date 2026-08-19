@@ -45,8 +45,12 @@ copy_apk_artifacts() {
 }
 
 # ── 1. Client deps ─────────────────────────────────────────────────────────
-log "Installing client dependencies…"
-cd "$CLIENT_DIR"
+# Installed from the REPO ROOT: `client` is an npm workspace and has no lockfile
+# of its own in a fresh clone, so `npm ci` inside client/ aborted with "can only
+# install with an existing package-lock.json". The root lockfile is the tracked
+# one, and it covers the client and server workspaces in a single pass.
+log "Installing workspace dependencies (root lockfile)…"
+cd "$ROOT"
 npm ci --no-audit --no-fund --prefer-offline 2>&1 | tail -3
 
 # ── 2. Next.js static export ───────────────────────────────────────────────
@@ -68,13 +72,23 @@ env \
 ok "Next.js export complete → client/out/"
 
 # ── 3. Capacitor deps ─────────────────────────────────────────────────────
+# mobile/capacitor/package-lock.json is deliberately gitignored (.gitignore:157),
+# so `npm ci` here could never succeed — it requires a lockfile. Use it only if
+# one happens to exist locally; otherwise install from package.json.
 log "Installing Capacitor dependencies…"
 cd "$CAP_DIR"
-npm ci --no-audit --no-fund --prefer-offline 2>&1 | tail -3
+if [[ -f package-lock.json ]]; then
+  npm ci --no-audit --no-fund --prefer-offline 2>&1 | tail -3
+else
+  npm install --no-audit --no-fund --prefer-offline 2>&1 | tail -3
+fi
 
 # ── 4. Capacitor sync ─────────────────────────────────────────────────────
 log "Capacitor sync → android…"
-npx cap sync android --no-build 2>&1 | tail -5
+# `cap sync` accepts only --deployment / --inline. The --no-build that used to
+# be here is not a known option, and with `set -o pipefail` the unknown-option
+# exit killed the container build before Gradle ever started.
+npx cap sync android 2>&1 | tail -5
 ok "Capacitor sync complete."
 
 # ── 5. Gradle build ───────────────────────────────────────────────────────

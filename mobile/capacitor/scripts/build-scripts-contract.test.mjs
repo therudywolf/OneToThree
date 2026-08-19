@@ -174,6 +174,43 @@ describe('release signing material cannot be committed', () => {
  * links are built from, so every link the APK produced pointed at the API
  * hostname. An unset value now falls through to the export's own default.
  */
+/**
+ * The export step must go through the repo's own entry point.
+ *
+ * Calling `npx next build` directly made it depend on whichever directory the
+ * PREVIOUS step happened to leave the shell in — move the dependency install to
+ * the repo root and the export dies with "Couldn't find any \`pages\` or \`app\`
+ * directory", after several minutes of work. Going through
+ * `npm run build:client:export` pins the working directory to the client
+ * workspace and applies the public-instance defaults for anything unset.
+ */
+describe('the export runs through the repo entry point', () => {
+  test('no build script invokes next build directly', () => {
+    let seen = 0
+    for (const file of BUILD_SCRIPTS.filter((f) => f.endsWith('.sh'))) {
+      const text = read(file)
+      if (!/build:client:export/.test(text)) continue
+      seen++
+      for (const [i, raw] of text.split('\n').entries()) {
+        const line = raw.replace(/#.*$/, '')
+        assert.doesNotMatch(
+          line,
+          /(npx|yarn|pnpm)\s+next\s+build/,
+          `${file}:${i + 1} calls next build directly instead of npm run build:client:export`
+        )
+      }
+    }
+    assert.ok(seen > 0, 'no build script exports the client — the scanner rotted')
+  })
+
+  test('the entry point it calls actually exists', () => {
+    const root = JSON.parse(read('package.json'))
+    assert.ok(root.scripts['build:client:export'], 'package.json lost build:client:export')
+    const client = JSON.parse(read('client/package.json'))
+    assert.ok(client.scripts['build:export'], 'client lost build:export')
+  })
+})
+
 describe('the app URL is never faked from the API URL', () => {
   test('no build script substitutes one for the other', () => {
     let seen = 0

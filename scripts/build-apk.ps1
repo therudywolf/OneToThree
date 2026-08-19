@@ -113,7 +113,7 @@ function Copy-ApkArtifact([string]$SourceApk, [string]$ReleaseDir, [string]$Kind
   return $artifactPaths
 }
 
-Assert-Command -Name "java" -Hint "Java not found. Install JDK 17+ and set JAVA_HOME."
+Assert-Command -Name "java" -Hint "Java not found. Install JDK 21 and set JAVA_HOME."
 Assert-Command -Name "node" -Hint "Node.js not found in PATH."
 Assert-Command -Name "npm" -Hint "npm not found in PATH."
 

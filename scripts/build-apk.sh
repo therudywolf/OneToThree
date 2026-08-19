@@ -7,7 +7,7 @@
 #   ./scripts/build-apk.sh release <keystore>  # release with explicit keystore path
 #
 # Prerequisites (native build):
-#   - Java 17+ in PATH (or JAVA_HOME set)
+#   - JDK 21 in PATH (or JAVA_HOME set) — Capacitor 8 compiles sourceCompatibility 21
 #   - Node 20+ in PATH
 #   - Android SDK (ANDROID_HOME or ANDROID_SDK_ROOT)
 #
@@ -153,7 +153,7 @@ fi
 # =============================================================================
 # NATIVE BUILD  (Android SDK available on the host)
 # =============================================================================
-command -v java >/dev/null 2>&1 || die "Java not found. Install JDK 17+ and set JAVA_HOME."
+command -v java >/dev/null 2>&1 || die "Java not found. Install JDK 21 and set JAVA_HOME."
 command -v node >/dev/null 2>&1 || die "Node.js not found."
 command -v npx  >/dev/null 2>&1 || die "npx not found."
 

@@ -198,7 +198,12 @@ function syncConds(){
     : m==='lan'
     ? '⚠ On self-signed HTTPS the browser blocks MinIO unless its endpoint is trusted-HTTPS too.'
     : ''
-  if (m==='local' && !$('#s3Url').value) $('#s3Url').value = 'http://localhost:9000'
+  // The localhost default belongs to local mode only. It used to stay put when
+  // the operator switched to lan/domain, and a public install then handed every
+  // remote browser media URLs pointing at its own machine.
+  const LOCAL_S3 = 'http://localhost:9000'
+  if (m==='local') { if (!$('#s3Url').value) $('#s3Url').value = LOCAL_S3 }
+  else if ($('#s3Url').value === LOCAL_S3) $('#s3Url').value = ''
 }
 function origin(){
   const m = mode(), o = opts()

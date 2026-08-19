@@ -10,12 +10,62 @@
  * See docs/guides/LITE.md and docs/project/ROADMAP_SELFHOST_LITE.md.
  */
 import { randomBytes, generateKeyPairSync } from 'node:crypto'
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { networkInterfaces } from 'node:os'
 
 export const hex = (n) => randomBytes(n).toString('hex')
+
+/**
+ * Reject anything that would break out of a `KEY=VALUE` line or a Caddyfile
+ * block. Both artifacts are line-oriented and unquoted, so a newline in an
+ * operator-supplied value (pasted domain, S3 URL, LiveKit secret) does not fail
+ * — it appends whatever follows as a new env var or a new Caddy directive.
+ */
+export function assertSingleLine(label, value) {
+  const s = String(value ?? '')
+  if (/[\r\n]/.test(s)) throw new Error(`${label} must not contain a line break`)
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u0008\u000b-\u001f\u007f]/.test(s)) throw new Error(`${label} contains a control character`)
+  return s
+}
+
+/**
+ * A host has to survive being written into a Caddy site address and a URL. A
+ * value with a space, a brace or a slash silently produces a Caddyfile that
+ * either fails to parse or serves a site nobody asked for.
+ */
+export function assertHost(label, value) {
+  const s = assertSingleLine(label, value).trim()
+  if (!s) throw new Error(`${label} must not be empty`)
+  const ok =
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(s) ||
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(s)
+  if (!ok) throw new Error(`${label} is not a valid hostname or IPv4 address: ${JSON.stringify(s)}`)
+  return s
+}
+
+/**
+ * Ports end up in `docker compose` published-port strings and in the origin the
+ * installer prints. A non-numeric answer used to become `NaN` there: compose
+ * refuses to start on an invalid published port, and the operator is told
+ * nothing about which answer caused it.
+ */
+export function parsePort(label, value, fallback) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return String(fallback)
+  if (!/^\d+$/.test(raw)) throw new Error(`${label} must be a number, got ${JSON.stringify(raw)}`)
+  const n = Number(raw)
+  if (n < 1 || n > 65535) throw new Error(`${label} must be between 1 and 65535, got ${n}`)
+  return String(n)
+}
+
+/** Normalize a contact into a valid VAPID `mailto:`/`https:` subject. */
+export function normalizeSubject(s) {
+  const t = assertSingleLine('push contact', s || '').trim() || 'mailto:admin@localhost'
+  return t.startsWith('mailto:') || t.startsWith('https:') ? t : `mailto:${t}`
+}
 
 /**
  * User-facing feature checkboxes (single source of truth for CLI + GUI).
@@ -56,6 +106,30 @@ export function generateVapidKeys(subject = 'mailto:admin@localhost') {
 }
 
 /**
+ * Decide which VAPID pair this run should use.
+ *
+ * `PERSISTENT_SECRETS` below keeps an existing pair only when the caller passes
+ * no `vapid` — but BOTH callers (install.mjs, wizard/server.mjs) used to mint a
+ * fresh one on every run where push was enabled, which always won. So merely
+ * re-running the installer to flip an unrelated feature rotated the keypair,
+ * and every browser already subscribed was silently unsubscribed: the push
+ * service rejects pushes signed by the new key, and nothing in the UI says so.
+ * Keys are now kept unless there are none, or the operator asks to rotate.
+ */
+export function resolveVapid({ existing = {}, subject = '', rotate = false } = {}) {
+  const havePair = Boolean(existing.OT_VAPID_PUBLIC_KEY && existing.OT_VAPID_PRIVATE_KEY)
+  if (havePair && !rotate) {
+    return {
+      publicKey: existing.OT_VAPID_PUBLIC_KEY,
+      privateKey: existing.OT_VAPID_PRIVATE_KEY,
+      subject: normalizeSubject(subject || existing.OT_VAPID_SUBJECT),
+      rotated: false,
+    }
+  }
+  return { ...generateVapidKeys(normalizeSubject(subject)), rotated: true }
+}
+
+/**
  * Resolve everything that depends on the deployment mode. The three modes exist
  * because E2EE (Web Crypto / crypto.subtle) only runs in a SECURE CONTEXT:
  * HTTPS, or plain HTTP on `localhost`. So plain HTTP works on this machine but
@@ -66,8 +140,8 @@ export function generateVapidKeys(subject = 'mailto:admin@localhost') {
  */
 export function computeModeConfig(mode, opts = {}) {
   if (mode === 'lan') {
-    const host = (opts.host || '192.168.1.50').trim()
-    const httpsPort = String(opts.httpsPort || '8443').trim()
+    const host = assertHost('LAN address', opts.host || '192.168.1.50')
+    const httpsPort = parsePort('HTTPS port', opts.httpsPort, '8443')
     return {
       mode: 'lan',
       host,
@@ -83,8 +157,14 @@ export function computeModeConfig(mode, opts = {}) {
     }
   }
   if (mode === 'domain') {
-    const domain = (opts.domain || 'chat.example.com').trim()
-    const acmeEmail = (opts.acmeEmail || `admin@${domain.replace(/^[^.]+\./, '')}`).trim()
+    const domain = assertHost('domain', opts.domain || 'chat.example.com')
+    // Strip the sub-domain only when there IS one: on an apex domain
+    // (example.com) the old blanket strip produced `admin@com`, and Let's
+    // Encrypt rejects the registration, so issuance failed with a message
+    // pointing at the wrong thing.
+    const labels = domain.split('.')
+    const registrable = labels.length > 2 ? labels.slice(1).join('.') : domain
+    const acmeEmail = assertSingleLine('ACME email', opts.acmeEmail || `admin@${registrable}`).trim()
     return {
       mode: 'domain',
       host: domain,
@@ -100,7 +180,7 @@ export function computeModeConfig(mode, opts = {}) {
     }
   }
   // local (default)
-  const httpPort = String(opts.httpPort || '8443').trim()
+  const httpPort = parsePort('port', opts.httpPort, '8443')
   return {
     mode: 'local',
     host: 'localhost',
@@ -219,10 +299,48 @@ export function renderEnvFile(env) {
   return (
     '# Generated by the OneToThree Lite installer — contains secrets, do not commit.\n' +
     Object.entries(env)
-      .map(([k, v]) => `${k}=${v}`)
+      // A line break in any value would append the rest as further env vars —
+      // an operator pasting a multi-line LiveKit secret must not be able to
+      // redefine OT_ENABLE_GUESTS by accident (or on purpose).
+      .map(([k, v]) => `${k}=${assertSingleLine(k, v)}`)
       .join('\n') +
     '\n'
   )
+}
+
+/**
+ * Media objects are fetched by the BROWSER, not by the server, so the object
+ * store URL has to be reachable from wherever the user is sitting.
+ *
+ * `http://localhost:9000` is the right answer in local mode and a broken one
+ * everywhere else — and it is exactly what an operator ends up with, because
+ * the GUI pre-fills it and the field keeps its value when the mode changes.
+ * The result is an install that looks healthy while every photo, voice message
+ * and sticker resolves to a port on the viewer's own machine.
+ *
+ * Blank stays allowed: both installers offer "leave it blank and fill it in
+ * later", and an empty value is at least honest about being unset.
+ *
+ * @returns a human-readable problem, or `null` when the value is usable.
+ */
+export function s3UrlProblem({ cfg, flags = {}, s3PublicUrl = '' }) {
+  const wantsObjects = flags.MEDIA === '1' || flags.STICKERS === '1'
+  const value = String(s3PublicUrl || '').trim()
+  if (!wantsObjects || !value || cfg.mode === 'local') return null
+  let host
+  try {
+    host = new URL(value).hostname
+  } catch {
+    return `the object store URL is not a valid URL: ${JSON.stringify(value)}`
+  }
+  if (['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
+    return (
+      `the object store URL points at ${host}, which only works on this machine — ` +
+      `in ${cfg.mode} mode every other device would fail to load media. ` +
+      `Enter the address browsers will use, or leave it blank to fill in later.`
+    )
+  }
+  return null
 }
 
 /** Per-mode Caddyfile. Caddy requires each block's `{` to end its line. */
@@ -263,9 +381,23 @@ export function composeArgs(flags, extra = []) {
   ]
 }
 
-/** Write `.env.lite` + `infra/lite/Caddyfile` under `repo`. */
+/**
+ * Write `.env.lite` + `infra/lite/Caddyfile` under `repo`.
+ *
+ * `.env.lite` holds the DB password, the JWT secret, the TOTP wrapping key and
+ * the VAPID private key. Written with the default mode it lands 0644, so on any
+ * shared or multi-account host every other local user can read them — and on a
+ * re-run the mode of an existing file is not revisited, hence the explicit
+ * chmod. Windows has no POSIX mode; the ACL it inherits is the user's own.
+ */
 export function writeArtifacts(repo, env, caddyfile) {
-  writeFileSync(join(repo, '.env.lite'), renderEnvFile(env))
+  const envPath = join(repo, '.env.lite')
+  writeFileSync(envPath, renderEnvFile(env), { mode: 0o600 })
+  try {
+    chmodSync(envPath, 0o600)
+  } catch {
+    /* best-effort: Windows / exotic filesystems */
+  }
   mkdirSync(join(repo, 'infra', 'lite'), { recursive: true })
   writeFileSync(join(repo, 'infra', 'lite', 'Caddyfile'), caddyfile)
 }

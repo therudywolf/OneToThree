@@ -38,6 +38,7 @@ import { getFeatureFlags, type FeatureFlags } from './lib/feature-flags.js'
 import { requireSecret } from './lib/read-secret.js'
 import { getRedis } from './lib/redis.js'
 import { assertTotpWrapKeySecurityEnv } from './lib/totp-crypto.js'
+import { webviewCorsOrigins } from './lib/webview-origins.js'
 import { db } from './db/index.js'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -228,25 +229,10 @@ export async function buildApp() {
     )
   }
 
-  const allowMobileCors =
-    (process.env.CORS_ALLOW_MOBILE_APP ?? '1').trim() !== '0'
-  const mobileCorsOrigins = allowMobileCors
-    ? [
-        // Capacitor WebView origins: Android uses https://localhost
-        // (androidScheme=https), iOS uses capacitor://localhost. Plain
-        // http://localhost is NEITHER app's origin — including it in the
-        // credentialed allowlist would let any local HTTP server on port 80
-        // make authenticated cross-origin calls, so it is intentionally omitted (#36).
-        'https://localhost',
-        'capacitor://localhost',
-        // Tauri (desktop) WebView origins: macOS/Linux use tauri://localhost,
-        // Windows (WebView2) uses http://tauri.localhost. Without these the
-        // desktop app's API calls are CORS-blocked and login fails outright.
-        'tauri://localhost',
-        'http://tauri.localhost',
-        'https://tauri.localhost',
-      ]
-    : []
+  // Shared with the S3 bucket policy (lib/webview-origins.ts): the two used to
+  // carry separate lists, and the object store's copy was missing the WebView
+  // origins entirely — so media failed in the APK while the API worked.
+  const mobileCorsOrigins = webviewCorsOrigins()
   const corsOriginsList = Array.from(
     new Set(
       [...corsOriginsValid, ...mobileCorsOrigins]

@@ -10,6 +10,7 @@ import {
 } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { readSecret } from './read-secret.js'
+import { webviewCorsOrigins } from './webview-origins.js'
 
 function readCredentials(): { accessKeyId: string; secretAccessKey: string } {
   const accessKeyId =
@@ -102,21 +103,35 @@ export function createS3ClientForPresigning(): S3Client {
 const bucketReadyMap = new Map<string, Promise<void>>()
 
 /** Origins allowed by MinIO bucket CORS for browser PUT/GET to presigned URLs. */
-function browserUploadCorsOrigins(): string[] {
-  const explicit = process.env.MINIO_CORS_ORIGINS?.trim()
+export function browserUploadCorsOrigins(
+  env: NodeJS.ProcessEnv = process.env
+): string[] {
+  // The native shells fetch media straight from the object store, from their own
+  // WebView origin (https://localhost and friends). Those origins are added to
+  // the API's allow-list in app.ts but were never added here, so every avatar,
+  // photo and sticker was CORS-blocked inside the APK while the API worked fine.
+  const withWebviews = (list: string[]): string[] =>
+    Array.from(new Set([...list, ...webviewCorsOrigins(env)]))
+
+  const explicit = env.MINIO_CORS_ORIGINS?.trim()
   if (explicit) {
-    return explicit
-      .split(',')
-      .map((o) => o.trim())
-      .filter(Boolean)
+    return withWebviews(
+      explicit
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean)
+    )
   }
-  const apiCors = process.env.CORS_ORIGIN?.trim()
+  const apiCors = env.CORS_ORIGIN?.trim()
   if (apiCors && apiCors !== '*') {
-    return apiCors
-      .split(',')
-      .map((o) => o.trim())
-      .filter(Boolean)
+    return withWebviews(
+      apiCors
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean)
+    )
   }
+  // `*` already covers every WebView origin.
   return ['*']
 }
 

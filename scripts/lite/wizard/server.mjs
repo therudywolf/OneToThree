@@ -17,7 +17,7 @@
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { spawn, spawnSync } from 'node:child_process'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   FEATURES,
@@ -26,14 +26,19 @@ import {
   renderCaddyfile,
   writeArtifacts,
   composeArgs,
-  generateVapidKeys,
+  resolveVapid,
+  s3UrlProblem,
   suggestLanIp,
   preflight,
   readExistingEnv,
 } from '../lite-core.mjs'
+import { checkRequest } from './http-guard.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const REPO = join(HERE, '..', '..', '..')
+// `OT_LITE_REPO` exists so the wizard can be exercised against a throwaway
+// fixture root: writing .env.lite into the real checkout during a test would
+// clobber a working install's secrets.
+const REPO = process.env.OT_LITE_REPO ? resolve(process.env.OT_LITE_REPO) : join(HERE, '..', '..', '..')
 const argv = process.argv.slice(2)
 const portArg = argv.indexOf('--port')
 const PORT = portArg >= 0 ? Number(argv[portArg + 1]) : 4173
@@ -60,15 +65,14 @@ const readBody = (req) =>
     })
   })
 
-/** Normalize a subject into a valid VAPID `mailto:`/`https:` contact. */
-const normSubject = (s) => {
-  const t = (s || '').trim() || 'mailto:admin@localhost'
-  return t.startsWith('mailto:') || t.startsWith('https:') ? t : `mailto:${t}`
-}
-
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
   try {
+    // Loopback binding keeps other machines out; this keeps out the browser on
+    // THIS machine, which can otherwise reach the wizard from any open tab.
+    const guard = checkRequest({ method: req.method, headers: req.headers, port: PORT })
+    if (!guard.ok) return json(res, guard.code, { error: guard.error })
+
     // ── UI ────────────────────────────────────────────────────────────────
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       const html = await readFile(join(HERE, 'index.html'))
@@ -94,22 +98,44 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/generate') {
       const b = await readBody(req)
       const mode = ['local', 'lan', 'domain'].includes(b.mode) ? b.mode : 'local'
-      const cfg = computeModeConfig(mode, b.opts || {})
       const flags = Object.fromEntries(
         FEATURES.map((f) => [f.key, b.flags && b.flags[f.key] ? '1' : '0'])
       )
-      const vapid = flags.PUSH === '1' ? generateVapidKeys(normSubject(b.vapidSubject)) : null
+      // A rejected port / host / domain is the operator's typo, not a server
+      // fault: answer 400 with the reason so the form can show it, instead of
+      // an opaque 500 (or, as before, an .env.lite carrying `NaN`).
+      let cfg
+      try {
+        cfg = computeModeConfig(mode, b.opts || {})
+      } catch (e) {
+        return json(res, 400, { error: e?.message || 'invalid configuration' })
+      }
       // Same as the text installer: re-running must not mint new DB / JWT /
-      // TOTP / MinIO secrets, or the existing volumes stop authenticating.
-      const env = buildEnv({
-        cfg,
-        flags,
-        s3PublicUrl: (b.s3PublicUrl || '').trim(),
-        livekit: b.livekit || {},
-        vapid,
-        existing: readExistingEnv(REPO),
-      })
-      writeArtifacts(REPO, env, renderCaddyfile(cfg))
+      // TOTP / MinIO secrets, or the existing volumes stop authenticating — and
+      // must not rotate VAPID either, or every subscribed browser goes silent.
+      const existing = readExistingEnv(REPO)
+      const vapid =
+        flags.PUSH === '1'
+          ? resolveVapid({ existing, subject: b.vapidSubject, rotate: Boolean(b.rotateVapid) })
+          : null
+      const s3PublicUrl = (b.s3PublicUrl || '').trim()
+      const s3Problem = s3UrlProblem({ cfg, flags, s3PublicUrl })
+      if (s3Problem) return json(res, 400, { error: s3Problem })
+
+      let env
+      try {
+        env = buildEnv({
+          cfg,
+          flags,
+          s3PublicUrl,
+          livekit: b.livekit || {},
+          vapid,
+          existing,
+        })
+        writeArtifacts(REPO, env, renderCaddyfile(cfg))
+      } catch (e) {
+        return json(res, 400, { error: e?.message || 'invalid configuration' })
+      }
       const upArgs = composeArgs(flags, ['up', '-d', '--build'])
       lastRun = { flags, origin: cfg.origin, mode }
       return json(res, 200, {
@@ -120,7 +146,8 @@ const server = createServer(async (req, res) => {
         composeCmd: 'docker ' + upArgs.join(' '),
         envPath: '.env.lite',
         caddyPath: 'infra/lite/Caddyfile',
-        vapidGenerated: Boolean(vapid),
+        vapidGenerated: Boolean(vapid?.rotated),
+        vapidKept: Boolean(vapid && !vapid.rotated),
       })
     }
 
@@ -193,6 +220,20 @@ const server = createServer(async (req, res) => {
   } catch (e) {
     json(res, 500, { error: e?.message || 'internal error' })
   }
+})
+
+// A second wizard (or anything else on 4173) otherwise dies with a bare
+// ECONNREFUSED stack trace that says nothing about which port to change.
+server.on('error', (e) => {
+  if (e?.code === 'EADDRINUSE') {
+    process.stderr.write(
+      `\n  Port ${PORT} is already in use — another wizard may still be running.\n` +
+        `  Close it, or pick another port:  node scripts/lite/wizard/server.mjs --port ${PORT + 1}\n\n`
+    )
+    process.exit(1)
+  }
+  process.stderr.write(`\n  wizard failed to start: ${e?.message || e}\n\n`)
+  process.exit(1)
 })
 
 server.listen(PORT, '127.0.0.1', () => {

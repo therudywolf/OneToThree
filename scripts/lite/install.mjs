@@ -23,7 +23,8 @@ import {
   renderCaddyfile,
   writeArtifacts,
   composeArgs,
-  generateVapidKeys,
+  resolveVapid,
+  s3UrlProblem,
   readExistingEnv,
 } from './lite-core.mjs'
 
@@ -98,7 +99,18 @@ async function main() {
       line('  endpoint is also trusted-HTTPS. Install Caddy\'s local CA and enter its https URL —')
       line('  or leave blank / turn media off. See docs/guides/LITE.md.')
     }
-    s3PublicUrl = await q('Public URL of the object store (MinIO) the browser will reach', cfg.s3PublicDefault)
+    // Re-ask on a value that cannot work: a localhost object store outside
+    // local mode leaves every remote device with broken media, and the install
+    // otherwise looks completely healthy. Blank is still accepted on purpose.
+    for (;;) {
+      s3PublicUrl = await q(
+        'Public URL of the object store (MinIO) the browser will reach',
+        cfg.s3PublicDefault
+      )
+      const problem = s3UrlProblem({ cfg, flags, s3PublicUrl })
+      if (!problem) break
+      line(`  ⚠ ${problem}`)
+    }
     line('')
   }
 
@@ -114,20 +126,29 @@ async function main() {
     line('')
   }
 
-  // Push: generate VAPID keys up front (the operator only needs a contact address).
-  let vapid = null
-  if (flags.PUSH === '1') {
-    const subject = await q('Push contact address (mailto: or https:)', 'mailto:admin@localhost')
-    vapid = generateVapidKeys(subject.startsWith('mailto:') || subject.startsWith('https:') ? subject : `mailto:${subject}`)
-    line('  ✓ Generated a VAPID keypair for Web Push.')
-    line('')
-  }
-
-  // ── Write artifacts ─────────────────────────────────────────────────────────
   // Re-running the installer must not mint new DB / JWT / TOTP / MinIO secrets:
   // the volumes still hold the originals, so a fresh set means the stack comes
   // back up with `password authentication failed`.
   const existing = readExistingEnv(REPO)
+
+  // Push: keep the pair browsers are already subscribed to; mint one only when
+  // there is none. Rotating it here silently kills every existing subscription.
+  let vapid = null
+  if (flags.PUSH === '1') {
+    const subject = await q(
+      'Push contact address (mailto: or https:)',
+      existing.OT_VAPID_SUBJECT || 'mailto:admin@localhost'
+    )
+    vapid = resolveVapid({ existing, subject })
+    line(
+      vapid.rotated
+        ? '  ✓ Generated a VAPID keypair for Web Push.'
+        : '  ✓ Kept the existing VAPID keypair — already-subscribed browsers keep working.'
+    )
+    line('')
+  }
+
+  // ── Write artifacts ─────────────────────────────────────────────────────────
   const env = buildEnv({ cfg, flags, s3PublicUrl, livekit, vapid, existing })
   if (Object.keys(existing).length) {
     line('  (existing install detected — keeping its database and session secrets)')

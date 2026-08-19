@@ -36,7 +36,11 @@ log()  { printf '\033[0;34m▶ %s\033[0m\n' "$*"; }
 ok()   { printf '\033[0;32m✓ %s\033[0m\n' "$*"; }
 die()  { printf '\033[0;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
-val_for_key() { grep "^${1}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d'=' -f2- | tr -d '\r'; }
+# Shared reader: strips CR, quotes and an inline `# comment` — see the APK
+# script for the failure this fixes (the comment ended up inside the API URL).
+# shellcheck source=lib/env-value.sh
+source "$ROOT/scripts/lib/env-value.sh"
+val_for_key() { env_value "$1" "$ENV_FILE"; }
 
 # -- platform / tooling guards --------------------------------------------------
 [[ "$(uname -s)" == "Darwin" ]] || die "iOS builds require macOS. This host is $(uname -s)."

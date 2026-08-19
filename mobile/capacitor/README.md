@@ -66,20 +66,34 @@ plugin could toggle it at runtime (`client/src/lib/native-flag-secure.ts`).
 
 ## Release signing
 
-Set Gradle properties (CLI `-P` or `android/gradle.properties`):
+Pass the signing properties on the command line. **Do not put them in
+`android/gradle.properties`** — that file is tracked by git, so the passwords
+would land in the repository (and on GitHub) with the next `git commit -a`.
 
-- `RELEASE_STORE_FILE`
+- `RELEASE_STORE_FILE` — absolute path to the keystore
 - `RELEASE_STORE_PASSWORD`
 - `RELEASE_KEY_ALIAS`
 - `RELEASE_KEY_PASSWORD`
-- `VERSION_CODE`
-- `VERSION_NAME`
+- `VERSION_CODE`, `VERSION_NAME` — optional, otherwise derived from the repo `VERSION`
 
 Build:
 
 ```bash
-npm run android:build:release
+npm run android:build:release -- \
+  -PRELEASE_STORE_FILE=/abs/path/to/onetothree.jks \
+  -PRELEASE_STORE_PASSWORD=… -PRELEASE_KEY_ALIAS=… -PRELEASE_KEY_PASSWORD=…
 ```
+
+or let the build script take the keystore and read the passwords from the
+environment (`RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`):
+
+```bash
+./scripts/build-apk.sh release /abs/path/to/onetothree.jks
+```
+
+Without those properties Gradle still succeeds and writes
+`app-release-unsigned.apk`, which installs on no device — both entry points now
+fail loudly instead of handing you that file.
 
 ## Notification routing contract
 

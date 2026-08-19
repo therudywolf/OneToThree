@@ -112,6 +112,11 @@ services:
       FEATURE_2FA: ${OT_ENABLE_2FA:-1}
       FEATURE_ADMIN: ${OT_ENABLE_ADMIN:-1}
       FEATURE_GROUPS: ${OT_ENABLE_GROUPS:-1}
+      # Open registration: on a public domain this is the difference between
+      # "my friends and I" and "anyone who finds the URL". The server has always
+      # honoured FEATURE_OPEN_REGISTRATION, but Lite never passed it, so a
+      # self-hoster had no way to close sign-ups at all.
+      FEATURE_OPEN_REGISTRATION: ${OT_ENABLE_OPEN_REGISTRATION:-1}
       # Guest links are OPT-IN (the only unauthenticated app surface), so this
       # one defaults to 0 and is enabled only when explicitly ticked.
       FEATURE_GUESTS: ${OT_ENABLE_GUESTS:-0}

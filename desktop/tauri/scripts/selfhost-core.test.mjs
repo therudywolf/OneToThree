@@ -135,6 +135,32 @@ describe('CSP allow-list', () => {
     }
   })
 
+  /**
+   * Production allows both, and the desktop CSP had drifted without them:
+   * MediaPipe's camera effects need wasm, and the call relay's AudioWorklet is
+   * loaded from a blob:. Neither errors visibly — the app quietly falls back.
+   */
+  test('script-src carries what the wasm and worklet paths need', () => {
+    const d = directives(buildCsp(resolveTargets(SELF_HOST)))
+    assert.ok(d['script-src'].includes("'wasm-unsafe-eval'"))
+    assert.ok(d['script-src'].includes('blob:'))
+  })
+
+  test("connect-src carries Tauri's own IPC endpoints", () => {
+    const d = directives(buildCsp(resolveTargets(SELF_HOST)))
+    assert.ok(d['connect-src'].includes('ipc://localhost'))
+    assert.ok(d['connect-src'].includes('http://ipc.localhost'), 'Windows WebView2 uses http://ipc.localhost')
+  })
+
+  test('the committed maintainer CSP grants the same things as the generated one', () => {
+    const conf = JSON.parse(readFileSync(join(TAURI_DIR, 'src-tauri', 'tauri.conf.json'), 'utf8'))
+    const shipped = directives(conf.app.security.csp)
+    for (const token of ["'wasm-unsafe-eval'", 'blob:']) {
+      assert.ok(shipped['script-src'].includes(token), `tauri.conf.json script-src is missing ${token}`)
+    }
+    assert.ok(shipped['connect-src'].includes('ipc://localhost'))
+  })
+
   test('the hardening directives are never dropped', () => {
     const d = directives(buildCsp(resolveTargets(SELF_HOST)))
     assert.equal(d['frame-ancestors'], "'none'")

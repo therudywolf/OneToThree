@@ -501,6 +501,23 @@ describe('features', () => {
   })
 
   /**
+   * The server has always honoured FEATURE_OPEN_REGISTRATION, but Lite never
+   * emitted it — so a self-hoster on a public domain could not close sign-ups
+   * by any means at all. It stays ON by default (that is the behaviour every
+   * existing install already has) and is now a checkbox that actually works.
+   */
+  test('open registration can be switched off, and defaults to on', () => {
+    assert.equal(FEATURES.find((f) => f.key === 'OPEN_REGISTRATION')?.on, true)
+    const on = buildEnv({ cfg: computeModeConfig('local', {}), flags: flagsFor() })
+    assert.equal(on.OT_ENABLE_OPEN_REGISTRATION, '1')
+    const off = buildEnv({
+      cfg: computeModeConfig('domain', { domain: 'chat.example.com' }),
+      flags: flagsFor({ OPEN_REGISTRATION: '0' }),
+    })
+    assert.equal(off.OT_ENABLE_OPEN_REGISTRATION, '0')
+  })
+
+  /**
    * Guest links are the ONLY unauthenticated entry into the app, so an
    * operator has to ask for them: the checkbox ships off, and the env var must
    * carry that through — a default-on guest mode would silently open a door on

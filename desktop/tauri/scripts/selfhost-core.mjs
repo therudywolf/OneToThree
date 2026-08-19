@@ -93,11 +93,24 @@ export function buildCsp(t) {
   const d = (...parts) => parts.join(' ').replace(/\s+/g, ' ').trim()
   return [
     d(`default-src 'self' tauri://localhost`),
-    d(`script-src 'self' tauri://localhost 'unsafe-inline'`),
+    // `wasm-unsafe-eval` and `blob:` mirror the production CSP: without them
+    // MediaPipe's camera effects (wasm) and the call relay's AudioWorklet
+    // (blob: worker) fail silently and fall back to a degraded path.
+    d(`script-src 'self' tauri://localhost 'unsafe-inline' 'wasm-unsafe-eval' blob:`),
     d(`style-src 'self' tauri://localhost 'unsafe-inline'`),
     d(`img-src 'self' tauri://localhost blob: data:`, t.api, t.s3, gif),
     d(`media-src 'self' tauri://localhost blob:`, t.api, t.s3, gif),
-    d(`connect-src 'self' tauri://localhost`, t.api, toWs(t.api), t.s3, call, gif),
+    // Tauri's own IPC endpoints — `ipc://localhost` everywhere, and
+    // `http://ipc.localhost` on the Windows WebView2 — carry every invoke()
+    // call, including the keychain bridge.
+    d(
+      `connect-src 'self' tauri://localhost ipc://localhost http://ipc.localhost`,
+      t.api,
+      toWs(t.api),
+      t.s3,
+      call,
+      gif
+    ),
     d(`worker-src 'self' blob:`),
     d(`frame-ancestors 'none'`),
     d(`object-src 'none'`),

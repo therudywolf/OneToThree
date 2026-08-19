@@ -33,6 +33,9 @@ public class CallServicePlugin extends Plugin {
     }
     final Intent intent = new Intent(context, CallForegroundService.class);
     intent.setAction(CallForegroundService.ACTION_START);
+    // The web layer knows whether the camera is live; the service cannot ask.
+    // Calling start() again when that changes re-promotes with the new type.
+    intent.putExtra(CallForegroundService.EXTRA_VIDEO, call.getBoolean("video", false));
     // On Android 12+ starting a FGS while the app is in the background throws
     // ForegroundServiceStartNotAllowedException — and an incoming call often
     // arrives via FCM while backgrounded. Never let that crash the process:

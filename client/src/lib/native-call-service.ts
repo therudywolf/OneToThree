@@ -9,7 +9,7 @@
  * Android 12+ a backgrounded WebView call without such a service loses mic access).
  */
 type CallServicePlugin = {
-  start: () => Promise<{ ok: boolean }>
+  start: (options?: { video?: boolean }) => Promise<{ ok: boolean }>
   stop: () => Promise<{ ok: boolean }>
 }
 
@@ -22,9 +22,17 @@ function getPlugin(): CallServicePlugin | null {
   return plugin ?? null
 }
 
-export function startCallForegroundService(): void {
+/**
+ * @param video whether the call currently has a live camera track.
+ *
+ * The service is typed at start, and a microphone-typed one keeps the mic alive
+ * in the background and nothing else — a backgrounded video call went on being
+ * heard and stopped being seen. Call this again when the camera comes or goes
+ * to re-promote the service with the right type.
+ */
+export function startCallForegroundService(video = false): void {
   const p = getPlugin()
-  if (p) void p.start().catch(() => { /* best-effort */ })
+  if (p) void p.start({ video }).catch(() => { /* best-effort */ })
 }
 
 export function stopCallForegroundService(): void {

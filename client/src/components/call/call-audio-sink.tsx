@@ -132,15 +132,24 @@ export function CallAudioSink() {
   const peerLocalMuted = useCallStore((s) => s.peerLocalMuted)
   const isCalling = useCallStore((s) => s.isCalling)
   const isInGroupCall = useGroupCallStore((s) => s.isInGroupCall)
+  // Counted rather than read as a boolean so that adding or dropping a camera
+  // track mid-call re-runs the effect and re-types the foreground service.
+  const localVideoTracks = useCallStore((s) => s.localStream?.getVideoTracks().length ?? 0)
+  const groupVideoTracks = useGroupCallStore((s) => s.localStream?.getVideoTracks().length ?? 0)
   const outputVolume = useOutputVolume()
 
-  // Android: hold a microphone foreground service for the lifetime of a call so
-  // backgrounding the app doesn't drop the mic / peer audio (issue #3/#13).
-  // No-op on web and iOS.
+  // Android: hold a foreground service for the lifetime of a call so
+  // backgrounding the app doesn't drop the mic / peer audio (issue #3/#13), and
+  // type it for the camera too when one is live — a microphone-typed service
+  // keeps the mic and nothing else, so a backgrounded video call kept being
+  // heard and stopped being seen. No-op on web and iOS.
   useEffect(() => {
-    if (isCalling || isInGroupCall) startCallForegroundService()
-    else stopCallForegroundService()
-  }, [isCalling, isInGroupCall])
+    if (isCalling || isInGroupCall) {
+      startCallForegroundService(localVideoTracks + groupVideoTracks > 0)
+    } else {
+      stopCallForegroundService()
+    }
+  }, [isCalling, isInGroupCall, localVideoTracks, groupVideoTracks])
 
   return (
     <div aria-hidden className="hidden">

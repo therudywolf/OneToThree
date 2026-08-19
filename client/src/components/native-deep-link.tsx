@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { attachNativeListener } from '@/lib/native-listener'
 
 /**
  * Native deep-link handler (Android App Links / custom scheme).
@@ -19,10 +20,12 @@ import { useRouter } from 'next/navigation'
  */
 
 type CapacitorAppPlugin = {
+  // The injected bridge returns a plain `{ remove }`, the npm package a Promise
+  // of one — see attachNativeListener.
   addListener: (
     eventName: 'appUrlOpen',
     listenerFunc: (data: { url?: string }) => void
-  ) => Promise<{ remove: () => void }>
+  ) => { remove: () => unknown } | Promise<{ remove: () => unknown }>
   getLaunchUrl?: () => Promise<{ url?: string } | null | undefined>
 }
 
@@ -32,6 +35,19 @@ type CapacitorWindow = typeof window & {
     Plugins?: { App?: CapacitorAppPlugin }
   }
 }
+
+/**
+ * The only `/join/*` document the static export contains.
+ *
+ * `generateStaticParams()` in app/join/[code]/page.tsx emits exactly one param
+ * (`_`), so `out/join/_` is the single join page shipped inside the APK. The
+ * invite code therefore has to travel as `?code=`, which is what
+ * JoinPackClient reads first — routing to `/join/<code>` finds no document in
+ * the WebView and lands the user on a 404 instead of the invite screen.
+ */
+const JOIN_ROUTE = '/join/_'
+
+const joinPath = (code: string) => `${JOIN_ROUTE}?code=${encodeURIComponent(code)}`
 
 /**
  * Map an incoming deep-link URL to an in-app path.
@@ -45,12 +61,17 @@ export function deepLinkToInAppPath(rawUrl: string): string | null {
   try {
     const u = new URL(rawUrl)
 
-    // https App Link: /join/<code>
+    // https App Link: /join/<code> — and /join/?code=<code>, which is what the
+    // server-side share links use.
     if (u.protocol === 'https:' || u.protocol === 'http:') {
       const match = /^\/join\/([^/]+)\/?$/.exec(u.pathname)
       if (match) {
         const code = decodeURIComponent(match[1]).trim()
-        if (code) return `/join/${encodeURIComponent(code)}`
+        if (code && code !== '_') return joinPath(code)
+      }
+      if (/^\/join\/?$/.test(u.pathname)) {
+        const code = u.searchParams.get('code')?.trim()
+        if (code) return joinPath(code)
       }
       return null
     }
@@ -58,7 +79,7 @@ export function deepLinkToInAppPath(rawUrl: string): string | null {
     // Custom scheme: onetothree://chat?chat=<id> or onetothree://join/<code>
     if (u.protocol === 'onetothree:') {
       const code = u.searchParams.get('code')?.trim()
-      if (code) return `/join/${encodeURIComponent(code)}`
+      if (code) return joinPath(code)
       const chat = u.searchParams.get('chat')?.trim()
       if (chat) return `/?chat=${encodeURIComponent(chat)}`
       return null
@@ -96,18 +117,15 @@ export function NativeDeepLink() {
 
     // Warm/foreground: link tapped while the app was already running.
     let remove: (() => void) | null = null
-    void app
-      .addListener('appUrlOpen', (data) => route(data?.url))
-      .then((handle) => {
+    void attachNativeListener(() => app.addListener('appUrlOpen', (data) => route(data?.url))).then(
+      (detach) => {
         if (cancelled) {
-          handle.remove()
+          detach?.()
           return
         }
-        remove = () => handle.remove()
-      })
-      .catch(() => {
-        remove = null
-      })
+        remove = detach
+      }
+    )
 
     return () => {
       cancelled = true

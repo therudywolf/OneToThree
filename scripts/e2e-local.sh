@@ -73,7 +73,13 @@ export PLAYWRIGHT_API_HEALTH="$BASE_URL/health"
 GREP_ARGS=()
 [ -n "${E2E_GREP:-}" ] && GREP_ARGS=(-g "$E2E_GREP")
 log "running playwright..."
-npx playwright test --config client/playwright.config.ts --project=chromium "${GREP_ARGS[@]}" "$@"
+# The mobile-parity suite runs on the mobile projects, so pinning chromium
+# skipped it entirely in the one command the docs tell people to run. Override
+# with E2E_PROJECTS="chromium mobile-android" (webkit needs `npx playwright
+# install webkit` for the iOS project).
+PROJECT_ARGS=()
+for proj in ${E2E_PROJECTS:-chromium}; do PROJECT_ARGS+=(--project="$proj"); done
+npx playwright test --config client/playwright.config.ts "${PROJECT_ARGS[@]}" "${GREP_ARGS[@]}" "$@"
 code=$?
 [ "$code" = "0" ] && log "ALL GREEN ✅" || err "playwright failed (exit $code)"
 exit "$code"

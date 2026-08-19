@@ -3,7 +3,7 @@
 ## 1) Preconditions
 
 - Android SDK + Build Tools installed.
-- Java 17+ configured.
+- JDK **21** configured. Capacitor 8 generates `sourceCompatibility 21`; on JDK 17 the build fails with `invalid source release: 21`.
 - Firebase project created for `ru.onetothree.app`.
 - Backend secrets for FCM configured.
 

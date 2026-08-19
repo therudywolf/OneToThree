@@ -187,7 +187,10 @@ const server = createServer(async (req, res) => {
       if (!lastRun) return json(res, 409, { error: 'nothing launched yet' })
       const ps = spawnSync(
         'docker',
-        composeArgs(lastRun.flags, ['ps', '--format', '{{.Service}}\t{{.State}}\t{{.Status}}']),
+        // Pipe-separated on purpose: with shell:true (Windows) the tab in a
+        // \t-separated --format is eaten by the shell, and every Status card
+        // came back empty on exactly the platform the GUI exists for.
+        composeArgs(lastRun.flags, ['ps', '--format', '{{.Service}}|{{.State}}|{{.Status}}']),
         { cwd: REPO, encoding: 'utf8', shell: process.platform === 'win32' }
       )
       const containers = (ps.stdout || '')
@@ -195,7 +198,7 @@ const server = createServer(async (req, res) => {
         .split(/\r?\n/)
         .filter(Boolean)
         .map((l) => {
-          const [service, state, status] = l.split('\t')
+          const [service, state, status] = l.split('|')
           return { service, state, status }
         })
       let health = 'unknown'
@@ -209,9 +212,11 @@ const server = createServer(async (req, res) => {
         origin: lastRun.origin,
         health,
         containers,
+        // One line: the backslash continuation this used to print is bash
+        // syntax, and PowerShell / cmd cannot run what the operator copies.
         ownerCmd:
-          'docker compose --env-file .env.lite -f docker-compose.lite.yml exec db \\\n' +
-          '  psql -U forest -d forest -c "UPDATE users SET user_group=\'creator\', role=\'admin\' WHERE username=\'YOURNAME\';"',
+          'docker compose --env-file .env.lite -f docker-compose.lite.yml exec db ' +
+          'psql -U forest -d forest -c "UPDATE users SET user_group=\'creator\', role=\'admin\' WHERE username=\'YOURNAME\';"',
       })
     }
 

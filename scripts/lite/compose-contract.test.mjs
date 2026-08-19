@@ -91,6 +91,20 @@ describe('installer ↔ docker-compose.lite.yml', () => {
   })
 
   /**
+   * MinIO speaks plain HTTP and holds the root credentials from .env.lite. It
+   * used to ride `OT_BIND`, which is empty in lan and domain mode — so a
+   * public self-host published an unencrypted object store on 0.0.0.0, while
+   * the installer only warned that browsers could not reach it over HTTPS.
+   * Its own bind now defaults to loopback and is widened only when the operator
+   * pointed browsers straight at this host's :9000.
+   */
+  test('the object store falls back to loopback, not to the world', () => {
+    const line = compose.split('\n').find((l) => /OT_MINIO_PORT/.test(l) && /^\s*-\s/.test(l))
+    assert.ok(line, 'MinIO no longer publishes a port — update this test')
+    assert.match(line, /\$\{OT_MINIO_BIND:-127\.0\.0\.1:\}/, line)
+  })
+
+  /**
    * Publishing Postgres, Redis or MinIO's console on 0.0.0.0 turns a one-command
    * self-host into an exposed database. Only the reverse proxy (and the MinIO
    * object port, which media links need) may be published.
@@ -106,8 +120,8 @@ describe('installer ↔ docker-compose.lite.yml', () => {
         examined++
         assert.match(
           line,
-          /\$\{OT_BIND[:}]/,
-          `service "${name}" publishes ${line.trim()} without the OT_BIND host prefix`
+          /\$\{OT_(BIND|[A-Z0-9_]+_BIND)[:}]/,
+          `service "${name}" publishes ${line.trim()} with no host-bind prefix at all`
         )
       }
     }

@@ -181,8 +181,12 @@ async function main() {
     line(' silence it + enable media, install Caddy\'s local CA on each device.)')
   }
   line(`\n✓ Up. Open ${cfg.origin} , register the first account, then make yourself owner:`)
-  line(`  docker compose --env-file .env.lite -f docker-compose.lite.yml exec db \\`)
-  line(`    psql -U forest -d forest -c "UPDATE users SET user_group='creator', role='admin' WHERE username='YOURNAME';"`)
+  // One line: a backslash continuation is bash syntax and does not survive a
+  // copy-paste into PowerShell or cmd, which is where half of these installs run.
+  line(
+    `  docker compose --env-file .env.lite -f docker-compose.lite.yml exec db ` +
+      `psql -U forest -d forest -c "UPDATE users SET user_group='creator', role='admin' WHERE username='YOURNAME';"`
+  )
 }
 
 main().catch((e) => {

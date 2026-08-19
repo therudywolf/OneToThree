@@ -263,6 +263,7 @@ export function buildEnv({ cfg, flags, s3PublicUrl = '', livekit = {}, vapid = n
     OT_MINIO_USER: 'minio',
     OT_MINIO_PASSWORD: hex(20),
     OT_MINIO_PORT: '9000',
+    OT_MINIO_BIND: minioBind({ cfg, s3PublicUrl: s3PublicUrl || cfg.s3PublicDefault, minioPort: '9000' }),
     OT_S3_PUBLIC_URL: s3PublicUrl || cfg.s3PublicDefault,
     OT_ENABLE_MEDIA: flags.MEDIA,
     OT_ENABLE_CALLS: flags.CALLS,
@@ -347,6 +348,34 @@ export function s3UrlProblem({ cfg, flags = {}, s3PublicUrl = '' }) {
     )
   }
   return null
+}
+
+/**
+ * Where the bundled MinIO's port is published.
+ *
+ * It speaks plain HTTP with the root credentials from `.env.lite`, and it was
+ * published on 0.0.0.0 in every mode that is not `local` — so a self-host on a
+ * public domain put an unencrypted object store on the open internet, while the
+ * installer only warned that browsers could not reach it over HTTPS.
+ *
+ * It only needs to be reachable from outside when the operator pointed browsers
+ * straight at this host's own :9000. Anything else — a fronting proxy, a real
+ * s3.<domain>, or media turned off — is served over the docker network and the
+ * published port can stay on loopback, where a host-level reverse proxy can
+ * still reach it.
+ */
+export function minioBind({ cfg, s3PublicUrl = '', minioPort = '9000' }) {
+  const LOOPBACK = '127.0.0.1:'
+  if (cfg.mode === 'local') return LOOPBACK // the browser is on this machine
+  let u
+  try {
+    u = new URL(String(s3PublicUrl || ''))
+  } catch {
+    return LOOPBACK
+  }
+  const port = u.port || (u.protocol === 'https:' ? '443' : '80')
+  const pointsHere = u.hostname === cfg.host && port === String(minioPort)
+  return pointsHere ? '' : LOOPBACK
 }
 
 /** Per-mode Caddyfile. Caddy requires each block's `{` to end its line. */

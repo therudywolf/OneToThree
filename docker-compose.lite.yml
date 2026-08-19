@@ -64,7 +64,10 @@ services:
     ports:
       # Same OT_BIND as Caddy: in `local` mode the browser reaches MinIO on
       # http://localhost:9000, which hits the same IPv6-accepts-then-hangs trap.
-      - "${OT_BIND:-}${OT_MINIO_PORT:-9000}:9000"
+      # Loopback unless the installer decided browsers must reach this port
+      # directly (see minioBind in scripts/lite/lite-core.mjs): MinIO here is
+      # plain HTTP holding the root credentials from .env.lite.
+      - "${OT_MINIO_BIND:-127.0.0.1:}${OT_MINIO_PORT:-9000}:9000"
     networks: [lite]
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]

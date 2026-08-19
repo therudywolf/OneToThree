@@ -26,6 +26,7 @@ import {
   generateVapidKeys,
   resolveVapid,
   s3UrlProblem,
+  minioBind,
   assertHost,
   parsePort,
   normalizeSubject,
@@ -404,6 +405,47 @@ describe('the .env.lite round-trip', () => {
       writeArtifacts(repo, buildEnv({ cfg, flags: flagsFor() }), renderCaddyfile(cfg))
       assert.equal(statSync(join(repo, '.env.lite')).mode & 0o777, 0o600)
     }))
+})
+
+/**
+ * The bundled MinIO speaks plain HTTP and holds the root credentials from
+ * .env.lite. It rode OT_BIND, which is empty in lan and domain mode — so a
+ * self-host on a public domain published an unencrypted object store on
+ * 0.0.0.0, while the installer only warned that browsers could not reach it
+ * over HTTPS.
+ */
+describe('where the object store is published', () => {
+  const local = computeModeConfig('local', {})
+  const domain = computeModeConfig('domain', { domain: 'chat.example.com' })
+  const lan = computeModeConfig('lan', { host: '192.168.1.50' })
+
+  test('local mode keeps it on loopback — the browser is on this machine', () => {
+    assert.equal(minioBind({ cfg: local, s3PublicUrl: 'http://localhost:9000' }), '127.0.0.1:')
+  })
+
+  test('a fronted object store needs no public port at all', () => {
+    assert.equal(minioBind({ cfg: domain, s3PublicUrl: 'https://s3.example.com' }), '127.0.0.1:')
+  })
+
+  test('media off, or no URL given, also stays on loopback', () => {
+    assert.equal(minioBind({ cfg: domain, s3PublicUrl: '' }), '127.0.0.1:')
+    assert.equal(minioBind({ cfg: lan, s3PublicUrl: 'not a url' }), '127.0.0.1:')
+  })
+
+  /** The one case that genuinely needs it: browsers pointed straight here. */
+  test('a LAN install pointing browsers at this host opens the port', () => {
+    assert.equal(minioBind({ cfg: lan, s3PublicUrl: 'http://192.168.1.50:9000' }), '')
+  })
+
+  test('a different host or port on the same machine does not open it', () => {
+    assert.equal(minioBind({ cfg: lan, s3PublicUrl: 'http://192.168.1.51:9000' }), '127.0.0.1:')
+    assert.equal(minioBind({ cfg: lan, s3PublicUrl: 'https://192.168.1.50' }), '127.0.0.1:')
+  })
+
+  test('the value reaches .env.lite', () => {
+    const env = buildEnv({ cfg: domain, flags: flagsFor(), s3PublicUrl: 'https://s3.example.com' })
+    assert.equal(env.OT_MINIO_BIND, '127.0.0.1:')
+  })
 })
 
 describe('published ports', () => {
